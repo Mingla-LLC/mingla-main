@@ -1212,18 +1212,50 @@ export const ISSUE_2009_PRIVATE_UNAVAILABLE_COPY =
   "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.";
 
 /**
- * issue #2009 — map a stable RPC code to honest, actionable organiser copy.
- * Lives here rather than in the screen so it is executable in a plain node
- * jest run (per #2113 a check that only reads source text carries no
- * information; this one is CALLED with real codes).
+ * issue #2009 (pass-1 TEST REPORT P2-2) — the copy for the OTHER direction.
+ *
+ * The RPC raises the SAME stable code, `private_visibility_unavailable`, on
+ * both legs of the boundary: entering Private, and leaving an event that is
+ * already Private. Mapping one sentence to both told an organiser who had just
+ * chosen Public to "Choose Public or Unlisted for now" — advice they had
+ * already taken, for a save that had just failed. The entering copy above is
+ * approved verbatim and is unchanged; this one exists because the exit leg
+ * needs a sentence that is true of the exit leg.
+ *
+ * It says what is actually so: the event is stuck on the Business surface until
+ * #2144, and the supported way out today is the Admin console, which
+ * `admin_set_offering_visibility` now permits for this direction.
+ */
+export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY =
+  "This event is Private, and Mingla Business can't move it out of Private yet. Contact support and we'll switch it to Public or Unlisted for you.";
+
+/**
+ * issue #2009 — map a stable RPC code to honest, actionable organiser copy,
+ * knowing WHICH LEG of the Private boundary the refusal came from.
+ *
+ * Lives here rather than in the screen so it is executable in a plain node jest
+ * run (per #2113 a check that only reads source text carries no information;
+ * this one is CALLED with real codes).
  *
  * The server is ALWAYS the authority: `private_visibility_unavailable` is
  * mapped here too, so a client whose capability state is stale still tells the
  * organiser the truth instead of a generic failure.
+ *
+ * `previousVisibility` is the value the editor LOADED. It is the only thing
+ * that separates the two legs, because the RPC raises the same code for both.
+ * Anything other than `"private"` — including `undefined`, `null` and a value
+ * this client does not recognise — is treated as the ENTERING leg, so an
+ * unknown direction can never be mistaken for the exit.
  */
-export const issue2009VisibilityErrorCopy = (code: string): string => {
+export const issue2009VisibilityErrorCopyForLeg = (
+  code: string,
+  previousVisibility: string | null | undefined,
+): string => {
   if (code.includes(ISSUE_2009_VISIBILITY_ERROR_CODES.privateUnavailable)) {
-    return ISSUE_2009_PRIVATE_UNAVAILABLE_COPY;
+    // P2-2 — one code, two directions. Leaving Private gets the exit sentence.
+    return previousVisibility === "private"
+      ? ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY
+      : ISSUE_2009_PRIVATE_UNAVAILABLE_COPY;
   }
   if (code.includes(ISSUE_2009_VISIBILITY_ERROR_CODES.stale)) {
     return "This event changed elsewhere. Review the latest visibility and try again.";
@@ -1242,6 +1274,18 @@ export const issue2009VisibilityErrorCopy = (code: string): string => {
   }
   return "Couldn't save visibility. Check your connection and try again.";
 };
+
+/**
+ * issue #2009 — the direction-free entry point, kept at ONE argument so it
+ * stays usable point-free (`codes.map(issue2009VisibilityErrorCopy)`).
+ *
+ * It delegates to the mapping above rather than duplicating it, so there is
+ * exactly one home for every sentence. With no leg supplied the Private code
+ * resolves to the approved ENTERING copy, which is the pre-P2-2 behaviour
+ * unchanged.
+ */
+export const issue2009VisibilityErrorCopy = (code: string): string =>
+  issue2009VisibilityErrorCopyForLeg(code, null);
 
 /**
  * issue #2009 — SPEC §6 requires exactly one success signal, naming the

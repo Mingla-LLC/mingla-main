@@ -199,10 +199,15 @@ Deno.test("#2009 S2 — the branch matches the code the shipped executor actuall
     "PRIVATE_VISIBILITY_UNAVAILABLE",
     "the shipped executor no longer raises the uppercased stable code; re-check the status branch's casing",
   );
+  // [TEST-MOD-APPROVED #2009] — pass-1 TEST REPORT P2-2. `realPrivateRefusal()`
+  // drives `privateEvent()` towards `public`, i.e. the EXIT leg, and originally
+  // asserted the ENTERING sentence. The STATUS contract this file exists for is
+  // untouched: the code is still the uppercased stable one and it still maps to
+  // 400. Only the human sentence changed, and only on this leg.
   assertEquals(
     err.message,
-    "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.",
-    "the caller no longer receives the approved Private copy",
+    "This event is Private, and it can't be moved out of Private yet. Nothing was changed. Contact support and they'll switch it to Public or Unlisted.",
+    "the caller no longer receives the exit-leg Private copy",
   );
   // Both spellings resolve to the same branch, so neither a rename in
   // agentTools.ts nor a literal reading of the amendment can make it vacuous.

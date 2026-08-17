@@ -39,6 +39,7 @@ const BUSINESS_SRC = "mingla-business/src";
 const AGENT_TOOLS = "supabase/functions/_shared/agentTools.ts";
 const DISCOVER_CACHE = "supabase/functions/discover-merged-events/_cache.ts";
 const DISCOVER_INDEX = "supabase/functions/discover-merged-events/index.ts";
+const DISCOVER_MEMORY = "supabase/functions/discover-merged-events/_memory-cache.ts";
 
 const PRIVATE_COPY =
   "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.";
@@ -298,6 +299,192 @@ const check = (s) => {
   if (!/discoveryGeneration,/.test(index)) {
     fail("discover-merged-events/index.ts no longer passes discoveryGeneration into DiscoverCacheParams (Defect 2)");
   }
+
+  // ---- 10. PASS-1 TEST REPORT P1-1 — the guard's ENABLING CONDITIONS -------
+  // Behavioural proof:
+  //   supabase/migrations/__tests__/issue_2009_visibility_scope_rework.pg17.test.sql
+  //   supabase/migrations/__tests__/issue_2009_visibility_guard_bypass.tester_adversarial.pg17.test.sql
+  //
+  // The pass-1 guard was `BEFORE UPDATE OF visibility` scoped to
+  // `event_type='event'`, and BOTH conditions were steppable: a statement that
+  // did not NAME visibility never fired the trigger, and a row retyped out of
+  // 'event' fell out of scope entirely. Three ordinary PostgREST PATCHes walked
+  // a standard event into Private with no audit row, no effect row and the
+  // discovery generation unmoved. Every pin below is a condition the bypass
+  // needed; none of them is satisfiable by a comment (the migration is
+  // comment-stripped before it gets here).
+  const mig = s.migrationNoComments;
+  if (
+    !/CREATE TRIGGER issue_2009_events_visibility_guard\s+BEFORE UPDATE OF visibility,\s*event_type ON public\.events/
+      .test(mig)
+  ) {
+    fail(
+      "the write guard's column list no longer names `event_type` — a PATCH that retypes the row never fires it, and the whole laundering bypass reopens (P1-1)",
+    );
+  }
+  if (
+    !/CREATE TRIGGER issue_2009_events_visibility_effects\s+AFTER UPDATE OF visibility,\s*event_type ON public\.events/
+      .test(mig)
+  ) {
+    fail(
+      "the effects coordinator's column list no longer names `event_type` — the discoverable set could move with the discovery generation standing still (P1-1, SC-14/SC-15)",
+    );
+  }
+  // The guard must still be able to tell "this row crossed the standard-event
+  // class boundary" apart from "this row's visibility changed". If it collapses
+  // back to a plain visibility diff, an arrival leg is invisible again.
+  // BOTH trigger functions must do it — the guard AND the effects coordinator.
+  // If only one does, the two disagree about what a transition is, which is how
+  // a change can land with the generation standing still.
+  const oldSideChecks =
+    (mig.match(/v_was_standard\s+boolean\s*:=\s*\(OLD\.event_type IS NOT DISTINCT FROM 'event'\)/g) ??
+      []).length;
+  const newSideChecks =
+    (mig.match(/v_is_standard\s+boolean\s*:=\s*\(NEW\.event_type IS NOT DISTINCT FROM 'event'\)/g) ??
+      []).length;
+  if (oldSideChecks < 2 || newSideChecks < 2) {
+    fail(
+      "the write guard and the effects coordinator no longer BOTH evaluate the standard-event class on both sides of the row — the scope becomes steppable by retyping again, or the two triggers disagree about what a transition is (P1-1)",
+    );
+  }
+  if (
+    !/NEW\.visibility = 'private'\s*AND \(OLD\.visibility IS DISTINCT FROM 'private' OR v_class_moved\)/
+      .test(mig)
+  ) {
+    fail(
+      "the Private ENTRY test no longer treats a class crossing as an entry — `rsvp`+`private` retyped to `event` would land in Private again (P1-1 / P2-3)",
+    );
+  }
+  // P2-3: the pass-1 clause refused BOTH directions, which stranded any row
+  // already at Private. That exact predicate must not come back.
+  if (/'private' IN \(OLD\.visibility, NEW\.visibility\)/.test(mig)) {
+    fail(
+      "the write guard refuses BOTH Private directions again — a standard event already at Private would have no supported exit (P2-3)",
+    );
+  }
+  // ---- 10b. P2-1 — the same boundary on the INSERT path --------------------
+  if (
+    !/CREATE TRIGGER issue_2009_events_visibility_insert_guard\s+BEFORE INSERT ON public\.events/
+      .test(mig)
+  ) {
+    fail(
+      "the BEFORE INSERT Private guard is gone — an authenticated INSERT can create a standard ticketed event straight at Private (P2-1)",
+    );
+  }
+  if (
+    !/CREATE OR REPLACE FUNCTION public\.issue_2009_event_visibility_insert_guard\b/.test(mig)
+  ) {
+    fail("the INSERT guard function is missing (P2-1)");
+  }
+  // ---- 10c. P2-3 — Admin refuses ENTRY only, so the exit stays open --------
+  if (
+    !/\(v_before->>'event_type'\) = 'event'\s*AND p_visibility = 'private'\s*AND \(v_before->>'visibility'\) IS DISTINCT FROM 'private'/
+      .test(mig)
+  ) {
+    fail(
+      "admin_set_offering_visibility no longer refuses ENTRY-only — either Private became enterable, or the exit was closed again and a Private standard event is stranded (P2-3)",
+    );
+  }
+  if (/p_visibility = 'private' OR \(v_before->>'visibility'\) = 'private'/.test(mig)) {
+    fail(
+      "admin_set_offering_visibility refuses BOTH Private directions again — the stranded-row defect returns (P2-3)",
+    );
+  }
+
+  // ---- 11. PASS-1 TEST REPORT P1-2 — fail-closed must not dissolve ---------
+  //         request coalescing.
+  // Behavioural proof:
+  //   supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts
+  //   supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts
+  //
+  // `cacheKey` was doing two jobs: the SERVE namespace (which must be unique
+  // when the generation is unreadable, so nothing stale is servable) and the
+  // COALESCING namespace (which must be shared, or every request builds). The
+  // fix separates them. What this gate adds is that nobody quietly re-merges
+  // them — in EITHER direction.
+  const memory = s.discoverMemoryNoComments;
+  if (memory === "") fail("discover-merged-events/_memory-cache.ts is missing");
+  if (!/export function discoverBuildCoalesceKey/.test(cache)) {
+    fail(
+      "_cache.ts lost discoverBuildCoalesceKey — the fail-closed coalescing namespace has no single home (P1-2)",
+    );
+  }
+  if (!/UNAVAILABLE_GENERATION_COALESCE_SLOT/.test(cache)) {
+    fail("_cache.ts lost the shared fail-closed coalescing slot (P1-2)");
+  }
+  if (!/discoverBuildCoalesceKey/.test(memory)) {
+    fail(
+      "_memory-cache.ts no longer collapses the fail-closed namespace — an unreadable generation turns one build per key into one build per REQUEST, and ORCH-426's overload protection is gone at the moment it is needed most (P1-2)",
+    );
+  }
+  if (
+    !/const flightKey = discoverBuildCoalesceKey\(key\);/.test(memory) ||
+    !/inflight\.get\(flightKey\)/.test(memory) ||
+    !/inflight\.delete\(flightKey\)/.test(memory) ||
+    !/inflight\.set\(flightKey, promise\)/.test(memory)
+  ) {
+    fail(
+      "coalesceDiscoverBuild no longer single-flights on the collapsed namespace — the herd stops coalescing, or the slot is never released (P1-2)",
+    );
+  }
+  if (!/inflight\.has\(discoverBuildCoalesceKey\(key\)\)/.test(memory)) {
+    fail(
+      "refreshDiscoverInBackground no longer checks the collapsed namespace — the stampede simply moves to the stale-while-revalidate path (P1-2)",
+    );
+  }
+  // ...and the SERVE side must stay unique. `l1SetBytes` storing under the
+  // collapsed namespace would make a fail-closed response servable, which is the
+  // privacy trade the amendment forbids.
+  if (
+    /\bl1\.(set|get|delete)\(\s*discoverBuildCoalesceKey/.test(memory) ||
+    /\bl1(Set|Get)[A-Za-z]*\(\s*discoverBuildCoalesceKey/.test(memory)
+  ) {
+    fail(
+      "the L1 store/lookup is keyed on the COLLAPSED namespace — a response built while the generation was unreadable would become servable to later requests (fail-closed, P1-2)",
+    );
+  }
+
+  // ---- 12. PASS-1 TEST REPORT P2-2 — one code, two directions --------------
+  // Behavioural proof:
+  //   mingla-business/src/services/__tests__/businessEventVisibilityExitCopy.issue2009.rework.test.ts
+  //   supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts
+  if (!/export const issue2009VisibilityErrorCopyForLeg/.test(s.service)) {
+    fail(
+      "businessEvents.ts lost the leg-aware copy map — an organiser LEAVING Private is told to 'Choose Public or Unlisted', which is what they just tried (P2-2)",
+    );
+  }
+  if (!/ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY/.test(s.service)) {
+    fail("businessEvents.ts lost the exit-leg Private copy (P2-2)");
+  }
+  // The two sentences must actually differ. A "split" that maps both legs to
+  // the same string is the vacuous shape this whole rework exists to reject.
+  const exitCopy = /export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY\s*=\s*\n?\s*"([^"]+)"/
+    .exec(s.service)?.[1];
+  if (!exitCopy) fail("could not read the exit-leg Private copy out of businessEvents.ts (P2-2)");
+  if (exitCopy === PRIVATE_COPY) {
+    fail("the exit-leg Private copy is identical to the entering copy — the split is vacuous (P2-2)");
+  }
+  if (/Choose Public or Unlisted/i.test(exitCopy)) {
+    fail(
+      "the exit-leg Private copy still tells the organiser to choose Public or Unlisted — that is the sentence P2-2 reported as wrong (P2-2)",
+    );
+  }
+  if (!/issue2009VisibilityErrorCopyForLeg\(\s*code,\s*liveEvent\.visibility\s*\)/.test(screen)) {
+    fail(
+      "EditPublishedScreen no longer tells the copy map which leg the refusal came from, so both legs read the same again (P2-2)",
+    );
+  }
+  // Ari's half: the same direction must reach its copy mapper.
+  if (!/issue2009VisibilityToolError\(error, target\.visibility\)/.test(ari)) {
+    fail(
+      "agentTools.ts no longer passes the event's current visibility to the #2009 copy mapper — Ari says the entering sentence on the exit leg (P2-2)",
+    );
+  }
+  if (!ari.includes(PRIVATE_COPY)) {
+    fail(
+      "agentTools.ts lost the approved entering-Private copy verbatim — the P2-2 split may only ADD the exit sentence, never reword the approved one (P2-2)",
+    );
+  }
 };
 
 const readIf = (p) => (fs.existsSync(p) ? fs.readFileSync(p, "utf8") : "");
@@ -314,6 +501,7 @@ const screenRaw = readIf(SCREEN);
 const agentToolsRaw = readIf(AGENT_TOOLS);
 const discoverCacheRaw = readIf(DISCOVER_CACHE);
 const discoverIndexRaw = readIf(DISCOVER_INDEX);
+const discoverMemoryRaw = readIf(DISCOVER_MEMORY);
 const sources = {
   agentTools: agentToolsRaw,
   agentToolsNoComments: stripJsComments(agentToolsRaw),
@@ -321,6 +509,8 @@ const sources = {
   discoverCacheNoComments: stripJsComments(discoverCacheRaw),
   discoverIndex: discoverIndexRaw,
   discoverIndexNoComments: stripJsComments(discoverIndexRaw),
+  discoverMemory: discoverMemoryRaw,
+  discoverMemoryNoComments: stripJsComments(discoverMemoryRaw),
   migration: migrationRaw,
   migrationNoComments: stripSqlComments(migrationRaw),
   migrationList: fs.existsSync("supabase/migrations")
@@ -646,6 +836,226 @@ if (process.argv.includes("--self-test")) {
         return { ...s, discoverCache: s.discoverCache.replace(block, "") };
       },
     },
+    // ---- PASS-1 TEST REPORT P1-1 — the guard's enabling conditions --------
+    {
+      label:
+        "M36 — the write guard's column list drops `event_type` (the EXACT P1-1 bypass: a PATCH that retypes the row never fires the trigger)",
+      apply: (s) => {
+        const marker = "  BEFORE UPDATE OF visibility, event_type ON public.events\n" +
+          "  FOR EACH ROW EXECUTE FUNCTION public.issue_2009_event_visibility_write_guard();";
+        if (!s.migration.includes(marker)) {
+          throw new Error("M36 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          migration: s.migration.replace(
+            marker,
+            "  BEFORE UPDATE OF visibility ON public.events\n" +
+              "  FOR EACH ROW EXECUTE FUNCTION public.issue_2009_event_visibility_write_guard();",
+          ),
+        };
+      },
+    },
+    {
+      label:
+        "M37 — the effects coordinator's column list drops `event_type` (the discoverable set moves with the generation standing still)",
+      apply: (s) => {
+        const marker = "  AFTER UPDATE OF visibility, event_type ON public.events";
+        if (!s.migration.includes(marker)) {
+          throw new Error("M37 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          migration: s.migration.replace(marker, "  AFTER UPDATE OF visibility ON public.events"),
+        };
+      },
+    },
+    {
+      label: "M38 — the guard stops evaluating the standard-event class on both sides of the row",
+      apply: (s) => ({
+        ...s,
+        migration: s.migration.replace(
+          "  v_was_standard boolean := (OLD.event_type IS NOT DISTINCT FROM 'event');",
+          "  v_was_standard boolean := true;",
+        ),
+      }),
+    },
+    {
+      label:
+        "M39 — a class crossing stops counting as a Private ENTRY, so `rsvp`+`private` retyped to `event` lands in Private again",
+      apply: (s) => {
+        const marker =
+          "  IF NEW.visibility = 'private'\n     AND (OLD.visibility IS DISTINCT FROM 'private' OR v_class_moved) THEN";
+        if (!s.migration.includes(marker)) {
+          throw new Error("M39 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          migration: s.migration.replace(
+            marker,
+            "  IF NEW.visibility = 'private'\n     AND OLD.visibility IS DISTINCT FROM 'private' THEN",
+          ),
+        };
+      },
+    },
+    {
+      label: "M40 — the pass-1 both-directions Private refusal is restored (P2-3 strands the row again)",
+      apply: (s) => ({
+        ...s,
+        migration: s.migration.replace(
+          "  IF NEW.visibility = 'private'\n     AND (OLD.visibility IS DISTINCT FROM 'private' OR v_class_moved) THEN",
+          "  IF 'private' IN (OLD.visibility, NEW.visibility) THEN",
+        ),
+      }),
+    },
+    // ---- PASS-1 TEST REPORT P2-1 — the INSERT path ------------------------
+    {
+      label: "M41 — the BEFORE INSERT Private guard trigger is removed (the exact P2-1 defect)",
+      apply: (s) => ({
+        ...s,
+        migration: s.migration.replace(
+          "CREATE TRIGGER issue_2009_events_visibility_insert_guard",
+          "-- removed",
+        ),
+      }),
+    },
+    {
+      label: "M42 — the INSERT guard function is renamed away, leaving the trigger dangling",
+      apply: (s) => ({
+        ...s,
+        migration: s.migration.replaceAll(
+          "public.issue_2009_event_visibility_insert_guard",
+          "public.issue_2009_event_visibility_insert_guard_renamed",
+        ),
+      }),
+    },
+    // ---- PASS-1 TEST REPORT P2-3 — Admin keeps the exit open ---------------
+    {
+      label: "M43 — Admin refuses BOTH Private directions again, stranding an already-private event",
+      apply: (s) => {
+        const marker = "     AND p_visibility = 'private'\n" +
+          "     AND (v_before->>'visibility') IS DISTINCT FROM 'private' THEN";
+        if (!s.migration.includes(marker)) {
+          throw new Error("M43 fixture marker drifted — update it, do not let it no-op");
+        }
+        return {
+          ...s,
+          migration: s.migration.replace(
+            marker,
+            "     AND (p_visibility = 'private' OR (v_before->>'visibility') = 'private')\n" +
+              "     AND p_visibility IS DISTINCT FROM (v_before->>'visibility') THEN",
+          ),
+        };
+      },
+    },
+    // ---- PASS-1 TEST REPORT P1-2 — fail-closed coalescing ------------------
+    {
+      label:
+        "M44 — the single-flight map goes back to the raw cache key (the EXACT P1-2 defect: 12 concurrent requests, 12 builds)",
+      apply: (s) => ({
+        ...s,
+        discoverMemory: s.discoverMemory.replace(
+          "  const flightKey = discoverBuildCoalesceKey(key);",
+          "  const flightKey = key;",
+        ),
+      }),
+    },
+    {
+      label: "M45 — the collapsed in-flight slot is never released, wedging every later fail-closed request",
+      apply: (s) => ({
+        ...s,
+        discoverMemory: s.discoverMemory.replace("    inflight.delete(flightKey);", ""),
+      }),
+    },
+    {
+      label: "M46 — the SWR refresh path stops honouring the collapsed namespace, so the stampede moves there",
+      apply: (s) => ({
+        ...s,
+        discoverMemory: s.discoverMemory.replace(
+          "  if (inflight.has(discoverBuildCoalesceKey(key))) return;",
+          "  if (inflight.has(key)) return;",
+        ),
+      }),
+    },
+    {
+      label: "M47 — the coalescing normaliser is removed from _cache.ts entirely",
+      apply: (s) => ({
+        ...s,
+        discoverCache: s.discoverCache.replace(
+          "export function discoverBuildCoalesceKey",
+          "function unexportedCoalesceKey",
+        ),
+      }),
+    },
+    {
+      label:
+        "M48 — L1 is keyed on the COLLAPSED namespace, making a fail-closed response servable (the privacy trade the amendment forbids)",
+      apply: (s) => ({
+        ...s,
+        discoverMemory: s.discoverMemory.replace(
+          "  l1.set(key, entry);",
+          "  l1.set(discoverBuildCoalesceKey(key), entry);",
+        ),
+      }),
+    },
+    // ---- PASS-1 TEST REPORT P2-2 — one code, two directions ----------------
+    {
+      label: "M49 — the leg-aware copy map is removed, so both Private directions read the same again",
+      apply: (s) => ({
+        ...s,
+        service: s.service.replace(
+          "export const issue2009VisibilityErrorCopyForLeg",
+          "const unexportedLegCopy",
+        ),
+      }),
+    },
+    {
+      label: "M50 — the 'split' maps the exit leg to the entering sentence (a vacuous fix)",
+      apply: (s) => ({
+        ...s,
+        service: s.service.replace(
+          /export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY\s*=\s*\n?\s*"[^"]+";/,
+          `export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY =\n  "${PRIVATE_COPY}";`,
+        ),
+      }),
+    },
+    {
+      label: "M51 — the exit sentence still says 'Choose Public or Unlisted', the exact reported wrongness",
+      apply: (s) => ({
+        ...s,
+        service: s.service.replace(
+          /export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY\s*=\s*\n?\s*"[^"]+";/,
+          'export const ISSUE_2009_PRIVATE_EXIT_UNAVAILABLE_COPY =\n  "This event is Private. Choose Public or Unlisted for now.";',
+        ),
+      }),
+    },
+    {
+      label: "M52 — the editor stops telling the copy map which leg the refusal came from",
+      apply: (s) => ({
+        ...s,
+        screen: s.screen.replace(
+          "issue2009VisibilityErrorCopyForLeg(code, liveEvent.visibility)",
+          "issue2009VisibilityErrorCopyForLeg(code, null)",
+        ),
+      }),
+    },
+    {
+      label: "M53 — Ari stops passing the event's current visibility to the copy mapper",
+      apply: (s) => ({
+        ...s,
+        agentTools: s.agentTools.replace(
+          "issue2009VisibilityToolError(error, target.visibility)",
+          "issue2009VisibilityToolError(error)",
+        ),
+      }),
+    },
+    {
+      label: "M54 — the split reworded Ari's APPROVED entering copy instead of only adding the exit one",
+      apply: (s) => ({
+        ...s,
+        agentTools: s.agentTools.replace(PRIVATE_COPY, "Private is not available yet."),
+      }),
+    },
     {
       label: "COMMENT-FORGERY — the RPC call is deleted but a comment quotes it verbatim",
       apply: (s) => ({
@@ -679,6 +1089,7 @@ if (process.argv.includes("--self-test")) {
       agentToolsNoComments: stripJsComments(mutated.agentTools),
       discoverCacheNoComments: stripJsComments(mutated.discoverCache),
       discoverIndexNoComments: stripJsComments(mutated.discoverIndex),
+      discoverMemoryNoComments: stripJsComments(mutated.discoverMemory),
     };
     let rejected = false;
     try {

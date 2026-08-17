@@ -313,10 +313,21 @@ Deno.test("#2009 A3a — a Private target returns private_visibility_unavailable
     err.code === "PRIVATE_VISIBILITY_UNAVAILABLE",
     `expected the RPC's stable code to be surfaced, got ${err.code}`,
   );
+  // [TEST-MOD-APPROVED #2009] — pass-1 TEST REPORT P2-2. This fixture is
+  // `visibility: "private"` moving to `public`, i.e. the EXIT leg, and it
+  // originally asserted the ENTERING sentence ("...Choose Public or Unlisted
+  // for now"). That is the defect: it told an organiser who had just chosen
+  // Public to choose Public. The approved ENTERING copy is unchanged and is
+  // still asserted verbatim — on the entering leg — in
+  // mingla-business/src/services/__tests__/businessEventVisibilityExitCopy.issue2009.rework.test.ts.
   assert(
     err.message ===
-      "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.",
-    "the operator did not receive the approved Private copy",
+      "This event is Private, and it can't be moved out of Private yet. Nothing was changed. Contact support and they'll switch it to Public or Unlisted.",
+    "the operator did not receive the exit-leg Private copy",
+  );
+  assert(
+    !err.message.includes("Choose Public or Unlisted for now"),
+    "the exit leg still repeats back the thing the organiser just asked for (P2-2)",
   );
   assert(row.visibility === before.visibility, "the stored visibility changed on a refused Private call");
   assert(row.updated_at === before.updated_at, "updated_at moved on a refused Private call");

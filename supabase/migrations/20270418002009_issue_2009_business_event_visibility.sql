@@ -19,19 +19,26 @@
 --   3. public.business_set_event_visibility(...) — the narrow Business RPC.
 --      Public <-> Unlisted is ONE synchronous change. Private fails closed
 --      with the stable code `private_visibility_unavailable`.
---   4. A BEFORE UPDATE OF visibility guard on public.events that (a) fails
---      the Private boundary closed for EVERY writer while #2144 is frozen and
---      (b) blocks a direct `authenticated`/`anon` table UPDATE so PostgREST
---      cannot bypass the RPC (SC-8).
---   5. An AFTER UPDATE OF visibility coordinator that owns the discovery
---      generation increment, the exact OR-predicate share-revocation
+--   4. A BEFORE UPDATE OF visibility, event_type guard on public.events that
+--      (a) fails the Private boundary closed for EVERY writer on ENTRY while
+--      #2144 is frozen, (b) blocks a direct `authenticated`/`anon` table
+--      UPDATE so PostgREST cannot bypass the RPC (SC-8), and (c) treats a row
+--      CROSSING the `event_type='event'` class boundary as a guarded event, so
+--      the scope cannot be stepped around by retyping the row first
+--      (pass-1 TEST REPORT P1-1). Plus a BEFORE INSERT guard that closes the
+--      same Private boundary on the creation path (P2-1).
+--   5. An AFTER UPDATE OF visibility, event_type coordinator that owns the
+--      discovery generation increment, the exact OR-predicate share-revocation
 --      cardinality (Amendment 1 §E) and the one effect row per real
---      transition.
+--      transition — including a class crossing, which moves the discoverable
+--      set without moving the visibility text.
 --   6. public.admin_set_offering_visibility replaced (Amendment 2 §D, retained
 --      by Amendment 3 §3): synchronous Public/Hidden behaviour preserved
---      byte-for-byte; any Private boundary on a standard ticketed event
---      returns the stable `private_transition_requires_business`. The Admin
---      client copy mapping already shipped with #1931 and is NOT duplicated.
+--      byte-for-byte; ENTERING Private on a standard ticketed event returns the
+--      stable `private_transition_requires_business`, while LEAVING Private
+--      stays available so such a row is never stranded (pass-1 TEST REPORT
+--      P2-3). The Admin client copy mapping already shipped with #1931 and is
+--      NOT duplicated.
 --
 -- SCOPE NARROWING, DELIBERATE AND DOCUMENTED:
 --   Every #2009 guard below is scoped to `event_type = 'event'` — the standard
@@ -185,7 +192,8 @@ CREATE INDEX IF NOT EXISTS content_share_links_active_event_reference_idx
   WHERE state = 'active' AND entity_kind = 'event';
 
 -- ---------------------------------------------------------------------
--- 4. BEFORE UPDATE OF visibility — the write guard / coordinator boundary.
+-- 4. BEFORE UPDATE OF visibility, event_type — the write guard /
+--    coordinator boundary.
 --
 --    SECURITY INVOKER on purpose: the whole test is `current_user`, which
 --    inside any SECURITY DEFINER function owned by postgres is `postgres`,
@@ -193,37 +201,87 @@ CREATE INDEX IF NOT EXISTS content_share_links_active_event_reference_idx
 --    DEFINER trigger would read its own owner and could never tell them
 --    apart.
 --
---    Fires only when the column is NAMED, and returns immediately when the
---    value did not actually change, so an UPDATE that leaves visibility
---    alone is never blocked (SPEC §2).
+--    WHY `event_type` IS IN THE COLUMN LIST (pass-1 TEST REPORT P1-1).
+--    The first shipped shape was `BEFORE UPDATE OF visibility` scoped to
+--    `event_type = 'event'`, so BOTH enabling conditions could be stepped
+--    around by an ordinary authorised editor in three plain PostgREST
+--    PATCHes, none of which the guard ever saw:
+--
+--      1. PATCH {"event_type":"rsvp"}     -- visibility not NAMED   -> no fire
+--      2. PATCH {"visibility":"private"}  -- OLD and NEW are 'rsvp' -> skipped
+--      3. PATCH {"event_type":"event"}    -- visibility not NAMED   -> no fire
+--
+--    The row reached Private with no audit row, no effect row and the
+--    discovery generation unmoved; the same route on Public -> Unlisted
+--    reopened the AMENDMENT 3A staleness hole. The scope is NOT the bug —
+--    `biz_update_live_rsvp` legitimately writes `visibility='private'` for
+--    genuine RSVP rows and SC-22 protects that. The bug is that the scope was
+--    evaluated as if `event_type` were immutable. It is not, so CROSSING the
+--    `event_type='event'` boundary is itself a guarded event: it decides which
+--    rules a row's visibility is governed by, and for a client it is the only
+--    remaining route to a visibility this guard never approved.
+--
+--    Returns immediately when NEITHER visibility NOR the standard-event class
+--    actually changed, so an UPDATE that leaves both alone is never blocked
+--    (SPEC §2).
 -- ---------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.issue_2009_event_visibility_write_guard()
 RETURNS trigger
 LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp
 AS $function$
+DECLARE
+  v_was_standard boolean := (OLD.event_type IS NOT DISTINCT FROM 'event');
+  v_is_standard  boolean := (NEW.event_type IS NOT DISTINCT FROM 'event');
+  v_vis_changed  boolean := (NEW.visibility IS DISTINCT FROM OLD.visibility);
+  v_class_moved  boolean;
 BEGIN
-  IF NEW.visibility IS NOT DISTINCT FROM OLD.visibility THEN
-    RETURN NEW;
-  END IF;
   -- #2009 owns the standard ticketed event only. RSVP ('rsvp'), trips and
-  -- experiences keep their pre-#2009 behaviour exactly (SC-22).
-  IF NEW.event_type IS DISTINCT FROM 'event' AND OLD.event_type IS DISTINCT FROM 'event' THEN
+  -- experiences keep their pre-#2009 behaviour exactly (SC-22): a row that is
+  -- neither a standard event before nor after this statement is untouched.
+  IF NOT v_was_standard AND NOT v_is_standard THEN
     RETURN NEW;
   END IF;
 
-  -- Private fails closed for EVERY writer. #1931 shipped containment only:
-  -- all eight of its transition/arming functions are refusal stubs ending in
-  -- `private_access_release_frozen`, so there is no finalizer context that
-  -- could legitimately cross this boundary. Unfreezing is tracked as #2144.
-  IF 'private' IN (OLD.visibility, NEW.visibility) THEN
+  v_class_moved := (v_was_standard <> v_is_standard);
+
+  -- Nothing this guard owns actually moved.
+  IF NOT v_vis_changed AND NOT v_class_moved THEN
+    RETURN NEW;
+  END IF;
+
+  -- Private fails closed for EVERY writer, on ENTRY. #1931 shipped containment
+  -- only: all eight of its transition/arming functions are refusal stubs ending
+  -- in `private_access_release_frozen`, so there is no finalizer context that
+  -- could legitimately bring a standard event INTO Private. Unfreezing is
+  -- tracked as #2144.
+  --
+  -- Entry is any statement that leaves a standard-event-class row sitting at
+  -- `private` when it did not before — including one that retypes the row in
+  -- the same statement, and including the arrival leg of a laundering sequence
+  -- (`rsvp`+`private` -> `event`).
+  IF NEW.visibility = 'private'
+     AND (OLD.visibility IS DISTINCT FROM 'private' OR v_class_moved) THEN
     RAISE EXCEPTION 'private_visibility_unavailable';
   END IF;
 
-  -- SC-8 — a direct PostgREST table UPDATE cannot bypass the narrow RPC.
-  -- Every trusted SECURITY DEFINER writer (business_publish_event_draft,
-  -- biz_update_live_rsvp, admin_set_offering_visibility,
-  -- business_set_event_visibility) runs as `postgres` and passes.
+  -- LEAVING Private is deliberately NOT refused here (pass-1 TEST REPORT
+  -- P2-3). A standard event that is already `private` — laundered in before
+  -- this guard existed, or written by any trusted path — must stay manageable
+  -- back to Public or Unlisted, or the row is stranded with no supported exit
+  -- until #2144. The Business RPC still refuses the exit leg with
+  -- `private_visibility_unavailable` (it cannot unwind the invited-guest
+  -- machinery #2144 owns); `admin_set_offering_visibility` is the supported
+  -- exit, and the `authenticated`/`anon` refusal directly below still keeps
+  -- clients off the table.
+
+  -- SC-8 — a direct PostgREST table UPDATE cannot bypass the narrow RPC, and
+  -- neither can a retype that moves the row across the standard-event class
+  -- boundary in either direction. No product client writes `events.event_type`
+  -- on an existing row; every trusted SECURITY DEFINER writer
+  -- (business_publish_event_draft, biz_update_live_rsvp,
+  -- admin_set_offering_visibility, business_set_event_visibility) runs as
+  -- `postgres` and passes.
   IF current_user IN ('authenticated', 'anon') THEN
     RAISE EXCEPTION 'event_visibility_direct_update_blocked';
   END IF;
@@ -236,17 +294,70 @@ ALTER FUNCTION public.issue_2009_event_visibility_write_guard() OWNER TO postgre
 
 DROP TRIGGER IF EXISTS issue_2009_events_visibility_guard ON public.events;
 CREATE TRIGGER issue_2009_events_visibility_guard
-  BEFORE UPDATE OF visibility ON public.events
+  BEFORE UPDATE OF visibility, event_type ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.issue_2009_event_visibility_write_guard();
 
 -- ---------------------------------------------------------------------
--- 5. AFTER UPDATE OF visibility — the sole owner of transition side effects
---    for EVERY trusted writer (Business RPC, Admin RPC, service migration).
+-- 4b. BEFORE INSERT — the same Private boundary on the creation path
+--     (pass-1 TEST REPORT P2-1).
+--
+--     The UPDATE guard above cannot see an INSERT, so an authenticated
+--     event-manager could create a standard ticketed event straight AT
+--     `private` while the boundary was supposed to be closed. Executed and
+--     confirmed: `error=<no error> stored=private`, no effect row, no
+--     generation movement. Same stable code, same fail-closed semantics.
+--
+--     Scoped to `authenticated`/`anon` for the same reason the direct-update
+--     refusal is: a trusted SECURITY DEFINER writer, a migration backfill or
+--     an operations restore is not the boundary being defended, and refusing
+--     those would make the #2144 reconciliation (and every fixture that seeds
+--     an already-private row to test the exit path) impossible to write.
+-- ---------------------------------------------------------------------
+
+CREATE OR REPLACE FUNCTION public.issue_2009_event_visibility_insert_guard()
+RETURNS trigger
+LANGUAGE plpgsql SECURITY INVOKER SET search_path = public, pg_temp
+AS $function$
+BEGIN
+  IF NEW.event_type IS DISTINCT FROM 'event' THEN
+    RETURN NEW;
+  END IF;
+  IF NEW.visibility IS DISTINCT FROM 'private' THEN
+    RETURN NEW;
+  END IF;
+  IF current_user IN ('authenticated', 'anon') THEN
+    RAISE EXCEPTION 'private_visibility_unavailable';
+  END IF;
+  RETURN NEW;
+END;
+$function$;
+
+ALTER FUNCTION public.issue_2009_event_visibility_insert_guard() OWNER TO postgres;
+
+DROP TRIGGER IF EXISTS issue_2009_events_visibility_insert_guard ON public.events;
+CREATE TRIGGER issue_2009_events_visibility_insert_guard
+  BEFORE INSERT ON public.events
+  FOR EACH ROW EXECUTE FUNCTION public.issue_2009_event_visibility_insert_guard();
+
+-- ---------------------------------------------------------------------
+-- 5. AFTER UPDATE OF visibility, event_type — the sole owner of transition
+--    side effects for EVERY trusted writer (Business RPC, Admin RPC, service
+--    migration).
 --
 --    Business supplies a transaction-local transition_id + writer class; any
 --    other trusted writer gets its own id and the `admin_or_trusted` class.
 --    The trigger NEVER writes a Business audit row — audit ownership is
 --    exclusive to business_set_event_visibility (Amendment 1 §D.5).
+--
+--    The column list and the entry condition mirror the BEFORE guard exactly
+--    (pass-1 TEST REPORT P1-1). A row CROSSING the `event_type='event'`
+--    boundary changes whether discovery governs it at all — an rsvp row at
+--    `public` becoming a standard event is newly discoverable, and a standard
+--    event leaving the class disappears from the standard-event decks — so the
+--    crossing consumes a discovery generation and leaves an effect row even
+--    when the visibility TEXT is unchanged. If the two triggers disagreed
+--    about what counts as a transition, the generation could sit still while
+--    the discoverable set moved, which is SC-14/SC-15 failing quietly.
 -- ---------------------------------------------------------------------
 
 CREATE OR REPLACE FUNCTION public.issue_2009_event_visibility_effects()
@@ -260,11 +371,14 @@ DECLARE
   v_mismatch      integer := 0;
   v_generation    bigint;
   v_key           text;
+  v_was_standard  boolean := (OLD.event_type IS NOT DISTINCT FROM 'event');
+  v_is_standard   boolean := (NEW.event_type IS NOT DISTINCT FROM 'event');
 BEGIN
-  IF NEW.visibility IS NOT DISTINCT FROM OLD.visibility THEN
+  IF NOT v_was_standard AND NOT v_is_standard THEN
     RETURN NEW;
   END IF;
-  IF NEW.event_type IS DISTINCT FROM 'event' AND OLD.event_type IS DISTINCT FROM 'event' THEN
+  IF NEW.visibility IS NOT DISTINCT FROM OLD.visibility
+     AND v_was_standard = v_is_standard THEN
     RETURN NEW;
   END IF;
 
@@ -340,7 +454,7 @@ ALTER FUNCTION public.issue_2009_event_visibility_effects() OWNER TO postgres;
 
 DROP TRIGGER IF EXISTS issue_2009_events_visibility_effects ON public.events;
 CREATE TRIGGER issue_2009_events_visibility_effects
-  AFTER UPDATE OF visibility ON public.events
+  AFTER UPDATE OF visibility, event_type ON public.events
   FOR EACH ROW EXECUTE FUNCTION public.issue_2009_event_visibility_effects();
 
 -- ---------------------------------------------------------------------
@@ -539,11 +653,21 @@ BEGIN
   END IF;
   SELECT to_jsonb(e) INTO v_before FROM public.events e WHERE e.id = p_event_id;
   IF v_before IS NULL THEN RAISE EXCEPTION 'not_found'; END IF;
-  -- issue #2009 — Private on a standard ticketed event needs Mingla Business's
-  -- two-phase media/access preparation (#2144). Refuse before every write.
+  -- issue #2009 — ENTERING Private on a standard ticketed event needs Mingla
+  -- Business's two-phase media/access preparation (#2144). Refuse before every
+  -- write.
+  --
+  -- LEAVING Private is allowed here, and deliberately so (pass-1 TEST REPORT
+  -- P2-3). The first shipped clause refused BOTH directions, which meant a
+  -- standard event sitting at `private` had no supported exit at all: Business
+  -- refuses the exit leg because it cannot unwind machinery #2144 owns, and
+  -- Admin refused it too, so the row was stranded until #2144 shipped. Admin is
+  -- the operator console and Public/Hidden is its ordinary synchronous
+  -- behaviour, so it is the correct exit. Nothing about the fail-closed intent
+  -- weakens: Private still cannot be ENTERED by any writer, from any surface.
   IF (v_before->>'event_type') = 'event'
-     AND (p_visibility = 'private' OR (v_before->>'visibility') = 'private')
-     AND p_visibility IS DISTINCT FROM (v_before->>'visibility') THEN
+     AND p_visibility = 'private'
+     AND (v_before->>'visibility') IS DISTINCT FROM 'private' THEN
     RAISE EXCEPTION 'private_transition_requires_business';
   END IF;
   UPDATE public.events SET visibility = p_visibility, updated_at = now()

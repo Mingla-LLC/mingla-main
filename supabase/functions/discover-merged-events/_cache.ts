@@ -41,6 +41,63 @@ export const DISCOVER_GENERATION_TTL_MS = 5000;
  */
 const UNAVAILABLE_GENERATION_PREFIX = "unavailable:";
 
+/**
+ * issue #2009 (pass-1 TEST REPORT P1-2) — the ONE namespace every fail-closed
+ * key collapses onto for the purpose of request coalescing.
+ *
+ * TWO DIFFERENT QUESTIONS, TWO DIFFERENT KEYS. The fail-closed slot below is
+ * per-call unique, and it must stay that way: uniqueness is what makes the
+ * response UNCACHEABLE — nothing can be read from L1 or the L2 database cache
+ * under a key that has never existed and will never be minted again, so a
+ * request whose generation could not be read can never be served an entry keyed
+ * on a generation this isolate cannot confirm.
+ *
+ * But `cacheKey` was ALSO doing a second job: it is the single-flight key in
+ * `coalesceDiscoverBuild` and the cross-isolate build-lock namespace. Making it
+ * unique per request therefore did not merely cost a cache miss — it dissolved
+ * ORCH-426's overload protection on the consumer app's hottest path, at exactly
+ * the moment the system is already degraded. Measured: 12 concurrent requests
+ * produced 12 independent database builds where a readable generation produces
+ * 1, and the `DiscoverOverloadedError` backstop (itself per-key) could not fire
+ * either. It is reachable through the documented deploy order — the edge
+ * function live before the migration lands — and through any transient RPC
+ * error or PostgREST schema-cache miss.
+ *
+ * So the two concerns are separated: the CACHE key stays unique (uncacheable),
+ * and the COALESCING key erases the uuid so concurrent fail-closed requests
+ * collapse onto one build. Nothing is served from a shared entry — the build's
+ * result is still stored under the winner's own unique key, which no later
+ * request can mint — so availability is preserved without reintroducing the
+ * stale-privacy read.
+ */
+export const UNAVAILABLE_GENERATION_COALESCE_SLOT =
+  `${UNAVAILABLE_GENERATION_PREFIX}*`;
+
+/**
+ * `crypto.randomUUID()` output, exactly — 8-4-4-4-12 hex. Deliberately NOT a
+ * loose `[^"]*`: a narrow pattern cannot swallow a legitimate generation slot
+ * (`g<n>`) or any other part of the key, so collapsing can only ever affect the
+ * fail-closed namespace.
+ */
+const UNAVAILABLE_SLOT_IN_KEY =
+  /unavailable:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/gi;
+
+/**
+ * issue #2009 (pass-1 TEST REPORT P1-2) — the single-flight / build-lock
+ * namespace for a discover cache key.
+ *
+ * For a readable generation this is the IDENTITY function, so the normal path
+ * is byte-for-byte what ORCH-426 shipped. For a fail-closed key it erases the
+ * per-call uuid, so a herd arriving while the generation is unreadable
+ * coalesces onto one build instead of one build per request.
+ */
+export function discoverBuildCoalesceKey(cacheKey: string): string {
+  return cacheKey.replace(
+    UNAVAILABLE_SLOT_IN_KEY,
+    UNAVAILABLE_GENERATION_COALESCE_SLOT,
+  );
+}
+
 export interface DiscoverCacheParams {
   /**
    * #1637 — null for a coords-anchored request (a cold consumer launch, before

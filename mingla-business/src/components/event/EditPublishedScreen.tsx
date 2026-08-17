@@ -140,7 +140,9 @@ import {
   patchPublishedEventWhen,
   // issue #2009 [published-event visibility] — the ONLY authoritative write.
   setPublishedEventVisibility,
-  issue2009VisibilityErrorCopy,
+  // P2-2 — the leg-aware map: `private_visibility_unavailable` is raised both
+  // entering AND leaving Private, and the two need different sentences.
+  issue2009VisibilityErrorCopyForLeg,
   issue2009VisibilitySuccessCopy,
   ISSUE_2009_PRIVATE_UNAVAILABLE_COPY,
 } from "../../services/businessEvents";
@@ -1366,7 +1368,12 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           setModal((prev) => ({ ...prev, visible: false }));
           const code =
             error instanceof Error ? error.message : "set_event_visibility_failed";
-          showToast(issue2009VisibilityErrorCopy(code));
+          // issue #2009 (pass-1 TEST REPORT P2-2) — `private_visibility_unavailable`
+          // is raised on BOTH legs of the boundary, so hand the copy map the
+          // visibility this event is currently stored at. Without it an organiser
+          // moving OFF Private is told to "Choose Public or Unlisted", which is
+          // exactly what they just tried.
+          showToast(issue2009VisibilityErrorCopyForLeg(code, liveEvent.visibility));
           return;
         }
       }

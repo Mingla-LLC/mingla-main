@@ -421,15 +421,41 @@ async function loadIssue2009VisibilityTarget(
   return data as unknown as Issue2009VisibilityTarget;
 }
 
-/** Map a PostgREST failure onto the stable #2009 code. Never swallow it. */
-function issue2009VisibilityToolError(error: unknown): ToolError {
+/**
+ * issue #2009 (pass-1 TEST REPORT P2-2) — the exit-leg sentence.
+ *
+ * The RPC raises `private_visibility_unavailable` for BOTH legs: entering
+ * Private, and leaving an event that is already Private. The map above holds
+ * the entering sentence, approved verbatim and unchanged. Telling someone who
+ * asked Ari to make a Private event Public to "Choose Public or Unlisted for
+ * now" is advice they have already followed, so the exit leg gets its own.
+ */
+const ISSUE_2009_PRIVATE_EXIT_COPY =
+  "This event is Private, and it can't be moved out of Private yet. Nothing was changed. Contact support and they'll switch it to Public or Unlisted.";
+
+/**
+ * Map a PostgREST failure onto the stable #2009 code. Never swallow it.
+ *
+ * `previousVisibility` is the value the authoritative row was READ at before
+ * the RPC ran; it is the only thing that distinguishes the two legs of the
+ * Private boundary, because the code is identical on both.
+ */
+function issue2009VisibilityToolError(
+  error: unknown,
+  previousVisibility?: string | null,
+): ToolError {
   // [[postgrest_errors_are_not_error_instances]] — a PostgREST failure arrives
   // as a PLAIN OBJECT, not an Error, so read `.message` off the shape itself.
   const raw = typeof (error as { message?: unknown } | null)?.message === "string"
     ? (error as { message: string }).message
     : "";
   for (const [code, copy] of Object.entries(ISSUE_2009_VISIBILITY_COPY)) {
-    if (raw.includes(code)) return new ToolError(code.toUpperCase(), copy);
+    if (!raw.includes(code)) continue;
+    const directed = code === "private_visibility_unavailable" &&
+        previousVisibility === "private"
+      ? ISSUE_2009_PRIVATE_EXIT_COPY
+      : copy;
+    return new ToolError(code.toUpperCase(), directed);
   }
   return new ToolError(
     "VISIBILITY_WRITE_FAILED",
@@ -452,7 +478,7 @@ async function setIssue2009EventVisibility(
     p_reason: ISSUE_2009_ARI_EDIT_REASON,
     p_expected_updated_at: target.updated_at,
   });
-  if (error) throw issue2009VisibilityToolError(error);
+  if (error) throw issue2009VisibilityToolError(error, target.visibility);
 
   // Amendment 1 §B.6 — verify the bounded echo BEFORE reporting success. An
   // echo for another event, or one that did not land on the value we asked
