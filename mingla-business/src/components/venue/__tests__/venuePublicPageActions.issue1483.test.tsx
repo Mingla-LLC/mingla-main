@@ -274,6 +274,12 @@ jest.mock("../../brand/VenueClaimStatusBanner", () => ({
 }));
 
 // The route + the REAL VenueIdentityBand / listingStatusView / publicUrls.
+jest.mock(
+  "../PendingVenueIdentityCorrectionLauncher",
+  () => ({ __esModule: true, default: (): null => null }),
+  { virtual: true },
+);
+
 import VenueManagementPage from "../../../../app/venue/[venueId]/index";
 
 // react-test-renderer ships no bundled types; CJS-require it the way the #976

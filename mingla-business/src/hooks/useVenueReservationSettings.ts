@@ -58,15 +58,10 @@ const mapRow = (
   passTaxOverride: row.pass_tax_override,
 });
 
-export const venueReservationSettingsKeys = {
-  // META-ORCH-1255 — venue-scoped key, brandId-FIRST so brand-prefix
-  // invalidations keep matching every venue of the brand.
-  detail: (
-    brandId: string,
-    venueId: string,
-  ): readonly ["venueReservationSettings", string, string] =>
-    ["venueReservationSettings", brandId, venueId] as const,
-};
+// #2099 — canonical home is `venueReservationSettingsKeys.ts` (keyless
+// module); re-exported so existing call sites keep working unchanged.
+export { venueReservationSettingsKeys } from "./venueReservationSettingsKeys";
+import { venueReservationSettingsKeys } from "./venueReservationSettingsKeys";
 
 export const fetchVenueReservationSettings = async (
   brandId: string,
