@@ -90,10 +90,12 @@ export async function correctPendingVenueIdentity({ preview, name, slug, categor
     p_expected_state_fingerprint: preview.state_fingerprint,
     // [TRANSITIONAL] forward only — see the matching note in
     // mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts.
-    // The RPC supports rollback; no amendment specifies a rollback SURFACE, and
-    // an Admin cannot read the audit table to obtain a source audit id either.
-    // EXIT CONDITION: a reviewed amendment that either specifies the rollback
-    // surface or drops the rollback leg from §D6.
+    // The RPC supports rollback; no surface invokes it, and an Admin cannot read
+    // the audit table to obtain a source audit id either (42501, by design).
+    // EXIT CONDITION: Amendments 13-14 ruled the rollback leg out of §D6's
+    // surface requirement and recorded it as an RPC-level operator capability
+    // with a performable procedure; a user-facing rollback is a new issue, not a
+    // reopening of #2099.
     p_mode: "forward",
     p_source_audit_id: null,
   });
