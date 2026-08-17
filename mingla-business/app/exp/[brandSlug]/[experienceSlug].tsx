@@ -58,8 +58,13 @@ import { shareCanonicalPublicPageOnWeb } from "../../../src/utils/shareCanonical
 import { TripReserveBar } from "../../../src/components/trip/TripReserveBar";
 import {
   experienceCheckoutPath,
+  experiencePublicPath,
   experiencePublicUrl,
 } from "../../../src/constants/publicUrls";
+// issue #2101 [named-buyer checkout] — the platform-resolved route access
+// adapter (web projects the ONE bounded server eligibility state; native is a
+// legacy pass-through). The notice mounts in ExperienceCheckoutFlow, not here.
+import { usePublicTicketCheckoutRouteAccess } from "../../../src/hooks/usePublicTicketCheckoutRouteAccess";
 import { usePublicExperienceBySlug } from "../../../src/hooks/usePublicExperience";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
 // anon-safe RPC — this is an anon buyer route, ungated per ORCH-1004).
@@ -425,9 +430,33 @@ const ResolvedExperiencePage: React.FC<{
   const barKicker =
     expPrice === "Free" || expPrice === "" ? null : "All-in, taxes included";
 
+  // issue #2101 [named-buyer checkout] — one exhaustive route action state for
+  // EVERY purchase entry this route owns (desktop control, docked bar, floating
+  // pill, adaptive picker). `unrestricted` / `allowed` keep today's price,
+  // quantity, picker and route-param behavior byte-compatible.
+  const experienceAccess = usePublicTicketCheckoutRouteAccess(experience.id);
+  // Canonical post-sign-in return target, built ONLY with the canonical path
+  // helper. `experiencePublicPath` throws on an empty segment, so an empty slug
+  // constructs NO `next` and resumes at bare `/auth`.
+  const experienceSignInResumeHref = useMemo<string>(() => {
+    try {
+      return `/auth?next=${encodeURIComponent(
+        experiencePublicPath({ brandSlug, experienceSlug }),
+      )}`;
+    } catch {
+      return "/auth";
+    }
+  }, [brandSlug, experienceSlug]);
+
   // ---- straight-to-cart routing (with optional eventDateId + quantity) ----
   const goToCart = useCallback(
     (selection?: ExperienceReserveSelection): void => {
+      // issue #2101 — fail closed at the route, before any checkout navigation.
+      if (experienceAccess.requiresSignIn) {
+        router.push(experienceSignInResumeHref as never);
+        return;
+      }
+      if (experienceAccess.blocked) return;
       const routeParams: Record<string, string> = {};
       if (selection !== undefined) {
         routeParams.eventDateId = selection.eventDateId;
@@ -442,12 +471,26 @@ const ResolvedExperiencePage: React.FC<{
         } as never,
       );
     },
-    [router, experience.id],
+    [
+      router,
+      experience.id,
+      experienceAccess.requiresSignIn,
+      experienceAccess.blocked,
+      experienceSignInResumeHref,
+    ],
   );
 
   // Reserve tap — ADAPTIVE (SC-3): >1 / open-daily → picker; ===1 auto-select;
   // 0 / single → straight to cart with NO eventDateId (byte-identical).
   const handleReserve = useCallback((): void => {
+    // issue #2101 — an anonymous named-buyer state goes STRAIGHT to sign-in
+    // rather than exposing a stale picker selection; restricted / loading /
+    // error no-op so the picker cannot open at all.
+    if (experienceAccess.requiresSignIn) {
+      router.push(experienceSignInResumeHref as never);
+      return;
+    }
+    if (experienceAccess.blocked) return;
     if (usesPicker) {
       setPickerVisible(true);
       return;
@@ -457,7 +500,15 @@ const ResolvedExperiencePage: React.FC<{
       return;
     }
     goToCart(); // single / no-date supply → no eventDateId
-  }, [usesPicker, bookable, goToCart]);
+  }, [
+    usesPicker,
+    bookable,
+    goToCart,
+    router,
+    experienceAccess.requiresSignIn,
+    experienceAccess.blocked,
+    experienceSignInResumeHref,
+  ]);
 
   const handlePickerConfirm = useCallback(
     (selection: ExperienceReserveSelection): void => {
@@ -497,7 +548,23 @@ const ResolvedExperiencePage: React.FC<{
   // route no longer injects `availabilityBlock`.
 
   // desktop sticky-panel Reserve control (phone uses the floating bar).
-  const reserveTappable = expCta.tappable;
+  // issue #2101 — offering-native unavailability keeps PRIORITY; only an
+  // otherwise-tappable CTA is converted to the bounded restricted/checking
+  // state. `sign_in_required` stays ACTIONABLE (it routes to sign-in).
+  const accessGatedExpCta = useMemo<CtaState>(() => {
+    if (!experienceAccess.blocked) return expCta;
+    if (expCta.kind === "unavailable") return expCta;
+    return {
+      kind: "unavailable",
+      title:
+        experienceAccess.state === "restricted"
+          ? "Restricted sale"
+          : "Checking this sale",
+      subline: null,
+      tappable: false,
+    };
+  }, [expCta, experienceAccess.blocked, experienceAccess.state]);
+  const reserveTappable = accessGatedExpCta.tappable;
   const reserveControl = (
     <View>
       <Pressable
@@ -508,7 +575,7 @@ const ResolvedExperiencePage: React.FC<{
         accessibilityLabel={
           reserveTappable
             ? `Reserve your spot on ${experience.title}`
-            : ctaUnavailableLabel(expCta)
+            : ctaUnavailableLabel(accessGatedExpCta)
         }
         style={[
           styles.deskReserve,
@@ -529,7 +596,7 @@ const ResolvedExperiencePage: React.FC<{
             ? expPrice === "Free" || expPrice === ""
               ? "Reserve"
               : `Reserve · ${expCta.kind === "buy" ? expCta.price : expPrice}`
-            : ctaUnavailableLabel(expCta)}
+            : ctaUnavailableLabel(accessGatedExpCta)}
         </Text>
       </Pressable>
       <Text style={[styles.deskReassure, { color: palette.tertiaryText }]}>
@@ -541,7 +608,7 @@ const ResolvedExperiencePage: React.FC<{
   // DOCKED Reserve CTA — LAST phone-body child (single CTA, no split).
   const dockedReserve = !isDesktop ? (
     <TripReserveBar
-      cta={expCta}
+      cta={accessGatedExpCta}
       palette={palette}
       surface={surface}
       kicker={barKicker}
@@ -611,7 +678,7 @@ const ResolvedExperiencePage: React.FC<{
       {/* FLOATING Reserve PILL (phone) — shown while the docked CTA is off-screen */}
       {!isDesktop && floatingPillVisible ? (
         <TripReserveBar
-          cta={expCta}
+          cta={accessGatedExpCta}
           palette={palette}
           surface={surface}
           kicker={barKicker}

@@ -36,6 +36,13 @@ import {
   type TripPaymentChoiceValue,
 } from "./TripPaymentChoice";
 
+// issue #2101 [named-buyer checkout] — the SOLE public explanatory UI for a
+// restricted sale, mounted in the content flow (Amendment 1 §A7). It renders
+// null when the sale is unrestricted or the viewer is allowed, so an ordinary
+// trip page is byte-identical to today. Purchase authority stays with the route
+// owner and, authoritatively, with the server.
+import { TicketCheckoutAccessNotice } from "../event/TicketCheckoutAccessNotice";
+
 export interface TripCheckoutFlowProps {
   trip: Trip;
   /**
@@ -156,6 +163,7 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
         >
           One secure payment. Stripe handles it; we never see your card.
         </Text>
+        <TicketCheckoutAccessNotice eventId={trip.id} />
       </View>
     );
   }
@@ -177,6 +185,7 @@ export const TripCheckoutFlow: React.FC<TripCheckoutFlowProps> = ({
         fontFamily={fontFamily}
         testID={testID !== undefined ? `${testID}-payment-choice` : undefined}
       />
+      <TicketCheckoutAccessNotice eventId={trip.id} />
     </View>
   );
 };

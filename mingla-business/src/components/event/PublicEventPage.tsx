@@ -113,8 +113,15 @@ import {
 import {
   checkoutPublicPathWithSeed,
   eventOgImageUrl,
+  eventPublicPath,
   eventPublicUrl,
 } from "../../constants/publicUrls";
+// issue #2101 [named-buyer checkout] — the platform-resolved route access
+// adapter (web reads the one eligibility query owner; native is a legacy
+// pass-through, so native Event behavior is byte-identical) and the SOLE public
+// explanatory UI. Both are advisory: the server is authoritative.
+import { usePublicTicketCheckoutRouteAccess } from "../../hooks/usePublicTicketCheckoutRouteAccess";
+import { TicketCheckoutAccessNotice } from "./TicketCheckoutAccessNotice";
 import { useAuth } from "../../context/AuthContext";
 import { useBrandList, type Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -284,11 +291,25 @@ const openMapsForQuery = (query: string): void => {
   });
 };
 
-const canonicalUrl = (event: LiveEvent): string =>
-  eventPublicUrl({
-    brandSlug: event.brandSlug,
-    eventSlug: event.eventSlug,
-  });
+// issue #2101 A7.3 item 21 — the empty-slug case must never THROW out of a
+// handler or a render. `eventPublicUrl` -> `requireSegment` raises
+// `PublicUrlError` on an empty segment, and this value is read during render
+// (the web <Head> canonical/og tags and the ShareModal url), so an event whose
+// brand/event slug is empty crashed the whole page before it could reach any
+// checkout entry. Falling back to the empty string keeps the page rendering:
+// the canonical/og tags and the share sheet simply carry no URL, which is the
+// honest representation of "this offering has no public address yet" and never
+// a fabricated one (Constitution #9).
+const canonicalUrl = (event: LiveEvent): string => {
+  try {
+    return eventPublicUrl({
+      brandSlug: event.brandSlug,
+      eventSlug: event.eventSlug,
+    });
+  } catch {
+    return "";
+  }
+};
 
 function ctaUnavailableLabel(cta: CtaState): string {
   return cta.kind === "unavailable" ? cta.title : "Booking unavailable";
@@ -555,6 +576,51 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [publicEvent, bookable],
   );
 
+  // ── issue #2101 [named-buyer checkout] — the ONE derived action-state lever.
+  //
+  // `purchaseBlockedByAccess` is true when and only when the resolved access
+  // state is `restricted`, `loading` or `error`, and false in `unrestricted`,
+  // `allowed` and `sign_in_required`. It is scoped to CHECKOUT ELIGIBILITY
+  // ONLY: it is forced false unless the page-owned `offeringCta.kind` is a
+  // value-moving purchase entry (`buy` or `free`), so joining a waitlist —
+  // which moves no money and is not checkout — is never fenced.
+  //
+  // It is passed as the EXISTING public `submitting` prop to the three
+  // foundation renderers this page already owns. `submitting` is the sole
+  // producer of `disabled` + `accessibilityState.disabled` on both purchase
+  // controls once the offering-native `tappable` conjunct holds, and neither
+  // control emits `accessibilityState.busy`, so the rendered statement is a
+  // truthful "this button is disabled". `bookable` and `hideTicketBox` are
+  // FORBIDDEN levers: `bookable === false` would mislabel a restricted sale as
+  // the paid-supply message and `hideTicketBox` would remove the public price
+  // presentation the SPEC preserves.
+  const routeAccess = usePublicTicketCheckoutRouteAccess(event.id);
+  const isPurchaseEntryKind =
+    offeringCta.kind === "buy" || offeringCta.kind === "free";
+  const purchaseBlockedByAccess = isPurchaseEntryKind && routeAccess.blocked;
+  const purchaseNeedsSignIn =
+    isPurchaseEntryKind && routeAccess.requiresSignIn;
+
+  // The canonical post-sign-in return target, built ONLY with the canonical
+  // path helper — never `eventPublicUrl`, `canonicalUrl(event)`,
+  // `window.location`, an absolute origin, a raw route param, or a handwritten
+  // `/e/...` template. `eventPublicPath` THROWS on an empty segment, so an
+  // event with an empty brand/event slug constructs NO `next` and resumes at
+  // bare `/auth` — the same `null -> "/auth"` precedent `buildSwitchAccountResume`
+  // already sets. This must never throw out of a handler or a render.
+  const signInResumeHref = useMemo<string>(() => {
+    try {
+      return `/auth?next=${encodeURIComponent(
+        eventPublicPath({
+          brandSlug: event.brandSlug,
+          eventSlug: event.eventSlug,
+        }),
+      )}`;
+    } catch {
+      return "/auth";
+    }
+  }, [event.brandSlug, event.eventSlug]);
+
   const handleChangeTicketQuantity = useCallback(
     (ticketTypeId: string, qty: number): void => {
       setTicketQuantities((prev) => {
@@ -586,6 +652,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       );
       return;
     }
+    // issue #2101 — handler-level fail-closed, placed AFTER the offering-native
+    // waitlist and `!bookable` branches so offering-native copy still wins.
+    // Disabling the control is necessary but not sufficient: a programmatic or
+    // legacy invocation must not be able to navigate either.
+    if (purchaseNeedsSignIn) {
+      router.push(signInResumeHref as never);
+      return;
+    }
+    if (purchaseBlockedByAccess) return;
     // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
     // on-sale button is always tappable, and tapping at 0 selected pushes to the
     // cart step (i) where the buyer picks/edits quantities. An empty seed encodes
@@ -602,6 +677,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     router,
     event.id,
     showToast,
+    purchaseNeedsSignIn,
+    purchaseBlockedByAccess,
+    signInResumeHref,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -648,6 +726,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           );
           return;
         }
+        // issue #2101 — fail-closed AFTER the offering-native branch. On the
+        // password-gate legacy variant the shared package owns the tier
+        // control and is passed no disable lever, so the handler itself is the
+        // only in-scope fence; the notice carries the explanation.
+        if (purchaseNeedsSignIn) {
+          router.push(signInResumeHref as never);
+          return;
+        }
+        if (purchaseBlockedByAccess) return;
         router.push(checkoutPublicPathWithSeed(event.id, {}) as never);
       },
       onClaimFreeTicket: (_ticketId: string) => {
@@ -657,6 +744,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           );
           return;
         }
+        // issue #2101 — fail-closed, same contract as onBuyTicket. The free
+        // ticket path moves entitlement, so it is a value-moving entry.
+        if (purchaseNeedsSignIn) {
+          router.push(signInResumeHref as never);
+          return;
+        }
+        if (purchaseBlockedByAccess) return;
         router.push(checkoutPublicPathWithSeed(event.id, {}) as never);
       },
       onJoinWaitlist: (ticketId: string) => {
@@ -686,6 +780,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       handleClose,
       handleShare,
       bookable,
+      purchaseNeedsSignIn,
+      purchaseBlockedByAccess,
+      signInResumeHref,
     ],
   );
 
@@ -732,7 +829,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}
-          submitting={false}
+          // issue #2101 — the desktop sticky-panel purchase control. This page
+          // renders EventTicketBox directly, so the accessible disabled state
+          // is set from here with no edit to the shared package.
+          submitting={purchaseBlockedByAccess}
           showHeading
           testID="orch-1167-event-desktop-ticket-box"
         />
@@ -1261,6 +1361,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}
+          // issue #2101 — forwarded VERBATIM by FoundationEventPreview to
+          // EventOfferingBody -> EventTicketBox, which owns the PHONE inline
+          // purchase control. No edit to either file is required.
+          submitting={purchaseBlockedByAccess}
           onDockLayout={handleDockLayout}
           // ORCH-1339 — cross-entity social proof (server-gated payload).
           socialProof={socialProofQuery.data ?? null}
@@ -1293,10 +1397,30 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             theme={resolvedTheme}
             ticketQuantities={ticketQuantities}
             onProceedToCart={handleProceedToCart}
+            // issue #2101 — the PHONE floating purchase control, rendered
+            // directly by this page.
+            submitting={purchaseBlockedByAccess}
             testID="orch-1167-event-floating-bar"
           />
         </View>
       ) : null}
+
+      {/* issue #2101 [named-buyer checkout] — the SOLE public explanatory UI,
+          mounted EXACTLY ONCE and OUTSIDE the variant branch so it also renders
+          on the cancelled / password-gate legacy variants (where the shared
+          package owns the tier control and is passed no disable lever). It
+          renders null for unrestricted and allowed viewers, so an ordinary
+          public offering is byte-identical to today. Absolute wrap: the page's
+          scroll host is flex:1, so an in-flow sibling would measure zero. */}
+      <View
+        style={[
+          styles.accessNoticeWrap,
+          { bottom: (isDesktop ? 24 : FLOATING_BAR_CLEARANCE) + insets.bottom },
+        ]}
+        pointerEvents="box-none"
+      >
+        <TicketCheckoutAccessNotice eventId={event.id} />
+      </View>
 
       <ShareModal
         visible={shareModalVisible}
@@ -1395,6 +1519,15 @@ const styles = StyleSheet.create({
     paddingBottom: 24,
     paddingHorizontal: 16,
     zIndex: 5,
+  },
+  // issue #2101 — the restricted-sale notice sits above the floating bar on
+  // phone and above the desktop bottom gutter. `box-none` keeps the page fully
+  // scrollable behind it.
+  accessNoticeWrap: {
+    position: "absolute",
+    left: 16,
+    right: 16,
+    zIndex: 7,
   },
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1 post-payment web return banner.
   // Pinned top, above the parallax chrome (zIndex 6 in the shell), dismissible.

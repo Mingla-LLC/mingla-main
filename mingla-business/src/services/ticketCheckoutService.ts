@@ -124,6 +124,39 @@ export const FINALIZATION_BACKOFF_MS = [1000, 1500, 2000, 3000, 4000, 5000] as c
 
 const centsFromMajor = (value: number): number => Math.round(value * 100);
 
+/**
+ * issue #2101 [named-buyer checkout] — the stable access-denial tokens the
+ * server returns before any session, capacity, provider or free-ticket work.
+ * Mapping only: this file adds NO policy logic and NO second decision path.
+ *
+ * `sign_in_required` (HTTP 401) means the sale is restricted and the caller is
+ * anonymous. `checkout_restricted` (HTTP 403) is the single indistinguishable
+ * answer for every other access denial, so it never reveals list membership.
+ */
+export const TICKET_CHECKOUT_ACCESS_ERRORS = [
+  "sign_in_required",
+  "checkout_restricted",
+] as const;
+
+export type TicketCheckoutAccessError =
+  (typeof TICKET_CHECKOUT_ACCESS_ERRORS)[number];
+
+/** Supabase function errors are plain objects; the token rides `message`. */
+export const ticketCheckoutAccessError = (
+  error: unknown,
+): TicketCheckoutAccessError | null => {
+  const message =
+    typeof error === "string"
+      ? error
+      : typeof (error as { message?: unknown })?.message === "string"
+        ? ((error as { message: string }).message)
+        : "";
+  for (const token of TICKET_CHECKOUT_ACCESS_ERRORS) {
+    if (message.includes(token)) return token;
+  }
+  return null;
+};
+
 const invokeOrThrow = async <T>(
   functionName: string,
   body: Record<string, unknown>,

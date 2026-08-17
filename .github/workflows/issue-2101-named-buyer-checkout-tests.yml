@@ -1,0 +1,176 @@
+name: issue-2101-named-buyer-checkout
+# issue #2101 [named-buyer checkout] — the dedicated PR + push lane for the
+# combined contract (original SPEC + Amendments 1-8).
+#
+# Path filters err BROAD over the guarded SOURCE trees, not just the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard).
+
+on:
+  pull_request:
+    paths: &issue_2101_paths
+      - "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql"
+      - "supabase/migrations/__tests__/issue_2101_named_buyer_checkout_access.test.sql"
+      - "supabase/functions/_shared/ticketCheckoutAccess.ts"
+      - "supabase/functions/ticket-checkout-create/**"
+      - "mingla-business/src/services/eventTicketCheckoutAccessService.ts"
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/src/hooks/useEventTicketCheckoutAccess.ts"
+      - "mingla-business/src/hooks/usePublicTicketCheckoutRouteAccess.ts"
+      - "mingla-business/src/hooks/usePublicTicketCheckoutRouteAccess.native.ts"
+      - "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.native.test.tsx"
+      - "mingla-business/src/components/event/EventTicketCheckoutAccessCard.tsx"
+      - "mingla-business/src/components/event/EventTicketCheckoutAccessCard.native.tsx"
+      - "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx"
+      - "mingla-business/src/components/event/TicketCheckoutAccessNotice.native.tsx"
+      - "mingla-business/src/components/event/PublicEventPage.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-business/src/components/event/__tests__/*issue2101*"
+      - "mingla-business/src/components/trip/TripCheckoutFlow.tsx"
+      - "mingla-business/src/components/trip/EditPublishedTripScreen.tsx"
+      - "mingla-business/src/components/experience/ExperienceCheckoutFlow.tsx"
+      - "mingla-business/app/t/**"
+      - "mingla-business/app/exp/**"
+      - "mingla-business/app/e/**"
+      - "mingla-business/app/experience/[id]/edit.tsx"
+      - "mingla-business/app/auth/**"
+      - "mingla-business/app/accept-brand-invitation.tsx"
+      - "mingla-business/src/utils/nextRoute.ts"
+      - "mingla-business/src/utils/__tests__/nextRoute*.ts"
+      - "scripts/ci/issue-2101-named-buyer-checkout.mjs"
+      - ".github/workflows/issue-2101-named-buyer-checkout-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+      - "docs/QUERY_KEY_REGISTRY.md"
+  push:
+    branches: [main]
+    paths: *issue_2101_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2101-contract-guard:
+    name: "#2101 guard — pairing, Metro resolution, native isolation, validator, writers, levers"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      # The self-test runs FIRST and proves the guard catches each of its named
+      # mutations — including the F-1 explicit-path form that a naive resolver
+      # silently drops while still reporting a healthy multi-hundred module walk.
+      - run: node scripts/ci/issue-2101-named-buyer-checkout.mjs --self-test
+      - run: node scripts/ci/issue-2101-named-buyer-checkout.mjs
+      # The gate that forces every new query hook to declare its auth scoping.
+      - run: node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs --self-test
+      - run: node .github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs
+
+  issue-2101-edge:
+    name: "#2101 Edge — the fence runs before any session, capacity, provider or free-ticket work"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: deno check supabase/functions/_shared/ticketCheckoutAccess.ts supabase/functions/ticket-checkout-create/index.ts
+      - run: >-
+          deno test --allow-env --allow-read --allow-net
+          supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
+
+  issue-2101-business-suites:
+    name: "#2101 Business — Event render-proof (items 17-22), validator, and the native null-render suites"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The mandated Event render-proof: both layouts, all three checkout
+      # entries, per-control and per-handler revert isolation.
+      - run: npx jest src/components/event/__tests__/PublicEventPage.issue2101.test.tsx --runInBand
+      # F-3 — the ONLY thing that detects an EMPTIED .native half.
+      - run: >-
+          npx jest --runInBand
+          src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.native.test.tsx
+          src/components/event/__tests__/TicketCheckoutAccessNotice.issue2101.native.test.tsx
+          src/components/event/__tests__/EventTicketCheckoutAccessCard.issue2101.native.test.tsx
+      # The three-family admission PLUS every historical sanitizer suite,
+      # unmodified — they are the proof the admission flips nothing.
+      - run: >-
+          npx jest --runInBand
+          src/utils/__tests__/nextRoute.issue2101.test.ts
+          src/utils/__tests__/nextRoute.test.ts
+          src/utils/__tests__/orch_1373_next_route_traversal.test.ts
+          src/utils/__tests__/orch_1375_adversarial_next_url_resolution.test.ts
+
+  issue-2101-postgres-contract:
+    name: "#2101 PostgreSQL 17 — decision, identity, blocks, epochs, ACLs, audit, transfer guard"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same Supabase-flavored image the repository-wide migration lane pins.
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      # Wait for the image's OWN bootstrap to finish, not merely for the socket:
+      # accepting connections before `vault` / `supabase_admin` exist lets the
+      # baseline squash abort on a graphql schema-version race. Same probe #873
+      # uses; reproduced locally on this exact image.
+      - name: Wait for PostgreSQL 17 bootstrap to complete
+        env:
+          PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not finish bootstrapping in 90s"; exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+          done
+      # `auth.users` in this image is the pre-GoTrue stub. Hosted Supabase
+      # carries these four GoTrue-managed columns; the behavioural contract
+      # below needs them, so they are provisioned as the owning role exactly as
+      # #873 and #1529 do. The migration itself must NOT depend on them being
+      # present — that is what the catalog-tolerant access path is for, and the
+      # repository-wide "Migrations apply cleanly from baseline" lane proves it.
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS deleted_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS confirmed_at timestamptz"
+      - name: Prove the named-buyer decision, identity truth, ACLs, audit and transfer guard
+        env:
+          PGPASSWORD: ${{ format('issue-2101-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2101_named_buyer_checkout_access.test.sql

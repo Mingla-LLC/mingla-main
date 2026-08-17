@@ -374,6 +374,22 @@ const renderPublicEventPage = (
       // (this adversarial test was already red on origin/main before ORCH-1117).
       case "../../theme/useThemeFont":
         return { useThemeFont: () => undefined };
+      // [TEST-MOD-APPROVED #2101] Harness registration only — no assertion
+      // changes. The close-callback contract is unrelated to checkout
+      // eligibility, so the adapter is pinned to its legacy pass-through and
+      // the notice renders nothing; every close assertion below is untouched.
+      case "../../hooks/usePublicTicketCheckoutRouteAccess":
+        return {
+          usePublicTicketCheckoutRouteAccess: () => ({
+            state: "unrestricted",
+            canPurchase: true,
+            requiresSignIn: false,
+            blocked: false,
+            retry: () => undefined,
+          }),
+        };
+      case "./TicketCheckoutAccessNotice":
+        return { TicketCheckoutAccessNotice: () => null };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

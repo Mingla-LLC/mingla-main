@@ -34,6 +34,11 @@ import type {
   PublicExperienceBrand,
 } from "../../services/publicExperienceService";
 
+// issue #2101 [named-buyer checkout] — the SOLE public explanatory UI for a
+// restricted sale, mounted in the content flow (Amendment 1 §A7). Renders null
+// when the sale is unrestricted or the viewer is allowed.
+import { TicketCheckoutAccessNotice } from "../event/TicketCheckoutAccessNotice";
+
 export interface ExperienceCheckoutFlowProps {
   experience: PublicExperience;
   brand: PublicExperienceBrand;
@@ -124,6 +129,8 @@ export const ExperienceCheckoutFlow: React.FC<ExperienceCheckoutFlowProps> = ({
           <Text style={styles.endedText}>This experience has ended.</Text>
         </View>
       ) : null}
+
+      <TicketCheckoutAccessNotice eventId={experience.id} />
 
       <Text style={styles.helper}>
         You&rsquo;ll enter your details + pay securely on the next screen.
