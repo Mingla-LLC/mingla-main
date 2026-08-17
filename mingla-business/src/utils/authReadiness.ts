@@ -111,6 +111,42 @@ export const isBusinessAuthReady = (
 ): boolean =>
   authStatus === "signed_in_ready" && hasUsableBusinessSession(session);
 
+// ─────────────────────────────────────────────────────────────────────
+// issue #2181 [anon checkout gate] — IDENTITY SETTLED, which is NOT the
+// same question as `isBusinessAuthReady`.
+//
+// `isBusinessAuthReady` asks "is there a usable bearer token attached?".
+// For a signed-out visitor that is `false` in EVERY reachable phase and
+// FOREVER — `deriveBusinessAuthStatus` terminates such a visitor at
+// `signed_out`, and no code path carries `signed_out` to `signed_in_ready`
+// without a sign-in. It is a steady state, not a pending one.
+//
+// Gating an ANON-TOLERANT public read on it is therefore not "slow", it is
+// "never": the query stays `enabled: false`, its `loading` never clears, and
+// a fail-closed consumer disables its purchase entry permanently. That is
+// exactly how a signed-out guest lost the ability to buy a ticket (#2181) —
+// every internal check was made from a signed-in session, where the
+// predicate is true and the bug is invisible.
+//
+// This predicate asks the question an anon-tolerant reader actually needs:
+// "do we positively KNOW who is looking?" — true for a ready signed-in
+// session AND for a resolved signed-out visitor, false only while the
+// identity is genuinely undetermined (`bootstrapping`, `refreshing`) or the
+// auth bootstrap itself failed (`error`). Those three stay fail-closed.
+//
+// Use `isBusinessAuthReady` to gate reads that REQUIRE a token.
+// Use this to gate reads that merely need to know WHICH identity they are
+// reading for.
+//
+// It takes the provider's ALREADY-DERIVED `isAuthReady` rather than
+// recomputing it from `(authStatus, session)`, so `AuthContext` remains the
+// one owner of that derivation (Constitution #2) and the two can never drift.
+// ─────────────────────────────────────────────────────────────────────
+export const isBusinessAuthScopeResolved = (
+  authStatus: BusinessAuthStatus,
+  isAuthReady: boolean,
+): boolean => isAuthReady || authStatus === "signed_out";
+
 export const businessAuthErrorCodeForStatus = (
   authStatus: BusinessAuthStatus,
 ): BusinessAuthErrorCode =>
