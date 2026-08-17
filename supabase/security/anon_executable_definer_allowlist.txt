@@ -37,6 +37,13 @@ pg_public_experience_by_slug(p_brand_slug text, p_experience_slug text)
 pg_public_experiences_by_brand(p_brand_slug text)
 pg_public_rsvp_by_slug(p_brand_slug text, p_event_slug text)
 pg_public_social_proof(p_event_id uuid)
+# #2101: the ONE bounded public eligibility advisory. Returns exactly
+# {schemaVersion, mode, state} for a publicly reachable event and NULL otherwise
+# — no member UUID, username, count, config revision, membership epoch, or any
+# distinction between absent, private, inactive and blocked accounts. It is
+# nonlocking and STABLE and CANNOT authorize checkout: the sole authority is
+# issue_2101_ticket_checkout_access_decision, which is service_role-only.
+pg_public_ticket_checkout_access_state(p_event_id uuid)
 # #1390: gated public Stay pages need published Room/Place inventory; the RPC returns only verified live listings when STAY_PUBLIC_PAGES is enabled and otherwise fails closed.
 pg_public_stay_details(p_venue_id uuid)
 # #1423: gated Stay discovery returns only verified live Room inventory, fails closed when STAY_PUBLIC_PAGES is disabled, and exposes no private guest or owner data.

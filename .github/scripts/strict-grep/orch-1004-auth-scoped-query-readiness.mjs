@@ -170,6 +170,16 @@ const AUTH_SCOPED_HOOK_FILES = [
   "useGrowthToolsReads.ts",
   // #874 — all three brand Analytics RPCs are active-member/auth.uid()-scoped.
   "useBrandAnalytics.ts",
+  // ── #2101 [named-buyer checkout] — MANDATORY registry entry (this gate's own
+  //    ORCH-1202 completeness clause requires every new query hook to declare
+  //    itself). The file owns TWO queries and BOTH fold isAuthReady into
+  //    enabled. The Business read is brand-owner/auth.uid()-scoped, so a
+  //    pre-auth fire would cache a FORBIDDEN result as "you cannot configure
+  //    this". The public eligibility read is anon-TOLERANT but must still wait
+  //    for auth to settle, because its cache key carries the auth scope
+  //    (`uid` or 'anon') — firing early would key one buyer's checkout decision
+  //    under another's scope and then serve it from cache.
+  "useEventTicketCheckoutAccess.ts",
   // #1384 — both reads are brand-team/auth.uid()-scoped. A pre-auth request
   // would cache an RLS-empty success and hide the canonical currency/range.
   "useBrandDiscoveryCurrency.ts",
@@ -212,6 +222,15 @@ const PUBLIC_HOOK_ALLOWLIST = [
   ["usePublicVenueAvailability.ts", "anon-safe availability read via the canonical self-authorizing venue edge function on public venue pages (#1365)"],
   ["usePublicStayDetail.ts", "anon-safe verified Stay detail via the STAY_PUBLIC_PAGES-gated SECURITY DEFINER projection (#1390)"],
   ["usePublicMenuBundle.ts", "anon-safe verified-venue menu + its service windows via public_menus_view (SECURITY DEFINER, claim_status='verified'); the guest ordering surface reads it with no account at all (#1793)"],
+  // ── #2101 [named-buyer checkout] — the platform-resolved route access
+  //    adapter. Neither half calls useQuery: the web half DELEGATES to
+  //    useEventTicketCheckoutAccess (registered above as auth-scoped, and the
+  //    owner of the isAuthReady gate + the auth-scoped cache key), and the
+  //    native half is a constant legacy pass-through. They must stay UNGATED
+  //    themselves — the buyer routes are anon-tolerant and must never gate on
+  //    auth (ORCH-1004's own rule).
+  ["usePublicTicketCheckoutRouteAccess.ts", "delegates to useEventTicketCheckoutAccess, which owns the isAuthReady gate and the auth-scoped key; this adapter only projects the bounded server state onto a route action state (#2101)"],
+  ["usePublicTicketCheckoutRouteAccess.native.ts", "typed legacy pass-through; imports no hook, no service and no Supabase, so there is nothing to gate (#2101)"],
 ];
 const ALLOWLIST_SET = new Set(PUBLIC_HOOK_ALLOWLIST.map(([f]) => f));
 

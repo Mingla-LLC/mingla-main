@@ -107,6 +107,17 @@ import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
+// issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
+// LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
+// route chunks (Event, Trip and Experience management), so a static import
+// makes Metro hoist it into the eager `__common` chunk that EVERY buyer
+// downloads before anything renders — for a control only a brand owner ever
+// sees. Same treatment, and same reason, as SeeWhosGoingGate.
+const EventTicketCheckoutAccessCard = React.lazy(() =>
+  import("./EventTicketCheckoutAccessCard").then((m) => ({
+    default: m.EventTicketCheckoutAccessCard,
+  })),
+);
 import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
 
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -1630,6 +1641,19 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             </View>
           );
         })}
+
+        {/* issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers"
+            card. Ticketed events only: RSVP has no checkout, so the control is
+            not offered in rsvpMode. Web-only by filename resolution — the
+            .native.tsx sibling is a typed null renderer, so no native Business
+            screen gains a configuration control. */}
+        {!rsvpMode && Platform.OS === "web" ? (
+          <View style={styles.sectionCard}>
+            <React.Suspense fallback={null}>
+              <EventTicketCheckoutAccessCard eventId={liveEvent.id} />
+            </React.Suspense>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Sticky bottom Save dock — hidden when keyboard up */}

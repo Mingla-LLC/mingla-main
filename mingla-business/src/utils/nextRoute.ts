@@ -49,6 +49,45 @@ export const NEXT_ROUTE_ALLOWLIST: readonly string[] = [
   "/brand",
 ] as const;
 
+/**
+ * issue #2101 [named-buyer checkout] — the PUBLIC OFFERING families.
+ *
+ * THE COMPLETE AUTHORIZED SET IS THE UNION of the five static workflow prefixes
+ * in `NEXT_ROUTE_ALLOWLIST` above PLUS exactly these three public offering
+ * families. This is CATEGORIZATION INSIDE ONE VALIDATOR — not a second
+ * sanitizer, not a caller bypass, and not a parallel decision path. Both
+ * categories are matched by the SAME `isAllowlistedPath` below, inside the SAME
+ * `sanitizeNextRoute` decision owner, in this SAME module. This tuple is
+ * deliberately NOT exported: no public function may validate either category
+ * separately and no caller may consume it.
+ *
+ * WHY THEY EXIST. A restricted sale sends an anonymous buyer to `/auth?next=…`
+ * and must return them to the exact public offering they were looking at. With
+ * only the five workflow prefixes, `/t/…`, `/exp/…` and `/e/…` all sanitize to
+ * `null` and `app/auth/index.tsx` falls back to `AppRoutes.home` —
+ * `/(tabs)/home`, the ORGANISER tab shell. That is not "no resume", it is a
+ * consumer buyer deposited in the organiser app.
+ *
+ * WHY `/e` CANNOT REACH `/event/*`. Matching is segment-safe in BOTH
+ * directions. `"/event/create".startsWith("/e/")` is FALSE, so the `/e` family
+ * admits neither `/event`, `/event/`, `/event/create`, nor any organiser route
+ * `/event/{id}`, `/event/{id}/edit`, `/event/{id}/reconciliation`,
+ * `/event/{id}/group-chat`. Conversely no registry entry matches `/e`, `/e/` or
+ * `/e/acme/launch-party`. `/event/create` stays accepted solely because of its
+ * OWN registry entry — causally unchanged.
+ *
+ * SAFETY OF THE ADMISSION. Each family opens exactly one public buyer route
+ * that reads only its own path segments and never carries a credential in its
+ * URL. Every value that survives validation with one of these heads is
+ * same-origin and scheme-less, so "enumerate, don't generalise" holds: three
+ * enumerated families is still an enumeration.
+ */
+const PUBLIC_OFFERING_NEXT_ROUTE_PREFIXES: readonly string[] = [
+  "/t", // canonical Trip public paths   — tripPublicPath()
+  "/exp", // canonical Experience public paths — experiencePublicPath()
+  "/e", // canonical Event public paths  — eventPublicPath()
+] as const;
+
 /** Bound the surface — nothing legitimate is anywhere near this long. */
 const MAX_NEXT_LENGTH = 2048;
 
@@ -127,7 +166,15 @@ const isAllowlistedPath = (path: string): boolean => {
   // Strip a single trailing slash (but never the root "/" itself).
   const normalized =
     trimmed.length > 1 && trimmed.endsWith("/") ? trimmed.slice(0, -1) : trimmed;
-  return NEXT_ROUTE_ALLOWLIST.some((prefix) => {
+  // ONE decision owner, TWO enumerated categories: the five static workflow
+  // prefixes and the three public offering families (issue #2101). The exported
+  // five-entry registry is unchanged, so the frozen ORCH-1375 assertions keep
+  // asserting exactly what they always asserted.
+  const authorized = [
+    ...NEXT_ROUTE_ALLOWLIST,
+    ...PUBLIC_OFFERING_NEXT_ROUTE_PREFIXES,
+  ];
+  return authorized.some((prefix) => {
     const base = prefix.endsWith("/") ? prefix.slice(0, -1) : prefix;
     return normalized === base || normalized.startsWith(`${base}/`);
   });

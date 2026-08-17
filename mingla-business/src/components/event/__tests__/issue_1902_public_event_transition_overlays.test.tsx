@@ -56,6 +56,31 @@ jest.mock("@tanstack/react-query", () => ({
       sample: [],
     },
   }),
+  // [TEST-MOD-APPROVED #2101] Harness registration only — no assertion changes.
+  // PublicEventPage now mounts the named-buyer eligibility read, whose
+  // auth-scope cache eviction and mutation invalidation need a query client.
+  // Stubbed inert so this suite keeps proving exactly what it proved before.
+  useQueryClient: () => ({
+    cancelQueries: () => Promise.resolve(),
+    removeQueries: () => undefined,
+    invalidateQueries: () => Promise.resolve(),
+    refetchQueries: () => Promise.resolve(),
+  }),
+}));
+// [TEST-MOD-APPROVED #2101] Harness registration only — the transition-overlay
+// contract is unrelated to checkout eligibility, so the adapter is pinned to
+// its legacy pass-through and the notice renders nothing.
+jest.mock("../../../hooks/usePublicTicketCheckoutRouteAccess", () => ({
+  usePublicTicketCheckoutRouteAccess: () => ({
+    state: "unrestricted",
+    canPurchase: true,
+    requiresSignIn: false,
+    blocked: false,
+    retry: () => undefined,
+  }),
+}));
+jest.mock("../TicketCheckoutAccessNotice", () => ({
+  TicketCheckoutAccessNotice: () => null,
 }));
 jest.mock("../../../context/AuthContext", () => ({
   useAuth: () => ({ user: null }),

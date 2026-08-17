@@ -64,6 +64,15 @@ import {
   type TicketAttemptClaim,
 } from "../_shared/checkoutSaleTruth.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+// Issue #2101 [named-buyer checkout] — the ONE edge adapter for the sole
+// database decision owner. Enforced BEFORE any session, capacity, provider or
+// free-ticket work, and re-decided inside the database on every value-moving
+// path so a direct Edge/RPC call cannot bypass it.
+import {
+  ticketCheckoutAccessDecision,
+  ticketCheckoutAccessDenial,
+  ticketCheckoutAccessDenialFromDbMessage,
+} from "../_shared/ticketCheckoutAccess.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
@@ -312,6 +321,38 @@ export const createTicketCheckoutCreateHandler = (
     const userId = await deps.userIdFromAuthHeader(req);
     const supabase = deps.serviceClient();
 
+    // ── Issue #2101 [named-buyer checkout] — the FIRST authority. It runs for
+    // every surface (web, mobile-web, native) BEFORE the event-date read, the
+    // capacity/pricing work, the session RPC, the provider call and the
+    // free-ticket path, so a denied request produces ZERO checkout session,
+    // attempt, ticket, outbox, Stripe, Paystack or free-entitlement effect.
+    //
+    // The ONLY identity input is `userId`, derived from the bearer token by
+    // `userIdFromAuthHeader`. Nothing in `body` may supply buyer authority: the
+    // typed buyer name/email/phone above are contact fields for the receipt and
+    // are never consulted here.
+    //
+    // Default is unchanged: an event with no policy row, or mode
+    // 'unrestricted', returns `allowed_unrestricted` and this block is a no-op.
+    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;
+    try {
+      accessDecision = await ticketCheckoutAccessDecision(supabase, {
+        eventId,
+        buyerUserId: userId,
+      });
+    } catch (accessError) {
+      // Fail CLOSED — never read a transport failure as "unrestricted".
+      console.error(
+        "[ticket-checkout-create] issue-2101 access decision unavailable",
+        accessError,
+      );
+      return jsonResponse({ error: "checkout_restricted" }, 403);
+    }
+    const accessDenial = ticketCheckoutAccessDenial(accessDecision);
+    if (accessDenial !== null) {
+      return jsonResponse({ error: accessDenial.error }, accessDenial.status);
+    }
+
     // ORCH-0792: reject checkout against events with no current/future date.
     // Pairs with the publish-RPC fix that writes event_dates and the
     // constraint trigger trg_events_enforce_master_date. See
@@ -550,6 +591,19 @@ export const createTicketCheckoutCreateHandler = (
       );
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+      }
+      // Issue #2101 — the database re-decides under the event -> brand lock. If
+      // the policy or membership changed between the Edge decision above and
+      // the session RPC, the stable bounded contract is returned, not a generic
+      // 409, and no session exists.
+      const dbAccessDenial = ticketCheckoutAccessDenialFromDbMessage(
+        sessionError?.message,
+      );
+      if (dbAccessDenial !== null) {
+        return jsonResponse(
+          { error: dbAccessDenial.error },
+          dbAccessDenial.status,
+        );
       }
       return jsonResponse(
         { error: "checkout_session_failed", detail: sessionError?.message },
