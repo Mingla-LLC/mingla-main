@@ -97,6 +97,19 @@ import { captureWeb } from "../../analytics/webAnalytics";
 import type { GuestFunnelEntity } from "../../services/guestFunnelLink";
 
 const SeeWhosGoingGate = React.lazy(() => import("./SeeWhosGoingGate"));
+// issue #2135 [multi-date public day picker] — the multi-date leg: the
+// `event_dates` occurrence read plus the INLINE day rows. LAZY for the SAME
+// reason as the gate above — a single-date event never renders it, so it never
+// resolves the module and never issues the read.
+//
+// This deliberately does NOT reuse the /exp surface's ExperienceReservePicker.
+// Referencing that component here made it reachable from two chunks, so Metro
+// hoisted it (9,912 B) into the eager `__common` payload every visitor
+// downloads, for an affordance only multi-date events use. Inline rows also fix
+// more of the reported bug: a sheet still hides every date behind a tap, which
+// is the actual complaint in #2135. Measured: inline +1,212 B vs sheet
+// +10,238 B. See MultiDateDayChooser's header for the full rationale.
+const MultiDateDayChooser = React.lazy(() => import("./MultiDateDayChooser"));
 import {
   submitPublicRsvp,
   submitRsvpContribution,
@@ -132,6 +145,9 @@ import {
   formatDraftDatesList,
   formatEventDoorsTimes,
 } from "../../utils/eventDateDisplay";
+// issue #2135 [multi-date public day picker] — TYPE-ONLY (erased at build; adds
+// no runtime dependency to this hot buyer-web route).
+import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
@@ -321,6 +337,10 @@ function ctaUnavailableLabel(cta: CtaState): string {
 // on top by the caller.
 const FLOATING_BAR_CLEARANCE = 96;
 
+// issue #2135 — stable empty reference so a single-date page (query disabled →
+// `data` undefined) never produces a new array identity per render.
+const NO_OCCURRENCES: readonly PublicEventOccurrence[] = [];
+
 export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
@@ -358,6 +378,29 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // (pre-populated, editable) at the checkout cart step (i). Empty → nothing picked.
   const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>(
     {},
+  );
+  // issue #2135 [multi-date public day picker] — the guest's chosen occurrence
+  // (event_dates.id), and whether they have already tried to check out without
+  // choosing one (which turns the inline chooser's silent block into an explicit
+  // prompt). Both stay inert for the whole life of a single-date page.
+  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string | null>(
+    null,
+  );
+  const [dayChoiceMissing, setDayChoiceMissing] = useState<boolean>(false);
+  // The materialised occurrences, reported up by the lazy multi-date leg. Stays
+  // at the shared empty reference forever on a single-date page.
+  const [occurrences, setOccurrences] =
+    useState<readonly PublicEventOccurrence[]>(NO_OCCURRENCES);
+  const handleOccurrencesResolved = useCallback(
+    (next: readonly PublicEventOccurrence[]): void => {
+      setOccurrences((prev) => {
+        if (prev.length === next.length && prev.every((o, i) => o.id === next[i].id)) {
+          return prev;
+        }
+        return next;
+      });
+    },
+    [],
   );
 
   // ORCH-1339 — cross-entity social proof for this page's event (anon-safe
@@ -435,6 +478,32 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [resolvedAcquisitionState, serverAcquisitionOverride],
   );
   const isRsvp = event.event_type === "rsvp";
+  // ── issue #2135 [multi-date public day picker] ────────────────────────────
+  //
+  // `whenMode === "multi_date"` IS the `events.is_multi_date` signal on this
+  // surface: publicEventsService.asWhenMode maps the view's `is_multi_date`
+  // column onto it. RSVP is excluded deliberately — #2131 was closed "not
+  // planned" and the RSVP wizard keeps its single-date lock.
+  //
+  // Everything below is gated on this ONE boolean. A single-date event leaves
+  // the query disabled (no network), the occurrence list at the shared empty
+  // reference, the strip unrendered and the picker unmounted — the page is
+  // byte-identical to before this change.
+  const isMultiDate = !isRsvp && event.whenMode === "multi_date";
+  // A multi-date event whose occurrences have not loaded (or that materialised
+  // only one row) offers NO choice — the guest is never blocked behind an empty
+  // picker, and the CTA behaves exactly as it does today.
+  const hasOccurrenceChoice = isMultiDate && occurrences.length > 1;
+  // issue #2135 — recording the guest's pick. Clears the "you must choose"
+  // prompt the moment they do.
+  const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
+    setSelectedOccurrenceId(eventDateId);
+    setDayChoiceMissing(false);
+  }, []);
+  // The third `checkoutPublicPathWithSeed` argument. NULL on every single-date
+  // page (and on a multi-date page that offers no real choice), which makes the
+  // helper emit the byte-identical path it emitted before issue #2135.
+  const chosenOccurrenceParam = hasOccurrenceChoice ? selectedOccurrenceId : null;
   const onSeeWhosGoingProp = Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
   useEffect(() => {
     const refresh = (): void => setNowMs(Date.now());
@@ -661,13 +730,24 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       return;
     }
     if (purchaseBlockedByAccess) return;
+    // issue #2135 — a multi-date event must never silently sell day one. When
+    // more than one occurrence exists and the guest has not chosen yet, open the
+    // shared slots picker INSTEAD of navigating; confirming there resumes this
+    // exact navigation with the chosen occurrence attached. Single-date events
+    // (and multi-date events whose occurrences have not resolved) skip this
+    // entirely and fall through to the unchanged push below.
+    if (hasOccurrenceChoice && selectedOccurrenceId === null) {
+      setDayChoiceMissing(true);
+      showToast("Choose which day you're attending first.");
+      return;
+    }
     // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
     // on-sale button is always tappable, and tapping at 0 selected pushes to the
     // cart step (i) where the buyer picks/edits quantities. An empty seed encodes
     // to nothing → the bare /checkout/[eventId] cart path. The genuinely non-
     // purchasable states never reach here (their CTA resolves tappable:false).
     router.push(
-      checkoutPublicPathWithSeed(event.id, ticketQuantities) as never,
+      checkoutPublicPathWithSeed(event.id, ticketQuantities, chosenOccurrenceParam) as never,
     );
   }, [
     offeringCta.kind,
@@ -680,6 +760,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     purchaseNeedsSignIn,
     purchaseBlockedByAccess,
     signInResumeHref,
+    hasOccurrenceChoice,
+    selectedOccurrenceId,
+    chosenOccurrenceParam,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -735,7 +818,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           return;
         }
         if (purchaseBlockedByAccess) return;
-        router.push(checkoutPublicPathWithSeed(event.id, {}) as never);
+        // issue #2135 — same day-first gate as handleProceedToCart, so no
+        // entry point into checkout can skip the multi-date choice.
+        if (hasOccurrenceChoice && selectedOccurrenceId === null) {
+          setDayChoiceMissing(true);
+          showToast("Choose which day you're attending first.");
+          return;
+        }
+        router.push(
+          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParam) as never,
+        );
       },
       onClaimFreeTicket: (_ticketId: string) => {
         if (!bookable) {
@@ -751,7 +843,16 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           return;
         }
         if (purchaseBlockedByAccess) return;
-        router.push(checkoutPublicPathWithSeed(event.id, {}) as never);
+        // issue #2135 — same day-first gate (the free path moves entitlement,
+        // and a free multi-date guest must still choose their day).
+        if (hasOccurrenceChoice && selectedOccurrenceId === null) {
+          setDayChoiceMissing(true);
+          showToast("Choose which day you're attending first.");
+          return;
+        }
+        router.push(
+          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParam) as never,
+        );
       },
       onJoinWaitlist: (ticketId: string) => {
         setWaitlistTicketId(ticketId);
@@ -783,6 +884,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       purchaseNeedsSignIn,
       purchaseBlockedByAccess,
       signInResumeHref,
+      hasOccurrenceChoice,
+      selectedOccurrenceId,
+      chosenOccurrenceParam,
     ],
   );
 
@@ -806,6 +910,45 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         </Text>
       </View>
     ) : null;
+
+  // ── issue #2135 [multi-date public day picker] — the INLINE day chooser ───
+  //
+  // The bug is that a guest could not SEE the other days, not only that they
+  // could not choose one. So every day is rendered on the page itself, in the
+  // flow, with no tap required to reveal it.
+  //
+  // It rides the EXISTING `stateBanner` slot (ParallaxCoverShell renders it
+  // above the body on phone AND desktop), so no shared-package prop had to be
+  // added and the shell/body are untouched. It is only mounted for a multi-date
+  // event on a live page; the lazy chunk is otherwise never resolved.
+  const multiDateDayChooser =
+    isMultiDate && acquisitionState.kind === "current" ? (
+      <React.Suspense fallback={null}>
+        <MultiDateDayChooser
+          eventId={event.id}
+          timezone={event.timezone ?? "UTC"}
+          palette={palette}
+          fontFamily={boldFamily}
+          selectedOccurrenceId={selectedOccurrenceId}
+          highlightUnchosen={dayChoiceMissing}
+          onOccurrencesResolved={handleOccurrencesResolved}
+          onSelect={handleOccurrenceSelect}
+        />
+      </React.Suspense>
+    ) : null;
+
+  // The ticketed page's banner slot = the unchanged state banner PLUS the day
+  // chooser. When there is no chooser this is the SAME `stateBanner` value
+  // (identical node, identical null) — single-date rendering is untouched.
+  const ticketedStateBanner =
+    multiDateDayChooser === null ? (
+      stateBanner
+    ) : (
+      <>
+        {stateBanner}
+        {multiDateDayChooser}
+      </>
+    );
 
   // ORCH-1167-R2 (change 5) — DESKTOP WEB two-column reflow. On wide web the
   // primary content (cover/name/pills/about/where-you'll-be) stays in the left
@@ -1010,6 +1153,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     setTicketQuantities({});
     setReturnBanner(null);
     setToast({ visible: false, message: "" });
+    // issue #2135 — an event that ended / was cancelled mid-session must not
+    // leave an occurrence picker open over a dead page (mirrors the waitlist +
+    // gate teardown above). No-op on every single-date page.
+    setDayChoiceMissing(false);
+    setSelectedOccurrenceId(null);
   }, [acquisitionState.kind]);
 
   // ── ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the country-code-aware guest
@@ -1340,7 +1488,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForQuery}
           staticMapUrl={staticMapUrl}
-          stateBanner={stateBanner}
+          // issue #2135 — the unchanged state banner, plus the multi-date day
+          // strip when (and only when) this event has >1 occurrence.
+          stateBanner={ticketedStateBanner}
           stickyPanel={stickyPanel}
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}

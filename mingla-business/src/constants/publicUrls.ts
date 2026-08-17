@@ -113,14 +113,31 @@ export const decodeCartSeed = (
   return out;
 };
 
-/** checkoutPublicPath with an optional pre-populated cart seed (ORCH-1167). */
+/**
+ * checkoutPublicPath with an optional pre-populated cart seed (ORCH-1167) and,
+ * since issue #2135, the buyer's chosen multi-date occurrence.
+ *
+ * `eventDateId` is the `event_dates.id` the guest picked on the public page for
+ * a multi-date event. It is appended ONLY when a non-empty id is supplied, so
+ * every single-date caller (which passes nothing) produces the byte-identical
+ * path it produced before — `/checkout/{id}` or `/checkout/{id}?seed=…`.
+ * The checkout cart step reads it back and seeds `CartContext.eventDateId`,
+ * which the existing chain already forwards to `ticket-checkout-create` and
+ * persists on `orders.event_date_id` (#1188).
+ */
 export const checkoutPublicPathWithSeed = (
   eventId: string,
   quantities: Record<string, number>,
+  eventDateId?: string | null,
 ): string => {
   const base = checkoutPublicPath(eventId);
   const seed = encodeCartSeed(quantities);
-  return seed.length > 0 ? `${base}?seed=${encodeURIComponent(seed)}` : base;
+  const params: string[] = [];
+  if (seed.length > 0) params.push(`seed=${encodeURIComponent(seed)}`);
+  if (typeof eventDateId === "string" && eventDateId.length > 0) {
+    params.push(`eventDateId=${encodeURIComponent(eventDateId)}`);
+  }
+  return params.length > 0 ? `${base}?${params.join("&")}` : base;
 };
 
 export const checkoutPublicUrl = (eventId: string): string =>

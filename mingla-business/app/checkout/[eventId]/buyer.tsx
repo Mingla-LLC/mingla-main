@@ -235,7 +235,10 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           eventThemeOverrides: event.themeOverrides ?? null,
         }) ?? undefined)
       : undefined;
-  const { lines, buyer, setBuyer, recordResult } = useCart();
+  // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
+  // the guest chose on the public page, seeded into the cart by the cart step.
+  // null on every single-date checkout, which keeps the request byte-identical.
+  const { lines, buyer, setBuyer, recordResult, eventDateId } = useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -424,7 +427,17 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     if (totals.isFree) {
       try {
         setSubmitting(true);
-        const result = await createTicketCheckout({ eventId, buyer, lines });
+        // issue #2135 — forward the chosen occurrence ONLY when present, the
+        // same shape the paid path uses. Without this a free multi-date guest
+        // picks a day, sees it on the page and in the cart, and still lands an
+        // order with `event_date_id = NULL` — which silently books them onto the
+        // master date and makes per-day guest counts wrong for the whole event.
+        const result = await createTicketCheckout({
+          eventId,
+          buyer,
+          lines,
+          ...(eventDateId !== null ? { eventDateId } : {}),
+        });
         if (result.kind !== "free_completed") {
           throw new Error("Free checkout unexpectedly required payment.");
         }
@@ -471,6 +484,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     totals.currency,
     lines,
     buyer,
+    // issue #2135 — the chosen occurrence is read inside this handler.
+    eventDateId,
     recordResult,
     router,
   ]);
