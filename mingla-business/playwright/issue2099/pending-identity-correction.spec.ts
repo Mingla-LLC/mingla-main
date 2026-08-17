@@ -119,8 +119,14 @@ interface HostMeasurement {
   targetRight: number;
   targetWidth: number;
   targetHeight: number;
-  /** Product of every `opacity` from the target up to `<body>`. */
+  /**
+   * Product of every `opacity` AND every `filter: opacity()` from the target up
+   * to `<body>`. Both, because they are separate computed properties and either
+   * one alone renders the target invisible.
+   */
   effectiveOpacity: number;
+  /** Every non-`none` ancestor filter, for the failure message. */
+  filterChain: string;
   visibility: string;
   display: string;
   /** The target clips its OWN content — this is what renders "Review correctio". */
@@ -167,6 +173,7 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
       targetWidth: 0,
       targetHeight: 0,
       effectiveOpacity: 0,
+      filterChain: "",
       visibility: "hidden",
       display: "none",
       selfClipped: false,
@@ -181,10 +188,24 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
     // accumulated rather than read off the target.
     let opacityNode: HTMLElement | null = target;
     let effectiveOpacity = 1;
+    let filterChain = "";
     while (opacityNode !== null && opacityNode !== document.documentElement) {
       const os = globalThis.getComputedStyle(opacityNode);
       const parsed = Number.parseFloat(os.opacity);
       effectiveOpacity *= Number.isFinite(parsed) ? parsed : 1;
+      // `filter` is a SEPARATE computed property, and `filter: opacity(0)`
+      // composites the element AND its whole subtree at alpha 0 — a rendered
+      // label inside it is invisible. Reading only `opacity` left that route
+      // open: it greened all ten cases with the primary action not on screen at
+      // all. Accumulate every `opacity()` function in every ancestor's filter.
+      if (os.filter !== "none" && os.filter !== "") {
+        filterChain = filterChain === "" ? os.filter : `${filterChain} | ${os.filter}`;
+        for (const fn of os.filter.matchAll(/opacity\(\s*([0-9.]+)(%?)\s*\)/g)) {
+          const raw = Number.parseFloat(fn[1] ?? "1");
+          const value = fn[2] === "%" ? raw / 100 : raw;
+          effectiveOpacity *= Number.isFinite(value) ? value : 1;
+        }
+      }
       if (os.visibility === "hidden" || os.visibility === "collapse") effectiveOpacity = 0;
       if (os.display === "none") effectiveOpacity = 0;
       opacityNode = opacityNode.parentElement;
@@ -226,6 +247,7 @@ async function measure(page: Page, selector: string): Promise<HostMeasurement> {
       targetWidth: rect.width,
       targetHeight: rect.height,
       effectiveOpacity,
+      filterChain,
       visibility: targetStyle.visibility,
       display: targetStyle.display,
       selfClipped: clipsOwnContent,
@@ -342,7 +364,8 @@ function assertVisiblyPresent(m: HostMeasurement, where: string): void {
     m.effectiveOpacity > 0,
     `${where}: the target is laid out but NOT VISIBLE ` +
       `(effective opacity ${m.effectiveOpacity}, visibility ${m.visibility}, ` +
-      `display ${m.display}) — presence in the layout is not reachability`,
+      `display ${m.display}, filters "${m.filterChain}") — presence in the ` +
+      "layout is not reachability",
   ).toBe(true);
   expect.soft(
     m.targetWidth > 0 && m.targetHeight > 0,
@@ -364,6 +387,50 @@ test.beforeAll(() => {
   }
 });
 
+/**
+ * P4-1 — wait for the entry animation to SETTLE before anything is measured.
+ *
+ * The shared `Modal` fades in over 0.16s, and a measurement taken mid-fade reads
+ * `effectiveOpacity: 0` on an element that is genuinely on its way to visible.
+ * That flake is in the SAFE direction — a false RED, never a false PASS — and
+ * the tempting repair is to soften the opacity assertion. That would trade a
+ * harmless flake for a real blind spot, which is the trade this whole thread
+ * exists to refuse. So the fix is here, in the wait: settle first, assert at
+ * full strength afterwards.
+ */
+async function waitForVisualSettle(page: Page): Promise<void> {
+  await page.waitForFunction(
+    () => {
+      const host = document.querySelector<HTMLElement>(
+        '[data-testid="issue-2099-correction-dialog"]',
+      );
+      if (host === null) return false;
+      // Every running transition/animation inside the dialog must be finished.
+      const getAnimations = (
+        host as unknown as { getAnimations?: (o: { subtree: boolean }) => Animation[] }
+      ).getAnimations;
+      if (typeof getAnimations === "function") {
+        const running = getAnimations
+          .call(host, { subtree: true })
+          .filter((a) => a.playState === "running");
+        if (running.length > 0) return false;
+      }
+      // And the accumulated alpha must have reached full strength.
+      let node: HTMLElement | null = host;
+      let alpha = 1;
+      while (node !== null && node !== document.documentElement) {
+        const style = globalThis.getComputedStyle(node);
+        const parsed = Number.parseFloat(style.opacity);
+        alpha *= Number.isFinite(parsed) ? parsed : 1;
+        node = node.parentElement;
+      }
+      return alpha >= 0.999;
+    },
+    undefined,
+    { timeout: 5000 },
+  );
+}
+
 async function openDialog(
   page: Page,
   preview: typeof PREVIEW = PREVIEW,
@@ -378,6 +445,7 @@ async function openDialog(
   }, preview);
   await page.goto(HARNESS_URL);
   await expect(page.getByTestId("issue-2099-correction-dialog")).toBeVisible();
+  await waitForVisualSettle(page);
   // Vacuity guard: the REAL dialog rendered its own content, not an empty shell.
   await expect(page.getByTestId("issue-2099-current-identity")).toContainText(
     "theclusterfuck",
