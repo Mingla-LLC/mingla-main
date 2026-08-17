@@ -22,6 +22,10 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import {
+  PRIVATE_NOT_READY_HELPER,
+  canSelectPrivateVisibility,
+} from "../../services/privateEventAccessService";
 import type { DraftEventVisibility } from "../../store/draftEventStore";
 
 import { type StepBodyProps } from "./types";
@@ -73,11 +77,17 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
   draft,
   updateDraft,
 }) => {
+  // #1931 — Private ticket sales are not ready. The row stays VISIBLE but disabled, and a
+  // legacy draft already stored as `private` stays SELECTED rather than being silently
+  // rewritten; Publish is blocked separately with the same actionable copy.
+  const privateSelectable = canSelectPrivateVisibility();
+
   const handleSelectVisibility = useCallback(
     (visibility: DraftEventVisibility): void => {
+      if (visibility === "private" && !privateSelectable) return;
       updateDraft({ visibility });
     },
-    [updateDraft],
+    [updateDraft, privateSelectable],
   );
 
   return (
@@ -88,22 +98,26 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
         <View style={styles.visibilityWrap}>
           {VISIBILITY_OPTIONS.map((opt) => {
             const active = draft.visibility === opt.id;
+            const disabled = opt.id === "private" && !privateSelectable;
             return (
               <Pressable
                 key={opt.id}
                 onPress={() => handleSelectVisibility(opt.id)}
+                disabled={disabled}
                 accessibilityRole="button"
-                accessibilityState={{ selected: active }}
+                accessibilityState={{ selected: active, disabled }}
                 accessibilityLabel={opt.label}
                 style={[
                   styles.visibilityPill,
                   active && styles.visibilityPillActive,
+                  disabled && styles.visibilityPillDisabled,
                 ]}
               >
                 <Text
                   style={[
                     styles.visibilityPillLabel,
                     active && styles.visibilityPillLabelActive,
+                    disabled && styles.visibilityPillLabelDisabled,
                   ]}
                 >
                   {opt.label}
@@ -113,8 +127,13 @@ export const CreatorStep6Settings: React.FC<StepBodyProps> = ({
           })}
         </View>
         <Text style={styles.visibilityHelper}>
-          {VISIBILITY_HELPERS[draft.visibility]}
+          {draft.visibility === "private" && !privateSelectable
+            ? PRIVATE_NOT_READY_HELPER
+            : VISIBILITY_HELPERS[draft.visibility]}
         </Text>
+        {!privateSelectable && draft.visibility !== "private" ? (
+          <Text style={styles.visibilityHelper}>{PRIVATE_NOT_READY_HELPER}</Text>
+        ) : null}
       </View>
 
       <ToggleRow
@@ -205,6 +224,12 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     alignItems: "center",
     borderRadius: radiusTokens.md - 2,
+  },
+  visibilityPillDisabled: {
+    opacity: 0.45,
+  },
+  visibilityPillLabelDisabled: {
+    color: textTokens.secondary,
   },
   visibilityPillActive: {
     backgroundColor: accent.tint,

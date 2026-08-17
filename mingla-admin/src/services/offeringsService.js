@@ -221,6 +221,13 @@ export function mapOfferingWriteError(error) {
   if (msg.includes("not_found")) return "That record no longer exists.";
   if (msg.includes("already_cancelled")) return "This offering is already cancelled.";
   if (msg.includes("invalid_visibility")) return "Invalid visibility value.";
+  // #1931 — Admin keeps synchronous Public <-> Hidden, but every transition ENTERING or
+  // LEAVING Private is rejected non-mutatingly: those transitions need the two-phase
+  // media preparation that only Mingla Business can drive (Amendment 2 §D). Admin UI
+  // composition is unchanged; this is the mapping only.
+  if (msg.includes("private_transition_requires_business")) {
+    return "Use Mingla Business to prepare media before changing a Private event. Nothing was changed.";
+  }
   if (msg.includes("invalid_price")) return "Enter a whole number of cents (0 or more).";
   if (msg.includes("invalid_capacity")) return "Capacity must be 0 or more (blank = uncapped).";
   if (msg.includes("invalid_approval_status")) return "Invalid approval value.";
