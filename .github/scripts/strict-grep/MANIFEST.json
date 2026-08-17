@@ -26,6 +26,20 @@
   ],
   "gates": [
     {
+      "script": ".github/scripts/strict-grep/issue-1931-private-event-access.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1931-private-event-access.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1931-private-invite-access"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-2084-credential-output-safety.mjs",
       "kind": "file",
       "enforcement": "external:issue-2084-credential-output-safety.yml",

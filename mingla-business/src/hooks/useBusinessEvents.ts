@@ -18,6 +18,7 @@ import {
   type BusinessEventDetail,
   type PublishedBusinessEvent,
 } from "../services/businessEvents";
+import { privatePublishBlockReason } from "../services/privateEventAccessService";
 import type { Brand } from "../store/currentBrandStore";
 import { useAuth } from "../context/AuthContext";
 import { eventDraftKeys } from "./useServerDraftEvents";
@@ -193,8 +194,15 @@ export const usePublishBusinessEventDraft = (): {
   const queryClient = useQueryClient();
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const mutation = useMutation<PublishedBusinessEvent, Error, DraftEvent>({
-    mutationFn: (draft) =>
-      publishBusinessEventDraft(draft, draft.clientRevision ?? 0),
+    mutationFn: (draft) => {
+      // #1931 — a legacy draft already stored as `private` stays SELECTED in the wizard
+      // but MUST NOT publish while Private ticket sales are not ready. This is the
+      // CLIENT half only; `business_publish_event_draft` independently raises the typed
+      // `private_access_not_ready`, so deleting this block cannot admit a Private publish.
+      const blocked = privatePublishBlockReason(draft.visibility);
+      if (blocked !== null) return Promise.reject(new Error(blocked));
+      return publishBusinessEventDraft(draft, draft.clientRevision ?? 0);
+    },
     onSuccess: (published, draft) => {
       deleteDraft(draft.id);
       queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draft.id) });

@@ -14,7 +14,11 @@
 # INVESTIGATION_ORCH-1392 bucket (definer_privilege_gate_inventory.csv). Format:
 # `proname(identity_args)` exactly as pg_get_function_identity_arguments renders.
 #
-# Signature count: 194 (intended-public 25, internally-gated 109, predicate/read-helper 57, PostGIS 3).
+# Signature count: 193 (intended-public 24, internally-gated 108, predicate/read-helper 58, PostGIS 3).
+# (#1931 recomputed this line from the file itself AFTER its one appended signature, by
+#  counting non-comment, non-blank lines per section. The previous value of 194/25/109/57
+#  was already stale by two against the 192 lines then present; the count is not gate-
+#  enforced and had drifted silently.)
 # (#1789 added pg_public_qr_spot_resolve + pg_public_menu_modifiers to intended-public;
 #  #1793 added pg_public_venue_ordering_state; #1929 added pg_direct_event_checkout_bundle.)
 
@@ -211,6 +215,12 @@ pg_brands_can_collect(p_brand_ids uuid[])
 pg_brands_can_charge(p_brand_ids uuid[])
 pg_eligible_experiences_for_deck(p_lat double precision, p_lng double precision, p_radius_m double precision, p_intents text[], p_now timestamp with time zone, p_exclude_ids uuid[], p_limit integer)
 pg_recurrence_is_terminated(p_rule jsonb, p_event_id uuid, p_now timestamp with time zone)
+# #1931: the SOLE ordinary-reader predicate helper. SECURITY DEFINER so the `events`
+#  SELECT policy — evaluated as anon — can consult it WITHOUT anon ever holding a
+#  privilege on event_private_media_transition_jobs (Amendment 4 §B.3.1-B.3.3). It takes
+#  one caller-supplied event id and returns a bare boolean: no job field, no snapshot,
+#  no provider locator, no error text, and `false` uniformly for an unknown id.
+issue_1931_event_ordinary_read_blocked(p_event_id uuid)
 pg_venue_available_slots(p_date date, p_party_size integer, p_venue_id uuid, p_brand_id uuid)
 pg_venue_reservable_for_place(p_place_pool_id uuid)
 query_person_hero_places_by_signal(p_user_id uuid, p_person_id uuid, p_lat double precision, p_lng double precision, p_signal_ids text[], p_exclude_place_ids uuid[], p_initial_radius_m integer, p_max_radius_m integer, p_per_signal_limit integer, p_total_limit integer)
