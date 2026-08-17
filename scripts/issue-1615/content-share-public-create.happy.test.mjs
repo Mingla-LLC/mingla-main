@@ -61,9 +61,14 @@ class FakeDb {
     // [TEST-MOD-APPROVED #1615] The authoritative mapper now reads the existing
     // remaining-inventory RPC before minting. Model that served contract; the
     // old upsert-only fake incorrectly treated a real read as a test failure.
+    // [TEST-MOD-APPROVED #2117] §4.5 repoints this privileged service_role
+    // consumer at the privileged sibling; model the repointed contract.
+    if(name==='pg_privileged_ticket_types_remaining')return{data:[],error:null};
     if(name==='pg_public_ticket_types_remaining')return{data:[],error:null};
     // [TEST-MOD-APPROVED #1615] The served mapper now requires the canonical
     // all-in RPC even when a fixture has no tiers; model its empty success.
+    // [TEST-MOD-APPROVED #2117] §4.5 repointing, as above.
+    if(name==='pg_privileged_event_tier_allin')return{data:[],error:null};
     if(name==='pg_public_event_tier_allin')return{data:[],error:null};
     // [TEST-MOD-APPROVED #1719] Creation now returns the same immutable
     // server-authored message stored with the version. The old fake knew only

@@ -5,6 +5,7 @@ on:
     paths:
       - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
       - "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*"
+      - "supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql"
       - "supabase/functions/_shared/contentShare.ts"
       - "supabase/functions/_shared/businessNotifyTriggers.ts"
       - "supabase/security/anon_executable_definer_allowlist.txt"
@@ -15,6 +16,7 @@ on:
     paths:
       - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
       - "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*"
+      - "supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql"
       - "supabase/functions/_shared/contentShare.ts"
       - "supabase/functions/_shared/businessNotifyTriggers.ts"
       - "supabase/security/anon_executable_definer_allowlist.txt"
@@ -37,16 +39,42 @@ jobs:
           --health-cmd "pg_isready -U postgres"
           --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
     steps:
+      # fetch-depth: 0 is required by the allowlist-diff step below. The default
+      # shallow checkout has no base commit, which makes `git diff <base>` fail
+      # with `fatal: bad revision` rather than reporting a real modification.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      - name: Canonical full migration replay
+      # A-SC-9 is a SET DIFFERENCE, so it needs a genuine BEFORE snapshot.
+      # The chain is therefore applied in two phases: everything except the
+      # #2117 migration, then the baseline capture, then #2117. Applying the
+      # chain in one pass would leave nothing to difference against.
+      - name: "Canonical migration replay — phase 1 (chain except #2117)"
         env:
           PGPASSWORD: ${{ github.sha }}
         run: |
           set -euo pipefail
           for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            case "$f" in
+              *20270415002117_issue_2117_offering_visibility_gate.sql) continue ;;
+            esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
+
+      - name: "A-SC-9 baseline capture (before #2117 lands)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql
+
+      - name: "Canonical migration replay — phase 2 (#2117)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql
 
       # Every assertion in this suite EXECUTES an object against real rows.
       # Per #2113, nothing here is satisfiable by source text. The suite also
@@ -77,18 +105,35 @@ jobs:
           PGPASSWORD: ${{ github.sha }}
         run: bash scripts/ci/security_definer_anon_gate.sh
 
-      # A-SC-9 also requires the allowlist FILE itself to be untouched by this
-      # change. Assert it rather than trusting it.
-      - name: Allowlist file is unmodified by this change
+      # A-SC-9 clause 1: the allowlist FILE gains and loses ZERO lines. Asserted
+      # against the exact base commit, never a symbolic ref -- a missing ref
+      # must not be able to masquerade as a passing or a failing diff.
+      - name: "A-SC-9 clause 1 — allowlist file is unmodified by this change"
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
-          if ! git diff --quiet origin/${{ github.base_ref || 'main' }} -- \
-                 supabase/security/anon_executable_definer_allowlist.txt 2>/dev/null; then
-            echo "A-SC-9 FAILED: the anon-definer allowlist was modified; #2117 requires zero added or removed lines."
-            git diff origin/${{ github.base_ref || 'main' }} -- supabase/security/anon_executable_definer_allowlist.txt
+          ALLOWLIST=supabase/security/anon_executable_definer_allowlist.txt
+          if [ -z "${BASE_SHA:-}" ]; then
+            BASE_SHA="$(git rev-parse HEAD^ 2>/dev/null || true)"
+          fi
+          if [ -z "${BASE_SHA:-}" ]; then
+            echo "A-SC-9 clause 1 FAILED: no base commit resolved, so the criterion could not be evaluated."
+            echo "A criterion that cannot be evaluated is not a criterion that passed."
             exit 1
           fi
-          echo "OK: allowlist file unmodified."
+          if ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+            echo "A-SC-9 clause 1 FAILED: base commit ${BASE_SHA} is not present in this checkout."
+            echo "fetch-depth: 0 is required for this step."
+            exit 1
+          fi
+          echo "Base commit: ${BASE_SHA}"
+          if ! git diff --quiet "${BASE_SHA}" -- "$ALLOWLIST"; then
+            echo "A-SC-9 clause 1 FAILED: the anon-definer allowlist was modified; #2117 requires zero added or removed lines."
+            git diff "${BASE_SHA}" -- "$ALLOWLIST"
+            exit 1
+          fi
+          echo "OK: allowlist file unmodified against ${BASE_SHA}."
 
   edge-typecheck:
     runs-on: ubuntu-latest

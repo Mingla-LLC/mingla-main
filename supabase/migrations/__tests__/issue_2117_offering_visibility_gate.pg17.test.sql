@@ -509,14 +509,204 @@ BEGIN
 END $asc8$;
 
 -- ---------------------------------------------------------------------
--- A-SC-9 (amends SC-9) -- the baseline is MEASURED IN THE SAME RUN, never
--- written down. SC-9's literal "189" reds a correct implementation and did
--- not reproduce at any point in this issue's history (the probe returns
--- 187 at origin/main f4d1df0a).
+-- A-SC-9 -- a SET DIFFERENCE, not a count (Amendment 3, approved at
+-- #issuecomment-5310929665; two recorded reasons corrected by Amendment 4
+-- at #issuecomment-5310959026).
 --
--- The forward assertion is the load-bearing one: ZERO unallowlisted
--- anon-executable definer functions, and the allowlist file gains ZERO
--- entries. Objects created by this migration must NOT appear in the probe.
+-- WHY A COUNT CANNOT WORK, AND WHY THIS IS NOT A THIRD ATTEMPT AT ONE.
+-- Three times on this issue's family a criterion has redded correct code,
+-- and every time it was the same criterion asserting a property of the
+-- WHOLE CATALOG as a SCALAR: first a hardcoded literal that drifted with
+-- unrelated merges; then a count that could not accommodate a grant
+-- correction the contract itself required; then a count and a
+-- warning-total that the ladder's own R-2 rung necessarily moves. The
+-- defect is not the numbers. A scalar summarising a whole catalog CANNOT
+-- DISTINGUISH A CONTRACTED CHANGE FROM AN UNCONTRACTED ONE, so it must
+-- either forbid all movement -- and red correct code the moment the
+-- contract legitimately moves it -- or permit movement by magnitude, and
+-- go green on any change of the same size. Both failure modes are
+-- guaranteed by the SHAPE of the assertion, and both were demonstrated on
+-- this issue by execution.
+--
+-- The general fix, adopted here: ASSERT OVER MEMBERSHIP, NOT MAGNITUDE,
+-- AND VALIDATE THE REFERENCE SET INDEPENDENTLY OF THE PARTY BEING CHECKED.
+--
+-- The forgery this replaces a count with: an unrelated allowlisted reader
+-- silently LOSING the governed audience's EXECUTE (an availability
+-- regression nobody enumerated) plus an allowlisted-but-unreachable object
+-- silently REGAINING it (a re-exposure, which also makes one pre-existing
+-- stale warning vanish). Those two cancel on both scalars -- probe
+-- 187 -> 184 and stale 5 -> 8, identical to a correct run -- and the
+-- forward gate still exits 0. The set form reds it three ways.
+--
+-- Clause 1 (zero allowlist lines added or removed) is UNCHANGED and still
+-- binding; it is enforced against the exact base commit by this issue's
+-- workflow, because it is a property of the FILE rather than the catalog.
+-- ---------------------------------------------------------------------
+
+-- The reference set for clause (b): the objects recorded at rung R-2 in the
+-- §8 step-0 evidence (#issuecomment-5310742144), which A-4.0 requires to be
+-- derived from the catalog and recorded on the issue BEFORE the migration
+-- is written.
+--
+-- CORRECTION 1 (Amendment 4) -- READ THIS BEFORE WEAKENING ANYTHING BELOW.
+-- It is NOT clause (c) that stops this list being widened to absorb an
+-- unexplained departure. That was the superseded reason and it is FALSE:
+-- a rogue departure's post-change access list is BYTE-IDENTICAL to a
+-- genuine R-2 narrowing -- owner and the privileged service role, neither
+-- governed-audience role -- and it is already allowlisted, so BOTH of (c)'s
+-- tests pass on it. Widening this list would green (b), (c) and (d)
+-- together.
+--
+-- The actual guard is CLAUSE (b) READ TOGETHER WITH A-4.0's CHANGE-SET
+-- CONSTRAINT: an object outside the change set has no step-0 rung evidence
+-- to widen, so this list is by construction a subset of a set fixed in
+-- advance and derived independently of the implementor. That makes the
+-- step-0 recording LOAD-BEARING rather than documentary -- it is the
+-- reference set of a merge-gating criterion. A set assertion whose
+-- reference list the implementor can edit is a scalar again, in better
+-- clothes.
+CREATE TABLE i2117t.recorded_r2(sig text primary key);
+INSERT INTO i2117t.recorded_r2(sig) VALUES
+  ('pg_recurrence_is_terminated(p_rule jsonb, p_event_id uuid, p_now timestamp with time zone)'),
+  ('biz_trip_sold_count_by_tier(p_event_id uuid)'),
+  ('resolve_event_pricing_inputs(p_event_id uuid)');
+
+-- Non-vacuity gate for the whole criterion: without a genuine BEFORE
+-- snapshot every set difference is vacuously satisfiable, so a skipped
+-- capture must be a LOUD failure and never a silent pass.
+DO $asc9_guard$
+DECLARE v int;
+BEGIN
+  IF to_regclass('i2117_asc9.probe_before') IS NULL THEN
+    RAISE EXCEPTION 'A-SC-9 CANNOT BE EVALUATED: the baseline snapshot i2117_asc9.probe_before is absent. Run supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql after the rest of the chain and BEFORE the #2117 migration. A criterion that cannot be evaluated is not a criterion that passed.';
+  END IF;
+  EXECUTE 'SELECT count(*) FROM i2117_asc9.probe_before' INTO v;
+  IF v = 0 THEN
+    RAISE EXCEPTION 'A-SC-9 CANNOT BE EVALUATED: the baseline probe snapshot is EMPTY, which would make every set difference vacuously green.';
+  END IF;
+END $asc9_guard$;
+
+DO $asc9_set$
+DECLARE
+  v_arrived    text[];
+  v_departed   text[];
+  v_recorded   text[];
+  v_stale_gone text[];
+  v_stale_new  text[];
+  v_badshape   text[];
+  v_unallow    text[];
+BEGIN
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_arrived
+  FROM (SELECT sig FROM i2117_asc9.probe_now EXCEPT SELECT sig FROM i2117_asc9.probe_before) x;
+
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_departed
+  FROM (SELECT sig FROM i2117_asc9.probe_before EXCEPT SELECT sig FROM i2117_asc9.probe_now) x;
+
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_recorded
+  FROM (SELECT sig FROM i2117t.recorded_r2) x;
+
+  -- (a) NOTHING ENTERS. Unconditional -- no allowance, no exceptions.
+  --     Revert mutation: grant EXECUTE on a gate form or a privileged
+  --     sibling to the governed audience. MUST RED.
+  PERFORM i2117t.assert('A-SC-9(a)','nothing enters the governed audience',
+    cardinality(v_arrived) = 0,
+    format('arrived=%s (must be empty)', v_arrived), 'DENY');
+
+  -- (b) WHAT LEAVES IS EXACTLY WHAT WAS CONTRACTED TO LEAVE -- the SET,
+  --     not its cardinality, compared against the step-0 R-2 record.
+  --     This is the clause that catches movement on objects NOBODY
+  --     enumerated, and it is the only clause that fires on A-SC-14's
+  --     mutation. Revert mutations: quietly restore the governed
+  --     audience's EXECUTE on an R-2 object (departed set short a member),
+  --     or narrow an object nobody recorded (departed set gains one).
+  --     MUST RED.
+  PERFORM i2117t.assert('A-SC-9(b)','departed set equals the recorded R-2 set exactly',
+    v_departed = v_recorded,
+    format('departed=%s recorded_R2=%s', v_departed, v_recorded), 'DENY');
+
+  -- (c) EVERY DEPARTURE IS SHAPE-VALID AGAINST THE LIVE CATALOG: it is
+  --     allowlisted, and its post-change access list grants EXECUTE to the
+  --     privileged service role and to NEITHER governed-audience role.
+  --
+  --     CORRECTION 1: this validates the SHAPE of a departure ONLY. It
+  --     catches a departure whose post-state is not a narrowing at all --
+  --     an object dropped, renamed, or stripped of the service role too.
+  --     It does NOT and CANNOT prove a departure was contracted, because
+  --     every deliberate narrowing produces this same shape. Do not lean
+  --     on it for anything else.
+  SELECT COALESCE(array_agg(d.sig ORDER BY d.sig), '{}') INTO v_badshape
+  FROM unnest(v_departed) AS d(sig)
+  WHERE NOT EXISTS (SELECT 1 FROM i2117_asc9.allowlist a WHERE a.sig = d.sig)
+     OR NOT EXISTS (
+          SELECT 1 FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+          WHERE n.nspname = 'public'
+            AND p.proname || '(' || pg_get_function_identity_arguments(p.oid) || ')' = d.sig
+            AND has_function_privilege('service_role', p.oid, 'EXECUTE')
+            AND NOT has_function_privilege('anon', p.oid, 'EXECUTE')
+            AND NOT has_function_privilege('authenticated', p.oid, 'EXECUTE'));
+  PERFORM i2117t.assert('A-SC-9(c)','every departure is shape-valid against the live catalog',
+    cardinality(v_badshape) = 0,
+    format('shape-invalid departures=%s (must be empty)', v_badshape), 'DENY');
+
+  -- (d) NO STALE WARNING MAY DISAPPEAR, and the stale warnings GAINED equal
+  --     exactly the DEPARTED set.
+  --
+  --     CORRECTION 2: (d) is REDUNDANT and is kept for defence in depth and
+  --     for a far clearer failure message than a bare set difference --
+  --     it is NOT an independent guarantee. d1 is strictly implied by (a)
+  --     under clause 1: a stale warning is an allowlist entry absent from
+  --     the probe, so with the allowlist unmodified
+  --     stale_before \ stale_after = allowlist INTERSECT arrived. d1
+  --     therefore fires only on an ALLOWLISTED arrival, while (a) fires on
+  --     ANY arrival -- (a) is strictly stronger in both directions. d2 is a
+  --     tautology given (c), which already requires every departed
+  --     signature to be allowlisted.
+  --
+  --     Implemented as the amendment PUBLISHES it -- gained stale compared
+  --     against the ACTUAL departed set, not against the recorded R-2 set.
+  --     Under the other reading d2 duplicates (b) and reds on A-SC-14's
+  --     mutation; Amendment 3's harness took that reading and it is what
+  --     produced a wrong table row. On A-SC-14's mutation the correct
+  --     measured result is (a) green, (b) RED, (c) green, (d) green,
+  --     (e) green -- only (b) fires.
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_stale_gone
+  FROM (SELECT sig FROM i2117_asc9.stale_before
+        EXCEPT
+        SELECT a.sig FROM i2117_asc9.allowlist a
+        WHERE a.sig NOT IN (SELECT sig FROM i2117_asc9.probe_now)) x;
+
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_stale_new
+  FROM (SELECT a.sig FROM i2117_asc9.allowlist a
+        WHERE a.sig NOT IN (SELECT sig FROM i2117_asc9.probe_now)
+        EXCEPT
+        SELECT sig FROM i2117_asc9.stale_before) x;
+
+  PERFORM i2117t.assert('A-SC-9(d)','no stale warning vanished; gained stale equals the departed set',
+    cardinality(v_stale_gone) = 0 AND v_stale_new = v_departed,
+    format('vanished=%s gained=%s departed=%s', v_stale_gone, v_stale_new, v_departed), 'DENY');
+
+  -- (e) THE SHIPPED FORWARD GATE STILL PASSES: zero anon-executable definer
+  --     functions outside the allowlist. The workflow additionally runs the
+  --     real shipped script, so this is asserted twice by two independent
+  --     implementations. Revert mutation: grant EXECUTE on a gate form to
+  --     the governed audience. MUST RED.
+  SELECT COALESCE(array_agg(sig ORDER BY sig), '{}') INTO v_unallow
+  FROM (SELECT sig FROM i2117_asc9.probe_now
+        EXCEPT SELECT sig FROM i2117_asc9.allowlist) x;
+  PERFORM i2117t.assert('A-SC-9(e)','forward gate: no unallowlisted anon-executable definer',
+    cardinality(v_unallow) = 0,
+    format('unallowlisted=%s (must be empty)', v_unallow), 'DENY');
+END $asc9_set$;
+
+-- ---------------------------------------------------------------------
+-- The implementor's three interim properties, RETAINED VERBATIM as
+-- additional required assertions (Amendment 3 §3, reaffirmed by
+-- Amendment 4). They are green on the forgery above -- each is scoped to
+-- objects already enumerated, and the departed-set clauses are what catch
+-- movement on objects nobody enumerated -- so they are ADDITIONS, never a
+-- replacement. They say something (a)-(e) do not: that the rung achieved
+-- its PURPOSE rather than merely moving the right names.
 -- Revert mutation: grant EXECUTE on either gate form, or on either
 -- privileged sibling, to anon. MUST RED.
 -- ---------------------------------------------------------------------
@@ -827,8 +1017,9 @@ BEGIN
   IF v_status < 4 THEN
     RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (clause 5): fixture set covers only % status values; the union of the change set''s declared status sets requires scheduled, live, ended and cancelled', v_status;
   END IF;
-  IF v_asserts < 14 THEN
-    RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (clause 4): only % assertions ran; every criterion must assert', v_asserts;
+  -- 18 criterion assertions + A-SC-9's five set clauses (a)-(e).
+  IF v_asserts < 23 THEN
+    RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (clause 4): only % assertions ran; every criterion must assert, including A-SC-9 clauses (a)-(e)', v_asserts;
   END IF;
   IF v_allow = 0 THEN
     RAISE EXCEPTION 'A-SC-10 NON-VACUITY FAILURE (clause 2): NO ALLOW outcome anywhere in the run -- a suite in which every case denies is a failing suite';
