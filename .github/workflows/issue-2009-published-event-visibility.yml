@@ -12,6 +12,7 @@ on:
       - "supabase/functions/discover-merged-events/index.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -33,6 +34,7 @@ on:
       - "supabase/functions/discover-merged-events/index.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
       - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
       - "mingla-business/src/services/businessEvents.ts"
@@ -110,6 +112,18 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2009_ari_visibility_rpc.pg17.test.sql
 
+      # TESTER-OWNED ADVERSARIAL SIBLING. Attacks the write guard's ENABLING
+      # conditions (its `OF visibility` column list and its `event_type='event'`
+      # scope) and the statement classes it never sees, rather than the shape a
+      # product client sends. Executed against real rows; no source-text
+      # assertion. See the TEST REPORT on issue #2009.
+      - name: "#2009 tester adversarial — guard scope and bypass"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_visibility_guard_bypass.tester_adversarial.pg17.test.sql
+
       # SC-9 / the shipped anon-definer gate must stay green with the allowlist
       # UNMODIFIED: no object #2009 creates is anon-executable.
       - name: Anonymous SECURITY DEFINER allowlist gate
@@ -172,6 +186,15 @@ jobs:
         run: |
           deno test --no-check --allow-env --allow-net --allow-read \
             supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts
+      # TESTER-OWNED ADVERSARIAL SIBLING. Counts BUILDS, not generation reads:
+      # `cacheKey` is the single namespace for L1, the L2 cache, the single-flight
+      # map and the cross-isolate build lock, so what the fail-closed branch costs
+      # ORCH-426's coalescing is only visible by executing a concurrent herd.
+      # Also pins the ceiling as absolute rather than sliding.
+      - name: "#2009 tester adversarial — fail-closed coalescing and the ceiling"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts
       - name: "#2009 no regression to the pre-existing discover cache-key contracts"
         run: |
           deno test --no-check --allow-env \
