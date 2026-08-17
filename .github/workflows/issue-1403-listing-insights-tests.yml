@@ -172,7 +172,43 @@ jobs:
             src/hooks/useListingInsights.ts \
             src/hooks/useVenueReservationMetrics.ts \
             src/analytics/businessAnalyticsEvents.ts
-      - name: Full Business Jest
-        run: npx jest --runInBand
-      - name: Expo web export
-        run: npx expo export -p web --output-dir /tmp/issue-1403-web
+      # ======================================================================
+      # #2148 [ci-runtime] — two steps REMOVED here, deliberately. Neither was
+      # dropped for speed alone: each duplicated a workflow that already runs on
+      # EVERY pull request, so this job was the slowest in CI (11.4 min, and the
+      # only thing standing between a 13.2-min CI and an 8.7-min one) while
+      # adding no coverage the repo did not already have.
+      #
+      # 1. `Full Business Jest` (`npx jest --runInBand`, MEASURED 434 s).
+      #    Superseded by `mingla-business-jest-suite.yml`, which is a REQUIRED
+      #    status check (ruleset 19583754, "mingla-business jest (full suite)"),
+      #    runs on every PR to main with NO paths filter, and executes the same
+      #    file set: both resolve `mingla-business/jest.config.cjs` (this step
+      #    passed no `--config`; that workflow runs `npm test` = `jest --ci`), so
+      #    testMatch and testPathIgnorePatterns are identical. That workflow is
+      #    also STRICTER — `--ci` fails on unwritten snapshots, which this step
+      #    did not. It runs the suite in 179 s; `--runInBand` made this copy 2.4x
+      #    slower for the same assertions.
+      #
+      #    On the lost `--runInBand` signal: serial ordering is not a gate any
+      #    test here depends on. Both orderings are green today, and the files
+      #    that ARE order-sensitive are handled explicitly and by name in the
+      #    required workflow's "#1487 deterministic venue-first worker
+      #    restoration" step, which pins its own sequencer. If a future test
+      #    needs serial execution, it belongs in that step, not in a blanket
+      #    second run of the whole suite from an unrelated issue's workflow.
+      #
+      # 2. `Expo web export` (MEASURED 69 s). Superseded by `web-build-check.yml`
+      #    ("mingla-business: web build (expo export)"), which runs the same
+      #    export on every PR to main with no paths filter and then does strictly
+      #    MORE with the output: the ORCH-1083 initial-bundle budget guard and
+      #    the ORCH-1137 lucide real-glyph render-proof. Both this job and that
+      #    one are advisory, so deleting this copy removes nothing from the
+      #    required-gate surface.
+      #
+      # What REMAINS in this job is what is actually about #1403: the pure
+      # contracts, the native and web render contracts, the wiring gates, and
+      # the typecheck delta. Those totalled 24 s of the 686 s this job used to
+      # take. See issue #2148 for the full per-step measurement and for Stages 2
+      # and 3 (the Postgres container consolidation and the per-issue batch).
+      # ======================================================================
