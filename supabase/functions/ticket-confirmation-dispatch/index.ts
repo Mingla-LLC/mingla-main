@@ -646,13 +646,42 @@ async function handleWaitlistNotificationDispatch(
       ? err.nextAttemptAt
       : null;
     if (deferredUntil !== null) {
-      await supabase.from("ticket_order_notifications").update({
-        status: "deferred",
-        last_error: err instanceof Error ? err.message : String(err),
-        next_attempt_at: deferredUntil,
-        attempt_count: Number(notification.attempt_count ?? 0),
-        updated_at: new Date().toISOString(),
-      }).eq("id", notification.id);
+      const { error: deferErr } = await supabase
+        .from("ticket_order_notifications").update({
+          status: "deferred",
+          last_error: err instanceof Error ? err.message : String(err),
+          next_attempt_at: deferredUntil,
+          attempt_count: Number(notification.attempt_count ?? 0),
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+      if (deferErr !== null) {
+        // Same deploy-order safety net as the per-order loop — see the essay
+        // there. A rejected `deferred` write strands the row at `sending`,
+        // which no sweeper selects.
+        console.error(
+          JSON.stringify({
+            event: "ticket_notification_defer_write_rejected",
+            notificationId: notification.id,
+            detail: deferErr.message,
+            note:
+              "#2218 apply migration 20270421002218 before deploying this function",
+          }),
+        );
+        await supabase.from("ticket_order_notifications").update({
+          status: "failed_retryable",
+          last_error: err instanceof Error ? err.message : String(err),
+          attempt_count: Number(notification.attempt_count ?? 0),
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+        return jsonResponse({
+          notificationId,
+          outcomes: [{
+            channel: notification.channel,
+            status: "failed_retryable",
+            templateKey: "waitlist_spot_open",
+          }],
+        });
+      }
       return jsonResponse({
         notificationId,
         outcomes: [{
@@ -1834,16 +1863,49 @@ export const handler = async (req: Request): Promise<Response> => {
         ? err.nextAttemptAt
         : null;
       if (deferredUntil !== null) {
-        await supabase.from("ticket_order_notifications").update({
-          status: "deferred",
-          last_error: err instanceof Error ? err.message : String(err),
-          next_attempt_at: deferredUntil,
-          // The claim above optimistically stamped `attempt_count + 1`. Give it
-          // back: no attempt was made. Left in place, twelve hours of embargo
-          // would burn the whole ladder without one provider call.
-          attempt_count: Number(notification.attempt_count ?? 0),
-          updated_at: new Date().toISOString(),
-        }).eq("id", notification.id);
+        const { error: deferErr } = await supabase
+          .from("ticket_order_notifications").update({
+            status: "deferred",
+            last_error: err instanceof Error ? err.message : String(err),
+            next_attempt_at: deferredUntil,
+            // The claim above optimistically stamped `attempt_count + 1`. Give
+            // it back: no attempt was made. Left in place, twelve hours of
+            // embargo would burn the whole ladder without one provider call.
+            attempt_count: Number(notification.attempt_count ?? 0),
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+        if (deferErr !== null) {
+          // DEPLOY-ORDER SAFETY NET, and it is not hypothetical. `deferred` is
+          // only a legal status once migration 20270421002218 has widened the
+          // CHECK. If the function ships ahead of the migration, PostgREST
+          // returns the violation in `error` rather than throwing — the update
+          // is a silent no-op and the row is stranded at `sending`, which NO
+          // sweeper selects. That is a worse outcome than the bug being fixed:
+          // a confirmation lost forever rather than merely late. Fall back to
+          // the vocabulary that has always existed, so the message is still
+          // owed and still retried.
+          console.error(
+            JSON.stringify({
+              event: "ticket_notification_defer_write_rejected",
+              notificationId: notification.id,
+              detail: deferErr.message,
+              note:
+                "#2218 apply migration 20270421002218 before deploying this function",
+            }),
+          );
+          await supabase.from("ticket_order_notifications").update({
+            status: "failed_retryable",
+            last_error: err instanceof Error ? err.message : String(err),
+            attempt_count: Number(notification.attempt_count ?? 0),
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+          outcomes.push({
+            channel: notification.channel,
+            status: "failed_retryable",
+            templateKey,
+          });
+          continue;
+        }
         outcomes.push({
           channel: notification.channel,
           status: "deferred",
