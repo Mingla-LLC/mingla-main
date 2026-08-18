@@ -177,3 +177,35 @@ Deno.test("#2218 T-1e: the next opening rolls a month and a year correctly", () 
     "2026-09-01T07:00:00.000Z",
   );
 });
+
+// ===========================================================================
+// #2218 T-3h — THE WINDOW IS NIGERIAN; THE GUARD IS KEYED ON THE PROVIDER.
+// ===========================================================================
+// smsAdapter applies the embargo when `selectedProvider === "termii"` rather
+// than running a second country test, because #1537's standing rule is that a
+// second, independent country→behaviour derivation re-creates the split-brain
+// it removed. That reuse is EXACT only while Termii carries exactly one
+// country, and the hours here are Nigeria's.
+//
+// So the one-country mapping is pinned. Give Termii a second country and this
+// goes red, which is the moment someone must decide whether that country's
+// operators keep the same hours — instead of silently inheriting Lagos's.
+import { smsProviderForCountry } from "./adapters/smsAdapter.ts";
+
+Deno.test("#2218 T-3h: Termii carries NG and nothing else", () => {
+  assertEquals(smsProviderForCountry("NG"), "termii");
+  assertEquals(smsProviderForCountry("ng"), "termii", "case-insensitive");
+  for (
+    const cc of [
+      "US", "GB", "GH", "KE", "ZA", "CA", "FR", "BE", "AE", "QA", "IN", "BR",
+    ]
+  ) {
+    assertEquals(
+      smsProviderForCountry(cc),
+      "twilio",
+      `${cc} must not route to Termii — the embargo window in this module is ` +
+        `Nigeria's, and a second Termii country would inherit Lagos's hours ` +
+        `without anyone choosing that`,
+    );
+  }
+});

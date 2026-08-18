@@ -611,6 +611,16 @@ export const smsAdapter = {
     //
     // This is a HOLD, not a drop: `retryAfter` is the next 08:00 WAT and the
     // callers re-attempt there, so the buyer's text arrives.
+    // KEYED ON THE PROVIDER, NOT ON A SECOND COUNTRY TEST — deliberately.
+    // #1537's rule is that a second, independent country→behaviour derivation
+    // re-creates the split-brain it removed, so this reuses `selectedProvider`,
+    // the same value that picks the sender and labels the ledger. That is exact
+    // today because `smsProviderForCountry` maps ONLY NG to Termii, so
+    // "the Termii route" and "the Nigerian market" are the same predicate. The
+    // WINDOW, however, is Nigerian. If Termii is ever given a second country,
+    // this must become per-market — and it will not slip by: T-3h in
+    // ngSmsEmbargo.issue2218.test.ts asserts the one-country mapping and goes
+    // red the moment it widens.
     if (selectedProvider === "termii") {
       const now = input.now ?? ngEmbargoNow();
       if (isNgGenericEmbargoed(now)) {
