@@ -29,6 +29,16 @@ on:
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
+      # Issue #2218 — the Nigerian operator-embargo defer + the delivery-truth
+      # sweep. Listed EXPLICITLY, not left to ride on `_shared/**`: a later
+      # change touching only one of these directories must still run the #2218
+      # suites, or they go dark exactly the way this repo keeps finding
+      # (`waitlist-spot-open.adversarial.test.ts` is registered in no workflow
+      # and has been failing on main since #1541 deleted what it asserts).
+      - "supabase/functions/sms-delivery-reconcile/**"
+      - "supabase/functions/notification-retry-sweeper/**"
+      - "supabase/functions/termii-delivery-status/**"
+      - "supabase/functions/ticket-confirmation-dispatch/**"
       # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
       - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
@@ -110,6 +120,16 @@ on:
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
+      # Issue #2218 — the Nigerian operator-embargo defer + the delivery-truth
+      # sweep. Listed EXPLICITLY, not left to ride on `_shared/**`: a later
+      # change touching only one of these directories must still run the #2218
+      # suites, or they go dark exactly the way this repo keeps finding
+      # (`waitlist-spot-open.adversarial.test.ts` is registered in no workflow
+      # and has been failing on main since #1541 deleted what it asserts).
+      - "supabase/functions/sms-delivery-reconcile/**"
+      - "supabase/functions/notification-retry-sweeper/**"
+      - "supabase/functions/termii-delivery-status/**"
+      - "supabase/functions/ticket-confirmation-dispatch/**"
       # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
       - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
@@ -233,6 +253,20 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f"
             echo "::endgroup::"
           done
+          # Issue #2218 — a Nigerian buyer's confirmation was recorded `sent` and
+          # never delivered. The schema half of the fix is `deferred` (a message
+          # HELD because Nigerian operators refuse Termii's `generic` route
+          # 20:00-08:00 WAT) plus `next_attempt_at`. If the CHECK does not admit
+          # `deferred`, the edge function's honest new outcome becomes a runtime
+          # constraint violation on a money path — a THROWN dispatch, not a
+          # deferred text — so the constraint and the code must ship together and
+          # this is what makes "together" checkable. G-1/G-2 EXECUTE the write
+          # rather than grepping the constraint text, and G-2 pins that the
+          # vocabulary did not become open. F-1/F-2 pin that the reconciliation
+          # sweep is actually scheduled: #2168 found a permission with no caller,
+          # and a truth-check with no cron entry is the same shape.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2218_ng_sms_embargo_and_delivery_truth.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -933,6 +967,53 @@ jobs:
             # A dark parity test is how a mirror drifts in silence — the exact
             # mechanism #1556 exists to close.
             supabase/functions/__tests__/orch_1289_stop_footer_wire_preview_parity.tester.test.ts
+            # Issue #2218 — A NIGERIAN BUYER'S CONFIRMATION NEVER ARRIVED AND WE
+            # RECORDED IT AS `sent`. Nigerian operators refuse Termii's `generic`
+            # route 20:00-08:00 WAT (https://developers.termii.com/campaign) and
+            # every NG send rides `generic` because `dnd` 400s "Country Inactive"
+            # (#1518, pending #1480). At 06:10 WAT the adapter handed the message
+            # to a route that cannot carry it, Termii accepted it, and nothing
+            # ever revisited the row. These four suites are the regression proof:
+            #   - ngSmsEmbargo:  the WRAPPED window (a vacuous `>= 20 && < 8` is
+            #     false at every hour of the day), the next-opening arithmetic,
+            #     and the `sig_`-vs-numeric accept-id predicate pinned to the two
+            #     ids production actually returned.
+            #   - smsAdapter:    the exact production instant DEFERS with ZERO
+            #     provider HTTP; the same call SENDS at 09:00 WAT on `generic`;
+            #     a US handset is untouched at 03:00 WAT; the kill switch still
+            #     wins over the hold.
+            #   - retry sweeper: a hold wakes on `next_attempt_at`, NOT on the
+            #     ~6-minute ORCH-0788 ladder that would exhaust the attempt cap
+            #     before dawn.
+            #   - termii webhook: it reconciles `ticket_order_notifications` too,
+            #     the parity with twilio-message-status whose absence made a
+            #     Nigerian `delivered_at` structurally unreachable.
+            supabase/functions/_shared/ngSmsEmbargo.issue2218.test.ts
+            supabase/functions/_shared/adapters/smsAdapter.issue2218.test.ts
+            supabase/functions/notification-retry-sweeper/issue2218.deferred.test.ts
+            supabase/functions/termii-delivery-status/issue2218.ticket_ledger_parity.test.ts
+            # Issue #2218 — `sent` stops being a resting state: the deadline
+            # arithmetic, the "Message Sent is NOT a delivery" rule, the two
+            # distinct terminal reasons (unreconcilable id vs unconfirmed
+            # delivery), and string-not-number id matching for a 25-digit
+            # message id that does not survive float64.
+            supabase/functions/sms-delivery-reconcile/issue2218.reconcile.test.ts
+            # Issue #2218 — the reconciler's WIRING contract (its loop lives behind a
+            # module-scope serve() and cannot be imported): service-role-only auth,
+            # the four row-selection predicates on BOTH ledgers, a terminal verdict
+            # written to both tables WITH a reason, the ops alarm firing once per day
+            # and only when there is something to say, and askTermiiHistory failing
+            # to `pending` on every error path rather than guessing a delivery.
+            supabase/functions/sms-delivery-reconcile/issue2218.wiring.test.ts
+            # Issue #2218 — the dispatcher's deferral CONTRACT. ticket-confirmation-
+            # dispatch calls serve() at module scope so nothing in it can be
+            # imported; these are source-introspection assertions in the style its
+            # neighbouring waitlist suite already uses, pinning the branches whose
+            # deletion silently restores the defect: both SMS call sites raising a
+            # deferral, both catch clauses writing `deferred` + next_attempt_at
+            # WITHOUT spending an attempt, the row-selection query including
+            # `deferred`, and the order rollup refusing to call a held leg `sent`.
+            supabase/functions/ticket-confirmation-dispatch/__tests__/issue2218_deferred_contract.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

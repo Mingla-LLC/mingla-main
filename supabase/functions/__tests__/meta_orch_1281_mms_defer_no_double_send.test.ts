@@ -47,6 +47,19 @@ import {
 } from "../marketing-send/index.ts";
 import { smsAdapter } from "../_shared/adapters/smsAdapter.ts";
 
+// ===========================================================================
+// #2218 — PIN THE CLOCK. ADDITIVE; NO ASSERTION BELOW IS CHANGED OR REMOVED.
+// ===========================================================================
+// Since #2218 the adapter DEFERS a Nigerian send between 20:00 and 08:00 WAT,
+// because Nigerian operators do not carry Termii's `generic` route then
+// (https://developers.termii.com/campaign). Any assertion here about what a
+// +234 send does at the provider was therefore also, silently, an assertion
+// about the hour CI happens to run. Pinning to 12:00 WAT makes it mean what it
+// was written to mean.
+import { __pinNgClockInsideWindow } from "../_shared/ngSmsEmbargo.ts";
+__pinNgClockInsideWindow();
+
+
 const t = (name: string, fn: () => void | Promise<void>) =>
   Deno.test({ name, sanitizeResources: false, sanitizeOps: false, fn });
 

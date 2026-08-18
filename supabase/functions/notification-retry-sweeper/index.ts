@@ -40,38 +40,12 @@ import {
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
 
-interface RetryableRow {
-  id: string;
-  order_id: string | null;
-  status: string;
-  attempt_count: number | null;
-  updated_at: string;
-  created_at: string;
-  payload: Record<string, unknown> | null;
-}
-
-const BATCH_LIMIT = 50;
-const BACKOFF_BASE_SECONDS = 60;
-const MAX_ATTEMPTS = 3;
-const ORPHAN_PENDING_SECONDS = 300; // 5 min — see file header for rationale.
-
-function isEligible(row: RetryableRow, nowMs: number): boolean {
-  if (row.status === "pending") {
-    // Orphan-pending path: inline-dispatch should have fired sub-second
-    // after enqueue. Anything pending for >5 min means inline-dispatch
-    // silently failed before flipping the row.
-    const createdMs = new Date(row.created_at).getTime();
-    if (Number.isNaN(createdMs)) return false;
-    return nowMs - createdMs >= ORPHAN_PENDING_SECONDS * 1000;
-  }
-  if (row.status !== "failed_retryable") return false;
-  const attempts = Number(row.attempt_count ?? 0);
-  if (attempts >= MAX_ATTEMPTS) return false;
-  const backoffMs = Math.pow(2, attempts) * BACKOFF_BASE_SECONDS * 1000;
-  const updatedMs = new Date(row.updated_at).getTime();
-  if (Number.isNaN(updatedMs)) return false;
-  return nowMs - updatedMs >= backoffMs;
-}
+import {
+  BATCH_LIMIT,
+  isEligible,
+  MAX_ATTEMPTS,
+  type RetryableRow,
+} from "./logic.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -92,9 +66,11 @@ serve(async (req) => {
   const { data: rows, error: queryError } = await supabase
     .from("ticket_order_notifications")
     .select(
-      "id, order_id, status, attempt_count, updated_at, created_at, payload",
+      "id, order_id, status, attempt_count, updated_at, created_at, next_attempt_at, payload",
     )
-    .in("status", ["failed_retryable", "pending"])
+    // #2218 — `deferred` joins the sweep. Without it the status is a dead end:
+    // nothing else in the system ever re-offers a held message.
+    .in("status", ["failed_retryable", "pending", "deferred"])
     .lt("attempt_count", MAX_ATTEMPTS)
     .order("updated_at", { ascending: true })
     .limit(BATCH_LIMIT);

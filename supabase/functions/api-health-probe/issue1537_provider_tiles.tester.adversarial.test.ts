@@ -330,7 +330,14 @@ Deno.test("#1537 R-4: a dark market reports `unknown` with its skips preserved, 
   assertEquals([...DELIVERY_FAIL_STATUSES].sort(), ["failed", "undelivered"]);
   assertEquals(
     [...DELIVERY_NON_ATTEMPT_STATUSES].sort(),
-    ["skipped", "suppressed"],
+    // #2218 [TEST-MOD-APPROVED #2218] — WIDENED, CONSCIOUSLY, WHICH IS WHAT
+    // THIS PIN EXISTS TO FORCE. `deferred` is the third status under which NO
+    // PROVIDER I/O HAPPENED: the Nigerian 20:00-08:00 WAT `generic` operator
+    // embargo returns before any HTTP, exactly as the kill switch does. Left
+    // out, a Nigerian night of held messages would tally as clean successes and
+    // paint the termii tile HEALTHY while not one text reached a network —
+    // this test's own founding bug, one status later.
+    ["deferred", "skipped", "suppressed"],
   );
   // The two sets must never overlap, or a row would be both an attempt-failure
   // and a non-attempt.

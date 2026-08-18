@@ -289,10 +289,15 @@ export const handler = async (req: Request): Promise<Response> => {
     // The success/HTTP contract is unchanged, so no consumer breaks —
     // app-mobile/src/services/phoneInviteService.ts reads `inviteId`, not
     // `status`.
+    // #2218 — `deferred` reports as itself. Collapsing it into `send_failed`
+    // would repeat the #1541 defect in the opposite direction: claiming a fault
+    // where the network simply is not carrying this class of traffic yet.
     const reportedStatus = result.status === "sent"
       ? "sent"
       : result.status === "skipped"
       ? "skipped"
+      : result.status === "deferred"
+      ? "deferred"
       : "send_failed";
 
     return new Response(
