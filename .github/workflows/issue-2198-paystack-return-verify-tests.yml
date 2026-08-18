@@ -129,7 +129,7 @@ jobs:
         working-directory: mingla-business
         run: >-
           npx jest --runInBand
-          "issue_2198_paystack_return_confirm"
+          "issue_2198_paystack_return_confirm.test.tsx"
 
       # #2188 shipped the OUTBOUND leg (provider hand-off, cart-fingerprint
       # hold, invoke enrichment, the error mapper) and #2160 added the day set
@@ -139,7 +139,7 @@ jobs:
         working-directory: mingla-business
         run: >-
           npx jest --runInBand
-          "issue_2188_paid_checkout_provider_handoff"
-          "issue_2160_multiday_provider_handoff"
+          "issue_2188_paid_checkout_provider_handoff.test.tsx"
+          "issue_2160_multiday_provider_handoff.test.tsx"
           src/services/__tests__/ticketCheckoutService.test.ts
           src/services/__tests__/ticketCheckoutService.orch0915.test.ts
