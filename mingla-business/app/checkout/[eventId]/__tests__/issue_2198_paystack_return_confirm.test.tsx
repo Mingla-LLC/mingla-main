@@ -149,7 +149,11 @@ jest.mock("../../../../src/components/ui/Button", () => {
   const { Pressable } = require("react-native");
   return {
     Button: (props: { label: string; onPress?: () => void }) => (
-      <Pressable testID={`btn-${props.label}`} onPress={props.onPress} />
+      <Pressable
+        testID={`btn-${props.label}`}
+        accessibilityLabel={props.label}
+        onPress={props.onPress}
+      />
     ),
   };
 });
