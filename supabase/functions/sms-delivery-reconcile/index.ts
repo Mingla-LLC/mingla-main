@@ -166,6 +166,79 @@ serve(async (req) => {
   }
 
   // =========================================================================
+  // #2218 — THE SHARED LEDGER IS SWEPT TOO, NOT ONLY THE TICKET ONE.
+  // =========================================================================
+  // `ticket_order_notifications` carries buyer confirmations;
+  // `notification_deliveries` carries everything notifyV2 sends — RSVP, source
+  // refunds, guest notifications. They are different tables, not different
+  // views of one, and the ticket dispatcher writes only the first. Sweeping
+  // just that one would leave half the SMS in the product able to rest at
+  // `sent` forever, which is the same defect with a smaller blast radius —
+  // exactly the kind of half-fix that gets rediscovered.
+  //
+  // Termii rows here have NEVER reached `delivered`: over the observation
+  // window `termii-delivery-status` was invoked ZERO times while
+  // `twilio-message-status` was invoked repeatedly, so the Nigerian delivery
+  // report is not arriving at all. That is why this asks rather than waits.
+  const { data: ledgerRows, error: ledgerErr } = await supabase
+    .from("notification_deliveries")
+    .select("id, provider, provider_message_id, attempt_at")
+    .eq("channel", "sms")
+    .eq("status", "sent")
+    .is("delivered_at", null)
+    .lt("attempt_at", deadlineIso)
+    .order("attempt_at", { ascending: true })
+    .limit(BATCH_LIMIT);
+  if (ledgerErr) {
+    console.warn(
+      "[sms-delivery-reconcile] notification_deliveries scan note:",
+      ledgerErr.message,
+    );
+  }
+  let ledgerConfirmed = 0;
+  let ledgerTerminal = 0;
+  for (
+    const row of (ledgerRows ?? []) as Array<
+      { id: string; provider: string | null; provider_message_id: string | null }
+    >
+  ) {
+    const messageId = row.provider_message_id?.trim() ?? "";
+    const askable = row.provider === "termii" &&
+      isReconcilableTermiiMessageId(messageId);
+    let verdict: ReconcileVerdict = { kind: "pending" };
+    if (askable) verdict = await askTermiiHistory(messageId);
+    if (verdict.kind === "pending") {
+      verdict = deadlineVerdict(
+        { id: row.id, provider: row.provider, provider_message_id: messageId, sent_at: null },
+        askable,
+      );
+    }
+    const nowIso = now.toISOString();
+    if (verdict.kind === "delivered") {
+      await supabase.from("notification_deliveries").update({
+        status: "delivered",
+        delivered_at: nowIso,
+      }).eq("id", row.id);
+      ledgerConfirmed += 1;
+      continue;
+    }
+    const reason = verdict.kind === "unreconcilable" || verdict.kind === "failed"
+      ? verdict.reason
+      : "delivery_unconfirmed";
+    await supabase.from("notification_deliveries").update({
+      status: "undelivered",
+      failed_reason: reason,
+    }).eq("id", row.id);
+    ledgerTerminal += 1;
+    if (
+      verdict.kind === "unreconcilable" && unreconcilableSamples.length < 5 &&
+      messageId.length > 0
+    ) {
+      unreconcilableSamples.push(messageId);
+    }
+  }
+
+  // =========================================================================
   // #2218 — AND A HUMAN IS TOLD.
   // =========================================================================
   // The acceptance bar is not "the row is correct", it is "a delivery failure
@@ -174,7 +247,7 @@ serve(async (req) => {
   // ops-email path payout-release-sweep uses for its alarms, keyed per day and
   // per shape so a bad night produces one message rather than a hundred, and
   // NOTHING at all on a clean sweep.
-  const surfaced = failedOut + unreconcilable;
+  const surfaced = failedOut + unreconcilable + ledgerTerminal;
   if (surfaced > 0) {
     const dayKey = now.toISOString().slice(0, 10);
     try {
@@ -187,7 +260,7 @@ serve(async (req) => {
           `never confirmed delivered within ${
             Math.round(DELIVERY_CONFIRMATION_DEADLINE_MS / 60000)
           } minutes. ` +
-          `${failedOut} had no delivery confirmation; ${unreconcilable} carried a ` +
+          `${failedOut + ledgerTerminal} had no delivery confirmation; ${unreconcilable} carried a ` +
           `provider message id our reconciliation cannot look up` +
           (unreconcilableSamples.length > 0
             ? ` (e.g. ${unreconcilableSamples.join(", ")})`
@@ -219,6 +292,9 @@ serve(async (req) => {
     failed: failedOut,
     unreconcilable,
     still_pending: stillPending,
+    ledger_scanned: (ledgerRows ?? []).length,
+    ledger_confirmed: ledgerConfirmed,
+    ledger_terminal: ledgerTerminal,
     swept_at: now.toISOString(),
   });
 });
