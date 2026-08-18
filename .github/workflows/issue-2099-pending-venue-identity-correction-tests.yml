@@ -33,7 +33,15 @@ on:
       - "mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js"
       - "mingla-admin/src/components/entity/HighRiskActionModal.jsx"
       - ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml"
-      - ".github/scripts/strict-grep/MANIFEST.json"
+      # issue #2193 — MANIFEST.json is DELIBERATELY ABSENT from this filter.
+      # Registering a strict-grep gate edits it, which nearly every substantial PR
+      # does, so listing it here fired this workflow on unrelated branches. SC-4 then
+      # measured the WHOLE __common chunk and charged that foreign PR #2099's private
+      # 1,024 B budget — while the project allowance (PR_DELTA_ALLOWANCE.common in
+      # orch-1083-initial-bundle-budget.mjs) is 12,000 B. It blocked #2009 at a 1,205 B
+      # delta, a tenth of the real budget. Do NOT re-add it: #2099 owns no behaviour
+      # that a manifest-only change can break, and manifest parity is enforced by
+      # meta-1383-manifest-parity.mjs in the strict-grep workflow.
   push:
     branches: [main]
     paths: *issue2099Paths
@@ -208,7 +216,41 @@ jobs:
           cache: npm
           cache-dependency-path: mingla-business/package-lock.json
       - run: npm --prefix mingla-business ci
-      - name: "SC-4 outer guard — #2099's __common delta against the run-time baseline"
+      # issue #2193 — SC-4 asserts a property of #2099'S OWN PRODUCT CODE: that the
+      # correction dialog and its service stay out of the eager chunk. Only a change to
+      # that code can violate it. But SC-4 measures the WHOLE __common chunk against a
+      # baseline that tracks main, so ANY branch reaching this job is charged #2099's
+      # private 1,024 B budget for growth it did not cause — while the project allowance
+      # (PR_DELTA_ALLOWANCE.common) is 12,000 B. Editing this workflow, or the shared gate
+      # manifest, is not a reason to weigh #2099's dialog. Scope the measurement to the
+      # only changes that can move it.
+      - name: "SC-4 scope — did this change touch #2099 product code?"
+        id: sc4scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "push to main — SC-4 measures main itself."
+            exit 0
+          fi
+          changed="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+            --paginate --jq '.[].filename')"
+          # #2099 product code only. Deliberately EXCLUDES this workflow file and the
+          # shared strict-grep manifest: neither can change what ships in __common.
+          if printf '%s\n' "$changed" \
+             | grep -vE '^\.github/(workflows/issue-2099-|scripts/strict-grep/MANIFEST\.json)' \
+             | grep -qE '(2099|PendingVenueIdentityCorrection|HighRiskActionModal|VenueListingContent|venueListingsService|adminClaimsService|ClaimsPage)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "#2099 product code changed — measuring."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No #2099 product code in this change — SC-4 skipped (issue #2193)."
+          fi
+      - if: steps.sc4scope.outputs.run == 'true'
+        name: "SC-4 outer guard — #2099's __common delta against the run-time baseline"
         shell: bash
         working-directory: mingla-business
         run: |

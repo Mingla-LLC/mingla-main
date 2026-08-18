@@ -8285,6 +8285,20 @@
       ],
       "selfTest": "none",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2009-published-event-visibility.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2009-published-event-visibility"
+      ]
     }
   ]
 }
