@@ -29,6 +29,16 @@ on:
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
+      # Issue #2218 — the Nigerian operator-embargo defer + the delivery-truth
+      # sweep. Listed EXPLICITLY, not left to ride on `_shared/**`: a later
+      # change touching only one of these directories must still run the #2218
+      # suites, or they go dark exactly the way this repo keeps finding
+      # (`waitlist-spot-open.adversarial.test.ts` is registered in no workflow
+      # and has been failing on main since #1541 deleted what it asserts).
+      - "supabase/functions/sms-delivery-reconcile/**"
+      - "supabase/functions/notification-retry-sweeper/**"
+      - "supabase/functions/termii-delivery-status/**"
+      - "supabase/functions/ticket-confirmation-dispatch/**"
       # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
       - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
@@ -110,6 +120,16 @@ on:
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
+      # Issue #2218 — the Nigerian operator-embargo defer + the delivery-truth
+      # sweep. Listed EXPLICITLY, not left to ride on `_shared/**`: a later
+      # change touching only one of these directories must still run the #2218
+      # suites, or they go dark exactly the way this repo keeps finding
+      # (`waitlist-spot-open.adversarial.test.ts` is registered in no workflow
+      # and has been failing on main since #1541 deleted what it asserts).
+      - "supabase/functions/sms-delivery-reconcile/**"
+      - "supabase/functions/notification-retry-sweeper/**"
+      - "supabase/functions/termii-delivery-status/**"
+      - "supabase/functions/ticket-confirmation-dispatch/**"
       # ISSUE-1387 — Stay inventory management endpoint and hermetic contract test.
       - "supabase/functions/manage-stay-inventory/**"
       # ORCH-1270 — marketing-send edge fn + its strict-grep gates.
