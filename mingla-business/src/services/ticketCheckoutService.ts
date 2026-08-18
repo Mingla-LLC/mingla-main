@@ -98,9 +98,36 @@ export interface TicketCheckoutFreeCompleted {
   notificationStatus: OrderResult["notificationStatus"];
 }
 
+/**
+ * issue #2188 [paid-checkout-redirect] — the Paystack arm of
+ * `ticket-checkout-create` (supabase/functions/ticket-checkout-create/index.ts
+ * :1225-1236). It has existed since META-ORCH-1076 and every OTHER buyer
+ * surface consumes it (PublicEventPage chip-in, stay, venue reservation, the
+ * order pad, both native checkout flows) — but it was never added to THIS
+ * union, so the event-checkout payment screen could not see it and treated a
+ * perfectly good Paystack hand-off as a failure.
+ *
+ * The redirect field is `authorizationUrl`, NOT Stripe's `hostedCheckoutUrl`.
+ * Nothing outside `ticketCheckoutProviderHandoff` below may branch on which
+ * one is present (Constitution #2 — one owner per truth).
+ */
+export interface TicketCheckoutRequiresPaystackRedirect {
+  kind: "requires_paystack_redirect";
+  checkoutSessionId: string;
+  buyerStatusToken: string;
+  /** Paystack's hosted payment page. The guest MUST be sent here. */
+  authorizationUrl: string;
+  /** Where Paystack returns the guest (…/confirm?cs=paystack&csi=…&bst=…). */
+  returnUrl: string;
+  reference: string;
+  totalCents: number;
+  currency: string;
+}
+
 export type TicketCheckoutCreateResult =
   | TicketCheckoutRequiresPayment
   | TicketCheckoutRequiresWebRedirect
+  | TicketCheckoutRequiresPaystackRedirect
   | TicketCheckoutFreeCompleted;
 
 export interface TicketCheckoutStatusResult {
@@ -237,6 +264,115 @@ export const isCompletedFreeOrder = (
   Array.isArray(result.tickets) &&
   result.tickets.length > 0;
 
+/**
+ * issue #2188 [paid-checkout-redirect] — THE hand-off resolver.
+ *
+ * The server answers a paid create with a redirect the guest must follow. WHICH
+ * FIELD carries that redirect depends on the brand's provider: Stripe brands
+ * send `hostedCheckoutUrl`, Nigerian (Paystack) brands send `authorizationUrl`.
+ * This function is the ONLY place in the client allowed to know that. Callers
+ * ask "where do I send the guest?" and get one answer or null.
+ *
+ * WHY IT EXISTS. `app/checkout/[eventId]/payment.tsx` used to hard-require
+ * Stripe's shape (`kind !== "requires_web_redirect"` → throw). On a Paystack
+ * brand the server had already created the session, already initialised the
+ * Paystack transaction and already handed back the authorization URL — and the
+ * client threw all of it away and showed an error. The guest then tapped Pay
+ * again, which is the 409 in the #2188 edge log: the server correctly refusing
+ * a second checkout for a cart that already had one in flight.
+ *
+ * Returns null ONLY when there is genuinely nowhere to send the guest (a native
+ * PaymentSheet envelope, a free order, or a redirect field that came back
+ * empty). Null is a real failure and callers must surface it — never retry.
+ */
+export interface TicketCheckoutProviderHandoff {
+  checkoutSessionId: string;
+  buyerStatusToken: string;
+  /** The provider-hosted payment page. Follow it; do not create again. */
+  redirectUrl: string;
+}
+
+const usableHandoff = (
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+  redirectUrl: string | null | undefined,
+): TicketCheckoutProviderHandoff | null =>
+  typeof redirectUrl === "string" &&
+  redirectUrl.length > 0 &&
+  typeof checkoutSessionId === "string" &&
+  checkoutSessionId.length > 0
+    ? { checkoutSessionId, buyerStatusToken, redirectUrl }
+    : null;
+
+export const ticketCheckoutProviderHandoff = (
+  result: TicketCheckoutCreateResult,
+): TicketCheckoutProviderHandoff | null => {
+  if (result.kind === "requires_web_redirect") {
+    return usableHandoff(
+      result.checkoutSessionId,
+      result.buyerStatusToken,
+      result.hostedCheckoutUrl,
+    );
+  }
+  if (result.kind === "requires_paystack_redirect") {
+    return usableHandoff(
+      result.checkoutSessionId,
+      result.buyerStatusToken,
+      result.authorizationUrl,
+    );
+  }
+  return null;
+};
+
+/**
+ * issue #2188 — the shape `invokeOrThrow` throws.
+ *
+ * `supabase.functions.invoke` reports every handled server refusal as one
+ * opaque `FunctionsHttpError` whose `.message` is the literal string
+ * "Edge Function returned a non-2xx status code". The HTTP status lives on
+ * `.context` (a `Response`) and the bounded token lives in that response's JSON
+ * body — and the old `throw new Error(error.message)` discarded BOTH.
+ *
+ * That single line is why `ticketCheckoutAccessError` was exported but could
+ * never fire (recorded during #2136), and why `freeCheckoutErrorMessage`'s
+ * `httpStatusOf` always saw null: by the time either ran, the status and the
+ * token were already gone. Copy alone could not have fixed that.
+ */
+export interface TicketCheckoutInvokeError extends Error {
+  /** HTTP status of the refusal, when the transport exposed one. */
+  status: number | null;
+  /** The bounded `error` token from the response body, e.g. `checkout_in_progress`. */
+  code: string | null;
+}
+
+const readEdgeRefusal = async (
+  error: unknown,
+): Promise<{ status: number | null; code: string | null }> => {
+  if (typeof error !== "object" || error === null) {
+    return { status: null, code: null };
+  }
+  const context = (error as { context?: unknown }).context;
+  if (typeof context !== "object" || context === null) {
+    return { status: null, code: null };
+  }
+  const rawStatus = (context as { status?: unknown }).status;
+  const status = typeof rawStatus === "number" ? rawStatus : null;
+  const json = (context as { json?: unknown }).json;
+  if (typeof json !== "function") return { status, code: null };
+  try {
+    const body: unknown = await (json as () => Promise<unknown>).call(context);
+    const rawCode = (body as { error?: unknown })?.error;
+    return {
+      status,
+      code: typeof rawCode === "string" && rawCode.length > 0 ? rawCode : null,
+    };
+  } catch {
+    // A body that is already consumed / not JSON tells us nothing extra. The
+    // status still stands, and the mapper below has a total fallback.
+    return { status, code: null };
+  }
+};
+
 const invokeOrThrow = async <T>(
   functionName: string,
   body: Record<string, unknown>,
@@ -245,9 +381,89 @@ const invokeOrThrow = async <T>(
     body,
   });
   if (error) {
-    throw new Error(error.message);
+    // issue #2188 — carry the status + bounded token forward. `.message` is
+    // deliberately UNCHANGED so no existing caller's behaviour shifts; the new
+    // fields are additive and are what the copy mappers read.
+    const refusal = await readEdgeRefusal(error);
+    const failure = new Error(error.message) as TicketCheckoutInvokeError;
+    failure.status = refusal.status;
+    failure.code = refusal.code;
+    throw failure;
   }
   return data as T;
+};
+
+/**
+ * issue #2188 — the guest-facing copy for a PAID checkout that did not hand off.
+ *
+ * Pure and total: it never returns a raw framework string, so the buyer can
+ * never again be shown "Edge Function returned a non-2xx status code". Every
+ * sentence says what happened AND whether money moved — a guest must never be
+ * left wondering whether they have been charged.
+ *
+ * This is the call site `ticketCheckoutAccessError` was written for and never
+ * had. The access tokens are matched through it (not re-listed here) so the
+ * #2101 contract keeps exactly one owner.
+ */
+export const PAID_CHECKOUT_IN_PROGRESS_MESSAGE =
+  "You already have a payment in progress for this order. Finish it in the payment window, or wait about a minute and try again — you have not been charged twice.";
+
+export const PAID_CHECKOUT_UNAVAILABLE_MESSAGE =
+  "This sale is no longer available — the organizer may have paused or changed this event. You have not been charged.";
+
+export const PAID_CHECKOUT_SIGN_IN_MESSAGE =
+  "This sale is restricted. Sign in with an approved Mingla account to complete this purchase. You have not been charged.";
+
+export const PAID_CHECKOUT_RESTRICTED_MESSAGE =
+  "The organizer has limited this sale to specific Mingla accounts, so this purchase can't be completed here. You have not been charged.";
+
+export const PAID_CHECKOUT_UPDATE_APP_MESSAGE =
+  "Update the Mingla app to complete this payment. You have not been charged.";
+
+export const PAID_CHECKOUT_NO_HANDOFF_MESSAGE =
+  "We couldn't open the secure payment page. You have not been charged — please try again.";
+
+export const PAID_CHECKOUT_FAILED_MESSAGE =
+  "We couldn't start your payment. You have not been charged — please try again.";
+
+const codeOf = (error: unknown): string | null => {
+  const code = (error as { code?: unknown })?.code;
+  return typeof code === "string" && code.length > 0 ? code : null;
+};
+
+export const paidCheckoutErrorMessage = (error: unknown): string => {
+  const code = codeOf(error);
+  const status = httpStatusOf(error);
+
+  // #2101 access denials, matched through their single owner.
+  const access = ticketCheckoutAccessError(code ?? error);
+  if (access === "sign_in_required" || status === 401) {
+    return PAID_CHECKOUT_SIGN_IN_MESSAGE;
+  }
+  if (access === "checkout_restricted" || status === 403) {
+    return PAID_CHECKOUT_RESTRICTED_MESSAGE;
+  }
+  if (code === "upgrade_required" || status === 426) {
+    return PAID_CHECKOUT_UPDATE_APP_MESSAGE;
+  }
+  if (code === "checkout_in_progress") return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
+  if (code === "checkout_unavailable") return PAID_CHECKOUT_UNAVAILABLE_MESSAGE;
+  // A 409 whose body we could not read still means "the server refused because
+  // of the state of this sale", which is the recoverable, in-progress case far
+  // more often than not — and it is the ONLY one where telling the guest to
+  // wait rather than retry immediately is the right instruction.
+  if (status === 409) return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
+  // Copy this module already owns must pass through unchanged.
+  const message = typeof (error as { message?: unknown })?.message === "string"
+    ? (error as { message: string }).message
+    : "";
+  if (
+    message === PAID_CHECKOUT_NO_HANDOFF_MESSAGE ||
+    message === PAID_CHECKOUT_FAILED_MESSAGE
+  ) {
+    return message;
+  }
+  return PAID_CHECKOUT_FAILED_MESSAGE;
 };
 
 export const createTicketCheckout = async (

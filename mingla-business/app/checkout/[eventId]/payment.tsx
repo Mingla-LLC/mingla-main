@@ -12,10 +12,19 @@
  * .github/scripts/strict-grep/orch-0839-b-mingla-business-no-native-stripe.mjs
  * forbids re-introduction.
  *
- * Both web and mobile (iOS + Android) buyers now redirect to the Stripe-
- * hosted Checkout page. Web uses window.location.assign; mobile uses
+ * Both web and mobile (iOS + Android) buyers now redirect to a PROVIDER-hosted
+ * payment page. Web uses window.location.assign; mobile uses
  * expo-web-browser.openAuthSessionAsync, intercepting the
  * mingla-business://checkout/return custom-scheme redirect.
+ *
+ * issue #2188 (2026-08-17): the web branch is NOT Stripe-only. A Nigerian
+ * (Paystack) brand's create returns `requires_paystack_redirect` +
+ * `authorizationUrl`; a Stripe brand returns `requires_web_redirect` +
+ * `hostedCheckoutUrl`. This screen must NOT branch on which — it asks
+ * `ticketCheckoutProviderHandoff` where to send the guest and follows the
+ * answer. It previously hard-required Stripe's shape, threw away a live
+ * Paystack hand-off, and left the guest re-tapping Pay into the server's
+ * (correct) duplicate-checkout 409. Do not reintroduce a provider check here.
  *
  * Free orders never reach this screen.
  *
@@ -68,7 +77,11 @@ import { eventPublicPath } from "../../../src/constants/publicUrls";
 import {
   confirmTicketCheckout,
   createTicketCheckout,
+  paidCheckoutErrorMessage,
+  PAID_CHECKOUT_NO_HANDOFF_MESSAGE,
+  ticketCheckoutProviderHandoff,
 } from "../../../src/services/ticketCheckoutService";
+import type { TicketCheckoutProviderHandoff } from "../../../src/services/ticketCheckoutService";
 import { mixpanelService } from "../../../src/services/mixpanelService";
 // ORCH-1192 — native `checkout_started` (mirrors web web_checkout_started),
 // fired before purchase_completed. No-op on web / when key absent / opted out.
@@ -184,6 +197,42 @@ function CheckoutPaymentScreenContent({
   const [previewCalculationId, setPreviewCalculationId] = useState<
     string | null
   >(null);
+
+  // ----- issue #2188 [paid-checkout-redirect]: one create per checkout -----
+  //
+  // The provider page this cart was already sent to. Held in a ref (not state)
+  // because nothing renders from it and it must be readable synchronously by
+  // the very next Pay tap.
+  //
+  // Keyed by a fingerprint of what is actually being bought, so it can only
+  // ever be replayed for the SAME cart. Change the tickets, the buyer or the
+  // chosen day and the fingerprint moves, the held URL stops matching, and a
+  // fresh create runs — which is correct, because that is a different purchase
+  // with a different server-side idempotency key.
+  const providerHandoffRef = useRef<
+    { fingerprint: string; handoff: TicketCheckoutProviderHandoff } | null
+  >(null);
+  const cartFingerprint = JSON.stringify({
+    eventId,
+    eventDateId,
+    email: buyer.email.trim().toLowerCase(),
+    phone: buyer.phone.trim(),
+    lines: lines.map((l) => [l.ticketTypeId, l.quantity]),
+  });
+
+  /**
+   * Full-page navigation to the provider. Returns false ONLY where
+   * `location.assign` genuinely does not exist (sandbox / test), so the caller
+   * can tell "the guest is on their way" from "the guest is still here".
+   */
+  const assignLocation = useCallback((url: string): boolean => {
+    const w = globalThis as unknown as {
+      location?: { assign?: (u: string) => void };
+    };
+    if (typeof w.location?.assign !== "function") return false;
+    w.location.assign(url);
+    return true;
+  }, []);
 
   // ----- ORCH-0789/0790 REWORK: web sessionStorage restore -----
   // Runs once on mount (web only). If cart context is empty but we have
@@ -362,7 +411,7 @@ function CheckoutPaymentScreenContent({
     //     + ephemeralKey, withTimeout removal) are inherited verbatim.
 
     if (Platform.OS === "web") {
-      // ---------- WEB PATH (unchanged from ORCH-0839-B) ----------
+      // ---------- WEB PATH ----------
       const surface: "web" = "web";
       try {
         setProcessing(true);
@@ -371,6 +420,20 @@ function CheckoutPaymentScreenContent({
           surface,
           eventId,
         });
+        // issue #2188 — ONE create per checkout, structurally.
+        //
+        // If this cart has already been handed a provider page, follow THAT
+        // instead of asking the server for a second checkout. The server
+        // refuses a duplicate create with 409 and it is right to: a second
+        // create for a cart with a live provider attempt is never what the
+        // guest wants. Re-following the URL we were already given is.
+        const held = providerHandoffRef.current;
+        if (held !== null && held.fingerprint === cartFingerprint) {
+          if (assignLocation(held.handoff.redirectUrl)) return;
+          setProcessing(false);
+          setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
+          return;
+        }
         const checkout = await createTicketCheckout({
           eventId,
           buyer,
@@ -381,39 +444,43 @@ function CheckoutPaymentScreenContent({
           // request is byte-identical; `orders.event_date_id` (#1188) persists it.
           ...(eventDateId !== null ? { eventDateId } : {}),
         });
-        if (checkout.kind !== "requires_web_redirect") {
-          throw new Error("Hosted checkout did not return a redirect URL.");
+        // issue #2188 — provider-neutral. Stripe brands answer with
+        // `hostedCheckoutUrl`, Paystack (NGN) brands with `authorizationUrl`;
+        // the resolver owns that distinction so this screen never re-learns it.
+        // A null answer means there is genuinely nowhere to send the guest —
+        // surface it, never retry (a retry is the duplicate create that the
+        // server correctly 409s).
+        const handoff = ticketCheckoutProviderHandoff(checkout);
+        if (handoff === null) {
+          throw new Error(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
         }
-        setCheckoutSessionId(checkout.checkoutSessionId);
+        setCheckoutSessionId(handoff.checkoutSessionId);
+        // Remember it BEFORE navigating: if the redirect cannot run, the next
+        // Pay tap re-follows this URL rather than creating a second checkout.
+        providerHandoffRef.current = { fingerprint: cartFingerprint, handoff };
 
-        // sessionStorage persist BEFORE redirect so a Stripe-side cancel
+        // sessionStorage persist BEFORE redirect so a provider-side cancel
         // returns the buyer to a populated /payment screen and a success
         // returns to /confirm with the order summary intact.
         const storage = (globalThis as unknown as { sessionStorage?: Storage })
           .sessionStorage;
         writeCheckoutResumePayload(storage, eventId, {
-          checkoutSessionId: checkout.checkoutSessionId,
-          buyerStatusToken: checkout.buyerStatusToken,
+          checkoutSessionId: handoff.checkoutSessionId,
+          buyerStatusToken: handoff.buyerStatusToken,
           lines,
           buyer,
         });
-        const w = globalThis as unknown as {
-          location?: { assign?: (u: string) => void };
-        };
-        if (w.location?.assign) {
-          w.location.assign(checkout.hostedCheckoutUrl);
-          return;
-        }
+        if (assignLocation(handoff.redirectUrl)) return;
         // Sandbox / test environments where location.assign is unavailable.
         setProcessing(false);
-        setPaymentError(
-          "Couldn't redirect to Stripe. Please try again from a standard browser.",
-        );
+        setPaymentError(PAID_CHECKOUT_NO_HANDOFF_MESSAGE);
       } catch (error) {
         setProcessing(false);
-        const message = error instanceof Error
-          ? error.message
-          : "Payment could not be completed. Please try again.";
+        // issue #2188 — NEVER render the raw thrown string. supabase-js reports
+        // every handled refusal as "Edge Function returned a non-2xx status
+        // code"; the mapper is total and turns each bounded case into a
+        // sentence that also says whether money moved.
+        const message = paidCheckoutErrorMessage(error);
         setPaymentError(message);
         mixpanelService.track("ticket_checkout_failed", {
           surface,
@@ -569,6 +636,10 @@ function CheckoutPaymentScreenContent({
     }
   }, [
     allInPreviewCents,
+    // issue #2188 — the redirect follower + the cart identity the held
+    // provider hand-off is keyed by are both read inside this handler.
+    assignLocation,
+    cartFingerprint,
     buyer,
     event,
     eventId,
@@ -698,9 +769,12 @@ function CheckoutPaymentScreenContent({
 
         <GlassCard variant="base" radius="lg" padding={spacing.md}>
           <Text style={styles.summaryLabel}>PAYMENT</Text>
+          {/* issue #2188 — provider-NEUTRAL. This screen serves Stripe brands
+              and Nigerian Paystack brands from the same code path, and a Lagos
+              guest was being told they were going to Stripe. Naming the
+              provider here would be wrong for whichever half it isn't. */}
           <Text style={styles.paymentCopy}>
-            You'll be redirected to Stripe to complete your purchase securely.
-            Apple Pay and Google Pay are supported.
+            You'll be taken to our secure payment page to complete your purchase.
           </Text>
           {checkoutSessionId !== null
             ? (
