@@ -98,6 +98,32 @@ const check = (raw) => {
     fail("resolver no longer gates on the verified transaction status");
   }
 
+  // --- 2b. issue #2216 crossing: the tickets this path returns must go
+  //     through the SHARED order builder, which is where `attachQrImageDataUrls`
+  //     runs. #2216's own gate asserts the FILE mentions that owner — which
+  //     stays true if a new arm hand-rolls its own ticket list, so it cannot
+  //     see this. A guest resolved in seconds onto a blank pass has simply
+  //     swapped one defect for the other. ---
+  const finalizedAt = s.confirm.indexOf('paystackReturn.kind === "finalized"');
+  const pendingAt = s.confirm.indexOf('paystackReturn.kind === "pending"');
+  if (finalizedAt < 0 || pendingAt < finalizedAt) {
+    fail("confirm lost the Paystack finalized/pending arms");
+  }
+  if (!s.confirm.slice(finalizedAt, pendingAt).includes("fetchOrderPayload(")) {
+    fail("the Paystack finalized arm builds tickets itself — it can ship a pass with no QR image");
+  }
+  if (!s.confirm.includes("attachQrImageDataUrls")) {
+    fail("confirm no longer renders its tickets through the #2216 QR owner");
+  }
+  if (!s.status.includes("attachQrImageDataUrls")) {
+    fail("status no longer renders its tickets through the #2216 QR owner");
+  }
+  // The resolver decides WHEN a guest is finalized; it must never decide what a
+  // ticket carries (that owner is `_shared/ticketQrImage.ts`).
+  if (s.resolver.includes("qrPayload") || s.resolver.includes("qrImageDataUrl")) {
+    fail("the resolver builds ticket rows — one owner per truth (#2216)");
+  }
+
   // --- 3. ONE finalize mechanism, shared with the webhook. ---
   if (!s.resolver.includes("handlePaystackChargeSuccess(")) {
     fail("resolver no longer delegates to the webhook's finalize owner");
@@ -149,6 +175,10 @@ const check = (raw) => {
     "issue_2188_paid_checkout_provider_handoff.test.tsx",
     "issue_2160_multiday_provider_handoff.test.tsx",
     "issue-2198-paystack-return-verify.mjs --self-test",
+    // #2216 owns what a ticket carries; this branch adds a new way one reaches
+    // a guest, so its suites run here rather than on trust.
+    "issue_2216_qr_image_never_silently_blank.test.ts",
+    "ticketQrImage.test.ts",
   ]) {
     if (!s.workflow.includes(token)) fail(`workflow missing ${token}`);
   }
@@ -165,6 +195,10 @@ if (process.argv.includes("--self-test")) {
     ["resolver", "paystack_charge_abandoned", "removed_token"],
     ["service", "paystack_payment_mismatch", "removed_token"],
     ["router", "amount_mismatch", "amount_ignored"],
+    ["confirm", "fetchOrderPayload(supabase, {\n      id: session.id,\n      order_id: finalizedOrderId,", "handRolledTickets(supabase, {\n      id: session.id,\n      order_id: finalizedOrderId,"],
+    ["confirm", "attachQrImageDataUrls", "qrPayloadToDataUrl"],
+    ["status", "attachQrImageDataUrls", "qrPayloadToDataUrl"],
+    ["workflow", "issue_2216_qr_image_never_silently_blank.test.ts", "removed.test.ts"],
     ["screen", "paidCheckoutErrorMessage", "removedMapper"],
     ["tripScreen", "paidCheckoutErrorMessage", "removedMapper"],
     ["workflow", "issue_2198_paystack_return_verify.test.ts", "removed.test.ts"],

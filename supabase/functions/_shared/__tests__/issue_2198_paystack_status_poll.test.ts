@@ -124,12 +124,18 @@ function installFetchStub(opts: {
         data: opts.verifyData,
       }));
     }
-    if (url.startsWith(`${SUPA_URL}/functions/v1/ticket-confirmation-dispatch`)) {
+    if (
+      url.startsWith(`${SUPA_URL}/functions/v1/ticket-confirmation-dispatch`)
+    ) {
       wire.dispatchCalls += 1;
       return Promise.resolve(jsonOk({ ok: true }));
     }
-    if (url.startsWith(`${SUPA_URL}/rest/v1/ticket_checkout_provider_attempts`)) {
-      return Promise.resolve(jsonOk(opts.attempt === null ? [] : [opts.attempt]));
+    if (
+      url.startsWith(`${SUPA_URL}/rest/v1/ticket_checkout_provider_attempts`)
+    ) {
+      return Promise.resolve(
+        jsonOk(opts.attempt === null ? [] : [opts.attempt]),
+      );
     }
     if (url.startsWith(`${SUPA_URL}/rest/v1/ticket_checkout_sessions`)) {
       if (method === "GET") return Promise.resolve(jsonOk([opts.session]));
@@ -138,10 +144,14 @@ function installFetchStub(opts: {
     if (url.startsWith(`${SUPA_URL}/rest/v1/event_rsvp_contributions`)) {
       return Promise.resolve(jsonOk([]));
     }
-    if (url.startsWith(`${SUPA_URL}/rest/v1/rpc/biz_ticket_checkout_finalize`)) {
+    if (
+      url.startsWith(`${SUPA_URL}/rest/v1/rpc/biz_ticket_checkout_finalize`)
+    ) {
       wire.finalizeCalls += 1;
       opts.session.order_id = ORDER_ID;
-      return Promise.resolve(jsonOk({ outcome: "finalized", orderId: ORDER_ID }));
+      return Promise.resolve(
+        jsonOk({ outcome: "finalized", orderId: ORDER_ID }),
+      );
     }
     if (url.startsWith(`${SUPA_URL}/rest/v1/tickets`)) {
       return Promise.resolve(jsonOk([{
@@ -157,7 +167,12 @@ function installFetchStub(opts: {
     }
     return Promise.resolve(jsonOk({}));
   };
-  return { wire, restore: () => { globalThis.fetch = realFetch; } };
+  return {
+    wire,
+    restore: () => {
+      globalThis.fetch = realFetch;
+    },
+  };
 }
 
 function statusRequest(): Request {
@@ -170,6 +185,30 @@ function statusRequest(): Request {
     }),
   });
 }
+
+/**
+ * issue #2216 crossing — see the sibling suite's note. The native rail returns
+ * the SAME ticket shape through the SAME `attachQrImageDataUrls` owner, and a
+ * guest resolved instantly onto a blank pass is no better off than one who
+ * waited four minutes for a good one. Nothing is stubbed: the QR really renders.
+ */
+const assertRenderedQr = (ticket: Record<string, unknown>): void => {
+  const dataUrl = String(ticket?.qrImageDataUrl ?? "");
+  assert(
+    dataUrl.startsWith("data:image/png;base64,"),
+    `qrImageDataUrl is not a PNG data URI (got ${
+      JSON.stringify(dataUrl.slice(0, 40))
+    })`,
+  );
+  assert(
+    dataUrl.includes("base64,iVBORw0KGgo"),
+    "qrImageDataUrl does not decode to a PNG",
+  );
+  assert(
+    dataUrl.length > 500,
+    `qrImageDataUrl is too short to be a rendered QR (${dataUrl.length} chars)`,
+  );
+};
 
 function paidBankTransfer(
   overrides: Record<string, unknown> = {},
@@ -212,6 +251,8 @@ Deno.test({
       assertEquals(body.order?.orderId, ORDER_ID);
       assertEquals(body.order?.tickets?.length, 1);
       assertEquals(body.order?.currency, "NGN");
+      // #2216 crossing — the native guest's pass is scannable too.
+      assertRenderedQr(body.order.tickets[0]);
       assertEquals(wire.verifyCalls, 1);
       assertEquals(wire.finalizeCalls, 1);
       assertEquals(wire.dispatchCalls, 1);
@@ -247,6 +288,8 @@ Deno.test({
       // slow render / retry can land another call).
       const second = await (await HANDLER!(statusRequest())).json();
       assertEquals(second.order?.orderId, ORDER_ID);
+      assertRenderedQr(first.order.tickets[0]);
+      assertRenderedQr(second.order.tickets[0]);
       assertEquals(wire.finalizeCalls, 1, "one mint across both polls");
       assertEquals(wire.dispatchCalls, 1, "one email, one SMS");
       assertEquals(wire.verifyCalls, 1, "the second poll took the fast-path");

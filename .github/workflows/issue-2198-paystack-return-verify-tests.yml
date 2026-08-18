@@ -19,6 +19,7 @@ on:
     paths:
       - "supabase/functions/_shared/paystackTicketReturnVerify.ts"
       - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "supabase/functions/_shared/ticketQrImage.ts"
       - "supabase/functions/_shared/paystack.ts"
       - "supabase/functions/ticket-checkout-confirm/**"
       - "supabase/functions/ticket-checkout-status/**"
@@ -35,6 +36,7 @@ on:
     paths:
       - "supabase/functions/_shared/paystackTicketReturnVerify.ts"
       - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "supabase/functions/_shared/ticketQrImage.ts"
       - "supabase/functions/_shared/paystack.ts"
       - "supabase/functions/ticket-checkout-confirm/**"
       - "supabase/functions/ticket-checkout-status/**"
@@ -83,6 +85,21 @@ jobs:
           --allow-read --allow-env --allow-net --no-check
           supabase/functions/_shared/__tests__/issue_2198_paystack_return_verify.test.ts
           supabase/functions/_shared/__tests__/issue_2198_paystack_status_poll.test.ts
+
+      # issue #2216 shipped the single owner of "ticket -> ticket + rendered QR"
+      # (`_shared/ticketQrImage.ts`) because a third ticket-producing path had
+      # been answering with a payload and no image, and the carousel honestly
+      # drew a white square. This branch adds a FOURTH way a ticket reaches a
+      # guest, so #2216's own proofs run here — resolving a Paystack buyer in
+      # seconds onto a blank pass would just trade one defect for the other.
+      - name: "#2216 QR owner stays green (a resolved guest gets a scannable pass)"
+        env:
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+        run: >-
+          deno test --allow-env --allow-net --allow-read --no-check
+          supabase/functions/_shared/__tests__/issue_2216_qr_image_never_silently_blank.test.ts
+          supabase/functions/_shared/__tests__/ticketQrImage.test.ts
 
       - name: Typecheck the changed edge surfaces
         run: >-

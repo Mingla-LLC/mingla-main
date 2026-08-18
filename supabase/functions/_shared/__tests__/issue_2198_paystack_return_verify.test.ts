@@ -150,7 +150,9 @@ interface StubOptions {
   finalizeMintsOrder?: boolean;
 }
 
-function installFetchStub(opts: StubOptions): { wire: Wire; restore: () => void } {
+function installFetchStub(
+  opts: StubOptions,
+): { wire: Wire; restore: () => void } {
   const wire: Wire = {
     verifyCalls: [],
     finalizeCalls: 0,
@@ -186,14 +188,20 @@ function installFetchStub(opts: StubOptions): { wire: Wire; restore: () => void 
     }
 
     // ---- buyer confirmation fan-out (email + SMS) ----
-    if (url.startsWith(`${SUPA_URL}/functions/v1/ticket-confirmation-dispatch`)) {
+    if (
+      url.startsWith(`${SUPA_URL}/functions/v1/ticket-confirmation-dispatch`)
+    ) {
       wire.dispatchCalls += 1;
       return Promise.resolve(jsonOk({ ok: true }));
     }
 
     // ---- PostgREST ----
-    if (url.startsWith(`${SUPA_URL}/rest/v1/ticket_checkout_provider_attempts`)) {
-      return Promise.resolve(jsonOk(opts.attempt === null ? [] : [opts.attempt]));
+    if (
+      url.startsWith(`${SUPA_URL}/rest/v1/ticket_checkout_provider_attempts`)
+    ) {
+      return Promise.resolve(
+        jsonOk(opts.attempt === null ? [] : [opts.attempt]),
+      );
     }
     if (url.startsWith(`${SUPA_URL}/rest/v1/ticket_checkout_sessions`)) {
       if (method === "GET") return Promise.resolve(jsonOk([opts.session]));
@@ -203,10 +211,14 @@ function installFetchStub(opts: StubOptions): { wire: Wire; restore: () => void 
     if (url.startsWith(`${SUPA_URL}/rest/v1/event_rsvp_contributions`)) {
       return Promise.resolve(jsonOk([])); // not a chip-in reference
     }
-    if (url.startsWith(`${SUPA_URL}/rest/v1/rpc/biz_ticket_checkout_finalize`)) {
+    if (
+      url.startsWith(`${SUPA_URL}/rest/v1/rpc/biz_ticket_checkout_finalize`)
+    ) {
       wire.finalizeCalls += 1;
       if (opts.finalizeMintsOrder !== false) opts.session.order_id = ORDER_ID;
-      return Promise.resolve(jsonOk({ outcome: "finalized", orderId: ORDER_ID }));
+      return Promise.resolve(
+        jsonOk({ outcome: "finalized", orderId: ORDER_ID }),
+      );
     }
     if (url.startsWith(`${SUPA_URL}/rest/v1/tickets`)) {
       return Promise.resolve(jsonOk([{
@@ -230,7 +242,12 @@ function installFetchStub(opts: StubOptions): { wire: Wire; restore: () => void 
     // Everything else (api-health, ad-conversion internals) — inert success.
     return Promise.resolve(jsonOk({}));
   };
-  return { wire, restore: () => { globalThis.fetch = realFetch; } };
+  return {
+    wire,
+    restore: () => {
+      globalThis.fetch = realFetch;
+    },
+  };
 }
 
 function confirmRequest(): Request {
@@ -261,6 +278,43 @@ function paidBankTransfer(
   };
 }
 
+/**
+ * issue #2216 crossing — a ticket surfaced by THIS path must carry a REALLY
+ * RENDERED QR, not a placeholder.
+ *
+ * #2216 made `attachQrImageDataUrls` the single owner of "ticket → ticket +
+ * rendered QR" across create/confirm/status, because a third ticket-producing
+ * path (#2136's free arm) had been answering with `qrPayload` and no image, and
+ * the carousel honestly drew a white square. #2198 adds a FOURTH way a ticket
+ * reaches a guest: the Paystack return leg. Resolving a buyer instantly and
+ * then handing them a blank pass would just trade one of tonight's bugs for the
+ * other, so the QR is asserted here rather than assumed to come along.
+ *
+ * Nothing is stubbed for this: `qrPayloadToDataUrl` really runs and really
+ * renders, so a placeholder ("") or a truncated/SVG string fails the witness.
+ * `assertRenderablePngDataUrl`'s own floor is 100 base64 chars; a genuine
+ * 400×400 render clears it many times over (measured 2,614 for this payload).
+ */
+const assertRenderedQr = (ticket: Record<string, unknown>): void => {
+  const dataUrl = String(ticket?.qrImageDataUrl ?? "");
+  assert(
+    dataUrl.startsWith("data:image/png;base64,"),
+    `qrImageDataUrl is not a PNG data URI (got ${
+      JSON.stringify(dataUrl.slice(0, 40))
+    })`,
+  );
+  // PNG magic bytes \x89PNG base64-encode to "iVBORw0KGgo" — this is a real
+  // image, not a well-shaped string.
+  assert(
+    dataUrl.includes("base64,iVBORw0KGgo"),
+    "qrImageDataUrl does not decode to a PNG",
+  );
+  assert(
+    dataUrl.length > 500,
+    `qrImageDataUrl is too short to be a rendered QR (${dataUrl.length} chars)`,
+  );
+};
+
 // ───────────────────────────────────────────────────────────────────────────
 // 1. THE ACCEPTANCE CASE: with the webhook suppressed ENTIRELY, the buyer
 //    still receives tickets — in one round trip, not four minutes.
@@ -287,6 +341,8 @@ Deno.test({
       assertEquals(body.order?.orderId, ORDER_ID);
       assertEquals(body.order?.tickets?.length, 1);
       assertEquals(body.order?.tickets?.[0]?.ticketId, TICKET_ID);
+      // #2216 crossing — the pass the guest is handed is actually scannable.
+      assertRenderedQr(body.order.tickets[0]);
 
       // Paystack was actually asked, at the stored reference.
       assertEquals(wire.verifyCalls.length, 1);
@@ -448,7 +504,12 @@ Deno.test({
 
       // (c) And a second buyer poll / refresh also replays.
       const third = await HANDLER!(confirmRequest());
-      assertEquals((await third.json()).order?.orderId, ORDER_ID);
+      const thirdBody = await third.json();
+      assertEquals(thirdBody.order?.orderId, ORDER_ID);
+      // Every arm that returns an order returns a rendered one — including the
+      // replay arm, which is what a guest refreshing the page actually hits.
+      assertRenderedQr(firstBody.order.tickets[0]);
+      assertRenderedQr(thirdBody.order.tickets[0]);
 
       // ONE mint across all three passes. The other two short-circuited on the
       // session's order_id — the existing idempotency, not a new mechanism.
@@ -500,8 +561,7 @@ Deno.test({
 });
 
 Deno.test({
-  name:
-    "#2198 · verified currency ≠ NGN → FAILS CLOSED (no order)",
+  name: "#2198 · verified currency ≠ NGN → FAILS CLOSED (no order)",
   sanitizeOps: false,
   sanitizeResources: false,
   fn: async () => {
@@ -662,6 +722,7 @@ Deno.test({
       const body = await (await HANDLER!(confirmRequest())).json();
       assertEquals(body.status, "paid");
       assertEquals(body.order?.orderId, ORDER_ID);
+      assertRenderedQr(body.order.tickets[0]);
       assertEquals(wire.verifyCalls.length, 0);
       assertEquals(wire.finalizeCalls, 0);
     } finally {
