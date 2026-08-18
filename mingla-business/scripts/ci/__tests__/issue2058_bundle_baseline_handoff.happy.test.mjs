@@ -9,6 +9,7 @@
 
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -136,6 +137,7 @@ class FakeApi {
       head: { ref: branch, sha: ref.object.sha, repo: { full_name: this.fullName } },
       base: { ref: "main", sha: source, repo: { full_name: this.fullName } },
       files: [{ filename: BASELINE_PATH }],
+      changed_files: 1,
     };
     this.pulls.push(pull);
     return pull;
@@ -150,7 +152,17 @@ class FakeApi {
 
   async getCommit(sha) { return this.commits.get(sha); }
   async getContent(_path, ref) {
-    return { encoding: "base64", content: Buffer.from(this.contents.get(ref)).toString("base64") };
+    if (!this.contents.has(ref)) {
+      throw new HandoffError("REST_FAILURE", "not found", { status: 404 });
+    }
+    const body = this.contents.get(ref);
+    return {
+      encoding: "base64",
+      content: Buffer.from(body).toString("base64"),
+      // #2202: the guard compares this across base and head to decide whether a
+      // large PR touched the baseline, instead of enumerating its diff.
+      sha: createHash("sha1").update(`blob ${body.length}\0`).update(body).digest("hex"),
+    };
   }
 
   async compare(base, head) {
@@ -190,6 +202,9 @@ class FakeApi {
       head: { ref: branch, sha: head, repo: { full_name: this.fullName } },
       base: { ref: "main", sha: source, repo: { full_name: this.fullName } },
       files: [{ filename: BASELINE_PATH }],
+      // #2202: the real GET /pulls/{n} reports this, and the guard now reads it
+      // instead of counting an enumerated diff. Kept in step with `files`.
+      changed_files: 1,
     };
     this.pulls.push(pull);
     return pull;
@@ -484,11 +499,14 @@ describe("#2058 handoff state machine", () => {
 describe("#2058 read-only provenance verifier", () => {
   test("ordinary PRs pass without baseline-specific restrictions", async () => {
     const api = new FakeApi();
+    api.contents.set(SOURCE, baseline(SOURCE));
+    api.contents.set(GENERATED, baseline(SOURCE));
     api.pulls.push({
       number: 1,
-      head: { ref: "feature", repo: { full_name: api.fullName } },
-      base: { ref: "main", repo: { full_name: api.fullName } },
+      head: { ref: "feature", sha: GENERATED, repo: { full_name: api.fullName } },
+      base: { ref: "main", sha: SOURCE, repo: { full_name: api.fullName } },
       files: [{ filename: "README.md" }],
+      changed_files: 1,
     });
     assert.deepEqual(await verifyPullRequest(api, { pullNumber: 1, expectedAppSlug: SLUG }), {
       state: "ORDINARY_PR",
@@ -505,9 +523,64 @@ describe("#2058 read-only provenance verifier", () => {
     assert.equal(result.sourceSha, SOURCE);
   });
 
+  test("#2202: a pull request far larger than the old scan cap is verified without enumerating it", async () => {
+    // 11,360 files is the real #2199 cache removal, well past the 2,000-record
+    // refusal that used to fail this guard outright.
+    const api = new FakeApi();
+    api.contents.set(SOURCE, baseline(SOURCE));
+    api.contents.set(GENERATED, baseline(SOURCE));
+    let enumerated = 0;
+    api.getPullFiles = async () => {
+      enumerated += 1;
+      throw new HandoffError("PAGINATION_LIMIT", "Refusing to scan more than 2,000 records for /pulls/9/files.");
+    };
+    api.pulls.push({
+      number: 9,
+      head: { ref: "2199-untrack-metro-cache", sha: GENERATED, repo: { full_name: api.fullName } },
+      base: { ref: "main", sha: SOURCE, repo: { full_name: api.fullName } },
+      changed_files: 11_360,
+    });
+    assert.deepEqual(await verifyPullRequest(api, { pullNumber: 9, expectedAppSlug: SLUG }), {
+      state: "ORDINARY_PR",
+      pullNumber: 9,
+    });
+    assert.equal(enumerated, 0, "the guard must not enumerate the diff of a large PR");
+  });
+
+  test("#2202: a large pull request that DOES move the baseline still fails closed", async () => {
+    const api = new FakeApi();
+    api.contents.set(SOURCE, baseline(SOURCE));
+    api.contents.set(GENERATED, baseline(NEXT));
+    api.pulls.push({
+      number: 10,
+      head: { ref: "sneaky", sha: GENERATED, repo: { full_name: api.fullName } },
+      base: { ref: "main", sha: SOURCE, repo: { full_name: api.fullName } },
+      changed_files: 4_000,
+    });
+    await assert.rejects(
+      () => verifyPullRequest(api, { pullNumber: 10, expectedAppSlug: SLUG }),
+      /baseline PR may change only the baseline file/,
+    );
+  });
+
+  test("#2202: an unresolvable pull request fails closed rather than passing", async () => {
+    for (const pull of [
+      { number: 11, head: { ref: "x", sha: GENERATED, repo: {} }, base: { ref: "main", sha: SOURCE, repo: {} } },
+      { number: 12, changed_files: 3, head: { ref: "x", repo: {} }, base: { ref: "main", sha: SOURCE, repo: {} } },
+    ]) {
+      const api = new FakeApi();
+      api.contents.set(SOURCE, baseline(SOURCE));
+      api.pulls.push(pull);
+      await assert.rejects(
+        () => verifyPullRequest(api, { pullNumber: pull.number, expectedAppSlug: SLUG }),
+        /PROVENANCE_UNRESOLVED|could not be resolved|did not report changed_files/,
+      );
+    }
+  });
+
   test("extra files, stale source, wrong actor and abbreviated grammar fail closed", async () => {
     for (const mutation of [
-      (api, pull) => pull.files.push({ filename: "README.md" }),
+      (api, pull) => { pull.files.push({ filename: "README.md" }); pull.changed_files = 2; },
       (api) => { api.mainSha = NEXT; },
       (api, pull) => { pull.user.login = "human"; },
       (api, pull) => { pull.head.ref = "bundle-baseline/main-abcdef0"; },
