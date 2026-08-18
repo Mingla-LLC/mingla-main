@@ -26,22 +26,21 @@
 import React, {
   forwardRef,
   useCallback,
-  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from "react";
-// orch-strict-grep-allow orch-0892 — the ScrollView below is the HORIZONTAL
-// subject-token rail (a chip list) and the panel scrollers inside InsertionBar's
-// own file; neither is a keyboard-avoiding scroll, neither reads a keyboard
-// inset, and this file registers no keyboard listener of any kind (#2262 deleted
-// the F.9e block, and gate rule R4 now forbids one here outright).
+// #2262 — this file imports NO scroll container. The horizontal subject-token
+// rail moved to `SubjectTokenRail.tsx`, which has no TextInput, so `orch-0892`
+// pattern 4 fires on neither file and the composer carries no keyboard-plumbing
+// exemption of any kind. Pattern 1 (`Keyboard.addListener`) is likewise left
+// with no cover here: the F.9e block is deleted, and the #2262 gate's rule R4
+// forbids one in this file outright, marker or no marker.
 import {
   Modal,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -82,6 +81,7 @@ import {
   personalizationChipHtml,
 } from "./composerChipHtml";
 import { InsertionBar } from "./InsertionBar";
+import { SubjectTokenRail } from "./SubjectTokenRail";
 import type { InsertionBarState } from "./InsertionBarState";
 import { PERSONALIZATION_OPTIONS } from "./InsertionBarState";
 import { TemplatePreviewDrawer } from "./TemplatePreviewDrawer";
@@ -523,30 +523,10 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
         <View style={styles.sheetRule} />
 
         {subjectPersonalizeOpen ? (
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            contentContainerStyle={styles.subjectTokenRow}
-            style={styles.subjectTokenRail}
-            accessibilityLabel="Subject personalization tokens"
-          >
-            {subjectTokens.map((opt) => (
-              <Pressable
-                key={opt.token}
-                onPress={() => handleSubjectInsertToken(opt.token)}
-                hitSlop={4}
-                accessibilityRole="button"
-                accessibilityLabel={`Insert ${opt.label} into subject`}
-                style={({ pressed }) => [
-                  styles.subjectTokenChip,
-                  pressed ? styles.subjectTokenChipPressed : null,
-                ]}
-                testID={`composer-v2-subject-token-${opt.token}`}
-              >
-                <Text style={styles.subjectTokenChipText}>{opt.label}</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
+          <SubjectTokenRail
+            tokens={subjectTokens}
+            onInsert={handleSubjectInsertToken}
+          />
         ) : null}
 
         {/* BODY. `flex: 1, minHeight: 0` — it claims whatever the sheet has
@@ -804,34 +784,6 @@ const styles = StyleSheet.create({
   },
   subjectPersonalizeTextActive: {
     color: accent.warm,
-  },
-  subjectTokenRail: {
-    flexGrow: 0,
-    flexShrink: 0,
-  },
-  subjectTokenRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-  },
-  subjectTokenChip: {
-    minHeight: 36,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.sm,
-    overflow: "hidden",
-    backgroundColor: glass.tint.profileElevated,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  subjectTokenChipPressed: {
-    opacity: 0.7,
-  },
-  subjectTokenChipText: {
-    ...typography.monoMd,
-    color: textTokens.primary,
   },
   /**
    * THE BODY REGION — and the ONLY `onLayout` on this screen.

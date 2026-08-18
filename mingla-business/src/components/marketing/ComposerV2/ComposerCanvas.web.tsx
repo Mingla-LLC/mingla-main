@@ -225,6 +225,16 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     minHeight: 0, // RN flex-row requires explicit min-height: 0 so children can shrink
   },
+  /**
+   * #2262 10.9 — `overflow: "hidden"` STAYS here: it is what clips the pane's
+   * contents to its `radius.lg` corners. What changed is that the composer's
+   * Band B (`composer-flex-region` in `compose.tsx`) is now itself a scroll
+   * recovery on web, and Band B is a DESCENDANT of this pane — so the 77px this
+   * pane used to swallow silently at 1024x700 is reachable, while the commit bar
+   * stays OUTSIDE any scroll container (10.1). Wrapping this pane's whole
+   * child in a scroll would put the bar inside one, which is the failure mode
+   * the issue exists to end.
+   */
   editorPane: {
     backgroundColor: glass.tint.profileBase,
     borderWidth: StyleSheet.hairlineWidth,

@@ -103,8 +103,6 @@
  *
  * SAFELIST (carve-outs from the investigation; codified in SPEC §10):
  *   - Sheet primitive: owns sheet-hosted keyboard; library would double-translate.
- *   - ComposerV2Editor: fixed-height body shrink for pell rich editor.
- *   - richEditor.{native.ts,tsx}: WebView sandbox; library can't reach inside.
  *   - KeyboardRoot.native.tsx / KeyboardToolbarRoot.native.tsx / the
  *     SmartScrollView + useKeyboardIsVisible native variants: the legitimate
  *     library mounts themselves.
@@ -143,9 +141,19 @@ export const SAFELIST = new Set([
   // from the library — it's the single owner of sheet body keyboard handling
   // (panel translate / height clamp deleted; KAS does scroll-to-focused).
   "mingla-business/src/components/ui/Sheet.tsx",
-  "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
-  "mingla-business/src/components/marketing/ComposerV2/richEditor.native.ts",
-  "mingla-business/src/components/marketing/ComposerV2/richEditor.tsx",
+  // #2262 [composer-responsive-layout] DELETED three entries here:
+  //   ComposerV2Editor.tsx — justified as "fixed-height body shrink for pell
+  //     rich editor", which WAS the defect. The exemption's own reason was the
+  //     bug: a hand-typed 376pt chrome constant, a +42 Done-bar term and a
+  //     bespoke Keyboard.addListener, all now deleted. Removing this line is the
+  //     machine-checkable proof the defect class is gone — while it stood, this
+  //     gate certified the screen clean on every run.
+  //   richEditor.native.ts / richEditor.tsx — verified STALE: neither file
+  //     matched any of this gate's four patterns, so the carve-outs were dark.
+  // #2262's own gate is stricter still for these files: it forbids
+  // `Keyboard.addListener` in them outright, with or without an inline marker,
+  // and rule R8 fails the build if anyone re-adds a `ComposerV2/` or commit-bar
+  // string to this SAFELIST.
   "mingla-business/src/wrappers/KeyboardRoot.native.tsx",
   // ORCH-0892-B v2 (supersedes ORCH-0892-A KAV wrapper): SmartScrollView
   // native variant re-exports KeyboardAwareScrollView; useKeyboardIsVisible
@@ -1490,7 +1498,7 @@ function runCli() {
   console.log("\nORCH-0892 no-bespoke-keyboard-plumbing informational gate");
   console.log(`Scanned ${scanned} .ts/.tsx files under mingla-business/.\n`);
   console.log(
-    `  ${safelisted} file(s) explicitly safelisted (Sheet / ComposerV2 / richEditor / KeyboardRoot)`,
+    `  ${safelisted} file(s) explicitly safelisted (Sheet / KeyboardRoot / KeyboardToolbarRoot / SmartScrollView / useKeyboardIsVisible)`,
   );
 
   if (warnings.length === 0) {

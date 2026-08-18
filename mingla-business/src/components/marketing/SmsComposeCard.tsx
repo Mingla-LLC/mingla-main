@@ -35,6 +35,7 @@ import {
 } from "react-native";
 
 import {
+  composerSheetMinHeight,
   accent,
   glass,
   radius,
@@ -283,10 +284,26 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
 };
 
 const styles = StyleSheet.create({
+  /**
+   * #2262 — the SMS card is the SAME SHEET as the email composer, with the
+   * subject row absent (SMS has no subject). One `composerSheetMinHeight` (240)
+   * across both channels, deliberately: a second SMS-specific floor would be
+   * the same defect class that `PHONE_WEB_BODY_MIN_PX` vs `Math.max(120, ...)`
+   * already was — two numbers for one idea. Because the subject row is absent
+   * here, SMS simply gets MORE body out of the same floor.
+   */
   host: {
-    paddingHorizontal: spacing.md,
-    gap: spacing.sm,
     flex: 1,
+    minHeight: composerSheetMinHeight,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    overflow: "hidden",
   },
   headerRow: {
     flexDirection: "row",
@@ -301,16 +318,19 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
+  /**
+   * #2262 — the body claims the space the sheet has left rather than declaring
+   * a `minHeight: 140` of its own inside a second bordered box. The sheet owns
+   * the one visible boundary; `minHeight: 0` is the axis-scoped bound
+   * I-AXIS-SCOPED-FLEX requires on the flexed axis.
+   */
   input: {
     ...typography.body,
     color: textTokens.primary,
-    minHeight: 140,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    flex: 1,
+    minHeight: 0,
+    paddingHorizontal: 0,
+    paddingVertical: spacing.xs,
   },
   estimateBox: {
     borderRadius: radius.md,

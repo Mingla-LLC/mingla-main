@@ -84,6 +84,7 @@ import {
   StyleSheet,
   Text,
   View,
+  type ViewStyle,
 } from "react-native";
 // #2262: the dead `SmartScrollView` import that used to sit here is DELETED,
 // not made real. `grep -c "<ScrollView"` in this file was 0 and eslint already
@@ -201,6 +202,32 @@ import { nextGlobalSendWindowOpen } from "../../../../src/utils/marketing/smsSen
 
 // ORCH-1289 — Twilio MMS accepts up to 10 media items per message.
 const MMS_MAX_MEDIA = 10;
+
+/**
+ * #2262 10.9 — the LAST-RESORT recovery scroll, and it wraps BAND B ONLY.
+ *
+ * `ComposerCanvas.web.tsx` sets `overflow: "hidden"` on the desktop
+ * `editorPane`; at 1024x700 that is why 77px of the composer was unreachable
+ * with no scrollbar at all — a silent clip, invisible to the operator. With the
+ * bands in place and the `bpShort` ladder applied this should not normally
+ * trigger, but "should not normally" is not a guarantee on the surface where a
+ * clip is invisible.
+ *
+ * BINDING: it wraps Band B and nothing else. Putting the pane's scroll around
+ * the whole column would place the commit bar INSIDE a scroll container, which
+ * 10.1 forbids and which is the failure mode this issue exists to end. The
+ * scrim and the commit bar are Band B's SIBLINGS, so they are never scrolled.
+ *
+ * `overflow: "auto"` is a web-only CSS value: react-native-web's
+ * `normalizeValueWithProperty` passes string values through verbatim, and Yoga
+ * does not accept `auto`, so this is `Platform.OS === "web"`-gated. Native keeps
+ * `overflow: "hidden"` and never scrolls the column (the pell-in-ScrollView tap
+ * conflict is separately proven and stands).
+ */
+const WEB_FLEX_REGION_RECOVERY =
+  Platform.OS === "web"
+    ? ({ overflow: "auto" } as unknown as ViewStyle)
+    : null;
 
 // ORCH-1289 — one attached MMS photo. `remoteUrl` is the VERIFIED public URL
 // (the only thing that ever rides the payload); `localUri` is an optimistic
@@ -1329,7 +1356,10 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                   +212pt of panel chrome into a non-event: growth inside here is
                   absorbed by the sheet shrinking, and any residual excess is
                   clipped HERE rather than displacing the commit bar. */}
-              <View style={styles.flexRegion} testID="composer-flex-region">
+              <View
+                style={[styles.flexRegion, WEB_FLEX_REGION_RECOVERY]}
+                testID="composer-flex-region"
+              >
                 {/* #2262 bpShort ladder step 2: below a 720pt viewport the
                     audience row and the channel tabs merge onto ONE row,
                     recovering ~62pt for the sheet. Keyed to a BOOLEAN from
