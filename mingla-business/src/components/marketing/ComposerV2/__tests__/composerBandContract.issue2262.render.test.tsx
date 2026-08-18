@@ -104,6 +104,19 @@ jest.mock("../richEditor", () => {
   };
 });
 
+/**
+ * `TemplatePreviewDrawer` is a `<Modal>`-hosted preview surface: out of flow,
+ * contributing exactly zero to the band contract this suite asserts. It also
+ * runs a debounced `setTimeout` that fires AFTER `react-test-renderer` tears the
+ * tree down, and the resulting uncaught error exits the process non-zero while
+ * every assertion passes — a green suite reported as a red step. Stubbed here
+ * because it is not under test, not to dodge a failure.
+ */
+jest.mock("../TemplatePreviewDrawer", () => ({
+  __esModule: true,
+  TemplatePreviewDrawer: (): null => null,
+}));
+
 jest.mock("expo-linear-gradient", () => {
   const ReactLocal = jest.requireActual("react") as typeof React;
   const RN = jest.requireActual("react-native") as { View: React.ComponentType<object> };

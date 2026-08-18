@@ -233,6 +233,12 @@ describe("#2262 T2 — the composer contract through the RNW resolver", () => {
   it("T2-b: the bar emits flex-shrink:0 and the primary emits flex-grow:1", () => {
     const { html, css } = renderWeb(CommitBar);
     const bar = elementFor(html, "composer-commit-bar");
+    // HONEST SCOPE: react-native-web's base `View` style already carries
+    // `flex-shrink: 0` (as does react-native's own default), so this cannot fail
+    // for a DELETED `flexShrink: 0` — that revert is caught by T1-d, which reads
+    // the declared style object. What it does catch is the revert that actually
+    // changes behaviour: someone setting `flexShrink: 1` and letting the action
+    // row be squeezed by a growing sheet.
     expect(declaration(css, bar, "flex-shrink")).toBe("0");
 
     const primary = elementFor(html, "composer-commit-bar-primary");

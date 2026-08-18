@@ -257,6 +257,35 @@ export function checkSource(rawSrc, relPath, failures) {
     }
   }
 
+  // ---- R7b (positive): the web viewport pin must EXIST.
+  //
+  // R9 below only fires on an UNGUARDED pin, so deleting the pin outright would
+  // satisfy it — and deleting it is the exact revert that puts the action row
+  // back under the mobile-web keyboard, because the CSS layout viewport this
+  // flex chain is rooted in does not shrink for a soft keyboard. A gate must not
+  // be satisfiable by removing the thing it guards.
+  if (name === "_layout.tsx") {
+    if (!/height:\s*windowHeight/.test(src)) {
+      failures.push(
+        `${relPath}: the web viewport pin is gone. \`useWindowDimensions().height\` ` +
+          `is already \`visualViewport\`-derived on react-native-web, and pinning ` +
+          `the marketing route host to it is the ONLY keyboard compensation web ` +
+          `has — RN-web's \`Keyboard\` is a no-op stub (#2262 R7b).`,
+      );
+    }
+    // The flex neutralisation rides WITH the pin: `styles.host` carries `flex: 1`
+    // for native, and a COLUMN ancestor turns that grow term into "fill the
+    // parent", silently discarding the height. The browser harness caught
+    // exactly that — inline style 414px, measured 750.
+    if (/height:\s*windowHeight/.test(src) && !/flexGrow:\s*0/.test(src)) {
+      failures.push(
+        `${relPath}: the web pin sets a height without neutralising \`flex: 1\`'s ` +
+          `grow term. Under a column ancestor the browser fills the parent and ` +
+          `discards the pin (#2262 R7b).`,
+      );
+    }
+  }
+
   // ---- R9: the web viewport pin must be SSR-guarded.
   if (name === "_layout.tsx" && /useWindowDimensions/.test(src)) {
     const lines = src.split("\n");
@@ -416,14 +445,28 @@ if (process.argv.includes("--self-test")) {
   const layoutRel = "mingla-business/app/(tabs)/marketing/_layout.tsx";
   const OK_PIN =
     "const { height: windowHeight } = useWindowDimensions();\n" +
-    'Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null\n';
+    'Platform.OS === "web" && windowHeight > 0\n' +
+    '  ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }\n' +
+    "  : null\n";
   if (run(OK_PIN, layoutRel).length !== 0) selfFailures.push("(i0) guarded pin wrongly flagged");
   const UNGUARDED_PIN =
     "const { height: windowHeight } = useWindowDimensions();\n" +
     "\n\n\n\n" +
-    'Platform.OS === "web" ? { height: windowHeight } : null\n';
+    'Platform.OS === "web" ? { height: windowHeight, flexGrow: 0 } : null\n';
   if (run(UNGUARDED_PIN, layoutRel).length === 0) {
     selfFailures.push("(i) unguarded web height pin not flagged (R9)");
+  }
+
+  // (i4) R7b — deleting the pin outright must NOT satisfy the gate.
+  if (run("const { height: windowHeight } = useWindowDimensions();\n", layoutRel).length === 0) {
+    selfFailures.push("(i4) a deleted web viewport pin was not flagged (R7b)");
+  }
+  // (i5) R7b — a pin without the flex neutralisation must fire.
+  const UNNEUTRALISED =
+    "const { height: windowHeight } = useWindowDimensions();\n" +
+    'Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null\n';
+  if (run(UNNEUTRALISED, layoutRel).length === 0) {
+    selfFailures.push("(i5) a pin without flexGrow:0 was not flagged (R7b)");
   }
 
   // (i2) R10 — the sheet floor used as anything but a minHeight value.
@@ -457,7 +500,7 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "#2262 I-2262-COMPOSER-MEASURED-NOT-COMPUTED-LAYOUT self-test PASS (18/18 cases, " +
+    "#2262 I-2262-COMPOSER-MEASURED-NOT-COMPUTED-LAYOUT self-test PASS (20/20 cases, " +
       "R1-R11 + both vacuity directions).",
   );
   process.exit(0);
