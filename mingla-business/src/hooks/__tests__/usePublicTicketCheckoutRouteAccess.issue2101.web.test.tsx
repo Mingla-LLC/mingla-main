@@ -245,8 +245,33 @@ describe("issue #2101 — the real web adapter projects every server state", () 
     expect(access.canPurchase).toBe(false);
     // Control: the very same warm cache DOES resolve once auth has settled, so
     // this is not passing because the cache was never primed.
+    //
+    // [TEST-MOD-APPROVED #2178] The refetch is pinned to a promise that never
+    // settles. Without it this control was a RACE and it is what turned the
+    // required jest gate red on CI while passing locally.
+    //
+    // Why the race existed: `beforeEach` calls `fetchSpy.mockReset()`, so the spy
+    // resolves to `undefined`. Amendment 1 §A7 pins staleTime 0 +
+    // refetchOnMount 'always', so this second mount ALWAYS refetches — and that
+    // refetch fails. The hook then had two possible answers in flight: the cached
+    // `allowed`, and the failed refetch's `error`. Which one `settleUntil` saw
+    // first depended on scheduling. Locally the cache won and this passed; under
+    // CI contention the failure won and it read `Expected "allowed", Received
+    // "error"`.
+    //
+    // Why NOT the obvious fix. Resolving the spy to `allowed` would also stop the
+    // race — and would destroy this control. Its entire job is to prove the
+    // assertion above did not pass merely because the cache was empty; if the
+    // FETCH could supply `allowed` too, a never-primed cache would pass here just
+    // as happily, and the real assertion above would become unfalsifiable.
+    //
+    // A never-settling refetch keeps the discrimination intact: the cached value
+    // is the ONLY value that can ever resolve, so if the cache were not primed
+    // this control times out in `settleUntil` and FAILS, exactly as it should.
+    // Same pattern as "the FIRST paint" test below.
     observed = [];
     mockIsAuthReady = true;
+    fetchSpy.mockReturnValue(new Promise<Advisory>(() => {}));
     await mount(client);
     const settled = await settleUntil((value) => value.state !== "loading");
     expect(settled.state).toBe("allowed");
