@@ -998,6 +998,13 @@ jobs:
             # delivery), and string-not-number id matching for a 25-digit
             # message id that does not survive float64.
             supabase/functions/sms-delivery-reconcile/issue2218.reconcile.test.ts
+            # Issue #2218 — the reconciler's WIRING contract (its loop lives behind a
+            # module-scope serve() and cannot be imported): service-role-only auth,
+            # the four row-selection predicates on BOTH ledgers, a terminal verdict
+            # written to both tables WITH a reason, the ops alarm firing once per day
+            # and only when there is something to say, and askTermiiHistory failing
+            # to `pending` on every error path rather than guessing a delivery.
+            supabase/functions/sms-delivery-reconcile/issue2218.wiring.test.ts
             # Issue #2218 — the dispatcher's deferral CONTRACT. ticket-confirmation-
             # dispatch calls serve() at module scope so nothing in it can be
             # imported; these are source-introspection assertions in the style its
