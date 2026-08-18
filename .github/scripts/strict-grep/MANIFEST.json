@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 548,
-  "selfTestWiredFloor": 351,
+  "expectedStrictGrepMjsFiles": 549,
+  "selfTestWiredFloor": 352,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8362,6 +8362,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2216-ticket-qr-server-rendered"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2198-paystack-return-verify-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2198-return-leg-deno"
       ]
     }
   ]

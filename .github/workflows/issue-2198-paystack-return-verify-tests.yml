@@ -1,0 +1,145 @@
+# issue #2198 [paystack-return-verify] — the buyer's return leg from Paystack.
+#
+# A guest paid ₦100 by bank transfer on a live NGN event. Paystack charged them
+# at 01:41:05; `charge.success` reached us at 01:45:11 and only then was the
+# order created. For 4m 06s the buyer watched "Confirming your tickets…" having
+# already paid — and if that webhook had been dropped, they would never have
+# received tickets at all, because it was the ONLY completion path.
+#
+# This workflow keeps three things true:
+#   - the return leg VERIFIES with Paystack (both the web confirm and the
+#     native status poll), and finalizes on a verified `success`;
+#   - verification and the webhook produce exactly ONE order, ONE ticket,
+#     ONE email, ONE SMS — the same idempotent finalize, not a second path;
+#   - #2188 (the outbound leg) and #2160 (multi-day) stay green, because this
+#     change lands on the same screen and the same service they own.
+name: issue-2198-paystack-return-verify
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/paystackTicketReturnVerify.ts"
+      - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/ticket-checkout-confirm/**"
+      - "supabase/functions/ticket-checkout-status/**"
+      - "supabase/functions/_shared/__tests__/issue_2198_paystack_return_verify.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2198_paystack_status_poll.test.ts"
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/app/checkout/**"
+      - "mingla-business/app/checkout-trip/**"
+      - ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2198-paystack-return-verify-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/paystackTicketReturnVerify.ts"
+      - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/ticket-checkout-confirm/**"
+      - "supabase/functions/ticket-checkout-status/**"
+      - "supabase/functions/_shared/__tests__/issue_2198_paystack_return_verify.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2198_paystack_status_poll.test.ts"
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/app/checkout/**"
+      - "mingla-business/app/checkout-trip/**"
+      - ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2198-paystack-return-verify-tests.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: issue-2198-paystack-return-verify-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-2198-return-leg-deno:
+    name: "Paystack return-leg verification (Deno runtime)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - name: Structural gate (self-test first — prove it can still fail)
+        run: node .github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs --self-test
+      - name: Structural gate
+        run: node .github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs
+
+      # The handlers are captured through the ORCH-1205 serve shim and driven
+      # with a fully stubbed global fetch. NO live Paystack call is made — the
+      # keys below are inert test-mode strings that only satisfy the shared
+      # module's env-presence guards at import time.
+      - name: "#2198 return-leg runtime proofs (web confirm + native status poll)"
+        env:
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+          PAYSTACK_MODE: "test"
+          PAYSTACK_SECRET_KEY_TEST: "sk_test_issue2198_return_secret"
+        run: >-
+          deno test --import-map=supabase/functions/_shared/__tests__/_importmap.test.json
+          --allow-read --allow-env --allow-net --no-check
+          supabase/functions/_shared/__tests__/issue_2198_paystack_return_verify.test.ts
+          supabase/functions/_shared/__tests__/issue_2198_paystack_status_poll.test.ts
+
+      - name: Typecheck the changed edge surfaces
+        run: >-
+          deno check
+          supabase/functions/_shared/paystackTicketReturnVerify.ts
+          supabase/functions/ticket-checkout-confirm/index.ts
+          supabase/functions/ticket-checkout-status/index.ts
+
+      # The webhook is now a BACKSTOP rather than the only path. Its own suites
+      # must keep passing, or "both are safe to run" is an unproven claim.
+      - name: "Webhook backstop suites stay green (#1326 / #1331 / #2079)"
+        env:
+          SUPABASE_URL: "https://example-test.supabase.co"
+          SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real"
+          PAYSTACK_MODE: "test"
+          PAYSTACK_SECRET_KEY_TEST: "sk_test_issue2198_sibling_secret"
+        run: >-
+          deno test --import-map=supabase/functions/_shared/__tests__/_importmap.test.json
+          --allow-read --allow-env --allow-net --no-check
+          supabase/functions/_shared/__tests__/paystackWebhookHostile.tester.orch1331.test.ts
+          supabase/functions/_shared/__tests__/paystackWebhookFailSoft.orch1331.test.ts
+          supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.happy.test.ts
+          supabase/functions/_shared/__tests__/issue_2079_paystack_late_refund_identity.tester.adversarial.test.ts
+          supabase/functions/ticket-checkout-confirm/__tests__/issue_2079_stripe_hosted_identity.test.ts
+          supabase/functions/ticket-checkout-confirm/__tests__/orch_0952_web_checkout_session_fallback.test.ts
+          supabase/functions/ticket-checkout-status/__tests__/issue_1930_preflight_contract.test.ts
+
+  issue-2198-return-leg-business-jest:
+    name: "Paystack return leg — what the guest sees (business jest)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Install mingla-business dependencies
+        working-directory: mingla-business
+        run: npm ci
+
+      - name: "#2198 the return leg the guest actually sees"
+        working-directory: mingla-business
+        run: >-
+          npx jest --runInBand
+          "app/checkout/[eventId]/__tests__/issue_2198_paystack_return_confirm.test.tsx"
+
+      # #2188 shipped the OUTBOUND leg (provider hand-off, cart-fingerprint
+      # hold, invoke enrichment, the error mapper) and #2160 added the day set
+      # to the same path. This change edits both of their files, so their
+      # suites run here as the regression guard rather than on trust.
+      - name: "#2188 outbound leg + #2160 multi-day stay green"
+        working-directory: mingla-business
+        run: >-
+          npx jest --runInBand
+          "app/checkout/[eventId]/__tests__/issue_2188_paid_checkout_provider_handoff.test.tsx"
+          "app/checkout/[eventId]/__tests__/issue_2160_multiday_provider_handoff.test.tsx"
+          src/services/__tests__/ticketCheckoutService.test.ts
+          src/services/__tests__/ticketCheckoutService.orch0915.test.ts

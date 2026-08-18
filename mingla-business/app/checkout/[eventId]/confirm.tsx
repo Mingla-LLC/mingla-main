@@ -60,6 +60,7 @@ import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarou
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
   confirmTicketCheckout,
+  paidCheckoutErrorMessage,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -124,6 +125,12 @@ function CheckoutConfirmScreenInner({
   // the rare seconds-to-30s window between PaymentSheet success and order
   // finalization, and the screen auto-resolves to the full order view.
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
+  // issue #2198 — a terminal payment outcome from the return leg. Before this,
+  // `ticket-checkout-confirm` could not tell a Paystack failure from a slow
+  // one, so EVERY non-paid answer became the "Confirming your tickets…"
+  // spinner and a guest whose card was declined sat there forever. The server
+  // now returns a bounded reason; this renders it through #2188's mapper.
+  const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
@@ -317,6 +324,15 @@ function CheckoutConfirmScreenInner({
           clearCheckoutResumePayload(win.sessionStorage, eventId);
           return;
         }
+        // issue #2198 — a TERMINAL outcome (Paystack said failed / abandoned,
+        // or the verified amount did not match). Waiting cannot help and the
+        // webhook will never say otherwise, so say what happened.
+        if (confirmResult.status === "failed") {
+          setTerminalFailure(
+            paidCheckoutErrorMessage({ code: confirmResult.error ?? null }),
+          );
+          return;
+        }
         // status === "pending" — Stripe PI still processing OR no PI tied
         // to the session yet. Fall through to Realtime; the webhook backup
         // will populate ticket_checkout_sessions.order_id and the Realtime
@@ -451,9 +467,12 @@ function CheckoutConfirmScreenInner({
         return;
       }
       if (realtimePending) return;
+      // issue #2198 — keep the guest on /confirm to read the failure reason
+      // instead of bouncing them silently back to the cart.
+      if (terminalFailure !== null) return;
     }
     router.replace(`/checkout/${eventId}` as never);
-  }, [result, eventId, router, realtimePending, isClient]);
+  }, [result, eventId, router, realtimePending, isClient, terminalFailure]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
@@ -489,6 +508,22 @@ function CheckoutConfirmScreenInner({
   const totalTickets = carouselTickets.length;
 
   if (result === null) {
+    // issue #2198 — a verified terminal outcome outranks the calm spinner.
+    if (terminalFailure !== null) {
+      return (
+        <View style={styles.host}>
+          <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View style={styles.checkBadge}>
+              <Icon name="flag" size={36} color={textTokens.primary} />
+            </View>
+            <Text style={styles.heroTitle}>Payment not completed</Text>
+            <Text style={styles.heroEmail} numberOfLines={6}>
+              {terminalFailure}
+            </Text>
+          </View>
+        </View>
+      );
+    }
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as { location?: { search?: string } });
       const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
