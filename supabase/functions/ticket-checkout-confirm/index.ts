@@ -44,6 +44,11 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketCheckout } from "../_shared/stripe.ts";
+// issue #2198 [paystack-return-verify] — the Paystack return leg. Verification
+// is authoritative; the charge.success webhook stays a backstop. See the module
+// header for why this exists and how the two paths stay idempotent.
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import { resolvePaystackTicketReturn } from "../_shared/paystackTicketReturnVerify.ts";
 import {
   jsonResponse,
   qrTokenPepper,
@@ -284,6 +289,75 @@ serve(async (req) => {
       checkoutSessionId: session.id,
       status: "paid" as FinalizeStatus,
       order,
+    });
+  }
+
+  // ---- issue #2198: Paystack return leg. ----
+  // A Paystack session has NO stripe_account_id and NO stripe_checkout_session_id
+  // (both NULL by design — a Paystack brand has no connected account), so every
+  // branch of the Stripe slow-path below falls straight through to
+  // `{ status: "pending" }` and the buyer waits on the webhook. On bank transfer
+  // — a primary Nigerian channel — that measured 4m 06s after the money left.
+  //
+  // The decision to take this arm comes from the SERVER's provider-attempt row,
+  // never from the `?cs=paystack` the client arrived with. The resolver returns
+  // `not_paystack` for every Stripe session before any network I/O, so the
+  // Stripe path below is byte-for-byte unchanged.
+  const paystackReturn = await resolvePaystackTicketReturn(
+    supabase,
+    {
+      id: session.id,
+      stripe_payment_intent_id: session.stripe_payment_intent_id,
+    },
+    paystackVerifyTransaction,
+  );
+  if (paystackReturn.kind === "failed") {
+    // A real reason, not a spinner. The token is mapped to guest-facing copy by
+    // #2188's `paidCheckoutErrorMessage`.
+    return jsonResponse({
+      checkoutSessionId: session.id,
+      status: "failed" as FinalizeStatus,
+      order: null,
+      error: paystackReturn.code,
+    });
+  }
+  if (paystackReturn.kind === "finalized") {
+    const { data: paystackSession } = await supabase
+      .from("ticket_checkout_sessions")
+      .select("id, order_id, event_id, total_cents, currency, brand_id")
+      .eq("id", session.id)
+      .maybeSingle();
+    const finalizedOrderId = (paystackSession?.order_id as string | null) ??
+      paystackReturn.orderId;
+    const order = await fetchOrderPayload(supabase, {
+      id: session.id,
+      order_id: finalizedOrderId,
+      event_id: (paystackSession?.event_id as string) ?? session.event_id,
+      total_cents: (paystackSession?.total_cents as number | null) ??
+        session.total_cents,
+      currency: (paystackSession?.currency as string | null) ??
+        session.currency,
+    });
+
+    // The buyer's email + SMS are dispatched by the resolver on the call that
+    // actually minted the order (idempotency-keyed per (order_id, channel), so
+    // a webhook landing later still yields ONE email and ONE SMS). Nothing to
+    // fan out from here.
+    return jsonResponse({
+      checkoutSessionId: session.id,
+      status: "paid" as FinalizeStatus,
+      order,
+    });
+  }
+  if (paystackReturn.kind === "pending") {
+    // Paystack says the charge has not (yet) succeeded, or the provider was
+    // unreachable. Never mint on a guess — the client keeps polling and the
+    // webhook backstop is still live. This is also where a forged
+    // `?cs=paystack` on an unpaid session lands: no order, no tickets.
+    return jsonResponse({
+      checkoutSessionId: session.id,
+      status: "pending" as FinalizeStatus,
+      order: null,
     });
   }
 

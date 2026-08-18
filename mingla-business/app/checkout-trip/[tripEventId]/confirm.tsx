@@ -60,6 +60,7 @@ import {
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
 import {
   confirmTicketCheckout,
+  paidCheckoutErrorMessage,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -135,6 +136,11 @@ function CheckoutTripConfirmScreenInner({
   } = useCart();
 
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
+  // issue #2198 — surface parity with the event-side confirm screen. A trip
+  // bought on a Paystack (NGN) brand returns through the SAME server path, so
+  // a terminal payment outcome must read as one here too instead of becoming
+  // "Confirming your reservation…" forever.
+  const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
@@ -309,6 +315,14 @@ function CheckoutTripConfirmScreenInner({
           clearCheckoutResumePayload(win.sessionStorage, tripEventId);
           return;
         }
+        // issue #2198 — Paystack said failed / abandoned, or the verified
+        // amount did not match. Waiting cannot change that answer.
+        if (confirmResult.status === "failed") {
+          setTerminalFailure(
+            paidCheckoutErrorMessage({ code: confirmResult.error ?? null }),
+          );
+          return;
+        }
         setPendingSession({
           checkoutSessionId: payload.checkoutSessionId,
           buyerStatusToken: payload.buyerStatusToken,
@@ -423,9 +437,11 @@ function CheckoutTripConfirmScreenInner({
         return;
       }
       if (realtimePending) return;
+      // issue #2198 — keep the guest here to read the failure reason.
+      if (terminalFailure !== null) return;
     }
     router.replace(`/checkout-trip/${tripEventId}` as never);
-  }, [result, tripEventId, router, realtimePending, isClient]);
+  }, [result, tripEventId, router, realtimePending, isClient, terminalFailure]);
 
   // ----- Handlers -----
   const handleBackToTrip = useCallback((): void => {
@@ -456,6 +472,22 @@ function CheckoutTripConfirmScreenInner({
   const totalTickets = carouselTickets.length;
 
   if (result === null) {
+    // issue #2198 — a verified terminal outcome outranks the calm spinner.
+    if (terminalFailure !== null) {
+      return (
+        <View style={styles.host}>
+          <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View style={styles.checkBadge}>
+              <Icon name="flag" size={36} color={textTokens.primary} />
+            </View>
+            <Text style={styles.heroTitle}>Payment not completed</Text>
+            <Text style={styles.heroEmail} numberOfLines={6}>
+              {terminalFailure}
+            </Text>
+          </View>
+        </View>
+      );
+    }
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as { location?: { search?: string } });
       const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");

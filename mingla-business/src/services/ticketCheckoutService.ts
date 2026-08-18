@@ -171,6 +171,8 @@ export interface TicketCheckoutStatusResult {
   checkoutSessionId: string;
   status: string;
   order: Omit<TicketCheckoutFreeCompleted, "kind"> | null;
+  /** issue #2198 — bounded reason on a terminal Paystack verify result. */
+  error?: string | null;
 }
 
 /**
@@ -182,6 +184,13 @@ export interface TicketCheckoutConfirmResult {
   checkoutSessionId: string;
   status: "paid" | "pending" | "failed" | "expired";
   order: Omit<TicketCheckoutFreeCompleted, "kind"> | null;
+  /**
+   * issue #2198 — the bounded reason a `failed` confirm carries, derived
+   * server-side from Paystack's verify response. Fed straight to
+   * `paidCheckoutErrorMessage`, so the buyer is told what happened instead of
+   * watching "Confirming your tickets…" forever.
+   */
+  error?: string | null;
 }
 
 export const FINALIZATION_BACKOFF_MS = [1000, 1500, 2000, 3000, 4000, 5000] as const;
@@ -486,6 +495,32 @@ export const PAID_CHECKOUT_NO_HANDOFF_MESSAGE =
 export const PAID_CHECKOUT_FAILED_MESSAGE =
   "We couldn't start your payment. You have not been charged — please try again.";
 
+/**
+ * issue #2198 [paystack-return-verify] — the RETURN leg's outcomes.
+ *
+ * #2188's messages all describe a checkout that never handed off. These three
+ * describe a checkout that DID reach the provider and came back with an answer,
+ * which is a different set of facts and needs different copy. They are matched
+ * here, in the one mapper, rather than in a second decision path.
+ *
+ * The tokens are produced server-side by `ticket-checkout-confirm` /
+ * `ticket-checkout-status` from Paystack's OWN verify response
+ * (`data.status`) — never from a query parameter.
+ */
+export const PAID_CHECKOUT_PAYMENT_FAILED_MESSAGE =
+  "Your payment didn't go through, so no tickets were issued. You have not been charged — please try again.";
+
+export const PAID_CHECKOUT_PAYMENT_ABANDONED_MESSAGE =
+  "You left the payment page before the payment finished, so no tickets were issued. You have not been charged — please try again.";
+
+/**
+ * The mismatch case is the ONE where money may genuinely have moved, so it must
+ * never say "you have not been charged". The server has already failed the
+ * session closed and written an audit row.
+ */
+export const PAID_CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
+  "Your payment came back with a different amount or currency than this order, so no tickets were issued. If money left your account, contact support@usemingla.com before paying again.";
+
 const codeOf = (error: unknown): string | null => {
   const code = (error as { code?: unknown })?.code;
   return typeof code === "string" && code.length > 0 ? code : null;
@@ -508,6 +543,18 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
   }
   if (code === "checkout_in_progress") return PAID_CHECKOUT_IN_PROGRESS_MESSAGE;
   if (code === "checkout_unavailable") return PAID_CHECKOUT_UNAVAILABLE_MESSAGE;
+  // #2198 — the return leg's verified outcomes. Ahead of the bare-409 fallback
+  // because these carry a real, specific reason and must never be softened into
+  // "wait about a minute and try again".
+  if (code === "paystack_charge_failed") {
+    return PAID_CHECKOUT_PAYMENT_FAILED_MESSAGE;
+  }
+  if (code === "paystack_charge_abandoned") {
+    return PAID_CHECKOUT_PAYMENT_ABANDONED_MESSAGE;
+  }
+  if (code === "paystack_payment_mismatch") {
+    return PAID_CHECKOUT_PAYMENT_MISMATCH_MESSAGE;
+  }
   // A 409 whose body we could not read still means "the server refused because
   // of the state of this sale", which is the recoverable, in-progress case far
   // more often than not — and it is the ONLY one where telling the guest to
