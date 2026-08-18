@@ -41,10 +41,46 @@ BEGIN
   INSERT INTO public.creator_accounts(id) VALUES (v_user);
   INSERT INTO public.brands(id, account_id, name, slug)
     VALUES (v_brand, v_user, 'u2160 ' || p_tag, 'u2160-' || p_tag || '-' || v_brand);
+  -- ══ issue #2009 — HOW A PRIVATE FIXTURE IS BUILT NOW ═════════════════════
+  -- #2009 added `issue_2009_event_visibility_write_guard`, which refuses ENTRY
+  -- into Private for every writer: a standard event that was not `private`
+  -- before cannot become `private`. The old shape here — insert at `draft`,
+  -- then publish with `UPDATE ... SET visibility = p_visibility` — is exactly
+  -- that refused entry, and it raised `private_visibility_unavailable`.
+  --
+  -- The guard is NOT worked around. A row that is ALREADY private is a state
+  -- #2009 expects to exist (its comment: a row laundered in before the guard
+  -- "must stay manageable"), and its INSERT guard is deliberately scoped to
+  -- `authenticated`/`anon` precisely so that "every fixture that seeds an
+  -- already-private row" stays writable by a trusted caller. This suite runs as
+  -- `postgres`, so seeding the row AT `private` is the route the guard permits.
+  --
+  -- This is #2009's OWN mechanism, not a second one: its suite seeds
+  -- ('private_scheduled','b1','event','private','scheduled') by direct INSERT
+  -- in issue_2009_business_event_visibility.pg17.test.sql:160.
+  -- A private row is seeded ALREADY PUBLISHED (see above), so it also meets
+  -- `tg_require_event_brand_currency` on INSERT rather than on the publish
+  -- UPDATE. This fixture's brand carries no currency because its event is
+  -- FREE-ONLY, and `mingla.publish_free_only` is the declared, pre-existing way
+  -- to say exactly that — the same lever the public/hidden publish below uses,
+  -- honoured on INSERT as well as UPDATE. No guard is bypassed or weakened:
+  -- the event genuinely carries no money, and the trigger nulls the currency
+  -- for precisely that case.
+  IF p_visibility = 'private' THEN
+    PERFORM set_config('mingla.publish_free_only', 'on', true);
+  END IF;
   INSERT INTO public.events(id, brand_id, title, slug, event_type, status, visibility,
-                            timezone, is_multi_date, multi_date_pricing_mode)
+                            timezone, is_multi_date, multi_date_pricing_mode,
+                            published_at)
     VALUES (o_event, v_brand, 'u2160 ' || p_tag, 'u2160-' || p_tag || '-' || o_event,
-            'event', 'draft', 'draft', 'UTC', p_multi_date, p_mode);
+            'event',
+            CASE WHEN p_visibility = 'private' THEN 'scheduled' ELSE 'draft' END,
+            CASE WHEN p_visibility = 'private' THEN 'private'   ELSE 'draft' END,
+            'UTC', p_multi_date, p_mode,
+            CASE WHEN p_visibility = 'private' THEN now() END);
+  IF p_visibility = 'private' THEN
+    PERFORM set_config('mingla.publish_free_only', '', true);
+  END IF;
   FOR v_i IN 1..p_days LOOP
     INSERT INTO public.event_dates(event_id, start_at, end_at, timezone, is_master)
       VALUES (o_event, now() + ((v_i) || ' days')::interval,
@@ -54,10 +90,17 @@ BEGIN
                                   min_purchase_qty, available_online, available_in_person,
                                   display_order)
     VALUES (o_event, 'Entry', 0, true, 50, 1, true, true, 0);
-  PERFORM set_config('mingla.publish_free_only', 'on', true);
-  UPDATE public.events SET status='scheduled', visibility=p_visibility, published_at=now()
-   WHERE id = o_event;
-  PERFORM set_config('mingla.publish_free_only', '', true);
+  -- The public/hidden rows still take the REAL publish path (draft -> published
+  -- through the #1014 free-only lever), because that is how a guest-visible
+  -- event actually comes to exist and U-1/U-2 are about the real reader. A
+  -- private row is already at its final visibility above and is deliberately
+  -- NOT updated into it — see the #2009 note there.
+  IF p_visibility <> 'private' THEN
+    PERFORM set_config('mingla.publish_free_only', 'on', true);
+    UPDATE public.events SET status='scheduled', visibility=p_visibility, published_at=now()
+     WHERE id = o_event;
+    PERFORM set_config('mingla.publish_free_only', '', true);
+  END IF;
 END $$;
 
 DO $$
@@ -119,6 +162,27 @@ BEGIN
   PERFORM pg_temp.u2160_assert(
     public.pg_direct_event_checkout_bundle(gen_random_uuid(), NULL, NULL) IS NULL,
     'U-3c an unknown id is still refused (NULL, non-enumerable)');
+
+  -- U-3d — THE #2009 GUARD IS STILL ARMED. This fixture seeds its private row
+  -- AT `private` on INSERT (the route #2009 leaves open for trusted callers and
+  -- names fixtures as the reason for). That is a different thing from the guard
+  -- being off, and the difference is worth asserting rather than asserting:
+  -- ENTRY into Private by UPDATE must still be refused, for this very row.
+  DECLARE v_err text;
+  BEGIN
+    BEGIN
+      UPDATE public.events SET visibility = 'private' WHERE id = v_public;
+      v_err := NULL;
+    EXCEPTION WHEN OTHERS THEN v_err := SQLERRM;
+    END;
+    PERFORM pg_temp.u2160_assert(
+      v_err LIKE '%private_visibility_unavailable%',
+      'U-3d #2009 entry-into-Private is STILL refused — the fixture seeds, it does '
+      || 'not disable (got ' || COALESCE(v_err, 'NO ERROR — GUARD IS OFF') || ')');
+    PERFORM pg_temp.u2160_assert(
+      (SELECT visibility FROM public.events WHERE id = v_public) = 'public',
+      'U-3e ...and the row did not move');
+  END;
 
   -- ── U-4 — THE MULTI-DATE SIGNAL. ─────────────────────────────────────────
   -- Occurrences alone are not enough: `detailFromDirectBundle` hard-coded
