@@ -145,6 +145,9 @@ import {
   formatDraftDatesList,
   formatEventDoorsTimes,
 } from "../../utils/eventDateDisplay";
+// issue #2209 — namespace import ALONGSIDE the named ones above, for the
+// compatibility seam right below. Same module, so Metro resolves one copy.
+import * as EventDateDisplay from "../../utils/eventDateDisplay";
 // issue #2135 [multi-date public day picker] — TYPE-ONLY (erased at build; adds
 // no runtime dependency to this hot buyer-web route).
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
@@ -210,9 +213,40 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
   displayOrder: typeof t.displayOrder === "number" ? t.displayOrder : 0,
 });
 
+// issue #2209 — THE EYEBROW'S DATE BLOCK, resolved from the event's REAL
+// materialised days when it has them (single owner, I-14).
+//
+// Read through a Partial view of the module for the SAME reason the seam above
+// exists: two legacy isolated Jest harnesses replace the WHOLE
+// `utils/eventDateDisplay` module with a three-function factory, and tests are
+// append-only — a newly exported member is simply `undefined` in them. Those
+// harnesses supply exactly the three draft formatters this falls back to, and
+// they only ever render single-date fixtures, so the fallback is the pre-#2209
+// behaviour verbatim rather than a degraded one. A real bundle always takes the
+// real export — it is a static import of a module this file already loads.
+const EventDateDisplayCompat = EventDateDisplay as Partial<typeof EventDateDisplay>;
+const resolvePublicEventDateDisplay = (
+  event: LiveEvent,
+  occurrences: readonly PublicEventOccurrence[],
+): { dateLine: string; dateSubline: string | null; datesList: string[] } => {
+  const resolve = EventDateDisplayCompat.resolvePublicEventDateDisplay;
+  if (resolve !== undefined) return resolve(event, occurrences);
+  return {
+    dateLine: formatDraftDateLine(event),
+    dateSubline: formatDraftDateSubline(event),
+    datesList: formatDraftDatesList(event),
+  };
+};
+
 const mapLiveEventToPublicEvent = (
   event: LiveEvent,
   acquisitionState: PublicEventProps["acquisitionState"],
+  // issue #2209 — the event's materialised days. A published multi-date event
+  // carries NO draft `multiDates` (the public projection strips the authoring
+  // block), so without these the eyebrow read "Date TBD / Multi-date (no dates
+  // yet)" on the very page an organiser shares. Empty for every single-date
+  // page and every RSVP page, which take the unchanged draft branch.
+  occurrences: readonly PublicEventOccurrence[],
 ): PublicEventProps => {
   const coverVideoUnsafe = isLegacyUnsafeEventCoverVideoUrl(
     event.coverMediaUrl,
@@ -224,6 +258,11 @@ const mapLiveEventToPublicEvent = (
     provider: coverVideoUnsafe ? null : event.coverMediaProvider,
     credit: coverVideoUnsafe ? null : event.coverMediaCredit,
   });
+  // issue #2209 — REAL days win; everything else is byte-identical to the three
+  // formatDraft* calls this replaced (the helper returns exactly those when the
+  // event is not multi-date, when the organiser's draft entries are present, or
+  // when no occurrence has a parseable instant).
+  const dateDisplay = resolvePublicEventDateDisplay(event, occurrences);
   return {
     id: event.id,
     name: event.name,
@@ -231,9 +270,9 @@ const mapLiveEventToPublicEvent = (
     brandSlug: event.brandSlug,
     eventSlug: event.eventSlug,
     description: event.description,
-    dateLine: formatDraftDateLine(event),
-    dateSubline: formatDraftDateSubline(event),
-    datesList: formatDraftDatesList(event),
+    dateLine: dateDisplay.dateLine,
+    dateSubline: dateDisplay.dateSubline,
+    datesList: dateDisplay.datesList,
     status:
       event.status === "cancelled"
         ? "cancelled"
@@ -577,8 +616,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     };
   }, [event.masterEndAtUtc, event.status, nowMs]);
   const publicEvent = useMemo(
-    () => mapLiveEventToPublicEvent(event, acquisitionState),
-    [acquisitionState, event],
+    () => mapLiveEventToPublicEvent(event, acquisitionState, occurrences),
+    [acquisitionState, event, occurrences],
   );
   const publicBrand = useMemo(() => mapBrandToPublicBrand(brand), [brand]);
   const resolvedTheme = useMemo(
