@@ -7,6 +7,7 @@ DECLARE
   v_brand constant uuid := '1972eeee-0000-4000-8000-000000000002';
   v_create_operation constant uuid := '1972eeee-0000-4000-8000-000000000003';
   v_publish_operation constant uuid := '1972eeee-0000-4000-8000-000000000004';
+  v_unlisted_operation constant uuid := '1972eeee-0000-4000-8000-000000000006';
   v_dst_operation constant uuid := '1972eeee-0000-4000-8000-000000000005';
   v_args jsonb;
   v_result jsonb;
@@ -52,6 +53,17 @@ BEGIN
       'draft list/readback reports zero ticket tiers even though its canonical draft has one');
   END IF;
 
+  -- ROUND-2 P0, CARRIED FORWARD. The defect this probe was written against is
+  -- "the confirmed visibility is ignored and the draft payload value is
+  -- published instead". That invariant is unchanged; what changed underneath it
+  -- is that `private` is now FROZEN platform-wide. #1931 shipped containment
+  -- only (its transition functions are refusal stubs) and #2009's write guard
+  -- fails the Private boundary closed for EVERY writer, so
+  -- `business_publish_event_draft` refuses a private-intent publish with
+  -- `private_access_not_ready`. Honouring a confirmed `private` therefore MEANS
+  -- refusing it — silently publishing it as something else is the very defect.
+  -- Both legs are asserted: private fails closed with the row untouched, and a
+  -- confirmed `unlisted` is honoured EXACTLY.
   v_args:=jsonb_build_object(
     'event_id',v_event_id,'brand_id',v_brand,'visibility','private');
   INSERT INTO public.agent_pending_actions(
@@ -61,10 +73,34 @@ BEGIN
     v_publish_operation,v_user,'publish_event',v_args,'executing','hub_experience',v_brand,
     v_event_id,now(),now()
   );
-  v_result:=public.ari_execute_event_operation(v_publish_operation,'publish_event',v_args);
-  IF (SELECT visibility FROM public.events WHERE id=v_event_id)<>'private' THEN
+  BEGIN
+    v_result:=public.ari_execute_event_operation(v_publish_operation,'publish_event',v_args);
     v_failures:=array_append(v_failures,
-      'confirmed private publish was ignored and the event retained the draft payload visibility');
+      'a confirmed private publish succeeded while the platform private freeze is in force');
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT IN ('private_access_not_ready','private_visibility_unavailable') THEN
+      v_failures:=array_append(v_failures,
+        'private publish failed with an unexpected code: '||SQLERRM);
+    END IF;
+  END;
+  IF (SELECT status FROM public.events WHERE id=v_event_id)<>'draft' THEN
+    v_failures:=array_append(v_failures,
+      'the refused private publish still moved the event out of draft');
+  END IF;
+
+  v_args:=jsonb_build_object(
+    'event_id',v_event_id,'brand_id',v_brand,'visibility','unlisted');
+  INSERT INTO public.agent_pending_actions(
+    id,user_id,tool_name,tool_args,status,source,related_brand_id,related_event_id,
+    server_proposed_at,execution_attested_at
+  ) VALUES(
+    v_unlisted_operation,v_user,'publish_event',v_args,'executing','hub_experience',v_brand,
+    v_event_id,now(),now()
+  );
+  v_result:=public.ari_execute_event_operation(v_unlisted_operation,'publish_event',v_args);
+  IF (SELECT visibility FROM public.events WHERE id=v_event_id)<>'hidden' THEN
+    v_failures:=array_append(v_failures,
+      'confirmed unlisted publish was ignored and the event retained the draft payload visibility');
   END IF;
 
   v_args:=jsonb_build_object(

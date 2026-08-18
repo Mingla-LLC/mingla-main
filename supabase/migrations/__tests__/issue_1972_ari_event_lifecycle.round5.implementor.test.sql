@@ -15,6 +15,7 @@ DECLARE
   v_after jsonb;
   v_visibility text;
   v_expected text;
+  v_private_refused boolean;
   v_invalid_label text;
   v_invalid_value jsonb;
   v_operation_id uuid;
@@ -239,8 +240,17 @@ BEGIN
   END IF;
 
   -- Every valid choice survives the complete publish -> unpublish -> republish
-  -- lifecycle. Public maps to public, unlisted maps only to hidden, and private
-  -- remains private; reconstruction restores the original user-facing value.
+  -- lifecycle. Public maps to public and unlisted maps only to hidden;
+  -- reconstruction restores the original user-facing value.
+  --
+  -- CARRIED FORWARD: `private` no longer reaches a published state at all. #1931
+  -- shipped Private containment only — every one of its transition functions is
+  -- a refusal stub — and #2009's Private boundary guard fails closed for EVERY
+  -- writer until #2144. So the private leg asserts the freeze instead of a
+  -- round-trip: the draft keeps its stored private intent losslessly, and the
+  -- publish is refused with a stable code having changed nothing. The valid
+  -- draft-side private topology is still fully exercised by the create loop at
+  -- the top of this guard.
   FOREACH v_visibility IN ARRAY ARRAY['public','unlisted','private'] LOOP
     v_operation_id:=gen_random_uuid();
     v_payload:=jsonb_build_object(
@@ -270,6 +280,30 @@ BEGIN
     );
     v_event_id:=(v_result#>>'{event,id}')::uuid;
     v_payload:=public.business_event_draft_payload_from_graph(v_event_id);
+    IF v_visibility='private' THEN
+      v_before:=(SELECT to_jsonb(e) FROM public.events e WHERE id=v_event_id);
+      v_private_refused:=false;
+      BEGIN
+        PERFORM public.issue_1719_publish_event_with_poster(v_event_id,v_payload,0);
+      EXCEPTION WHEN OTHERS THEN
+        IF SQLERRM NOT IN ('private_access_not_ready','private_visibility_unavailable') THEN
+          RAISE EXCEPTION 'private_publish_wrong_error:%',SQLERRM;
+        END IF;
+        v_private_refused:=true;
+      END;
+      IF NOT v_private_refused THEN
+        RAISE EXCEPTION 'private_publish_succeeded_despite_platform_freeze';
+      END IF;
+      IF (SELECT to_jsonb(e) FROM public.events e WHERE id=v_event_id)
+           IS DISTINCT FROM v_before THEN
+        RAISE EXCEPTION 'refused_private_publish_changed_graph';
+      END IF;
+      IF (SELECT theme#>>'{business_draft,requestedVisibility}'
+          FROM public.events WHERE id=v_event_id) IS DISTINCT FROM 'private' THEN
+        RAISE EXCEPTION 'refused_private_publish_lost_draft_intent';
+      END IF;
+      CONTINUE;
+    END IF;
     PERFORM public.issue_1719_publish_event_with_poster(v_event_id,v_payload,0);
     v_expected:=CASE v_visibility WHEN 'unlisted' THEN 'hidden' ELSE v_visibility END;
     IF (SELECT visibility FROM public.events WHERE id=v_event_id)

@@ -10,6 +10,8 @@ DECLARE
   v_brand constant uuid := '1972cafe-0000-4000-8000-000000000002';
   v_create_operation constant uuid := '1972cafe-0000-4000-8000-000000000003';
   v_publish_operation constant uuid := '1972cafe-0000-4000-8000-000000000004';
+  v_unlisted_operation constant uuid := '1972dddd-0000-4000-8000-00000000ff04';
+  v_private_publish_refused boolean;
   v_args jsonb;
   v_result jsonb;
   v_graph jsonb;
@@ -81,10 +83,47 @@ BEGIN
     v_publish_operation,v_user,'publish_event',v_args,'executing','hub_experience',v_brand,
     v_event_id,now(),now()
   );
-  PERFORM public.ari_execute_event_operation(v_publish_operation,'publish_event',v_args);
+  -- CARRIED FORWARD. This leg proved that a publish carrying NO visibility
+  -- override still honours the draft's stored intent rather than silently
+  -- defaulting to public. The intent here is `private`, which is now frozen
+  -- platform-wide (#1931 shipped containment only; #2009's Private boundary
+  -- guard fails closed for every writer until #2144). Honouring the stored
+  -- intent therefore means REFUSING the publish — not publishing it as
+  -- something the organiser never asked for, which is the defect this leg
+  -- exists to catch. The row must be untouched.
+  v_private_publish_refused:=false;
+  BEGIN
+    PERFORM public.ari_execute_event_operation(v_publish_operation,'publish_event',v_args);
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT IN ('private_access_not_ready','private_visibility_unavailable') THEN
+      RAISE EXCEPTION 'round4_private_publish_wrong_error:%',SQLERRM;
+    END IF;
+    v_private_publish_refused:=true;
+  END;
+  IF NOT v_private_publish_refused THEN
+    RAISE EXCEPTION 'round4_private_publish_succeeded_despite_platform_freeze';
+  END IF;
+  IF (SELECT status FROM public.events WHERE id=v_event_id) IS DISTINCT FROM 'draft'
+     OR (SELECT theme#>>'{business_draft,requestedVisibility}'
+         FROM public.events WHERE id=v_event_id) IS DISTINCT FROM 'private' THEN
+    RAISE EXCEPTION 'round4_refused_private_publish_still_changed_the_graph';
+  END IF;
+
+  -- An explicit, permitted override publishes and is honoured EXACTLY, which
+  -- keeps the live atomic-update probe below reachable.
+  v_args:=jsonb_build_object(
+    'event_id',v_event_id,'brand_id',v_brand,'visibility','unlisted');
+  INSERT INTO public.agent_pending_actions(
+    id,user_id,tool_name,tool_args,status,source,related_brand_id,related_event_id,
+    server_proposed_at,execution_attested_at
+  ) VALUES(
+    v_unlisted_operation,v_user,'publish_event',v_args,'executing','hub_experience',v_brand,
+    v_event_id,now(),now()
+  );
+  PERFORM public.ari_execute_event_operation(v_unlisted_operation,'publish_event',v_args);
   IF (SELECT visibility FROM public.events WHERE id=v_event_id)
-       IS DISTINCT FROM 'private' THEN
-    RAISE EXCEPTION 'round4_publish_without_override_lost_private_visibility';
+       IS DISTINCT FROM 'hidden' THEN
+    RAISE EXCEPTION 'round4_permitted_override_publish_lost_its_visibility';
   END IF;
 
   PERFORM public.business_update_live_event_atomic(

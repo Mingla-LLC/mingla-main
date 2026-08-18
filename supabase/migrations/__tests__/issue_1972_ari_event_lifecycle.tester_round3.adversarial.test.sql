@@ -89,10 +89,15 @@ BEGIN
       'duplicate lost the source draft structured location/address');
   END IF;
 
-  -- Publish explicitly as private so the next probe reaches the live atomic
-  -- mutation boundary without relying on the lossy graph value above.
+  -- Publish explicitly with an OVERRIDE visibility so the next probe reaches the
+  -- live atomic mutation boundary without relying on the lossy graph value
+  -- above. This used to override to `private`; that is now refused platform-wide
+  -- (#1931 containment-only + #2009's Private boundary guard fail closed for
+  -- every writer until #2144), and the freeze itself is asserted by the round-2
+  -- guard. `unlisted` exercises the identical override path — a confirmed value
+  -- that DIFFERS from the stored draft intent — which is what this probe needs.
   v_args:=jsonb_build_object(
-    'event_id',v_event_id,'brand_id',v_brand,'visibility','private');
+    'event_id',v_event_id,'brand_id',v_brand,'visibility','unlisted');
   INSERT INTO public.agent_pending_actions(
     id,user_id,tool_name,tool_args,status,source,related_brand_id,related_event_id,
     server_proposed_at,execution_attested_at
