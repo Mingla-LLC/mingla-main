@@ -1,0 +1,169 @@
+name: "Issue #1931 private event access"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
+      - "supabase/migrations/__tests__/issue_1931_*"
+      - "mingla-business/src/hooks/useBusinessEvents.ts"
+      - "supabase/functions/private-event-access/**"
+      - "supabase/functions/private-event-read/**"
+      - "supabase/functions/private-event-media/**"
+      - "supabase/functions/_shared/privateEventAccess.ts"
+      - "supabase/security/anon_executable_definer_allowlist.txt"
+      - "mingla-business/src/components/event/CreatorStep6Settings.tsx"
+      - "mingla-business/src/services/__tests__/issue_1931_*"
+      - "mingla-business/src/services/privateEventAccessService.ts"
+      - "mingla-admin/src/services/offeringsService.js"
+      - ".github/scripts/strict-grep/issue-1931-private-event-access.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1931-private-event-access.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
+      - "supabase/migrations/__tests__/issue_1931_*"
+      - "mingla-business/src/hooks/useBusinessEvents.ts"
+      - "supabase/functions/private-event-access/**"
+      - "supabase/functions/private-event-read/**"
+      - "supabase/functions/private-event-media/**"
+      - "supabase/functions/_shared/privateEventAccess.ts"
+      - ".github/scripts/strict-grep/issue-1931-private-event-access.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-1931-private-event-access.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      # SC-47 — behavioral equality. The reader-equality probe is captured against the
+      # database replayed to the migration IMMEDIATELY BEFORE #1931, then again with
+      # #1931 applied. The two captures must be byte-identical: with readiness false and
+      # zero transition jobs, every re-emitted object behaves exactly as it did.
+      - name: "SC-47 baseline capture (pre-#1931)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            case "$f" in
+              *_issue_1931_*) continue ;;
+              # issue #2160 — SKIPPED FOR THE SAME REASON #1931 IS.
+              #
+              # This phase deliberately runs the chain WITHOUT #1931, and #2160
+              # re-emits `pg_direct_event_checkout_bundle`, whose CURRENT body
+              # (defined by #1931 itself) calls
+              # `issue_1931_event_ordinary_read_blocked`. A `LANGUAGE sql` body
+              # is validated at CREATE time, so applying #2160 here aborts with
+              # "function public.issue_1931_event_ordinary_read_blocked(uuid)
+              # does not exist". The reference is CORRECT — it is the private-
+              # event guard on a public reader — and removing it to satisfy this
+              # lane would be deleting a security control to make CI green.
+              #
+              # Skipping is the same remedy this lane already applies to #1931,
+              # and #2160 is covered end-to-end by its own lane, which replays
+              # the FULL chain in true order and runs seven executable suites
+              # twice. Any future migration that re-emits a #1931-defined object
+              # belongs on this list too.
+              *_issue_2160_*) continue ;;
+            esac
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_reader_equality.test.sql > /tmp/eq_baseline.txt 2>&1
+
+      # P2-1 / P2-2 — seed DURABLE rows BEFORE the migration applies, so the
+      # "columns stay NULL" and "#1770 rows unchanged" assertions have a real subject.
+      # On a clean CI replay both target tables are empty, which made them vacuous.
+      - name: "Seed the migration-time write probe (pre-#1931)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_migration_time_probe.seed.sql
+
+      - name: "Apply #1931 and re-capture"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20270413001931_issue_1931_private_event_access.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_reader_equality.test.sql > /tmp/eq_post.txt 2>&1
+
+      - name: "SC-47 — re-emitted objects are behaviorally identical"
+        run: diff /tmp/eq_baseline.txt /tmp/eq_post.txt
+
+      - name: "Migration-time write probe (P2-1 / P2-2) — #1931 wrote nothing it must not"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_migration_time_probe.verify.sql
+
+      - name: "Read-cost probe (P2-3) — measured and recorded, catastrophe ceiling only"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_read_cost_probe.sql
+
+      - name: "#1931 behavioral suite (SC-45/46/48/53/54/55c)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1931_private_event_access.test.sql
+
+      - name: "Anonymous SECURITY DEFINER allowlist"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+  gates-and-edge:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+
+      - run: node .github/scripts/strict-grep/issue-1931-private-event-access.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1931-private-event-access.mjs
+
+      # SC-47 / SC-49(e) / SC-50 — the two landed gates #1931 must NOT weaken still pass
+      # unchanged, including their own self-test mutation sets.
+      - run: node .github/scripts/strict-grep/issue-1930-checkout-current-truth.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2050-host-route-ownership.mjs --self-test
+
+      - run: deno check supabase/functions/private-event-access/index.ts supabase/functions/private-event-read/index.ts supabase/functions/private-event-media/index.ts
+      - run: deno test --allow-env --allow-read --allow-net supabase/functions/private-event-access/__tests__/issue_1931_private_event_access_edge.test.ts
+
+  clients:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci
+        working-directory: mingla-business
+      - run: npx jest --runInBand src/services/__tests__/issue_1931_private_event_access.test.ts
+        working-directory: mingla-business

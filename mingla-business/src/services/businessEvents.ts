@@ -11,6 +11,15 @@ import type {
   TicketStub,
   WhenMode,
 } from "../store/draftEventStore";
+// issue #2160 — the coercion comes from a LEAF module, NOT from
+// `draftEventStore`. The import above is `import type` and is ERASED; a VALUE
+// import from that module would make it real and drag the AsyncStorage-backed
+// zustand persist into every consumer of this file — which broke an unrelated
+// TRIP render suite for exactly one commit.
+import {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "../utils/multiDatePricingMode";
 import type {
   EditableLiveEventFields,
   LiveEvent,
@@ -906,6 +915,30 @@ export const eventFromPublishResponse = (
   };
 };
 
+/**
+ * issue #2160 — persist the organiser's multi-day pricing choice.
+ *
+ * A dedicated RPC rather than a key threaded through the publish payload: the
+ * column is independent of everything publish writes, and threading it would
+ * mean re-emitting a live publish RPC for one field. The DATABASE trigger
+ * `events_multi_date_pricing_mode_locked` is the authority and is fail-closed,
+ * so this call is safe to make from any surface.
+ *
+ * THROWS on failure — services throw, they never swallow. `multi_date_pricing_
+ * mode_locked` is the caller's cue that a guest already holds a ticket.
+ */
+export const setEventMultiDatePricingMode = async (
+  eventId: string,
+  mode: MultiDatePricingMode,
+): Promise<MultiDatePricingMode> => {
+  const { data, error } = await supabase.rpc(
+    "biz_set_event_multi_date_pricing_mode",
+    { p_event_id: eventId, p_mode: mode },
+  );
+  if (error !== null) throw error;
+  return data === "all_days" ? "all_days" : "per_day";
+};
+
 export const publishBusinessEventDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
@@ -930,6 +963,36 @@ export const publishBusinessEventDraft = async (
   }
   if (response.event.slug.startsWith("draft-")) {
     throw new Error("Publish returned a draft placeholder slug.");
+  }
+
+  // ══ issue #2160 — apply the organiser's multi-day pricing choice ═════════
+  // Only when it is NOT the default: `events.multi_date_pricing_mode` is
+  // `NOT NULL DEFAULT 'per_day'`, so a per_day event needs no call at all and
+  // the publish path stays byte-identical for every event that does not use
+  // this feature (single-date, recurring, RSVP, trip, experience, and every
+  // multi-date event that keeps the default).
+  //
+  // FAIL-SOFT, DELIBERATELY, AND ONLY IN THIS DIRECTION. The event is already
+  // published and the organiser is already past this screen; throwing here
+  // would surface a publish failure for an event that published fine. The
+  // fallback state is `per_day`, which is the mode that CANNOT give a day away
+  // for free — so the failure mode costs the organiser nothing. It is logged,
+  // never swallowed silently (Constitution #3).
+  const chosenPricingMode = draftMultiDatePricingMode(
+    (draft as { multiDatePricingMode?: unknown }).multiDatePricingMode,
+  );
+  if (chosenPricingMode !== "per_day") {
+    try {
+      await setEventMultiDatePricingMode(response.event.id, chosenPricingMode);
+    } catch (pricingModeError) {
+      console.error(
+        "[businessEvents] multi-day pricing mode not applied at publish",
+        response.event.id,
+        pricingModeError instanceof Error
+          ? pricingModeError.message
+          : String(pricingModeError),
+      );
+    }
   }
 
   // ORCH-0808 — organizer-funnel event. Fires on every successful publish

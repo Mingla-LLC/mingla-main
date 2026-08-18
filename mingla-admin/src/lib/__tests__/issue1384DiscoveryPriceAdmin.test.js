@@ -15,6 +15,18 @@ describe("issue #1384 Admin discovery-price contract", () => {
       page.indexOf("const handleSave"),
       page.indexOf("// META-ORCH-1009 Sub-D", page.indexOf("const handleSave")),
     );
+    // Issue #2113 EMPTY-WINDOW GUARD. The window above terminates on the
+    // `// META-ORCH-1009 Sub-D` COMMENT. ADDING that comment as handleSave's first
+    // line collapses the window to "", and `"".includes(x) === false` satisfies
+    // both negative assertions below — proven 3/3 green with the banned partial
+    // write (`from("place_pool").update` + `rpc("admin_edit_place")`) as the
+    // function's very first statement. These two assertions make the collapse
+    // itself a failure and pin the window to the real CAS body.
+    assert.ok(
+      handleSave.length > 400 && handleSave.length < 4000,
+      `handleSave window collapsed or ran away (${handleSave.length} chars) — the "// META-ORCH-1009 Sub-D" boundary comment moved, or one was added inside handleSave`,
+    );
+    assert.match(handleSave, /buildAdminDiscoveryRangeUpdate\(\{/, "the window must contain the real atomic CAS builder");
     assert.equal(handleSave.includes('rpc("admin_edit_place"'), false);
     assert.equal(handleSave.includes('from("place_pool").update'), false);
   });

@@ -297,6 +297,27 @@ export const formatEventDoorsTimes = (
 };
 
 /**
+ * issue #2135 [multi-date public day picker] — the short day label for ONE
+ * materialised `event_dates` occurrence, e.g. "Sat 22 Aug", rendered in the
+ * event's IANA timezone.
+ *
+ * Lives here, not in the component, because I-14 makes this file the single
+ * owner of event date display (never a local ISO-to-label formatter in a
+ * component). Returns null on an unparseable instant — NEVER a fabricated
+ * label (Constitution #9); callers omit the affordance instead.
+ */
+export const formatOccurrenceDayLabel = (
+  startAtUtc: string | null | undefined,
+  timezone: string | null | undefined,
+): string | null => {
+  if (typeof startAtUtc !== "string" || startAtUtc.length === 0) return null;
+  if (Number.isNaN(new Date(startAtUtc).getTime())) return null;
+  const tz =
+    typeof timezone === "string" && timezone.length > 0 ? timezone : "UTC";
+  return formatShortDateInTz(startAtUtc, tz);
+};
+
+/**
  * ORCH-0877 — Single-event date line. Renders one of three forms:
  *   1. Date TBD                              — when date is null
  *   2. "Sat 18 May · 10 PM"                  — when endsAt is null
@@ -492,4 +513,141 @@ export const formatDraftDatesList = (draft: EventDateLike): string[] => {
   // multi_date
   if (draft.multiDates === null) return [];
   return formatMultiDateList(draft.multiDates);
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// issue #2209 — RENDERING A PUBLISHED EVENT'S REAL DAYS.
+//
+// THE BUG. A published multi-date event's days live in `event_dates` and reach
+// the client as OCCURRENCES (`PublicEventDetail.occurrences`, #2160/#2161).
+// `MultiDateEntry[]` is a DIFFERENT thing: it is the ORGANISER'S DRAFT, read
+// out of `theme.business_event.multiDates`, and the public projection
+// deliberately strips it. So on the buyer-web public page a two-day event
+// arrived with `whenMode === "multi_date"` and `multiDates === null`, and
+// `formatDraftDateLine`/`formatDraftDateSubline` correctly reported what they
+// were given: "Date TBD" and "Multi-date (no dates yet)". The formatters were
+// not wrong — nobody had ever taught this file that a LIVE event's days come
+// from somewhere else.
+//
+// The helpers below are that second source, and they live HERE because I-14
+// makes this file the single owner of event date display. `formatOccurrenceLine`
+// in particular is the SAME label MultiDateDayChooser renders on its day rows —
+// that component now calls this instead of keeping a private copy, so the
+// eyebrow and the picker cannot drift apart.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * One materialised occurrence, structurally. Declared here rather than imported
+ * so this display module keeps zero dependencies on the service layer
+ * (`PublicEventOccurrence` satisfies it by structure — TypeScript is
+ * structural, so no import and no cycle).
+ */
+export interface OccurrenceDateLike {
+  id: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+}
+
+/**
+ * "Sat 22 Aug · 11 AM – 6 PM" for ONE occurrence, degrading to
+ * "Sat 22 Aug · 11 AM" when there is no end instant and to "Sat 22 Aug" when
+ * there is no start time. Returns NULL — never a fabricated label — when the
+ * start instant is unparseable (Constitution #9); callers decide what to say.
+ */
+export const formatOccurrenceLine = (
+  occurrence: OccurrenceDateLike,
+  fallbackTimezone: string | null | undefined,
+): string | null => {
+  const tz =
+    typeof occurrence.timezone === "string" && occurrence.timezone.length > 0
+      ? occurrence.timezone
+      : typeof fallbackTimezone === "string" && fallbackTimezone.length > 0
+        ? fallbackTimezone
+        : "UTC";
+  const day = formatOccurrenceDayLabel(occurrence.startAt, tz);
+  if (day === null) return null;
+  const { open, close } = formatEventDoorsTimes(
+    occurrence.startAt,
+    occurrence.endAt,
+    tz,
+  );
+  if (open === null) return day;
+  return close === null ? `${day} · ${open}` : `${day} · ${open} – ${close}`;
+};
+
+/**
+ * "2 dates · first Sat 22 Aug" — the occurrence-backed twin of
+ * `formatMultiDateSummary`, word-for-word identical in shape so the two
+ * sources of the same sub-line read the same to a guest.
+ *
+ * Returns null when NO occurrence has a parseable start, so the caller can
+ * fall back to the draft formatters (which say "Multi-date (no dates yet)")
+ * rather than print a count of days it cannot name.
+ */
+export const formatOccurrenceSummary = (
+  occurrences: readonly OccurrenceDateLike[],
+  fallbackTimezone: string | null | undefined,
+): string | null => {
+  const first = occurrences.find(
+    (o) =>
+      formatOccurrenceDayLabel(
+        o.startAt,
+        o.timezone.length > 0 ? o.timezone : (fallbackTimezone ?? "UTC"),
+      ) !== null,
+  );
+  if (first === undefined) return null;
+  const firstShort = formatOccurrenceDayLabel(
+    first.startAt,
+    first.timezone.length > 0 ? first.timezone : (fallbackTimezone ?? "UTC"),
+  );
+  const n = occurrences.length;
+  return `${n} ${n === 1 ? "date" : "dates"} · first ${firstShort}`;
+};
+
+/**
+ * The eyebrow date block for a PUBLIC event page.
+ *
+ * REAL DAYS WIN, DRAFT ENTRIES STAY AUTHORITATIVE WHERE THEY EXIST, AND
+ * NOTHING ELSE MOVES. The occurrence-backed branch is taken ONLY when all three
+ * hold:
+ *
+ *   1. the event is `multi_date` — a single or recurring event is untouched,
+ *   2. it carries NO draft `multiDates` — the organiser's own preview surfaces
+ *      still render their draft entries, unchanged,
+ *   3. at least one occurrence has a parseable start instant.
+ *
+ * Miss any one and this returns EXACTLY what `formatDraftDateLine` /
+ * `formatDraftDateSubline` / `formatDraftDatesList` returned before #2209 — so
+ * a single-date page is byte-identical, and a multi-date event that genuinely
+ * has no materialised days still degrades honestly to "Date TBD" +
+ * "Multi-date (no dates yet)" instead of inventing a schedule.
+ */
+export const resolvePublicEventDateDisplay = (
+  event: EventDateLike,
+  occurrences: readonly OccurrenceDateLike[],
+): { dateLine: string; dateSubline: string | null; datesList: string[] } => {
+  const draft = {
+    dateLine: formatDraftDateLine(event),
+    dateSubline: formatDraftDateSubline(event),
+    datesList: formatDraftDatesList(event),
+  };
+  if (event.whenMode !== "multi_date" || event.multiDates !== null) return draft;
+  // Chronological by measurement, not by trust: the reader already orders them
+  // (pg_direct_event_checkout_bundle / pg_public_event_by_slug both ORDER BY
+  // start_at, id), but a cache, a mock or a future transport must not be able
+  // to reorder what a guest reads.
+  const lines = occurrences
+    .map((o) => ({ ms: new Date(o.startAt).getTime(), o }))
+    .filter((x) => Number.isFinite(x.ms))
+    .sort((a, b) => a.ms - b.ms)
+    .map((x) => formatOccurrenceLine(x.o, event.timezone))
+    .filter((line): line is string => line !== null);
+  if (lines.length === 0) return draft;
+  const subline = formatOccurrenceSummary(occurrences, event.timezone);
+  return {
+    dateLine: lines[0],
+    dateSubline: subline ?? draft.dateSubline,
+    datesList: lines,
+  };
 };

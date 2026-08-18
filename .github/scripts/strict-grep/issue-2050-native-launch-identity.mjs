@@ -9,13 +9,13 @@ const EXPECTED_ASSETS = {
     "d16e3e15956a552a6608014962857d61b1442c8db738d000fca5f155527a2307", 1024, 1024,
   ],
   "mingla-business/assets/images/android-icon-foreground.png": [
-    "c0192aeeee72a0547bcbbad17081581c0d1d34865e83ee28eef6b3be25835a78", 1024, 1024,
+    "70b2b8f0c097a4450fc2417839e4ba0a6e290113dda7f72b3afa615d779298de", 1024, 1024,
   ],
   "mingla-business/assets/images/android-icon-monochrome.png": [
-    "427f4f97b1facfafec6450c04848e3b88b6f3c862b4a33cb01519cc62fd62393", 432, 432,
+    "dc1080074cfe92ca0bfe5a0384944d4de95d1259dc30bdc918d0181066d6f39d", 432, 432,
   ],
   "mingla-business/assets/images/favicon.png": [
-    "f8a50ee40a7d3011dada2815120eb9052d1682d970f67b4b39e6db7a85cdb187", 48, 48,
+    "386b4670deab70320cb83b7e80493aa23780179164814a2c8c3a5134f59d1b03", 256, 256,
   ],
   "mingla-business/assets/images/splash-icon.png": [
     "4c0d6c7f83751eec9411a6a5b51cd8dc071261c6d46033a4638882e0a4d95f16", 2000, 2000,

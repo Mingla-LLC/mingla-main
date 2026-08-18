@@ -557,26 +557,39 @@ Deno.test("#871 all three confirmation routes prepare every observed finalizatio
     assertStringIncludes(source, '"error"');
     assertStringIncludes(source, '"terminal"');
     assertStringIncludes(source, '"rate"');
-    assertStringIncludes(
-      source,
-      "openAttendanceClaimWithFallback(link, Linking.openURL)",
-    );
-    assertStringIncludes(
-      source,
-      "Your tickets are confirmed. We couldn’t prepare the Mingla link.",
-    );
-    assertStringIncludes(
-      source,
-      "Your tickets are confirmed. Guest-list access isn’t available for this order.",
-    );
-    assertStringIncludes(
-      source,
-      "Your tickets are confirmed. Try the Mingla link again in a few minutes.",
-    );
-    assertStringIncludes(source, "styles.attendanceClaimCard");
-    assertStringIncludes(source, "MINGLA_APP_ICON");
-    assertStringIncludes(source, 'accessibilityLabel="Mingla app icon"');
+    // #2217 moved the presentation of the minted link out of a second card and
+    // into the ONE app card (DownloadMinglaCta), which now owns the deep-link
+    // open, the device-aware store fallback and every phase's copy. The
+    // AUTHORITY assertions above are unchanged and still pin this route: it
+    // must still mint on sync, on realtime and on retry. What is pinned here is
+    // that the mint is HANDED to the card rather than dropped on the floor.
+    assertStringIncludes(source, "<DownloadMinglaCta");
+    assertStringIncludes(source, "claimPhase={attendanceClaim.phase}");
+    assertStringIncludes(source, "link.appClaimUrl");
+    assertStringIncludes(source, "onRetryClaim={retryAttendanceClaim}");
   }
+});
+
+Deno.test("#871 (via #2217) the app card still terminates every claim phase", () => {
+  const card = read("mingla-business/src/components/checkout/DownloadMinglaCta.tsx");
+  assertStringIncludes(
+    card,
+    "Your tickets are confirmed. We couldn’t prepare the Mingla link.",
+  );
+  assertStringIncludes(
+    card,
+    "Your tickets are confirmed. Guest-list access isn’t available for this order.",
+  );
+  assertStringIncludes(
+    card,
+    "Your tickets are confirmed. Try the Mingla link again in a few minutes.",
+  );
+  assertStringIncludes(card, "Preparing your Mingla link…");
+  assertStringIncludes(card, "openAttendanceClaimWithFallback(");
+  // The claim link is an ENHANCEMENT: the button must render and reach a store
+  // in EVERY phase, including the ones that never produce a link.
+  assertStringIncludes(card, "if (claimAppUrl === null)");
+  assertStringIncludes(card, "void Linking.openURL(target.ctaUrl);");
 });
 
 Deno.test("#871 guest sheet exposes close, party size, offline recovery and actionable unlock", () => {

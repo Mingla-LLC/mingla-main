@@ -1,6 +1,7 @@
 'use client'
 import { CalendarCheck, Users, Sparkles, Footprints, Zap, ArrowRight } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 
 // ORCH-1010 — Dining tab chart. A restaurant dashboard: weekly payout, covers
 // (with daypart split), owned diners, and how diners found you (walk-in foot
@@ -17,8 +18,8 @@ const AVATARS = ['A', 'M', 'J', 'K', 'R']
 
 export function DiningDashboardCard() {
   return (
-    <div
-      data-theme="light"
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white p-5 text-left ring-1 ring-[rgba(14,14,16,0.05)] md:p-6"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -56,7 +57,13 @@ export function DiningDashboardCard() {
           </div>
           <div className="mb-2 flex h-2 w-full overflow-hidden rounded-full bg-black/5">
             {COVER_SPLIT.map((s) => (
-              <span key={s.label} className="h-full" style={{ width: `${s.pct}%`, background: s.color }} />
+              <AnimatedBar
+                key={s.label}
+                className="block h-full"
+                size={`${s.pct}%`}
+                delay={0.12}
+                style={{ background: s.color }}
+              />
             ))}
           </div>
           <div className="flex flex-wrap gap-x-3 gap-y-1">
@@ -109,8 +116,8 @@ export function DiningDashboardCard() {
       <div className="mt-3 rounded-xl border border-black/[0.06] bg-black/[0.015] p-4">
         <p className="mb-3 text-[13px] font-medium text-text-secondary">How diners found you</p>
         <div className="mb-3 flex h-2.5 w-full overflow-hidden rounded-full bg-black/5">
-          <span className="h-full" style={{ width: '64%', background: 'var(--color-warm)' }} />
-          <span className="h-full" style={{ width: '36%', background: 'rgba(14,14,16,0.18)' }} />
+          <AnimatedBar className="block h-full" size="64%" delay={0.18} style={{ background: 'var(--color-warm)' }} />
+          <AnimatedBar className="block h-full" size="36%" delay={0.26} style={{ background: 'rgba(14,14,16,0.18)' }} />
         </div>
         <div className="flex items-center justify-between">
           <span className="flex items-center gap-2">
@@ -151,6 +158,6 @@ export function DiningDashboardCard() {
           <ArrowRight className="ml-1.5 h-4 w-4" />
         </Button>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

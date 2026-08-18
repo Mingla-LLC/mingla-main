@@ -680,6 +680,12 @@ verify_jwt = true
 [functions.attendance-claim-link]
 verify_jwt = false
 
+# #2217 — the identity reconnect. verify_jwt = true is the gate, not decoration:
+# the function matches the CALLER'S OWN provider-verified identifiers, so an
+# anonymous caller has nothing to match and must not reach the claim RPC.
+[functions.attendance-claim-identity]
+verify_jwt = true
+
 [functions.attendance-claim-backfill]
 verify_jwt = false
 
@@ -751,4 +757,11 @@ verify_jwt = false
 # Issue #2075 — public, read-only native minimum-version policy. The function
 # validates app/platform itself and reads the private table with service role.
 [functions.app-version-policy]
+verify_jwt = false
+
+# Issue #2107 — public, read-only JavaScript (OTA) update policy, keyed by the
+# runtime the caller is actually running. Separate from app-version-policy on
+# purpose: shipped clients key-set-validate that response, so extending it would
+# make every installed build reject it and fail open.
+[functions.app-ota-policy]
 verify_jwt = false

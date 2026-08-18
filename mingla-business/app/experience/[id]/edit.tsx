@@ -16,7 +16,13 @@
  */
 
 import React, { useMemo } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import {
+  ActivityIndicator,
+  Platform,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
@@ -35,6 +41,17 @@ import {
   newStopClientId,
   type ExperienceStopDraft,
 } from "../../../src/components/experience/experienceWizardTypes";
+// issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
+// LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
+// route chunks (Event, Trip and Experience management), so a static import
+// makes Metro hoist it into the eager `__common` chunk that EVERY buyer
+// downloads before anything renders — for a control only a brand owner ever
+// sees. Same treatment, and same reason, as SeeWhosGoingGate.
+const EventTicketCheckoutAccessCard = React.lazy(() =>
+  import("../../../src/components/event/EventTicketCheckoutAccessCard").then(
+    (m) => ({ default: m.EventTicketCheckoutAccessCard }),
+  ),
+);
 import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
 import { useExperienceSoldCount } from "../../../src/hooks/useExperienceSoldCount";
 import type { ExperienceDetail } from "../../../src/services/experienceDetailService";
@@ -323,6 +340,18 @@ export default function ExperienceEditRoute(): React.ReactElement {
 
   return (
     <SafeScreen style={styles.editHost}>
+      {/* issue #2101 [named-buyer checkout] — the SAME shared configuration
+          card as the Event and Trip management surfaces. LIVE experiences only:
+          a draft has no sale to restrict. Web-only by filename resolution (the
+          .native.tsx sibling is a typed null renderer), so no native Business
+          screen gains a configuration control. */}
+      {isLive && Platform.OS === "web" ? (
+        <View style={styles.accessCardWrap}>
+          <React.Suspense fallback={null}>
+            <EventTicketCheckoutAccessCard eventId={experience.id} />
+          </React.Suspense>
+        </View>
+      ) : null}
       <React.Suspense fallback={<ActivityIndicator />}>
         <LazyExperienceCreatorWizard
           brandId={experience.brandId}
@@ -343,6 +372,12 @@ export default function ExperienceEditRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  // issue #2101 — inset for the owner-only Eligible-buyers card above the
+  // creator wizard on a LIVE experience.
+  accessCardWrap: {
+    paddingHorizontal: spacing.md,
+    paddingTop: spacing.md,
+  },
   host: {
     flex: 1,
     alignItems: "center",

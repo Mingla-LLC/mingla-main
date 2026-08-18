@@ -118,11 +118,40 @@ function icsToBase64(ics: string): string {
 
 class ProviderSendError extends Error {
   retryable: boolean;
-  constructor(failure: ProviderFailure) {
+  /**
+   * #2218 — the instant this row becomes attemptable again, when the reason it
+   * could not be sent is a KNOWN, TIMED refusal rather than a fault (today:
+   * the Nigerian 20:00–08:00 WAT `generic` operator embargo).
+   *
+   * It exists because the ORCH-0788 backoff cannot express this. That ladder is
+   * 2^attempt × 60s capped at three attempts — at most ~6 minutes of patience —
+   * so a message held at 06:10 WAT would exhaust every retry hours before the
+   * network would carry it and land on `failed_terminal`. Carrying the deadline
+   * on the error lets ONE catch clause serve every template.
+   */
+  nextAttemptAt: string | null;
+  constructor(failure: ProviderFailure & { nextAttemptAt?: string | null }) {
     super(failure.detail);
     this.name = "ProviderSendError";
     this.retryable = failure.retryable;
+    this.nextAttemptAt = failure.nextAttemptAt ?? null;
   }
+}
+
+// #2218 — the ONE shape a deferred SMS takes on this dispatcher. A deferral is
+// NOT a failure (nothing broke, nothing was spent) and NOT a skip (the message
+// is still owed to the buyer). Both call sites raise it identically so the
+// single catch below writes one honest row: `deferred`, holding until
+// `next_attempt_at`, attempt_count untouched.
+function deferredSmsError(
+  result: { error?: string; retryAfter?: string },
+): ProviderSendError {
+  return new ProviderSendError({
+    retryable: true,
+    detail: `sms_deferred:${result.error ?? "ng_operator_embargo"}`,
+    status: 0,
+    nextAttemptAt: result.retryAfter ?? null,
+  });
 }
 
 async function sendResendEmailWithAttachment(input: {
@@ -495,6 +524,15 @@ async function deliverWaitlistSpotOpenNotification(
       }),
     });
 
+    // #2218 — a Nigerian `generic` send inside the 20:00–08:00 WAT operator
+    // embargo is HELD, not attempted. Raised BEFORE the `failed` branch so it
+    // can never be mistaken for a provider fault, and before the `skipped`
+    // branch so it never releases the waitlist seat: the guest IS still going
+    // to be told, just after the window opens.
+    if (result.status === "deferred") {
+      throw deferredSmsError(result);
+    }
+
     // `ok` is false for BOTH skipped and failed — branch on `status`, never on
     // `ok`. A market-gated skip is not an error.
     if (result.status === "failed") {
@@ -602,6 +640,57 @@ async function handleWaitlistNotificationDispatch(
       }],
     });
   } catch (err) {
+    // #2218 — same rule as the per-order loop: a timed operator refusal is a
+    // HOLD, not a spent attempt. See the essay on the catch clause there.
+    const deferredUntil = err instanceof ProviderSendError
+      ? err.nextAttemptAt
+      : null;
+    if (deferredUntil !== null) {
+      const { error: deferErr } = await supabase
+        .from("ticket_order_notifications").update({
+          status: "deferred",
+          last_error: err instanceof Error ? err.message : String(err),
+          next_attempt_at: deferredUntil,
+          attempt_count: Number(notification.attempt_count ?? 0),
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+      if (deferErr !== null) {
+        // Same deploy-order safety net as the per-order loop — see the essay
+        // there. A rejected `deferred` write strands the row at `sending`,
+        // which no sweeper selects.
+        console.error(
+          JSON.stringify({
+            event: "ticket_notification_defer_write_rejected",
+            notificationId: notification.id,
+            detail: deferErr.message,
+            note:
+              "#2218 apply migration 20270421002218 before deploying this function",
+          }),
+        );
+        await supabase.from("ticket_order_notifications").update({
+          status: "failed_retryable",
+          last_error: err instanceof Error ? err.message : String(err),
+          attempt_count: Number(notification.attempt_count ?? 0),
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+        return jsonResponse({
+          notificationId,
+          outcomes: [{
+            channel: notification.channel,
+            status: "failed_retryable",
+            templateKey: "waitlist_spot_open",
+          }],
+        });
+      }
+      return jsonResponse({
+        notificationId,
+        outcomes: [{
+          channel: notification.channel,
+          status: "deferred",
+          templateKey: "waitlist_spot_open",
+        }],
+      });
+    }
     const attemptCount = Number(notification.attempt_count ?? 0) + 1;
     const retryable = err instanceof ProviderSendError ? err.retryable : true;
     const terminal = !retryable || attemptCount >= 3;
@@ -619,6 +708,106 @@ async function handleWaitlistNotificationDispatch(
       }],
     });
   }
+}
+
+/** One `event_dates` row, in the shape `buildRenderContext` already consumes. */
+interface ChosenOccurrence {
+  start_at: string | null;
+  end_at: string | null;
+  timezone: string | null;
+}
+
+/**
+ * issue #2162 — WHICH DAY DOES THIS ORDER'S CONFIRMATION NAME?
+ *
+ * Resolution order, most specific first:
+ *
+ *   1. The days this order's TICKETS admit (`ticket_event_dates`, issue #2160).
+ *      This is the authority for what the guest may actually attend, so it
+ *      beats everything. A multi-day reservation collapses to a real RANGE:
+ *      the EARLIEST chosen `start_at` and the LATEST chosen `end_at`, so a
+ *      Saturday+Sunday guest is told "Sat – Sun", not "Sat" and not "day 1".
+ *   2. `orders.event_date_id` — a #2135 single-select reservation, or a #2160
+ *      order's anchor. Named directly.
+ *   3. `null`, meaning "use the master", which the caller does. That is the
+ *      legitimate legacy / single-date case, NOT an error.
+ *
+ * Returns `null` rather than throwing on a read failure: a confirmation that
+ * names the master day is wrong, but a confirmation that never sends is worse,
+ * and the notification-retry sweeper cannot fix a decision this function made.
+ * The failure is logged so it is not silent (Constitution #3).
+ */
+async function resolveChosenOccurrence(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+  eventId: string,
+  orderEventDateId: string | null,
+): Promise<ChosenOccurrence | null> {
+  try {
+    const { data: ticketRows, error: ticketErr } = await supabase
+      .from("tickets")
+      .select("ticket_event_dates ( event_dates ( start_at, end_at, timezone ) )")
+      .eq("order_id", orderId);
+    if (ticketErr === null && Array.isArray(ticketRows)) {
+      const days: ChosenOccurrence[] = [];
+      for (const row of ticketRows as unknown as Array<{
+        ticket_event_dates?: Array<{ event_dates?: ChosenOccurrence | null }> | null;
+      }>) {
+        for (const link of row.ticket_event_dates ?? []) {
+          const day = link.event_dates ?? null;
+          if (day !== null && typeof day.start_at === "string") days.push(day);
+        }
+      }
+      if (days.length > 0) {
+        const byStart = [...days].sort((a, b) =>
+          String(a.start_at).localeCompare(String(b.start_at))
+        );
+        const first = byStart[0];
+        const lastEnd = days
+          .map((d) => d.end_at)
+          .filter((e): e is string => typeof e === "string")
+          .sort()
+          .at(-1) ?? first.end_at;
+        return {
+          start_at: first.start_at,
+          end_at: lastEnd,
+          timezone: first.timezone,
+        };
+      }
+    } else if (ticketErr !== null) {
+      console.error(
+        "[ticket-confirmation-dispatch] ticket day lookup failed",
+        orderId,
+        ticketErr.message,
+      );
+    }
+
+    if (orderEventDateId !== null && orderEventDateId.length > 0) {
+      const { data: occ, error: occErr } = await supabase
+        .from("event_dates")
+        .select("start_at, end_at, timezone")
+        .eq("id", orderEventDateId)
+        .eq("event_id", eventId)
+        .maybeSingle();
+      if (occErr !== null) {
+        console.error(
+          "[ticket-confirmation-dispatch] chosen occurrence lookup failed",
+          orderId,
+          occErr.message,
+        );
+        return null;
+      }
+      return (occ as ChosenOccurrence | null) ?? null;
+    }
+  } catch (error) {
+    console.error(
+      "[ticket-confirmation-dispatch] chosen-day resolution threw",
+      orderId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  // Legitimate: single-date event, or an order predating day selection.
+  return null;
 }
 
 function buildRenderContext(args: {
@@ -640,6 +829,8 @@ function buildRenderContext(args: {
     // ticket confirmation can render a real date range + ICS DTEND.
     end_at: string | null;
     timezone: string | null;
+    // issue #2162 — this may now be the occurrence the GUEST CHOSE rather than
+    // the master. The shape is unchanged, so nothing downstream had to move.
   } | null;
 }): RenderContext {
   const { order, lineItems, ticketRows, masterDate } = args;
@@ -950,6 +1141,7 @@ export const handler = async (req: Request): Promise<Response> => {
       payment_status,
       confirmed_at,
       notification_status,
+      event_date_id,
       events!inner (
         id,
         title,
@@ -988,12 +1180,38 @@ export const handler = async (req: Request): Promise<Response> => {
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // issue #2162 — THE CONFIRMATION MUST NAME THE DAY THE GUEST CHOSE.
+  // ═══════════════════════════════════════════════════════════════════════
+  // Live defect, since #2135 shipped day selection: this dispatch read the
+  // MASTER occurrence (`is_master = true`, the earliest day), so every guest
+  // who picked day 2 of a multi-day exhibition was emailed day 1. The pass and
+  // the roster were right; only the message the guest actually reads was wrong,
+  // which is the worst place for it to be wrong.
+  //
+  // THE CONTRACT (SPEC §4.6):
+  //   * If this order's tickets carry days (issue #2160's `ticket_event_dates`),
+  //     the date line names them — the earliest for `startAt`, the latest for
+  //     `endAt`, so a two-day reservation reads as the range it is.
+  //   * Else if the order carries `event_date_id` (a #2135 single-select
+  //     reservation, or a #2160 order's anchor), that occurrence is named.
+  //   * Else — legacy, single-date, no selection — behaviour is VERBATIM
+  //     master. A NULL here is legitimate, not an error, and is asserted
+  //     explicitly rather than assumed.
   const { data: masterDate } = await supabase
     .from("event_dates")
     .select("start_at, end_at, timezone, is_master")
     .eq("event_id", order.events.id)
     .eq("is_master", true)
     .maybeSingle();
+
+  const chosenDate = await resolveChosenOccurrence(
+    supabase,
+    orderId,
+    order.events.id,
+    (order as unknown as { event_date_id?: string | null }).event_date_id ??
+      null,
+  );
 
   const context = buildRenderContext({
     order,
@@ -1008,7 +1226,10 @@ export const handler = async (req: Request): Promise<Response> => {
       qr_code: string;
       ticket_types: { name: string | null };
     }>,
-    masterDate: (masterDate ?? null) as
+    // issue #2162 — the CHOSEN day wins; master is the documented fallback and
+    // nothing else. `buildRenderContext` is unchanged: it still receives one
+    // occurrence-shaped object, it is simply the right one now.
+    masterDate: (chosenDate ?? masterDate ?? null) as
       | {
         start_at: string | null;
         // ORCH-0877 — end_at carried through to email body (already selected
@@ -1250,7 +1471,12 @@ export const handler = async (req: Request): Promise<Response> => {
     .from("ticket_order_notifications")
     .select("id, channel, recipient, status, attempt_count, payload")
     .eq("order_id", orderId)
-    .in("status", ["pending", "failed_retryable"]);
+    // #2218 — `deferred` rows are IN SCOPE for a dispatch pass. The sweeper
+    // only calls this function once `next_attempt_at` has passed, so a row that
+    // reaches here is a held message whose window has opened. Omitting the
+    // status here would leave the sweeper waking up for an order and then
+    // selecting nothing — a retry loop that can never retry.
+    .in("status", ["pending", "failed_retryable", "deferred"]);
   if (notificationError) {
     return jsonResponse(
       {
@@ -1410,6 +1636,14 @@ export const handler = async (req: Request): Promise<Response> => {
             brandName: context.bodyInput.brand.name,
             message: smsBody,
           });
+          // #2218 — the buyer confirmation is the exact path that produced the
+          // false `sent`. Inside the Nigerian operator embargo it is held to
+          // the next 08:00 WAT instead of being handed to a route the network
+          // will not carry. The sibling EMAIL row is unaffected and still goes
+          // out immediately, so the ticket itself is never delayed.
+          if (result.status === "deferred") {
+            throw deferredSmsError(result);
+          }
           if (result.status === "failed") {
             // Preserve today's retry/backoff semantics EXACTLY — a real
             // provider failure is still a retryable ProviderSendError handled
@@ -1616,6 +1850,69 @@ export const handler = async (req: Request): Promise<Response> => {
         });
       }
     } catch (err) {
+      // =====================================================================
+      // #2218 — A TIMED REFUSAL IS NOT AN ATTEMPT, AND MUST NOT SPEND ONE.
+      // =====================================================================
+      // A deferral takes its own arm BEFORE the attempt ladder is touched:
+      // `attempt_count` is left where it was, so a Nigerian confirmation held
+      // three times across one night does not arrive at `failed_terminal` at
+      // 06:14 WAT having never once been offered to the network. The row
+      // records WHEN it becomes attemptable; notification-retry-sweeper honours
+      // that instant instead of its own ~6-minute ladder.
+      const deferredUntil = err instanceof ProviderSendError
+        ? err.nextAttemptAt
+        : null;
+      if (deferredUntil !== null) {
+        const { error: deferErr } = await supabase
+          .from("ticket_order_notifications").update({
+            status: "deferred",
+            last_error: err instanceof Error ? err.message : String(err),
+            next_attempt_at: deferredUntil,
+            // The claim above optimistically stamped `attempt_count + 1`. Give
+            // it back: no attempt was made. Left in place, twelve hours of
+            // embargo would burn the whole ladder without one provider call.
+            attempt_count: Number(notification.attempt_count ?? 0),
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+        if (deferErr !== null) {
+          // DEPLOY-ORDER SAFETY NET, and it is not hypothetical. `deferred` is
+          // only a legal status once migration 20270421002218 has widened the
+          // CHECK. If the function ships ahead of the migration, PostgREST
+          // returns the violation in `error` rather than throwing — the update
+          // is a silent no-op and the row is stranded at `sending`, which NO
+          // sweeper selects. That is a worse outcome than the bug being fixed:
+          // a confirmation lost forever rather than merely late. Fall back to
+          // the vocabulary that has always existed, so the message is still
+          // owed and still retried.
+          console.error(
+            JSON.stringify({
+              event: "ticket_notification_defer_write_rejected",
+              notificationId: notification.id,
+              detail: deferErr.message,
+              note:
+                "#2218 apply migration 20270421002218 before deploying this function",
+            }),
+          );
+          await supabase.from("ticket_order_notifications").update({
+            status: "failed_retryable",
+            last_error: err instanceof Error ? err.message : String(err),
+            attempt_count: Number(notification.attempt_count ?? 0),
+            updated_at: new Date().toISOString(),
+          }).eq("id", notification.id);
+          outcomes.push({
+            channel: notification.channel,
+            status: "failed_retryable",
+            templateKey,
+          });
+          continue;
+        }
+        outcomes.push({
+          channel: notification.channel,
+          status: "deferred",
+          templateKey,
+        });
+        continue;
+      }
       const attemptCount = Number(notification.attempt_count ?? 0) + 1;
       const retryable = err instanceof ProviderSendError ? err.retryable : true;
       const terminal = !retryable || attemptCount >= 3;
@@ -1663,6 +1960,13 @@ export const handler = async (req: Request): Promise<Response> => {
   // nothing pending a retry (the sweeper never selects `skipped`).
   const failed = outcomes.some((row) => row.status.startsWith("failed"));
   const sent = outcomes.some((row) => row.status === "sent");
+  // #2218 — a DEFERRED leg is still owed. It is neither a success to report nor
+  // a failure to alarm on, and stamping the order `sent` because its email went
+  // out would be the same unearned success #1541 removed from the else-arm
+  // below. `pending` is the existing term for "work outstanding" in this
+  // column's fixed vocabulary (not_required|pending|sent|partial|failed), and
+  // it is literally true: the sweeper will come back for this row.
+  const deferred = outcomes.some((row) => row.status === "deferred");
 
   if (outcomes.length === 0) {
     // OBSERVED NOTHING -> ASSERT NOTHING. There were no notification rows to
@@ -1680,6 +1984,8 @@ export const handler = async (req: Request): Promise<Response> => {
     await supabase.from("orders").update({
       notification_status: failed
         ? (sent ? "partial" : "failed")
+        : deferred
+        ? "pending"
         : (sent ? "sent" : "not_required"),
       updated_at: new Date().toISOString(),
     }).eq("id", orderId);

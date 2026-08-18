@@ -60,6 +60,19 @@ function assertStablePosterPromotion(swipeableSource, stageSource) {
     swipeableSource.indexOf('Next card is a poster-only'),
     swipeableSource.indexOf('{/* Current Card */}'),
   );
+  // Issue #2113 EMPTY-WINDOW GUARD. #1607 and #1609 hardened the CURRENT-card
+  // window below onto structural JSX anchors, but the BEHIND-preview window
+  // above was left on two JSX COMMENTS. Deleting the start comment makes
+  // indexOf() return -1, so slice(-1, end) yields "" and the doesNotMatch at the
+  // bottom of this helper passes unconditionally. Proven: with the start comment
+  // deleted and a real `<CardHeroImage ...>` duplicate poster mounted in the
+  // behind layer, this suite reported 8 passed, 0 failed. Same band shape as the
+  // structural current-card check on the next screen of this function.
+  assert.ok(
+    preview.length > 1000 && preview.length < 20000,
+    `behind-preview slice is ${preview.length} chars — its JSX-comment boundaries collapsed or ran away`,
+  );
+  assert.match(preview, /pointerEvents="none"/, 'behind-preview slice does not contain the real non-interactive layer');
   // [TEST-MOD-APPROVED #1607] The old current-card window ended on the absent
   // `{/* Swipe Buttons */}` comment, so `slice(start, -1)` silently inspected an
   // unrelated tail. Structural JSX boundaries plus cardinality/size checks make

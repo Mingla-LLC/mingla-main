@@ -1,0 +1,105 @@
+name: issue-2240-email-app-link
+# issue #2240 ["Open in Mingla" in every confirmation email is a 404] — the
+# dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. The offline suite could ride the repository-wide Deno
+# lane, but the acceptance criterion for #2240 is that the link REALLY resolves
+# on a real device's User-Agent. That is a network assertion, and it is the one
+# assertion the presence-pinning test it replaces could never make. It gets its
+# own lane so a live-destination failure is unambiguous and its blast radius is
+# this issue, not every PR in the repository.
+#
+# NO JEST HERE, SO NO BRACKET TRAP. Nothing in this lane takes a jest pattern;
+# the Deno invocations name their file in full. (For the record, the trap:
+# `npx jest app/checkout/[eventId]` reads `[eventId]` as a character class,
+# matches nothing, and exits 0 having run no tests — a green check carrying no
+# information.)
+#
+# Path filters err BROAD over the guarded SOURCE trees, not only the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard). They
+# include the marketing routing layers because the email's destination is a
+# marketing route: deleting app/download/page.tsx, or adding a vercel.json
+# rewrite that touches the apex, must re-run the resolver.
+
+on:
+  pull_request:
+    paths: &issue_2240_paths
+      - "supabase/functions/_shared/email/appLink.ts"
+      - "supabase/functions/_shared/email/ticketBody.ts"
+      - "supabase/functions/_shared/email/tripConfirmationEmail.ts"
+      - "supabase/functions/_shared/email/experienceConfirmationEmail.ts"
+      - "supabase/functions/_shared/email/shell.ts"
+      - "supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts"
+      # The destination itself, and every layer that decides whether it resolves.
+      - "mingla-marketing/app/download/**"
+      - "mingla-marketing/lib/device-platform.ts"
+      - "mingla-marketing/lib/store-links.ts"
+      - "mingla-marketing/next.config.ts"
+      - "mingla-marketing/middleware.ts"
+      - "mingla-marketing/vercel.json"
+      # #2217 owns the confirmation page this email must agree with, and the
+      # flip constant that moves both.
+      - "mingla-business/src/constants/storeLinks.ts"
+      - "mingla-business/src/services/guestFunnelLink.ts"
+      - ".github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs"
+      - ".github/workflows/issue-2240-email-app-link-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths: *issue_2240_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2240-offline:
+    name: "#2240 Offline — the email's link names a route that exists"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # 7 tests, no network. Fails when the rendered destination stops resolving
+      # against the real route table, when the resolver stops being falsifiable
+      # (the dead #2240 path must come back UNRESOLVED), when any template stops
+      # emitting exactly one app link, or when the plain-text body diverges from
+      # the HTML.
+      - name: "#2240 email app link resolves (offline resolver)"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts
+      - run: deno check supabase/functions/_shared/email/appLink.ts
+      - run: deno check supabase/functions/_shared/email/ticketBody.ts
+      - run: deno check supabase/functions/_shared/email/tripConfirmationEmail.ts
+      - run: deno check supabase/functions/_shared/email/experienceConfirmationEmail.ts
+      # The sole-owner gate, both modes. `run-batch.mjs --class A` also runs it
+      # from the strict-grep workflow; naming it here means a PR that only edits
+      # an email template still proves the gate on the change that needs it.
+      - name: "#2240 sole-owner gate — self-test"
+        run: node .github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs --self-test
+      - name: "#2240 sole-owner gate — live"
+        run: node .github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs
+
+  issue-2240-live-destination:
+    name: "#2240 Live — the link really lands on a store, per device"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # THE ACCEPTANCE CRITERION, EXECUTED. Requests the email's destination with
+      # a real iPhone UA, a real Android UA, and a desktop UA, and asserts where
+      # each one lands. Its negative control asserts the dead #2240 path is still
+      # a 404, so a green run can never be the apex answering 200 to everything.
+      #
+      # Each case retries up to 3x inside the test: a transient network fault
+      # must not be reported as a dead destination, and a dead destination must
+      # not be excused as flake.
+      - name: "#2240 the destination resolves per device, against production"
+        env:
+          ISSUE_2240_LIVE: "1"
+        run: >-
+          deno test --allow-env --allow-read --allow-net --no-check
+          supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts

@@ -7,11 +7,17 @@ on:
       - "supabase/migrations/20270313001812_issue_1812_brand_people_export_search_normalization.sql"
       - "supabase/migrations/__tests__/issue_1812_brand_people_export_search_normalization*.test.sql"
       - ".github/workflows/issue-1812-brand-people-export-search-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action;
+      # without this path a change to that action would not re-run it.
+      - ".github/actions/migrated-postgres/**"
   pull_request:
     paths:
       - "supabase/migrations/20270313001812_issue_1812_brand_people_export_search_normalization.sql"
       - "supabase/migrations/__tests__/issue_1812_brand_people_export_search_normalization*.test.sql"
       - ".github/workflows/issue-1812-brand-people-export-search-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action;
+      # without this path a change to that action would not re-run it.
+      - ".github/actions/migrated-postgres/**"
 
 permissions:
   contents: read
@@ -25,44 +31,26 @@ jobs:
     name: "Issue 1812 export search contract (fresh PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    services:
-      postgres:
-        image: supabase/postgres:17.4.1.075
-        env:
-          POSTGRES_PASSWORD: ${{ format('issue-1812-ci-{0}', github.run_id) }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can
+    # place a pre-migrated data directory into it; owning the container from a
+    # step is what makes the cached snapshot possible. It still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
     steps:
       - uses: actions/checkout@v4
-      - name: Wait for PostgreSQL 17
-        env:
-          PGPASSWORD: ${{ format('issue-1812-ci-{0}', github.run_id) }}
-        run: |
-          for attempt in {1..90}; do
-            if psql -h localhost -U postgres -d postgres -Atc \
-              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
-              2>/dev/null | grep -qx t; then
-              exit 0
-            fi
-            sleep 1
-          done
-          exit 1
-      - name: Apply every migration in lexical order
-        env:
-          PGPASSWORD: ${{ format('issue-1812-ci-{0}', github.run_id) }}
-        run: |
-          set -euo pipefail
-          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
-            | sort -z \
-            | while IFS= read -r -d '' migration; do
-                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
-              done
+      # #2148 — replaces this job's postgres bring-up: a service container plus a
+      # full replay of every migration (MEASURED ~75s boot + ~105s replay). The
+      # shared action restores a cached snapshot of the already-migrated cluster
+      # and applies only what landed since, falling back to a full replay on any
+      # doubt. It verifies policy/trigger/index/RLS counts against the snapshot's
+      # build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited from the action default, so this
+          # workflow still states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-1812-ci-{0}', github.run_id) }}
       - name: Prove normalized export search and preserved boundaries
         env:
           PGPASSWORD: ${{ format('issue-1812-ci-{0}', github.run_id) }}

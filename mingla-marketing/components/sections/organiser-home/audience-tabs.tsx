@@ -36,19 +36,19 @@ const TABS: Tab[] = [
   {
     id: 'venues',
     label: 'Venues',
-    heading: 'turn your room into the plan.',
+    heading: 'turn your space into the plan.',
     intro:
-      "The room that feels perfect on a Friday night shouldn't be the city's best-kept secret. Mingla turns your space, your nights, and your energy into a plan people actively choose — and fills the room with the crowd that fits it.",
+      'Bowling alleys, climbing gyms, pool halls, galleries, studios, cinemas, museums, resorts, spas, wellness spaces, and the places that resist a neat label all give people something real to do. Mingla turns that into a plan people can discover, book, and share.',
     steps: [
-      { title: 'name your vibe', body: 'Tell Mingla the energy of your place in plain words — cozy, lively, late-night, high-energy — and Ari builds you a page that looks and feels like the room.' },
-      { title: 'get matched', body: "Your place reaches people by vibe, taste, location, and timing — not just who's nearby, but who's looking for exactly this tonight." },
-      { title: 'fill the room', body: 'They book a table, a spot, or a night right inside Mingla — and you watch the right crowd walk through the door.' },
+      { title: 'show what happens here', body: 'Tell Ari what people can see, make, play, learn, celebrate, or come to restore at your venue. It shapes the page, visuals, and offer around the actual reason to visit.' },
+      { title: 'meet matching demand', body: 'Mingla’s AI brain connects your venue with people looking by activity, vibe, location, group size, and timing — even when they do not know your name yet.' },
+      { title: 'turn interest into visits', body: 'People can understand the plan, book a visit or spot, and share it with their group without piecing the experience together across different sites.' },
     ],
     features: [
-      { title: 'a page that feels like the room', body: 'Your colors, your photos and video, your story — the page people actually want to send to the group chat, not just another listing.' },
-      { title: 'matched to the right crowd', body: "Reach the people already looking for a place like yours tonight, instead of paying to chase strangers who'll never come back." },
-      { title: 'know which nights work', body: 'Your dashboard shows the guest list, check-ins, and what sold — so you finally know which nights, offers, and crowds are working.' },
-      { title: 'bring them back', body: "Email the people who actually showed up — no list to build, no extra tool to learn. They're already there, and the slow nights are next." },
+      { title: 'a page built around the experience', body: 'Show the space, activities, packages, photos, video, and practical details that help someone decide this is their plan.' },
+      { title: 'AI-powered discovery', body: 'Reach people whose real intent matches what your venue offers instead of competing only on a generic nearby list.' },
+      { title: 'bookings and activity in one view', body: 'See visits, reservations, tickets, check-ins, and what sold in the same Host dashboard.' },
+      { title: 'guest relationships you can grow', body: 'Keep the connection with people who visited and bring the right groups back for what comes next.' },
     ],
   },
   {
@@ -67,6 +67,24 @@ const TABS: Tab[] = [
       { title: 'matched by taste', body: "Reach diners by what they're actually craving and planning — the people looking for your kind of night, not a generic “restaurants near me” list." },
       { title: 'all-in checkout, built in', body: 'Sell tables, tasting menus, and prepaid experiences inside Mingla. Buyers see the full price before they pay — no surprises, fewer no-shows.' },
       { title: 'regulars, not one-timers', body: 'Email the diners who already booked with you and keep your slow nights full — your customer list, owned by you, ready to use.' },
+    ],
+  },
+  {
+    id: 'nightlife',
+    label: 'Nightlife',
+    heading: 'give people a night they brag about.',
+    intro:
+      'The sound, the room, the crowd, the moment it all clicks. Mingla turns that energy into a night people can understand, join, and share — then its AI brain puts it in front of the people already looking for that exact vibe.',
+    steps: [
+      { title: 'name the energy', body: 'Tell Ari what the night should feel like. It helps shape the page, the story, and the offer without turning you into a full-time marketer.' },
+      { title: 'find the crowd', body: 'Mingla’s AI brain matches the night to people by vibe, taste, location, and timing — and can drive that real intent back to your door.' },
+      { title: 'run the door', body: 'Sell tickets or tables, manage the guest list, and scan people in from one connected flow — then see what worked.' },
+    ],
+    features: [
+      { title: 'your night, made clear', body: 'The music, dress, crowd, and reason to come are presented as one story people can understand before they commit.' },
+      { title: 'AI-powered discovery', body: 'Mingla understands what people want to do and routes the right demand toward the hosts who can deliver it.' },
+      { title: 'the door, connected', body: 'Tickets, tables, guest lists, and QR entry stay connected from discovery through arrival.' },
+      { title: 'grow the nights that work', body: 'See who bought and checked in, then reach those real guests again for the next night.' },
     ],
   },
   {
@@ -149,20 +167,17 @@ export function OrganiserAudienceTabs() {
           </div>
 
           {/* Earnings chart (after the title on mobile; right column on desktop) */}
-          <Reveal
-            delay={0.1}
-            className="flex justify-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-center lg:justify-end"
-          >
+          <div className="flex justify-center lg:col-start-2 lg:row-span-2 lg:row-start-1 lg:items-center lg:justify-end">
             <div data-theme="light" className="w-full">
               <EarningsCard />
             </div>
-          </Reveal>
+          </div>
 
           {/* Tabs */}
           <div
             role="tablist"
             aria-label="Audience"
-            className="flex flex-nowrap gap-1 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] sm:gap-2.5 lg:col-start-1 lg:row-start-2 lg:self-start [&::-webkit-scrollbar]:hidden"
+            className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:col-start-1 lg:row-start-2 lg:self-start"
           >
             {TABS.map((t, i) => {
               const isActive = i === active
@@ -173,7 +188,7 @@ export function OrganiserAudienceTabs() {
                   aria-selected={isActive}
                   onClick={() => setActive(i)}
                   className={cn(
-                    'shrink-0 whitespace-nowrap rounded-full px-2 py-1.5 text-[11px] font-semibold transition-all duration-200 ease-out-quart focus-ring sm:px-4 sm:py-2 sm:text-sm',
+                    'min-h-11 w-full whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition-colors duration-200 ease-out-quart focus-ring sm:text-sm',
                     isActive
                       ? 'bg-warm text-white'
                       : 'bg-white/[0.07] text-white/75 ring-1 ring-white/10 hover:bg-white/[0.12] hover:text-white',
@@ -221,7 +236,7 @@ export function OrganiserAudienceTabs() {
             <div className="flex justify-center lg:justify-end">
               {tab.id === 'venues' ? (
                 <VenueActivityFeed />
-              ) : tab.id === 'events' ? (
+              ) : tab.id === 'events' || tab.id === 'nightlife' ? (
                 <EventAttendeesCard />
               ) : tab.id === 'dining' ? (
                 <DiningDashboardCard />

@@ -77,12 +77,51 @@
 | `all(userId)` | `['notifications', userId]` |
 | `unreadCount(userId)` | `['notifications', 'unread', userId]` |
 
+### venueOrderMetricsKeys (useVenueOrderMetrics.ts)
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['venue-order-metrics']` |
+| `detail(brandId, venueId)` | `['venue-order-metrics', brandId, venueId]` |
+
+**Invalidation rule:** venue-order reads and completeness consumers share the exact `detail` key; broad venue-order refreshes use `venueOrderMetricsKeys.all`.
+
 ### phoneLookupKeys (usePhoneLookup.ts)
 
 | Sub-key | Shape |
 |---------|-------|
 | `all` | `['phone-lookup']` |
 | `lookup(phone)` | `['phone-lookup', phone]` |
+
+### eventTicketCheckoutAccessKeys (useEventTicketCheckoutAccess.ts) — issue #2101
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['eventTicketCheckoutAccess']` |
+| `event(eventId)` | `['eventTicketCheckoutAccess', eventId]` |
+| `business(eventId)` | `['eventTicketCheckoutAccess', eventId, 'business']` |
+| `eligibility(eventId)` | `['eventTicketCheckoutAccess', eventId, 'eligibility']` |
+| `eligibilityFor(eventId, authScope)` | `['eventTicketCheckoutAccess', eventId, 'eligibility', authScope]` |
+
+**Auth scoping (load-bearing, not cosmetic).** Checkout eligibility is a
+per-identity fact, so `authScope` is the signed-in `user.id` or the literal
+`'anon'`. Without it one viewer's checkout decision would be served from cache
+to another. **No token ever enters a key** — only the opaque user UUID.
+
+**Invalidation rule:** every successful Business mutation (add self, add
+username, remove, set mode) invalidates `business(eventId)` AND invalidates
+**and refetches** the FULL `eligibility(eventId)` subtree, so a buyer preview
+can never keep a decision the policy just superseded. A sign-in, sign-out or
+user change **cancels and removes** the previous `eligibility(eventId)` subtree
+before the new scoped key fetches.
+
+**Freshness:** `staleTime: 0` + `refetchOnMount: 'always'` on the public
+eligibility query — a stale allow is the one thing this feature cannot ship.
+The consuming `loading` flag is bound to "no data yet for the current auth
+scope", never to `isFetching`, so a background refetch does not re-disable a
+resolved CTA (`docs/INVARIANT_REGISTRY.md:6537` bug class).
+
+---
 
 ---
 

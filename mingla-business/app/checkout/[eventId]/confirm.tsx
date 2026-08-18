@@ -22,7 +22,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -60,6 +59,7 @@ import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarou
 import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
   confirmTicketCheckout,
+  paidCheckoutErrorMessage,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -71,10 +71,6 @@ import {
 } from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
 
-const MINGLA_APP_ICON = React.lazy(() =>
-  import("../../../src/components/checkout/AttendanceClaimAppIcon")
-);
-const attendanceClaimDeepLinkModule = import("../../../src/utils/attendanceClaimDeepLink");
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -124,6 +120,12 @@ function CheckoutConfirmScreenInner({
   // the rare seconds-to-30s window between PaymentSheet success and order
   // finalization, and the screen auto-resolves to the full order view.
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
+  // issue #2198 — a terminal payment outcome from the return leg. Before this,
+  // `ticket-checkout-confirm` could not tell a Paystack failure from a slow
+  // one, so EVERY non-paid answer became the "Confirming your tickets…"
+  // spinner and a guest whose card was declined sat there forever. The server
+  // now returns a bounded reason; this renders it through #2188's mapper.
+  const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
@@ -317,6 +319,15 @@ function CheckoutConfirmScreenInner({
           clearCheckoutResumePayload(win.sessionStorage, eventId);
           return;
         }
+        // issue #2198 — a TERMINAL outcome (Paystack said failed / abandoned,
+        // or the verified amount did not match). Waiting cannot help and the
+        // webhook will never say otherwise, so say what happened.
+        if (confirmResult.status === "failed") {
+          setTerminalFailure(
+            paidCheckoutErrorMessage({ code: confirmResult.error ?? null }),
+          );
+          return;
+        }
         // status === "pending" — Stripe PI still processing OR no PI tied
         // to the session yet. Fall through to Realtime; the webhook backup
         // will populate ticket_checkout_sessions.order_id and the Realtime
@@ -451,9 +462,12 @@ function CheckoutConfirmScreenInner({
         return;
       }
       if (realtimePending) return;
+      // issue #2198 — keep the guest on /confirm to read the failure reason
+      // instead of bouncing them silently back to the cart.
+      if (terminalFailure !== null) return;
     }
     router.replace(`/checkout/${eventId}` as never);
-  }, [result, eventId, router, realtimePending, isClient]);
+  }, [result, eventId, router, realtimePending, isClient, terminalFailure]);
 
   // ----- Handlers -----
   const handleBackToEvent = useCallback((): void => {
@@ -489,6 +503,22 @@ function CheckoutConfirmScreenInner({
   const totalTickets = carouselTickets.length;
 
   if (result === null) {
+    // issue #2198 — a verified terminal outcome outranks the calm spinner.
+    if (terminalFailure !== null) {
+      return (
+        <View style={styles.host}>
+          <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View style={styles.checkBadge}>
+              <Icon name="flag" size={36} color={textTokens.primary} />
+            </View>
+            <Text style={styles.heroTitle}>Payment not completed</Text>
+            <Text style={styles.heroEmail} numberOfLines={6}>
+              {terminalFailure}
+            </Text>
+          </View>
+        </View>
+      );
+    }
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as { location?: { search?: string } });
       const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
@@ -530,13 +560,6 @@ function CheckoutConfirmScreenInner({
     );
   }
 
-  const openAttendanceClaimLink = (): void => {
-    const link = attendanceClaim.link;
-    if (link) void attendanceClaimDeepLinkModule.then(
-      ({ openAttendanceClaimWithFallback }) =>
-        openAttendanceClaimWithFallback(link, Linking.openURL),
-    );
-  };
   const retryAttendanceClaim = (): void => {
     const authority = attendanceClaim.authority;
     if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
@@ -636,27 +659,19 @@ function CheckoutConfirmScreenInner({
             />
           ) : null}
         </GlassCard>
-        <GlassCard variant="base" radius="lg" padding={spacing.md} style={[styles.qrCard, styles.attendanceClaimCard]}>
-          <React.Suspense fallback={<View style={styles.attendanceClaimIcon} />}>
-            <MINGLA_APP_ICON style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
-          </React.Suspense>
-          <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
-          <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
-          {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
-            <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
-          ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
-            <><Text style={styles.heroEmail}>Your tickets are confirmed. We couldn’t prepare the Mingla link.</Text><Button label="Try again" onPress={retryAttendanceClaim} fullWidth /></>
-          ) : attendanceClaim.phase === "terminal" ? (
-            <Text style={styles.heroEmail}>Your tickets are confirmed. Guest-list access isn’t available for this order.</Text>
-          ) : attendanceClaim.phase === "rate" ? (
-            <Text style={styles.heroEmail}>Your tickets are confirmed. Try the Mingla link again in a few minutes.</Text>
-          ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
-        </GlassCard>
-
+        {/* #2217 — the standalone guest-list card is DELETED and its
+            attendance-claim authority folded into the ONE app card below, which
+            now carries ONE device-aware button instead of the two-store pair. */}
         <DownloadMinglaCta
-          orderId={result.orderId}
           eventName={event.name.trim().length > 0 ? event.name : "your event"}
           eventType={(event as { event_type?: string }).event_type === "trip" ? "trip" : "event"}
+          brandSlug={event.brandSlug}
+          entitySlug={event.eventSlug}
+          claimPhase={attendanceClaim.phase}
+          claimAppUrl={attendanceClaim.phase === "ready" && attendanceClaim.link
+            ? attendanceClaim.link.appClaimUrl
+            : null}
+          onRetryClaim={retryAttendanceClaim}
         />
 
         {/* Wallet pass buttons removed per ORCH-0852 — future ORCH-XXXX
@@ -798,8 +813,6 @@ const styles = StyleSheet.create({
   qrCard: {
     marginBottom: spacing.md,
   },
-  attendanceClaimCard: { height: 240 },
-  attendanceClaimIcon: { width: 44, height: 44, borderRadius: 12, marginBottom: spacing.sm },
   bottomBar: {
     position: "absolute",
     left: 0,

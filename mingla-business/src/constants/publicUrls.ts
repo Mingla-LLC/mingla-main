@@ -113,14 +113,44 @@ export const decodeCartSeed = (
   return out;
 };
 
-/** checkoutPublicPath with an optional pre-populated cart seed (ORCH-1167). */
+/**
+ * checkoutPublicPath with an optional pre-populated cart seed (ORCH-1167) and,
+ * since issue #2135, the buyer's chosen multi-date occurrence.
+ *
+ * `eventDateId` is the `event_dates.id` the guest picked on the public page for
+ * a multi-date event. It is appended ONLY when a non-empty id is supplied, so
+ * every single-date caller (which passes nothing) produces the byte-identical
+ * path it produced before — `/checkout/{id}` or `/checkout/{id}?seed=…`.
+ * The checkout cart step reads it back and seeds `CartContext.eventDateId`,
+ * which the existing chain already forwards to `ticket-checkout-create` and
+ * persists on `orders.event_date_id` (#1188).
+ */
 export const checkoutPublicPathWithSeed = (
   eventId: string,
   quantities: Record<string, number>,
+  // issue #2160 — the day SET. A single string is still accepted so nothing
+  // that passes one has to change; it is treated as a one-element set.
+  eventDateIds?: readonly string[] | string | null,
 ): string => {
   const base = checkoutPublicPath(eventId);
   const seed = encodeCartSeed(quantities);
-  return seed.length > 0 ? `${base}?seed=${encodeURIComponent(seed)}` : base;
+  const params: string[] = [];
+  if (seed.length > 0) params.push(`seed=${encodeURIComponent(seed)}`);
+  const days = typeof eventDateIds === "string"
+    ? (eventDateIds.length > 0 ? [eventDateIds] : [])
+    : (eventDateIds ?? []).filter((id) => id.length > 0);
+  // EMPTY => a BYTE-IDENTICAL path to the pre-#2135 one. A single-date event
+  // must produce exactly the string it produced before any of this existed,
+  // and that is asserted by string equality in the #2135 / #2160 suites.
+  //
+  // ONE `encodeURIComponent` over the JOINED value, matching the single-id
+  // encoding it replaces. The cart route still accepts the legacy single
+  // `eventDateId=` param (links minted between the #2135 and #2160 deploys are
+  // live in the wild and must keep working).
+  if (days.length > 0) {
+    params.push(`eventDateIds=${encodeURIComponent(days.join(","))}`);
+  }
+  return params.length > 0 ? `${base}?${params.join("&")}` : base;
 };
 
 export const checkoutPublicUrl = (eventId: string): string =>

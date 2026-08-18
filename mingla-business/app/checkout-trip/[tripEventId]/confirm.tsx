@@ -25,7 +25,6 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Linking,
   Platform,
   ScrollView,
   StyleSheet,
@@ -58,8 +57,10 @@ import {
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
+import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
   confirmTicketCheckout,
+  paidCheckoutErrorMessage,
 } from "../../../src/services/ticketCheckoutService";
 import { useOrderRealtimeSubscription } from "../../../src/hooks/useOrderRealtimeSubscription";
 // META-ORCH-1187 LEG 2 — buyer-web conversion capture (web-only; native no-op).
@@ -71,10 +72,6 @@ import {
 } from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
 
-const MINGLA_APP_ICON = React.lazy(() =>
-  import("../../../src/components/checkout/AttendanceClaimAppIcon")
-);
-const attendanceClaimDeepLinkModule = import("../../../src/utils/attendanceClaimDeepLink");
 
 const formatTripDateLine = (
   startAtIso: string | null,
@@ -135,6 +132,11 @@ function CheckoutTripConfirmScreenInner({
   } = useCart();
 
   const [realtimePending, setRealtimePending] = useState<boolean>(false);
+  // issue #2198 — surface parity with the event-side confirm screen. A trip
+  // bought on a Paystack (NGN) brand returns through the SAME server path, so
+  // a terminal payment outcome must read as one here too instead of becoming
+  // "Confirming your reservation…" forever.
+  const [terminalFailure, setTerminalFailure] = useState<string | null>(null);
   const [pendingSession, setPendingSession] = useState<{
     checkoutSessionId: string;
     buyerStatusToken: string;
@@ -309,6 +311,14 @@ function CheckoutTripConfirmScreenInner({
           clearCheckoutResumePayload(win.sessionStorage, tripEventId);
           return;
         }
+        // issue #2198 — Paystack said failed / abandoned, or the verified
+        // amount did not match. Waiting cannot change that answer.
+        if (confirmResult.status === "failed") {
+          setTerminalFailure(
+            paidCheckoutErrorMessage({ code: confirmResult.error ?? null }),
+          );
+          return;
+        }
         setPendingSession({
           checkoutSessionId: payload.checkoutSessionId,
           buyerStatusToken: payload.buyerStatusToken,
@@ -423,9 +433,11 @@ function CheckoutTripConfirmScreenInner({
         return;
       }
       if (realtimePending) return;
+      // issue #2198 — keep the guest here to read the failure reason.
+      if (terminalFailure !== null) return;
     }
     router.replace(`/checkout-trip/${tripEventId}` as never);
-  }, [result, tripEventId, router, realtimePending, isClient]);
+  }, [result, tripEventId, router, realtimePending, isClient, terminalFailure]);
 
   // ----- Handlers -----
   const handleBackToTrip = useCallback((): void => {
@@ -456,6 +468,22 @@ function CheckoutTripConfirmScreenInner({
   const totalTickets = carouselTickets.length;
 
   if (result === null) {
+    // issue #2198 — a verified terminal outcome outranks the calm spinner.
+    if (terminalFailure !== null) {
+      return (
+        <View style={styles.host}>
+          <View style={[styles.hero, { paddingTop: insets.top + spacing.xl }]}>
+            <View style={styles.checkBadge}>
+              <Icon name="flag" size={36} color={textTokens.primary} />
+            </View>
+            <Text style={styles.heroTitle}>Payment not completed</Text>
+            <Text style={styles.heroEmail} numberOfLines={6}>
+              {terminalFailure}
+            </Text>
+          </View>
+        </View>
+      );
+    }
     if (Platform.OS === "web") {
       const win = (globalThis as unknown as { location?: { search?: string } });
       const hasCs = isClient && /[?&]cs=/.test(win.location?.search ?? "");
@@ -501,13 +529,6 @@ function CheckoutTripConfirmScreenInner({
     trip.businessTrip.endAt,
   );
 
-  const openAttendanceClaimLink = (): void => {
-    const link = attendanceClaim.link;
-    if (link) void attendanceClaimDeepLinkModule.then(
-      ({ openAttendanceClaimWithFallback }) =>
-        openAttendanceClaimWithFallback(link, Linking.openURL),
-    );
-  };
   const retryAttendanceClaim = (): void => {
     const authority = attendanceClaim.authority;
     if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
@@ -602,22 +623,20 @@ function CheckoutTripConfirmScreenInner({
             />
           ) : null}
         </GlassCard>
-        <GlassCard variant="base" radius="lg" padding={spacing.md} style={[styles.qrCard, styles.attendanceClaimCard]}>
-          <React.Suspense fallback={<View style={styles.attendanceClaimIcon} />}>
-            <MINGLA_APP_ICON style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
-          </React.Suspense>
-          <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
-          <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
-          {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
-            <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
-          ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
-            <><Text style={styles.heroEmail}>Your tickets are confirmed. We couldn’t prepare the Mingla link.</Text><Button label="Try again" onPress={retryAttendanceClaim} fullWidth /></>
-          ) : attendanceClaim.phase === "terminal" ? (
-            <Text style={styles.heroEmail}>Your tickets are confirmed. Guest-list access isn’t available for this order.</Text>
-          ) : attendanceClaim.phase === "rate" ? (
-            <Text style={styles.heroEmail}>Your tickets are confirmed. Try the Mingla link again in a few minutes.</Text>
-          ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
-        </GlassCard>
+        {/* #2217 — the standalone guest-list card is DELETED and its
+            attendance-claim authority folded into the ONE app card below, which
+            now carries ONE device-aware button instead of the two-store pair. */}
+        <DownloadMinglaCta
+          eventName={trip.title.trim().length > 0 ? trip.title : "your trip"}
+          eventType="trip"
+          brandSlug={trip.brandSlug ?? ""}
+          entitySlug={trip.slug}
+          claimPhase={attendanceClaim.phase}
+          claimAppUrl={attendanceClaim.phase === "ready" && attendanceClaim.link
+            ? attendanceClaim.link.appClaimUrl
+            : null}
+          onRetryClaim={retryAttendanceClaim}
+        />
 
         {/* Tr4 [ORCH-0875 Refund Tiers + Booking Deadline] integration point:
             The buyer-cancel CTA mounts here after Tr4 SPEC amendment ships
@@ -747,8 +766,6 @@ const styles = StyleSheet.create({
   qrCard: {
     marginBottom: spacing.md,
   },
-  attendanceClaimCard: { height: 240 },
-  attendanceClaimIcon: { width: 44, height: 44, borderRadius: 12, marginBottom: spacing.sm },
   bottomBar: {
     position: "absolute",
     left: 0,

@@ -565,6 +565,24 @@ const workflows = (existsSync(workflowPath) ? readdirSync(workflowPath) : [])
     return { name, text: existsSync(p) ? readFileSync(p, "utf8") : null };
   });
 
+// #2148 Stage 3. A suite's invocation no longer has to live in a .yml. Suites
+// registered in .github/ci-batch/MANIFEST.json are executed by run-suite-batch.mjs
+// from ci-batch.yml, so the manifest is a real invocation site and a config named
+// only there is NOT dark. Without this the gate reports configs as uninvoked purely
+// because their invocation moved file format — a false positive that would push
+// someone to weaken a gate that is doing its job correctly.
+//
+// This is deliberately NOT a loosening: the manifest records each suite's literal
+// command, so the same "is this config actually named in something CI runs?" test
+// applies to it verbatim. The text is handed over raw for exactly that reason.
+const batchManifestPath = join(root, ".github", "ci-batch", "MANIFEST.json");
+if (existsSync(batchManifestPath)) {
+  workflows.push({
+    name: "ci-batch/MANIFEST.json",
+    text: readFileSync(batchManifestPath, "utf8"),
+  });
+}
+
 let npmScripts = {};
 const pkgPath = join(businessPath, "package.json");
 if (existsSync(pkgPath)) {

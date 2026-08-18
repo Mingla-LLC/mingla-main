@@ -144,6 +144,46 @@ export async function handleTermiiStatus(req: Request): Promise<Response> {
     }
   }
 
+  // =========================================================================
+  // #2218 — THE BUYER-FACING LEDGER IS RECONCILED TOO, NOT ONLY THE SHARED ONE.
+  // =========================================================================
+  // This webhook has only ever updated `notification_deliveries`.
+  // `twilio-message-status` updates BOTH that table AND
+  // `ticket_order_notifications`, which is the row a ticket buyer's
+  // confirmation actually lives in and the row a support agent reads. So on the
+  // Nigerian rail a delivery report could arrive, be verified, be applied — and
+  // the buyer's own record would still say `sent` forever, because nothing on
+  // this side of the house ever looked at it.
+  //
+  // That asymmetry is why the Twilio confirmation in the #2218 report carried a
+  // `delivered_at` and the Termii one could not have, whatever Termii sent us.
+  // Keyed by provider_message_id + channel, the same pair the shared ledger
+  // uses; `provider` is deliberately NOT in the predicate, matching the Twilio
+  // function's own reconcile block and tolerating a row whose provider label
+  // predates #1537.
+  {
+    const nowIso = new Date().toISOString();
+    const { error: ticketErr } = await supabase
+      .from("ticket_order_notifications")
+      .update({
+        status: delivered ? "delivered" : failed ? "failed_terminal" : "sent",
+        // NEVER null a delivered_at that is already set: reports can arrive out
+        // of order, and a late "Message Sent" following a "Delivered" must not
+        // un-deliver a message the handset already has.
+        ...(delivered ? { delivered_at: nowIso } : {}),
+        last_error: failed ? `termii_${status}` : null,
+        updated_at: nowIso,
+      })
+      .eq("provider_message_id", messageId)
+      .eq("channel", "sms");
+    if (ticketErr) {
+      console.warn(
+        "[termii-delivery-status] ticket_order_notifications reconcile note:",
+        ticketErr.message,
+      );
+    }
+  }
+
   // DND / opt-out / rejected → write a channel_suppressions row using the SAME
   // scope/reason convention twilio-inbound-sms uses for STOP (scope='all',
   // reason='stop_keyword'). The unique index is expression-based, so guard with

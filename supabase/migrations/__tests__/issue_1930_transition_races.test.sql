@@ -101,12 +101,19 @@ BEGIN
 
   -- Claim owns the event lock. The transition queues behind it, then revokes
   -- the committed attempt immediately after the claim transaction releases.
+  --
+  -- [TEST-MOD-APPROVED #2009] the racing transition targets `draft` instead of
+  -- `private`: #2009 makes Private unreachable by UPDATE for a standard
+  -- ticketed event, for every writer. `draft` is the same visibility axis, the
+  -- same `event_visibility` sale reason, and a real Admin-reachable state
+  -- (`admin_set_offering_visibility` accepts it). Race, assertions and
+  -- ordering are unchanged.
   PERFORM dblink_exec('issue1930_a','BEGIN');
   PERFORM * FROM dblink('issue1930_a',
     'SELECT id FROM public.events WHERE id=''19300000-0000-0000-0000-000000000711'' FOR UPDATE')
     AS locked(id uuid);
   IF dblink_send_query('issue1930_b',
-    'UPDATE public.events SET visibility=''private'' WHERE id=''19300000-0000-0000-0000-000000000711''')<>1
+    'UPDATE public.events SET visibility=''draft'' WHERE id=''19300000-0000-0000-0000-000000000711''')<>1
   THEN RAISE EXCEPTION 'ticket transition async dispatch failed'; END IF;
   SELECT result INTO v_claim FROM dblink('issue1930_a',format(
     'SELECT public.issue_1930_claim_ticket_provider_attempt(%L,%L,%L,%L,%L)',

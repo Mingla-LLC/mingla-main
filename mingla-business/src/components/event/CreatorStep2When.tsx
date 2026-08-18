@@ -52,7 +52,17 @@ import {
   type SetPos,
   type Weekday,
   type WhenMode,
-} from "../../store/draftEventStore";
+} from "../../store/draftEventStore"
+// issue #2160 — leaf module; see its header for why this is not the store.
+const MultiDatePricingModeField = React.lazy(
+  () => import("./MultiDatePricingModeField"),
+);
+
+import {
+  draftMultiDatePricingMode,
+  type MultiDatePricingMode,
+} from "../../utils/multiDatePricingMode"
+
 import { generateDraftId } from "../../utils/draftEventId";
 import {
   formatRecurrenceLabel,
@@ -171,6 +181,8 @@ const blankOverrides: MultiDateOverrides = {
 // ---- Main component -------------------------------------------------
 
 export const CreatorStep2When: React.FC<StepBodyProps> = ({
+  showMultiDatePricingMode = false,
+  multiDatePricingModeLocked = false,
   draft,
   updateDraft,
   errors,
@@ -1174,6 +1186,26 @@ export const CreatorStep2When: React.FC<StepBodyProps> = ({
           ) : null}
           {multiMaxError !== undefined ? (
             <Text style={styles.helperError}>{multiMaxError}</Text>
+          ) : null}
+
+          {/* issue #2160 — the multi-day pricing control, LAZILY mounted.
+              Same decision #2135 made for MultiDateDayChooser a few files away,
+              and for the same measured reason: this block is reachable only on
+              a multi-date event, and inlining it put ~2 KB of organiser-only
+              copy and styles into the EAGER __common chunk that EVERY visitor —
+              including every anonymous buyer who will never see a wizard —
+              downloads. Measured with scripts/ci/bundle-attribute.mjs. */}
+          {showMultiDatePricingMode && (draft.multiDates?.length ?? 0) > 1 ? (
+            <React.Suspense fallback={null}>
+              <MultiDatePricingModeField
+                pricingModeRaw={draft.multiDatePricingMode}
+                tickets={draft.tickets ?? []}
+                locked={multiDatePricingModeLocked}
+                onChange={(next) =>
+                  updateDraft({ multiDatePricingMode: next })
+                }
+              />
+            </React.Suspense>
           ) : null}
         </View>
       ) : null}

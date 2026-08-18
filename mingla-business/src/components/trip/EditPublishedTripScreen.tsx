@@ -49,6 +49,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -79,6 +80,17 @@ import {
 } from "../../constants/designSystem";
 import { Button } from "../ui/Button";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+// issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
+// LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
+// route chunks (Event, Trip and Experience management), so a static import
+// makes Metro hoist it into the eager `__common` chunk that EVERY buyer
+// downloads before anything renders — for a control only a brand owner ever
+// sees. Same treatment, and same reason, as SeeWhosGoingGate.
+const EventTicketCheckoutAccessCard = React.lazy(() =>
+  import("../event/EventTicketCheckoutAccessCard").then((m) => ({
+    default: m.EventTicketCheckoutAccessCard,
+  })),
+);
 import { Icon } from "../ui/Icon";
 import { IconChrome } from "../ui/IconChrome";
 import { Toast } from "../ui/Toast";
@@ -2058,6 +2070,18 @@ export const EditPublishedTripScreen: React.FC<EditPublishedTripScreenProps> = (
             </View>
           );
         })}
+
+        {/* issue #2101 [named-buyer checkout] — the SAME shared configuration
+            card as the Event and Experience management surfaces (one service
+            owner; no per-offering-type policy logic). Web-only by filename
+            resolution: the .native.tsx sibling is a typed null renderer. */}
+        {Platform.OS === "web" ? (
+          <View style={styles.sectionCard}>
+            <React.Suspense fallback={null}>
+              <EventTicketCheckoutAccessCard eventId={trip.id} />
+            </React.Suspense>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Sticky Save dock */}

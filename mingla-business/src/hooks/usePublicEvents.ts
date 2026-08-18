@@ -33,6 +33,11 @@ export const publicEventKeys = {
     eventId: string,
   ): readonly ["public-events", "detail-by-id", string] =>
     [...publicEventKeys.all, "detail-by-id", eventId] as const,
+  // issue #2160 / #2161 — the `occurrences` key is REMOVED. Occurrences now
+  // ride the existing detail query (they arrive on the bundle that already
+  // served the event), so there is ONE cache key for the page instead of two
+  // that can be stale independently of each other, and one fewer round trip.
+  // Do not re-add it (I-PROPOSED-2160-D).
   brandBySlug: (
     brandSlug: string,
   ): readonly ["public-events", "brand-by-slug", string] =>
@@ -93,6 +98,16 @@ export const usePublicEventById = (
     },
   });
 };
+
+/**
+ * issue #2160 / #2161 — `usePublicEventOccurrences` is DELETED.
+ *
+ * It stood on `fetchPublicEventOccurrences`, a direct RLS-gated `event_dates`
+ * read, which returned nothing for an UNLISTED event even though the event
+ * itself rendered fine through its SECURITY DEFINER reader. Occurrences now
+ * arrive on `PublicEventDetail.occurrences` from `usePublicEventBySlug` /
+ * `usePublicEventById`. Read them from the event, not from a second query.
+ */
 
 export const usePublicBrandBySlug = (
   brandSlug: string | null,

@@ -16,7 +16,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed checkout header: insets.bottom IS applied (line 230 + 283) for home-indicator clearance; the top status-bar overlap with back arrow / "Get tickets" header / "1 OF 3" pill is the intended banner-style buyer aesthetic. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1) + pixel verification on iPhone 17 Pro Max sim (screenshot 18-CHECKOUT-INDEX.png).
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -33,8 +33,14 @@ import {
 import type { LiveEvent } from "../../../src/store/liveEventStore";
 import type { TicketStub } from "../../../src/store/draftEventStore";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
+// issue #2160 / #2161 — occurrences ride the event payload; there is no
+// occurrence query here any more.
+import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
 import { formatCurrency } from "../../../src/utils/currency";
-import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
+import {
+  formatDraftDateLine,
+  formatOccurrenceDayLabel,
+} from "../../../src/utils/eventDateDisplay";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 
@@ -73,11 +79,53 @@ const ticketSalesEnded = (ticket: TicketStub): boolean => {
   return Number.isFinite(end) && end <= Date.now();
 };
 
+// issue #2160 — stable empty reference so a checkout with no occurrences never
+// produces a new array identity per render.
+const EMPTY_OCCURRENCES: readonly PublicEventOccurrence[] = [];
+
 export default function CheckoutTicketsScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ eventId: string; seed?: string }>();
+  const params = useLocalSearchParams<{
+    eventId: string;
+    seed?: string;
+    // issue #2135 [multi-date public day picker] — the occurrence the guest
+    // chose on the public page. Absent on every single-date checkout.
+    eventDateId?: string;
+    // issue #2160 — the DAY SET, comma-joined. The legacy single param above is
+    // still read and treated as a one-element set: links minted between the
+    // #2135 and #2160 deploys are live in the wild.
+    eventDateIds?: string;
+  }>();
   const eventId = typeof params.eventId === "string" ? params.eventId : null;
+  // issue #2135 — mirrors the checkout-experience index's seed-from-route-param
+  // contract exactly. null → cart.eventDateId stays null → the downstream
+  // ticket-checkout-create request is byte-identical to today.
+  const seedEventDateId =
+    typeof params.eventDateId === "string" && params.eventDateId.length > 0
+      ? params.eventDateId
+      : Array.isArray(params.eventDateId) &&
+          typeof params.eventDateId[0] === "string" &&
+          params.eventDateId[0].length > 0
+        ? params.eventDateId[0]
+        : null;
+  // issue #2160 — the chosen day SET, with the #2135 single param as the
+  // documented legacy fallback (SC-14). Memoised so the seeding effect below
+  // does not re-run on every render with a fresh array identity.
+  const seedEventDateIdsRaw =
+    typeof params.eventDateIds === "string"
+      ? params.eventDateIds
+      : Array.isArray(params.eventDateIds)
+        ? (params.eventDateIds[0] ?? "")
+        : "";
+  const seedEventDateIds = useMemo<readonly string[]>(() => {
+    const fromSet = seedEventDateIdsRaw
+      .split(",")
+      .map((id) => id.trim())
+      .filter((id) => id.length > 0);
+    if (fromSet.length > 0) return fromSet;
+    return seedEventDateId !== null ? [seedEventDateId] : [];
+  }, [seedEventDateIdsRaw, seedEventDateId]);
   // ORCH-1167 [event-page-canonical] — the inline-ticket-box selection carried
   // from the public event page (`seed=id:qty,id:qty`). Seeds the cart ONCE on mount
   // so this cart step (i) lands PRE-POPULATED + editable (replaces the empty
@@ -103,9 +151,76 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
         }) ?? undefined)
       : undefined;
 
-  const { lines, setLineQuantity } = useCart();
+  const { lines, setLineQuantity, setEventDateId, setEventDateIds } = useCart();
   const totals = useCartTotals();
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
+
+  // issue #2135 — seed the chosen occurrence into the cart (the SAME pattern the
+  // experience cart uses). From here the existing chain owns it:
+  // CartContext.eventDateId → createTicketCheckout({ eventDateId }) →
+  // orders.event_date_id (#1188). No new plumbing was added.
+  useEffect(() => {
+    setEventDateId(seedEventDateId);
+  }, [seedEventDateId, setEventDateId]);
+
+  // issue #2160 — seed the chosen day SET. From here the existing chain owns
+  // it: CartContext.eventDateIds -> createTicketCheckout({ eventDateIds }) ->
+  // ticket_checkout_session_event_dates -> ticket_event_dates.
+  useEffect(() => {
+    setEventDateIds(seedEventDateIds);
+  }, [seedEventDateIds, setEventDateIds]);
+
+  // issue #2135 — resolve the chosen occurrence so step 1 of 3 shows the day the
+  // guest actually picked instead of repeating the master date. `enabled` is
+  // false whenever no occurrence was chosen, so a single-date checkout issues
+  // ZERO extra network and renders the unchanged master date line.
+  // issue #2160 / #2161 — the occurrences ride the event payload now (same
+  // reader that served the event), so this step issues NO extra query at all
+  // and an UNLISTED event's day label resolves exactly like a public one's.
+  const occurrences = publicEventQuery.data?.occurrences ?? EMPTY_OCCURRENCES;
+  const chosenOccurrences = useMemo(
+    () =>
+      occurrences
+        .filter((o) => seedEventDateIds.includes(o.id))
+        .slice()
+        .sort((a, b) => a.startAt.localeCompare(b.startAt)),
+    [occurrences, seedEventDateIds],
+  );
+  // issue #2160 — the mini-card subtitle names the day(s) the guest actually
+  // chose. One day -> today's single label; two -> "Sat 22 Aug + Sun 23 Aug";
+  // three or more -> "3 days · Sat 22 Aug – Mon 24 Aug".
+  //
+  // NULL whenever nothing is chosen or ANY label is unparseable, which makes
+  // the mini-card fall back to the existing date line. NEVER a fabricated day
+  // (Constitution #9).
+  const chosenDayLabel = useMemo<string | null>(() => {
+    if (chosenOccurrences.length === 0) return null;
+    const labels = chosenOccurrences.map((o) =>
+      formatOccurrenceDayLabel(o.startAt, o.timezone),
+    );
+    if (labels.some((l) => l === null)) return null;
+    const parts = labels as string[];
+    if (parts.length === 1) return parts[0];
+    if (parts.length === 2) return `${parts[0]} + ${parts[1]}`;
+    return `${parts.length} days · ${parts[0]} – ${parts[parts.length - 1]}`;
+  }, [chosenOccurrences]);
+  // issue #2160 §7(c) — say the multiplier in words BEFORE the total. The
+  // floating bar must never be the first place the guest learns the price
+  // doubled.
+  const pricingMode = publicEventQuery.data?.multiDatePricingMode ?? "per_day";
+  const dayCount = chosenOccurrences.length;
+  const cartHasPaidLine = lines.some((l) => (l.unitPriceAllIn ?? 0) > 0);
+  const multiDayNote = useMemo<string | null>(() => {
+    if (dayCount < 2) return null;
+    if (cartHasPaidLine) {
+      return pricingMode === "all_days"
+        ? `You're attending ${dayCount} days. One price covers all of them.`
+        : `You're attending ${dayCount} days. Tickets are priced per day.`;
+    }
+    return pricingMode === "all_days"
+      ? `You're attending ${dayCount} days. You'll get 1 pass that works on all of them.`
+      : `You're attending ${dayCount} days. You'll get ${dayCount} passes, one per day.`;
+  }, [dayCount, cartHasPaidLine, pricingMode]);
 
   // META-ORCH-1187 LEG 2 — fire `web_checkout_started` once the buyer lands on
   // the cart and the event resolves (begin of the web purchase funnel). PostHog
@@ -338,10 +453,14 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           <Text style={styles.miniTitle} numberOfLines={2}>
             {event.name.trim().length > 0 ? event.name : "Untitled event"}
           </Text>
+          {/* issue #2135 — when the guest picked a day on the public page, step 1
+              of 3 names THAT day instead of repeating the master date. Falls back
+              to the unchanged date line whenever no occurrence was chosen or the
+              occurrence read has not resolved (never a fabricated day). */}
           <Text style={styles.miniSubtitle} numberOfLines={1}>
             {brand?.displayName ?? "Mingla"}
             {" · "}
-            {formatDraftDateLine(event)}
+            {chosenDayLabel ?? formatDraftDateLine(event)}
           </Text>
         </View>
 

@@ -1,4 +1,26 @@
 module.exports = {
+  // #2178 — the required `mingla-business jest (full suite)` gate was returning a
+  // DIFFERENT answer on every run of the same commit: 3 suites red, then 0, and a
+  // fourth on CI. Not flaky tests — CPU starvation.
+  //
+  // MEASURED on afb4b39da, 964 suites / 8309 tests:
+  //   --runInBand (1 worker) : 0 failed, every time
+  //   default parallel       : 3 failed, then 0, then a different 1 on CI
+  // and every one of those failures was the SAME error:
+  //   "Exceeded timeout of 5000 ms for a test"
+  // in suites that took 37s, 14s and 18s of wall time under contention.
+  //
+  // Jest's 5s default assumes a test gets a CPU when it asks for one. With ~960
+  // suites across N workers on a shared runner it does not, so tests that finish
+  // in milliseconds serially blow the budget in parallel — and WHICH ones lose the
+  // race changes run to run, because jest deals files to workers from a timing
+  // cache that differs by machine and by run.
+  //
+  // A required gate that cannot be trusted red OR green is worse than none, since
+  // it still carries a gate's authority. 20s is generous enough to absorb
+  // contention and still short enough that a genuinely hung test fails the job
+  // rather than running to the 6h ceiling.
+  testTimeout: 20000,
   preset: "ts-jest",
   testEnvironment: "node",
   testMatch: ["**/__tests__/**/*.test.ts", "**/__tests__/**/*.test.tsx"],

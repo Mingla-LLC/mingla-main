@@ -135,9 +135,9 @@ export function GlassNav() {
           scrolled ? 'opacity-100' : 'opacity-0',
         )}
         style={{
-          backdropFilter: 'blur(18px) saturate(1.4)',
-          WebkitBackdropFilter: 'blur(18px) saturate(1.4)',
-          background: 'rgba(250, 247, 242, 0.62)',
+          backdropFilter: surface === 'organiser' ? 'none' : 'blur(18px) saturate(1.4)',
+          WebkitBackdropFilter: surface === 'organiser' ? 'none' : 'blur(18px) saturate(1.4)',
+          background: surface === 'organiser' ? 'rgba(250, 247, 242, 0.94)' : 'rgba(250, 247, 242, 0.62)',
           borderColor: 'rgba(14, 14, 16, 0.06)',
           boxShadow: '0 1px 24px rgba(14,14,16,0.05)',
           maskImage: 'linear-gradient(to bottom, #000 62%, transparent)',
@@ -168,10 +168,13 @@ export function GlassNav() {
             className="inline-flex shrink-0 items-center gap-2 rounded-md px-0.5 transition-all duration-200 ease-out-quart hover:-translate-y-0.5 hover:brightness-110 active:translate-y-0 active:brightness-100 focus-ring"
           >
             {surface === 'organiser' ? (
+              // The square source canvas is 2000px, while its visible lockup is
+              // only 1387px wide. 1.44x makes that visible width match the
+              // Explorer wordmark without changing the load-bearing 80px flex box.
               <img
                 src="/brand/mingla-business-logo.png"
                 alt="Mingla Host"
-                className="h-20 w-20 select-none"
+                className="h-20 w-20 scale-[1.44] select-none"
                 draggable={false}
               />
             ) : (

@@ -1,0 +1,689 @@
+{
+  "$comment": [
+    "#2148 Stage 3 [ci-runtime]. Registry of per-issue suites that each used to be",
+    "their own CI job. MEASURED on a real PR: the non-database CI set spent 60",
+    "job-minutes running tests and 65 job-minutes setting up to run them; a typical",
+    "per-issue job burned ~40s of checkout and runner boot for ~14s of node --test.",
+    "With the org capped at 20 concurrent jobs that PR queued 335 job-minutes against",
+    "141 spent executing. This deletes the setup, not the tests.",
+    "",
+    "run-suite-batch.mjs iterates THIS FILE and never a glob. A glob would turn a",
+    "deleted or renamed suite into a silent skip and a green run into a lie. It asserts",
+    "executed === expectedSuites, so losing a suite fails the run on its own. Same",
+    "contract as ORCH-1383's run-batch.mjs, which replaced 340 one-gate jobs.",
+    "",
+    "TWO THINGS DELIBERATELY EXCLUDED, both discovered by measuring rather than",
+    "assuming:",
+    "  * SELF-PINNED suites. 118 files in this repo read a .github/workflows/*.yml and",
+    "    assert their own suite is wired there \u2014 the anti-dark-gate discipline #2113",
+    "    exists for. Folding those in deletes the file they assert on and breaks them,",
+    "    so all 33 such candidates keep their own workflow. Batching them requires",
+    "    repointing those assertions at this manifest, which edits test files and needs",
+    "    explicit approval.",
+    "  * Suites using an action beyond checkout/setup-node (setup-python, k6-action).",
+    "    The batch runs shell steps only, so folding them in would silently drop their",
+    "    setup. The generator refuses them by name rather than guessing.",
+    "",
+    "CLASSES ARE DEPENDENCY PROFILES, not arbitrary shards, so each class pays exactly",
+    "one install for all its suites.",
+    "",
+    "These suites now run on EVERY pull request; their old workflows were paths-gated.",
+    "That is MORE coverage, not less \u2014 a paths-gated suite silently skips on a PR that",
+    "misses its globs, which is how a latent main-red landed in PR #743 and surfaced on",
+    "an unrelated PR. originPaths is retained per suite as provenance only.",
+    "  * Workflows PROVIDING A REQUIRED STATUS CHECK. framework-major-guard.yml was",
+    "    caught here: its job name 'Framework Major Guard' is required by ruleset",
+    "    19508605. Folding it in deletes the check name, it never reports, and EVERY",
+    "    PR in the repo blocks forever on a check that no longer exists. Verify any",
+    "    candidate against the rulesets' required_status_checks before batching it.",
+    "",
+    "TO ADD a suite: add it here. TO REMOVE one: you must also lower expectedSuites,",
+    "which is a visible, reviewable act. There is no token that removes a suite quietly.",
+    "",
+    "job that would become the new critical path \u2014 a regression, since today they run",
+    "suite-results.json precisely so the shards can be rebalanced from evidence after",
+    "the first CI run rather than guessed at again.",
+    "  * Suites pinned by .github/scripts/strict-grep/MANIFEST.json. It names workflows",
+    "    as `external:<file>.yml` with no directory prefix, so a scan for the literal",
+    "    string '.github/workflows/<file>.yml' MISSES them \u2014 orch-1386-tester-adversarial",
+    "    slipped through that way and failed META-1383 parity check P4. Check BOTH the",
+    "    `external:` field and `jobKeys` before batching anything.",
+    "",
+    "SHARDING IS BIN-PACKED FROM MEASURED COST, not by counting suites. The 14 business",
+    "suites are far from equal (113s and 98s at the top, 35s at the bottom, 673s total),",
+    "so an even split by count would leave one shard setting the critical path alone.",
+    "carries per-suite seconds, so re-run this packing whenever suites are added.",
+    "",
+    "SHARDS ARE BIN-PACKED FROM CI-MEASURED COST. Local timings were NOT usable: the",
+    "same suites ranked differently on a runner, and the first CI run came out at",
+    "5.9/4.5/3.6/4.3 min against a local prediction of ~3 min each. Local evidence",
+    "proves equivalence, never timing.",
+    "There is a HARD FLOOR here: issue-1027 alone is 170s on CI, so no shard can go",
+    "below ~4.2 min however many ways this is split. Adding shards past 4 buys nothing",
+    "and costs a fresh npm ci (~80s) each."
+  ],
+  "expectedSuites": 20,
+  "classes": [
+    "business-node20-1",
+    "business-node20-2",
+    "business-node20-3",
+    "business-node20-4",
+    "node20-noinstall"
+  ],
+  "suites": [
+    {
+      "id": "issue-1282-google-bespoke-copy-tests",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-1282-google-bespoke-copy-tests.yml",
+      "originPaths": [
+        "mingla-admin/src/**",
+        ".github/workflows/issue-1282-google-bespoke-copy-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-1282 regressions + the",
+          "cwd": "mingla-admin",
+          "run": "node --test \\\n  src/__tests__/issue1282_google_bespoke_copy.test.js \\\n  src/__tests__/issue864_campaign_builder_happy.test.js \\\n  src/__tests__/issue864_campaign_builder_tester_adversarial.test.js \\\n  src/__tests__/issue927_create_wired_widened.test.js \\\n  src/__tests__/issue927_tester_adversarial.test.js \\\n  src/__tests__/issue997_google_video_create.test.js \\\n  src/__tests__/issue997_google_video_create.adversarial.tester.test.js \\\n  src/__tests__/issue992_google_snap_targeting.test.js \\\n  src/__tests__/issue992_google_snap_targeting_adversarial.test.js \\\n  src/__tests__/issue995_creative_video_not_creatable.test.js \\\n  src/__tests__/issue995_creative_video_variants.test.js \\\n  src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js \\\n  src/__tests__/issue989_targeting.test.js \\\n  src/__tests__/issue989_targeting_adversarial.test.js \\\n  src/__tests__/issue986_platform_picker.test.js \\\n  src/__tests__/issue986_platform_picker.adversarial.test.js \\\n  src/__tests__/issue1002_multi_destination.test.js \\\n  src/__tests__/issue1002_multi_destination.tester_adversarial.test.js \\\n  src/__tests__/issue979_correctness.adversarial.test.js"
+        }
+      ]
+    },
+    {
+      "id": "issue-903-open-external-admin-tests",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-903-open-external-admin-tests.yml",
+      "originPaths": [
+        "mingla-admin/src/lib/openExternal.js",
+        "mingla-admin/src/components/campaign-builder/AdPreview.jsx",
+        "mingla-admin/src/pages/CareersPage.jsx",
+        "mingla-admin/src/lib/__tests__/openExternal*.test.js",
+        ".github/workflows/issue-903-open-external-admin-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-903 openExternal admin regressions",
+          "cwd": "mingla-admin",
+          "run": "node --test \\\n  src/lib/__tests__/openExternal.test.js \\\n  src/lib/__tests__/openExternal.adversarial.tester.test.js"
+        }
+      ]
+    },
+    {
+      "id": "issue-979-campaign-builder-correctness-tests",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-979-campaign-builder-correctness-tests.yml",
+      "originPaths": [
+        "mingla-admin/src/**",
+        "supabase/functions/admin-ad-create-campaign/**",
+        "supabase/functions/admin-ad-creative-upload/**",
+        "supabase/functions/_shared/adChannelCore.ts",
+        "supabase/functions/_shared/meta.ts",
+        "MARKETING.md",
+        ".github/workflows/issue-979-campaign-builder-correctness-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-979 campaign-builder correctness suites",
+          "cwd": "mingla-admin",
+          "run": "node --test src/__tests__/issue979_goal_combination_valid_pairs.test.js src/__tests__/issue979_honest_create_toast.test.js src/__tests__/issue979_compliance_flags_all_platforms.test.js src/__tests__/issue979_unfunded_eligible_channels.test.js src/__tests__/issue979_correctness.adversarial.test.js src/__tests__/issue1162_stock_first_ai_defaults.test.js src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js"
+        }
+      ]
+    },
+    {
+      "id": "issue-980-campaign-builder-clarity-tests",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-980-campaign-builder-clarity-tests.yml",
+      "originPaths": [
+        "mingla-admin/src/**",
+        ".github/workflows/issue-980-campaign-builder-clarity-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-980 campaign-builder clarity suites",
+          "cwd": "mingla-admin",
+          "run": "node --test src/__tests__/issue980_stepper_responsive.test.js src/__tests__/issue980_preflight_copy_translation.test.js src/__tests__/issue980_review_real_objectives.test.js src/__tests__/issue980_clarity.adversarial.test.js"
+        }
+      ]
+    },
+    {
+      "id": "issue-986-campaign-builder-platform-picker-tests",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-986-campaign-builder-platform-picker-tests.yml",
+      "originPaths": [
+        "mingla-admin/src/**",
+        ".github/workflows/issue-986-campaign-builder-platform-picker-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-986 campaign-builder platform-picker suites",
+          "cwd": "mingla-admin",
+          "run": "node --test src/__tests__/issue986_platform_picker.test.js src/__tests__/issue986_platform_picker.adversarial.test.js"
+        }
+      ]
+    },
+    {
+      "id": "issue-995-campaign-builder-creative-tests",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-995-campaign-builder-creative-tests.yml",
+      "originPaths": [
+        "mingla-admin/src/**",
+        ".github/workflows/issue-995-campaign-builder-creative-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-995 campaign-builder creative suite",
+          "cwd": "mingla-admin",
+          "run": "node --test src/__tests__/issue995_creative_video_variants.test.js src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js src/__tests__/issue995_creative_video_not_creatable.test.js"
+        }
+      ]
+    },
+    {
+      "id": "971-paystack-onboard-scroll-tests",
+      "class": "business-node20-4",
+      "origin": ".github/workflows/971-paystack-onboard-scroll-tests.yml",
+      "originPaths": [
+        "mingla-business/src/components/brand/**",
+        ".github/workflows/971-paystack-onboard-scroll-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "paystack-onboard-scroll-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-1027-keyboard-and-datetime-tests",
+      "class": "business-node20-1",
+      "origin": ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml",
+      "originPaths": [
+        "packages/location-input/src/MapboxAddressInput.tsx",
+        "mingla-business/src/components/event/CreatorStep1Basics.tsx",
+        "mingla-business/src/components/event/EventCreatorWizard.tsx",
+        "mingla-business/src/components/rsvp/RsvpCreatorWizard.tsx",
+        "mingla-business/src/components/event/EditPublishedScreen.tsx",
+        "mingla-business/src/components/ui/WebDateTimeInput.tsx",
+        "mingla-business/src/components/event/CreatorStep2When.tsx",
+        "mingla-business/src/components/event/MultiDateOverrideSheet.tsx",
+        "mingla-business/src/components/checkout/intake/IntakeQuestionRenderers.tsx",
+        "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
+        "mingla-business/src/components/trip/BookingDeadlinePicker.tsx",
+        "mingla-business/src/components/marketing/ComposerStepWhen.tsx",
+        "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts",
+        "mingla-business/src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts",
+        "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts",
+        "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx",
+        "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts",
+        "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx",
+        "mingla-business/src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts",
+        "mingla-business/src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx",
+        "mingla-business/src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts",
+        ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "thread-a-native-keyboard",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Install test-only renderer (react-test-renderer, --no-save)",
+          "cwd": "mingla-business",
+          "run": "npm install --no-save react-test-renderer@19.1.0"
+        },
+        {
+          "name": "Symptom 1 \u2014 implementor happy-path (cap formula + wiring)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand"
+        },
+        {
+          "name": "Symptom 1 \u2014 tester ADVERSARIAL (over-constrain / no-keyboard, cap EXECUTED)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
+        },
+        {
+          "name": "Symptom 2 \u2014 implementor happy-path (onFocus wired to scrollToBottom)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts --runInBand"
+        },
+        {
+          "name": "Symptom 2 \u2014 tester ADVERSARIAL (scrollToBottom undefined \u2192 no throw, EXECUTED)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx --runInBand"
+        },
+        {
+          "name": "Symptom 2b \u2014 iOS regression (deferred reveal via keyboard library, fails-on-revert)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts --runInBand"
+        },
+        {
+          "name": "thread-b-web-datetime",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Install test-only renderer (react-test-renderer, --no-save)",
+          "cwd": "mingla-business",
+          "run": "npm install --no-save react-test-renderer@19.1.0"
+        },
+        {
+          "name": "Web date/time \u2014 implementor RENDER proof (main rows commit on web)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx --runInBand"
+        },
+        {
+          "name": "Web date/time \u2014 structural guard (all 7 surfaces + native parity)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts --runInBand"
+        },
+        {
+          "name": "Web date/time \u2014 tester ADVERSARIAL (empty/error/visible + NO web input leaks onto native)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx --runInBand"
+        },
+        {
+          "name": "ORCH-1089 wizard parity (migrated marker showPicker \u2192 WebDateTimeInput stays green)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-1035-theme-sheet-hoist-tests",
+      "class": "business-node20-2",
+      "origin": ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml",
+      "originPaths": [
+        "mingla-business/src/components/event/EditPublishedScreen.tsx",
+        "mingla-business/src/components/event/editPublishedSections.ts",
+        "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts",
+        "mingla-business/src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts",
+        ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "issue-1035-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run issue-1035 jest suite",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-1036-contrast-chip-removal-tests",
+      "class": "business-node20-4",
+      "origin": ".github/workflows/issue-1036-contrast-chip-removal-tests.yml",
+      "originPaths": [
+        "mingla-business/src/components/theme/ThemeSheet.tsx",
+        "mingla-business/src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts",
+        "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx",
+        "mingla-business/jest.issue1036.render.cjs",
+        ".github/workflows/issue-1036-contrast-chip-removal-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "issue-1036-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run issue-1036 jest suite (implementor source-gate)",
+          "cwd": "mingla-business",
+          "run": "npx jest src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts --runInBand"
+        },
+        {
+          "name": "Run issue-1036 tester render-proof (react-native-web)",
+          "cwd": "mingla-business",
+          "run": "npx jest --config jest.issue1036.render.cjs --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-1348-icloud-video-patch-tests",
+      "class": "business-node20-4",
+      "origin": ".github/workflows/issue-1348-icloud-video-patch-tests.yml",
+      "originPaths": [
+        "mingla-business/patches/expo-image-picker+17.0.11.patch",
+        "mingla-business/package.json",
+        "mingla-business/package-lock.json",
+        ".github/workflows/issue-1348-icloud-video-patch-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Install mingla-business deps (runs postinstall -> patch-package)",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Assert patch file present",
+          "cwd": ".",
+          "run": "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE \u2014 the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
+        },
+        {
+          "name": "Assert package.json postinstall + patch-package devDependency",
+          "cwd": ".",
+          "run": "node -e \"\n  const p = require('./mingla-business/package.json');\n  if (p.scripts?.postinstall !== 'patch-package') {\n    console.error('FAIL: mingla-business/package.json scripts.postinstall must equal \\\"patch-package\\\", got:', p.scripts?.postinstall);\n    process.exit(1);\n  }\n  if (!p.devDependencies?.['patch-package']) {\n    console.error('FAIL: mingla-business/package.json devDependencies must include patch-package');\n    process.exit(1);\n  }\n  console.log('OK: postinstall=\\\"patch-package\\\" and patch-package devDependency present (' + p.devDependencies['patch-package'] + ')');\n\""
+        },
+        {
+          "name": "Assert patch applies cleanly (--error-on-fail)",
+          "cwd": "mingla-business",
+          "run": "npx patch-package --error-on-fail"
+        },
+        {
+          "name": "Assert installed MediaHandler.swift is patched at both video sites",
+          "cwd": ".",
+          "run": "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' \u2014 iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
+        }
+      ]
+    },
+    {
+      "id": "issue-1532-tester-adversarial",
+      "class": "business-node20-4",
+      "origin": ".github/workflows/issue-1532-tester-adversarial.yml",
+      "originPaths": [],
+      "steps": [
+        {
+          "name": "Install Business dependencies",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Stay editor guard reachability (tester adversarial)",
+          "cwd": "mingla-business",
+          "run": "npx jest --config jest.issue1532.tester.cjs --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-1881-business-signin-transient-failure-tests",
+      "class": "business-node20-3",
+      "origin": ".github/workflows/issue-1881-business-signin-transient-failure-tests.yml",
+      "originPaths": [
+        "mingla-business/src/context/AuthContext.tsx",
+        "mingla-business/src/constants/authFailureCopy.ts",
+        "mingla-business/src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts",
+        "mingla-business/src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts",
+        "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts",
+        "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts",
+        ".github/workflows/issue-1881-business-signin-transient-failure-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "issue-1881-business-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run",
+          "cwd": "mingla-business",
+          "run": "npx jest src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts --runInBand"
+        },
+        {
+          "name": "Run",
+          "cwd": "mingla-business",
+          "run": "npx jest src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts --runInBand"
+        },
+        {
+          "name": "Preserve",
+          "cwd": "mingla-business",
+          "run": "npx jest src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-1996-business-desktop-sharing-tests",
+      "class": "business-node20-4",
+      "origin": ".github/workflows/issue-1996-business-desktop-sharing-tests.yml",
+      "originPaths": [
+        "mingla-business/src/components/ui/ShareModal.tsx",
+        "mingla-business/src/components/ui/ShareModalContent.tsx",
+        "mingla-business/app/event/[id]/index.tsx",
+        "mingla-business/app/rsvp/[id]/index.tsx",
+        "mingla-business/app/experience/[id]/index.tsx",
+        "mingla-business/app/trip/[id]/index.tsx",
+        "mingla-business/app/venue/[venueId]/index.tsx",
+        "mingla-business/app/(tabs)/hub/experiences.tsx",
+        "mingla-business/src/components/event/PublicEventPage.tsx",
+        "mingla-business/src/components/brand/PublicBrandPage.tsx",
+        "mingla-business/app/b/[brandSlug]/v/[venueSlug].tsx",
+        "mingla-business/app/exp/[brandSlug]/[experienceSlug].tsx",
+        "mingla-business/app/t/[brandSlug]/[tripSlug].tsx",
+        "mingla-business/src/utils/sharePublicUrl.ts",
+        "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts",
+        "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts",
+        "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts",
+        "mingla-marketing/lib/content-share-readiness.ts",
+        ".github/workflows/issue-1996-business-desktop-sharing-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "issue-1996-business-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run",
+          "cwd": "mingla-business",
+          "run": "npx jest src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts --runInBand"
+        },
+        {
+          "name": "Preserve unified sharing behavior",
+          "cwd": "mingla-business",
+          "run": "npx jest src/utils/__tests__/sharePublicUrl.test.ts src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-948-w2-bank-route-web-tests",
+      "class": "business-node20-3",
+      "origin": ".github/workflows/issue-948-w2-bank-route-web-tests.yml",
+      "originPaths": [
+        "mingla-business/app/brand/**/connect.tsx",
+        "mingla-business/app/brand/**/connect.web.tsx",
+        "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx",
+        "mingla-business/src/components/brand/BrandOnboardView.tsx",
+        "mingla-business/src/components/brand/BrandStripeCountryPicker.tsx",
+        "mingla-business/src/utils/bankConnectFunnel.ts",
+        "mingla-business/src/utils/bankConnectRail.ts",
+        "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts",
+        "mingla-business/src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx",
+        "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts",
+        ".github/workflows/issue-948-w2-bank-route-web-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Install business dependencies",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Install test-only renderer (react-test-renderer, --no-save)",
+          "cwd": "mingla-business",
+          "run": "npm install --no-save react-test-renderer@19.1.0"
+        },
+        {
+          "name": "Run W2 bank-route contracts",
+          "cwd": "mingla-business",
+          "run": "npx jest src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-948-web-skip-download-tests",
+      "class": "business-node20-2",
+      "origin": ".github/workflows/issue-948-web-skip-download-tests.yml",
+      "originPaths": [
+        "mingla-business/src/components/brand/BrandBankConnectBody.web.tsx",
+        "mingla-business/app/accept-brand-invitation.tsx",
+        "mingla-business/app/accept-brand-invitation/success.tsx",
+        "mingla-business/src/utils/bankFirstPartnerInvite.ts",
+        "mingla-business/src/utils/inviteFunnelSignal.ts",
+        "mingla-business/src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts",
+        "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx",
+        "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx",
+        "mingla-business/src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts",
+        "mingla-business/src/components/invite/**",
+        ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs",
+        ".github/scripts/strict-grep/MANIFEST.json",
+        ".github/workflows/issue-948-web-skip-download-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "Install business dependencies",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Install route-render proof dependency",
+          "cwd": "mingla-business",
+          "run": "npm install --no-save --package-lock=false react-test-renderer@19.1.0"
+        },
+        {
+          "name": "Run W4 web skip-download contracts",
+          "cwd": "mingla-business",
+          "run": "npx jest src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts --runInBand"
+        },
+        {
+          "name": "Run",
+          "cwd": ".",
+          "run": "node .github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs --self-test\nnode .github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs"
+        }
+      ]
+    },
+    {
+      "id": "issue-959-scanner-invite-error-parse-tests",
+      "class": "business-node20-3",
+      "origin": ".github/workflows/issue-959-scanner-invite-error-parse-tests.yml",
+      "originPaths": [
+        "mingla-business/src/**",
+        ".github/workflows/issue-959-scanner-invite-error-parse-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "issue-959-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Issue #959: scanner-invite error-parse jest suites (implementor + tester)",
+          "cwd": "mingla-business",
+          "run": "npx jest issue_959 --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "orch-1403-onboard-scroll-tests",
+      "class": "business-node20-1",
+      "origin": ".github/workflows/orch-1403-onboard-scroll-tests.yml",
+      "originPaths": [
+        "mingla-business/src/components/brand/**",
+        ".github/workflows/orch-1403-onboard-scroll-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "orch-1403-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run ORCH-1403 onboard-scroll jest suite",
+          "cwd": "mingla-business",
+          "run": "npx jest src/components/brand/__tests__/onboardBodyScrolls.orch1403.source.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "orch-1404-invite-error-recovery-tests",
+      "class": "business-node20-3",
+      "origin": ".github/workflows/orch-1404-invite-error-recovery-tests.yml",
+      "originPaths": [
+        "mingla-business/app/**",
+        "mingla-business/src/**",
+        ".github/workflows/orch-1404-invite-error-recovery-tests.yml"
+      ],
+      "steps": [
+        {
+          "name": "orch-1404-jest",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "Run ORCH-1404 mingla-business jest suites",
+          "cwd": "mingla-business",
+          "run": "npx jest src/services/__tests__/orch_1404_functions_error_parse.tester.test.ts src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "production-readiness-audit",
+      "class": "business-node20-2",
+      "origin": ".github/workflows/production-readiness-audit.yml",
+      "originPaths": [
+        "scripts/audit/**",
+        "supabase/migrations/**",
+        "mingla-business/app/**",
+        "mingla-business/src/**",
+        ".github/workflows/production-readiness-audit.yml"
+      ],
+      "steps": [
+        {
+          "name": "Self-test audit scripts",
+          "cwd": ".",
+          "run": "node scripts/audit/run-all.mjs --self-test"
+        },
+        {
+          "name": "Run production readiness audits",
+          "cwd": ".",
+          "run": "node scripts/audit/run-all.mjs"
+        },
+        {
+          "name": "DB perf contract (#426 PR4)",
+          "cwd": ".",
+          "run": "node scripts/audit/orch-429-db-perf-contract.mjs"
+        },
+        {
+          "name": "Checkout Grade A contract (#426 PR5)",
+          "cwd": ".",
+          "run": "node scripts/audit/checkout-grade-a-contract.mjs"
+        },
+        {
+          "name": "Hub Grade A contract (#426 PR6)",
+          "cwd": ".",
+          "run": "node scripts/audit/hub-grade-a-contract.mjs"
+        },
+        {
+          "name": "Marketing Grade A contract (#426 PR7)",
+          "cwd": ".",
+          "run": "node scripts/audit/marketing-grade-a-contract.mjs"
+        },
+        {
+          "name": "Trip checkout Grade A contract (#426 PR7 bundle)",
+          "cwd": ".",
+          "run": "node scripts/audit/trip-checkout-grade-a-contract.mjs"
+        },
+        {
+          "name": "Validate k6 script structure",
+          "cwd": ".",
+          "run": "node scripts/load/validate-k6-scripts.mjs"
+        },
+        {
+          "name": "feature-flags",
+          "cwd": "mingla-business",
+          "run": "npm ci"
+        },
+        {
+          "name": "feature-flags",
+          "cwd": "mingla-business",
+          "run": "npx jest src/config/__tests__/featureFlags.test.ts --runInBand"
+        }
+      ]
+    }
+  ]
+}

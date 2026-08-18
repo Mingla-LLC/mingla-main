@@ -21,6 +21,12 @@ export const NOTIFICATION_SAFE_CODES = [
   "delivery_attempts_exhausted",
   "idempotency_conflict",
   "dispatch_protocol_error",
+  // #2218 — Nigerian operators refuse `generic` traffic 20:00–08:00 WAT. Held,
+  // not failed and not switched off. It earns a code of its own because the
+  // fallback is `unknown_failure`, and calling a scheduled, documented network
+  // window an unknown failure is exactly the kind of untrue state that let a
+  // Nigerian buyer's text disappear behind `sent`.
+  "ng_operator_embargo",
 ] as const;
 
 export type NotificationSafeCode = typeof NOTIFICATION_SAFE_CODES[number];

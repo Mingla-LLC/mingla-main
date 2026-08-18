@@ -42,6 +42,7 @@ import { venueSignalLabel } from "../../constants/venueSignals";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useVenueReservationMetrics } from "../../hooks/useVenueReservationMetrics";
 import { useVenueOrganicInsights } from "../../hooks/useVenueOrganicInsights";
+import { useVenueOrderMetrics } from "../../hooks/useVenueOrderMetrics";
 import { useAuth } from "../../context/AuthContext";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
 import { buildComposeAudienceHref } from "../../utils/composeAudienceHref";
@@ -51,6 +52,7 @@ import {
 import { Flag } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { useShareNetworkState } from "../ui/useShareNetworkState";
 import {
   BAR_CONTEXT,
   BAR_INACTIVE,
@@ -111,6 +113,7 @@ export function VenueIntelligenceModule({
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isAuthReady } = useAuth();
+  const online = useShareNetworkState();
   const query = useVenueIntelligence(brandId, venueId);
   const data = query.data ?? null;
   const reservationsQuery = useVenueReservationMetrics(
@@ -119,6 +122,7 @@ export function VenueIntelligenceModule({
     isAuthReady,
   );
   const organicQuery = useVenueOrganicInsights(brandId, venueId, isAuthReady);
+  const orderMetricsQuery = useVenueOrderMetrics(brandId, venueId, isAuthReady);
   const trackedReservationScope = useRef<string | null>(null);
   const trackedOrganicScope = useRef<string | null>(null);
   const [reservationRefreshStatus, setReservationRefreshStatus] =
@@ -199,6 +203,7 @@ export function VenueIntelligenceModule({
           query.refetch(),
           reservationsQuery.refetch(),
           organicQuery.refetch(),
+          orderMetricsQuery.refetch(),
         ]).then((results) => {
           const reservationResult = results[1];
           const succeeded =
@@ -460,6 +465,93 @@ export function VenueIntelligenceModule({
             void reservationsQuery.refetch();
           }}
         />
+
+        {orderMetricsQuery.data?.authorized === false ? null : (
+          <GlassCard
+            variant="elevated"
+            padding={spacing.lg}
+            testID="venue-orders-overview-card"
+          >
+            <Text style={styles.tileTitle}>Venue orders</Text>
+            {orderMetricsQuery.data !== undefined ? (
+              <>
+                <Text style={styles.statValue}>
+                  {orderMetricsQuery.data.orders30d}
+                </Text>
+                <Text style={styles.bodySm}>orders in the last 30 days</Text>
+                {orderMetricsQuery.data.window.thinLabel !== null ? (
+                  <Text style={styles.footnote}>
+                    {orderMetricsQuery.data.window.thinLabel}
+                  </Text>
+                ) : null}
+                {Object.entries(orderMetricsQuery.data.salesCents30d).map(
+                  ([currency, cents]) => (
+                    <Text key={`sales:${currency}`} style={styles.metricSecondary}>
+                      {`${currency} sales ${formatCurrencyRound(cents, currency, true)}`}
+                    </Text>
+                  ),
+                )}
+                {Object.entries(orderMetricsQuery.data.tipsCents30d).map(
+                  ([currency, cents]) => (
+                    <Text key={`tips:${currency}`} style={styles.bodySm}>
+                      {`${currency} tips ${formatCurrencyRound(cents, currency, true)}`}
+                    </Text>
+                  ),
+                )}
+                {Object.values(orderMetricsQuery.data.moneyStateByCurrency).some(
+                  (state) => state === "partial_refund_unallocated",
+                ) ? (
+                  <Text style={styles.caveatFootnote}>
+                    Some money is hidden because a partial refund has no recorded
+                    split. Order counts remain exact.
+                  </Text>
+                ) : null}
+                {!online ? (
+                  <Text style={styles.footnote}>Offline — showing saved order numbers.</Text>
+                ) : orderMetricsQuery.isFetching ? (
+                  <Text style={styles.footnote}>Updating order numbers…</Text>
+                ) : null}
+                <View style={styles.actionRow}>
+                  <Button
+                    label="See order insights"
+                    variant="secondary"
+                    size="md"
+                    onPress={() => {
+                      if (venueId === null) return;
+                      router.push(
+                        `/venue/${venueId}?module=insights&instrument=orders` as never,
+                      );
+                    }}
+                    accessibilityLabel="See venue order insights"
+                  />
+                </View>
+              </>
+            ) : orderMetricsQuery.isLoading ? (
+              <View style={styles.orderStatusRow} accessibilityRole="progressbar">
+                <ActivityIndicator color={accent.warm} />
+                <Text style={styles.bodySm}>Loading venue orders…</Text>
+              </View>
+            ) : (
+              <>
+                <Text style={styles.bodySm}>
+                  {!online
+                    ? "Reconnect to load venue order numbers."
+                    : "Couldn't load venue order numbers. Your orders are safe."}
+                </Text>
+                <View style={styles.actionRow}>
+                  <Button
+                    label="Try again"
+                    variant="secondary"
+                    size="md"
+                    onPress={() => {
+                      void orderMetricsQuery.refetch();
+                    }}
+                  />
+                </View>
+              </>
+            )}
+          </GlassCard>
+        )}
 
         <VenueOrganicEngagementSection
           data={organicQuery.data ?? null}
@@ -837,6 +929,13 @@ const styles = StyleSheet.create({
   actionRow: {
     marginTop: spacing.md,
     flexDirection: "row",
+  },
+  orderStatusRow: {
+    minHeight: 44,
+    marginTop: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
   },
   // ORCH-1190 #7 — top-of-Overview blast button row.
   blastRow: {

@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 538,
-  "selfTestWiredFloor": 342,
+  "expectedStrictGrepMjsFiles": 551,
+  "selfTestWiredFloor": 354,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -25,6 +25,20 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-1931-private-event-access.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1931-private-event-access.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1931-private-invite-access"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/issue-2084-credential-output-safety.mjs",
       "kind": "file",
@@ -79,6 +93,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "deno-and-business"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2107-mandatory-js-update.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2107-mandatory-js-update"
       ]
     },
     {
@@ -8236,6 +8264,147 @@
       ],
       "selfTest": "none",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2113-comment-satisfied-assertion.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2113-empty-window-negative-assertion.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2113-empty-window-negative-assertion.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2009-published-event-visibility.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2009-published-event-visibility"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2150-free-completed-session-returned-not-tombstoned"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2160-day-bound-scan.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2160-occurrences-not-read-directly.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2160-capacity-aggregated.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-2216-ticket-qr-server-rendered.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2216-ticket-qr-server-rendered"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2240-email-app-link-sole-owner"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2198-paystack-return-verify-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2198-return-leg-deno"
+      ]
     }
   ]
 }

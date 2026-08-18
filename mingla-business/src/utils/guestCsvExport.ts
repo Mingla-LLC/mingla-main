@@ -134,9 +134,46 @@ export interface ReconciliationCsvSummary {
 
 const formatMoneyForCsv = (n: number): string => n.toFixed(2);
 
+/**
+ * issue #2160 — the "Day" cell for one ONLINE order.
+ *
+ * A roster you cannot export is half a roster, so the day dimension has to
+ * reach the CSV. Rules, in order:
+ *   * an order whose passes carry NO days           -> "" (not day-scoped)
+ *   * every pass on the SAME single day             -> that day's label
+ *   * passes spanning several days                  -> all of them, "; "-joined
+ * Labels come from `dayLabels`, the SAME map the on-screen chips render from,
+ * so the export can never disagree with the screen. An id with no label is
+ * omitted rather than printed raw — a uuid in a spreadsheet cell is noise, and
+ * inventing a date would be worse (Constitution #9).
+ */
+export const orderDayCell = (
+  order: { ticketDays?: Array<{ eventDateIds: string[] }> },
+  dayLabels: ReadonlyMap<string, string>,
+): string => {
+  const ids = new Set<string>();
+  for (const t of order.ticketDays ?? []) {
+    for (const id of t.eventDateIds) ids.add(id);
+  }
+  if (ids.size === 0) return "";
+  const labels: string[] = [];
+  for (const id of ids) {
+    const label = dayLabels.get(id);
+    if (label !== undefined && label.length > 0) labels.push(label);
+  }
+  return labels.sort().join("; ");
+};
+
 export const serializeGuestsToCsv = (
   rows: ExportGuestRow[],
   summary?: ReconciliationCsvSummary,
+  /**
+   * issue #2160 — `event_dates.id` -> human day label, for the "Day" column.
+   * Absent or empty (every single-date event) => the column is still emitted
+   * but every cell is blank, so the header row stays stable for anything
+   * parsing this file by position.
+   */
+  dayLabels: ReadonlyMap<string, string> = new Map(),
 ): string => {
   // Cycle 12 — added "Kind" column at front (ONLINE | COMP | DOOR) +
   // "Payment method" column (online sales: card/apple/google; door sales:
@@ -161,6 +198,9 @@ export const serializeGuestsToCsv = (
     "Refunded currency",
     "Net",
     "Net currency",
+    // issue #2160 — APPENDED LAST so every existing column keeps its index.
+    // Blank for comps, door sales and any pass that is not day-scoped.
+    "Day",
   ];
 
   // Cycle 13 — optional summary stanza (5 lines of `#`-prefixed metadata)
@@ -211,6 +251,7 @@ export const serializeGuestsToCsv = (
         o.currency,
         formatMoneyForCsv(net),
         o.currency,
+        orderDayCell(o, dayLabels),
       ];
       lines.push(fields.map(csvEscape).join(","));
     } else if (row.kind === "comp") {
@@ -232,6 +273,8 @@ export const serializeGuestsToCsv = (
         "0.00",
         "",
         "0.00",
+        "",
+        // A comp is not sold through checkout, so it carries no chosen day.
         "",
       ];
       lines.push(fields.map(csvEscape).join(","));
@@ -260,6 +303,9 @@ export const serializeGuestsToCsv = (
         s.currency,
         formatMoneyForCsv(net),
         s.currency,
+        // A door sale is rung up on the night, so its day is the night it was
+        // rung up on — not a chosen occurrence. Left blank rather than guessed.
+        "",
       ];
       lines.push(fields.map(csvEscape).join(","));
     }
@@ -271,6 +317,11 @@ export const serializeGuestsToCsv = (
 export interface ExportGuestsCsvArgs {
   event: LiveEvent;
   rows: ExportGuestRow[];
+  /**
+   * issue #2160 — `event_dates.id` -> day label, for the "Day" column. Omitted
+   * on every single-date event, where the column is emitted but blank.
+   */
+  dayLabels?: ReadonlyMap<string, string>;
 }
 
 const downloadCsvWeb = (csv: string, filename: string): void => {
@@ -352,7 +403,7 @@ const downloadCsvNative = async (
 export const exportGuestsCsv = async (
   args: ExportGuestsCsvArgs,
 ): Promise<ExportResult> => {
-  const csv = serializeGuestsToCsv(args.rows);
+  const csv = serializeGuestsToCsv(args.rows, undefined, args.dayLabels);
   const filename = `${args.event.eventSlug}-guest-list-${formatYmdToday()}.csv`;
   if (Platform.OS === "web") {
     downloadCsvWeb(csv, filename);

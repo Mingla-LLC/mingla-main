@@ -9,48 +9,26 @@ jobs:
     name: Issue 1403 venue rollup proof (PG17)
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    services:
-      postgres:
-        image: supabase/postgres:17.4.1.075
-        env:
-          POSTGRES_PASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can
+    # place a pre-migrated data directory into it; owning the container from a
+    # step is what makes the cached snapshot possible. It still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
     steps:
       - uses: actions/checkout@v4
-      - name: Wait for PostgreSQL 17
-        env:
-          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
-        run: |
-          for i in {1..90}; do
-            if psql -h localhost -U postgres -d postgres -Atc \
-              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
-              2>/dev/null | grep -qx t; then
-              echo "postgres ready"
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "postgres did not become ready in 90s"
-          exit 1
-      - name: Apply all migrations in timestamp order
-        env:
-          PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
-        run: |
-          set -euo pipefail
-          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
-            | sort -z \
-            | while IFS= read -r -d '' migration; do
-                echo "::group::Applying $migration"
-                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
-                echo "::endgroup::"
-              done
+      # #2148 — replaces this job's postgres bring-up: a service container plus a
+      # full replay of every migration (MEASURED ~75s boot + ~105s replay). The
+      # shared action restores a cached snapshot of the already-migrated cluster
+      # and applies only what landed since, falling back to a full replay on any
+      # doubt. It verifies policy/trigger/index/RLS counts against the snapshot's
+      # build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited from the action default, so this
+          # workflow still states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-1403-ci-{0}', github.run_id) }}
       - name: Execute issue 1403 venue rollup proof
         env:
           PGPASSWORD: ${{ format('issue-1403-ci-{0}', github.run_id) }}
@@ -172,7 +150,43 @@ jobs:
             src/hooks/useListingInsights.ts \
             src/hooks/useVenueReservationMetrics.ts \
             src/analytics/businessAnalyticsEvents.ts
-      - name: Full Business Jest
-        run: npx jest --runInBand
-      - name: Expo web export
-        run: npx expo export -p web --output-dir /tmp/issue-1403-web
+      # ======================================================================
+      # #2148 [ci-runtime] — two steps REMOVED here, deliberately. Neither was
+      # dropped for speed alone: each duplicated a workflow that already runs on
+      # EVERY pull request, so this job was the slowest in CI (11.4 min, and the
+      # only thing standing between a 13.2-min CI and an 8.7-min one) while
+      # adding no coverage the repo did not already have.
+      #
+      # 1. `Full Business Jest` (`npx jest --runInBand`, MEASURED 434 s).
+      #    Superseded by `mingla-business-jest-suite.yml`, which is a REQUIRED
+      #    status check (ruleset 19583754, "mingla-business jest (full suite)"),
+      #    runs on every PR to main with NO paths filter, and executes the same
+      #    file set: both resolve `mingla-business/jest.config.cjs` (this step
+      #    passed no `--config`; that workflow runs `npm test` = `jest --ci`), so
+      #    testMatch and testPathIgnorePatterns are identical. That workflow is
+      #    also STRICTER — `--ci` fails on unwritten snapshots, which this step
+      #    did not. It runs the suite in 179 s; `--runInBand` made this copy 2.4x
+      #    slower for the same assertions.
+      #
+      #    On the lost `--runInBand` signal: serial ordering is not a gate any
+      #    test here depends on. Both orderings are green today, and the files
+      #    that ARE order-sensitive are handled explicitly and by name in the
+      #    required workflow's "#1487 deterministic venue-first worker
+      #    restoration" step, which pins its own sequencer. If a future test
+      #    needs serial execution, it belongs in that step, not in a blanket
+      #    second run of the whole suite from an unrelated issue's workflow.
+      #
+      # 2. `Expo web export` (MEASURED 69 s). Superseded by `web-build-check.yml`
+      #    ("mingla-business: web build (expo export)"), which runs the same
+      #    export on every PR to main with no paths filter and then does strictly
+      #    MORE with the output: the ORCH-1083 initial-bundle budget guard and
+      #    the ORCH-1137 lucide real-glyph render-proof. Both this job and that
+      #    one are advisory, so deleting this copy removes nothing from the
+      #    required-gate surface.
+      #
+      # What REMAINS in this job is what is actually about #1403: the pure
+      # contracts, the native and web render contracts, the wiring gates, and
+      # the typecheck delta. Those totalled 24 s of the 686 s this job used to
+      # take. See issue #2148 for the full per-step measurement and for Stages 2
+      # and 3 (the Postgres container consolidation and the per-issue batch).
+      # ======================================================================

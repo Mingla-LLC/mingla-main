@@ -181,7 +181,12 @@ test('ST14 served offering price uses canonical all-in tier truth and CTA falls 
   const missing=mapAuthoritativeShareFacts('event',{row:{title:'Missing',slug:'missing',brands:{slug:'brand'}},eligibleTickets:[{price_cents:500,currency:'USD'}]});assert.equal(missing.facts.price,undefined);
   const invalid=mapAuthoritativeShareFacts('event',{row:{title:'Invalid',slug:'invalid',brands:{slug:'brand'}},eligibleTickets:[{price_cents:500,currency:'USD',all_in_cents:700,display_currency:'US'}]});assert.equal(invalid.facts.price,undefined);
   const explicitFree=mapAuthoritativeShareFacts('event',{row:{title:'Free',slug:'free',brands:{slug:'brand'}},eligibleTickets:[{price_cents:999,currency:'USD',is_free:true}]});assert.deepEqual(explicitFree.facts.price,{minorUnits:0,currency:'USD',disclosure:'Free'});
-  const source=read('supabase/functions/_shared/contentShare.ts');assert.match(source,/db\.rpc\("pg_public_event_tier_allin"/);assert.match(source,/allInResult\.error[\s\S]*throw new Error\("db_error"\)/);
+  // [TEST-MOD-APPROVED #2117] §4.5 repoints this privileged service_role
+  // consumer from the public all-in reader to its privileged sibling, because
+  // its admitted visibility set is strictly wider than the public reader's
+  // audience. The assertion tracks the repointed name; the error-propagation
+  // half — which is the part that actually carries behaviour — is unchanged.
+  const source=read('supabase/functions/_shared/contentShare.ts');assert.match(source,/db\.rpc\("pg_privileged_event_tier_allin"/);assert.match(source,/allInResult\.error[\s\S]*throw new Error\("db_error"\)/);
   // [TEST-MOD-APPROVED #2008] #2004 made the canonical webPath a required,
   // exact member of served destination truth; this fixture must model it.
   const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));const base={shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,media:null,destination:{kind:'event',brandSlug:'brand',eventSlug:'paid',webPath:'/e/brand/paid'},publicDetails:{kind:'event',actionEligible:false,occurrences:[]}};

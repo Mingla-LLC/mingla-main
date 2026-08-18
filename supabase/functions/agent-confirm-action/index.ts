@@ -106,6 +106,51 @@ async function terminalizePending(
   return data as { id: string; status: string };
 }
 
+/**
+ * The HTTP status for a `ToolError` raised by a tool executor.
+ *
+ * 4xx = recoverable validation errors that the user can resolve by adjusting
+ * their request (rename the brand, pick a different event, choose a different
+ * visibility). 5xx is reserved for genuine server-side issues.
+ *
+ * Hoisted out of the catch block so it is CALLABLE by a test. Per #2113 a check
+ * that can only read source text carries no information; the status mapping is
+ * proven by executing this function, in
+ * `supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts`.
+ * The mapping itself is unchanged apart from the one branch named below.
+ */
+export function toolErrorHttpStatus(code: string): number {
+  if (
+    ["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(code)
+  ) return 403;
+  if (code === "ROLE_CHECK_UNAVAILABLE") return 503;
+  if (code === "INVALID_ARGS" || code === "SLUG_TAKEN") return 400;
+  // ORCH-1103 — delete refused because the brand has upcoming/live events.
+  // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
+  if (code === "DELETE_BLOCKED_BY_EVENTS") return 409;
+  // issue #2009 (BINDING SPEC AMENDMENT 3B, Defect 4) — `business_set_event_visibility`
+  // refuses every transition entering or leaving Private while #1931's private-access
+  // release stays frozen. This is a KNOWN, EXPECTED, CORRECTLY-REFUSED request, not a
+  // server fault, and it previously fell through to 500.
+  //
+  // 400 rather than 403/409, to match this map's own semantics: the organiser resolves
+  // it by adjusting the requested value — the shipped copy is literally "Choose Public
+  // or Unlisted for now" — which is exactly the SLUG_TAKEN shape (a value the server
+  // will not accept in its current state). 403 is reserved here for access denial, and
+  // 409 for a conflict the user clears by acting on OTHER resources first
+  // (cancel/transfer the brand's events), neither of which describes this.
+  //
+  // CASE-INSENSITIVE ON PURPOSE, and this is the whole reason the branch works.
+  // Amendment 3B names the RPC's stable code `private_visibility_unavailable`, but the
+  // code that actually ARRIVES here is the UPPERCASED one: agentTools.ts's
+  // `issue2009VisibilityToolError` builds `new ToolError(code.toUpperCase(), copy)`.
+  // A branch matching only the lowercase literal would read correctly, pass a
+  // source-text check, and never once fire — the exact unfalsifiable-check bug class
+  // #2113 exists to stop. One condition, one branch, either spelling.
+  if (code.toUpperCase() === "PRIVATE_VISIBILITY_UNAVAILABLE") return 400;
+  return 500;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -431,23 +476,11 @@ Deno.serve(async (req) => {
       }
     }
     if (err instanceof ToolError) {
-      // 4xx = recoverable validation errors that the user can resolve by
-      // adjusting their request (rename the brand, pick a different event,
-      // etc.). 5xx is reserved for genuine server-side issues.
-      let status: number;
-      if (
-        ["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(
-          err.code,
-        )
-      ) status = 403;
-      else if (err.code === "ROLE_CHECK_UNAVAILABLE") status = 503;
-      else if (err.code === "INVALID_ARGS" || err.code === "SLUG_TAKEN") {
-        status = 400;
-      } // ORCH-1103 — delete refused because the brand has upcoming/live events.
-      // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
-      else if (err.code === "DELETE_BLOCKED_BY_EVENTS") status = 409;
-      else status = 500;
-      return errorResponse(status, err.code, err.message);
+      return errorResponse(
+        toolErrorHttpStatus(err.code),
+        err.code,
+        err.message,
+      );
     }
     return errorResponse(500, "EXECUTION_FAILED", String(reason));
   }

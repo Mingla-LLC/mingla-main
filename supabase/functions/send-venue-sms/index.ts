@@ -218,6 +218,37 @@ export const handler = async (req: Request): Promise<Response> => {
     message: copy,
   });
 
+  // =========================================================================
+  // #2218 — "YOUR TABLE IS READY" CANNOT BE DEFERRED, SO SAY SO NOW.
+  // =========================================================================
+  // Nigerian operators will not carry `generic` traffic 20:00–08:00 WAT, which
+  // is most of a restaurant's evening service. Every other caller in this
+  // codebase HOLDS a deferred message and re-sends when the window opens;
+  // holding is wrong here and only here, because this copy expires in minutes —
+  // a table announced at 08:00 the next morning is worse than no text at all.
+  //
+  // So this path converts the deferral into an immediate, actionable operator
+  // failure, exactly as it already does for a dark market: the human standing
+  // in the venue is told to walk over and speak to the guest. That is the only
+  // delivery mechanism that works inside the embargo.
+  if (result.status === "deferred") {
+    await logSend("deferred_operator_window", {
+      error: result.error ?? "ng_operator_embargo",
+    });
+    console.warn(
+      "[send-venue-sms] NG operator embargo — send held with zero provider HTTP",
+      result.retryAfter,
+    );
+    // NOT marked notified: the guest was not notified. 503 for the same reason
+    // the dark-market branch chose it — this is "the network will not carry
+    // this right now", not a bad number and not a provider fault.
+    return json(503, {
+      error: "sms_operator_window_closed",
+      detail: result.error ?? "ng_operator_embargo",
+      retry_after: result.retryAfter ?? null,
+    });
+  }
+
   // #1541 — BRANCH ON `status`, NEVER ON `ok`. `ok` is false for BOTH a
   // market-gated skip and a real provider failure, and conflating them is what
   // turns "this capability is switched off" into "something broke".

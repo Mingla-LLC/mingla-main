@@ -83,6 +83,18 @@ test("refundOrder requires and forwards the caller key without a random fallback
   const refundBody = serviceSource.match(
     /export async function refundOrder[\s\S]*?\n}\n\n\/\/ ── W2-B/,
   )?.[0] ?? "";
+  // Issue #2113 EMPTY-WINDOW GUARD. The window above terminates on the `// ── W2-B`
+  // COMMENT and falls back to "". Deleting that one comment line collapses the
+  // window, and `doesNotMatch("", /randomUUID/)` passes unconditionally — proven
+  // 4/4 green with a live key-rotation defect in refundOrder, which would stop
+  // admin-refund-order deduplicating a retried multi-item refund (double refund).
+  // These two assertions make the collapse itself a failure, and pin the window to
+  // the real refundOrder body rather than to any non-empty string.
+  assert.ok(
+    refundBody.length > 200 && refundBody.length < 2000,
+    `refundOrder window collapsed or ran away (${refundBody.length} chars) — the \`// ── W2-B\` boundary comment moved or was deleted`,
+  );
+  assert.match(refundBody, /invokeAdminWriteEdge\(\s*\n?\s*"admin-refund-order"/, "the window must contain the real refund write seam");
   assert.doesNotMatch(refundBody, /randomUUID/, "refundOrder must never rotate the caller's key");
 });
 

@@ -15,6 +15,7 @@ import { useToast } from "../context/ToastContext";
 import { logAdminAction } from "../lib/auditLog";
 import { resolveClaimDisplayPhone, formatPhoneHref } from "../lib/claimsPhone";
 import { ClaimRow } from "../components/claims/ClaimRow";
+import { PendingVenueIdentityCorrectionPanel } from "../components/claims/PendingVenueIdentityCorrectionPanel";
 import {
   addClaimFeedback,
   getClaimReviewBundle,
@@ -36,6 +37,7 @@ const CAT_LABELS = {
   restaurant: "Restaurant",
   play: "Play",
   creative_and_arts: "Creative & arts",
+  stay: "Stay",
 };
 
 // ORCH-1064 — feedback category enum → human label (matches the migration
@@ -200,6 +202,17 @@ export function ClaimsPage() {
       setHoursLoading(false);
     }
   };
+
+  // #2099 — the panel's single success reload: exactly one detail reload and one
+  // list reload (Amendment 5 §E2). Nothing here runs on a stale/failed attempt.
+  const reloadAfterIdentityCorrection = useCallback(async () => {
+    const venueId = detail?.id;
+    await load();
+    const refreshed = (await listPendingClaims()).find((row) => row.id === venueId);
+    if (refreshed) await openDetail(refreshed);
+    else closeDetail();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail, load]);
 
   const closeDetail = () => {
     setDetail(null);
@@ -371,6 +384,7 @@ export function ClaimsPage() {
       setActing(false);
     }
   };
+
 
   // ORCH-1066 — score editing moved to <ScoreTunerPanel> (place-keyed set/pin,
   // works from zero, with live preview + projected rank). The brand-keyed
@@ -776,6 +790,15 @@ export function ClaimsPage() {
                   <div className="text-[var(--color-text-tertiary)] text-xs uppercase tracking-wide">
                     Admin adjustments
                   </div>
+
+                  {/* #2099 — extracted panel (Amendment 4 §D3). ClaimsPage only
+                      supplies the selected venue and the reload callbacks; the panel
+                      owns preview/proposal state and the HighRiskActionModal review. */}
+                  <PendingVenueIdentityCorrectionPanel
+                    key={detail.id}
+                    venue={detail}
+                    onCorrected={reloadAfterIdentityCorrection}
+                  />
 
                   <div className="space-y-2">
                     <div className="text-xs text-[var(--color-text-secondary)]">

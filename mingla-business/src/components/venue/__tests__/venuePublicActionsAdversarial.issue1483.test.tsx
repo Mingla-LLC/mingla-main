@@ -266,6 +266,12 @@ jest.mock("../../brand/VenueClaimStatusBanner", () => ({
   VenueClaimStatusBanner: (): null => null,
 }));
 
+jest.mock(
+  "../PendingVenueIdentityCorrectionLauncher",
+  () => ({ __esModule: true, default: (): null => null }),
+  { virtual: true },
+);
+
 import VenueManagementPage from "../../../../app/venue/[venueId]/index";
 import { brandPublicUrl, venuePublicUrl } from "../../../constants/publicUrls";
 

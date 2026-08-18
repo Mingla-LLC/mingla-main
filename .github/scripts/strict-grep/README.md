@@ -222,6 +222,7 @@ Other registered gate tags:
 - I-PROPOSED-W: `// orch-strict-grep-allow notifications-cross-app-read — <reason>`
 - I-PROPOSED-Y: `// orch-strict-grep-allow platform-web-url-historical — <reason>`
 - I-PROPOSED-Z: no allowlist tag; Home must not contain fabricated event signatures.
+- I-PROPOSED-2113-ASSERTION-NOT-COMMENT-SATISFIED (`issue-2113-comment-satisfied-assertion.mjs`, batch A, self-test wired): `// orch-strict-grep-allow comment-satisfied-assertion — <reason>` on the line IMMEDIATELY above the assertion — excuses a source-text assertion whose only satisfying occurrence in the target is a comment or a narrating string literal. Use it only when the ANNOTATION ITSELF is the subject (a protective header banner, a rationale marker guarded against removal, a `// orch-strict-grep-allow` tag), never as a stand-in for a behavioural assertion. Pre-existing sites are carried in `issue-2113-comment-satisfied-allowlist.json` instead, as exact `{test, target, pattern}` triples with a `reason` of >= 20 characters; wildcards are rejected and a missing reason is a hard error. **The gate ships in REPORT mode** (`ENFORCEMENT_MODE = "report"`, exits 0, prints every violation with file:line) until the #2113 backlog is cleared.
 
 ## Conventions
 

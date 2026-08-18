@@ -62,6 +62,14 @@ export interface InsightsNudgeTodo {
   route: string;
 }
 
+export interface VenueOrderCompletenessTodo {
+  venueId: string;
+  venueName: string;
+  kind: "zones" | "item_costs";
+  count: number;
+  route: string;
+}
+
 /** META-ORCH-1255 — one per-venue claim row for the `venue_claim_review` band. */
 export interface VenueTodoClaim {
   venueId: string;
@@ -204,6 +212,8 @@ export interface BusinessTodoInput {
    * is untouched.
    */
   insightsNudges?: InsightsNudgeTodo[];
+  /** #1795 — successful, authorized order-metrics completeness actions only. */
+  venueOrderCompleteness?: VenueOrderCompletenessTodo[];
 }
 
 function venueLiveSublabel(
@@ -549,6 +559,27 @@ export function buildBusinessTodos(input: BusinessTodoInput): BusinessTodo[] {
         label: `You haven't checked ${nudge.venueName}'s pricing`,
         sublabel: "Are you undercharging?",
         action: { kind: "route", route: nudge.route },
+      });
+    }
+  }
+
+  // 8 — #1795 order-data completeness. These rows are emitted only after a
+  // successful authorized RPC read with at least one order; loading, error,
+  // offline-without-cache, unauthorized, and zero-order states never reach here.
+  for (const action of input.venueOrderCompleteness ?? []) {
+    if (action.kind === "zones") {
+      todos.push({
+        id: `venue_order_zones:${action.venueId}`,
+        label: `Zone ${action.venueName}'s tables`,
+        sublabel: `${action.count} active ${action.count === 1 ? "table needs" : "tables need"} a zone`,
+        action: { kind: "route", route: action.route },
+      });
+    } else {
+      todos.push({
+        id: `venue_order_item_costs:${action.venueId}`,
+        label: `Add item costs for ${action.venueName}`,
+        sublabel: `${action.count} sold ${action.count === 1 ? "item needs" : "items need"} a cost`,
+        action: { kind: "route", route: action.route },
       });
     }
   }

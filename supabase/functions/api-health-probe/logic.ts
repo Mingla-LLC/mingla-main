@@ -519,6 +519,13 @@ export const DELIVERY_FAIL_STATUSES: ReadonlySet<string> = new Set([
 export const DELIVERY_NON_ATTEMPT_STATUSES: ReadonlySet<string> = new Set([
   "skipped",
   "suppressed",
+  // #2218 — `deferred` is the third no-provider-io outcome: the Nigerian
+  // `generic` operator embargo returns before any HTTP, exactly like the kill
+  // switch does. Counting it as an attempt would recreate this function's
+  // founding bug one status later — a Nigerian night of held messages would
+  // tally as six clean successes and paint the termii tile HEALTHY while not
+  // one text had reached a network.
+  "deferred",
 ]);
 
 /**

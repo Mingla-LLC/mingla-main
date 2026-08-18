@@ -53,6 +53,18 @@ class FakeServiceClient {
   from(table: string): FakeQuery { return new FakeQuery(this, table); }
   async rpc(name: string, _args: Record<string, unknown>): Promise<DbResult> {
     this.operations.push(`rpc:${name}`);
+    // [TEST-MOD-APPROVED #2101] Harness registration only — no assertion
+    // changes. #2101 added the named-buyer decision as the FIRST authority in
+    // ticket-checkout-create, before any event-date, capacity, session or
+    // provider work. This harness throws on unregistered RPCs, and the edge
+    // fence FAILS CLOSED on an unanswered decision (correctly — treating a
+    // null answer as "allowed" would be a fail-open), so every #1929 case
+    // returned 403 instead of its own contract code. The #1929 fixtures are
+    // unrestricted events, so the decision is `allowed_unrestricted` and every
+    // ordering / status assertion below runs exactly as it did before.
+    if (name === "issue_2101_ticket_checkout_access_decision") {
+      return { data: "allowed_unrestricted", error: null };
+    }
     if (name === "biz_ticket_checkout_create_session") {
       if (this.sessionError) return { data: null, error: this.sessionError };
       this.operations.push("session:complete");

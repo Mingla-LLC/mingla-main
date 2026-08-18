@@ -26,6 +26,28 @@ on:
   push:
     branches: [main]
     paths:
+      # #2186 — T-9R pins the TRANSITIVE import closure of the voluntary-review
+      # write path, so any trigger that lists individual files is a guess about a
+      # set that changes without anyone editing the files it names.
+      #
+      # It guessed wrong. #2075 added a version header to src/services/supabase.ts,
+      # which every file in that path imports, so appVersionIdentity.ts joined the
+      # pinned closure — and this workflow never ran, because #2075 touched none of
+      # the paths below. It last ran on 08-14 and sat silent for three days while
+      # the thing it guards drifted. It only went red when an unrelated dependency
+      # PR happened to touch app-mobile/package-lock.json.
+      #
+      # MEASURED at the time of this fix: 5 of the 9 modules in the pinned closure
+      # were not watched — queryKeys.ts, appVersionIdentity.ts, supabase.ts,
+      # breadcrumbs.ts and logger.ts. Editing any of them changed what the gate
+      # asserts without running the gate.
+      #
+      # `app-mobile/src/**` is not laziness: the closure walker only resolves
+      # relative specifiers inside app-mobile, so every member it can EVER contain
+      # lives under that tree. This is the narrowest trigger that cannot silently
+      # miss a member. Adding the five by name would have fixed today's case and
+      # left the next one exactly as broken.
+      - "app-mobile/src/**"
       - "app-mobile/src/store/placeReviewRequestStore.ts"
       - "app-mobile/src/services/placeReviewService.ts"
       - "app-mobile/src/services/visitService.ts"
@@ -53,6 +75,28 @@ on:
       - ".github/workflows/issue-1687-been-here-rating-prompt.yml"
   pull_request:
     paths:
+      # #2186 — T-9R pins the TRANSITIVE import closure of the voluntary-review
+      # write path, so any trigger that lists individual files is a guess about a
+      # set that changes without anyone editing the files it names.
+      #
+      # It guessed wrong. #2075 added a version header to src/services/supabase.ts,
+      # which every file in that path imports, so appVersionIdentity.ts joined the
+      # pinned closure — and this workflow never ran, because #2075 touched none of
+      # the paths below. It last ran on 08-14 and sat silent for three days while
+      # the thing it guards drifted. It only went red when an unrelated dependency
+      # PR happened to touch app-mobile/package-lock.json.
+      #
+      # MEASURED at the time of this fix: 5 of the 9 modules in the pinned closure
+      # were not watched — queryKeys.ts, appVersionIdentity.ts, supabase.ts,
+      # breadcrumbs.ts and logger.ts. Editing any of them changed what the gate
+      # asserts without running the gate.
+      #
+      # `app-mobile/src/**` is not laziness: the closure walker only resolves
+      # relative specifiers inside app-mobile, so every member it can EVER contain
+      # lives under that tree. This is the narrowest trigger that cannot silently
+      # miss a member. Adding the five by name would have fixed today's case and
+      # left the next one exactly as broken.
+      - "app-mobile/src/**"
       - "app-mobile/src/store/placeReviewRequestStore.ts"
       - "app-mobile/src/services/placeReviewService.ts"
       - "app-mobile/src/services/visitService.ts"

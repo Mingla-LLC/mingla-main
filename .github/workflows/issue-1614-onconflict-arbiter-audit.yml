@@ -17,19 +17,11 @@ jobs:
     name: "#1614 all-runtime onConflict + preference contracts (PG17)"
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    services:
-      postgres:
-        image: supabase/postgres:17.4.1.075
-        env:
-          POSTGRES_PASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
-        ports:
-          - 5432:5432
-        options: >-
-          --health-cmd "pg_isready -U postgres"
-          --health-interval 10s
-          --health-timeout 5s
-          --health-retries 10
-          --health-start-period 30s
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can put a
+    # pre-migrated data directory into it; owning the container from a step is what
+    # makes the cached snapshot possible. The container still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
     steps:
       - uses: actions/checkout@v4
       - uses: denoland/setup-deno@v2
@@ -53,33 +45,24 @@ jobs:
             node --test .github/scripts/__tests__/issue-1614-onconflict-arbiter-audit.tester-adversarial.test.mjs
           fi
 
-      - name: Wait for PostgreSQL 17
-        env:
-          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
-        run: |
-          for attempt in {1..90}; do
-            if psql -h localhost -U postgres -d postgres -Atc \
-              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
-              2>/dev/null | grep -qx t; then
-              exit 0
-            fi
-            sleep 1
-          done
-          echo "PostgreSQL 17 did not become ready"
-          exit 1
-
-      - name: Apply complete migration chain in timestamp order
-        env:
-          PGPASSWORD: ${{ format('issue-1614-ci-{0}', github.run_id) }}
-        run: |
-          set -euo pipefail
-          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
-            | sort -z \
-            | while IFS= read -r -d '' migration; do
-                echo "::group::Applying $migration"
-                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
-                echo "::endgroup::"
-              done
+      # #2148 — replaces the "Wait for PostgreSQL 17" + "Apply complete migration
+      # chain in timestamp order" steps (MEASURED ~75 s boot + ~110 s replay). The
+      # action restores a cached snapshot of the already-migrated cluster in ~3 s and
+      # falls back to a full replay on a cache miss, so the worst case is exactly the
+      # old behaviour. It verifies policy/trigger/index/RLS counts against the
+      # snapshot's build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned explicitly rather than inherited from the action's default.
+          # The #1614 wiring gate asserts this exact literal is present in THIS
+          # file — it caught the conversion when the pin moved into the shared
+          # action, which is precisely its job. Keeping the pin at the call site
+          # is also the more honest arrangement: each workflow states the
+          # database it certifies against instead of trusting a default it
+          # cannot see.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-1614-ci-{0}', github.run_id) }}
 
       - name: Ask PostgreSQL to adjudicate every runtime target
         env:

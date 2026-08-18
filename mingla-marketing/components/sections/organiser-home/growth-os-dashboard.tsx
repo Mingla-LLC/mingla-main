@@ -1,12 +1,13 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { BarChart3, Send, Mail, Sparkles, TrendingUp, Check, type LucideIcon } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
 
-// ORCH-1010 — "what you get" interactive growth-OS dashboard. Auto-cycles (and is
-// clickable) through four capabilities: Analytics & ROI, text Blasts, Email
+// ORCH-1010 — "what you get" interactive growth-OS dashboard. User-selectable
+// tabs cover four capabilities: Analytics & ROI, text Blasts, Email
 // nurturing, and Ari automation. White card, corporate dashboard font, premium.
 // Illustrative figures.
 
@@ -24,11 +25,13 @@ function Bars() {
   return (
     <div className="flex h-20 items-end gap-2">
       {h.map((v, i) => (
-        <span
+        <AnimatedBar
           key={i}
+          axis="y"
           className="flex-1 rounded-md"
+          size={`${v}%`}
+          delay={0.08 + i * 0.055}
           style={{
-            height: `${v}%`,
             background: i >= 5 ? 'var(--color-warm)' : 'color-mix(in srgb, var(--color-warm) 26%, transparent)',
           }}
         />
@@ -47,7 +50,12 @@ function Funnel({ rows }: { rows: { label: string; pct: number; value: string }[
             <span className="font-semibold text-text-primary tabular-nums">{r.value}</span>
           </div>
           <div className="h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
-            <div className="h-full rounded-full" style={{ width: `${r.pct}%`, background: 'var(--color-warm)' }} />
+            <AnimatedBar
+              className="block h-full rounded-full"
+              size={`${r.pct}%`}
+              delay={0.12}
+              style={{ background: 'var(--color-warm)' }}
+            />
           </div>
         </div>
       ))}
@@ -202,21 +210,16 @@ export function GrowthOsDashboard() {
   const reduced = useMinglaReducedMotion()
   const [active, setActive] = useState(0)
 
-  useEffect(() => {
-    if (reduced) return
-    const id = setInterval(() => setActive((p) => (p + 1) % VIEWS.length), 3400)
-    return () => clearInterval(id)
-  }, [reduced])
-
   const view = VIEWS[active]
 
   return (
-    <div
-      className="font-dashboard mx-auto w-full max-w-xl overflow-hidden rounded-2xl bg-white p-6 text-left ring-1 ring-[rgba(14,14,16,0.05)] md:p-7"
+    <ChartEntrance
+      lightTheme
+      className="font-dashboard mx-auto w-full max-w-xl overflow-hidden rounded-2xl bg-white p-4 text-left ring-1 ring-[rgba(14,14,16,0.05)] sm:p-6 md:p-7"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
       {/* View switcher */}
-      <div role="tablist" aria-label="Capability" className="flex flex-nowrap gap-1.5 sm:gap-2">
+      <div role="tablist" aria-label="Capability" className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {VIEWS.map((v, i) => {
           const Icon = v.icon
           const isActive = i === active
@@ -227,7 +230,7 @@ export function GrowthOsDashboard() {
               aria-selected={isActive}
               onClick={() => setActive(i)}
               className={cn(
-                'inline-flex flex-1 items-center justify-center gap-1.5 rounded-full px-2 py-2 text-[11px] font-semibold transition-colors duration-200 focus-ring sm:text-xs',
+                'inline-flex min-h-11 w-full items-center justify-center gap-1.5 rounded-full px-2 py-2 text-xs font-semibold transition-colors duration-200 focus-ring',
                 isActive
                   ? 'bg-warm text-white'
                   : 'bg-black/[0.04] text-text-secondary hover:bg-black/[0.07]',
@@ -254,6 +257,6 @@ export function GrowthOsDashboard() {
           </motion.div>
         </AnimatePresence>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

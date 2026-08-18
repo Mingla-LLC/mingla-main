@@ -2,6 +2,10 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import * as OfferingRendering from "@mingla/offering-rendering";
 
 import { supabase } from "./supabase";
+// issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
+// that module is deleted; only the TYPE survives, because it is the contract
+// the day chooser renders.
+import type { PublicEventOccurrence } from "./publicEventOccurrencesService";
 import type {
   DraftEventFormat,
   DraftEventVisibility,
@@ -402,12 +406,75 @@ interface TicketTypeRow {
 
 export type PublicBrandRecord = Brand;
 export type PublicEventRecord = LiveEvent;
+
+/** issue #2160 — the organiser's per-event multi-day pricing choice. */
+export type MultiDatePricingMode = "per_day" | "all_days";
+
+const asPricingMode = (value: unknown): MultiDatePricingMode =>
+  value === "all_days" ? "all_days" : "per_day";
+
+/**
+ * issue #2160 — map the bundle's `occurrences` array onto the shared shape.
+ * `ticketsRemaining` is ALWAYS null: `event_dates` carries no per-occurrence
+ * capacity column and capacity is authored event-level on
+ * `ticket_types.quantity_total`, so there is no honest per-day remaining.
+ * Stamping the event-level number onto each day would claim per-day
+ * availability that does not exist (Constitution #9).
+ */
+const occurrencesFromBundle = (
+  value: unknown,
+  fallbackTimezone: string | null,
+): PublicEventOccurrence[] => {
+  if (!Array.isArray(value)) return [];
+  const out: PublicEventOccurrence[] = [];
+  for (const raw of value) {
+    if (typeof raw !== "object" || raw === null) continue;
+    const row = raw as Record<string, unknown>;
+    const id = asStringOrNull(row.id);
+    const startAt = asStringOrNull(row.startAt);
+    const endAt = asStringOrNull(row.endAt);
+    if (id === null || startAt === null || endAt === null) continue;
+    const tz = asStringOrNull(row.timezone);
+    out.push({
+      id,
+      startAt,
+      endAt,
+      timezone: tz !== null && tz.length > 0 ? tz : (fallbackTimezone ?? "UTC"),
+      isMaster: row.isMaster === true,
+      ticketsRemaining: null,
+    });
+  }
+  return out;
+};
 export type PublicTicketTypeRecord = TicketStub;
 
 export interface PublicEventDetail {
   event: PublicEventRecord;
   brand: PublicBrandRecord;
   tickets: PublicTicketTypeRecord[];
+  /**
+   * issue #2160 [multi-day multi-select] — every materialised occurrence of
+   * this event, chronological, delivered by the SAME SECURITY DEFINER reader
+   * that served the event itself (`pg_direct_event_checkout_bundle`).
+   *
+   * This is the fix for #2161 and it is structural, not incidental: one
+   * authority decides who may see this event AND its schedule, so the two can
+   * never drift. The previous shape — the event through an RPC, the days
+   * through a separate RLS-gated table read — is exactly what produced the
+   * defect. A guest-facing client must never read `event_dates` directly
+   * again (I-PROPOSED-2160-D).
+   *
+   * `[]` on the RSVP view fallback, which has no occurrence concept.
+   */
+  occurrences: PublicEventOccurrence[];
+  /**
+   * issue #2160 — how the organiser priced multiple days:
+   * `"per_day"` (each chosen day is separately priced and mints its own pass)
+   * or `"all_days"` (one price, one pass valid on every day chosen).
+   * Always `"per_day"` when absent — the database default, and the only default
+   * that cannot silently reprice live inventory.
+   */
+  multiDatePricingMode: MultiDatePricingMode;
   /**
    * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — false when this is a
    * PAID event (an online-available ticket priced > 0) whose brand cannot
@@ -1498,6 +1565,10 @@ const detailFromRow = async (
     event: merged,
     brand: viewRowToBrand(row),
     tickets,
+    // The `business_public_events_view` fallback path serves RSVP rows only,
+    // which have no occurrence concept and no multi-day pricing.
+    occurrences: [],
+    multiDatePricingMode: "per_day",
     bookable,
   };
 };
@@ -1608,8 +1679,24 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     location_geo: geo === null ? null : `(${geo.lng},${geo.lat})`,
     online_url: asStringOrNull(payload.onlineUrl),
     is_online: payload.isOnline === true,
-    is_recurring: false,
-    is_multi_date: false,
+    // issue #2160 — THE MULTI-DATE SIGNAL, READ FROM THE BUNDLE.
+    //
+    // These were hard-coded `false`. Because this bundle is the FIRST reader
+    // consulted by BOTH public-event readers (by-slug and by-id), and it
+    // carried no multi-date key, `asWhenMode` resolved EVERY bundle-served
+    // ticketed event to "single" — so #2135's day chooser never mounted at all,
+    // on PUBLIC events as well as unlisted ones. #2161 described this as
+    // "works for public, silently empty for unlisted"; measured against the
+    // real reader on the full migration chain, it worked for neither. See the
+    // #2160 implementation report.
+    //
+    // The reader names are spelled out in prose above rather than as bare
+    // identifiers ON PURPOSE: eventType.filter.audit.test.ts anchors on the
+    // FIRST literal occurrence of each reader's name and lazily matches to the
+    // next top-level `};`, so naming one in a comment ABOVE its definition
+    // silently re-anchors that audit onto the wrong function body.
+    is_recurring: payload.isRecurring === true,
+    is_multi_date: payload.isMultiDate === true,
     recurrence_rules: null,
     cover_media_url: asStringOrNull(payload.coverMediaUrl),
     cover_media_type: payload.coverMediaType,
@@ -1647,7 +1734,20 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     String(payload.brandId),
     ticketsArePaidOnline(tickets),
   );
-  return { event, brand: viewRowToBrand(row), tickets, bookable };
+  return {
+    event,
+    brand: viewRowToBrand(row),
+    tickets,
+    bookable,
+    // issue #2160 / #2161 — the occurrences ride the SAME reader that served
+    // the event, so an unlisted event's days arrive exactly like a public
+    // one's. Zero extra round trips.
+    occurrences: occurrencesFromBundle(
+      payload.occurrences,
+      asStringOrNull(payload.timezone),
+    ),
+    multiDatePricingMode: asPricingMode(payload.multiDatePricingMode),
+  };
 };
 
 const readDirectEventBundle = async (
@@ -2041,6 +2141,16 @@ export const getPublicTripById = async (
       // row (ORCH-0950 moved them off theme.business_trip + biz_update_live_trip
       // strips the theme mirror). Mirror the event public page, which sources
       // dates from event_dates (see publicEventViewRowToEvent master_* columns).
+      //
+      // issue-2160-strict-grep-allow TRIP-SIDECAR-LATENT-NOT-LIVE (SPEC §13 D-C).
+      // This is the SAME RPC-vs-table split that produced #2161, on the TRIP
+      // surface. It is LATENT rather than live only because `pg_public_trip_by_slug`
+      // is 'listing'-gated (public only) and therefore NARROWER than the RLS
+      // policy — an unlisted trip is not served at all, so the page fails whole
+      // rather than half. Widen that reader to 'direct' and this becomes the
+      // #2161 defect immediately. Out of #2160's scope by the SPEC allowlist;
+      // filed separately. The marker exists so the exception is greppable rather
+      // than silently absent from the gate.
       supabase
         .from("event_dates")
         .select("event_id,start_at,end_at,is_master")

@@ -26,6 +26,11 @@
 import { useMemo } from "react";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+// issue #2160 — the coercion is NOT re-exported here. A re-export would put a
+// second import path in the eager `__common` chunk for a two-state helper that
+// already has one, and this store is organiser state a buyer never needs. Take
+// it from `../utils/multiDatePricingMode` directly.
+import type { MultiDatePricingMode } from "../utils/multiDatePricingMode";
 import { create } from "zustand";
 import {
   createJSONStorage,
@@ -291,6 +296,22 @@ export interface DraftEvent {
    * NEW Cycle 4.
    */
   multiDates: MultiDateEntry[] | null;
+  /**
+   * issue #2160 — how a guest pays for MULTIPLE days of a multi-date event:
+   * "per_day" (each chosen day is separately priced and mints its own pass) or
+   * "all_days" (one price, one pass valid on every day chosen).
+   *
+   * NOT VERSION-BUMPED, DELIBERATELY. Drafts persisted before #2160 carry
+   * `undefined` here, and every consumer coerces `undefined` to "per_day" via
+   * `draftMultiDatePricingMode` — byte-identical to the database column's own
+   * DEFAULT. A migrator would rewrite every stored draft to reach exactly the
+   * same state, so it would be churn with a failure mode and no benefit.
+   *
+   * OPTIONAL for the same reason: a persisted pre-#2160 draft genuinely does
+   * not have it, and the type should say so rather than lie and force every
+   * fixture to invent a value. Read it through `draftMultiDatePricingMode`.
+   */
+  multiDatePricingMode?: MultiDatePricingMode;
   // Step 3 — Where
   venueName: string | null;
   address: string | null;
@@ -465,6 +486,8 @@ const DEFAULT_DRAFT_FIELDS: Omit<
   timezone: "Europe/London",
   recurrenceRule: null,
   multiDates: null,
+  // issue #2160 — the only default that cannot silently reprice live inventory.
+  multiDatePricingMode: "per_day",
   venueName: null,
   address: null,
   // ORCH-0824: city + locationGeo populated by Google Places autocomplete.

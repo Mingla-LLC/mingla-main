@@ -675,12 +675,81 @@ export async function runHandoff(api, options) {
   return log;
 }
 
+/**
+ * The baseline file's blob SHA at one commit, or null when the file does not
+ * exist there. A 404 is a real state — the baseline has not always existed —
+ * and is not the same as an unreadable tree, which still throws.
+ */
+async function baselineBlobSha(api, ref) {
+  let content;
+  try {
+    content = await api.getContent(BASELINE_PATH, ref);
+  } catch (error) {
+    if (error instanceof HandoffError && error.details?.status === 404) return null;
+    throw error;
+  }
+  const sha = content?.sha;
+  if (typeof sha !== "string" || !SHA_RE.test(sha)) {
+    throw new HandoffError(
+      "PROVENANCE_UNRESOLVED",
+      `GitHub did not return a blob SHA for ${BASELINE_PATH} at ${ref}.`,
+    );
+  }
+  return sha;
+}
+
+/**
+ * Whether a pull request changes the baseline file, decided in two O(1) reads
+ * instead of enumerating a diff.
+ *
+ * #2202: the enumerating form refused to scan past 2,000 records, so ANY large
+ * pull request — a broad refactor, a dependency sweep, a bulk deletion — failed
+ * this guard without ever being told whether it touched the baseline at all.
+ * Comparing the file's blob at base and head answers exactly the same question
+ * and cannot be outgrown.
+ */
+async function changesBaseline(api, pull) {
+  const baseSha = pull?.base?.sha;
+  const headSha = pull?.head?.sha;
+  if (!SHA_RE.test(baseSha ?? "") || !SHA_RE.test(headSha ?? "")) {
+    throw new HandoffError(
+      "PROVENANCE_UNRESOLVED",
+      "Pull request base and head commits could not be resolved.",
+    );
+  }
+  const [base, head] = await Promise.all([
+    baselineBlobSha(api, baseSha),
+    baselineBlobSha(api, headSha),
+  ]);
+  return base !== head;
+}
+
 export async function verifyPullRequest(api, { pullNumber, expectedAppSlug }) {
   expectedActor(expectedAppSlug);
   const pull = await api.getPull(pullNumber);
+
+  // A generated baseline PR changes EXACTLY one file, and GitHub already
+  // reported the count on the pull itself — no second request, no pagination.
+  const changedFiles = pull?.changed_files;
+  if (!Number.isSafeInteger(changedFiles) || changedFiles < 0) {
+    throw new HandoffError(
+      "PROVENANCE_UNRESOLVED",
+      "GitHub did not report changed_files for this pull request.",
+    );
+  }
+
+  // Any other count cannot be a generated PR, so the only question left is
+  // whether it touched the baseline — and that is answered without a scan.
+  if (changedFiles !== 1) {
+    if (!(await changesBaseline(api, pull))) {
+      return { state: "ORDINARY_PR", pullNumber };
+    }
+    throw new HandoffError("PROVENANCE_MISMATCH", "A baseline PR may change only the baseline file.");
+  }
+
+  // Exactly one file: listing it is bounded by definition.
   const files = await api.getPullFiles(pullNumber);
-  const touchesBaseline = files.some((file) => file.filename === BASELINE_PATH);
-  if (!touchesBaseline) {
+  if (!files.some((file) => file.filename === BASELINE_PATH)) {
     return { state: "ORDINARY_PR", pullNumber };
   }
   if (files.length !== 1) {

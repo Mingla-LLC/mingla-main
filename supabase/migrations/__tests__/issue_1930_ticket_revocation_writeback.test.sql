@@ -107,7 +107,13 @@ END $claims$;
 
 -- The actual transition owner revokes every session and queues its exact
 -- provider-attempt binding (or NULL for a session with no provider attempt).
-UPDATE public.events SET visibility='private'
+--
+-- [TEST-MOD-APPROVED #2009] the sale-disabling transition targets `draft`
+-- instead of `private`: #2009 makes Private unreachable by UPDATE for a
+-- standard ticketed event, for every writer. `draft` is the same visibility
+-- axis, the same `event_visibility` sale reason, and a real Admin-reachable
+-- state (`admin_set_offering_visibility` accepts it). Assertions unchanged.
+UPDATE public.events SET visibility='draft'
 WHERE id='19300000-0000-0000-0000-000000000811';
 
 DO $test$

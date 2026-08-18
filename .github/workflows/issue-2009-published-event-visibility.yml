@@ -1,0 +1,289 @@
+name: "Issue #2009 published event visibility"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270418002009_issue_2009_business_event_visibility.sql"
+      - "supabase/migrations/__tests__/issue_2009_*"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/__tests__/issue_2009_ari_visibility_via_rpc.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts"
+      - "supabase/functions/discover-merged-events/_cache.ts"
+      - "supabase/functions/discover-merged-events/_memory-cache.ts"
+      - "supabase/functions/discover-merged-events/_resolve-entry.ts"
+      - "supabase/functions/discover-merged-events/index.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.worker.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/__tests__/businessEventVisibility.issue2009*"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-admin/src/services/offeringsService.js"
+      - ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2009-published-event-visibility.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270418002009_issue_2009_business_event_visibility.sql"
+      - "supabase/migrations/__tests__/issue_2009_*"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/__tests__/issue_2009_ari_visibility_via_rpc.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts"
+      - "supabase/functions/discover-merged-events/_cache.ts"
+      - "supabase/functions/discover-merged-events/_memory-cache.ts"
+      - "supabase/functions/discover-merged-events/_resolve-entry.ts"
+      - "supabase/functions/discover-merged-events/index.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.worker.ts"
+      - "supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts"
+      - "mingla-business/src/services/businessEvents.ts"
+      - "mingla-business/src/services/__tests__/businessEventVisibility.issue2009*"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - ".github/scripts/strict-grep/issue-2009-published-event-visibility.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2009-published-event-visibility.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Canonical migration replay (whole chain, timestamp order)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      # Every assertion in this suite EXECUTES an object against real rows.
+      # Per #2113 nothing here is satisfiable by source text — in particular the
+      # Private fail-closed path is proven by CALLING the RPC with a Private
+      # target and observing the refusal plus zero audit/effect/generation
+      # residue. The suite self-fails if fewer than 60 assertions run or if not
+      # one real transition was committed.
+      - name: "#2009 executable suite (implementor happy path)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_business_event_visibility.pg17.test.sql
+
+      # The suite pre-cleans and tears down its own fixtures. Running it twice
+      # proves it, and proves it left no residue for a later suite to trip over.
+      - name: "#2009 suite is idempotent (second consecutive run)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_business_event_visibility.pg17.test.sql
+
+      # AMENDMENT 3A Defect 1 — the real-row half of Ari's routing: the exact
+      # statement shape Ari used BEFORE the fix is refused by the guard, the
+      # exact arguments it sends NOW are accepted by the real RPC, and a real
+      # transition really moves the discovery generation (Defect 2's input).
+      - name: "#2009 Ari visibility routing — real rows (AMENDMENT 3A)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_ari_visibility_rpc.pg17.test.sql
+
+      - name: "#2009 Ari suite is idempotent (second consecutive run)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_ari_visibility_rpc.pg17.test.sql
+
+      # TESTER-OWNED ADVERSARIAL SIBLING. Attacks the write guard's ENABLING
+      # conditions (its `OF visibility` column list and its `event_type='event'`
+      # scope) and the statement classes it never sees, rather than the shape a
+      # product client sends. Executed against real rows; no source-text
+      # assertion. See the TEST REPORT on issue #2009.
+      - name: "#2009 tester adversarial — guard scope and bypass"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_visibility_guard_bypass.tester_adversarial.pg17.test.sql
+
+      # IMPLEMENTOR REWORK SUITE (pass-1 TEST REPORT). Drives the REPAIRED
+      # boundary statement class by statement class: each leg of the laundering
+      # separately, both directions of the event_type class crossing, the
+      # trusted crossing that must still be allowed AND consume a generation,
+      # the INSERT path in all three shapes, and the full P2-3 recovery
+      # round-trip with a real admin. Real rows; no source-text assertion.
+      - name: "#2009 rework — guard scope, INSERT boundary, Private exit"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2009_visibility_scope_rework.pg17.test.sql
+
+      # SC-9 / the shipped anon-definer gate must stay green with the allowlist
+      # UNMODIFIED: no object #2009 creates is anon-executable.
+      - name: Anonymous SECURITY DEFINER allowlist gate
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+  business-jest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # npm ci ONLY. A bare `npm install` fails ERESOLVE here on a floating
+      # lottie-react-native caret (COMMS-0134).
+      - run: npm ci
+        working-directory: mingla-business
+      - name: "#2009 focused Business suite"
+        working-directory: mingla-business
+        run: |
+          npx jest --ci \
+            src/services/__tests__/businessEventVisibility.issue2009.test.ts \
+            src/services/__tests__/businessEventVisibilityExitCopy.issue2009.rework.test.ts
+
+  # AMENDMENT 3A — the two edge-function behaviours. Both EXECUTE: the Ari
+  # suite drives the real update_event executor, the discovery suite drives the
+  # real cache-key builder and the real L1 store. Neither asserts on source
+  # text. `--no-check` matches the house pattern for these suites (the
+  # pre-existing Uint8Array/BodyInit diagnostics in _response-bytes.ts are
+  # unrelated to #2009 and present on main).
+  edge-function-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: "#2009 Defect 1 — Ari routes visibility through the narrow RPC"
+        run: |
+          deno test --no-check --allow-env --allow-net --allow-read \
+            supabase/functions/_shared/__tests__/issue_2009_ari_visibility_via_rpc.test.ts
+      - name: "#2009 Defect 2 — the discovery cache key carries the visibility epoch"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_discovery_generation_cache_key.test.ts
+      # AMENDMENT 3B Defect 3 — the generation read is bounded to one database
+      # round-trip per 5s per isolate, so an L1 hit is back to zero database
+      # contact (ORCH-426's hot path) while worst-case staleness after a
+      # visibility change stays ~5s. Counting round-trips is the whole point, so
+      # the reader is a counting double driving the SHIPPED resolver.
+      - name: "#2009 Defect 3 — the generation read is bounded and still fails closed"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_generation_read_ceiling.test.ts
+      # AMENDMENT 3B Defect 4 — a known, expected, correctly-refused Private
+      # transition must not be reported to the client as a server fault. The
+      # code is taken off the REAL ToolError the shipped executor raises, never
+      # typed by hand, because the code that arrives is the UPPERCASED one.
+      - name: "#2009 Defect 4 — private_visibility_unavailable maps to 4xx, not 500"
+        run: |
+          deno test --no-check --allow-env --allow-net --allow-read \
+            supabase/functions/agent-confirm-action/__tests__/issue_2009_private_visibility_status.test.ts
+      # TESTER-OWNED ADVERSARIAL SIBLING. Counts BUILDS, not generation reads:
+      # `cacheKey` is the single namespace for L1, the L2 cache, the single-flight
+      # map and the cross-isolate build lock, so what the fail-closed branch costs
+      # ORCH-426's coalescing is only visible by executing a concurrent herd.
+      # Also pins the ceiling as absolute rather than sliding.
+      - name: "#2009 tester adversarial — fail-closed coalescing and the ceiling"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_generation_failclosed_herd.tester_adversarial.test.ts
+      # IMPLEMENTOR REWORK COVERAGE (pass-1 TEST REPORT P1-2). The tester's herd
+      # sibling asks whether a herd collapses; this asks whether the collapse is
+      # the RIGHT fix — the readable path must be untouched, the CACHE keys must
+      # stay unique so nothing becomes servable, and the shared slot must be
+      # released on settle and on rejection.
+      - name: "#2009 rework — fail-closed coalescing without becoming cacheable"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_coalescing.rework.test.ts
+      # IMPLEMENTOR REWORK COVERAGE (AMENDMENT 3C Defect 5). The suite above runs
+      # in ONE process, so it shares one `_memory-cache.ts` module instance and
+      # cannot tell "the isolate-local single-flight map caught the herd" from
+      # "the isolates agreed at the database". That distinction IS Defect 5, so
+      # this suite runs each request in a real Deno Worker — a separate V8
+      # isolate with its own module graph — against one modelled database, and
+      # counts the `pg_discover_business_events` calls that ARRIVE there.
+      # Measured: 12 isolates -> 1 build and 0 cache rows with the fix, 12 and 12
+      # without. `--allow-read` is for the worker module only.
+      - name: "#2009 Defect 5 — the fail-closed herd collapses ACROSS isolates, and writes no unreadable row"
+        run: |
+          deno test --no-check --allow-env --allow-read \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_failclosed_cross_isolate.rework.test.ts
+      # IMPLEMENTOR REWORK COVERAGE (pass-2 TEST REPORT D-1). Every suite above
+      # sends ORDINARY client input, so none of them can see a HEALTHY request
+      # being misclassified as fail-closed. `uncacheable` used to be regexed out
+      # of the whole cache key, which carries unsanitised client input, so a
+      # client keyword shaped like `unavailable:<uuid>` shed 11 of 12 concurrent
+      # requests with a 503 and suppressed the L2 write on generation g7 —
+      # anonymously, since verify_jwt is false. This suite drives the real
+      # `resolveDiscoverEntry` against a modelled database with the poison in a
+      # client field, and fuzzes the SAFE direction to prove no fail-closed
+      # request can ever be classified cacheable.
+      - name: "#2009 D-1 — a poisoned client field cannot degrade a readable generation"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/issue_2009_poisoned_cache_key_signal.rework.test.ts
+      # IMPLEMENTOR REWORK COVERAGE (pass-1 TEST REPORT P2-2). One stable code,
+      # two directions: the approved entering sentence stays verbatim and the
+      # exit leg gets copy that is true of the exit leg. Driven through the real
+      # update_event executor.
+      - name: "#2009 rework — the Private refusal reads correctly on the exit leg"
+        run: |
+          deno test --no-check --allow-env --allow-net --allow-read \
+            supabase/functions/_shared/__tests__/issue_2009_private_exit_copy.rework.test.ts
+      - name: "#2009 no regression to the pre-existing discover cache-key contracts"
+        run: |
+          deno test --no-check --allow-env \
+            supabase/functions/discover-merged-events/__tests__/cache_key.test.ts \
+            supabase/functions/discover-merged-events/__tests__/issue_1020_cache_key_geo.test.ts \
+            supabase/functions/discover-merged-events/__tests__/issue_1637_coords_anchor.test.ts
+
+  strict-grep-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The gate proves itself first: it must REJECT every one of its BAD
+      # fixtures — including the two comment-forgery fixtures that defeated
+      # earlier gates in this area — before its verdict on the real tree counts.
+      - run: node .github/scripts/strict-grep/issue-2009-published-event-visibility.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2009-published-event-visibility.mjs

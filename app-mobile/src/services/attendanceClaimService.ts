@@ -90,3 +90,31 @@ export const resolveAttendanceOfferingPath = async (eventId: string): Promise<st
   const prefix = data.event_type === "trip" ? "t" : data.event_type === "experience" ? "exp" : "e";
   return `/${prefix}/${encodeURIComponent(data.brand_slug)}/${encodeURIComponent(data.slug)}?landing=guest-list`;
 };
+
+/**
+ * #2217 — the post-sign-in reconnect sweep.
+ *
+ * Sends NO identifier. `attendance-claim-identity` matches the identifiers this
+ * account has itself proven (an `auth.identities` row written by GoTrue only
+ * after a code was delivered, or an IdP asserted the mailbox), so there is no
+ * parameter through which a guessed email could enter. See the #2217 migration.
+ *
+ * Fails SILENTLY by design: this runs on every sign-in, it is an enhancement to
+ * an account that is already usable, and a guest who never bought anything must
+ * not be shown an error for a sweep they did not ask for.
+ */
+export const claimAttendanceByVerifiedIdentity = async (): Promise<{
+  count: number;
+  eventIds: string[];
+}> => {
+  const { data, error } = await supabase.functions.invoke(
+    "attendance-claim-identity",
+    { body: {} },
+  );
+  if (error) return { count: 0, eventIds: [] };
+  const payload = data as { count?: unknown; eventIds?: unknown } | null;
+  const eventIds = Array.isArray(payload?.eventIds)
+    ? payload.eventIds.filter((id): id is string => typeof id === "string")
+    : [];
+  return { count: eventIds.length, eventIds };
+};

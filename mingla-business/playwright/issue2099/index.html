@@ -1,0 +1,25 @@
+<!doctype html>
+<!--
+  #2099 §D6 — the Business browser-harness page.
+
+  Deliberately minimal: the ONLY thing it establishes is a real viewport with a
+  real layout engine. `body { overflow: hidden; margin: 0 }` reproduces exactly
+  the condition the independent tester measured on the live export — the page
+  behind the modal does not scroll — so a dialog that relies on the PAGE
+  scrolling cannot pass here either.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>#2099 correction dialog harness</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #0c0e12; }
+      #root { height: 100%; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="../../node_modules/.cache/issue2099-harness/business-entry.js"></script>
+  </body>
+</html>

@@ -6,11 +6,19 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
-import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
+import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
 import {
   checkoutUnavailableResponse,
   ticketCheckoutPreflight,
 } from "../_shared/checkoutSaleTruth.ts";
+// issue #2198 [paystack-return-verify] — the NATIVE half of the same defect.
+// `nativeCheckoutFlow` polls THIS function ~17 times over ~25s after the
+// in-app browser returns from Paystack, then gives up with "We couldn't
+// confirm your payment yet." On bank transfer the webhook took 4m 06s, so the
+// native buyer was guaranteed that message on a fully paid charge. Verify here
+// too; the resolver is a no-op on every non-Paystack session.
+import { paystackVerifyTransaction } from "../_shared/paystack.ts";
+import { resolvePaystackTicketReturn } from "../_shared/paystackTicketReturnVerify.ts";
 
 serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   if (req.method === "OPTIONS") {
@@ -38,7 +46,7 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   const { data: session, error } = await supabase
     .from("ticket_checkout_sessions")
     .select(
-      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, revoked_at, reversal_state",
+      "id, status, order_id, event_id, total_cents, currency, buyer_status_token_hash, revoked_at, reversal_state, stripe_payment_intent_id",
     )
     .eq("id", checkoutSessionId)
     .maybeSingle();
@@ -86,10 +94,40 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
     return jsonResponse(checkoutUnavailableResponse(), 409);
   }
 
-  if (!session.order_id) {
+  // issue #2198 — ask Paystack before answering "no order yet". Authoritative
+  // verification; the webhook stays a backstop and both remain idempotent
+  // against each other (one shared finalize RPC). `not_paystack` short-circuits
+  // before any network I/O, so the Stripe/free rails are unchanged.
+  let orderId = session.order_id as string | null;
+  let sessionStatus = session.status as string;
+  if (!orderId) {
+    const paystackReturn = await resolvePaystackTicketReturn(
+      supabase,
+      {
+        id: String(session.id),
+        stripe_payment_intent_id: session.stripe_payment_intent_id,
+      },
+      paystackVerifyTransaction,
+    );
+    if (paystackReturn.kind === "finalized") {
+      orderId = paystackReturn.orderId;
+      sessionStatus = "paid";
+    } else if (paystackReturn.kind === "failed") {
+      // Terminal. The bounded token lets the native/web caller say what
+      // actually happened instead of spinning to the end of its poll budget.
+      return jsonResponse({
+        checkoutSessionId,
+        status: "failed",
+        order: null,
+        error: paystackReturn.code,
+      });
+    }
+  }
+
+  if (!orderId) {
     return jsonResponse({
       checkoutSessionId,
-      status: session.status,
+      status: sessionStatus,
       order: null,
     });
   }
@@ -103,12 +141,12 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       status,
       ticket_types(name)
     `)
-    .eq("order_id", session.order_id)
+    .eq("order_id", orderId)
     .order("created_at", { ascending: true });
   if (ticketError) {
     logError("ticket-checkout-status ticket lookup failed", ticketError, {
       fn: "ticket-checkout-status",
-      orderId: session.order_id,
+      orderId,
     });
     return jsonResponse({
       error: "ticket_lookup_failed",
@@ -123,30 +161,31 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
   const { data: orderRow } = await supabase
     .from("orders")
     .select("tax_amount_cents")
-    .eq("id", session.order_id)
+    .eq("id", orderId)
     .maybeSingle();
   const taxAmountCents = Number(orderRow?.tax_amount_cents ?? 0);
 
   return jsonResponse({
     checkoutSessionId,
-    status: session.status,
+    status: sessionStatus,
     order: {
-      orderId: session.order_id,
+      orderId,
       eventId: session.event_id,
       paymentStatus: "paid",
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
       taxAmountCents,
-      tickets: await Promise.all(
-        (tickets ?? []).map(async (ticket: Record<string, unknown>) => ({
-          ticketId: ticket.id,
+      // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
+      // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket
+      // that fails to render degrades to the carousel placeholder AND emits a
+      // structured error line, instead of silently answering with a blank.
+      tickets: await attachQrImageDataUrls(
+        (tickets ?? []).map((ticket: Record<string, unknown>) => ({
+          ticketId: String(ticket.id ?? ""),
           ticketTypeId: ticket.ticket_type_id,
           ticketName: (ticket.ticket_types as { name?: string } | null)?.name ??
             "Ticket",
-          qrPayload: ticket.qr_code,
-          qrImageDataUrl: await qrPayloadToDataUrl(
-            String(ticket.qr_code ?? ""),
-          ),
+          qrPayload: String(ticket.qr_code ?? ""),
           status: ticket.status,
         })),
       ),

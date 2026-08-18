@@ -310,8 +310,16 @@ async function resolveEventCapacity(
     .maybeSingle();
   if (eventErr || !eventRow) return null;
 
+  // issue #2117 §4.5 — repointed to the privileged sibling. This consumer runs
+  // against offerings of ANY visibility including drafts. Against the narrowed
+  // public reader it would receive ZERO ROWS rather than an error, so the
+  // error branch below is never taken: the accumulation loop no-ops, capacity
+  // and remaining both compute to 0, both are non-null so the unlimited-skip
+  // guard passes, and a sold-out notification fires for an offering that has
+  // sold nothing — permanently consuming a UNIQUE per-offering, per-recipient
+  // idempotency key and suppressing the organiser's real notification forever.
   const { data: rows, error: rpcErr } = await supabase.rpc(
-    "pg_public_ticket_types_remaining",
+    "pg_privileged_ticket_types_remaining",
     { p_event_id: eventId },
   );
   if (rpcErr || !Array.isArray(rows)) {

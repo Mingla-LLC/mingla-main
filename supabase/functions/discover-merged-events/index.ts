@@ -17,6 +17,7 @@ import { parseLocalStartEndDateTime } from "../_shared/timezone.ts";
 import {
   buildDiscoverCacheKey,
   type DiscoverCacheParams,
+  resolveDiscoveryGeneration,
 } from "./_cache.ts";
 import {
   coalesceDiscoverBuild,
@@ -183,7 +184,39 @@ serve(async (req: Request): Promise<Response> => {
     auth: { persistSession: false },
   });
 
+  // ── issue #2009 (Amendment 3A Defect 2 + Amendment 3B Defect 3) ───────────
+  // The visibility epoch. Resolve the current discovery generation BEFORE the
+  // key is built. Every real standard-event visibility transition increments it
+  // in the same transaction as the row write, so a Public -> Unlisted flip
+  // mints a new key and the pre-change deck can never be served from L1, from
+  // the L2 DB cache, or from behind the cross-isolate build lock.
+  //
+  // The read is BOUNDED (Amendment 3B): at most ONE database round-trip per
+  // DISCOVER_GENERATION_TTL_MS (5s) per isolate. Amendment 3A read it on every
+  // request, which put a round-trip in front of L1 on discovery — the consumer
+  // app's hottest path, which ORCH-426 exists to keep off the database. Inside
+  // the ceiling window this returns from memory and the L1 path below touches
+  // the database zero times. Worst-case staleness after a visibility change is
+  // therefore ~5s, spelled out at the constant in `_cache.ts`.
+  //
+  // It still fails closed: an unreadable generation yields a per-call unique
+  // slot, so that request costs a cache miss, never a stale-privacy hit.
+  //
+  // `readable` is the FAIL-CLOSED SIGNAL ITSELF, carried as data out of the one
+  // place that knows it (pass-2 TEST REPORT D-1). It used to be re-derived
+  // downstream by pattern-matching the cache key, which is a JSON blob of
+  // unsanitised client input — so a client field shaped like the
+  // `unavailable:<uuid>` sentinel made a healthy request look fail-closed and
+  // shed 11 of 12 concurrent requests with a 503. Threading the boolean is what
+  // makes `uncacheable` true if and ONLY if the generation was genuinely
+  // unreadable, whatever the client puts in the key.
+  const { slot: discoveryGeneration, readable: generationReadable } =
+    await resolveDiscoveryGeneration(
+      async () => await supabase.rpc("issue_2009_event_discovery_generation"),
+    );
+
   const cacheParams: DiscoverCacheParams = {
+    discoveryGeneration,
     cityName,
     stateCode: body.city.stateCode,
     countryCode: body.city.countryCode,
@@ -225,7 +258,8 @@ serve(async (req: Request): Promise<Response> => {
     sort: body.sort,
   };
 
-  const resolveEntry = () => resolveDiscoverEntry(supabase, cacheKey, buildCtx);
+  const resolveEntry = () =>
+    resolveDiscoverEntry(supabase, cacheKey, buildCtx, !generationReadable);
 
   const now = Date.now();
   const l1Hit = l1Get(cacheKey, now);

@@ -46,6 +46,11 @@ import { VenueClaimStatusBanner } from "../../../src/components/brand/VenueClaim
 import { StaySuiteShell } from "../../../src/components/stay/StaySuiteShell";
 import { VenueIdentityBand } from "../../../src/components/venue/VenueIdentityBand";
 import { VenueModulePillRow } from "../../../src/components/venue/VenueModulePillRow";
+// #2099 §F3 — EXTENSIONLESS on purpose: Metro resolves `.web` on web and
+// `.native` on iOS/Android, so the correction feature never enters a native
+// graph. TypeScript is served by the sibling `.d.ts` (the same shape
+// `useShareNetworkState.{web,native,d}.ts` already relies on).
+import PendingVenueIdentityCorrectionLauncher from "../../../src/components/venue/PendingVenueIdentityCorrectionLauncher";
 import { VenueSuiteShell } from "../../../src/components/venue/VenueSuiteShell";
 import { Button } from "../../../src/components/ui/Button";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
@@ -328,6 +333,23 @@ export default function VenueManagementPage(): React.ReactElement {
         status={status}
         testID="venue-page-identity-band"
       />
+
+      {/* #2099 §F3 — the pending-identity correction slot. It is a DIRECT
+          sibling of the identity band, wrapped in exactly one expression
+          container, and it sits ABOVE the pill row, the claim banner and BOTH
+          suite branches so a `stay` venue (which renders StaySuiteShell and
+          never reaches VenueSuiteShell) keeps the control after a play→stay
+          correction — which is what the same-RPC rollback needs. The gate is
+          the claim state and nothing else: no viewport conjunct, no
+          feedback-round conjunct, no wrapper View (the native launcher returns
+          null, and a padded wrapper would leave a visible empty band on iOS
+          and Android). */}
+      {venue.claimStatus === "pending_review" ? (
+        <PendingVenueIdentityCorrectionLauncher
+          venueId={venueId}
+          claimStatus={venue.claimStatus}
+        />
+      ) : null}
 
       {!isWideDesktop &&
       venue.venueCategory !== "stay" &&

@@ -1,6 +1,8 @@
 'use client'
 import { Zap, Ticket, Users, Sparkles, type LucideIcon } from 'lucide-react'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
+import { AnimatedBar, ChartEntrance } from '@/components/ui/chart-entrance'
+import { useActiveInViewport } from '@/lib/use-active-in-viewport'
 
 // ORCH-1010 — Pop-ups tab chart. Sells the pop-up story: spin up fast, scarcity,
 // fast sell-out. A "Selling fast" drop with an almost-full spots bar, speed/
@@ -73,10 +75,11 @@ function ClaimRow({ c }: { c: Claim }) {
 export function PopupCard() {
   const reduced = useMinglaReducedMotion()
   const loop = [...CLAIMS, ...CLAIMS]
+  const { ref: marqueeRef, active: animationActive } = useActiveInViewport<HTMLDivElement>()
 
   return (
-    <div
-      data-theme="light"
+    <ChartEntrance
+      lightTheme
       className="font-dashboard w-full overflow-hidden rounded-2xl bg-white text-left ring-1 ring-[rgba(14,14,16,0.05)]"
       style={{ boxShadow: 'var(--elev-3)' }}
     >
@@ -92,7 +95,7 @@ export function PopupCard() {
             style={{ background: 'var(--color-warm-tint)', color: 'var(--color-warm-ink)' }}
           >
             <span className="relative inline-flex h-2 w-2">
-              {!reduced ? (
+              {!reduced && animationActive ? (
                 <span
                   className="absolute inset-0 rounded-full"
                   style={{ background: 'var(--color-warm)', animation: 'mingla-chip-pulse 1.6s ease-in-out infinite' }}
@@ -113,7 +116,12 @@ export function PopupCard() {
             </span>
           </div>
           <div className="mt-1.5 h-2.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
-            <div className="h-full rounded-full" style={{ width: '92%', background: 'var(--color-warm)' }} />
+            <AnimatedBar
+              className="block h-full rounded-full"
+              size="92%"
+              delay={0.18}
+              style={{ background: 'var(--color-warm)' }}
+            />
           </div>
         </div>
       </div>
@@ -128,8 +136,9 @@ export function PopupCard() {
       {/* Claims feed — scroll up */}
       <div className="relative h-[262px] overflow-hidden border-t border-black/[0.06] [mask-image:linear-gradient(to_bottom,transparent,#000_10%,#000_90%,transparent)]">
         <div
+          ref={marqueeRef}
           className="flex flex-col"
-          style={{ animation: reduced ? undefined : 'mingla-marquee-y 20s linear infinite', willChange: 'transform' }}
+          style={{ animation: reduced ? undefined : 'mingla-marquee-y 20s linear infinite', animationPlayState: animationActive ? 'running' : 'paused', willChange: animationActive ? 'transform' : undefined }}
         >
           {loop.map((c, i) => (
             <ClaimRow key={`${c.name}-${i}`} c={c} />
@@ -149,6 +158,6 @@ export function PopupCard() {
           <span className="font-semibold text-text-primary">Built with Ari</span> — idea to live in minutes.
         </p>
       </div>
-    </div>
+    </ChartEntrance>
   )
 }

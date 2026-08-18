@@ -1,0 +1,137 @@
+name: issue-2136-free-checkout-contract
+# issue #2136 [free-ticket checkout] — the dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. Nothing in `.github/workflows/` ran the #2136 suites.
+# The repository-wide `supabase-migrations-and-stripe-deno.yml` job names its
+# Deno test files explicitly (it never globs a directory), and — as
+# `issue-1036-contrast-chip-removal-tests.yml` and
+# `971-paystack-onboard-scroll-tests.yml` both record in their own headers —
+# the mingla-business jest config is only exercised by a full `npx jest` that
+# no workflow performs. Without this lane the free-checkout regression guard
+# would exist in the tree and never gate a single merge.
+#
+# Path filters err BROAD over the guarded SOURCE trees, not just the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard).
+
+on:
+  pull_request:
+    paths: &issue_2136_paths
+      - "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql"
+      - "supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql"
+      # The wrapper's ancestors: a re-emit of any of these silently replaces
+      # `biz_ticket_checkout_finalize` and can drop the no-value arm.
+      - "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql"
+      - "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql"
+      - "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql"
+      - "supabase/functions/ticket-checkout-create/**"
+      # The other finalize callers. The no-value arm's safety rests on every one
+      # of them supplying a provider reference.
+      - "supabase/functions/ticket-checkout-confirm/index.ts"
+      - "supabase/functions/reconcile-stuck-checkouts/index.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/paystackWebhookRouter.ts"
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/src/services/__tests__/issue_2136_free_checkout_client_guard.test.ts"
+      - "mingla-business/app/checkout/**"
+      - ".github/workflows/issue-2136-free-checkout-contract-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action;
+      # without this path a change to that action would not re-run it.
+      - ".github/actions/migrated-postgres/**"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths: *issue_2136_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2136-edge-contract:
+    name: "#2136 Edge — free finalize branches on outcome, never on truthiness"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Implementor happy-path + basic-negative suite (8 tests). Fails on a true
+      # line deletion of the outcome-branching guards in ticket-checkout-create:
+      # the two NEGATIVE cases assert a handled 409 where the reverted code
+      # returns HTTP 200 `free_completed`.
+      - name: "#2136 implementor contract suite"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2136_free_checkout_contract.test.ts
+      - name: "#2136 sibling ticket-checkout-create suites stay green"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
+      - run: deno check supabase/functions/ticket-checkout-create/index.ts
+
+  issue-2136-client-guard:
+    name: "#2136 Client — no raw TypeError, no confirmation without a ticket"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # 17 tests. Fails on a true line deletion of the `isCompletedFreeOrder`
+      # guard and the `freeCheckoutErrorMessage` wiring in buyer.tsx.
+      - name: "#2136 free-checkout client guard suite"
+        run: npx jest issue_2136 --runInBand
+
+  issue-2136-postgres-contract:
+    name: "#2136 PostgreSQL 17 — the no-value arm, executed (tester adversarial)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # #2148 — the `services:` block that used to live here is gone. A service
+    # container is started by the runner BEFORE any step runs, so nothing can
+    # place a pre-migrated data directory into it; owning the container from a
+    # step is what makes the cached snapshot possible. It still listens on
+    # localhost:5432 with the same password, so every step below is unchanged.
+    steps:
+      - uses: actions/checkout@v4
+      # Wait for the image's OWN bootstrap, not merely for the socket: accepting
+      # connections before `vault` / `supabase_admin` exist lets the baseline
+      # squash abort on a graphql schema-version race. Same probe #2101 uses.
+      # #2148 — replaces this job's postgres bring-up: a service container plus a
+      # full replay of every migration (MEASURED ~75s boot + ~105s replay). The
+      # shared action restores a cached snapshot of the already-migrated cluster
+      # and applies only what landed since, falling back to a full replay on any
+      # doubt. It verifies policy/trigger/index/RLS counts against the snapshot's
+      # build-time manifest before any test runs.
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited from the action default, so this
+          # workflow still states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-2136-ci-{0}', github.run_id) }}
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-2136-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS deleted_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS confirmed_at timestamptz"
+      # TA-01..TA-14. Executes the real `biz_ticket_checkout_finalize` and
+      # asserts on real orders / tickets / sessions / revocation-outbox rows.
+      # TA-01 fails on a revert of the migration; TA-03 fails on the AND -> OR
+      # widening of the arm's entry predicate that the source-text tests in the
+      # Deno suite cannot detect.
+      - name: Prove the no-value arm mints, refuses value, and never reverses a payment
+        env:
+          PGPASSWORD: ${{ format('issue-2136-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql

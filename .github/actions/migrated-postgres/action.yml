@@ -1,0 +1,311 @@
+name: Migrated PostgreSQL 17
+description: >-
+  Bring up a PostgreSQL 17 container with every Mingla migration already applied,
+  restoring a cached snapshot and topping it up with only the new migrations
+  instead of replaying the whole history.
+
+# #2148 [ci-runtime] — WHY THIS EXISTS
+#
+# 45 workflows each booted their own supabase/postgres container and replayed
+# EVERY migration in supabase/migrations from zero before running a few seconds of
+# SQL assertions. MEASURED: ~75 s container boot + ~100-115 s replay, per job.
+# There are 683 migration files and counting, so the cost rises every sprint
+# whether or not anyone touches it.
+#
+# ---------------------------------------------------------------------------
+# WHY INCREMENTAL, AND NOT JUST key-on-the-migrations-hash
+# ---------------------------------------------------------------------------
+# The first cut of this action keyed the cache on hashFiles('supabase/migrations/
+# *.sql') alone. MEASURED on PR #2163: it never hit. A pull_request build runs
+# against refs/pull/N/merge — your branch merged with main — and main keeps
+# landing migrations (681 -> 683 in four hours across four merges). Every run
+# therefore computed a DIFFERENT key, saved a fresh 18 MB snapshot, and replayed
+# the full history anyway. Two snapshots, zero hits, no saving whatsoever.
+#
+# That failure is quiet in exactly the wrong way: in a slow week main does not
+# move, the key repeats, the cache hits, and the design looks fine. It degrades
+# to useless precisely when the repo is busiest.
+#
+# So the cache is now restored by PREFIX (restore-keys) and topped up: the
+# snapshot records which migrations it contains, and only the ones the repo has
+# and the snapshot lacks get applied. That is normally 0-3 files — seconds — and
+# it hits whether or not main moved.
+#
+# ---------------------------------------------------------------------------
+# WHEN THE TOP-UP IS REFUSED (correctness over speed, every time)
+# ---------------------------------------------------------------------------
+# Topping up is only sound while migrations are strictly append-only. This falls
+# back to a full replay, loudly, if either assumption breaks:
+#   (a) the snapshot contains a migration the repo no longer has — something was
+#       deleted, renamed or rewritten, so the snapshot is not a prefix of the
+#       current history;
+#   (b) a migration to be applied sorts BEFORE the snapshot's newest — applying
+#       it last would produce a database a clean replay would never produce.
+# In both cases a stale-but-fast database is worse than a slow correct one.
+#
+# ---------------------------------------------------------------------------
+# WHY A TAR STREAM AND NOT A BIND MOUNT (do not "simplify" this)
+# ---------------------------------------------------------------------------
+# PostgreSQL refuses to start unless the data directory is owned by the user
+# running it — uid 101 (gid 102) in this image. A bind mount of a host directory
+# exposes the RUNNER's ownership (uid 1001 on ubuntu-latest) and postgres bails:
+#     could not access the server configuration file "…/postgresql.conf":
+#     Permission denied
+# That failure is INVISIBLE on a developer Mac, because Docker Desktop runs a Linux
+# VM behind a file-sharing layer that fabricates ownership — every uid is told
+# "yes, that's yours". A bind mount therefore PASSES locally and FAILS on CI.
+# `docker cp` carries ownership INSIDE the tar stream (101:102, straight out of the
+# source container) and restores it into the destination container's own
+# filesystem, so the host's semantics never apply.
+#
+# ---------------------------------------------------------------------------
+# WHY NOT pg_dump/pg_restore (measured, and rejected as DANGEROUS)
+# ---------------------------------------------------------------------------
+# Restoring a logical dump into a fresh supabase/postgres container produces a
+# database that looks right and is not. MEASURED against a full replay:
+#     columns 5292 = 5292      tables 389 = 389      functions 1722 = 1722
+#     RLS POLICIES  643 ->   2        RLS-ENABLED TABLES  360 ->   3
+#     TRIGGERS      300 ->   1        INDEXES            1331 ->  26
+# The image already ships auth/storage/realtime/vault owned by roles that are not
+# `postgres`, so the dump collides with them — 30 permission + 14 already-exists
+# errors out of only 52. Nothing cascades, nothing aborts, psql exits 0 and THE
+# STEP GOES GREEN. Every Postgres suite would have kept passing against a database
+# with 98% of its row-level security missing, and an RLS suite would have passed
+# VACUOUSLY — with RLS off there is nothing left to block. That is why the
+# verification below counts policies/triggers/indexes/RLS tables and never merely
+# tables and columns. See issue #2148.
+
+inputs:
+  container-name:
+    description: Name for the postgres container.
+    required: false
+    default: mingla-pg
+  port:
+    description: Host port to publish PostgreSQL on.
+    required: false
+    default: "5432"
+  password:
+    description: POSTGRES_PASSWORD for the container.
+    required: true
+  image:
+    description: >-
+      Postgres image. Pin this at the call site rather than relying on the default,
+      so each workflow states the database it certifies against.
+    required: false
+    default: supabase/postgres:17.4.1.075
+
+outputs:
+  restored:
+    description: "full-replay | topped-up | exact-hit — how this database was obtained."
+    value: ${{ steps.pg.outputs.restored }}
+
+runs:
+  using: composite
+  steps:
+    - name: Compute snapshot key
+      id: key
+      shell: bash
+      run: |
+        set -euo pipefail
+        PREFIX="pgdata-v2-$(printf '%s' '${{ inputs.image }}' | tr '/:' '--')-"
+        {
+          echo "prefix=$PREFIX"
+          echo "value=${PREFIX}${{ hashFiles('supabase/migrations/*.sql') }}"
+        } >> "$GITHUB_OUTPUT"
+
+    # restore-keys is what makes this work on a moving main: an exact key match is
+    # ideal, but the newest prefix match is nearly as good because the top-up below
+    # only has to apply whatever landed since.
+    - name: Restore migrated-database snapshot
+      id: restore
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ runner.temp }}/mingla-pgdata
+        key: ${{ steps.key.outputs.value }}
+        restore-keys: ${{ steps.key.outputs.prefix }}
+
+    - name: Bring up PostgreSQL 17 with every migration applied
+      id: pg
+      shell: bash
+      env:
+        PGPASSWORD: ${{ inputs.password }}
+        CNAME: ${{ inputs.container-name }}
+        CPORT: ${{ inputs.port }}
+        CIMAGE: ${{ inputs.image }}
+        SNAPDIR: ${{ runner.temp }}/mingla-pgdata
+      run: |
+        set -euo pipefail
+        SNAP="$SNAPDIR/pgdata.tar"
+        APPLIED="$SNAPDIR/applied.txt"
+        COUNTS="$SNAPDIR/counts.txt"
+
+        wait_ready() {
+          for _ in $(seq 1 120); do
+            if psql -h 127.0.0.1 -p "$CPORT" -U postgres -d postgres -Atc \
+                 "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+                 2>/dev/null | grep -qx t; then return 0; fi
+            sleep 1
+          done
+          echo "::error::PostgreSQL did not become ready within 120s"
+          docker logs "$CNAME" 2>&1 | tail -30; return 1
+        }
+
+        # A RESTORED cluster keeps the password of whichever container BUILT the
+        # snapshot. POSTGRES_PASSWORD is only ever applied during initdb, and a
+        # restore skips initdb entirely — so the env var is silently ignored and
+        # every TCP login fails with:
+        #     FATAL:  password authentication failed for user "postgres"
+        # This bit us for real: #1171's password is derived per-run (deliberately,
+        # so no static credential sits in the workflow), which guaranteed the
+        # snapshot's password could never match a later run's. A local test with a
+        # constant password cannot surface this.
+        # Fixed by setting the password after start, over the container's LOCAL
+        # socket where auth is peer/trust and no password is needed. This keeps
+        # per-run passwords AND makes the snapshot password-agnostic.
+        # ROOT-CAUSED, not guessed. The first attempt at this ran the ALTER as
+        # `postgres` over the container's UNIX socket and failed every time with:
+        #     ERROR:  permission denied to alter role
+        #     DETAIL:  Only superusers can alter privileged roles.
+        # In this image `postgres` is deliberately NOT a superuser (rolsuper=false);
+        # `supabase_admin` is. And the image's pg_hba is:
+        #     local all supabase_admin      scram-sha-256   <- needs a password
+        #     local all all                 peer map=supabase_map
+        #     host  all all 127.0.0.1/32    trust           <- no password needed
+        # So the way in is TCP to loopback FROM INSIDE the container, as the
+        # superuser: that line is `trust`, and supabase_admin can alter the role.
+        # Verified end to end with a negative control — after this runs, the OLD
+        # password is REJECTED, which proves the change actually took.
+        # BOTH roles, not just postgres. A fresh container sets `postgres` AND
+        # `supabase_admin` from POSTGRES_PASSWORD, and the workflows use both —
+        # measured across the converted set: 139 connections as postgres, 5 as
+        # supabase_admin. Adopting only `postgres` left the other on the snapshot's
+        # old password, and three suites failed with
+        #     FATAL:  password authentication failed for user "supabase_admin"
+        # after the database had otherwise restored perfectly.
+        adopt_password() {
+          local last=""
+          for _ in $(seq 1 120); do
+            if docker exec "$CNAME" pg_isready -U postgres -q 2>/dev/null; then
+              last="$(docker exec "$CNAME" psql -h 127.0.0.1 -U supabase_admin -d postgres -q \
+                -c "ALTER USER postgres WITH PASSWORD '$PGPASSWORD'" \
+                -c "ALTER USER supabase_admin WITH PASSWORD '$PGPASSWORD'" 2>&1)" && return 0
+            fi
+            sleep 1
+          done
+          # Report what postgres ACTUALLY said. The previous message here claimed the
+          # container "never accepted a local connection", which was false — it was
+          # accepting them and refusing the ALTER. A diagnostic that theorises instead
+          # of quoting the error costs a full CI round trip to disbelieve.
+          echo "::error::could not set this run's password on the restored database. Last psql output: ${last:-<none>}"
+          docker logs "$CNAME" 2>&1 | tail -30; return 1
+        }
+        apply() { # $1 = migration path
+          psql -h 127.0.0.1 -p "$CPORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$1" \
+            || { echo "::error::migration failed: $1"; exit 1; }
+        }
+
+        ls -1 supabase/migrations/*.sql 2>/dev/null | xargs -n1 basename | sort > /tmp/repo-migrations.txt
+        REPO_N=$(wc -l < /tmp/repo-migrations.txt | tr -d ' ')
+
+        MODE=full
+        if [ -f "$SNAP" ] && [ -f "$APPLIED" ]; then
+          # (a) snapshot must be a PREFIX of current history — nothing it contains
+          #     may have vanished from the repo.
+          if comm -23 "$APPLIED" /tmp/repo-migrations.txt | grep -q .; then
+            echo "::warning::snapshot contains migrations the repo no longer has (renamed/deleted) — falling back to a full replay"
+          else
+            comm -13 "$APPLIED" /tmp/repo-migrations.txt > /tmp/delta.txt
+            DELTA_N=$(wc -l < /tmp/delta.txt | tr -d ' ')
+            NEWEST_IN_SNAP=$(tail -n1 "$APPLIED")
+            # (b) every delta migration must sort AFTER the snapshot's newest, or
+            #     applying it last would not reproduce a clean replay.
+            if [ "$DELTA_N" -gt 0 ] && [ "$(sort /tmp/delta.txt | head -n1)" \< "$NEWEST_IN_SNAP" ]; then
+              echo "::warning::a new migration sorts before the snapshot's newest ($NEWEST_IN_SNAP) — order cannot be preserved, falling back to a full replay"
+            else
+              MODE=incremental
+            fi
+          fi
+        fi
+
+        if [ "$MODE" = incremental ]; then
+          echo "::group::Restoring snapshot ($(du -h "$SNAP" | cut -f1)) + applying $DELTA_N new migration(s)"
+          # `docker create`, never `run`: the data directory must be in place BEFORE
+          # postgres starts, or it initialises an empty cluster and the snapshot is
+          # silently ignored — leaving every suite green against an empty database.
+          docker create --name "$CNAME" -e POSTGRES_PASSWORD="$PGPASSWORD" -p "$CPORT":5432 "$CIMAGE" >/dev/null
+          docker cp - "$CNAME:/var/lib/postgresql/" < "$SNAP"
+          docker start "$CNAME" >/dev/null
+          adopt_password        # MUST precede wait_ready — see the note above
+          wait_ready
+          while IFS= read -r m; do [ -n "$m" ] && { echo "  + $m"; apply "supabase/migrations/$m"; }; done < /tmp/delta.txt
+          echo "::endgroup::"
+          [ "$DELTA_N" -eq 0 ] && OUT=exact-hit || OUT=topped-up
+        else
+          echo "::group::Full replay of $REPO_N migrations (the pre-#2148 path)"
+          docker run --name "$CNAME" -e POSTGRES_PASSWORD="$PGPASSWORD" -p "$CPORT":5432 -d "$CIMAGE" >/dev/null
+          wait_ready
+          while IFS= read -r m; do apply "supabase/migrations/$m"; done < /tmp/repo-migrations.txt
+          echo "::endgroup::"
+          OUT=full-replay
+        fi
+        echo "restored=$OUT" >> "$GITHUB_OUTPUT"
+
+        # ---- Verification. This is the whole point; see the pg_dump note above. ----
+        read -r POL TRG IDX RLS TBL <<EOF
+        $(psql -h 127.0.0.1 -p "$CPORT" -U postgres -d postgres -At -F' ' -c \
+          "SELECT (SELECT count(*) FROM pg_policies),
+                  (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal),
+                  (SELECT count(*) FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog','information_schema')),
+                  (SELECT count(*) FROM pg_class WHERE relrowsecurity),
+                  (SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema'))")
+        EOF
+        echo "how=$OUT  migrations=$REPO_N  policies=$POL triggers=$TRG indexes=$IDX rls_tables=$RLS tables=$TBL"
+
+        if [ "${POL:-0}" -lt 1 ] || [ "${RLS:-0}" -lt 1 ] || [ "${TBL:-0}" -lt 1 ]; then
+          echo "::error::Database came up but is not the migrated database (policies=$POL rls_tables=$RLS tables=$TBL). Refusing to run tests against it."
+          exit 1
+        fi
+        # A topped-up database must never have FEWER enforcing objects than the
+        # snapshot it grew from. Migrations add; a drop here means the restore lost
+        # something — the pg_dump failure mode, caught rather than trusted.
+        if [ "$OUT" != "full-replay" ] && [ -f "$COUNTS" ]; then
+          # `|| true` is REQUIRED, not defensive clutter. `read` returns 1 when it
+          # reaches EOF without a trailing newline — having ALREADY assigned every
+          # variable correctly. Under `set -e` that aborts the step instantly, with
+          # no message and no failing command to point at. That is exactly what
+          # happened here: the database restored perfectly, printed
+          # `policies=652 triggers=330 indexes=1427 rls_tables=397 tables=426`, and
+          # the step then died in silence one line later. The counts file is also
+          # written with a trailing newline now; both ends are fixed because either
+          # alone would leave the trap armed for the next person.
+          read -r P0 T0 I0 R0 B0 < "$COUNTS" || true
+          if [ "$POL" -lt "$P0" ] || [ "$RLS" -lt "$R0" ] || [ "$TBL" -lt "$B0" ]; then
+            echo "::error::Restored database has fewer objects than the snapshot it came from."
+            echo "::error::snapshot: policies=$P0 rls_tables=$R0 tables=$B0"
+            echo "::error::restored: policies=$POL rls_tables=$RLS tables=$TBL"
+            exit 1
+          fi
+          echo "verified against snapshot manifest (policies $P0 -> $POL, rls_tables $R0 -> $RLS, tables $B0 -> $TBL)"
+        fi
+
+        # Re-export whenever this run's exact key is not already cached, so the next
+        # run gets an exact hit and the snapshot keeps pace with main.
+        if [ "${{ steps.restore.outputs.cache-hit }}" != "true" ]; then
+          echo "::group::Exporting snapshot for the cache"
+          mkdir -p "$SNAPDIR"
+          cp /tmp/repo-migrations.txt "$APPLIED"
+          printf '%s %s %s %s %s\n' "$POL" "$TRG" "$IDX" "$RLS" "$TBL" > "$COUNTS"
+          docker stop "$CNAME" >/dev/null            # clean shutdown = consistent snapshot
+          docker cp "$CNAME:/var/lib/postgresql/data" - > "$SNAP"
+          docker start "$CNAME" >/dev/null
+          wait_ready
+          echo "snapshot exported: $(du -h "$SNAP" | cut -f1) covering $REPO_N migrations"
+          echo "::endgroup::"
+        fi
+
+    - name: Save migrated-database snapshot
+      if: steps.restore.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ${{ runner.temp }}/mingla-pgdata
+        key: ${{ steps.key.outputs.value }}

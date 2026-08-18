@@ -1,0 +1,385 @@
+name: issue-2099-pending-venue-identity-correction
+
+# Every path #2099 owns, on BOTH events. Check P's P-9 asserts this workflow
+# invokes the render config on `pull_request` and `push`, and that the §D7
+# tester-guard step is fail-closed and carries no bypass token.
+on:
+  pull_request:
+    paths: &issue2099Paths
+      - "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql"
+      - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
+      - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts"
+      - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh"
+      - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+      - "mingla-business/app/venue/[venueId]/index.tsx"
+      - "mingla-business/src/services/venueListingsService.ts"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.d.ts"
+      - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx"
+      - "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts"
+      - "mingla-business/src/components/venue/VenueListingContent.tsx"
+      - "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx"
+      - "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.behavior.render.test.tsx"
+      - "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.native-absence.test.ts"
+      - "mingla-business/src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx"
+      - "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx"
+      - "mingla-business/jest.issue2099.web.render.cjs"
+      - "mingla-business/playwright.issue2099.config.ts"
+      - "mingla-business/playwright/issue2099/**"
+      - "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx"
+      - "mingla-admin/src/services/adminClaimsService.js"
+      - "mingla-admin/src/pages/ClaimsPage.jsx"
+      - "mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js"
+      - "mingla-admin/src/components/entity/HighRiskActionModal.jsx"
+      - ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml"
+      # issue #2193 — MANIFEST.json is DELIBERATELY ABSENT from this filter.
+      # Registering a strict-grep gate edits it, which nearly every substantial PR
+      # does, so listing it here fired this workflow on unrelated branches. SC-4 then
+      # measured the WHOLE __common chunk and charged that foreign PR #2099's private
+      # 1,024 B budget — while the project allowance (PR_DELTA_ALLOWANCE.common in
+      # orch-1083-initial-bundle-budget.mjs) is 12,000 B. It blocked #2009 at a 1,205 B
+      # delta, a tenth of the real budget. Do NOT re-add it: #2099 owns no behaviour
+      # that a manifest-only change can break, and manifest parity is enforced by
+      # meta-1383-manifest-parity.mjs in the strict-grep workflow.
+  push:
+    branches: [main]
+    paths: *issue2099Paths
+  workflow_dispatch:
+
+jobs:
+  issue-2099-web-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      # `fetch-depth: 0` so `origin/main` exists in the runner's checkout — the
+      # SC-7 byte-equality step and SC-9's diff clause both diff against it, and
+      # a shallow checkout would fail them for the wrong reason.
+      # (Precedent: .github/workflows/issue-1403-listing-insights-tests.yml)
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git fetch --no-tags origin main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+          cache-dependency-path: |
+            mingla-business/package-lock.json
+            mingla-admin/package-lock.json
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: npm --prefix mingla-business ci
+      - run: npm --prefix mingla-admin ci
+
+      - name: "#2099 static migration/workflow seal"
+        run: deno test --allow-read supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts
+
+      # Check P — structural placement + the resolution seal, under the STOCK
+      # config, in its own process, so it judges the render config from outside.
+      - name: "#2099 Check P — placement and resolution seal"
+        run: npm --prefix mingla-business test -- --runInBand src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx
+
+      # Check H — the §D6 behavioural mount proof, under the dedicated
+      # web-first config. This is the invocation the class-A gate
+      # issue-1486-jest-config-invoked-by-workflow.mjs requires, and the one
+      # P-9 asserts is present on BOTH events.
+      - name: "#2099 Check H — behavioural mount proof (jest.issue2099.web.render.cjs)"
+        shell: bash
+        working-directory: mingla-business
+        run: npx jest --config jest.issue2099.web.render.cjs --runInBand
+
+      - name: "#2099 native-absence and web static-import-graph probes"
+        run: npm --prefix mingla-business test -- --runInBand src/components/venue/__tests__/issue2099PendingIdentityCorrection.native-absence.test.ts
+
+      - name: "#2099 Admin panel contract"
+        run: node --test mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js
+
+      - name: "#2099-owned TypeScript must contribute zero diagnostics"
+        shell: bash
+        run: |
+          set -uo pipefail
+          npm --prefix mingla-business run typecheck -- --noEmit --pretty false \
+            > /tmp/issue2099-tsc.txt 2>&1 || true
+          # mingla-business carries a large pre-existing red baseline this issue
+          # does not own and may not edit (#2115). Assert only that NO diagnostic
+          # names a #2099 path; any hit fails the job. Deleting
+          # PendingVenueIdentityCorrectionLauncher.d.ts reintroduces the single
+          # TS2307 at the host's extensionless launcher import and reds here.
+          if grep -nE 'PendingVenueIdentityCorrection(Launcher|Dialog|Panel)|pendingVenueIdentityCorrectionService|venue/\[venueId\]/index\.tsx|venue/VenueListingContent\.tsx|services/venueListingsService\.ts' /tmp/issue2099-tsc.txt; then
+            echo "::error::#2099-owned files emitted TypeScript diagnostics (listed above)."
+            exit 1
+          fi
+          echo "OK — zero diagnostics from #2099-owned paths."
+
+      # SC-7 — a byte diff decided by git, never by inspection.
+      - name: "SC-7 — HighRiskActionModal.jsx is byte-identical to origin/main"
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --quiet origin/main -- mingla-admin/src/components/entity/HighRiskActionModal.jsx
+          echo "OK — the shared high-risk modal is untouched."
+
+      # SC-9 — the two pre-existing issue1483 suites the §F3 slot would
+      # otherwise break. Clause 1 is the counts; clause 2 is the integrity
+      # control, because a count cannot see an assertion hollowed in place.
+      - name: "SC-9 clause 1 — issue1483 suites still report 13 and 20"
+        shell: bash
+        working-directory: mingla-business
+        run: |
+          set -euo pipefail
+          npx jest --config jest.config.cjs --runInBand \
+            src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx \
+            2>&1 | tee /tmp/issue1483-happy.txt
+          grep -qE 'Tests:[[:space:]]+13 passed, 13 total' /tmp/issue1483-happy.txt
+          npx jest --config jest.config.cjs --runInBand \
+            src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx \
+            2>&1 | tee /tmp/issue1483-adversarial.txt
+          grep -qE 'Tests:[[:space:]]+20 passed, 20 total' /tmp/issue1483-adversarial.txt
+
+      - name: "SC-9 clause 2 — the issue1483 edits are additions-only and exactly the authorized block"
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected=$'jest.mock(\n  "../PendingVenueIdentityCorrectionLauncher",\n  () => ({ __esModule: true, default: (): null => null }),\n  { virtual: true },\n);'
+          for f in \
+            "mingla-business/src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx" \
+            "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx"; do
+            diff="$(git diff --unified=0 origin/main -- "$f")"
+            if [ -z "$diff" ]; then
+              echo "-- $f is byte-identical to origin/main (the tester block has not landed yet)."
+              continue
+            fi
+            dels="$(printf '%s\n' "$diff" | grep -c '^-[^-]' || true)"
+            if [ "$dels" -ne 0 ]; then
+              echo "::error::$f has $dels deletion line(s). No existing line may be edited, reordered, deleted or reformatted."
+              exit 1
+            fi
+            adds="$(printf '%s\n' "$diff" | grep '^+[^+]' | sed 's/^+//' | sed '/^[[:space:]]*$/d')"
+            if [ "$adds" != "$expected" ]; then
+              echo "::error::$f added lines are not exactly the one authorized { virtual: true } block."
+              printf 'got:\n%s\n' "$adds"
+              exit 1
+            fi
+            echo "-- $f carries exactly the authorized block, additions only."
+          done
+
+      # SC-8 — fail-closed. There is NO skip path: an absent file exits the job
+      # non-zero. This step must never carry `if:`, `continue-on-error` or
+      # `|| true`; Check P's P-9 reads this file and fails if it does.
+      - name: "#2099 tester guard (fails closed until the tester's own commit lands)"
+        shell: bash
+        run: |
+          set -euo pipefail
+          guard="supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+          if [ ! -f "$guard" ]; then
+            echo "::error::tester guard pending — $guard is reserved for the independent tester (Amendment 4 §D7) and has not landed yet."
+            exit 1
+          fi
+          bash "$guard"
+
+      - run: npm --prefix mingla-admin run build
+
+  issue-2099-browser-geometry:
+    # P1-A. The only #2099 gate with a LAYOUT ENGINE. Check H mounts under
+    # `react-test-renderer`, which has no viewport, no scroll and no bounding
+    # boxes — so it proved the control was PRESENT while the independent tester
+    # found its primary action 1155px below an 800px fold on a page that does
+    # not scroll, reachable by neither pointer nor keyboard. Presence and
+    # reachability are different axes and only this job can see the second one.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+          cache-dependency-path: |
+            mingla-business/package-lock.json
+            mingla-admin/package-lock.json
+      - run: npm --prefix mingla-business ci
+      # esbuild comes from mingla-admin's already-installed tree, so the harness
+      # adds no dependency and neither manifest nor lockfile is touched.
+      - run: npm --prefix mingla-admin ci
+      - run: npx --prefix mingla-business playwright install --with-deps chromium-headless-shell
+      - name: "P1-A — the correction dialog is OPERABLE at 1280x800 and 390x844"
+        working-directory: mingla-business
+        run: npx playwright test -c playwright.issue2099.config.ts
+
+  issue-2099-boot-payload-ceiling:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm --prefix mingla-business ci
+      # issue #2193 — SC-4 asserts a property of #2099'S OWN PRODUCT CODE: that the
+      # correction dialog and its service stay out of the eager chunk. Only a change to
+      # that code can violate it. But SC-4 measures the WHOLE __common chunk against a
+      # baseline that tracks main, so ANY branch reaching this job is charged #2099's
+      # private 1,024 B budget for growth it did not cause — while the project allowance
+      # (PR_DELTA_ALLOWANCE.common) is 12,000 B. Editing this workflow, or the shared gate
+      # manifest, is not a reason to weigh #2099's dialog. Scope the measurement to the
+      # only changes that can move it.
+      - name: "SC-4 scope — did this change touch #2099 product code?"
+        id: sc4scope
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "push to main — SC-4 measures main itself."
+            exit 0
+          fi
+          changed="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
+            --paginate --jq '.[].filename')"
+          # #2099 product code only. Deliberately EXCLUDES this workflow file and the
+          # shared strict-grep manifest: neither can change what ships in __common.
+          if printf '%s\n' "$changed" \
+             | grep -vE '^\.github/(workflows/issue-2099-|scripts/strict-grep/MANIFEST\.json)' \
+             | grep -qE '(2099|PendingVenueIdentityCorrection|HighRiskActionModal|VenueListingContent|venueListingsService|adminClaimsService|ClaimsPage)'; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+            echo "#2099 product code changed — measuring."
+          else
+            echo "run=false" >> "$GITHUB_OUTPUT"
+            echo "No #2099 product code in this change — SC-4 skipped (issue #2193)."
+          fi
+      - if: steps.sc4scope.outputs.run == 'true'
+        name: "SC-4 outer guard — #2099's __common delta against the run-time baseline"
+        shell: bash
+        working-directory: mingla-business
+        run: |
+          set -euo pipefail
+          npm run web:export
+          node --input-type=module -e '
+            import { readFileSync } from "node:fs";
+            import { measureWebBuild } from "./scripts/ci/bundle-budget-lib.mjs";
+            // Read the baseline AT RUN TIME. Pinning the literal would red on
+            // main forever the moment any unrelated PR grows __common.
+            const baseline = JSON.parse(
+              readFileSync("./scripts/ci/bundle-baseline.json", "utf8"),
+            );
+            const measured = measureWebBuild("web-build");
+            const delta = measured.common.raw - baseline.common.raw;
+            console.log(
+              `__common raw: baseline ${baseline.common.raw} B -> this branch ${measured.common.raw} B (delta ${delta} B)`,
+            );
+            if (delta > 1024) {
+              console.error(
+                "issue-2099 FAIL: #2099 must not add more than 1,024 B to the eager __common chunk.\n" +
+                  "  The correction dialog and its service belong in an on-intent async chunk.\n" +
+                  "  Do NOT clear this by editing bundle-baseline.json or the tripwire."
+              );
+              process.exit(1);
+            }
+          '
+
+  issue-2099-postgres-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: PostgreSQL 17 full-chain correction contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_root="$(mktemp -d /tmp/issue-2099-sql.XXXXXX)"
+          echo "$sql_root" > /tmp/issue2099-sql-root
+          supabase init --workdir "$sql_root" --yes
+          target="$sql_root/supabase/migrations"
+          rsync -a supabase/migrations/ "$target/"
+          mv "$target/20260612000001_tr4_revoke_rpc_anon_grants.sql" "$target/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          mv "$target/20260612000000_tr4_refund_tiers_booking_deadline.sql" "$target/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+          mv "$target/20260615000000_orch_426_discover_cache_gzip.sql" "$target/20260615010000_orch_426_discover_cache_gzip.sql"
+          mv "$target/20261012000000_orch_1150_rsvp_maybe.sql" "$target/20261012010000_orch_1150_rsvp_maybe.sql"
+          mv "$target/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" "$target/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          mv "$target/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" "$target/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+          mv "$target/20261117000001_orch_1188_finalize_persist_event_date_id.sql" "$target/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          mv "$target/20261117000000_orch_1188_orders_event_date_id.sql" "$target/20261117000001_orch_1188_orders_event_date_id.sql"
+          supabase start --workdir "$sql_root" --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor --yes
+          db_container="$(docker ps --filter "label=com.supabase.cli.project=$(basename "$sql_root")" --format '{{.Names}}' | awk '/^supabase_db_/ {print; exit}')"
+          test -n "$db_container"
+          db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
+          echo "$db_container" > /tmp/issue2099-db-container
+          echo "$db_password" > /tmp/issue2099-db-password
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql
+
+      # §D4 — the exact same migration file applied a SECOND and THIRD time must
+      # exit 0 without dropping or truncating either #2099 table, without losing
+      # a guard or audit row, and leaving the catalog contract equivalent.
+      - name: "D4 — migration replay safety (second and third apply)"
+        shell: bash
+        run: |
+          set -euo pipefail
+          db_container="$(cat /tmp/issue2099-db-container)"
+          db_password="$(cat /tmp/issue2099-db-password)"
+          snapshot() {
+            docker exec -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -At -v ON_ERROR_STOP=1 -f - <<'SQL'
+          SELECT string_agg(x, E'\n' ORDER BY x) FROM (
+            SELECT 'fn|' || p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|' || pg_get_userbyid(p.proowner)
+                   || '|' || p.prosecdef::text || '|' || COALESCE(array_to_string(p.proconfig, ','), '') AS x
+            FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+            WHERE n.nspname = 'public'
+              AND (p.proname LIKE '%issue_2099%'
+                   OR p.proname IN ('preview_pending_venue_identity_correction','correct_pending_venue_identity'))
+            UNION ALL
+            SELECT 'grant|' || grantee || '|' || routine_name
+            FROM information_schema.routine_privileges
+            WHERE routine_schema = 'public'
+              AND routine_name IN ('preview_pending_venue_identity_correction','correct_pending_venue_identity')
+            UNION ALL
+            SELECT 'evt|' || evtname || '|' || evtevent || '|' || evtenabled || '|' || pg_get_userbyid(evtowner)
+            FROM pg_event_trigger WHERE evtname = 'issue_2099_dependency_ddl_guard'
+            UNION ALL
+            SELECT 'tbl|' || c.relname || '|' || c.relrowsecurity::text || '|' || pg_get_userbyid(c.relowner)
+            FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
+            WHERE n.nspname = 'public'
+              AND c.relname IN ('issue_2099_dependency_schema_guard','venue_identity_correction_audit')
+            UNION ALL
+            SELECT 'trg|' || tgname FROM pg_trigger
+            WHERE tgrelid = 'public.venue_identity_correction_audit'::regclass AND NOT tgisinternal
+            UNION ALL
+            SELECT 'rows|' || (SELECT count(*)::text FROM public.venue_identity_correction_audit)
+                 || '|' || (SELECT count(*)::text FROM public.issue_2099_dependency_schema_guard)
+          ) s;
+          SQL
+          }
+          before="$(snapshot)"
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
+          after_second="$(snapshot)"
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
+          after_third="$(snapshot)"
+          test "$before" = "$after_second"
+          test "$after_second" = "$after_third"
+          echo "OK — replay is byte-equivalent across three applies."
+
+      - name: "D5 — authenticated two-connection RPC race harness"
+        shell: bash
+        run: bash supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh
+
+      # §D7 / Amendment 12 §M3 — TESTER-OWNED. The web-contracts job invokes the
+      # same guard fail-closed, but that runner has no database, so the guard's
+      # adversarial RPC lanes could never execute there. This is the invocation
+      # that actually runs them, and the guard's own W-4 lane asserts this step
+      # exists, sits after the fixture, and carries no bypass token — so the
+      # guard cannot be reduced to a registered-but-unrun job.
+      - name: "D7 — tester adversarial guard against the real RPC (db mode)"
+        shell: bash
+        run: bash supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh
+
+      - name: "Tear down the disposable PostgreSQL 17 fixture"
+        if: always()
+        shell: bash
+        run: |
+          set -uo pipefail
+          sql_root="$(cat /tmp/issue2099-sql-root 2>/dev/null || true)"
+          if [ -n "$sql_root" ]; then supabase stop --workdir "$sql_root" --no-backup --yes || true; fi

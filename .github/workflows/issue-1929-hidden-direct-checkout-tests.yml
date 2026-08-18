@@ -11,6 +11,7 @@ on:
       - "mingla-business/src/services/__tests__/issue_1929_hidden_direct_checkout*"
       - "app-mobile/src/hooks/usePublicEventBySlug.ts"
       - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
+      - "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*"
       - "app-mobile/src/**/__tests__/issue_1929_hidden_direct_checkout*"
       - ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
@@ -24,6 +25,7 @@ on:
       - "mingla-business/src/services/publicEventsService.ts"
       - "app-mobile/src/hooks/usePublicEventBySlug.ts"
       - "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx"
+      - "app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*"
       - ".github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs"
       - ".github/scripts/strict-grep/MANIFEST.json"
       - ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml"
@@ -69,7 +71,7 @@ jobs:
       - uses: denoland/setup-deno@v2
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
-      - run: deno test --allow-read supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.structural.test.ts supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.structural.tester_adversarial.test.ts
+      - run: deno test --allow-read supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.structural.test.ts supabase/migrations/__tests__/issue_1929_hidden_direct_checkout.structural.tester_adversarial.test.ts app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source*.test.ts
       - run: deno test --allow-env --allow-read supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge.test.ts supabase/functions/ticket-checkout-create/__tests__/issue_1929_hidden_checkout_edge.tester_adversarial.test.ts
       - run: node .github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs --self-test
       - run: node .github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs

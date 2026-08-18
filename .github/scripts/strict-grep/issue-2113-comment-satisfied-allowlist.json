@@ -1,0 +1,66 @@
+{
+  "$comment": [
+    "Issue #2113 — allowlist for issue-2113-comment-satisfied-assertion.mjs.",
+    "",
+    "AN OVER-BROAD ALLOWLIST RECREATES THE DEFECT THIS GATE EXISTS TO STOP. Every entry",
+    "excuses EXACTLY ONE assertion against EXACTLY ONE target: the {test, target, pattern}",
+    "triple is compared verbatim. Wildcards are rejected. A missing `reason`, or one under 20",
+    "characters, is a hard error (exit 2) — not a skip. There is no path-prefix form, no",
+    "per-directory form, and no 'legacy' bucket. If you want one, that is the signal to fix the",
+    "assertion instead.",
+    "",
+    "THE ONLY LEGITIMATE CLASS IS: the asserted text IS an annotation that exists in a comment",
+    "BY DESIGN, and the test says so. A protective header banner, a rationale marker guarded",
+    "against silent removal, a strict-grep allowlist tag. In every seed below the test is",
+    "literally named after the comment it is checking, and sits beside behavioural assertions",
+    "in the same suite — the comment check is supplementary, not a stand-in.",
+    "",
+    "NOT legitimate, and deliberately absent: an assertion that names a BEHAVIOUR ('renders X',",
+    "'calls Y', 'mounts Z') and is satisfied by prose describing it. That is #2113 itself. Those",
+    "findings stay in the report and are dispatched from the ranked sweep."
+  ],
+  "entries": [
+    {
+      "test": "mingla-business/app/rsvp/[id]/__tests__/index.test.tsx",
+      "target": "mingla-business/app/rsvp/[id]/index.tsx",
+      "pattern": "\"DO NOT delete\"",
+      "reason": "The test is named 'REGRESSION: protective comment present'. Its subject IS the header banner explaining that deleting this route drops /rsvp/{id} into +not-found.tsx (the white screen of ORCH-1150 D-4). A banner lives in a comment by construction; the surrounding suite carries the behavioural assertions."
+    },
+    {
+      "test": "mingla-business/app/rsvp/[id]/__tests__/preview.test.tsx",
+      "target": "mingla-business/app/rsvp/[id]/preview.tsx",
+      "pattern": "\"DO NOT delete\"",
+      "reason": "Same protective-banner class, on the RSVP preview route. The test is 'STATES + PROTECTIVE COMMENT: loading spinner shell + DO NOT delete header' and asserts Spinner and router.canGoBack() behaviourally in the same test; only the banner clause is comment-bound."
+    },
+    {
+      "test": "mingla-business/app/rsvp/[id]/__tests__/preview.test.tsx",
+      "target": "mingla-business/app/rsvp/[id]/preview.tsx",
+      "pattern": "\"orch-strict-grep-allow route-by-event-type\"",
+      "reason": "A strict-grep allowlist tag is DEFINED as a comment by this directory's README ('// orch-strict-grep-allow <gate-tag> — <reason>'). Asserting it can only ever match a comment. The same test asserts the wrong-wizard redirect behaviourally on the two lines above."
+    },
+    {
+      "test": "mingla-business/app/event/[id]/__tests__/cancel-no-navigation.test.tsx",
+      "target": "mingla-business/app/event/[id]/index.tsx",
+      "pattern": "\"ORCH-0862: do NOT navigate post-cancel\"",
+      "reason": "The test is named 'F-1 protective comment marker is present' and exists so a future author does not re-add router.replace because it 'feels right'. The no-navigation behaviour itself is asserted separately in the same file (the router dependency is proved absent from the deps array)."
+    },
+    {
+      "test": "mingla-business/app/trip/[id]/__tests__/dashboard-parity-adversarial.test.tsx",
+      "target": "mingla-business/app/trip/[id]/index.tsx",
+      "pattern": "\"[ORCH-0913 deliberate divergence from event] Edit trip remains a primary\"",
+      "reason": "T-A10 is an anti-zealous-parity guard: it protects the file-header JSDoc that records WHY the trip dashboard deliberately diverges from the event dashboard, so a later parity pass does not 'fix' the divergence away. The `primary` flag itself is asserted as JSX in the same test."
+    },
+    {
+      "test": "mingla-business/app/trip/[id]/__tests__/dashboard-parity-adversarial.test.tsx",
+      "target": "mingla-business/app/trip/[id]/index.tsx",
+      "pattern": "\"[ORCH-0913 deliberate divergence from event] Edit remains primary.\"",
+      "reason": "The tile-local half of the same T-A10 divergence marker. Same justification: the annotation is the subject of the assertion, and the behavioural `primary` flag is asserted alongside it."
+    },
+    {
+      "test": "mingla-business/app/trip/__tests__/trip-dashboard-edit.test.ts",
+      "target": "mingla-business/app/trip/[id]/index.tsx",
+      "pattern": "\"[ORCH-0913 deliberate divergence from event]\"",
+      "reason": "The test is named 'Edit primary-tile divergence is documented' — it asserts the documentation exists, which is an honest claim about a comment. The Edit tile's label behaviour is asserted in the test immediately above it."
+    }
+  ]
+}

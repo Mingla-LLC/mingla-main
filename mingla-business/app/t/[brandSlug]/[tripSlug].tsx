@@ -58,8 +58,15 @@ import { ShareModal } from "../../../src/components/ui/ShareModal";
 import { shareCanonicalPublicPageOnWeb } from "../../../src/utils/shareCanonicalPublicPageOnWeb";
 import {
   tripCheckoutPath,
+  tripPublicPath,
   tripPublicUrl,
 } from "../../../src/constants/publicUrls";
+// issue #2101 [named-buyer checkout] — the platform-resolved route access
+// adapter. On web it projects the ONE bounded server eligibility state; on
+// native it is a legacy pass-through, so this shared route source compiles to
+// unchanged native behavior. Advisory only: the server is authoritative.
+// The notice itself mounts in TripCheckoutFlow (the content flow), not here.
+import { usePublicTicketCheckoutRouteAccess } from "../../../src/hooks/usePublicTicketCheckoutRouteAccess";
 import { usePublicTripBySlug } from "../../../src/hooks/usePublicTripBySlug";
 import { useTripTierAllIn } from "../../../src/hooks/useTripTierAllIn";
 // ORCH-1339 — cross-entity social proof (pg_public_social_proof, ORCH-1338;
@@ -399,8 +406,36 @@ const ResolvedTripPage: React.FC<{
   // No address/tax form (venue-sourced, ORCH-1025/1130). When `lines` is empty (a
   // dead-tap-guarded inert CTA never fires, but the split buttons may) the cart
   // opens to pick — never a dead tap.
+  // issue #2101 [named-buyer checkout] — one exhaustive route action state for
+  // EVERY purchase entry this route owns (desktop control, docked bar, floating
+  // pill, split CTAs). `unrestricted` / `allowed` keep today's tappability,
+  // copy, selection and navigation byte-compatible.
+  const tripAccess = usePublicTicketCheckoutRouteAccess(trip.id);
+  // The canonical post-sign-in return target, built ONLY with the canonical
+  // path helper — never `tripPublicUrl`, `window.location`, an absolute origin,
+  // a raw route param, or a handwritten `/t/...` template. `tripPublicPath`
+  // throws on an empty segment, so an empty slug resumes at bare `/auth`.
+  const tripSignInResumeHref = useMemo<string>(() => {
+    try {
+      return `/auth?next=${encodeURIComponent(
+        tripPublicPath({ brandSlug, tripSlug }),
+      )}`;
+    } catch {
+      return "/auth";
+    }
+  }, [brandSlug, tripSlug]);
+
   const handleTripReserve = useCallback(
     (choice?: TripPaymentPlanChoice, lines?: TripReserveLine[]): void => {
+      // issue #2101 — fail closed at the route. `sign_in_required` goes
+      // STRAIGHT to sign-in with the canonical `next`; it never opens the
+      // checkout chain first. `restricted`, `loading` and `error` no-op, so no
+      // checkout route opens and no eligibility is fabricated.
+      if (tripAccess.requiresSignIn) {
+        router.push(tripSignInResumeHref as never);
+        return;
+      }
+      if (tripAccess.blocked) return;
       const linesParam =
         lines !== undefined && lines.length > 0
           ? { lines: JSON.stringify(lines) }
@@ -412,7 +447,14 @@ const ResolvedTripPage: React.FC<{
         } as never,
       );
     },
-    [router, trip.id, paymentPlanChoice],
+    [
+      router,
+      trip.id,
+      paymentPlanChoice,
+      tripAccess.requiresSignIn,
+      tripAccess.blocked,
+      tripSignInResumeHref,
+    ],
   );
 
   // META-ORCH-1174 Leg B3 — the ONE lifted buy-state machine (the inline §10 box +
@@ -498,7 +540,25 @@ const ResolvedTripPage: React.FC<{
   ) : null;
 
   // ORCH-1138 — desktop sticky-panel Reserve control (phone uses the floating bar).
-  const reserveTappable = offeringState.cta.tappable;
+  // issue #2101 — offering-native unavailability keeps PRIORITY: a sold-out /
+  // closed / ended CTA keeps its own copy and can never be made tappable by
+  // access eligibility. Only an otherwise-tappable CTA is converted to the
+  // bounded restricted/checking state, and `sign_in_required` stays ACTIONABLE
+  // (it routes to sign-in, not to checkout).
+  const accessGatedCta = useMemo<CtaState>(() => {
+    if (!tripAccess.blocked) return offeringState.cta;
+    if (offeringState.cta.kind === "unavailable") return offeringState.cta;
+    return {
+      kind: "unavailable",
+      title:
+        tripAccess.state === "restricted"
+          ? "Restricted sale"
+          : "Checking this sale",
+      subline: null,
+      tappable: false,
+    };
+  }, [offeringState.cta, tripAccess.blocked, tripAccess.state]);
+  const reserveTappable = accessGatedCta.tappable;
   const barPrice = offeringState.barPriceLabel;
   // META-ORCH-1174 Leg B3 — the bars + desktop control fire Reserve with the SAME
   // selected lines the §10 box reads (DEC-B). Empty selection → no lines → the cart
@@ -523,7 +583,7 @@ const ResolvedTripPage: React.FC<{
         accessibilityLabel={
           reserveTappable
             ? `Reserve your spot on ${trip.title}`
-            : ctaUnavailableLabel(offeringState.cta)
+            : ctaUnavailableLabel(accessGatedCta)
         }
         style={[
           styles.deskReserve,
@@ -544,7 +604,7 @@ const ResolvedTripPage: React.FC<{
             ? barPrice === "" || offeringState.cta.kind === "free"
               ? "Reserve my spot"
               : `Reserve · ${barPrice}`
-            : ctaUnavailableLabel(offeringState.cta)}
+            : ctaUnavailableLabel(accessGatedCta)}
         </Text>
       </Pressable>
       <Text style={[styles.deskReassure, { color: palette.tertiaryText }]}>
@@ -555,19 +615,39 @@ const ResolvedTripPage: React.FC<{
 
   // META-ORCH-1174 — the DOCKED Reserve CTA (shared TripReserveBar variant="docked"),
   // rendered by TripPreview as the LAST phone-body child. Reads the SAME state.
+  // issue #2101 — when access is blocked the bar must render its DISABLED body,
+  // and the split shell must not appear at all: TripReserveBar renders
+  // `splitCtas !== undefined ? renderSplitShell(...) : ctaBody`, so passing the
+  // split while blocked would replace the disabled body with two live buttons.
+  // Both branches are real code paths; the unblocked one is byte-identical to
+  // today, including the shared splitCtas the ORCH-1138 contract pins.
   const dockedReserve = !isDesktop ? (
-    <TripReserveBar
-      cta={offeringState.cta}
-      palette={palette}
-      kicker={offeringState.barKicker}
-      fontFamily={boldFamily}
-      onPress={reserveSelected}
-      splitCtas={offeringState.splitCtas}
-      variant="docked"
-      safeAreaBottom={safeAreaBottom}
-      onDockLayout={handleDockLayout}
-      testID="orch-1117-trip-floating-bar"
-    />
+    tripAccess.blocked ? (
+      <TripReserveBar
+        cta={accessGatedCta}
+        palette={palette}
+        kicker={offeringState.barKicker}
+        fontFamily={boldFamily}
+        onPress={reserveSelected}
+        variant="docked"
+        safeAreaBottom={safeAreaBottom}
+        onDockLayout={handleDockLayout}
+        testID="orch-1117-trip-floating-bar"
+      />
+    ) : (
+      <TripReserveBar
+        cta={accessGatedCta}
+        palette={palette}
+        kicker={offeringState.barKicker}
+        fontFamily={boldFamily}
+        onPress={reserveSelected}
+        splitCtas={offeringState.splitCtas}
+        variant="docked"
+        safeAreaBottom={safeAreaBottom}
+        onDockLayout={handleDockLayout}
+        testID="orch-1117-trip-floating-bar"
+      />
+    )
   ) : undefined;
 
   return (
@@ -639,17 +719,30 @@ const ResolvedTripPage: React.FC<{
           docked CTA is off-screen. The SHARED TripReserveBar (web/business → no
           sheet overshoot). Same state as the docked bar so copy never diverges. */}
       {!isDesktop && floatingPillVisible ? (
-        <TripReserveBar
-          cta={offeringState.cta}
-          palette={palette}
-          kicker={offeringState.barKicker}
-          fontFamily={boldFamily}
-          onPress={reserveSelected}
-          splitCtas={offeringState.splitCtas}
-          variant="floating"
-          safeAreaBottom={safeAreaBottom}
-          testID="orch-1117-trip-floating-bar"
-        />
+        tripAccess.blocked ? (
+          <TripReserveBar
+            cta={accessGatedCta}
+            palette={palette}
+            kicker={offeringState.barKicker}
+            fontFamily={boldFamily}
+            onPress={reserveSelected}
+            variant="floating"
+            safeAreaBottom={safeAreaBottom}
+            testID="orch-1117-trip-floating-bar"
+          />
+        ) : (
+          <TripReserveBar
+            cta={accessGatedCta}
+            palette={palette}
+            kicker={offeringState.barKicker}
+            fontFamily={boldFamily}
+            onPress={reserveSelected}
+            splitCtas={offeringState.splitCtas}
+            variant="floating"
+            safeAreaBottom={safeAreaBottom}
+            testID="orch-1117-trip-floating-bar"
+          />
+        )
       ) : null}
     </View>
   );

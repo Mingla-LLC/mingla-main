@@ -67,13 +67,19 @@ Deno.test("#2079 verifies Paystack transaction ID before list or POST", () => {
 
 Deno.test("#2079 never neutralizes paid Paystack identity uncertainty", () => {
   const guard = worker.indexOf('row.reason.startsWith("paid_provider_")');
-  const pending = worker.indexOf(
-    'throw new Error("paid_provider_identity_pending")',
-    guard,
+  // #2168 — the window used to END on the throw this branch no longer contains.
+  // A missing marker returns -1, and slice(guard, -1) would have widened the
+  // window to nearly the whole file, so the negative assertion below would pass
+  // for the wrong reason. It now ends on a structural boundary and is
+  // length-banded (#2113 runaway-window).
+  const end = worker.indexOf("else if (!attempt)", guard);
+  assert(guard >= 0 && end > guard);
+  const branch = worker.slice(guard, end);
+  assert(
+    branch.length > 200 && branch.length < 4000,
+    `paid branch window is ${branch.length} chars — the boundary moved`,
   );
-  assert(guard >= 0 && pending > guard);
-  assertEquals(
-    worker.slice(guard, pending).includes('state = "neutralized"'),
-    false,
-  );
+  assertEquals(branch.includes('state = "neutralized"'), false);
+  // The obligation itself: uncertainty goes to a human, never to silence.
+  assert(branch.includes("issue_2168_handoff_revocation_attention"));
 });

@@ -56,6 +56,13 @@ interface OrderRow {
   pricing_breakdown: unknown | null;
   events: { brand_id: null | string } | null;
   order_line_items: OrderLineItemRow[];
+  /** issue #2160 — each pass of this order and the days it admits. */
+  tickets?: Array<{
+    id: string;
+    status: string | null;
+    used_at: string | null;
+    ticket_event_dates?: Array<{ event_date_id: string }> | null;
+  }> | null;
   refunds: RefundRow[];
 }
 
@@ -170,6 +177,12 @@ export const fetchEventOrders = async (
       stripe_application_fee_amount_cents,
       pricing_breakdown,
       events!inner ( brand_id ),
+      tickets (
+        id,
+        status,
+        used_at,
+        ticket_event_dates ( event_date_id )
+      ),
       order_line_items (
         id,
         ticket_type_id,
@@ -231,6 +244,24 @@ export const fetchEventOrders = async (
         phone: order.buyer_phone_e164 ?? order.buyer_phone ?? "",
         marketingOptIn: false,
       },
+      // issue #2160 — the days each pass of this order admits. EMPTY on every
+      // pre-#2160 order and every single-date event, which is what "not
+      // day-scoped" means: that pass is valid on any occurrence.
+      ticketDays: ((order as unknown as {
+        tickets?: Array<{
+          id: string;
+          status: string | null;
+          used_at: string | null;
+          ticket_event_dates?: Array<{ event_date_id: string }> | null;
+        }> | null;
+      }).tickets ?? []).map((ticket) => ({
+        ticketId: ticket.id,
+        eventDateIds: (ticket.ticket_event_dates ?? []).map(
+          (link) => link.event_date_id,
+        ),
+        status: ticket.status ?? "valid",
+        usedAt: ticket.used_at,
+      })),
       lines: order.order_line_items.map((line) => {
         const refundedQty = refundedQtyByLine[line.id] ?? 0;
         const refundedAmountCents = refundedAmountByLine[line.id] ?? 0;

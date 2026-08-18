@@ -101,6 +101,17 @@ import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { CreatorStep5Tickets } from "./CreatorStep5Tickets";
 import { CreatorStep6Settings } from "./CreatorStep6Settings";
+// issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers" card.
+// LAZY (ORCH-1083 boot budget): the card is mounted by THREE separate lazy
+// route chunks (Event, Trip and Experience management), so a static import
+// makes Metro hoist it into the eager `__common` chunk that EVERY buyer
+// downloads before anything renders — for a control only a brand owner ever
+// sees. Same treatment, and same reason, as SeeWhosGoingGate.
+const EventTicketCheckoutAccessCard = React.lazy(() =>
+  import("./EventTicketCheckoutAccessCard").then((m) => ({
+    default: m.EventTicketCheckoutAccessCard,
+  })),
+);
 import { EditAfterPublishBanner } from "./EditAfterPublishBanner";
 
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
@@ -211,6 +222,12 @@ const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "pricingSwitches",
 ]);
 
+// issue #1972 — the typed core fields the ONE atomic live-event owner writes.
+// `visibility` is deliberately NOT here: issue #2009 landed
+// `business_set_event_visibility` as its sole authority, with its own audit
+// row, share revocation and discovery-generation bump, and the database
+// refuses every other writer. It is routed through ISSUE_2009_VISIBILITY_PATCH_KEYS
+// below, so this set and that one stay disjoint and visibility has ONE owner.
 const ISSUE_1972_CORE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "name",
   "description",
@@ -220,7 +237,6 @@ const ISSUE_1972_CORE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "hideAddressUntilTicket",
   "coverHue",
   "tickets",
-  "visibility",
   "requireApproval",
   "allowTransfers",
   "hideRemainingCount",
@@ -229,6 +245,32 @@ const ISSUE_1972_CORE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "inPersonPaymentsEnabled",
 ]);
 
+
+// issue #2009 [published-event visibility] — visibility finally HAS an
+// authoritative server mutation (`business_set_event_visibility`), so it joins
+// the server-routable set. Before this, a server-loaded ticketed event emitted
+// a correct `patch.visibility` that nothing could write, and the safety gate
+// disabled Save with no explanation the organiser could act on.
+const ISSUE_2009_VISIBILITY_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "visibility",
+]);
+
+/**
+ * issue #2009 — the visibility write, its copy and its error mapping live in an
+ * ON-INTENT async chunk, loaded only when an organiser actually saves.
+ *
+ * This screen sits in the eager `__common` boot chunk, so anything it imports
+ * STATICALLY is downloaded by every visitor before any route renders. #2009's
+ * first shape did exactly that and cost 3,379 B against issue #2099's 1,024 B
+ * boot-payload ceiling. Loading it here instead costs one already-resolved
+ * dynamic import on the save path and nothing at boot.
+ *
+ * Do NOT convert this into a static `import` — that silently undoes the split.
+ */
+const loadIssue2009Visibility = (): Promise<
+  typeof import("../../services/publishedEventVisibility.issue2009")
+> => import("../../services/publishedEventVisibility.issue2009");
+
 const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...COVER_MEDIA_PATCH_KEYS,
   ...ORCH_0824_PATCH_KEYS,
@@ -236,6 +278,7 @@ const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...ORCH_0964_THEME_PATCH_KEYS,
   ...ORCH_1006_PRICING_PATCH_KEYS,
   ...ISSUE_1972_CORE_PATCH_KEYS,
+  ...ISSUE_2009_VISIBILITY_PATCH_KEYS,
 ]);
 
 const sleep = (ms: number): Promise<void> =>
@@ -572,6 +615,17 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     const patch = currentPatch;
     if (Object.keys(patch).length === 0) {
       showToast("No changes to save.");
+      return;
+    }
+    // issue #2009 SC-11/SC-12 — Private fails closed at BOTH layers. #1931
+    // shipped containment only (every transition primitive raises
+    // `private_access_release_frozen`), so there is no invited-guest path to
+    // hand a Private event to. Refuse here with the approved copy, and refuse
+    // again on the server if this client's capability state is stale.
+    if (!rsvpMode && patch.visibility === "private") {
+      void loadIssue2009Visibility().then((m) =>
+        showToast(m.ISSUE_2009_PRIVATE_UNAVAILABLE_COPY),
+      );
       return;
     }
     if (
@@ -1039,6 +1093,45 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // ORCH-0824 hotfix-5: address re-picks (via Google Places) flow
         // through the same patch RPC.
         patch.address !== undefined;
+      // issue #1972 + #2009 CARRY-FORWARD ORDERING. The visibility leg runs
+      // BEFORE `patchPublishedEventAtomically`, not after it. #2009 pins
+      // `events.updated_at` AS LOADED as its optimistic-concurrency boundary,
+      // and #1972's atomic owner sets `updated_at=now()`. Running the atomic
+      // owner first therefore made every combined (core + visibility) save
+      // fail with `stale_event_visibility` AFTER the core change had already
+      // committed — a guaranteed partial commit reported as a failure.
+      // Visibility first keeps the refusal free of any prior write, which is
+      // also #2009's own model (its Ari tool refuses mixed calls outright).
+      // issue #2009 [published-event visibility] — the visibility diff routes
+      // through the narrow RPC BEFORE the unified server-editable early-return,
+      // exactly like the cover / taxonomy / When / theme / pricing blocks above.
+      // Server-success-then-local: an RPC failure aborts and NEVER claims a
+      // partial success. There is deliberately no `.from("events").update(...)`
+      // fallback — the database refuses one.
+      // issue #2009 — SPEC §6 requires EXACTLY ONE success signal, and for a
+      // visibility-only save it names the persisted label. Any wider patch
+      // keeps the existing generic confirmation, so this stays null and both
+      // success paths below fall back to it.
+      let issue2009VisibilitySuccessToast: string | null = null;
+
+      if (!rsvpMode && patch.visibility !== undefined) {
+        const { issue2009ApplyEditorVisibility } =
+          await loadIssue2009Visibility();
+        const outcome = await issue2009ApplyEditorVisibility(
+          liveEvent,
+          patch,
+          validation.trimmedReason,
+        );
+        if (!outcome.ok) {
+          setSubmitting(false);
+          setModal((prev) => ({ ...prev, visible: false }));
+          showToast(outcome.toast);
+          return;
+        }
+        issue2009VisibilitySuccessToast = outcome.successToast;
+        invalidateServerEventCaches();
+      }
+
       if (taxonomyPatchPresent) {
         atomicPatch.taxonomy = {
           city:
@@ -1212,7 +1305,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         invalidateServerEventCaches();
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
-        showToast("Saved. Live now.");
+        // ORCH-0980 pins the literal `showToast("Saved. Live now.");` in this
+        // path, so both branches are spelled out rather than collapsed into a
+        // `??`. issue #2009 SPEC §6: a visibility-ONLY save names the label.
+        if (issue2009VisibilitySuccessToast !== null) {
+          showToast(issue2009VisibilitySuccessToast);
+        } else {
+          showToast("Saved. Live now.");
+        }
         setTimeout(() => {
           if (router.canGoBack()) {
             router.back();
@@ -1233,7 +1333,14 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       setSubmitting(false);
       setModal((prev) => ({ ...prev, visible: false }));
       if (result.ok) {
-        showToast("Saved. Live now.");
+        // ORCH-0980 pins the literal `showToast("Saved. Live now.");` in this
+        // path, so both branches are spelled out rather than collapsed into a
+        // `??`. issue #2009 SPEC §6: a visibility-ONLY save names the label.
+        if (issue2009VisibilitySuccessToast !== null) {
+          showToast(issue2009VisibilitySuccessToast);
+        } else {
+          showToast("Saved. Live now.");
+        }
         setTimeout(() => {
           if (router.canGoBack()) {
             router.back();
@@ -1530,6 +1637,19 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             </View>
           );
         })}
+
+        {/* issue #2101 [named-buyer checkout] — the owner-only "Eligible buyers"
+            card. Ticketed events only: RSVP has no checkout, so the control is
+            not offered in rsvpMode. Web-only by filename resolution — the
+            .native.tsx sibling is a typed null renderer, so no native Business
+            screen gains a configuration control. */}
+        {!rsvpMode && Platform.OS === "web" ? (
+          <View style={styles.sectionCard}>
+            <React.Suspense fallback={null}>
+              <EventTicketCheckoutAccessCard eventId={liveEvent.id} />
+            </React.Suspense>
+          </View>
+        ) : null}
       </ScrollView>
 
       {/* Sticky bottom Save dock — hidden when keyboard up */}
@@ -1546,6 +1666,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             disabled={
               submitting ||
               coverVideoProcessing ||
+              // issue #2009 SC-2 — a clean editor disables Save. Before this,
+              // "no diff" was absent from the disabled predicate, so some loads
+              // showed an ACTIVE button whose only outcome was the misleading
+              // "No changes to save." toast.
+              Object.keys(currentPatch).length === 0 ||
               (disableLocalSaveReason !== undefined &&
                 !canSaveServerCoverMediaOnly)
             }

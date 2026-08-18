@@ -8,12 +8,22 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/payout-release-sweep/**"
       - ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action.
+      # Without this path a change to that action would NOT re-run this suite, so
+      # the thing that provisions the database could break while the suite that
+      # depends on it stays silently unrun.
+      - ".github/actions/migrated-postgres/**"
   pull_request:
     paths:
       - "supabase/config.toml"
       - "supabase/migrations/**"
       - "supabase/functions/payout-release-sweep/**"
       - ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+      # #2148 — this suite now gets its database from a shared composite action.
+      # Without this path a change to that action would NOT re-run this suite, so
+      # the thing that provisions the database could break while the suite that
+      # depends on it stays silently unrun.
+      - ".github/actions/migrated-postgres/**"
 
 permissions:
   contents: read
@@ -32,25 +42,26 @@ jobs:
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"
+      # #2148 — replaces an inline `docker run` + full migration replay (MEASURED
+      # ~110 s). The container name is load-bearing here: the Deno tests below reach
+      # the database via `docker exec` using ISSUE_1171_POSTGRES_CONTAINER, so the
+      # action is told to keep the exact same name and nothing downstream changes.
       - name: Apply every migration to clean PostgreSQL 17
-        run: |
-          docker run --name issue1171-postgres \
-            -e POSTGRES_PASSWORD=postgres \
-            -d supabase/postgres:17.4.1.075
-          for attempt in {1..90}; do
-            state="$(docker inspect --format \
-              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
-              issue1171-postgres)"
-            if [ "$state" = "healthy" ]; then
-              break
-            fi
-            sleep 1
-          done
-          for migration_file in supabase/migrations/*.sql; do
-            docker exec -i issue1171-postgres \
-              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
-              < "$migration_file"
-          done
+        uses: ./.github/actions/migrated-postgres
+        with:
+          # Pinned at the call site, not inherited — see #1614 for why. Each
+          # workflow states the database it certifies against.
+          image: supabase/postgres:17.4.1.075
+          container-name: issue1171-postgres
+          # Derived per-run rather than the literal "postgres" this job used to
+          # pass via `-e POSTGRES_PASSWORD=postgres`. Moving that value into a
+          # `password:` input put a static credential into credential-shaped
+          # syntax and GitGuardian flagged it — correctly, on a public repo.
+          # Nothing depends on the value: the Deno tests reach this database with
+          # `docker exec … psql -U postgres` over the local socket and never send
+          # a password. Only the action's own readiness probe uses it, over TCP.
+          # Matches the house pattern already used by #1614 and #1403.
+          password: ${{ format('issue-1171-ci-{0}', github.run_id) }}
       - name: Run executable SQL contract and seeded dark-sweep tests
         env:
           ISSUE_1171_SQL_BEHAVIOR: "1"

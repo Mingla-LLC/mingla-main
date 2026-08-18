@@ -541,6 +541,191 @@ const listEvents: AgentToolDefinition = {
 // 5. update_event
 // ----------------------------------------------------------------------------
 
+// issue #2009 (BINDING SPEC AMENDMENT 3A, Defect 1) — Ari's visibility write.
+//
+// The #2009 migration installs a BEFORE UPDATE OF visibility guard on `events`
+// that refuses any write arriving as role `authenticated` or `anon` on an
+// `event_type = 'event'` row. Ari runs caller-JWT-only (I-ARI-USER-JWT-ONLY),
+// so its previous `.from("events").update({ visibility })` became
+// `event_visibility_direct_update_blocked`. Amendment 1 §B is the sanctioned
+// fix: route through the narrow RPC, which owns authorization, value mapping,
+// stale handling, Private readiness, side effects, audit and the bounded echo.
+//
+// Ari still uses the CALLER's JWT — never a service-role client. The RPC is
+// SECURITY DEFINER and does its own `auth.uid()` + brand-rank authorization, so
+// escalating here would both break I-ARI-USER-JWT-ONLY and defeat that check.
+
+/** The three Business labels `business_set_event_visibility` accepts. */
+const ISSUE_2009_RPC_VISIBILITIES = new Set(["public", "unlisted", "private"]);
+
+/**
+ * Fixed bounded reason (Amendment 1 §B.6). The RPC requires 10..200 chars; this
+ * is 64. It is deliberately NOT templated from model output — the reason lands
+ * in an append-only audit row.
+ */
+const ISSUE_2009_ARI_EDIT_REASON =
+  "Visibility changed through Ari after explicit user confirmation.";
+
+/**
+ * The RPC's stable codes mapped to the SAME honest copy the manual Business
+ * editor shows (Amendment 1 §B.8). Ordered most-specific-first. Nothing here is
+ * swallowed: an unmapped failure surfaces its real message under
+ * VISIBILITY_WRITE_FAILED.
+ */
+const ISSUE_2009_VISIBILITY_COPY: Record<string, string> = {
+  private_visibility_unavailable:
+    "Private events are not ready to accept invited guests yet. Choose Public or Unlisted for now.",
+  event_visibility_direct_update_blocked:
+    "That visibility change did not go through the approved path, so nothing was changed.",
+  event_visibility_effect_missing:
+    "The visibility change could not be completed safely, so nothing was changed. Try again.",
+  stale_event_visibility:
+    "This event changed after Ari proposed the update, so nothing was changed. Ask again to see the current setting.",
+  event_not_editable:
+    "This event's visibility cannot be changed right now. Nothing was changed.",
+  event_not_found: "That event is unavailable. Nothing was changed.",
+  not_authenticated: "Sign in again to change this event's visibility.",
+  invalid_edit_reason:
+    "That visibility change was rejected. Nothing was changed.",
+  invalid_visibility: "Choose Public or Unlisted.",
+};
+
+interface Issue2009VisibilityTarget {
+  id: string;
+  brand_id: string;
+  title: string | null;
+  event_type: string | null;
+  status: string | null;
+  visibility: string | null;
+  updated_at: string | null;
+}
+
+interface Issue2009VisibilityEcho {
+  eventId: string;
+  requestedVisibility: string;
+  storedVisibility: string;
+  previousStoredVisibility: string;
+  updatedAt: string;
+  changed: boolean;
+  revokedShareCount: number;
+}
+
+/**
+ * Read the authoritative row under the CALLER's JWT before deciding anything.
+ * `updated_at` read here is the optimistic-concurrency pin handed to the RPC.
+ */
+async function loadIssue2009VisibilityTarget(
+  client: SupabaseClient,
+  eventId: string,
+): Promise<Issue2009VisibilityTarget> {
+  const { data, error } = await client
+    .from("events")
+    .select("id, brand_id, title, event_type, status, visibility, updated_at")
+    .eq("id", eventId)
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw new ToolError("RESOURCE_CHECK_FAILED", error.message);
+  if (!data) {
+    throw new ToolError("BRAND_ACCESS_DENIED", "That resource is unavailable");
+  }
+  return data as unknown as Issue2009VisibilityTarget;
+}
+
+/**
+ * issue #2009 (pass-1 TEST REPORT P2-2) — the exit-leg sentence.
+ *
+ * The RPC raises `private_visibility_unavailable` for BOTH legs: entering
+ * Private, and leaving an event that is already Private. The map above holds
+ * the entering sentence, approved verbatim and unchanged. Telling someone who
+ * asked Ari to make a Private event Public to "Choose Public or Unlisted for
+ * now" is advice they have already followed, so the exit leg gets its own.
+ */
+const ISSUE_2009_PRIVATE_EXIT_COPY =
+  "This event is Private, and it can't be moved out of Private yet. Nothing was changed. Contact support and they'll switch it to Public or Unlisted.";
+
+/**
+ * Map a PostgREST failure onto the stable #2009 code. Never swallow it.
+ *
+ * `previousVisibility` is the value the authoritative row was READ at before
+ * the RPC ran; it is the only thing that distinguishes the two legs of the
+ * Private boundary, because the code is identical on both.
+ */
+function issue2009VisibilityToolError(
+  error: unknown,
+  previousVisibility?: string | null,
+): ToolError {
+  // [[postgrest_errors_are_not_error_instances]] — a PostgREST failure arrives
+  // as a PLAIN OBJECT, not an Error, so read `.message` off the shape itself.
+  const raw =
+    typeof (error as { message?: unknown } | null)?.message === "string"
+      ? (error as { message: string }).message
+      : "";
+  for (const [code, copy] of Object.entries(ISSUE_2009_VISIBILITY_COPY)) {
+    if (!raw.includes(code)) continue;
+    const directed = code === "private_visibility_unavailable" &&
+        previousVisibility === "private"
+      ? ISSUE_2009_PRIVATE_EXIT_COPY
+      : copy;
+    return new ToolError(code.toUpperCase(), directed);
+  }
+  return new ToolError(
+    "VISIBILITY_WRITE_FAILED",
+    raw || "The visibility change failed. Nothing was changed.",
+  );
+}
+
+/**
+ * The ONLY visibility write path for a standard ticketed event. Caller JWT in,
+ * bounded echo out, echo verified before success is reported.
+ */
+async function setIssue2009EventVisibility(
+  client: SupabaseClient,
+  target: Issue2009VisibilityTarget,
+  requested: string,
+): Promise<unknown> {
+  const { data, error } = await client.rpc("business_set_event_visibility", {
+    p_event_id: target.id,
+    p_requested_visibility: requested,
+    p_reason: ISSUE_2009_ARI_EDIT_REASON,
+    p_expected_updated_at: target.updated_at,
+  });
+  if (error) throw issue2009VisibilityToolError(error, target.visibility);
+
+  // Amendment 1 §B.6 — verify the bounded echo BEFORE reporting success. An
+  // echo for another event, or one that did not land on the value we asked
+  // for, is a failure; Ari never claims a save it cannot confirm.
+  const echo = data as Issue2009VisibilityEcho | null;
+  const expectedStored = requested === "unlisted" ? "hidden" : requested;
+  if (
+    !echo ||
+    echo.eventId !== target.id ||
+    echo.storedVisibility !== expectedStored
+  ) {
+    throw new ToolError(
+      "VISIBILITY_ECHO_MISMATCH",
+      "The visibility change could not be confirmed, so nothing is reported as saved. Check the event and try again.",
+    );
+  }
+
+  return {
+    event: {
+      id: target.id,
+      brand_id: target.brand_id,
+      title: target.title,
+      visibility: echo.storedVisibility,
+      status: target.status,
+      updated_at: echo.updatedAt,
+    },
+    visibility: {
+      requested: echo.requestedVisibility,
+      stored: echo.storedVisibility,
+      previousStored: echo.previousStoredVisibility,
+      changed: echo.changed,
+      revokedShareCount: echo.revokedShareCount,
+    },
+  };
+}
+
 // Legacy append-only source-test marker: const updateEvent: AgentTool = {
 const updateEvent: AgentToolDefinition = {
   name: "update_event",
@@ -548,7 +733,11 @@ const updateEvent: AgentToolDefinition = {
     "Modify fields on an event owned by the user. Only the provided fields are updated.",
   parameters: {
     type: "object",
-    required: ["event_id", "client_revision"],
+    // issue #1972 requires the next server revision for a field edit, but it is
+    // enforced in the EXECUTOR rather than here: the issue #2009 visibility leg
+    // is a separate action that carries its own optimistic-concurrency pin
+    // (`p_expected_updated_at`) and must stay reachable without a revision.
+    required: ["event_id"],
     properties: {
       event_id: { type: "string", description: "UUID of the event to update" },
       title: { type: "string", description: "New event title (1-120 chars)" },
@@ -563,7 +752,11 @@ const updateEvent: AgentToolDefinition = {
       },
       is_online: { type: "boolean" },
       online_url: { type: "string" },
-      visibility: { type: "string", enum: ["public", "unlisted", "private"] },
+      // issue #2009 + #1931 — `private` is NOT offerable: the database refuses
+      // the Private boundary for EVERY writer until #2144, so advertising it
+      // would be a dead tap. `draft` stays only as the idempotent no-op the
+      // routing block below recognises.
+      visibility: { type: "string", enum: ["draft", "public", "unlisted"] },
       end_at: { type: "string", description: "Optional ISO 8601 end datetime" },
       timezone: { type: "string", description: "IANA timezone for the event" },
       client_revision: { type: "integer", minimum: 0 },
@@ -578,15 +771,14 @@ const updateEvent: AgentToolDefinition = {
     if (!isUuid(args.event_id)) {
       throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
     }
-    if (
-      !Number.isInteger(args.client_revision) ||
-      Number(args.client_revision) < 1
-    ) {
-      throw new ToolError(
-        "INVALID_ARGS",
-        "client_revision must be the next server revision",
-      );
-    }
+
+    // ---- issue #1972 — the typed fields this tool may change ---------------
+    // `status` is deliberately absent: lifecycle changes have dedicated,
+    // guarded operations (publish / unpublish / cancel / end_sales), and the
+    // raw `events.status` write this tool used to expose was the #1972 Pass-4
+    // finding 2 defect. `visibility` is absent for the same reason in reverse —
+    // issue #2009 made `business_set_event_visibility` its sole authority, so
+    // it is routed below rather than carried in the canonical patch.
     const mutableKeys = [
       "title",
       "start_at",
@@ -595,19 +787,101 @@ const updateEvent: AgentToolDefinition = {
       "location_text",
       "is_online",
       "online_url",
-      "visibility",
       "timezone",
     ];
-    if (!mutableKeys.some((key) => args[key] !== undefined)) {
+    const residualKeys = mutableKeys.filter((key) => args[key] !== undefined);
+
+    // ---- issue #2009 (Amendment 3A, Defect 1) — visibility routing ---------
+    // Everything below happens BEFORE any write, so a mixed call cannot
+    // partially execute: either the narrow visibility RPC runs, or the #1972
+    // canonical dispatcher runs, or the call is refused having written nothing.
+    const requestedVisibility = isString(args.visibility)
+      ? args.visibility.trim().toLowerCase()
+      : null;
+    let visibilityWasIdempotentDraft = false;
+
+    if (requestedVisibility !== null) {
+      const target = await loadIssue2009VisibilityTarget(client, args.event_id);
+
+      if (target.event_type !== "event") {
+        // RSVP, trips and experiences are outside #2009 (SC-22) and outside
+        // #1972, whose canonical dispatcher is standard-event only. #1972 bound
+        // this tool to `event_type='event'` in EVENT_TYPE_BY_TOOL, so
+        // `authorizeAgentTool` has ALREADY denied a non-'event' offering before
+        // this executor ran. This is the fail-closed second wall, deliberately
+        // NOT the pre-#2009 direct column write: those offering classes keep
+        // their own owners (`biz_update_live_rsvp` and friends), and none of
+        // them is this tool.
+        throw new ToolError(
+          "BRAND_ACCESS_DENIED",
+          "That brand or resource is unavailable",
+        );
+      } else if (requestedVisibility === "draft") {
+        // Amendment 1 §B.4 — literal `draft` is accepted ONLY as an idempotent
+        // field on an event that is already a draft, and is then omitted from
+        // the sparse update. Ari cannot unpublish through visibility; that is
+        // `unpublish_event`, whose contract #2009 does not touch.
+        if (target.visibility !== "draft") {
+          throw new ToolError(
+            "VISIBILITY_DRAFT_REQUIRES_UNPUBLISH",
+            "Ari cannot move a published event back to draft by changing visibility. Ask to unpublish it instead. Nothing was changed.",
+          );
+        }
+        visibilityWasIdempotentDraft = true;
+      } else if (ISSUE_2009_RPC_VISIBILITIES.has(requestedVisibility)) {
+        // Amendment 1 §B.3 — a visibility proposal is a SEPARATE action.
+        // Refused before every write; no partial direct update, no partial
+        // canonical dispatch, no success. `residualKeys` is a superset of the
+        // sparse `updates` keys this replaced (it also covers start_at, end_at
+        // and timezone), so it refuses strictly MORE mixed calls than before.
+        if (residualKeys.length > 0) {
+          throw new ToolError(
+            "VISIBILITY_CHANGE_MUST_BE_SEPARATE",
+            "Ask Ari to change visibility separately from other event edits. Nothing was changed.",
+          );
+        }
+        return await setIssue2009EventVisibility(
+          client,
+          target,
+          requestedVisibility,
+        );
+      } else {
+        throw new ToolError("INVALID_VISIBILITY", "Choose Public or Unlisted.");
+      }
+    }
+
+    if (residualKeys.length === 0) {
+      if (visibilityWasIdempotentDraft) {
+        // Nothing to write, and nothing failed — report the authoritative row.
+        const target = await loadIssue2009VisibilityTarget(
+          client,
+          args.event_id,
+        );
+        return {
+          event: {
+            id: target.id,
+            brand_id: target.brand_id,
+            title: target.title,
+            visibility: target.visibility,
+            status: target.status,
+            updated_at: target.updated_at,
+          },
+        };
+      }
       throw new ToolError("INVALID_ARGS", "No fields provided to update");
     }
+
+    // ---- issue #1972 — one exactly-once canonical owner for standard events -
+    // Optimistic concurrency is mandatory here. The #2009 visibility leg above
+    // needs no `client_revision` because it carries its OWN pin
+    // (`p_expected_updated_at`) into `business_set_event_visibility`.
     if (
-      args.visibility !== undefined &&
-      !["public", "unlisted", "private"].includes(String(args.visibility))
+      !Number.isInteger(args.client_revision) ||
+      Number(args.client_revision) < 1
     ) {
       throw new ToolError(
         "INVALID_ARGS",
-        "visibility must be public, unlisted, or private",
+        "client_revision must be the next server revision",
       );
     }
     const operationId = requireAgentOperationId(context);

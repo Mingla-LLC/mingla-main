@@ -56,6 +56,9 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+// issue #2216 — a free reservation lands the guest on the SAME confirmation
+// carousel a paid one does, so it owes the guest the SAME rendered pass.
+import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
 import {
   checkoutUnavailableResponse,
   claimTicketProviderAttempt,
@@ -64,6 +67,15 @@ import {
   type TicketAttemptClaim,
 } from "../_shared/checkoutSaleTruth.ts";
 import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+// Issue #2101 [named-buyer checkout] — the ONE edge adapter for the sole
+// database decision owner. Enforced BEFORE any session, capacity, provider or
+// free-ticket work, and re-decided inside the database on every value-moving
+// path so a direct Edge/RPC call cannot bypass it.
+import {
+  ticketCheckoutAccessDecision,
+  ticketCheckoutAccessDenial,
+  ticketCheckoutAccessDenialFromDbMessage,
+} from "../_shared/ticketCheckoutAccess.ts";
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
@@ -211,6 +223,119 @@ function isIntakeAnswerEmpty(type: string, answer: unknown): boolean {
   }
 }
 
+/**
+ * issue #2136 [free-ticket checkout] — the issued-ticket shape the buyer
+ * contract (`TicketCheckoutFreeCompleted.tickets` in
+ * `mingla-business/src/services/ticketCheckoutService.ts`) declares. Kept
+ * structurally identical to what `issue_1930_ticket_checkout_finalize_base`
+ * builds, so the read-back below and the RPC's own fresh-mint envelope are
+ * interchangeable.
+ */
+export interface IssuedTicketSummary {
+  ticketId: string;
+  ticketTypeId: string | null;
+  ticketName: string;
+  qrPayload: string;
+  status: string;
+}
+
+/**
+ * issue #2216 [free-order pass renders as a blank white square] — what
+ * `readIssuedTicketsForOrder` actually answers with.
+ *
+ * ORCH-0932 moved QR rendering server-side because the client could not draw
+ * one reliably on the Expo SDK 54 web export, and wired it into
+ * `ticket-checkout-confirm` + `ticket-checkout-status` — the only two
+ * producers of confirm-screen tickets that existed then. #2136 later added a
+ * THIRD producer (this function's `free_completed` body) and it carried
+ * `qrPayload` but no rendered image, so every free reservation reached the
+ * carousel with nothing to draw and the `imageDataUrl.length > 0` guard
+ * showed the placeholder — the blank white square in #2216.
+ *
+ * `qrImageDataUrl` is REQUIRED here, not optional: an optional field is
+ * exactly what let the gap ship unnoticed.
+ */
+export interface IssuedTicketWithQrImage extends IssuedTicketSummary {
+  /** `data:image/png;base64,…`, or `""` when this one ticket failed to render. */
+  qrImageDataUrl: string;
+}
+
+function normalizeIssuedTickets(value: unknown): IssuedTicketSummary[] {
+  if (!Array.isArray(value)) return [];
+  const rows: IssuedTicketSummary[] = [];
+  for (const entry of value) {
+    if (entry === null || typeof entry !== "object") continue;
+    const row = entry as Record<string, unknown>;
+    const ticketId = typeof row.ticketId === "string" ? row.ticketId : "";
+    if (ticketId.length === 0) continue;
+    rows.push({
+      ticketId,
+      ticketTypeId: typeof row.ticketTypeId === "string"
+        ? row.ticketTypeId
+        : null,
+      ticketName: typeof row.ticketName === "string" ? row.ticketName : "",
+      qrPayload: typeof row.qrPayload === "string" ? row.qrPayload : "",
+      status: typeof row.status === "string" ? row.status : "valid",
+    });
+  }
+  return rows;
+}
+
+/**
+ * issue #2136 — resolve the tickets an order actually issued.
+ *
+ * `biz_ticket_checkout_finalize` returns tickets only on its fresh-mint arm;
+ * its idempotent-replay arm (`order_id IS NOT NULL`) answers `{outcome,orderId}`
+ * with none. Prefer the envelope when it carries them (no extra round trip on
+ * the common path) and otherwise read the canonical `tickets` rows by order id.
+ * Returning `[]` is meaningful: the caller REFUSES to report a completed free
+ * checkout without at least one issued ticket.
+ *
+ * issue #2216 — this is also the SINGLE place a rendered QR image is attached,
+ * which is what makes the fresh-mint arm and the idempotent-replay arm carry
+ * one BY CONSTRUCTION rather than by two callers remembering to.
+ */
+export async function readIssuedTicketsForOrder(
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  orderId: string,
+  envelopeTickets: unknown,
+): Promise<IssuedTicketWithQrImage[]> {
+  const fromEnvelope = normalizeIssuedTickets(envelopeTickets);
+  if (fromEnvelope.length > 0) return await attachQrImageDataUrls(fromEnvelope);
+  const { data, error } = await client
+    .from("tickets")
+    .select("id, ticket_type_id, qr_code, status, ticket_types(name)")
+    .eq("order_id", orderId)
+    .order("created_at", { ascending: true });
+  if (error) {
+    console.error(
+      "[ticket-checkout-create] issued-ticket read-back failed",
+      orderId,
+      error.message,
+    );
+    return [];
+  }
+  const rows = Array.isArray(data) ? data : [];
+  return await attachQrImageDataUrls(normalizeIssuedTickets(
+    rows.map((row: Record<string, unknown>) => {
+      const joined = row.ticket_types;
+      const ticketTypeName = joined !== null && typeof joined === "object"
+        ? (Array.isArray(joined)
+          ? (joined[0] as Record<string, unknown> | undefined)?.name
+          : (joined as Record<string, unknown>).name)
+        : undefined;
+      return {
+        ticketId: row.id,
+        ticketTypeId: row.ticket_type_id,
+        ticketName: typeof ticketTypeName === "string" ? ticketTypeName : "",
+        qrPayload: row.qr_code,
+        status: row.status,
+      };
+    }),
+  ));
+}
+
 export interface TicketCheckoutCreateDeps {
   userIdFromAuthHeader: typeof userIdFromAuthHeader;
   serviceClient: typeof serviceClient;
@@ -277,6 +402,21 @@ export const createTicketCheckoutCreateHandler = (
         body.eventDateId.length > 0
       ? body.eventDateId
       : null;
+    // issue #2160 [multi-day multi-select] — the SET of days the guest chose,
+    // as a sibling of `lines` rather than a per-line field (SPEC amendment §1).
+    // De-duplicated here; ORDERED and validated server-side below. Absent or
+    // empty => every downstream branch is byte-identical to today, which is
+    // what every single-date event, experience, trip and RSVP sends.
+    const eventDateIds: string[] = Array.isArray(body.eventDateIds)
+      ? Array.from(
+        new Set(
+          body.eventDateIds.filter(
+            (value): value is string =>
+              typeof value === "string" && value.length > 0,
+          ),
+        ),
+      )
+      : [];
     const clientTaxCalculationId = typeof body.taxCalculationId === "string" &&
         body.taxCalculationId.length > 0
       ? body.taxCalculationId
@@ -311,6 +451,38 @@ export const createTicketCheckoutCreateHandler = (
 
     const userId = await deps.userIdFromAuthHeader(req);
     const supabase = deps.serviceClient();
+
+    // ── Issue #2101 [named-buyer checkout] — the FIRST authority. It runs for
+    // every surface (web, mobile-web, native) BEFORE the event-date read, the
+    // capacity/pricing work, the session RPC, the provider call and the
+    // free-ticket path, so a denied request produces ZERO checkout session,
+    // attempt, ticket, outbox, Stripe, Paystack or free-entitlement effect.
+    //
+    // The ONLY identity input is `userId`, derived from the bearer token by
+    // `userIdFromAuthHeader`. Nothing in `body` may supply buyer authority: the
+    // typed buyer name/email/phone above are contact fields for the receipt and
+    // are never consulted here.
+    //
+    // Default is unchanged: an event with no policy row, or mode
+    // 'unrestricted', returns `allowed_unrestricted` and this block is a no-op.
+    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;
+    try {
+      accessDecision = await ticketCheckoutAccessDecision(supabase, {
+        eventId,
+        buyerUserId: userId,
+      });
+    } catch (accessError) {
+      // Fail CLOSED — never read a transport failure as "unrestricted".
+      console.error(
+        "[ticket-checkout-create] issue-2101 access decision unavailable",
+        accessError,
+      );
+      return jsonResponse({ error: "checkout_restricted" }, 403);
+    }
+    const accessDenial = ticketCheckoutAccessDenial(accessDecision);
+    if (accessDenial !== null) {
+      return jsonResponse({ error: accessDenial.error }, accessDenial.status);
+    }
 
     // ORCH-0792: reject checkout against events with no current/future date.
     // Pairs with the publish-RPC fix that writes event_dates and the
@@ -369,6 +541,75 @@ export const createTicketCheckoutCreateHandler = (
       ) {
         // The chosen occurrence already ended → unbookable.
         return jsonResponse({ error: "occurrence_not_available" }, 422);
+      }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // issue #2160 — VALIDATE THE CHOSEN DAY SET AND DERIVE THE ANCHOR.
+    // ═══════════════════════════════════════════════════════════════════════
+    // ONE batched read, never N round trips. Every id must belong to THIS event
+    // and must not have ended, else 422 — the same contract the single
+    // `eventDateId` above already uses, so the client handles it already.
+    //
+    // The database re-validates all of this under the event lock (create-session
+    // §B DELTA 3) and again at finalize (issue_1930_ticket_session_authorized).
+    // This layer exists to give the guest a specific 422 instead of a generic
+    // checkout failure, not to be the authority.
+    // The SERVER-DERIVED anchor. Stays null on every path that sends no day
+    // set, which is what keeps every ORCH-1072 write site below byte-identical.
+    let anchorEventDateId: string | null = null;
+    const orderedEventDateIds: string[] = [];
+    if (eventDateIds.length > 0) {
+      const { data: occRows, error: occSetErr } = await supabase
+        .from("event_dates")
+        .select("id, end_at")
+        .eq("event_id", eventId)
+        .in("id", eventDateIds)
+        .order("start_at", { ascending: true });
+      if (occSetErr !== null) {
+        console.error(
+          "[ticket-checkout-create] occurrence set lookup failed",
+          occSetErr,
+        );
+        return jsonResponse(
+          { error: "occurrence_lookup_failed", detail: occSetErr.message },
+          500,
+        );
+      }
+      const rows = (occRows ?? []) as Array<{ id: string; end_at: string | null }>;
+      if (rows.length !== eventDateIds.length) {
+        // At least one id is not an occurrence of THIS event (or was deleted).
+        return jsonResponse({ error: "occurrence_not_found" }, 422);
+      }
+      if (
+        rows.some((row) =>
+          typeof row.end_at === "string" &&
+          new Date(row.end_at).getTime() <= Date.now()
+        )
+      ) {
+        return jsonResponse({ error: "occurrence_not_available" }, 422);
+      }
+      orderedEventDateIds.push(...rows.map((row) => row.id));
+
+      // THE ANCHOR IS SERVER-AUTHORITATIVE — the client cannot nominate it.
+      // It is the LATEST-**ENDING** chosen occurrence (D-2 /
+      // I-PROPOSED-2160-B), and the top-level `eventDateId` body field is
+      // IGNORED whenever a day set is present.
+      //
+      // WHY LATEST-ENDING AND NOT FIRST. `orders.event_date_id` is the payout
+      // and refund anchor: `resolve_payout_live_occurrence` keys off it and the
+      // NG release will not mature until `ed.end_at + interval '3 days' <=
+      // now()`. Anchoring on the first day would release the organiser's money
+      // while day 2 was still unattended and still refundable.
+      let latestEnd = Number.NEGATIVE_INFINITY;
+      for (const row of rows) {
+        const end = typeof row.end_at === "string"
+          ? new Date(row.end_at).getTime()
+          : Number.NEGATIVE_INFINITY;
+        if (end >= latestEnd) {
+          latestEnd = end;
+          anchorEventDateId = row.id;
+        }
       }
     }
 
@@ -523,6 +764,8 @@ export const createTicketCheckoutCreateHandler = (
           buyerPhoneE164,
           lines,
           paymentPlanChoice,
+          // issue #2160 — day-aware. Empty => string-identical to today's key.
+          eventDateIds: orderedEventDateIds,
         });
     const buyerStatusToken = randomBuyerStatusToken();
 
@@ -540,6 +783,13 @@ export const createTicketCheckoutCreateHandler = (
         p_expires_at: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
         p_application_fee_amount_cents: 0,
         p_payment_plan_choice: paymentPlanChoice,
+        // issue #2160 — the chosen day set. The RPC owns validation, the
+        // event's pricing mode and the per-mode multiplier; this is a
+        // passthrough. `null` when empty so the call is byte-identical to
+        // today for every non-multi-day checkout.
+        p_event_date_ids: orderedEventDateIds.length > 0
+          ? orderedEventDateIds
+          : null,
       },
     );
 
@@ -551,6 +801,19 @@ export const createTicketCheckoutCreateHandler = (
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
+      // Issue #2101 — the database re-decides under the event -> brand lock. If
+      // the policy or membership changed between the Edge decision above and
+      // the session RPC, the stable bounded contract is returned, not a generic
+      // 409, and no session exists.
+      const dbAccessDenial = ticketCheckoutAccessDenialFromDbMessage(
+        sessionError?.message,
+      );
+      if (dbAccessDenial !== null) {
+        return jsonResponse(
+          { error: dbAccessDenial.error },
+          dbAccessDenial.status,
+        );
+      }
       return jsonResponse(
         { error: "checkout_session_failed", detail: sessionError?.message },
         409,
@@ -559,6 +822,121 @@ export const createTicketCheckoutCreateHandler = (
 
     const session = sessionResult as Record<string, unknown>;
     const checkoutSessionId = String(session.checkoutSessionId ?? "");
+
+    // ===================================================================
+    // issue #2150 [duplicate free tickets on resubmit] — IDEMPOTENT REPLAY
+    // OF AN ALREADY-COMPLETED FREE RESERVATION.
+    // ===================================================================
+    // Post-#2150 the session RPC no longer tombstones a completed ZERO-TOTAL
+    // session; it returns that session verbatim, carrying `status:
+    // 'free_completed'` and the `orderId` it already minted. That status is
+    // unreachable from a fresh mint (the base RPC only ever answers
+    // `pending_free` / `requires_payment` / `awaiting_web_redirect`), so this
+    // branch is entered by exactly one thing: an identical free reservation
+    // being submitted again after the first one COMPLETED — a refresh, a
+    // back-navigation, a second tab.
+    //
+    // WHY IT SITS HERE, ABOVE THE STATUS-TOKEN UPDATE. The UPDATE below
+    // overwrites `buyer_status_token_hash` with a freshly minted token's hash.
+    // Running it first would (a) destroy the very hash the possession check
+    // compares against, making the check unfalsifiable, and (b) silently
+    // invalidate the REAL guest's token from their first submit, breaking
+    // their `ticket-checkout-status` polling. A completed reservation's token
+    // is never re-minted.
+    //
+    // A CONCURRENT double-tap does NOT arrive here: while the first request is
+    // still in flight the session is `pending_free`, so the RPC's pre-existing
+    // in-flight arm returns it with `orderId` NULL and the normal free arm
+    // below runs (finalize is idempotent under its own row lock). That path is
+    // untouched and needs no token.
+    //
+    // Nothing is re-run on this branch: no `biz_ticket_checkout_finalize`, no
+    // `dispatchTicketConfirmation`, no `fireAdConversion`. The order, its
+    // tickets, its two `ticket_order_notifications` rows and its ad conversion
+    // were all created by the FIRST submit, and `notification-retry-sweeper`
+    // owns redelivery of anything that failed to send.
+    if (
+      String(session.status ?? "") === "free_completed" &&
+      String(session.orderId ?? "").length > 0
+    ) {
+      const replayedOrderId = String(session.orderId);
+      // DISCLOSURE REQUIRES PROOF OF POSSESSION, NOT PROOF OF KNOWLEDGE.
+      // The idempotency key is derived from the event, the buyer's email and
+      // phone and the cart — all of which someone who knows the guest can type
+      // into the form. Handing that caller the order and its QR payloads would
+      // let them attend on the guest's pass, which `biz_ticket_scan` then marks
+      // `used`, and the guest is refused at the door as a `duplicate`. That is
+      // a denial of admission which did not exist before this issue.
+      //
+      // A signed-in session is proven by the JWT; an ANONYMOUS session must
+      // present the buyer status token — the same secret that already gates
+      // `ticket-checkout-status`. The database owns the decision so it is
+      // provable against real rows rather than only against a fake.
+      const presentedStatusToken = typeof body.buyerStatusToken === "string"
+        ? body.buyerStatusToken.trim()
+        : "";
+      const presentedStatusTokenHash = presentedStatusToken.length > 0
+        ? await sha256Hex(presentedStatusToken)
+        : "";
+      const { data: replayAuthorized, error: replayAuthError } = await supabase
+        .rpc("issue_2150_free_replay_disclosure_authorized", {
+          p_session_id: checkoutSessionId,
+          p_buyer_user_id: userId,
+          p_buyer_status_token_hash: presentedStatusTokenHash,
+        });
+      if (replayAuthError || replayAuthorized !== true) {
+        // FAIL CLOSED ON DISCLOSURE, FAIL SAFE ON STATE. No order id, no
+        // ticket, no QR payload leaves here — and NOTHING was minted, because
+        // the RPC declined to tombstone regardless of who asked. Falling back
+        // to tombstone-and-mint would hand this caller nothing but would hand
+        // the GUEST a duplicate order, pass and confirmation, which is the
+        // whole defect. The bounded token tells an honest client that the
+        // reservation already exists without confirming anything about it.
+        if (replayAuthError) {
+          console.error(
+            "[ticket-checkout-create] free replay authorization failed",
+            checkoutSessionId,
+            replayAuthError.message,
+          );
+        }
+        return jsonResponse({ error: "free_reservation_already_exists" }, 409);
+      }
+      const replayedTickets = await readIssuedTicketsForOrder(
+        supabase,
+        replayedOrderId,
+        null,
+      );
+      if (replayedTickets.length === 0) {
+        // The RPC only returns a completed free session when a live ticket
+        // exists for its order, so an empty read-back is a real inconsistency
+        // and must never be reported as a completed checkout (the #2136 rule).
+        console.error(
+          "[ticket-checkout-create] free replay order has no tickets",
+          checkoutSessionId,
+          replayedOrderId,
+        );
+        return jsonResponse(checkoutUnavailableResponse(), 409);
+      }
+      return jsonResponse({
+        kind: "free_completed",
+        orderId: replayedOrderId,
+        checkoutSessionId,
+        eventId: String(session.eventId ?? eventId),
+        paymentStatus: "paid",
+        totalCents: Number(session.totalCents ?? 0),
+        currency: String(session.currency ?? ""),
+        notificationStatus: "queued",
+        tickets: replayedTickets,
+        buyerPhoneE164,
+        // Echoed, never re-minted: the caller proved possession WITH this
+        // token, so returning it keeps their status polling working. A
+        // signed-in caller who presented none simply gets none.
+        ...(presentedStatusToken.length > 0
+          ? { buyerStatusToken: presentedStatusToken }
+          : {}),
+      });
+    }
+
     // ORCH-1072: persist the chosen occurrence onto the checkout session row's
     // metadata (validated above) so the booked event_date is recorded with the
     // session → order. Merged into the SAME UPDATE that writes the status token
@@ -568,12 +946,50 @@ export const createTicketCheckoutCreateHandler = (
       buyer_status_token_hash: await sha256Hex(buyerStatusToken),
       updated_at: new Date().toISOString(),
     };
+    // issue #2160 — `event_date_id` now carries the ANCHOR (the latest-ENDING
+    // chosen day) whenever a day set was sent, and the client's top-level
+    // `eventDateId` otherwise. `orders.event_date_id` therefore lands with NO
+    // finalize change and the payout/refund control planes are untouched.
+    //
+    // `event_date_ids` is written for OBSERVABILITY ONLY. NOTHING may read it
+    // as authority — `ticket_checkout_session_event_dates` (written by the RPC
+    // under the event lock) is the authority, and `ticket_event_dates` is the
+    // authority for what a pass admits.
     if (eventDateId !== null) {
       const existingMeta =
         typeof session.metadata === "object" && session.metadata !== null
           ? (session.metadata as Record<string, unknown>)
           : {};
       sessionUpdate.metadata = { ...existingMeta, event_date_id: eventDateId };
+    }
+    // ══ issue #2160 — THE ANCHOR OVERRIDES; IT DOES NOT REPLACE ════════════
+    // The ORCH-1072 block above is left BYTE-IDENTICAL: its exact shape is
+    // frozen by source pins T-A1/T-A4/T-A5 in
+    // orch1072_experience_occurrence_checkout.test.ts and the experience
+    // surface depends on it. #2160 writes AFTER it and therefore wins, which is
+    // precisely the spec's rule — when a day set is present the client's
+    // top-level `eventDateId` is IGNORED and the anchor is server-authoritative.
+    //
+    // The anchor is the LATEST-ENDING chosen day, so `orders.event_date_id`
+    // lands with NO finalize change and the payout/refund control planes stay
+    // untouched: a two-day order's money matures after the SECOND day ends,
+    // never while day 2 is still unattended and still refundable.
+    //
+    // `event_date_ids` is OBSERVABILITY ONLY. Nothing may read it as authority —
+    // `ticket_checkout_session_event_dates` (written by the RPC under the event
+    // lock) is the authority for what was chosen, and `ticket_event_dates` is
+    // the authority for what a pass admits.
+    if (orderedEventDateIds.length > 0 && anchorEventDateId !== null) {
+      const existingMeta =
+        typeof session.metadata === "object" && session.metadata !== null
+          ? (session.metadata as Record<string, unknown>)
+          : {};
+      sessionUpdate.metadata = {
+        ...existingMeta,
+        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ?? {}),
+        event_date_id: anchorEventDateId,
+        event_date_ids: orderedEventDateIds,
+      };
     }
     const { error: statusTokenError } = await supabase
       .from("ticket_checkout_sessions")
@@ -663,31 +1079,135 @@ export const createTicketCheckoutCreateHandler = (
           409,
         );
       }
-      const orderId = String(
-        (finalized as Record<string, unknown>).orderId ?? "",
+      // issue #2136 [free-ticket checkout] — BRANCH ON THE OUTCOME, NOT ON
+      // OBJECT TRUTHINESS.
+      //
+      // `biz_ticket_checkout_finalize` always resolves to a jsonb envelope, so
+      // the `!finalized` guard above can only ever catch a transport failure.
+      // `{"outcome":"unavailable"}` and `{"outcome":"paid_reversal_pending"}`
+      // are BOTH truthy objects that describe a finalize which created NO
+      // order — and until this change they fell straight through into a 200
+      // labelled `free_completed`. The guest was told a ticket that does not
+      // exist had been reserved. Only `outcome === 'finalized'` may be
+      // reported as a completed free checkout.
+      const finalizedRecord = finalized as Record<string, unknown>;
+      const finalizeOutcome = typeof finalizedRecord.outcome === "string"
+        ? finalizedRecord.outcome
+        : "";
+      if (finalizeOutcome === "unavailable") {
+        // The sale lost current truth between session-create and finalize (or
+        // the session vanished). Nothing was minted and nothing was charged.
+        console.error(
+          "[ticket-checkout-create] free finalize unavailable",
+          checkoutSessionId,
+        );
+        return jsonResponse(checkoutUnavailableResponse(), 409);
+      }
+      if (finalizeOutcome === "paid_reversal_pending") {
+        // Mirrors the paid path's handling verbatim in shape:
+        // ticket-checkout-confirm/index.ts returns HTTP 409 with the bounded
+        // `checkout_unavailable` token for this exact outcome. The database
+        // owns the reversal/revocation bookkeeping; the Edge only reports the
+        // bounded state. Post-#2136 a free session cannot reach this outcome
+        // (the no-value arm answers `unavailable` instead) — it is kept as an
+        // explicit handled branch so a future contract change surfaces here
+        // rather than as a fake success.
+        console.error(
+          "[ticket-checkout-create] free finalize reversal-pending",
+          checkoutSessionId,
+          String(finalizedRecord.reversalReason ?? ""),
+        );
+        return jsonResponse(checkoutUnavailableResponse(), 409);
+      }
+      if (finalizeOutcome !== "finalized") {
+        console.error(
+          "[ticket-checkout-create] free finalize unknown outcome",
+          checkoutSessionId,
+          finalizeOutcome,
+        );
+        return jsonResponse(
+          {
+            error: "checkout_finalize_failed",
+            detail: finalizeOutcome.length > 0
+              ? `unexpected_outcome:${finalizeOutcome}`
+              : "missing_outcome",
+          },
+          409,
+        );
+      }
+      const orderId = String(finalizedRecord.orderId ?? "");
+      if (orderId.length === 0) {
+        console.error(
+          "[ticket-checkout-create] free finalize returned no order",
+          checkoutSessionId,
+        );
+        return jsonResponse(
+          { error: "checkout_finalize_failed", detail: "order_missing" },
+          409,
+        );
+      }
+      // issue #2136 — SUPPLY `tickets`, read back from the canonical rows.
+      //
+      // The wrapper's fresh-mint arm merges the base RPC's envelope (which DOES
+      // carry `tickets`), but its idempotent-replay arm — the `order_id IS NOT
+      // NULL` early return — answers `{outcome,orderId}` with no tickets at
+      // all. A retried tap therefore produced a `free_completed` body whose
+      // `tickets` was undefined, which is what the buyer screen crashed on.
+      // Reading the issued rows by order id covers BOTH arms with one code
+      // path, and does not change the shared RPC's return shape (which the
+      // Stripe webhook, the Paystack webhook, ticket-checkout-confirm and
+      // reconcile-stuck-checkouts all consume).
+      const freeTickets = await readIssuedTicketsForOrder(
+        supabase,
+        orderId,
+        finalizedRecord.tickets,
       );
-      if (orderId) await dispatchTicketConfirmation(orderId);
+      if (freeTickets.length === 0) {
+        console.error(
+          "[ticket-checkout-create] free finalize order has no tickets",
+          checkoutSessionId,
+          orderId,
+        );
+        return jsonResponse(
+          { error: "checkout_finalize_failed", detail: "tickets_missing" },
+          409,
+        );
+      }
+      await dispatchTicketConfirmation(orderId);
       // ISSUE-865 WP-B — ad-conversion CAPI send for the FREE-order path (its own
       // finalize; no webhook backup). FIRE-AND-FORGET (NOT awaited) so the buyer's
       // create response is never delayed — this path is on the buyer's tap→confirm
       // wait. Idempotent + fail-open; value_cents = 0 for a free RSVP. event_id
       // = orderId.
-      if (orderId) {
-        void fireAdConversion(supabase as never, { orderId, surface: "web" })
-          .catch(
-            (adConvErr) => {
-              console.warn(
-                "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
-                adConvErr instanceof Error
-                  ? adConvErr.message
-                  : String(adConvErr),
-              );
-            },
-          );
-      }
+      void fireAdConversion(supabase as never, { orderId, surface: "web" })
+        .catch(
+          (adConvErr) => {
+            console.warn(
+              "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
+              adConvErr instanceof Error
+                ? adConvErr.message
+                : String(adConvErr),
+            );
+          },
+        );
+      // issue #2136 — the envelope is spread FIRST and every field the buyer
+      // contract (`TicketCheckoutFreeCompleted`) declares is then written
+      // explicitly, so the idempotent-replay arm — which answers only
+      // `{outcome,orderId}` — can no longer produce `tickets: undefined`,
+      // `totalCents: NaN` or a missing currency on the confirm screen.
       return jsonResponse({
         kind: "free_completed",
-        ...finalized,
+        ...finalizedRecord,
+        orderId,
+        checkoutSessionId,
+        eventId: String(finalizedRecord.eventId ?? eventId),
+        paymentStatus: "paid",
+        totalCents: Number(finalizedRecord.totalCents ?? totalCents),
+        currency: String(finalizedRecord.currency ?? session.currency ?? ""),
+        notificationStatus: String(
+          finalizedRecord.notificationStatus ?? "queued",
+        ),
+        tickets: freeTickets,
         buyerPhoneE164,
         buyerStatusToken,
       });
@@ -921,6 +1441,11 @@ export const createTicketCheckoutCreateHandler = (
             mingla_checkout_session_id: checkoutSessionId,
             mingla_event_id: eventId,
             mingla_buyer_email: buyerEmail,
+            // issue #2160 — how many days this reservation covers. Omitted for
+            // every one-day reservation → byte-identical Paystack metadata.
+            ...(orderedEventDateIds.length > 1
+              ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+              : {}),
           },
           // #1178 [ng-split-removal] — split to the organiser subaccount ONLY for
           // an UNSTAMPED brand that has a subaccount (pass it + the flat Mingla
@@ -1938,6 +2463,20 @@ export const createTicketCheckoutCreateHandler = (
           // PI metadata byte-identical for events/trips/one-off experiences.
           ...(eventDateId !== null
             ? { mingla_event_date_id: eventDateId }
+            : {}),
+          // issue #2160 — spread AFTER the ORCH-1072 key above, so the ANCHOR
+          // wins on a multi-day cart while that frozen shape stays literally
+          // intact. `mingla_event_date_count` lets a reconciliation tell a
+          // two-day order from a one-day one without a join. Both omitted when
+          // no day set was sent → PI metadata byte-identical for events, trips
+          // and one-off experiences.
+          ...(orderedEventDateIds.length > 0 && anchorEventDateId !== null
+            ? {
+              mingla_event_date_id: anchorEventDateId,
+              ...(orderedEventDateIds.length > 1
+                ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+                : {}),
+            }
             : {}),
         },
       };

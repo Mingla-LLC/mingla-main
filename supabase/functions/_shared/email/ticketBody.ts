@@ -2,6 +2,7 @@
 // Renders the buyer-facing email body (hero, event meta, line items, ticket
 // block). All caller-supplied strings flow through escapeHtml first.
 
+import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
 import { escapeHtml } from "./escape.ts";
 import { formatEventDateLine } from "./dateLine.ts";
 import { formatMoneyFromCents, formatMoneyOrFree } from "./currency.ts";
@@ -12,7 +13,6 @@ import type { TicketBodyInput } from "./types.ts";
 
 const {
   BRAND_ORANGE,
-  BRAND_ORANGE_BUTTON,
   BRAND_INK,
   BRAND_MUTED,
   BRAND_BG_SOFT,
@@ -160,17 +160,12 @@ function renderCalendarSection(input: TicketBodyInput): string {
   return renderCalendarBlockHtml(links);
 }
 
-function renderDownloadAppCta(input: TicketBodyInput): string {
-  const orderId =
-    (input.order as TicketBodyInput["order"] & { id?: string }).id ??
-      input.order.shortId;
-  return `<div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
-    <p style="margin:0;font-size:15px;color:#6B5A47;">Join your event chat in the Mingla app</p>
-    <a href="https://usemingla.com/orders/${escapeHtml(orderId)}/chat"
-       style="display:inline-block;margin-top:12px;padding:12px 24px;background:${BRAND_ORANGE_BUTTON};color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
-      Open in Mingla
-    </a>
-  </div>`;
+// #2240 — the destination and the markup both come from appLink.ts now. The
+// order id used to be interpolated into an /orders/{id}/chat path on the
+// marketing host that has never existed (HTTP 404); nothing about the app CTA
+// is per-order, so no id is passed at all.
+function renderDownloadAppCta(): string {
+  return renderAppCtaHtml("Join your event chat in the Mingla app");
 }
 
 export function renderTicketBody(input: TicketBodyInput): {
@@ -219,7 +214,7 @@ export function renderTicketBody(input: TicketBodyInput): {
     ${renderLineItems(input.order)}
     ${orderShortLineHtml}
     ${renderCalendarSection(input)}
-    ${renderDownloadAppCta(input)}`;
+    ${renderDownloadAppCta()}`;
 
   const totalText = input.order.totalCents > 0
     ? formatMoneyFromCents(input.order.totalCents, input.order.currency)
@@ -251,10 +246,8 @@ export function renderTicketBody(input: TicketBodyInput): {
     vatNoteText,
     "",
     `Order #${input.order.shortId}`,
-    `Join your event chat in the Mingla app: https://usemingla.com/orders/${
-      (input.order as TicketBodyInput["order"] & { id?: string }).id ??
-        input.order.shortId
-    }/chat`,
+    // #2240 — same working link the HTML body carries, from the same constant.
+    appCtaTextLine("Join your event chat in the Mingla app"),
     "",
     "Your tickets are attached as a PDF — each one has a unique QR code for entry.",
   ].filter((line) => line !== null && line !== undefined);

@@ -1942,14 +1942,40 @@ async function sendSms(
         // reached Twilio (skipped = kill-switch, no HTTP; failed = adapter reported
         // no dispatch), so a lost write here can only cause a RETRY of an unsent
         // recipient on the next pass, never a double-send (F-DS-1 is send-only).
+        // #2218 — `deferred` maps to this table's EXISTING deferred state, the
+        // one ORCH-1270 built for quiet hours, and counts as neither sent nor
+        // failed. In practice the adapter's Nigerian embargo guard cannot fire
+        // here: marketing SMS is already confined to 08:00–20:00 WAT, the exact
+        // complement of the 20:00–08:00 embargo. The arm exists anyway because
+        // the alternative — falling through to `failed` — would burn a campaign
+        // recipient over a window change, and "unreachable today" is not a
+        // reason to write a branch that lies tomorrow.
+        //
+        // NAMED SO IT IS NOT A SURPRISE IF THE WINDOWS EVER DIVERGE: this arm
+        // shares the else-branch that revokes an offering invite token, and a
+        // deferral is not a failure that should cost a token. It is harmless
+        // today only because the guard cannot fire here. If NG marketing hours
+        // are ever widened past 20:00 WAT, split this arm out ABOVE the token
+        // revocation before doing so.
         await supabase
           .from("marketing_messages")
           .update({
-            status: result.status === "skipped" ? "preview_skipped" : "failed",
+            status: result.status === "skipped"
+              ? "preview_skipped"
+              : result.status === "deferred"
+              ? "deferred"
+              : "failed",
             failure_reason: result.error ?? "sms_unknown_error",
+            // The column ORCH-1270 already uses to schedule a held recipient.
+            // Written only on the deferred arm, so no other outcome acquires a
+            // due-date it should not have.
+            ...(result.status === "deferred" && result.retryAfter
+              ? { next_attempt_at: result.retryAfter }
+              : {}),
           })
           .eq("id", messageId);
         if (result.status === "skipped") previewSkipped += 1;
+        else if (result.status === "deferred") deferred += 1;
         else failed += 1;
       }
     }
