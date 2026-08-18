@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 541,
-  "selfTestWiredFloor": 344,
+  "expectedStrictGrepMjsFiles": 542,
+  "selfTestWiredFloor": 345,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -79,6 +79,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2075-force-update"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2107-mandatory-js-update.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2107-mandatory-js-update"
       ]
     },
     {

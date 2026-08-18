@@ -1,0 +1,104 @@
+name: "#2107 Mandatory JS Update"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app-mobile/app/_layout.tsx"
+      - "app-mobile/src/components/OtaAcknowledgementLayer.tsx"
+      - "app-mobile/src/hooks/useOtaUpdates.ts"
+      - "app-mobile/src/services/otaUpdatePolicy.ts"
+      - "app-mobile/src/services/otaUpdateRuntime.ts"
+      - "app-mobile/src/services/__tests__/issue_2107_ota_update_policy.test.ts"
+      - "app-mobile/src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts"
+      - "mingla-business/app/_layout.tsx"
+      - "mingla-business/src/components/ui/OtaAcknowledgementLayer.tsx"
+      - "mingla-business/src/services/otaUpdatePolicy.ts"
+      - "mingla-business/src/services/otaUpdateRuntime.ts"
+      - "mingla-business/src/services/__tests__/issue_2107_ota_update_policy.test.ts"
+      - "mingla-business/src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts"
+      - "supabase/config.toml"
+      - "supabase/functions/_shared/appOtaPolicy.ts"
+      - "supabase/functions/_shared/appOtaPolicy.test.ts"
+      - "supabase/functions/_shared/appOtaPolicy.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/appVersionPolicy.ts"
+      - "supabase/functions/app-ota-policy/**"
+      - "supabase/migrations/*2107*"
+      - ".github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs"
+      - ".github/workflows/issue-2107-mandatory-js-update.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-2107-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs
+      - name: Prove a true root-mount revert fails
+        run: |
+          if ISSUE_2107_SIMULATE_REVERT=1 node .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs; then
+            echo "#2107 simulated revert unexpectedly passed"
+            exit 1
+          fi
+
+  consumer-ota-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - run: npm ci
+      - run: >-
+          npx jest --runInBand
+          src/services/__tests__/issue_2107_ota_update_policy.test.ts
+          src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
+
+  host-ota-gate:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: >-
+          npx jest --runInBand
+          src/services/__tests__/issue_2107_ota_update_policy.test.ts
+          src/services/__tests__/issue_2107_ota_update_gate.tester_adversarial.test.ts
+
+  edge-ota-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: >-
+          deno test --allow-env
+          supabase/functions/_shared/appOtaPolicy.test.ts
+          supabase/functions/_shared/appOtaPolicy.tester-adversarial.test.ts
+      - run: >-
+          deno check
+          supabase/functions/app-ota-policy/index.ts
+          supabase/functions/_shared/appOtaPolicy.ts
