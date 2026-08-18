@@ -1,8 +1,16 @@
-// INVARIANT: This is the ONLY file that imports expo-updates.
-// All OTA logic is centralized here. Do not scatter Updates calls elsewhere.
+// INVARIANT (#2107): src/services/otaUpdateRuntime.ts is the ONLY file that
+// imports expo-updates. This hook consumes its bridge. Do not scatter Updates
+// calls elsewhere — .github/scripts/strict-grep/issue-2107-mandatory-js-update.mjs
+// fails the build if any other file imports expo-updates directly.
+//
+// SCOPE (#2107): this hook is now the OPTIONAL update path only — the small
+// dismissible banner offering an immediate restart once an update has landed.
+// A REQUIRED update is handled by OtaAcknowledgementLayer, which blocks the app
+// until the user taps once. Kept per the #2107 operator decision: it interrupts
+// nobody and gets a fix live sooner for anyone who takes it.
 
 import { useCallback, useRef, useState } from 'react';
-import * as Updates from 'expo-updates';
+import { createOtaUpdateBridge } from '../services/otaUpdateRuntime';
 
 export interface OtaUpdateState {
   /** Whether an update check is in progress */
@@ -43,8 +51,10 @@ export function useOtaUpdates(): OtaUpdateState {
   const isDownloadingRef = useRef(false);
 
   const checkForUpdate = useCallback(async (): Promise<void> => {
-    // Guard: expo-updates throws in dev mode
-    if (__DEV__) return;
+    // Guard: the bridge reports disabled in dev (the native module throws) and
+    // in any build with updates switched off.
+    const bridge = createOtaUpdateBridge();
+    if (!bridge.isEnabled) return;
 
     // Guard: already checking or downloading
     if (isCheckingRef.current || isDownloadingRef.current) return;
@@ -54,7 +64,7 @@ export function useOtaUpdates(): OtaUpdateState {
       setIsChecking(true);
 
       console.warn('[OTA] Checking for update...');
-      const checkResult = await Updates.checkForUpdateAsync();
+      const checkResult = await bridge.checkForUpdate();
 
       if (!checkResult.isAvailable) {
         console.warn('[OTA] No update available');
@@ -66,7 +76,7 @@ export function useOtaUpdates(): OtaUpdateState {
       isDownloadingRef.current = true;
       setIsDownloading(true);
 
-      await Updates.fetchUpdateAsync();
+      await bridge.fetchUpdate();
 
       console.warn('[OTA] Update downloaded and ready to apply');
       setIsUpdateReady(true);
@@ -83,11 +93,12 @@ export function useOtaUpdates(): OtaUpdateState {
   }, []);
 
   const applyUpdate = useCallback(async (): Promise<void> => {
-    if (__DEV__) return;
+    const bridge = createOtaUpdateBridge();
+    if (!bridge.isEnabled) return;
 
     try {
       console.warn('[OTA] Applying update — reloading app');
-      await Updates.reloadAsync();
+      await bridge.reload();
     } catch (e: unknown) {
       const message = e instanceof Error ? e.message : String(e);
       console.warn(`[OTA] Reload failed: ${message}`);

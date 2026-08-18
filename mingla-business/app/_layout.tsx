@@ -50,6 +50,11 @@ import {
   MandatoryUpdateGate,
   type VersionForegroundEvent,
 } from "../src/components/ui/MandatoryUpdateGate";
+// #2107 — blocking JavaScript-update acknowledgement. Host had no in-app
+// updater at all before this. Mounted INSIDE MandatoryUpdateGate so the native
+// store screen always wins: a build below the native minimum cannot be rescued
+// by an OTA and must never be shown a download prompt it cannot act on.
+import { OtaAcknowledgementLayer } from "../src/components/ui/OtaAcknowledgementLayer";
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
@@ -863,13 +868,15 @@ export default function RootLayout(): React.ReactElement {
                   onRequiredChange={handleRequiredChange}
                   onForegroundCheckComplete={handleForegroundCheckComplete}
                 >
-                  {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
-                      every route (inside AuthProvider so identify works). */}
-                  <PostHogAnalyticsProvider>
-                    <RootLayoutInner />
-                  </PostHogAnalyticsProvider>
-                  <KeyboardToolbarRoot />
-                  <ConsentBanner />
+                  <OtaAcknowledgementLayer>
+                    {/* META-ORCH-1187: PostHog autocapture + masked replay wraps
+                        every route (inside AuthProvider so identify works). */}
+                    <PostHogAnalyticsProvider>
+                      <RootLayoutInner />
+                    </PostHogAnalyticsProvider>
+                    <KeyboardToolbarRoot />
+                    <ConsentBanner />
+                  </OtaAcknowledgementLayer>
                 </MandatoryUpdateGate>
               </KeyboardRoot>
             </AuthProvider>

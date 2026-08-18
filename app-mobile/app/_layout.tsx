@@ -47,6 +47,11 @@ import { KeyboardToolbarRoot } from "../src/wrappers/KeyboardToolbarRoot";
 import { PostHogAnalyticsProvider } from "../src/services/PostHogAnalyticsProvider";
 import { UnifiedShareProvider } from "../src/components/share/UnifiedShareProvider";
 import { MandatoryUpdateGate } from "../src/components/MandatoryUpdateGate";
+// #2107 — blocking JavaScript-update acknowledgement. Mounted INSIDE
+// MandatoryUpdateGate so the native store screen always wins: a build below the
+// native minimum cannot be rescued by an OTA and must never be shown a download
+// prompt it cannot act on.
+import { OtaAcknowledgementLayer } from "../src/components/OtaAcknowledgementLayer";
 
 // ORCH-0679 Wave 2B-2: SINGLE source of truth for Sentry init.
 // I-SENTRY-SINGLE-INIT — duplicate Sentry.init in app/index.tsx was deleted as
@@ -178,7 +183,8 @@ export default Sentry.wrap(function RootLayout() {
         {cacheReady && (
           <KeyboardRoot>
             <MandatoryUpdateGate>
-              <PersistQueryClientProvider
+              <OtaAcknowledgementLayer>
+                <PersistQueryClientProvider
                 client={queryClient}
                 persistOptions={{
                   persister: asyncStoragePersister,
@@ -203,9 +209,11 @@ export default Sentry.wrap(function RootLayout() {
                   </UnifiedShareProvider>
                 </PostHogAnalyticsProvider>
               </PersistQueryClientProvider>
-              {/* Kept under the version gate so an open keyboard accessory can
-                  never layer over the mandatory screen on foreground. */}
-              <KeyboardToolbarRoot />
+                {/* Kept under the version gate so an open keyboard accessory can
+                    never layer over the mandatory screen on foreground, and
+                    inside the #2107 layer for the same reason. */}
+                <KeyboardToolbarRoot />
+              </OtaAcknowledgementLayer>
             </MandatoryUpdateGate>
           </KeyboardRoot>
         )}
