@@ -767,6 +767,18 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       brandDefaultCurrency: brand?.defaultCurrency ?? null,
       coverMediaApplyMode: "draft_auto" as const,
       onCoverVideoProcessingChange: setCoverVideoProcessing,
+      // issue #2160 — the multi-day pricing-mode control is EVENT-only.
+      // ExperienceCreatorWizard lifts the same When step and deliberately does
+      // NOT pass this: experiences have their own checkout that never sends a
+      // day set, so events.multi_date_pricing_mode governs nothing there.
+      showMultiDatePricingMode: true,
+      // A draft cannot hold a ticket — tickets are minted only for published
+      // events, and published editing uses EditPublishedScreen, not this
+      // wizard. So the control is genuinely never locked HERE. The database
+      // trigger remains the authority and is fail-closed for every other write
+      // path; this prop exists so a future surface that DOES edit a sold event
+      // renders the locked state instead of eating the error.
+      multiDatePricingModeLocked: false,
       // ORCH-0892-A: legacy CoverPicker scroll-ref prop removed.
       // CoverPicker now uses the keyboard-controller library's KAV wrap.
       // scrollViewRef remains for the Cycle 3 wizard root pattern

@@ -128,14 +128,27 @@ export const decodeCartSeed = (
 export const checkoutPublicPathWithSeed = (
   eventId: string,
   quantities: Record<string, number>,
-  eventDateId?: string | null,
+  // issue #2160 — the day SET. A single string is still accepted so nothing
+  // that passes one has to change; it is treated as a one-element set.
+  eventDateIds?: readonly string[] | string | null,
 ): string => {
   const base = checkoutPublicPath(eventId);
   const seed = encodeCartSeed(quantities);
   const params: string[] = [];
   if (seed.length > 0) params.push(`seed=${encodeURIComponent(seed)}`);
-  if (typeof eventDateId === "string" && eventDateId.length > 0) {
-    params.push(`eventDateId=${encodeURIComponent(eventDateId)}`);
+  const days = typeof eventDateIds === "string"
+    ? (eventDateIds.length > 0 ? [eventDateIds] : [])
+    : (eventDateIds ?? []).filter((id) => id.length > 0);
+  // EMPTY => a BYTE-IDENTICAL path to the pre-#2135 one. A single-date event
+  // must produce exactly the string it produced before any of this existed,
+  // and that is asserted by string equality in the #2135 / #2160 suites.
+  //
+  // ONE `encodeURIComponent` over the JOINED value, matching the single-id
+  // encoding it replaces. The cart route still accepts the legacy single
+  // `eventDateId=` param (links minted between the #2135 and #2160 deploys are
+  // live in the wild and must keep working).
+  if (days.length > 0) {
+    params.push(`eventDateIds=${encodeURIComponent(days.join(","))}`);
   }
   return params.length > 0 ? `${base}?${params.join("&")}` : base;
 };

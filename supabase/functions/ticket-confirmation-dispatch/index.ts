@@ -621,6 +621,106 @@ async function handleWaitlistNotificationDispatch(
   }
 }
 
+/** One `event_dates` row, in the shape `buildRenderContext` already consumes. */
+interface ChosenOccurrence {
+  start_at: string | null;
+  end_at: string | null;
+  timezone: string | null;
+}
+
+/**
+ * issue #2162 — WHICH DAY DOES THIS ORDER'S CONFIRMATION NAME?
+ *
+ * Resolution order, most specific first:
+ *
+ *   1. The days this order's TICKETS admit (`ticket_event_dates`, issue #2160).
+ *      This is the authority for what the guest may actually attend, so it
+ *      beats everything. A multi-day reservation collapses to a real RANGE:
+ *      the EARLIEST chosen `start_at` and the LATEST chosen `end_at`, so a
+ *      Saturday+Sunday guest is told "Sat – Sun", not "Sat" and not "day 1".
+ *   2. `orders.event_date_id` — a #2135 single-select reservation, or a #2160
+ *      order's anchor. Named directly.
+ *   3. `null`, meaning "use the master", which the caller does. That is the
+ *      legitimate legacy / single-date case, NOT an error.
+ *
+ * Returns `null` rather than throwing on a read failure: a confirmation that
+ * names the master day is wrong, but a confirmation that never sends is worse,
+ * and the notification-retry sweeper cannot fix a decision this function made.
+ * The failure is logged so it is not silent (Constitution #3).
+ */
+async function resolveChosenOccurrence(
+  supabase: ReturnType<typeof serviceClient>,
+  orderId: string,
+  eventId: string,
+  orderEventDateId: string | null,
+): Promise<ChosenOccurrence | null> {
+  try {
+    const { data: ticketRows, error: ticketErr } = await supabase
+      .from("tickets")
+      .select("ticket_event_dates ( event_dates ( start_at, end_at, timezone ) )")
+      .eq("order_id", orderId);
+    if (ticketErr === null && Array.isArray(ticketRows)) {
+      const days: ChosenOccurrence[] = [];
+      for (const row of ticketRows as unknown as Array<{
+        ticket_event_dates?: Array<{ event_dates?: ChosenOccurrence | null }> | null;
+      }>) {
+        for (const link of row.ticket_event_dates ?? []) {
+          const day = link.event_dates ?? null;
+          if (day !== null && typeof day.start_at === "string") days.push(day);
+        }
+      }
+      if (days.length > 0) {
+        const byStart = [...days].sort((a, b) =>
+          String(a.start_at).localeCompare(String(b.start_at))
+        );
+        const first = byStart[0];
+        const lastEnd = days
+          .map((d) => d.end_at)
+          .filter((e): e is string => typeof e === "string")
+          .sort()
+          .at(-1) ?? first.end_at;
+        return {
+          start_at: first.start_at,
+          end_at: lastEnd,
+          timezone: first.timezone,
+        };
+      }
+    } else if (ticketErr !== null) {
+      console.error(
+        "[ticket-confirmation-dispatch] ticket day lookup failed",
+        orderId,
+        ticketErr.message,
+      );
+    }
+
+    if (orderEventDateId !== null && orderEventDateId.length > 0) {
+      const { data: occ, error: occErr } = await supabase
+        .from("event_dates")
+        .select("start_at, end_at, timezone")
+        .eq("id", orderEventDateId)
+        .eq("event_id", eventId)
+        .maybeSingle();
+      if (occErr !== null) {
+        console.error(
+          "[ticket-confirmation-dispatch] chosen occurrence lookup failed",
+          orderId,
+          occErr.message,
+        );
+        return null;
+      }
+      return (occ as ChosenOccurrence | null) ?? null;
+    }
+  } catch (error) {
+    console.error(
+      "[ticket-confirmation-dispatch] chosen-day resolution threw",
+      orderId,
+      error instanceof Error ? error.message : String(error),
+    );
+  }
+  // Legitimate: single-date event, or an order predating day selection.
+  return null;
+}
+
 function buildRenderContext(args: {
   order: OrderJoin;
   lineItems: Array<{
@@ -640,6 +740,8 @@ function buildRenderContext(args: {
     // ticket confirmation can render a real date range + ICS DTEND.
     end_at: string | null;
     timezone: string | null;
+    // issue #2162 — this may now be the occurrence the GUEST CHOSE rather than
+    // the master. The shape is unchanged, so nothing downstream had to move.
   } | null;
 }): RenderContext {
   const { order, lineItems, ticketRows, masterDate } = args;
@@ -950,6 +1052,7 @@ export const handler = async (req: Request): Promise<Response> => {
       payment_status,
       confirmed_at,
       notification_status,
+      event_date_id,
       events!inner (
         id,
         title,
@@ -988,12 +1091,38 @@ export const handler = async (req: Request): Promise<Response> => {
     .eq("order_id", orderId)
     .order("created_at", { ascending: true });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // issue #2162 — THE CONFIRMATION MUST NAME THE DAY THE GUEST CHOSE.
+  // ═══════════════════════════════════════════════════════════════════════
+  // Live defect, since #2135 shipped day selection: this dispatch read the
+  // MASTER occurrence (`is_master = true`, the earliest day), so every guest
+  // who picked day 2 of a multi-day exhibition was emailed day 1. The pass and
+  // the roster were right; only the message the guest actually reads was wrong,
+  // which is the worst place for it to be wrong.
+  //
+  // THE CONTRACT (SPEC §4.6):
+  //   * If this order's tickets carry days (issue #2160's `ticket_event_dates`),
+  //     the date line names them — the earliest for `startAt`, the latest for
+  //     `endAt`, so a two-day reservation reads as the range it is.
+  //   * Else if the order carries `event_date_id` (a #2135 single-select
+  //     reservation, or a #2160 order's anchor), that occurrence is named.
+  //   * Else — legacy, single-date, no selection — behaviour is VERBATIM
+  //     master. A NULL here is legitimate, not an error, and is asserted
+  //     explicitly rather than assumed.
   const { data: masterDate } = await supabase
     .from("event_dates")
     .select("start_at, end_at, timezone, is_master")
     .eq("event_id", order.events.id)
     .eq("is_master", true)
     .maybeSingle();
+
+  const chosenDate = await resolveChosenOccurrence(
+    supabase,
+    orderId,
+    order.events.id,
+    (order as unknown as { event_date_id?: string | null }).event_date_id ??
+      null,
+  );
 
   const context = buildRenderContext({
     order,
@@ -1008,7 +1137,10 @@ export const handler = async (req: Request): Promise<Response> => {
       qr_code: string;
       ticket_types: { name: string | null };
     }>,
-    masterDate: (masterDate ?? null) as
+    // issue #2162 — the CHOSEN day wins; master is the documented fallback and
+    // nothing else. `buildRenderContext` is unchanged: it still receives one
+    // occurrence-shaped object, it is simply the right one now.
+    masterDate: (chosenDate ?? masterDate ?? null) as
       | {
         start_at: string | null;
         // ORCH-0877 — end_at carried through to email body (already selected

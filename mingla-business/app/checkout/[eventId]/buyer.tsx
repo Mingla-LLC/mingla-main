@@ -31,6 +31,7 @@ import React, {
   useState,
 } from "react";
 import {
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -76,10 +77,21 @@ import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
 import {
   createTicketCheckout,
+  FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
   FREE_CHECKOUT_FAILED_MESSAGE,
   freeCheckoutErrorMessage,
   isCompletedFreeOrder,
+  isFreeAlreadyReserved,
 } from "../../../src/services/ticketCheckoutService";
+// issue #2150 — the buyer status token has to OUTLIVE this component for an
+// anonymous guest to prove a completed free reservation is theirs after a
+// refresh or a back-navigation. The existing ORCH-0789/0790 sessionStorage
+// helper already carries exactly this field for the paid redirect round-trip;
+// the free path reuses it rather than inventing a second storage shape.
+import {
+  readCheckoutResumePayload,
+  writeCheckoutResumePayload,
+} from "../../../src/components/checkout/checkoutPersistence";
 // META-ORCH-1161 Sub-A.2 — bundled-mandatory consent (DEC-186): shared writer +
 // verbatim disclosure copy + the §2 T&C sheet.
 import { recordConsent } from "../../../src/services/consentService";
@@ -238,7 +250,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
   // the guest chose on the public page, seeded into the cart by the cart step.
   // null on every single-date checkout, which keeps the request byte-identical.
-  const { lines, buyer, setBuyer, recordResult, eventDateId } = useCart();
+  const { lines, buyer, setBuyer, recordResult, eventDateId, eventDateIds } =
+    useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -432,12 +445,42 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // picks a day, sees it on the page and in the cart, and still lands an
         // order with `event_date_id = NULL` — which silently books them onto the
         // master date and makes per-day guest counts wrong for the whole event.
+        // issue #2150 — present the buyer status token from THIS guest's
+        // earlier submit for this event, when the tab still holds one. It is
+        // the only thing that distinguishes the guest resubmitting from
+        // someone who merely knows their email and phone, so without it the
+        // server refuses to hand back the order and its QR payloads (it still
+        // refuses to mint a duplicate either way).
+        // Same web-scoped accessor shape `payment.tsx` uses for this helper.
+        // On native `sessionStorage` is simply absent and the helpers no-op.
+        const storage = Platform.OS === "web"
+          ? (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage
+          : undefined;
+        const heldToken =
+          readCheckoutResumePayload(storage, eventId)?.buyerStatusToken ?? "";
         const result = await createTicketCheckout({
           eventId,
           buyer,
           lines,
+          ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
+        // issue #2160 — forward the chosen day SET. Empty => byte-identical
+        // request. The server derives the payout anchor and applies the
+        // event's pricing mode; the client never nominates either.
+        ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
+          // issue #2160 — forward the chosen day SET. Empty => byte-identical
+          // request. The server derives the payout anchor and applies the
+          // event's pricing mode; the client never nominates either.
+          ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
         });
+        // issue #2150 — the guest already holds this reservation and this
+        // request could not prove it is theirs. NOT an error: nothing failed
+        // and nothing was duplicated. Tell them the truth and stop — there is
+        // deliberately no order payload to take to the confirm screen.
+        if (isFreeAlreadyReserved(result)) {
+          setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
+          return;
+        }
         if (result.kind !== "free_completed") {
           throw new Error("Free checkout unexpectedly required payment.");
         }
@@ -449,6 +492,31 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // ticket that was never minted would hide the failure instead.
         if (!isCompletedFreeOrder(result)) {
           throw new Error(FREE_CHECKOUT_FAILED_MESSAGE);
+        }
+        // issue #2150 — persist the buyer status token so a refresh or a
+        // back-navigation can still PROVE this reservation belongs to this
+        // guest. Without this the token exists only in the in-flight response
+        // and every legitimate resubmit would be indistinguishable from an
+        // attacker who knows the guest's email and phone. Best-effort: a
+        // storage failure must never fail a reservation that already exists.
+        if (
+          storage !== undefined &&
+          typeof result.buyerStatusToken === "string" &&
+          result.buyerStatusToken.length > 0
+        ) {
+          try {
+            writeCheckoutResumePayload(storage, eventId, {
+              checkoutSessionId: result.checkoutSessionId,
+              buyerStatusToken: result.buyerStatusToken,
+              lines,
+              buyer,
+            });
+          } catch (persistErr) {
+            console.error(
+              "[checkout-buyer] #2150 status-token persist failed (proceeding)",
+              persistErr,
+            );
+          }
         }
         recordResult({
           orderId: result.orderId,
@@ -486,6 +554,7 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     buyer,
     // issue #2135 — the chosen occurrence is read inside this handler.
     eventDateId,
+    eventDateIds,
     recordResult,
     router,
   ]);

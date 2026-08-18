@@ -469,21 +469,27 @@ BEGIN
 END $$;
 ROLLBACK;
 
--- TA-13 — DUPLICATE SUBMISSION EXPOSURE (finding TA-F1, reported to the
--- orchestrator as a NEW issue, not fixed on this branch).
+-- TA-13 — DUPLICATE SUBMISSION EXPOSURE (finding TA-F1). REVISITED BY #2150,
+-- which is the follow-up issue this check was raised to seed.
 --
--- `biz_ticket_checkout_create_session` tombstones a session whose status is
--- terminal — `free_completed` is terminal — and then creates a FRESH session
--- under the same idempotency key. Before #2136 a free session could never reach
--- `free_completed`, so this was unreachable. It is reachable now: one guest who
--- submits the identical cart twice receives two orders, two tickets and two
--- sets of confirmation notifications. The mechanism lives in #2101/#1930's
--- create-session RPC, NOT in the #2136 diff.
+-- [TEST-MOD-APPROVED #2150] — this check was written to PIN A DEFECT, and its
+-- own closing sentence pre-authorised this edit: "If the duplicate is fixed,
+-- the tombstone assertion below is the thing to revisit." #2150 fixed it, so
+-- the two assertions are INVERTED to pin the corrected mechanism, and the
+-- containment check (TA-12's capacity bound) is retained verbatim. Nothing is
+-- deleted and nothing is weakened: the check now asserts MORE than it did —
+-- exactly 1 order, 1 ticket and 2 notification rows, where before it asserted
+-- only an upper bound.
 --
--- This check pins the MECHANISM (the tombstone rename) so the follow-up issue
--- has an executable repro, and pins the CONTAINMENT (capacity still bounds it,
--- proved by TA-12). If the duplicate is fixed, the tombstone assertion below is
--- the thing to revisit.
+-- WHAT WAS BROKEN AND IS NOW FIXED. `biz_ticket_checkout_create_session`
+-- tombstoned a session whose status is terminal — `free_completed` is terminal
+-- — and then created a FRESH session under the same idempotency key. Before
+-- #2136 a free session could never reach `free_completed`, so this was
+-- unreachable; #2136 made it reachable and one guest submitting the identical
+-- cart twice received two orders, two tickets and two sets of confirmation
+-- notifications. The mechanism lived in #2101/#1930's create-session RPC, NOT
+-- in the #2136 diff, and #2150 fixed it there: a COMPLETED ZERO-TOTAL session
+-- is returned as-is instead of being tombstoned.
 BEGIN;
 DO $$
 DECLARE
@@ -504,14 +510,22 @@ BEGIN
     jsonb_build_array(jsonb_build_object('ticketTypeId', f.o_ticket_type, 'quantity', 1)),
     v_key, now() + interval '15 minutes', 0, 'auto');
 
-  IF (v_replay->>'checkoutSessionId')::uuid = f.o_session THEN
-    RAISE EXCEPTION 'TA-13 FAIL: the replay returned the completed session instead of tombstoning it '
-      '— re-derive the duplicate analysis in finding TA-F1, the mechanism changed';
+  -- #2150: the guest's OWN completed reservation is returned to them.
+  IF (v_replay->>'checkoutSessionId')::uuid <> f.o_session THEN
+    RAISE EXCEPTION 'TA-13 FAIL (#2150 REGRESSED): the resubmit minted a NEW session (%) instead of '
+      'returning the guest''s completed one (%). The duplicate order, duplicate pass and duplicate '
+      'confirmation email + SMS of finding TA-F1 are back.',
+      v_replay->>'checkoutSessionId', f.o_session;
   END IF;
-  IF NOT EXISTS (SELECT 1 FROM public.ticket_checkout_sessions
-                  WHERE id = f.o_session AND idempotency_key LIKE v_key || ':tombstone:%') THEN
-    RAISE EXCEPTION 'TA-13 FAIL: the completed free session was not tombstoned; finding TA-F1''s '
-      'mechanism no longer holds and the duplicate analysis must be redone';
+  IF EXISTS (SELECT 1 FROM public.ticket_checkout_sessions
+              WHERE id = f.o_session AND idempotency_key LIKE v_key || ':tombstone:%') THEN
+    RAISE EXCEPTION 'TA-13 FAIL (#2150 REGRESSED): the completed FREE session was tombstoned.';
+  END IF;
+  IF v_replay->>'status' <> 'free_completed'
+     OR NULLIF(v_replay->>'orderId','') IS NULL THEN
+    RAISE EXCEPTION 'TA-13 FAIL: the returned session must carry status=free_completed and its '
+      'orderId so the Edge can answer with the existing passes; got %/%.',
+      v_replay->>'status', COALESCE(v_replay->>'orderId','<null>');
   END IF;
 
   v2 := public.biz_ticket_checkout_finalize(
@@ -523,15 +537,22 @@ BEGIN
     FROM public.ticket_order_notifications WHERE event_id = f.o_event;
 
   -- Containment: whatever the duplicate count, capacity must still bound it.
+  -- RETAINED VERBATIM from the pre-#2150 check.
   IF v_tickets > 1000 THEN
     RAISE EXCEPTION 'TA-13 FAIL: duplicate submission broke the capacity bound — % tickets for '
       'quantity_total=1000', v_tickets;
   END IF;
-  RAISE NOTICE 'TA-13 RECORDED (finding TA-F1): one guest, one cart, two submissions under the same '
-    'idempotency key -> outcomes %/%, % orders, % tickets, % notification rows. Capacity still '
-    'bounds it (TA-12). Mechanism: create-session tombstones the free_completed session and mints a '
-    'fresh one. Owner: #2101/#1930 create-session, NOT the #2136 diff.',
-    v1->>'outcome', v2->>'outcome', v_orders, v_tickets, v_notifications;
+  -- #2150 tightens the upper bound to an EXACT count. This is the guest-visible
+  -- contract: one reservation, one pass, one email, one SMS.
+  IF v_orders <> 1 OR v_tickets <> 1 OR v_notifications <> 2 THEN
+    RAISE EXCEPTION 'TA-13 FAIL (#2150 REGRESSED): one guest, one cart, two submissions produced '
+      '% orders, % tickets and % notification rows; expected exactly 1 / 1 / 2 (one confirmation '
+      'email + one SMS).', v_orders, v_tickets, v_notifications;
+  END IF;
+  RAISE NOTICE 'TA-13 PASS (finding TA-F1 CLOSED by #2150): one guest, one cart, two submissions '
+    'under the same idempotency key -> outcomes %/%, % order, % ticket, % notification rows, and '
+    'the guest''s original session was returned rather than tombstoned. Capacity still bounds it '
+    '(TA-12).', v1->>'outcome', v2->>'outcome', v_orders, v_tickets, v_notifications;
 END $$;
 ROLLBACK;
 

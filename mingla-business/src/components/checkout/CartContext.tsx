@@ -167,6 +167,21 @@ export interface CartState {
    * ticket-checkout-create request only when non-null.
    */
   eventDateId: string | null;
+  /**
+   * issue #2160 [multi-day multi-select] — the SET of `event_dates.id`s the
+   * guest chose on a multi-date EVENT.
+   *
+   * ADDED ALONGSIDE `eventDateId`, never replacing it. The single field is the
+   * EXPERIENCE surface's contract (`checkout-experience/[experienceEventId]/*`)
+   * and is frozen by the strict-grep gate
+   * `orch-1138-experience-checkout-byte-identical.mjs`. The two never both
+   * carry a value on one checkout: experiences use the single, multi-date
+   * events use the set.
+   *
+   * Empty => the ticket-checkout-create request body is byte-identical to
+   * today, which is every single-date event, trip, RSVP and experience.
+   */
+  eventDateIds: readonly string[];
 }
 
 // ---- Reducer --------------------------------------------------------
@@ -191,6 +206,8 @@ type CartAction =
   | { type: "SET_PAYMENT_PLAN_CHOICE"; choice: TripPaymentPlanChoice }
   // ORCH-1138 Leg 3 — set/clear the chosen experience occurrence.
   | { type: "SET_EVENT_DATE_ID"; eventDateId: string | null }
+  // issue #2160 — set/clear the chosen multi-date day SET.
+  | { type: "SET_EVENT_DATE_IDS"; eventDateIds: readonly string[] }
   | { type: "RESET" };
 
 const EMPTY_BUYER: BuyerDetails = {
@@ -217,6 +234,8 @@ const INITIAL_STATE: CartState = {
   paymentPlanChoice: "full",
   // ORCH-1138 Leg 3 — no occurrence chosen by default (single/no-date path).
   eventDateId: null,
+  // issue #2160 — no days chosen by default. An explicit choice is required.
+  eventDateIds: [],
 };
 
 const reducer = (state: CartState, action: CartAction): CartState => {
@@ -308,6 +327,8 @@ const reducer = (state: CartState, action: CartAction): CartState => {
       return { ...state, paymentPlanChoice: action.choice };
     case "SET_EVENT_DATE_ID":
       return { ...state, eventDateId: action.eventDateId };
+    case "SET_EVENT_DATE_IDS":
+      return { ...state, eventDateIds: action.eventDateIds };
     case "RESET":
       return INITIAL_STATE;
     default: {
@@ -354,6 +375,12 @@ export interface CartContextValue extends CartState {
    * the single/no-date path → request byte-identical.
    */
   setEventDateId: (eventDateId: string | null) => void;
+  /**
+   * issue #2160 — seed the chosen day SET. Called by the cart step's
+   * seed-from-route-param effect (`?eventDateIds=a,b`, with the legacy single
+   * `?eventDateId=` accepted as a one-element set).
+   */
+  setEventDateIds: (eventDateIds: readonly string[]) => void;
   reset: () => void;
 }
 
@@ -415,6 +442,14 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
     dispatch({ type: "SET_EVENT_DATE_ID", eventDateId });
   }, []);
 
+  // issue #2160 — chosen multi-date day set setter.
+  const setEventDateIds = useCallback(
+    (eventDateIds: readonly string[]): void => {
+      dispatch({ type: "SET_EVENT_DATE_IDS", eventDateIds });
+    },
+    [],
+  );
+
   const reset = useCallback((): void => {
     dispatch({ type: "RESET" });
   }, []);
@@ -429,6 +464,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       clearIntakeTierData,
       setPaymentPlanChoice,
       setEventDateId,
+      setEventDateIds,
       reset,
     }),
     [
@@ -440,6 +476,7 @@ export const CartProvider: React.FC<CartProviderProps> = ({ children }) => {
       clearIntakeTierData,
       setPaymentPlanChoice,
       setEventDateId,
+      setEventDateIds,
       reset,
     ],
   );

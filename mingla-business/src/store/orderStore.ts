@@ -115,6 +115,20 @@ export interface RefundRecord {
   applicationFeeRefundedCents?: number;
 }
 
+/**
+ * issue #2160 — one pass of an order, with the days it admits and whether it
+ * has been used. `usedAt` is set on the FIRST admission, which is why the
+ * roster's check-in count needed no change: a partly-admitted multi-day guest
+ * already counts as checked in.
+ */
+export interface OrderTicketDayRecord {
+  ticketId: string;
+  /** `event_dates.id`s this pass admits. EMPTY means "not day-scoped". */
+  eventDateIds: string[];
+  status: string;
+  usedAt: string | null;
+}
+
 export interface OrderRecord {
   // Identity
   id: string;
@@ -124,6 +138,20 @@ export interface OrderRecord {
   // Snapshot at purchase (write-once)
   buyer: BuyerSnapshot;
   lines: OrderLineRecord[];
+  /**
+   * issue #2160 — the days THIS order's passes admit, one entry per pass.
+   *
+   * A guest attending both days of an exhibition holds passes covering both, so
+   * they appear under BOTH day chips — that is the whole point of the issue, not
+   * a double-count. `eventDateIds` is EMPTY for a pass that is not day-scoped
+   * (single-date, legacy, or no selection); such a pass is valid on any day and
+   * is shown under every chip, labelled "any day", because that is what it
+   * actually admits.
+   *
+   * Optional so every pre-#2160 persisted record and every existing fixture
+   * stays valid without a migrator.
+   */
+  ticketDays?: OrderTicketDayRecord[];
   totalGbpAtPurchase: number;
   /** Currency-neutral alias for new ORCH-0769 records. */
   totalAtPurchase?: number;

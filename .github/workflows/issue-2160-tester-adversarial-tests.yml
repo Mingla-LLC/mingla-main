@@ -1,0 +1,138 @@
+name: issue-2160-tester-adversarial
+# issue #2160 [a guest can attend MORE THAN ONE day] + #2150 — the TESTER's
+# adversarial lane.
+#
+# WHY THIS FILE EXISTS AND IS NOT FOLDED INTO THE IMPLEMENTOR'S LANE.
+# `issue-2160-multiday-multiselect-tests.yml` names its test files EXPLICITLY
+# and never globs the directory. A new file dropped into
+# `supabase/migrations/__tests__/` therefore triggers that lane's path filter
+# but is never EXECUTED by it — it would sit in the tree, look like coverage,
+# and gate nothing. That is exactly #2175 ("five checkout tests fail on main
+# and no CI lane runs them") and #2113 ("checks that carry no information"),
+# so the adversarial suite is given a lane that actually runs it.
+#
+# WHAT THIS SUITE PROTECTS THAT THE IMPLEMENTOR'S DOES NOT.
+# Measured, not asserted. Reverting the create-session capacity aggregation to
+# the pre-#2160 per-line comparison (5 lines) leaves
+# `issue_2160_multiday_admission.test.sql` COMPLETELY GREEN and turns this
+# suite RED at G-5 with "OVERSOLD via a second line of the same type". Before
+# this lane existed, I-PROPOSED-2160-C — the invariant the SPEC calls the one
+# that protects money — was guarded only by
+# `.github/scripts/strict-grep/issue-2160-capacity-aggregated.mjs`, which reads
+# the migration's SOURCE TEXT and cannot see behaviour at all.
+#
+# Path filters are BROAD over the guarded source, not just over the test, so a
+# revert of the product re-triggers the lane rather than skipping it.
+
+on:
+  pull_request:
+    paths: &issue_2160_adversarial_paths
+      - "supabase/migrations/__tests__/issue_2160_money_admission_lock.tester.adversarial.test.sql"
+      - "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
+      - "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql"
+      # Every prior definer of the functions this suite executes. A later
+      # re-emit silently replaces the function and can drop the day ladder, the
+      # capacity aggregation or the possession gate while everything else stays
+      # green — which is the failure mode this lane exists to catch.
+      - "supabase/migrations/20260821000000_orch_1051_scanner_invite_flow.sql"
+      - "supabase/migrations/20260528000000_orch_0793_scan_time_window.sql"
+      - "supabase/migrations/20261117000001_orch_1188_finalize_persist_event_date_id.sql"
+      - "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql"
+      - "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql"
+      - "supabase/migrations/20270413001931_issue_1931_private_event_access.sql"
+      - "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql"
+      - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
+      - "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql"
+      - ".github/workflows/issue-2160-tester-adversarial-tests.yml"
+  push:
+    branches: [main]
+    paths: *issue_2160_adversarial_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2160-tester-adversarial-postgres:
+    name: "#2160 tester — capacity cannot be oversold, a pass admits only its days"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        # The same Supabase-flavored image the #2101, #2136, #2150 and #2160
+        # lanes pin, so a difference here is never a difference in Postgres.
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-2160-adv-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      # Wait for the image's OWN bootstrap, not merely for the socket:
+      # accepting connections before `vault` / `supabase_admin` exist lets the
+      # baseline squash abort on a graphql schema-version race.
+      - name: Wait for PostgreSQL 17 bootstrap to complete
+        env:
+          PGPASSWORD: ${{ format('issue-2160-adv-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not finish bootstrapping in 90s"; exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-2160-adv-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+          done
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-2160-adv-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS deleted_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS confirmed_at timestamptz"
+      # 64 checks across G (money) / A (admission) / L (the lock) /
+      # D (disclosure). Executes the REAL create-session, finalize,
+      # biz_ticket_scan, biz_set_event_multi_date_pricing_mode and
+      # issue_2150_free_replay_disclosure_authorized and counts real rows.
+      #
+      # Measured fails-on-revert, by TRUE LINE DELETION against the same image:
+      #   * finalize entitlement mint deleted     (13 lines) -> RED at G-4b
+      #   * create-session day persist deleted    ( 9 lines) -> RED at G-4b
+      #   * pre-#2160 biz_ticket_scan restored    (169 lines) -> RED at A-1a,
+      #        observed value `success` — the reverted door ADMITS a guest on a
+      #        day they never bought
+      #   * capacity aggregation reverted to per-line (5 lines) -> RED at G-5,
+      #        while the implementor's suite stays entirely GREEN
+      - name: "Capacity, admission, the mode lock and #2150 disclosure — executed"
+        env:
+          PGPASSWORD: ${{ format('issue-2160-adv-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2160_money_admission_lock.tester.adversarial.test.sql
+      # RUN IT TWICE, IN THE SAME DATABASE, DELIBERATELY.
+      # The implementor found its own suite passed only on a VIRGIN database (a
+      # fixed `qr_code` seed collided on the second run). A suite that passes
+      # once is not a suite anyone can trust, so the second execution — against
+      # every row the first one left behind — is part of the gate rather than a
+      # nicety.
+      - name: "Run it AGAIN against the rows the first run left behind"
+        env:
+          PGPASSWORD: ${{ format('issue-2160-adv-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2160_money_admission_lock.tester.adversarial.test.sql

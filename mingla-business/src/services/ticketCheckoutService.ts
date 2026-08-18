@@ -10,6 +10,18 @@ export interface TicketCheckoutCreateInput {
   buyer: BuyerDetails;
   lines: CartLine[];
   /**
+   * issue #2150 — the buyer status token from THIS guest's earlier submit for
+   * this event, when the browser still holds one.
+   *
+   * Sent only so an anonymous guest resubmitting an identical FREE reservation
+   * can PROVE the completed reservation is theirs and be handed their existing
+   * order and passes back. Without it the server still refuses to mint a
+   * duplicate, but declines to disclose the order — email + phone + cart are
+   * knowledge, not possession, and must never be enough to obtain someone's QR
+   * code. Omitted when absent so every other request stays byte-identical.
+   */
+  buyerStatusToken?: string;
+  /**
    * ORCH-0790 / ORCH-0839-B: discriminator for the checkout surface.
    *  - "native" — DEPRECATED in mingla-business as of ORCH-0839-B (2026-05-14).
    *    Older app builds may still send this; the edge function preserves the
@@ -52,6 +64,17 @@ export interface TicketCheckoutCreateInput {
    * single/no-date path so the request stays byte-identical to today.
    */
   eventDateId?: string;
+  /**
+   * issue #2160 [multi-day multi-select] — the days the guest chose on a
+   * multi-date EVENT, as a SIBLING of `lines` rather than a per-line field.
+   *
+   * `lines` keeps its exact wire shape, which is what keeps
+   * `order_line_items.total_cents = quantity x unit_price_cents` true in BOTH
+   * pricing modes; the server applies the one per-mode multiplier. OMITTED when
+   * empty so the request is byte-identical to today for every single-date
+   * event, trip, RSVP and experience.
+   */
+  eventDateIds?: readonly string[];
 }
 
 export interface TicketCheckoutRequiresPayment {
@@ -124,8 +147,22 @@ export interface TicketCheckoutRequiresPaystackRedirect {
   currency: string;
 }
 
+/**
+ * issue #2150 — the reservation already exists and this caller did not prove it
+ * is theirs. Deliberately carries NO `orderId`, NO `checkoutSessionId`, NO
+ * tickets and NO QR payload: the idempotency key is derived from the event, the
+ * buyer's email and phone and the cart, all of which someone who merely KNOWS
+ * the guest can type in, so disclosure requires possession of the buyer status
+ * token. Nothing was minted — the server declined to tombstone regardless.
+ */
+export interface TicketCheckoutFreeAlreadyReserved {
+  kind: "free_already_reserved";
+  eventId: string;
+}
+
 export type TicketCheckoutCreateResult =
   | TicketCheckoutRequiresPayment
+  | TicketCheckoutFreeAlreadyReserved
   | TicketCheckoutRequiresWebRedirect
   | TicketCheckoutRequiresPaystackRedirect
   | TicketCheckoutFreeCompleted;
@@ -208,6 +245,19 @@ export const FREE_CHECKOUT_FAILED_MESSAGE =
   "We could not reserve your free ticket. Nothing was reserved — please try again.";
 
 /**
+ * issue #2150 — the guest ALREADY holds this reservation and this request could
+ * not prove it belongs to them, so the server declined to hand back the order
+ * and its passes.
+ *
+ * The copy must NOT say "nothing was reserved" — that is the exact opposite of
+ * the truth here and would push a guest who already has a ticket into
+ * reserving again somewhere else. It also must not imply failure: nothing went
+ * wrong, and no duplicate was created.
+ */
+export const FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE =
+  "You already have a free ticket for this event — we emailed your pass, and it is in your tickets. Nothing was reserved twice.";
+
+/**
  * The bounded HTTP statuses the server uses to refuse a free reservation.
  * 409 is `checkout_unavailable` (the sale is gone); 401/403 are the #2101
  * access denials, which keep their own dedicated copy upstream.
@@ -255,6 +305,16 @@ export const freeCheckoutErrorMessage = (error: unknown): string => {
  * A confirmation screen for a ticket that does not exist is strictly worse than
  * a visible error, so the client refuses the envelope rather than rendering it.
  */
+/**
+ * issue #2150 — narrow the "you already hold this" answer. Kept separate from
+ * `isCompletedFreeOrder` on purpose: this result must never reach the confirm
+ * screen, because there is no order payload to render.
+ */
+export const isFreeAlreadyReserved = (
+  result: TicketCheckoutCreateResult,
+): result is TicketCheckoutFreeAlreadyReserved =>
+  result.kind === "free_already_reserved";
+
 export const isCompletedFreeOrder = (
   result: TicketCheckoutCreateResult,
 ): result is TicketCheckoutFreeCompleted =>
@@ -497,11 +557,25 @@ export const createTicketCheckout = async (
     ...(input.eventDateId !== undefined && input.eventDateId.length > 0
       ? { eventDateId: input.eventDateId }
       : {}),
+    // issue #2160 — forward the chosen day SET only when non-empty, so an empty
+    // set produces a request body byte-identical to today. The edge fn
+    // validates the set, derives the payout anchor server-side and passes it to
+    // the RPC, which owns the pricing mode and the multiplier.
+    ...(input.eventDateIds !== undefined && input.eventDateIds.length > 0
+      ? { eventDateIds: [...input.eventDateIds] }
+      : {}),
     // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
     // the request stays byte-identical for non-ad traffic. The edge fn persists
     // it on ticket_checkout_sessions.attribution_click_id (WP-B threading).
     ...(getStoredClickAttribution().clickId !== null
       ? { attribution_click_id: getStoredClickAttribution().clickId }
+      : {}),
+    // issue #2150 — forward the guest's own buyer status token ONLY when the
+    // browser holds one, so a first submit and every paid request stay
+    // byte-identical. It is the possession proof that lets an anonymous guest
+    // be handed their EXISTING free order back instead of a duplicate.
+    ...(input.buyerStatusToken !== undefined && input.buyerStatusToken.length > 0
+      ? { buyerStatusToken: input.buyerStatusToken }
       : {}),
   });
 

@@ -148,6 +148,7 @@ import {
 // issue #2135 [multi-date public day picker] — TYPE-ONLY (erased at build; adds
 // no runtime dependency to this hot buyer-web route).
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
+import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
@@ -160,6 +161,16 @@ import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
   brand: Brand | null;
+  /**
+   * issue #2160 / #2161 — every materialised occurrence of this event, handed
+   * down from `PublicEventDetail`. They arrive on the SAME SECURITY DEFINER
+   * reader that served the event, so an UNLISTED event's days render exactly
+   * like a public one's. Defaults to the shared empty reference for callers
+   * that have no occurrence concept (the RSVP draft preview).
+   */
+  occurrences?: readonly PublicEventOccurrence[];
+  /** issue #2160 — the organiser's multi-day pricing choice. */
+  multiDatePricingMode?: MultiDatePricingMode;
   /**
    * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — when false, this is a
    * PAID event whose brand cannot charge yet; the CTA is the non-tappable
@@ -340,11 +351,16 @@ const FLOATING_BAR_CLEARANCE = 96;
 // issue #2135 — stable empty reference so a single-date page (query disabled →
 // `data` undefined) never produces a new array identity per render.
 const NO_OCCURRENCES: readonly PublicEventOccurrence[] = [];
+// issue #2160 — stable empty reference for the chosen-day SET, so a single-date
+// page never produces a new array identity per render.
+const NO_SELECTION: readonly string[] = [];
 
 export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
   bookable = true,
+  occurrences = NO_OCCURRENCES,
+  multiDatePricingMode = "per_day",
 }) => {
   const router = useRouter();
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1: the chip-in web return lands
@@ -383,25 +399,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // (event_dates.id), and whether they have already tried to check out without
   // choosing one (which turns the inline chooser's silent block into an explicit
   // prompt). Both stay inert for the whole life of a single-date page.
-  const [selectedOccurrenceId, setSelectedOccurrenceId] = useState<string | null>(
-    null,
-  );
+  // issue #2160 — a SET. A guest attending both days of an exhibition makes ONE
+  // reservation covering both. Empty until they choose: the default is never a
+  // day, because an explicit choice is exactly what #2135 established.
+  const [selectedOccurrenceIds, setSelectedOccurrenceIds] = useState<
+    readonly string[]
+  >(NO_SELECTION);
   const [dayChoiceMissing, setDayChoiceMissing] = useState<boolean>(false);
-  // The materialised occurrences, reported up by the lazy multi-date leg. Stays
-  // at the shared empty reference forever on a single-date page.
-  const [occurrences, setOccurrences] =
-    useState<readonly PublicEventOccurrence[]>(NO_OCCURRENCES);
-  const handleOccurrencesResolved = useCallback(
-    (next: readonly PublicEventOccurrence[]): void => {
-      setOccurrences((prev) => {
-        if (prev.length === next.length && prev.every((o, i) => o.id === next[i].id)) {
-          return prev;
-        }
-        return next;
-      });
-    },
-    [],
-  );
+  // issue #2160 / #2161 — the occurrences are a PROP now. `handleOccurrencesResolved`
+  // and the reported-up state are gone: the days ride the event payload, so
+  // there is no second query to resolve, no second cache key to go stale, and
+  // no window in which the page has an event but not its schedule.
 
   // ORCH-1339 — cross-entity social proof for this page's event (anon-safe
   // server RPC; ungated — buyer routes never gate on auth, ORCH-1004). The
@@ -496,14 +504,38 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const hasOccurrenceChoice = isMultiDate && occurrences.length > 1;
   // issue #2135 — recording the guest's pick. Clears the "you must choose"
   // prompt the moment they do.
-  const handleOccurrenceSelect = useCallback((eventDateId: string): void => {
-    setSelectedOccurrenceId(eventDateId);
-    setDayChoiceMissing(false);
+  const handleOccurrenceToggle = useCallback((eventDateId: string): void => {
+    setSelectedOccurrenceIds((prev) => {
+      const next = prev.includes(eventDateId)
+        ? prev.filter((id) => id !== eventDateId)
+        : [...prev, eventDateId];
+      // Clear the "you must choose" prompt only when the result is non-empty —
+      // deselecting the last day puts the guest back where they started.
+      if (next.length > 0) setDayChoiceMissing(false);
+      return next;
+    });
   }, []);
   // The third `checkoutPublicPathWithSeed` argument. NULL on every single-date
   // page (and on a multi-date page that offers no real choice), which makes the
   // helper emit the byte-identical path it emitted before issue #2135.
-  const chosenOccurrenceParam = hasOccurrenceChoice ? selectedOccurrenceId : null;
+  const chosenOccurrenceParams = hasOccurrenceChoice ? selectedOccurrenceIds : null;
+  // issue #2160 §7 — does this event carry a priced ticket? Drives whether the
+  // chooser qualifies the price ("per day" / "for all days"); a free event has
+  // nothing to qualify.
+  const eventHasPaidTicket = useMemo(
+    () => event.tickets.some((t) => (t.priceGbp ?? 0) > 0),
+    [event.tickets],
+  );
+  // issue #2160 §7(a) — the price qualifier that rides the ticket row itself,
+  // so the multiplier is visible on the same line as the number it multiplies.
+  // NULL on every single-date event and every free event (nothing to qualify),
+  // which keeps the shared package's rendered tree byte-identical there.
+  const ticketPricingNote =
+    hasOccurrenceChoice && eventHasPaidTicket
+      ? multiDatePricingMode === "all_days"
+        ? "for all days"
+        : "per day"
+      : null;
   const onSeeWhosGoingProp = Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
   useEffect(() => {
     const refresh = (): void => setNowMs(Date.now());
@@ -736,9 +768,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // exact navigation with the chosen occurrence attached. Single-date events
     // (and multi-date events whose occurrences have not resolved) skip this
     // entirely and fall through to the unchanged push below.
-    if (hasOccurrenceChoice && selectedOccurrenceId === null) {
+    if (hasOccurrenceChoice && selectedOccurrenceIds.length === 0) {
       setDayChoiceMissing(true);
-      showToast("Choose which day you're attending first.");
+      showToast("Choose at least one day you're attending.");
       return;
     }
     // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
@@ -747,7 +779,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // to nothing → the bare /checkout/[eventId] cart path. The genuinely non-
     // purchasable states never reach here (their CTA resolves tappable:false).
     router.push(
-      checkoutPublicPathWithSeed(event.id, ticketQuantities, chosenOccurrenceParam) as never,
+      checkoutPublicPathWithSeed(event.id, ticketQuantities, chosenOccurrenceParams) as never,
     );
   }, [
     offeringCta.kind,
@@ -761,8 +793,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     purchaseBlockedByAccess,
     signInResumeHref,
     hasOccurrenceChoice,
-    selectedOccurrenceId,
-    chosenOccurrenceParam,
+    selectedOccurrenceIds,
+    chosenOccurrenceParams,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -820,13 +852,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         if (purchaseBlockedByAccess) return;
         // issue #2135 — same day-first gate as handleProceedToCart, so no
         // entry point into checkout can skip the multi-date choice.
-        if (hasOccurrenceChoice && selectedOccurrenceId === null) {
+        if (hasOccurrenceChoice && selectedOccurrenceIds.length === 0) {
           setDayChoiceMissing(true);
-          showToast("Choose which day you're attending first.");
+          showToast("Choose at least one day you're attending.");
           return;
         }
         router.push(
-          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParam) as never,
+          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParams) as never,
         );
       },
       onClaimFreeTicket: (_ticketId: string) => {
@@ -845,13 +877,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         if (purchaseBlockedByAccess) return;
         // issue #2135 — same day-first gate (the free path moves entitlement,
         // and a free multi-date guest must still choose their day).
-        if (hasOccurrenceChoice && selectedOccurrenceId === null) {
+        if (hasOccurrenceChoice && selectedOccurrenceIds.length === 0) {
           setDayChoiceMissing(true);
-          showToast("Choose which day you're attending first.");
+          showToast("Choose at least one day you're attending.");
           return;
         }
         router.push(
-          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParam) as never,
+          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParams) as never,
         );
       },
       onJoinWaitlist: (ticketId: string) => {
@@ -885,8 +917,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       purchaseBlockedByAccess,
       signInResumeHref,
       hasOccurrenceChoice,
-      selectedOccurrenceId,
-      chosenOccurrenceParam,
+      selectedOccurrenceIds,
+      chosenOccurrenceParams,
     ],
   );
 
@@ -925,14 +957,15 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     isMultiDate && acquisitionState.kind === "current" ? (
       <React.Suspense fallback={null}>
         <MultiDateDayChooser
-          eventId={event.id}
           timezone={event.timezone ?? "UTC"}
           palette={palette}
           fontFamily={boldFamily}
-          selectedOccurrenceId={selectedOccurrenceId}
+          occurrences={occurrences}
+          selectedOccurrenceIds={selectedOccurrenceIds}
+          pricingMode={multiDatePricingMode}
+          isPaid={eventHasPaidTicket}
           highlightUnchosen={dayChoiceMissing}
-          onOccurrencesResolved={handleOccurrencesResolved}
-          onSelect={handleOccurrenceSelect}
+          onToggle={handleOccurrenceToggle}
         />
       </React.Suspense>
     ) : null;
@@ -977,6 +1010,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // is set from here with no edit to the shared package.
           submitting={purchaseBlockedByAccess}
           showHeading
+          pricingNote={ticketPricingNote}
           testID="orch-1167-event-desktop-ticket-box"
         />
       </View>
@@ -1157,7 +1191,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // leave an occurrence picker open over a dead page (mirrors the waitlist +
     // gate teardown above). No-op on every single-date page.
     setDayChoiceMissing(false);
-    setSelectedOccurrenceId(null);
+    setSelectedOccurrenceIds(NO_SELECTION);
   }, [acquisitionState.kind]);
 
   // ── ORCH-1295 [chip-in-post-payment-polish] — BUG 2: the country-code-aware guest
@@ -1508,6 +1542,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           }
           // ORCH-1167-R2 (change 5) — desktop relocates the box to the sticky panel.
           hideTicketBox={isDesktop || acquisitionState.kind !== "current"}
+          // issue #2160 §7(a) — the phone inline ticket box. Null on every
+          // single-date and free event, so the rendered tree is unchanged there.
+          pricingNote={ticketPricingNote}
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}

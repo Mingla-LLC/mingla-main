@@ -61,7 +61,27 @@ jobs:
         run: |
           set -euo pipefail
           for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
-            case "$f" in *_issue_1931_*) continue ;; esac
+            case "$f" in
+              *_issue_1931_*) continue ;;
+              # issue #2160 — SKIPPED FOR THE SAME REASON #1931 IS.
+              #
+              # This phase deliberately runs the chain WITHOUT #1931, and #2160
+              # re-emits `pg_direct_event_checkout_bundle`, whose CURRENT body
+              # (defined by #1931 itself) calls
+              # `issue_1931_event_ordinary_read_blocked`. A `LANGUAGE sql` body
+              # is validated at CREATE time, so applying #2160 here aborts with
+              # "function public.issue_1931_event_ordinary_read_blocked(uuid)
+              # does not exist". The reference is CORRECT — it is the private-
+              # event guard on a public reader — and removing it to satisfy this
+              # lane would be deleting a security control to make CI green.
+              #
+              # Skipping is the same remedy this lane already applies to #1931,
+              # and #2160 is covered end-to-end by its own lane, which replays
+              # the FULL chain in true order and runs seven executable suites
+              # twice. Any future migration that re-emits a #1931-defined object
+              # belongs on this list too.
+              *_issue_2160_*) continue ;;
+            esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
