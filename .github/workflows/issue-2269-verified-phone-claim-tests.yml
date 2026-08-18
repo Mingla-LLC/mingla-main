@@ -1,0 +1,164 @@
+name: issue-2269-verified-phone-claim
+# issue #2269 [a buyer who pays with their phone and signs in with Google gets
+# their ticket] — the dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. #2269 widens the phone arm of
+# `verified_account_identifiers`, the predicate that MOVES A PAID ASSET between
+# accounts. #2217 established that this decision must be executed against real
+# PostgreSQL rather than asserted against a TypeScript fake, and #2269 adds a
+# new writable table to it — so the negative case ("a phone the claimant merely
+# typed into their own profile claims nothing") has to be executed too.
+#
+# Path filters err BROAD over the guarded SOURCE trees, not only the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard).
+#
+# NOTE: no jest invocation is added here. If one is ever added, it must name
+# FILENAMES — a pattern containing a route folder like `[eventId]` is read as a
+# character class, matches nothing, and exits 0 having run no tests.
+
+on:
+  pull_request:
+    paths: &issue_2269_paths
+      - "supabase/migrations/20270422002269_issue_2269_verified_phone_possession.sql"
+      - "supabase/migrations/__tests__/issue_2269_verified_phone_possession.test.sql"
+      # #2217 owns the claim these RPCs widen: a re-emit of its file replaces
+      # verified_account_identifiers wholesale and would silently drop the
+      # ledger arm, because CREATE OR REPLACE does not conflict.
+      - "supabase/migrations/20270421002217_issue_2217_identity_attendance_claim.sql"
+      - "supabase/migrations/__tests__/issue_2217_identity_attendance_claim.test.sql"
+      - "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql"
+      # The ONLY writer of the ledger.
+      - "supabase/functions/verify-otp/**"
+      - "supabase/functions/send-otp/**"
+      - "supabase/functions/_shared/seedReviewerAccount.ts"
+      - "supabase/functions/attendance-claim-identity/**"
+      - "supabase/functions/attendance-claim-link/**"
+      - "supabase/config.toml"
+      - ".github/workflows/issue-2269-verified-phone-claim-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths: *issue_2269_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2269-edge-contract:
+    name: "#2269 Edge — the proof is written only when Twilio approves"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # 8 tests. Fails on deleting the recordVerifiedPhone call, on moving it
+      # outside the Twilio approval branch, on making its failure non-fatal, on
+      # a direct table write replacing the RPC, and on profiles.phone or either
+      # confirmed_at column entering the identifier predicate.
+      - name: "#2269 verified-phone possession edge contract"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/verify-otp/__tests__/issue_2269_verified_phone_contract.test.ts
+      # #2217 owns the claim #2269 widens. Its edge contract must stay green.
+      - name: "#2217 sibling identity-claim suite stays green"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/attendance-claim-identity/__tests__/issue_2217_identity_claim_contract.test.ts
+      - name: "#871 sibling attendance-claim suite stays green"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/claim-attendance/__tests__/issue_0871_attendance_claim_contract.test.ts
+
+  issue-2269-postgres-contract:
+    name: "#2269 PostgreSQL 17 — a typed phone number claims nothing"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17 bootstrap to complete
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not finish bootstrapping in 90s"; exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+          done
+      # This image's auth schema is the pre-GoTrue stub: no auth.identities at
+      # all, and none of the columns below. Provisioned as the owning role,
+      # exactly as the #2217 lane does. On hosted Supabase GoTrue owns all of it.
+      - name: Match hosted Supabase Auth identity shape
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS deleted_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone_confirmed_at timestamptz" \
+            -c "CREATE TABLE IF NOT EXISTS auth.identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider_id text, user_id uuid NOT NULL, identity_data jsonb NOT NULL DEFAULT '{}'::jsonb, provider text NOT NULL, last_sign_in_at timestamptz, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())" \
+            -c "GRANT SELECT, INSERT, UPDATE, DELETE ON auth.identities TO postgres"
+      # P-01..P-11, executed. P-03 is the one that matters: `typist` is a
+      # Google-only account whose profiles.phone IS the buyer's number — a shape
+      # ANY signed-in user can create, because `authenticated` holds a column
+      # UPDATE grant on that column — and it must be handed nothing.
+      - name: "Prove a verified phone claims and a typed phone does not"
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2269_verified_phone_possession.test.sql
+      # RUN IT TWICE. The suite tears its own namespaced fixture down first, so
+      # a second pass against the now non-virgin database must be identical. A
+      # suite that only passes once hides ordering bugs behind a fresh DB.
+      - name: "Prove the suite is re-runnable against a non-virgin database"
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2269_verified_phone_possession.test.sql
+      # #2217's own PostgreSQL suite owns the claim #2269 widened. I-02/I-03 are
+      # the possession-not-knowledge proofs that must stay red on a revert.
+      - name: "#2217 sibling PostgreSQL suite stays green under the #2269 change"
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2217_identity_attendance_claim.test.sql
+      # #871 owns the token claim these RPCs sit beside. It runs as
+      # `supabase_admin` — it sets `session_replication_role` inside a DO block,
+      # which `postgres` is refused on this image.
+      - name: "#871 sibling PostgreSQL suite stays green under the #2269 change"
+        env:
+          PGPASSWORD: ${{ format('issue-2269-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_0871_attendance_roster_pg17.test.sql
