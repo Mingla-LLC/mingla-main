@@ -56,6 +56,9 @@ import {
   resolveProviderRouting,
 } from "../_shared/paymentProvider.ts";
 import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+// issue #2216 — a free reservation lands the guest on the SAME confirmation
+// carousel a paid one does, so it owes the guest the SAME rendered pass.
+import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
 import {
   checkoutUnavailableResponse,
   claimTicketProviderAttempt,
@@ -236,6 +239,27 @@ export interface IssuedTicketSummary {
   status: string;
 }
 
+/**
+ * issue #2216 [free-order pass renders as a blank white square] — what
+ * `readIssuedTicketsForOrder` actually answers with.
+ *
+ * ORCH-0932 moved QR rendering server-side because the client could not draw
+ * one reliably on the Expo SDK 54 web export, and wired it into
+ * `ticket-checkout-confirm` + `ticket-checkout-status` — the only two
+ * producers of confirm-screen tickets that existed then. #2136 later added a
+ * THIRD producer (this function's `free_completed` body) and it carried
+ * `qrPayload` but no rendered image, so every free reservation reached the
+ * carousel with nothing to draw and the `imageDataUrl.length > 0` guard
+ * showed the placeholder — the blank white square in #2216.
+ *
+ * `qrImageDataUrl` is REQUIRED here, not optional: an optional field is
+ * exactly what let the gap ship unnoticed.
+ */
+export interface IssuedTicketWithQrImage extends IssuedTicketSummary {
+  /** `data:image/png;base64,…`, or `""` when this one ticket failed to render. */
+  qrImageDataUrl: string;
+}
+
 function normalizeIssuedTickets(value: unknown): IssuedTicketSummary[] {
   if (!Array.isArray(value)) return [];
   const rows: IssuedTicketSummary[] = [];
@@ -266,15 +290,19 @@ function normalizeIssuedTickets(value: unknown): IssuedTicketSummary[] {
  * the common path) and otherwise read the canonical `tickets` rows by order id.
  * Returning `[]` is meaningful: the caller REFUSES to report a completed free
  * checkout without at least one issued ticket.
+ *
+ * issue #2216 — this is also the SINGLE place a rendered QR image is attached,
+ * which is what makes the fresh-mint arm and the idempotent-replay arm carry
+ * one BY CONSTRUCTION rather than by two callers remembering to.
  */
 export async function readIssuedTicketsForOrder(
   // deno-lint-ignore no-explicit-any
   client: any,
   orderId: string,
   envelopeTickets: unknown,
-): Promise<IssuedTicketSummary[]> {
+): Promise<IssuedTicketWithQrImage[]> {
   const fromEnvelope = normalizeIssuedTickets(envelopeTickets);
-  if (fromEnvelope.length > 0) return fromEnvelope;
+  if (fromEnvelope.length > 0) return await attachQrImageDataUrls(fromEnvelope);
   const { data, error } = await client
     .from("tickets")
     .select("id, ticket_type_id, qr_code, status, ticket_types(name)")
@@ -289,7 +317,7 @@ export async function readIssuedTicketsForOrder(
     return [];
   }
   const rows = Array.isArray(data) ? data : [];
-  return normalizeIssuedTickets(
+  return await attachQrImageDataUrls(normalizeIssuedTickets(
     rows.map((row: Record<string, unknown>) => {
       const joined = row.ticket_types;
       const ticketTypeName = joined !== null && typeof joined === "object"
@@ -305,7 +333,7 @@ export async function readIssuedTicketsForOrder(
         status: row.status,
       };
     }),
-  );
+  ));
 }
 
 export interface TicketCheckoutCreateDeps {

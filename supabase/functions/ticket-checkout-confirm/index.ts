@@ -51,7 +51,7 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
-import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
+import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
 // META-ORCH-1074 Sub-A: fire business.order_paid / event_sold_out /
 // low_inventory after a newly-finalized order. Idempotency keys collapse the
 // confirm-vs-webhook double-fire to one notification row per recipient.
@@ -200,17 +200,23 @@ async function fetchOrderPayload(
     totalCents: Number(session.total_cents ?? 0),
     currency: String(session.currency ?? "USD").trim(),
     taxAmountCents,
-    tickets: await Promise.all((tickets ?? []).map(async (ticket) => {
-      const row = ticket as unknown as TicketRow;
-      return {
-        ticketId: row.id,
-        ticketTypeId: row.ticket_type_id,
-        ticketName: row.ticket_types?.name ?? "Ticket",
-        qrPayload: row.qr_code,
-        qrImageDataUrl: await qrPayloadToDataUrl(row.qr_code),
-        status: row.status,
-      };
-    })),
+    // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
+    // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket that
+    // fails to render degrades to the carousel placeholder AND emits a
+    // structured error line; it no longer takes the whole paid order down, and
+    // it can no longer be silently blank.
+    tickets: await attachQrImageDataUrls(
+      (tickets ?? []).map((ticket) => {
+        const row = ticket as unknown as TicketRow;
+        return {
+          ticketId: row.id,
+          ticketTypeId: row.ticket_type_id,
+          ticketName: row.ticket_types?.name ?? "Ticket",
+          qrPayload: row.qr_code,
+          status: row.status,
+        };
+      }),
+    ),
     notificationStatus: "queued",
   };
 }

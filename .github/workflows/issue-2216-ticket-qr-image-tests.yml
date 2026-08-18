@@ -1,0 +1,136 @@
+name: issue-2216-ticket-qr-image
+# issue #2216 [a ticket QR renders as a blank white square] + #2197 [blanket
+# @ts-ignore on the QR import] — the dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. Two reasons, and the second is the sharper one.
+#
+#   1. The repository-wide `supabase-migrations-and-stripe-deno.yml` names its
+#      Deno test files explicitly and never globs a directory, so the new
+#      `issue_2216_*` proofs would sit in the tree and gate NOTHING.
+#
+#   2. `_shared/__tests__/ticketQrImage.test.ts` — shipped by ORCH-0932 as the
+#      regression proof for server-side QR generation — is referenced by NO
+#      workflow in this repository. It has never run in CI. The one check that
+#      existed for the pass a guest shows at the door was dark for the whole
+#      period in which #2216 shipped. It is wired here.
+#
+# Path filters err BROAD over the guarded SOURCE trees, not just the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard).
+
+on:
+  pull_request:
+    paths: &issue_2216_paths
+      # The generator and its local type declaration.
+      - "supabase/functions/_shared/ticketQrImage.ts"
+      - "supabase/functions/_shared/qrcodeModule.d.ts"
+      - "supabase/functions/_shared/ticketPdf.ts"
+      - "supabase/functions/_shared/__tests__/ticketQrImage.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2216_*"
+      # Every edge function that hands a buyer a ticket it expects to be scanned.
+      - "supabase/functions/ticket-checkout-create/**"
+      - "supabase/functions/ticket-checkout-confirm/**"
+      - "supabase/functions/ticket-checkout-status/**"
+      # The buyer chain the image travels down to the carousel.
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/src/components/checkout/CartContext.tsx"
+      - "mingla-business/src/components/checkout/TicketQrCarousel.tsx"
+      - "mingla-business/src/components/checkout/__tests__/issue_2216_*"
+      - "mingla-business/src/hooks/useOrderRealtimeSubscription.ts"
+      - "mingla-business/app/checkout/**"
+      - "mingla-business/app/checkout-trip/**"
+      - "mingla-business/app/checkout-experience/**"
+      - ".github/scripts/strict-grep/i-2216-ticket-qr-server-rendered.mjs"
+      - ".github/workflows/issue-2216-ticket-qr-image-tests.yml"
+  push:
+    branches: [main]
+    paths: *issue_2216_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2216-edge-qr:
+    name: "#2216 Edge — every buyer-facing ticket carries a renderable QR"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # --allow-net is REQUIRED and deliberate: these suites exercise the REAL
+      # qrcode bundle from esm.sh, the same dependency the deployed function
+      # resolves. A mocked generator would prove nothing about the pass a guest
+      # is shown. esm.sh has outage history, hence the retry loop.
+      - name: "#2216 — the QR image is never silently blank"
+        run: |
+          set -euo pipefail
+          DENO_TEST_FILES=(
+            supabase/functions/_shared/__tests__/issue_2216_qr_image_never_silently_blank.test.ts
+            supabase/functions/ticket-checkout-create/__tests__/issue_2216_free_ticket_qr_image.test.ts
+            # ORCH-0932's own proof, dark until #2216 wired it here.
+            supabase/functions/_shared/__tests__/ticketQrImage.test.ts
+          )
+          for attempt in 1 2 3; do
+            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+              exit 0
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "#2216 QR Deno tests failed after 3 attempts (esm.sh flake?)"
+              exit 1
+            fi
+            echo "#2216 QR Deno tests failed (attempt ${attempt}), retrying in 10s..."
+            sleep 10
+          done
+      - name: "sibling ticket-checkout-create suites stay green"
+        run: >-
+          deno test --allow-env --allow-net --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2136_free_checkout_contract.test.ts
+          supabase/functions/ticket-checkout-create/__tests__/issue_2150_free_resubmit_idempotent.test.ts
+          supabase/functions/ticket-checkout-create/__tests__/issue_2160_multiday_idempotency_key.test.ts
+          supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
+      # #2197's acceptance in one line: the import type-checks with NO
+      # suppression on every function that consumes it.
+      - name: "#2197 — type-check with no suppression"
+        run: |
+          deno check supabase/functions/_shared/ticketQrImage.ts
+          deno check supabase/functions/ticket-checkout-create/index.ts
+          deno check supabase/functions/ticket-checkout-confirm/index.ts
+          deno check supabase/functions/ticket-checkout-status/index.ts
+
+  issue-2216-carousel:
+    name: "#2216 Client — the confirmation carousel draws a real pass"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Install mingla-business deps
+        working-directory: mingla-business
+        run: npm ci
+      # Mounts the REAL TicketQrCarousel with react-test-renderer under the
+      # stock jest config and asserts on the produced tree — the post-fix
+      # ticket shape renders an <Image> per seat, the pre-fix shape renders the
+      # blank white box the guest reported.
+      - name: "#2216 carousel render proof"
+        working-directory: mingla-business
+        run: npx jest --ci src/components/checkout/__tests__/issue_2216_free_confirm_qr_image.test.tsx
+      - name: "ORCH-0932 carousel contract stays green"
+        working-directory: mingla-business
+        run: npx jest --ci src/components/checkout/__tests__/orch_0930_qr_carousel_mounted_guard.test.tsx
+
+  issue-2216-strict-grep:
+    name: "#2216 — i-2216-ticket-qr-server-rendered"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      # The gate also runs in the batched class-A lane; running it here too
+      # keeps it triggered by this issue's own path filter.
+      - name: Self-test the #2216 gate
+        run: node .github/scripts/strict-grep/i-2216-ticket-qr-server-rendered.mjs --self-test
+      - name: Run the #2216 gate
+        run: node .github/scripts/strict-grep/i-2216-ticket-qr-server-rendered.mjs
