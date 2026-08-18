@@ -62,6 +62,53 @@ export const CHECKOUT_NO_HANDOFF_MESSAGE =
 export const CHECKOUT_FAILED_MESSAGE =
   "We couldn't start your payment. You have not been charged — please try again.";
 
+// ---------------------------------------------------------------------------
+// issue #2264 — the RETURN LEG. Everything above answers "the server refused to
+// CREATE the checkout"; everything below answers "the buyer came back from
+// Paystack and the server has told us what happened to the charge".
+//
+// These are the copy for `ticket-checkout-status`'s terminal verdict, which
+// #2198 has been sending since 2026-08-18 and the native poll discarded. They
+// are a SEPARATE codomain from `nativeCheckoutErrorMessage`'s, because two of
+// them deliberately do NOT carry a "you have not been charged" clause:
+//
+//   • the mismatch string must never claim the buyer was not charged — money
+//     provably moved, it just moved for the wrong amount or currency, and the
+//     #2188 rule is *state whether money moved*, not *always say it didn't*;
+//   • the awaiting string is the honest "we don't know yet" — inventing
+//     certainty there is the exact defect #2264 was filed about.
+//
+// That is why they live in NATIVE_PAYSTACK_RETURN_MESSAGES below rather than in
+// NATIVE_CHECKOUT_MESSAGES: the existing walkers over that array assert
+// `/not been charged/i` on EVERY member, which is right for create-refusals
+// (nothing was ever charged) and wrong for a return-leg verdict.
+// ---------------------------------------------------------------------------
+
+/** Paystack said `abandoned`: the page was opened and left without paying. */
+export const CHECKOUT_ABANDONED_MESSAGE =
+  "You closed the payment page before paying, so no tickets were issued. You have not been charged — reopen the payment page to finish, or start again.";
+
+/** Paystack said `failed` / `reversed`: the charge was attempted and refused. */
+export const CHECKOUT_PAYMENT_FAILED_MESSAGE =
+  "Your payment didn't go through, so no tickets were issued. You have not been charged — please try again.";
+
+/**
+ * The charge succeeded for an amount or currency that is not this order's. The
+ * server has already failed the session CLOSED and written the audit row. Money
+ * moved — this string must never say otherwise.
+ */
+export const CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
+  "Your payment came back with a different amount or currency than this order, so no tickets were issued. If money left your account, contact support@usemingla.com before paying again.";
+
+/**
+ * The ONLY "we don't know yet" case. The poll spent its whole budget without a
+ * terminal answer, so the buyer may well have paid and the webhook is simply
+ * slow. Replaces the inline string that used to stand in for all three of
+ * abandoned / failed / genuinely-pending at once (issue #2264, F-2).
+ */
+export const CHECKOUT_AWAITING_CONFIRMATION_MESSAGE =
+  "Paystack hasn't confirmed this payment yet. If you completed it, your tickets will arrive here and by email within a few minutes — don't pay again. If nothing arrives, contact support@usemingla.com.";
+
 /** Every constant this module owns, in one place, so a test can walk them. */
 export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_IN_PROGRESS_MESSAGE,
@@ -77,6 +124,23 @@ export const NATIVE_CHECKOUT_MESSAGES: readonly string[] = [
   CHECKOUT_ALREADY_RESERVED_MESSAGE,
   CHECKOUT_NO_HANDOFF_MESSAGE,
   CHECKOUT_FAILED_MESSAGE,
+];
+
+/**
+ * issue #2264 — the complete codomain of `nativePaystackReturnMessage`, so a
+ * test can walk it the way #2229's tests walk NATIVE_CHECKOUT_MESSAGES.
+ *
+ * CHECKOUT_UNAVAILABLE_MESSAGE appears in BOTH arrays on purpose: it is the
+ * `paid_reversal_pending` arm's copy here (#1930 — the sale moved under the
+ * charge) and the `checkout_unavailable` create-refusal there. Same sentence,
+ * two rails.
+ */
+export const NATIVE_PAYSTACK_RETURN_MESSAGES: readonly string[] = [
+  CHECKOUT_ABANDONED_MESSAGE,
+  CHECKOUT_PAYMENT_FAILED_MESSAGE,
+  CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
+  CHECKOUT_UNAVAILABLE_MESSAGE,
+  CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
 ];
 
 /**
@@ -154,3 +218,44 @@ export const nativeCheckoutErrorMessage = (
   if (status === 409) return CHECKOUT_IN_PROGRESS_MESSAGE;
   return CHECKOUT_FAILED_MESSAGE;
 };
+
+/**
+ * issue #2264 — map `ticket-checkout-status`'s TERMINAL token to buyer copy.
+ *
+ * The native mirror of the web rail's #2198 arm in `paidCheckoutErrorMessage`
+ * (`mingla-business/src/services/ticketCheckoutService.ts`). The four codes are
+ * the complete terminal set `resolvePaystackTicketReturn` can emit
+ * (`supabase/functions/_shared/paystackTicketReturnVerify.ts` — the `abandoned`
+ * / `failed` arm and the `amount_mismatch` / `currency_mismatch` /
+ * `paid_reversal_pending` arms).
+ *
+ * TOTAL by the same construction as `nativeCheckoutErrorMessage`: the final
+ * return is unconditional. Rule 5 — an unrecognised code, and `null`, degrade
+ * to CHECKOUT_AWAITING_CONFIRMATION_MESSAGE, i.e. "we don't know yet". That is
+ * the SAFE direction on a money path: a terminal code invented by a future
+ * server version must never become a false certainty about the buyer's money.
+ *
+ * A LOOKUP TABLE rather than an if-chain, deliberately. #2229's adversarial
+ * reverse-drift guard reads every double-quoted `[a-z_]` literal in this file
+ * and requires it to be a token `ticket-checkout-create` can still emit. These
+ * four are emitted by `ticket-checkout-status` instead, so that guard cannot
+ * cover them — and must not be made to think it does. The equivalent
+ * reverse-drift property for THESE codes is asserted in
+ * `__tests__/issue_2264_checkout_outcome_honesty.test.ts` T-2, which derives
+ * them from `paystackTicketReturnVerify.ts` — the file that actually mints
+ * them — and fails if the server ever drops one of the arms.
+ *
+ * Invariant: I-PROPOSED-NATIVE-CHECKOUT-ERRORS-TOTAL-MAPPER (extended, not
+ * weakened) + I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
+ */
+const PAYSTACK_RETURN_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
+  paystack_charge_abandoned: CHECKOUT_ABANDONED_MESSAGE,
+  paystack_charge_failed: CHECKOUT_PAYMENT_FAILED_MESSAGE,
+  paystack_payment_mismatch: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
+  // #1930 — `paid_reversal_pending`: current-sale truth moved under the charge.
+  checkout_unavailable: CHECKOUT_UNAVAILABLE_MESSAGE,
+};
+
+export const nativePaystackReturnMessage = (code: string | null): string =>
+  (code === null ? undefined : PAYSTACK_RETURN_MESSAGE_BY_CODE[code]) ??
+  CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;

@@ -30,6 +30,11 @@ on:
       # only so editing the gate itself re-runs the gate. Same narrowness rule
       # as scripts/ota/** — do NOT widen to all of scripts/**.
       - "scripts/ci/check-native-authsession-redirects.sh"
+      # issue #2264 — the discarded-answer registry. Same narrowness rule: the
+      # gate already SCANS app-mobile/** and mingla-business/**, so a new
+      # ticket-checkout-status call site re-runs it via those entries; this line
+      # exists only so editing the gate itself re-runs the gate.
+      - "scripts/ci/check-checkout-status-consumers.sh"
   push:
     branches: [main, Seth]
     paths:
@@ -59,6 +64,11 @@ on:
       # only so editing the gate itself re-runs the gate. Same narrowness rule
       # as scripts/ota/** — do NOT widen to all of scripts/**.
       - "scripts/ci/check-native-authsession-redirects.sh"
+      # issue #2264 — the discarded-answer registry. Same narrowness rule: the
+      # gate already SCANS app-mobile/** and mingla-business/**, so a new
+      # ticket-checkout-status call site re-runs it via those entries; this line
+      # exists only so editing the gate itself re-runs the gate.
+      - "scripts/ci/check-checkout-status-consumers.sh"
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -793,6 +803,20 @@ jobs:
         run: bash scripts/ci/check-native-authsession-redirects.sh --self-test
       - name: "Issue #2227: no native openAuthSessionAsync https redirect"
         run: bash scripts/ci/check-native-authsession-redirects.sh
+      # issue #2264 — the discarded-answer registry. Same reasoning and the same
+      # home as #2227's: it scans all of app-mobile/** and mingla-business/**,
+      # which is exactly what this workflow's paths filter already triggers on,
+      # so a NEW ticket-checkout-status caller anywhere in those trees re-runs
+      # it. That is the point — #2264 was one of five poll sites reading only
+      # `order`, and a paths-gated per-issue lane would only have guarded the
+      # files #2264 happened to touch.
+      #
+      # Self-test first, so a gate that can no longer fail is caught before its
+      # green is believed (the #2242 shape).
+      - name: "Issue #2264: checkout-status consumer registry (self-test first)"
+        run: bash scripts/ci/check-checkout-status-consumers.sh --self-test
+      - name: "Issue #2264: no caller discards the checkout-status verdict"
+        run: bash scripts/ci/check-checkout-status-consumers.sh
       # The behavioural half. These run the REAL useNativeCheckoutFlow with only
       # the transport, the browser and the Stripe SDK stubbed, so they assert
       # which primitive was called with which URL and how many creates actually
@@ -817,7 +841,12 @@ jobs:
       # explicit minimum means a rename, a move or a typo REDS the lane instead
       # of quietly passing on an empty set. Raise the floor when suites are
       # added; it may never be lowered without saying which suite was retired.
-      - name: "Issues #2227/#2229: native Paystack hand-off + total error mapper"
+      # #2264/#2265 join this lane rather than opening a new one: same files,
+      # same directory, same reason. The `issue_2265_*` glob reaches into
+      # expandedCard/__tests__ because that is where the cart sheet's own
+      # regression lives, and an unwired suite is the defect this repo has now
+      # fixed three times in two days.
+      - name: "Issues #2227/#2229/#2264/#2265: native Paystack hand-off, total error mapper + pending surface"
         working-directory: app-mobile
         shell: bash
         run: |
@@ -826,13 +855,15 @@ jobs:
           suites=$(printf '%s\n' \
             src/payments/__tests__/issue_2227_*.test.ts \
             src/payments/__tests__/issue_2229_*.test.ts \
+            src/payments/__tests__/issue_2264_*.test.ts \
             src/payments/__tests__/*.tester_adversarial.test.ts \
+            src/components/expandedCard/__tests__/issue_2265_*.test.ts \
             | sort -u)
           echo "Suites matched:"
           echo "$suites"
           matched=$(printf '%s\n' "$suites" | grep -c '\.test\.ts$' || true)
-          if [ "$matched" -lt 8 ]; then
-            echo "FAIL: the suite globs matched $matched files, expected at least 8."
+          if [ "$matched" -lt 10 ]; then
+            echo "FAIL: the suite globs matched $matched files, expected at least 10."
             echo "A guard that matches nothing cannot fail. Fix the glob or the paths."
             exit 1
           fi

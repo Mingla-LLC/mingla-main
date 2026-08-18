@@ -125,3 +125,97 @@ describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
     expect(normalize(businessVer)).toBe(normalize(consumerVer));
   });
 });
+
+/**
+ * issue #2264 [abandoned payment told the wrong story] — the TERMINAL-TOKEN
+ * half of the parity contract.
+ *
+ * The business app has no `checkoutErrorMessages.ts` (#2229 scoped that file to
+ * app-mobile), so its four return-leg strings are declared as module constants
+ * in `nativeCheckoutFlow.native.ts`. Two copies of a sentence with no shared
+ * owner is exactly how the retired "We couldn't confirm your payment yet"
+ * string ended up duplicated across three files and owned by none — so this
+ * asserts them BYTE-IDENTICAL against app-mobile's constants of the same name.
+ *
+ * SPEC #2264 §7 T-8 (neither flow discards the answer) and T-9 (copy parity).
+ *
+ * Fails on revert: narrow either flow's `ticket-checkout-status` response type
+ * back to `{ order }`, or let one app's copy drift, and this goes red.
+ */
+describe("#2264 — consumer/business terminal-token parity", () => {
+  const CONSUMER_FLOW = stripLineComments(
+    read("app-mobile/src/payments/nativeCheckoutFlow.ts"),
+  );
+  const BUSINESS_FLOW = stripLineComments(
+    read("mingla-business/src/payments/nativeCheckoutFlow.native.ts"),
+  );
+  const CONSUMER_COPY = read("app-mobile/src/payments/checkoutErrorMessages.ts");
+
+  const CONSTANTS = [
+    "CHECKOUT_ABANDONED_MESSAGE",
+    "CHECKOUT_PAYMENT_FAILED_MESSAGE",
+    "CHECKOUT_PAYMENT_MISMATCH_MESSAGE",
+    "CHECKOUT_AWAITING_CONFIRMATION_MESSAGE",
+    "CHECKOUT_UNAVAILABLE_MESSAGE",
+  ] as const;
+
+  /** The string literal a `const NAME =\n  "…";` declaration carries. */
+  const literalFor = (source: string, name: string): string => {
+    const match = new RegExp(
+      `\\b(?:export\\s+)?const\\s+${name}\\s*=\\s*\\n?\\s*"((?:[^"\\\\]|\\\\.)*)"`,
+    ).exec(source);
+    if (match === null) throw new Error(`no literal for ${name}`);
+    return match[1];
+  };
+
+  it("both native flows read `status` AND `error` off ticket-checkout-status", () => {
+    for (const source of [CONSUMER_FLOW, BUSINESS_FLOW]) {
+      expect(source).toMatch(/status\?:\s*string;[\s\S]{0,200}?error\?:\s*string;/);
+      expect(source).toMatch(/data\?\.status === "failed"/);
+      expect(source).toMatch(/data\.error \?\? null/);
+    }
+  });
+
+  it("neither native flow still carries the retired timeout string", () => {
+    for (const rel of [
+      "app-mobile/src/payments/nativeCheckoutFlow.ts",
+      "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+    ]) {
+      expect(read(rel)).not.toContain("We couldn't confirm your payment yet");
+    }
+  });
+
+  it("the four return-leg strings are BYTE-IDENTICAL across the two apps", () => {
+    for (const name of CONSTANTS) {
+      expect(literalFor(BUSINESS_FLOW, name)).toBe(
+        literalFor(CONSUMER_COPY, name),
+      );
+    }
+  });
+
+  it("the business mapper is TOTAL by the same construction as the consumer's", () => {
+    // The final `return` of each mapper is unconditional, so an unrecognised
+    // code degrades to "we don't know yet" instead of a false certainty.
+    expect(BUSINESS_FLOW).toMatch(
+      /const paystackReturnMessage[\s\S]*?return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;\s*\n\};/,
+    );
+    expect(CONSUMER_COPY).toMatch(
+      /nativePaystackReturnMessage[\s\S]*?return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;\s*\n\};/,
+    );
+  });
+
+  it("both flows carry the #2250 protective comment at the poll site", () => {
+    for (const rel of [
+      "app-mobile/src/payments/nativeCheckoutFlow.ts",
+      "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+    ]) {
+      const source = read(rel);
+      expect(source).toContain(
+        "I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES",
+      );
+      expect(source).toContain(
+        "I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED",
+      );
+    }
+  });
+});
