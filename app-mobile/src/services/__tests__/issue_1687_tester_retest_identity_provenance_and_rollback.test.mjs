@@ -827,9 +827,29 @@ test('T-9R the delete cannot come back under another name, in another file — t
   const DELETE_OWNERS = new Set(['src/services/visitService.ts', 'src/hooks/useVisits.ts']);
 
   const EXPECTED_CLOSURE = [
+    // [TEST-MOD-APPROVED #2186] appVersionIdentity.ts joined this closure. It is
+    // ADMITTED, not tolerated — traced before adding, and it is not the thing T-9R
+    // exists to catch.
+    //
+    // How it arrived: #2075 ("Block unsupported native app versions") added a
+    // version header to the SHARED client —
+    //     src/services/supabase.ts:4
+    //       import { getNativeAppVersionHeaders } from './appVersionIdentity';
+    // — and every file in this write path imports './supabase'. So it entered
+    // transitively, through the one module they all share, without #2075 editing
+    // any file this gate names.
+    //
+    // Why it is safe: it contains NO delete or remove operation of any kind. It is
+    // semver parsing, platform detection and request headers
+    // (getNativeAppPlatform / getInstalledNativeVersion / APP_VERSION_APP_ID).
+    // T-9R's stated fear is "a new `placeVisitRecovery`-style module wired into
+    // `onError` under a name nobody banned" — a reintroduced delete. This is not
+    // that, and DELETE_OWNERS above is unchanged, so the delete ban still binds
+    // exactly the two files it always bound.
     'src/hooks/queryKeys.ts',
     'src/hooks/usePlaceReviews.ts',
     'src/hooks/useVisits.ts',
+    'src/services/appVersionIdentity.ts',
     'src/services/placeReviewService.ts',
     'src/services/supabase.ts',
     'src/services/visitService.ts',
