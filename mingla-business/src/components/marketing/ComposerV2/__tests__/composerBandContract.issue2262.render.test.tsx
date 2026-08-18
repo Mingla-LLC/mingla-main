@@ -30,7 +30,34 @@
  */
 
 import React from "react";
-import TestRenderer, { act } from "react-test-renderer";
+
+/**
+ * `react-test-renderer` ships no type declarations and `@types/react-test-renderer`
+ * is not installed; package manifests are do-not-touch on this issue. A plain
+ * `import` would therefore add TS7016 diagnostics to the repo-wide baseline the
+ * #1403 delta ratchet watches. Same `require`-with-a-local-interface shape
+ * `stayFieldAxis.issue1501.render.test.tsx` already uses, for the same reason.
+ */
+interface RenderNode {
+  type: unknown;
+  props: Record<string, unknown> & { testID?: string; style?: unknown };
+  children: unknown[];
+  findAll: (
+    predicate: (node: RenderNode) => boolean,
+    options?: { deep: boolean },
+  ) => RenderNode[];
+  findAllByType: (type: unknown) => RenderNode[];
+}
+interface RenderTree {
+  root: RenderNode;
+  update: (element: React.ReactElement) => void;
+  unmount: () => void;
+}
+const TestRenderer = require("react-test-renderer") as {
+  create: (element: React.ReactElement) => RenderTree;
+  act: (callback: () => void) => void;
+};
+const act = TestRenderer.act;
 
 let mockIsWideDesktop = false;
 let mockIsShort = false;
@@ -62,15 +89,15 @@ type RichEditorProps = {
 };
 const richEditorProps: RichEditorProps[] = [];
 jest.mock("../richEditor", () => {
-  const ReactLocal = jest.requireActual("react") as typeof React;
-  const RN = jest.requireActual("react-native") as { View: React.ComponentType<object> };
+  const ReactLocal = jest.requireActual("react") as {
+    createElement: (t: unknown, p: unknown) => unknown;
+    forwardRef: (r: (p: RichEditorProps, ref: unknown) => unknown) => unknown;
+  };
+  const RN = jest.requireActual("react-native") as { View: unknown };
   return {
     __esModule: true,
     actions: {},
-    RichEditor: ReactLocal.forwardRef(function MockRichEditor(
-      props: RichEditorProps,
-      _ref: unknown,
-    ) {
+    RichEditor: ReactLocal.forwardRef((props: RichEditorProps, _ref: unknown) => {
       richEditorProps.push(props);
       return ReactLocal.createElement(RN.View, { testID: "mock-rich-editor" });
     }),
@@ -87,8 +114,7 @@ jest.mock("expo-linear-gradient", () => {
   };
 });
 
-import { StyleSheet, View } from "react-native";
-import type { ReactTestInstance } from "react-test-renderer";
+import { StyleSheet } from "react-native";
 
 import { ComposerCommitBar } from "../../ComposerCommitBar";
 import { ComposerV2Editor } from "../ComposerV2Editor";
@@ -96,8 +122,8 @@ import { composerSheetMinHeight } from "../../../../constants/designSystem";
 
 const noop = (): void => undefined;
 
-function renderEditor(): TestRenderer.ReactTestRenderer {
-  let tree!: TestRenderer.ReactTestRenderer;
+function renderEditor(): RenderTree {
+  let tree!: RenderTree;
   act(() => {
     tree = TestRenderer.create(
       <ComposerV2Editor
@@ -119,7 +145,7 @@ function renderEditor(): TestRenderer.ReactTestRenderer {
 }
 
 /** Flatten whatever RN would flatten, so the assertion reads the real value. */
-function flatten(node: ReactTestInstance): Record<string, unknown> {
+function flatten(node: RenderNode): Record<string, unknown> {
   return (StyleSheet.flatten(node.props.style as never) ?? {}) as Record<string, unknown>;
 }
 
@@ -131,16 +157,16 @@ function flatten(node: ReactTestInstance): Record<string, unknown> {
  * a rendered fill has to read.
  */
 function resolvedStyle(
-  tree: TestRenderer.ReactTestRenderer,
+  tree: RenderTree,
   id: string,
 ): Record<string, unknown> {
   // The HOST node — `typeof n.type === "string"` — is the one that actually
   // paints. The composite above it carries the `({pressed}) => …` function (or
   // no style at all), so reading either would report `undefined` and make this
   // assertion pass for the wrong reason.
-  const nodes = tree.root.findAll((n) => n.props?.testID === id);
+  const nodes = tree.root.findAll((n: RenderNode) => n.props?.testID === id);
   const host = nodes.find(
-    (n) => typeof n.type === "string" && n.props?.style !== undefined,
+    (n: RenderNode) => typeof n.type === "string" && n.props?.style !== undefined,
   );
   if (host === undefined) {
     throw new Error(`#2262 T1 VACUITY: no resolved style node for testID "${id}".`);
@@ -149,14 +175,14 @@ function resolvedStyle(
 }
 
 function byTestId(
-  tree: TestRenderer.ReactTestRenderer,
+  tree: RenderTree,
   id: string,
-): ReactTestInstance {
+): RenderNode {
   const found = tree.root.findAll(
-    (n) => n.props?.testID === id && typeof n.type !== "string",
+    (n: RenderNode) => n.props?.testID === id && typeof n.type !== "string",
     { deep: true },
   );
-  const host = tree.root.findAll((n) => n.props?.testID === id);
+  const host = tree.root.findAll((n: RenderNode) => n.props?.testID === id);
   const node = found[0] ?? host[0];
   if (node === undefined) {
     throw new Error(
@@ -182,7 +208,7 @@ describe("#2262 T1 — the composer's band contract", () => {
     expect(byTestId(tree, "composer-v2-sheet")).toBeDefined();
     expect(byTestId(tree, "composer-v2-body-host")).toBeDefined();
 
-    let bar!: TestRenderer.ReactTestRenderer;
+    let bar!: RenderTree;
     act(() => {
       bar = TestRenderer.create(
         <ComposerCommitBar
@@ -230,7 +256,7 @@ describe("#2262 T1 — the composer's band contract", () => {
     const tree = renderEditor();
     // Before any onLayout: zero RichEditor nodes. There is no `?? 240`.
     expect(richEditorProps).toHaveLength(0);
-    expect(tree.root.findAll((n) => n.props?.testID === "mock-rich-editor")).toHaveLength(0);
+    expect(tree.root.findAll((n: RenderNode) => n.props?.testID === "mock-rich-editor")).toHaveLength(0);
   });
 
   it("T1-b: the FIRST measurement is frozen on initialHeight; the LIVE one drives style.height", () => {
@@ -276,7 +302,7 @@ describe("#2262 T1 — the composer's band contract", () => {
     for (const wide of [true, false]) {
       mockIsWideDesktop = wide;
       mockWidth = wide ? 1440 : 390;
-      let bar!: TestRenderer.ReactTestRenderer;
+      let bar!: RenderTree;
       act(() => {
         bar = TestRenderer.create(
           <ComposerCommitBar
@@ -304,7 +330,7 @@ describe("#2262 T1 — the composer's band contract", () => {
   });
 
   it("T1-g: the mode chip renders the chosen time and the primary flips to Schedule", () => {
-    let bar!: TestRenderer.ReactTestRenderer;
+    let bar!: RenderTree;
     act(() => {
       bar = TestRenderer.create(
         <ComposerCommitBar
@@ -318,10 +344,10 @@ describe("#2262 T1 — the composer's band contract", () => {
         />,
       );
     });
-    const labelOf = (r: TestRenderer.ReactTestRenderer, id: string): string =>
+    const labelOf = (r: RenderTree, id: string): string =>
       byTestId(r, id)
-        .findAllByType("Text" as never)
-        .map((t: ReactTestInstance) => t.children.join(""))
+        .findAllByType("Text")
+        .map((t: RenderNode) => t.children.join(""))
         .join(" ");
 
     expect(labelOf(bar, "composer-commit-bar-mode-chip")).toContain("Now");
@@ -352,7 +378,7 @@ describe("#2262 T1 — the composer's band contract", () => {
   });
 
   it("T1-g2: a disabled primary states the reason instead of being a dead shape", () => {
-    let bar!: TestRenderer.ReactTestRenderer;
+    let bar!: RenderTree;
     act(() => {
       bar = TestRenderer.create(
         <ComposerCommitBar
@@ -368,7 +394,7 @@ describe("#2262 T1 — the composer's band contract", () => {
       );
     });
     const caption = byTestId(bar, "composer-commit-bar-caption");
-    expect(caption.findAllByType("Text" as never).map((t: ReactTestInstance) => t.children.join("")).join(" ")).toContain(
+    expect(caption.findAllByType("Text").map((t: RenderNode) => t.children.join("")).join(" ")).toContain(
       "Pick an audience first.",
     );
     // The screen reader gets it on focus regardless of where the eye is.
@@ -414,7 +440,9 @@ describe("#2262 T1 — the composer's band contract", () => {
     // And the four literals are gone for good: `accessibilityState.selected`
     // reports the real toggle trait rather than the `expanded` a disclosure uses.
     const glyph = tree.root.findAll(
-      (n) => n.props?.testID === "composer-v2-format-bold" && n.props?.accessibilityState,
+      (n: RenderNode) =>
+        n.props?.testID === "composer-v2-format-bold" &&
+        n.props?.accessibilityState !== undefined,
     )[0];
     expect(glyph.props.accessibilityState).toEqual({ selected: false });
   });
@@ -437,6 +465,3 @@ describe("#2262 T1 — the composer's band contract", () => {
     expect(flatten(bodyHost).flex).toBe(1);
   });
 });
-
-/** Keeps the unused-import checker honest about the `View` type reference. */
-export type _BandContractProbe = View;

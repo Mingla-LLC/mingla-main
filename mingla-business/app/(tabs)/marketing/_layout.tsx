@@ -87,7 +87,19 @@ export default function MarketingTabLayout(): React.ReactElement {
         // `{width: 0, height: 0}` when there is no `window`, and `height: 0`
         // would blank every marketing route during the static export. Same
         // guard `useResponsiveLayout` already applies to `width`.
-        Platform.OS === "web" && windowHeight > 0 ? { height: windowHeight } : null,
+        //
+        // `flexGrow: 0` + `flexBasis: "auto"` ride WITH the height, and they are
+        // load-bearing rather than tidy. `styles.host` carries `flex: 1` for
+        // native, which compiles to `flex-grow: 1; flex-basis: 0%`; if ANY
+        // ancestor between `#root` and this host is a COLUMN flex container,
+        // that grow term is on the main axis and the browser fills the parent,
+        // silently discarding the pinned height. The #2262 browser harness
+        // caught exactly that: the inline style read `height: 414px` while the
+        // element measured 750. Neutralising the grow makes the pin
+        // authoritative whichever direction the ancestor chain happens to use.
+        Platform.OS === "web" && windowHeight > 0
+          ? { height: windowHeight, flexGrow: 0, flexShrink: 0, flexBasis: "auto" }
+          : null,
       ]}
       testID="marketing-tab-layout-host"
     >
