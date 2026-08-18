@@ -680,6 +680,12 @@ verify_jwt = true
 [functions.attendance-claim-link]
 verify_jwt = false
 
+# #2217 — the identity reconnect. verify_jwt = true is the gate, not decoration:
+# the function matches the CALLER'S OWN provider-verified identifiers, so an
+# anonymous caller has nothing to match and must not reach the claim RPC.
+[functions.attendance-claim-identity]
+verify_jwt = true
+
 [functions.attendance-claim-backfill]
 verify_jwt = false
 

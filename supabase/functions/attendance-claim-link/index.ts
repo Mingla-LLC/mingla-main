@@ -79,6 +79,19 @@ serve(async (req) => {
     if (result !== "issued") {
       return json(409, { ok: false, error: "claim_link_ineligible" });
     }
+    // #2217 — ARM the identity claim from the SAME possession proof that just
+    // authorised this mint (the buyer status token checked above). This is what
+    // lets the ticket follow the buyer through a store install: the deep link's
+    // fragment cannot survive an install, but the order can be reconnected
+    // afterwards to whichever account proves it owns the email or phone on the
+    // order. Deliberately NOT fatal — the link the buyer asked for is the
+    // product of this call, and an arming failure must not withhold it. The
+    // pre-#2217 behaviour is exactly what a failure here degrades to.
+    await admin.rpc("arm_order_identity_attendance_claim", {
+      p_order_id: session.order_id,
+      p_event_id: session.event_id,
+    });
+
     const links = attendanceClaimUrls({
       kind: "order",
       eventId: session.event_id,
