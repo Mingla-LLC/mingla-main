@@ -30,13 +30,53 @@ const CALLBACKS = {
   "supabase/functions/venue-order-staff/index.ts":
     "${PRODUCTION_BUSINESS_WEB_ORIGIN}/o/venue/${",
 };
-const RETURN_CLIENTS = {
-  "app-mobile/src/payments/nativeCheckoutFlow.ts": "data.returnUrl",
-  "app-mobile/src/hooks/useReserveTable.ts": "created.returnUrl",
-  "app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts":
-    'const NG_RETURN_PREFIX = "https://host.usemingla.com/o/venue/"',
-  "mingla-business/src/payments/nativeCheckoutFlow.native.ts": "data.returnUrl",
-};
+// issue #2227 (2026-08-18) — AMENDED, client-side callback half only.
+//
+// This map used to pin the literal each client passed as the SECOND argument of
+// WebBrowser.openAuthSessionAsync — the server's https Host return URL — on the
+// premise that it was the callback iOS would auto-close the in-app browser on.
+// That premise is false on every shipped iOS build and has never been true in
+// this repo's lifetime:
+//
+//   expo-web-browser >= 15 (pinned since 2025-10-07, SDK 54) routes an https
+//   redirect to ASWebAuthenticationSession(callback: .https(host:path:)) on iOS
+//   >= 17.4. That API REQUIRES an Associated Domains entitlement carrying the
+//   `webcredentials` service for the host. Neither app declares one — both
+//   app-mobile/app.json and mingla-business/app.json list `applinks:` only —
+//   and the served apple-app-site-association at host.usemingla.com has no
+//   `webcredentials` key at all. iOS therefore destroys the session at start(),
+//   before it draws a pixel, and reports it as a user cancellation.
+//
+// Measured on iOS 26.5, 2026-08-18, one probe per literal this map used to pin:
+//   https://host.usemingla.com/o/venue/    -> cancel in 119ms, entitlement error
+//   https://host.usemingla.com/reserve/x   -> cancel in  87ms, entitlement error
+//   https://host.usemingla.com/checkout/…  -> cancel in  97ms, entitlement error
+// On Android the auto-close never existed either: expo-web-browser's own
+// polyfill says "Users on Android need to manually press the 'x' button in
+// Chrome Custom Tabs, sadly" and does not implement dismissBrowser there.
+//
+// This gate landed 2026-08-14, ten months after that expo-web-browser pin, so
+// the auto-close it asserted was already dead when it was written: it passed by
+// matching a literal whose runtime behaviour had died. See #2227.
+//
+// WHAT IS UNCHANGED: the server still builds the https Host return URL, every
+// client still sends `returnContract: "host_v1"`, and Paystack still redirects
+// the buyer to that Host page. Those halves are asserted above and are NOT
+// weakened here. What changed is only that the client no longer hands that URL
+// to iOS as an ASWebAuthenticationSession callback — it opens the provider with
+// WebBrowser.openBrowserAsync, which iOS actually presents.
+//
+// Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION (#2227).
+const BROWSER_CLIENTS = [
+  "app-mobile/src/payments/nativeCheckoutFlow.ts",
+  "app-mobile/src/hooks/useReserveTable.ts",
+  "app-mobile/src/components/venueOrdering/useConsumerVenueOrdering.ts",
+  "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+];
+const OPEN_BROWSER = "WebBrowser.openBrowserAsync(";
+// The CALL, not the word: #2227 requires a protective comment naming the
+// forbidden API directly above the replacement call.
+const AUTH_SESSION_CALL = /openAuthSessionAsync\s*\(/;
 
 const fail = (message) => { throw new Error(`[issue-2050] ${message}`); };
 
@@ -68,9 +108,21 @@ export function validate(files) {
       fail(`${file} still depends on the retired generic callback`);
     }
   }
-  for (const [file, required] of Object.entries(RETURN_CLIENTS)) {
-    if (!files[file].includes(required)) {
-      fail(`${file} cannot close the browser on the server-returned Host route`);
+  for (const file of BROWSER_CLIENTS) {
+    const source = files[file];
+    // Falsifiable half A: the provider page must still be opened, by the
+    // primitive iOS will actually present. Delete the call and this fails.
+    if (!source.includes(OPEN_BROWSER)) {
+      fail(`${file} no longer opens the provider page with ${OPEN_BROWSER}`);
+    }
+    // Falsifiable half B: no reverting to the API iOS refuses. Restore an
+    // openAuthSessionAsync(...) call here and this fails.
+    if (AUTH_SESSION_CALL.test(source)) {
+      fail(
+        `${file} hands the browser back to openAuthSessionAsync — iOS >= 17.4 ` +
+          `destroys that session without a \`webcredentials\` Associated Domain, ` +
+          `so the buyer never sees the payment page (#2227)`,
+      );
     }
   }
 }
@@ -80,7 +132,7 @@ function load() {
     ...SERVERS,
     ...CLIENTS,
     ...Object.keys(CALLBACKS),
-    ...Object.keys(RETURN_CLIENTS),
+    ...BROWSER_CLIENTS,
   ]);
   return Object.fromEntries([...files].map((file) => [
     file,
@@ -99,14 +151,37 @@ if (process.argv.includes("--self-test")) {
   }
   for (const [target, required] of [
     [Object.keys(CALLBACKS)[0], Object.values(CALLBACKS)[0]],
-    [Object.keys(RETURN_CLIENTS)[0], Object.values(RETURN_CLIENTS)[0]],
   ]) {
     const bad = { ...good, [target]: good[target].replace(required, "removed") };
     let rejected = false;
     try { validate(bad); } catch { rejected = true; }
     if (!rejected) fail(`BAD callback fixture passed for ${target}`);
   }
-  console.log("PASS issue-2050 Paystack Host return contract: GOOD + 6 BAD fixtures");
+  // #2227 client-callback half — BOTH directions must still bite, on EVERY
+  // browser client, or the amendment would have quietly stopped checking.
+  for (const target of BROWSER_CLIENTS) {
+    const dropped = {
+      ...good,
+      [target]: good[target].replaceAll(OPEN_BROWSER, "notTheBrowser("),
+    };
+    let rejected = false;
+    try { validate(dropped); } catch { rejected = true; }
+    if (!rejected) fail(`BAD fixture passed: ${target} stopped opening the provider page`);
+
+    const reverted = {
+      ...good,
+      [target]: good[target].replace(
+        OPEN_BROWSER,
+        "WebBrowser.openAuthSessionAsync(returnUrl, ",
+      ),
+    };
+    rejected = false;
+    try { validate(reverted); } catch { rejected = true; }
+    if (!rejected) fail(`BAD fixture passed: ${target} reverted to openAuthSessionAsync`);
+  }
+  console.log(
+    "PASS issue-2050 Paystack Host return contract: GOOD + 5 contract BAD fixtures + 8 #2227 browser-client BAD fixtures",
+  );
 } else {
   validate(load());
   console.log("PASS issue-2050 Paystack Host return contract");
