@@ -24,6 +24,12 @@ on:
       # all of `scripts/**`.
       - "docs/**"
       - "scripts/ota/**"
+      # issue #2227 — the native openAuthSessionAsync redirect registry. ONE
+      # file, deliberately: the gate SCANS app-mobile/** and mingla-business/**
+      # (already above, so a new call site always re-runs it); this entry exists
+      # only so editing the gate itself re-runs the gate. Same narrowness rule
+      # as scripts/ota/** — do NOT widen to all of scripts/**.
+      - "scripts/ci/check-native-authsession-redirects.sh"
   push:
     branches: [main, Seth]
     paths:
@@ -47,6 +53,12 @@ on:
       # all of `scripts/**`.
       - "docs/**"
       - "scripts/ota/**"
+      # issue #2227 — the native openAuthSessionAsync redirect registry. ONE
+      # file, deliberately: the gate SCANS app-mobile/** and mingla-business/**
+      # (already above, so a new call site always re-runs it); this entry exists
+      # only so editing the gate itself re-runs the gate. Same narrowness rule
+      # as scripts/ota/** — do NOT widen to all of scripts/**.
+      - "scripts/ci/check-native-authsession-redirects.sh"
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -763,6 +775,79 @@ jobs:
             src/components/utils/__tests__/issue_1669_tester_adversarial.test.ts \
             src/components/utils/__tests__/holidayCardToExpandedCardData.test.ts \
             src/components/utils/__tests__/holidayCardToExpandedCardData.adversarial.test.ts
+      # issue #2227 — the native browser-primitive registry gate lives at
+      # scripts/ci/check-native-authsession-redirects.sh (a .sh outside the
+      # strict-grep dir, like scripts/ci/security_definer_anon_gate.sh), so it
+      # is wired by an explicit step rather than a MANIFEST entry. It belongs in
+      # THIS workflow rather than a per-issue lane because it scans all of
+      # app-mobile/** and mingla-business/**, which is exactly what this
+      # workflow's paths filter already triggers on: a new openAuthSessionAsync
+      # call site ANYWHERE in those trees re-runs the gate. A paths-gated
+      # per-issue lane would only have guarded the files #2227 happened to
+      # touch, which is not what a registry is for.
+      #
+      # Self-test first, so a gate that can no longer fail is caught before its
+      # green is believed (the #2242 shape: a guard whose failing half never
+      # ran, green for six days).
+      - name: "Issue #2227: browser-redirect registry gate (self-test first)"
+        run: bash scripts/ci/check-native-authsession-redirects.sh --self-test
+      - name: "Issue #2227: no native openAuthSessionAsync https redirect"
+        run: bash scripts/ci/check-native-authsession-redirects.sh
+      # The behavioural half. These run the REAL useNativeCheckoutFlow with only
+      # the transport, the browser and the Stripe SDK stubbed, so they assert
+      # which primitive was called with which URL and how many creates actually
+      # fired — not that a function exists. Without this step they would sit in
+      # the tree unrun, which is the state #2227's own report flagged.
+      #
+      # GLOBBED, NOT HAND-LISTED (#2227 QA F-4). A hand-list has now failed
+      # twice on this one change: the #2050 amendment's own guard had no CI
+      # home, and then the tester's three `.tester_adversarial.test.ts` files
+      # landed in this exact directory and ran in NO workflow at all — the same
+      # shape as #1038 / #1047 / #2242, a regression guard present in the tree
+      # and wired into nothing. A list a human must remember to extend is the
+      # defect; the fix is to stop keeping one. The globs sweep:
+      #   * every #2227 / #2229 suite in the payments directory, and
+      #   * every tester adversarial suite there, whatever issue it belongs to.
+      # The whole directory is deliberately NOT globbed: two files in it are
+      # node:test suites jest cannot host (orch_1244_applepay_cartitem.test.ts,
+      # wallet_config_threading.orch1387.test.mjs).
+      #
+      # FLOOR ASSERTION. A glob that matches nothing is a step that cannot fail
+      # — the #2242 shape this change keeps running into. `nullglob` + an
+      # explicit minimum means a rename, a move or a typo REDS the lane instead
+      # of quietly passing on an empty set. Raise the floor when suites are
+      # added; it may never be lowered without saying which suite was retired.
+      - name: "Issues #2227/#2229: native Paystack hand-off + total error mapper"
+        working-directory: app-mobile
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          suites=$(printf '%s\n' \
+            src/payments/__tests__/issue_2227_*.test.ts \
+            src/payments/__tests__/issue_2229_*.test.ts \
+            src/payments/__tests__/*.tester_adversarial.test.ts \
+            | sort -u)
+          echo "Suites matched:"
+          echo "$suites"
+          matched=$(printf '%s\n' "$suites" | grep -c '\.test\.ts$' || true)
+          if [ "$matched" -lt 8 ]; then
+            echo "FAIL: the suite globs matched $matched files, expected at least 8."
+            echo "A guard that matches nothing cannot fail. Fix the glob or the paths."
+            exit 1
+          fi
+          npx jest --runInBand $suites
+      # ORCH-1187's experience-purchase guard is DARK — present in the tree and
+      # wired into no workflow at all. It asserts the stale-occurrence recovery
+      # on ConsumerExperienceDetailScreen.tsx, which #2229 edits, and it caught a
+      # real break in that change during implementation. It covers the same
+      # surface as the step above, so it runs here rather than in a lane of its
+      # own (same reasoning as the ORCH-0997 adapters in #1669 above).
+      - name: "ORCH-1187: experience stale-occurrence recovery (was dark)"
+        working-directory: app-mobile
+        run: >-
+          node --experimental-strip-types --test
+          src/screens/Experience/__tests__/orch_1187_consumer_experience_purchase_bugs.test.tsx
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results

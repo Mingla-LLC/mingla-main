@@ -41,7 +41,12 @@ test("T-1793-R9 — closing Paystack can reopen the same transaction from status
   assert.match(service, /includePaymentContinuation: true/);
   assert.match(service, /value\.kind === "requires_paystack_redirect"/);
   assert.match(hook, /resumeVenueOrderPayment\(orderId, token\)/);
-  assert.match(hook, /openAuthSessionAsync\([\s\S]*authorizationUrl/);
+  // #2227 [TEST-MOD-APPROVED #2227]: the NG hand-off moved off
+  // openAuthSessionAsync — an https redirect argument made iOS >= 17.4 destroy
+  // the session before it presented. The reopen behaviour this test guards is
+  // unchanged; only the primitive it names moved.
+  assert.match(hook, /openBrowserAsync\([\s\S]*authorizationUrl/);
+  assert.doesNotMatch(hook, /openAuthSessionAsync\s*\(/);
   assert.match(slots, /onRetryPayment=\{ordering\.retryPayment\}/);
 });
 

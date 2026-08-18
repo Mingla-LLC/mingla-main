@@ -183,11 +183,18 @@ export const useReserveTable = (
 
     // ── FEE (NG/Paystack) — hosted checkout in an in-app browser, then confirm.
     if (created.kind === "requires_paystack_redirect") {
+      // #2227 — openBrowserAsync, NOT openAuthSessionAsync. The redirect
+      // argument here was the server's https returnUrl, which makes
+      // expo-web-browser >= 15 ask iOS >= 17.4 for an
+      // ASWebAuthenticationSession .https callback; that requires a
+      // `webcredentials:` Associated Domain the app does not have, so iOS
+      // destroyed the session in <100ms and logged "cancelled by user" — the
+      // buyer never saw Paystack. The server still needs returnUrl for
+      // Paystack's own callback_url and for the web rail; only this native
+      // interception argument was fatal. Never reintroduce it.
+      // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
       try {
-        await WebBrowser.openAuthSessionAsync(
-          created.authorizationUrl,
-          created.returnUrl,
-        );
+        await WebBrowser.openBrowserAsync(created.authorizationUrl);
       } catch {
         // Still confirm — the buyer may have paid before the browser errored.
       }

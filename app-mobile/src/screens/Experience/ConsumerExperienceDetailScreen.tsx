@@ -693,18 +693,25 @@ export default function ConsumerExperienceDetailScreen({
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         // ORCH-1187 FIX-4(b): the server rejects an occurrence whose end_at has
         // already passed (or that no longer belongs to the event) with a 422
-        // carrying error="occurrence_not_available" / "occurrence_not_found"
-        // (surfaced as result.message via extractFunctionError). Map those to a
-        // FRIENDLY, actionable toast and RE-OPEN the reserve picker so the buyer
-        // immediately picks another (live) slot — never the generic
-        // "Payment failed." dead-end. The happy path is unchanged.
-        const msg = result.message ?? "";
+        // carrying error="occurrence_not_available" / "occurrence_not_found".
+        // Re-open the reserve picker so the buyer immediately picks another
+        // (live) slot — never the generic "Payment failed." dead-end. The happy
+        // path is unchanged.
+        //
+        // issue #2229: this used to sniff the RAW TOKEN out of the toast copy.
+        // result.message is now mapped buyer copy and no longer carries the
+        // token, so the branch reads result.token — the same fact, from the
+        // field that actually carries it. The tokens stay named HERE, at the
+        // branch, because this is a behavioural decision (re-open the picker),
+        // not a copy decision.
         const isStaleOccurrence =
-          msg.includes("occurrence_not_available") ||
-          msg.includes("occurrence_not_found");
+          result.token === "occurrence_not_available" ||
+          result.token === "occurrence_not_found";
         if (isStaleOccurrence) {
+          // ORCH-1187's sentence, plus the #2188 money clause every buyer-facing
+          // checkout string must carry.
           toastManager.show(
-            "That time just passed — pick another.",
+            "That time just passed — pick another. You have not been charged.",
             "warning",
           );
           // Drop the stale selection + invalidate the fresh detail so the picker
