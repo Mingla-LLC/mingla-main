@@ -12,6 +12,18 @@ import {
   rgb,
 } from "https://esm.sh/pdf-lib@1.17.1";
 // deno-lint-ignore no-explicit-any
+//
+// issue #2160 CI: esm.sh advertises @types/qrcode, which is a CommonJS
+// `export =` and therefore has NO default export — a stricter checker rejects
+// the default import below with TS2613. The RUNTIME specifier is unchanged and
+// still correct (the ?bundle build does expose the API as the default), so the
+// emitted PDF is byte-identical; only the types are redirected. See the header
+// of qrcodeModule.d.ts for why local types beat pinning a @types version.
+//
+// The directive MUST be the line IMMEDIATELY above the import — Deno ignores it
+// otherwise, silently falling back to the upstream .d.ts (verified with
+// `deno info`, which showed the binding unchanged when a comment sat between).
+// @ts-types="./qrcodeModule.d.ts"
 import QRCode from "https://esm.sh/qrcode@1.5.4?bundle";
 import { formatEventDateLine } from "./email/dateLine.ts";
 // ORCH-1195 FIX 2 — pdf-lib StandardFonts use WinAnsi encoding which throws on
