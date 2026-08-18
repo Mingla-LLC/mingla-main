@@ -9,6 +9,7 @@
 
 // @ts-ignore Deno ESM import
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import { isTrustedMinglaBrowserOrigin } from "./appVersionPolicy.ts";
 import { structuredLog } from "./structuredLog.ts";
 
 export type OtaUpdateMode = "silent" | "acknowledge" | "force_restart";
@@ -32,6 +33,28 @@ const VERSION_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
 export const OTA_POLICY_REQUEST_HEADERS =
   "authorization, x-client-info, apikey, content-type, x-mingla-app-id, x-mingla-app-platform, x-mingla-app-version, x-mingla-app-runtime-version";
+
+/**
+ * CORS lives here, not inline in the function, so the allow-list is written once
+ * and reviewed once. `x-client-info` is non-negotiable: supabase-js sends it on
+ * every request, and an allow-list omitting it fails the browser preflight
+ * outright (ORCH-1205).
+ */
+export function appOtaCorsHeaders(req: Request): Record<string, string> {
+  const origin = req.headers.get("origin");
+  const allowOrigin = origin === null
+    ? "*"
+    : isTrustedMinglaBrowserOrigin(origin)
+    ? origin
+    : "null";
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Headers": OTA_POLICY_REQUEST_HEADERS,
+    "Vary": "Origin",
+    "Cache-Control": "no-store",
+    "Content-Type": "application/json",
+  };
+}
 
 export function isOtaUpdateMode(value: unknown): value is OtaUpdateMode {
   return value === "silent" || value === "acknowledge" ||

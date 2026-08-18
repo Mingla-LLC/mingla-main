@@ -35,6 +35,8 @@ const FILES = {
   hostRuntime: "mingla-business/src/services/otaUpdateRuntime.ts",
   consumerLayer: "app-mobile/src/components/OtaAcknowledgementLayer.tsx",
   hostLayer: "mingla-business/src/components/ui/OtaAcknowledgementLayer.tsx",
+  consumerLayerWeb: "app-mobile/src/components/OtaAcknowledgementLayer.web.tsx",
+  hostLayerWeb: "mingla-business/src/components/ui/OtaAcknowledgementLayer.web.tsx",
   consumerBanner: "app-mobile/src/hooks/useOtaUpdates.ts",
   edgePolicy: "supabase/functions/_shared/appOtaPolicy.ts",
   edgeEndpoint: "supabase/functions/app-ota-policy/index.ts",
@@ -167,6 +169,24 @@ export function validate(sources, { simulateRevert = false } = {}) {
     }
   }
 
+  // 7 — web resolves to a stub, so none of this reaches the browser boot chunk.
+  // A runtime Platform check is not enough: it still ships the native layer, its
+  // policy core and expo-updates inside the EAGER __common chunk. Measured at
+  // 3,761 B on #2107, against #2099's 1,024 B ceiling.
+  for (const key of ["consumerLayerWeb", "hostLayerWeb"]) {
+    const imports = [...sources[key].matchAll(/^import .*? from ["']([^"']+)["'];?$/gm)]
+      .map((match) => match[1])
+      .filter((specifier) => specifier !== "react");
+    if (imports.length > 0) {
+      failures.push(
+        `${key} must import nothing but react — ${imports.join(", ")} would land in the web boot payload`,
+      );
+    }
+    if (!sources[key].includes("export function OtaAcknowledgementLayer")) {
+      failures.push(`${key} must export the same component name so Metro can resolve it for web`);
+    }
+  }
+
   return failures;
 }
 
@@ -211,7 +231,18 @@ function selfTest() {
     console.error("#2107 self-test: a seeded enforcement row was not detected");
     process.exit(1);
   }
-  console.log("#2107 self-test passed (clean green; revert, drift and seeded-row all caught).");
+  const fattenedWeb = validate({
+    ...sources,
+    hostLayerWeb:
+      `import { createOtaGateCoordinator } from "../../services/otaUpdateRuntime";\n${sources.hostLayerWeb}`,
+  });
+  if (fattenedWeb.length === 0) {
+    console.error("#2107 self-test: an import added to the web stub was not detected — the boot-payload guard proves nothing");
+    process.exit(1);
+  }
+  console.log(
+    "#2107 self-test passed (clean green; revert, drift, seeded-row and fattened web stub all caught).",
+  );
 }
 
 function main() {

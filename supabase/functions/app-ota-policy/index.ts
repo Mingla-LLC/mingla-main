@@ -1,29 +1,12 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { isTrustedMinglaBrowserOrigin } from "../_shared/appVersionPolicy.ts";
 import {
+  appOtaCorsHeaders,
   isSupportedRuntimeVersion,
-  OTA_POLICY_REQUEST_HEADERS,
   readAppOtaPolicy,
 } from "../_shared/appOtaPolicy.ts";
 
-function corsHeaders(req: Request): Record<string, string> {
-  const origin = req.headers.get("origin");
-  const allowOrigin = origin === null
-    ? "*"
-    : isTrustedMinglaBrowserOrigin(origin)
-    ? origin
-    : "null";
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": OTA_POLICY_REQUEST_HEADERS,
-    "Vary": "Origin",
-    "Cache-Control": "no-store",
-    "Content-Type": "application/json",
-  };
-}
-
 serve(async (req) => {
-  const headers = corsHeaders(req);
+  const headers = appOtaCorsHeaders(req);
   if (req.method === "OPTIONS") {
     return new Response(null, { status: 204, headers });
   }
