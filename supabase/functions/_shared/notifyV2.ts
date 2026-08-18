@@ -1048,6 +1048,27 @@ function adapterOutcome(result: {
   // #2218 — held by the Nigerian operator embargo. NOT `skipped`: a skip means
   // the send was deliberately abandoned and `success: true` is the honest
   // answer; a deferral means the message is still owed and must come back.
+  //
+  // A TRADE-OFF THAT IS BEING MADE ON PURPOSE, NOT OVERLOOKED. On the
+  // source-refund pool this outcome enters
+  // `complete_source_refund_notification_delivery`, whose backoff ladder is
+  // 60s / 5min / 30min and which lands on `failed_terminal` at the fourth
+  // attempt — flipping `source_refunds.ops_status` to `needs_review`. Inside a
+  // twelve-hour embargo that happens roughly 36 minutes in, so a Nigerian
+  // refund SMS sent at night WILL raise an ops flag.
+  //
+  // That is the better of the two outcomes reachable from here, and the choice
+  // is deliberate. Mapping it to `skipped` instead would suppress the flag —
+  // and would ABANDON the refund SMS silently, which is precisely the
+  // pathology #2218 exists to end. The flag is not a false alarm either: the
+  // notification genuinely did not go out. It is merely EARLIER and NOISIER
+  // than it needs to be.
+  //
+  // The proper fix is to teach that RPC to honour a caller-supplied
+  // `next_attempt_at` the way notification-retry-sweeper now does, so a held
+  // message sleeps until the window opens instead of burning its ladder. That
+  // is a migration against a money-path function and is deliberately NOT bundled
+  // into #2218.
   if (result.status === "deferred") {
     return {
       success: false,

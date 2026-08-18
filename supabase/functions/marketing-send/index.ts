@@ -1950,6 +1950,13 @@ async function sendSms(
         // the alternative — falling through to `failed` — would burn a campaign
         // recipient over a window change, and "unreachable today" is not a
         // reason to write a branch that lies tomorrow.
+        //
+        // NAMED SO IT IS NOT A SURPRISE IF THE WINDOWS EVER DIVERGE: this arm
+        // shares the else-branch that revokes an offering invite token, and a
+        // deferral is not a failure that should cost a token. It is harmless
+        // today only because the guard cannot fire here. If NG marketing hours
+        // are ever widened past 20:00 WAT, split this arm out ABOVE the token
+        // revocation before doing so.
         await supabase
           .from("marketing_messages")
           .update({
