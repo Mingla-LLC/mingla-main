@@ -127,10 +127,6 @@ import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
-// issue #2229 — branch on the server TOKEN, not on the copy. The copy is now
-// mapped, so the old `message.includes("occurrence_not_available")` sniff can
-// never match again.
-import { isStaleOccurrenceToken } from "../../payments/checkoutErrorMessages";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
 // #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
@@ -702,15 +698,22 @@ export default function ConsumerExperienceDetailScreen({
         // (live) slot — never the generic "Payment failed." dead-end. The happy
         // path is unchanged.
         //
-        // issue #2229: this used to sniff the RAW TOKEN out of result.message.
-        // The message is now mapped buyer copy and no longer contains the
+        // issue #2229: this used to sniff the RAW TOKEN out of the toast copy.
+        // result.message is now mapped buyer copy and no longer carries the
         // token, so the branch reads result.token — the same fact, from the
-        // field that actually carries it.
-        const isStaleOccurrence = isStaleOccurrenceToken(result.token ?? null);
+        // field that actually carries it. The tokens stay named HERE, at the
+        // branch, because this is a behavioural decision (re-open the picker),
+        // not a copy decision.
+        const isStaleOccurrence =
+          result.token === "occurrence_not_available" ||
+          result.token === "occurrence_not_found";
         if (isStaleOccurrence) {
-          // Mapped copy, which unlike the old string also tells the buyer that
-          // nothing was charged.
-          toastManager.show(result.message, "warning");
+          // ORCH-1187's sentence, plus the #2188 money clause every buyer-facing
+          // checkout string must carry.
+          toastManager.show(
+            "That time just passed — pick another. You have not been charged.",
+            "warning",
+          );
           // Drop the stale selection + invalidate the fresh detail so the picker
           // re-materializes with live, future slots, then re-open the right one.
           setSelectedEventDateId(null);

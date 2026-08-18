@@ -33,10 +33,7 @@ jest.mock("@mingla/payments-native", () => ({
 jest.mock("@stripe/stripe-react-native", () => ({ initStripe: jest.fn() }));
 
 import { useNativeCheckoutFlow } from "../nativeCheckoutFlow";
-import {
-  CHECKOUT_DATE_UNAVAILABLE_MESSAGE,
-  isStaleOccurrenceToken,
-} from "../checkoutErrorMessages";
+import { CHECKOUT_DATE_UNAVAILABLE_MESSAGE } from "../checkoutErrorMessages";
 
 const SCREEN_SOURCE = readFileSync(
   join(
@@ -73,8 +70,8 @@ describe("#2229 T-14 — the stale-occurrence recovery survives the mapper", () 
 
     expect(result.outcome).toBe("failed");
     if (result.outcome !== "failed") throw new Error("unreachable");
-    // The predicate the screen branches on fires...
-    expect(isStaleOccurrenceToken(result.token ?? null)).toBe(true);
+    // The exact value the screen branches on...
+    expect(result.token).toBe("occurrence_not_available");
     // ...and the buyer reads a sentence, not the token.
     expect(result.message).toBe(CHECKOUT_DATE_UNAVAILABLE_MESSAGE);
     expect(result.message).not.toContain("occurrence_not_available");
@@ -82,8 +79,9 @@ describe("#2229 T-14 — the stale-occurrence recovery survives the mapper", () 
 
   it("the screen branches on the token and no longer sniffs the message", () => {
     expect(SCREEN_SOURCE).toContain(
-      "isStaleOccurrenceToken(result.token ?? null)",
+      'result.token === "occurrence_not_available"',
     );
+    expect(SCREEN_SOURCE).toContain('result.token === "occurrence_not_found"');
     expect(SCREEN_SOURCE).not.toMatch(
       /msg\.includes\("occurrence_not_available"\)/,
     );
@@ -94,8 +92,11 @@ describe("#2229 T-14 — the stale-occurrence recovery survives the mapper", () 
 
   it("the picker re-open behaviour is preserved exactly", () => {
     const branch = SCREEN_SOURCE.slice(
-      SCREEN_SOURCE.indexOf("isStaleOccurrenceToken(result.token ?? null)"),
-    ).slice(0, 900);
+      SCREEN_SOURCE.indexOf("const isStaleOccurrence ="),
+    ).slice(0, 1100);
+    expect(branch).toContain(
+      "That time just passed — pick another. You have not been charged.",
+    );
     expect(branch).toContain("setSelectedEventDateId(null)");
     expect(branch).toContain("freshDetailQuery.refetch()");
     expect(branch).toContain("setReservePickerVisible(true)");

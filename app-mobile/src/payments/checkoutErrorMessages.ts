@@ -164,12 +164,3 @@ export const isCheckoutInProgress = (
   token: string | null,
   status: number | null,
 ): boolean => token === "checkout_in_progress" || status === 409;
-
-/**
- * True when the organiser's date/occurrence moved. The Experience screen
- * branches on this to re-open its picker (ORCH-1187 FIX-4b) — it used to
- * string-sniff the raw token out of the message, which the mapper removes.
- */
-export const isStaleOccurrenceToken = (token: string | null): boolean =>
-  token !== null &&
-  (token === "occurrence_not_available" || token === "occurrence_not_found");

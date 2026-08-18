@@ -24,7 +24,6 @@ import {
   CHECKOUT_UPDATE_APP_MESSAGE,
   NATIVE_CHECKOUT_MESSAGES,
   isCheckoutInProgress,
-  isStaleOccurrenceToken,
   nativeCheckoutErrorMessage,
 } from "../checkoutErrorMessages";
 
@@ -226,13 +225,6 @@ describe("#2229 T-6 — status precedence", () => {
 });
 
 describe("#2229 — the ORCH-1187 stale-occurrence branch survives the mapper", () => {
-  it("exposes the token predicate the Experience screen must branch on", () => {
-    expect(isStaleOccurrenceToken("occurrence_not_available")).toBe(true);
-    expect(isStaleOccurrenceToken("occurrence_not_found")).toBe(true);
-    expect(isStaleOccurrenceToken("bookings_closed")).toBe(false);
-    expect(isStaleOccurrenceToken(null)).toBe(false);
-  });
-
   it("the mapped copy no longer carries the token a string-sniff needed", () => {
     expect(
       nativeCheckoutErrorMessage("occurrence_not_available", 422),
