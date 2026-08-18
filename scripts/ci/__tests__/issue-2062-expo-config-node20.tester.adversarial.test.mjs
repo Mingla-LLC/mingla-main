@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import { existsSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
@@ -32,9 +31,14 @@ const SELF_TEST_COMMAND =
 const REAL_COMMAND =
   "node scripts/ci/issue-2062-expo-config-node20.mjs --app ${{ matrix.app }}";
 const STALE_CONFIG_ROOT = ["app.config", "ts"].join(".");
+// #2199: was `historical: { occurrences: 5, files: 5 }` — one REPORTS.md line
+// plus four `.mtmp/metro-cache/*` blobs that happened to contain this string.
+// Those blobs were Metro's bundler cache, committed by 40cab4082 (#1709) and
+// untracked by #2199, so only the REPORTS.md line remains. The blob-hash
+// classifier they needed went with them.
 const EXPECTED_INVENTORY = {
   guard: { occurrences: 14, files: 4 },
-  historical: { occurrences: 5, files: 5 },
+  historical: { occurrences: 1, files: 1 },
   stale: { occurrences: 0, files: 0 },
   unclassified: { occurrences: 0, files: 0 },
 };
@@ -68,24 +72,6 @@ const GUARD_CONTEXTS = new Map([
       `"mingla-business/${STALE_CONFIG_ROOT}",`,
       `assert.ok(!existsSync(resolve(REPO_ROOT, appName, "${STALE_CONFIG_ROOT}")));`,
     ],
-  ],
-]);
-const HISTORICAL_CACHE_BLOBS = new Map([
-  [
-    ".mtmp/metro-cache/2b/9d171ab3ada8f7052fc8e5dafb7b5f892bd13ca858ee59229fa0d05ce339432b47f938",
-    "4bb7b5763fa88ccf9f371a8775618fa2e066372c",
-  ],
-  [
-    ".mtmp/metro-cache/5b/78d0188f0de9625fd956fb19a91d00892bd13ca858ee59229fa0d05ce339432b47f938",
-    "4bb7b5763fa88ccf9f371a8775618fa2e066372c",
-  ],
-  [
-    ".mtmp/metro-cache/bb/714dad05df1a69acb4f35e460f1ffca687c3471c2d5bfdde1c54b215b44ae3c4606ba6",
-    "c7055ae296c10f0b38ba8d3285a85ff50b667825",
-  ],
-  [
-    ".mtmp/metro-cache/fd/976461f750de5662b8c26196124a1ea687c3471c2d5bfdde1c54b215b44ae3c4606ba6",
-    "c7055ae296c10f0b38ba8d3285a85ff50b667825",
   ],
 ]);
 const HISTORICAL_REPORT_LINE =
@@ -215,13 +201,6 @@ function expectAuditFailure(label, action) {
   assert.throws(action, undefined, label);
 }
 
-function gitBlobHash(buffer) {
-  return createHash("sha1")
-    .update(Buffer.from(`blob ${buffer.length}\0`))
-    .update(buffer)
-    .digest("hex");
-}
-
 function trackedWorkingTreeFiles() {
   const result = spawnSync("git", ["ls-files", "-z"], {
     cwd: REPO_ROOT,
@@ -238,7 +217,7 @@ function trackedWorkingTreeFiles() {
     .filter(Boolean);
 }
 
-function classifyOccurrence(relativePath, line, buffer) {
+function classifyOccurrence(relativePath, line) {
   const trimmed = line.trim();
   const allowedGuardLines = GUARD_CONTEXTS.get(relativePath) ?? [];
   if (allowedGuardLines.includes(trimmed)) return "guard";
@@ -250,11 +229,9 @@ function classifyOccurrence(relativePath, line, buffer) {
     return "historical";
   }
 
-  const expectedBlob = HISTORICAL_CACHE_BLOBS.get(relativePath);
-  if (expectedBlob !== undefined) {
-    return gitBlobHash(buffer) === expectedBlob ? "historical" : "unclassified";
-  }
-
+  // #2199: the blob-hash escape hatch here existed only to whitelist four
+  // committed Metro cache files. The cache is untracked now, so every remaining
+  // occurrence outside a named guard context is genuinely stale.
   return "stale";
 }
 
@@ -275,7 +252,7 @@ function auditTrackedInventory() {
     for (const [lineIndex, line] of source.split(/\r?\n/).entries()) {
       let offset = line.indexOf(STALE_CONFIG_ROOT);
       while (offset !== -1) {
-        const category = classifyOccurrence(relativePath, line, buffer);
+        const category = classifyOccurrence(relativePath, line);
         inventory[category].push({
           relativePath,
           line: lineIndex + 1,
@@ -418,7 +395,7 @@ test("#2062 tester: both CommonJS roots and platformUrl operational path are cur
 test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root path", () => {
   const inventory = auditTrackedInventory();
   assert.equal(inventory.guard.length, 14);
-  assert.equal(inventory.historical.length, 5);
+  assert.equal(inventory.historical.length, 1);
   assert.equal(inventory.stale.length, 0);
   assert.equal(inventory.unclassified.length, 0);
 
@@ -426,7 +403,6 @@ test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root
     classifyOccurrence(
       "scripts/ci/__tests__/unrelated-fixture.mjs",
       `// Current runtime source is ${STALE_CONFIG_ROOT}`,
-      Buffer.from("fixture"),
     ),
     "stale",
   );
@@ -434,7 +410,6 @@ test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root
     classifyOccurrence(
       ".github/workflows/issue-994-ota-env-resolution.yml",
       `# Current runtime source is ${STALE_CONFIG_ROOT}`,
-      Buffer.from("fixture"),
     ),
     "stale",
   );

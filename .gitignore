@@ -133,3 +133,9 @@ skills-lock.json
 # file must exist at that path when the batch runs, and must never be committed:
 # it is a 7,000-line run log of one machine's local sweep.
 gate-results-*.json
+
+# #2199 — Metro's bundler cache. 11,360 files / 233 MB of it were committed by
+# 40cab4082 (#1709) and carried on main until #2199 untracked them. It is
+# machine-specific, regenerable, and paid for by every clone, every CI checkout
+# and every `git worktree add` — and this repo spawns a worktree per work item.
+.mtmp/
