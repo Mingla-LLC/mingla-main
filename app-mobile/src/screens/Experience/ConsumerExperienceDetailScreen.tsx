@@ -127,6 +127,10 @@ import {
   type NativeCheckoutOutcome,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
+// issue #2229 — branch on the server TOKEN, not on the copy. The copy is now
+// mapped, so the old `message.includes("occurrence_not_available")` sniff can
+// never match again.
+import { isStaleOccurrenceToken } from "../../payments/checkoutErrorMessages";
 import { toastManager } from "../../components/ui/Toast";
 import { useAppStore } from "../../store/appStore";
 // #1708 — the same two pieces the place sheet uses. Open-Meteo needs no key and
@@ -693,20 +697,20 @@ export default function ConsumerExperienceDetailScreen({
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         // ORCH-1187 FIX-4(b): the server rejects an occurrence whose end_at has
         // already passed (or that no longer belongs to the event) with a 422
-        // carrying error="occurrence_not_available" / "occurrence_not_found"
-        // (surfaced as result.message via extractFunctionError). Map those to a
-        // FRIENDLY, actionable toast and RE-OPEN the reserve picker so the buyer
-        // immediately picks another (live) slot — never the generic
-        // "Payment failed." dead-end. The happy path is unchanged.
-        const msg = result.message ?? "";
-        const isStaleOccurrence =
-          msg.includes("occurrence_not_available") ||
-          msg.includes("occurrence_not_found");
+        // carrying error="occurrence_not_available" / "occurrence_not_found".
+        // Re-open the reserve picker so the buyer immediately picks another
+        // (live) slot — never the generic "Payment failed." dead-end. The happy
+        // path is unchanged.
+        //
+        // issue #2229: this used to sniff the RAW TOKEN out of result.message.
+        // The message is now mapped buyer copy and no longer contains the
+        // token, so the branch reads result.token — the same fact, from the
+        // field that actually carries it.
+        const isStaleOccurrence = isStaleOccurrenceToken(result.token ?? null);
         if (isStaleOccurrence) {
-          toastManager.show(
-            "That time just passed — pick another.",
-            "warning",
-          );
+          // Mapped copy, which unlike the old string also tells the buyer that
+          // nothing was charged.
+          toastManager.show(result.message, "warning");
           // Drop the stale selection + invalidate the fresh detail so the picker
           // re-materializes with live, future slots, then re-open the right one.
           setSelectedEventDateId(null);
