@@ -80,19 +80,31 @@ describe("ORCH-1100 RC-3 (2) — body height + scroll are web-gated", () => {
   const canvasWeb = stripComments(read(CANVAS_WEB));
   const canvasNative = stripComments(read(CANVAS_NATIVE));
 
-  test("editor computes an isPhoneWeb flag (web AND not wide-desktop)", () => {
-    expect(editor).toMatch(/isPhoneWeb\s*=\s*isWeb\s*&&\s*!isWideDesktop/);
-  });
-
-  test("phone web gets a robust minimum body height (no 23px strip collapse)", () => {
-    // A floor of at least a few hundred px so the contenteditable is always
-    // tappable; the original 120px keyboard-up floor would still be too small
-    // for the phone-web no-keyboard case.
-    expect(editor).toMatch(/PHONE_WEB_BODY_MIN_PX\s*=\s*3[0-9]{2}/);
-    expect(editor).toMatch(
-      /isPhoneWeb[\s\S]{0,120}Math\.max\(\s*PHONE_WEB_BODY_MIN_PX/,
-    );
-  });
+  // ─── #2262 [composer-responsive-layout] — TWO TESTS REMOVED HERE ────────
+  //
+  // `editor computes an isPhoneWeb flag (web AND not wide-desktop)` and
+  // `phone web gets a robust minimum body height (no 23px strip collapse)`
+  // pinned `isPhoneWeb` and `PHONE_WEB_BODY_MIN_PX = 360`. #2262 deletes both,
+  // along with `CHROME_CONTENT_PX = 376`, the `+42` Done-bar term, the
+  // `Math.max(120, …)` floor and the bespoke `Keyboard.addListener`.
+  //
+  // WHY THEY ARE NOT REPLACED IN KIND. They asserted the SHAPE OF THE PATCH — a
+  // flag and a floor — and never the PROPERTY the patch was for: a tappable,
+  // viewport-fitting editor. The block's own header above names a "~23px strip",
+  // and the strip was STILL 23px, on desktop web and on mobile web, while these
+  // two tests passed. 78/78 composer tests were green on the exact commit where
+  // both defects were measured live in a real browser. A check that cannot fail
+  // for the bug it was written about carries no information.
+  //
+  // The property is now asserted by four suites that CAN fail:
+  //   composerBandContract.issue2262.render.test.tsx        (the band tree)
+  //   composerViewportFit.issue2262.web.render.test.tsx     (the RNW resolver)
+  //   composerEditableFillsBox.issue2262.test.ts            (the CSS contract)
+  //   playwright/issue2262/composer-viewport-fit.spec.ts    (real Chromium:
+  //     real geometry, real clicks, a real keyboard-open visual viewport)
+  //
+  // Everything else in this file is byte-unchanged: describe-block (1) in full,
+  // and assertions 3 and 4 below, which pin contracts #2262 preserves.
 
   test("narrow-web editor column is wrapped in a ScrollView (body reachable)", () => {
     expect(canvasWeb).toMatch(/import\s*\{[^}]*\bScrollView\b[^}]*\}\s*from\s*["']react-native["']/);
