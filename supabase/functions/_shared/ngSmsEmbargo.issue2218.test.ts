@@ -151,3 +151,29 @@ Deno.test("#2218 T-2: only Termii's documented numeric id is reconcilable", () =
     false,
   );
 });
+
+Deno.test("#2218 T-1e: the next opening rolls a month and a year correctly", () => {
+  // `Date.UTC(y, m, day + 1, …)` normalises overflow, so these should fall out
+  // of the construction — but "should fall out" is how off-by-one date bugs get
+  // shipped, and a Nigerian buyer on the 31st is not a special case to them.
+  // 2026-08-31 21:00 WAT -> 2026-09-01 08:00 WAT
+  assertEquals(
+    nextNgGenericWindowOpen(new Date("2026-08-31T20:00:00Z")).toISOString(),
+    "2026-09-01T07:00:00.000Z",
+  );
+  // 2026-12-31 23:30 WAT -> 2027-01-01 08:00 WAT
+  assertEquals(
+    nextNgGenericWindowOpen(new Date("2026-12-31T22:30:00Z")).toISOString(),
+    "2027-01-01T07:00:00.000Z",
+  );
+  // 2028-02-28 22:00 WAT, a leap year -> 2028-02-29 08:00 WAT
+  assertEquals(
+    nextNgGenericWindowOpen(new Date("2028-02-28T21:00:00Z")).toISOString(),
+    "2028-02-29T07:00:00.000Z",
+  );
+  // And the small hours of the 1st still open the SAME morning, not the 2nd.
+  assertEquals(
+    nextNgGenericWindowOpen(new Date("2026-09-01T02:00:00Z")).toISOString(),
+    "2026-09-01T07:00:00.000Z",
+  );
+});
