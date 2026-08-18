@@ -16,10 +16,13 @@
  *       decided by a resolver built from the real routing layers
  *       (mingla-marketing/app/**, next.config.ts redirects, middleware.ts,
  *       vercel.json) — not from a list of blessed strings.
- *   T2  that resolver is FALSIFIABLE: the dead path #2240 was reported for must
+ *   T2  that resolver is FALSIFIABLE: a path the apex serves with NOTHING must
  *       come back UNRESOLVED from the same code path that passes the live one.
  *       Without this, a resolver that returned `true` for everything would make
- *       T1 a check that carries no information.
+ *       T1 a check that carries no information. (The control used to be the dead
+ *       `/orders/{id}/chat` itself; #2272 now SERVES that path deliberately —
+ *       delivered emails still carry it — so the control moved to an unserved
+ *       path and a new T2 pins that #2272's landing is what answers it.)
  *   T3  the destination's own device decision is executed, on the real
  *       `resolvePlatformFromUa` the route calls, for real iOS/Android UAs.
  *   T4  all three templates emit ONE identical destination, in HTML and text.
@@ -31,6 +34,13 @@
  *
  * T1–T5 are offline and deterministic. T6 is the acceptance criterion executed
  * against production and runs in the dedicated #2240 lane.
+ *
+ * ─── #2272 EXTRACTED THE RESOLVER ───────────────────────────────────────────
+ *
+ * The route-table resolver that was defined inline here now lives in
+ * `scripts/apex-route-model/apex-route-resolver.mjs`, unchanged in behaviour, so
+ * #2240 and #2272 model the apex with ONE piece of code. Copying it would have
+ * re-created exactly the drift it exists to prevent.
  */
 
 import {
@@ -48,168 +58,52 @@ import {
   APP_STORE_URL,
   PLAY_STORE_URL,
 } from "../../../../../mingla-marketing/lib/store-links.ts";
+import {
+  APEX_HOSTS,
+  assertVercelRewritesDoNotTouchApex,
+  buildApexRouteResolver,
+} from "../../../../../scripts/apex-route-model/apex-route-resolver.mjs";
 
 Deno.env.set("DENO_TESTING", "1");
 
 const REPO_ROOT = new URL("../../../../../", import.meta.url).pathname;
-const APEX_HOSTS = new Set(["usemingla.com", "www.usemingla.com"]);
 
-/** The path #2240 was filed for, from the real order in the issue. */
-const DEAD_PATH = "/orders/0a0870b0-c117-4707-bdf4-21fc64bebcab/chat";
+/**
+ * The path #2240 was filed for, from the real order in the issue.
+ *
+ * IT IS NO LONGER DEAD. Issue #2272 serves `/orders/*` (and `/chat/*`,
+ * `/board/*`, `/invite/*`) with an honest "this opens in the Mingla app"
+ * landing, because every confirmation email delivered before #2240 still
+ * carries this URL and those cannot be recalled. So this constant now records
+ * WHERE #2240 CAME FROM, and T2's falsifiability control moved to a path that
+ * is genuinely served by nothing — see UNSERVED_PATH.
+ */
+const HISTORICAL_2240_PATH = "/orders/0a0870b0-c117-4707-bdf4-21fc64bebcab/chat";
+
+/**
+ * T2's control: a path with NO route, NO redirect and NO rewrite on the apex.
+ * Deliberately shaped like the #2240 URL so the control still exercises the
+ * multi-segment path it was written for. If this ever starts resolving, T1/T5
+ * carry no information and this suite must be fixed, not the assertion.
+ */
+const UNSERVED_PATH = "/receipts/0a0870b0-c117-4707-bdf4-21fc64bebcab/chat";
 
 // ─── The resolver ───────────────────────────────────────────────────────────
-// Built from the routing layers as they exist on disk, so it tracks the app
-// rather than a hand-maintained list. Every layer it cannot model is a LOUD
-// failure, never a silent "resolved" — an under-modelling resolver is exactly
-// the unfalsifiable check this suite exists to avoid.
+// EXTRACTED to scripts/apex-route-model/apex-route-resolver.mjs by #2272 so
+// that this suite and #2272's suites share ONE model of the apex instead of two
+// that can disagree. Behaviour is unchanged: it is built from the routing layers
+// as they exist on disk (mingla-marketing/app/**, next.config.ts redirects,
+// middleware.ts, vercel.json), it tracks the app rather than a hand-maintained
+// list, and every layer it cannot model is a LOUD failure — never a silent
+// "resolved". Plain ESM over node:fs, so the identical file runs here under Deno
+// and under `node --test` in #2272's lane.
 
-type RouteTable = { patterns: string[][]; sourceFiles: string[] };
+const MODEL = buildApexRouteResolver(REPO_ROOT.replace(/\/$/, ""));
+const ROUTES = MODEL.routes;
+const REDIRECTS = MODEL.redirectSources;
 
-/** Walk `mingla-marketing/app/**` into App-Router path patterns. */
-function buildFilesystemRoutes(): RouteTable {
-  const appDir = `${REPO_ROOT}mingla-marketing/app`;
-  const patterns: string[][] = [];
-  const sourceFiles: string[] = [];
-
-  const walk = (dirAbs: string, segments: string[]): void => {
-    for (const entry of Deno.readDirSync(dirAbs)) {
-      const abs = `${dirAbs}/${entry.name}`;
-      if (entry.isDirectory) {
-        // Route groups `(marketing)` contribute NO path segment; parallel
-        // routes `@slot` and private folders `_x` are not routable segments.
-        if (entry.name.startsWith("(") && entry.name.endsWith(")")) {
-          walk(abs, segments);
-        } else if (entry.name.startsWith("@") || entry.name.startsWith("_")) {
-          continue;
-        } else {
-          walk(abs, [...segments, entry.name]);
-        }
-        continue;
-      }
-      if (entry.name === "page.tsx" || entry.name === "page.ts" || entry.name === "route.ts") {
-        patterns.push(segments);
-        sourceFiles.push(abs.slice(REPO_ROOT.length));
-      }
-    }
-  };
-  walk(appDir, []);
-  return { patterns, sourceFiles };
-}
-
-/** Does one App-Router pattern match a concrete pathname's segments? */
-function patternMatches(pattern: string[], segments: string[]): boolean {
-  // Catch-all `[...x]` swallows one-or-more; optional `[[...x]]` zero-or-more.
-  const last = pattern.at(-1);
-  if (last !== undefined && last.startsWith("[[...") && last.endsWith("]]")) {
-    return segments.length >= pattern.length - 1 &&
-      pattern.slice(0, -1).every((p, i) => segmentMatches(p, segments[i]));
-  }
-  if (last !== undefined && last.startsWith("[...") && last.endsWith("]")) {
-    return segments.length >= pattern.length &&
-      pattern.slice(0, -1).every((p, i) => segmentMatches(p, segments[i]));
-  }
-  if (pattern.length !== segments.length) return false;
-  return pattern.every((p, i) => segmentMatches(p, segments[i]));
-}
-
-function segmentMatches(pattern: string, segment: string | undefined): boolean {
-  if (segment === undefined) return false;
-  if (pattern.startsWith("[") && pattern.endsWith("]")) return segment.length > 0;
-  return pattern === segment;
-}
-
-/** `next.config.ts` redirect sources — a redirect IS a resolution. */
-function buildRedirectSources(): string[] {
-  const src = Deno.readTextFileSync(`${REPO_ROOT}mingla-marketing/next.config.ts`);
-  const block = /async\s+redirects\s*\(\s*\)\s*\{([\s\S]*?)\n {2}\}/.exec(src);
-  assert(block !== null, "could not locate the redirects() block in next.config.ts — the resolver is out of sync with the app and must not guess");
-  return [...block[1].matchAll(/source:\s*'([^']+)'/g)].map((m) => m[1]);
-}
-
-/**
- * `middleware.ts` decisions that apply on the APEX host. Parsed from source so
- * a change to the middleware cannot leave this resolver quietly stale.
- */
-function buildMiddlewareApexRules(): { shareRe: RegExp; careersPrefix: string } {
-  const src = Deno.readTextFileSync(`${REPO_ROOT}mingla-marketing/middleware.ts`);
-  const shareLine = /const PUBLIC_SHARE_PATH = (\/\^.*\$\/)\n/.exec(src);
-  assert(shareLine !== null, "could not parse PUBLIC_SHARE_PATH out of middleware.ts — the resolver must not guess which paths the apex serves");
-  const body = shareLine[1].slice(1, -1);
-  const prefix = /const CAREERS_PREFIX = '([^']+)'/.exec(src);
-  assert(prefix !== null, "could not parse CAREERS_PREFIX out of middleware.ts");
-  return { shareRe: new RegExp(body), careersPrefix: prefix[1] };
-}
-
-/**
- * FAIL-LOUD GUARD. `vercel.json` rewrites run BEFORE the Next app. Each one is
- * host-gated to a host that is not the apex; if that ever stops being true this
- * resolver can no longer reason about the apex, and it must say so rather than
- * return a confident answer built on a layer it did not read.
- */
-function assertVercelRewritesDoNotTouchApex(): number {
-  const cfg = JSON.parse(
-    Deno.readTextFileSync(`${REPO_ROOT}mingla-marketing/vercel.json`),
-  ) as { rewrites?: Array<{ source: string; has?: Array<{ type: string; value: string }> }> };
-  const rewrites = cfg.rewrites ?? [];
-  for (const r of rewrites) {
-    const hostGate = (r.has ?? []).find((h) => h.type === "host");
-    assert(
-      hostGate !== undefined,
-      `vercel.json rewrite "${r.source}" has no host condition, so it applies on the apex. This resolver cannot model it — model it here rather than letting #2240's resolver silently under-report.`,
-    );
-    assert(
-      !APEX_HOSTS.has(hostGate.value.toLowerCase()),
-      `vercel.json rewrite "${r.source}" is gated to the APEX host "${hostGate.value}". Model it in this resolver before shipping.`,
-    );
-  }
-  return rewrites.length;
-}
-
-type Resolution = { resolved: boolean; via: string };
-
-/** Resolve a pathname as the apex host serves it. */
-function resolveOnApex(
-  pathname: string,
-  routes: RouteTable,
-  redirectSources: string[],
-  mw: { shareRe: RegExp; careersPrefix: string },
-): Resolution {
-  const segments = pathname.split("/").filter((s) => s.length > 0);
-
-  for (const source of redirectSources) {
-    const pat = source.split("/").filter((s) => s.length > 0)
-      .map((s) => (s.startsWith(":") ? "[x]" : s));
-    if (patternMatches(pat, segments)) {
-      return { resolved: true, via: `next.config redirect ${source}` };
-    }
-  }
-
-  // The apex guard 404s the careers segment — it is NOT served here.
-  if (
-    pathname === mw.careersPrefix || pathname.startsWith(`${mw.careersPrefix}/`)
-  ) {
-    return { resolved: false, via: "middleware apex guard → careers-not-found (404)" };
-  }
-
-  if (mw.shareRe.test(pathname)) {
-    return { resolved: true, via: "middleware public-share rewrite" };
-  }
-
-  for (let i = 0; i < routes.patterns.length; i++) {
-    if (patternMatches(routes.patterns[i], segments)) {
-      return { resolved: true, via: routes.sourceFiles[i] };
-    }
-  }
-  return { resolved: false, via: "no route, no redirect, no rewrite — HTTP 404" };
-}
-
-// Built once; the guard runs as part of construction so every test inherits it.
-const ROUTES = buildFilesystemRoutes();
-const REDIRECTS = buildRedirectSources();
-const MIDDLEWARE = buildMiddlewareApexRules();
-
-const resolve = (pathname: string): Resolution =>
-  resolveOnApex(pathname, ROUTES, REDIRECTS, MIDDLEWARE);
+const resolve = (pathname: string): { resolved: boolean; via: string } =>
+  MODEL.resolve(pathname);
 
 /** Pull the app-CTA URL out of rendered output rather than assuming it. */
 function urlsInHtml(html: string): string[] {
@@ -304,11 +198,27 @@ Deno.test("T1 the email app link names a route the apex host actually serves", (
 
 // ─── T2 — the resolver is falsifiable ───────────────────────────────────────
 
-Deno.test("T2 the resolver returns UNRESOLVED for the dead #2240 path", () => {
-  const dead = resolve(DEAD_PATH);
+Deno.test("T2 the resolver returns UNRESOLVED for a path the apex serves with nothing", () => {
+  const dead = resolve(UNSERVED_PATH);
   assert(
     !dead.resolved,
-    `the resolver claims ${DEAD_PATH} resolves (via ${dead.via}). That path returns HTTP 404 in production, so the resolver is broken and T1/T5 carry no information.`,
+    `the resolver claims ${UNSERVED_PATH} resolves (via ${dead.via}). Nothing serves that path, so the resolver is broken and T1/T5 carry no information.`,
+  );
+});
+
+Deno.test("T2 the #2240 path is now SERVED, and by the #2272 landing specifically", () => {
+  // Not a formality. If /orders/* ever stops resolving, every confirmation
+  // email already sitting in a buyer's inbox goes back to being a 404 (#2272),
+  // and this suite is the one place that reads the real route table.
+  const r = resolve(HISTORICAL_2240_PATH);
+  assert(
+    r.resolved,
+    `${HISTORICAL_2240_PATH} no longer resolves (${r.via}). #2272 served it precisely because delivered emails still carry it and cannot be recalled.`,
+  );
+  assertStringIncludes(
+    r.via,
+    "mingla-marketing/app/orders/",
+    `expected the #2272 landing to be what serves it; got "${r.via}"`,
   );
 });
 
@@ -335,9 +245,18 @@ Deno.test("T2 the resolver is not vacuous and its inputs were really read", () =
     `only ${ROUTES.patterns.length} routes discovered — the walk is not reading mingla-marketing/app`,
   );
   assert(REDIRECTS.length >= 5, `only ${REDIRECTS.length} redirect sources parsed from next.config.ts`);
-  assert(assertVercelRewritesDoNotTouchApex() >= 1, "no vercel.json rewrites parsed — the guard read nothing");
+  assert(
+    assertVercelRewritesDoNotTouchApex(REPO_ROOT.replace(/\/$/, "")) >= 1,
+    "no vercel.json rewrites parsed — the guard read nothing",
+  );
   // Paths that are NOT served must come back unresolved, or the walk is matching everything.
-  for (const nonsense of ["/definitely-not-a-route", "/orders", "/download/extra/segments"]) {
+  for (
+    const nonsense of [
+      "/definitely-not-a-route",
+      "/receipts",
+      "/download/extra/segments",
+    ]
+  ) {
     assert(!resolve(nonsense).resolved, `${nonsense} must not resolve — the resolver is over-matching`);
   }
   // The careers apex guard is a real 404 on this host.
@@ -472,18 +391,23 @@ Deno.test({
   },
 });
 
-// The negative control for T6: the path #2240 was filed for must still 404, so
-// a green T6 is never the result of the apex answering 200 to everything.
+// The negative control for T6: SOMETHING must still 404 in production, or a
+// green T6 is just the apex answering 200 to everything.
+//
+// This used to probe the #2240 path itself. #2272 serves that path on purpose
+// (delivered emails still carry it), so the control moved to a path nothing
+// serves. Keeping the old assertion would have made this lane go red the moment
+// #2272 deployed — for the correct behaviour.
 Deno.test({
-  name: "T6 LIVE the dead #2240 path is really a 404 in production",
+  name: "T6 LIVE a genuinely unserved path is really a 404 in production",
   ignore: !LIVE,
   fn: async () => {
-    const res = await fetch(`https://usemingla.com${DEAD_PATH}`, { redirect: "manual" });
+    const res = await fetch(`https://usemingla.com${UNSERVED_PATH}`, { redirect: "manual" });
     await res.body?.cancel();
     assertEquals(
       res.status,
       404,
-      `expected HTTP 404 for the dead path; got ${res.status}. If this route now exists the #2240 analysis needs revisiting.`,
+      `expected HTTP 404 for an unserved path; got ${res.status}. If the apex now answers 200 to anything, T6 carries no information.`,
     );
   },
 });

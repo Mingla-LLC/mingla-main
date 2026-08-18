@@ -1,0 +1,131 @@
+name: issue-2272-web-app-link-landings
+# issue #2272 [old ticket links 404 in the browser for anyone without the app].
+#
+# WHY THIS FILE EXISTS. #2240 shipped a dead link because a test asserted a URL
+# string was PRESENT and never that it RESOLVED. The natural over-correction —
+# assert the route FILE exists — is the same mistake one layer down: a file can
+# exist and still not be served, and `mingla-marketing/app/careers/**` is a live
+# example inside this very app (a middleware guard 404s it on the apex).
+#
+# So the load-bearing job here BUILDS the marketing app and asks the running
+# server for a status code. That needs `next build`, which the repository-wide
+# lanes do not do, so it gets its own lane and its blast radius is this issue.
+#
+# NO JEST, SO NO BRACKET TRAP. Every invocation is `node --test` naming its file
+# in full. (For the record, the trap: a jest pattern containing a bracketed route
+# folder like `[eventId]` is read as a character class, matches nothing, and exits
+# 0 having run no tests — a green check carrying no information. These routes are
+# `[[...rest]]` folders, so that trap was one careless pattern away.)
+#
+# Path filters err BROAD over the guarded SOURCE trees, not only the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard). They
+# include every layer that decides whether a path resolves, the `/download` route
+# the fix delegates its device decision to, the `.well-known` files #2272 must
+# not change, and the app-side files that decide what a phone WITH the app does.
+
+on:
+  pull_request:
+    paths: &issue_2272_paths
+      # The four landings, and the shared page they all render.
+      - "mingla-marketing/app/orders/**"
+      - "mingla-marketing/app/chat/**"
+      - "mingla-marketing/app/board/**"
+      - "mingla-marketing/app/invite/**"
+      - "mingla-marketing/components/marketing/app-link-landing.tsx"
+      - "mingla-marketing/lib/app-link-landing.ts"
+      # The destination the fix reuses, and its device detector.
+      - "mingla-marketing/app/download/**"
+      - "mingla-marketing/lib/device-platform.ts"
+      - "mingla-marketing/lib/store-links.ts"
+      # Every other layer that decides whether a path resolves.
+      - "mingla-marketing/next.config.ts"
+      - "mingla-marketing/middleware.ts"
+      - "mingla-marketing/vercel.json"
+      - "mingla-marketing/package.json"
+      - "mingla-marketing/package-lock.json"
+      # The declarations #2272 must NOT touch (that is #2245).
+      - "mingla-marketing/public/.well-known/**"
+      # What a phone WITH the app does with these same URLs (#2219), and the
+      # evidence for what `/board/{id}` actually means.
+      - "app-mobile/app/+native-intent.tsx"
+      - "app-mobile/app.json"
+      - "app-mobile/src/services/boardInviteService.ts"
+      # The shared route model, and this issue's suites.
+      - "scripts/apex-route-model/**"
+      - "scripts/issue-2272/**"
+      - ".github/workflows/issue-2272-web-app-link-landings.yml"
+  push:
+    branches: [main]
+    paths: *issue_2272_paths
+  workflow_dispatch:
+
+jobs:
+  model:
+    name: "#2272 Model — every declared app-link path resolves on the apex"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      # No build, no network. Runs the SHARED apex route model (#2240's resolver,
+      # extracted so both issues reason with one piece of code) over the four
+      # families, over their near-miss neighbours, and over EVERY path family the
+      # live AASA claims — the class, not the four instances. Also pins the two
+      # things #2272 promised not to change: the `.well-known` bytes, and what
+      # `+native-intent` does with these URLs on a phone that has the app.
+      - name: "#2272 route model + non-regression"
+        run: node --test scripts/issue-2272/web-app-link-landings.model.test.mjs
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # "A phone WITH the app is unaffected", EXECUTED rather than parsed. The
+      # model suite's M5 reads SERVED_ROUTE_SEGMENTS out of +native-intent.tsx;
+      # that Set could stay identical while the matching logic around it changes.
+      # This RUNS redirectSystemPath on the four families and asserts HOME, with
+      # a real deep link as the non-vacuity control. Deno because the file is
+      # TypeScript with a .tsx extension, which Node's type-stripping will not
+      # load.
+      - name: "#2272 the app still sends these four families home (#2219)"
+        run: >-
+          deno test --allow-read --no-check
+          scripts/issue-2272/native-intent-unaffected.deno.test.ts
+
+  served:
+    name: "#2272 Served — the four paths really answer, per device"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: npm ci --ignore-scripts
+        working-directory: mingla-marketing
+      - run: npx tsc --noEmit
+        working-directory: mingla-marketing
+      # THE ARTEFACT VERCEL SERVES. Nothing below asserts a file exists.
+      - run: npm run build
+        working-directory: mingla-marketing
+      # Starts that build and issues real requests with real iPhone / Android /
+      # desktop User-Agents. Its negative controls (`/nothing-serves-this-2272`,
+      # the singular/plural neighbours, and `/careers`) must 404 on the SAME
+      # server in the SAME run, so a green can never be "it answers 200 to
+      # everything". `/download` must still 307 per device, so "reuse /download"
+      # is proven on this build rather than assumed from the source.
+      - name: "#2272 the four paths answer, and the wrong ones still 404"
+        run: node --test scripts/issue-2272/web-app-link-landings.served.test.mjs
+
+  live:
+    name: "#2272 Live — production really serves them (post-deploy, manual)"
+    # Deliberately NOT on pull_request or push. mingla-marketing deploys on
+    # merge, so a PR run would be red for "not deployed yet", and the push run
+    # races the deploy it is meant to check. Deploy, then dispatch this workflow.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: "#2272 the acceptance criterion, against usemingla.com"
+        run: node --test scripts/issue-2272/web-app-link-landings.live.test.mjs
