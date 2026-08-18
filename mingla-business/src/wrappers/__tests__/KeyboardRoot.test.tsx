@@ -211,7 +211,16 @@ describe("ORCH-0892-B v2 form-screen migrations — SmartScrollView contract", (
   // 14 form-screens (11 ORCH-0892-B targets + 3 ORCH-0892-A pilot teardowns +
   // additional discoveries from 4th gate pattern).
   const FORM_SCREENS = [
-    "app/(tabs)/marketing/campaigns/compose.tsx",
+    // [#2262 pin-removal] app/(tabs)/marketing/campaigns/compose.tsx is no
+    // longer a generic Template-A form screen and is asserted separately below,
+    // against a STRONGER contract. The ORCH-0892-B v2 sweep recorded it as
+    // migrated on the strength of an import that was never used —
+    // `grep -c "<ScrollView"` in that file was 0 and eslint reported it unused —
+    // so this list was certifying a screen that had no keyboard-aware container
+    // at all. #2262 replaced the dead import with a real
+    // `SmartKeyboardAvoidingView`, which is why the generic assertions (must
+    // import ScrollView from the wrapper; must contain no KeyboardAvoidingView)
+    // are now both factually wrong for this one file. See T-2262-COMPOSER below.
     "app/(tabs)/marketing/templates/[id].tsx",
     "app/venue/create.tsx",
     "app/account/delete.tsx",
@@ -264,6 +273,77 @@ describe("ORCH-0892-B v2 form-screen migrations — SmartScrollView contract", (
       .map((line) => line.replace(/\/\/.*$/, ""))
       .join("\n");
     expect(stripped).not.toMatch(/\bKeyboardAvoidingView\b/);
+  });
+
+  // ─── #2262 [composer-responsive-layout] ────────────────────────────────
+  //
+  // The composer's keyboard contract, asserted where the generic Template-A
+  // shape no longer describes it. This is STRICTLY STRONGER than the two
+  // assertions it replaces:
+  //
+  //   - the old pin demanded a `SmartScrollView` import that was DEAD (zero
+  //     `<ScrollView` in the file, eslint reporting it unused) and could
+  //     therefore be satisfied by a screen with no keyboard handling whatsoever
+  //     — which is exactly what shipped;
+  //   - the old pin forbade `KeyboardAvoidingView` from ANY source, which was
+  //     right when the alternative was react-native's own, and is wrong now that
+  //     the sanctioned wrapper exists. What matters is WHERE it comes from.
+  //
+  // So: the wrapper is required BY PATH, react-native's own is forbidden by
+  // name, and no scroll container may appear at all — Stage F.7's constraint
+  // (pell's WebView inside a ScrollView blocks taps on iOS) is separately proven
+  // and stands. I-PROPOSED-KEYBOARD-LIBRARY-ONLY is preserved and tightened.
+  describe("#2262 — the composer's keyboard container", () => {
+    const COMPOSER = "app/(tabs)/marketing/campaigns/compose.tsx";
+    const stripComments = (src: string): string =>
+      src
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .split("\n")
+        .map((line) => line.replace(/\/\/.*$/, ""))
+        .join("\n");
+
+    it("T-2262-COMPOSER: KeyboardAvoidingView comes from the SmartKeyboardAvoidingView wrapper", () => {
+      const source = stripComments(read(COMPOSER));
+      expect(source).toMatch(
+        /import\s+\{\s*KeyboardAvoidingView\s*\}\s+from\s+["'][^"']*wrappers\/SmartKeyboardAvoidingView["']/,
+      );
+      expect(source).toMatch(/<KeyboardAvoidingView/);
+    });
+
+    it("T-2262-COMPOSER: react-native's own KeyboardAvoidingView is NOT imported", () => {
+      const source = stripComments(read(COMPOSER));
+      const rnImportBlock = source.match(
+        /import\s+\{[^}]+\}\s+from\s+["']react-native["']/,
+      );
+      expect(rnImportBlock).not.toBeNull();
+      expect((rnImportBlock as RegExpMatchArray)[0]).not.toMatch(
+        /\bKeyboardAvoidingView\b/,
+      );
+    });
+
+    it("T-2262-COMPOSER: no scroll container is imported at all (the dead SmartScrollView import is gone)", () => {
+      const source = stripComments(read(COMPOSER));
+      expect(source).not.toMatch(/wrappers\/SmartScrollView/);
+      const rnImportBlock = source.match(
+        /import\s+\{[^}]+\}\s+from\s+["']react-native["']/,
+      );
+      if (rnImportBlock !== null) {
+        expect(rnImportBlock[0]).not.toMatch(/\bScrollView\b/);
+      }
+      expect(source).not.toMatch(/<ScrollView/);
+    });
+
+    it("T-2262-COMPOSER: the Done-bar budget is READ, never re-typed", () => {
+      const source = stripComments(read(COMPOSER));
+      // The `+42` this replaced was a second magic constant living beside a
+      // bespoke Keyboard.addListener. Both are deleted; the budget now comes
+      // from the one derived source (53 on iOS 26+, 42 elsewhere, 0 on web).
+      expect(source).toMatch(/wrappers\/keyboardClearance/);
+      expect(source).toMatch(
+        /keyboardVerticalOffset=\{DONE_BAR_OCCUPIED \+ MIN_VISIBLE_CLEARANCE\}/,
+      );
+      expect(source).not.toMatch(/Keyboard\.addListener/);
+    });
   });
 
   // T-V2-FORM-LISTENERS: Template B files no longer register layout-event
