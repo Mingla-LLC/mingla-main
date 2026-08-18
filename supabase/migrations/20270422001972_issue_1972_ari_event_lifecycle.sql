@@ -431,8 +431,18 @@ DECLARE
   v_requested_visibility text;
   v_expected_live_visibility text;
 BEGIN
+  -- Scope: only events authored through the Business draft pipeline carry a
+  -- business namespace in theme, and only those rows hold a stored visibility
+  -- choice the legacy publish owner could mismap. A row carrying neither
+  -- namespace has no stored choice for this backstop to contradict, so
+  -- demanding one would make every pre-#1972 draft permanently unpublishable
+  -- and would fail every publish that does not originate in Business.
   IF OLD.event_type='event' AND OLD.status='draft'
-     AND NEW.status IN('scheduled','live') THEN
+     AND NEW.status IN('scheduled','live')
+     AND (COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'
+       OR COALESCE(NEW.theme,'{}'::jsonb) ? 'business_draft'
+       OR COALESCE(OLD.theme,'{}'::jsonb) ? 'business_event'
+       OR COALESCE(OLD.theme,'{}'::jsonb) ? 'business_draft') THEN
     v_requested_visibility:=public.business_assert_event_visibility(
       NEW.theme#>'{business_event,requestedVisibility}'
     );

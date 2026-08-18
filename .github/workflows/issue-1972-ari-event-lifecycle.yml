@@ -16,7 +16,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.implementor.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts"
-      - "supabase/migrations/20270404001972_issue_1972_ari_event_lifecycle.sql"
+      - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester.adversarial.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql"
@@ -45,7 +45,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.implementor.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts"
-      - "supabase/migrations/20270404001972_issue_1972_ari_event_lifecycle.sql"
+      - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester.adversarial.test.sql"
       - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql"
@@ -135,7 +135,7 @@ jobs:
         env:
           PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-issue-1972
         run: |
-          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270404001972_issue_1972_ari_event_lifecycle.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester.adversarial.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql

@@ -53,6 +53,8 @@ export function check(sources) {
     "NEW.theme#>'{business_event,requestedVisibility}'",
     "WHEN 'unlisted' THEN 'hidden'",
     "NEW.visibility IS DISTINCT FROM v_expected_live_visibility",
+    "COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'",
+    "COALESCE(OLD.theme,'{}'::jsonb) ? 'business_draft'",
   ]) if (!migration.includes(token)) failures.push(`closed visibility contract missing ${token}`);
   if (!tools.includes('required: ["brand_id", "title", "when_mode", "visibility"]'))
     failures.push("Ari create schema does not require an explicit visibility choice");
@@ -158,7 +160,7 @@ export function check(sources) {
 }
 
 const sources = {
-  migration: read("supabase/migrations/20270404001972_issue_1972_ari_event_lifecycle.sql"),
+  migration: read("supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"),
   tools: read("supabase/functions/_shared/agentTools.ts"),
   domains: read("supabase/functions/_shared/agentDomainTools.ts"),
   confirm: read("supabase/functions/agent-confirm-action/index.ts"),
@@ -190,6 +192,7 @@ if (process.argv.includes("--self-test")) {
     { ...sources, migration: sources.migration.replace("v_visibility NOT IN('public','unlisted','private')", "false") },
     { ...sources, migration: sources.migration.replace("CREATE TRIGGER business_guard_event_publish_visibility", "CREATE TRIGGER removed_publish_visibility_guard") },
     { ...sources, migration: sources.migration.replace("NEW.visibility IS DISTINCT FROM v_expected_live_visibility", "false") },
+    { ...sources, migration: sources.migration.replace("COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'", "true") },
     { ...sources, tools: sources.tools.replace('required: ["brand_id", "title", "when_mode", "visibility"]', 'required: ["brand_id", "title", "when_mode"]') },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.round5.implementor.test.sql", "removed-round5.sql") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql", "removed-round5-tester.sql") },
