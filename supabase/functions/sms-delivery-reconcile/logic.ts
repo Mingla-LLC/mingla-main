@@ -44,10 +44,29 @@ export interface TermiiHistoryRow {
 }
 
 export type ReconcileVerdict =
+  // The provider TOLD us it landed.
   | { kind: "delivered" }
+  // The provider TOLD us it did not. `reason` carries the provider's own word.
   | { kind: "failed"; reason: string }
+  // No answer yet; the deadline has not passed. Ask again next sweep.
   | { kind: "pending" }
-  | { kind: "unreconcilable"; reason: string };
+  // =====================================================================
+  // #2218 — WE DO NOT KNOW, AND THAT IS THE VERDICT.
+  // =====================================================================
+  // The deadline has passed and no evidence exists in either direction.
+  // GUESSING "failed" HERE IS THE SAME DEFECT AS GUESSING "sent" — the mirror
+  // image of the bug this whole issue is about, and it would be worse than
+  // useless the moment Termii's texts start arriving again: every Nigerian
+  // confirmation would be stamped a failure it never was.
+  //
+  // The live-fire that forced this distinction: a send at 08:02 WAT, with the
+  // carrying window fully open, returned `sig_9476ce81b0314c22801596be24fecdec`
+  // — the same unreconcilable shape as the 06:10 WAT send that failed. The id
+  // shape is NOT a symptom of the embargo; it is this account's current
+  // response for EVERY send. So `unverified` is not a rare corner, it is where
+  // every Nigerian row lands until the provider integration is repaired, and it
+  // must therefore be scrupulously honest rather than conveniently terminal.
+  | { kind: "unverified"; reason: string };
 
 /**
  * Termii's documented terminal statuses. Kept as a mapping rather than a
@@ -107,25 +126,29 @@ export function isPastConfirmationDeadline(
  * The verdict for a row that has passed its deadline and that History could not
  * (or cannot) resolve.
  *
- * The two reasons are kept DISTINCT on purpose. `provider_message_id_unreconcilable`
- * says the provider handed us an identifier its own APIs do not accept — an
- * integration fault, and the one an engineer must act on. `delivery_unconfirmed`
- * says we asked properly and got no confirmation — a deliverability fault, and
- * the one operations must act on. Collapsing them into one string would put the
- * #2218 signal back in the dark within a month.
+ * BOTH ARMS ARE `unverified`, NOT `failed`. Neither has evidence of
+ * non-delivery; they have an ABSENCE of evidence, and the two are not the same
+ * thing. Only a provider status naming a failure produces `failed`.
+ *
+ * The two REASONS stay distinct, because they are two different people's
+ * problems. `provider_message_id_unreconcilable` says the provider handed us an
+ * identifier its own APIs do not accept — an integration fault, an engineer's.
+ * `delivery_unconfirmed` says we asked properly and got no answer — a
+ * deliverability fault, operations'. Collapsing them into one string would put
+ * the #2218 signal back in the dark within a month.
  */
 export function deadlineVerdict(
   row: StaleSmsRow,
   idIsReconcilable: boolean,
-): ReconcileVerdict {
+): Extract<ReconcileVerdict, { kind: "unverified" }> {
   if (!idIsReconcilable) {
     return {
-      kind: "unreconcilable",
+      kind: "unverified",
       reason: `provider_message_id_unreconcilable:${row.provider ?? "unknown"}`,
     };
   }
   return {
-    kind: "failed",
+    kind: "unverified",
     reason: `delivery_unconfirmed:${row.provider ?? "unknown"}`,
   };
 }

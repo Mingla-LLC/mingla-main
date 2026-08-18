@@ -83,18 +83,23 @@ Deno.test("#2218 T-4b: the deadline is 45 minutes and it is measured, not assume
   assertEquals(isPastConfirmationDeadline({ sent_at: "not a date" }, now), false);
 });
 
-Deno.test("#2218 T-4c: the two terminal reasons stay distinct", () => {
+Deno.test("#2218 T-4c: no evidence is `unverified`, never `failed`, and the two reasons stay distinct", () => {
   const row = {
     id: "n1",
     provider: "termii",
     provider_message_id: "sig_7678b296aa6240b4864a6dcb294124b4",
     sent_at: "2026-08-18T05:10:39Z",
   };
+  // BOTH ARMS ARE `unverified`. Neither has evidence of NON-delivery; they have
+  // an absence of evidence. Returning `failed` here would be the mirror image
+  // of the bug this issue is about — and it would be systematically wrong the
+  // moment Nigerian texts start arriving again, because every Nigerian row
+  // currently carries an unreconcilable id, not merely the ones that failed.
   const unaskable = deadlineVerdict(row, false);
-  assertEquals(unaskable.kind, "unreconcilable");
-  assert(
-    unaskable.kind === "unreconcilable" &&
-      unaskable.reason === "provider_message_id_unreconcilable:termii",
+  assertEquals(unaskable.kind, "unverified");
+  assertEquals(
+    unaskable.reason,
+    "provider_message_id_unreconcilable:termii",
     "an id the provider's own APIs will not accept is an INTEGRATION fault — " +
       "an engineer must see it, and it must not read like a bad handset",
   );
@@ -103,18 +108,20 @@ Deno.test("#2218 T-4c: the two terminal reasons stay distinct", () => {
     { ...row, provider_message_id: "3017858407816658717238173" },
     true,
   );
-  assertEquals(asked.kind, "failed");
-  assert(
-    asked.kind === "failed" &&
-      asked.reason === "delivery_unconfirmed:termii",
-    "we asked properly and got no confirmation — a DELIVERABILITY fault, and a " +
+  assertEquals(asked.kind, "unverified");
+  assertEquals(
+    asked.reason,
+    "delivery_unconfirmed:termii",
+    "we asked properly and got no answer — a DELIVERABILITY fault, and a " +
       "different person's problem",
   );
   assert(
-    unaskable.kind === "unreconcilable" && asked.kind === "failed" &&
-      unaskable.reason !== asked.reason,
+    unaskable.reason !== asked.reason,
     "collapsing the two would put the #2218 signal back in the dark within a month",
   );
+
+  // The ONLY producer of `failed` is a provider status naming a failure.
+  assertEquals(classifyTermiiHistoryStatus("Rejected").kind, "failed");
 });
 
 Deno.test("#2218 T-4d: History is matched on the STRING id, never a coerced number", () => {
@@ -169,7 +176,7 @@ Deno.test("#2218 T-4d: History is matched on the STRING id, never a coerced numb
 // `isReconcilableTermiiMessageId` to accept anything, or folds the two terminal
 // reasons together, or lets the deadline lapse silently, this goes red with the
 // original row in the failure message.
-Deno.test("#2218 T-4e: the founder's undelivered confirmation becomes terminal and NAMED", () => {
+Deno.test("#2218 T-4e: the founder's confirmation becomes UNVERIFIED and NAMED, not failed", () => {
   const row = {
     id: "ddba25fd-2c2c-42ca-b436-3f9c58db251e",
     provider: "termii",
@@ -191,25 +198,26 @@ Deno.test("#2218 T-4e: the founder's undelivered confirmation becomes terminal a
   const verdict = deadlineVerdict(row, askable);
   assertEquals(
     verdict.kind,
-    "unreconcilable",
-    "not `delivered`, and not the generic unconfirmed reason either — the " +
-      "provider handed us an identifier its own APIs do not accept",
+    "unverified",
+    "NOT `delivered` — and NOT `failed` either. Nothing anywhere knows what " +
+      "became of this message, and the fix for a system that guessed `sent` " +
+      "is not a system that guesses `failed`.",
   );
-  assert(
-    verdict.kind === "unreconcilable" &&
-      verdict.reason === "provider_message_id_unreconcilable:termii",
+  assertEquals(
+    verdict.reason,
+    "provider_message_id_unreconcilable:termii",
     "the reason must name BOTH the fault class and the provider, because this " +
       "is the string that reaches a human in the ops alert",
   );
 
   // And the counterfactual, so this is not a test that passes on everything:
   // the SAME row with the numeric id this account used to return IS askable,
-  // and therefore falls to the deliverability reason instead.
+  // and therefore carries the deliverability reason instead.
   const withRealId = { ...row, provider_message_id: "3017858407816658717238173" };
   const other = deadlineVerdict(withRealId, true);
+  assertEquals(other.reason, "delivery_unconfirmed:termii");
   assert(
-    other.kind === "failed" && other.reason === "delivery_unconfirmed:termii",
-    "an id we could ask about, that we asked about and got no answer for, is a " +
-      "different problem for a different person",
+    other.reason !== verdict.reason,
+    "an id we could ask about is a different problem for a different person",
   );
 });

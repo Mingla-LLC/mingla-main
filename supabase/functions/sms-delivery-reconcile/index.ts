@@ -86,6 +86,11 @@ serve(async (req) => {
     .eq("channel", "sms")
     .eq("status", "sent")
     .is("delivered_at", null)
+    // #2218 — an already-marked row is not re-examined. `last_error` is the
+    // marker an `unverified` verdict leaves behind, and without this filter the
+    // sweep would re-alert on the same unverifiable rows every fifteen minutes
+    // until the alarm became noise and stopped being read.
+    .is("last_error", null)
     .lt("sent_at", deadlineIso)
     .order("sent_at", { ascending: true })
     .limit(BATCH_LIMIT);
@@ -102,7 +107,7 @@ serve(async (req) => {
   >;
   let confirmed = 0;
   let failedOut = 0;
-  let unreconcilable = 0;
+  let unverified = 0;
   let stillPending = 0;
   const unreconcilableSamples: string[] = [];
 
@@ -115,11 +120,15 @@ serve(async (req) => {
     const askable = row.provider === "termii" &&
       isReconcilableTermiiMessageId(messageId);
 
-    let verdict: ReconcileVerdict = { kind: "pending" };
-    if (askable) verdict = await askTermiiHistory(messageId);
-    if (verdict.kind === "pending") {
-      verdict = deadlineVerdict(row, askable);
-    }
+    // `pending` is resolved away HERE, once, into a value whose type no longer
+    // admits it — so the branches below cannot silently mishandle a verdict the
+    // sweep was never supposed to act on.
+    const asked: ReconcileVerdict = askable
+      ? await askTermiiHistory(messageId)
+      : { kind: "pending" };
+    const verdict = asked.kind === "pending"
+      ? deadlineVerdict(row, askable)
+      : asked;
 
     const nowIso = now.toISOString();
     if (verdict.kind === "delivered") {
@@ -136,32 +145,57 @@ serve(async (req) => {
       continue;
     }
 
-    // Everything else is terminal AND NAMED. `failed_terminal` on the buyer's
-    // row and `undelivered` on the shared ledger — the two vocabularies' words
-    // for the same fact — so neither table can still be read as a success.
-    const reason = verdict.kind === "unreconcilable"
-      ? verdict.reason
-      : verdict.kind === "failed"
-      ? verdict.reason
-      : "delivery_unconfirmed";
+    // =====================================================================
+    // #2218 — A FAILURE IS SOMETHING THE PROVIDER SAID. EVERYTHING ELSE IS
+    // "WE DO NOT KNOW", AND IT SAYS SO.
+    // =====================================================================
+    // `failed` only ever comes from a provider status naming a failure, and it
+    // is the only arm that writes a terminal state. `unverified` — no answer,
+    // or an id no route can look up — writes the REASON while leaving `status`
+    // at `sent`, which is exactly and only what is true: a provider accepted
+    // this and nobody can tell us what became of it.
+    //
+    // Stamping those rows `failed_terminal` would be the mirror image of the
+    // bug this issue is about. It would also be systematically wrong the moment
+    // Nigerian texts start arriving again, because — per the 08:02 WAT
+    // live-fire — EVERY Nigerian row currently carries an unreconcilable id,
+    // not merely the ones that failed.
+    //
+    // The row is still distinguishable from a delivered one, which is the
+    // acceptance bar: delivered rows carry a `delivered_at` and no
+    // `last_error`; these carry a `last_error` and no `delivered_at`. And a
+    // human is told either way.
+    const reason = verdict.reason;
+    if (verdict.kind === "failed") {
+      await supabase.from("ticket_order_notifications").update({
+        status: "failed_terminal",
+        last_error: reason,
+        updated_at: nowIso,
+      }).eq("id", row.id);
+      if (messageId.length > 0) {
+        await supabase.from("notification_deliveries").update({
+          status: "undelivered",
+          failed_reason: reason,
+        }).eq("provider_message_id", messageId).eq("channel", "sms");
+      }
+      failedOut += 1;
+      continue;
+    }
     await supabase.from("ticket_order_notifications").update({
-      status: "failed_terminal",
-      last_error: reason,
+      last_error: `delivery_unverified:${reason}`,
       updated_at: nowIso,
     }).eq("id", row.id);
     if (messageId.length > 0) {
       await supabase.from("notification_deliveries").update({
-        status: "undelivered",
-        failed_reason: reason,
+        failed_reason: `delivery_unverified:${reason}`,
       }).eq("provider_message_id", messageId).eq("channel", "sms");
     }
-    if (verdict.kind === "unreconcilable") {
-      unreconcilable += 1;
-      if (unreconcilableSamples.length < 5) {
-        unreconcilableSamples.push(messageId);
-      }
-    } else {
-      failedOut += 1;
+    unverified += 1;
+    if (
+      reason.startsWith("provider_message_id_unreconcilable") &&
+      unreconcilableSamples.length < 5 && messageId.length > 0
+    ) {
+      unreconcilableSamples.push(messageId);
     }
   }
 
@@ -186,6 +220,9 @@ serve(async (req) => {
     .eq("channel", "sms")
     .eq("status", "sent")
     .is("delivered_at", null)
+    // Same marker discipline as the ticket pass: `failed_reason` is what an
+    // `unverified` verdict leaves behind, so a marked row is judged once.
+    .is("failed_reason", null)
     .lt("attempt_at", deadlineIso)
     .order("attempt_at", { ascending: true })
     .limit(BATCH_LIMIT);
@@ -197,6 +234,7 @@ serve(async (req) => {
   }
   let ledgerConfirmed = 0;
   let ledgerTerminal = 0;
+  let ledgerUnverified = 0;
   for (
     const row of (ledgerRows ?? []) as Array<
       { id: string; provider: string | null; provider_message_id: string | null }
@@ -205,14 +243,20 @@ serve(async (req) => {
     const messageId = row.provider_message_id?.trim() ?? "";
     const askable = row.provider === "termii" &&
       isReconcilableTermiiMessageId(messageId);
-    let verdict: ReconcileVerdict = { kind: "pending" };
-    if (askable) verdict = await askTermiiHistory(messageId);
-    if (verdict.kind === "pending") {
-      verdict = deadlineVerdict(
-        { id: row.id, provider: row.provider, provider_message_id: messageId, sent_at: null },
+    const asked: ReconcileVerdict = askable
+      ? await askTermiiHistory(messageId)
+      : { kind: "pending" };
+    const verdict = asked.kind === "pending"
+      ? deadlineVerdict(
+        {
+          id: row.id,
+          provider: row.provider,
+          provider_message_id: messageId,
+          sent_at: null,
+        },
         askable,
-      );
-    }
+      )
+      : asked;
     const nowIso = now.toISOString();
     if (verdict.kind === "delivered") {
       await supabase.from("notification_deliveries").update({
@@ -222,17 +266,24 @@ serve(async (req) => {
       ledgerConfirmed += 1;
       continue;
     }
-    const reason = verdict.kind === "unreconcilable" || verdict.kind === "failed"
-      ? verdict.reason
-      : "delivery_unconfirmed";
+    // Same rule as the ticket pass: only a provider-stated failure is
+    // `undelivered`. An absence of evidence records its reason and leaves the
+    // status alone.
+    if (verdict.kind === "failed") {
+      await supabase.from("notification_deliveries").update({
+        status: "undelivered",
+        failed_reason: verdict.reason,
+      }).eq("id", row.id);
+      ledgerTerminal += 1;
+      continue;
+    }
     await supabase.from("notification_deliveries").update({
-      status: "undelivered",
-      failed_reason: reason,
+      failed_reason: `delivery_unverified:${verdict.reason}`,
     }).eq("id", row.id);
-    ledgerTerminal += 1;
+    ledgerUnverified += 1;
     if (
-      verdict.kind === "unreconcilable" && unreconcilableSamples.length < 5 &&
-      messageId.length > 0
+      verdict.reason.startsWith("provider_message_id_unreconcilable") &&
+      unreconcilableSamples.length < 5 && messageId.length > 0
     ) {
       unreconcilableSamples.push(messageId);
     }
@@ -247,7 +298,7 @@ serve(async (req) => {
   // ops-email path payout-release-sweep uses for its alarms, keyed per day and
   // per shape so a bad night produces one message rather than a hundred, and
   // NOTHING at all on a clean sweep.
-  const surfaced = failedOut + unreconcilable + ledgerTerminal;
+  const surfaced = failedOut + unverified + ledgerTerminal + ledgerUnverified;
   if (surfaced > 0) {
     const dayKey = now.toISOString().slice(0, 10);
     try {
@@ -259,17 +310,23 @@ serve(async (req) => {
         body: `${surfaced} SMS notification(s) were accepted by a provider and ` +
           `never confirmed delivered within ${
             Math.round(DELIVERY_CONFIRMATION_DEADLINE_MS / 60000)
-          } minutes. ` +
-          `${failedOut + ledgerTerminal} had no delivery confirmation; ${unreconcilable} carried a ` +
-          `provider message id our reconciliation cannot look up` +
+          } minutes.\n\n` +
+          `${failedOut + ledgerTerminal} were reported FAILED by the provider ` +
+          `and are now failed_terminal.\n` +
+          `${unverified + ledgerUnverified} are UNVERIFIABLE — we have no ` +
+          `evidence either way, so they are NOT marked failed; they now carry a ` +
+          `reason instead of looking like a clean send` +
           (unreconcilableSamples.length > 0
-            ? ` (e.g. ${unreconcilableSamples.join(", ")})`
-            : "") +
-          `. These rows are now failed_terminal, not "sent".`,
+            ? `.\n\nSome carried a provider message id that neither the delivery ` +
+              `report nor the History endpoint can match (e.g. ${
+                unreconcilableSamples.join(", ")
+              }). That is an INTEGRATION fault, not a bad handset — no Nigerian ` +
+              `delivery can be confirmed at all while it persists.`
+            : "."),
         data: {
           day: dayKey,
-          unconfirmed: failedOut,
-          unreconcilable,
+          provider_reported_failed: failedOut + ledgerTerminal,
+          unverifiable: unverified + ledgerUnverified,
           samples: unreconcilableSamples,
         },
         relatedType: "sms_delivery",
@@ -290,11 +347,12 @@ serve(async (req) => {
     scanned: stale.length,
     confirmed,
     failed: failedOut,
-    unreconcilable,
+    unverified,
     still_pending: stillPending,
     ledger_scanned: (ledgerRows ?? []).length,
     ledger_confirmed: ledgerConfirmed,
     ledger_terminal: ledgerTerminal,
+    ledger_unverified: ledgerUnverified,
     swept_at: now.toISOString(),
   });
 });

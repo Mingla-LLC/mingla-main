@@ -46,10 +46,11 @@ Deno.test("#2218 T-8b: it selects ONLY rows that claim a send and carry no confi
   // issues would be its own small joke. So each shared predicate is asserted at
   // exactly 2 occurrences.
   const countOf = (re: RegExp): number => (SOURCE.match(re) ?? []).length;
-  // 4: one per scan, plus the two mirror-writes the ticket pass makes into the
-  // shared ledger, which key on provider_message_id + channel exactly as the
-  // delivery webhooks do.
-  assertEquals(countOf(/\.eq\("channel", "sms"\)/g), 4, "channel filter, every touch");
+  // 5: one per scan (2), plus the three mirror-writes the ticket pass makes
+  // into the shared ledger — delivered, provider-reported-failed, and
+  // unverified — each keyed on provider_message_id + channel exactly as the
+  // delivery webhooks are.
+  assertEquals(countOf(/\.eq\("channel", "sms"\)/g), 5, "channel filter, every touch");
   assertEquals(
     countOf(/\.eq\("status", "sent"\)/g),
     2,
@@ -63,6 +64,13 @@ Deno.test("#2218 T-8b: it selects ONLY rows that claim a send and carry no confi
     "without this on EITHER scan, the sweep re-judges messages already " +
       "confirmed on a handset",
   );
+  // THE MARKER FILTERS. An `unverified` verdict deliberately leaves `status`
+  // alone and writes only a reason, so the reason IS the "already judged" mark.
+  // Drop these and every unverifiable row is re-alerted every fifteen minutes
+  // until the alarm is noise and nobody reads it — which is how #2218 became
+  // invisible in the first place.
+  assertEquals(countOf(/\.is\("last_error", null\)/g), 1, "ticket pass marker filter");
+  assertEquals(countOf(/\.is\("failed_reason", null\)/g), 1, "ledger pass marker filter");
   // The deadline predicate differs per table because the two name their
   // timestamp differently, so these are one occurrence each.
   assertEquals(countOf(/\.lt\("sent_at", deadlineIso\)/g), 1);
@@ -85,7 +93,10 @@ Deno.test("#2218 T-8c: a terminal verdict is written to BOTH tables, and named",
 Deno.test("#2218 T-8d: a human is told, once, and only when there is something to tell", () => {
   assertMatch(
     SOURCE,
-    /const surfaced = failedOut \+ unreconcilable \+ ledgerTerminal;/,
+    /const surfaced = failedOut \+ unverified \+ ledgerTerminal \+ ledgerUnverified;/,
+    "every row the sweep touched must be counted into the alarm — a rework " +
+      "that adds a fourth outcome and forgets to add it here makes that " +
+      "outcome silent, which is the whole defect",
   );
   assertMatch(
     SOURCE,
@@ -119,8 +130,31 @@ Deno.test("#2218 T-8e: a lookup failure is never a delivery verdict", () => {
   );
   assertMatch(
     SOURCE,
-    /if \(askable\) verdict = await askTermiiHistory\(messageId\);/,
+    /askable\s*\n?\s*\? await askTermiiHistory\(messageId\)/,
     "only a reconcilable numeric Termii id is ever looked up — asking about " +
       "a `sig_` id would be a request that cannot succeed",
+  );
+  // AND THE VERDICT THAT MATTERS MOST. `failed` may be written ONLY from a
+  // provider statement. Everything else records a reason and leaves `status`
+  // alone, because the fix for a system that guessed `sent` is not a system
+  // that guesses `failed`.
+  const terminalWrites = SOURCE.match(/status: "failed_terminal",/g);
+  assertEquals(
+    terminalWrites?.length ?? 0,
+    1,
+    "exactly one place may declare a message failed, and it is behind " +
+      "`verdict.kind === \"failed\"`",
+  );
+  assertMatch(
+    SOURCE,
+    /if \(verdict\.kind === "failed"\) \{[\s\S]{0,300}?status: "failed_terminal",/,
+    "the terminal write must be gated on the provider having SAID so",
+  );
+  assertMatch(
+    SOURCE,
+    /last_error: `delivery_unverified:\$\{reason\}`/,
+    "an absence of evidence records itself as unverified, distinguishable from " +
+      "a delivered row (which has delivered_at and no last_error) without " +
+      "asserting a failure nobody observed",
   );
 });
