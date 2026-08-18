@@ -12,6 +12,7 @@
 // about the PREDICATES and the ALARM, not about wording.
 import {
   assert,
+  assertEquals,
   assertMatch,
   assertStringIncludes,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
@@ -38,20 +39,34 @@ Deno.test("#2218 T-8b: it selects ONLY rows that claim a send and carry no confi
   // retry sweeper still owns; without `delivered_at is null` it would re-judge
   // messages already confirmed on a handset; without the deadline it would call
   // a message undelivered before the carrier had a chance to report.
-  assertMatch(SOURCE, /\.eq\("channel", "sms"\)/);
-  assertMatch(SOURCE, /\.eq\("status", "sent"\)/);
-  assertMatch(SOURCE, /\.is\("delivered_at", null\)/);
-  assertMatch(SOURCE, /\.lt\("sent_at", deadlineIso\)/);
-  // And the same four on the shared ledger, which keys its timestamp differently.
-  assertMatch(SOURCE, /\.lt\("attempt_at", deadlineIso\)/);
-  const staleQueries = SOURCE.match(/\.eq\("status", "sent"\)/g);
-  assert(
-    staleQueries !== null && staleQueries.length === 2,
-    `both ledgers must be swept; found ${staleQueries?.length ?? 0}. ` +
-      "ticket_order_notifications carries buyer confirmations and " +
-      "notification_deliveries carries everything notifyV2 sends — sweeping " +
-      "one leaves the other able to rest at `sent` forever.",
+  // COUNTED, NOT MERELY PRESENT. There are TWO scans — one per ledger — and an
+  // `assertMatch` for a predicate that appears twice stays green when ONE of
+  // them is deleted. A check that cannot fail on the change it exists to catch
+  // is the "carries no information" family, and writing one inside #2218 of all
+  // issues would be its own small joke. So each shared predicate is asserted at
+  // exactly 2 occurrences.
+  const countOf = (re: RegExp): number => (SOURCE.match(re) ?? []).length;
+  // 4: one per scan, plus the two mirror-writes the ticket pass makes into the
+  // shared ledger, which key on provider_message_id + channel exactly as the
+  // delivery webhooks do.
+  assertEquals(countOf(/\.eq\("channel", "sms"\)/g), 4, "channel filter, every touch");
+  assertEquals(
+    countOf(/\.eq\("status", "sent"\)/g),
+    2,
+    "both ledgers must be swept: ticket_order_notifications carries buyer " +
+      "confirmations and notification_deliveries carries everything notifyV2 " +
+      "sends — sweeping one leaves the other able to rest at `sent` forever",
   );
+  assertEquals(
+    countOf(/\.is\("delivered_at", null\)/g),
+    2,
+    "without this on EITHER scan, the sweep re-judges messages already " +
+      "confirmed on a handset",
+  );
+  // The deadline predicate differs per table because the two name their
+  // timestamp differently, so these are one occurrence each.
+  assertEquals(countOf(/\.lt\("sent_at", deadlineIso\)/g), 1);
+  assertEquals(countOf(/\.lt\("attempt_at", deadlineIso\)/g), 1);
 });
 
 Deno.test("#2218 T-8c: a terminal verdict is written to BOTH tables, and named", () => {
