@@ -410,13 +410,13 @@ export function useConsumerVenueOrdering(
 
         if (created.kind === "requires_paystack_redirect") {
           cart.roundSettled();
-            // #2227 — openBrowserAsync, NOT openAuthSessionAsync. An https
-            // redirect argument makes expo-web-browser >= 15 ask iOS >= 17.4
-            // for an ASWebAuthenticationSession .https callback, which needs a
-            // `webcredentials:` Associated Domain the app does not have; iOS
-            // destroys the session in <100ms and logs "cancelled by user", so
-            // the guest never sees Paystack.
-            // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
+          // #2227 — openBrowserAsync, NOT openAuthSessionAsync. An https
+          // redirect argument makes expo-web-browser >= 15 ask iOS >= 17.4 for
+          // an ASWebAuthenticationSession .https callback, which needs a
+          // `webcredentials:` Associated Domain the app does not have; iOS
+          // destroys the session in <100ms and logs "cancelled by user", so the
+          // guest never sees Paystack.
+          // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
           try {
             await WebBrowser.openBrowserAsync(created.authorizationUrl);
           } catch {
