@@ -169,22 +169,35 @@ Deno.test("#2218 T-6b: a terminal failure is terminal on the buyer's row too", a
   );
 });
 
-Deno.test("#2218 T-6c: a non-delivered report never un-delivers a delivered row", async () => {
-  // Reports arrive out of order. A late "Message Sent" following a "Delivered"
-  // must not wipe the delivered_at off a text the handset already has —
-  // exactly the mistake the shared-ledger block's unconditional
-  // `delivered_at: delivered ? now : null` would make on this table.
+Deno.test("#2218 T-6c: a non-terminal report never un-delivers a delivered row", async () => {
+  // Reports arrive out of order, and Termii sends interim states. A later
+  // non-terminal report must not wipe the `delivered_at` off a text the handset
+  // already has — which is exactly what the shared-ledger block's unconditional
+  // `delivered_at: delivered ? now : null` does, and what this table must not
+  // copy.
+  //
+  // THE STATUS MATTERS AND AN EARLIER DRAFT OF THIS TEST GOT IT WRONG. Using
+  // "Message Sent" proves nothing: `classifyStatus` counts that as DELIVERED,
+  // so the patch carries a timestamp either way and the assertion passes on the
+  // broken implementation too — a check that cannot fail on the change it
+  // exists to catch. A genuinely non-terminal status is what exercises the
+  // else-branch, and a fails-on-revert probe is what caught the difference.
   const { patches } = await callback({
     message_id: "3017858407816658717238173",
-    status: "Message Sent",
+    status: "Queued",
     receiver: "+2348162646567",
   });
   const ticket = ticketPatch(patches);
   assert(ticket.length > 0);
-  assertEquals(ticket[0].patch.status, "delivered");
-  assert(
-    !Object.hasOwn(ticket[0].patch, "delivered_at") ||
-      typeof ticket[0].patch.delivered_at === "string",
-    "the patch must never carry an explicit null delivered_at",
+  assertEquals(
+    ticket[0].patch.status,
+    "sent",
+    "neither delivered nor failed — the row keeps saying what it already said",
+  );
+  assertEquals(
+    Object.hasOwn(ticket[0].patch, "delivered_at"),
+    false,
+    "the patch must not carry a `delivered_at` key AT ALL on a non-delivered " +
+      "report; writing an explicit null would un-deliver a text the buyer has",
   );
 });
