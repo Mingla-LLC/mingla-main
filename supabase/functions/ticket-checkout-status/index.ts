@@ -6,7 +6,7 @@ import {
   sha256Hex,
   ticketCorsHeaders,
 } from "../_shared/ticketCheckout.ts";
-import { qrPayloadToDataUrl } from "../_shared/ticketQrImage.ts";
+import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
 import {
   checkoutUnavailableResponse,
   ticketCheckoutPreflight,
@@ -137,16 +137,17 @@ serve(wrapEdgeHandler("ticket-checkout-status", async (req) => {
       totalCents: session.total_cents,
       currency: String(session.currency ?? "GBP").trim(),
       taxAmountCents,
-      tickets: await Promise.all(
-        (tickets ?? []).map(async (ticket: Record<string, unknown>) => ({
-          ticketId: ticket.id,
+      // issue #2216 — ONE owner for "ticket → ticket + rendered QR" across
+      // create/confirm/status (`_shared/ticketQrImage.ts`). A single ticket
+      // that fails to render degrades to the carousel placeholder AND emits a
+      // structured error line, instead of silently answering with a blank.
+      tickets: await attachQrImageDataUrls(
+        (tickets ?? []).map((ticket: Record<string, unknown>) => ({
+          ticketId: String(ticket.id ?? ""),
           ticketTypeId: ticket.ticket_type_id,
           ticketName: (ticket.ticket_types as { name?: string } | null)?.name ??
             "Ticket",
-          qrPayload: ticket.qr_code,
-          qrImageDataUrl: await qrPayloadToDataUrl(
-            String(ticket.qr_code ?? ""),
-          ),
+          qrPayload: String(ticket.qr_code ?? ""),
           status: ticket.status,
         })),
       ),

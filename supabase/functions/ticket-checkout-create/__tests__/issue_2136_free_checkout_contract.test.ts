@@ -401,9 +401,23 @@ Deno.test("#2136 readIssuedTicketsForOrder prefers the envelope and falls back t
       throw new Error("read-back ran even though the envelope carried tickets");
     },
   };
-  assertEquals(
-    await readIssuedTicketsForOrder(neverRead, ORDER_ID, envelope),
+  // issue #2216 — this funnel now ALSO attaches `qrImageDataUrl` (the free
+  // confirmation screen rendered a blank white square without it). The #2136
+  // contract is unchanged and asserted at exactly its original strength: every
+  // field the envelope carried is preserved byte-for-byte. The added image is
+  // asserted separately below, and owned by issue_2216_free_ticket_qr_image.
+  const fromEnvelope = await readIssuedTicketsForOrder(
+    neverRead,
+    ORDER_ID,
     envelope,
+  );
+  assertEquals(
+    fromEnvelope.map(({ qrImageDataUrl: _image, ...rest }) => rest),
+    envelope,
+  );
+  assert(
+    fromEnvelope[0].qrImageDataUrl.startsWith("data:image/png;base64,"),
+    "issue #2216: the envelope arm must carry a rendered QR image",
   );
 
   // Empty / malformed envelopes fall through to the read-back.
