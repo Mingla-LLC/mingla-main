@@ -50,6 +50,21 @@ export interface EventCoverUploadResult {
   mediaType: EventCoverMediaType;
 }
 
+// Every cover writer needs the same server id before it can attest anything.
+const requireServerEventId = (eventId: string): void => {
+  if (eventId.trim().length === 0) {
+    throw new EventCoverMediaError(
+      "missing_server_event_id",
+      "Save failed because this event is missing its server id.",
+    );
+  }
+};
+
+// The edge function attests each attribution field independently; anything
+// that is not a string is absent, never a coerced value.
+const attestedString = (value: unknown): string | null =>
+  typeof value === "string" ? value : null;
+
 export const registerEventCoverSelection = async (
   serverEventId: string,
   selectionRef: string,
@@ -93,12 +108,10 @@ export const registerEventCoverSelection = async (
   }
   return {
     provider: metadata.provider ?? "upload",
-    sourceUrl:
-      typeof attested.sourceUrl === "string" ? attested.sourceUrl : null,
-    credit: typeof attested.credit === "string" ? attested.credit : null,
-    creditUrl:
-      typeof attested.creditUrl === "string" ? attested.creditUrl : null,
-    alt: typeof attested.alt === "string" ? attested.alt : null,
+    sourceUrl: attestedString(attested.sourceUrl),
+    credit: attestedString(attested.credit),
+    creditUrl: attestedString(attested.creditUrl),
+    alt: attestedString(attested.alt),
   };
 };
 
@@ -114,12 +127,7 @@ export const attestEventCoverSelection = async (
   metadata: EventCoverProviderMetadata,
   posterUrl: string | null = mediaType === "image" ? mediaUrl : null,
 ): Promise<AttestedEventCoverSelection> => {
-  if (serverEventId.trim().length === 0) {
-    throw new EventCoverMediaError(
-      "missing_server_event_id",
-      "Save failed because this event is missing its server id.",
-    );
-  }
+  requireServerEventId(serverEventId);
   const stablePosterUrl = posterUrl?.trim() || null;
   if (
     stablePosterUrl === null ||
@@ -170,12 +178,7 @@ const logCoverUploadDebug = (
 export const uploadEventCoverMedia = async (
   input: EventCoverAssetInput,
 ): Promise<EventCoverUploadResult> => {
-  if (input.eventId.trim().length === 0) {
-    throw new EventCoverMediaError(
-      "missing_server_event_id",
-      "Save failed because this event is missing its server id.",
-    );
-  }
+  requireServerEventId(input.eventId);
 
   if (
     typeof input.fileSize === "number" &&
@@ -354,12 +357,7 @@ export const setEventCoverGallery = async (
   serverEventId: string,
   gallery: OfferingGalleryImage[],
 ): Promise<{ id: string; cover_media_gallery: OfferingGalleryImage[] }> => {
-  if (serverEventId.trim().length === 0) {
-    throw new EventCoverMediaError(
-      "missing_server_event_id",
-      "Save failed because this event is missing its server id.",
-    );
-  }
+  requireServerEventId(serverEventId);
   const { data, error } = await supabase
     .from("events")
     .update({
@@ -385,12 +383,7 @@ export const setEventCoverGallery = async (
 };
 
 export const clearEventCover = async (serverEventId: string): Promise<void> => {
-  if (serverEventId.trim().length === 0) {
-    throw new EventCoverMediaError(
-      "missing_server_event_id",
-      "Save failed because this event is missing its server id.",
-    );
-  }
+  requireServerEventId(serverEventId);
   const { data, error } = await supabase.rpc(
     "business_clear_event_cover_media",
     {

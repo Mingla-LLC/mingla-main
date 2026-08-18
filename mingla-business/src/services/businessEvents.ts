@@ -1067,51 +1067,63 @@ const requireEventDraftLifecycleResult = (
   return result as EventDraftLifecycleResult;
 };
 
-export const unpublishBusinessEventToDraft = async (
+// Both draft-lifecycle owners take the same argument, raise the same errors,
+// and validate the same envelope. One caller keeps them from drifting apart.
+const callEventDraftLifecycleRpc = async (
+  rpc: "business_unpublish_event_to_draft" | "business_duplicate_event_as_draft",
   eventId: string,
+  operation: "Unpublish" | "Duplicate",
 ): Promise<EventDraftLifecycleResult> => {
-  const { data, error } = await supabase.rpc(
+  const { data, error } = await supabase.rpc(rpc, { p_event_id: eventId });
+  if (error !== null) throw error;
+  return requireEventDraftLifecycleResult(data, operation);
+};
+
+export const unpublishBusinessEventToDraft = (
+  eventId: string,
+): Promise<EventDraftLifecycleResult> =>
+  callEventDraftLifecycleRpc(
     "business_unpublish_event_to_draft",
-    {
-      p_event_id: eventId,
-    },
+    eventId,
+    "Unpublish",
   );
-  if (error !== null) throw error;
-  return requireEventDraftLifecycleResult(data, "Unpublish");
-};
 
-export const duplicateBusinessEventAsDraft = async (
+export const duplicateBusinessEventAsDraft = (
   eventId: string,
-): Promise<EventDraftLifecycleResult> => {
-  const { data, error } = await supabase.rpc(
+): Promise<EventDraftLifecycleResult> =>
+  callEventDraftLifecycleRpc(
     "business_duplicate_event_as_draft",
-    {
-      p_event_id: eventId,
-    },
+    eventId,
+    "Duplicate",
   );
-  if (error !== null) throw error;
-  return requireEventDraftLifecycleResult(data, "Duplicate");
+
+// The fragmented and atomic live-event owners differ only in which RPC they
+// reach and what they carry. Sharing the envelope check keeps one definition
+// of "the server answered with a usable patch result".
+const callLiveEventPatchRpc = async (
+  rpc: "business_update_live_event" | "business_update_live_event_atomic",
+  args: Record<string, unknown>,
+): Promise<Record<string, unknown>> => {
+  const { data, error } = await supabase.rpc(rpc, args);
+  if (error !== null) throw new Error(error.message ?? `${rpc}_failed`);
+  if (data === null || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error(`${rpc}_empty_response`);
+  }
+  return data as Record<string, unknown>;
 };
 
-export const patchPublishedEventCore = async (
+export const patchPublishedEventCore = (
   eventId: string,
   patch: Partial<EditableLiveEventFields>,
   reason: string,
   clientRevision: number | null = null,
-): Promise<Record<string, unknown>> => {
-  const { data, error } = await supabase.rpc("business_update_live_event", {
+): Promise<Record<string, unknown>> =>
+  callLiveEventPatchRpc("business_update_live_event", {
     p_event_id: eventId,
     p_patch: patch,
     p_reason: reason,
     p_client_revision: clientRevision,
   });
-  if (error !== null)
-    throw new Error(error.message ?? "business_update_live_event_failed");
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("business_update_live_event_empty_response");
-  }
-  return data as Record<string, unknown>;
-};
 
 export interface AtomicPublishedEventPatch {
   core: Partial<EditableLiveEventFields>;
@@ -1128,31 +1140,18 @@ export interface AtomicPublishedEventPatch {
   cover?: { clear: true } | { selectionRef: string };
 }
 
-export const patchPublishedEventAtomically = async (
+export const patchPublishedEventAtomically = (
   eventId: string,
   patch: AtomicPublishedEventPatch,
   reason: string,
   clientRevision: number,
-): Promise<Record<string, unknown>> => {
-  const { data, error } = await supabase.rpc(
-    "business_update_live_event_atomic",
-    {
-      p_event_id: eventId,
-      p_patch: patch,
-      p_reason: reason,
-      p_client_revision: clientRevision,
-    },
-  );
-  if (error !== null) {
-    throw new Error(
-      error.message ?? "business_update_live_event_atomic_failed",
-    );
-  }
-  if (data === null || typeof data !== "object" || Array.isArray(data)) {
-    throw new Error("business_update_live_event_atomic_empty_response");
-  }
-  return data as Record<string, unknown>;
-};
+): Promise<Record<string, unknown>> =>
+  callLiveEventPatchRpc("business_update_live_event_atomic", {
+    p_event_id: eventId,
+    p_patch: patch,
+    p_reason: reason,
+    p_client_revision: clientRevision,
+  });
 
 export const endBusinessEventTicketSales = async (
   eventId: string,
