@@ -30,6 +30,7 @@
 
 import type { SenderIdentity } from "./senders.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
+import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
 import { minglaLogoUrl } from "../brandAssets.ts";
 import { resolveRuntimeString } from "../runtimeConfig.ts";
 
@@ -116,18 +117,17 @@ function escapeHtml(text: string): string {
     .replace(/'/g, "&#039;");
 }
 
-function renderDownloadAppCta(
-  orderId: string,
-  eventType: "event" | "trip",
-): string {
-  const chatLabel = eventType === "trip" ? "trip" : "event";
-  return `<div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
-    <p style="margin:0;font-size:15px;color:#6B5A47;">Join your ${chatLabel} chat in the Mingla app</p>
-    <a href="https://usemingla.com/orders/${escapeHtml(orderId)}/chat"
-       style="display:inline-block;margin-top:12px;padding:12px 24px;background:#C4471A;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
-      Open in Mingla
-    </a>
-  </div>`;
+// #2240 — destination AND markup come from appLink.ts. The old body built an
+// /orders/{id}/chat URL on the marketing host, a route that has never existed
+// (HTTP 404), so the order id is gone: nothing about the app CTA is per-order.
+// The noun is a ternary over two AppCtaHeadline members, never an
+// interpolation, so no caller value can reach the unescaped headline slot.
+function renderDownloadAppCta(eventType: "event" | "trip"): string {
+  return renderAppCtaHtml(
+    eventType === "trip"
+      ? "Join your trip chat in the Mingla app"
+      : "Join your event chat in the Mingla app",
+  );
 }
 
 export function renderTripConfirmationEmail(
@@ -246,7 +246,7 @@ export function renderTripConfirmationEmail(
                 <tr><td style="padding:8px 0;font-size:14px;color:#475569;border-top:1px solid #E5E7EB;">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:700;color:#0F172A;text-align:right;border-top:1px solid #E5E7EB;">${escapeHtml(priceLabel)}</td></tr>
               </table>
 
-              ${renderDownloadAppCta(input.order.id, "trip")}
+              ${renderDownloadAppCta("trip")}
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions about your trip? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>
             </td>
@@ -282,7 +282,8 @@ export function renderTripConfirmationEmail(
     `Order: ${input.order.shortId}`,
     `Total paid: ${priceLabel}`,
     ``,
-    `Join your trip chat in the Mingla app: https://usemingla.com/orders/${input.order.id}/chat`,
+    // #2240 — same working link the HTML body carries, from the same constant.
+    appCtaTextLine("Join your trip chat in the Mingla app"),
     ``,
     `Reply to ${input.brand.name} with questions.`,
     `Support: ${supportEmail}`,

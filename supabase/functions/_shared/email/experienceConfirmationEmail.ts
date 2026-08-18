@@ -20,6 +20,7 @@
 
 import type { SenderIdentity } from "./senders.ts";
 // ISSUE-1001 — canonical logo resolution (env override, live fail-safe default).
+import { appCtaTextLine, renderAppCtaHtml } from "./appLink.ts";
 import { minglaLogoUrl } from "../brandAssets.ts";
 import { resolveRuntimeString } from "../runtimeConfig.ts";
 
@@ -219,10 +220,7 @@ export function renderExperienceConfirmationEmail(
                 <tr><td style="padding:8px 0;font-size:14px;color:#475569;border-top:1px solid #E5E7EB;">Total paid</td><td style="padding:8px 0;font-size:16px;font-weight:700;color:#0F172A;text-align:right;border-top:1px solid #E5E7EB;">${escapeHtml(priceLabel)}</td></tr>
               </table>
 
-              <div style="margin-top:32px;padding:24px;background:#FFF5EC;border-radius:12px;border:1px solid #FFD9B8;text-align:center;">
-                <p style="margin:0;font-size:15px;color:#6B5A47;">Your ticket + details are in the Mingla app</p>
-                <a href="https://usemingla.com/orders/${escapeHtml(input.order.id)}/chat" style="display:inline-block;margin-top:12px;padding:12px 24px;background:#C4471A;color:white;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">Open in Mingla</a>
-              </div>
+              ${renderAppCtaHtml("Your ticket + details are in the Mingla app")}
 
               <p style="font-size:13px;color:#475569;margin:24px 0 0 0;line-height:1.5;">Questions? Reply directly to ${escapeHtml(input.brand.name)} — they'll receive your message at the email they set up for the brand.</p>
             </td>
@@ -258,7 +256,8 @@ export function renderExperienceConfirmationEmail(
     `Order: ${input.order.shortId}`,
     `Total paid: ${priceLabel}`,
     ``,
-    `Your ticket + details are in the Mingla app: https://usemingla.com/orders/${input.order.id}/chat`,
+    // #2240 — same working link the HTML body carries, from the same constant.
+    appCtaTextLine("Your ticket + details are in the Mingla app"),
     ``,
     `Reply to ${input.brand.name} with questions.`,
     `Support: ${supportEmail}`,
