@@ -32,8 +32,12 @@ import React, {
   useRef,
   useState,
 } from "react";
+// orch-strict-grep-allow orch-0892 — the ScrollView below is the HORIZONTAL
+// subject-token rail (a chip list) and the panel scrollers inside InsertionBar's
+// own file; neither is a keyboard-avoiding scroll, neither reads a keyboard
+// inset, and this file registers no keyboard listener of any kind (#2262 deleted
+// the F.9e block, and gate rule R4 now forbids one here outright).
 import {
-  Keyboard,
   Modal,
   Platform,
   Pressable,
@@ -41,23 +45,27 @@ import {
   StyleSheet,
   Text,
   TextInput,
-  useWindowDimensions,
   View,
+  type LayoutChangeEvent,
   type NativeSyntheticEvent,
   type TextInputSelectionChangeEventData,
 } from "react-native";
-import { RichEditor, actions, type RichEditorHandle } from "./richEditor";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import {
+  RichEditor,
+  actions,
+  type RichEditorFormatState,
+  type RichEditorHandle,
+} from "./richEditor";
 
 import {
   accent,
+  composerSheetMinHeight,
   glass,
   radius,
   spacing,
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
-import { Input } from "../../ui/Input";
 import {
   bodyHtmlToTenTapDoc,
   docToHtml,
@@ -148,77 +156,90 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     } = props;
 
     const richEditorRef = useRef<RichEditorHandle>(null);
-    const { isWideDesktop, isWeb } = useResponsiveLayout();
-    // ORCH-1100 RC-3: phone/tablet web (web, < 1024px). The fixed-height
-    // arithmetic below is iPhone-pell-tuned; on phone web the extra TopBar +
-    // MarketingSubNav + browser URL bar overflow the height budget and collapse
-    // the contenteditable to a ~23px strip. We web-gate a robust minimum height
-    // + a scrollable column for this case ONLY; native iOS/Android pell layout
-    // is byte-unchanged.
-    const isPhoneWeb = isWeb && !isWideDesktop;
+    const { isWideDesktop } = useResponsiveLayout();
 
-    // Stage F.7b: compute a concrete numeric height for pell's WebView.
-    // Pell's WebView with `flex:1` collapses to 0 height inside a flex
-    // parent on iOS — well-known pell gotcha. The fix is an explicit
-    // pixel height. We subtract estimated chrome (header + who + subject +
-    // tooltip + when + compliance + bar + footer + safe area) from
-    // window height. The arithmetic is approximate but errs toward the
-    // body being TALL (clamps to a 220pt minimum so it's always
-    // usable on small screens like SE).
-    const { height: windowHeight } = useWindowDimensions();
-    const insets = useSafeAreaInsets();
-    // F.9e: track keyboard height so the body shrinks when the keyboard
-    // appears — keeps the footer (Send now / Review) ALWAYS visible
-    // above the keyboard instead of hidden behind it. KAV's padding
-    // approach didn't work because the body has a fixed numeric height
-    // (which it needs for pell-on-iOS tap reliability); explicit
-    // shrink-on-keyboard is the workaround.
-    const [keyboardHeight, setKeyboardHeight] = useState(0);
-    useEffect(() => {
-      const showEvt = Platform.OS === "ios" ? "keyboardWillShow" : "keyboardDidShow";
-      const hideEvt = Platform.OS === "ios" ? "keyboardWillHide" : "keyboardDidHide";
-      const show = Keyboard.addListener(showEvt, (e) => {
-        setKeyboardHeight(e.endCoordinates.height);
-      });
-      const hide = Keyboard.addListener(hideEvt, () => {
-        setKeyboardHeight(0);
-      });
-      return () => {
-        show.remove();
-        hide.remove();
-      };
+    // #2262: no chrome constant here. `CHROME_CONTENT_PX = 376` was short by
+    // the route TopBar (64pt) + 12pt on EVERY device, so the column overflowed
+    // by a device-INDEPENDENT 76pt before anyone typed a character — there was
+    // no device on which this screen fit.
+    //
+    // #2262: no `PHONE_WEB_BODY_MIN_PX = 360`, and no `Math.round(windowHeight
+    // * 0.6)`. A fraction of the viewport is still a guess, and it made the BOX
+    // bigger while doing nothing at all for the editable node inside it.
+    //
+    // #2262: no `Math.max(120, …)` floor. That clamp is what stopped the body
+    // shrinking far enough for the keyboard — it bound by 191pt on an iPhone
+    // SE3 and by 96pt on a 17 Pro, putting the action row 225pt / 130pt behind
+    // the keyboard with no scroll to recover it.
+    //
+    // #2262: no `Keyboard.addListener`, and no `+42` Done-bar constant. The
+    // keyboard is ridden by `SmartKeyboardAvoidingView` in `compose.tsx`, whose
+    // `keyboardVerticalOffset` reads `DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE`
+    // from the one derived source. The bespoke listener was also permanently
+    // dead on web (RN-web's `Keyboard` is a no-op stub), so this file's only
+    // keyboard compensation never ran on two of its four surfaces.
+    //
+    // Flexbox performs every one of those subtractions now.
+
+    /**
+     * THE ONE MEASURED NUMBER ON THIS SCREEN — and it is measured, never
+     * estimated.
+     *
+     * pell's WebView genuinely cannot live on `flex: 1` (it collapses to zero
+     * height — a documented, widely-reported gotcha), so the native body needs
+     * a real pixel height. `onLayout` on the body region supplies one that
+     * actually exists.
+     *
+     * P3, THE BLAST-RADIUS-ZERO PROPERTY. `measuredBodyPx` may be read ONLY by
+     * pell's `initialHeight` and `style.height`. It is never added to,
+     * subtracted from, compared against, or used to size any ancestor, sibling,
+     * or the commit bar. A WRONG MEASUREMENT CAN THEREFORE ONLY MIS-SIZE THE
+     * EDITOR'S WEBVIEW — it is structurally incapable of moving the action row,
+     * because nothing above or beside it reads the value. That is the property
+     * that makes keeping a number here safe, and it is asserted by gate rule R6
+     * and by the T1-b render proof, not left to review.
+     */
+    const [measuredBodyPx, setMeasuredBodyPx] = useState<number | null>(null);
+    /**
+     * `initialHeight` is FROZEN at the first measurement. pell reads it once for
+     * the WebView's initial style; handing it a changing value on every resize
+     * risks a remount, and a pell remount CLOBBERS THE OPERATOR'S IN-PROGRESS
+     * DRAFT. Under no circumstances may the live value become a React `key` on
+     * `RichEditor` or any ancestor.
+     */
+    const firstMeasuredBodyPxRef = useRef<number | null>(null);
+    const handleBodyLayout = useCallback((e: LayoutChangeEvent): void => {
+      const next = Math.round(e.nativeEvent.layout.height);
+      if (next <= 0) return; // never publish a zero
+      if (firstMeasuredBodyPxRef.current === null) {
+        firstMeasuredBodyPxRef.current = next;
+      }
+      setMeasuredBodyPx((prev) => (prev === next ? prev : next));
     }, []);
 
-    // F.9f: 376 (was 344). Operator wants body shorter + more bottom
-    // breathing room. Footer paddingBottom grew +8pt (md → lg), and
-    // we tack on another 24pt of intentional body-shrink so the card
-    // stops touching the home-indicator area visually. Body now claims
-    // ~400pt on iPhone Pro (was ~432pt) — still very usable.
-    const CHROME_CONTENT_PX = 376;
-    // ORCH-1165: when the keyboard is up, also subtract the 42pt Done bar so the
-    // pell editor's bottom is not hidden under the toolbar. Added to the
-    // keyboard-height term only (0 when the keyboard is closed).
-    const keyboardShrink = keyboardHeight > 0 ? keyboardHeight + 42 : 0;
-    const rawBodyHeight =
-      windowHeight - insets.top - insets.bottom - CHROME_CONTENT_PX - keyboardShrink;
-    // ORCH-1100 RC-3: on phone web, `CHROME_CONTENT_PX` (iPhone-pell tuned)
-    // under-counts the chrome (TopBar + MarketingSubNav + browser URL bar), so
-    // `rawBodyHeight` over-shoots the real viewport and the body strip ends up
-    // unreachable/collapsed. Give phone web a generous fixed body height with a
-    // 360pt floor (so the contenteditable always has real, tappable height) and
-    // let the surrounding column scroll (see `isPhoneWeb` host wrap in render).
-    // 60% of viewport is a comfortable composing area; floored at 360 so even a
-    // very short browser window keeps a usable editor.
-    const PHONE_WEB_BODY_MIN_PX = 360;
-    const bodyHeight = isWideDesktop
-      ? Math.max(400, Math.min(rawBodyHeight - 44, 700))
-      : isPhoneWeb
-        ? Math.max(PHONE_WEB_BODY_MIN_PX, Math.round(windowHeight * 0.6))
-        : Math.max(
-            120, // F.9e: keyboard-up minimum (small but still usable to see what
-            //         was just typed). When keyboard's closed, body is ~432pt.
-            rawBodyHeight,
-          );
+    /**
+     * #2262 10.10 — live mark state, WEB ONLY. `null` on native, where
+     * `COMPOSER_SELECTION_TRACKER_JS` saves the selection inside the pell
+     * WebView's own `window` and posts nothing back: there is no message
+     * channel, so an active affordance there could never fire.
+     */
+    const [formatState, setFormatState] = useState<RichEditorFormatState | null>(
+      null,
+    );
+    const handleFormatStateChange = useCallback(
+      (next: RichEditorFormatState): void => {
+        setFormatState((prev) =>
+          prev !== null &&
+          prev.bold === next.bold &&
+          prev.italic === next.italic &&
+          prev.underline === next.underline &&
+          prev.link === next.link
+            ? prev
+            : next,
+        );
+      },
+      [],
+    );
 
     // Initial HTML rendered into the editor once at mount. Subsequent body_html
     // changes from the parent are NOT pushed back into the editor (would
@@ -429,56 +450,84 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     );
 
     return (
-      <View style={styles.host}>
-        {/* Subject row + mini-personalize.
-            F.9k: subject input swapped to canonical `Input` primitive from
-            the design system (src/components/ui/Input.tsx). The bespoke
-            TextInput was spreading `typography.body` which injected a
-            `lineHeight` value; iOS treats TextInput lineHeight as
-            line-box height and drifts the baseline downward, clipping
-            descenders (the "bar cutting off text" the operator kept
-            seeing). The canonical Input deliberately omits lineHeight
-            and centers via container `alignItems:'center'` +
-            `paddingVertical:0` neutralisation — exactly the fix needed.
-            Fixed 48pt height; placeholder/typed text both centered. */}
+      /**
+       * #2262 — ONE SHEET.
+       *
+       * Before: a subject `Input` in its own 48pt bordered box, an optional
+       * token scroller, an `InsertionBar` pill row with its own borders, and a
+       * body box with its own border and fill — FOUR separately-bordered
+       * objects stacked with 4-8pt gaps. That is a settings form, not a
+       * composer, and the 16pt of naked canvas between two bordered objects is
+       * most of what "doesn't sit flush" was describing.
+       *
+       * Now: subject, body and toolbar live inside a single surface. The
+       * toolbar is not their peer — it is the sheet's own chrome. The sheet is
+       * `flex: 1` and is the ONLY thing that absorbs height change: the
+       * keyboard, the insert panels, the token rail and Dynamic Type all come
+       * out of the body, never out of the commit bar.
+       */
+      <View
+        style={[styles.sheet, isWideDesktop ? styles.desktopSheet : null]}
+        testID="composer-v2-sheet"
+      >
+        {/* SUBJECT. Deliberately NOT the `Input` primitive: `Input` brings a
+            border, a fill and its own radius, and inside the sheet all three
+            are wrong — every real composer's subject line is borderless. 44pt,
+            not `Input`'s 48. `typography.bodyLg` because the subject IS the
+            headline and should not be the same size as the body.
+
+            No `lineHeight` reaches the TextInput: iOS treats TextInput
+            lineHeight as line-box height and drifts the baseline downward,
+            clipping descenders. That was the F.9k reason for adopting `Input`
+            in the first place, and it is preserved here by spreading only the
+            metrics we want. */}
         <View style={styles.subjectRow}>
-          <View style={styles.subjectInputWrap}>
-            <Input
-              value={subject}
-              onChangeText={onSubjectChange}
-              onSelectionChange={onSubjectSelectionChange}
-              disabled={!editable}
-              placeholder="Subject"
-              accessibilityLabel="Email subject"
-              testID="composer-v2-subject"
-            />
-          </View>
+          <TextInput
+            value={subject}
+            onChangeText={onSubjectChange}
+            onSelectionChange={onSubjectSelectionChange}
+            editable={editable}
+            placeholder="Subject line"
+            placeholderTextColor={textTokens.tertiary}
+            selectionColor={accent.warm}
+            style={styles.subjectInput}
+            accessibilityLabel="Email subject"
+            testID="composer-v2-subject"
+            numberOfLines={1}
+          />
           <Pressable
             onPress={() => setSubjectPersonalizeOpen((v) => !v)}
-            hitSlop={8}
+            hitSlop={4}
             accessibilityRole="button"
-            accessibilityLabel="Insert personalization token into subject"
+            accessibilityLabel="Insert personalization into subject"
             accessibilityState={{ expanded: subjectPersonalizeOpen }}
             style={({ pressed }) => [
               styles.subjectPersonalize,
-              isWideDesktop ? styles.desktopSubjectPersonalize : null,
               subjectPersonalizeOpen ? styles.subjectPersonalizeActive : null,
-              isWideDesktop && subjectPersonalizeOpen
-                ? styles.desktopSubjectPersonalizeActive
-                : null,
               pressed ? styles.subjectPersonalizePressed : null,
             ]}
             testID="composer-v2-subject-personalize"
           >
-            <Text style={styles.subjectPersonalizeText}>{"{ }"}</Text>
+            <Text
+              style={[
+                styles.subjectPersonalizeText,
+                subjectPersonalizeOpen
+                  ? styles.subjectPersonalizeTextActive
+                  : null,
+              ]}
+            >
+              {"{ }"}
+            </Text>
           </Pressable>
         </View>
+        <View style={styles.sheetRule} />
 
         {subjectPersonalizeOpen ? (
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.subjectTokenRow}
+            style={styles.subjectTokenRail}
             accessibilityLabel="Subject personalization tokens"
           >
             {subjectTokens.map((opt) => (
@@ -500,13 +549,69 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           </ScrollView>
         ) : null}
 
-        {/* F.9 merged toolbar — sits between subject and body.
-            6 pills (B / I / Link | + Event / { } Personalize / ⋮)
-            + inline panels (events scroller, personalize grid, overflow). */}
+        {/* BODY. `flex: 1, minHeight: 0` — it claims whatever the sheet has
+            left after the subject row, the rule, the token rail and the
+            toolbar foot, WHATEVER THOSE HAPPEN TO MEASURE. That is why moving
+            the toolbar to the foot and taking the subject from 48 to 44 cost
+            the height model nothing: `onLayout` runs after all of it.
+
+            F.9n stands: a plain <View>, never a Pressable. A Pressable claimed
+            the iOS gesture responder BEFORE the WKWebView, so native taps never
+            reached the contenteditable and the system keyboard never engaged.
+
+            `overflow` is deliberately absent here — F.9n's tap history makes
+            `overflow:hidden` on this node a known hazard on native. The clip
+            lives on the flex region in `compose.tsx` instead. */}
+        <View
+          style={styles.bodyHost}
+          onLayout={handleBodyLayout}
+          testID="composer-v2-body-host"
+          accessibilityLabel="Tap to start writing"
+        >
+          {/* C-1 — NO GUESSED NUMBER EVER REACHES PELL. `RichEditor` does not
+              mount until the first `onLayout`. There is no default, no fallback
+              constant, no `?? 240`. It costs exactly one frame. */}
+          {measuredBodyPx === null ? null : (
+            <RichEditor
+              ref={richEditorRef}
+              initialContentHTML={initialContentHtml}
+              editorInitializedCallback={handleEditorInitialized}
+              onChange={handleBodyHtmlChange}
+              onFormatStateChange={handleFormatStateChange}
+              placeholder="Write to your people…"
+              useContainer={false}
+              // NATIVE ONLY. pell's WebView collapses to 0 under `flex:1`
+              // (documented gotcha) and genuinely needs a pixel height.
+              // Web/Tiptap is flex-bounded by CSS and takes neither prop.
+              initialHeight={
+                Platform.OS === "web"
+                  ? undefined
+                  : (firstMeasuredBodyPxRef.current ?? measuredBodyPx)
+              }
+              style={
+                Platform.OS === "web" ? undefined : { height: measuredBodyPx }
+              }
+              editorStyle={{
+                backgroundColor: "transparent",
+                color: textTokens.primary,
+                placeholderColor: textTokens.tertiary,
+                contentCSSText:
+                  "font-size: 15px; line-height: 1.55; padding: 8px 16px; min-height: 100%;",
+              }}
+              disabled={!editable}
+            />
+          )}
+        </View>
+
+        {/* TOOLBAR at the sheet FOOT — the sheet's own chrome, not a peer of
+            the subject and body. It carries its own hairline separator above
+            it, and its panels open UPWARD into the body's space, so the body
+            shrinks and the commit bar never moves. */}
         <InsertionBar
           state={barState}
           onStateChange={setBarState}
           events={brandEvents}
+          formatState={formatState ?? undefined}
           onInsertEvent={handleInsertEventLocal}
           onInsertPersonalization={handleInsertPersonalizationLocal}
           onOpenLink={handleToggleLinkLocal}
@@ -520,53 +625,6 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
           onToggleUnderline={handleToggleUnderlineLocal}
           onToggleLink={handleToggleLinkLocal}
         />
-
-        {/* F.9n DEFINITIVE TAP FIX (replaces F.9):
-            The prior F.9 wrapped the RichEditor in a <Pressable onPress=
-            {focusContentEditor}>. The Pressable claimed the iOS gesture
-            responder BEFORE the WKWebView, so native taps never reached
-            the contenteditable — meaning iOS's first-responder + system
-            keyboard never engaged. The programmatic focusContentEditor()
-            posted a focus message into pell, but WKWebView's keyboard
-            display path is unreliable when focus did not originate from
-            a real touch on the WebView itself.
-
-            The original justification for the Pressable (overflow:hidden
-            + borderRadius eating taps) was already moot: both styles had
-            already been dropped from bodyHost in the same stage. So the
-            Pressable was solving a problem that no longer exists.
-
-            F.9n: replace the Pressable with a plain <View>. Tap goes
-            directly to WKWebView. WKWebView focuses the contenteditable
-            natively. iOS keyboard appears. No bridge involvement. */}
-        <View
-          style={[
-            styles.bodyHost,
-            isWideDesktop ? styles.desktopBodyHost : null,
-            { height: bodyHeight },
-          ]}
-          testID="composer-v2-body-host"
-          accessibilityLabel="Tap to start writing"
-        >
-          <RichEditor
-            ref={richEditorRef}
-            initialContentHTML={initialContentHtml}
-            editorInitializedCallback={handleEditorInitialized}
-            onChange={handleBodyHtmlChange}
-            placeholder="Write your message…"
-            useContainer={false}
-            initialHeight={bodyHeight}
-            style={{ height: bodyHeight }}
-            editorStyle={{
-              backgroundColor: "transparent",
-              color: textTokens.primary,
-              placeholderColor: "rgba(255, 255, 255, 0.62)",
-              contentCSSText:
-                "font-size: 15px; line-height: 1.55; padding: 12px; min-height: 100%;",
-            }}
-            disabled={!editable}
-          />
-        </View>
 
         {/* F.9: TemplatePreviewDrawer mounted inside the editor so the
             InsertionBar overflow → "From template…" trigger and the
@@ -662,48 +720,80 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
 ComposerV2Editor.displayName = "ComposerV2Editor";
 
 const styles = StyleSheet.create({
-  // Stage F.7b: editor canvas no longer claims flex:1 — the body has
-  // an explicit numeric height computed from windowHeight, so the
-  // editor's overall height is the sum of its children (subject row +
-  // tooltip + bodyHost). This sizes correctly in any parent layout.
-  host: {
-    backgroundColor: "transparent",
+  /**
+   * THE SHEET. `flex: 1, minHeight: composerSheetMinHeight` — it claims the
+   * space its parent gives it and is the one element that absorbs every height
+   * change on the screen.
+   *
+   * `composerSheetMinHeight` (240) is a FLOOR ON A FLEXED CHILD, which is a
+   * different object from the `Math.max(120, rawBodyHeight)` this issue
+   * deletes: that was the last clamp in a chain that began by subtracting 376
+   * from the viewport, and it is what stopped the body shrinking for the
+   * keyboard. This participates in no subtraction and reads no viewport. When
+   * the available space drops below it, the sheet overflows the flex region and
+   * is CLIPPED there (Band B carries `overflow:'hidden'`); the commit bar is
+   * untouched. Gate rule R10 fails the build if the identifier ever appears
+   * anywhere but as a `minHeight:` value.
+   *
+   * `radius.lg` on ALL surfaces — native carried NO radius at all, so a square
+   * bordered box sat over fully-round pills, which is the harshest geometry
+   * pairing available.
+   *
+   * `rgba(255,255,255,0.03)` is deliberately NOT promoted to a token: it has
+   * exactly one consumer, and promoting one-consumer values is how token sets
+   * rot. Composites to #131519 — text.primary reads 16.93:1, text.tertiary
+   * 5.65:1. At the old 0.06 the sheet composited to #1c1e21 and read as a CARD
+   * SITTING ON the canvas; at 0.03 it reads as lit paper, which is what a
+   * writing surface should be.
+   */
+  sheet: {
+    flex: 1,
+    minHeight: composerSheetMinHeight,
+    marginHorizontal: spacing.md,
+    marginTop: spacing.sm,
+    // The scrim owns the gap to the commit bar; a margin here would double it.
+    marginBottom: 0,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    backgroundColor: "rgba(255, 255, 255, 0.03)",
+    overflow: "hidden",
+  },
+  desktopSheet: {
+    marginTop: spacing.md,
+    marginBottom: spacing.md,
+  },
+  /** Full-bleed hairline. ONE rule, not a box. */
+  sheetRule: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: glass.border.profileBase,
   },
   subjectRow: {
+    height: 44,
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
   },
-  // F.9k: wrapper so the canonical Input (fixed 48pt height + own border)
-  // flexes alongside the personalize chip.
-  subjectInputWrap: {
+  subjectInput: {
     flex: 1,
+    minWidth: 0,
+    // `typography.bodyLg` WITHOUT its lineHeight — see the render comment.
+    fontSize: 18,
+    fontWeight: "500",
+    color: textTokens.primary,
+    paddingVertical: 0,
   },
   subjectPersonalize: {
-    minHeight: 44,
-    minWidth: 44,
-    paddingHorizontal: spacing.sm,
-    paddingVertical: spacing.xs,
+    height: 36,
+    width: 36,
     borderRadius: radius.full,
-    overflow: "hidden",
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.chrome,
-    backgroundColor: glass.tint.badge.idle,
   },
   subjectPersonalizeActive: {
-    backgroundColor: glass.tint.profileElevated,
-  },
-  desktopSubjectPersonalize: {
-    backgroundColor: "transparent",
-    borderColor: "rgba(255, 255, 255, 0.13)",
-  },
-  desktopSubjectPersonalizeActive: {
-    backgroundColor: "transparent",
-    borderColor: accent.border,
+    backgroundColor: accent.tint,
   },
   subjectPersonalizePressed: {
     opacity: 0.7,
@@ -712,8 +802,16 @@ const styles = StyleSheet.create({
     ...typography.monoMd,
     color: textTokens.secondary,
   },
+  subjectPersonalizeTextActive: {
+    color: accent.warm,
+  },
+  subjectTokenRail: {
+    flexGrow: 0,
+    flexShrink: 0,
+  },
   subjectTokenRow: {
     flexDirection: "row",
+    alignItems: "center",
     gap: spacing.xs,
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
@@ -722,11 +820,9 @@ const styles = StyleSheet.create({
     minHeight: 36,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
-    borderRadius: radius.md,
+    borderRadius: radius.sm,
     overflow: "hidden",
     backgroundColor: glass.tint.profileElevated,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
     alignItems: "center",
     justifyContent: "center",
   },
@@ -737,27 +833,19 @@ const styles = StyleSheet.create({
     ...typography.monoMd,
     color: textTokens.primary,
   },
-  // Body region — clearly visible card on the dark canvas. flex:1 so it
-  // claims all remaining height in the editor's host. Background uses
-  // glass.tint.profileElevated (~6% white) for a noticeable boundary;
-  // border is the profileElevated stroke for a defined edge.
+  /**
+   * THE BODY REGION — and the ONLY `onLayout` on this screen.
+   *
+   * `flex: 1, minHeight: 0` (I-AXIS-SCOPED-FLEX: every flexed axis carries an
+   * explicit zero bound). No `height` key: `{ height: bodyHeight }` here is
+   * exactly what this issue deletes. No border and no fill either — the sheet
+   * owns the one visible boundary.
+   */
   bodyHost: {
-    // F.9 tap-fix + F.9b even rhythm.
-    marginHorizontal: spacing.md,
-    marginTop: spacing.xs,
-    marginBottom: 0, // footer provides the bottom gap; no double margin
-    borderWidth: 1,
-    borderColor: glass.border.profileElevated,
-    backgroundColor: glass.tint.profileElevated,
+    flex: 1,
+    minHeight: 0,
   },
-  desktopBodyHost: {
-    marginTop: spacing.md,
-    marginBottom: spacing.md,
-    borderRadius: radius.lg,
-    borderColor: "rgba(255, 255, 255, 0.11)",
-    backgroundColor: "rgba(8, 9, 12, 0.52)",
-    overflow: "hidden",
-  },
+
   // F.10: Preview modal chrome — dark canvas behind the sheet, light
   // header strip with title + Done button. EmailPreviewPane fills the rest.
   previewModal: {

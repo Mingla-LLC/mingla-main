@@ -15,7 +15,6 @@
  *   - Dirty-state back-block per feedback_back_listener_disarm_pattern.md
  *   - Sub-sheets render INSIDE this component per
  *     feedback_rn_sub_sheet_must_render_inside_parent.md
- *   - KeyboardAvoidingView wrap per feedback_keyboard_never_blocks_input.md
  *
  * Removed (Stage F deletions):
  *   - <ComposerStepWhat> + <EmbeddedEventChips> + <EventCardInserter> +
@@ -24,13 +23,48 @@
  *   - embeddedEvents + embeddedEventDetails arrays (derived from body string)
  *   - showPreview overlay (preview now happens inline via chip render)
  *
- * Layout: flex column. KeyboardAvoidingView → Header (fixed) → Toast →
- * Who (fixed) → optional draft caption → ComposerV2Editor (flex:1,
- * contains body + InsertionBar + TemplatePreviewDrawer) → When (fixed) →
- * Compliance (fixed) → Footer (fixed).
+ * # Layout — #2262 [composer-responsive-layout]. THREE BANDS. NO ARITHMETIC.
+ *
+ * This screen used to guess. One hand-typed number stood in for the height of
+ * every bar around the message box; the screen subtracted it from the phone's
+ * height, locked the box to whatever was left, and stacked the action row
+ * underneath with nothing to scroll. The guess forgot the 56pt TopBar the
+ * Marketing tab paints above this route, so the column was ~76pt too tall on
+ * EVERY iPhone before anyone typed a character, and the action row walked off
+ * the bottom edge.
+ *
+ *   ComposerHeader                          auto, flexShrink: 0      BAND A
+ *   Toast                                   <Modal> — out of flow
+ *   SmartKeyboardAvoidingView (kavHost)     flex: 1, minHeight: 0
+ *     └── ComposerCanvas
+ *           └── column                      flex: 1, minHeight: 0
+ *                 ├── flexRegion            flex:1, minHeight:0, overflow:hidden   BAND B
+ *                 │     ├── audience + channel rows            auto
+ *                 │     └── the composer sheet (editor / SMS)  flex: 1
+ *                 ├── ComposerCommitScrim   24pt, flexShrink: 0
+ *                 └── ComposerCommitBar     auto, flexShrink: 0     BAND C
+ *
+ * P2 — THE ACTION ROW CANNOT BE PUSHED OUT. Band C is `flexShrink: 0` and is a
+ * SIBLING of Band B, and Band B is bounded and clipped. Every region that can
+ * grow — the InsertionBar's panels, the subject token rail, the SMS media
+ * strip, Dynamic Type — lives INSIDE Band B, so its growth is absorbed by the
+ * body shrinking, and in the pathological case Band B clips its own excess
+ * rather than displacing Band C.
+ *
+ * Keyboard: `SmartKeyboardAvoidingView` (`View` on web, the library's
+ * `KeyboardAvoidingView` on native, which interpolates off
+ * `keyboard.progress.value` inside a Reanimated worklet — progress-tracked by
+ * construction, never a timed animation). `keyboardVerticalOffset` reads the
+ * Done-bar budget from `keyboardClearance`, never a hand-typed 42. On web the
+ * compensation is the viewport-height pin in `(tabs)/marketing/_layout.tsx`,
+ * because the CSS layout viewport does not shrink for a soft keyboard.
+ *
+ * Stage F.7's reason for having NO scroll container on native stands and is
+ * unchanged: pell's WebView inside a ScrollView blocks taps on iOS.
  *
  * Cross-references:
  *   - SPEC: Mingla_Artifacts/specs/SPEC_ORCH-0864_MARKETING_COMPOSER_V2.md
+ *   - #2262 SPEC + DESIGN + SPEC AMENDMENT (GitHub issue comments)
  */
 
 import React, {
@@ -51,20 +85,33 @@ import {
   Text,
   View,
 } from "react-native";
-// ORCH-0892-B v2: ScrollView routed through SmartScrollView wrapper (KAS
-// on native, plain RN ScrollView on web). KeyboardAvoidingView removed —
-// KAS scrolls the focused TextInput exactly above the keyboard. Per
-// SPEC_ORCH-0892-B_v2 §7.F.
-import { ScrollView } from "../../../../src/wrappers/SmartScrollView";
+// #2262: the dead `SmartScrollView` import that used to sit here is DELETED,
+// not made real. `grep -c "<ScrollView"` in this file was 0 and eslint already
+// reported it unused — the screen was recorded as migrated to the keyboard-aware
+// container while having no keyboard-aware container at all, which is why the
+// ORCH-0892 sweep showed it clean. Stage F.7's constraint (pell's WebView inside
+// a ScrollView blocks taps on iOS) is separately proven and stands.
+import { KeyboardAvoidingView } from "../../../../src/wrappers/SmartKeyboardAvoidingView";
+// Extensionless on purpose: Metro resolves `.native` on iOS/Android and the web
+// variant (all zeros) on web, exactly as #1890 intends. The Done-bar budget is
+// DERIVED (53 on iOS 26+, 42 elsewhere, 0 on web) — never re-typed.
+import {
+  DONE_BAR_OCCUPIED,
+  MIN_VISIBLE_CLEARANCE,
+} from "../../../../src/wrappers/keyboardClearance";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 
 import { Toast } from "../../../../src/components/ui/Toast";
 import { ComposerHeader } from "../../../../src/components/marketing/ComposerHeader";
 import { ComposerStepWho } from "../../../../src/components/marketing/ComposerStepWho";
-// ComposerStepWhen removed from layout in F.9 (segmented control gone;
-// Send-now lives in ComposerFooter left CTA). Keep SendMode type import.
+// ComposerStepWhen removed from layout in F.9. #2262 folded Send-now and
+// Schedule into ONE commit with a mode chip (both always terminated in the same
+// review sheet). Keep the SendMode type import.
 import { type SendMode } from "../../../../src/components/marketing/ComposerStepWhen";
-import { ComposerFooter } from "../../../../src/components/marketing/ComposerFooter";
+import {
+  ComposerCommitBar,
+  ComposerCommitScrim,
+} from "../../../../src/components/marketing/ComposerCommitBar";
 import { ComposerCanvas } from "../../../../src/components/marketing/ComposerV2/ComposerCanvas";
 import { EmailPreviewPane } from "../../../../src/components/marketing/EmailPreviewPane";
 // ORCH-1281 — phone-text-bubble preview, branched in for channel === 'sms'.
@@ -177,7 +224,7 @@ function makeMediaKey(): string {
 export default function ComposeCampaignRoute(): React.ReactElement {
   const router = useRouter();
   const navigation = useNavigation();
-  const { isWideDesktop } = useResponsiveLayout();
+  const { isWideDesktop, isShort } = useResponsiveLayout();
   const params = useLocalSearchParams<{
     audience?: string;
     draft?: string;
@@ -1071,6 +1118,58 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           })
         : "Pick a time";
 
+  /**
+   * #2262 10.4 — the mode chip's labels.
+   *
+   * The chosen time is COMPOSER state, and it survives the review sheet being
+   * dismissed: `scheduledForIso` and `sendMode` are set by the picker's confirm
+   * handler BEFORE the review sheet opens, and dismissing the review sheet
+   * touches neither. So backing out of the review leaves the chip reading the
+   * time the operator picked — which is the whole reason the chip exists. Today
+   * that choice was invisible on the composer and could only be re-checked by
+   * re-entering the picker.
+   *
+   * The picker -> review chaining is deliberately PRESERVED (the lower-risk of
+   * the two variants the design permits): this issue is a layout defect on a
+   * paid surface, and re-sequencing the commit flow inside it is not a trade
+   * worth making.
+   */
+  const scheduledChipLabel =
+    sendMode === "schedule" && scheduledForIso.length > 0
+      ? new Date(scheduledForIso).toLocaleString(undefined, {
+          weekday: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : null;
+  const scheduledLongLabel =
+    sendMode === "schedule" && scheduledForIso.length > 0
+      ? new Date(scheduledForIso).toLocaleString(undefined, {
+          weekday: "long",
+          month: "long",
+          day: "numeric",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : null;
+
+  /**
+   * #2262 — the ONE blocked reason, in priority order, rendered as a caption in
+   * the commit bar. `missingFieldsLabel()` has always computed exactly this; it
+   * was only ever surfaced as an error toast on a path the operator cannot
+   * reach while the button is disabled, so a disabled primary told them nothing.
+   *
+   * Derived from the same inputs as `coreFooterDisabled`, so it changes on
+   * audience-pick / first-subject-char / first-body-char — not per keystroke.
+   */
+  const blockedReason = useMemo<string | null>(() => {
+    if (!coreFooterDisabled) return null;
+    if (audienceId === null) return "Pick an audience first.";
+    if (channel === "sms") return "Write your message.";
+    if (subject.trim().length === 0) return "Add a subject.";
+    return "Write your message.";
+  }, [coreFooterDisabled, audienceId, channel, subject]);
+
   // ORCH-1270 RC-3 — short human label for the "Schedule for …" affordance,
   // same locale format as scheduledLabel.
   const nextWindowLabel =
@@ -1106,7 +1205,9 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       }
       if (coreFooterDisabled) return;
       captureSmsSendWindow();
-      setSendMode("now");
+      // #2262: no `setSendMode("now")` here. The mode is what the chip says;
+      // silently resetting it would discard a time the operator has already
+      // picked and is looking at.
       if (isBookAudience) {
         void (async () => {
           const id = await flushDraft();
@@ -1199,99 +1300,148 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         message={errorBanner ?? ""}
         onDismiss={() => setErrorBanner(null)}
       />
-      <View
+      <KeyboardAvoidingView
         style={[styles.kavHost, isWideDesktop ? styles.desktopKavHost : null]}
+        behavior="padding"
+        // #2262 — the replacement for the deleted `+42`. `behavior="padding"`
+        // SHRINKS the content box, which is what makes the sheet give up height
+        // and the `onLayout` measurement track the keyboard; a sticky-translate
+        // would move the bar while leaving the sheet full height, putting the
+        // toolbar and the body's bottom behind the keyboard — RC-1's failure
+        // mode reproduced inside the sheet. Android fallback if a physical run
+        // misbehaves under edge-to-edge is `behavior="height"`, no other change.
+        keyboardVerticalOffset={DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE}
       >
         {/* ORCH-0891 M2: ComposerCanvas wraps the editor column with a
             permanent right-hand EmailPreviewPane on wide-desktop. On
             narrow web + native, the Canvas is a Fragment passthrough —
             only the editor column renders, and the existing Modal-based
-            preview (triggered by ComposerFooter's Preview button) shows
+            preview (triggered by the commit bar's Preview button) shows
             on demand. Per SPEC §3.5.2 + DESIGN_SPEC §2. */}
         <ComposerCanvas
           editor={
-            <>
-              {/* Stage F.7: NO ScrollView around the editor — pell's WebView
-                  inside a ScrollView blocks taps on iOS (RN WebView gesture
-                  conflict). Flex column instead: Who fixed, Editor flex:1,
-                  When+Compliance fixed below editor. */}
-              <View
-                style={[
-                  styles.whoRow,
-                  isWideDesktop ? styles.desktopWhoRow : null,
-                ]}
-              >
-                <ComposerStepWho
-                  audienceName={audienceName}
-                  reachableEmail={channelReachable}
-                  totalAudience={reach?.total ?? null}
-                  onOpenPicker={() => setShowAudiencePicker(true)}
-                  disabled={brandId === null}
-                />
+            /* #2262 — THE THREE-BAND COLUMN. The children keep their order and
+               their props; only the two wrapping Views are new, and they are
+               what makes the action row structurally unreachable by anything
+               that grows above it. */
+            <View style={styles.column} testID="composer-column">
+              {/* BAND B. `overflow: hidden` is the clip that turns RC-5's
+                  +212pt of panel chrome into a non-event: growth inside here is
+                  absorbed by the sheet shrinking, and any residual excess is
+                  clipped HERE rather than displacing the commit bar. */}
+              <View style={styles.flexRegion} testID="composer-flex-region">
+                {/* #2262 bpShort ladder step 2: below a 720pt viewport the
+                    audience row and the channel tabs merge onto ONE row,
+                    recovering ~62pt for the sheet. Keyed to a BOOLEAN from
+                    `useResponsiveLayout`, not to a height number, so it fires at
+                    most once per threshold crossing rather than per keyboard
+                    frame. */}
+                <View
+                  style={[
+                    styles.topRows,
+                    isShort ? styles.topRowsShort : null,
+                  ]}
+                  testID="composer-top-rows"
+                >
+                  <View
+                    style={[
+                      styles.whoRow,
+                      isWideDesktop ? styles.desktopWhoRow : null,
+                      isShort ? styles.whoRowShort : null,
+                    ]}
+                  >
+                    <ComposerStepWho
+                      audienceName={audienceName}
+                      reachableEmail={channelReachable}
+                      totalAudience={reach?.total ?? null}
+                      onOpenPicker={() => setShowAudiencePicker(true)}
+                      disabled={brandId === null}
+                      compact={isShort}
+                    />
+                  </View>
+
+                  {/* META-ORCH-1161 Sub-B — channel selector (Email · SMS). */}
+                  <View
+                    style={[
+                      styles.channelRow,
+                      isShort ? styles.channelRowShort : null,
+                    ]}
+                  >
+                    <ChannelTabs active={channel} onChange={handleChannelChange} />
+                  </View>
+                </View>
+
+                {channel === "sms" ? (
+                  <SmsComposeCard
+                    value={smsBody}
+                    onChangeText={(text) => {
+                      setSmsBody(text);
+                      setIsDirty(true);
+                    }}
+                    reachableSms={reach?.reachable_sms ?? null}
+                    currencyCode={currentBrand?.defaultCurrency ?? "USD"}
+                    editable={!scheduleMutation.isPending}
+                    brandId={brandId}
+                    media={mmsComposeItems}
+                    maxMedia={MMS_MAX_MEDIA}
+                    uploading={mmsUploading}
+                    onPickMedia={() => {
+                      void handlePickMms();
+                    }}
+                    onRemoveMedia={handleRemoveMms}
+                  />
+                ) : (
+                  <ComposerV2Editor
+                    ref={editorHandleRef}
+                    initialBodyHtml={body}
+                    subject={subject}
+                    onSubjectChange={onSubjectChange}
+                    onBodyChange={onBodyChange}
+                    editable={!scheduleMutation.isPending}
+                    brandEvents={brandEvents}
+                    templates={templates}
+                    previewVariables={previewVariables}
+                    brandName={brandName}
+                    currentDraftIsDirty={isDirty}
+                    onErrorToast={(msg) => setErrorBanner(msg)}
+                  />
+                )}
               </View>
 
-              {/* META-ORCH-1161 Sub-B — channel selector (Email · SMS). */}
-              <View style={styles.channelRow}>
-                <ChannelTabs active={channel} onChange={handleChannelChange} />
-              </View>
+              {/* The scrim is a BAND, not decoration: in flow, flexShrink: 0,
+                  between Band B and Band C. Absolutely positioning it over the
+                  sheet would restore an overlap of exactly the kind RC-3
+                  measured, just prettier. */}
+              <ComposerCommitScrim />
 
-              {channel === "sms" ? (
-                <SmsComposeCard
-                  value={smsBody}
-                  onChangeText={(text) => {
-                    setSmsBody(text);
-                    setIsDirty(true);
-                  }}
-                  reachableSms={reach?.reachable_sms ?? null}
-                  currencyCode={currentBrand?.defaultCurrency ?? "USD"}
-                  editable={!scheduleMutation.isPending}
-                  brandId={brandId}
-                  media={mmsComposeItems}
-                  maxMedia={MMS_MAX_MEDIA}
-                  uploading={mmsUploading}
-                  onPickMedia={() => {
-                    void handlePickMms();
-                  }}
-                  onRemoveMedia={handleRemoveMms}
-                />
-              ) : (
-                <ComposerV2Editor
-                  ref={editorHandleRef}
-                  initialBodyHtml={body}
-                  subject={subject}
-                  onSubjectChange={onSubjectChange}
-                  onBodyChange={onBodyChange}
-                  editable={!scheduleMutation.isPending}
-                  brandEvents={brandEvents}
-                  templates={templates}
-                  previewVariables={previewVariables}
-                  brandName={brandName}
-                  currentDraftIsDirty={isDirty}
-                  onErrorToast={(msg) => setErrorBanner(msg)}
-                />
-              )}
-
-              {/* F.10b: 3-button footer (Preview / Send Now / Schedule).
-                  ORCH-0891 M2 note: On wide-desktop the EmailPreviewPane
-                  is permanently visible in the right pane, so tapping
-                  the Preview button additionally opens the Modal on
-                  top — redundant but not broken. M3 may hide the
-                  Preview button on wide-desktop as a polish item. */}
-              <ComposerFooter
+              {/* BAND C. `onSendNow` and `onSchedule` were never two commands —
+                  BOTH opened the same review sheet. One commit, one mode. */}
+              <ComposerCommitBar
                 onPreview={() => setShowPreview(true)}
-                onSendNow={() => {
+                previewLabel={
+                  channel === "sms" ? "Preview message" : "Preview email"
+                }
+                onPickTime={() => {
+                  // The picker sets WHEN. It no longer needs the fields to
+                  // validate first — choosing a time and carrying on writing is
+                  // the point of the chip.
+                  setShowSchedulePicker(true);
+                }}
+                sendMode={sendMode === "schedule" ? "scheduled" : "now"}
+                scheduledShortLabel={scheduledChipLabel}
+                scheduledLongLabel={scheduledLongLabel}
+                onCommit={() => {
                   // F.10c hard-guard: refuse to open the review sheet if the
-                  // core fields aren't filled. Mirrors the disabled state on
-                  // the button but defends against any case where the disabled
-                  // visual slips (e.g. rapid taps mid-state-update).
+                  // core fields aren't filled. Mirrors the disabled state but
+                  // defends against any case where the disabled visual slips
+                  // (e.g. rapid taps mid-state-update).
                   const missing = missingFieldsLabel();
                   if (missing !== null) {
                     setErrorBanner(missing);
                     return;
                   }
-                  // ORCH-1270 RC-3 — snapshot the send window at tap time (SMS only).
+                  // ORCH-1270 RC-3 — snapshot the send window at tap time (SMS).
                   captureSmsSendWindow();
-                  setSendMode("now");
                   if (isBookAudience) {
                     void (async () => {
                       const id = await flushDraft();
@@ -1316,19 +1466,11 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                     })();
                   } else setShowReview(true);
                 }}
-                sendNowDisabled={coreFooterDisabled}
-                onSchedule={() => {
-                  const missing = missingFieldsLabel();
-                  if (missing !== null) {
-                    setErrorBanner(missing);
-                    return;
-                  }
-                  setShowSchedulePicker(true);
-                }}
-                scheduleDisabled={coreFooterDisabled}
+                commitDisabled={coreFooterDisabled}
+                blockedReason={blockedReason}
                 submitting={scheduleMutation.isPending}
               />
-            </>
+            </View>
           }
           preview={
             isWideDesktop ? (
@@ -1558,7 +1700,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             router.replace("/(tabs)/marketing/campaigns" as never);
           }}
         />
-      </View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -1587,6 +1729,42 @@ const styles = StyleSheet.create({
   },
   kavHost: {
     flex: 1,
+    // I-AXIS-SCOPED-FLEX (#1501): every flexed axis carries an explicit zero
+    // bound, so a tall child can never push the column past its parent.
+    minHeight: 0,
+  },
+  /** #2262 — the three-band column. */
+  column: {
+    flex: 1,
+    minHeight: 0,
+  },
+  /**
+   * BAND B. Everything that can grow lives in here; the clip is what stops the
+   * pathological case reaching the commit bar.
+   */
+  flexRegion: {
+    flex: 1,
+    minHeight: 0,
+    overflow: "hidden",
+  },
+  topRows: {
+    flexShrink: 0,
+  },
+  /** bpShort step 2: audience + channel merge onto one row (~62pt recovered). */
+  topRowsShort: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+  },
+  whoRowShort: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 0,
+  },
+  channelRowShort: {
+    flexShrink: 0,
+    paddingHorizontal: 0,
   },
   desktopKavHost: {
     backgroundColor: "transparent",

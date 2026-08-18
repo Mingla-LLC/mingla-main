@@ -37,10 +37,33 @@
 
 import { Platform, useWindowDimensions } from "react-native";
 
+import { bpShort } from "../constants/designSystem";
+
 export interface ResponsiveLayout {
   isWideDesktop: boolean;
   isWeb: boolean;
   width: number;
+  /**
+   * #2262 [composer-responsive-layout] — the HEIGHT gate. True iff the viewport
+   * is shorter than `bpShort` (720). A DERIVED BOOLEAN, deliberately: the raw
+   * height is NOT exposed.
+   *
+   * WHY A BOOLEAN AND NOT A NUMBER. #2262's worst measured failure was
+   * 1024x700 — a short window, not a narrow one, and unreachable through a
+   * width-only system, so a height gate genuinely has to exist. But this hook
+   * is the app's most-used layout hook, and on mobile web `useWindowDimensions`
+   * is `visualViewport`-derived, so a raw height would change on every keyboard
+   * frame and re-render every consumer. That is precisely the resize-churn
+   * ORCH-1098 spent a Stage-2b spike on (see the note above). A boolean changes
+   * at most once per threshold crossing, and it also serves the no-arithmetic
+   * doctrine directly: a consumer can BRANCH on the viewport but can never put
+   * it in a subtraction.
+   *
+   * Same SSR guard as `width`: RN-web reports `{width: 0, height: 0}` with no
+   * `window`, and 0 < 720 would report "short" on every static export. An
+   * unmeasured viewport is NOT short.
+   */
+  isShort: boolean;
 }
 
 /**
@@ -50,7 +73,7 @@ export interface ResponsiveLayout {
 export const WIDE_DESKTOP_MIN_WIDTH = 1024;
 
 export const useResponsiveLayout = (): ResponsiveLayout => {
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isWeb = Platform.OS === "web";
 
   // SSR / headless safety: RN-web returns { width: 0, height: 0 } when no
@@ -61,7 +84,11 @@ export const useResponsiveLayout = (): ResponsiveLayout => {
   const isWideDesktop =
     isWeb && hasMeasuredViewport && width >= WIDE_DESKTOP_MIN_WIDTH;
 
-  return { isWideDesktop, isWeb, width };
+  // #2262 — the height gate, guarded exactly like `width`. `height > 0` is the
+  // SSR guard: an unmeasured viewport is not a short one.
+  const isShort = height > 0 && height < bpShort;
+
+  return { isWideDesktop, isWeb, width, isShort };
 };
 
 export default useResponsiveLayout;
