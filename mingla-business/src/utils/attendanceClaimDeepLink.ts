@@ -35,8 +35,21 @@ type VisibilityDocument = {
   removeEventListener: (type: "visibilitychange", listener: () => void) => void;
 };
 
+/**
+ * Open the claim deep link first, and fall back once the app has demonstrably
+ * NOT taken the navigation.
+ *
+ * `fallbackUrl` (issue #2217) overrides the destination of that fallback
+ * WITHOUT changing when it fires. The confirmation screen passes the
+ * device-aware store URL there, because a buyer whose tap did not open the app
+ * does not have the app — sending them to the `/attendance/claim` interstitial
+ * only retries the same scheme that just failed and then shows them a CHOICE of
+ * two stores, which is the two-button defect #2217 exists to delete. Every
+ * other caller (the emailed recovery link, which has no browser JS context to
+ * resolve a platform) omits it and keeps the interstitial verbatim.
+ */
 export const openAttendanceClaimWithFallback = async (
-  links: { appClaimUrl: string; webClaimUrl: string },
+  links: { appClaimUrl: string; webClaimUrl: string; fallbackUrl?: string },
   openUrl: (url: string) => Promise<unknown>,
   visibilityDocument: VisibilityDocument | null =
     (globalThis as unknown as { document?: VisibilityDocument }).document ??
@@ -61,7 +74,7 @@ export const openAttendanceClaimWithFallback = async (
     if (settled) return;
     settled = true;
     cleanup();
-    void openUrl(links.webClaimUrl);
+    void openUrl(links.fallbackUrl ?? links.webClaimUrl);
   };
   const onVisibilityChange = (): void => {
     if (visibilityDocument?.visibilityState !== "hidden") return;

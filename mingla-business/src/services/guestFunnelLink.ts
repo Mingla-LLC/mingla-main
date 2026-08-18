@@ -236,3 +236,67 @@ export function openExternal(dest: string, w: Window | undefined = typeof window
     w.location.assign(dest);
   }
 }
+
+/**
+ * Compose the CONFIRMATION-SCREEN app target — issue #2217.
+ *
+ * The confirmation screen used to carry TWO buttons ("Open in Mingla" and a
+ * hardcoded "Google Play"), because `DownloadMinglaCta` branched on
+ * `Platform.OS` — which is `'web'` for every buyer on buyer-web, so the iOS and
+ * Android arms were BOTH dead there and the second badge sent an iPhone to the
+ * Play Store. #2217 replaces the pair with ONE button whose destination is
+ * resolved from the BROWSER (`detectClientPlatform`, the reviewed ORCH-1319
+ * trio above), not from `Platform.OS`.
+ *
+ * Grammar mirrors `buildGuestFunnelOneLinkUrl` exactly — same SSOT base, same
+ * deep_link_* payload — and mints its OWN channel (`c=ticket_confirmation`) at
+ * the call site, the `buildBusinessInviteDownloadUrl` precedent. Returns null
+ * while the guest funnel is DARK (`GUEST_FUNNEL_ONELINK_URL === null`).
+ */
+export function buildConfirmationFunnelOneLinkUrl(
+  e: GuestFunnelEntity,
+): string | null {
+  if (GUEST_FUNNEL_ONELINK_URL === null) return null;
+  const value = e.entityType === "rsvp" ? "event" : e.entityType;
+  const params = [
+    `deep_link_value=${encodeURIComponent(value)}`,
+    `deep_link_sub1=${encodeURIComponent(e.brandSlug.trim())}`,
+    `deep_link_sub2=${encodeURIComponent(e.entitySlug.trim())}`,
+    "deep_link_sub3=guest-list",
+    "pid=buyer_web",
+    "c=ticket_confirmation",
+  ].join("&");
+  return `${GUEST_FUNNEL_ONELINK_URL}?${params}`;
+}
+
+/**
+ * Resolve the ONE confirmation-screen button's destination (issue #2217).
+ *
+ * LIVE (onelink): one URL for every platform — the OneLink's own 301 IS the
+ * device-awareness and it carries the `af_tranid` install referrer.
+ * DARK (store_direct): iOS → App Store, Android → Play, desktop → the smart
+ * download page. `qrUrl` mirrors `ctaUrl` on the live arm and the smart
+ * download page on the dark arm, exactly like `resolveGuestFunnelTarget`, so
+ * the two resolvers can never disagree about what a QR encodes.
+ *
+ * NEVER returns a store URL for `platform === 'other'`: a desktop buyer must
+ * not be dropped into a mobile store listing.
+ */
+export function resolveConfirmationAppTarget(
+  e: GuestFunnelEntity,
+  platform: Platform,
+): GuestFunnelTarget {
+  const oneLinkUrl = buildConfirmationFunnelOneLinkUrl(e);
+  if (oneLinkUrl !== null) {
+    return { mode: "onelink", ctaUrl: oneLinkUrl, qrUrl: oneLinkUrl, store: "onelink" };
+  }
+  const ctaUrl =
+    platform === "ios"
+      ? APP_STORE_URL
+      : platform === "android"
+        ? PLAY_STORE_URL
+        : DOWNLOAD_PAGE_URL;
+  const store: GuestFunnelStore =
+    platform === "ios" ? "app_store" : platform === "android" ? "play" : "download_page";
+  return { mode: "store_direct", ctaUrl, qrUrl: DOWNLOAD_PAGE_URL, store };
+}

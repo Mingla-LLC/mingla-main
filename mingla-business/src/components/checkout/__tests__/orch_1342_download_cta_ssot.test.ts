@@ -46,15 +46,35 @@ describe("ORCH-1342 SC-5 / F-12 — DownloadMinglaCta rides the SSOT", () => {
     expect(cta).not.toContain("apps.apple.com");
     expect(cta).not.toContain("play.google.com");
   });
-  test("the CTA imports APP_STORE_URL / PLAY_STORE_URL from the SSOT", () => {
-    expect(cta).toContain(
-      'import { APP_STORE_URL, PLAY_STORE_URL } from "../../constants/storeLinks";',
-    );
-    // the platform branches still consume both constants (no dead import).
-    expect(cta).toContain("APP_STORE_URL");
-    expect(cta).toContain("PLAY_STORE_URL");
-    // the universal-link fallback behavior is unchanged.
-    expect(cta).toContain("usemingla.com/orders/");
+  // issue #2217 UPDATED THIS TEST. Two assertions pinned the MECHANISM rather
+  // than the invariant, and #2217 replaced the mechanism:
+  //
+  //  (a) the direct `import { APP_STORE_URL, PLAY_STORE_URL }`. The CTA no
+  //      longer names a store at all — it asks `resolveConfirmationAppTarget`
+  //      in guestFunnelLink.ts, which imports the SAME SSOT and is covered by
+  //      the SAME strict-grep gate. F-12's invariant ("no store literal is
+  //      hardcoded here, the values come from the drift-gated SSOT") is
+  //      STRENGTHENED: there is now no store constant in this file to drift.
+  //
+  //  (b) `usemingla.com/orders/` — the "universal-link fallback". It was not a
+  //      fallback and it was not universal. `Platform.OS` is 'web' on
+  //      buyer-web, which is the ONLY surface that renders this card, so that
+  //      URL was the PRIMARY destination for every buyer including iPhones.
+  //      MEASURED 2026-08-18: `https://usemingla.com/orders/<id>/chat` returns
+  //      HTTP 404 — there is no `orders` route in mingla-marketing/app and no
+  //      rewrite to one. Asserting its presence was asserting a dead link.
+  test("the CTA resolves its store through the SSOT, holding no store value itself", () => {
+    expect(cta).toContain('from "../../services/guestFunnelLink"');
+    expect(cta).toContain("resolveConfirmationAppTarget");
+    // No store constant, no store literal, no dead universal link.
+    expect(cta).not.toContain("APP_STORE_URL");
+    expect(cta).not.toContain("PLAY_STORE_URL");
+    expect(cta).not.toContain("usemingla.com/orders/");
+    // The resolver it delegates to imports the SSOT and nothing else.
+    const resolver = strip(read("../../../services/guestFunnelLink.ts"));
+    expect(resolver).toContain('from "../constants/storeLinks"');
+    expect(resolver).toContain("APP_STORE_URL");
+    expect(resolver).toContain("PLAY_STORE_URL");
   });
 });
 

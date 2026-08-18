@@ -93,6 +93,7 @@ import {
   saveAttendanceClaimIntent,
   resolveAttendanceOfferingPath,
   type AttendanceClaimIntent,
+  claimAttendanceByVerifiedIdentity,
 } from "../src/services/attendanceClaimService";
 
 // ORCH-1125: PersistQueryClientProvider + AnimatedSplashScreen + asyncStoragePersister
@@ -326,6 +327,23 @@ function AppContent() {
     setAttendanceClaimPresentationPending(false);
   }, []);
   const attendanceClaimUserRef = useRef<string | null | undefined>(undefined);
+  // #2217 — reconnect a ticket bought as a guest BEFORE this app existed on the
+  // device. The #871 deep-link token cannot survive a store install, so once an
+  // account exists we ask the server whether any ARMED guest order matches an
+  // identifier THIS account has proven. Runs once per signed-in user id, is
+  // silent on failure, and gates nothing: a guest who never installs is
+  // unaffected, and a signed-in user with no matching order sees nothing.
+  const identitySweptForUserRef = useRef<string | null>(null);
+  useEffect(() => {
+    const userId = user?.id ?? null;
+    if (userId === null) {
+      identitySweptForUserRef.current = null;
+      return;
+    }
+    if (identitySweptForUserRef.current === userId) return;
+    identitySweptForUserRef.current = userId;
+    void claimAttendanceByVerifiedIdentity();
+  }, [user?.id]);
   useEffect(() => {
     const nextUserId = user?.id ?? null;
     const previousUserId = attendanceClaimUserRef.current;

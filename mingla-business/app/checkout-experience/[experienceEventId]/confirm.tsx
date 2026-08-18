@@ -19,7 +19,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import { Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
@@ -46,6 +46,7 @@ import {
   readCheckoutResumePayload,
 } from "../../../src/components/checkout/checkoutPersistence";
 import { TicketQrCarousel } from "../../../src/components/checkout/TicketQrCarousel";
+import { DownloadMinglaCta } from "../../../src/components/checkout/DownloadMinglaCta";
 import {
   confirmTicketCheckout,
 } from "../../../src/services/ticketCheckoutService";
@@ -59,10 +60,6 @@ import {
 } from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
 
-const MINGLA_APP_ICON = React.lazy(() =>
-  import("../../../src/components/checkout/AttendanceClaimAppIcon")
-);
-const attendanceClaimDeepLinkModule = import("../../../src/utils/attendanceClaimDeepLink");
 
 export default function CheckoutExperienceConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -439,13 +436,6 @@ function CheckoutExperienceConfirmScreenInner({
         })
       : "";
 
-  const openAttendanceClaimLink = (): void => {
-    const link = attendanceClaim.link;
-    if (link) void attendanceClaimDeepLinkModule.then(
-      ({ openAttendanceClaimWithFallback }) =>
-        openAttendanceClaimWithFallback(link, Linking.openURL),
-    );
-  };
   const retryAttendanceClaim = (): void => {
     const authority = attendanceClaim.authority;
     if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
@@ -548,22 +538,20 @@ function CheckoutExperienceConfirmScreenInner({
             />
           ) : null}
         </GlassCard>
-        <GlassCard variant="base" radius="lg" padding={spacing.md} style={[styles.qrCard, styles.attendanceClaimCard]}>
-          <React.Suspense fallback={<View style={styles.attendanceClaimIcon} />}>
-            <MINGLA_APP_ICON style={styles.attendanceClaimIcon} accessibilityLabel="Mingla app icon" />
-          </React.Suspense>
-          <Text style={styles.summaryEventName}>See who’s going in Mingla</Text>
-          <Text style={styles.heroEmail}>Connect this ticket to your Mingla account to unlock the guest list.</Text>
-          {attendanceClaim.phase === "ready" && attendanceClaim.link ? (
-            <Button label="Open Mingla" onPress={openAttendanceClaimLink} fullWidth />
-          ) : attendanceClaim.phase === "error" && attendanceClaim.authority ? (
-            <><Text style={styles.heroEmail}>Your tickets are confirmed. We couldn’t prepare the Mingla link.</Text><Button label="Try again" onPress={retryAttendanceClaim} fullWidth /></>
-          ) : attendanceClaim.phase === "terminal" ? (
-            <Text style={styles.heroEmail}>Your tickets are confirmed. Guest-list access isn’t available for this order.</Text>
-          ) : attendanceClaim.phase === "rate" ? (
-            <Text style={styles.heroEmail}>Your tickets are confirmed. Try the Mingla link again in a few minutes.</Text>
-          ) : <Text style={styles.heroEmail}>Preparing your Mingla link…</Text>}
-        </GlassCard>
+        {/* #2217 — the standalone guest-list card is DELETED and its
+            attendance-claim authority folded into the ONE app card below, which
+            now carries ONE device-aware button instead of the two-store pair. */}
+        <DownloadMinglaCta
+          eventName={experience !== null && experience.title.trim().length > 0 ? experience.title : "your experience"}
+          eventType="experience"
+          brandSlug={experience?.brandSlug ?? ""}
+          entitySlug={experience?.slug ?? ""}
+          claimPhase={attendanceClaim.phase}
+          claimAppUrl={attendanceClaim.phase === "ready" && attendanceClaim.link
+            ? attendanceClaim.link.appClaimUrl
+            : null}
+          onRetryClaim={retryAttendanceClaim}
+        />
       </ScrollView>
 
       {/* Sticky bottom CTA */}
@@ -675,8 +663,6 @@ const styles = StyleSheet.create({
     }),
   },
   qrCard: { marginBottom: spacing.md },
-  attendanceClaimCard: { height: 240 },
-  attendanceClaimIcon: { width: 44, height: 44, borderRadius: 12, marginBottom: spacing.sm },
   bottomBar: {
     position: "absolute",
     left: 0,
