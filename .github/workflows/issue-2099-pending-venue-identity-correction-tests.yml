@@ -33,7 +33,15 @@ on:
       - "mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js"
       - "mingla-admin/src/components/entity/HighRiskActionModal.jsx"
       - ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml"
-      - ".github/scripts/strict-grep/MANIFEST.json"
+      # issue #2193 — MANIFEST.json is DELIBERATELY ABSENT from this filter.
+      # Registering a strict-grep gate edits it, which nearly every substantial PR
+      # does, so listing it here fired this workflow on unrelated branches. SC-4 then
+      # measured the WHOLE __common chunk and charged that foreign PR #2099's private
+      # 1,024 B budget — while the project allowance (PR_DELTA_ALLOWANCE.common in
+      # orch-1083-initial-bundle-budget.mjs) is 12,000 B. It blocked #2009 at a 1,205 B
+      # delta, a tenth of the real budget. Do NOT re-add it: #2099 owns no behaviour
+      # that a manifest-only change can break, and manifest parity is enforced by
+      # meta-1383-manifest-parity.mjs in the strict-grep workflow.
   push:
     branches: [main]
     paths: *issue2099Paths
