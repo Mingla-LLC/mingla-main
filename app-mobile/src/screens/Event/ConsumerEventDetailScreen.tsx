@@ -585,6 +585,31 @@ export default function ConsumerEventDetailScreen({
 
   const tickets = canonical?.event.tickets ?? ticketsQuery.data ?? [];
 
+  // #2242 [cold-link-cart] — THE CART'S TICKET SOURCE. Four things are load-bearing
+  // here; none of them is style.
+  //   1. On the cold `/e/{brandSlug}/{eventSlug}` route the canonical checkout bundle
+  //      is the cart's source, because :439-441 disables `ticketsQuery` the moment
+  //      `canonical !== null` (`allowLegacyTicketRead` — usePublicEventBySlug.ts:72).
+  //      The disabled hook subscribes to the key ["publicEventTickets", null], which
+  //      nothing can ever populate, so reading `ticketsQuery.data` here handed the
+  //      sheet a permanent `undefined` and a spinner that never resolved.
+  //   2. There is deliberately NO `?? []`. `undefined` must survive so the sheet's
+  //      genuine in-flight `Loading tickets…` stays honest on the deck and chat
+  //      routes; collapsing it to `[]` would render a false "No tickets available
+  //      for this event." on the app's highest-traffic path.
+  //   3. The source is `canonical` (i.e. `coldReadPlan.canonical`), NEVER
+  //      `canonicalQuery.data`. A seed suppresses the bundle outright
+  //      (usePublicEventBySlug.ts:64), so once #2230 enables the bundle query on the
+  //      deck path too, those two diverge and binding to `canonicalQuery.data` would
+  //      silently switch the DECK cart's capacity semantics.
+  //   4. It is a named local rather than the inline expression on purpose: the inline
+  //      form is a prefix substring of line 586, so a `String.includes()` guard
+  //      written against it is satisfied by line 586 alone and passes on a fully
+  //      reverted cart. That is exactly how the four-of-five migration in 96cbd78ba
+  //      (#1936) shipped past a green gate named "cold tickets not bundle-owned".
+  //      Renaming this local re-opens that hole — the name is part of the contract.
+  const cartTickets = canonical?.event.tickets ?? ticketsQuery.data;
+
   // ORCH-1167 — inline ticket-box quantity setter + proceed-to-cart. The box
   // lifts its quantities here; Proceed (in-box) + the floating bar both open the
   // existing TicketCartSheet PRE-SEEDED with the full multi-tier selection (the
@@ -1472,7 +1497,7 @@ export default function ConsumerEventDetailScreen({
       <TicketCartSheet
         visible={cartVisible}
         eventId={seed.eventId}
-        tickets={ticketsQuery.data}
+        tickets={cartTickets}
         intakeSchemasByTier={intakeSchemasQuery.data}
         fallbackCurrency={seed.currency}
         initialTicketTypeId={initialTicketTypeId}
