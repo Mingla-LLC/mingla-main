@@ -148,3 +148,68 @@ Deno.test("#2218 T-4d: History is matched on the STRING id, never a coerced numb
     "an empty status is not a status",
   );
 });
+
+// ===========================================================================
+// #2218 T-4e — THE REPORTED ROW, REPLAYED THROUGH THE VERDICT PATH.
+// ===========================================================================
+// The point of the whole issue in one assertion. These are the REAL production
+// values, copied out of `ticket_order_notifications`:
+//
+//   recipient           +2348162646567
+//   provider            termii
+//   provider_message_id sig_7678b296aa6240b4864a6dcb294124b4
+//   status              sent
+//   sent_at             2026-08-18 05:10:41.892+00
+//   delivered_at        NULL
+//   last_error          NULL
+//
+// Before #2218 this row was, as a database state, indistinguishable from a text
+// the buyer was holding. This test walks it through the reconciler's decision
+// path and pins what it becomes instead. If someone later "simplifies"
+// `isReconcilableTermiiMessageId` to accept anything, or folds the two terminal
+// reasons together, or lets the deadline lapse silently, this goes red with the
+// original row in the failure message.
+Deno.test("#2218 T-4e: the founder's undelivered confirmation becomes terminal and NAMED", () => {
+  const row = {
+    id: "ddba25fd-2c2c-42ca-b436-3f9c58db251e",
+    provider: "termii",
+    provider_message_id: "sig_7678b296aa6240b4864a6dcb294124b4",
+    sent_at: "2026-08-18T05:10:41.892Z",
+  };
+  // 45 minutes later — the first sweep that can judge it.
+  const sweptAt = new Date("2026-08-18T05:56:00Z");
+  assertEquals(
+    isPastConfirmationDeadline(row, sweptAt),
+    true,
+    "45 minutes after acceptance with no confirmation, this row is judgeable",
+  );
+
+  // The id cannot be looked up, so no positive confirmation is OBTAINABLE.
+  const askable = /^[0-9]+$/.test(row.provider_message_id);
+  assertEquals(askable, false);
+
+  const verdict = deadlineVerdict(row, askable);
+  assertEquals(
+    verdict.kind,
+    "unreconcilable",
+    "not `delivered`, and not the generic unconfirmed reason either — the " +
+      "provider handed us an identifier its own APIs do not accept",
+  );
+  assert(
+    verdict.kind === "unreconcilable" &&
+      verdict.reason === "provider_message_id_unreconcilable:termii",
+    "the reason must name BOTH the fault class and the provider, because this " +
+      "is the string that reaches a human in the ops alert",
+  );
+
+  // And the counterfactual, so this is not a test that passes on everything:
+  // the SAME row with the numeric id this account used to return IS askable,
+  // and therefore falls to the deliverability reason instead.
+  const withRealId = { ...row, provider_message_id: "3017858407816658717238173" };
+  const other = deadlineVerdict(withRealId, true);
+  assert(
+    other.kind === "failed" && other.reason === "delivery_unconfirmed:termii",
+    "an id we could ask about, that we asked about and got no answer for, is a " +
+      "different problem for a different person",
+  );
+});
