@@ -183,7 +183,11 @@ jest.mock("../FoundationEventPreview", () => ({
         {props.event.datesList.join(" | ")}
       </Text>
       {props.stateBanner}
-      <Pressable testID="issue-2209-proceed" onPress={props.onProceedToCart} />
+      <Pressable
+        testID="issue-2209-proceed"
+        accessibilityLabel="Proceed to cart"
+        onPress={props.onProceedToCart}
+      />
     </View>
   ),
 }));
