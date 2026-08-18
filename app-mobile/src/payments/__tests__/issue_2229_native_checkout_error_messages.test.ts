@@ -23,7 +23,6 @@ import {
   CHECKOUT_UNAVAILABLE_MESSAGE,
   CHECKOUT_UPDATE_APP_MESSAGE,
   NATIVE_CHECKOUT_MESSAGES,
-  isCheckoutInProgress,
   nativeCheckoutErrorMessage,
 } from "../checkoutErrorMessages";
 
@@ -193,11 +192,12 @@ describe("#2229 T-5 — the in-progress refusal reads as a sentence", () => {
     ).not.toContain("checkout_in_progress");
   });
 
-  it("recognises the in-progress refusal from token OR bare status", () => {
-    expect(isCheckoutInProgress("checkout_in_progress", null)).toBe(true);
-    expect(isCheckoutInProgress(null, 409)).toBe(true);
-    expect(isCheckoutInProgress("checkout_unavailable", 422)).toBe(false);
-    expect(isCheckoutInProgress(null, null)).toBe(false);
+  // #2227 QA F-1 — `isCheckoutInProgress` is DELETED along with the
+  // un-fingerprinted `resumeUrl` it existed to gate. A bare 409 still maps to
+  // the in-progress SENTENCE (asserted above); what is gone is the predicate
+  // that decided whether to hand a stale payment page back.
+  it("a bare 409 with no readable token still reads as the in-progress sentence", () => {
+    expect(nativeCheckoutErrorMessage(null, 409)).toBe(CHECKOUT_IN_PROGRESS_MESSAGE);
   });
 });
 

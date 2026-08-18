@@ -351,23 +351,36 @@ describe("#2227 adversarial — the hold is a cache with edges", () => {
     mockInvoke.mockResolvedValue(paystackCreate(eventId));
     await useNativeCheckoutFlow()(inputFor(eventId)); // holds at t0
 
+    expect(countInvokes("ticket-checkout-create")).toBe(1);
+
+    // #2227 QA F-1 — the refusal path hands NOTHING back any more (`resumeUrl`
+    // is deleted, because it could not see the fingerprint), so the only honest
+    // observable for "the hold is still alive" is the fingerprint-gated replay:
+    // the SAME cart re-opens the held page and asks the server for nothing.
+    //
     // One millisecond BEFORE the window closes: the page is still live.
     now = t0 + TTL - 1;
-    mockInvoke.mockResolvedValue(httpError(409, { error: "checkout_in_progress" }));
-    const justAlive = await useNativeCheckoutFlow()(inputFor(eventId, 2));
-    expect(justAlive.outcome).toBe("failed");
-    if (justAlive.outcome === "failed") {
-      expect(justAlive.resumeUrl).toBe(AUTH_URL);
-    }
+    const justAlive = await useNativeCheckoutFlow()(inputFor(eventId));
+    expect(justAlive.outcome).toBe("failed"); // still `locked`
+    expect(countInvokes("ticket-checkout-create")).toBe(1);
+    expect(mockOpenBrowserAsync.mock.calls.map((c: unknown[]) => c[0])).toEqual([
+      AUTH_URL,
+      AUTH_URL,
+    ]);
 
-    // ON the boundary: the session can no longer be paid, so nothing is served.
+    // ON the boundary: the session can no longer be paid, so nothing is served
+    // and the flow goes back to the server rather than replaying a dead page.
     now = t0 + TTL;
-    const dead = await useNativeCheckoutFlow()(inputFor(eventId, 2));
+    mockInvoke.mockResolvedValue(httpError(409, { error: "checkout_in_progress" }));
+    const dead = await useNativeCheckoutFlow()(inputFor(eventId));
+    expect(countInvokes("ticket-checkout-create")).toBe(2);
     expect(dead.outcome).toBe("failed");
     if (dead.outcome === "failed") {
-      expect(dead.resumeUrl).toBeUndefined();
       expect(dead.message).toBe(CHECKOUT_IN_PROGRESS_MESSAGE);
+      expect("resumeUrl" in dead).toBe(false);
     }
+    // The dead page was never re-opened.
+    expect(mockOpenBrowserAsync).toHaveBeenCalledTimes(2);
   });
 
   it("a hold for one event is never served to another", async () => {
@@ -382,8 +395,13 @@ describe("#2227 adversarial — the hold is a cache with edges", () => {
 
     expect(other.outcome).toBe("failed");
     if (other.outcome === "failed") {
-      expect(other.resumeUrl).toBeUndefined();
+      // #2227 QA F-1 — nothing is offered back on the refusal path at all.
+      expect("resumeUrl" in other).toBe(false);
     }
+    // Event B went to the server on its own account, and event A's live page
+    // was never opened for it.
+    expect(countInvokes("ticket-checkout-create")).toBe(2);
+    expect(mockOpenBrowserAsync.mock.calls.map((c: unknown[]) => c[0])).toEqual([AUTH_URL]);
   });
 
   it("a finalized order releases the page — the next purchase creates afresh", async () => {

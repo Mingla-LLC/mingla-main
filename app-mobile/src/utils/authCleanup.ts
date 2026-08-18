@@ -97,6 +97,31 @@ export async function performPrivateAuthCleanup(options: CleanupOptions): Promis
     console.warn(`[AUTH_CLEANUP] realtime queue cleanup failed (${reason}):`, error);
   }
 
+  // issue #2227 QA F-3 — Constitution #6: the native checkout holds the buyer's
+  // own Paystack authorization URL in memory so a second tap on the SAME cart
+  // re-opens the page they were already given. That URL is a bearer capability
+  // to a live payment page and it is scoped to ONE buyer, so it must not
+  // survive a sign-out, an account switch or a JWT expiry — all of which route
+  // through here. Runs on EVERY cleanup, not only the `includeIntegrations`
+  // ones: a private-data clear that skips it is not a private-data clear.
+  //
+  // LAZY `require`, not a static import and not `await import(...)`:
+  //   - static would hoist the Stripe / expo-web-browser graph the flow pulls in
+  //     into the auth path at app start (this file is reached from the auth
+  //     context on every cold launch) and would land AHEAD of the ORCH-0896
+  //     forwardRef silencer in the evaluation order that file depends on;
+  //   - `await import(...)` is invisible to jest's CJS runtime (it needs
+  //     --experimental-vm-modules), so a test that signs out could never observe
+  //     this line running — a clear nothing can falsify is not a clear.
+  // Same lazy-require shape as useAuthSimple.ts and queryClient.ts already use.
+  try {
+    const { clearAllHeldHandoffs } =
+      require("../payments/nativeCheckoutFlow") as typeof import("../payments/nativeCheckoutFlow");
+    clearAllHeldHandoffs();
+  } catch (error) {
+    console.warn(`[AUTH_CLEANUP] held payment hand-off clear failed (${reason}):`, error);
+  }
+
   try {
     const allKeys = await AsyncStorage.getAllKeys();
     const privateKeys = allKeys.filter(isPrivateAsyncStorageKey);

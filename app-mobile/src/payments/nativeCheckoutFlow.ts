@@ -34,7 +34,6 @@ import { buildApplePayCartItems } from "./applePayCartItem";
 // that on a screen.
 import {
   CHECKOUT_NO_HANDOFF_MESSAGE,
-  isCheckoutInProgress,
   nativeCheckoutErrorMessage,
 } from "./checkoutErrorMessages";
 
@@ -107,13 +106,6 @@ export type NativeCheckoutOutcome =
        * never display this.
        */
       token?: string | null;
-      /**
-       * issue #2227 — the still-live Paystack page this buyer was already
-       * handed, when the server refuses a second checkout because that one is
-       * still open. Present ONLY on the in-progress refusal and only while the
-       * held URL is live.
-       */
-      resumeUrl?: string;
     };
 
 type CheckoutCreateResponse =
@@ -268,6 +260,22 @@ const clearHeldHandoff = (eventId: string): void => {
 };
 
 /**
+ * issue #2227 QA F-3 — Constitution #6, *logout clears everything*.
+ *
+ * A Paystack authorization URL is a BEARER CAPABILITY to a live payment page,
+ * scoped to one buyer (the fingerprint carries their email and phone). The
+ * header above refuses to put it on disk for exactly that reason; memory that
+ * outlives the session it belongs to is the same argument one step weaker. So
+ * every hold — for every event — dies with the session.
+ *
+ * Called from `performPrivateAuthCleanup`, which is the single funnel for
+ * sign-out, account switch and JWT expiry.
+ */
+export const clearAllHeldHandoffs = (): void => {
+  heldPaystackHandoffs.clear();
+};
+
+/**
  * Send the buyer to Paystack, then poll the server for the finalized order.
  *
  * Used both for a freshly created checkout AND for replaying a held one, so
@@ -415,18 +423,18 @@ export const useNativeCheckoutFlow = (): ((
         (error as { context?: { status?: number } })?.context?.status ?? null;
       const raw = await extractFunctionError(error, "");
       const token = raw.length > 0 ? raw : null;
-      // The server refuses a second checkout while the first is still open. If
-      // we are still holding that first page, hand it back rather than leaving
-      // the buyer at a wall — CHECKOUT_IN_PROGRESS_MESSAGE says "Reopen it to
-      // finish", and this is what makes that sentence true.
-      const held = isCheckoutInProgress(token, status)
-        ? readHeldHandoff(input.eventId)
-        : null;
+      // #2227 QA F-1 — NO held page is offered back here. The refusal path has
+      // no access to the cart fingerprint that the replay path above matches
+      // on, so anything handed back from here could be the page for a DIFFERENT
+      // cart (page A for 1x GA, offered to a cart now holding 3x VIP) — the
+      // exact hazard the fingerprint exists to prevent. The replay above is the
+      // ONLY way a held page is ever re-opened, and it is fingerprint-gated.
+      // If a resume affordance is ever wanted on this path it gets built
+      // against the fingerprint from the start, with its own spec.
       return {
         outcome: "failed",
         message: nativeCheckoutErrorMessage(token, status),
         token,
-        ...(held !== null ? { resumeUrl: held.authorizationUrl } : {}),
       };
     }
 

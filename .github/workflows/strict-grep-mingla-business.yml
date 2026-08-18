@@ -798,14 +798,45 @@ jobs:
       # which primitive was called with which URL and how many creates actually
       # fired — not that a function exists. Without this step they would sit in
       # the tree unrun, which is the state #2227's own report flagged.
+      #
+      # GLOBBED, NOT HAND-LISTED (#2227 QA F-4). A hand-list has now failed
+      # twice on this one change: the #2050 amendment's own guard had no CI
+      # home, and then the tester's three `.tester_adversarial.test.ts` files
+      # landed in this exact directory and ran in NO workflow at all — the same
+      # shape as #1038 / #1047 / #2242, a regression guard present in the tree
+      # and wired into nothing. A list a human must remember to extend is the
+      # defect; the fix is to stop keeping one. The globs sweep:
+      #   * every #2227 / #2229 suite in the payments directory, and
+      #   * every tester adversarial suite there, whatever issue it belongs to.
+      # The whole directory is deliberately NOT globbed: two files in it are
+      # node:test suites jest cannot host (orch_1244_applepay_cartitem.test.ts,
+      # wallet_config_threading.orch1387.test.mjs).
+      #
+      # FLOOR ASSERTION. A glob that matches nothing is a step that cannot fail
+      # — the #2242 shape this change keeps running into. `nullglob` + an
+      # explicit minimum means a rename, a move or a typo REDS the lane instead
+      # of quietly passing on an empty set. Raise the floor when suites are
+      # added; it may never be lowered without saying which suite was retired.
       - name: "Issues #2227/#2229: native Paystack hand-off + total error mapper"
         working-directory: app-mobile
+        shell: bash
         run: |
-          npx jest --runInBand \
-            src/payments/__tests__/issue_2227_paystack_browser_handoff.test.ts \
-            src/payments/__tests__/issue_2227_authsession_redirect_registry.test.ts \
-            src/payments/__tests__/issue_2229_native_checkout_error_messages.test.ts \
-            src/payments/__tests__/issue_2229_experience_stale_occurrence.test.ts
+          set -euo pipefail
+          shopt -s nullglob
+          suites=$(printf '%s\n' \
+            src/payments/__tests__/issue_2227_*.test.ts \
+            src/payments/__tests__/issue_2229_*.test.ts \
+            src/payments/__tests__/*.tester_adversarial.test.ts \
+            | sort -u)
+          echo "Suites matched:"
+          echo "$suites"
+          matched=$(printf '%s\n' "$suites" | grep -c '\.test\.ts$' || true)
+          if [ "$matched" -lt 8 ]; then
+            echo "FAIL: the suite globs matched $matched files, expected at least 8."
+            echo "A guard that matches nothing cannot fail. Fix the glob or the paths."
+            exit 1
+          fi
+          npx jest --runInBand $suites
       # ORCH-1187's experience-purchase guard is DARK — present in the tree and
       # wired into no workflow at all. It asserts the stale-occurrence recovery
       # on ConsumerExperienceDetailScreen.tsx, which #2229 edits, and it caught a

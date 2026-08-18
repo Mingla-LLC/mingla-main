@@ -274,7 +274,13 @@ describe("#2227 T-11 — a re-tap REPLAYS the held page instead of creating agai
     ).toHaveLength(2);
   });
 
-  it("T-11: the in-progress refusal hands back the held page as resumeUrl", async () => {
+  // #2227 QA F-1 — this test previously asserted the OPPOSITE: that the 409
+  // handed the held page back as `resumeUrl`. It did so WITHOUT comparing the
+  // fingerprint, so a cart that had changed since the hold was written would be
+  // offered the page for the old cart — 1x GA's ₦100 page for a 3x VIP cart.
+  // `resumeUrl` is deleted; the fingerprint-gated replay above is the only way
+  // a held page is ever re-opened. This test now pins the deletion.
+  it("T-11: a CHANGED cart is refused with a sentence and offered NO stale page", async () => {
     const eventId = nextEventId();
     const input = inputFor(eventId);
 
@@ -283,6 +289,7 @@ describe("#2227 T-11 — a re-tap REPLAYS the held page instead of creating agai
     mockInvoke.mockResolvedValueOnce(paystackCreate(eventId));
     mockOpenBrowserAsync.mockResolvedValueOnce({ type: "locked" });
     await useNativeCheckoutFlow()(input);
+    expect(mockOpenBrowserAsync).toHaveBeenCalledTimes(1);
 
     // Tap 2 — a DIFFERENT cart for the same event, so the fingerprint moves and
     // the create actually runs; the server refuses it with 409.
@@ -296,14 +303,18 @@ describe("#2227 T-11 — a re-tap REPLAYS the held page instead of creating agai
 
     expect(result.outcome).toBe("failed");
     if (result.outcome !== "failed") throw new Error("unreachable");
-    expect(result.resumeUrl).toBe(AUTH_URL);
     expect(result.token).toBe("checkout_in_progress");
     expect(result.message).not.toContain("checkout_in_progress");
+    // The field is GONE from the outcome, not merely empty.
+    expect("resumeUrl" in result).toBe(false);
+    expect(Object.keys(result)).toEqual(["outcome", "message", "token"]);
+    // ...and the wrong-cart page was never opened either.
+    expect(mockOpenBrowserAsync).toHaveBeenCalledTimes(1);
   });
 });
 
 describe("#2227 T-10 — an expired hold is deleted, never served", () => {
-  it("a hold older than the 15-minute session window yields no resumeUrl", async () => {
+  it("a hold older than the 15-minute session window is deleted, not served", async () => {
     const eventId = nextEventId();
     const input = inputFor(eventId);
     const t0 = Date.parse("2026-08-18T12:00:00.000Z");
@@ -325,9 +336,9 @@ describe("#2227 T-10 — an expired hold is deleted, never served", () => {
 
     expect(result.outcome).toBe("failed");
     if (result.outcome !== "failed") throw new Error("unreachable");
-    expect(result.resumeUrl).toBeUndefined();
-    // ...and the expired entry is gone, so the SAME cart re-creates rather than
-    // replaying a dead payment page.
+    // Nothing is ever handed back on the refusal path (#2227 QA F-1), so the
+    // observable for "the expired entry is gone" is the NEXT tap on the SAME
+    // cart: it re-creates rather than replaying a dead payment page.
     mockInvoke.mockResolvedValueOnce(paystackCreate(eventId));
     mockOpenBrowserAsync.mockResolvedValueOnce({ type: "locked" });
     await useNativeCheckoutFlow()(input);

@@ -154,13 +154,3 @@ export const nativeCheckoutErrorMessage = (
   if (status === 409) return CHECKOUT_IN_PROGRESS_MESSAGE;
   return CHECKOUT_FAILED_MESSAGE;
 };
-
-/**
- * True when the server refused because this buyer already has a live checkout
- * for the order. Both the bounded token and a bare 409 count — the flow uses
- * this to decide whether it can offer the buyer their held payment page back.
- */
-export const isCheckoutInProgress = (
-  token: string | null,
-  status: number | null,
-): boolean => token === "checkout_in_progress" || status === 409;
