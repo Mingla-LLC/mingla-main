@@ -97,6 +97,22 @@ export default function PublicEventRoute(): React.ReactElement {
       event={publicEventQuery.data.event}
       brand={publicEventQuery.data.brand}
       bookable={publicEventQuery.data.bookable}
+      // ══ issue #2209 ═══════════════════════════════════════════════════════
+      // THE DAYS. `PublicEventDetail` has carried `occurrences` +
+      // `multiDatePricingMode` since #2160 and this route — the ONLY production
+      // mount of PublicEventPage — never passed them, so the props defaulted to
+      // the empty list and "per_day" on every shared link. A guest opening a
+      // two-day event saw "Date TBD / Multi-date (no dates yet)" and got no day
+      // picker, because #2160 moved the occurrence read OUT of the component
+      // (it used to fetch them itself, #2135) and into a prop nobody handed it.
+      //
+      // Threading them here is the whole client half of #2209: the eyebrow
+      // renders the real days and MultiDateDayChooser mounts with something to
+      // choose between. A single-date event's detail carries exactly one
+      // occurrence and "per_day", which is what the props already defaulted to
+      // in every way that reaches the render — that page is unchanged.
+      occurrences={publicEventQuery.data.occurrences}
+      multiDatePricingMode={publicEventQuery.data.multiDatePricingMode}
     />
   );
 }

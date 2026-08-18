@@ -43,10 +43,7 @@ import type { ThemePalette } from "@mingla/offering-rendering";
 
 import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import type { PublicEventOccurrence } from "../../services/publicEventOccurrencesService";
-import {
-  formatEventDoorsTimes,
-  formatOccurrenceDayLabel,
-} from "../../utils/eventDateDisplay";
+import { formatOccurrenceLine } from "../../utils/eventDateDisplay";
 
 export interface MultiDateDayChooserProps {
   /** The event's IANA zone, used only when an occurrence row carries none. */
@@ -77,25 +74,22 @@ export interface MultiDateDayChooserProps {
   onToggle: (eventDateId: string) => void;
 }
 
-/** "Sat 22 Aug · 11 AM – 6 PM", degrading to the day alone when times are absent. */
+/**
+ * "Sat 22 Aug · 11 AM – 6 PM", degrading to the day alone when times are absent.
+ *
+ * issue #2209 — the label body MOVED to `formatOccurrenceLine` in
+ * eventDateDisplay (I-14, the single owner of event date display) because the
+ * public page's EYEBROW now renders the same days. Two copies of this string
+ * would be two things a guest could see disagree about the same day. Output is
+ * unchanged: `formatOccurrenceLine` returns null exactly where this returned
+ * "Date to be confirmed", and that literal stays here because it is this
+ * control's copy, not a date format.
+ */
 const rowLabel = (
   occurrence: PublicEventOccurrence,
   fallbackTimezone: string,
-): string => {
-  const tz =
-    occurrence.timezone.length > 0 ? occurrence.timezone : fallbackTimezone;
-  const day = formatOccurrenceDayLabel(occurrence.startAt, tz);
-  if (day === null) return "Date to be confirmed";
-  // Reuses the SINGLE owner of event time display (I-14) rather than adding
-  // another local formatter.
-  const { open, close } = formatEventDoorsTimes(
-    occurrence.startAt,
-    occurrence.endAt,
-    tz,
-  );
-  if (open === null) return day;
-  return close === null ? `${day} · ${open}` : `${day} · ${open} – ${close}`;
-};
+): string =>
+  formatOccurrenceLine(occurrence, fallbackTimezone) ?? "Date to be confirmed";
 
 export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   timezone,
