@@ -121,7 +121,12 @@ export const SmsComposeCard: React.FC<SmsComposeCardProps> = ({
   const attachDisabled = brandId === null;
 
   return (
-    <View style={styles.host}>
+    // #2262 — the SMS card IS the composer sheet with the subject row absent
+    // (amendment D-0), so it carries the SAME testID. Without it the geometry
+    // suite's SMS assertions resolved to null and its vacuity guard fired —
+    // which is how the first harness ended up proving SC-2-Web-D's 285px dead
+    // gap against a two-line fake instead of this card.
+    <View style={styles.host} testID="composer-v2-sheet">
       <View style={styles.headerRow}>
         <Text style={styles.label}>SMS MESSAGE</Text>
         <Text style={styles.reach} accessibilityLabel={reachLabel}>

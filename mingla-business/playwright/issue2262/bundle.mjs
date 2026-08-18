@@ -53,13 +53,20 @@ const webPlatform = {
     build.onResolve({ filter: /^react(\/.*)?$|^react-dom(\/.*)?$|^@tanstack\/react-query$/ }, (args) => ({
       path: require.resolve(args.path, { paths: [BUSINESS_ROOT] }),
     }));
+    // #2262 P2-2 — `expo-linear-gradient` is NOT in this list, deliberately. It
+    // ships a real web implementation (`build/NativeLinearGradient.web.js`), and
+    // the 24pt commit scrim's entire contribution to geometry IS its `style`,
+    // which the passthrough stub below forwards children for and DROPS. Stubbing
+    // it measured the band at 0px and made every number in this suite 24px
+    // optimistic — enough to turn a +7px SMS overflow at 320x568 into
+    // "exactly fits".
+    //
     // Native-only leaves the web build never executes. Each is a module the
     // shared chrome imports for a NATIVE effect only; stubbing them changes no
     // box on screen, and the spec asserts the real dialog mounted regardless.
     for (const filter of [
       /^expo-blur$/,
       /^expo-haptics$/,
-      /^expo-linear-gradient$/,
       /^react-native-reanimated$/,
       /^react-native-svg$/,
       /^expo-constants$/,
@@ -218,6 +225,18 @@ const need = [
   ["richEditor (Tiptap web)", (f) => f.endsWith("ComposerV2/richEditor.tsx")],
   ["composerChipHtml", (f) => f.includes("ComposerV2/composerChipHtml.ts")],
   ["InsertionBar", (f) => f.includes("ComposerV2/InsertionBar.tsx")],
+  // #2262 P2-1 — THE FILE THE FIRST HARNESS LEFT OUT. Below 1024px this is the
+  // component that decides whether the commit bar sits inside a scroll
+  // container. Without it in the graph this suite reported 64/64 green against
+  // a build that pushed the bar 3183px off screen.
+  ["ComposerCanvas (web)", (f) => f.endsWith("ComposerV2/ComposerCanvas.web.tsx")],
+  // #2262 P2-1 — SC-2-Web-D's 285px dead-gap claim was proven against a
+  // two-line fake. It is now the real card.
+  ["SmsComposeCard", (f) => f.includes("marketing/SmsComposeCard.tsx")],
+  ["ComposerStepWho", (f) => f.includes("marketing/ComposerStepWho.tsx")],
+  ["ChannelTabs", (f) => f.includes("marketing/ChannelTabs.tsx")],
+  // #2262 P2-2 — the real gradient, not a style-dropping passthrough.
+  ["expo-linear-gradient (real)", (f) => f.includes("expo-linear-gradient")],
 ];
 const missing = need.filter(([, match]) => !inputs.some(match)).map(([name]) => name);
 if (missing.length > 0) {
@@ -228,5 +247,5 @@ if (missing.length > 0) {
   process.exit(1);
 }
 console.log(
-  `issue-2262 harness bundled: ${inputs.length} modules, real composer + commit bar + Tiptap present.`,
+  `issue-2262 harness bundled: ${inputs.length} modules, real composer + canvas + SMS card + Tiptap + scrim present.`,
 );

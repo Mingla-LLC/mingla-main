@@ -257,6 +257,59 @@ export function checkSource(rawSrc, relPath, failures) {
     }
   }
 
+  // ---- R12: the commit bar may never be inside a scroll container.
+  //
+  // DESIGN 10.1, and the one constraint accepted as "free" that turned out not
+  // to be. `ComposerCanvas.web.tsx` wrapped the WHOLE column — commit bar
+  // included — in a `ScrollView` below 1024px. A scroll container's content box
+  // has AUTO height, so every `flex:1` / `minHeight:0` / `overflow:hidden` in
+  // the band architecture resolved against CONTENT instead of the viewport:
+  // Band B's clip never bound and the bar was pushed down without bound
+  // (+2335px at 32 paragraphs on a 390x750 phone browser, against a baseline
+  // that was a CONSTANT 89px).
+  //
+  // The recovery §4.3 step 4 requires still exists — it wraps Band B only, so
+  // the region that can overflow scrolls and the bar is its FLOW SIBLING.
+  if (name === "ComposerCanvas.web.tsx") {
+    if (/<ScrollView/.test(src)) {
+      failures.push(
+        `${relPath}: renders a <ScrollView> around the composer column. The ` +
+          `commit bar is inside it, which DESIGN 10.1 forbids on every surface, ` +
+          `and a scroll container's auto-height content box un-bounds every ` +
+          `flex:1 beneath it — Band B's clip stops binding and the bar travels ` +
+          `with the draft. The web recovery belongs on Band B (#2262 R12).`,
+      );
+    }
+    if (!/testID="composer-canvas-narrow-web-host"/.test(src)) {
+      failures.push(
+        `${relPath}: the narrow-web branch marker is missing. This rule must not ` +
+          `be satisfiable by deleting the branch it guards (#2262 R12).`,
+      );
+    }
+  }
+
+  // ---- R12b (positive): Band B keeps the web scroll recovery, and the commit
+  // bar stays outside it. Deleting the recovery would leave a short viewport
+  // with no way to reach the audience row; putting the bar back inside it is
+  // P1-1 again under a different name.
+  if (name === "compose.tsx") {
+    if (!/WEB_FLEX_REGION_RECOVERY/.test(src) || !/overflow:\s*["']auto["']/.test(src)) {
+      failures.push(
+        `${relPath}: Band B's web scroll recovery is gone. It is the ONLY scroll ` +
+          `on the web column now that ComposerCanvas no longer wraps it, and ` +
+          `DESIGN §4.3 step 4 requires one (#2262 R12b).`,
+      );
+    }
+    const region = src.indexOf('testID="composer-flex-region"');
+    const bar = src.indexOf("<ComposerCommitBar");
+    if (region !== -1 && bar !== -1 && bar < region) {
+      failures.push(
+        `${relPath}: the commit bar is rendered inside Band B rather than after ` +
+          `it. It must be a FLOW SIBLING of the region that scrolls (#2262 R12b).`,
+      );
+    }
+  }
+
   // ---- R7b (positive): the web viewport pin must EXIST.
   //
   // R9 below only fires on an UNGUARDED pin, so deleting the pin outright would
@@ -469,6 +522,45 @@ if (process.argv.includes("--self-test")) {
     selfFailures.push("(i5) a pin without flexGrow:0 was not flagged (R7b)");
   }
 
+  // (k) R12 — a ScrollView around the composer column must fire.
+  const canvasRel =
+    "mingla-business/src/components/marketing/ComposerV2/ComposerCanvas.web.tsx";
+  const OK_CANVAS =
+    'return (<View style={styles.narrowHost} testID="composer-canvas-narrow-web-host">{editor}</View>);\n';
+  if (run(OK_CANVAS, canvasRel).length !== 0) {
+    selfFailures.push("(k0) the shipped narrow-web host was wrongly flagged (R12)");
+  }
+  const REVERTED_CANVAS =
+    'testID="composer-canvas-narrow-web-host"\n' +
+    "return (<ScrollView style={styles.narrowScroll}>{editor}</ScrollView>);\n";
+  if (run(REVERTED_CANVAS, canvasRel).length === 0) {
+    selfFailures.push("(k) a restored narrow-web ScrollView was not flagged (R12)");
+  }
+  // (k2) R12 must not be satisfiable by deleting the branch.
+  if (run("return null;\n", canvasRel).length === 0) {
+    selfFailures.push("(k2) a deleted narrow-web branch was not flagged (R12)");
+  }
+
+  // (l) R12b — Band B losing its recovery, and the bar moving inside it.
+  const composeRel = "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx";
+  const OK_COMPOSE =
+    'const WEB_FLEX_REGION_RECOVERY = { overflow: "auto" };\n' +
+    'testID="composer-flex-region"\n' +
+    "<ComposerCommitScrim />\n<ComposerCommitBar />\n";
+  if (run(OK_COMPOSE, composeRel).length !== 0) {
+    selfFailures.push("(l0) the shipped compose shape was wrongly flagged (R12b)");
+  }
+  if (run('testID="composer-flex-region"\n<ComposerCommitBar />\n', composeRel).length === 0) {
+    selfFailures.push("(l) a deleted Band B recovery was not flagged (R12b)");
+  }
+  const BAR_INSIDE =
+    'const WEB_FLEX_REGION_RECOVERY = { overflow: "auto" };\n' +
+    "<ComposerCommitBar />\n" +
+    'testID="composer-flex-region"\n';
+  if (run(BAR_INSIDE, composeRel).length === 0) {
+    selfFailures.push("(l2) the commit bar rendered before Band B was not flagged (R12b)");
+  }
+
   // (i2) R10 — the sheet floor used as anything but a minHeight value.
   if (run(OK_EDITOR + "const h = Math.max(composerSheetMinHeight, rawBodyHeight);").length === 0) {
     selfFailures.push("(i2) composerSheetMinHeight in an expression not flagged (R10)");
@@ -500,8 +592,8 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "#2262 I-2262-COMPOSER-MEASURED-NOT-COMPUTED-LAYOUT self-test PASS (20/20 cases, " +
-      "R1-R11 + both vacuity directions).",
+    "#2262 I-2262-COMPOSER-MEASURED-NOT-COMPUTED-LAYOUT self-test PASS (26/26 cases, " +
+      "R1-R12b + both vacuity directions).",
   );
   process.exit(0);
 }

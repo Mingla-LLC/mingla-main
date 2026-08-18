@@ -35,7 +35,7 @@
  */
 
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { StyleSheet, View } from "react-native";
 
 import {
   glass,
@@ -142,24 +142,47 @@ export const ComposerCanvas: React.FC<ComposerCanvasProps> = ({
   // covered by the sibling `ComposerCanvas.tsx` Fragment passthrough (Metro
   // picks .tsx on native).
   //
-  // ORCH-1100 RC-3: previously this returned a bare `<>{editor}</>`. On phone
-  // web the editor column (subject + toolbar + fixed-height body + footer) is
-  // taller than the browser viewport once the TopBar + MarketingSubNav + URL
-  // bar are subtracted, so the bottom of the body and the footer were
-  // unreachable and the editor read as a thin untappable strip. Wrap the column
-  // in a ScrollView so the whole composer body is scrollable and tappable. This
-  // is WEB-ONLY (this file is `.web.tsx`); the native pell "no ScrollView around
-  // the editor" constraint is untouched (that path uses `ComposerCanvas.tsx`).
+  // ─── #2262 P1-1 — THE ScrollView THAT USED TO BE HERE IS DELETED ─────────
+  //
+  // ORCH-1100 RC-3 wrapped the whole editor column in a `ScrollView` because
+  // the column, sized by a fixed 450pt body inside a chrome budget that
+  // under-counted the TopBar, was taller than the viewport and its bottom was
+  // unreachable. That was the right recovery for a column whose height was a
+  // CONSTANT.
+  //
+  // Under the band architecture it became the defect. A scroll container's
+  // content box has AUTO height, so every `flex:1` / `minHeight:0` /
+  // `overflow:hidden` inside it resolved against CONTENT rather than the
+  // viewport: `column`, Band B, the sheet and `bodyHost` all grew to the
+  // natural height of `.ProseMirror`, Band B's clip never bound, and the
+  // commit bar — a correct flow sibling — was pushed down WITHOUT BOUND.
+  // Measured in real Chromium: +57px at 4 paragraphs and +2335px at 32 on a
+  // 390x750 phone browser; +44px at 2 and +3183px at 32 at 320x568. The
+  // baseline it replaced was a CONSTANT 89px, so for a long draft the
+  // half-fixed state was worse than the bug.
+  //
+  // It also put the commit bar INSIDE a scroll container, which DESIGN
+  // constraint 10.1 forbids outright on every surface.
+  //
+  // The recovery §4.3 step 4 requires on web has not gone anywhere — it moved
+  // to where it belongs. Band B (`composer-flex-region` in `compose.tsx`)
+  // carries its own web `overflow: auto`, so the region that can overflow
+  // scrolls, and the scrim and the commit bar are its FLOW SIBLINGS, outside
+  // the thing that scrolls. That satisfies 10.1 and §4.3 step 4 at the same
+  // time: the column scrolls, and the bar cannot move, because it is not in it.
+  //
+  // With the wrapper gone the chain is identical to the desktop one, which the
+  // independent tester measured holding flat at every draft length from 1 to 32
+  // paragraphs.
+  //
+  // NOTE: Stage F.7's constraint (pell's WebView inside a ScrollView blocks
+  // taps on iOS) never applied here — this file is `.web.tsx` and runs Tiptap,
+  // not a WebView. Native's no-column-scroll behaviour is untouched.
   if (!isWideDesktop) {
     return (
-      <ScrollView
-        style={styles.narrowScroll}
-        contentContainerStyle={styles.narrowScrollContent}
-        keyboardShouldPersistTaps="handled"
-        testID="composer-canvas-narrow-web-scroll"
-      >
+      <View style={styles.narrowHost} testID="composer-canvas-narrow-web-host">
         {editor}
-      </ScrollView>
+      </View>
     );
   }
 
@@ -208,15 +231,15 @@ export const ComposerCanvas: React.FC<ComposerCanvasProps> = ({
 };
 
 const styles = StyleSheet.create({
-  // ORCH-1100 RC-3: phone/tablet-web scroll container so the editor column is
-  // fully reachable below the chrome. `flex: 1` claims the available area;
-  // `flexGrow: 1` on the content lets a short composer still fill the viewport
-  // while a tall one scrolls.
-  narrowScroll: {
+  // #2262 P1-1 — a BOUNDED box, not a scroll container. It hands the band
+  // column a definite height (from `kavHost`, itself bounded by the
+  // viewport-pinned route host), which is the precondition every `flex:1` and
+  // `overflow:hidden` below it needs in order to mean anything. The scroll
+  // recovery lives on Band B inside the column, where it wraps only the region
+  // that can overflow and leaves the commit bar outside it.
+  narrowHost: {
     flex: 1,
-  },
-  narrowScrollContent: {
-    flexGrow: 1,
+    minHeight: 0,
   },
   host: {
     flex: 1,

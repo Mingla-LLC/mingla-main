@@ -33,6 +33,8 @@ const BIZ_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const read = (rel: string): string =>
   fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
 
+const ROUTE = "app/(tabs)/marketing/campaigns/compose.tsx";
+
 const stripComments = (src: string): string =>
   src
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -106,12 +108,62 @@ describe("ORCH-1100 RC-3 (2) — body height + scroll are web-gated", () => {
   // Everything else in this file is byte-unchanged: describe-block (1) in full,
   // and assertions 3 and 4 below, which pin contracts #2262 preserves.
 
-  test("narrow-web editor column is wrapped in a ScrollView (body reachable)", () => {
-    expect(canvasWeb).toMatch(/import\s*\{[^}]*\bScrollView\b[^}]*\}\s*from\s*["']react-native["']/);
-    // The !isWideDesktop fall-through now returns a ScrollView, not a bare <>.
-    expect(canvasWeb).toMatch(
-      /!\s*isWideDesktop[\s\S]{0,400}<ScrollView[\s\S]{0,400}\{editor\}[\s\S]{0,120}<\/ScrollView>/,
+  // ─── #2262 P1-1 — ASSERTION 3 REPLACED, and the replacement is stronger ──
+  //
+  // ORCH-1100's assertion was: the narrow-web fall-through wraps the editor
+  // column in a `ScrollView`, so the body is reachable. The PROPERTY it was
+  // protecting is "on narrow web the composer content is reachable" — and in
+  // ORCH-1100's world, where the body was a fixed 450pt inside a chrome budget
+  // that under-counted the TopBar, wrapping the column was the right recovery.
+  //
+  // Under #2262's band architecture that same wrapper became the defect. A
+  // scroll container's content box has AUTO height, so every `flex:1` inside it
+  // resolved against content instead of the viewport, Band B's clip never
+  // bound, and the commit bar was pushed below the fold WITHOUT BOUND — +57px
+  // at 4 paragraphs, +2335px at 32, measured in real Chromium at 390x750. It
+  // also placed the commit bar inside a scroll container, which DESIGN 10.1
+  // forbids on every surface.
+  //
+  // WHAT THE OLD ASSERTION COULD CATCH THAT THESE CANNOT: nothing.
+  // It could catch exactly one thing — "the narrow branch has no scroll
+  // recovery at all" — and (2) below catches that same loss, at the node that
+  // now owns the recovery. Every other state it admitted (a wrapper that
+  // swallows the commit bar) it could not distinguish, and (1) and (3) reject.
+  // The replacement is a strict superset.
+  test("narrow web does NOT wrap the column in a scroll container", () => {
+    // (1) The wrapper is gone, and no scroll container may return here.
+    expect(canvasWeb).not.toMatch(/<ScrollView/);
+    expect(canvasWeb).not.toMatch(
+      /import\s*\{[^}]*\bScrollView\b[^}]*\}\s*from\s*["']react-native["']/,
     );
+    // The narrow branch still exists and still renders the column — this is not
+    // satisfiable by deleting the branch.
+    expect(canvasWeb).toMatch(
+      /!\s*isWideDesktop[\s\S]{0,2600}<View[\s\S]{0,400}\{editor\}[\s\S]{0,120}<\/View>/,
+    );
+  });
+
+  test("the narrow-web recovery moved to Band B, which the commit bar is NOT inside", () => {
+    const route = stripComments(read(ROUTE));
+    // (2) The recovery §4.3 step 4 requires on web still exists — it wraps only
+    // the region that can overflow. This is the assertion that fails if someone
+    // deletes the recovery outright, which is the one loss the old pin covered.
+    expect(route).toMatch(/overflow:\s*["']auto["']/);
+    expect(route).toMatch(/WEB_FLEX_REGION_RECOVERY/);
+    expect(route).toMatch(/testID="composer-flex-region"/);
+
+    // (3) And the commit bar is the flex region's SIBLING, not its descendant:
+    // the region's element closes before the scrim and the bar open. This is
+    // what the old assertion could never express, and it is the actual defect.
+    const region = route.indexOf('testID="composer-flex-region"');
+    const scrim = route.indexOf("<ComposerCommitScrim");
+    const bar = route.indexOf("<ComposerCommitBar");
+    expect(region).toBeGreaterThan(-1);
+    expect(scrim).toBeGreaterThan(region);
+    expect(bar).toBeGreaterThan(scrim);
+    const between = route.slice(region, bar);
+    // Exactly one `</View>` closes the flex region before the bar is reached.
+    expect(between).toMatch(/<\/View>/);
   });
 
   test("native ComposerCanvas stays a Fragment passthrough (no web ScrollView)", () => {
