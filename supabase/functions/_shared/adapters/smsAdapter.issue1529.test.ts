@@ -38,6 +38,26 @@ import {
 
 import { resolveMarketKillSwitch, smsAdapter } from "./smsAdapter.ts";
 
+// ===========================================================================
+// #2218 — PIN THE CLOCK. ADDITIVE; NO ASSERTION BELOW IS CHANGED OR REMOVED.
+// ===========================================================================
+// Nigerian operators refuse Termii's `generic` route 20:00-08:00 WAT
+// (https://developers.termii.com/campaign), and since #2218 the adapter DEFERS
+// a Nigerian send inside that window instead of handing it to a route that
+// cannot carry it. Every assertion in this file that expects a +234 send to
+// reach Termii was therefore, before this line, silently also asserting "…and
+// CI happens to be running between 08:00 and 20:00 WAT" — true for thirteen
+// hours a day and red for the other eleven.
+//
+// Pinning the module clock to 12:00 WAT makes those assertions mean what they
+// were always written to mean: given the network is carrying traffic, this is
+// the route, the channel and the payload. The complementary behaviour — that
+// the SAME call DEFERS at 21:00 and at 03:00 — is asserted in
+// smsAdapter.issue2218.test.ts, which pins its own instants per case.
+import { __pinNgClockInsideWindow } from "../ngSmsEmbargo.ts";
+__pinNgClockInsideWindow();
+
+
 const TWILIO_HOST = "api.twilio.com";
 const TERMII_HOST = "v3.api.termii.com";
 const NG_NUMBER = "+2348012345678";

@@ -71,17 +71,37 @@
 // ===========================================================================
 import { resolveDeliveryFlagValue } from "../secretBundle.ts";
 import { resolveRuntimeConfigValue } from "../runtimeConfig.ts";
+// #2218 — the ONE definition of the Nigerian `generic` operator embargo. Both
+// rails read it from here; see the essay at the top of that file.
+import {
+  isNgGenericEmbargoed,
+  isReconcilableTermiiMessageId,
+  ngEmbargoNow,
+  nextNgGenericWindowOpen,
+} from "../ngSmsEmbargo.ts";
 // #1529 — the single source of truth for E.164 → ISO-2. The DESTINATION NUMBER
 // is the routing authority (operator decision, Seth 2026-08-03).
 import { countryFromE164 } from "../e164Country.ts";
 
 export interface AdapterResult {
+  // #2218 — `deferred` joins the vocabulary: HELD, not sent, not skipped, not
+  // failed. It means the destination network is refusing this class of traffic
+  // right now and will accept it at a known future instant, so the message is
+  // neither burned nor abandoned. It is `ok:false` like the other non-sends,
+  // which is why #1541's standing rule — BRANCH ON `status`, NEVER ON `ok` —
+  // is what keeps every caller correct.
+  status: "sent" | "skipped" | "failed" | "deferred";
   ok: boolean;
-  status: "sent" | "skipped" | "failed";
   providerMessageId: string | null;
   segments?: number;
   blacklisted?: boolean;
   error?: string;
+  /**
+   * #2218 — ISO instant at which a `deferred` send becomes attemptable. Set on
+   * `deferred` and on nothing else, so a caller cannot mistake "retry whenever"
+   * for "retry at this specific time".
+   */
+  retryAfter?: string;
 }
 
 // #1537 — the provider identities this adapter can select between. These are the
@@ -134,6 +154,13 @@ export interface SmsSendInput {
   // the NG/Termii path IGNORES media and sends SMS-only (Termii `/api/sms/send`
   // `type:"plain"` carries no media param). ORCH-1289 — up to 10 per message.
   mediaUrls?: string[];
+  // #2218 — CLOCK INJECTION for the Nigerian operator-embargo guard. Production
+  // never passes it (the guard reads the real clock); tests pass a fixed
+  // instant so "21:00 WAT defers" and "09:00 WAT sends" are both executable
+  // assertions rather than statements about a window nobody can enter on
+  // demand. An untestable time guard is how a wrap-around window ships as
+  // `hour >= 20 && hour < 8` and silently never fires.
+  now?: Date;
   // ORCH-1289 — marketing sends render the STOP footer on its OWN line (blank
   // line + STOP line) so the delivered SMS matches the composer preview.
   // Transactional sends omit this (default false → single-space footer,
@@ -564,6 +591,40 @@ export const smsAdapter = {
       };
     }
 
+    // =====================================================================
+    // #2218 — DO NOT HAND A MESSAGE TO A ROUTE THAT CANNOT CARRY IT.
+    // =====================================================================
+    // Nigerian operators refuse `generic` traffic 20:00–08:00 WAT
+    // (https://developers.termii.com/campaign). Every NG send rides `generic`
+    // today because `dnd` 400s "Country Inactive" on this account (#1518,
+    // pending #1480). Inside that window Termii still ACCEPTS the request and
+    // returns an id — which is exactly how a Nigerian buyer's 06:10 WAT ticket
+    // confirmation came to be recorded `sent` with no error and no text.
+    //
+    // ORDER MATTERS, TWICE OVER:
+    //   • AFTER the kill switch, so a dark market still reads as
+    //     `provider_kill_switch_off` and the #1529/#1537 skip attribution is
+    //     untouched.
+    //   • BEFORE `beforeProviderIo` and before any HTTP, so a deferral consumes
+    //     no provider-io claim, no idempotency lease and no ₦. Nothing is spent
+    //     on a message the network will not carry.
+    //
+    // This is a HOLD, not a drop: `retryAfter` is the next 08:00 WAT and the
+    // callers re-attempt there, so the buyer's text arrives.
+    if (selectedProvider === "termii") {
+      const now = input.now ?? ngEmbargoNow();
+      if (isNgGenericEmbargoed(now)) {
+        return {
+          ok: false,
+          status: "deferred",
+          providerMessageId: null,
+          provider: selectedProvider,
+          retryAfter: nextNgGenericWindowOpen(now).toISOString(),
+          error: "ng_operator_embargo",
+        };
+      }
+    }
+
     const body = composeSmsBody(
       input.message,
       input.stopFooterOwnLine === true,
@@ -611,6 +672,24 @@ export const smsAdapter = {
           ? "provider_config_missing"
           : "provider_unavailable",
       };
+    }
+    // #2218 — an accept-id we cannot reconcile is worth saying out loud AT THE
+    // MOMENT IT ARRIVES, not only when the reconciler gives up on it hours
+    // later. Termii's delivery reports and its History endpoint both key on the
+    // numeric message id; an id of any other shape (production returned
+    // `sig_7678b296aa…`) is an acceptance no route can ever confirm.
+    if (
+      result.provider === "termii" &&
+      !isReconcilableTermiiMessageId(result.sid)
+    ) {
+      console.warn(
+        JSON.stringify({
+          event: "termii_accept_id_unreconcilable",
+          providerMessageId: result.sid,
+          note:
+            "#2218 not Termii's numeric message-id form; DLR and History cannot match it",
+        }),
+      );
     }
     return {
       ok: true,

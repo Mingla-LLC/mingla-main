@@ -118,11 +118,40 @@ function icsToBase64(ics: string): string {
 
 class ProviderSendError extends Error {
   retryable: boolean;
-  constructor(failure: ProviderFailure) {
+  /**
+   * #2218 — the instant this row becomes attemptable again, when the reason it
+   * could not be sent is a KNOWN, TIMED refusal rather than a fault (today:
+   * the Nigerian 20:00–08:00 WAT `generic` operator embargo).
+   *
+   * It exists because the ORCH-0788 backoff cannot express this. That ladder is
+   * 2^attempt × 60s capped at three attempts — at most ~6 minutes of patience —
+   * so a message held at 06:10 WAT would exhaust every retry hours before the
+   * network would carry it and land on `failed_terminal`. Carrying the deadline
+   * on the error lets ONE catch clause serve every template.
+   */
+  nextAttemptAt: string | null;
+  constructor(failure: ProviderFailure & { nextAttemptAt?: string | null }) {
     super(failure.detail);
     this.name = "ProviderSendError";
     this.retryable = failure.retryable;
+    this.nextAttemptAt = failure.nextAttemptAt ?? null;
   }
+}
+
+// #2218 — the ONE shape a deferred SMS takes on this dispatcher. A deferral is
+// NOT a failure (nothing broke, nothing was spent) and NOT a skip (the message
+// is still owed to the buyer). Both call sites raise it identically so the
+// single catch below writes one honest row: `deferred`, holding until
+// `next_attempt_at`, attempt_count untouched.
+function deferredSmsError(
+  result: { error?: string; retryAfter?: string },
+): ProviderSendError {
+  return new ProviderSendError({
+    retryable: true,
+    detail: `sms_deferred:${result.error ?? "ng_operator_embargo"}`,
+    status: 0,
+    nextAttemptAt: result.retryAfter ?? null,
+  });
 }
 
 async function sendResendEmailWithAttachment(input: {
@@ -495,6 +524,15 @@ async function deliverWaitlistSpotOpenNotification(
       }),
     });
 
+    // #2218 — a Nigerian `generic` send inside the 20:00–08:00 WAT operator
+    // embargo is HELD, not attempted. Raised BEFORE the `failed` branch so it
+    // can never be mistaken for a provider fault, and before the `skipped`
+    // branch so it never releases the waitlist seat: the guest IS still going
+    // to be told, just after the window opens.
+    if (result.status === "deferred") {
+      throw deferredSmsError(result);
+    }
+
     // `ok` is false for BOTH skipped and failed — branch on `status`, never on
     // `ok`. A market-gated skip is not an error.
     if (result.status === "failed") {
@@ -602,6 +640,28 @@ async function handleWaitlistNotificationDispatch(
       }],
     });
   } catch (err) {
+    // #2218 — same rule as the per-order loop: a timed operator refusal is a
+    // HOLD, not a spent attempt. See the essay on the catch clause there.
+    const deferredUntil = err instanceof ProviderSendError
+      ? err.nextAttemptAt
+      : null;
+    if (deferredUntil !== null) {
+      await supabase.from("ticket_order_notifications").update({
+        status: "deferred",
+        last_error: err instanceof Error ? err.message : String(err),
+        next_attempt_at: deferredUntil,
+        attempt_count: Number(notification.attempt_count ?? 0),
+        updated_at: new Date().toISOString(),
+      }).eq("id", notification.id);
+      return jsonResponse({
+        notificationId,
+        outcomes: [{
+          channel: notification.channel,
+          status: "deferred",
+          templateKey: "waitlist_spot_open",
+        }],
+      });
+    }
     const attemptCount = Number(notification.attempt_count ?? 0) + 1;
     const retryable = err instanceof ProviderSendError ? err.retryable : true;
     const terminal = !retryable || attemptCount >= 3;
@@ -1382,7 +1442,12 @@ export const handler = async (req: Request): Promise<Response> => {
     .from("ticket_order_notifications")
     .select("id, channel, recipient, status, attempt_count, payload")
     .eq("order_id", orderId)
-    .in("status", ["pending", "failed_retryable"]);
+    // #2218 — `deferred` rows are IN SCOPE for a dispatch pass. The sweeper
+    // only calls this function once `next_attempt_at` has passed, so a row that
+    // reaches here is a held message whose window has opened. Omitting the
+    // status here would leave the sweeper waking up for an order and then
+    // selecting nothing — a retry loop that can never retry.
+    .in("status", ["pending", "failed_retryable", "deferred"]);
   if (notificationError) {
     return jsonResponse(
       {
@@ -1542,6 +1607,14 @@ export const handler = async (req: Request): Promise<Response> => {
             brandName: context.bodyInput.brand.name,
             message: smsBody,
           });
+          // #2218 — the buyer confirmation is the exact path that produced the
+          // false `sent`. Inside the Nigerian operator embargo it is held to
+          // the next 08:00 WAT instead of being handed to a route the network
+          // will not carry. The sibling EMAIL row is unaffected and still goes
+          // out immediately, so the ticket itself is never delayed.
+          if (result.status === "deferred") {
+            throw deferredSmsError(result);
+          }
           if (result.status === "failed") {
             // Preserve today's retry/backoff semantics EXACTLY — a real
             // provider failure is still a retryable ProviderSendError handled
@@ -1748,6 +1821,36 @@ export const handler = async (req: Request): Promise<Response> => {
         });
       }
     } catch (err) {
+      // =====================================================================
+      // #2218 — A TIMED REFUSAL IS NOT AN ATTEMPT, AND MUST NOT SPEND ONE.
+      // =====================================================================
+      // A deferral takes its own arm BEFORE the attempt ladder is touched:
+      // `attempt_count` is left where it was, so a Nigerian confirmation held
+      // three times across one night does not arrive at `failed_terminal` at
+      // 06:14 WAT having never once been offered to the network. The row
+      // records WHEN it becomes attemptable; notification-retry-sweeper honours
+      // that instant instead of its own ~6-minute ladder.
+      const deferredUntil = err instanceof ProviderSendError
+        ? err.nextAttemptAt
+        : null;
+      if (deferredUntil !== null) {
+        await supabase.from("ticket_order_notifications").update({
+          status: "deferred",
+          last_error: err instanceof Error ? err.message : String(err),
+          next_attempt_at: deferredUntil,
+          // The claim above optimistically stamped `attempt_count + 1`. Give it
+          // back: no attempt was made. Left in place, twelve hours of embargo
+          // would burn the whole ladder without one provider call.
+          attempt_count: Number(notification.attempt_count ?? 0),
+          updated_at: new Date().toISOString(),
+        }).eq("id", notification.id);
+        outcomes.push({
+          channel: notification.channel,
+          status: "deferred",
+          templateKey,
+        });
+        continue;
+      }
       const attemptCount = Number(notification.attempt_count ?? 0) + 1;
       const retryable = err instanceof ProviderSendError ? err.retryable : true;
       const terminal = !retryable || attemptCount >= 3;
@@ -1795,6 +1898,13 @@ export const handler = async (req: Request): Promise<Response> => {
   // nothing pending a retry (the sweeper never selects `skipped`).
   const failed = outcomes.some((row) => row.status.startsWith("failed"));
   const sent = outcomes.some((row) => row.status === "sent");
+  // #2218 — a DEFERRED leg is still owed. It is neither a success to report nor
+  // a failure to alarm on, and stamping the order `sent` because its email went
+  // out would be the same unearned success #1541 removed from the else-arm
+  // below. `pending` is the existing term for "work outstanding" in this
+  // column's fixed vocabulary (not_required|pending|sent|partial|failed), and
+  // it is literally true: the sweeper will come back for this row.
+  const deferred = outcomes.some((row) => row.status === "deferred");
 
   if (outcomes.length === 0) {
     // OBSERVED NOTHING -> ASSERT NOTHING. There were no notification rows to
@@ -1812,6 +1922,8 @@ export const handler = async (req: Request): Promise<Response> => {
     await supabase.from("orders").update({
       notification_status: failed
         ? (sent ? "partial" : "failed")
+        : deferred
+        ? "pending"
         : (sent ? "sent" : "not_required"),
       updated_at: new Date().toISOString(),
     }).eq("id", orderId);

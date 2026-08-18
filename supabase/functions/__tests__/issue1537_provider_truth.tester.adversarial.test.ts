@@ -78,6 +78,26 @@ import {
 } from "../termii-delivery-status/index.ts";
 
 // ===========================================================================
+// #2218 — PIN THE CLOCK. ADDITIVE; NO ASSERTION BELOW IS CHANGED OR REMOVED.
+// ===========================================================================
+// Nigerian operators refuse Termii's `generic` route 20:00-08:00 WAT
+// (https://developers.termii.com/campaign), and since #2218 the adapter DEFERS
+// a Nigerian send inside that window instead of handing it to a route that
+// cannot carry it. Every assertion in this file that expects a +234 send to
+// reach Termii was therefore, before this line, silently also asserting "…and
+// CI happens to be running between 08:00 and 20:00 WAT" — true for thirteen
+// hours a day and red for the other eleven.
+//
+// Pinning the module clock to 12:00 WAT makes those assertions mean what they
+// were always written to mean: given the network is carrying traffic, this is
+// the route, the channel and the payload. The complementary behaviour — that
+// the SAME call DEFERS at 21:00 and at 03:00 — is asserted in
+// smsAdapter.issue2218.test.ts, which pins its own instants per case.
+import { __pinNgClockInsideWindow } from "../_shared/ngSmsEmbargo.ts";
+__pinNgClockInsideWindow();
+
+
+// ===========================================================================
 // THE REAL PRODUCTION DDL — read-only snapshot, project gqnoajqerqhnvulmnyvv,
 // captured 2026-08-04 from information_schema.columns / pg_constraint /
 // pg_indexes. This is the contract a row must satisfy to exist in production.
@@ -489,6 +509,10 @@ interface WorldOpts {
 function makeWorld(opts: WorldOpts = {}) {
   const deliveries = new DeliveriesTable();
   const suppressions: Array<Record<string, unknown>> = [];
+  // #2218 — every patch the Termii webhook applies to the buyer-facing ledger.
+  const ticketPatches: Array<
+    { patch: Record<string, unknown>; filters: Array<[string, unknown]> }
+  > = [];
   const smsAllowed = opts.smsAllowed !== false;
   const category = { ...CATEGORY, default_channels: opts.channels ?? CATEGORY.default_channels };
 
@@ -550,6 +574,35 @@ function makeWorld(opts: WorldOpts = {}) {
         },
       };
     }
+    // =====================================================================
+    // #2218 — THE BUYER-FACING LEDGER, ADDED SO THE WEBHOOK CAN BE HELD TO IT.
+    // =====================================================================
+    // ADDITIVE. Before #2218 `termii-delivery-status` never touched this table
+    // and the fallback arm below — which has no `update` — was sufficient. That
+    // is exactly the shape of the defect #2218 found: the Twilio webhook
+    // reconciles BOTH `notification_deliveries` and `ticket_order_notifications`
+    // and the Termii one reconciled only the first, so a Nigerian buyer's own
+    // row could never gain a `delivered_at` no matter what the provider
+    // reported. This arm records the patches so that reconciliation is
+    // assertable rather than assumed.
+    if (table === "ticket_order_notifications") {
+      return {
+        update: (patch: Record<string, unknown>) => {
+          const filters: Array<[string, unknown]> = [];
+          const chain = {
+            eq(col: string, val: unknown) {
+              filters.push([col, val]);
+              ticketPatches.push({ patch, filters: [...filters] });
+              return Object.assign(
+                Promise.resolve({ data: null, error: null }),
+                chain,
+              );
+            },
+          };
+          return chain;
+        },
+      };
+    }
     return {
       select: () => ({
         eq: () => ({ maybeSingle: () => Promise.resolve({ data: null, error: null }) }),
@@ -574,6 +627,7 @@ function makeWorld(opts: WorldOpts = {}) {
   return {
     deliveries,
     suppressions,
+    ticketPatches,
     client: client as unknown as MinimalClient,
     // deno-lint-ignore no-explicit-any
     webhookClient: client as any,

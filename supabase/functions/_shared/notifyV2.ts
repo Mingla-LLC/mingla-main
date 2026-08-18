@@ -793,6 +793,20 @@ export async function dispatchRsvpChannel(
       safeCode: null,
     };
   }
+  // #2218 — a Nigerian `generic` send held by the operator embargo is
+  // DEFINITIVELY unsent and DEFINITIVELY retryable: zero HTTP happened, so
+  // there is no ambiguity about whether the provider took it, and the window
+  // reopens at a known instant. Classified before the ladder below so it can
+  // never be read as `terminal` (which would abandon a message that is still
+  // owed) or as `ambiguous` (which would make re-sending look like a
+  // double-send risk).
+  if (result.status === "deferred") {
+    return {
+      outcome: "retryable",
+      providerMessageId: null,
+      safeCode: notificationSafeError(result.error ?? "ng_operator_embargo"),
+    };
+  }
   const safe = result.error
     ? notificationSafeError(result.error)
     : "provider_unavailable";
@@ -1029,6 +1043,17 @@ function adapterOutcome(result: {
       outcome: "accepted",
       providerMessageId: result.providerMessageId,
       safeCode: null,
+    };
+  }
+  // #2218 — held by the Nigerian operator embargo. NOT `skipped`: a skip means
+  // the send was deliberately abandoned and `success: true` is the honest
+  // answer; a deferral means the message is still owed and must come back.
+  if (result.status === "deferred") {
+    return {
+      success: false,
+      outcome: "definitive_unsent_retryable",
+      providerMessageId: null,
+      safeCode: safe ?? "ng_operator_embargo",
     };
   }
   if (result.status === "skipped") {
