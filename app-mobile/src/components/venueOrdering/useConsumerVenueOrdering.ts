@@ -64,13 +64,13 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 const MERCHANT_IDENTIFIER = "merchant.com.mingla.app.v2";
 const URL_SCHEME = "com.mingla.app.v2";
 const RETURN_URL = `${URL_SCHEME}://stripe-redirect`;
-/**
- * The in-app browser's interception sentinel for the NG rail. It matches the
- * `callbackUrl` `venue-order-create` hands the provider, so the browser closes
- * the instant the guest is sent back and the page itself is never fetched on
- * native. The webhook remains the truth; the poll below is what waits for it.
- */
-const NG_RETURN_PREFIX = "https://host.usemingla.com/o/venue/";
+// #2227: the NG rail no longer passes an interception sentinel to the in-app
+// browser. NG_RETURN_PREFIX ("https://host.usemingla.com/o/venue/") was that
+// sentinel and is DELETED — handing an https URL to openAuthSessionAsync made
+// iOS >= 17.4 demand a `webcredentials:` Associated Domain the app has never
+// had, and destroy the session before it drew a pixel. The server still sends
+// the provider its own callbackUrl; only the native interception argument is
+// gone. The guest closes the browser themselves, exactly as chip-in and stay do.
 const STATUS_POLL_INTERVAL_MS = 4000;
 const SETTLE_POLL_INTERVAL_MS = 1500;
 const SETTLE_POLL_MAX_ATTEMPTS = 17;
@@ -410,11 +410,15 @@ export function useConsumerVenueOrdering(
 
         if (created.kind === "requires_paystack_redirect") {
           cart.roundSettled();
+            // #2227 — openBrowserAsync, NOT openAuthSessionAsync. An https
+            // redirect argument makes expo-web-browser >= 15 ask iOS >= 17.4
+            // for an ASWebAuthenticationSession .https callback, which needs a
+            // `webcredentials:` Associated Domain the app does not have; iOS
+            // destroys the session in <100ms and logs "cancelled by user", so
+            // the guest never sees Paystack.
+            // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
           try {
-            await WebBrowser.openAuthSessionAsync(
-              created.authorizationUrl,
-              NG_RETURN_PREFIX,
-            );
+            await WebBrowser.openBrowserAsync(created.authorizationUrl);
           } catch {
             // The guest may have paid before the browser errored. The webhook is
             // the truth either way, so poll regardless rather than declaring a
@@ -567,11 +571,11 @@ export function useConsumerVenueOrdering(
         );
         return;
       }
+      // #2227 — openBrowserAsync, NOT openAuthSessionAsync. See the note on the
+      // first NG hand-off above. Invariant:
+      // I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
       try {
-        await WebBrowser.openAuthSessionAsync(
-          authorizationUrl,
-          NG_RETURN_PREFIX,
-        );
+        await WebBrowser.openBrowserAsync(authorizationUrl);
       } catch {
         // The webhook is still the truth after an in-app browser cancellation.
       }
