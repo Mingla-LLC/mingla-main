@@ -29,6 +29,14 @@ import * as WebBrowser from "expo-web-browser";
 import { supabase } from "../services/supabase";
 import { extractFunctionError } from "../utils/edgeFunctionError";
 import { buildApplePayCartItems } from "./applePayCartItem";
+// issue #2229 [raw checkout error tokens] — the ONE owner of native buyer copy.
+// extractFunctionError returns the server's MACHINE TOKEN; nothing here may put
+// that on a screen.
+import {
+  CHECKOUT_NO_HANDOFF_MESSAGE,
+  isCheckoutInProgress,
+  nativeCheckoutErrorMessage,
+} from "./checkoutErrorMessages";
 
 export interface NativeCheckoutInput {
   eventId: string;
@@ -85,7 +93,28 @@ export interface NativeCheckoutInput {
 export type NativeCheckoutOutcome =
   | { outcome: "succeeded"; orderId: string }
   | { outcome: "canceled" }
-  | { outcome: "failed"; message: string };
+  | {
+      outcome: "failed";
+      /**
+       * ALWAYS buyer-facing copy (issue #2229). Never a server token — every
+       * server error on this path goes through `nativeCheckoutErrorMessage`.
+       */
+      message: string;
+      /**
+       * issue #2229 — the bounded server token behind `message`, for callers
+       * that must BRANCH on the reason (the Experience screen re-opens its
+       * occurrence picker on a stale date). Callers display `message`; they
+       * never display this.
+       */
+      token?: string | null;
+      /**
+       * issue #2227 — the still-live Paystack page this buyer was already
+       * handed, when the server refuses a second checkout because that one is
+       * still open. Present ONLY on the in-progress refusal and only while the
+       * held URL is live.
+       */
+      resumeUrl?: string;
+    };
 
 type CheckoutCreateResponse =
   | {
@@ -169,6 +198,127 @@ async function pollPaystackOrder(
   return null;
 }
 
+/**
+ * issue #2227 [paystack payment page] — ONE create per checkout, structurally.
+ *
+ * The Paystack page this cart was already sent to, held IN MEMORY for the app's
+ * lifetime so the buyer's next tap on the SAME cart re-opens the page they were
+ * already given instead of asking the server for a second checkout (which the
+ * server correctly refuses with 409 `checkout_in_progress`). This is the native
+ * shape of what #2188 (`39b5147e9`) built on web against a cart fingerprint.
+ *
+ * MEMORY ONLY — never AsyncStorage, never a persisted store. A Paystack
+ * authorization URL is a bearer capability to a payment page; persisting it
+ * would leave a live payment link on disk after the app closes.
+ *
+ * Keyed by eventId (so a refusal for THIS event can find it) and matched on a
+ * fingerprint of what is actually being bought, so a held URL can only ever be
+ * replayed for the SAME purchase. Change the tickets, the buyer, the day or the
+ * payment-plan choice and the fingerprint moves, the held URL stops matching,
+ * and a fresh create runs — correct, because that is a different purchase with
+ * a different server-side idempotency key.
+ */
+interface HeldPaystackHandoff {
+  fingerprint: string;
+  authorizationUrl: string;
+  checkoutSessionId: string;
+  buyerStatusToken: string;
+  cachedAt: number;
+}
+
+/**
+ * `ticket-checkout-create` sets the session's `p_expires_at` to now + 15 min.
+ * An entry older than that can no longer be paid, so it is deleted rather than
+ * served — a dead payment page is worse than no offer at all.
+ */
+const PAYSTACK_HANDOFF_TTL_MS = 15 * 60 * 1000;
+
+const heldPaystackHandoffs = new Map<string, HeldPaystackHandoff>();
+
+const checkoutFingerprint = (input: NativeCheckoutInput): string =>
+  JSON.stringify({
+    eventId: input.eventId,
+    eventDateId: input.eventDateId ?? null,
+    email: input.buyer.email.trim().toLowerCase(),
+    phone: input.buyer.phone.trim(),
+    lines: input.lines.map((line) => [line.ticketTypeId, line.quantity]),
+    paymentPlanChoice: input.paymentPlanChoice ?? null,
+    intakeFormData: input.intakeFormData ?? null,
+    idempotencyKey: input.idempotencyKey ?? null,
+  });
+
+/** The live held hand-off for an event, or null. Expired entries are deleted. */
+const readHeldHandoff = (eventId: string): HeldPaystackHandoff | null => {
+  const held = heldPaystackHandoffs.get(eventId);
+  if (held === undefined) return null;
+  if (Date.now() - held.cachedAt >= PAYSTACK_HANDOFF_TTL_MS) {
+    heldPaystackHandoffs.delete(eventId);
+    return null;
+  }
+  return held;
+};
+
+const holdHandoff = (eventId: string, held: HeldPaystackHandoff): void => {
+  heldPaystackHandoffs.set(eventId, held);
+};
+
+/** The order finalized (or the buyer moved on) — the held page is spent. */
+const clearHeldHandoff = (eventId: string): void => {
+  heldPaystackHandoffs.delete(eventId);
+};
+
+/**
+ * Send the buyer to Paystack, then poll the server for the finalized order.
+ *
+ * Used both for a freshly created checkout AND for replaying a held one, so
+ * both paths get identical browser handling and identical polling.
+ */
+async function followPaystackHandoff(
+  eventId: string,
+  authorizationUrl: string,
+  checkoutSessionId: string,
+  buyerStatusToken: string,
+): Promise<NativeCheckoutOutcome> {
+  let opened: WebBrowser.WebBrowserResult;
+  try {
+    // #2227 — DO NOT change this back to openAuthSessionAsync with an https redirect.
+    // The server's returnUrl is https://host.usemingla.com/..., and expo-web-browser
+    // >= 15 selects ASWebAuthenticationSession(callback: .https(...)) on iOS >= 17.4,
+    // which REQUIRES a `webcredentials:` Associated Domain the app does not have.
+    // iOS destroys the session in <100ms and logs it as "cancelled by user", so the
+    // buyer never sees Paystack. Proven 2026-08-18; see issue #2227.
+    // Invariant: I-PROPOSED-NATIVE-BROWSER-NO-HTTPS-AUTHSESSION.
+    opened = await WebBrowser.openBrowserAsync(authorizationUrl);
+  } catch (err) {
+    // #2227 F-2 — openBrowserAsync throws only for an invalid URL or an
+    // unavailable module, i.e. states in which the page was PROVABLY never
+    // shown. The buyer cannot have paid, so do NOT walk into a 25-second poll
+    // they cannot win: tell them now.
+    console.warn("[nativeCheckoutFlow] paystack browser did not open", err);
+    return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
+  }
+
+  // iOS refuses to present when another in-app browser session is already open.
+  // Same fact as a throw: the buyer never saw Paystack. Never poll on it.
+  if (opened.type === WebBrowser.WebBrowserResultType.LOCKED) {
+    return { outcome: "failed", message: CHECKOUT_NO_HANDOFF_MESSAGE };
+  }
+
+  // Any other resolution (dismiss / cancel / opened) is indistinguishable from
+  // "the buyer closed the page after paying", so the server decides — the
+  // webhook is the truth source and the poll is what waits for it.
+  const orderId = await pollPaystackOrder(checkoutSessionId, buyerStatusToken);
+  if (orderId) {
+    clearHeldHandoff(eventId);
+    return { outcome: "succeeded", orderId };
+  }
+  return {
+    outcome: "failed",
+    message:
+      "We couldn't confirm your payment yet. If you completed it, your tickets will appear shortly.",
+  };
+}
+
 async function preflightPaymentSheet(
   checkoutSessionId: string,
   buyerStatusToken: string,
@@ -195,6 +345,25 @@ export const useNativeCheckoutFlow = (): ((
         outcome: "failed",
         message: "Native payment is not available on this device.",
       };
+    }
+
+    const fingerprint = checkoutFingerprint(input);
+
+    // issue #2227 — if this exact cart has already been handed a Paystack page,
+    // RE-OPEN THAT ONE. The server refuses a second create for a cart with a
+    // live provider attempt (409 `checkout_in_progress`) and it is right to;
+    // re-following the URL we were already given is what the buyer actually
+    // wants, and it is what makes "Reopen it to finish" true without a second
+    // control. Structurally: one checkout produces exactly one create call
+    // (#2188's property, carried onto native).
+    const heldForCart = readHeldHandoff(input.eventId);
+    if (heldForCart !== null && heldForCart.fingerprint === fingerprint) {
+      return await followPaystackHandoff(
+        input.eventId,
+        heldForCart.authorizationUrl,
+        heldForCart.checkoutSessionId,
+        heldForCart.buyerStatusToken,
+      );
     }
 
     // 1. Create the checkout session on the server.
@@ -239,13 +408,25 @@ export const useNativeCheckoutFlow = (): ((
     );
 
     if (error) {
-      const message = await extractFunctionError(
-        error,
-        "Couldn't start checkout. Tap to try again.",
-      );
+      // issue #2229 — read the HTTP status off error.context BEFORE
+      // extractFunctionError: that helper CONSUMES the Response body and a body
+      // can only be read once. Status is a property, not the stream.
+      const status =
+        (error as { context?: { status?: number } })?.context?.status ?? null;
+      const raw = await extractFunctionError(error, "");
+      const token = raw.length > 0 ? raw : null;
+      // The server refuses a second checkout while the first is still open. If
+      // we are still holding that first page, hand it back rather than leaving
+      // the buyer at a wall — CHECKOUT_IN_PROGRESS_MESSAGE says "Reopen it to
+      // finish", and this is what makes that sentence true.
+      const held = isCheckoutInProgress(token, status)
+        ? readHeldHandoff(input.eventId)
+        : null;
       return {
         outcome: "failed",
-        message,
+        message: nativeCheckoutErrorMessage(token, status),
+        token,
+        ...(held !== null ? { resumeUrl: held.authorizationUrl } : {}),
       };
     }
 
@@ -258,6 +439,7 @@ export const useNativeCheckoutFlow = (): ((
 
     // 2a. Free ticket — already finalized on server.
     if (data.kind === "free_completed") {
+      clearHeldHandoff(input.eventId);
       return { outcome: "succeeded", orderId: data.orderId };
     }
 
@@ -394,40 +576,34 @@ export const useNativeCheckoutFlow = (): ((
       // here so the caller can navigate to a confirmation surface that polls
       // for the finalized order (or trust the realtime calendar subscription
       // to pick up the new ticket entry).
+      clearHeldHandoff(input.eventId);
       return { outcome: "succeeded", orderId: data.checkoutSessionId };
     }
 
     // 2c. META-ORCH-1076 — Paystack (NGN). Open Paystack's hosted checkout in
     // an in-app browser, then poll the server for the finalized order.
     if (data.kind === "requires_paystack_redirect") {
-      // openAuthSessionAsync resolves on the redirect to callback_url?trxref=…
-      // (or on cancel/dismiss). We do NOT read payment state from the result —
-      // the webhook is the source of truth; we always poll the server.
-      try {
-        await WebBrowser.openAuthSessionAsync(
-          data.authorizationUrl,
-          // Paystack's success callback (the in-app browser intercepts + closes
-          // on the redirect to this prefix). The server is the truth source.
-          data.returnUrl,
-        );
-      } catch (err) {
-        console.warn("[nativeCheckoutFlow] paystack browser error", err);
-        // Still poll — the buyer may have paid before the browser errored.
-      }
-
-      // Poll ticket-checkout-status until the order finalizes (or timeout).
-      const orderId = await pollPaystackOrder(
+      // Hold the page BEFORE opening it: if the browser cannot present, or the
+      // buyer closes it and taps again, the next tap re-opens THIS page instead
+      // of creating a second checkout the server would refuse.
+      //
+      // `data.returnUrl` is deliberately NOT passed to the browser — see the
+      // protective comment on followPaystackHandoff. The server still needs it
+      // for Paystack's own callback_url and for the buyer-web rail; it is only
+      // the NATIVE redirect-interception argument that was fatal.
+      holdHandoff(input.eventId, {
+        fingerprint,
+        authorizationUrl: data.authorizationUrl,
+        checkoutSessionId: data.checkoutSessionId,
+        buyerStatusToken: data.buyerStatusToken,
+        cachedAt: Date.now(),
+      });
+      return await followPaystackHandoff(
+        input.eventId,
+        data.authorizationUrl,
         data.checkoutSessionId,
         data.buyerStatusToken,
       );
-      if (orderId) {
-        return { outcome: "succeeded", orderId };
-      }
-      return {
-        outcome: "failed",
-        message:
-          "We couldn't confirm your payment yet. If you completed it, your tickets will appear shortly.",
-      };
     }
 
     // 2d. Web redirect from a native client is a server/client mismatch.
