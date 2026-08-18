@@ -15,9 +15,21 @@
 -- and the shape 125 of 125 production users already have. It must get nothing.
 \set ON_ERROR_STOP on
 
-CREATE OR REPLACE FUNCTION pg_temp.i2217_uuid(seed text) RETURNS uuid
+-- SEEDS ARE NAMESPACED, and that is load-bearing rather than tidy. #871's
+-- suite uses the SAME md5-of-seed uuid scheme with the SAME seed words
+-- ('creator', 'owner', 'attacker', 'brand', 'event', 'tier'), so an un-prefixed
+-- seed produces a BYTE-IDENTICAL uuid. Both suites run against one database in
+-- the #2217 lane; without the prefix the second one to run dies on
+-- users_pkey and the failure reads exactly like a real regression.
+CREATE OR REPLACE FUNCTION pg_temp.i2217_uuid(raw_seed text) RETURNS uuid
 LANGUAGE sql IMMUTABLE AS $$
-  SELECT (substr(md5(seed),1,8)||'-'||substr(md5(seed),9,4)||'-4'||substr(md5(seed),14,3)||'-8'||substr(md5(seed),18,3)||'-'||substr(md5(seed),21,12))::uuid
+  SELECT (
+    substr(md5('issue-2217:'||raw_seed),1,8)||'-'||
+    substr(md5('issue-2217:'||raw_seed),9,4)||'-4'||
+    substr(md5('issue-2217:'||raw_seed),14,3)||'-8'||
+    substr(md5('issue-2217:'||raw_seed),18,3)||'-'||
+    substr(md5('issue-2217:'||raw_seed),21,12)
+  )::uuid
 $$;
 
 -- `auth.identities` is a GoTrue table and the supabase/postgres CI image ships a
