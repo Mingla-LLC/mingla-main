@@ -1,5 +1,17 @@
 # Invariant Registry
 
+## ACTIVE — issue #2180 (get-app link opens the installed app and strands the user)
+
+### I-2180-CLAIMED-LINK-NEVER-DEAD-ENDS (ACTIVE)
+- **Rule:** Every URL either mobile app can be handed by the OS resolves to a screen the user can act on. A link on a claimed domain whose path the app does not serve resolves to `/`, which gates home versus sign-in. No incoming link may terminate on `+not-found`, on expo-router's `Unmatched` view, or on any screen without a visible, tappable exit. The decision is taken in `app/+native-intent.tsx` before the origin is stripped, on cold start (`initial: true`) and warm foreground (`initial: false`) alike; host matching is exact parsed-hostname equality, never `includes`, `endsWith`, or a regex over the raw URL.
+- **Enforcement:** `mingla-business/__tests__/issue_2180_native_intent.implementor.happy.test.ts` (T-1..T-7, T-10, T-11), the tester-owned `issue_2180_native_intent.tester_adversarial.test.ts` (device URL parser, exhaustive over-blocking sweep, idempotence), and the allowlist-to-route-tree sync assertion that reds the build when a route is added without registering its segment.
+- **Status:** ACTIVE after tester CONDITIONAL PASS with all three conditions cleared, and verified merge of PR #2219 on 2026-08-18.
+
+### I-2180-BRAND-IMAGE-EXPLICIT-DIMENSIONS (ACTIVE)
+- **Rule:** Any React Native `<Image>` rendering a `@mingla/brand-assets` master declares an explicit numeric `width` AND an explicit numeric `height`. `aspectRatio` is never used in place of a `height`, and the rule applies to every style member that can reach the element — including members composed through a ternary, `&&`, or `??` — not merely to their merged result. The masters are up to 2000x2000 at scale 1, so an under-constrained Image lays out at 2000 pt and silently pushes its siblings off-screen.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2180-brand-image-explicit-dimensions.mjs` (repo-wide across `mingla-business` and `app-mobile`, per-style-member, with a frozen shrink-only two-file exemption list and a self-test covering both conditional operators), its tester-owned adversarial suite, and the not-found structure tests that drive the full iOS Dynamic Type multiplier range so both branches of the conditional are genuinely rendered.
+- **Status:** ACTIVE after proof by execution — the height deleted from each of four brand-image styles across both `+not-found.tsx` files in turn, each reddening only the branch it belongs to — and verified merge of PR #2219 on 2026-08-18.
+
 ## ACTIVE — issue #2052 (video welcome-screen parity)
 
 ### I-PROPOSED-2052-VIDEO-WELCOME-PARITY (ACTIVE)
