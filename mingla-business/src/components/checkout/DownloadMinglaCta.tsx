@@ -40,9 +40,15 @@ import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-nati
 import { accent, glass, radius, spacing, text as textTokens } from "../../constants/designSystem";
 import {
   detectClientPlatform,
+  openAppScheme,
+  openExternal,
   resolveConfirmationAppTarget,
   type Platform as DevicePlatform,
 } from "../../services/guestFunnelLink";
+// issue #2326 — STATIC import, deliberately. This module used to be pulled in
+// with a dynamic `import()` from inside the tap handler; see `open()` below for
+// why that must never come back.
+import { openAttendanceClaimWithFallback } from "../../utils/attendanceClaimDeepLink";
 import { Icon } from "../ui/Icon";
 
 export type DownloadMinglaClaimPhase =
@@ -113,23 +119,91 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
           ? "Open in Mingla, or get it on Google Play"
           : "Open in Mingla, or get the app";
 
+  /**
+   * issue #2326 — the tap MUST reach a destination.
+   *
+   * Two things were wrong here and both are fixed above and below.
+   *
+   * 1. `Linking.openURL`. On buyer-web react-native-web turns that into
+   *    `window.open(url, '_blank', 'noopener')` — the exact null-returning
+   *    feature string ORCH-1381/1382 banned from this repo, re-entering
+   *    through a library instead of a call site, and with NO popup-blocked
+   *    fallback at all, so a blocked open is a completely silent dead tap.
+   *    Everything now goes through this package's ONE owner
+   *    (`openExternal` / `openAppScheme` in guestFunnelLink.ts), which drops
+   *    the feature string, severs `opener`, and falls back to an in-place
+   *    assign when the popup is genuinely blocked.
+   *
+   * 2. A dynamic `import()` inside the handler. It happens to survive on
+   *    Chrome (measured on a real Galaxy A72: a `window.open` after a 236 ms
+   *    dynamic import still returned a live window, because Chrome's transient
+   *    activation is a 5 s timer), but WebKit is not Chrome and a navigation
+   *    that depends on a network round-trip completing first is a navigation
+   *    that can be refused. It is also simply unnecessary: the module is a
+   *    pure ~40-line helper.
+   *
+   *    NOTHING may return to the event loop between the gesture and the
+   *    navigation. `openAttendanceClaimWithFallback` is `async`, but its body
+   *    runs synchronously up to its first `await` — and the deep-link
+   *    `openUrl(appClaimUrl)` call is BEFORE that await, so the app is reached
+   *    inside the gesture. `issue2326CtaGesture.render.test.tsx`
+   *    fails if an `await` or an `import()` is ever put back in front of it.
+   */
+  const navigateFromTap = (url: string): Promise<unknown> => {
+    if (Platform.OS !== "web") return Linking.openURL(url);
+    // A non-http destination is the app scheme: same tab, never a new one.
+    if (!/^https?:/i.test(url)) {
+      openAppScheme(url);
+      return Promise.resolve();
+    }
+    openExternal(url);
+    return Promise.resolve();
+  };
+
+  /**
+   * issue #2326 — MEASURED ON WEBKIT (iOS 26.5 Safari, real tap):
+   * navigating to an unhandled custom scheme raises a blocking system alert,
+   *
+   *     "Safari cannot open the page because the address is invalid."
+   *
+   * and this card's whole audience is a guest who has just been told to GET the
+   * app — i.e. mostly does not have it yet. The pre-#2326 shape was worse
+   * (`window.open(scheme,'_blank')` raised the same alert AND left a dead tab
+   * behind), but "worse before" is not a reason to keep it.
+   *
+   * Chrome does not do this: on a real Galaxy A72 the unhandled scheme was
+   * silently ignored, the page stayed put, and the 1200 ms fallback took the
+   * SAME tap to the Play Store. So the deep link is attempted on Android and
+   * skipped on iOS-web, where the tap goes straight to the App Store instead.
+   *
+   * NOTHING IS LOST. The deep link is an optimisation, never the mechanism
+   * (#2217): the ticket is reconnected after install by
+   * `attendance-claim-identity`, matching the account's own provider-verified
+   * email or phone against the order — which is exactly what #2323 restored by
+   * arming free orders again. An iPhone owner who already has Mingla lands on
+   * an App Store page whose button reads OPEN.
+   *
+   * THIS IS TEMPORARY BY DESIGN. When Seth flips `GUEST_FUNNEL_ONELINK_URL`
+   * the destination becomes a UNIVERSAL link, which iOS routes to the app with
+   * no alert and no scheme, and this branch stops mattering.
+   *
+   * Native is unaffected: `Linking.openURL` on a real build resolves schemes
+   * through the OS, not through a browser.
+   */
+  const appSchemeIsSafeHere = Platform.OS !== "web" || platform !== "ios";
+
   const open = (): void => {
-    if (claimAppUrl === null) {
-      void Linking.openURL(target.ctaUrl);
+    if (claimAppUrl === null || !appSchemeIsSafeHere) {
+      void navigateFromTap(target.ctaUrl);
       return;
     }
     // The claim deep link first; the SAME tap continues to the store when the
     // app does not take the navigation. `fallbackUrl` (#2217) redirects that
     // fallback away from the two-store interstitial.
-    void import("../../utils/attendanceClaimDeepLink").then(
-      ({ openAttendanceClaimWithFallback }) =>
-        openAttendanceClaimWithFallback(
-          { appClaimUrl: claimAppUrl, webClaimUrl: target.ctaUrl, fallbackUrl: target.ctaUrl },
-          Linking.openURL,
-        ),
-    ).catch(() => {
-      void Linking.openURL(target.ctaUrl);
-    });
+    void openAttendanceClaimWithFallback(
+      { appClaimUrl: claimAppUrl, webClaimUrl: target.ctaUrl, fallbackUrl: target.ctaUrl },
+      navigateFromTap,
+    );
   };
 
   return (
@@ -179,9 +253,14 @@ export const DownloadMinglaCta: React.FC<DownloadMinglaCtaProps> = ({
         <Text style={styles.claimNote}>
           Your tickets are confirmed. Try the Mingla link again in a few minutes.
         </Text>
-      ) : claimPhase === "ready" ? null : (
+      ) : claimPhase === "loading" ? (
+        // issue #2326 — "Preparing your Mingla link…" used to render in the
+        // `idle` phase too, which on a free order was FOREVER: nothing ever
+        // minted the link, so the card promised a link that was never coming
+        // while the button beside it went to the store. `idle` now says
+        // nothing; the button is already honest about where it goes.
         <Text style={styles.claimNote}>Preparing your Mingla link…</Text>
-      )}
+      ) : null}
     </View>
   );
 };

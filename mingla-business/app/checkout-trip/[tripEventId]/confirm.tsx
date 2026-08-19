@@ -36,7 +36,7 @@ import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 // META-ORCH-1187 [Growth Analytics Hub] — purchase conversion (native; no-op on
 // web — buyer-web capture is a separate leg).
 import { postHogService } from "../../../src/services/postHogService";
-import type { AttendanceClaimLinkResult } from "../../../src/services/attendanceClaimLinkService";
+import { useAttendanceClaimArm } from "../../../src/hooks/useAttendanceClaimArm";
 
 import {
   radius as radiusTokens,
@@ -141,27 +141,17 @@ function CheckoutTripConfirmScreenInner({
     checkoutSessionId: string;
     buyerStatusToken: string;
   } | null>(null);
-  const [attendanceClaim, setAttendanceClaim] = useState<{
-    phase: "idle" | "loading" | "ready" | "error" | "terminal" | "rate";
-    link: AttendanceClaimLinkResult | null;
-    authority: { sessionId: string; token: string } | null;
-  }>({ phase: "idle", link: null, authority: null });
-  const prepareAttendanceClaim = useCallback((sessionId: string, token: string): void => {
-    setAttendanceClaim({ phase: "loading", link: null, authority: { sessionId, token } });
-    void import("../../../src/services/attendanceClaimLinkService").then(({ createAttendanceClaimLink }) =>
-      createAttendanceClaimLink(sessionId, token)
-    ).then((link) => {
-      setAttendanceClaim({ phase: "ready", link, authority: { sessionId, token } });
-    }).catch((error: unknown) => {
-      const code = error instanceof Error && "code" in error ? error.code : null;
-      const phase = code === "rate_limited"
-        ? "rate"
-        : code === "invalid" || code === "ineligible"
-        ? "terminal"
-        : "error";
-      setAttendanceClaim({ phase, link: null, authority: { sessionId, token } });
-    });
-  }, []);
+  // ── issue #2323 ── The attendance claim is minted from the ORDER, never
+  // from the arrival path. `useAttendanceClaimArm` is the ONE owner across all
+  // three confirmation screens; the two ad-hoc call sites that used to live
+  // inside the paid `?cs=` sync-confirm effect and inside `onOrderReady` are
+  // GONE. Both hung off the paid Stripe return leg, so a FREE reservation —
+  // which reaches this screen through `router.replace('…/confirm')` with no
+  // query string at all — never armed. Measured on production 2026-08-19:
+  // free_completed orders 9, armed 0; and zero `attendance-claim-link`
+  // requests observed on the deployed screen while a free order was rendered.
+  const attendanceClaim = useAttendanceClaimArm(result, tripEventId);
+  const retryAttendanceClaim = attendanceClaim.retry;
   const exitingViaCtaRef = useRef<boolean>(false);
 
   // ----- Native back guard -----
@@ -287,6 +277,11 @@ function CheckoutTripConfirmScreenInner({
             orderId: confirmResult.order.orderId,
             ticketIds: confirmResult.order.tickets.map((t) => t.ticketId),
             checkoutSessionId: confirmResult.checkoutSessionId,
+            // issue #2323 — carry the possession proof onto the order so
+            // `useAttendanceClaimArm` can mint from the RESULT. Reading it back
+            // out of sessionStorage here is not an option: the resume payload
+            // is cleared a few lines below, before this render commits.
+            buyerStatusToken: payload.buyerStatusToken,
             paidAt: new Date().toISOString(),
             paymentMethod: "card",
             total: confirmResult.order.totalCents / 100,
@@ -307,7 +302,6 @@ function CheckoutTripConfirmScreenInner({
             offering_type: "trip",
             surface: "business_app",
           });
-          prepareAttendanceClaim(payload.checkoutSessionId, payload.buyerStatusToken);
           clearCheckoutResumePayload(win.sessionStorage, tripEventId);
           return;
         }
@@ -353,6 +347,11 @@ function CheckoutTripConfirmScreenInner({
         orderId: order.orderId,
         ticketIds: order.tickets.map((t) => t.ticketId),
         checkoutSessionId: order.checkoutSessionId,
+        // issue #2323 — the realtime webhook-backup leg carries the same
+        // possession proof onto the order for `useAttendanceClaimArm`.
+        ...(pendingSession !== null
+          ? { buyerStatusToken: pendingSession.buyerStatusToken }
+          : {}),
         paidAt: new Date().toISOString(),
         paymentMethod: "card",
         total: order.totalCents / 100,
@@ -369,7 +368,6 @@ function CheckoutTripConfirmScreenInner({
         clearCheckoutResumePayload(win.sessionStorage, tripEventId);
       }
       if (pendingSession !== null) {
-        prepareAttendanceClaim(pendingSession.checkoutSessionId, pendingSession.buyerStatusToken);
       }
       setRealtimePending(false);
       setPendingSession(null);
@@ -529,10 +527,6 @@ function CheckoutTripConfirmScreenInner({
     trip.businessTrip.endAt,
   );
 
-  const retryAttendanceClaim = (): void => {
-    const authority = attendanceClaim.authority;
-    if (authority) prepareAttendanceClaim(authority.sessionId, authority.token);
-  };
 
   return (
     <View style={styles.host}>

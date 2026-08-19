@@ -99,6 +99,23 @@ export interface OrderResult {
   orderId: string;
   ticketIds: string[];
   checkoutSessionId?: string;
+  /**
+   * issue #2323 — the buyer-status possession proof that authorised THIS
+   * checkout, carried onto the finalized order.
+   *
+   * Before this the token existed only inside the paid Stripe-return leg's
+   * closure (and, on web only, in the #2150 sessionStorage resume payload), so
+   * a FREE reservation — which holds the token in hand at `recordResult` time —
+   * simply dropped it, and `useAttendanceClaimArm` had nothing to mint the
+   * attendance claim with. Measured consequence: 9 of 9 free production orders
+   * were never armed, so no installed app could ever find them.
+   *
+   * NOT a new authority. The server still verifies this token against
+   * `ticket_checkout_sessions.buyer_status_token_hash`; holding it in the same
+   * in-memory cart state that already holds the order and its QR payloads is
+   * strictly less exposed than the sessionStorage copy that already existed.
+   */
+  buyerStatusToken?: string;
   paidAt: string;
   paymentMethod: CheckoutPaymentMethod;
   /** Legacy compatibility only. New code writes `total`. */

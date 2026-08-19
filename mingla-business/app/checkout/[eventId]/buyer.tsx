@@ -522,6 +522,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           orderId: result.orderId,
           ticketIds: result.tickets.map((ticket) => ticket.ticketId),
           checkoutSessionId: result.checkoutSessionId,
+          // issue #2323 — carry the possession proof onto the order. The free
+          // path lands on /confirm with NO query string, so the confirm screen
+          // has no other way to reach the buyer status token and could never
+          // mint the attendance claim link. Measured: 9 of 9 free production
+          // orders had `attendance_identity_claim_armed_at` NULL.
+          ...(typeof result.buyerStatusToken === "string" &&
+            result.buyerStatusToken.length > 0
+            ? { buyerStatusToken: result.buyerStatusToken }
+            : {}),
           paidAt: new Date().toISOString(),
           paymentMethod: "free",
           total: result.totalCents / 100,
