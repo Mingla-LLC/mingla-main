@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 559,
-  "selfTestWiredFloor": 359,
+  "expectedStrictGrepMjsFiles": 560,
+  "selfTestWiredFloor": 360,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8503,6 +8503,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "deno-and-business"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-2291-marketing-empty-send-guard.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2291-marketing-empty-send-guard"
       ]
     }
   ]

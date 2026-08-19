@@ -1023,6 +1023,38 @@ async function sendEmail(
   const subject = campaign.channel_payload.subject ?? "";
   const bodyHtml = campaign.channel_payload.body_html ?? "";
   const bodyText = campaign.channel_payload.body_text ?? "";
+
+  // issue #2291 — THE LAST LINE BEFORE A REAL CUSTOMER INBOX. DO NOT REMOVE.
+  //
+  // Nothing upstream of here refuses an empty email. The DB CHECK added by
+  // #2291 is deliberately `NOT VALID`, so every row that already existed when
+  // it landed can still carry an empty body; the claim RPC
+  // (`mkt_claim_campaigns`) reads zero content; `biz_confirm_marketing_book_
+  // send_v1` compares the payload only against its own quote snapshot, which an
+  // empty payload matches; the renderer and `postToResend` send whatever they
+  // are handed. And the last hop needs no human: cron job
+  // `orch_0815_b_marketing_send` fires every minute under the service role and
+  // dispatches whatever is `scheduled`. This throw is the only thing between
+  // that cron and a blank email in a paying customer's inbox.
+  //
+  // It mirrors `sms_body_empty` in `sendSms` below — the same rule the SMS
+  // branch has always had, on the channel that actually reaches buyers.
+  //
+  // Placement is contractual: BEFORE the recipient loop and therefore before
+  // the first `marketing_messages` INSERT, so a refused campaign writes no
+  // message rows and issues no provider HTTP. `processClaimedCampaigns` catches
+  // this and flips the campaign to `status='failed'` — a whole-campaign refusal,
+  // never a partial send.
+  //
+  // SUBJECT IS REQUIRED HERE AND NOT AT THE DB CHECK, deliberately (Seth's call
+  // on #2291): an email arriving with a blank subject line is its own
+  // deliverability and trust problem, but failing it closed at DISPATCH refuses
+  // the send without stranding a half-finished draft the operator is still
+  // editing. The constraint stays permissive about `subject` on purpose — do
+  // not "reconcile" the two by relaxing this guard.
+  if (bodyHtml.trim().length === 0) throw new Error("email_body_empty");
+  if (subject.trim().length === 0) throw new Error("email_subject_empty");
+
   const isOfferingAudience = audience.query_definition.kind ===
     "offering_send_group";
   if (bodyHtml.includes(OFFERING_LINK_MARKER) !== isOfferingAudience) {

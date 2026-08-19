@@ -11,8 +11,6 @@
  * (preview)". Real event card rendering happens server-side.
  */
 
-import type { CampaignChannelPayload } from "../../types/marketing";
-
 export interface PreviewVariables {
   first_name?: string | null;
   event_name?: string | null;
@@ -82,22 +80,15 @@ export function previewBlocks(
   return blocks;
 }
 
-/**
- * Validation — returns the list of required-field problems blocking
- * a "Review & schedule" CTA from enabling.
- */
-export function validateChannelPayload(
-  payload: CampaignChannelPayload,
-): string[] {
-  const issues: string[] = [];
-  if (payload.kind === "email") {
-    if (payload.subject.trim().length === 0) issues.push("Subject required");
-    if (payload.body_html.trim().length === 0) issues.push("Body required");
-  } else if (payload.kind === "sms") {
-    issues.push("SMS channel not yet enabled");
-  } else {
-    const _exhaustive: never = payload;
-    issues.push(`Unknown channel kind: ${String(_exhaustive)}`);
-  }
-  return issues;
-}
+// issue #2291 — `validateChannelPayload` lived here and was DEAD CODE: it
+// encoded exactly the right rule (`subject.trim()` and `body_html.trim()`
+// non-empty) and had ZERO production callers, its only references in the whole
+// monorepo being its own definition and its own test. It also dereferenced
+// without a guard, so it would have thrown on the very payload it existed to
+// reject, and its SMS arm still answered "SMS channel not yet enabled" though
+// SMS has been live since META-ORCH-1161.
+//
+// It is replaced — not duplicated — by `./campaignPayloadContract.ts`, which is
+// null-safe, knows SMS is live, and is mirrored byte-for-behaviour in
+// `supabase/functions/_shared/campaignPayloadContract.ts` so the composer and
+// the send path answer the same question the same way. Import it from there.

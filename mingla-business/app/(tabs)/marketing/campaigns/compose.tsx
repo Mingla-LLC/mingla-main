@@ -156,6 +156,11 @@ import {
 import { MarketingBookSendError } from "../../../../src/services/marketing/marketingCampaignService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
+// issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
+import {
+  CAMPAIGN_DRAFT_INCOMPLETE_BANNER,
+  campaignPayloadIssues,
+} from "../../../../src/services/marketing/campaignPayloadContract";
 import { useBrandEvents } from "../../../../src/services/marketing/brandEvents";
 import { ChannelTabs } from "../../../../src/components/marketing/ChannelTabs";
 import type { MarketingChannelKind } from "../../../../src/components/marketing/ChannelTabs";
@@ -506,11 +511,25 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         setCampaignId(row.id);
         setChannel(row.channel as MarketingChannelKind);
         setAudienceId(row.audience_id);
+        // issue #2291 — DEFENSIVE READS. These were bare
+        // `setSubject(row.channel_payload.subject)` /
+        // `setBody(row.channel_payload.body_html)` with no fallback. On a row
+        // written by the `draft_campaign` agent tool (which stored `{kind,
+        // body}` — one key, no `subject`, no `body_html`) both landed
+        // `undefined` in state, and the screen then died during the very next
+        // render at three independent sites: `subject.length` in the
+        // campaignName memo, `subject.trim()`/`body.trim()` in contentReady,
+        // and `bodyHtml.length` inside `bodyHtmlToTenTapDoc` on editor mount.
+        // The composer did not "open empty" — it crashed before the operator
+        // saw anything. A malformed row must render an editable empty
+        // composer, never a dead screen.
+        const storedPayload: unknown = row.channel_payload;
+        const payloadIssues = campaignPayloadIssues(storedPayload);
         if (row.channel_payload.kind === "email") {
-          setSubject(row.channel_payload.subject);
-          setBody(row.channel_payload.body_html);
+          setSubject(row.channel_payload.subject ?? "");
+          setBody(row.channel_payload.body_html ?? "");
         } else if (row.channel_payload.kind === "sms") {
-          setSmsBody(row.channel_payload.body);
+          setSmsBody(row.channel_payload.body ?? "");
           // ORCH-1282 / ORCH-1289 — restore a reopened MMS draft's attachments as
           // already-verified remote items (no local preview / objectUrl needed).
           setMmsMedia(
@@ -526,6 +545,12 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         if (row.scheduled_for !== null) {
           setScheduledForIso(row.scheduled_for);
           setSendMode("schedule");
+        }
+        // issue #2291 — tell the operator WHY the composer looks empty. Reuses
+        // the banner already wired below; adds no UI and does NOT block
+        // editing, because repairing the draft in place is the whole point.
+        if (payloadIssues.length > 0) {
+          setErrorBanner(CAMPAIGN_DRAFT_INCOMPLETE_BANNER);
         }
       } catch (err) {
         if (!cancelled) {
