@@ -82,7 +82,7 @@ jobs:
             "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
               WHERE n.nspname='public' AND p.proname IN (
                 'business_event_draft_payload_from_graph','business_update_live_event',
-                'ari_execute_event_operation','business_guard_event_publish_visibility');")
+                'ari_execute_event_operation');")
           if [ "$LEFT" != "0" ]; then
             echo "FAIL: the refused migration left $LEFT function(s) behind. A guard that raises"
             echo "      AFTER installing schema has already done the damage it exists to"
@@ -117,6 +117,22 @@ jobs:
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2353_format_truth.implementor.pg17.test.sql
+
+      # The TESTER's adversarial suite, wired at rework so it becomes a
+      # permanent gate rather than a one-off verdict. It attacks the SEAMS the
+      # happy path cannot: a FIVE-hop lifecycle including the re-publish hop,
+      # Ari's LIVE arm with an unrecognised format and no `is_online` (the P1
+      # this rework fixes), the guard's namespace seam, the S3(b) jsonb_set gap
+      # DRIVEN rather than described, read-site normalisation, and
+      # reach-not-authority against a caller with no brand membership at all.
+      # It self-fails if fewer than 35 assertions run or if no lifecycle hop
+      # executed, so it cannot pass by discovering nothing.
+      - name: "#2353 adversarial suite (tester, X-1..X-7)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2353_format_truth.tester.adversarial.pg17.test.sql
 
       # The suite pre-cleans and tears down its own fixtures. Running it twice
       # proves it, and proves it left no residue for a later suite to trip over.

@@ -12,10 +12,46 @@
 --   S3  business_update_live_event — project is_online as
 --       format IN ('online','hybrid') AND persist the supplied format into
 --       theme.business_event.format. Both halves are ONE change.
---   S4  ari_execute_event_operation — accept a `format` argument at both
+--   S4  ari_execute_event_operation — accept a `format` argument at all three
 --       derivation sites and keep is_online in agreement with it.
---   S5  business_guard_event_publish_visibility — enforce only when a stored
---       visibility choice exists to contradict.
+--
+-- ONE CANONICAL-MEMBERSHIP TEST, WRITTEN THE SAME WAY EVERYWHERE. Every site
+-- above decides whether a format value is usable with the SAME expression —
+-- `lower(btrim(COALESCE(<expr>,''))) IN ('in_person','online','hybrid')` — and
+-- emits the SAME normalised value, `lower(btrim(<expr>))`. This supersedes the
+-- SPEC's §9 instruction to use a bare `IN (…)` with no `lower()`/`btrim()`.
+-- §9's premise was that "every writer emits a bare literal". That is true of
+-- the shipped TypeScript client and FALSE of the server contract:
+-- `business_create_event_draft` and `business_update_event_draft` both hold
+-- `authenticated=X` and neither validates `theme.business_draft.format`, so an
+-- event_manager calling PostgREST directly can store `'Hybrid'` — the exact
+-- word the app's own UI shows a host. Under a bare `IN (…)` that row misses
+-- the canonical list, falls through to the `is_online` derivation, and one
+-- Unpublish/re-publish rewrites it to `'online'` (the theme write is a
+-- WHOLESALE replace, so the original is gone) — at which point #2333's
+-- discovery carve-out, which tests `lower(format)='online'`, broadcasts a
+-- venue-backed Lagos event into every market. Normalising makes a `'Hybrid'`
+-- row behave identically to a `'hybrid'` one at every site, and aligns this
+-- migration with #2333's `lower(...)` reads.
+--
+-- S5 — DROPPED, and deliberately. An earlier revision of this migration added
+-- a conjunct to `business_guard_event_publish_visibility` exempting a row with
+-- no stored `business_event.requestedVisibility` from the publish-visibility
+-- backstop. It was measured to buy nothing and to cost something. Nothing:
+-- every product path runs `business_assert_event_visibility` BEFORE the
+-- trigger — S2 raises for a draft with no stored choice, so the editor cannot
+-- load it and Ari's `publish_event` arm cannot build a payload — so the only
+-- statement class the conjunct changed is a direct table UPDATE, which #2009's
+-- write guard already refuses for `authenticated` and `anon`. Something: the
+-- conjunct tested ONE path (`NEW.theme#>'{business_event,…}'`) against a
+-- FOUR-way scope test (`business_event` OR `business_draft`, in NEW OR OLD),
+-- so a private intent stored only in `business_draft`, or one dropped from
+-- NEW.theme by the same statement, stopped being refused. Two statements that
+-- raised `event_visibility_invalid` before it began succeeding after it.
+-- Production exposure of the drafts it was meant to rescue is ZERO (0 of 11
+-- business event drafts lack the key, re-measured read-only at rework). A
+-- change with a measured zero benefit and a measured non-zero cost is removed,
+-- not defended. The guard from 20270422001972:428-458 stands untouched.
 --
 -- No client change. `asFormat` (businessEvents.ts:267-272) and `asDraftFormat`
 -- (serverDraftEventMapper.ts:252-257) already read the stored enum first, and
@@ -191,11 +227,11 @@ BEGIN
       -- derivation ONLY when nothing valid is stored, which is the pre-#2089
       -- behaviour and never a fabricated 'hybrid'.
       'format', CASE
-        WHEN COALESCE(v_event.theme#>>'{business_event,format}',
-                      v_event.theme#>>'{business_draft,format}')
+        WHEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',
+                                  v_event.theme#>>'{business_draft,format}','')))
              IN ('in_person','online','hybrid')
-        THEN COALESCE(v_event.theme#>>'{business_event,format}',
-                      v_event.theme#>>'{business_draft,format}')
+        THEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',
+                                  v_event.theme#>>'{business_draft,format}')))
         WHEN v_event.is_online THEN 'online'
         ELSE 'in_person'
       END,
@@ -293,8 +329,8 @@ BEGIN
     -- fired on every hybrid save. Unrecognised values leave both columns
     -- untouched rather than resolving to a guess.
     is_online=CASE
-      WHEN COALESCE(p_patch->>'format','') IN ('in_person','online','hybrid')
-      THEN p_patch->>'format' IN ('online','hybrid')
+      WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')
+      THEN lower(btrim(p_patch->>'format')) IN ('online','hybrid')
       ELSE is_online END,
     visibility=CASE WHEN p_patch ? 'visibility' THEN CASE p_patch->>'visibility' WHEN 'unlisted' THEN 'hidden' WHEN 'private' THEN 'private' ELSE 'public' END ELSE visibility END,
     theme=jsonb_set(
@@ -307,9 +343,23 @@ BEGIN
           -- the format change would vanish on the next Unpublish/Duplicate.
           -- Fixing S2 without this converts a wrong-derivation bug into a
           -- stale-data bug. The two move together.
-          CASE WHEN COALESCE(p_patch->>'format','') IN ('in_person','online','hybrid')
-            THEN jsonb_set(COALESCE(theme,'{}'::jsonb),'{business_event,format}',
-                           to_jsonb(p_patch->>'format'),true)
+          -- issue #2353 — and jsonb_set creates only the FINAL element of a
+          -- path, so on a live row whose theme carries no `business_event`
+          -- object at all the format write was a SILENT NO-OP while the
+          -- is_online projection above still fired: the host set Hybrid,
+          -- is_online flipped true, nothing was stored, and S2's stored-first
+          -- read reported `online` on the very next load. That is the original
+          -- defect, intact, on that one row shape. Merging a rebuilt namespace
+          -- onto the theme creates it when absent and preserves every sibling
+          -- key when present. Scoped to the format arm on purpose: the
+          -- {business_event,settings} and {business_event,clientRevision}
+          -- jsonb_set calls below are #1972's and are left exactly as written.
+          CASE WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')
+            THEN COALESCE(theme,'{}'::jsonb) || jsonb_build_object(
+                   'business_event',
+                   CASE WHEN jsonb_typeof(theme->'business_event')='object'
+                     THEN theme->'business_event' ELSE '{}'::jsonb END
+                   || jsonb_build_object('format',lower(btrim(p_patch->>'format'))))
             ELSE COALESCE(theme,'{}'::jsonb) END,
           '{business_event,settings}',v_settings,true),
         '{business_event,clientRevision}',to_jsonb(p_client_revision),true),
@@ -486,8 +536,8 @@ BEGIN
         -- when it is absent or unrecognised, which reproduces the pre-fix
         -- output bit for bit and never fabricates 'hybrid'.
         'format',CASE
-          WHEN COALESCE(p_args->>'format','') IN ('in_person','online','hybrid')
-            THEN p_args->>'format'
+          WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
+            THEN lower(btrim(p_args->>'format'))
           WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'
           ELSE 'in_person' END,
         'partyTypes',COALESCE(p_args->'party_types','[]'::jsonb),
@@ -521,8 +571,8 @@ BEGIN
         -- true. With no format argument this is the previous expression
         -- exactly.
         'is_online',to_jsonb(CASE
-          WHEN COALESCE(p_args->>'format','') IN ('in_person','online','hybrid')
-            THEN p_args->>'format' IN ('online','hybrid')
+          WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
+            THEN lower(btrim(p_args->>'format')) IN ('online','hybrid')
           ELSE COALESCE((p_args->>'is_online')::boolean,false) END),
         'is_recurring',v_when_mode='recurring','is_multi_date',v_when_mode='multi_date',
         'recurrence_rules',CASE WHEN v_when_mode='recurring' THEN v_recurrence_rule ELSE NULL END,
@@ -580,10 +630,24 @@ BEGIN
         -- which S3 now both projects to is_online and PERSISTS into
         -- theme.business_event.format. Accept an explicit format; keep the
         -- is_online derivation for legacy callers.
-        IF p_args ? 'format' OR p_args ? 'is_online' THEN
+        -- ENTRY IS THE MEMBERSHIP TEST ITSELF, not `p_args ? 'format'`. The
+        -- key-presence form was a REGRESSION this migration introduced and the
+        -- tester caught by execution: with an unrecognised `format` present and
+        -- `is_online` absent, the CASE's is_online fallback reads a key that is
+        -- not there, so the ELSE resolved to a definite 'in_person' and S3
+        -- faithfully applied it — a live hybrid event silently relabelled
+        -- In person with is_online false, on a call that PRE-FIX did nothing at
+        -- all. `p_args` is forwarded verbatim from the tool call
+        -- (agentTools.ts:888) and neither create_event nor update_event
+        -- declares top-level `additionalProperties: false`, so a model reaching
+        -- for the UI's own word "Hybrid" gets there. Entering only on a value
+        -- the CASE can honour restores the pre-fix no-op exactly, and is the
+        -- same canonical-membership test used at every other site in this file.
+        IF lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
+           OR p_args ? 'is_online' THEN
           v_business:=v_business||jsonb_build_object('format',CASE
-            WHEN COALESCE(p_args->>'format','') IN ('in_person','online','hybrid')
-              THEN p_args->>'format'
+            WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
+              THEN lower(btrim(p_args->>'format'))
             WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'
             ELSE 'in_person' END);
         END IF;
@@ -631,64 +695,10 @@ BEGIN
   RETURN public.agent_operation_receipt_complete(p_operation_id,p_tool_name,p_args,v_result);
 END;$fn$;
 
--- ---------------------------------------------------------------------------
--- S5. business_guard_event_publish_visibility — enforce only against a stored
---     choice. Body reproduced from 20270422001972:428-458, one added conjunct.
---     The trigger created at 20270422001972:463 still binds; do NOT re-create
---     it.
--- ---------------------------------------------------------------------------
-CREATE OR REPLACE FUNCTION public.business_guard_event_publish_visibility()
-RETURNS trigger LANGUAGE plpgsql SET search_path=public,pg_temp AS $fn$
-DECLARE
-  v_requested_visibility text;
-  v_expected_live_visibility text;
-BEGIN
-  -- Scope: only events authored through the Business draft pipeline carry a
-  -- business namespace in theme, and only those rows hold a stored visibility
-  -- choice the legacy publish owner could mismap. A row carrying neither
-  -- namespace has no stored choice for this backstop to contradict, so
-  -- demanding one would make every pre-#1972 draft permanently unpublishable
-  -- and would fail every publish that does not originate in Business.
-  IF OLD.event_type='event' AND OLD.status='draft'
-     AND NEW.status IN('scheduled','live')
-     AND (COALESCE(NEW.theme,'{}'::jsonb) ? 'business_event'
-       OR COALESCE(NEW.theme,'{}'::jsonb) ? 'business_draft'
-       OR COALESCE(OLD.theme,'{}'::jsonb) ? 'business_event'
-       OR COALESCE(OLD.theme,'{}'::jsonb) ? 'business_draft')
-     -- issue #2353 — the guard's own comment already reasons that a row with
-     -- no stored choice "has no stored choice for this backstop to contradict,
-     -- so demanding one would make every pre-#1972 draft permanently
-     -- unpublishable". That exemption was scoped to the NAMESPACE and not to
-     -- the KEY, so a draft carrying business_draft WITHOUT
-     -- requestedVisibility still entered here and was rejected with an opaque
-     -- event_visibility_invalid, forever, with no host-facing explanation and
-     -- no migration path. This extends the author's own reasoning one level
-     -- down. It removes NO protection: what the guard enforces is agreement
-     -- between NEW.visibility and a STORED choice, and the privacy-leak case it
-     -- exists for (a private intent persisted as public) requires that choice
-     -- to be PRESENT. A JSON null is still a stored-and-invalid choice and is
-     -- still rejected — `#>` yields SQL NULL only when the path is ABSENT.
-     AND NEW.theme#>'{business_event,requestedVisibility}' IS NOT NULL THEN
-    v_requested_visibility:=public.business_assert_event_visibility(
-      NEW.theme#>'{business_event,requestedVisibility}'
-    );
-    v_expected_live_visibility:=CASE v_requested_visibility
-      WHEN 'unlisted' THEN 'hidden'
-      ELSE v_requested_visibility
-    END;
-    IF NEW.visibility IS DISTINCT FROM v_expected_live_visibility THEN
-      RAISE EXCEPTION 'event_visibility_invalid';
-    END IF;
-  END IF;
-  RETURN NEW;
-END;$fn$;
-
 COMMENT ON FUNCTION public.business_event_draft_payload_from_graph(uuid) IS
   '#2353 rebuilds the editable draft payload; format is READ from theme.business_event/business_draft, with the is_online derivation only as a fallback.';
 COMMENT ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer) IS
   '#2353 core live-event leaf; a supplied format both projects to is_online (online|hybrid) and is persisted to theme.business_event.format.';
-COMMENT ON FUNCTION public.business_guard_event_publish_visibility() IS
-  '#2353 publish-visibility backstop; enforces only where a stored requestedVisibility exists to contradict. Absent is exempt, JSON null is not.';
 
 COMMIT;
 NOTIFY pgrst, 'reload schema';

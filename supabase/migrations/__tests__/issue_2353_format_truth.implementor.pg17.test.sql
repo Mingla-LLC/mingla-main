@@ -3,7 +3,29 @@
 -- that #2089's revoke outran. IMPLEMENTOR HAPPY-PATH SUITE.
 --
 -- Contract: the BINDING SPEC on issue #2353 (S0..S5, SC-1..SC-18,
--- T-1..T-20), reading on top of the INVESTIGATION comment above it.
+-- T-1..T-20), reading on top of the INVESTIGATION comment above it,
+-- AS AMENDED AT REWORK by the orchestrator after the adversarial TEST
+-- REPORT. Two amendments change what this suite may assert:
+--
+--   1. S5 IS WITHDRAWN. The publish-visibility conjunct was measured to
+--      remove protection on two statement shapes while fixing nothing
+--      any client can reach, so it is gone and the guard from
+--      20270422001972:428-458 stands untouched. SC-16 ("a draft without
+--      the key publishes") is withdrawn with it. T-18 is INVERTED: it
+--      now pins that a key-less draft is still refused exactly as #1972
+--      shipped it, which is the regression pin that proves S5 really
+--      was removed rather than merely reworded.
+--   2. SPEC §9's "bare IN (…), no lower()/btrim()" is SUPERSEDED. Every
+--      format read in the migration now normalises with
+--      lower(btrim(...)), because the server contract — unlike the TS
+--      client — lets an event_manager store 'Hybrid' directly through
+--      business_create_event_draft. T-12's 'HYBRID' and ' hybrid '
+--      rows are therefore no longer fail-closed cases; they are moved
+--      to T-12b as NORMALISATION cases, and T-12 keeps six shapes that
+--      are genuinely unrecognisable. Leaving them in T-12 would have
+--      been worse than useless: the write_failclosed fixture is seeded
+--      'hybrid', so both rows would have kept passing while proving
+--      nothing (#2113).
 --
 -- Per #2113, EVERY assertion below EXECUTES a real object against real
 -- rows, or reads the live catalogue (pg_proc.proacl). Nothing here
@@ -245,7 +267,8 @@ BEGIN
   END LOOP;
 END $fx$;
 
--- Draft business events for the publish-visibility guard (S5 / T-17..T-19).
+-- Draft business events for the publish-visibility guard (T-17..T-19).
+-- S5 is WITHDRAWN; these now pin 20270422001972's guard as it stands.
 DO $fxd$
 DECLARE r record; v_ev uuid; v_b1 uuid; v_theme jsonb;
 BEGIN
@@ -523,8 +546,13 @@ BEGIN
   PERFORM i2353t.act_as((SELECT v FROM i2353t.ids WHERE k='manager'));
   FOR r IN
     SELECT * FROM (VALUES
-      ('uppercase'   ,'{"format":"HYBRID"}'),
-      ('padded'      ,'{"format":" hybrid "}'),
+      -- 'HYBRID' and ' hybrid ' MOVED to T-12b: with lower(btrim(...))
+      -- they are recognised values now, and the fixture is seeded
+      -- 'hybrid', so leaving them here would have kept passing while
+      -- proving nothing at all (#2113). These six are unrecognisable
+      -- under normalisation too.
+      ('unknown word','{"format":"virtual"}'),
+      ('hyphenated'  ,'{"format":"in-person"}'),
       ('empty string','{"format":""}'),
       ('json null'   ,'{"format":null}'),
       ('number'      ,'{"format":5}'),
@@ -566,6 +594,115 @@ BEGIN
     AND v_row.is_online IS NOT DISTINCT FROM v_online0,
     coalesce(v_row.theme#>>'{business_event,format}','<null>')||'/'||v_row.is_online::text);
 END $t12$;
+
+-- T-12b — NORMALISATION, which SPEC §9 forbade and the rework requires.
+-- A mis-cased or padded canonical value must behave EXACTLY like the bare
+-- literal, at the write and at the read. This is the assertion that closes
+-- the escalation the tester proved on the combined #2333 stack: a Lagos
+-- event stored 'Hybrid' was correctly withheld from a foreign-market
+-- browse, and one Unpublish/re-publish rewrote it to 'online' — because
+-- the read site's bare IN (…) missed it, fell to the is_online derivation,
+-- and the theme write is a WHOLESALE replace. Normalised, it stays hybrid.
+DO $t12b$
+DECLARE
+  r record; v_ev uuid; v_rev int; v_res text; v_row public.events%ROWTYPE;
+  v_payload jsonb;
+BEGIN
+  SELECT event_id INTO v_ev FROM i2353t.fx WHERE key='write_failclosed';
+  PERFORM i2353t.act_as((SELECT v FROM i2353t.ids WHERE k='manager'));
+  FOR r IN
+    SELECT * FROM (VALUES
+      -- start from in_person/false every time, so a passing assertion can
+      -- only mean the patch was really applied.
+      ('uppercase HYBRID' ,'{"format":"HYBRID"}'   ,'hybrid'   , true ),
+      ('padded  hybrid  ' ,'{"format":" hybrid "}' ,'hybrid'   , true ),
+      ('mixed  Online'    ,'{"format":" Online "}' ,'online'   , true ),
+      ('mixed  In_Person' ,'{"format":"In_Person"}','in_person', false)
+    ) AS t(label,patch,expect_fmt,expect_online)
+  LOOP
+    SELECT COALESCE((theme#>>'{business_event,clientRevision}')::integer,0)+1
+      INTO v_rev FROM public.events WHERE id=v_ev;
+    v_res := i2353t.try_sql((SELECT v FROM i2353t.ids WHERE k='manager'),
+      format($q$SELECT public.business_update_live_event(%L::uuid,'{"format":"in_person"}'::jsonb,
+        'Resetting the normalisation probe to in person',%s)$q$, v_ev, v_rev));
+    PERFORM i2353t.assert('T-12b','the normalisation probe reset to in_person', v_res='OK', v_res);
+    SELECT COALESCE((theme#>>'{business_event,clientRevision}')::integer,0)+1
+      INTO v_rev FROM public.events WHERE id=v_ev;
+    v_res := i2353t.try_sql((SELECT v FROM i2353t.ids WHERE k='manager'),
+      format($q$SELECT public.business_update_live_event(%L::uuid,%L::jsonb,
+        'Probing format normalisation for issue 2353',%s)$q$, v_ev, r.patch, v_rev));
+    SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+    PERFORM i2353t.assert('T-12b','the '||r.label||' patch is accepted', v_res='OK', v_res);
+    PERFORM i2353t.assert('T-12b',
+      'the '||r.label||' patch PERSISTS the canonical '||r.expect_fmt,
+      v_row.theme#>>'{business_event,format}' = r.expect_fmt,
+      coalesce(v_row.theme#>>'{business_event,format}','<null>'));
+    PERFORM i2353t.assert('T-12b',
+      'the '||r.label||' patch projects is_online = '||r.expect_online::text,
+      v_row.is_online = r.expect_online, v_row.is_online::text);
+  END LOOP;
+
+  -- ...and the READ site agrees with the WRITE site. A stored 'Hybrid'
+  -- planted directly (which business_create_event_draft permits today,
+  -- unvalidated) reads back as 'hybrid', not as the is_online guess.
+  UPDATE public.events
+     SET theme=jsonb_set(theme,'{business_event,format}','"Hybrid"'::jsonb,true),
+         is_online=true
+   WHERE id=v_ev;
+  PERFORM i2353t.act_as((SELECT v FROM i2353t.ids WHERE k='manager'));
+  v_payload := public.business_event_draft_payload_from_graph(v_ev);
+  PERFORM i2353t.assert('T-12b',
+    'a directly-planted Hybrid reads back as the canonical hybrid, not the is_online guess',
+    v_payload#>>'{theme,business_draft,format}' = 'hybrid',
+    coalesce(v_payload#>>'{theme,business_draft,format}','<null>'));
+END $t12b$;
+
+-- T-12c — the NAMESPACE gap, on the implementor side too.
+-- `jsonb_set` creates only the FINAL element of a path, so before the rework a
+-- live row whose theme carried no `business_event` object had its format write
+-- silently no-op while the is_online projection still fired: the host set
+-- Hybrid, is_online flipped true, nothing was stored, and the very next read
+-- reported `online`. Production exposure is 0 (7/7 live business events carry
+-- the namespace, measured read-only), but #2333's carve-out consumes exactly
+-- this value, so it is pinned here and not only in the tester's X-4.
+DO $t12c$
+DECLARE v_ev uuid; v_b1 uuid; v_mgr uuid; v_res text; v_row public.events%ROWTYPE; v_payload jsonb;
+BEGIN
+  SELECT v INTO v_b1 FROM i2353t.ids WHERE k='b1';
+  SELECT v INTO v_mgr FROM i2353t.ids WHERE k='manager';
+  v_ev := gen_random_uuid();
+  INSERT INTO public.events(
+    id,brand_id,created_by,title,slug,event_type,visibility,status,timezone,
+    currency,is_online,theme,city,published_at)
+  VALUES (v_ev, v_b1, (SELECT v FROM i2353t.ids WHERE k='owner'),
+          'I2353T no namespace', 'i2353t-no-namespace',
+          'event','public','scheduled','UTC','USD', false,
+          '{"coverHue":25}'::jsonb, 'London', now());
+  INSERT INTO public.event_dates(event_id,start_at,end_at,is_master,timezone)
+    VALUES (v_ev, now()+interval '25 day', now()+interval '25 day 3 hour', true, 'UTC');
+  INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,is_unlimited,display_order)
+    VALUES (v_ev,'General',0,'USD',true,true,0);
+  INSERT INTO i2353t.fx VALUES ('write_no_namespace', v_ev);
+
+  PERFORM i2353t.assert('T-12c','the fixture really carries no business_event namespace',
+    NOT ((SELECT theme FROM public.events WHERE id=v_ev) ? 'business_event'),
+    (SELECT theme::text FROM public.events WHERE id=v_ev));
+
+  v_res := i2353t.try_sql(v_mgr, format(
+    $q$SELECT public.business_update_live_event(%L::uuid, '{"format":"hybrid"}'::jsonb,
+      'Switching a namespace-less live event to hybrid', 1)$q$, v_ev));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-12c','the live edit on a namespace-less row is accepted', v_res='OK', v_res);
+  PERFORM i2353t.assert('T-12c','is_online is projected to true for hybrid', v_row.is_online, v_row.is_online::text);
+  PERFORM i2353t.assert('T-12c','the format is PERSISTED — the write CREATES the namespace',
+    v_row.theme#>>'{business_event,format}' = 'hybrid',
+    coalesce(v_row.theme#>>'{business_event,format}','<none>')||' theme='||left(v_row.theme::text,120));
+  PERFORM i2353t.act_as(v_mgr);
+  v_payload := public.business_event_draft_payload_from_graph(v_ev);
+  PERFORM i2353t.assert('T-12c','and the very next read reports hybrid, not the is_online guess',
+    v_payload#>>'{theme,business_draft,format}' = 'hybrid',
+    coalesce(v_payload#>>'{theme,business_draft,format}','<none>'));
+END $t12c$;
 
 -- T-13 — the round trip. This is the test that separates S3(b) from S3(a):
 -- with S3(b) deleted, is_online still flips (S3(a) alone) but the stored
@@ -681,11 +818,14 @@ BEGIN
     NOT v_row.is_online, v_row.is_online::text);
 
   -- An unrecognised format falls back to the legacy derivation, never hybrid.
+  -- 'HYBRID' is no longer the right probe here: normalisation recognises it.
+  -- 'virtual' is unrecognisable under lower(btrim(...)) too, which is what
+  -- this assertion is actually about.
   v_args := jsonb_build_object(
     'brand_id', v_b1::text, 'title','I2353T ari bogus format',
     'visibility','public','timezone','UTC','when_mode','single',
     'start_at', to_char(now()+interval '33 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
-    'currency','USD','city','London','format','HYBRID','is_online', true);
+    'currency','USD','city','London','format','virtual','is_online', true);
   v_res := i2353t.ari(v_manager,'create_event',v_args);
   v_ev := (v_res#>>'{event,id}')::uuid;
   INSERT INTO i2353t.fx VALUES ('ari_bogus_format', v_ev);
@@ -693,6 +833,23 @@ BEGIN
   PERFORM i2353t.assert('T-15/SC-13','an unrecognised Ari format falls back to the is_online derivation',
     v_row.theme#>>'{business_draft,format}' = 'online',
     coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+
+  -- T-15b — and a MIS-CASED canonical value is recognised, on the create arm,
+  -- with is_online kept in agreement with it rather than with the argument.
+  v_args := jsonb_build_object(
+    'brand_id', v_b1::text, 'title','I2353T ari mixed case format',
+    'visibility','public','timezone','UTC','when_mode','single',
+    'start_at', to_char(now()+interval '34 day','YYYY-MM-DD"T"HH24:MI:SSOF'),
+    'currency','USD','city','London','format','Hybrid','is_online', false);
+  v_res := i2353t.ari(v_manager,'create_event',v_args);
+  v_ev := (v_res#>>'{event,id}')::uuid;
+  INSERT INTO i2353t.fx VALUES ('ari_mixed_case_format', v_ev);
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-15b','Ari create_event with format=Hybrid stores the canonical hybrid',
+    v_row.theme#>>'{business_draft,format}' = 'hybrid',
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+  PERFORM i2353t.assert('T-15b','...and is_online follows the format, not the stale is_online argument',
+    v_row.is_online, v_row.is_online::text);
 END $t14$;
 
 -- T-16 / SC-14 — the live branch. Composes S4(c) with S3, so it proves the
@@ -727,7 +884,12 @@ BEGIN
       -- key                 target visibility  expect     T#
       ('guard_key_match'    ,'public' ,'ok'    ,'T-17c'),
       ('guard_key_mismatch' ,'public' ,'raise' ,'T-17'),
-      ('guard_key_absent'   ,'public' ,'ok'    ,'T-18'),
+      -- T-18 INVERTED at REWORK. S5 is withdrawn, so a draft that carries a
+      -- business namespace but NO stored requestedVisibility is refused
+      -- exactly as 20270422001972 shipped it. This is the regression pin
+      -- that proves the conjunct is really gone: re-add S5 and this row
+      -- goes red. SC-16 is withdrawn with S5.
+      ('guard_key_absent'   ,'public' ,'raise' ,'T-18'),
       ('guard_key_jsonnull' ,'public' ,'raise' ,'T-19')
     ) AS t(key,vis,expect,tno)
   LOOP
