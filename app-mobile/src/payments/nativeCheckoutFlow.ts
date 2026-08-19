@@ -33,9 +33,44 @@ import { buildApplePayCartItems } from "./applePayCartItem";
 // extractFunctionError returns the server's MACHINE TOKEN; nothing here may put
 // that on a screen.
 import {
+  CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
   CHECKOUT_NO_HANDOFF_MESSAGE,
   nativeCheckoutErrorMessage,
+  nativePaystackReturnMessage,
 } from "./checkoutErrorMessages";
+
+/**
+ * issue #2265 — what the flow is doing RIGHT NOW, so the surface the buyer
+ * committed on can say it out loud instead of going silent for 25 seconds.
+ *
+ * Emitted through `NativeCheckoutInput.onPhase`. Optional everywhere: a caller
+ * that does not pass `onPhase` gets byte-identical behaviour to before.
+ */
+export type NativeCheckoutPhase =
+  /** ticket-checkout-create is in flight (all rails). */
+  | "creating"
+  /** About to present the Paystack hosted-checkout browser. */
+  | "opening_payment_page"
+  /** About to present the Stripe PaymentSheet. */
+  | "presenting_sheet"
+  /** Browser closed; polling ticket-checkout-status for the verdict. */
+  | "confirming_payment";
+
+/**
+ * Fire a phase at the caller WITHOUT letting the caller break the money path.
+ * A listener that throws is a caller bug; it must never abort a checkout.
+ */
+const emitPhase = (
+  onPhase: ((phase: NativeCheckoutPhase) => void) | undefined,
+  phase: NativeCheckoutPhase,
+): void => {
+  if (onPhase === undefined) return;
+  try {
+    onPhase(phase);
+  } catch (err) {
+    console.warn("[nativeCheckoutFlow] onPhase listener threw", err);
+  }
+};
 
 export interface NativeCheckoutInput {
   eventId: string;
@@ -87,6 +122,13 @@ export interface NativeCheckoutInput {
   // for back-compat; an empty/missing value falls back to "Ticket" — NEVER
   // "Mingla". Client-only: NOT sent to the edge function.
   displayTitle?: string;
+  /**
+   * issue #2265 — progress callback so the surface the buyer committed on (the
+   * consumer cart sheet) can say what it is waiting for instead of going
+   * silent. Optional; client-only, NOT sent to the edge function; a listener
+   * that throws is swallowed by `emitPhase` so it can never abort a checkout.
+   */
+  onPhase?: (phase: NativeCheckoutPhase) => void;
 }
 
 export type NativeCheckoutOutcome =
@@ -169,25 +211,64 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 const PAYSTACK_POLL_INTERVAL_MS = 1500;
 const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
 
+/**
+ * issue #2264 — the three things the server can actually tell us, kept
+ * DISTINCT. The prior `Promise<string | null>` collapsed "the buyer never paid"
+ * and "no order yet" into the same `null`, which is the whole defect.
+ */
+type PaystackPollOutcome =
+  /** The order exists. The only success. */
+  | { kind: "finalized"; orderId: string }
+  /** The server reached a terminal verdict; `code` is its bounded token. */
+  | { kind: "terminal"; code: string | null }
+  /** The budget ran out with no answer either way. */
+  | { kind: "timeout" };
+
 // META-ORCH-1076 — poll ticket-checkout-status until the order finalizes.
-// Returns the orderId once order_id != null, else null on timeout. NEVER
-// fabricates success — a timeout returns null and the caller surfaces a
-// "couldn't confirm yet" message.
+// NEVER fabricates success — only a real order_id produces `finalized`.
 async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
-): Promise<string | null> {
+): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
-    const { data } = await supabase.functions.invoke<{
-      order: { orderId: string } | null;
-    }>("ticket-checkout-status", {
-      body: { checkoutSessionId, buyerStatusToken },
-    });
+    let data:
+      | { status?: string; order: { orderId: string } | null; error?: string }
+      | null
+      | undefined;
+    try {
+      // #2264 — the response type MUST declare `status` and `error`. The
+      // previous generic named only `order`, so TypeScript hid the very fields
+      // the server was sending.
+      ({ data } = await supabase.functions.invoke<{
+        status?: string;
+        order: { orderId: string } | null;
+        error?: string;
+      }>("ticket-checkout-status", {
+        body: { checkoutSessionId, buyerStatusToken },
+      }));
+    } catch (err) {
+      // Transport failure is NOT an answer. Keep polling within the budget —
+      // the buyer may well have paid and the webhook is still the truth.
+      console.warn("[nativeCheckoutFlow] checkout-status poll failed", err);
+      data = null;
+    }
+    // A finalized order OUTRANKS any status string: if the order exists, the
+    // money moved and the tickets are real, whatever else the body says.
     const orderId = data?.order?.orderId;
-    if (orderId) return orderId;
+    if (orderId) return { kind: "finalized", orderId };
+    // #2264 — the server ALREADY answered this. ticket-checkout-status runs
+    // #2198's Paystack verify on every poll and returns
+    // { status:"failed", order:null, error:"paystack_charge_abandoned" } at HTTP 200
+    // for a buyer who left without paying. Reading only `order` is what made the
+    // app tell an unpaid buyer "we couldn't confirm your payment" after 25 seconds.
+    // Do not narrow this response type again.
+    // Invariant: I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
+    if (data?.status === "failed") {
+      return { kind: "terminal", code: data.error ?? null };
+    }
     await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
   }
-  return null;
+  return { kind: "timeout" };
 }
 
 /**
@@ -260,6 +341,25 @@ const clearHeldHandoff = (eventId: string): void => {
 };
 
 /**
+ * issue #2253 (absorbed into #2264) — THE single-flight guard.
+ *
+ * The flow refuses a second concurrent checkout ON ITS OWN, independent of any
+ * caller's guard. Before this, the only concurrency state in this file was
+ * `heldPaystackHandoffs`, which is a Paystack REPLAY cache consulted only on
+ * the `requires_paystack_redirect` path — the free and Stripe rails reached
+ * `ticket-checkout-create` with nothing stopping a second concurrent call, and
+ * the three screen-level `checkoutInFlight` flags were the only thing between a
+ * double tap and two checkouts. "Every caller remembers" is not a contract on a
+ * money path, and #2265's fix rewrites exactly those callers.
+ *
+ * ONE checkout at a time per app instance — deliberately NOT "one per cart". A
+ * buyer with two events open must not be able to start two checkouts either.
+ *
+ * Invariant: I-PROPOSED-NATIVE-CHECKOUT-SINGLE-FLIGHT.
+ */
+let activeCheckoutFingerprint: string | null = null;
+
+/**
  * issue #2227 QA F-3 — Constitution #6, *logout clears everything*.
  *
  * A Paystack authorization URL is a BEARER CAPABILITY to a live payment page,
@@ -270,9 +370,14 @@ const clearHeldHandoff = (eventId: string): void => {
  *
  * Called from `performPrivateAuthCleanup`, which is the single funnel for
  * sign-out, account switch and JWT expiry.
+ *
+ * #2253 — the in-flight guard is cleared here too. A sign-out that lands while
+ * a checkout is mid-flight must not strand the guard and deaden every later
+ * buy tap for the life of the process.
  */
 export const clearAllHeldHandoffs = (): void => {
   heldPaystackHandoffs.clear();
+  activeCheckoutFingerprint = null;
 };
 
 /**
@@ -286,7 +391,9 @@ async function followPaystackHandoff(
   authorizationUrl: string,
   checkoutSessionId: string,
   buyerStatusToken: string,
+  onPhase?: (phase: NativeCheckoutPhase) => void,
 ): Promise<NativeCheckoutOutcome> {
+  emitPhase(onPhase, "opening_payment_page");
   let opened: WebBrowser.WebBrowserResult;
   try {
     // #2227 — DO NOT change this back to openAuthSessionAsync with an https redirect.
@@ -315,15 +422,38 @@ async function followPaystackHandoff(
   // Any other resolution (dismiss / cancel / opened) is indistinguishable from
   // "the buyer closed the page after paying", so the server decides — the
   // webhook is the truth source and the poll is what waits for it.
-  const orderId = await pollPaystackOrder(checkoutSessionId, buyerStatusToken);
-  if (orderId) {
+  //
+  // #2264 F-6 — this poll runs ONLY after the browser has closed, and that
+  // ordering is load-bearing. Paystack reports a transaction as `abandoned` from
+  // initialize onward, before the buyer has typed anything, so a poll running
+  // concurrently with an OPEN browser would tell a paying buyer they walked away.
+  // #2250's auto-close needs a concurrent poll: when it lands, it must ignore the
+  // terminal token until the browser is confirmed closed.
+  // Invariant: I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES.
+  emitPhase(onPhase, "confirming_payment");
+  const poll = await pollPaystackOrder(checkoutSessionId, buyerStatusToken);
+  if (poll.kind === "finalized") {
     clearHeldHandoff(eventId);
-    return { outcome: "succeeded", orderId };
+    return { outcome: "succeeded", orderId: poll.orderId };
+  }
+  // #2264 — the held page is DELIBERATELY kept on both remaining arms. The
+  // terminal branch performs no database write (proven from production
+  // `updated_at`), so the session is still live and the Paystack page is still
+  // payable: re-opening the page the buyer already has is the cheapest recovery
+  // and is exactly what CHECKOUT_ABANDONED_MESSAGE promises them. Calling
+  // clearHeldHandoff here would make that sentence a lie and force a second
+  // create the server would refuse with 409 `checkout_in_progress`.
+  if (poll.kind === "terminal") {
+    return {
+      outcome: "failed",
+      message: nativePaystackReturnMessage(poll.code),
+      token: poll.code,
+    };
   }
   return {
     outcome: "failed",
-    message:
-      "We couldn't confirm your payment yet. If you completed it, your tickets will appear shortly.",
+    message: CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
+    token: null,
   };
 }
 
@@ -357,6 +487,36 @@ export const useNativeCheckoutFlow = (): ((
 
     const fingerprint = checkoutFingerprint(input);
 
+    // issue #2253 — SINGLE FLIGHT. A second concurrent checkout — any cart, any
+    // event — is refused here, before a single edge function is invoked. It
+    // resolves `canceled` rather than `failed` because all three consumer
+    // screens already treat `canceled` as silent, which is exactly right for a
+    // tap that must simply do nothing.
+    // Invariant: I-PROPOSED-NATIVE-CHECKOUT-SINGLE-FLIGHT.
+    if (activeCheckoutFingerprint !== null) {
+      return { outcome: "canceled" };
+    }
+    activeCheckoutFingerprint = fingerprint;
+    try {
+      return await runCheckout(input, fingerprint);
+    } finally {
+      // Cleared on EVERY path, including a throw, or the buy control is dead
+      // for the life of the process.
+      activeCheckoutFingerprint = null;
+    }
+  };
+
+  /**
+   * The checkout itself. Split out ONLY so the single-flight `try/finally`
+   * above can wrap the entire body without re-indenting 200 lines of payment
+   * code — behaviour is byte-identical to inlining it.
+   */
+  async function runCheckout(
+    input: NativeCheckoutInput,
+    fingerprint: string,
+  ): Promise<NativeCheckoutOutcome> {
+    const onPhase = input.onPhase;
+
     // issue #2227 — if this exact cart has already been handed a Paystack page,
     // RE-OPEN THAT ONE. The server refuses a second create for a cart with a
     // live provider attempt (409 `checkout_in_progress`) and it is right to;
@@ -366,15 +526,20 @@ export const useNativeCheckoutFlow = (): ((
     // (#2188's property, carried onto native).
     const heldForCart = readHeldHandoff(input.eventId);
     if (heldForCart !== null && heldForCart.fingerprint === fingerprint) {
+      // The replay path skips `ticket-checkout-create` entirely, so it never
+      // emits "creating" — `followPaystackHandoff` opens with
+      // "opening_payment_page", which is the honest first phase here.
       return await followPaystackHandoff(
         input.eventId,
         heldForCart.authorizationUrl,
         heldForCart.checkoutSessionId,
         heldForCart.buyerStatusToken,
+        onPhase,
       );
     }
 
     // 1. Create the checkout session on the server.
+    emitPhase(onPhase, "creating");
     const { data, error } = await supabase.functions.invoke<CheckoutCreateResponse>(
       "ticket-checkout-create",
       {
@@ -565,6 +730,7 @@ export const useNativeCheckoutFlow = (): ((
           message: "This sale is no longer available.",
         };
       }
+      emitPhase(onPhase, "presenting_sheet");
       const presentResult = await presentPaymentSheet();
       if (presentResult.error) {
         if (presentResult.error.code === "Canceled") {
@@ -611,6 +777,7 @@ export const useNativeCheckoutFlow = (): ((
         data.authorizationUrl,
         data.checkoutSessionId,
         data.buyerStatusToken,
+        onPhase,
       );
     }
 
@@ -619,5 +786,5 @@ export const useNativeCheckoutFlow = (): ((
       outcome: "failed",
       message: "Unexpected web checkout response on native client.",
     };
-  };
+  }
 };

@@ -125,6 +125,7 @@ import { fetchSocialProof } from "../../services/socialProofService";
 import { postHogService } from "../../services/postHogService";
 import {
   type NativeCheckoutOutcome,
+  type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../../components/ui/Toast";
@@ -258,6 +259,11 @@ export default function ConsumerExperienceDetailScreen({
     null,
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
+  // issue #2265 — what the in-flight checkout is doing, driven by the flow's
+  // `onPhase` callback and rendered by the cart sheet's CTA.
+  const [checkoutPhase, setCheckoutPhase] = useState<NativeCheckoutPhase | null>(
+    null,
+  );
   const [muted, setMuted] = useState<boolean>(true);
   // issue #868 [cover-gallery], M.1b — single owner of the shown hero item (shared
   // by the cover pager + the row). Before the early-returns to preserve hook order.
@@ -606,12 +612,18 @@ export default function ConsumerExperienceDetailScreen({
   // experience path: NO address, NO taxCalculationId, NO paymentPlanChoice;
   // the eventDateId rides ONLY when a slot is selected.
   const handleBuy = useCallback(
-    async (payload: TicketCartCheckoutPayload): Promise<void> => {
-      if (checkoutInFlight) return;
-      if (seed === null) return;
+    async (
+      payload: TicketCartCheckoutPayload,
+    ): Promise<NativeCheckoutOutcome> => {
+      // issue #2265 — handleBuy now RETURNS its outcome so the cart sheet's
+      // lifetime can be conditioned on it (dismiss on success, stay open on
+      // failure so the recovery affordance lands where the buyer was buying).
+      // Every early return is `canceled`, which all callers treat as silent.
+      if (checkoutInFlight) return { outcome: "canceled" };
+      if (seed === null) return { outcome: "canceled" };
       if (user === null) {
         toastManager.show("Please sign in to reserve.", "warning");
-        return;
+        return { outcome: "canceled" };
       }
       const buyerName =
         profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
@@ -622,14 +634,14 @@ export default function ConsumerExperienceDetailScreen({
           "We need an email on your profile to reserve.",
           "warning",
         );
-        return;
+        return { outcome: "canceled" };
       }
       if (buyerPhone.length === 0) {
         toastManager.show(
           "Add a phone number to your profile to reserve.",
           "warning",
         );
-        return;
+        return { outcome: "canceled" };
       }
 
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -657,12 +669,15 @@ export default function ConsumerExperienceDetailScreen({
           ...(selectedEventDateId !== null
             ? { eventDateId: selectedEventDateId }
             : {}),
+          // issue #2265 — feed the cart sheet's pending copy.
+          onPhase: setCheckoutPhase,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Payment failed.";
         result = { outcome: "failed", message };
       } finally {
         setCheckoutInFlight(false);
+        setCheckoutPhase(null);
       }
 
       if (result.outcome === "succeeded") {
@@ -670,7 +685,10 @@ export default function ConsumerExperienceDetailScreen({
           Haptics.NotificationFeedbackType.Success,
         );
         toastManager.show("Reserved! Check your calendar.", "success");
-        onBack();
+        // issue #2265 — `onBack()` MOVED to handleCartCheckout, so navigation
+        // happens strictly AFTER the sheet is dismissed. Navigating out from
+        // under a still-visible sheet is the failure mode this ordering exists
+        // to prevent (SC-11).
         const userId = user.id;
         queryClient.invalidateQueries({
           queryKey: ["businessEventOrders", userId],
@@ -727,6 +745,7 @@ export default function ConsumerExperienceDetailScreen({
           toastManager.show(result.message, "error");
         }
       }
+      return result;
     },
     [
       checkoutInFlight,
@@ -736,18 +755,36 @@ export default function ConsumerExperienceDetailScreen({
       runNativeCheckout,
       selectedEventDateId,
       queryClient,
-      onBack,
       openDaily,
       freshDetailQuery,
     ],
   );
 
+  /**
+   * issue #2265 — the cart sheet OWNS the wait.
+   *
+   * This used to be `setCartVisible(false); void handleBuy(payload);`, which
+   * dismissed the sheet synchronously one line BEFORE any work started. The
+   * sheet's whole pending treatment — spinner, disabled controls, refused close
+   * — was unmounted before it could render a single frame, and the buyer was
+   * left on the experience screen with a greyed-out button and no explanation.
+   *
+   * Now: await the outcome with the sheet up, then dismiss ONLY on success, and
+   * navigate strictly after the dismissal. On failure the sheet stays open — and
+   * that is also what keeps the ORCH-1187 stale-occurrence recovery visible,
+   * since the re-opened picker now appears over the cart the buyer was using.
+   *
+   * Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
+   */
   const handleCartCheckout = useCallback(
-    (payload: TicketCartCheckoutPayload): void => {
-      setCartVisible(false);
-      void handleBuy(payload);
+    async (payload: TicketCartCheckoutPayload): Promise<void> => {
+      const result = await handleBuy(payload);
+      if (result.outcome === "succeeded") {
+        setCartVisible(false);
+        onBack();
+      }
     },
-    [handleBuy],
+    [handleBuy, onBack],
   );
   const handleCartCancel = useCallback((): void => {
     setCartVisible(false);
@@ -1208,6 +1245,7 @@ export default function ConsumerExperienceDetailScreen({
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
+        pendingPhase={checkoutPhase}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}

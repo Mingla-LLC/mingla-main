@@ -68,6 +68,9 @@ import {
   type TripTierLike,
 } from "@mingla/offering-rendering";
 
+// issue #2265 — TYPE ONLY. A value import here would pull the Stripe native SDK
+// into the cart sheet's module graph; `import type` is erased at compile time.
+import type { NativeCheckoutPhase } from "../../payments/nativeCheckoutFlow";
 import { Icon } from "../ui/Icon";
 // ORCH-1025 [Seamless native consumer cart] — the buyer billing-address +
 // "Calculate tax" gate (CartTaxPreview) is RETIRED. Tax is computed server-side
@@ -233,6 +236,19 @@ export interface TicketCartSheetProps {
   /** True while the upstream `runNativeCheckout` is in flight. */
   isSubmitting: boolean;
   /**
+   * issue #2265 — what the in-flight checkout is doing right now, so the CTA can
+   * NAME it instead of showing a bare spinner. Non-null only while `isSubmitting`.
+   *
+   * This sheet is the surface the buyer committed on, and it now stays mounted
+   * for the whole checkout (the three consumer screens used to call
+   * `setCartVisible(false)` one line BEFORE the work started, so every pending
+   * treatment below — the spinner, the disabled controls, the refused close —
+   * had never rendered a frame in production).
+   *
+   * Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
+   */
+  pendingPhase?: NativeCheckoutPhase | null;
+  /**
    * True when this cart is rendered inline below Mingla's floating nav. When the
    * parent group is already hosted in an overlay carrier, the nav is behind the
    * modal window and the CTA only needs OS safe-area clearance.
@@ -280,6 +296,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   buyerEmail,
   buyerPhone,
   isSubmitting,
+  pendingPhase = null,
   clearFloatingNav = true,
   planTiersByTicketId,
   installmentNoteByTicketId,
@@ -514,6 +531,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     reset,
   ]);
 
+  /**
+   * THE ONE GUARDED FUNNEL for every dismissal this sheet can suffer.
+   *
+   * `BaseBottomSheet` dismisses by FOUR routes, and only two of them are
+   * controlled by props (#2264 tester):
+   *
+   *   1. swipe down          → `enablePanDownToClose` (prop, disarmed below)
+   *   2. backdrop press      → `backdropPressBehavior` (prop, disarmed below)
+   *   3. Android hardware back (`BaseBottomSheet.tsx:524`) → calls `onClose()`
+   *                            DIRECTLY. No prop can stop it.
+   *   4. RN-Modal `onRequestClose` (`:984`)                → same.
+   *
+   * Routes 3 and 4 are therefore guarded ONLY by what `onClose` is pointed at.
+   * It must stay `handleCancel` — never `onCancel` — or a pending checkout
+   * becomes dismissable by the Android back button while both prop guards, and
+   * a test asserting only those props, stay perfectly green.
+   *
+   * Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
+   */
   const handleCancel = useCallback((): void => {
     if (isSubmitting) return;
     onCancel();
@@ -635,6 +671,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     : "Continue to Payment";
   const ctaDisabled =
     totals.isEmpty || isSubmitting || hasUnsupportedRequired;
+
+  // issue #2265 — the pending vocabulary. The old treatment was a bare spinner
+  // (and, on the screen's fallback CTA, nothing at all but `disabled`), which is
+  // indistinguishable from broken. Every phase says what is being waited on.
+  const pendingCtaLabel = ((): string => {
+    switch (pendingPhase) {
+      case "creating":
+        return totals.isFree ? "Getting your ticket…" : "Setting up your payment…";
+      case "opening_payment_page":
+        return "Opening the payment page…";
+      case "presenting_sheet":
+        return Platform.OS === "ios" ? "Opening Apple Pay…" : "Opening payment…";
+      case "confirming_payment":
+        return "Confirming your payment…";
+      default:
+        // Defensive only — a submitting sheet with no phase should not happen.
+        return "Working…";
+    }
+  })();
 
   // ORCH-1025 — the sticky bar shows the ALL-IN total (sum of server all_in_cents),
   // not the base subtotal, so the buyer sees the exact amount they'll pay upfront.
@@ -900,7 +955,8 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           onPress={handleConfirm}
           disabled={ctaDisabled}
           accessibilityRole="button"
-          accessibilityLabel={ctaLabel}
+          accessibilityLabel={isSubmitting ? pendingCtaLabel : ctaLabel}
+          accessibilityState={{ disabled: ctaDisabled, busy: isSubmitting }}
           style={({ pressed }) => [
             styles.ctaButton,
             ctaDisabled && styles.ctaButtonDisabled,
@@ -908,7 +964,19 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
           ]}
         >
           {isSubmitting ? (
-            <ActivityIndicator color="#ffffff" />
+            // issue #2265 — spinner AND a sentence. A spinner alone tells the
+            // buyer something is happening; it does not tell them WHAT, and on a
+            // 25-second Paystack confirmation that difference is the bug.
+            <View style={styles.ctaPendingRow}>
+              <ActivityIndicator color="#ffffff" />
+              <Text
+                style={[styles.ctaLabel, styles.ctaPendingLabel]}
+                numberOfLines={1}
+                allowFontScaling
+              >
+                {pendingCtaLabel}
+              </Text>
+            </View>
           ) : (
             <Text style={styles.ctaLabel}>{ctaLabel}</Text>
           )}
@@ -967,6 +1035,15 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       // scrollable scrolls (preserving the ORCH-1016/1043 scroll-to-Pay behavior).
       enableDynamicSizing
       maxDynamicContentSize={maxDynamicContentSize}
+      // issue #2265 (DISC-C) — a pending state that refuses the close BUTTON but
+      // yields to a SWIPE is not a pending state. These two props disarm routes
+      // 1 and 2; routes 3 and 4 (Android hardware back, RN-Modal
+      // onRequestClose) bypass props entirely and are guarded by
+      // `onClose={handleCancel}` below — see handleCancel's own comment. All
+      // four, or none.
+      // Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
+      enablePanDownToClose={!isSubmitting}
+      backdropPressBehavior={isSubmitting ? "none" : "close"}
       backgroundStyle={styles.sheetBackground}
       handleStyle={styles.handleIndicator}
       accessibilityLabel="Get tickets"
@@ -1255,6 +1332,16 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "700",
     color: "#ffffff",
+  },
+  // issue #2265 — spinner + phase sentence, centred as one unit.
+  ctaPendingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  ctaPendingLabel: {
+    marginLeft: 10,
+    flexShrink: 1,
   },
 });
 

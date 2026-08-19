@@ -94,12 +94,39 @@ describe("issue #1957 event HTTPS ownership", () => {
   });
 
   it("preserves usemingla.com and go.usemingla.com ownership", () => {
+    // [TEST-MOD-APPROVED #2245] Was ["/b", "/p", "/s/", "/invite", "/board",
+    // "/orders", "/chat"]. `ownsAndroidPath` compares `pathPrefix` by EXACT
+    // string equality, so this list pinned the literal spelling of each prefix
+    // rather than the ownership it is named for. Three entries were wrong:
+    //
+    //   "/p"  -> "/p/"     An Android `pathPrefix` is a raw STRING prefix, so
+    //                      "/p" also claimed `usemingla.com/privacy-policy`, a
+    //                      page linked from both store listings. Nothing mints a
+    //                      bare `/p`: the app has only `app/p/[shareId].tsx`, the
+    //                      apex web serves only `^/p/[a-f0-9]{36}$`, the sole
+    //                      emitter writes `/p/${shareId}`, and the AASA claims
+    //                      "/p/*". "/p" was the one layer wider than the rest.
+    //   "/b"  -> "/b/"     Same defect: "/b" silently claimed `/board`, `/brand`
+    //                      and anything else on the apex beginning with "b".
+    //                      `/brand/` is now declared explicitly, so the real
+    //                      `app/brand/[slug].tsx` route keeps its claim instead
+    //                      of inheriting one by accident.
+    //   "/board"           REMOVED. #2245 withdrew it. `page: 'board-invite'`
+    //                      has never had a `case` in app/index.tsx's switch, so
+    //                      the tap painted a blank screen, and the live
+    //                      `cs_select` RLS policy makes join-by-invite-code
+    //                      unimplementable client-side (verified against
+    //                      production). A claim pointing at nothing is the
+    //                      defect #2245 exists to remove.
+    //
+    // What this test is named for — the consumer app owning the apex families
+    // and Mingla Host not overlapping them — is unchanged and still asserted.
     for (const prefix of [
-      "/b",
-      "/p",
+      "/b/",
+      "/brand/",
+      "/p/",
       "/s/",
       "/invite",
-      "/board",
       "/orders",
       "/chat",
     ]) {
