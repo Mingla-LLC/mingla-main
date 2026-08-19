@@ -1,5 +1,27 @@
 # Invariant Registry
 
+## ACTIVE — issues #2242 / #2227 / #2229 (Explorer buyers could not load tickets from a link, and could not pay at all)
+
+### I-2242-CART-READS-THE-SCREENS-TICKET-SOURCE (ACTIVE)
+- **Rule:** On `ConsumerEventDetailScreen`, `<TicketCartSheet tickets=…>` reads the same canonical-first source the page body reads, and never reads `ticketsQuery.data` directly. The binding is to `coldReadPlan.canonical`, never to `canonicalQuery.data`, and it is held in a NAMED local (`cartTickets`) — the inline expression is a prefix substring of the body's own line, so a guard written against the inline form is satisfied by the body alone and passes on a fully reverted cart. That is not hypothetical: it is what happened.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1929-hidden-direct-checkout.mjs` (three assertions, two self-test mutations), `app-mobile/src/screens/Event/__tests__/issue_2242_cold_route_cart_ticket_source.test.ts` (T-01..T-07), and the tester-owned adversarial suite that compiles the real production expressions with `new Function` and runs them across every reachable state.
+- **Status:** ACTIVE after tester PASS with zero findings, a before-shot captured on verbatim pre-fix code (cart still spinning at 15s), and verified merge of PR #2247 on 2026-08-18.
+
+### I-2242-GUARD-NAMES-WHAT-IT-CHECKS (ACTIVE)
+- **Rule:** A strict-grep assertion whose failure message names an invariant asserts on EVERY site that invariant covers, and its `--self-test` carries a mutation for each site. A guard that names more than it inspects is worse than no guard: it converts an unchecked site into a site everyone believes is checked.
+- **Enforcement:** The repaired `issue-1929-hidden-direct-checkout.mjs`, proven by execution to exit 1 against verbatim pre-fix code where it previously exited 0.
+- **Status:** ACTIVE after verified merge of PR #2247 on 2026-08-18. This is the generalisation of the defect that made #2242 possible — the gate whose failure message read "cold tickets not bundle-owned" had never inspected the cart.
+
+### I-2227-NATIVE-PROVIDER-REDIRECT-IS-NEVER-AN-HTTPS-AUTHSESSION (ACTIVE)
+- **Rule:** No native call site hands an `https` URL to `openAuthSessionAsync`. On iOS 17.4+ `expo-web-browser` maps that to `ASWebAuthenticationSession(callback: .https(...))`, which Apple permits only with a `webcredentials:` Associated Domain — absent in both apps and absent from the served `apple-app-site-association`. iOS then rejects the session at `start()` and completes it with `canceledLogin`, which the system prints as the misleading line `SFAuthenticationSession was cancelled by user`. Provider pages open with `openBrowserAsync`.
+- **Enforcement:** `scripts/ci/check-native-authsession-redirects.sh`, wired as its own steps in the class-D lane with `--self-test` running FIRST, plus `app-mobile/src/payments/__tests__/issue_2227_*` and the tester-owned adversarial suites. Falsifiability proven from CI's literal `run:` command, not from a test that shells out to the same script: with the defect restored at the business call site, 32 of 34 behavioural assertions still passed and only the gate caught it.
+- **Status:** ACTIVE after tester CONDITIONAL PASS with all three conditions cleared, confirmation on physical iPhone hardware by Seth on the 1.1.5 OTA, and verified merge of PR #2249 on 2026-08-18.
+
+### I-2229-NO-BUYER-EVER-SEES-A-MACHINE-TOKEN (ACTIVE)
+- **Rule:** Every bounded error token `ticket-checkout-create` can emit reaches the buyer as a human sentence stating whether money moved. The mapper is TOTAL: an unrecognised token, an empty string, and null all resolve to the generic message, and the mapper never returns its input. Safety comes from totality, not from the enumeration being correct — the tester derived the token set from live source and found 39 where the spec had transcribed 37, and `sign_in_required` appears in no hand-written list in the repo.
+- **Enforcement:** `app-mobile/src/payments/checkoutErrorMessages.ts` plus `issue_2229_native_checkout_error_messages.test.ts` and the tester-owned totality suite, which drives all 39 tokens × 15 statuses through the mapper and × 7 statuses through the real flow to `outcome.message`.
+- **Status:** ACTIVE after verified merge of PR #2249 on 2026-08-18.
+
 ## ACTIVE — issue #2180 (get-app link opens the installed app and strands the user)
 
 ### I-2180-CLAIMED-LINK-NEVER-DEAD-ENDS (ACTIVE)
