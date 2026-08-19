@@ -564,39 +564,115 @@ BEGIN
 END $h$;
 
 -- =====================================================================
--- X-6 — normalisation at the READ site. T-12 attacks the WRITE predicate only.
--- The safety property that must hold: a non-canonical stored value can never
--- read back as a fabricated `hybrid`. (That it is then overwritten by the
--- is_online fallback on the next wholesale theme replace is a deliberate
--- consequence of bare `IN (...)`, recorded in the TEST REPORT, not asserted
--- here — no writer emits a non-canonical value and production holds none.)
+-- X-6 — the READ site's normalisation boundary. T-12 attacks the WRITE
+-- predicate only, and never with a value already sitting in the row.
+--
+-- [TEST-MOD-APPROVED #2353] AMENDED at rework. The three original assertions
+-- here read `got IS DISTINCT FROM 'hybrid'` under the label "never reads back
+-- as a fabricated hybrid". They encoded SPEC §9's bare-`IN` contract, which the
+-- rework superseded on this suite's own evidence: `business_create_event_draft`
+-- stores `'Hybrid'` verbatim for any `authenticated` event_manager, and under a
+-- bare `IN` that row was rewritten to `'online'` by one Unpublish/re-publish and
+-- then broadcast into every market by #2333's carve-out. Under
+-- `lower(btrim(...))`, a stored `'Hybrid'` reading back as `hybrid` is correct
+-- RECOGNITION, not FABRICATION, so the old assertion's own label no longer
+-- described what it tested.
+--
+-- The replacement is two-sided and strictly stronger than what it replaces:
+--   (1) every case/space variant of a canonical value MUST be recognised and
+--       MUST read back as the exact canonical spelling;
+--   (2) every genuinely unrecognised value MUST NOT be fabricated into
+--       `hybrid`, MUST read back canonical, and MUST equal precisely what the
+--       `is_online` fallback would produce — which pins WHICH value, not merely
+--       that it is one of three, and so catches a future change that silently
+--       swaps the fallback;
+--   (3) the whitespace classes `btrim` does NOT strip are pinned as
+--       FALLING BACK rather than being assumed normalised. `btrim(text)` with
+--       one argument removes ASCII SPACE only: tab, newline, carriage return
+--       and U+00A0 all survive it, measured on the harness rather than assumed.
+--       Recording the true boundary is the point; if it is ever widened, this
+--       row is what notices.
 -- =====================================================================
 DO $h$
-DECLARE r record; v uuid; m uuid; p jsonb; got text;
+DECLARE r record; v uuid; m uuid; p jsonb; got text; expect_fallback text;
 BEGIN
   SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+
+  -- (1) RECOGNISED: case and ASCII-space variants of a canonical value.
+  --     is_online is seeded FALSE throughout, so the is_online fallback would
+  --     answer 'in_person'. Reading back 'hybrid' can therefore only be
+  --     recognition of the stored value, never the fallback.
   FOR r IN SELECT * FROM (VALUES
-      ('x6_cap'  ,'"Hybrid"'  ,'Hybrid'),
-      ('x6_upper','"HYBRID"'  ,'HYBRID'),
-      ('x6_pad'  ,'"hybrid "' ,'trailing-space hybrid'),
-      ('x6_padl' ,'" online "','padded online'),
-      ('x6_null' ,'null'      ,'json null'),
-      ('x6_num'  ,'5'         ,'number'),
-      ('x6_arr'  ,'[]'        ,'array'),
-      ('x6_obj'  ,'{}'        ,'object')
-    ) AS t(key,fmt,label)
+      ('x6r_lower' , '"hybrid"'::jsonb    , 'hybrid'   ),
+      ('x6r_cap'   , '"Hybrid"'::jsonb    , 'hybrid'   ),
+      ('x6r_upper' , '"HYBRID"'::jsonb    , 'hybrid'   ),
+      ('x6r_mixed' , '"HyBrId"'::jsonb    , 'hybrid'   ),
+      ('x6r_padr'  , '"hybrid "'::jsonb   , 'hybrid'   ),
+      ('x6r_padl'  , '" hybrid"'::jsonb   , 'hybrid'   ),
+      ('x6r_padb'  , '"  HyBrId  "'::jsonb, 'hybrid'   ),
+      ('x6r_online', '" Online "'::jsonb  , 'online'   ),
+      ('x6r_inp'   , '"IN_PERSON"'::jsonb , 'in_person')
+    ) AS t(key,fmt,want)
   LOOP
-    v := i2353x.seed_published_raw(r.key, r.fmt::jsonb, true);
+    v := i2353x.seed_published_raw(r.key, r.fmt, false);
     PERFORM i2353x.act_as(m);
     p := public.business_event_draft_payload_from_graph(v);
     got := p#>>'{theme,business_draft,format}';
     PERFORM i2353x.assert('X-6',
-      'a stored '||r.label||' never reads back as a fabricated hybrid',
+      'a case/space variant of '||r.want||' ('||r.fmt::text||') is RECOGNISED, not discarded',
+      got = r.want, 'read back as '||COALESCE(got,'<null>')||' (is_online seeded false)');
+  END LOOP;
+
+  -- (2) and (3) NOT RECOGNISED: must fall back, must never be `hybrid`, and
+  --     must equal exactly the value the is_online derivation would produce.
+  --     Seeded is_online TRUE, so the fallback answer is 'online'.
+  expect_fallback := 'online';
+  FOR r IN SELECT * FROM (VALUES
+      ('x6u_zoom'  , '"zoom"'::jsonb       , 'a junk word'),
+      ('x6u_virt'  , '"virtual"'::jsonb    , 'a plausible-but-wrong word'),
+      ('x6u_space' , '"in person"'::jsonb  , 'a space where an underscore belongs'),
+      ('x6u_empty' , '""'::jsonb           , 'an empty string'),
+      ('x6u_null'  , 'null'::jsonb         , 'a JSON null'),
+      ('x6u_num'   , '5'::jsonb            , 'a number'),
+      ('x6u_arr'   , '[]'::jsonb           , 'an array'),
+      ('x6u_obj'   , '{}'::jsonb           , 'an object'),
+      ('x6u_tab'   , to_jsonb(E'\thybrid\t'::text)            , 'TAB-padded hybrid — btrim does not strip tabs'),
+      ('x6u_nl'    , to_jsonb(E'\nhybrid'::text)              , 'newline-padded hybrid — btrim does not strip newlines'),
+      ('x6u_cr'    , to_jsonb(E'\rhybrid'::text)              , 'CR-padded hybrid — btrim does not strip carriage returns'),
+      ('x6u_nbsp'  , to_jsonb((chr(160)||'hybrid'||chr(160))::text), 'U+00A0-padded hybrid — btrim does not strip NBSP')
+    ) AS t(key,fmt,label)
+  LOOP
+    v := i2353x.seed_published_raw(r.key, r.fmt, true);
+    PERFORM i2353x.act_as(m);
+    p := public.business_event_draft_payload_from_graph(v);
+    got := p#>>'{theme,business_draft,format}';
+    PERFORM i2353x.assert('X-6',
+      r.label||' is never fabricated into hybrid',
       got IS DISTINCT FROM 'hybrid', 'read back as '||COALESCE(got,'<null>'));
     PERFORM i2353x.assert('X-6',
-      'a stored '||r.label||' reads back as one of the three canonical values',
-      got IN ('in_person','online','hybrid'), COALESCE(got,'<null>'));
+      r.label||' falls back to exactly the is_online derivation',
+      got = expect_fallback, 'read back as '||COALESCE(got,'<null>')||', expected '||expect_fallback);
   END LOOP;
+END $h$;
+
+-- X-6b — the REPAIR property. Recognition is only worth having if the
+-- wholesale theme replace then writes the CANONICAL spelling back, because
+-- #2333's discovery carve-out reads the stored string. A round trip must
+-- converge a variant onto its canonical form, never onto the fallback.
+DO $h$
+DECLARE v uuid; m uuid; row public.events%ROWTYPE;
+BEGIN
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  v := i2353x.seed_published_raw('x6b_repair', '"Hybrid"'::jsonb, true);
+  PERFORM i2353x.act_as(m);
+  PERFORM public.business_unpublish_event_to_draft(v);
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-6b',
+    'a stored "Hybrid" is REPAIRED to the canonical hybrid by a round trip, not destroyed',
+    row.theme#>>'{business_draft,format}' = 'hybrid',
+    COALESCE(row.theme#>>'{business_draft,format}','<none>'));
+  PERFORM i2353x.assert('X-6b','...and is_online still agrees',
+    i2353x.agrees(v), i2353x.fmt(v)||'/'||row.is_online::text);
 END $h$;
 
 -- =====================================================================
@@ -638,13 +714,99 @@ BEGIN
 END $h$;
 
 -- =====================================================================
+-- X-8 — Ari's DRAFT arm. Added at rework, and it is where the third
+-- laundering path turned out to be.
+--
+-- S4 taught the LIVE arm to accept a `format` and to keep `is_online` in
+-- agreement with it. `ari_execute_event_operation`'s `update_event` branch has
+-- TWO arms, and the DRAFT arm was never in the SPEC's five sites. It writes
+-- `v_payload.is_online` straight from `p_args` and never touches
+-- `v_business.format`, so it is the same "derived column written without its
+-- source of truth" defect the investigation's F-9 found on the live arm —
+-- on a sixth site nobody enumerated.
+--
+-- This needs no out-of-schema key: `is_online` is an ADVERTISED parameter of
+-- the tool (`agentTools.ts:753`). A host saying "this one isn't online any
+-- more" reaches it.
+-- =====================================================================
+DO $s$ DECLARE v uuid; m uuid; BEGIN
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  v := i2353x.seed_published('x8_draft_hybrid','hybrid',true);
+  PERFORM i2353x.act_as(m);
+  PERFORM public.business_unpublish_event_to_draft(v);      -- the real route to a hybrid DRAFT
+  v := i2353x.seed_published('x8_draft_inperson','in_person',false);
+  PERFORM i2353x.act_as(m);
+  PERFORM public.business_unpublish_event_to_draft(v);
+END $s$;
+
+DO $h$
+DECLARE v uuid; m uuid; rev int; row public.events%ROWTYPE;
+BEGIN
+  SELECT event_id INTO v FROM i2353x.fx WHERE key='x8_draft_hybrid';
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  PERFORM i2353x.assert('X-8','fixture is a hybrid DRAFT whose is_online agrees',
+    i2353x.fmt(v)='hybrid' AND i2353x.agrees(v),
+    i2353x.fmt(v)||'/'||(SELECT is_online FROM public.events WHERE id=v)::text);
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::int,0) INTO rev FROM public.events WHERE id=v;
+  PERFORM i2353x.ari(m,'update_event', jsonb_build_object(
+    'event_id', v::text, 'is_online', false,
+    'reason','Adversarial: Ari turns is_online off on a hybrid DRAFT',
+    'client_revision', rev+1));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-8',
+    'Ari update_event(is_online=false) on a DRAFT keeps is_online and the stored format in agreement',
+    i2353x.agrees(v), i2353x.fmt(v)||'/'||row.is_online::text);
+EXCEPTION WHEN OTHERS THEN
+  PERFORM i2353x.assert('X-8','X-8 draft is_online probe executes', false, SQLSTATE||':'||SQLERRM);
+END $h$;
+
+-- ...and the divergence must not survive publish into a live row.
+DO $h$
+DECLARE v uuid; m uuid; p jsonb; rev int; rc text; row public.events%ROWTYPE;
+BEGIN
+  SELECT event_id INTO v FROM i2353x.fx WHERE key='x8_draft_hybrid';
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  PERFORM i2353x.act_as(m);
+  p := public.business_event_draft_payload_from_graph(v);
+  rev := COALESCE((p#>>'{theme,business_draft,clientRevision}')::int,0);
+  rc := i2353x.try_sql(m, format(
+    'SELECT public.issue_1719_publish_event_with_poster(%L::uuid,%L::jsonb,%s)', v, p, rev));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-8','publishing that draft does not persist a disagreeing pair',
+    rc <> 'OK' OR i2353x.agrees(v),
+    rc||' -> '||i2353x.fmt(v)||'/'||row.is_online::text||' status='||row.status);
+END $h$;
+
+-- X-8b — the arms must not disagree about whether `format` is a thing.
+-- S4 made the LIVE arm honour it; the DRAFT arm drops it without a word, so a
+-- host is told the edit succeeded and nothing changed (Constitution rule 3).
+DO $h$
+DECLARE v uuid; m uuid; rev int; row public.events%ROWTYPE;
+BEGIN
+  SELECT event_id INTO v FROM i2353x.fx WHERE key='x8_draft_inperson';
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::int,0) INTO rev FROM public.events WHERE id=v;
+  PERFORM i2353x.ari(m,'update_event', jsonb_build_object(
+    'event_id', v::text, 'format','hybrid',
+    'reason','Adversarial: Ari sets a DRAFT event to hybrid explicitly',
+    'client_revision', rev+1));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-8b',
+    'Ari update_event(format=hybrid) on a DRAFT either applies the format or refuses — never silently drops it',
+    i2353x.fmt(v)='hybrid',
+    'format is '||i2353x.fmt(v)||', is_online '||row.is_online::text);
+EXCEPTION WHEN OTHERS THEN
+  PERFORM i2353x.assert('X-8b','X-8b draft format probe executes', false, SQLSTATE||':'||SQLERRM);
+END $h$;
+
+-- =====================================================================
 -- Verdict. Non-vacuity first: a green run that proved nothing is a failure.
 -- =====================================================================
 DO $verdict$
 DECLARE v_total int; v_fail int; r record;
 BEGIN
   SELECT count(*), count(*) FILTER (WHERE outcome='FAIL') INTO v_total, v_fail FROM i2353x.result;
-  IF v_total < 35 THEN
+  IF v_total < 60 THEN
     RAISE EXCEPTION 'issue #2353 adversarial suite ran only % assertions — it is not exercising the seams', v_total;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM i2353x.result WHERE criterion LIKE 'X-1/hop%' AND outcome='PASS') THEN
