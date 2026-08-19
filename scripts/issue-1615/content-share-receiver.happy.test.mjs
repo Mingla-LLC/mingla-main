@@ -111,5 +111,13 @@ test('R7 legacy /p and old 36-hex native handling remain intact', () => {
   // regex source one level incorrectly; assert the preserved public matcher.
   assert.match(read('mingla-marketing/middleware.ts'), /'\/p\/:path\*'/);
   assert.match(read('mingla-business/vercel.json'), /"source": "\/p\/:shareId"/);
-  assert.match(read('app-mobile/app.json'), /"pathPrefix": "\/p"/);
+  // [TEST-MOD-APPROVED #2245] Was /"pathPrefix": "\/p"/. R7 pins that the legacy
+  // /p receiver stays intact, and it still does — the three assertions above it
+  // all use the slashed form ('/p/:path*', '/p/:shareId', app/p/[shareId].tsx).
+  // The Android prefix was the odd one out: `pathPrefix` is a raw STRING prefix,
+  // so "/p" additionally claimed `usemingla.com/privacy-policy`, a page linked
+  // from both store listings, and any Android install with Explorer opened the
+  // app instead of the policy. Nothing mints a bare /p, so "/p/" preserves the
+  // legacy receiver exactly and drops only the accidental capture.
+  assert.match(read('app-mobile/app.json'), /"pathPrefix": "\/p\/"/);
 });

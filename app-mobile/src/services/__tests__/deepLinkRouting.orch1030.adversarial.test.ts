@@ -133,7 +133,14 @@ Deno.test("ADV-2: garbage / unknown-scheme / unknown-path inputs return null and
     "mingla://%%%",
     "mingla://totally-unknown-path/123",
     "not-even-a-url",
-    "mingla://orders/abc", // documented latent null (no /chat)
+    // #2245 — `mingla://board/{code}` joins this list. It used to return
+    // `page: 'board-invite'`, a page app/index.tsx has never had a `case` for,
+    // so the tap painted a blank screen. The `/board/*` Universal Link claim is
+    // withdrawn and the parser now returns null, which `executeDeepLink`
+    // documents as a no-op — a stale link leaves the user where they were
+    // instead of on a blank screen. See the case body in deepLinkService.ts for
+    // the RLS finding that makes "build it" a migration, not a patch.
+    "mingla://board/MINGLA-9F3KQ2",
   ];
   for (const g of garbage) {
     // Must never throw.
@@ -151,6 +158,36 @@ Deno.test("ADV-2: garbage / unknown-scheme / unknown-path inputs return null and
   });
   assertEquals(d.kind, "session");
   assertEquals(d.sessionId, "s-real");
+});
+
+// ── (2b) #2245 — the two shapes of a CLAIMED /orders/* link both land ────────
+//
+// `mingla://orders/abc` (and `https://usemingla.com/orders/abc`) used to sit in
+// the garbage list above as a "documented latent null". It is not garbage: it is
+// a shape of `/orders/*`, which the live apex AASA and the Android intent
+// filters claim as a verified Universal Link, so the OS opens the app for it.
+// Returning null made `executeDeepLink` a no-op and the person got Home with no
+// mention of their order. Both shapes must now reach a real screen.
+Deno.test("ADV-2b (#2245): both /orders shapes resolve — the chat shape to the trip chat, the bare shape to the ticket surface", () => {
+  // /orders/{id}/chat — the shape the pre-#2240 confirmation emails carried.
+  const withChat = parseDeepLink("mingla://orders/0a0870b0-c117-4707-bdf4-21fc64bebcab/chat?token=t1");
+  assertEquals(withChat.kind, "conversation");
+  assertEquals(withChat.orderId, "0a0870b0-c117-4707-bdf4-21fc64bebcab");
+  assertEquals(withChat.claimToken, "t1");
+  const a = makeHandlers();
+  executeDeepLink(withChat, a.handlers);
+  assertEquals(a.calls.page, "connections");
+  assertEquals(landedSomewhere(a.calls), true);
+
+  // /orders/{id} — claimed by `/orders/*`, so it cannot be left landing nowhere.
+  const bare = parseDeepLink("mingla://orders/0a0870b0-c117-4707-bdf4-21fc64bebcab");
+  assertNotEquals(bare, null, "a claimed /orders/* shape must not parse to null — that is a no-op executor and a dead tap");
+  assertEquals(bare.kind, "page");
+  assertEquals(bare.page, "likes");
+  const b = makeHandlers();
+  executeDeepLink(bare, b.handlers);
+  assertEquals(b.calls.page, "likes");
+  assertEquals(landedSomewhere(b.calls), true);
 });
 
 // ── (3) Special-case killer: server deepLink MUST win over the old in-app special-case ──

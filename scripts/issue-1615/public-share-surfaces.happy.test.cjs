@@ -84,7 +84,23 @@ test("H10 native, OneLink, AASA and App Links all recognize opaque /p", () => {
   assert.ok(fs.existsSync(path.join(ROOT, "app-mobile/app/p/[shareId].tsx")));
   assert.match(read("app-mobile/src/services/oneLinkResolver.ts"), /case 'place':[\s\S]*case 'curated':/);
   assert.match(read("app-mobile/src/services/oneLinkShare.ts"), /ONELINK_BRAND_DOMAIN = 'go\.usemingla\.com'/);
-  assert.match(read("app-mobile/app.json"), /"pathPrefix": "\/p"/);
+  // [TEST-MOD-APPROVED #2245] Was /"pathPrefix": "\/p"/. The prior assertion was
+  // wrong: an Android `pathPrefix` is a raw STRING prefix, not a path-segment
+  // match, so `"/p"` claimed `usemingla.com/privacy-policy` as well as the share
+  // family — a page linked from both store listings and the site footer. On any
+  // Android phone with Explorer installed, tapping it opened the app (which has
+  // no `privacy-policy` route) instead of showing the policy.
+  //
+  // Nothing is lost by the slash, and this test's own next line is the proof:
+  // it pins the AASA as "/p/*", the SLASHED family. Every other layer agrees —
+  // `app-mobile/app/p/` holds only `[shareId].tsx` (no bare-/p route), the apex
+  // web serves only `^/p/[a-f0-9]{36}$` (mingla-marketing/middleware.ts
+  // PUBLIC_SHARE_PATH), and the sole emitter always writes `/p/${shareId}`
+  // (oneLinkShare.ts buildFallbackShareUrl). The Android prefix was the one
+  // layer wider than all of them. H10's subject — "opaque /p" — is the opaque
+  // 36-hex SHARE ID, and it is untouched: this still asserts Android claims the
+  // /p share family, now spelled the same way as the AASA it sits beside.
+  assert.match(read("app-mobile/app.json"), /"pathPrefix": "\/p\/"/);
   assert.match(read("mingla-marketing/public/.well-known/apple-app-site-association"), /"\/p\/\*"/);
 });
 

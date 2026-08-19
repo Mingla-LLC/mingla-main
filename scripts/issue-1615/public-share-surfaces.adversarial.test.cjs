@@ -111,7 +111,15 @@ test("A10 canonical web, native App Link, OneLink, AASA and proxy routes agree o
   const aasa = read("mingla-marketing/public/.well-known/apple-app-site-association");
   const marketing = JSON.parse(read("mingla-marketing/vercel.json"));
   const business = JSON.parse(read("mingla-business/vercel.json"));
-  assert.match(mobile, /"pathPrefix"\s*:\s*"\/p"/);
+  // [TEST-MOD-APPROVED #2245] Was /"pathPrefix"\s*:\s*"\/p"/. This test is named
+  // for the layers AGREEING on /p, and the unslashed Android prefix was the one
+  // that disagreed: `pathPrefix` is a raw STRING prefix, so "/p" also claimed
+  // `usemingla.com/privacy-policy` — a page linked from both store listings —
+  // which no other layer here claims. Every other assertion in this very test
+  // uses the slashed form ("/p/*" in the AASA, "/p/:shareId" in both vercel.json
+  // rewrites, app/p/[shareId].tsx natively). Narrowing to "/p/" is what makes
+  // them actually agree; nothing mints a bare /p.
+  assert.match(mobile, /"pathPrefix"\s*:\s*"\/p\/"/);
   assert.match(aasa, /"\/p\/\*"/);
   // [TEST-MOD-APPROVED #1615] The binding amendment adds stable /s receivers ahead of legacy /p;
   // route presence is the invariant, while an array index incorrectly forbids additive receivers.

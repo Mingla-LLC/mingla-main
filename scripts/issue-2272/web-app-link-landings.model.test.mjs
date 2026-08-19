@@ -128,7 +128,12 @@ test('M3 every path the live AASA claims is actually served on the apex', () => 
   assert.ok(details.length >= 1, 'the AASA declares no app details — this test read the wrong file')
 
   const claimed = details.flatMap((d) => d.paths ?? [])
-  assert.ok(claimed.length >= 6, `only ${claimed.length} AASA paths parsed — expected the full claim list`)
+  // Floor was 6 until #2245 withdrew `/board/*` from the apex AASA — the app has
+  // no destination for it (`page: 'board-invite'` never had a screen) and
+  // building one needs a migration, so the claim went rather than staying dead.
+  // This number is a non-vacuity floor, not a spec: it exists so a truncated or
+  // mis-parsed file cannot pass this test by claiming nothing.
+  assert.ok(claimed.length >= 5, `only ${claimed.length} AASA paths parsed — expected the full claim list`)
 
   for (const pattern of claimed) {
     const probe = AASA_PROBE[pattern]
@@ -158,10 +163,17 @@ test('M3 every path the live AASA claims is actually served on the apex', () => 
  *
  * If you are here because this went red: that is the guard working. Do not
  * update the hash to make it green unless #2245 is the issue you are on.
+ *
+ * MOVED ONCE, by #2245 — the issue this guard names. The AASA hash below is the
+ * post-withdrawal file: `/board/*` removed, `/invite/*` `/s/*` `/p/*`
+ * `/orders/*` `/chat/*` kept. `assetlinks.json` is UNCHANGED (it carries signing
+ * fingerprints, not paths; Android's path claims live in
+ * `app-mobile/app.json` intentFilters, which #2245 also edited).
+ * Re-measured 2026-08-18 on branch `2245-deep-link-claims`.
  */
 const WELL_KNOWN_SHA256 = {
   'mingla-marketing/public/.well-known/apple-app-site-association':
-    'f9a4f7fdaada8be1f83808f7810b0c48ca1b492e9474d07a4545c51c877bc6c0',
+    'ab073f2ba6fe15ecca92032b1a8bae951f3310f8a297d27014e29709d89122b9',
   'mingla-marketing/public/.well-known/assetlinks.json':
     '0d06749397a049f621089c0c377d4dbaf4c9803703b265d44b9828a029312a4d',
 }
