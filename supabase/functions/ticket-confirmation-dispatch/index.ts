@@ -41,6 +41,9 @@ import {
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 // issue #2347 — the ONE chosen-day resolver, shared with ticket-pdf-fetch.
 import { resolveChosenOccurrence } from "../_shared/chosenOccurrence.ts";
+// issue #2347 — ONE storage-path authority, shared with ticket-pdf-fetch, so
+// the two writers can never disagree about where an order's PDF lives.
+import { ticketPdfStoragePath } from "../_shared/ticketPdfPath.ts";
 // ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
@@ -1335,7 +1338,11 @@ export const handler = async (req: Request): Promise<Response> => {
         atob(renderedPdf.contentBase64),
         (c) => c.charCodeAt(0),
       );
-      const pdfPath = `tickets/${order.id}.pdf`;
+      // issue #2347 — versioned path. This renderer has been day-correct
+      // since #2162; the version exists so `ticket-pdf-fetch` can tell a
+      // day-aware object from an is_master-era one, which it could not when
+      // both writers used the same name.
+      const pdfPath = ticketPdfStoragePath(order.id);
       const { error: uploadError } = await supabase.storage
         .from("ticket-pdfs")
         .upload(pdfPath, pdfBytes, {
