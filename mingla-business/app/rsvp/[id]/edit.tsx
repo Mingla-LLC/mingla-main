@@ -11,7 +11,7 @@
  */
 
 import React, { useEffect, useMemo } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import {
   useFocusEffect,
@@ -673,7 +673,10 @@ export default function RsvpEditRoute(): React.ReactElement {
           { paddingTop: insets.top, backgroundColor: canvas.discover },
         ]}
       >
-        <View style={styles.recoveryCard}>
+        <ScrollView
+          style={styles.recoveryCard}
+          contentContainerStyle={styles.recoveryCardContent}
+        >
           <Text style={styles.recoveryTitle}>We could not load this draft.</Text>
           <Text style={styles.recoveryBody}>
             Refresh, return to Home, or use desktop/the app if this phone browser cannot restore the draft.
@@ -685,7 +688,7 @@ export default function RsvpEditRoute(): React.ReactElement {
             size="md"
             shape="square"
           />
-        </View>
+        </ScrollView>
         <Toast
           visible={toast.visible}
           kind="info"
@@ -814,8 +817,15 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
   },
+  // #2211 — the missing-draft RECOVERY branch — centred, and the only branch of this route that offers a way out.
   recoveryCard: {
     flex: 1,
+    // #2211 — clip a mis-measurement here rather than letting it grow the column.
+    overflow: "hidden",
+  },
+  recoveryCardContent: {
+    // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
     gap: spacing.md,

@@ -241,7 +241,16 @@ describe("#2211 T-1..T-3 — InviteScreenShell", () => {
     // once there is not. RN defaults content containers to `flexGrow: 0`, so
     // omitting it would silently top-anchor the card instead.
     expect(flat(scrolls[0].props.contentContainerStyle).flexGrow).toBe(1);
-    expect(flat(scrolls[0].props.contentContainerStyle).justifyContent).toBe("center");
+    // #2211 — the centring is an `auto` vertical margin on an inner wrapper,
+    // NOT `justifyContent: "center"` on the content container. Measured on an
+    // iPhone SE 3 at AX5: `justifyContent: "center"` left the heading's first
+    // line 20 pt above y = 0 with the scroll offset already at 0, i.e.
+    // unrecoverable. An auto margin cannot push content out of scroll range.
+    expect(flat(scrolls[0].props.contentContainerStyle).justifyContent).toBeUndefined();
+    const centerer = root.find(
+      (n: TestNode) => flat(n.props?.style).marginVertical === "auto",
+    );
+    expect(flat(centerer.props.style).marginVertical).toBe("auto");
   });
 
   it("T-1b — the scroll HOST keeps flex:1 and clips, so nothing can grow past it", () => {

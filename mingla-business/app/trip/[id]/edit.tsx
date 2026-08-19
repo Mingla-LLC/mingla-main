@@ -23,7 +23,7 @@
 // orch-strict-grep-allow safearea-on-fullscreen-routes — main render delegates to TripCreatorWizard or EditPublishedTripScreen which apply `paddingTop: insets.top` themselves (proven safe on sim screenshots). Inline loading / error / not-found early-return states render bare `<View>` for brief moments during the trip query resolve — transient flash is acceptable; not worth wrapping each early-return state. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b 2026-05-17.
 
 import React, { useEffect, useRef } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import {
@@ -88,62 +88,80 @@ export default function TripEditRoute(): React.ReactElement {
     // ORCH-0893: migration in flight — placeholder until `router.replace`
     // hands the route the server-issued id.
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <ActivityIndicator />
         <Text style={styles.body}>Setting up your trip…</Text>
-      </View>
+      </ScrollView>
     );
   }
 
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>Trip not found</Text>
         <Text style={styles.body}>This trip link is missing or invalid.</Text>
-      </View>
+      </ScrollView>
     );
   }
 
   if (tripQuery.isLoading) {
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <ActivityIndicator />
         <Text style={styles.body}>Loading trip…</Text>
-      </View>
+      </ScrollView>
     );
   }
 
   if (tripQuery.isError) {
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>Couldn&rsquo;t load trip</Text>
         <Text style={styles.body}>
           {tripQuery.error instanceof Error
             ? tripQuery.error.message
             : "Check your connection and try again."}
         </Text>
-      </View>
+      </ScrollView>
     );
   }
 
   const trip = tripQuery.data;
   if (trip === null || trip === undefined) {
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>Trip not found</Text>
         <Text style={styles.body}>
           This trip may have been deleted or you don&rsquo;t have access.
         </Text>
-      </View>
+      </ScrollView>
     );
   }
 
   if (currentBrand === null) {
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <ActivityIndicator />
         <Text style={styles.body}>Loading brand…</Text>
-      </View>
+      </ScrollView>
     );
   }
 
@@ -154,7 +172,10 @@ export default function TripEditRoute(): React.ReactElement {
 
   if (trip.status === "ended" || trip.status === "cancelled") {
     return (
-      <View style={styles.host}>
+      <ScrollView
+          style={styles.host}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>
           {trip.status === "ended"
             ? "This trip has ended"
@@ -179,7 +200,7 @@ export default function TripEditRoute(): React.ReactElement {
           accessibilityLabel="Back to trip"
           testID="trip-edit-readonly-back"
         />
-      </View>
+      </ScrollView>
     );
   }
 
@@ -232,13 +253,20 @@ export default function TripEditRoute(): React.ReactElement {
 }
 
 const styles = StyleSheet.create({
+  // #2211 — all seven early-return branches share this centred root; the ended/cancelled one carries the only CTA.
   host: {
     flex: 1,
+    backgroundColor: "#0c0e12",
+    // #2211 — clip a mis-measurement here rather than letting it grow the column.
+    overflow: "hidden",
+  },
+  hostContent: {
+    // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: spacing.xl,
     gap: spacing.md,
-    backgroundColor: "#0c0e12",
   },
   title: {
     fontSize: typography.h3.fontSize,

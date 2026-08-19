@@ -71,7 +71,18 @@ export function InviteScreenShell({
         contentContainerStyle={styles.scrollContent}
         testID="invite-shell-scroll"
       >
-        {children}
+        {/*
+          #2211 — the centring lives HERE, as an `auto` vertical margin, and not
+          as `justifyContent: "center"` on the content container. Measured on an
+          iPhone SE 3 at the largest Dynamic Type setting: with
+          `justifyContent: "center"` the content container's height stays pinned
+          to the viewport, so content taller than the viewport overflows
+          symmetrically and the heading's first line sat 20 pt ABOVE y = 0 —
+          unrecoverable, because the scroll offset was already 0. An `auto`
+          margin centres while there is slack and collapses to 0 when there is
+          none, so the top of the card can never leave the scrollable range.
+        */}
+        <View style={styles.centerer}>{children}</View>
       </ScrollView>
       {actions === undefined || actions === null ? null : (
         <View style={styles.footer} testID="invite-shell-footer">
@@ -96,12 +107,21 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   scrollContent: {
-    // #2211 — EXPLICIT. Centres while there is room; scrolls once there is not.
+    // #2211 — EXPLICIT. RN defaults a ScrollView's content container to
+    // `flexGrow: 0`; omitting this silently top-anchors the card and removes
+    // the slack the `auto` margin below needs in order to centre at all.
     flexGrow: 1,
-    justifyContent: "center",
     alignItems: "center",
     paddingHorizontal: spacing.xl,
     paddingVertical: spacing.lg,
+  },
+  centerer: {
+    width: "100%",
+    // #2211 — centres while there is slack, collapses to 0 when there is none.
+    // See the comment at the call site for the measurement that ruled out
+    // `justifyContent: "center"`.
+    marginVertical: "auto",
+    alignItems: "center",
     gap: spacing.md,
   },
   footer: {

@@ -22,6 +22,10 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover on the public experience share-link page (mirrors /t/{brandSlug}/{tripSlug}); the buyer-facing banner aesthetic is intentional. The ParallaxCoverShell renders the cover full-bleed to the screen edge by design; chrome absolute-positions over the cover. Per META-ORCH-1059 Sub-C + ORCH-1138 Leg 3 foundation parity.
 
+// orch-strict-grep-allow fullscreen-route-must-scroll — the three centred `stateHost`
+// branches are ActivityIndicator + Text only: there is no control to be stranded from.
+// The file's single Pressable is in `ResolvedExperiencePage`, which renders inside
+// ParallaxCoverShell's ScrollView, not in any centred branch (#2211).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
