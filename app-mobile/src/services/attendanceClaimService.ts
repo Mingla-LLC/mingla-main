@@ -1,4 +1,4 @@
-import * as SecureStore from "expo-secure-store";
+import { secureDeleteItem, secureGetItem, secureSetItem } from "../lib/secureStoreSafe";
 import { supabase } from "./supabase";
 import {
   parseAttendanceClaimUrl as parseClaimUrl,
@@ -29,12 +29,12 @@ export const parseAttendanceClaimUrl = (url: string): AttendanceClaimIntent | nu
 };
 
 export const saveAttendanceClaimIntent = (intent: AttendanceClaimIntent): Promise<void> =>
-  SecureStore.setItemAsync(KEY, JSON.stringify(intent));
+  secureSetItem(KEY, JSON.stringify(intent));
 
-export const clearAttendanceClaimIntent = (): Promise<void> => SecureStore.deleteItemAsync(KEY);
+export const clearAttendanceClaimIntent = (): Promise<void> => secureDeleteItem(KEY);
 
 export const readAttendanceClaimIntent = async (): Promise<AttendanceClaimIntent | null> => {
-  const raw = await SecureStore.getItemAsync(KEY);
+  const raw = await secureGetItem(KEY);
   if (!raw) return null;
   try {
     const intent = JSON.parse(raw) as AttendanceClaimIntent;

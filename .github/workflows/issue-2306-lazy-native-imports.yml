@@ -1,0 +1,65 @@
+name: "#2306 Lazy Native Imports"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "app-mobile/src/lib/secureStoreSafe.ts"
+      - "app-mobile/src/lib/__tests__/issue_2306_secure_store_safe.test.ts"
+      - "app-mobile/src/services/attendanceClaimService.ts"
+      - "mingla-business/src/lib/secureRandomSafe.ts"
+      - "mingla-business/src/lib/netinfoSafe.ts"
+      - "mingla-business/src/lib/__tests__/issue_2306_secure_random_safe.test.ts"
+      - "mingla-business/src/components/people/peopleRequestId.ts"
+      - "app-mobile/package.json"
+      - "mingla-business/package.json"
+      - ".github/scripts/strict-grep/issue-2306-lazy-native-imports.mjs"
+      - ".github/workflows/issue-2306-lazy-native-imports.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-2306-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sole-owner-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/strict-grep/issue-2306-lazy-native-imports.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2306-lazy-native-imports.mjs
+
+  consumer-guard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app-mobile
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app-mobile/package-lock.json
+      - run: npm ci
+      - run: npx jest --runInBand src/lib/__tests__/issue_2306_secure_store_safe.test.ts
+
+  host-guard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: npx jest --runInBand src/lib/__tests__/issue_2306_secure_random_safe.test.ts
