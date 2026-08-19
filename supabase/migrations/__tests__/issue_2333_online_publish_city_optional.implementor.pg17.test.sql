@@ -118,6 +118,14 @@ BEGIN
     'online_url', 'https://zoom.us/j/123456789',
     'theme', jsonb_build_object('business_draft', jsonb_build_object(
       'format', 'online',
+      -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+      -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+      -- any business draft->scheduled transition whose stored
+      -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+      -- The publish RPC copies business_draft through to business_event (it is not in
+      -- the strip list), so the DRAFT must carry it. The real client always sends it
+      -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+      'requestedVisibility', 'public',
       'tickets', jsonb_build_array(jsonb_build_object(
         'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
       'partyTypes', jsonb_build_array('festival'),
@@ -174,6 +182,14 @@ BEGIN
       'timezone', 'UTC',
       'theme', jsonb_build_object('business_draft', jsonb_build_object(
         'format', 'in_person',
+        -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+        -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+        -- any business draft->scheduled transition whose stored
+        -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+        -- The publish RPC copies business_draft through to business_event (it is not in
+        -- the strip list), so the DRAFT must carry it. The real client always sends it
+        -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+        'requestedVisibility', 'public',
         'tickets', jsonb_build_array(jsonb_build_object(
           'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
         'partyTypes', jsonb_build_array('festival'),
@@ -220,6 +236,14 @@ BEGIN
       'online_url', 'https://meet.google.com/abc-defg-hij',
       'theme', jsonb_build_object('business_draft', jsonb_build_object(
         'format', 'hybrid',
+        -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+        -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+        -- any business draft->scheduled transition whose stored
+        -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+        -- The publish RPC copies business_draft through to business_event (it is not in
+        -- the strip list), so the DRAFT must carry it. The real client always sends it
+        -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+        'requestedVisibility', 'public',
         'tickets', jsonb_build_array(jsonb_build_object(
           'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
         'partyTypes', jsonb_build_array('festival'),
@@ -304,6 +328,14 @@ BEGIN
     'is_online', true,
     'theme', jsonb_build_object('business_draft', jsonb_build_object(
       'format', '  ONLINE  ',
+      -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+      -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+      -- any business draft->scheduled transition whose stored
+      -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+      -- The publish RPC copies business_draft through to business_event (it is not in
+      -- the strip list), so the DRAFT must carry it. The real client always sends it
+      -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+      'requestedVisibility', 'public',
       'tickets', jsonb_build_array(jsonb_build_object(
         'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
       'partyTypes', jsonb_build_array('festival'),
@@ -352,6 +384,14 @@ BEGIN
     'is_online', true,
     'theme', jsonb_build_object('business_draft', jsonb_build_object(
       'format', 'online',
+      -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+      -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+      -- any business draft->scheduled transition whose stored
+      -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+      -- The publish RPC copies business_draft through to business_event (it is not in
+      -- the strip list), so the DRAFT must carry it. The real client always sends it
+      -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+      'requestedVisibility', 'public',
       'tickets', jsonb_build_array(jsonb_build_object(
         'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
       'partyTypes', jsonb_build_array('festival'),
@@ -417,6 +457,14 @@ BEGIN
     'is_online', true,                             -- what the client sends for HYBRID
     'theme', jsonb_build_object('business_draft', jsonb_build_object(
       'format', 'hybrid',
+      -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+      -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+      -- any business draft->scheduled transition whose stored
+      -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+      -- The publish RPC copies business_draft through to business_event (it is not in
+      -- the strip list), so the DRAFT must carry it. The real client always sends it
+      -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+      'requestedVisibility', 'public',
       'city', 'Lagos',
       'tickets', jsonb_build_array(jsonb_build_object(
         'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
@@ -476,6 +524,14 @@ BEGIN
     'is_online', true,
     'theme', jsonb_build_object('business_draft', jsonb_build_object(
       'format', 'online',
+      -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+      -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+      -- any business draft->scheduled transition whose stored
+      -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+      -- The publish RPC copies business_draft through to business_event (it is not in
+      -- the strip list), so the DRAFT must carry it. The real client always sends it
+      -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+      'requestedVisibility', 'public',
       'tickets', jsonb_build_array(jsonb_build_object(
         'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
       'partyTypes', jsonb_build_array('festival'),
@@ -534,6 +590,14 @@ BEGIN
     'timezone', 'UTC',
     'theme', jsonb_build_object('business_draft', jsonb_build_object(
       'format', 'in_person',
+      -- issue #2333 fixture repair: #2089's business_guard_event_publish_visibility
+      -- trigger (20270422001972, merged into main AFTER this file was written) refuses
+      -- any business draft->scheduled transition whose stored
+      -- theme.business_event.requestedVisibility is not one of public|unlisted|private.
+      -- The publish RPC copies business_draft through to business_event (it is not in
+      -- the strip list), so the DRAFT must carry it. The real client always sends it
+      -- (serverDraftEventMapper.ts:349). ADDITIONS ONLY — no assertion is weakened.
+      'requestedVisibility', 'public',
       'city', 'London',
       'tickets', jsonb_build_array(jsonb_build_object(
         'name', 'Free entry', 'isFree', true, 'price', 0, 'capacity', 100)),
