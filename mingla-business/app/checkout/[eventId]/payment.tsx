@@ -487,6 +487,13 @@ function CheckoutPaymentScreenContent({
           buyerStatusToken: handoff.buyerStatusToken,
           lines,
           buyer,
+          // issue #2338 — carry the chosen day SET across the provider
+          // redirect. The reload that brings the guest back to /confirm wipes
+          // the cart, and without this the order summary on the PAID web leg
+          // has no days to name even though the order has two.
+          ...(eventDateIds.length > 0
+            ? { eventDateIds: [...eventDateIds] }
+            : {}),
         });
         if (assignLocation(handoff.redirectUrl)) return;
         // Sandbox / test environments where location.assign is unavailable.

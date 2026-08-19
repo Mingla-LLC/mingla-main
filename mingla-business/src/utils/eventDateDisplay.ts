@@ -606,6 +606,30 @@ export const formatOccurrenceSummary = (
 };
 
 /**
+ * The event's REAL days, ordered and readable, as display lines.
+ *
+ * Chronological by measurement, not by trust: the readers already order them
+ * (pg_direct_event_checkout_bundle / pg_public_event_by_slug both ORDER BY
+ * start_at, id), but a cache, a mock or a future transport must not be able to
+ * reorder what a guest reads. Unreadable instants are DROPPED, never guessed.
+ *
+ * issue #2338 — extracted so `resolvePublicEventDateDisplay` (public page) and
+ * `resolveChosenDaysLine` (checkout) share ONE derivation. There is no second
+ * copy of this loop anywhere, which is the whole point: three surfaces have now
+ * disagreed about the same event's days.
+ */
+const readableOccurrenceLines = (
+  event: EventDateLike,
+  occurrences: readonly OccurrenceDateLike[],
+): string[] =>
+  occurrences
+    .map((o) => ({ ms: new Date(o.startAt).getTime(), o }))
+    .filter((x) => Number.isFinite(x.ms))
+    .sort((a, b) => a.ms - b.ms)
+    .map((x) => formatOccurrenceLine(x.o, event.timezone))
+    .filter((line): line is string => line !== null);
+
+/**
  * The eyebrow date block for a PUBLIC event page.
  *
  * REAL DAYS WIN, DRAFT ENTRIES STAY AUTHORITATIVE WHERE THEY EXIST, AND
@@ -633,16 +657,7 @@ export const resolvePublicEventDateDisplay = (
     datesList: formatDraftDatesList(event),
   };
   if (event.whenMode !== "multi_date" || event.multiDates !== null) return draft;
-  // Chronological by measurement, not by trust: the reader already orders them
-  // (pg_direct_event_checkout_bundle / pg_public_event_by_slug both ORDER BY
-  // start_at, id), but a cache, a mock or a future transport must not be able
-  // to reorder what a guest reads.
-  const lines = occurrences
-    .map((o) => ({ ms: new Date(o.startAt).getTime(), o }))
-    .filter((x) => Number.isFinite(x.ms))
-    .sort((a, b) => a.ms - b.ms)
-    .map((x) => formatOccurrenceLine(x.o, event.timezone))
-    .filter((line): line is string => line !== null);
+  const lines = readableOccurrenceLines(event, occurrences);
   if (lines.length === 0) return draft;
   const subline = formatOccurrenceSummary(occurrences, event.timezone);
   return {
@@ -650,4 +665,114 @@ export const resolvePublicEventDateDisplay = (
     dateSubline: subline ?? draft.dateSubline,
     datesList: lines,
   };
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// issue #2338 — NAMING THE DAYS A GUEST ACTUALLY BOUGHT.
+//
+// THIRD TIME. #2161: the days were fetched through a reader that could not see
+// them. #2209: the days were on the payload and the route never passed them.
+// #2338: the days were on the payload AND in the cart, and the confirmation
+// screen called `formatDraftDateLine(event)` — which reads `multiDates`, the
+// organiser's draft, which the public reader strips — so a guest who had just
+// chosen 29 + 30 August read "Date TBD" over their own order.
+//
+// WHY THE FIX IS HERE AND NOT ON THE SCREEN. #2160 answered the same question
+// ("which days did this guest pick?") with a PRIVATE `chosenDayLabel` useMemo
+// inside `app/checkout/[eventId]/index.tsx`. That is a fourth date formatter
+// living outside the file I-14 makes the single owner of event date display,
+// and it is exactly why the confirmation screen could not reuse it: it was not
+// reachable. It now lives here, `index.tsx` calls it, and the two steps of one
+// checkout cannot word the same day differently.
+//
+// WHAT THIS CANNOT FIX. The DATA still arrives per-surface: every screen has to
+// obtain the occurrence list and the chosen id set for itself. This file owns
+// the STRING, not the delivery — see `issue-2338-checkout-day-line-owner.mjs`,
+// which is the part that fails when a screen stops being handed the days.
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * "Sat 29 Aug + Sun 30 Aug" — the day(s) a guest chose, worded EXACTLY as
+ * #2160 worded them on the way into checkout:
+ *
+ *   1 day    → "Sat 29 Aug"
+ *   2 days   → "Sat 29 Aug + Sun 30 Aug"
+ *   3+ days  → "3 days · Sat 29 Aug – Mon 31 Aug"
+ *
+ * Returns NULL — never a fabricated day (Constitution #9) — when nothing was
+ * chosen, when no chosen id matches a known occurrence, or when ANY chosen day
+ * has an unparseable start instant. A caller that gets null must fall back to
+ * the event's own date line; it must not name a day it could not read.
+ *
+ * Chronological by MEASUREMENT, not by trust — same rule as
+ * `resolvePublicEventDateDisplay`: the readers already ORDER BY start_at, but a
+ * cache, a mock or a future transport must not be able to reorder what a guest
+ * reads.
+ */
+export const formatChosenDaysLabel = (
+  occurrences: readonly OccurrenceDateLike[],
+  chosenIds: readonly string[],
+  fallbackTimezone?: string | null,
+): string | null => {
+  if (chosenIds.length === 0) return null;
+  const chosen = occurrences
+    .filter((o) => chosenIds.includes(o.id))
+    .map((o) => ({ ms: new Date(o.startAt).getTime(), o }))
+    .sort((a, b) => a.ms - b.ms)
+    .map(({ o }) =>
+      formatOccurrenceDayLabel(
+        o.startAt,
+        typeof o.timezone === "string" && o.timezone.length > 0
+          ? o.timezone
+          : (fallbackTimezone ?? null),
+      ),
+    );
+  if (chosen.length === 0) return null;
+  if (chosen.some((label) => label === null)) return null;
+  const parts = chosen as string[];
+  if (parts.length === 1) return parts[0];
+  if (parts.length === 2) return `${parts[0]} + ${parts[1]}`;
+  return `${parts.length} days · ${parts[0]} – ${parts[parts.length - 1]}`;
+};
+
+/**
+ * The date line for a CHECKOUT surface — the cart step and the order summary
+ * on the confirmation screen.
+ *
+ * THE GUEST'S OWN DAYS WIN. Failing that, the event's real days. Failing that,
+ * whatever the draft formatters said before #2338 — which is "Date TBD" only
+ * when the event genuinely has no readable date at all.
+ *
+ *   1. `chosenIds` name readable occurrences → those days, in #2160's wording.
+ *   2. otherwise → `resolvePublicEventDateDisplay(event, occurrences).dateLine`,
+ *      which is the SAME line the public event page shows. For a single or
+ *      recurring event, for an event whose draft `multiDates` survived, and for
+ *      a multi-date event with no materialised occurrence, that helper returns
+ *      `formatDraftDateLine(event)` VERBATIM — so every one of those summaries
+ *      is byte-identical to what it printed before this function existed.
+ *
+ * Step 2 deliberately does NOT claim the guest bought day one: it prints the
+ * event's date line, the same string they read on the page they came from, and
+ * says nothing about the order. Naming the guest's actual days is step 1's job
+ * and step 1 is reached whenever the chosen set survived to the screen.
+ */
+export const resolveChosenDaysLine = (
+  event: EventDateLike,
+  occurrences: readonly OccurrenceDateLike[],
+  chosenIds: readonly string[],
+): string => {
+  const chosen = formatChosenDaysLabel(occurrences, chosenIds, event.timezone);
+  if (chosen !== null) return chosen;
+  // Step 2 is `resolvePublicEventDateDisplay(...).dateLine` BY CONSTRUCTION —
+  // the same two branches on the same predicate, over the same shared
+  // `readableOccurrenceLines`. It is spelled out rather than delegated for one
+  // reason: that helper also computes the sub-line and the full day list, and
+  // the recurring sub-line expands the recurrence rule. A checkout screen that
+  // used to call only `formatDraftDateLine` must not start evaluating work it
+  // never renders — widening what a summary line can throw on is not a fix.
+  if (event.whenMode !== "multi_date" || event.multiDates !== null) {
+    return formatDraftDateLine(event);
+  }
+  const lines = readableOccurrenceLines(event, occurrences);
+  return lines.length > 0 ? lines[0] : formatDraftDateLine(event);
 };

@@ -37,10 +37,7 @@ import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // occurrence query here any more.
 import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
 import { formatCurrency } from "../../../src/utils/currency";
-import {
-  formatDraftDateLine,
-  formatOccurrenceDayLabel,
-} from "../../../src/utils/eventDateDisplay";
+import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 
@@ -190,20 +187,23 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   // chose. One day -> today's single label; two -> "Sat 22 Aug + Sun 23 Aug";
   // three or more -> "3 days · Sat 22 Aug – Mon 24 Aug".
   //
-  // NULL whenever nothing is chosen or ANY label is unparseable, which makes
-  // the mini-card fall back to the existing date line. NEVER a fabricated day
-  // (Constitution #9).
-  const chosenDayLabel = useMemo<string | null>(() => {
-    if (chosenOccurrences.length === 0) return null;
-    const labels = chosenOccurrences.map((o) =>
-      formatOccurrenceDayLabel(o.startAt, o.timezone),
-    );
-    if (labels.some((l) => l === null)) return null;
-    const parts = labels as string[];
-    if (parts.length === 1) return parts[0];
-    if (parts.length === 2) return `${parts[0]} + ${parts[1]}`;
-    return `${parts.length} days · ${parts[0]} – ${parts[parts.length - 1]}`;
-  }, [chosenOccurrences]);
+  // issue #2338 — that wording used to be a PRIVATE useMemo right here, which
+  // is why the confirmation screen two steps later could not reuse it and
+  // printed "Date TBD" over a guest's own two-day order. It now lives in
+  // `eventDateDisplay.ts`, the I-14 single owner of event date display, and
+  // BOTH steps call `resolveChosenDaysLine`. The string this renders is
+  // unchanged; only its address moved.
+  //
+  // The fallback also stopped being `formatDraftDateLine(event)` alone: on a
+  // multi-date event reached WITHOUT a chosen day (a bare `/checkout/{id}`
+  // link) that returned "Date TBD" on this step too, because the public reader
+  // strips the organiser's draft `multiDates`. It now falls through to the
+  // event's REAL first day — the same line the public page shows — and only
+  // reaches "Date TBD" when the event genuinely has no readable date.
+  const dayLine =
+    event !== null
+      ? resolveChosenDaysLine(event, occurrences, seedEventDateIds)
+      : "";
   // issue #2160 §7(c) — say the multiplier in words BEFORE the total. The
   // floating bar must never be the first place the guest learns the price
   // doubled.
@@ -460,7 +460,7 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           <Text style={styles.miniSubtitle} numberOfLines={1}>
             {brand?.displayName ?? "Mingla"}
             {" · "}
-            {chosenDayLabel ?? formatDraftDateLine(event)}
+            {dayLine}
           </Text>
         </View>
 
