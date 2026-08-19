@@ -1,8 +1,24 @@
 // ORCH-0892-B v2: SmartScrollView — web variant. Passthrough re-export of
-// react-native's ScrollView. Web has no soft keyboard that overlaps content;
-// the library's KeyboardAwareScrollView is a no-op there. Re-exporting RN's
-// ScrollView keeps the web bundle library-free (preserves ORCH-0892-A TA-1
-// anchor: zero react-native-keyboard-controller strings in web bundle).
+// react-native's ScrollView. Re-exporting RN's ScrollView keeps the web bundle
+// library-free (preserves ORCH-0892-A TA-1 anchor: zero
+// react-native-keyboard-controller strings in web bundle).
+//
+// #2262 CORRECTION — this file used to claim "web has no soft keyboard that
+// overlaps content". That is FALSE on mobile web, and it is the documented
+// reason the marketing composer's keyboard migration was recorded as complete
+// while the screen had no keyboard-aware container at all.
+//
+// Mobile web DOES have a soft keyboard and it DOES overlap content. What it does
+// not do is shrink the CSS layout viewport — no mobile browser has since Chrome
+// 108 matched Mobile Safari. It shrinks `window.visualViewport`, which
+// react-native-web's `Dimensions` already reads and subscribes to
+// (`dist/exports/Dimensions/index.js`), so the signal is published today and
+// simply was not consumed. The correct compensation on web is a
+// VIEWPORT-HEIGHT PIN at the screen root — see
+// `app/(tabs)/marketing/_layout.tsx` — not a scroll wrapper, and not this
+// library: `react-native-keyboard-controller` is a verified no-op on web
+// (`lib/module/bindings.js` is all NOOP), so this file's behaviour is correct
+// and unchanged. Only the stated reason was wrong.
 //
 // Per SPEC_ORCH-0892-B_v2 §7.A. Invariant: I-PROPOSED-KEYBOARD-LIBRARY-ONLY
 // + I-PROPOSED-SMART-SCROLLVIEW-WRAPPER-ONLY (both DRAFT — flip ACTIVE on

@@ -165,13 +165,63 @@ body, .pell-content {
    ──────────────────────────────────────────────────────────────────── */
 .ProseMirror, .mingla-composer-editor {
   caret-color: #eb7825;
-  outline: none;
+
+  /* ─── #2262 RC-2 — THE EDITABLE OWNS THE BOX ─────────────────────────────
+     Tiptap's EditorContent renders a wrapper <div> and APPENDS the
+     ProseMirror contenteditable INTO it, so anything passed to
+     EditorContent lands on the wrapper and never on the editable. That is
+     how a 480px message box shipped with a 23px focusable strip pinned to
+     its top on desktop AND mobile web: minHeight and padding: 12 were on
+     the wrapper, and 95% of the box was inert.
+
+     Every box property therefore lives HERE, on the contenteditable — the
+     same place pell already puts them on native (.pell-content { height:
+     100% } under a global box-sizing: border-box). The wrapper carries a
+     flex column and nothing else.
+     ──────────────────────────────────────────────────────────────────── */
+  flex: 1 1 auto;
+  box-sizing: border-box;
+  /* Long bodies scroll INSIDE the box, mirroring pell's .pell-content. This
+     is also the native recovery for the sheet floor: when the sheet holds at
+     composerSheetMinHeight the BODY scrolls, and the column never does
+     (pell-in-ScrollView is a proven iOS tap conflict). */
+  overflow-y: auto;
+  /* MOVED off the EditorContent wrapper. The design's click target is the
+     whole body including its gutter, so the padding has to be part of the
+     editable or a 16pt inert margin survives the height fix. */
+  padding: 8px 16px;
+  font-size: 15px;
+  line-height: 1.55;
+  /* The floor. DERIVED from this rule's own type metrics and its own padding
+     pair — never a typed pixel literal, which would be CHROME_CONTENT_PX
+     one order of magnitude smaller. Two lines plus the 8px vertical pair. It
+     exists so that even if a future edit breaks the flex chain the editable
+     can never again be a 23px strip; the placeholder cannot supply it,
+     because the documented placeholder CSS (float:left; height:0)
+     contributes exactly zero height. */
+  min-height: calc(1.55em * 2 + 16px);
 }
-.ProseMirror:focus,
-.ProseMirror:focus-visible,
-.mingla-composer-editor:focus,
-.mingla-composer-editor:focus-visible {
+/* Brand selection highlight. Unset today, so a real selection renders in the
+   browser/WebView default blue. */
+.ProseMirror::selection,
+.ProseMirror *::selection,
+.mingla-composer-editor::selection,
+.mingla-composer-editor *::selection {
+  background: rgba(235, 120, 37, 0.28);
+}
+/* #2262 — mouse focus stays clean; KEYBOARD focus stays VISIBLE. The blanket
+   outline: none this replaces removed the only focus indicator a tabbing
+   operator had. :focus-visible is exactly the "the UA thinks this deserves a
+   ring" signal, so suppress the ring only when it is NOT set. */
+.ProseMirror:focus:not(:focus-visible),
+.mingla-composer-editor:focus:not(:focus-visible) {
   outline: none;
+  box-shadow: none;
+}
+.ProseMirror:focus-visible,
+.mingla-composer-editor:focus-visible {
+  outline: 2px solid #eb7825;
+  outline-offset: 2px;
   box-shadow: none;
 }
 .ProseMirror p,

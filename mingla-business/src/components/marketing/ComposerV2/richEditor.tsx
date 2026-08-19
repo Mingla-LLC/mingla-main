@@ -93,10 +93,39 @@ export interface RichEditorProps {
   placeholder?: string;
   /** Pell native compatibility prop — no-op on Tiptap. */
   useContainer?: boolean;
+  /**
+   * NATIVE-ONLY. pell's WebView collapses to zero height under `flex:1`, so it
+   * genuinely needs a pixel height; Tiptap is flex-bounded by CSS and needs
+   * none. #2262 keeps the prop in the shared type for native parity, but this
+   * file NEITHER destructures NOR consumes it — putting a number back on the
+   * web wrapper is what created the 23px strip.
+   */
   initialHeight?: number;
   style?: StyleProp<ViewStyle>;
   editorStyle?: RichEditorEditorStyle;
   disabled?: boolean;
+  /**
+   * #2262 10.10 — WEB ONLY. Fires with the live mark state of the current
+   * selection so the toolbar's B / I / U / link glyphs can render an active
+   * treatment that is actually reachable.
+   *
+   * There is deliberately no native counterpart. `COMPOSER_SELECTION_TRACKER_JS`
+   * saves the live Range into the pell WebView's own `window` and posts NOTHING
+   * back to React Native — there is no `postMessage`, no `onMessage`, no channel
+   * of any kind. Rendering an active fill on native would therefore be a state
+   * that can never fire, which is the UI form of the "checks that carry no
+   * information" bug class. The native selection channel is its own work item;
+   * until it lands, native renders NO active affordance at all.
+   */
+  onFormatStateChange?: (state: RichEditorFormatState) => void;
+}
+
+/** #2262 10.10 — the live mark state of the selection. Web only. */
+export interface RichEditorFormatState {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  link: boolean;
 }
 
 /**
@@ -218,10 +247,10 @@ export const RichEditor = React.forwardRef<RichEditorHandle, RichEditorProps>(
       editorInitializedCallback,
       onChange,
       placeholder,
-      initialHeight,
       style,
       editorStyle,
       disabled,
+      onFormatStateChange,
     } = props;
 
     const initialFiredRef = useRef(false);
@@ -375,9 +404,62 @@ export const RichEditor = React.forwardRef<RichEditorHandle, RichEditorProps>(
       [editor],
     );
 
-    const containerHeight = initialHeight ?? 240;
     const textColor = editorStyle?.color ?? "rgba(255, 255, 255, 0.96)";
     const backgroundColor = editorStyle?.backgroundColor ?? "transparent";
+
+    // #2262 RC-2 layer 3 — the CLICK BACKSTOP, and it is only a backstop.
+    //
+    // With the `.mingla-composer-editor` box contract in `composerChipHtml.ts`
+    // the editable fills its box, so native browser hit-testing puts the caret
+    // on the CORRECT line for free and this listener never fires. It exists for
+    // the residual case where a click lands on the wrapper's own box (a
+    // sub-pixel edge, a future style regression) — and it returns early the
+    // moment the click was already inside `.ProseMirror`, because
+    // `focus("end")` always jams the caret to the END of the document, which is
+    // wrong when the operator clicked between two paragraphs. `scrollIntoView:
+    // false` stops the box jumping under the pointer.
+    const hostRef = useRef<View>(null);
+    useEffect(() => {
+      if (Platform.OS !== "web" || editor === null) return;
+      const node = hostRef.current as unknown as HTMLElement | null;
+      if (node === null) return;
+      const onClick = (ev: MouseEvent): void => {
+        const target = ev.target as HTMLElement | null;
+        if (target !== null && typeof target.closest === "function") {
+          if (target.closest(".ProseMirror") !== null) return;
+        }
+        editor.commands.focus("end", { scrollIntoView: false });
+      };
+      node.addEventListener("click", onClick);
+      return () => {
+        node.removeEventListener("click", onClick);
+      };
+    }, [editor]);
+
+    // #2262 10.10 — publish the live mark state. Tiptap re-evaluates
+    // `isActive` against the CURRENT selection, so subscribing to both
+    // `selectionUpdate` (caret moved) and `transaction` (a mark toggled without
+    // the selection moving) is what makes a Cmd+B with no cursor movement show
+    // up on the glyph.
+    useEffect(() => {
+      if (Platform.OS !== "web" || editor === null) return;
+      if (onFormatStateChange === undefined) return;
+      const publish = (): void => {
+        onFormatStateChange({
+          bold: editor.isActive("bold"),
+          italic: editor.isActive("italic"),
+          underline: editor.isActive("underline"),
+          link: editor.isActive("link"),
+        });
+      };
+      publish();
+      editor.on("selectionUpdate", publish);
+      editor.on("transaction", publish);
+      return () => {
+        editor.off("selectionUpdate", publish);
+        editor.off("transaction", publish);
+      };
+    }, [editor, onFormatStateChange]);
 
     // RN-web maps `View` to `<div>`. Tiptap's EditorContent is a React
     // component that renders a contenteditable div. We wrap it in a
@@ -390,24 +472,32 @@ export const RichEditor = React.forwardRef<RichEditorHandle, RichEditorProps>(
     // styles and web CSS — RN-web's stylesheet flattening handles it.
     return (
       <View
-        style={[
-          styles.host,
-          { minHeight: containerHeight, backgroundColor },
-          style,
-        ]}
+        ref={hostRef}
+        style={[styles.host, { backgroundColor }, style]}
         testID="composer-web-body-tiptap"
       >
         {Platform.OS === "web" && editor !== null ? (
+          // #2262 — the wrapper is a FLEX COLUMN and nothing else. No height,
+          // no padding, no type metrics: every one of those now lives on
+          // `.mingla-composer-editor` / `.ProseMirror` in `composerChipHtml.ts`,
+          // because `EditorContent` appends the contenteditable INTO this node
+          // and anything set here lands on the container the operator cannot
+          // type into.
           <EditorContent
             editor={editor}
-            style={{
-              minHeight: containerHeight,
-              color: textColor,
-              padding: 12,
-              fontSize: 15,
-              lineHeight: 1.55,
-              outline: "none",
-            } as React.CSSProperties}
+            style={
+              {
+                display: "flex",
+                flexDirection: "column",
+                flex: "1 1 auto",
+                minHeight: 0,
+                // INHERITED text colour only. Deliberately not a box property:
+                // `padding` / `minHeight` / `fontSize` / `lineHeight` all moved
+                // onto the contenteditable in `composerChipHtml.ts`, and putting
+                // any of them back here re-creates the 23px strip.
+                color: textColor,
+              } as React.CSSProperties
+            }
           />
         ) : null}
       </View>
@@ -419,11 +509,17 @@ RichEditor.displayName = "RichEditor";
 // ─── Styles ────────────────────────────────────────────────────────────
 
 const styles = StyleSheet.create({
+  // #2262 — the host claims the space its parent gives it and bounds the
+  // editable, instead of declaring a height of its own. `minHeight: 0` is the
+  // axis-scoped bound I-AXIS-SCOPED-FLEX (#1501) requires on every flexed axis.
+  //
+  // The border/radius/fill are dropped: under the new model this View sits
+  // INSIDE the composer sheet, which owns the single visible boundary. A second
+  // bordered box inside the first is the "four separately-bordered objects"
+  // stack the design contract removes.
   host: {
-    borderRadius: 12,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "rgba(255, 255, 255, 0.08)",
-    backgroundColor: "rgba(255, 255, 255, 0.04)",
+    flex: 1,
+    minHeight: 0,
     overflow: "hidden",
   },
 });

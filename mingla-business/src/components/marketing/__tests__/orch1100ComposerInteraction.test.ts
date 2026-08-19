@@ -33,6 +33,8 @@ const BIZ_ROOT = path.resolve(__dirname, "..", "..", "..", "..");
 const read = (rel: string): string =>
   fs.readFileSync(path.join(BIZ_ROOT, rel), "utf8");
 
+const ROUTE = "app/(tabs)/marketing/campaigns/compose.tsx";
+
 const stripComments = (src: string): string =>
   src
     .replace(/\/\*[\s\S]*?\*\//g, "")
@@ -80,26 +82,88 @@ describe("ORCH-1100 RC-3 (2) — body height + scroll are web-gated", () => {
   const canvasWeb = stripComments(read(CANVAS_WEB));
   const canvasNative = stripComments(read(CANVAS_NATIVE));
 
-  test("editor computes an isPhoneWeb flag (web AND not wide-desktop)", () => {
-    expect(editor).toMatch(/isPhoneWeb\s*=\s*isWeb\s*&&\s*!isWideDesktop/);
-  });
+  // ─── #2262 [composer-responsive-layout] — TWO TESTS REMOVED HERE ────────
+  //
+  // `editor computes an isPhoneWeb flag (web AND not wide-desktop)` and
+  // `phone web gets a robust minimum body height (no 23px strip collapse)`
+  // pinned `isPhoneWeb` and `PHONE_WEB_BODY_MIN_PX = 360`. #2262 deletes both,
+  // along with `CHROME_CONTENT_PX = 376`, the `+42` Done-bar term, the
+  // `Math.max(120, …)` floor and the bespoke `Keyboard.addListener`.
+  //
+  // WHY THEY ARE NOT REPLACED IN KIND. They asserted the SHAPE OF THE PATCH — a
+  // flag and a floor — and never the PROPERTY the patch was for: a tappable,
+  // viewport-fitting editor. The block's own header above names a "~23px strip",
+  // and the strip was STILL 23px, on desktop web and on mobile web, while these
+  // two tests passed. 78/78 composer tests were green on the exact commit where
+  // both defects were measured live in a real browser. A check that cannot fail
+  // for the bug it was written about carries no information.
+  //
+  // The property is now asserted by four suites that CAN fail:
+  //   composerBandContract.issue2262.render.test.tsx        (the band tree)
+  //   composerViewportFit.issue2262.web.render.test.tsx     (the RNW resolver)
+  //   composerEditableFillsBox.issue2262.test.ts            (the CSS contract)
+  //   playwright/issue2262/composer-viewport-fit.spec.ts    (real Chromium:
+  //     real geometry, real clicks, a real keyboard-open visual viewport)
+  //
+  // Everything else in this file is byte-unchanged: describe-block (1) in full,
+  // and assertions 3 and 4 below, which pin contracts #2262 preserves.
 
-  test("phone web gets a robust minimum body height (no 23px strip collapse)", () => {
-    // A floor of at least a few hundred px so the contenteditable is always
-    // tappable; the original 120px keyboard-up floor would still be too small
-    // for the phone-web no-keyboard case.
-    expect(editor).toMatch(/PHONE_WEB_BODY_MIN_PX\s*=\s*3[0-9]{2}/);
-    expect(editor).toMatch(
-      /isPhoneWeb[\s\S]{0,120}Math\.max\(\s*PHONE_WEB_BODY_MIN_PX/,
+  // ─── #2262 P1-1 — ASSERTION 3 REPLACED, and the replacement is stronger ──
+  //
+  // ORCH-1100's assertion was: the narrow-web fall-through wraps the editor
+  // column in a `ScrollView`, so the body is reachable. The PROPERTY it was
+  // protecting is "on narrow web the composer content is reachable" — and in
+  // ORCH-1100's world, where the body was a fixed 450pt inside a chrome budget
+  // that under-counted the TopBar, wrapping the column was the right recovery.
+  //
+  // Under #2262's band architecture that same wrapper became the defect. A
+  // scroll container's content box has AUTO height, so every `flex:1` inside it
+  // resolved against content instead of the viewport, Band B's clip never
+  // bound, and the commit bar was pushed below the fold WITHOUT BOUND — +57px
+  // at 4 paragraphs, +2335px at 32, measured in real Chromium at 390x750. It
+  // also placed the commit bar inside a scroll container, which DESIGN 10.1
+  // forbids on every surface.
+  //
+  // WHAT THE OLD ASSERTION COULD CATCH THAT THESE CANNOT: nothing.
+  // It could catch exactly one thing — "the narrow branch has no scroll
+  // recovery at all" — and (2) below catches that same loss, at the node that
+  // now owns the recovery. Every other state it admitted (a wrapper that
+  // swallows the commit bar) it could not distinguish, and (1) and (3) reject.
+  // The replacement is a strict superset.
+  test("narrow web does NOT wrap the column in a scroll container", () => {
+    // (1) The wrapper is gone, and no scroll container may return here.
+    expect(canvasWeb).not.toMatch(/<ScrollView/);
+    expect(canvasWeb).not.toMatch(
+      /import\s*\{[^}]*\bScrollView\b[^}]*\}\s*from\s*["']react-native["']/,
     );
-  });
-
-  test("narrow-web editor column is wrapped in a ScrollView (body reachable)", () => {
-    expect(canvasWeb).toMatch(/import\s*\{[^}]*\bScrollView\b[^}]*\}\s*from\s*["']react-native["']/);
-    // The !isWideDesktop fall-through now returns a ScrollView, not a bare <>.
+    // The narrow branch still exists and still renders the column — this is not
+    // satisfiable by deleting the branch.
     expect(canvasWeb).toMatch(
-      /!\s*isWideDesktop[\s\S]{0,400}<ScrollView[\s\S]{0,400}\{editor\}[\s\S]{0,120}<\/ScrollView>/,
+      /!\s*isWideDesktop[\s\S]{0,2600}<View[\s\S]{0,400}\{editor\}[\s\S]{0,120}<\/View>/,
     );
+  });
+
+  test("the narrow-web recovery moved to Band B, which the commit bar is NOT inside", () => {
+    const route = stripComments(read(ROUTE));
+    // (2) The recovery §4.3 step 4 requires on web still exists — it wraps only
+    // the region that can overflow. This is the assertion that fails if someone
+    // deletes the recovery outright, which is the one loss the old pin covered.
+    expect(route).toMatch(/overflow:\s*["']auto["']/);
+    expect(route).toMatch(/WEB_FLEX_REGION_RECOVERY/);
+    expect(route).toMatch(/testID="composer-flex-region"/);
+
+    // (3) And the commit bar is the flex region's SIBLING, not its descendant:
+    // the region's element closes before the scrim and the bar open. This is
+    // what the old assertion could never express, and it is the actual defect.
+    const region = route.indexOf('testID="composer-flex-region"');
+    const scrim = route.indexOf("<ComposerCommitScrim");
+    const bar = route.indexOf("<ComposerCommitBar");
+    expect(region).toBeGreaterThan(-1);
+    expect(scrim).toBeGreaterThan(region);
+    expect(bar).toBeGreaterThan(scrim);
+    const between = route.slice(region, bar);
+    // Exactly one `</View>` closes the flex region before the bar is reached.
+    expect(between).toMatch(/<\/View>/);
   });
 
   test("native ComposerCanvas stays a Fragment passthrough (no web ScrollView)", () => {

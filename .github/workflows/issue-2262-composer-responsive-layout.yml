@@ -1,0 +1,224 @@
+name: issue-2262-composer-responsive-layout
+
+# Every path #2262 owns, on BOTH events.
+#
+# MANIFEST.json is DELIBERATELY ABSENT from this filter, per the #2193 lesson
+# recorded on the issue-2099 workflow: registering a strict-grep gate edits it,
+# which nearly every substantial PR does, so listing it here would fire this
+# workflow on unrelated branches and charge a foreign PR this issue's private
+# bundle budget. Manifest parity is enforced by meta-1383-manifest-parity.mjs in
+# the strict-grep workflow instead.
+on:
+  pull_request:
+    paths: &issue2262Paths
+      - "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx"
+      - "mingla-business/app/(tabs)/marketing/_layout.tsx"
+      - "mingla-business/src/components/marketing/ComposerCommitBar.tsx"
+      - "mingla-business/src/components/marketing/ComposerHeader.tsx"
+      - "mingla-business/src/components/marketing/ComposerStepWho.tsx"
+      - "mingla-business/src/components/marketing/SmsComposeCard.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/richEditor.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/composerChipHtml.ts"
+      - "mingla-business/src/components/marketing/ComposerV2/InsertionBar.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/SubjectTokenRail.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/ComposerCanvas.web.tsx"
+      # #2262 — the harness now drives the real schedule path end to end, so a
+      # change to the picker or the Sheet primitive must re-run this suite.
+      - "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.tsx"
+      - "mingla-business/src/components/ui/Sheet.web.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/__tests__/composerBandContract.issue2262.render.test.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/__tests__/composerViewportFit.issue2262.web.render.test.tsx"
+      - "mingla-business/src/components/marketing/ComposerV2/__tests__/composerEditableFillsBox.issue2262.test.ts"
+      - "mingla-business/src/components/marketing/__tests__/orch1100ComposerInteraction.test.ts"
+      - "mingla-business/src/hooks/useResponsiveLayout.ts"
+      - "mingla-business/src/constants/designSystem.ts"
+      - "mingla-business/src/wrappers/SmartScrollView.tsx"
+      - "mingla-business/src/wrappers/keyboardClearance.ts"
+      - "mingla-business/jest.issue2262.render.cjs"
+      - "mingla-business/jest.issue2262.web.render.cjs"
+      - "mingla-business/playwright.issue2262.config.ts"
+      - "mingla-business/playwright/issue2262/**"
+      - ".github/scripts/strict-grep/i-2262-composer-measured-not-computed-layout.mjs"
+      - ".github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs"
+      - ".github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs"
+      - ".github/workflows/issue-2262-composer-responsive-layout.yml"
+  push:
+    branches: [main]
+    paths: *issue2262Paths
+  workflow_dispatch:
+
+jobs:
+  issue-2262-composer-layout:
+    runs-on: ubuntu-latest
+    steps:
+      # `fetch-depth: 0` so `origin/main` exists in the runner's checkout — the
+      # dependency-diff clause diffs against it, and a shallow checkout would
+      # fail it for the wrong reason.
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - run: git fetch --no-tags origin main
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+          cache: npm
+          cache-dependency-path: |
+            mingla-business/package-lock.json
+            mingla-admin/package-lock.json
+      - run: npm --prefix mingla-business ci
+      # `mingla-admin` is installed for ONE reason: the Playwright harness loads
+      # esbuild's JS API from there, so neither `package.json` nor either
+      # lockfile is touched. Both are do-not-touch on this issue.
+      - run: npm --prefix mingla-admin ci
+
+      # ─── The gate. Self-test FIRST: a green plain run means nothing if the
+      # gate cannot fire, and this whole issue exists because 78 checks that
+      # could not fire were reported as passing.
+      - name: "#2262 gate — self-test (proves it fires on every reverted shape)"
+        run: node .github/scripts/strict-grep/i-2262-composer-measured-not-computed-layout.mjs --self-test
+
+      - name: "#2262 gate — plain mode (R1-R11 over the composer file set)"
+        run: node .github/scripts/strict-grep/i-2262-composer-measured-not-computed-layout.mjs
+
+      # SC-7 — the machine-checkable proof the defect class is gone. The
+      # composer's whole-file carve-out is deleted, so this gate now judges it.
+      - name: "SC-7 — orch-0892 passes with the composer OFF the safelist"
+        shell: bash
+        run: |
+          set -euo pipefail
+          node .github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs | tee /tmp/orch0892.txt
+          grep -q "PASS — zero bespoke keyboard-plumbing violations" /tmp/orch0892.txt
+          if grep -qE '"mingla-business/src/components/marketing/(ComposerV2/|ComposerFooter|ComposerCommitBar)' \
+               .github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs; then
+            echo "::error::the composer was re-added to the orch-0892 SAFELIST (#2262 SC-7)."
+            exit 1
+          fi
+          echo "OK — the composer carries no keyboard-plumbing carve-out."
+
+      - name: "#2262 — the renamed commit bar is pinned by orch-0815-b"
+        run: node .github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs
+
+      # ─── T1: the band contract, react-test-renderer.
+      - name: "T1 — band contract (jest.issue2262.render.cjs)"
+        shell: bash
+        working-directory: mingla-business
+        run: npx jest --config jest.issue2262.render.cjs --runInBand
+
+      # ─── T2: the SAME contract through the resolver that actually ships.
+      # #1484 shipped broken while 29 green react-test-renderer suites watched;
+      # #1501 codified that both are required for anything flex- or
+      # height-related, and #2262 is nothing but flex and height.
+      - name: "T2 — viewport fit through react-native-web (jest.issue2262.web.render.cjs)"
+        shell: bash
+        working-directory: mingla-business
+        run: npx jest --config jest.issue2262.web.render.cjs --runInBand
+
+      # ─── T3: the CSS ownership contract, off the real exported stylesheet.
+      - name: "T3 — the editable owns its box"
+        shell: bash
+        working-directory: mingla-business
+        run: npx jest --runInBand src/components/marketing/ComposerV2/__tests__/composerEditableFillsBox.issue2262.test.ts
+
+      # ─── T6: the two ORCH-1100 blocks this issue retired are gone, and
+      # everything else in that file still passes untouched.
+      # The pin here is on the CONTRACTS, not on a total.
+      #
+      # This step used to assert `Tests: 6 passed, 6 total`. That is a count-pin:
+      # it encodes today's number, so it breaks on every legitimate ADDITION —
+      # which is exactly what happened when the #2262 rework added the Band B
+      # sibling assertion and jest went green at 7 while this step exited 1.
+      # A count also catches nothing that `--ci` + a zero-failure exit does not.
+      #
+      # What genuinely needed guarding is silent DELETION of the specific
+      # ORCH-1100 contracts #2262 promised to preserve. So each is named. A
+      # future addition passes; quietly dropping any of these fails, which the
+      # total never distinguished from a rename.
+      - name: "T6 — the surviving ORCH-1100 contracts still pass, by name"
+        shell: bash
+        working-directory: mingla-business
+        run: |
+          set -euo pipefail
+          npx jest --runInBand --verbose \
+            src/components/marketing/__tests__/orch1100ComposerInteraction.test.ts \
+            2>&1 | tee /tmp/orch1100.txt
+          for contract in \
+            "the beforeRemove listener has a web branch that does NOT preventDefault" \
+            "the web branch fires a final autosave flush so the draft is preserved" \
+            "native path still preventDefaults" \
+            "the web early-return precedes the preventDefault" \
+            "narrow web does NOT wrap the column in a scroll container" \
+            "the narrow-web recovery moved to Band B" \
+            "native ComposerCanvas stays a Fragment passthrough"; do
+            if ! grep -qF "$contract" /tmp/orch1100.txt; then
+              echo "::error::ORCH-1100 contract silently dropped: $contract"
+              exit 1
+            fi
+          done
+          grep -qE 'Tests:[[:space:]]+[0-9]+ passed' /tmp/orch1100.txt
+          if grep -qE 'Tests:[[:space:]]+[0-9]+ failed' /tmp/orch1100.txt; then
+            echo "::error::orch1100 reported failures."
+            exit 1
+          fi
+
+      # ─── T4: the ONLY check here with a layout engine. Real Chromium, real
+      # geometry, real clicks, a real keyboard-shrunk visual viewport.
+      - name: "T4 — install chromium"
+        shell: bash
+        working-directory: mingla-business
+        run: npx playwright install --with-deps chromium-headless-shell
+
+      - name: "T4 — composer geometry in real Chromium (four viewports)"
+        shell: bash
+        working-directory: mingla-business
+        run: npx playwright test -c playwright.issue2262.config.ts
+
+      # ─── SC-8: the dead SmartScrollView import is gone and eslint agrees.
+      - name: "SC-8 — no unused-import warning on the composer route"
+        shell: bash
+        working-directory: mingla-business
+        run: |
+          set -euo pipefail
+          if grep -n "SmartScrollView" "app/(tabs)/marketing/campaigns/compose.tsx" \
+               | grep -v "^[0-9]*: *[*/]" | grep -v "//"; then
+            echo "::error::compose.tsx still references SmartScrollView in code (#2262 SC-8)."
+            exit 1
+          fi
+          npx eslint "app/(tabs)/marketing/campaigns/compose.tsx" \
+            src/components/marketing/ComposerCommitBar.tsx \
+            src/components/marketing/ComposerV2/ComposerV2Editor.tsx \
+            src/components/marketing/ComposerV2/richEditor.tsx \
+            src/components/marketing/ComposerV2/InsertionBar.tsx \
+            src/components/marketing/ComposerV2/SubjectTokenRail.tsx \
+            2>&1 | tee /tmp/issue2262-eslint.txt
+          if grep -q "is defined but never used" /tmp/issue2262-eslint.txt; then
+            echo "::error::an unused import survives in a #2262 file."
+            exit 1
+          fi
+
+      # ─── SC-13: no dependency added, removed or version-changed. The whole
+      # fix is layout and CSS; a lockfile line here means something else landed.
+      - name: "SC-13 — zero dependency changes"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet origin/main -- \
+                 mingla-business/package.json mingla-business/package-lock.json \
+                 mingla-admin/package.json mingla-admin/package-lock.json; then
+            echo "::error::#2262 changes no dependency. A manifest or lockfile moved."
+            git diff --stat origin/main -- mingla-business/package.json \
+              mingla-business/package-lock.json mingla-admin/package.json \
+              mingla-admin/package-lock.json
+            exit 1
+          fi
+          echo "OK — no dependency added, removed or bumped."
+
+      # ─── The composer touches web-graph files, so the eager `__common` budget
+      # must not move.
+      - name: "web export + eager bundle budget"
+        shell: bash
+        working-directory: mingla-business
+        run: |
+          set -euo pipefail
+          npx expo export -p web --output-dir /tmp/issue-2262-web --clear
+          ORCH_1083_WEB_BUILD=/tmp/issue-2262-web node scripts/ci/orch-1083-initial-bundle-budget.mjs

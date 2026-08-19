@@ -238,9 +238,29 @@ module.exports = {
     "orch_1165_keyboard_toolbar_mount_coverage\\.test\\.ts$", // invariant -> i-1047-biz-keyboard-toolbar-keyed-offset.mjs
     // moved: app/_layout.tsx, src/components/ui/SheetMobile.tsx, src/components/ui/Modal.tsx,
     //   src/components/auth/BusinessWelcomeScreen.tsx, src/components/waitlist/JoinWaitlistSheet.tsx,
-    //   src/components/marketing/ComposerV2/ComposerV2Editor.tsx,
     //   src/components/groupChat/GroupChatPanel.tsx, src/components/support/SupportThread.native.tsx,
     //   src/components/brand/BrandPaystackOnboardView.tsx, src/screens/ari/AriChatScreen.tsx
+    // dropped: src/components/marketing/ComposerV2/ComposerV2Editor.tsx — #2262 deleted the
+    //   keyboard responsibility from this file entirely. The pinned expression was
+    //   `keyboardHeight > 0 ? keyboardHeight + 42` (rule (B)), fed by a bespoke
+    //   Keyboard.addListener that was ALSO permanently dead on web (RN-web's Keyboard is a
+    //   no-op stub), so two of four surfaces had no compensation at all. Both are gone.
+    //   SUCCESSORS, and the coverage is STRICTER than what it replaces:
+    //     - the clearance itself -> app/(tabs)/marketing/campaigns/compose.tsx, a NEW target of
+    //       the same gate under rule (D). It is deliberately NOT in the moved: line: the
+    //       quarantined test never read that file, and padding moved: with a file nobody read is
+    //       how the reconciliation subset gets faked. The gate covering MORE than the test did is
+    //       allowed and is what happened here. The composer was PROMOTED
+    //       from (B) ("if you hand-type a 42, at least gate it on keyboard-open") to (D)
+    //       ("never type one — derive it from DONE_BAR_OCCUPIED"), which is the migration that
+    //       gate's own header requires before (D) may be widened. The route reads
+    //       DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE from wrappers/keyboardClearance and hands
+    //       it to SmartKeyboardAvoidingView, whose offset is interpolated off
+    //       keyboard.progress.value — so a permanent dead gap, which is what (B) existed to
+    //       prevent, is impossible by construction rather than by a hand-rolled ternary.
+    //     - the FILE -> i-2262-composer-measured-not-computed-layout.mjs, whose rule R4 forbids
+    //       `Keyboard.addListener` in ComposerV2Editor.tsx outright, with or without an inline
+    //       orch-0892 marker, and whose R1/R3 forbid the chrome constants that fed it.
     // dropped: app/checkout/[eventId]/buyer.tsx — ORCH-1252 (PR #701) migrated it to SmartScrollView and
     //   deleted the pinned expression on purpose; orch-0892-no-bespoke-keyboard-plumbing.mjs owns it now.
     // dropped: app/checkout-trip/[tripEventId]/buyer.tsx — ORCH-1252 migrated it to SmartScrollView;

@@ -23,6 +23,12 @@ export interface ComposerHeaderProps {
   saveDraftDisabled?: boolean;
 }
 
+/**
+ * #2262 — Band A. `flexShrink: 0` on the header host, because the ONE thing
+ * that gives on this screen is the composer sheet: not the header, not the
+ * audience row, and never the commit bar.
+ */
+
 export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
   title = "New campaign",
   onBack,
@@ -78,6 +84,7 @@ export const ComposerHeader: React.FC<ComposerHeaderProps> = ({
 
 const styles = StyleSheet.create({
   host: {
+    flexShrink: 0,
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",

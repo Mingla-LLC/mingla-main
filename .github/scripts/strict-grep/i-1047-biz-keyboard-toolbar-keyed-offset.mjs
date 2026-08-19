@@ -109,11 +109,40 @@ const MOUNT_HOSTS = [
   "src/components/ui/Modal.tsx",
 ];
 
-/** (B) surfaces whose clearance is added to a spacing term and stays literal. */
+/**
+ * (B) surfaces whose clearance is added to a spacing term and stays literal.
+ *
+ * #2262 REMOVED the marketing composer from this cohort, and that is a
+ * PROMOTION, not an exemption. This rule's contract is "if you hand-type a 42,
+ * at least gate it on keyboard-open so it does not leave a permanent dead gap".
+ * Rule (D)'s contract is "do not hand-type it at all — derive it from
+ * DONE_BAR_OCCUPIED", which is strictly stronger: (B) tolerates the literal,
+ * (D) forbids it.
+ *
+ * This gate's own header states the ordering: "Rule (D)'s allowlist is exactly
+ * the four that were migrated. Widening (D) means migrating the surface first —
+ * that ordering is the whole point." #2262 migrated the composer. It deleted the
+ * hand-rolled `Keyboard.addListener` + `keyboardHeight > 0 ? keyboardHeight + 42`
+ * shrink entirely and moved the budget to `SmartKeyboardAvoidingView` with
+ * `keyboardVerticalOffset={DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE}`, read from
+ * the canonical `wrappers/keyboardClearance` module.
+ *
+ * The composer therefore appears in DERIVED_CLEARANCE below, at its new home:
+ * the budget now lives in the ROUTE (`compose.tsx`), not in `ComposerV2Editor`,
+ * which no longer has any keyboard responsibility at all. `ComposerV2Editor` is
+ * separately forbidden from re-growing one — `i-2262-composer-measured-not-
+ * computed-layout.mjs` rule R4 bans `Keyboard.addListener` in that file
+ * outright, with or without an inline marker, and R1/R3 ban the constants.
+ *
+ * A permanent dead gap is impossible under the new mechanism: the library's
+ * `KeyboardAvoidingView` interpolates the offset off `keyboard.progress.value`
+ * inside a Reanimated worklet, so with the keyboard closed progress is 0 and the
+ * offset contributes nothing. The gating moved from a hand-rolled ternary into
+ * the library's own progress track — which is what (B) was approximating.
+ */
 const KEYED = [
   ["src/components/auth/BusinessWelcomeScreen.tsx", /keyboardPad\s*>\s*0\s*\?\s*keyboardPad\s*\+\s*42/],
   ["src/components/waitlist/JoinWaitlistSheet.tsx", /keyboardPadding\s*>\s*0\s*\?\s*42/],
-  ["src/components/marketing/ComposerV2/ComposerV2Editor.tsx", /keyboardHeight\s*>\s*0\s*\?\s*keyboardHeight\s*\+\s*42/],
 ];
 
 /** (C) the two Modal windows that must nest the toolbar inside their provider. */
@@ -122,12 +151,16 @@ const NESTED_PROVIDER_HOSTS = [
   "src/components/ui/Modal.tsx",
 ];
 
-/** (D) surfaces migrated off the literal by #1850. */
+/** (D) surfaces migrated off the literal by #1850, extended by #2262. */
 const DERIVED_CLEARANCE = [
   "src/components/groupChat/GroupChatPanel.tsx",
   "src/components/support/SupportThread.native.tsx",
   "src/components/brand/BrandPaystackOnboardView.tsx",
   "src/screens/ari/AriChatScreen.tsx",
+  // #2262 — the marketing composer, promoted out of (B). The budget lives in the
+  // ROUTE now, not in ComposerV2Editor: the route owns the
+  // SmartKeyboardAvoidingView and therefore owns the offset.
+  "app/(tabs)/marketing/campaigns/compose.tsx",
 ];
 
 /**
@@ -140,7 +173,23 @@ const NESTED = /<KeyboardRoot\b[^>]*>[\s\S]*<KeyboardToolbarRoot\s*\/?>[\s\S]*<\
 /** (D) a hand-typed offset, and a hand-typed clearance term in a keyboard branch. */
 const LITERAL_KAV_OFFSET = /keyboardVerticalOffset\s*=\s*\{\s*\d+(?:\.\d+)?\s*\}/;
 const LITERAL_CLEARANCE_TERM = /keyboard[A-Za-z]*\s*(?:>\s*0[\s\S]{0,200}?)?\+\s*42\b/;
-const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*["'][^"']*wrappers\/SmartScrollView["']/;
+/**
+ * (D) the derivation must be IMPORTED from the shared model.
+ *
+ * #2262 widened the accepted module set by one, and it is the canonical one.
+ * `wrappers/keyboardClearance` is where #1890 DEFINES these terms ("the terms
+ * live here, once, and every surface reads them");
+ * `wrappers/SmartScrollView.native.tsx` merely RE-EXPORTS them for #1834's
+ * existing consumers. Accepting only the re-export forced a surface with no
+ * scroll container to import from the scroll wrapper purely to satisfy a regex —
+ * which is how a rule starts shaping code against its own intent.
+ *
+ * This admits nothing the old pattern rejected except a STRICTER source: the
+ * definition site instead of a re-export. The name must still be imported AND
+ * used outside imports and comments (USES_DERIVED, below), and the literal bans
+ * are untouched.
+ */
+const IMPORTS_DERIVED = /import\s*\{[^}]*\bDONE_BAR_OCCUPIED\b[^}]*\}\s*from\s*["'][^"']*wrappers\/(?:SmartScrollView|keyboardClearance)["']/;
 /** …and it must actually be USED, not just imported (#1850 TEST P2-6). */
 const USES_DERIVED = /\bDONE_BAR_OCCUPIED\b/;
 
@@ -355,7 +404,16 @@ if (IS_MAIN && SELF_TEST) {
     ],
     ["src/components/auth/BusinessWelcomeScreen.tsx", "paddingBottom: keyboardPad > 0 ? keyboardPad + 42 : 0,"],
     ["src/components/waitlist/JoinWaitlistSheet.tsx", "pad + (keyboardPadding > 0 ? 42 : 0),"],
-    ["src/components/marketing/ComposerV2/ComposerV2Editor.tsx", "const s = keyboardHeight > 0 ? keyboardHeight + 42 : 0;"],
+
+    // #2262 — the marketing composer, PROMOTED from (B) to (D). Its budget lives
+    // in the route, and it derives from the canonical `keyboardClearance` module
+    // rather than the `SmartScrollView` re-export, because the composer route
+    // deliberately has no scroll container to import from any more.
+    [
+      "app/(tabs)/marketing/campaigns/compose.tsx",
+      `import { DONE_BAR_OCCUPIED, MIN_VISIBLE_CLEARANCE } from "../../../../src/wrappers/keyboardClearance";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE}/>`,
+    ],
+
     [
       "src/components/groupChat/GroupChatPanel.tsx",
       `import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";\n<KeyboardAvoidingView keyboardVerticalOffset={DONE_BAR_OCCUPIED}/>`,
