@@ -44,6 +44,12 @@ export const marketingKeys = {
       ] as const,
     detail: (brandId: string, personId: string): readonly unknown[] =>
       [...marketingKeys.people.all(brandId), "detail", personId] as const,
+    // #2305 — the identity-conflict review queue. Nested under people.all so a
+    // resolve can invalidate the book and the queue with one prefix if needed,
+    // but the two are invalidated explicitly (a resolve ADDS a person to the
+    // book, so a stale book is a visible bug).
+    conflicts: (brandId: string): readonly unknown[] =>
+      [...marketingKeys.people.all(brandId), "conflicts"] as const,
   },
   templates: {
     all: ["marketing", "templates"] as const,
