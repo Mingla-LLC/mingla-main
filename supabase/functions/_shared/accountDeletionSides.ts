@@ -10,6 +10,57 @@ export interface SideDeletionResult {
   side: DeletionSide;
 }
 
+/**
+ * #2321 — why the auth login survived a side deletion. `authRetained: true` with
+ * no attributable reason is a server bug, not a business signal: before #2321 the
+ * explorer gate could not return true for ANY user, so every deletion retained auth
+ * and the payload claimed "your business login is unchanged" to people who had no
+ * business side. The reason is what lets the client say something true.
+ */
+export type AuthRetainReason = "business_side_active" | "explorer_side_active";
+
+export interface AuthRemovalDecision {
+  remove: boolean;
+  /** null iff remove === true */
+  reason: AuthRetainReason | null;
+}
+
+/**
+ * #2321 SC-5 fail-closed rule. Deleting the explorer side may only retain auth
+ * because the BUSINESS side is still active, and vice-versa. Any other pairing
+ * means the gate produced a reason it cannot justify — the caller must refuse to
+ * return a success payload rather than ship a message it cannot stand behind.
+ */
+export function isRetainReasonJustifiedForSide(
+  side: DeletionSide,
+  reason: AuthRetainReason | null,
+): boolean {
+  if (side === "explorer") return reason === "business_side_active";
+  return reason === "explorer_side_active";
+}
+
+/**
+ * #2321 — a count probe that cannot tell "no rows" from "the query failed" carries
+ * no information (#2113 class). Three of `userHasActiveExplorerSide`'s six probes
+ * named columns that do not exist; every one of them 400'd and was read as zero.
+ * Errors throw; only a real count is allowed to answer.
+ */
+async function countOrThrow(
+  table: string,
+  probe: PromiseLike<unknown>,
+): Promise<number> {
+  const result = await probe as {
+    count?: number | null;
+    error?: { message?: string } | null;
+  };
+  if (result?.error) {
+    throw new Error(
+      `[delete-user] side-gate probe on ${table} failed: ${result.error.message ?? "unknown error"}`,
+    );
+  }
+  return result?.count ?? 0;
+}
+
 export async function userHasActiveBusinessSide(
   adminClient: SupabaseClient,
   userId: string,
@@ -36,60 +87,101 @@ export async function userHasActiveExplorerSide(
   adminClient: SupabaseClient,
   userId: string,
 ): Promise<boolean> {
-  const { data: profile } = await adminClient
+  const { data: profile, error: profileError } = await adminClient
     .from("profiles")
     .select("explorer_deleted_at")
     .eq("id", userId)
     .maybeSingle();
+
+  if (profileError) {
+    throw new Error(
+      `[delete-user] side-gate probe on profiles failed: ${profileError.message}`,
+    );
+  }
 
   if (profile?.explorer_deleted_at) return false;
 
-  const tables = [
-    "friends",
-    "boards",
-    "pairings",
-    "calendar_entries",
-    "preferences",
-  ] as const;
+  // #2321 — every predicate below names a column that exists in the production
+  // schema. `boards.user_id`, `pairings.user_id` and `preferences.id` do NOT, and
+  // each of those three 400'd on every deletion for the life of the feature.
+  const countRows = (table: string, selectedColumn = "*") =>
+    adminClient.from(table).select(selectedColumn, { count: "exact", head: true });
 
-  for (const table of tables) {
-    const column = table === "preferences" ? "profile_id" : "user_id";
-    const { count } = await adminClient
-      .from(table)
-      .select("id", { count: "exact", head: true })
-      .eq(column, userId);
-    if ((count ?? 0) > 0) return true;
+  if (await countOrThrow("friends", countRows("friends").eq("user_id", userId)) > 0) {
+    return true;
+  }
+  if (
+    await countOrThrow(
+      "calendar_entries",
+      countRows("calendar_entries").eq("user_id", userId),
+    ) > 0
+  ) {
+    return true;
+  }
+  if (
+    await countOrThrow(
+      "preferences",
+      countRows("preferences", "profile_id").eq("profile_id", userId),
+    ) > 0
+  ) {
+    return true;
+  }
+  if (
+    await countOrThrow(
+      "pairings",
+      countRows("pairings").or(`user_a_id.eq.${userId},user_b_id.eq.${userId}`),
+    ) > 0
+  ) {
+    return true;
+  }
+  if (await countOrThrow("boards", countRows("boards").eq("created_by", userId)) > 0) {
+    return true;
   }
 
-  const { count: boardCreated } = await adminClient
-    .from("boards")
-    .select("id", { count: "exact", head: true })
-    .eq("created_by", userId);
-  if ((boardCreated ?? 0) > 0) return true;
-
-  return true;
+  // #2321 / I-2321-SIDE-GATE-IS-FALSIFIABLE — LOAD-BEARING. This was `return true`,
+  // which made all six probes above decorative and made the auth-deletion gate
+  // mathematically unable to pass for any user. A predicate that cannot return
+  // false is not a check. Do not "simplify" this back.
+  return false;
 }
 
+/**
+ * #2321 — the reason-carrying evaluator. The exported name is preserved for the
+ * existing #668 callers and guards, but a retained login now says WHY, so the
+ * client can name a true next action instead of guessing.
+ */
 export async function shouldDeleteAuthUser(
   adminClient: SupabaseClient,
   userId: string,
-): Promise<boolean> {
-  const { data: profile } = await adminClient
+): Promise<AuthRemovalDecision> {
+  const { data: profile, error: profileError } = await adminClient
     .from("profiles")
     .select("explorer_deleted_at")
     .eq("id", userId)
     .maybeSingle();
 
-  const { data: creator } = await adminClient
+  if (profileError) {
+    throw new Error(
+      `[delete-user] auth-removal probe on profiles failed: ${profileError.message}`,
+    );
+  }
+
+  const { data: creator, error: creatorError } = await adminClient
     .from("creator_accounts")
     .select("deleted_at")
     .eq("id", userId)
     .maybeSingle();
 
+  if (creatorError) {
+    throw new Error(
+      `[delete-user] auth-removal probe on creator_accounts failed: ${creatorError.message}`,
+    );
+  }
+
   const explorerGone = profile?.explorer_deleted_at != null;
   const businessGone = creator?.deleted_at != null;
 
-  if (explorerGone && businessGone) return true;
+  if (explorerGone && businessGone) return { remove: true, reason: null };
 
   const hasBusiness = await userHasActiveBusinessSide(adminClient, userId);
   const hasExplorer = await userHasActiveExplorerSide(adminClient, userId);
@@ -97,7 +189,9 @@ export async function shouldDeleteAuthUser(
   const businessOk = businessGone || !hasBusiness;
   const explorerOk = explorerGone || !hasExplorer;
 
-  return businessOk && explorerOk;
+  if (businessOk && explorerOk) return { remove: true, reason: null };
+  if (!businessOk) return { remove: false, reason: "business_side_active" };
+  return { remove: false, reason: "explorer_side_active" };
 }
 
 export async function detachStripeForOwnedBrands(
@@ -164,7 +258,12 @@ export async function purgeExplorerSideData(
     adminClient.from("friends").delete().eq("friend_user_id", userId).then(({ error }) => {
       if (error) console.warn("[delete-user] purge friends (friend_user_id):", error.message);
     }),
-    deleteByUser("pairings"),
+    // #2321 — `pairings` has no `user_id`; production logs show this purge failing
+    // on every single deletion. Two calls, mirroring the friends/blocked_users shape.
+    deleteByUser("pairings", "user_a_id"),
+    adminClient.from("pairings").delete().eq("user_b_id", userId).then(({ error }) => {
+      if (error) console.warn("[delete-user] purge pairings (user_b_id):", error.message);
+    }),
     deleteByUser("pair_requests", "sender_id"),
     adminClient.from("pair_requests").delete().eq("receiver_id", userId).then(({ error }) => {
       if (error) console.warn("[delete-user] purge pair_requests receiver:", error.message);
@@ -207,7 +306,11 @@ export async function purgeExplorerSideData(
 
   await Promise.allSettled(deletes);
 
-  await adminClient
+  // #2321 — the identity scrub is the write that makes deletion real. It used to
+  // discard its result: PostgREST rejected the whole UPDATE for one unknown column
+  // and the user kept their name, username, avatar, bio and onboarding flag while
+  // the app told them the account was gone. It throws now.
+  const { error: scrubError } = await adminClient
     .from("profiles")
     .update({
       explorer_deleted_at: new Date().toISOString(),
@@ -220,6 +323,13 @@ export async function purgeExplorerSideData(
       has_completed_onboarding: false,
     })
     .eq("id", userId);
+
+  if (scrubError) {
+    console.error("[delete-user] identity scrub FAILED:", scrubError.message);
+    throw new Error(
+      "Account deletion could not be completed. Please contact support.",
+    );
+  }
 }
 
 export async function purgeBusinessSideData(

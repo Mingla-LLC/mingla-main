@@ -5,6 +5,15 @@
  *
  * Fails if delete-user reverts to unconditional auth.admin.deleteUser without
  * side-aware gating, or if clients stop sending `{ side: ... }`.
+ *
+ * #2321 RETIRED T-05 and T-07 — both were #2113-class checks that carried no
+ * information. T-05 grepped the ORCH-1240 migration FILE for `explorer_deleted_at`
+ * and stayed green for the whole life of the feature while that migration was never
+ * applied to production and the column did not exist. T-07 grepped the edge function
+ * for the literal string `authRetained`, which was green regardless of whether any
+ * client honoured it — and no client did. A check that reads the repo cannot see a
+ * migration that never ran. Their replacement asserts behaviour, not source text:
+ * `.github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs`.
  */
 
 import fs from "node:fs";
@@ -29,14 +38,15 @@ const edgeFn = read("supabase/functions/delete-user/index.ts");
 const shared = read("supabase/functions/_shared/accountDeletionSides.ts");
 const consumerSettings = read("app-mobile/src/components/profile/AccountSettings.tsx");
 const businessHook = read("mingla-business/src/hooks/useAccountDeletion.ts");
-const migration = read(
-  "supabase/migrations/20261128000000_orch_1240_issue_668_dual_account_deletion.sql",
-);
 
 check(
-  "T-01 [FAILS-ON-REVERT] delete-user calls shouldDeleteAuthUser before auth.admin.deleteUser",
+  // #2321 renamed the gate: the request path now calls `evaluateAuthRemoval`, which
+  // returns WHY the login was retained. Both names are accepted so this check tracks
+  // the behaviour (auth removal is gated) rather than one identifier. It is NOT
+  // satisfied by a dead reference kept alive to please a grep.
+  "T-01 [FAILS-ON-REVERT] delete-user gates auth.admin.deleteUser behind the side evaluator",
   edgeFn !== null &&
-    /shouldDeleteAuthUser\(/.test(edgeFn) &&
+    (/evaluateAuthRemoval\(/.test(edgeFn) || /shouldDeleteAuthUser\(/.test(edgeFn)) &&
     /auth\.admin\.deleteUser/.test(edgeFn),
   "Auth removal must be gated — unconditional deleteUser breaks dual-login accounts.",
 );
@@ -63,21 +73,9 @@ check(
 );
 
 check(
-  "T-05 migration adds profiles.explorer_deleted_at",
-  migration !== null && /explorer_deleted_at/.test(migration),
-  "Missing explorer side marker column.",
-);
-
-check(
   "T-06 shared module strips support conversation participants on explorer purge",
   shared !== null && /conversation_participants/.test(shared),
   "Explorer purge must remove support inbox participation.",
-);
-
-check(
-  "T-07 response includes authRetained for partial delete",
-  edgeFn !== null && /authRetained/.test(edgeFn),
-  "Clients need authRetained to show correct success copy.",
 );
 
 let failed = 0;

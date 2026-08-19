@@ -124,7 +124,10 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
   // Delete account state
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirmModal, setShowDeleteConfirmModal] = useState(false);
-  const [deleteStep, setDeleteStep] = useState<"confirm" | "deleting" | "success" | "error">("confirm");
+  // #2321 — "retained" is a DISTINCT terminal state, not a flavour of "success".
+  // Overloading "success" is exactly how the app came to show "Account Deleted"
+  // over a live login. See I-2321-RETAINED-AUTH-CANNOT-CLAIM-DELETED.
+  const [deleteStep, setDeleteStep] = useState<"confirm" | "deleting" | "success" | "retained" | "error">("confirm");
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const deleteInProgressRef = useRef(false);
   const deleteStartTimeRef = useRef<number | null>(null);
@@ -529,7 +532,13 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
 
       const result = await Promise.race([invokePromise, timeoutPromise]);
       const { data, error } = result as {
-        data: { success?: boolean; error?: string; authRetained?: boolean; message?: string } | null;
+        data: {
+          success?: boolean;
+          error?: string;
+          authRetained?: boolean;
+          retainedReason?: "business_side_active" | "explorer_side_active";
+          message?: string;
+        } | null;
         error: Error | null;
       };
 
@@ -539,10 +548,12 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
       }
       if (data?.error) throw new Error(data.error);
 
-      setDeleteStep("success");
-      if (data?.authRetained && data.message) {
-        setDeleteError(null);
-      }
+      // #2321 / I-2321-RETAINED-AUTH-CANNOT-CLAIM-DELETED — LOAD-BEARING.
+      // The server has reported `authRetained` since #668 and this client threw it
+      // away, so a deletion that left the login alive still rendered "Account
+      // Deleted". Reverting this to an unconditional setDeleteStep("success")
+      // re-opens an Apple 5.1.1(v) / Play data-deletion exposure.
+      setDeleteStep(data?.authRetained === true ? "retained" : "success");
 
       setTimeout(() => {
         setShowDeleteConfirmModal(false);
@@ -555,6 +566,9 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
+            // #2321 — "success" is CORRECT here: a vanished session means the auth
+            // user really was removed, so the full-deletion copy is true. Do not
+            // "fix" this to "retained".
             setDeleteStep("success");
             setTimeout(() => {
               setShowDeleteConfirmModal(false);
@@ -588,6 +602,8 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
         try {
           const { data: { session } } = await supabase.auth.getSession();
           if (!session) {
+            // #2321 — same as the timeout path: no session means the auth user is
+            // genuinely gone, so "success" is the honest state.
             setDeleteStep("success");
             setIsDeleting(false);
             deleteInProgressRef.current = false;
@@ -1197,6 +1213,20 @@ export default function AccountSettings({ user, onSignOut, visible, onClose, not
                 <Text style={styles.deleteModalTitle}>{t('settings:delete.success_title')}</Text>
                 <Text style={styles.deleteModalBody}>{t('settings:delete.success_body')}</Text>
                 <Text style={styles.deleteModalSub}>{t('settings:delete.success_sub')}</Text>
+              </>
+            )}
+            {/* #2321 — the honest retained-auth outcome. Deliberately NOT a green
+                checkmark and deliberately carrying none of the success_* keys:
+                the Explorer profile is gone but the login is not, and the copy
+                names the concrete next action. */}
+            {deleteStep === "retained" && (
+              <>
+                <View style={styles.deleteIconCircle}>
+                  <Icon name="information-circle" size={48} color="#eb7825" />
+                </View>
+                <Text style={styles.deleteModalTitle}>{t('settings:delete.retained_title')}</Text>
+                <Text style={styles.deleteModalBody}>{t('settings:delete.retained_body')}</Text>
+                <Text style={styles.deleteModalSub}>{t('settings:delete.retained_sub')}</Text>
               </>
             )}
             {deleteStep === "error" && (

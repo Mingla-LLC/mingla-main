@@ -2,7 +2,9 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import {
+  type AuthRetainReason,
   type DeletionSide,
+  isRetainReasonJustifiedForSide,
   purgeBusinessSideData,
   purgeExplorerSideData,
   shouldDeleteAuthUser,
@@ -219,11 +221,17 @@ async function clearPhoneForReuse(
 async function deleteAuthUserIfReady(
   adminClient: SupabaseClient,
   userId: string,
-): Promise<{ authDeleted: boolean; authRetained: boolean }> {
-  const removeAuth = await shouldDeleteAuthUser(adminClient, userId);
+): Promise<{
+  authDeleted: boolean;
+  authRetained: boolean;
+  retainedReason: AuthRetainReason | null;
+}> {
+  const { remove: removeAuth, reason } = await shouldDeleteAuthUser(adminClient, userId);
   if (!removeAuth) {
-    console.log(`[delete-user] Auth retained for ${userId} — other side still active`);
-    return { authDeleted: false, authRetained: true };
+    console.log(
+      `[delete-user] Auth retained for ${userId} — reason=${reason ?? "unattributed"}`,
+    );
+    return { authDeleted: false, authRetained: true, retainedReason: reason };
   }
 
   console.log("[delete-user] Deleting auth user (CASCADE handles remaining tables)...");
@@ -251,7 +259,7 @@ async function deleteAuthUserIfReady(
     }
   }
 
-  return { authDeleted: true, authRetained: false };
+  return { authDeleted: true, authRetained: false, retainedReason: null };
 }
 
 serve(async (req) => {
@@ -327,7 +335,26 @@ serve(async (req) => {
       const phoneError = await clearPhoneForReuse(adminClient, userId, userPhone);
       if (phoneError) return phoneError;
 
-      const { authDeleted, authRetained } = await deleteAuthUserIfReady(adminClient, userId);
+      const { authDeleted, authRetained, retainedReason } = await deleteAuthUserIfReady(
+        adminClient,
+        userId,
+      );
+
+      // #2321 SC-5 — fail closed. Never return a success payload whose message the
+      // server cannot justify. Before the repair, EVERY explorer deletion retained
+      // auth and told the user "your business login is unchanged" — including brand
+      // new accounts that had no business side at all.
+      if (authRetained && !isRetainReasonJustifiedForSide(side, retainedReason)) {
+        console.error(
+          `[delete-user] side=${side} retained auth with unjustifiable reason=${
+            retainedReason ?? "null"
+          } for ${userId}`,
+        );
+        return errorResponse(
+          "Account deletion could not be completed. Please contact support.",
+          500,
+        );
+      }
 
       return new Response(
         JSON.stringify({
@@ -335,6 +362,7 @@ serve(async (req) => {
           side,
           authDeleted,
           authRetained,
+          ...(authRetained ? { retainedReason } : {}),
           message: authRetained
             ? "Your explorer account has been removed. Your business login is unchanged."
             : "Your account has been permanently deleted.",
@@ -346,7 +374,23 @@ serve(async (req) => {
     // Business-side deletion (#668): Stripe offboard + soft-delete brands/creator row.
     await purgeBusinessSideData(adminClient, userId);
 
-    const { authDeleted, authRetained } = await deleteAuthUserIfReady(adminClient, userId);
+    const { authDeleted, authRetained, retainedReason } = await deleteAuthUserIfReady(
+      adminClient,
+      userId,
+    );
+
+    // #2321 SC-5 — the mirror of the explorer fail-closed rule.
+    if (authRetained && !isRetainReasonJustifiedForSide(side, retainedReason)) {
+      console.error(
+        `[delete-user] side=${side} retained auth with unjustifiable reason=${
+          retainedReason ?? "null"
+        } for ${userId}`,
+      );
+      return errorResponse(
+        "Account deletion could not be completed. Please contact support.",
+        500,
+      );
+    }
 
     return new Response(
       JSON.stringify({
@@ -354,6 +398,7 @@ serve(async (req) => {
         side,
         authDeleted,
         authRetained,
+        ...(authRetained ? { retainedReason } : {}),
         message: authRetained
           ? "Your business account has been removed. Your explorer login is unchanged."
           : "Your account has been permanently deleted.",

@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 571,
-  "selfTestWiredFloor": 366,
+  "expectedStrictGrepMjsFiles": 572,
+  "selfTestWiredFloor": 367,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8653,6 +8653,18 @@
       "jobKeys": [
         "issue-2286-ios-skan-source-and-endpoint-tester"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
     }
   ]
 }
