@@ -10,10 +10,22 @@
  * browser and the Stripe SDK stubbed, so they assert what the flow actually
  * does with the server's reply — not that a symbol exists.
  *
- * FAILS ON REVERT:
- *   • restore `Promise<string | null>` + `data?.order?.orderId` in
- *     `pollPaystackOrder` → T-1, T-4, T-5, T-8 go red.
- *   • remove the single-flight guard → T-12, T-13, SC-15 go red.
+ * FAILS ON REVERT — measured, not asserted (see the implementation report on
+ * issue #2264 for the pasted runs; every revert below was a TRUE LINE DELETION,
+ * never a comment-out):
+ *   • delete the terminal branch + narrow the response type back to `{ order }`
+ *     in both flows → T-1 and the four T-8 cases go red (5 failures), and
+ *     `scripts/ci/check-checkout-status-consumers.sh` exits 1 on both files.
+ *   • delete the single-flight guard → both T-12 cases and both SC-15 cases go
+ *     red (4 failures).
+ *   • delete ONLY the `finally` that clears the guard → T-13's throw case goes
+ *     red (1 failure), which is what separates a guard that self-heals from one
+ *     that deadens the buy control for the life of the process.
+ *
+ * T-4, T-5, T-6, T-7 deliberately stay GREEN under those reverts: they cover the
+ * budget, the finalized-outranks-status rule and transport failures, none of
+ * which the terminal branch touches. A test that goes red for every revert is
+ * not localising anything.
  */
 
 import { readFileSync } from "node:fs";
