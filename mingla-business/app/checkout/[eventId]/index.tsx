@@ -454,9 +454,12 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
             {event.name.trim().length > 0 ? event.name : "Untitled event"}
           </Text>
           {/* issue #2135 — when the guest picked a day on the public page, step 1
-              of 3 names THAT day instead of repeating the master date. Falls back
-              to the unchanged date line whenever no occurrence was chosen or the
-              occurrence read has not resolved (never a fabricated day). */}
+              of 3 names THAT day instead of repeating the master date.
+              issue #2338 — and when they did NOT pick one, this now names the
+              event's REAL first day rather than "Date TBD": the public reader
+              strips the organiser's draft days, so the old fallback was blind on
+              exactly the events that have more than one. Still never a
+              fabricated day — an event with no readable date says "Date TBD". */}
           <Text
             testID="issue-2338-cart-date-line"
             style={styles.miniSubtitle}

@@ -261,6 +261,28 @@ describe("issue #2338 U-4 — BYTE-IDENTITY for everything that is not this bug"
     },
   );
 
+  test("a hand-crafted ?eventDateId= on a SINGLE-date event names the day, on PURPOSE", () => {
+    // DOCUMENTED DECISION, not an accident. Our own link builder
+    // (`checkoutPublicPathWithSeed`) emits a day param ONLY from the multi-date
+    // day picker, so a single-date event never carries one from a Mingla link.
+    // If someone hand-crafts one, the CART STEP has named that day since #2135
+    // (`chosenDayLabel ?? formatDraftDateLine(event)` — the label wins
+    // regardless of whenMode). Guarding it here would put the summary back into
+    // disagreement with the step the guest just came from, which is the exact
+    // drift #2338 exists to remove. Byte-identity is a claim about the summary
+    // as it is actually reached; this is the one path that is not.
+    const single = unchanged[0].event;
+    const onlyDay: OccurrenceDateLike = {
+      id: "single-occ",
+      startAt: "2026-05-18T21:00:00+00:00",
+      endAt: "2026-05-18T22:00:00+00:00",
+      timezone: "Europe/London",
+    };
+    expect(resolveChosenDaysLine(single, [onlyDay], [onlyDay.id])).toBe(
+      "Mon 18 May",
+    );
+  });
+
   test("a SINGLE-date event is unchanged even if a stray chosen id rides along", () => {
     const single = unchanged[0].event;
     // A single-date event carries exactly one occurrence; naming that day is
