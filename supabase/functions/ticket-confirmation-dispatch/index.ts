@@ -39,6 +39,8 @@ import {
   type TicketBodyInput,
 } from "../_shared/email/index.ts";
 import { buildTicketPdf } from "../_shared/ticketPdf.ts";
+// issue #2347 — the ONE chosen-day resolver, shared with ticket-pdf-fetch.
+import { resolveChosenOccurrence } from "../_shared/chosenOccurrence.ts";
 // ORCH-0859 (Tr2): trip-shaped confirmation email helper. Used only when
 // event_type='trip' — event_type='event' path unchanged.
 import { renderTripConfirmationEmail } from "../_shared/email/tripConfirmationEmail.ts";
@@ -710,105 +712,20 @@ async function handleWaitlistNotificationDispatch(
   }
 }
 
-/** One `event_dates` row, in the shape `buildRenderContext` already consumes. */
-interface ChosenOccurrence {
-  start_at: string | null;
-  end_at: string | null;
-  timezone: string | null;
-}
+// ══ issue #2162 — WHICH DAY DOES THIS ORDER'S CONFIRMATION NAME? ═══════════
+// The resolver and its full contract now live in `../_shared/chosenOccurrence.ts`.
+//
+// issue #2347 MOVED IT, VERBATIM, AND CHANGED NOTHING ABOUT IT. The reason is
+// the second surface: `ticket-pdf-fetch` — the wallet's "Download ticket"
+// endpoint — still read `is_master`, handed a multi-day guest the wrong day's
+// PDF, and then CACHED that PDF onto `orders.ticket_pdf_path` forever. The fix
+// for that is this exact resolver, not a second copy of it, so it is imported
+// by both functions and lives in neither.
+//
+// The precedence pinned by #2162's C-6 is unchanged and still enforced at the
+// call site below: `chosenDate ?? masterDate`. `masterDate ?? chosenDate` would
+// compile and re-ship #2162 verbatim.
 
-/**
- * issue #2162 — WHICH DAY DOES THIS ORDER'S CONFIRMATION NAME?
- *
- * Resolution order, most specific first:
- *
- *   1. The days this order's TICKETS admit (`ticket_event_dates`, issue #2160).
- *      This is the authority for what the guest may actually attend, so it
- *      beats everything. A multi-day reservation collapses to a real RANGE:
- *      the EARLIEST chosen `start_at` and the LATEST chosen `end_at`, so a
- *      Saturday+Sunday guest is told "Sat – Sun", not "Sat" and not "day 1".
- *   2. `orders.event_date_id` — a #2135 single-select reservation, or a #2160
- *      order's anchor. Named directly.
- *   3. `null`, meaning "use the master", which the caller does. That is the
- *      legitimate legacy / single-date case, NOT an error.
- *
- * Returns `null` rather than throwing on a read failure: a confirmation that
- * names the master day is wrong, but a confirmation that never sends is worse,
- * and the notification-retry sweeper cannot fix a decision this function made.
- * The failure is logged so it is not silent (Constitution #3).
- */
-async function resolveChosenOccurrence(
-  supabase: ReturnType<typeof serviceClient>,
-  orderId: string,
-  eventId: string,
-  orderEventDateId: string | null,
-): Promise<ChosenOccurrence | null> {
-  try {
-    const { data: ticketRows, error: ticketErr } = await supabase
-      .from("tickets")
-      .select("ticket_event_dates ( event_dates ( start_at, end_at, timezone ) )")
-      .eq("order_id", orderId);
-    if (ticketErr === null && Array.isArray(ticketRows)) {
-      const days: ChosenOccurrence[] = [];
-      for (const row of ticketRows as unknown as Array<{
-        ticket_event_dates?: Array<{ event_dates?: ChosenOccurrence | null }> | null;
-      }>) {
-        for (const link of row.ticket_event_dates ?? []) {
-          const day = link.event_dates ?? null;
-          if (day !== null && typeof day.start_at === "string") days.push(day);
-        }
-      }
-      if (days.length > 0) {
-        const byStart = [...days].sort((a, b) =>
-          String(a.start_at).localeCompare(String(b.start_at))
-        );
-        const first = byStart[0];
-        const lastEnd = days
-          .map((d) => d.end_at)
-          .filter((e): e is string => typeof e === "string")
-          .sort()
-          .at(-1) ?? first.end_at;
-        return {
-          start_at: first.start_at,
-          end_at: lastEnd,
-          timezone: first.timezone,
-        };
-      }
-    } else if (ticketErr !== null) {
-      console.error(
-        "[ticket-confirmation-dispatch] ticket day lookup failed",
-        orderId,
-        ticketErr.message,
-      );
-    }
-
-    if (orderEventDateId !== null && orderEventDateId.length > 0) {
-      const { data: occ, error: occErr } = await supabase
-        .from("event_dates")
-        .select("start_at, end_at, timezone")
-        .eq("id", orderEventDateId)
-        .eq("event_id", eventId)
-        .maybeSingle();
-      if (occErr !== null) {
-        console.error(
-          "[ticket-confirmation-dispatch] chosen occurrence lookup failed",
-          orderId,
-          occErr.message,
-        );
-        return null;
-      }
-      return (occ as ChosenOccurrence | null) ?? null;
-    }
-  } catch (error) {
-    console.error(
-      "[ticket-confirmation-dispatch] chosen-day resolution threw",
-      orderId,
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-  // Legitimate: single-date event, or an order predating day selection.
-  return null;
-}
 
 function buildRenderContext(args: {
   order: OrderJoin;
@@ -1211,6 +1128,7 @@ export const handler = async (req: Request): Promise<Response> => {
     order.events.id,
     (order as unknown as { event_date_id?: string | null }).event_date_id ??
       null,
+    "[ticket-confirmation-dispatch]",
   );
 
   const context = buildRenderContext({
