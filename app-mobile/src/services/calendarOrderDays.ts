@@ -164,6 +164,16 @@ export const calendarDayWindowsForOrder = (
  *     with N rows, so it correctly appears on all N cards; `per_day` mints N
  *     passes with one row each, so each appears on exactly one.
  *
+ * ── PARITY WITH THE ORGANISER'S ROSTER ────────────────────────────────────
+ * The predicate below is term-for-term the one #2160 already shipped on the
+ * organiser side — `dayHeadCount` in
+ * `mingla-business/src/utils/guestDayFilter.ts`:
+ *   `t.eventDateIds.length === 0 || t.eventDateIds.includes(dayId)`
+ * That asymmetry WAS the bug: the host's day chip counted the right heads
+ * while the guest's own calendar card showed the wrong passes. Keep the two
+ * expressions identical — if one is ever loosened, the door and the roster
+ * start disagreeing about who is coming.
+ *
  * FAILS-ON-REVERT: return `[...tickets]` unconditionally and the scan-level
  * proof in `issue_2347_day_bound_passes.test.ts` goes red on VALUES.
  */
