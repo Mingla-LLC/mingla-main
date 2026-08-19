@@ -1,6 +1,7 @@
-import "react-native-get-random-values";
+import { ensureSecureRandom } from "../../lib/secureRandomSafe";
 
 export function createPeopleRequestId():string{
+  ensureSecureRandom();
   const cryptoValue=(globalThis as {crypto?:{randomUUID?:()=>string;getRandomValues?:<T extends ArrayBufferView|null>(array:T)=>T}}).crypto;
   if(typeof cryptoValue?.randomUUID==="function")return cryptoValue.randomUUID();
   if(typeof cryptoValue?.getRandomValues!=="function")throw new Error("secure_random_unavailable");
