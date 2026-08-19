@@ -43,7 +43,7 @@ interface ReactDomClient {
 // eslint-disable-next-line @typescript-eslint/no-var-requires
 const { createRoot } = require("react-dom/client") as ReactDomClient;
 
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ChannelTabs } from "../../src/components/marketing/ChannelTabs";
@@ -59,6 +59,11 @@ import {
 // column — commit bar included — in a ScrollView, which is what let the bar
 // travel without bound.
 import { ComposerCanvas } from "../../src/components/marketing/ComposerV2/ComposerCanvas";
+// #2262 — the SCHEDULE PATH. The chip is now the ONLY route to scheduling (the
+// old peer "Schedule" button is gone), so if the picker does not appear the
+// feature is unreachable on this surface. Mounted here exactly as `compose.tsx`
+// mounts it — inside the keyboard host, per the sub-sheet rule.
+import { SchedulePickerSheet } from "../../src/components/marketing/ComposerV2/SchedulePickerSheet";
 import { ComposerV2Editor } from "../../src/components/marketing/ComposerV2/ComposerV2Editor";
 import { canvas, spacing } from "../../src/constants/designSystem";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
@@ -111,6 +116,32 @@ function Harness(): React.ReactElement {
     flags.scheduled ? "scheduled" : "now",
   );
   const [channel, setChannel] = React.useState<MarketingChannelKind>(flags.channel);
+  const [showSchedulePicker, setShowSchedulePicker] = React.useState(false);
+  const [scheduledForIso, setScheduledForIso] = React.useState("");
+  const [showReview, setShowReview] = React.useState(false);
+
+  // Mirrors `compose.tsx`'s SchedulePickerSheet.onContinue verbatim, including
+  // the 350ms defer (iOS will not present a second Modal while the first is
+  // mid-dismiss) and the ORDER that amendment 10.4 depends on: the mode and the
+  // ISO are set BEFORE the review sheet opens, so dismissing the review leaves
+  // them intact and the chip still reads the chosen time.
+  const onPickerContinue = React.useCallback((iso: string): void => {
+    setMode("scheduled");
+    setScheduledForIso(iso);
+    setShowSchedulePicker(false);
+    setTimeout(() => setShowReview(true), 350);
+  }, []);
+
+  const scheduledShortLabel =
+    mode === "scheduled" && scheduledForIso.length > 0
+      ? new Date(scheduledForIso).toLocaleString(undefined, {
+          weekday: "short",
+          hour: "numeric",
+          minute: "2-digit",
+        })
+      : mode === "scheduled"
+        ? "Thu 10:00"
+        : null;
 
   /**
    * THE COLUMN — the same three bands `compose.tsx` renders, handed to the REAL
@@ -182,9 +213,9 @@ function Harness(): React.ReactElement {
       <ComposerCommitBar
         onPreview={noop}
         previewLabel={channel === "sms" ? "Preview message" : "Preview email"}
-        onPickTime={() => setMode("scheduled")}
+        onPickTime={() => setShowSchedulePicker(true)}
         sendMode={mode}
-        scheduledShortLabel={mode === "scheduled" ? "Thu 10:00" : null}
+        scheduledShortLabel={scheduledShortLabel}
         scheduledLongLabel={
           mode === "scheduled" ? "Thursday, October 9 at 10:00 AM" : null
         }
@@ -220,6 +251,29 @@ function Harness(): React.ReactElement {
           {/* THE REAL CANVAS. Narrow web takes its narrow branch; >=1024 takes
               the 60/40 editorPane + preview split, including `editorPane`'s
               `overflow:hidden` — the offsetParent RC-3 measured against. */}
+          {/* Sub-sheets render INSIDE the keyboard host, per
+              feedback_rn_sub_sheet_must_render_inside_parent.md. This is the
+              same position `compose.tsx` mounts them in. */}
+          <SchedulePickerSheet
+            visible={showSchedulePicker}
+            initialIso={scheduledForIso}
+            onClose={() => setShowSchedulePicker(false)}
+            onContinue={onPickerContinue}
+          />
+          {showReview ? (
+            <View style={styles.reviewStub} testID="harness-review-sheet">
+              <Text style={styles.topBarText}>Review</Text>
+              <Pressable
+                onPress={() => setShowReview(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Back"
+                testID="harness-review-back"
+                style={styles.reviewBack}
+              >
+                <Text style={styles.topBarText}>Back</Text>
+              </Pressable>
+            </View>
+          ) : null}
           <ComposerCanvas
             editor={column}
             preview={
@@ -328,6 +382,22 @@ const styles = StyleSheet.create({
   channelRow: { paddingHorizontal: spacing.md, paddingVertical: spacing.xs },
   channelRowShort: { flexShrink: 0, paddingHorizontal: 0 },
   previewStub: { flex: 1, padding: spacing.md },
+  // A stand-in for ComposerReviewSheet. Only its OPEN/DISMISS lifecycle matters
+  // to amendment 10.4 — the assertion is that backing out of it leaves the chip
+  // holding the chosen time, which is composer state, not review-sheet state.
+  reviewStub: {
+    position: "absolute",
+    left: 0,
+    right: 0,
+    top: 0,
+    bottom: 0,
+    zIndex: 90,
+    backgroundColor: "rgba(12,14,18,0.94)",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: spacing.md,
+  },
+  reviewBack: { padding: spacing.md },
 });
 
 const container = globalThis.document?.getElementById("root");

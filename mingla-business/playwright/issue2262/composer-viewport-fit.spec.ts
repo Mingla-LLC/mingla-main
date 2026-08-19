@@ -463,3 +463,235 @@ test.describe("#2262 — the mobile-web keyboard", () => {
     expect(Math.abs(barAfter.height - barBefore.height)).toBeLessThanOrEqual(1);
   });
 });
+
+/**
+ * #2262 — THE SCHEDULE PATH, END TO END.
+ *
+ * Added after Seth reported on the Vercel preview that "the time picker does not
+ * show up" on web. This is severe because #2262 made the mode chip the ONLY
+ * route to scheduling — the old peer `Schedule` button is gone — so a picker
+ * that does not appear makes scheduling unreachable on that surface.
+ *
+ * It is also the second time this harness was green against a live defect, and
+ * the reason it should have caught this one: it mounts components directly, so
+ * it can drive the composer AND the picker at real viewport sizes with NO
+ * AUTHENTICATION. The authenticated composer route is unreachable headlessly,
+ * which is exactly why the tester could not get here. This harness is the only
+ * place this flow can be exercised, so it has to carry it.
+ *
+ * Every assertion below is about being VISIBLE AND CLICKABLE, never about being
+ * mounted. A zero-rect or clipped element that exists in the DOM is precisely
+ * the failure mode being chased, and `expect(locator).toBeVisible()` alone would
+ * not distinguish it.
+ */
+test.describe("#2262 — scheduling is reachable from the chip", () => {
+  const CONTINUE = '[aria-label="Continue to review"]';
+  const TIME_PILL = '[aria-label^="Send time"]';
+
+  async function openPicker(page: Page): Promise<void> {
+    await open(page);
+    await page.click('[data-testid="composer-commit-bar-mode-chip"]');
+    await page.waitForTimeout(450); // the Sheet's open transition
+  }
+
+  /** Rect + real hit-test for an arbitrary selector. */
+  async function rectAndHit(
+    page: Page,
+    selector: string,
+  ): Promise<{ w: number; h: number; inViewport: boolean; hitTestable: boolean }> {
+    const out = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el === null) return null;
+      const r = el.getBoundingClientRect();
+      const cx = Math.round(r.left + r.width / 2);
+      const cy = Math.round(r.top + r.height / 2);
+      const hit = document.elementFromPoint(cx, cy);
+      return {
+        w: Math.round(r.width),
+        h: Math.round(r.height),
+        inViewport: r.top >= 0 && r.bottom <= window.innerHeight && r.left >= 0,
+        hitTestable: hit !== null && (hit === el || el.contains(hit) || hit.contains(el)),
+      };
+    }, selector);
+    expect(out, `#2262 VACUITY: "${selector}" is not in the document`).not.toBeNull();
+    return out as { w: number; h: number; inViewport: boolean; hitTestable: boolean };
+  }
+
+  test("S-1: tapping the chip opens a picker that is VISIBLE and CLICKABLE, not merely mounted", async ({
+    page,
+  }) => {
+    await openPicker(page);
+
+    // A zero-rect element in the DOM is the failure being chased, so size,
+    // viewport containment and a real hit-test are all asserted.
+    const cont = await rectAndHit(page, CONTINUE);
+    expect(cont.w).toBeGreaterThan(20);
+    expect(cont.h).toBeGreaterThan(12);
+    expect(cont.inViewport).toBe(true);
+    expect(cont.hitTestable).toBe(true);
+
+    const pill = await rectAndHit(page, TIME_PILL);
+    expect(pill.w).toBeGreaterThan(40);
+    expect(pill.inViewport).toBe(true);
+    expect(pill.hitTestable).toBe(true);
+
+    // And nothing in the composer's new band chain is clipping it. The bands
+    // introduced `overflow:hidden`/`auto` ancestors, so this is the specific
+    // regression the layout change could plausibly have caused.
+    const clipped = await page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      if (el === null) return "VACUITY";
+      const r = el.getBoundingClientRect();
+      let node: Element | null = el.parentElement;
+      while (node !== null && node !== document.documentElement) {
+        const cs = getComputedStyle(node);
+        if (cs.overflow === "hidden" || cs.overflowY === "hidden") {
+          const nr = node.getBoundingClientRect();
+          if (r.bottom > nr.bottom + 1 || r.top < nr.top - 1) {
+            return `clipped by ${node.tagName.toLowerCase()}[${node.getAttribute("data-testid") ?? "-"}]`;
+          }
+        }
+        node = node.parentElement;
+      }
+      return "";
+    }, CONTINUE);
+    expect(clipped).toBe("");
+  });
+
+  test("S-2: the hidden native date/time inputs are present and reachable by showPicker()", async ({
+    page,
+  }) => {
+    // The picker's web variant drives BROWSER-NATIVE `<input type=date|time>`
+    // behind visible pills. If those inputs are missing, or `showPicker()`
+    // throws, the pills do nothing and the operator sees "no time picker" even
+    // though the sheet itself rendered.
+    await open(page);
+    await page.evaluate(() => {
+      (window as unknown as { __pick: unknown[] }).__pick = [];
+      const proto = HTMLInputElement.prototype as unknown as {
+        showPicker?: () => void;
+      };
+      const orig = proto.showPicker;
+      if (typeof orig !== "function") return;
+      proto.showPicker = function patched(this: HTMLInputElement): void {
+        const log = (window as unknown as { __pick: unknown[] }).__pick;
+        try {
+          orig.call(this);
+          log.push({ type: this.type, ok: true });
+        } catch (e) {
+          log.push({ type: this.type, ok: false, err: String(e) });
+          throw e;
+        }
+      };
+    });
+    await page.click('[data-testid="composer-commit-bar-mode-chip"]');
+    await page.waitForTimeout(450);
+
+    const inputs = await page.evaluate(() =>
+      Array.from(
+        document.querySelectorAll('input[type="date"], input[type="time"]'),
+      ).map((i) => {
+        const cs = getComputedStyle(i);
+        return { type: (i as HTMLInputElement).type, display: cs.display };
+      }),
+    );
+    expect(inputs.map((i) => i.type).sort()).toEqual(["date", "time"]);
+    // `display:none` would make showPicker() throw InvalidStateError outright.
+    expect(inputs.every((i) => i.display !== "none")).toBe(true);
+
+    await page.click(TIME_PILL);
+    await page.waitForTimeout(250);
+    const calls = (await page.evaluate(
+      () => (window as unknown as { __pick: { ok: boolean }[] }).__pick,
+    )) as { ok: boolean; type: string }[];
+    expect(calls.length, "tapping the Time pill called no picker at all").toBeGreaterThan(0);
+    expect(calls.every((c) => c.ok), `showPicker() threw: ${JSON.stringify(calls)}`).toBe(true);
+  });
+
+  test("S-3: choosing a time sets the chip and flips the primary to Schedule", async ({
+    page,
+  }) => {
+    await openPicker(page);
+
+    const textOf = async (id: string): Promise<string> =>
+      (await page.evaluate(
+        (t) => document.querySelector(`[data-testid="${t}"]`)?.textContent ?? "",
+        id,
+      )) as string;
+    /**
+     * The chip's state, as the DESIGN actually specifies it. Below `bpCompact`
+     * (360) the chip is icon-only — clock + chevron, no label — and the chosen
+     * time is carried by the `accessibilityLabel` and the accent fill, with
+     * colour deliberately NOT the only indicator. So the a11y label is the
+     * assertion that holds at EVERY width, and it is the stronger one: it is
+     * what a screen-reader user actually receives. The text label is asserted
+     * only where the design renders one.
+     */
+    const a11yOf = async (id: string): Promise<string> =>
+      (await page.evaluate(
+        (t) =>
+          document.querySelector(`[data-testid="${t}"]`)?.getAttribute("aria-label") ?? "",
+        id,
+      )) as string;
+
+    const viewport = page.viewportSize() as { width: number };
+    const chipIsLabelled = viewport.width >= 360;
+
+    expect(await a11yOf("composer-commit-bar-mode-chip")).toContain("now");
+    if (chipIsLabelled) {
+      expect(await textOf("composer-commit-bar-mode-chip")).toContain("Now");
+    }
+    expect(await textOf("composer-commit-bar-primary")).toContain("Send now");
+
+    await page.click(CONTINUE);
+    await page.waitForTimeout(600); // past the 350ms review defer
+
+    // amendment 10.4 — the chip renders the chosen time, and the primary's
+    // label reads the same state.
+    const chipA11y = await a11yOf("composer-commit-bar-mode-chip");
+    expect(chipA11y).toContain("Scheduled for");
+    expect(chipA11y).not.toContain("Send timing: now");
+    if (chipIsLabelled) {
+      const chip = await textOf("composer-commit-bar-mode-chip");
+      expect(chip).not.toContain("Now");
+      expect(chip.length).toBeGreaterThan(2);
+    }
+    expect(await textOf("composer-commit-bar-primary")).toContain("Schedule");
+  });
+
+  test("S-4: backing out of the review sheet leaves the chip holding the time (10.4)", async ({
+    page,
+  }) => {
+    await openPicker(page);
+    await page.click(CONTINUE);
+    await page.waitForTimeout(600);
+
+    // The review sheet really opened — anchor, so the back-out below is real.
+    await page.waitForSelector('[data-testid="harness-review-sheet"]', { timeout: 5000 });
+    const readChip = async (): Promise<string> =>
+      (await page.evaluate(() => {
+        const el = document.querySelector('[data-testid="composer-commit-bar-mode-chip"]');
+        // a11y label at every width — the chip is icon-only below bpCompact.
+        return el?.getAttribute("aria-label") ?? "";
+      })) as string;
+    const before = await readChip();
+
+    await page.click('[data-testid="harness-review-back"]');
+    await page.waitForTimeout(300);
+
+    const after = await readChip();
+
+    // This is the one an implementor would naturally get wrong by storing the
+    // ISO inside the review sheet: the chosen time is COMPOSER state and must
+    // survive the review being dismissed.
+    expect(after).toBe(before);
+    expect(after).toContain("Scheduled for");
+    expect(after).not.toContain("Send timing: now");
+    const primary = (await page.evaluate(
+      () =>
+        document.querySelector('[data-testid="composer-commit-bar-primary"]')
+          ?.textContent ?? "",
+    )) as string;
+    expect(primary).toContain("Schedule");
+  });
+});
