@@ -8379,6 +8379,20 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-2267-composer-editorstyle-literal-only"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-2198-paystack-return-verify.mjs",
       "kind": "file",
       "enforcement": "external:issue-2198-paystack-return-verify-tests.yml",

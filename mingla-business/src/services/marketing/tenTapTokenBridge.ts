@@ -171,6 +171,12 @@ function parseInlineSegment(text: string): InlineNode[] {
       const tagMatch = tryReadTag(text, i);
       if (tagMatch !== null) {
         const t = top();
+        if (tagMatch.kind === "drop") {
+          // issue #2267 — consume the tag, change no marks. Its text content
+          // keeps flowing through the loop as ordinary text.
+          i += tagMatch.consumed;
+          continue;
+        }
         if (tagMatch.kind === "open") {
           t.marks.push(tagMatch.mark);
         } else {
@@ -262,7 +268,11 @@ function marksEqual(a: TextMark[], b: TextMark[]): boolean {
 
 type TagMatch =
   | { kind: "open"; type: "bold" | "italic" | "link"; mark: TextMark; consumed: number }
-  | { kind: "close"; type: "bold" | "italic" | "link"; consumed: number };
+  | { kind: "close"; type: "bold" | "italic" | "link"; consumed: number }
+  // issue #2267 — consume the tag, open no mark. Used for an `<a>` whose href
+  // is not one of the schemes the composer can produce: the link TEXT is kept,
+  // the markup is not.
+  | { kind: "drop"; consumed: number };
 
 function tryReadTag(text: string, start: number): TagMatch | null {
   // Recognize: <strong>, </strong>, <em>, </em>, <a href="…">, </a>.
@@ -290,14 +300,51 @@ function tryReadTag(text: string, start: number): TagMatch | null {
     const hrefMatch = /\shref\s*=\s*"([^"]*)"/i.exec(tagContent) ??
       /\shref\s*=\s*'([^']*)'/i.exec(tagContent);
     if (hrefMatch === null) return null;
+    const href = hrefMatch[1];
+    // issue #2267 — scheme allow-list, applied at the boundary where an href
+    // first becomes a link mark. This is exactly the set `normalizeUrl` in
+    // ComposerV2Editor.tsx already enforces for every link the composer
+    // itself creates (`/^(https?:\/\/|mailto:)/i`, else prepend `https://`),
+    // so it rejects nothing this product can legitimately produce.
+    //
+    // A rejected tag is DROPPED, not turned into literal text. The general
+    // "unknown HTML becomes literal text" rule cannot apply here, because the
+    // matching `</a>` below is recognised unconditionally: leaving the opening
+    // tag as text while the closing tag is consumed would emit an UNCLOSED
+    // anchor into `channel_payload.body_html`, which is a worse artefact than
+    // the tag we declined. Dropping the markup and keeping the link's text is
+    // the same rule `htmlToTokenString` already applies to tags it does not
+    // preserve, and it leaves nothing for a later stage to re-interpret.
+    if (!isAllowedLinkHref(href)) {
+      return { kind: "drop", consumed: end - start + 1 };
+    }
     return {
       kind: "open",
       type: "link",
-      mark: { type: "link", attrs: { href: hrefMatch[1] } },
+      mark: { type: "link", attrs: { href } },
       consumed: end - start + 1,
     };
   }
   return null;
+}
+
+/**
+ * issue #2267 — the schemes a link mark may carry.
+ *
+ * Mirrors `normalizeUrl` (ComposerV2Editor.tsx): `http:`, `https:`, `mailto:`.
+ * Leading whitespace and control characters are stripped before the test
+ * because a browser ignores them when resolving a URL, so a scheme check that
+ * did not would be reading a different string than the browser does.
+ */
+function isAllowedLinkHref(href: string | undefined): boolean {
+  if (href === undefined) return false;
+  // eslint-disable-next-line no-control-regex
+  const candidate = href.replace(/[\u0000-\u0020]/g, "").toLowerCase();
+  return (
+    candidate.startsWith("http://") ||
+    candidate.startsWith("https://") ||
+    candidate.startsWith("mailto:")
+  );
 }
 
 // ─── Serialize: TenTap doc → body_html string ──────────────────────────────
@@ -348,9 +395,32 @@ function emitTextWithMarks(text: string, marks: TextMark[]): string {
     if (m === undefined) continue;
     if (m.type === "bold") inner = `<strong>${inner}</strong>`;
     else if (m.type === "italic") inner = `<em>${inner}</em>`;
-    else if (m.type === "link") inner = `<a href="${m.attrs.href}">${inner}</a>`;
+    else if (m.type === "link") inner = `<a href="${escapeTokenStringHref(m.attrs.href)}">${inner}</a>`;
   }
   return inner;
+}
+
+/**
+ * issue #2267 — the href escape used on the STORED token-string side.
+ *
+ * Quote-only, and that narrowness is the point. The output of `toBodyHtml` is
+ * `channel_payload.body_html`, and `bodyHtmlToTenTapDoc` reads it back with NO
+ * entity decoding at all (see `tryReadTag` — the regex capture is stored
+ * verbatim). Escaping `&` here would therefore not survive a round trip: a
+ * legitimate query-string href would gain one `amp;` per save and drift
+ * without bound, breaking the byte-identical V1 round-trip contract
+ * (I-PROPOSED-MKT-COMPOSER-V2-TOKEN-ROUNDTRIP-LOSSLESS).
+ *
+ * `"` is the one character that cannot appear inside a legitimate href — the
+ * composer's own `normalizeUrl` never produces one, and a URL carrying a quote
+ * spells it `%22` — so escaping it costs nothing and keeps the attribute the
+ * emitter opened as the attribute it closes. Round-trip stays byte-identical
+ * for every href the product can produce.
+ *
+ * The WebView-bound emitter uses `escapeHtmlAttr` instead; see `wrapMarks`.
+ */
+function escapeTokenStringHref(href: string): string {
+  return href.replace(/"/g, "&quot;");
 }
 
 // ─── Public helpers ────────────────────────────────────────────────────────
@@ -541,7 +611,7 @@ function wrapMarks(inner: string, marks: TextMark[]): string {
     if (m === undefined) continue;
     if (m.type === "bold") out = `<strong>${out}</strong>`;
     else if (m.type === "italic") out = `<em>${out}</em>`;
-    else if (m.type === "link") out = `<a href="${m.attrs.href}">${out}</a>`;
+    else if (m.type === "link") out = `<a href="${escapeHtmlAttr(m.attrs.href)}">${out}</a>`;
   }
   return out;
 }
@@ -551,4 +621,27 @@ function escapeHtmlText(s: string): string {
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+/**
+ * issue #2267 — the href escape used on the WebView-bound side (`docToHtml`).
+ *
+ * `docToHtml`'s output is handed to the editor as HTML, so every value
+ * interpolated into an attribute gets full attribute escaping. This is the one
+ * value in the whole emitter that was interpolated raw: node text already goes
+ * through `escapeHtmlText`, and the chip `<span>` attributes carry only
+ * enum- and hex-constrained values.
+ *
+ * Escaping `&` is safe here in a way it is not on the token-string side: the
+ * inverse for this path is `htmlToTokenString`, which decodes `&amp;`, `&lt;`,
+ * `&gt;` and `&quot;` back to their characters at the end of the pipeline. A
+ * query-string `&` therefore emits as `&amp;` — correct HTML — and decodes
+ * back to `&` unchanged, so the round trip means exactly the same thing.
+ */
+function escapeHtmlAttr(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }

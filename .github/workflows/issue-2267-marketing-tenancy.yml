@@ -1,0 +1,97 @@
+name: issue-2267-marketing-tenancy
+
+# issue #2267 — the marketing composer hardening lane.
+#
+# WHY ITS OWN LANE. The policy half of #2267 can only be proven by EXECUTING an
+# UPDATE as a non-owner role against a real chain: RLS does not apply to the
+# table owner, so a test that seeds and asserts as the migration superuser
+# proves nothing about a policy. That needs a Postgres service container, which
+# the repository-wide Deno and jest lanes do not have. It gets its own lane so a
+# policy failure names the policy rather than arriving inside a 900-suite run.
+#
+# The path filters cover the guarded SOURCE, not only the tests, so a revert of
+# either half re-triggers this lane (the docs-only-CLOSE hazard).
+
+on:
+  pull_request:
+    paths: &issue_2267_paths
+      # The policies, and the migration that shipped them.
+      - "supabase/migrations/20270424002267_issue_2267_marketing_brand_tenancy_update_check.sql"
+      - "supabase/migrations/20260602000003_orch_0815_marketing_hub_phase_a.sql"
+      - "supabase/migrations/__tests__/issue_2267_marketing_brand_tenancy_update.happy.pg17.test.sql"
+      # The emitters, the parser, and the one caller that patches brand_id.
+      - "mingla-business/src/services/marketing/tenTapTokenBridge.ts"
+      - "mingla-business/src/services/marketing/marketingTemplateService.ts"
+      - "mingla-business/src/services/marketing/__tests__/issue2267LinkHrefEmission.happy.test.ts"
+      # normalizeUrl defines the scheme allow-list the parser mirrors; if it
+      # widens, the parser must widen with it or links start disappearing.
+      - "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx"
+      - ".github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs"
+      - ".github/workflows/issue-2267-marketing-tenancy.yml"
+  push:
+    branches: [main]
+    paths: *issue_2267_paths
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-2267-policies:
+    name: "#2267 brand_id is constrained on UPDATE, not only on INSERT"
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply the full migration chain, then prove the UPDATE contract
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do pg_isready -h localhost -U postgres && break; sleep 1; done
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' migration; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2267_marketing_brand_tenancy_update.happy.pg17.test.sql
+
+  issue-2267-emission:
+    name: "#2267 the link href is escaped on emit and scheme-checked on parse"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      # The editorStyle gate, both modes. `run-batch.mjs --class A` also runs it
+      # from the strict-grep workflow; naming it here means a PR that only edits
+      # the composer still proves the gate on the change that needs it.
+      - name: "#2267 editorStyle literal-only gate — self-test"
+        run: node .github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs --self-test
+      - name: "#2267 editorStyle literal-only gate — live"
+        run: node .github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs
+      - run: npm ci
+        working-directory: mingla-business
+      - run: npx jest src/services/marketing/__tests__/issue2267LinkHrefEmission.happy.test.ts --runInBand
+        working-directory: mingla-business
+      # The Stage A round-trip contract this change had to preserve. Running it
+      # here means a future escape change that breaks byte-identity fails in the
+      # same lane that asked for the escape.
+      - run: npx jest src/services/marketing/__tests__/tenTapTokenBridge.test.ts src/services/marketing/__tests__/tenTapTokenBridge.sizeAttr.test.ts --runInBand
+        working-directory: mingla-business
