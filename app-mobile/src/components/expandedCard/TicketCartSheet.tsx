@@ -531,6 +531,25 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     reset,
   ]);
 
+  /**
+   * THE ONE GUARDED FUNNEL for every dismissal this sheet can suffer.
+   *
+   * `BaseBottomSheet` dismisses by FOUR routes, and only two of them are
+   * controlled by props (#2264 tester):
+   *
+   *   1. swipe down          → `enablePanDownToClose` (prop, disarmed below)
+   *   2. backdrop press      → `backdropPressBehavior` (prop, disarmed below)
+   *   3. Android hardware back (`BaseBottomSheet.tsx:524`) → calls `onClose()`
+   *                            DIRECTLY. No prop can stop it.
+   *   4. RN-Modal `onRequestClose` (`:984`)                → same.
+   *
+   * Routes 3 and 4 are therefore guarded ONLY by what `onClose` is pointed at.
+   * It must stay `handleCancel` — never `onCancel` — or a pending checkout
+   * becomes dismissable by the Android back button while both prop guards, and
+   * a test asserting only those props, stay perfectly green.
+   *
+   * Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
+   */
   const handleCancel = useCallback((): void => {
     if (isSubmitting) return;
     onCancel();
@@ -1017,11 +1036,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       enableDynamicSizing
       maxDynamicContentSize={maxDynamicContentSize}
       // issue #2265 (DISC-C) — a pending state that refuses the close BUTTON but
-      // yields to a SWIPE is not a pending state. `handleCancel` guards the
-      // callback; `enablePanDownToClose` is what guards the gesture, and it
-      // defaults to true in BaseBottomSheet. Likewise the backdrop: its default
-      // pressBehavior is 'close', which animates the sheet away before
-      // `handleCancel` ever gets a say.
+      // yields to a SWIPE is not a pending state. These two props disarm routes
+      // 1 and 2; routes 3 and 4 (Android hardware back, RN-Modal
+      // onRequestClose) bypass props entirely and are guarded by
+      // `onClose={handleCancel}` below — see handleCancel's own comment. All
+      // four, or none.
       // Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
       enablePanDownToClose={!isSubmitting}
       backdropPressBehavior={isSubmitting ? "none" : "close"}

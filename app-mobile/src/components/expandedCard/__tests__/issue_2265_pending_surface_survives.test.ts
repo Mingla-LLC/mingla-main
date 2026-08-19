@@ -143,6 +143,36 @@ describe("#2265 T-11 — a pending sheet refuses every dismissal route", () => {
     expect(base).toMatch(/enablePanDownToClose = true/);
     expect(base).toMatch(/backdropPressBehavior = 'close'/);
   });
+
+  /**
+   * The two routes this test originally missed (#2264 tester).
+   *
+   * `BaseBottomSheet` dismisses by FOUR routes. Android hardware-back (`:524`)
+   * and the RN-Modal `onRequestClose` (`:984`) call `onClose()` DIRECTLY and
+   * never touch a prop, so no prop assertion can see them. They are guarded
+   * only by what `onClose` is pointed at — and if someone re-points it from
+   * `handleCancel` at `onCancel`, both prop assertions above stay green while a
+   * pending sheet becomes dismissable by the Android back button.
+   */
+  it("routes 3 and 4 exist and bypass props entirely — so the funnel is load-bearing", () => {
+    const base = read("src/components/ui/BaseBottomSheet.tsx");
+    // Hardware back calls onClose() with no prop in the way.
+    expect(base).toMatch(
+      /addEventListener\('hardwareBackPress'[\s\S]{0,80}?onClose\(\);/,
+    );
+    // RN-Modal's back/dismiss calls onClose directly.
+    expect(base).toMatch(/onRequestClose=\{onClose\}/);
+  });
+
+  it("the sheet points onClose at the GUARDED handleCancel, never at raw onCancel", () => {
+    expect(CART_SHEET).toMatch(/onClose=\{handleCancel\}/);
+    expect(CART_SHEET).not.toMatch(/onClose=\{onCancel\}/);
+    // …and handleCancel is what refuses while a checkout is in flight, so all
+    // four routes land on one guard.
+    expect(CART_SHEET).toMatch(
+      /const handleCancel = useCallback\(\(\): void => \{\s*\n\s*if \(isSubmitting\) return;/,
+    );
+  });
 });
 
 // ---------------------------------------------------------------------------

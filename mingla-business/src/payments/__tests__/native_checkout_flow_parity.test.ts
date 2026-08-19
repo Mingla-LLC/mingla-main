@@ -237,6 +237,41 @@ describe("#2264 — consumer/business terminal-token parity", () => {
     }
   });
 
+  /**
+   * #2264 tester P2-1 — the divergence this suite was BLIND to.
+   *
+   * Surface 4 (business iOS/Android) is MANUAL parity, and this suite is what
+   * guards it. It compared the four constants and the four routing rules, so it
+   * could not see that the two mappers were written in different SHAPES and
+   * therefore answered differently for every input outside those four: the
+   * consumer's plain-object lookup returned inherited `Object.prototype`
+   * members (Functions) where the business if-chain correctly fell through to
+   * the awaiting arm.
+   *
+   * The two shapes stay different on purpose — the consumer's token literals
+   * must remain UNQUOTED to stay out of #2229's create-leg reverse-drift guard,
+   * which the business file has no equivalent of. So rather than force one
+   * shape, this pins the PROPERTY that made them disagree: neither mapper may
+   * resolve anything it does not own.
+   */
+  it("neither mapper can resolve an INHERITED member (the P2-1 divergence)", () => {
+    // Consumer: a prototype-less table AND an own-property guard.
+    expect(CONSUMER_COPY).toMatch(
+      /PAYSTACK_RETURN_MESSAGE_BY_CODE[\s\S]{0,160}?Object\.create\(null\)/,
+    );
+    expect(CONSUMER_COPY).toMatch(
+      /Object\.prototype\.hasOwnProperty\.call\(\s*PAYSTACK_RETURN_MESSAGE_BY_CODE/,
+    );
+    // Business: an if-chain of strict === comparisons does no property lookup
+    // at all, so it cannot inherit. Pin that it stays comparisons, never a
+    // bare object index.
+    const mapper = /const paystackReturnMessage[\s\S]*?\n\};/.exec(BUSINESS_FLOW);
+    expect(mapper).not.toBeNull();
+    const body = mapper![0];
+    expect(body).toMatch(/code === "paystack_charge_abandoned"/);
+    expect(body).not.toMatch(/\[code\]/);
+  });
+
   it("both flows carry the #2250 protective comment at the poll site", () => {
     for (const rel of [
       "app-mobile/src/payments/nativeCheckoutFlow.ts",

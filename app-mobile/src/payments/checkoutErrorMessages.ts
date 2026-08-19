@@ -248,14 +248,46 @@ export const nativeCheckoutErrorMessage = (
  * Invariant: I-PROPOSED-NATIVE-CHECKOUT-ERRORS-TOTAL-MAPPER (extended, not
  * weakened) + I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
  */
-const PAYSTACK_RETURN_MESSAGE_BY_CODE: Readonly<Record<string, string>> = {
-  paystack_charge_abandoned: CHECKOUT_ABANDONED_MESSAGE,
-  paystack_charge_failed: CHECKOUT_PAYMENT_FAILED_MESSAGE,
-  paystack_payment_mismatch: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
-  // #1930 — `paid_reversal_pending`: current-sale truth moved under the charge.
-  checkout_unavailable: CHECKOUT_UNAVAILABLE_MESSAGE,
-};
+/**
+ * PROTOTYPE-LESS ON PURPOSE (#2264 tester P1-1).
+ *
+ * A plain object literal carries `Object.prototype`, so a lookup keyed on any
+ * inherited member name — the stringify one, the ctor one, the value-of one,
+ * the dunder-proto one, and four more — resolves to an INHERITED member: a
+ * Function or an object, never a string. `?? fallback` cannot catch them,
+ * because a Function is neither `null` nor `undefined`. The
+ * first draft of this table did exactly that: eight inputs returned a non-string
+ * from a function whose declared return type is `string`, on a money path, and
+ * downstream that reaches `toastManager.show(...)` and a `<Text>` child, where a
+ * Function child renders NOTHING — a buyer on a failed checkout would be told
+ * nothing at all.
+ *
+ * This repo had already been bitten by this class and had already written it
+ * down: #2229's tester-adversarial suite carries a test named `prototype keys
+ * resolve as data, not as inherited members` whose comment warns that if the
+ * token classes are ever refactored from `Set` to plain objects, the ctor key
+ * starts resolving to a function and the mapper silently mis-routes. That is
+ * precisely the refactor this table performed, one function further down the
+ * same file, out of reach of that pin.
+ *
+ * Two mechanisms, deliberately, because they fail differently:
+ *   1. `Object.create(null)` — the table has NO prototype, so no lookup anywhere
+ *      can ever inherit. This protects every future call site, not just the one
+ *      below.
+ *   2. the own-property guard in the mapper — explicit at the point of use, and
+ *      survives someone rebuilding the table as a plain literal.
+ */
+const PAYSTACK_RETURN_MESSAGE_BY_CODE: Readonly<Record<string, string>> =
+  Object.assign(Object.create(null) as Record<string, string>, {
+    paystack_charge_abandoned: CHECKOUT_ABANDONED_MESSAGE,
+    paystack_charge_failed: CHECKOUT_PAYMENT_FAILED_MESSAGE,
+    paystack_payment_mismatch: CHECKOUT_PAYMENT_MISMATCH_MESSAGE,
+    // #1930 — `paid_reversal_pending`: current-sale truth moved under the charge.
+    checkout_unavailable: CHECKOUT_UNAVAILABLE_MESSAGE,
+  });
 
 export const nativePaystackReturnMessage = (code: string | null): string =>
-  (code === null ? undefined : PAYSTACK_RETURN_MESSAGE_BY_CODE[code]) ??
-  CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;
+  (code !== null &&
+  Object.prototype.hasOwnProperty.call(PAYSTACK_RETURN_MESSAGE_BY_CODE, code)
+    ? PAYSTACK_RETURN_MESSAGE_BY_CODE[code]
+    : undefined) ?? CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;

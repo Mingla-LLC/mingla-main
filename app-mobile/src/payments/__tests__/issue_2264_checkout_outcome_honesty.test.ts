@@ -300,6 +300,65 @@ describe("#2264 T-2 — the return mapper is TOTAL", () => {
       CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
     );
   });
+
+  /**
+   * The tester's P1-1, folded into the implementor's own totality claim.
+   *
+   * The first draft of this mapper used a plain object literal, which carries
+   * `Object.prototype`. Eight inputs therefore resolved INHERITED members —
+   * Functions and an object — from a function declared to return `string`, and
+   * `?? fallback` could not catch them because a Function is neither `null` nor
+   * `undefined`. T-2 as first written exercised the four codes plus `null`, `""`
+   * and `"garbage"`: it could not see the one class the repo had ALREADY
+   * identified, in #2229's suite, in this same module, as the way this mapper
+   * breaks.
+   *
+   * A totality test that does not try the hostile keys is not a totality test.
+   */
+  const PROTOTYPE_KEYS = [
+    "toString",
+    "constructor",
+    "valueOf",
+    "hasOwnProperty",
+    "isPrototypeOf",
+    "propertyIsEnumerable",
+    "toLocaleString",
+    "__proto__",
+    "__defineGetter__",
+    "__lookupGetter__",
+  ] as const;
+
+  it("returns a STRING — never an inherited Function or object — for every Object.prototype key", () => {
+    const owned = new Set(NATIVE_PAYSTACK_RETURN_MESSAGES);
+    const escapes: string[] = [];
+    for (const key of PROTOTYPE_KEYS) {
+      const out: unknown = nativePaystackReturnMessage(key);
+      if (typeof out !== "string") {
+        escapes.push(`${key} -> ${typeof out}`);
+        continue;
+      }
+      if (!owned.has(out)) escapes.push(`${key} -> unowned string`);
+      if (out !== CHECKOUT_AWAITING_CONFIRMATION_MESSAGE) {
+        escapes.push(`${key} -> ${out.slice(0, 32)} (should be the awaiting arm)`);
+      }
+    }
+    expect(escapes).toEqual([]);
+  });
+
+  it("the table itself has NO prototype, so no future call site can inherit either", () => {
+    // Guarding the lookup fixes THIS call site. Removing the prototype fixes
+    // every call site anyone adds later.
+    const source = readFileSync(
+      join(REPO_ROOT, "app-mobile", "src", "payments", "checkoutErrorMessages.ts"),
+      "utf8",
+    );
+    expect(source).toMatch(
+      /PAYSTACK_RETURN_MESSAGE_BY_CODE[\s\S]{0,120}?Object\.create\(null\)/,
+    );
+    expect(source).toMatch(
+      /Object\.prototype\.hasOwnProperty\.call\(\s*PAYSTACK_RETURN_MESSAGE_BY_CODE/,
+    );
+  });
 });
 
 describe("#2264 T-3 — every return-leg string states whether money moved", () => {
