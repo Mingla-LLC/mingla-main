@@ -17,12 +17,14 @@ on:
       - "supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql"
       - "supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2333_discover_online_carveout.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2333_online_publish_hybrid_boundary.tester.pg17.test.sql"
       - "mingla-business/src/utils/paidPublishGuards.ts"
       - "mingla-business/src/utils/draftEventValidation.ts"
       - "mingla-business/src/components/event/EventCreatorWizard.tsx"
       - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       - "mingla-business/src/utils/__tests__/issue2333OnlinePublishGuards.happy.test.ts"
       - "mingla-business/src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx"
+      - "mingla-business/src/utils/__tests__/issue2333OnlineGuards.tester.adversarial.test.ts"
       - "app-mobile/src/components/discover/BusinessEventCard.tsx"
       - "app-mobile/src/components/discover/__tests__/issue2333OnlineBadge.test.mjs"
       - ".github/scripts/strict-grep/issue-2333-online-event-publish.mjs"
@@ -110,6 +112,20 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2333_discover_online_carveout.implementor.pg17.test.sql
 
+      # TESTER adversarial probe (issue #2333). Attacks the half the implementor's C-*/D-*
+      # cases cannot reach: they SEED theme.business_event.format and assert on it in the
+      # same transaction, which proves the guards READ the key but not that the key still
+      # holds the right value when they read it. X-01 round-trips a real HYBRID event
+      # through the live duplicate/unpublish RPCs; X-02 checks all three guards agree on
+      # what "online" spells; X-06 checks S2 is reachable by `authenticated`, the role the
+      # business app calls it as.
+      - name: "#2333 TESTER adversarial probe (X-01 … X-06)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2333_online_publish_hybrid_boundary.tester.pg17.test.sql
+
       # Both migrations are idempotent CREATE OR REPLACE with no DROP. Re-applying them
       # must be a no-op that leaves the function definitions and their ACLs identical —
       # a replay that silently revoked EXECUTE from `authenticated` would take the whole
@@ -179,4 +195,5 @@ jobs:
           npm ci
           npx jest --runInBand \
             src/utils/__tests__/issue2333OnlinePublishGuards.happy.test.ts \
-            src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx
+            src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx \
+            src/utils/__tests__/issue2333OnlineGuards.tester.adversarial.test.ts
