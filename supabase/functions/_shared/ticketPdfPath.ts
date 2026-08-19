@@ -41,3 +41,36 @@ export function isDayAwareTicketPdfPath(path: string | null): boolean {
   if (typeof path !== "string" || path.length === 0) return false;
   return path.endsWith(`.${TICKET_PDF_RENDER_VERSION}.pdf`);
 }
+
+/**
+ * issue #2347 — MUST THIS CACHED PDF BE THROWN AWAY AND RE-RENDERED?
+ *
+ * Pure, so the decision that touches every buyer's cached artifact is provable
+ * without a storage bucket. The truth table IS the guarantee:
+ *
+ *   cachedPath        isDayScoped | re-render?
+ *   ─────────────────────────────────────────────────────────────────────────
+ *   null / ""         either      | NO  — nothing cached; the ordinary lazy
+ *                                 |      backfill owns that case, unchanged.
+ *   pre-#2347 path    true        | YES — this is exactly the population that
+ *                                 |      may name the wrong day.
+ *   pre-#2347 path    false       | NO  — single-date / legacy / trip /
+ *                                 |      experience. ZERO `ticket_event_dates`
+ *                                 |      rows means the renderer had only one
+ *                                 |      day to choose from and chose it. Its
+ *                                 |      object and pointer are never touched
+ *                                 |      and it never re-renders. THIS ROW IS
+ *                                 |      the "single-day behaviour unchanged"
+ *                                 |      guarantee.
+ *   day-aware path    either      | NO  — already rendered day-aware.
+ */
+export function shouldRerenderCachedTicketPdf(input: {
+  cachedPath: string | null;
+  isDayScoped: boolean;
+}): boolean {
+  if (typeof input.cachedPath !== "string" || input.cachedPath.length === 0) {
+    return false;
+  }
+  if (isDayAwareTicketPdfPath(input.cachedPath)) return false;
+  return input.isDayScoped === true;
+}

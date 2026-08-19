@@ -34,6 +34,7 @@ import {
 } from "../_shared/chosenOccurrence.ts";
 import {
   isDayAwareTicketPdfPath,
+  shouldRerenderCachedTicketPdf,
   ticketPdfStoragePath,
 } from "../_shared/ticketPdfPath.ts";
 
@@ -307,13 +308,22 @@ serve(async (req) => {
   // so it takes neither branch: its object and its pointer are untouched and
   // it never re-renders. That is the "single-day behaviour is unchanged"
   // guarantee, enforced here rather than asserted.
-  if (pdfPath && !isDayAwareTicketPdfPath(pdfPath)) {
+  // The path-shape test runs FIRST purely to avoid a ticket-ledger read on
+  // every download once an order has been re-rendered; it is a short-circuit,
+  // not the decision. `shouldRerenderCachedTicketPdf` below is the authority
+  // and re-checks it.
+  if (pdfPath !== null && !isDayAwareTicketPdfPath(pdfPath)) {
     const days = await ticketDaysForOrder(
       supabase,
       order.id,
       "[ticket-pdf-fetch]",
     );
-    if (days !== null && days.length > 0) {
+    if (
+      shouldRerenderCachedTicketPdf({
+        cachedPath: pdfPath,
+        isDayScoped: days !== null && days.length > 0,
+      })
+    ) {
       console.log(
         `[ticket-pdf-fetch] issue-2347 stale day-scoped pdf, re-rendering order=${order.id}`,
       );
