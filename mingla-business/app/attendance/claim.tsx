@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { Button } from "../../src/components/ui/Button";
 import { Icon } from "../../src/components/ui/Icon";
 import { SafeScreen } from "../../src/components/ui/SafeScreen";
@@ -84,6 +84,18 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
   if (!parsed) return null;
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.host}>
+      {/*
+        #2211 — this region SCROLLS. `host` was `flex: 1` + `minHeight: 600` +
+        `justifyContent: "center"` with no scroll container, around a card whose
+        title is a hard-coded 26/32. `minHeight: 600` alone put the card past a
+        375x667 device's safe area before the text scaled at all; at
+        accessibility sizes the "Open Mingla" button and the two store links
+        below it were unreachable.
+      */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View
         style={styles.card}
         role="dialog"
@@ -118,14 +130,21 @@ export default function AttendanceClaimLanding(): React.ReactElement | null {
           </View>
         ) : null}
       </View>
+      </ScrollView>
     </SafeScreen>
   );
 }
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1, minHeight: 600, alignItems: "center", justifyContent: "center",
-    paddingHorizontal: spacing.lg, paddingVertical: 32, backgroundColor: canvas.discover,
+  // #2211 — `host` keeps only the frame; `minHeight: 600` is DELETED (a hard
+  // floor near the height of a small phone's safe area is what forced the
+  // overflow) and the centring moved to `scrollContent`.
+  host: { flex: 1, backgroundColor: canvas.discover },
+  scroll: { flex: 1, overflow: "hidden" },
+  // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+  scrollContent: {
+    flexGrow: 1, alignItems: "center", justifyContent: "center",
+    paddingHorizontal: spacing.lg, paddingVertical: 32,
   },
   card: {
     width: "100%", maxWidth: 480, padding: spacing.lg, borderRadius: 24,

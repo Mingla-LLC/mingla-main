@@ -41,7 +41,8 @@
  *    install target.
  */
 
-// orch-strict-grep-allow safearea-on-fullscreen-routes — all render paths are center-anchored cards (justifyContent:center); no top-anchored chrome
+// orch-strict-grep-allow safearea-on-fullscreen-routes — every render path goes through InviteScreenShell, which wraps in SafeAreaView (#2211)
+// orch-strict-grep-allow fullscreen-route-must-scroll — every render path goes through InviteScreenShell, whose content region is a ScrollView (#2211)
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -52,9 +53,14 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "../src/components/ui/Button";
+// #2211 — the scroll host + pinned-action shell. Before it, all five branches
+// below were a `flex: 1` + `justifyContent: "center"` View with no scroll
+// container, so at the largest Dynamic Type setting the heading measured at
+// [65,-103] (off the TOP of the screen) and the only Button was absent from
+// the accessibility tree with no gesture that recovered it.
+import { InviteScreenShell } from "../src/components/invite/InviteScreenShell";
 import {
   accent,
-  canvas,
   glass,
   radius as radiusTokens,
   spacing,
@@ -146,7 +152,17 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
   if (phase.kind === "success") {
     const isBrand = phase.result.scope === "brand";
     return (
-      <View style={styles.host}>
+      <InviteScreenShell
+        actions={
+          <Button
+            label={isBrand ? "Go to Mingla" : "Open scanner"}
+            onPress={handleGoToScanner}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+        }
+      >
         <View style={styles.card}>
           <Text style={styles.title}>
             {isBrand ? "You're a brand scanner" : "You're a scanner"}
@@ -156,25 +172,16 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
               ? "You can scan tickets at every event on this brand — now and later."
               : "You can scan tickets at this event. Open the scanner when you're at the door."}
           </Text>
-          <Button
-            label={isBrand ? "Go to Mingla" : "Open scanner"}
-            onPress={handleGoToScanner}
-            variant="primary"
-            size="lg"
-            fullWidth
-          />
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
   if (phase.kind === "error") {
     const { title, body } = errorCopyFor(phase.code, phase.status);
     return (
-      <View style={styles.host}>
-        <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.copy}>{body}</Text>
+      <InviteScreenShell
+        actions={
           <Button
             label="Back to Mingla"
             onPress={handleGoHome}
@@ -182,8 +189,13 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.copy}>{body}</Text>
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
@@ -193,12 +205,8 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
   // old `if (!isAuthReady) return;` made unreachable).
   if (authStatus === "signed_out") {
     return (
-      <View style={styles.host}>
-        <View style={styles.card}>
-          <Text style={styles.title}>You're invited</Text>
-          <Text style={styles.copy}>
-            Sign in to accept this scanner invitation. We'll bring you right back.
-          </Text>
+      <InviteScreenShell
+        actions={
           <Button
             label="Sign in"
             onPress={handleSignIn}
@@ -206,19 +214,22 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>You're invited</Text>
+          <Text style={styles.copy}>
+            Sign in to accept this scanner invitation. We'll bring you right back.
+          </Text>
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
   if (authStatus === "error") {
     return (
-      <View style={styles.host}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.copy}>
-            We couldn't check your sign-in. Try again in a moment.
-          </Text>
+      <InviteScreenShell
+        actions={
           <Button
             label="Try again"
             onPress={handleRetryAuth}
@@ -226,21 +237,28 @@ export default function AcceptScannerInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>Something went wrong</Text>
+          <Text style={styles.copy}>
+            We couldn't check your sign-in. Try again in a moment.
+          </Text>
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
   // The ONLY legitimate spinners.
   return (
-    <View style={styles.host}>
+    <InviteScreenShell>
       <ActivityIndicator size="large" color={accent.warm} />
       <Text style={styles.copy}>
         {authStatus === "signed_in_ready"
           ? "Accepting your invitation…"
           : "Checking your invitation…"}
       </Text>
-    </View>
+    </InviteScreenShell>
   );
 }
 
@@ -289,14 +307,9 @@ function errorCopyFor(
 }
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
-    backgroundColor: canvas.discover,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
-  },
+  // #2211 — `host` is GONE, not merely unused: `flex: 1` +
+  // `justifyContent: "center"` with no scroll container is the exact shape that
+  // stranded an invited scanner. InviteScreenShell owns the layout host now.
   card: {
     maxWidth: 480,
     width: "100%",

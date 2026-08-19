@@ -40,6 +40,9 @@ import Constants from "expo-constants";
 import { Platform } from "react-native";
 import type { PostHog } from "posthog-react-native";
 import { useAppStore } from "../store/appStore";
+// #2211 — the shared text-size bucketing, so both apps register byte-identical
+// property shapes and a single PostHog breakdown covers consumer and business.
+import { textSizeAnalyticsProperties } from "../constants/dynamicType";
 
 /**
  * Flat, JSON-serializable analytics property bag (matches PostHog's
@@ -199,6 +202,38 @@ class PostHogService {
       this.client.identify(userId, clean(properties));
     } catch (e) {
       console.warn("[postHog] identify failed:", e);
+    }
+  }
+
+  /**
+   * #2211 — register the user's text-size setting as PostHog SUPER PROPERTIES,
+   * i.e. attached to EVERY subsequent event.
+   *
+   * Why super properties and not a bespoke event: before this, a scan of every
+   * event property key over 30 days of traffic (28,649 events, 474 people, 85
+   * distinct event names) returned ZERO keys matching font / accessib / scale /
+   * text_size / dynamic_type. The mobile SDK sends `$screen_width`,
+   * `$screen_height`, `$device_type`, `$os_version` and `$locale`, and nothing
+   * about Dynamic Type. So the real-world exposure of every accessibility
+   * text-size defect — including the one this issue is named after — was
+   * unknowable from our own data, and every estimate was a published
+   * third-party figure with a caveat attached.
+   *
+   * Registering instead of capturing means no call site changes and no new
+   * event name: every event we ALREADY send starts carrying the setting, so
+   * "how many of the people who hit this screen are on accessibility text
+   * sizes" becomes a breakdown on an existing insight.
+   *
+   * Never throws, exactly like `capture`. On a binary with no PostHog native
+   * module `getClient()` stays null and this is a no-op — analytics degrades,
+   * the app never breaks.
+   */
+  registerTextSize(fontScale: number): void {
+    if (!this.isReady() || this.client === null) return;
+    try {
+      void this.client.register(textSizeAnalyticsProperties(fontScale));
+    } catch {
+      // Non-fatal — analytics never breaks the UI.
     }
   }
 

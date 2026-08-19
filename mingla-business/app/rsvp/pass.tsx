@@ -1,6 +1,6 @@
 /** Issue #1447 — anonymous fragment-token RSVP pass recovery. */
 import React, { Suspense, useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import {
   fetchPublicRsvpPassMetadata,
   fetchPublicRsvpPassPdf,
@@ -72,6 +72,19 @@ export default function RsvpPassRecoveryRoute(): React.ReactElement {
       style={styles.host}
       testID="issue-1447-rsvp-pass-recovery"
     >
+      {/*
+        #2211 — this region SCROLLS. `host` was `flex: 1` + `minHeight: 640` +
+        `justifyContent: "center"` with no scroll container, wrapped around a
+        card holding a NON-SHRINKABLE 220 pt QR plus brand, title, name, helper
+        and a full-width download button. `minHeight: 640` guaranteed overflow
+        on a 667 pt screen before the text scaled at all; at accessibility text
+        sizes the button — the only way to save the pass — left the viewport
+        with no gesture that recovered it.
+      */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+      >
       <View style={styles.card}>
         <Text style={styles.brand}>Mingla</Text>
         <Text style={styles.title}>Your RSVP invite</Text>
@@ -100,11 +113,18 @@ export default function RsvpPassRecoveryRoute(): React.ReactElement {
           </>
         ) : <ActivityIndicator color="#ff6b2c" />}
       </View>
+      </ScrollView>
     </SafeScreen>
   );
 }
 const styles = StyleSheet.create({
-  host: { flex: 1, minHeight: 640, backgroundColor: "#0c0e12", alignItems: "center", justifyContent: "center", padding: 24 },
+  // #2211 — `host` keeps only the frame. `minHeight: 640` is DELETED, not
+  // moved: a hard floor taller than a 667 pt screen's safe area is exactly
+  // what forced the overflow. Centring moved to `scrollContent`.
+  host: { flex: 1, backgroundColor: "#0c0e12" },
+  scroll: { flex: 1, overflow: "hidden" },
+  // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+  scrollContent: { flexGrow: 1, alignItems: "center", justifyContent: "center", padding: 24 },
   card: { width: "100%", maxWidth: 420, backgroundColor: "#15181f", borderRadius: 22, borderWidth: 1, borderColor: "rgba(255,255,255,.12)", padding: 24, alignItems: "center", gap: 14 },
   brand: { color: "#ff6b2c", fontSize: 24, fontWeight: "900" },
   title: { color: "#fff", fontSize: 22, fontWeight: "800" },

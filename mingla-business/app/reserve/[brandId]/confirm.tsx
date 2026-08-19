@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 
@@ -90,6 +90,17 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
       style={styles.host}
       edges={["top", "bottom", "left", "right"]}
     >
+      {/*
+        #2211 — this region SCROLLS. All four payment-return states share ONE
+        `flex: 1` + `justifyContent: "center"` root with no scroll container.
+        The `completed` state stacks an h2, body copy and TWO buttons, and the
+        `error` state carries the only retry — so at accessibility text sizes a
+        guest who had just been charged could not reach either.
+      */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+      >
       {state === "loading" ? (
         <>
           <ActivityIndicator />
@@ -131,18 +142,22 @@ export default function VenueReservationConfirmRoute(): React.ReactElement {
           <Button label="Try again" onPress={() => void confirm()} />
         </>
       )}
+      </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
+  // #2211 — `host` keeps only the frame; centring moved to `scrollContent`.
+  host: { flex: 1, backgroundColor: "#0c0e12" },
+  scroll: { flex: 1, overflow: "hidden" },
+  scrollContent: {
+    // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.md,
     padding: spacing.xl,
-    backgroundColor: "#0c0e12",
   },
   title: { ...typography.h2, color: textTokens.primary, textAlign: "center" },
   body: {

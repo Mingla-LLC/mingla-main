@@ -27,8 +27,11 @@ import React from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { Button } from "../ui/Button";
+// #2211 — the scroll host + pinned-action shell shared with both invitation
+// routes. This screen has TWO full-width CTAs, so it overflowed a centred,
+// non-scrolling root sooner than the screens it recovers from.
+import { InviteScreenShell } from "./InviteScreenShell";
 import {
-  canvas,
   glass,
   radius as radiusTokens,
   spacing,
@@ -50,7 +53,26 @@ export function WrongAccountRecovery({
   onGoHome,
 }: WrongAccountRecoveryProps): React.ReactElement {
   return (
-    <View style={styles.host}>
+    <InviteScreenShell
+      actions={
+        <>
+          <Button
+            label="Sign in with a different email"
+            onPress={onSwitchAccount}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+          <Button
+            label="Back to Mingla"
+            onPress={onGoHome}
+            variant="ghost"
+            size="lg"
+            fullWidth
+          />
+        </>
+      }
+    >
       <View style={styles.card}>
         <Text style={styles.title}>Wrong account</Text>
         <Text style={styles.copy}>
@@ -60,34 +82,16 @@ export function WrongAccountRecovery({
         {signedInEmail !== null ? (
           <Text style={styles.context}>You're signed in as {signedInEmail}.</Text>
         ) : null}
-        <Button
-          label="Sign in with a different email"
-          onPress={onSwitchAccount}
-          variant="primary"
-          size="lg"
-          fullWidth
-        />
-        <Button
-          label="Back to Mingla"
-          onPress={onGoHome}
-          variant="ghost"
-          size="lg"
-          fullWidth
-        />
       </View>
-    </View>
+    </InviteScreenShell>
   );
 }
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
-    backgroundColor: canvas.discover,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
-  },
+  // #2211 — `host` is GONE. This screen carried TWO full-width CTAs inside a
+  // centred, non-scrolling `flex: 1` root, so it overflowed sooner than the
+  // single-CTA invitation screens it recovers from. InviteScreenShell owns the
+  // layout host now; both CTAs live in its pinned footer.
   card: {
     maxWidth: 480,
     width: "100%",

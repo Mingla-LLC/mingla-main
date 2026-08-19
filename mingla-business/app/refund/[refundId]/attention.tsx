@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { SourceRefundAttentionForm } from "../../../src/components/refunds/SourceRefundAttentionForm";
 import type { RefundBank } from "../../../src/components/refunds/SourceRefundAttentionForm";
@@ -50,12 +50,33 @@ export default function SourceRefundAttentionRoute() {
   if (!refundId) {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.host}>
-        <Text accessibilityRole="alert">This refund link is unavailable.</Text>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
+          <Text accessibilityRole="alert">This refund link is unavailable.</Text>
+        </ScrollView>
       </SafeScreen>
     );
   }
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.host}>
+      {/*
+        #2211 — this region SCROLLS. `host` was `flex: 1` + `padding: 24` +
+        `justifyContent: "center"` with no scroll container anywhere in the
+        render path: the form's ONLY ScrollView is a `maxHeight: 220` bank
+        list nested inside it. At the largest Dynamic Type setting the 24 pt
+        title, the paragraph, the account-number input, the bank list and the
+        submit button all grew inside a centred container that cannot scroll,
+        so a buyer owed a refund could not reach the field or the button. This
+        is a money surface — the least acceptable place in the app to strand
+        someone.
+      */}
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.scrollContent}
+        keyboardShouldPersistTaps="handled"
+      >
       <Text style={styles.title}>Complete your refund</Text>
       {loadingBanks ? <ActivityIndicator /> : null}
       {!submitted
@@ -93,10 +114,19 @@ export default function SourceRefundAttentionRoute() {
         )
         : null}
       {message ? <Text accessibilityRole="alert">{message}</Text> : null}
+      </ScrollView>
     </SafeScreen>
   );
 }
 const styles = StyleSheet.create({
-  host: { flex: 1, padding: 24, justifyContent: "center", gap: 16 },
+  // #2211 — `host` no longer centres or pads: it is only the SafeScreen frame.
+  // The centring moved to `scrollContent`, where `flexGrow: 1` reproduces it
+  // exactly while there is room and yields to scrolling once there is not.
+  host: { flex: 1 },
+  scroll: { flex: 1, overflow: "hidden" },
+  // #2211 — `flexGrow: 1` is EXPLICIT. A ScrollView's content container
+  // defaults to `flexGrow: 0`; omitting it is the silent footgun recorded in
+  // feedback_rn_scrollview_flex_grow_default_one_silent_footgun.
+  scrollContent: { flexGrow: 1, padding: 24, justifyContent: "center", gap: 16 },
   title: { fontSize: 24, fontWeight: "700" },
 });

@@ -14,6 +14,7 @@
 // (graceful no-op — T-10, web-isolation).
 
 import React, { useEffect, useState } from "react";
+import { useWindowDimensions } from "react-native";
 import type { PostHog } from "posthog-react-native";
 import { PostHogProvider } from "posthog-react-native";
 import { postHogService } from "./postHogService";
@@ -27,6 +28,10 @@ export function PostHogAnalyticsProvider({
     postHogService.getClient(),
   );
 
+  // #2211 — reactive. A user who changes their text size while the app is open
+  // re-registers rather than leaving a stale value on every later event.
+  const { fontScale } = useWindowDimensions();
+
   useEffect(() => {
     let cancelled = false;
     void postHogService.initialize().then(() => {
@@ -38,6 +43,15 @@ export function PostHogAnalyticsProvider({
       cancelled = true;
     };
   }, []);
+
+  // #2211 — attach the text-size setting to every subsequent event. Runs once
+  // the client exists AND again on any `fontScale` change. Before this, PostHog
+  // held zero properties matching font / accessibility / scale / text_size, so
+  // the exposure of every Dynamic Type defect was unmeasurable.
+  useEffect(() => {
+    if (client === null) return;
+    postHogService.registerTextSize(fontScale);
+  }, [client, fontScale]);
 
   if (client === null) {
     // Key missing / web / not yet ready — never block the app.

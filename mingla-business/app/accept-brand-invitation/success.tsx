@@ -23,7 +23,8 @@
  * their own brand.
  */
 
-// orch-strict-grep-allow safearea-on-fullscreen-routes — center-anchored celebration card (justifyContent:center); no top-anchored chrome
+// orch-strict-grep-allow safearea-on-fullscreen-routes — renders through InviteScreenShell, which wraps in SafeAreaView (#2211)
+// orch-strict-grep-allow fullscreen-route-must-scroll — renders through InviteScreenShell, whose content region is a ScrollView (#2211)
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -34,9 +35,12 @@ import {
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { Button } from "../../src/components/ui/Button";
+// #2211 — the invite family's scroll host + pinned-action shell. This screen
+// stacked a 56 pt emoji hero, a heading, two sentences of body copy and the
+// only route to bank connect inside a centred, non-scrolling `flex: 1` root.
+import { InviteScreenShell } from "../../src/components/invite/InviteScreenShell";
 import {
   accent,
-  canvas,
   glass,
   radius as radiusTokens,
   spacing,
@@ -111,7 +115,22 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
     : "Mingla has built it out for you.";
 
   return (
-    <View style={styles.host}>
+    <InviteScreenShell
+      actions={
+        <>
+          <Button
+            label="Add your bank"
+            onPress={handleOpenBankConnect}
+            variant="primary"
+            size="lg"
+            fullWidth
+          />
+          <Text style={styles.footnote}>
+            Or come back to your email anytime.
+          </Text>
+        </>
+      }
+    >
       <View style={styles.card}>
         <Text style={styles.hero}>🎉</Text>
         <Text style={styles.title} accessibilityRole="header">
@@ -125,18 +144,8 @@ export default function AcceptBrandInvitationSuccess(): React.ReactElement {
         {loading ? (
           <ActivityIndicator color={accent.warm} style={{ marginTop: 8 }} />
         ) : null}
-        <Button
-          label="Add your bank"
-          onPress={handleOpenBankConnect}
-          variant="primary"
-          size="lg"
-          fullWidth
-        />
-        <Text style={styles.footnote}>
-          Or come back to your email anytime.
-        </Text>
       </View>
-    </View>
+    </InviteScreenShell>
   );
 }
 
@@ -154,13 +163,7 @@ function toTitleFromSlug(slug: string): string {
 }
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
-    backgroundColor: canvas.discover,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-  },
+  // #2211 — `host` is GONE; InviteScreenShell owns the layout host.
   card: {
     maxWidth: 480,
     width: "100%",

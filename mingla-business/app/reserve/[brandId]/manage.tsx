@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Pressable, StyleSheet, Text } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text } from "react-native";
 import {
   cancelGuestVenueReservation,
   fetchGuestVenueRefund,
@@ -53,14 +53,23 @@ export default function GuestReservationManageRoute() {
   if (state === "loading") {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.host}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
         <ActivityIndicator />
         <Text>Loading reservation…</Text>
+      </ScrollView>
       </SafeScreen>
     );
   }
   if (state === "error") {
     return (
       <SafeScreen edges={["top", "bottom"]} style={styles.host}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
         <Text>We couldn’t open this reservation.</Text>
         <Pressable
           accessibilityLabel="Try again"
@@ -68,6 +77,7 @@ export default function GuestReservationManageRoute() {
         >
           <Text>Try again</Text>
         </Pressable>
+      </ScrollView>
       </SafeScreen>
     );
   }
@@ -80,6 +90,10 @@ export default function GuestReservationManageRoute() {
     : "No refund has been requested.";
   return (
     <SafeScreen edges={["top", "bottom"]} style={styles.host}>
+        <ScrollView
+          style={styles.scroll}
+          contentContainerStyle={styles.scrollContent}
+        >
       <Text style={styles.title}>Manage reservation</Text>
       <Text>{copy}</Text>
       {refund
@@ -141,11 +155,20 @@ export default function GuestReservationManageRoute() {
           </Pressable>
         )
         : null}
-    </SafeScreen>
+    </ScrollView>
+      </SafeScreen>
   );
 }
 const styles = StyleSheet.create({
-  host: { flex: 1, justifyContent: "center", padding: 24, gap: 16 },
+  // #2211 — `host` keeps only the frame. It was `flex: 1` +
+  // `justifyContent: "center"` with no scroll container on ALL THREE
+  // branches; the `ready` branch stacks five text blocks (including a long
+  // refund paragraph) plus Refresh and Cancel-reservation. Centring moved
+  // to `scrollContent`.
+  host: { flex: 1 },
+  scroll: { flex: 1, overflow: "hidden" },
+  // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+  scrollContent: { flexGrow: 1, justifyContent: "center", padding: 24, gap: 16 },
   title: { fontSize: 24, fontWeight: "700" },
   button: {
     minHeight: 44,
