@@ -111,10 +111,17 @@ export const FREE_CHECKOUT_CONFLICT_MESSAGE =
   "We could not complete this reservation right now. Check your email and your tickets before trying again — if a pass is already there, you are set.";
 
 /**
- * issue #2337 — `intake_schema_stale`. Trip-shaped free reservations only (the
- * arm is gated on `event_type === 'trip'`), but the mapper is shared with
+ * issue #2337 — `intake_schema_stale`. Trip-shaped free reservations only: the
+ * server arm that emits this token runs only when the event row's type column
+ * marks the offering as a trip. The mapper is nevertheless shared with
  * `checkout-trip`, so the token is answered here rather than left to fall
  * through to a conflict sentence that says nothing useful.
+ *
+ * The condition above is described in prose deliberately. Quoting the
+ * comparison verbatim trips ORCH-0963's C4 check
+ * (`no-positive-event-type-trip-filter`), which matches RAW source including
+ * comments — this file carries no such filter, and must not be allowlisted for
+ * one it does not have.
  */
 export const FREE_CHECKOUT_INTAKE_STALE_MESSAGE =
   "The organizer updated this event's questions, so the answers you gave are out of date. Reopen the tickets and answer them again — nothing was reserved.";
