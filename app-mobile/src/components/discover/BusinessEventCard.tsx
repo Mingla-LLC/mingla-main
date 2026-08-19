@@ -104,6 +104,24 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
     [handlePress],
   );
 
+  // issue #2333 — ONLINE-ONLY events now reach this grid. `20270427002335` adds the
+  // online carve-out to `pg_discover_business_events`, so an event with no city and no
+  // pin surfaces in EVERY market instead of being returned by none. Such a row has
+  // `venueName === null` AND `city === null`, so `venueName ?? city ?? ""` below is the
+  // EMPTY STRING and the meta row silently lost its second half — a card with a date and
+  // nothing else, in every market, with no signal that it is online.
+  //
+  // Seth's decision (OQ-1, 2026-08-19): render an explicit "Online" badge where the
+  // venue line sits. `format` is already on every card (`mapRpcRowToCard` →
+  // `deriveSharedFormat`, _business-query.ts:123-126), so this is a display change over
+  // data already present — no new query and no brand-city lookup.
+  //
+  // The test is `format === "online"` and NOT the truthiness of some is-online flag:
+  // `deriveSharedFormat` returns "hybrid" for a hybrid event, which HAS a real venue and
+  // a real city and must keep rendering them. Same one-conjunct trap the server-side
+  // carve-out carries (see the migration header + I-2333-ONLINE-ONLY-CARVE-OUT-IS-FORMAT-SCOPED).
+  const isOnlineEvent = data.format === "online";
+
   const venueLine =
     data.venueName ?? data.city ?? "";
 
@@ -111,7 +129,15 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
     <GestureDetector gesture={tapGesture}>
     <View
       accessibilityRole="button"
-      accessibilityLabel={`${data.title} on Mingla`}
+      // issue #2333 — the badge is a visual signal, and the card is a single a11y
+      // element (accessibilityRole="button"), so its children are not announced
+      // separately. Fold "Online" into the label or a screen-reader user gets the
+      // blank-venue experience the badge exists to remove.
+      accessibilityLabel={
+        isOnlineEvent
+          ? `${data.title}, online event, on Mingla`
+          : `${data.title} on Mingla`
+      }
       style={[
         styles.card,
         { width, height },
@@ -173,7 +199,20 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
               timezone: data.timezone,
             })}
           </Text>
-          {venueLine.length > 0 ? (
+          {/* issue #2333 — an online event occupies the venue slot with an explicit
+              "Online" badge instead of the empty string. Checked BEFORE venueLine so a
+              legacy online row that still carries a stale venueName from an earlier
+              in-person state does not advertise a venue nobody can turn up to. */}
+          {isOnlineEvent ? (
+            <>
+              <Text style={styles.infoChipSep}> · </Text>
+              <View style={styles.onlineBadge}>
+                <Text style={styles.onlineBadgeText} numberOfLines={1}>
+                  Online
+                </Text>
+              </View>
+            </>
+          ) : venueLine.length > 0 ? (
             <>
               <Text style={styles.infoChipSep}> · </Text>
               <Text style={styles.infoChipVenue} numberOfLines={1}>
@@ -248,5 +287,35 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: "rgba(255,255,255,0.85)",
     flexShrink: 1,
+  },
+  // issue #2333 — the "Online" badge that occupies the venue slot for an online-only
+  // event. NO new visual language: this is the pill idiom already established in this
+  // directory — `minglaPill` above (borderRadius 999, 10px 600-weight white text,
+  // letterSpacing 0.3) and `StayCard.kindBadge` (1px rgba(255,255,255,0.18) hairline).
+  // The ONE value that differs from `minglaPill` is the fill: `minglaPill` sits on bare
+  // photo and darkens, while this sits INSIDE `infoChip` which is already
+  // rgba(0,0,0,0.55), so a darkening fill would be invisible against its own parent.
+  // It lightens instead, the same inversion `StayFilterChips`/`TripsContent` use for a
+  // chip on an already-dark surface.
+  //
+  // Metrics are tuned to preserve the meta row's rhythm rather than to decorate: 11px
+  // date text has a ~14px line box, and paddingVertical 1 + lineHeight 12 + 1px border
+  // gives the badge the same 14px, so an online card's info chip is EXACTLY as tall as
+  // its in-person neighbours in the same grid row. No layout shift, no ragged grid.
+  onlineBadge: {
+    paddingHorizontal: 6,
+    paddingVertical: 1,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: "rgba(255,255,255,0.18)",
+    backgroundColor: "rgba(255,255,255,0.16)",
+    flexShrink: 0,
+  },
+  onlineBadgeText: {
+    fontSize: 10,
+    fontWeight: "600",
+    lineHeight: 12,
+    color: "#fff",
+    letterSpacing: 0.3,
   },
 });
