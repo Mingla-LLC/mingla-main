@@ -11,7 +11,14 @@
 #   scripts/orch-worktree/reap.sh <worktree-path> [--force]
 #
 # Example:
-#   scripts/orch-worktree/reap.sh ~/Desktop/mingla-orchs/orch-0946-[paywall-tier-copy-refresh]
+#   scripts/orch-worktree/reap.sh ~/Desktop/mingla-orchs/orch-0946-paywall-tier-copy-refresh
+#
+# Path shape: worktrees are bracket-free as of #2210 (`<ORCH_ID>-<label>`, same
+# as the branch). This script is fully path-agnostic — it takes the path as $1
+# and quotes "$WT" everywhere — so it reaps the LEGACY bracketed
+# `<ORCH_ID>-[<label>]` worktrees spawned before #2210 exactly as well. Those are
+# not migrated on purpose (see spawn.sh); reap them normally as their issues
+# close and the population drains itself.
 #
 # Safety:
 #   - Refuses to reap if the worktree has uncommitted changes.
