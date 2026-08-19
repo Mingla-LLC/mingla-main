@@ -2,7 +2,7 @@ const read = (path: string) =>
   Deno.readTextFile(new URL(path, import.meta.url));
 
 const migration = await read(
-  "../../../migrations/20270422001972_issue_1972_ari_event_lifecycle.sql",
+  "../../../migrations/20270426001972_issue_1972_ari_event_lifecycle.sql",
 );
 const confirm = await read("../../agent-confirm-action/index.ts");
 const chat = await read("../../agent-chat/index.ts");

@@ -38,7 +38,7 @@ export function check(sources) {
     "CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic",
     "WHEN 'patch_event_when' THEN\n      v_result:=public.business_update_live_event_atomic(",
     "FROM PUBLIC,anon,authenticated;\nGRANT EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)\n  TO service_role;",
-    "public.business_patch_event_taxonomy(\n    uuid,text,text[],text[],text[],numeric,numeric,text,text\n  ) TO service_role;",
+    "public.business_patch_event_taxonomy(\n    uuid,text,text[],text[],text[],numeric,numeric,text,text\n  ) TO authenticated,service_role;",
     "v_payload:=jsonb_set(v_payload,'{visibility}'",
     "v_core ? 'visibility'",
     "COALESCE(v_core->>'visibility','') NOT IN('public','unlisted','private')",
@@ -160,7 +160,7 @@ export function check(sources) {
 }
 
 const sources = {
-  migration: read("supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"),
+  migration: read("supabase/migrations/20270426001972_issue_1972_ari_event_lifecycle.sql"),
   tools: read("supabase/functions/_shared/agentTools.ts"),
   domains: read("supabase/functions/_shared/agentDomainTools.ts"),
   confirm: read("supabase/functions/agent-confirm-action/index.ts"),

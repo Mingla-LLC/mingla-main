@@ -1505,10 +1505,18 @@ REVOKE EXECUTE ON FUNCTION public.business_patch_event_when(uuid,jsonb,text,inte
 REVOKE EXECUTE ON FUNCTION public.business_patch_event_taxonomy(
   uuid,text,text[],text[],text[],numeric,numeric,text,text
 ) FROM PUBLIC,anon,authenticated;
+-- #2357: the revoke above correctly closes an accidental anon grant on
+-- business_patch_event_when (confirmed anon-executable in the deployed schema),
+-- but it must NOT strip `authenticated`: both functions are called DIRECTLY from
+-- the Business client with a user JWT (businessEvents.ts) and have no
+-- service_role caller. Both are SECURITY DEFINER and enforce
+-- biz_brand_effective_rank against auth.uid() internally, so the grant is not the
+-- security boundary — the function body is. An anon caller has no auth.uid() and
+-- fails the rank check regardless.
 GRANT EXECUTE ON FUNCTION public.business_patch_event_when(uuid,jsonb,text,integer),
   public.business_patch_event_taxonomy(
     uuid,text,text[],text[],text[],numeric,numeric,text,text
-  ) TO service_role;
+  ) TO authenticated,service_role;
 
 COMMENT ON TABLE public.agent_operation_receipts IS '#1972 shared exactly-once receipt; result commits atomically with its domain mutation.';
 COMMENT ON FUNCTION public.ari_execute_event_operation(uuid,text,jsonb) IS '#1972 canonical confirmed event dispatcher; pending action id is the operation id.';
