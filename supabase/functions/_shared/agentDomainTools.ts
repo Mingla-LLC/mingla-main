@@ -20,6 +20,10 @@ import {
   assertAgentReadEvent,
   resolveAccessibleAgentBrands,
 } from "./agentTenantScope.ts";
+// issue #2291 — ONE contract for what a channel_payload must contain. Ari is
+// the only writer that has no human between it and the send path, so it is the
+// writer that most needs to be told "no" before the row is stored.
+import { campaignPayloadIssues } from "./campaignPayloadContract.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const STR = { type: "string", minLength: 1, maxLength: 500 };
@@ -816,21 +820,76 @@ const sendVenueSms = writeTool(
 // I. Marketing
 // ----------------------------------------------------------------------------
 
+/**
+ * issue #2291 — plain-text fallback for the email payload's `body_text`,
+ * byte-identical to the composer's own `stripHtml` at
+ * `mingla-business/app/(tabs)/marketing/campaigns/compose.tsx`, so an
+ * Ari-drafted row and an operator-drafted row have the same shape.
+ *
+ * Cosmetic by design: `renderMarketingEmail` regenerates the text/plain part
+ * from `body_html` and never reads this key. It is written for parity with the
+ * composer, not because anything downstream consumes it.
+ */
+function stripHtmlToText(input: string): string {
+  return input.replace(/<[^>]+>/g, "");
+}
+
 const draftCampaign = writeTool(
   "draft_campaign",
-  "Create a marketing campaign draft (RLS insert). Does not send.",
+  // issue #2291 — the description is part of the fix. Ari wrote `body` into a
+  // key the email path never reads because nothing told it email needs a
+  // subject line and an HTML body under `body_html`.
+  "Create a marketing campaign draft (RLS insert). Does not send. " +
+    "`body` is the message content: for email it is the HTML body and `subject` " +
+    "is the subject line (both required); for sms it is the plain-text body and " +
+    "`subject` is ignored. Only 'email' and 'sms' can be sent.",
   {
     brand_id: UUID,
     title: STR,
     body: { type: "string" },
-    channel: { type: "string", enum: ["email", "sms", "rcs"] },
+    subject: { type: "string" },
+    channel: { type: "string", enum: ["email", "sms"] },
   },
   ["brand_id", "title"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const channel = args.channel === "sms" || args.channel === "rcs"
-      ? args.channel
-      : "email";
+    // issue #2291 (M2) — `rcs` was accepted here and by the DB CHECK, but
+    // `dispatchByKind` in marketing-send has no rcs arm and throws
+    // `unknown_channel_kind:rcs`. An rcs draft could only ever be claimed and
+    // then flipped to 'failed'. Refuse it at the writer instead of storing a
+    // campaign that is guaranteed to fail.
+    if (
+      args.channel !== undefined && args.channel !== "email" &&
+      args.channel !== "sms"
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        `channel must be "email" or "sms" — ${
+          String(args.channel)
+        } cannot be dispatched`,
+      );
+    }
+    const channel = args.channel === "sms" ? "sms" : "email";
+    // Build the CHANNEL-CORRECT payload. Before #2291 this wrote a single
+    // `body` key for every channel — correct for sms (marketing-send's sms
+    // branch reads `body`), silently empty for email (the email branch reads
+    // `subject` + `body_html`).
+    const rawBody = typeof args.body === "string" ? args.body : "";
+    const channelPayload = channel === "sms"
+      ? { kind: "sms", body: rawBody }
+      : {
+        kind: "email",
+        subject: typeof args.subject === "string" ? args.subject : "",
+        body_html: rawBody,
+        body_text: stripHtmlToText(rawBody),
+        embedded_events: [] as string[],
+      };
+    // Validate BEFORE the audience side-effects below, so a bad call cannot
+    // leave a stray system audience behind.
+    const payloadIssues = campaignPayloadIssues(channelPayload);
+    if (payloadIssues.length > 0) {
+      throw new ToolError("INVALID_ARGS", payloadIssues.join("; "));
+    }
     let audienceId: string | null = null;
     const { data: audiences, error: audErr } = await client
       .from("marketing_audiences")
@@ -880,10 +939,7 @@ const draftCampaign = writeTool(
         audience_id: audienceId,
         name: args.title,
         channel,
-        channel_payload: {
-          kind: channel,
-          body: typeof args.body === "string" ? args.body : "",
-        },
+        channel_payload: channelPayload,
         status: "draft",
       })
       .select("id, name, status, channel")
@@ -901,6 +957,31 @@ const scheduleCampaign = writeTool(
   async (args, client, _userId) => {
     if (!isUuid(args.campaign_id)) {
       throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    // issue #2291 — CONTENT GATE. `schedule_campaign` carries NO confirm phrase
+    // (only `send_campaign_now` does), and cron `orch_0815_b_marketing_send`
+    // dispatches whatever is 'scheduled' every minute under the service role.
+    // So arming a campaign here is, in practice, sending it — with no human in
+    // the loop. Fixing only `draft_campaign` would leave this independently
+    // exploitable against the empty-bodied drafts the composer already
+    // persists (11 of them in production at the time of writing), because
+    // those carry the RIGHT keys with EMPTY values and the key mismatch never
+    // enters into it.
+    const { data: existing, error: loadErr } = await client
+      .from("marketing_campaigns")
+      .select("channel_payload")
+      .eq("id", args.campaign_id)
+      .maybeSingle();
+    if (loadErr) throw new ToolError("RPC_FAILED", loadErr.message);
+    if (!existing) throw new ToolError("INVALID_ARGS", "Campaign not found");
+    const payloadIssues = campaignPayloadIssues(
+      (existing as { channel_payload?: unknown }).channel_payload,
+    );
+    if (payloadIssues.length > 0) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        `This campaign cannot be scheduled yet: ${payloadIssues.join("; ")}`,
+      );
     }
     const { data, error } = await client
       .from("marketing_campaigns")
