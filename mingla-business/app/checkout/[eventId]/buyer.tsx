@@ -82,6 +82,7 @@ import {
   freeCheckoutErrorMessage,
   isCompletedFreeOrder,
   isFreeAlreadyReserved,
+  isFreeReservationAlreadyExists,
 } from "../../../src/services/ticketCheckoutService";
 // issue #2150 — the buyer status token has to OUTLIVE this component for an
 // anonymous guest to prove a completed free reservation is theirs after a
@@ -250,8 +251,22 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   // issue #2135 [multi-date public day picker] — `eventDateId` is the occurrence
   // the guest chose on the public page, seeded into the cart by the cart step.
   // null on every single-date checkout, which keeps the request byte-identical.
-  const { lines, buyer, setBuyer, recordResult, eventDateId, eventDateIds } =
-    useCart();
+  // issue #2337 — `result` is read for its buyer status token, NOT for its
+  // order. It is the possession proof this app session already holds from an
+  // earlier free reservation, and presenting it is what lets the server hand
+  // the guest their EXISTING reservation back instead of refusing to disclose
+  // it. See the `heldToken` fallback below.
+  const {
+    lines,
+    buyer,
+    setBuyer,
+    recordResult,
+    // Aliased: the free branch below declares its own `result` for the create
+    // response, and the two are different things.
+    result: cartResult,
+    eventDateId,
+    eventDateIds,
+  } = useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -456,8 +471,31 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         const storage = Platform.OS === "web"
           ? (globalThis as unknown as { sessionStorage?: Storage }).sessionStorage
           : undefined;
+        // issue #2337 — TWO sources of possession, in order.
+        //
+        // `sessionStorage` is WEB-ONLY and per-tab: `Platform.OS === "web"`
+        // above means `storage` is `undefined` on iOS and Android, so a native
+        // guest could NEVER present a token, and every native resubmit of a
+        // completed free reservation was refused with
+        // `free_reservation_already_exists` — the 409 that #2337 was rendering
+        // as "this free ticket is no longer available".
+        //
+        // The cart's own `result` already carries the token (#2323 put it
+        // there), it survives navigation inside this app session on EVERY
+        // platform, and it is the same secret the storage copy holds. Present
+        // it when there is no stored one, and the server hands the guest their
+        // existing reservation back — which is how "take them to it" actually
+        // happens: the replay answers `free_completed` with the real passes and
+        // the flow below routes to /confirm.
+        //
+        // The SERVER decides whether the token belongs to this reservation
+        // (`issue_2150_free_replay_disclosure_authorized` compares its hash
+        // against THIS session's). A token from some other event simply fails
+        // that comparison, so the client never has to guess at identity.
         const heldToken =
-          readCheckoutResumePayload(storage, eventId)?.buyerStatusToken ?? "";
+          readCheckoutResumePayload(storage, eventId)?.buyerStatusToken ??
+            cartResult?.buyerStatusToken ??
+            "";
         const result = await createTicketCheckout({
           eventId,
           buyer,
@@ -542,9 +580,28 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         });
         router.replace(`/checkout/${eventId}/confirm` as never);
       } catch (error) {
-        // issue #2136 — never render a raw runtime string. `freeCheckoutErrorMessage`
-        // is total: a handled 409 becomes the "no longer available" copy, and
-        // everything else becomes the generic "nothing was reserved" copy.
+        // issue #2337 — the server said the guest ALREADY HOLDS this
+        // reservation and this request could not prove it is theirs.
+        //
+        // This arm exists because `isFreeAlreadyReserved(result)` above is
+        // unreachable: it narrows a 200 envelope with `kind:
+        // "free_already_reserved"`, and `ticket-checkout-create` has never
+        // emitted one — it answers HTTP 409 `free_reservation_already_exists`,
+        // which THROWS, landing here. So #2150's copy was never once shown; the
+        // status-keyed mapper turned it into "this free ticket is no longer
+        // available", which is the #2337 report.
+        //
+        // Told the truth in the ONE place a guest can act on it, and never
+        // handed an order it did not prove it owns. The route to the pass is
+        // the possession fallback above, not a disclosure here.
+        if (isFreeReservationAlreadyExists(error)) {
+          setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
+          return;
+        }
+        // issue #2136 — never render a raw runtime string. #2337 — and never
+        // render a claim the server did not make: `freeCheckoutErrorMessage` is
+        // total AND keys on the bounded token, so an unidentified 409 says
+        // something true and non-specific rather than "sold out".
         setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         setSubmitting(false);
@@ -564,6 +621,8 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     // issue #2135 — the chosen occurrence is read inside this handler.
     eventDateId,
     eventDateIds,
+    // issue #2337 — the handler reads the cart's held buyer status token.
+    cartResult,
     recordResult,
     router,
   ]);

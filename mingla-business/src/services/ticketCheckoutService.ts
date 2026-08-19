@@ -1,4 +1,13 @@
 import { supabase } from "./supabase";
+// issue #2337 — the free rail's guest copy, its bounded-token mapper and the
+// transport-refusal readers live in a dependency-free module so a Deno test can
+// drive the REAL edge handler and the REAL mapper in one process. Re-exported
+// below so every existing import site is untouched.
+import {
+  codeOf,
+  httpStatusOf,
+  readEdgeRefusal,
+} from "./checkoutErrorCopy";
 import type { BuyerDetails, CartLine, OrderResult } from "../components/checkout/CartContext";
 // ISSUE-865 WP-C — thread the first-party ad click_id (captured on the public
 // page) into checkout-create so the post-finalize conversion send can link the
@@ -231,80 +240,36 @@ export const ticketCheckoutAccessError = (
 };
 
 /**
- * issue #2136 [free-ticket checkout] — the guest-facing copy for a free
- * reservation that did not complete.
+ * issue #2136 [free-ticket checkout] / issue #2337 — the guest-facing copy for a
+ * free reservation that did not complete, and the mapper that chooses it.
  *
- * WHY THIS EXISTS. The free branch of `app/checkout/[eventId]/buyer.tsx` used
- * to render whatever string landed in its `catch` straight into the submit
- * error. Two of those strings are not English:
- *   - `Cannot read properties of undefined (reading 'map')` — the raw
- *     TypeError from `result.tickets.map(...)` when the server sent no tickets;
- *   - `Edge Function returned a non-2xx status code` — the opaque message
- *     `supabase.functions.invoke` produces for EVERY handled server refusal,
- *     including the 409 the server now returns when the sale is gone.
+ * MOVED, NOT CHANGED IN OWNERSHIP. The definitions now live in
+ * `./checkoutErrorCopy.ts`, which imports nothing, so the Deno suite for
+ * `ticket-checkout-create` can exercise the real mapper against the real edge
+ * handler's real 409 responses instead of a transcription of them. Re-exported
+ * here so `buyer.tsx`, the #2136 suite and the #2150 suite keep importing from
+ * exactly where they always did.
  *
- * Both are replaced with copy that says what happened and what to do, and that
- * is explicit that nothing was reserved — a guest must never be left unsure
- * whether they hold a ticket.
+ * #2337's rule: the mapper keys on the BOUNDED TOKEN, never on the status
+ * alone. `httpStatusOf(error) === 409` used to be the first and only question
+ * asked, and 409 is what the server answers for twelve distinct free-rail
+ * conflicts — including `free_reservation_already_exists`, which means the guest
+ * already HOLDS the ticket they were being told no longer existed.
  */
-export const FREE_CHECKOUT_UNAVAILABLE_MESSAGE =
-  "This free ticket is no longer available — the organizer may have paused or changed this event. Nothing was reserved.";
-
-export const FREE_CHECKOUT_FAILED_MESSAGE =
-  "We could not reserve your free ticket. Nothing was reserved — please try again.";
-
-/**
- * issue #2150 — the guest ALREADY holds this reservation and this request could
- * not prove it belongs to them, so the server declined to hand back the order
- * and its passes.
- *
- * The copy must NOT say "nothing was reserved" — that is the exact opposite of
- * the truth here and would push a guest who already has a ticket into
- * reserving again somewhere else. It also must not imply failure: nothing went
- * wrong, and no duplicate was created.
- */
-export const FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE =
-  "You already have a free ticket for this event — we emailed your pass, and it is in your tickets. Nothing was reserved twice.";
-
-/**
- * The bounded HTTP statuses the server uses to refuse a free reservation.
- * 409 is `checkout_unavailable` (the sale is gone); 401/403 are the #2101
- * access denials, which keep their own dedicated copy upstream.
- */
-const httpStatusOf = (error: unknown): number | null => {
-  if (typeof error !== "object" || error === null) return null;
-  const direct = (error as { status?: unknown }).status;
-  if (typeof direct === "number") return direct;
-  const context = (error as { context?: unknown }).context;
-  if (typeof context === "object" && context !== null) {
-    const contextStatus = (context as { status?: unknown }).status;
-    if (typeof contextStatus === "number") return contextStatus;
-  }
-  return null;
-};
-
-/**
- * Map ANY free-checkout failure to guest-readable copy. Pure and total: it
- * never returns a raw runtime message, so a future TypeError on this path
- * cannot leak to a buyer either.
- */
-export const freeCheckoutErrorMessage = (error: unknown): string => {
-  if (httpStatusOf(error) === 409) return FREE_CHECKOUT_UNAVAILABLE_MESSAGE;
-  const message =
-    typeof (error as { message?: unknown })?.message === "string"
-      ? (error as { message: string }).message
-      : "";
-  if (
-    message === FREE_CHECKOUT_UNAVAILABLE_MESSAGE ||
-    message === FREE_CHECKOUT_FAILED_MESSAGE
-  ) {
-    return message;
-  }
-  if (message.includes("checkout_unavailable")) {
-    return FREE_CHECKOUT_UNAVAILABLE_MESSAGE;
-  }
-  return FREE_CHECKOUT_FAILED_MESSAGE;
-};
+export {
+  FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
+  FREE_CHECKOUT_CONFLICT_MESSAGE,
+  FREE_CHECKOUT_FAILED_MESSAGE,
+  FREE_CHECKOUT_INTAKE_STALE_MESSAGE,
+  FREE_CHECKOUT_MESSAGES,
+  FREE_CHECKOUT_SOLD_OUT_MESSAGE,
+  FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
+  FREE_RESERVATION_ALREADY_EXISTS_TOKEN,
+  freeCheckoutErrorMessage,
+  isFreeReservationAlreadyExists,
+  TICKET_CAPACITY_EXCEEDED_TOKEN,
+} from "./checkoutErrorCopy";
+export type { CheckoutRefusal } from "./checkoutErrorCopy";
 
 /**
  * issue #2136 — the server's `free_completed` envelope is only trustworthy when
@@ -412,35 +377,22 @@ export interface TicketCheckoutInvokeError extends Error {
   status: number | null;
   /** The bounded `error` token from the response body, e.g. `checkout_in_progress`. */
   code: string | null;
+  /**
+   * issue #2337 — the response body's `detail`, when it carried one.
+   *
+   * ADDITIVE. It exists for exactly one reason: `ticket-checkout-create`
+   * answers a create-session RPC raise as
+   * `{error:"checkout_session_failed", detail: sessionError.message}`, and
+   * `ticket_capacity_exceeded` — the ONE refusal on the free rail that really
+   * does mean "there are no tickets left" — is only visible in that detail.
+   * Discarding it is why the client could not tell a sold-out sale from a
+   * plumbing failure, and therefore called everything sold out.
+   *
+   * NEVER RENDERED. It is a raw database message; it is matched against a known
+   * constant and nothing else.
+   */
+  detail: string | null;
 }
-
-const readEdgeRefusal = async (
-  error: unknown,
-): Promise<{ status: number | null; code: string | null }> => {
-  if (typeof error !== "object" || error === null) {
-    return { status: null, code: null };
-  }
-  const context = (error as { context?: unknown }).context;
-  if (typeof context !== "object" || context === null) {
-    return { status: null, code: null };
-  }
-  const rawStatus = (context as { status?: unknown }).status;
-  const status = typeof rawStatus === "number" ? rawStatus : null;
-  const json = (context as { json?: unknown }).json;
-  if (typeof json !== "function") return { status, code: null };
-  try {
-    const body: unknown = await (json as () => Promise<unknown>).call(context);
-    const rawCode = (body as { error?: unknown })?.error;
-    return {
-      status,
-      code: typeof rawCode === "string" && rawCode.length > 0 ? rawCode : null,
-    };
-  } catch {
-    // A body that is already consumed / not JSON tells us nothing extra. The
-    // status still stands, and the mapper below has a total fallback.
-    return { status, code: null };
-  }
-};
 
 const invokeOrThrow = async <T>(
   functionName: string,
@@ -457,6 +409,11 @@ const invokeOrThrow = async <T>(
     const failure = new Error(error.message) as TicketCheckoutInvokeError;
     failure.status = refusal.status;
     failure.code = refusal.code;
+    // issue #2337 — the detail rides along too. Without it the free mapper
+    // cannot distinguish `ticket_capacity_exceeded` from any other
+    // `checkout_session_failed`, and a sold-out sale and a broken RPC read
+    // identically to the guest.
+    failure.detail = refusal.detail;
     throw failure;
   }
   return data as T;
@@ -520,11 +477,6 @@ export const PAID_CHECKOUT_PAYMENT_ABANDONED_MESSAGE =
  */
 export const PAID_CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
   "Your payment came back with a different amount or currency than this order, so no tickets were issued. If money left your account, contact support@usemingla.com before paying again.";
-
-const codeOf = (error: unknown): string | null => {
-  const code = (error as { code?: unknown })?.code;
-  return typeof code === "string" && code.length > 0 ? code : null;
-};
 
 export const paidCheckoutErrorMessage = (error: unknown): string => {
   const code = codeOf(error);
