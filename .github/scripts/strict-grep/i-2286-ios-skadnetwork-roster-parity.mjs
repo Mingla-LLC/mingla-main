@@ -45,6 +45,11 @@
  *      REQUIRED_NETWORKS entry FAILS. Growth must carry a first-party source
  *      URL, so an aggregator's list cannot be pasted in unattributed. A8 also
  *      catches the mode A6 cannot: both apps growing the SAME wrong way.
+ *   A9 both apps declare `NSAdvertisingAttributionReportEndpoint` with the EXACT
+ *      AppsFlyer value. Unlike A1-A8 this key really is advertised-app
+ *      configuration — it is the one thing in this file that changes what
+ *      Mingla receives. Pinned exactly, because Apple permits a single endpoint
+ *      per app and a wrong one fails silently.
  *
  * Exit 0 clean, 1 on violation. Supports --self-test.
  */
@@ -61,9 +66,19 @@ const ROOT = join(__dirname, "..", "..", "..");
  * never a third-party aggregator, never a blog. `source` is the page the id was
  * read from, so a future reader can re-verify rather than trust this file.
  *
- * Shrinking this map, or removing an id from it, is a visible diff in a file
- * `tests-append-only.yml` ratchets. That is the "cannot silently shrink" half of
- * #2286's done-definition.
+ * WHAT ACTUALLY PROTECTS THIS MAP — corrected at test, because the first draft
+ * of this comment claimed `tests-append-only.yml` ratchets it and that is FALSE.
+ * That workflow's `TEST_FILE_PATTERNS` is only `*.test.*`, `*.spec.*` and
+ * `__tests__/`; this file matches none of them, so it may be edited freely.
+ *
+ * The real protections are narrower, and worth knowing exactly:
+ *   - ORCH-1383's MANIFEST ratchet guarantees this file cannot be DELETED or go
+ *     unrun (`expectedStrictGrepMjsFiles` + P1/P3 + `selfTestWiredFloor`).
+ *   - A5 names the network on every miss, so a shrink reads as "missing Meta
+ *     identifier X" in CI rather than as a quietly smaller number.
+ *   - Nothing mechanically prevents someone editing this map and both app.json
+ *     files in ONE commit. That is a 3-file diff a reviewer sees; it is a review
+ *     control, not an automated one. Do not mistake it for a ratchet.
  */
 export const REQUIRED_NETWORKS = {
   meta: {
@@ -116,6 +131,35 @@ export const PUBLISHES_NO_IDENTIFIER = {
     "https://ads.apple.com/app-store/help/reporting/0028-apple-ads-attribution-api",
 };
 
+/**
+ * The postback-copy endpoint — the ONE key in this file that is genuinely
+ * advertised-app configuration, as opposed to the source-app roster above.
+ *
+ * Apple, `NSAdvertisingAttributionReportEndpoint`: "To specify where the system
+ * sends a copy of the winning install-validation postback to the advertised
+ * app's developer… The system uses only the registrable part of the domain name,
+ * and ignores any subdomains." That last clause is why this value is a fixed
+ * constant and cannot be account-specific.
+ *
+ * AppsFlyer's own DevHub (https://dev.appsflyer.com/hc/docs/integrate-ios-sdk):
+ * "Add the `NSAdvertisingAttributionReportEndpoint` key to your app's
+ * info.plist. Set the key's value to `https://appsflyer-skadnetwork.com/`."
+ * And: "Mandatory for Apple Ads: forwarding postbacks is required for AA SKAN
+ * reporting (iOS 15+)."
+ *
+ * Verified live 2026-08-18: the domain resolves, carries a valid Amazon-issued
+ * certificate for *.appsflyer-skadnetwork.com, and Apple's generated well-known
+ * path answers POST with 400 (a real receiver rejecting an empty body) while
+ * GET 404s.
+ *
+ * This is ADDITIVE, not a diversion: ad networks keep receiving their own
+ * postbacks. Apple allows exactly ONE such endpoint per app, so pointing it
+ * anywhere else silently gives up CV validation — which is why it is pinned to
+ * an exact string rather than merely "present".
+ */
+export const POSTBACK_COPY_ENDPOINT = "https://appsflyer-skadnetwork.com/";
+const POSTBACK_COPY_KEY = "NSAdvertisingAttributionReportEndpoint";
+
 const APPS = {
   consumer: "app-mobile/app.json",
   business: "mingla-business/app.json",
@@ -132,8 +176,39 @@ const ID_SHAPE = /^[a-z0-9]+\.skadnetwork$/;
  * @param {Record<string, {label: string, ids: string[]}>} [required]
  * @returns {string[]} violations
  */
-export function evaluate(consumerItems, businessItems, required = REQUIRED_NETWORKS) {
+export function evaluate(
+  consumerItems,
+  businessItems,
+  required = REQUIRED_NETWORKS,
+  // NO defaults on these two, deliberately. A default would make `undefined`
+  // — the exact shape of "the key is absent from app.json" — silently become
+  // the correct value, and the three missing-key cases below would pass
+  // against a broken plist. The self-test caught precisely that.
+  consumerEndpoint,
+  businessEndpoint,
+) {
   const violations = [];
+
+  // A9 — the postback-copy endpoint. Pinned to an exact string in BOTH apps.
+  // Apple permits exactly one endpoint per app, so "present but pointing
+  // elsewhere" is a silent loss of conversion-value validation, not a near-miss.
+  for (const [app, endpoint] of [
+    ["consumer", consumerEndpoint],
+    ["business", businessEndpoint],
+  ]) {
+    if (endpoint === undefined || endpoint === null) {
+      violations.push(
+        `A9 ${app} (${APPS[app]}): ios.infoPlist.${POSTBACK_COPY_KEY} is missing. ` +
+          `AppsFlyer: "Mandatory for Apple Ads: forwarding postbacks is required for AA SKAN reporting (iOS 15+)."`,
+      );
+    } else if (endpoint !== POSTBACK_COPY_ENDPOINT) {
+      violations.push(
+        `A9 ${app} (${APPS[app]}): ${POSTBACK_COPY_KEY} is "${endpoint}", expected ` +
+          `"${POSTBACK_COPY_ENDPOINT}". Apple allows ONE endpoint per app; pointing it ` +
+          `elsewhere gives up AppsFlyer's conversion-value validation silently.`,
+      );
+    }
+  }
 
   // A7 (roster half) — a gate whose expectations are empty asserts nothing.
   const rosterIds = Object.values(required).flatMap((n) => n.ids ?? []);
@@ -271,72 +346,103 @@ const items = (ids) => ids.map((id) => ({ SKAdNetworkIdentifier: id }));
 function selfTest() {
   const ROSTER = { ...REQUIRED_NETWORKS };
   const all = Object.values(ROSTER).flatMap((n) => n.ids);
+  const EP = POSTBACK_COPY_ENDPOINT;
+  // Roster-focused cases go through `ev`, which supplies a correct endpoint so
+  // A9 stays quiet and each case isolates the assertion it is aimed at. The A9
+  // cases call `evaluate` directly so they can pass a genuine `undefined`.
+  const ev = (c, b, req = ROSTER) => evaluate(c, b, req, EP, EP);
   /** @type {[string, boolean, string[]][]} */
   const cases = [];
   const record = (name, shouldPass, v) => cases.push([name, shouldPass, v]);
 
   // 1 — the shipped shape: complete, identical.
-  record("complete + identical", true, evaluate(items(all), items(all)));
+  record("complete + identical", true, ev(items(all), items(all)));
 
   // 2 — a network's id dropped from the consumer app only. Must trip BOTH the
   //     completeness assertion (A5) and the drift assertion (A6).
-  record("consumer missing one required id", false, evaluate(items(all.slice(1)), items(all)));
+  record("consumer missing one required id", false, ev(items(all.slice(1)), items(all)));
 
   // 3 — dropped from the business app only.
-  record("business missing one required id", false, evaluate(items(all), items(all.slice(0, -1))));
+  record("business missing one required id", false, ev(items(all), items(all.slice(0, -1))));
 
   // 4 — dropped from BOTH: no drift, but still incomplete. This is the
   //     "list silently shrank" mode, and A6 alone would not catch it.
-  record("both apps shrank identically", false, evaluate(items(all.slice(1)), items(all.slice(1))));
+  record("both apps shrank identically", false, ev(items(all.slice(1)), items(all.slice(1))));
 
   // 5 — drift by ADDITION, not removal.
-  record("business has an extra id", false, evaluate(items(all), items([...all, "zz1234abcd.skadnetwork"])));
+  record("business has an extra id", false, ev(items(all), items([...all, "zz1234abcd.skadnetwork"])));
 
   // 6 — Apple's lowercase requirement.
-  record("uppercase identifier", false, evaluate(items([...all.slice(1), all[0].toUpperCase()]), items(all)));
+  record("uppercase identifier", false, ev(items([...all.slice(1), all[0].toUpperCase()]), items(all)));
 
   // 7 — malformed suffix.
-  record("wrong suffix", false, evaluate(items([...all.slice(1), "v9wttpbfk9.skadnet"]), items(all)));
+  record("wrong suffix", false, ev(items([...all.slice(1), "v9wttpbfk9.skadnet"]), items(all)));
 
   // 8 — duplicate within one app.
-  record("duplicate id", false, evaluate(items([...all, all[0]]), items(all)));
+  record("duplicate id", false, ev(items([...all, all[0]]), items(all)));
 
   // 9 — key missing entirely.
-  record("consumer key absent", false, evaluate(undefined, items(all)));
+  record("consumer key absent", false, ev(undefined, items(all)));
 
   // 10 — empty array.
-  record("consumer empty array", false, evaluate([], items(all)));
+  record("consumer empty array", false, ev([], items(all)));
 
   // 11 — entry is a bare string, not a dictionary.
-  record("entry not a dictionary", false, evaluate([...items(all), "v9wttpbfk9.skadnetwork"], items(all)));
+  record("entry not a dictionary", false, ev([...items(all), "v9wttpbfk9.skadnetwork"], items(all)));
 
   // 12 — dictionary carries an extra/foreign key.
   record(
     "entry with a foreign key",
     false,
-    evaluate([...items(all), { SKAdNetworkIdentifier: "zz1234abcd.skadnetwork", note: "x" }], items(all)),
+    ev([...items(all), { SKAdNetworkIdentifier: "zz1234abcd.skadnetwork", note: "x" }], items(all)),
   );
 
   // 13 — dictionary uses the wrong key name (a very easy typo).
-  record("entry with wrong key name", false, evaluate([...items(all), { SKAdNetworkID: "zz1234abcd.skadnetwork" }], items(all)));
+  record("entry with wrong key name", false, ev([...items(all), { SKAdNetworkID: "zz1234abcd.skadnetwork" }], items(all)));
 
   // 14 — VACUITY: an emptied roster must fail even against a perfect plist.
-  record("empty roster is not a pass", false, evaluate(items(all), items(all), {}));
+  record("empty roster is not a pass", false, ev(items(all), items(all), {}));
 
   // 15 — VACUITY: a roster whose networks all carry zero ids must fail too.
-  record("roster with no ids is not a pass", false, evaluate(items(all), items(all), { meta: { label: "m", source: "s", ids: [] } }));
+  record("roster with no ids is not a pass", false, ev(items(all), items(all), { meta: { label: "m", source: "s", ids: [] } }));
 
   // 16 — both apps empty: the "checked nothing, went green" mode.
-  record("both apps empty", false, evaluate([], []));
+  record("both apps empty", false, ev([], []));
 
   // 17 — A8, the mode A6 CANNOT see: both apps grow identically with an id that
   //      has no first-party source. This is the "pasted an aggregator's list"
   //      failure, and drift-checking alone would call it clean.
   const aggregator = [...all, "424m5254lk.skadnetwork", "238da6jt44.skadnetwork"];
-  record("both apps grew with unsourced ids", false, evaluate(items(aggregator), items(aggregator)));
+  record("both apps grew with unsourced ids", false, ev(items(aggregator), items(aggregator)));
 
   // 18 — A8 must not fire on the sanctioned roster itself (guards over-strictness).
-  record("exact roster is not flagged as unsourced", true, evaluate(items(all), items(all)));
+  record("exact roster is not flagged as unsourced", true, ev(items(all), items(all)));
+
+  // --- A9, the postback-copy endpoint ---
+
+  // 19 — both apps carrying the exact endpoint is the shipped, passing shape.
+  record("endpoint present and exact in both", true, evaluate(items(all), items(all), ROSTER, EP, EP));
+
+  // 20/21 — absent from either app.
+  record("endpoint missing on consumer", false, evaluate(items(all), items(all), ROSTER, undefined, EP));
+  record("endpoint missing on business", false, evaluate(items(all), items(all), ROSTER, EP, undefined));
+
+  // 22 — missing from BOTH: no drift, still wrong. The mode a parity-only check misses.
+  record("endpoint missing on both", false, evaluate(items(all), items(all), ROSTER, undefined, undefined));
+
+  // 23 — present but pointing at someone else's collector. Apple allows ONE
+  //      endpoint, so this is a silent loss, not a near-miss.
+  record(
+    "endpoint points elsewhere",
+    false,
+    evaluate(items(all), items(all), ROSTER, "https://example-mmp.com/", EP),
+  );
+
+  // 24 — near-miss shapes that a substring or "contains appsflyer" check would wave through.
+  record("endpoint missing trailing slash", false, evaluate(items(all), items(all), ROSTER, "https://appsflyer-skadnetwork.com", EP));
+  record("endpoint over http", false, evaluate(items(all), items(all), ROSTER, "http://appsflyer-skadnetwork.com/", EP));
+  record("endpoint on a subdomain", false, evaluate(items(all), items(all), ROSTER, "https://mingla.appsflyer-skadnetwork.com/", EP));
+  record("endpoint empty string", false, evaluate(items(all), items(all), ROSTER, "", EP));
 
   let failed = 0;
   for (const [name, shouldPass, v] of cases) {
@@ -360,12 +466,21 @@ function selfTest() {
 
 if (process.argv.includes("--self-test")) selfTest();
 
-function readItems(rel) {
+function readInfoPlist(rel) {
   const json = JSON.parse(readFileSync(join(ROOT, rel), "utf8"));
-  return json?.expo?.ios?.infoPlist?.SKAdNetworkItems;
+  return json?.expo?.ios?.infoPlist ?? {};
 }
 
-const violations = evaluate(readItems(APPS.consumer), readItems(APPS.business));
+const consumerPlist = readInfoPlist(APPS.consumer);
+const businessPlist = readInfoPlist(APPS.business);
+
+const violations = evaluate(
+  consumerPlist.SKAdNetworkItems,
+  businessPlist.SKAdNetworkItems,
+  REQUIRED_NETWORKS,
+  consumerPlist[POSTBACK_COPY_KEY],
+  businessPlist[POSTBACK_COPY_KEY],
+);
 
 if (violations.length > 0) {
   console.error("\n[#2286 — i-2286-ios-skadnetwork-roster-parity] VIOLATIONS:\n");
@@ -381,6 +496,7 @@ if (violations.length > 0) {
 const total = Object.values(REQUIRED_NETWORKS).flatMap((n) => n.ids).length;
 console.log(
   `[#2286 — i-2286-ios-skadnetwork-roster-parity] PASS — both apps declare the same ` +
-    `${total}-identifier roster across ${Object.keys(REQUIRED_NETWORKS).length} networks.`,
+    `${total}-identifier roster across ${Object.keys(REQUIRED_NETWORKS).length} networks, ` +
+    `and both point ${POSTBACK_COPY_KEY} at ${POSTBACK_COPY_ENDPOINT}.`,
 );
 process.exit(0);
