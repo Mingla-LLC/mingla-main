@@ -1,0 +1,187 @@
+name: "Issue #2353 format truth and edit grant"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270429002353_issue_2353_format_truth_and_edit_grant.sql"
+      - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue_2353_*"
+      - ".github/scripts/strict-grep/i-2353-format-is-read-not-derived.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2353-format-truth-and-edit-grant.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270429002353_issue_2353_format_truth_and_edit_grant.sql"
+      - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue_2353_*"
+      - ".github/scripts/strict-grep/i-2353-format-is-read-not-derived.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2353-format-truth-and-edit-grant.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-replay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      # T-20, AND IT RUNS FIRST, ON A VIRGIN DATABASE.
+      #
+      # S0 is an apply-order guard, and the only way to exercise it is to apply
+      # 20270429002353 to a database where 20270422001972 has NOT been applied.
+      # That is a different database from the one every other step needs, so it
+      # cannot live inside the pg17 suite — it lives here, and it applies the
+      # REAL migration file rather than a re-implementation of its predicate
+      # (#2113: only executing the mutation finds an inert check).
+      #
+      # Two assertions, and the second is the one that matters: the guard must
+      # RAISE, and it must leave NOTHING behind. Production's applied head is
+      # HIGHER than #1972, so #1972 is applied surgically while this file runs
+      # the normal path; the wrong order would let #1972 overwrite every
+      # corrected function and re-remove the restored grant, silently, with
+      # both migrations recorded as applied.
+      - name: "#2353 T-20 — the apply-order guard refuses, and commits nothing"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          MIG=supabase/migrations/20270429002353_issue_2353_format_truth_and_edit_grant.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -c "DROP DATABASE IF EXISTS issue_2353_order_guard;" \
+            -c "CREATE DATABASE issue_2353_order_guard;"
+          set +e
+          OUT=$(psql -h localhost -U postgres -d issue_2353_order_guard -v ON_ERROR_STOP=1 -f "$MIG" 2>&1)
+          RC=$?
+          set -e
+          echo "$OUT"
+          if [ "$RC" -eq 0 ]; then
+            echo "FAIL: 20270429002353 applied CLEANLY to a database without 20270422001972."
+            echo "      S0 is inert. Applying in the wrong order would silently reverse every"
+            echo "      fix in this migration with no error anywhere (#2353)."
+            exit 1
+          fi
+          echo "$OUT" | grep -q 'issue_2353_requires_20270422001972_applied_first' || {
+            echo "FAIL: it refused, but not with S0's own error. The operator would be shown a"
+            echo "      symptom instead of the cause (#2353)."; exit 1; }
+          # Nothing committed: the four functions #2353 corrects must be absent,
+          # and so must the transitional grant.
+          LEFT=$(psql -h localhost -U postgres -d issue_2353_order_guard -tAc \
+            "SELECT count(*) FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+              WHERE n.nspname='public' AND p.proname IN (
+                'business_event_draft_payload_from_graph','business_update_live_event',
+                'ari_execute_event_operation','business_guard_event_publish_visibility');")
+          if [ "$LEFT" != "0" ]; then
+            echo "FAIL: the refused migration left $LEFT function(s) behind. A guard that raises"
+            echo "      AFTER installing schema has already done the damage it exists to"
+            echo "      prevent (#2353)."; exit 1; fi
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -c "DROP DATABASE issue_2353_order_guard;"
+          echo "PASS T-20 — S0 raised issue_2353_requires_20270422001972_applied_first and"
+          echo "committed nothing."
+
+      # The canonical replay. Timestamp order puts 20270422001972 (#1972/#2089)
+      # ahead of 20270429002353, which is exactly the order S0 demands, so the
+      # chain is also a positive control for the guard: it must NOT fire here.
+      # Production differs only in that its applied head is drifted higher, so
+      # the orchestrator applies #1972 surgically first.
+      - name: "Canonical migration replay (whole chain, timestamp order)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+
+      # T-1..T-19. Every assertion EXECUTES a real object against real rows or
+      # reads the live catalogue; nothing here is satisfiable by source text
+      # (#2113). The suite self-fails if fewer than 50 assertions run, if no
+      # hybrid value survived a real mutation, or if the publish guard refused
+      # nothing — a green run that proves nothing is treated as a failure.
+      - name: "#2353 executable suite (implementor happy path, T-1..T-19)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2353_format_truth.implementor.pg17.test.sql
+
+      # The suite pre-cleans and tears down its own fixtures. Running it twice
+      # proves it, and proves it left no residue for a later suite to trip over.
+      - name: "#2353 suite is idempotent (second consecutive run)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2353_format_truth.implementor.pg17.test.sql
+
+      # SC-1 read straight off the catalogue, independently of the suite: the
+      # transitional grant is really on both leaves, anon is really on neither,
+      # and the demoted leaf really did stay server-only. This is the exact
+      # query the orchestrator will run against production after the apply.
+      - name: "#2353 SC-1 — the grant surface, read from pg_proc.proacl"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            "SELECT p.proname, array_to_string(p.proacl,' | ') AS acl
+               FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
+              WHERE n.nspname='public'
+                AND p.proname IN ('business_patch_event_taxonomy','business_patch_event_when',
+                                  'business_update_live_event','business_update_live_event_atomic')
+              ORDER BY 1;"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -c \
+            "DO \$\$
+             BEGIN
+               IF NOT has_function_privilege('authenticated',
+                    'public.business_patch_event_taxonomy(uuid,text,text[],text[],text[],numeric,numeric,text,text)','EXECUTE')
+                  OR NOT has_function_privilege('authenticated',
+                    'public.business_patch_event_when(uuid,jsonb,text,integer)','EXECUTE') THEN
+                 RAISE EXCEPTION 'SC-1 FAIL: authenticated cannot reach a patch leaf a shipped build still calls';
+               END IF;
+               IF has_function_privilege('anon',
+                    'public.business_patch_event_taxonomy(uuid,text,text[],text[],text[],numeric,numeric,text,text)','EXECUTE')
+                  OR has_function_privilege('anon',
+                    'public.business_patch_event_when(uuid,jsonb,text,integer)','EXECUTE') THEN
+                 RAISE EXCEPTION 'SC-1 FAIL: anon holds EXECUTE on a patch leaf. That revoke was a genuine fix and must stay';
+               END IF;
+               IF has_function_privilege('authenticated',
+                    'public.business_update_live_event(uuid,jsonb,text,integer)','EXECUTE') THEN
+                 RAISE EXCEPTION 'SC-1 FAIL: the demoted leaf business_update_live_event is reachable by authenticated';
+               END IF;
+             END \$\$;"
+
+      # #2353 creates no anon-executable object. The shipped allowlist gate must
+      # stay green with its allowlist UNMODIFIED.
+      - name: Anonymous SECURITY DEFINER allowlist gate
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: bash scripts/ci/security_definer_anon_gate.sh
+
+  strict-grep-gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      # The gate proves itself first: it must REJECT all of its BAD fixtures —
+      # including the #2113 set-versus-count injection in both directions, the
+      # S3(a)/S3(b) independent reverts, the comment-forgery fixture, and the
+      # empty-map vacuity check — before its verdict on the real tree counts.
+      - run: node .github/scripts/strict-grep/i-2353-format-is-read-not-derived.mjs --self-test
+      - run: node .github/scripts/strict-grep/i-2353-format-is-read-not-derived.mjs
