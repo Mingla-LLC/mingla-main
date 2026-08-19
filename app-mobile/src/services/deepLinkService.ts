@@ -43,7 +43,17 @@ export type Destination =
   | { kind: 'pairedDeck' } // mingla://discover?paired=true
   | {
       kind: 'page';
-      page: 'home' | 'discover' | 'connections' | 'likes' | 'saved' | 'profile' | 'onboarding' | 'board-invite';
+      // #2245 — EVERY value here MUST have a `case` in app/index.tsx's
+      // `switch (currentPage)`. That switch ends in `default: return null`, so a
+      // page with no case navigates to a blank screen under the bottom nav: the
+      // app opens and shows nothing. Two values used to be in this union with no
+      // case anywhere in any commit — `'board-invite'` (from
+      // `mingla://board/{code}`) and `'onboarding'` (from the live
+      // `notify-lifecycle` push, `data.deepLink: "mingla://onboarding"`). Both
+      // are gone. Enforced by A5 in
+      // `scripts/issue-2245/declared-app-links-resolve.deno.test.ts`, which
+      // parses this union and that switch and compares them.
+      page: 'home' | 'discover' | 'connections' | 'likes' | 'saved' | 'profile';
       params?: Record<string, string>;
     }
   | { kind: 'paywall' };
@@ -143,8 +153,21 @@ export function parseDeepLink(url: string): Destination | null {
             ...(params.token ? { claimToken: params.token } : {}),
           };
         }
-        // orders/{id} without /chat — out of consumer scope (Ruling 2); latent.
-        return null;
+        // #2245 — `orders/{id}` with no `/chat`. This shape USED to return null,
+        // which made `executeDeepLink` a no-op: the app opened on Home and the
+        // order was never mentioned. `/orders/*` is a claimed Universal Link
+        // path (live apex AASA + Android autoVerify), so this shape IS claimed
+        // and cannot be left landing nowhere.
+        //
+        // Where it goes: the Calendar tab inside Likes — the ONE surface in this
+        // app that holds a bought experience and its ticket QR
+        // (`LikesPage` reads `deepLinkParams.tab === 'calendar'`;
+        // `onShowQRCode` is wired from there). It is deliberately coarse: no
+        // consumer surface addresses a single order by id, and inventing one
+        // that pretends to would be the dishonesty #2272's landing copy exists
+        // to avoid. This matches what usemingla.com/orders/* now tells someone
+        // without the app — "your ticket is in the Mingla app".
+        return { kind: 'page', page: 'likes', params: { tab: 'calendar' } };
 
       case 'calendar': {
         const entryId = pathSegments[1];
@@ -177,11 +200,50 @@ export function parseDeepLink(url: string): Destination | null {
         return { kind: 'paywall' };
 
       case 'onboarding':
-        return { kind: 'page', page: 'onboarding', params };
+        // #2245 — `supabase/functions/notify-lifecycle` sends a LIVE push with
+        // `data.deepLink: "mingla://onboarding"` to every profile with
+        // `has_completed_onboarding = false`. It used to return
+        // `page: 'onboarding'`, which has no `case` in app/index.tsx's switch,
+        // so the tap painted a blank screen.
+        //
+        // Home is the correct destination and needs no new screen: app/index.tsx
+        // renders `OnboardingLoader` from `if (showOnboardingFlow ||
+        // needsOnboarding)` BEFORE the tab switch is reached, so exactly the
+        // population this push targets still lands in onboarding. Anyone else
+        // lands Home, which is true rather than blank.
+        return { kind: 'page', page: 'home', params };
 
       case 'board':
-        // Legacy: mingla://board/{code}
-        return { kind: 'page', page: 'board-invite', params: { code: pathSegments[1] } };
+        // #2245 — `mingla://board/{code}` (minted by the `auto_generate_invite_info`
+        // trigger into `collaboration_sessions.invite_link`, and by
+        // `boardInviteService.ts:40`) has NO destination in this app, and the
+        // matching `/board/*` Universal Link claim has been WITHDRAWN from the
+        // apex AASA and the Android intent filters.
+        //
+        // Why withdrawn rather than built — measured, not assumed:
+        //   • It used to return `page: 'board-invite'`, which has never had a
+        //     `case` in app/index.tsx in any commit. The tap painted a blank
+        //     screen under the bottom nav.
+        //   • The only implementation of "join by code",
+        //     `BoardInviteService.joinByInviteCode`, CANNOT work for the people
+        //     it exists for. Its first step selects `collaboration_sessions` by
+        //     `invite_code`, and the live `cs_select` RLS policy is
+        //     `auth.uid() = created_by OR is_session_participant(id, auth.uid())
+        //     OR has_session_invite(id, auth.uid())` — verified against
+        //     production 2026-08-18. Someone holding only a code is none of the
+        //     three, so the select returns nothing and the service reports
+        //     "Invalid invite code". Making this resolve needs a SECURITY DEFINER
+        //     RPC and therefore a migration.
+        //   • Nothing surfaces the link. `useBoardSession.getInviteLink` is
+        //     exposed and called by no component.
+        //
+        // Returning null (not a page) is deliberate: `executeDeepLink(null)` is a
+        // documented no-op, so a stale `mingla://board/{code}` in the database
+        // leaves the user on Home instead of on a blank screen. Give this a real
+        // destination and the claim can be re-added to both declaration files —
+        // and `scripts/issue-2245/declared-app-links-resolve.deno.test.ts` will
+        // make you prove it lands somewhere before it goes green.
+        return null;
 
       case 'likes':
         return { kind: 'page', page: 'likes', params };
