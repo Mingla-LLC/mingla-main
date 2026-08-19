@@ -1,0 +1,72 @@
+name: issue-2300-orch-artifact-reap
+
+# The reap gate decides whether to DELETE a colleague's in-flight worktree, a
+# booted simulator, or a running emulator. It runs on both events so a merge to
+# main can never carry a weakened predicate.
+on:
+  pull_request:
+    paths: &issue2300Paths
+      - "scripts/orch-worktree/lib/artifact-liveness.sh"
+      - "scripts/orch-worktree/reap.sh"
+      - "scripts/orch-worktree/sweep.sh"
+      - "scripts/issue-2300/**"
+      - ".github/workflows/issue-2300-orch-artifact-reap.yml"
+  push:
+    branches: [main]
+    paths: *issue2300Paths
+  workflow_dispatch:
+
+jobs:
+  issue-2300-reap-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20.19.4
+
+      - name: "shell syntax is valid on all three scripts"
+        run: |
+          set -euo pipefail
+          bash -n scripts/orch-worktree/lib/artifact-liveness.sh
+          bash -n scripts/orch-worktree/reap.sh
+          bash -n scripts/orch-worktree/sweep.sh
+
+      - name: "implementor happy path — dead artifacts are reaped"
+        run: node --test scripts/issue-2300/orch-artifact-reap.implementor.happy.test.mjs
+
+      - name: "tester adversarial — live artifacts are never reaped"
+        run: node --test scripts/issue-2300/orch-artifact-reap.tester.adversarial.test.mjs
+
+      # The defect this issue exists to prevent is a gate that always fires,
+      # because operators then route around it with --force and the safety stops
+      # existing. Assert the two squash-blind/spawn-blind predicates never come
+      # back as the merge decision in the library. (Comments are stripped first:
+      # the file DOCUMENTS both traps by name and must be free to keep doing so.)
+      - name: "the squash-blind and spawn-blind predicates stay out of the gate"
+        shell: bash
+        run: |
+          set -euo pipefail
+          code="$(grep -vE '^\s*#' scripts/orch-worktree/lib/artifact-liveness.sh)"
+          for banned in 'rev-list' 'is-ancestor' '-newermt'; do
+            if printf '%s' "$code" | grep -qF -- "$banned"; then
+              echo "::error::'$banned' reappeared in the liveness gate. See the TRAP commentary in artifact-liveness.sh — all three read live artifacts as dead."
+              exit 1
+            fi
+          done
+          echo "OK — none of the three known-wrong predicates gate a delete."
+
+      # sweep.sh must never grow a flag that widens its blast radius.
+      - name: "sweep.sh accepts no argument other than --apply"
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -nE '^\s*--(all|force|yes|nuke|recursive)\)' scripts/orch-worktree/sweep.sh; then
+            echo "::error::sweep.sh grew a blast-radius-widening flag."
+            exit 1
+          fi
+          grep -q 'APPLY=0' scripts/orch-worktree/sweep.sh \
+            || { echo "::error::sweep.sh must default to dry run."; exit 1; }
+          echo "OK — dry run remains the default and no widening flag exists."
