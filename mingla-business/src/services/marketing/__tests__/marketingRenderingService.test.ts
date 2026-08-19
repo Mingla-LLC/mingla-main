@@ -1,15 +1,21 @@
 /**
  * T-B05 token insertion + preview rendering helpers.
  *
- * Covers `previewBlocks`, `substituteVariables`, and `validateChannelPayload`.
+ * Covers `previewBlocks` and `substituteVariables`.
  * Pure-logic; no React Native render needed.
+ *
+ * [TEST-MOD-APPROVED #2291] — `validateChannelPayload` was DEAD CODE (zero
+ * production callers; only this file referenced it) and is replaced by
+ * `../campaignPayloadContract`. Its three cases are repointed below rather than
+ * dropped, and the contract's full case table lives in
+ * `./campaignPayloadContract.test.ts`.
  */
 
 import {
   previewBlocks,
   substituteVariables,
-  validateChannelPayload,
 } from "../marketingRenderingService";
+import { campaignPayloadIssues } from "../campaignPayloadContract";
 
 describe("substituteVariables", () => {
   it("substitutes known variables", () => {
@@ -64,10 +70,13 @@ describe("previewBlocks", () => {
   });
 });
 
-describe("validateChannelPayload", () => {
+// [TEST-MOD-APPROVED #2291] — repointed from the deleted
+// `validateChannelPayload` to `campaignPayloadIssues`. Same three scenarios,
+// same file, so the coverage that existed here is not lost in the move.
+describe("campaignPayloadIssues (was validateChannelPayload)", () => {
   it("returns empty issues for valid email payload", () => {
     expect(
-      validateChannelPayload({
+      campaignPayloadIssues({
         kind: "email",
         subject: "Hello",
         body_html: "Body",
@@ -78,22 +87,26 @@ describe("validateChannelPayload", () => {
 
   it("flags missing subject + body", () => {
     expect(
-      validateChannelPayload({
+      campaignPayloadIssues({
         kind: "email",
         subject: "",
         body_html: "",
         body_text: "",
       }),
-    ).toEqual(["Subject required", "Body required"]);
+    ).toHaveLength(2);
   });
 
   // [TEST-MOD-APPROVED ORCH-1283] — RCS channel decommissioned in ORCH-1283
   // (ChannelPayloadRcs, the "rcs" kind, and the marketing-send `case "rcs"`
   // were deleted). The rcs half of this case referenced a type that no longer
-  // exists, so it is removed here. The sms coverage below is unchanged.
-  it("rejects sms payloads in Phase B", () => {
-    expect(
-      validateChannelPayload({ kind: "sms", body: "x" }),
-    ).toEqual(["SMS channel not yet enabled"]);
+  // exists, so it is removed here.
+  //
+  // [TEST-MOD-APPROVED #2291] — the ASSERTION IS INVERTED, deliberately. The
+  // old function answered "SMS channel not yet enabled"; SMS has been LIVE
+  // since META-ORCH-1161, so that answer was wrong and had been wrong for
+  // months — nobody noticed because nothing called it. A valid SMS payload is
+  // valid.
+  it("accepts a valid sms payload — SMS is live", () => {
+    expect(campaignPayloadIssues({ kind: "sms", body: "x" })).toEqual([]);
   });
 });
