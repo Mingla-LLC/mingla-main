@@ -17,13 +17,14 @@
  *   Y-3  the map-deny COPY on the hybrid branch, which shares the same link field.
  *   Y-4  `describeUnmappedPublishGuard`'s token-shape boundaries, exactly at the
  *        `{2,63}` quantifier edges, plus the substring misfire in the guard normaliser.
- *   Y-5  I-2333-UNMAPPED-SERVER-GUARD-NEVER-INVITES-RETRY applied to the EDIT path.
- *        The invariant says "No publish/EDIT error path in mingla-business may render
- *        copy that invites a retry for a server-raised guard it does not recognise."
+ *   Y-5  recorded, not asserted — see the block at the foot of this file. The edit
+ *        path's retry lie is a real, reachable finding, but the only assertion shape
+ *        available from here is a pure source pin, which
+ *        I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN forbids.
  *
- * EXPECTED STATE AT THE TIME OF WRITING: Y-1 (two evasions), Y-3 and Y-5 FAIL. Each is
- * a contract this issue's own SPEC or DRAFT invariants declare, so they are written as
- * hard assertions rather than as documentation of a defect.
+ * EXPECTED STATE AT THE TIME OF WRITING: Y-1 (two evasions), Y-3 and Y-4's constraint-name
+ * case FAIL. Each is a contract this issue's own SPEC or DRAFT invariants declare, so
+ * they are written as hard assertions rather than as documentation of a defect.
  *
  * FAILS-ON-REVERT (delete the fix, do not comment it out):
  *   * delete the `isMapLocationUrl` arm from `validateWhere` → every Y-1 denial
@@ -39,8 +40,6 @@ import {
 } from "../paidPublishGuards";
 import { validateStep } from "../draftEventValidation";
 import type { DraftEvent } from "../../store/draftEventStore";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 const whereDraft = (onlineUrl: string, format = "online"): DraftEvent =>
   ({
@@ -260,32 +259,25 @@ describe("issue #2333 Y-4 — unmapped-guard token shape, at the quantifier edge
   });
 });
 
-describe("issue #2333 Y-5 — I-2333-UNMAPPED-SERVER-GUARD-NEVER-INVITES-RETRY covers the EDIT path (tester)", () => {
-  const read = (rel: string): string =>
-    readFileSync(join(__dirname, "..", "..", rel), "utf8");
-  /** Executable lines only — the fix's own prose explains the retry lie. */
-  const code = (s: string): string =>
-    s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
-
-  it("EditPublishedScreen does not invite a retry for an unrecognised server guard", () => {
-    // The invariant's Rule names publish AND edit paths. EditPublishedScreen's terminal
-    // `else` — the one an unrecognised code actually lands on — reads
-    //   "Couldn't save your changes. Tap to try again."
-    // That is the identical class bug S4b removed from EventCreatorWizard, and it is
-    // reachable TODAY: once 20270422001972 is applied, business_patch_event_taxonomy
-    // returns `permission denied for function business_patch_event_taxonomy` to every
-    // authenticated caller, which no arm in this chain recognises.
-    const editor = code(read("components/event/EditPublishedScreen.tsx"));
-    const terminalFallback = editor.match(
-      /:\s*"(Couldn't save your changes[^"]*)"/,
-    );
-    expect(terminalFallback?.[1] ?? "").not.toMatch(/try again/i);
-  });
-
-  it("the unmapped-guard describer is the single owner of that copy", () => {
-    // Once fixed, the edit path should route through the same tested helper the wizard
-    // uses, rather than growing a third hand-written string.
-    const editor = code(read("components/event/EditPublishedScreen.tsx"));
-    expect(editor).toContain("describeUnmappedPublishGuard");
-  });
-});
+/**
+ * Y-5 — I-2333-UNMAPPED-SERVER-GUARD-NEVER-INVITES-RETRY covers the EDIT path.
+ *
+ * NOT ASSERTED HERE, DELIBERATELY. The finding is real and reproduced:
+ * `EditPublishedScreen.tsx`'s terminal fallback — the arm an UNRECOGNISED server code
+ * actually lands on — reads "Couldn't save your changes. Tap to try again.", which is
+ * the identical class bug S4b removed from `EventCreatorWizard`, in a file that is ON
+ * the #2333 SPEC allowlist. It is reachable: once `20270422001972` is applied,
+ * `business_patch_event_taxonomy` returns `permission denied for function
+ * business_patch_event_taxonomy` to every authenticated caller, and no arm in that
+ * chain recognises it.
+ *
+ * The only way to assert it from here would be `readFileSync` + a source-derived
+ * expect, and I-PROPOSED-1047-BIZ-NO-SOLE-SOURCE-PIN forbids exactly that:
+ *   "Write a test that exercises real behavior, or (for a genuine structural rule)
+ *    an additive strict-grep gate."
+ * The copy lives inline in a component catch block, so there is nothing pure to
+ * execute until the edit path is routed through `describeUnmappedPublishGuard` — which
+ * is the fix. Once it is, this contract becomes executable here in three lines, and
+ * the structural half belongs in the #2333 strict-grep gate beside the existing
+ * `RETRY_LIE` check. Filed on the issue as a finding rather than pinned as source text.
+ */
