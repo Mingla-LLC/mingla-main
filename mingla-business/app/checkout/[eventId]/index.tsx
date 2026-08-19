@@ -457,7 +457,11 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
               of 3 names THAT day instead of repeating the master date. Falls back
               to the unchanged date line whenever no occurrence was chosen or the
               occurrence read has not resolved (never a fabricated day). */}
-          <Text style={styles.miniSubtitle} numberOfLines={1}>
+          <Text
+            testID="issue-2338-cart-date-line"
+            style={styles.miniSubtitle}
+            numberOfLines={1}
+          >
             {brand?.displayName ?? "Mingla"}
             {" · "}
             {dayLine}
