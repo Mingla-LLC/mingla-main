@@ -1,5 +1,5 @@
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
-import type { AddBrandPersonInput, AddBrandPersonResult, BookCursor, BrandPeopleBookPage, BrandPersonConflict, BrandPersonConflictCandidate, BrandPersonConflictPage, BrandPersonConflictReason, BrandPersonConflictSourceKind, BrandPersonSummary, PeopleErrorCode, ResolveBrandPersonConflictInput, ResolveBrandPersonConflictResult } from "../types/people";
+import type { AddBrandPersonInput, AddBrandPersonResult, BookCursor, BrandPeopleBookPage, BrandPersonConflict, BrandPersonConflictCandidate, BrandPersonConflictPage, BrandPersonConflictReason, BrandPersonConflictSourceKind, BrandPersonSummary, ConflictResolution, PeopleErrorCode, ResolveBrandPersonConflictInput, ResolveBrandPersonConflictResult } from "../types/people";
 import { supabase } from "./supabase";
 
 const SAFE_CODES: ReadonlySet<string> = new Set([
@@ -10,7 +10,7 @@ const SAFE_CODES: ReadonlySet<string> = new Set([
   // raw 23505/P0002 can never reach the UI as an opaque failure.
   "people_conflict_not_found","people_conflict_already_resolved","people_resolution_invalid",
   "people_conflict_candidate_invalid","people_conflict_source_missing","people_conflict_user_collision",
-  "people_conflict_subject_unavailable",
+  "people_conflict_subject_unavailable","people_conflict_not_dismissable",
 ]);
 export class PeopleServiceError extends Error {
   constructor(public readonly code: PeopleErrorCode, public readonly retryable: boolean) {
@@ -85,7 +85,10 @@ function parseConflict(v: unknown): BrandPersonConflict {
       || !v.sourceKinds.every((k) => typeof k === "string" && CONFLICT_SOURCE_KINDS.has(k))
       || typeof v.reason !== "string" || !CONFLICT_REASONS.has(v.reason)
       || !stringValue(v.createdAt) || typeof v.canResolve !== "boolean"
-      || typeof v.detailsRetained !== "boolean" || !isRecord(v.incoming)
+      || typeof v.detailsRetained !== "boolean" || typeof v.canDismiss !== "boolean"
+      || !(v.dismissibleReason === null || v.dismissibleReason === "source_row_absent"
+           || v.dismissibleReason === "manual_payload_not_retained")
+      || !isRecord(v.incoming)
       || !nullableString(v.incoming.displayName) || !nullableString(v.incoming.email)
       || !nullableString(v.incoming.phone) || !Array.isArray(v.candidates)
       || !Array.isArray(v.matchedOn)
@@ -97,6 +100,8 @@ function parseConflict(v: unknown): BrandPersonConflict {
     createdAt: v.createdAt,
     canResolve: v.canResolve,
     detailsRetained: v.detailsRetained,
+    dismissibleReason: v.dismissibleReason as BrandPersonConflict["dismissibleReason"],
+    canDismiss: v.canDismiss,
     incoming: {
       displayName: v.incoming.displayName, email: v.incoming.email, phone: v.incoming.phone,
     },
@@ -124,7 +129,8 @@ export async function resolveBrandPersonConflict(
   });
   if (error) throw fromRpcError(error);
   if (!isRecord(data) || !Array.isArray(data.conflictIds) || !data.conflictIds.every(stringValue)
-      || (data.resolution !== "merge" && data.resolution !== "separate")
+      || (data.resolution !== "merge" && data.resolution !== "separate"
+          && data.resolution !== "dismiss")
       || !(data.personId === null || typeof data.personId === "string")
       || !Array.isArray(data.links) || !Array.isArray(data.mergedPersonIds)
       || !data.mergedPersonIds.every(stringValue)
@@ -135,7 +141,7 @@ export async function resolveBrandPersonConflict(
   });
   return {
     conflictIds: data.conflictIds as string[],
-    resolution: data.resolution as "merge" | "separate",
+    resolution: data.resolution as ConflictResolution,
     personId: data.personId as string | null,
     links,
     mergedPersonIds: data.mergedPersonIds as string[],

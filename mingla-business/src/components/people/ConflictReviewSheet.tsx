@@ -190,6 +190,10 @@ const CODE_COPY: Record<string, string> = {
   people_conflict_subject_unavailable:
     "The details behind this one weren't kept, so it can't be filed here.",
   people_forbidden: "You can no longer file these. Ask a brand admin.",
+  // #2305 REWORK — refused because the source is still THERE. Dismissing it
+  // would discard a real buyer, which is the defect this issue exists to end.
+  people_conflict_not_dismissable:
+    "This one can still be filed \u2014 reopen the list and try again.",
 };
 function errorCopy(error: unknown): string {
   if (error instanceof PeopleServiceError && !error.retryable && CODE_COPY[error.code] !== undefined) {
@@ -441,11 +445,13 @@ function ConflictCard({
   const band = ((): React.ReactElement => {
     if (state.phase === "done") {
       const receipt =
-        state.resolution === "separate"
-          ? "Added as a new person"
-          : state.mergedCount > 0
-            ? `Merged into ${state.personName}`
-            : `Filed under ${state.personName}`;
+        state.resolution === "dismiss"
+          ? "Dismissed \u2014 nothing was added"
+          : state.resolution === "separate"
+            ? "Added as a new person"
+            : state.mergedCount > 0
+              ? `Merged into ${state.personName}`
+              : `Filed under ${state.personName}`;
       return (
         <View accessible accessibilityRole="text" accessibilityLiveRegion="polite" style={[s.band, successFill]}>
           <View style={s.bandRow}>
@@ -515,7 +521,10 @@ function ConflictCard({
     return `${days} ${plural(days, "day", "days")} ago`;
   })();
 
-  const showOutcomes = canResolve && state.phase !== "done";
+  // #2305 REWORK: a dismissible card also needs its control. `canResolve` is
+  // false for it by construction (the subject is unproducible), so gate on
+  // either permission.
+  const showOutcomes = (canResolve || conflict.canDismiss) && state.phase !== "done";
   const submitting = state.phase === "submitting";
 
   return (
@@ -542,16 +551,28 @@ function ConflictCard({
             .join(". ")}`}
         />
       ) : (
+        /* #2305 REWORK — the card explains ITSELF rather than rendering two
+           controls that cannot work. A conflict lands here only when its subject
+           is provably unproducible, and the two reasons are genuinely different
+           facts, so they get genuinely different sentences. */
         <View accessible accessibilityRole="text" style={s.record}>
           <View style={s.eyebrowRow}>
             <View style={s.eyebrowLeft}>
-              <Icon name="user" size={16} color={text.tertiary} />
-              <Text style={s.eyebrow}>ADDED BY HAND</Text>
+              <Icon
+                name={conflict.dismissibleReason === "source_row_absent" ? "receipt" : "user"}
+                size={16}
+                color={text.tertiary}
+              />
+              <Text style={s.eyebrow}>
+                {conflict.dismissibleReason === "source_row_absent" ? "NO LONGER HERE" : "ADDED BY HAND"}
+              </Text>
             </View>
             {age !== null ? <Text style={s.age}>{age}</Text> : null}
           </View>
           <Text style={s.absence}>
-            The details behind this one weren&apos;t kept, so there is nothing to compare.
+            {conflict.dismissibleReason === "source_row_absent"
+              ? "The order behind this one has since been removed, so there is nobody left to file."
+              : "This was added by hand and what was typed wasn\u2019t kept, so there is nothing to compare."}
           </Text>
         </View>
       )}
@@ -639,7 +660,28 @@ function ConflictCard({
           as a greyed control is a dead control. */}
       {showOutcomes ? (
         <View style={s.outcomes}>
-          {emptyCandidates ? (
+          {!conflict.detailsRetained ? (
+            /* #2305 REWORK P1-2 / P2-2 — the only honest control. Two buttons
+               that always fail are dead controls, and a card with NO controls is
+               what wedged the badge forever. Dismiss closes it, links nothing,
+               and leaves openCount so the badge can reach zero. It is offered
+               only when the RPC has PROVEN the subject cannot be produced. */
+            <>
+              <Text style={s.outcomeHint}>
+                {conflict.dismissibleReason === "source_row_absent"
+                  ? "Nothing can be filed from a record that no longer exists."
+                  : "Nothing can be filed without the details that were typed."}
+              </Text>
+              <OutcomeControl
+                kind="button"
+                label="Dismiss"
+                loading={submitting}
+                disabled={!online || submitting}
+                onPress={() => onResolve("dismiss", null)}
+                accessibilityLabel="Dismiss — clear this from the review list, nothing is added to your book"
+              />
+            </>
+          ) : emptyCandidates ? (
             <>
               <Text style={s.outcomeHint}>
                 This row was held back during an import. Adding it creates a new person.
@@ -746,7 +788,13 @@ export function ConflictReviewSheet({
     onResolvedCountChange?.(resolvedThisSession);
   }, [onResolvedCountChange, resolvedThisSession]);
 
-  const canResolveAll = rows.length > 0 && rows.every((r) => r.canResolve);
+  // #2305 REWORK P3-2: `rows.length > 0 && …every(…)` is false when the list is
+  // EMPTY, so the rank-gated sentence ("A brand admin can file them.") showed to
+  // everyone — including the rank-60 owner who had just emptied the queue
+  // themselves. With no rows there is no permission claim to make, so say the
+  // neutral thing. A row that is only dismissible still counts as actionable.
+  const canResolveAll =
+    rows.length === 0 || rows.every((r) => r.canResolve || r.canDismiss);
 
   const commit = React.useCallback(
     async (conflict: BrandPersonConflict, resolution: ConflictResolution, winnerPersonId: string | null) => {
@@ -759,7 +807,9 @@ export function ConflictReviewSheet({
           winnerPersonId,
         });
         const personName =
-          resolution === "merge"
+          resolution === "dismiss"
+            ? ""
+            : resolution === "merge"
             ? (conflict.candidates.find((c) => c.personId === winnerPersonId)?.displayName ??
               conflict.candidates[0]?.displayName ??
               "this record")
@@ -806,7 +856,14 @@ export function ConflictReviewSheet({
   );
 
   const visibleRows = rows.filter((r) => dismissed[r.conflictIds[0] as string] === undefined);
-  const remaining = Math.max(openCount - resolvedThisSession, 0);
+  // #2305 REWORK P2-3: this used to be `openCount - resolvedThisSession`, which
+  // subtracted each resolve TWICE — `onSuccess` invalidates the conflicts key, so
+  // the refetched `openCount` has already dropped. Observed on web as "1 to
+  // review" above 2 cards, then the line vanishing entirely with one still
+  // rendered. `openCount` is the server's truth and it self-corrects;
+  // `resolvedThisSession` stays, but only for the summary toast and the earned
+  // empty state, which are genuinely per-session facts.
+  const remaining = openCount;
 
   const body = ((): React.ReactElement => {
     if (kind === "loading" || kind === "authLoading" || kind === "roleLoading") {
@@ -940,7 +997,12 @@ export function ConflictReviewSheet({
         variant="simple"
         cancelLabel="Cancel"
         confirmLabel={
-          confirm !== null && confirm.conflict.candidates.length > 1 ? "Yes, merge" : "Yes, same person"
+          // #2305 REWORK P3-3: "Yes, same person" truncated to "Yes, same pers…"
+          // on an iPhone 17 Pro — on the one control that prevents a destructive
+          // mistake. The dialog title already restates the target name in full
+          // ("File this order under <name>?"), so the CTA only has to be an
+          // unambiguous affirmative.
+          confirm !== null && confirm.conflict.candidates.length > 1 ? "Yes, merge" : "Yes, file it"
         }
       />
     </Sheet>

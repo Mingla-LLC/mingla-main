@@ -7,5 +7,5 @@ export interface PeopleEventProperties {platform?:string;surface?:"page"|"book_s
  * two-channel one, which answers SPEC 11-Q2 with data instead of intuition. `matchedOn`
  * carries the CHANNEL that matched, never the value that matched — no identity or
  * contact data enters analytics (#1774). */
-resolution?:"merge"|"separate";candidateCount?:number;matchedOn?:string}
+resolution?:"merge"|"separate"|"dismiss";candidateCount?:number;matchedOn?:string;dismissedReason?:string}
 export function capturePeople(event:PeopleEvent,properties:PeopleEventProperties={}):void{const safe={platform:Platform.OS,...properties};postHogService.capture(event,safe);if(Platform.OS==="web")captureWeb(event,safe);}

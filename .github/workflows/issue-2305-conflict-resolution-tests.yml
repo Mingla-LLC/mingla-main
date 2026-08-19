@@ -3,7 +3,10 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
+      - "supabase/migrations/20270430002305_issue_2305_conflict_resolution_rework.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution_rework.test.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
@@ -18,7 +21,10 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
+      - "supabase/migrations/20270430002305_issue_2305_conflict_resolution_rework.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution_rework.test.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
@@ -75,6 +81,12 @@ jobs:
           # I-PROPOSED-2305-RESOLUTION-MUST-LINK-THE-SOURCE swept brand-wide over
           # BOTH outcomes.
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql
+          # REWORK suite. Every finding the tester proved by executing the branch,
+          # re-proved the same way: P1-1 is their exact sequence (after a separate,
+          # the ORIGINAL buyer's next order must link back to the ORIGINAL person),
+          # P1-2 asserts the dismissing write actually COMMITS, and the absence
+          # case pins the rule that keeps `dismiss` from becoming silent data loss.
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2305_conflict_resolution_rework.test.sql
 
   # The structural half. `issue-2305-status-table-has-a-resolver.mjs` is
   # registered `batch:A` and executes through run-batch.mjs like every other

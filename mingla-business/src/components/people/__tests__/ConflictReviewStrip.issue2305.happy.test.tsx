@@ -173,3 +173,63 @@ describe("#2305 resolve invalidates BOTH keys", () => {
     expect(flat).toContain(JSON.stringify(marketingKeys.people.all("brand-1")));
   });
 });
+
+/* ------------------------------------------------------------- REWORK ---- */
+/* #2305 REWORK — the two client defects the tester proved at runtime.       */
+
+/**
+ * The sheet's source with COMMENTS STRIPPED.
+ *
+ * These cases assert that a defective expression is gone, and the fix for each
+ * one is documented in a comment that necessarily quotes the defective
+ * expression. Asserting against raw source would therefore fail on the very
+ * prose explaining the fix — the same trap that turned the #1774 analytics gate
+ * red on a comment. Assert on code.
+ */
+function sheetCode(): string {
+  const fs = require("node:fs") as typeof import("node:fs");
+  const path = require("node:path") as typeof import("node:path");
+  const raw = fs.readFileSync(path.join(__dirname, "..", "ConflictReviewSheet.tsx"), "utf8");
+  return raw
+    .replace(/\/\*[\s\S]*?\*\//g, " ")
+    .split("\n")
+    .map((line) => line.replace(/(^|\s)\/\/.*$/, ""))
+    .join("\n");
+}
+
+describe("#2305 REWORK P2-3 — the header must not double-count", () => {
+  test("`remaining` is the server's openCount, never openCount minus a local tally", () => {
+    // The bug: `Math.max(openCount - resolvedThisSession, 0)`. `onSuccess`
+    // invalidates the conflicts key, so the refetched openCount has ALREADY
+    // dropped; subtracting the session tally removed each resolve a second
+    // time. Observed on web as "1 to review" above 2 cards, then the line
+    // disappearing entirely with one card still on screen.
+    const src = sheetCode();
+    expect(src).toContain("const remaining = openCount;");
+    expect(src).not.toContain("openCount - resolvedThisSession");
+    expect(src).not.toContain("Math.max(openCount");
+  });
+});
+
+describe("#2305 REWORK P3-2 — the empty queue must not misreport permission", () => {
+  test("an empty list does not claim the viewer needs a brand admin", () => {
+    const src = sheetCode();
+    // `rows.length > 0 && rows.every(…)` is FALSE when rows is empty, so the
+    // rank-gated sentence showed to the rank-60 owner who had just emptied the
+    // queue themselves — on both web and iOS.
+    expect(src).toContain("rows.length === 0 || rows.every(");
+    expect(src).not.toContain("rows.length > 0 && rows.every(");
+  });
+});
+
+describe("#2305 REWORK P3-3 — the destructive-confirm CTA must fit", () => {
+  test("the single-candidate confirm label is short enough not to truncate", () => {
+    const src = sheetCode();
+    // "Yes, same person" truncated to "Yes, same pers…" on an iPhone 17 Pro, on
+    // the one control that prevents a destructive mistake. The dialog title
+    // already restates the target name in full.
+    expect(src).toContain('"Yes, file it"');
+    expect(src).not.toContain('"Yes, same person"');
+  });
+});
+
