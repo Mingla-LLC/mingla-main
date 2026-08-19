@@ -193,10 +193,7 @@
           "image": "./assets/splash-icon.png",
           "imageWidth": 240,
           "resizeMode": "contain",
-          "backgroundColor": "#FAFAFA",
-          "dark": {
-            "backgroundColor": "#FAFAFA"
-          }
+          "backgroundColor": "#FAFAFA"
         }
       ],
       "expo-location",

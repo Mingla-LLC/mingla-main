@@ -526,12 +526,23 @@ export default function PostExperienceModal({
         </TouchableOpacity>
       </View>
 
+      {/* [#2322] themeVariant/textColor are LOAD-BEARING on BOTH wheels below — do not
+          delete them as "redundant on a light-only app". app.json declares
+          `userInterfaceStyle: "light"`, but the expo-splash-screen config plugin overwrites
+          the built Info.plist `UIUserInterfaceStyle` to `Automatic`, so every NATIVE view
+          inherits the DEVICE appearance. Unthemed, these wheels draw UIColor.label —
+          near-white in Dark Mode — onto `styles.container.backgroundColor: "#FFFFFF"`, which
+          makes them COMPLETELY invisible inside a modal that is deliberately not dismissible
+          (COMMS-0140). Pinning the trait keeps them legible whatever the build resolves the
+          app-wide style to. */}
       {showDatePicker && (
         <DateTimePicker
           value={rescheduleDate || new Date()}
           mode="date"
           display={Platform.OS === "ios" ? "spinner" : "default"}
           minimumDate={new Date()}
+          themeVariant="light"
+          textColor={colors.gray900}
           onChange={(event, selectedDate) => {
             if (Platform.OS === "android") {
               setShowDatePicker(false);
@@ -549,6 +560,8 @@ export default function PostExperienceModal({
           value={rescheduleTime || rescheduleDate}
           mode="time"
           display={Platform.OS === "ios" ? "spinner" : "default"}
+          themeVariant="light"
+          textColor={colors.gray900}
           onChange={(event, selectedTime) => {
             if (Platform.OS === "android") {
               setShowTimePicker(false);

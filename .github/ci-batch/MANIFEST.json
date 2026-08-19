@@ -62,7 +62,7 @@
     "below ~4.2 min however many ways this is split. Adding shards past 4 buys nothing",
     "and costs a fresh npm ci (~80s) each."
   ],
-  "expectedSuites": 20,
+  "expectedSuites": 21,
   "classes": [
     "business-node20-1",
     "business-node20-2",
@@ -682,6 +682,25 @@
           "name": "feature-flags",
           "cwd": "mingla-business",
           "run": "npx jest src/config/__tests__/featureFlags.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-2322-ios-picker-theming-tests",
+      "$comment": "#2322. The tester's adversarial file (issue_2322_ios_picker_theming.tester_adversarial.test.mjs, T-3/T-4) is NOT listed below yet because it does not exist on disk and `node --test` on a missing path exits 1, which would red this suite before the tester lands it. Append its filename to the `run` command in the same commit that adds the file. Do NOT substitute a glob: MEASURED on node v22, `node --test` with a pattern matching zero files exits 0 and reports success, which is the dark-gate class of #2113. The happy suite's own \"registered in the CI batch\" test fails if a file matching issue_2322_ios_picker_theming*.test.mjs is on disk but absent from this command.",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-2322-ios-picker-theming-tests.yml",
+      "originPaths": [
+        "app-mobile/src/components/OnboardingFlow.tsx",
+        "app-mobile/src/components/PostExperienceModal.tsx",
+        "app-mobile/app.json",
+        "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming*.test.mjs"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-2322 iOS date-picker theming gates",
+          "cwd": "app-mobile",
+          "run": "node --test src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs"
         }
       ]
     }
