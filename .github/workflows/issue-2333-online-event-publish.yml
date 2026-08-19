@@ -1,0 +1,118 @@
+name: issue-2333-online-event-publish
+
+# Issue #2333 — an ONLINE-ONLY event could not be published, and once the publish
+# guard is relaxed it must stay EDITABLE. Both halves are server-side, so this lane
+# needs a real PostgreSQL 17 with every migration applied — there is no way to prove a
+# plpgsql RAISE from a static read.
+#
+# Paths cover exactly what #2333 S1+S2 owns. S3 (pg_discover_business_events carve-out)
+# and S4 (the client OTA) are HELD on open design questions OQ-1/OQ-2; when they land
+# they extend this filter with their own files.
+on:
+  pull_request:
+    paths: &issue2333Paths
+      - "supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql"
+      - "supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql"
+      - "supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql"
+      - ".github/workflows/issue-2333-online-event-publish.yml"
+  push:
+    branches: [main]
+    paths: *issue2333Paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-2333-postgres-contract:
+    name: "#2333 online publish + edit stay possible, hybrid stays guarded"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same image and env contract as the shared `migrations` job in
+        # supabase-migrations-and-stripe-deno.yml: the supabase-flavoured Postgres
+        # carries pg_cron/pgcrypto/pgsodium/plv8 that the baseline migration requires,
+        # POSTGRES_USER and POSTGRES_DB are deliberately NOT overridden, and the major
+        # version is pinned to 17.x to match production.
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for postgres
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -c "SELECT 1" >/dev/null 2>&1; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -e
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          echo "all migrations applied"
+
+      # The proof. Every case EXECUTES the real RPC (issue #2113 — a check that only
+      # greps a definition carries no information). C-03 and C-07 are the hybrid
+      # boundary: `is_online` is TRUE for hybrid as well as online
+      # (serverDraftEventMapper.ts:708), so an is_online-keyed relax compiles, passes
+      # the online happy path, and silently exempts hybrid from a city the client
+      # REQUIRES for hybrid. Those two cases are the only thing that catches it.
+      - name: "#2333 online publish + edit contract (C-00 … C-09)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql
+
+      # Both migrations are idempotent CREATE OR REPLACE with no DROP. Re-applying them
+      # must be a no-op that leaves the function definitions and their ACLs identical —
+      # a replay that silently revoked EXECUTE from `authenticated` would take the whole
+      # business app's publish and edit paths down.
+      - name: "#2333 replay safety — second apply leaves definitions and grants identical"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          snapshot() {
+            psql -h localhost -U postgres -d postgres -At -v ON_ERROR_STOP=1 -c "
+              SELECT string_agg(x, E'\n' ORDER BY x) FROM (
+                SELECT p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|'
+                       || p.prosecdef::text || '|'
+                       || COALESCE(array_to_string(p.proconfig, ','), '') || '|'
+                       || COALESCE(p.proacl::text, '') AS x
+                FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'public'
+                  AND p.proname IN ('business_publish_event_draft','business_patch_event_taxonomy')
+              ) s;"
+          }
+          before="$(snapshot)"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql
+          after="$(snapshot)"
+          test "$before" = "$after"
+          echo "OK — replay is definition- and grant-equivalent."
