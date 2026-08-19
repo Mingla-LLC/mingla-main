@@ -339,7 +339,7 @@ BEGIN
     RAISE EXCEPTION 'X-04 FAIL: a city was invented for an online event (%)', r.city;
   END IF;
   IF r.is_online IS NOT TRUE OR r.is_multi_date IS NOT TRUE OR r.tf <> 'online' THEN
-    RAISE EXCEPTION 'X-04 FAIL: row shape wrong (is_online=% is_multi_date=% theme_format=%)',
+    RAISE EXCEPTION 'X-04 FAIL: row shape wrong (online_flag=% multi_date_flag=% stored_enum=%)',
       r.is_online, r.is_multi_date, r.tf;
   END IF;
 
@@ -416,7 +416,7 @@ BEGIN
   SELECT is_online, city, theme->'business_event'->>'format'
     INTO v_is_online, v_city, v_tf FROM public.events WHERE id = v_event;
   IF v_is_online IS NOT TRUE OR v_city IS NOT NULL OR v_tf <> 'online' THEN
-    RAISE EXCEPTION 'X-05 SETUP FAIL: rsvp publish shape wrong (is_online=% city=% format=%)',
+    RAISE EXCEPTION 'X-05 SETUP FAIL: rsvp publish shape wrong (online_flag=% city_value=% stored_enum=%)',
       v_is_online, v_city, v_tf;
   END IF;
 
