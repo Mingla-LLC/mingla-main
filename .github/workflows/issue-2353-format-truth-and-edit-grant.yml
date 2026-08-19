@@ -118,30 +118,46 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2353_format_truth.implementor.pg17.test.sql
 
-      # The TESTER's adversarial suite, wired at rework so it becomes a
-      # permanent gate rather than a one-off verdict. It attacks the SEAMS the
-      # happy path cannot: a FIVE-hop lifecycle including the re-publish hop,
-      # Ari's LIVE arm with an unrecognised format and no `is_online` (the P1
-      # this rework fixes), the guard's namespace seam, the S3(b) jsonb_set gap
-      # DRIVEN rather than described, read-site normalisation, and
-      # reach-not-authority against a caller with no brand membership at all.
-      # It self-fails if fewer than 35 assertions run or if no lifecycle hop
-      # executed, so it cannot pass by discovering nothing.
-      - name: "#2353 adversarial suite (tester, X-1..X-7)"
+      # The TESTER's adversarial suite, wired so it becomes a permanent gate
+      # rather than a one-off verdict. It attacks the SEAMS the happy path
+      # cannot: a FIVE-hop lifecycle including the re-publish hop, Ari's LIVE
+      # arm with an unrecognised format and no `is_online`, Ari's DRAFT arm
+      # precedence table (S6), the S3(b) jsonb_set namespace gap DRIVEN rather
+      # than described, the normalisation boundary pinned on BOTH sides, the
+      # publish guard's namespace seam, invariant B's scope tested rather than
+      # accepted, and reach-not-authority against a caller with no brand
+      # membership at all. It self-fails if fewer than 110 assertions run or if
+      # no lifecycle hop executed, so it cannot pass by discovering nothing.
+      #
+      # Why it is a REQUIRED step and not an artefact: the naive S6 —
+      # reconciling a bare `is_online` unconditionally instead of only when the
+      # pair disagrees — reds exactly ONE assertion in the implementor suite,
+      # because the value it writes is CONSISTENT: every agreement test stays
+      # green while `hybrid` is silently flattened to `online`. X-9/X-9c/X-9d
+      # red that same revert on EIGHT assertions, including the published
+      # `theme.business_event.format` string that #2333's discovery carve-out
+      # reads to decide a global broadcast.
+      - name: "#2353 adversarial suite (tester, X-1..X-10)"
         env:
           PGPASSWORD: ${{ github.sha }}
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2353_format_truth.tester.adversarial.pg17.test.sql
 
-      # The suite pre-cleans and tears down its own fixtures. Running it twice
-      # proves it, and proves it left no residue for a later suite to trip over.
-      - name: "#2353 suite is idempotent (second consecutive run)"
+      # Both suites pre-clean and tear down their own fixtures. Running each
+      # twice proves it, and proves neither left residue for the other — or for
+      # a later suite — to trip over. The adversarial suite is included here
+      # deliberately: it seeds far more rows than the happy path and drives
+      # publish/unpublish/duplicate repeatedly, so it is the likelier of the two
+      # to leave something behind.
+      - name: "#2353 both suites are idempotent (second consecutive run)"
         env:
           PGPASSWORD: ${{ github.sha }}
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2353_format_truth.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2353_format_truth.tester.adversarial.pg17.test.sql
 
       # SC-1 read straight off the catalogue, independently of the suite: the
       # transitional grant is really on both leaves, anon is really on neither,

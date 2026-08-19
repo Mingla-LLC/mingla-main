@@ -586,12 +586,26 @@ END $h$;
 --       `is_online` fallback would produce — which pins WHICH value, not merely
 --       that it is one of three, and so catches a future change that silently
 --       swaps the fallback;
---   (3) the whitespace classes `btrim` does NOT strip are pinned as
---       FALLING BACK rather than being assumed normalised. `btrim(text)` with
---       one argument removes ASCII SPACE only: tab, newline, carriage return
---       and U+00A0 all survive it, measured on the harness rather than assumed.
---       Recording the true boundary is the point; if it is ever widened, this
---       row is what notices.
+--   (3) the whitespace boundary is pinned on BOTH sides, measured on the
+--       harness rather than assumed.
+--
+-- [TEST-MOD-APPROVED #2353] AMENDED AGAIN at rework 2. Leg (3) originally
+-- pinned TAB/newline/CR/U+00A0 as FALLING BACK, because one-argument
+-- `btrim(text)` strips ASCII space only. That was a tripwire, it fired, and the
+-- widening it asked for was ordered: the migration now trims
+-- `E' \t\n\r\f\v'||chr(160)`. Those four rows therefore moved from the
+-- NOT-RECOGNISED list to the RECOGNISED list — they are now correct
+-- recognition, not fabrication, exactly as `'Hybrid'` was at the first
+-- amendment.
+--
+-- The boundary did not disappear, it MOVED, so the tripwire moved with it.
+-- `btrim(x, <set>)` is a CHARACTER SET, not a Unicode whitespace class: it
+-- closes precisely the six ASCII whitespace codepoints plus U+00A0 and nothing
+-- else. Measured on the harness — U+0085 NEL, U+1680, the whole U+2000-U+200A
+-- block, U+200B ZWSP, U+2028, U+202F, U+205F, U+3000 and U+FEFF are all still
+-- untrimmed. Those are pinned below as FALLING BACK. If the trim is ever
+-- widened again, or swapped for a regex-based normaliser, these rows are what
+-- notices — and if it is narrowed, the RECOGNISED rows are.
 -- =====================================================================
 DO $h$
 DECLARE r record; v uuid; m uuid; p jsonb; got text; expect_fallback text;
@@ -611,7 +625,15 @@ BEGIN
       ('x6r_padl'  , '" hybrid"'::jsonb   , 'hybrid'   ),
       ('x6r_padb'  , '"  HyBrId  "'::jsonb, 'hybrid'   ),
       ('x6r_online', '" Online "'::jsonb  , 'online'   ),
-      ('x6r_inp'   , '"IN_PERSON"'::jsonb , 'in_person')
+      ('x6r_inp'   , '"IN_PERSON"'::jsonb , 'in_person'),
+      -- moved here at rework 2: the trim set now covers these.
+      ('x6r_tab'   , to_jsonb(E'\thybrid\t'::text)                  , 'hybrid'),
+      ('x6r_nl'    , to_jsonb(E'\nhybrid'::text)                     , 'hybrid'),
+      ('x6r_cr'    , to_jsonb(E'\rhybrid'::text)                     , 'hybrid'),
+      ('x6r_vt'    , to_jsonb(E'\vhybrid\v'::text)                  , 'hybrid'),
+      ('x6r_ff'    , to_jsonb(E'\fhybrid\f'::text)                  , 'hybrid'),
+      ('x6r_nbsp'  , to_jsonb((chr(160)||'Hybrid'||chr(160))::text)  , 'hybrid'),
+      ('x6r_mixws' , to_jsonb((E'\t '||chr(160)||'HyBrId'||E' \n')::text), 'hybrid')
     ) AS t(key,fmt,want)
   LOOP
     v := i2353x.seed_published_raw(r.key, r.fmt, false);
@@ -636,10 +658,21 @@ BEGIN
       ('x6u_num'   , '5'::jsonb            , 'a number'),
       ('x6u_arr'   , '[]'::jsonb           , 'an array'),
       ('x6u_obj'   , '{}'::jsonb           , 'an object'),
-      ('x6u_tab'   , to_jsonb(E'\thybrid\t'::text)            , 'TAB-padded hybrid — btrim does not strip tabs'),
-      ('x6u_nl'    , to_jsonb(E'\nhybrid'::text)              , 'newline-padded hybrid — btrim does not strip newlines'),
-      ('x6u_cr'    , to_jsonb(E'\rhybrid'::text)              , 'CR-padded hybrid — btrim does not strip carriage returns'),
-      ('x6u_nbsp'  , to_jsonb((chr(160)||'hybrid'||chr(160))::text), 'U+00A0-padded hybrid — btrim does not strip NBSP')
+      -- The boundary of the trim SET, pinned on the outside. Every codepoint
+      -- below is whitespace to a human and to a Unicode-aware normaliser, and
+      -- is NOT in E' \t\n\r\f\v'||chr(160). Each was measured untrimmed on
+      -- the harness. They must fall back — never be fabricated into hybrid.
+      ('x6u_nel'   , to_jsonb((chr(133)||'hybrid')::text)   , 'U+0085 NEL-padded hybrid — outside the trim set'),
+      ('x6u_ogham' , to_jsonb((chr(5760)||'hybrid')::text)  , 'U+1680 ogham-space-padded hybrid — outside the trim set'),
+      ('x6u_enq'   , to_jsonb((chr(8192)||'hybrid')::text)  , 'U+2000 en-quad-padded hybrid — outside the trim set'),
+      ('x6u_em'    , to_jsonb((chr(8195)||'hybrid')::text)  , 'U+2003 em-space-padded hybrid — outside the trim set'),
+      ('x6u_thin'  , to_jsonb((chr(8201)||'hybrid')::text)  , 'U+2009 thin-space-padded hybrid — outside the trim set'),
+      ('x6u_zwsp'  , to_jsonb((chr(8203)||'hybrid')::text)  , 'U+200B zero-width-space-padded hybrid — outside the trim set'),
+      ('x6u_lsep'  , to_jsonb((chr(8232)||'hybrid')::text)  , 'U+2028 line-separator-padded hybrid — outside the trim set'),
+      ('x6u_nnbsp' , to_jsonb((chr(8239)||'hybrid')::text)  , 'U+202F narrow-NBSP-padded hybrid — outside the trim set'),
+      ('x6u_mmsp'  , to_jsonb((chr(8287)||'hybrid')::text)  , 'U+205F medium-math-space-padded hybrid — outside the trim set'),
+      ('x6u_ideo'  , to_jsonb((chr(12288)||'hybrid')::text) , 'U+3000 ideographic-space-padded hybrid — outside the trim set'),
+      ('x6u_bom'   , to_jsonb((chr(65279)||'hybrid')::text) , 'U+FEFF BOM-padded hybrid — outside the trim set')
     ) AS t(key,fmt,label)
   LOOP
     v := i2353x.seed_published_raw(r.key, r.fmt, true);
@@ -663,12 +696,12 @@ DO $h$
 DECLARE v uuid; m uuid; row public.events%ROWTYPE;
 BEGIN
   SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
-  v := i2353x.seed_published_raw('x6b_repair', '"Hybrid"'::jsonb, true);
+  v := i2353x.seed_published_raw('x6b_repair', to_jsonb((E'\t'||'Hybrid'||chr(160))::text), true);
   PERFORM i2353x.act_as(m);
   PERFORM public.business_unpublish_event_to_draft(v);
   SELECT * INTO row FROM public.events WHERE id=v;
   PERFORM i2353x.assert('X-6b',
-    'a stored "Hybrid" is REPAIRED to the canonical hybrid by a round trip, not destroyed',
+    'a whitespace+case variant of hybrid is REPAIRED to the canonical spelling by a round trip, not destroyed',
     row.theme#>>'{business_draft,format}' = 'hybrid',
     COALESCE(row.theme#>>'{business_draft,format}','<none>'));
   PERFORM i2353x.assert('X-6b','...and is_online still agrees',
@@ -800,13 +833,286 @@ EXCEPTION WHEN OTHERS THEN
 END $h$;
 
 -- =====================================================================
+-- X-9 — S6, the DRAFT arm's format/is_online precedence. Added at rework 2.
+--
+-- This is the third arm this issue has touched and the second time precedence
+-- between `format` and `is_online` has been where it went wrong, so it is
+-- attacked as a precedence TABLE rather than as a happy path.
+--
+-- THE ROW THAT MATTERS IS THE FIRST ONE. A correct S6 reconciles the stored
+-- format from a bare `is_online` ONLY WHEN THE PAIR ACTUALLY DISAGREES. The
+-- naive version — reconcile unconditionally — is a one-line difference, and it
+-- is nearly invisible to everything else in both suites, because the value it
+-- writes is CONSISTENT: `is_online:true` on a stored `hybrid` becomes
+-- `online/true`, the projection invariant is SATISFIED, nothing crashes, and
+-- every `agrees()` assertion in this file stays green. It is a lossy write that
+-- looks exactly like a correct one.
+--
+-- What it costs is the whole point of a three-valued enum: a host asking Ari to
+-- confirm a hybrid event is online-capable would have the venue silently
+-- dropped from the record. Downstream that is not cosmetic — #2333's discovery
+-- carve-out broadcasts on `lower(theme.business_event.format)='online'`
+-- precisely because a hybrid event has a real venue and a real catchment, so a
+-- flattened Lagos hybrid becomes a global broadcast. Driven and confirmed on
+-- the combined stack; asserted here on the value #2333 actually reads, so this
+-- file needs none of #2333's migrations to hold the line.
+--
+-- Each row is therefore asserted on the STORED FORMAT, not on agreement.
+-- `agrees()` cannot see this defect and must not be relied on for it.
+-- =====================================================================
+CREATE FUNCTION i2353x.draft_arm(p_key text, p_seed_fmt text, p_extra jsonb)
+RETURNS uuid LANGUAGE plpgsql AS $$
+DECLARE v uuid; m uuid; rev int;
+BEGIN
+  SELECT i.v INTO m FROM i2353x.ids i WHERE i.k='manager';
+  v := i2353x.seed_published(p_key, p_seed_fmt, p_seed_fmt IN ('online','hybrid'));
+  PERFORM i2353x.act_as(m);
+  PERFORM public.business_unpublish_event_to_draft(v);          -- the real route to a DRAFT
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::int,0) INTO rev
+    FROM public.events WHERE id=v;
+  BEGIN
+    PERFORM i2353x.ari(m,'update_event',
+      jsonb_build_object('event_id',v::text,
+        'reason','Adversarial S6 precedence probe: '||p_key,
+        'client_revision',rev+1) || p_extra);
+  EXCEPTION WHEN OTHERS THEN
+    PERFORM i2353x.assert('X-9','the draft-arm call for '||p_key||' is not a crash',
+      SQLSTATE='22P02', SQLSTATE||':'||SQLERRM);
+  END;
+  RETURN v;
+END $$;
+
+DO $h$
+DECLARE r record; v uuid; row public.events%ROWTYPE;
+BEGIN
+  FOR r IN SELECT * FROM (VALUES
+    -- key            seed        args                                          want_format  want_online
+    ('x9_pre_hybrid' ,'hybrid'   ,'{"is_online":true}'::jsonb                  ,'hybrid'   ,true ),
+    ('x9_dis_hyb_off','hybrid'   ,'{"is_online":false}'::jsonb                 ,'in_person',false),
+    ('x9_dis_inp_on' ,'in_person','{"is_online":true}'::jsonb                  ,'online'   ,true ),
+    ('x9_agr_onl_on' ,'online'   ,'{"is_online":true}'::jsonb                  ,'online'   ,true ),
+    ('x9_agr_inp_off','in_person','{"is_online":false}'::jsonb                 ,'in_person',false),
+    ('x9_fmt_wins'   ,'hybrid'   ,'{"format":"hybrid","is_online":false}'::jsonb,'hybrid'   ,true ),
+    ('x9_fmt_case'   ,'in_person','{"format":"Hybrid"}'::jsonb                  ,'hybrid'   ,true ),
+    ('x9_junk_noop'  ,'hybrid'   ,'{"format":"zoom"}'::jsonb                    ,'hybrid'   ,true ),
+    ('x9_junk_on'    ,'hybrid'   ,'{"format":"zoom","is_online":true}'::jsonb   ,'hybrid'   ,true ),
+    ('x9_junk_off'   ,'hybrid'   ,'{"format":"zoom","is_online":false}'::jsonb  ,'in_person',false),
+    ('x9_jsonnull'   ,'hybrid'   ,'{"is_online":null}'::jsonb                   ,'in_person',false),
+    ('x9_strbool'    ,'hybrid'   ,'{"is_online":"true"}'::jsonb                 ,'hybrid'   ,true ),
+    ('x9_untouched'  ,'hybrid'   ,'{"title":"I2353X x9 untouched"}'::jsonb      ,'hybrid'   ,true )
+  ) AS t(key,seed,extra,want_fmt,want_online)
+  LOOP
+    v := i2353x.draft_arm(r.key, r.seed, r.extra);
+    SELECT * INTO row FROM public.events WHERE id=v;
+    PERFORM i2353x.assert('X-9',
+      'draft arm, seed '||r.seed||' + '||r.extra::text||' -> stored format '||r.want_fmt,
+      row.theme#>>'{business_draft,format}' = r.want_fmt,
+      'got '||COALESCE(row.theme#>>'{business_draft,format}','<none>'));
+    PERFORM i2353x.assert('X-9',
+      '...and is_online '||r.want_online::text,
+      row.is_online IS NOT DISTINCT FROM r.want_online,
+      'got '||COALESCE(row.is_online::text,'NULL'));
+    PERFORM i2353x.assert('X-9','...and the pair agrees', i2353x.agrees(v),
+      i2353x.fmt(v)||'/'||COALESCE(row.is_online::text,'NULL'));
+  END LOOP;
+END $h$;
+
+-- X-9b — a bad boolean cast must fail closed: nothing written, draft intact.
+DO $h$
+DECLARE v uuid; row public.events%ROWTYPE;
+BEGIN
+  v := i2353x.draft_arm('x9_badcast','hybrid','{"is_online":"maybe"}'::jsonb);
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-9b','an uncastable is_online writes NOTHING and leaves the hybrid draft intact',
+    row.theme#>>'{business_draft,format}'='hybrid' AND row.is_online AND row.status='draft',
+    i2353x.fmt(v)||'/'||row.is_online::text||' status='||row.status);
+END $h$;
+
+-- X-9c — the discriminator must survive PUBLISH and then DUPLICATE. The naive
+-- reconcile is only visible downstream, and #2333 reads the published value.
+DO $h$
+DECLARE v uuid; d uuid; m uuid; p jsonb; rev int; rc text; row public.events%ROWTYPE;
+BEGIN
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  v := i2353x.draft_arm('x9c_chain','hybrid','{"is_online":true}'::jsonb);
+  PERFORM i2353x.assert('X-9c','a hybrid draft told is_online:true is still hybrid before publish',
+    i2353x.fmt(v)='hybrid', i2353x.fmt(v));
+  PERFORM i2353x.act_as(m);
+  p := public.business_event_draft_payload_from_graph(v);
+  rev := COALESCE((p#>>'{theme,business_draft,clientRevision}')::int,0);
+  rc := i2353x.try_sql(m, format(
+    'SELECT public.issue_1719_publish_event_with_poster(%L::uuid,%L::jsonb,%s)', v, p, rev));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-9c','publish succeeds', rc='OK', rc);
+  PERFORM i2353x.assert('X-9c',
+    'the PUBLISHED theme.business_event.format is hybrid — the exact string #2333 reads to decide a global broadcast',
+    row.theme#>>'{business_event,format}'='hybrid',
+    COALESCE(row.theme#>>'{business_event,format}','<none>'));
+  PERFORM i2353x.assert('X-9c','...and is_online is true, so a bare is_online test alone would broadcast it',
+    row.is_online, row.is_online::text);
+  PERFORM i2353x.act_as(m);
+  p := public.business_duplicate_event_as_draft(v);
+  d := COALESCE((p->>'id')::uuid,(p#>>'{event,id}')::uuid);
+  PERFORM i2353x.assert('X-9c','and the Duplicate of it is hybrid too',
+    i2353x.fmt(d)='hybrid', i2353x.fmt(d));
+END $h$;
+
+-- X-9d — the cross-arm chain. Draft arm and live arm, both directions, nine
+-- hops, asserting the stored format at each one rather than only agreement.
+DO $h$
+DECLARE v uuid; d uuid; m uuid; rev int; p jsonb; rc text;
+BEGIN
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+  v := i2353x.seed_published('x9d_chain','hybrid',true);
+  PERFORM i2353x.act_as(m); PERFORM public.business_unpublish_event_to_draft(v);
+  PERFORM i2353x.assert('X-9d','hop1 unpublish keeps hybrid', i2353x.fmt(v)='hybrid', i2353x.fmt(v));
+
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::int,0) INTO rev FROM public.events WHERE id=v;
+  PERFORM i2353x.ari(m,'update_event', jsonb_build_object('event_id',v::text,'is_online',true,
+    'reason','Chain hop2: Ari DRAFT arm confirms the hybrid is online-capable','client_revision',rev+1));
+  PERFORM i2353x.assert('X-9d','hop2 Ari DRAFT is_online:true PRESERVES hybrid',
+    i2353x.fmt(v)='hybrid', i2353x.fmt(v));
+
+  PERFORM i2353x.act_as(m);
+  p := public.business_event_draft_payload_from_graph(v);
+  rev := COALESCE((p#>>'{theme,business_draft,clientRevision}')::int,0);
+  rc := i2353x.try_sql(m, format('SELECT public.issue_1719_publish_event_with_poster(%L::uuid,%L::jsonb,%s)', v, p, rev));
+  PERFORM i2353x.assert('X-9d','hop3 publish keeps hybrid', rc='OK' AND i2353x.fmt(v)='hybrid', rc||' '||i2353x.fmt(v));
+
+  SELECT COALESCE((theme#>>'{business_event,clientRevision}')::int,0) INTO rev FROM public.events WHERE id=v;
+  PERFORM i2353x.ari(m,'update_event', jsonb_build_object('event_id',v::text,'format','in_person',
+    'reason','Chain hop4: Ari LIVE arm switches the event to in_person','client_revision',rev+1));
+  PERFORM i2353x.assert('X-9d','hop4 Ari LIVE format:in_person applies',
+    i2353x.fmt(v)='in_person' AND i2353x.agrees(v), i2353x.fmt(v));
+
+  PERFORM i2353x.act_as(m); PERFORM public.business_unpublish_event_to_draft(v);
+  PERFORM i2353x.assert('X-9d','hop5 unpublish keeps in_person', i2353x.fmt(v)='in_person', i2353x.fmt(v));
+
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::int,0) INTO rev FROM public.events WHERE id=v;
+  PERFORM i2353x.ari(m,'update_event', jsonb_build_object('event_id',v::text,'format','Hybrid',
+    'reason','Chain hop6: Ari DRAFT arm sets a case-variant hybrid','client_revision',rev+1));
+  PERFORM i2353x.assert('X-9d','hop6 Ari DRAFT format:"Hybrid" is normalised and applied',
+    i2353x.fmt(v)='hybrid' AND i2353x.agrees(v), i2353x.fmt(v));
+
+  PERFORM i2353x.act_as(m);
+  p := public.business_event_draft_payload_from_graph(v);
+  rev := COALESCE((p#>>'{theme,business_draft,clientRevision}')::int,0);
+  rc := i2353x.try_sql(m, format('SELECT public.issue_1719_publish_event_with_poster(%L::uuid,%L::jsonb,%s)', v, p, rev));
+  PERFORM i2353x.assert('X-9d','hop7 republish keeps hybrid', rc='OK' AND i2353x.fmt(v)='hybrid', rc||' '||i2353x.fmt(v));
+
+  PERFORM i2353x.act_as(m);
+  p := public.business_duplicate_event_as_draft(v);
+  d := COALESCE((p->>'id')::uuid,(p#>>'{event,id}')::uuid);
+  PERFORM i2353x.assert('X-9d','hop8 Duplicate keeps hybrid and agrees',
+    i2353x.fmt(d)='hybrid' AND i2353x.agrees(d), i2353x.fmt(d));
+END $h$;
+
+-- =====================================================================
+-- X-10 — invariant B's SCOPE, tested rather than accepted.
+--
+-- I-PROPOSED-2353-B scopes itself to "every writer in supabase/migrations/**
+-- that DERIVES either value from the other OR FROM A CALLER ARGUMENT", and
+-- names exactly two exclusions: business_create_event_draft and
+-- business_update_event_draft, on the grounds that they are transport rather
+-- than derivation.
+--
+-- Enumerating the writers that touch either value finds a THIRD of the same
+-- shape that the stanza does not name. `business_publish_event_draft`, reached
+-- through `issue_1719_publish_event_with_poster` — both `authenticated=X` —
+-- sets `is_online = COALESCE((p_draft_payload->>'is_online')::boolean,false)`
+-- from the CALLER'S payload while carrying `theme.business_draft.format`
+-- through untouched, and reconciles neither. Hand it a payload whose two halves
+-- contradict and it persists the contradiction onto a LIVE row.
+--
+-- The shipped client cannot produce that payload — `serverDraftEventMapper`
+-- writes `is_online: format === "online" || format === "hybrid"` — and
+-- production holds 0 disagreeing rows. So this is a REGISTRY-ACCURACY finding,
+-- not a code defect: the stanza's own words are "an invariant that is false is
+-- worse than no invariant", and by its own scope sentence it is currently false
+-- on this writer. The fix is one line in docs/INVARIANT_REGISTRY.md — name
+-- `business_publish_event_draft` / `issue_1719_publish_event_with_poster`
+-- alongside the other two transport writers — BEFORE the DRAFT->ACTIVE flip.
+--
+-- These assertions record the MEASURED behaviour so the registry cannot drift
+-- away from it unnoticed. They are green because they state what is true, not
+-- what would be convenient.
+-- =====================================================================
+DO $h$
+DECLARE v uuid; m uuid; p jsonb; rev int; rc text; row public.events%ROWTYPE;
+BEGIN
+  SELECT i.v INTO m FROM i2353x.ids i WHERE k='manager';
+
+  -- the third transport writer, unnamed by the stanza
+  v := i2353x.seed_published('x10_pub','hybrid',true);
+  PERFORM i2353x.act_as(m);
+  PERFORM public.business_unpublish_event_to_draft(v);
+  p := public.business_event_draft_payload_from_graph(v);
+  rev := COALESCE((p#>>'{theme,business_draft,clientRevision}')::int,0);
+  p := jsonb_set(p,'{is_online}','false'::jsonb,true);   -- contradicts format=hybrid
+  rc := i2353x.try_sql(m, format(
+    'SELECT public.issue_1719_publish_event_with_poster(%L::uuid,%L::jsonb,%s)', v, p, rev));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-10',
+    'the publish owner accepts a caller payload whose is_online contradicts its own format',
+    rc='OK', rc);
+  PERFORM i2353x.assert('X-10',
+    'and persists the contradiction onto a LIVE row — so invariant B is NOT true of it as scoped',
+    row.theme#>>'{business_event,format}'='hybrid' AND row.is_online IS FALSE,
+    COALESCE(row.theme#>>'{business_event,format}','<none>')||'/'||row.is_online::text
+    ||' agree='||i2353x.agrees(v)::text);
+  PERFORM i2353x.assert('X-10',
+    'it is reachable by authenticated, exactly like the two writers the stanza DOES exclude',
+    has_function_privilege('authenticated',
+      'public.issue_1719_publish_event_with_poster(uuid,jsonb,integer)','EXECUTE')
+    AND has_function_privilege('authenticated',
+      'public.business_update_event_draft(uuid,jsonb,integer)','EXECUTE'),
+    'authenticated');
+
+  -- and once a disagreeing row exists, nothing in the family repairs it
+  v := i2353x.seed_published('x10_prop','hybrid',true);
+  UPDATE public.events SET is_online=false WHERE id=v;
+  PERFORM i2353x.act_as(m);
+  p := public.business_duplicate_event_as_draft(v);
+  row.id := COALESCE((p->>'id')::uuid,(p#>>'{event,id}')::uuid);
+  PERFORM i2353x.assert('X-10',
+    'Duplicate propagates a pre-existing disagreement rather than repairing it — no writer in the family heals one',
+    i2353x.fmt(row.id)='hybrid' AND NOT (SELECT is_online FROM public.events WHERE id=row.id),
+    i2353x.fmt(row.id)||'/'||(SELECT is_online FROM public.events WHERE id=row.id)::text);
+
+  -- the two writers the stanza DOES exclude behave exactly as documented
+  v := i2353x.seed_published('x10_excl','hybrid',true);
+  PERFORM i2353x.act_as(m);
+  PERFORM public.business_unpublish_event_to_draft(v);
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::int,0) INTO rev FROM public.events WHERE id=v;
+  p := public.business_event_draft_payload_from_graph(v);
+  p := jsonb_set(p,'{is_online}','false'::jsonb,true);
+  rc := i2353x.try_sql(m, format(
+    'SELECT public.business_update_event_draft(%L::uuid,%L::jsonb,%s)', v, p, rev+1));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-10',
+    'business_update_event_draft transports a disagreeing pair unreconciled, exactly as the stanza states',
+    rc='OK' AND row.theme#>>'{business_draft,format}'='hybrid' AND row.is_online IS FALSE,
+    rc||' '||COALESCE(row.theme#>>'{business_draft,format}','<none>')||'/'||row.is_online::text);
+
+  -- the DERIVING writers the stanza does cover: the atomic owner reconciles
+  v := i2353x.seed_published('x10_atomic','hybrid',true);
+  rc := i2353x.try_sql(m, format(
+    'SELECT public.business_update_live_event_atomic(%L::uuid, jsonb_build_object(''core'',jsonb_build_object(''format'',''in_person'')), ''Adversarial: atomic owner switches a hybrid to in_person'', 1)', v));
+  SELECT * INTO row FROM public.events WHERE id=v;
+  PERFORM i2353x.assert('X-10',
+    'the atomic owner — a DERIVING writer — does keep the pair in agreement',
+    rc='OK' AND i2353x.agrees(v) AND row.theme#>>'{business_event,format}'='in_person',
+    rc||' '||i2353x.fmt(v)||'/'||row.is_online::text);
+END $h$;
+
+-- =====================================================================
 -- Verdict. Non-vacuity first: a green run that proved nothing is a failure.
 -- =====================================================================
 DO $verdict$
 DECLARE v_total int; v_fail int; r record;
 BEGIN
   SELECT count(*), count(*) FILTER (WHERE outcome='FAIL') INTO v_total, v_fail FROM i2353x.result;
-  IF v_total < 60 THEN
+  IF v_total < 110 THEN
     RAISE EXCEPTION 'issue #2353 adversarial suite ran only % assertions — it is not exercising the seams', v_total;
   END IF;
   IF NOT EXISTS (SELECT 1 FROM i2353x.result WHERE criterion LIKE 'X-1/hop%' AND outcome='PASS') THEN
