@@ -4,6 +4,7 @@ on:
     paths:
       - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
       - "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql"
@@ -18,6 +19,7 @@ on:
     paths:
       - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
       - "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql"
@@ -66,6 +68,13 @@ jobs:
           test -n "$db_container"
           db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql
+          # Tester adversarial suite. Different angle: the rank boundary under the
+          # REAL `authenticated` role (the happy-path suite asserts it as the table
+          # OWNER, where RLS does not apply and these tables carry zero policies),
+          # the all-or-nothing group under a genuine partial failure, and
+          # I-PROPOSED-2305-RESOLUTION-MUST-LINK-THE-SOURCE swept brand-wide over
+          # BOTH outcomes.
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql
 
   # The structural half. `issue-2305-status-table-has-a-resolver.mjs` is
   # registered `batch:A` and executes through run-batch.mjs like every other
