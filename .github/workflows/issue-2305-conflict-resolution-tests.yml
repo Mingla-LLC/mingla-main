@@ -1,0 +1,80 @@
+name: issue-2305-conflict-review-queue
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
+      - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
+      - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
+      - "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql"
+      - "supabase/migrations/20270329001774_issue_1774_people_page.sql"
+      - ".github/scripts/strict-grep/issue-2305-status-table-has-a-resolver.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2305-conflict-resolution-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270426002305_issue_2305_conflict_resolution.sql"
+      - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
+      - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
+      - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
+      - "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql"
+      - "supabase/migrations/20270329001774_issue_1774_people_page.sql"
+      - ".github/scripts/strict-grep/issue-2305-status-table-has-a-resolver.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2305-conflict-resolution-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  workflow_dispatch:
+
+jobs:
+  # The behavioural half. A conflict resolved without a source link is a FALSE
+  # resolution — the queue empties, the operator believes the buyer is filed, and
+  # the buyer is still gone. Only executing the mutation against a real Postgres
+  # can tell those two apart, which is why this runs the full migration chain
+  # rather than asserting on source.
+  issue-2305-postgres-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: PostgreSQL 17 conflict-resolution contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_root="$(mktemp -d /tmp/issue-2305-sql.XXXXXX)"
+          cleanup() { supabase stop --workdir "$sql_root" --no-backup --yes || true; }
+          trap cleanup EXIT
+          supabase init --workdir "$sql_root" --yes
+          target="$sql_root/supabase/migrations"
+          rsync -a supabase/migrations/ "$target/"
+          rm -rf "$target/__tests__"
+          mv "$target/20260612000001_tr4_revoke_rpc_anon_grants.sql" "$target/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          mv "$target/20260612000000_tr4_refund_tiers_booking_deadline.sql" "$target/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+          mv "$target/20260615000000_orch_426_discover_cache_gzip.sql" "$target/20260615010000_orch_426_discover_cache_gzip.sql"
+          mv "$target/20261012000000_orch_1150_rsvp_maybe.sql" "$target/20261012010000_orch_1150_rsvp_maybe.sql"
+          mv "$target/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" "$target/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          mv "$target/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" "$target/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+          mv "$target/20261117000001_orch_1188_finalize_persist_event_date_id.sql" "$target/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          mv "$target/20261117000000_orch_1188_orders_event_date_id.sql" "$target/20261117000001_orch_1188_orders_event_date_id.sql"
+          supabase start --workdir "$sql_root" --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor --yes
+          db_container="$(docker ps --filter "label=com.supabase.cli.project=$(basename "$sql_root")" --format '{{.Names}}' | awk '/^supabase_db_/ {print; exit}')"
+          test -n "$db_container"
+          db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql
+
+  # The structural half. `issue-2305-status-table-has-a-resolver.mjs` is
+  # registered `batch:A` and executes through run-batch.mjs like every other
+  # class guard; this job runs it directly so a failure here names its own
+  # origin instead of being buried in a batch summary.
+  issue-2305-class-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: node .github/scripts/strict-grep/issue-2305-status-table-has-a-resolver.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2305-status-table-has-a-resolver.mjs
+      - run: node --test .github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs

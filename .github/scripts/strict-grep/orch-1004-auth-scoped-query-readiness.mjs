@@ -205,6 +205,11 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1774 — canonical Brand People Book/detail RPCs are accepted-role and
   // auth.uid()-scoped; both queries wait for auth, brand and role truth.
   "marketing/useBrandPeople.ts",
+  // #2305 — the identity-conflict review queue. `biz_list_brand_person_conflicts`
+  // reads auth.uid() and gates on biz_brand_effective_rank >= marketing_manager,
+  // so the query folds isAuthReady, user, brandId and resolved role into
+  // `enabled` exactly as useBrandPeople does.
+  "marketing/useBrandPersonConflicts.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads
