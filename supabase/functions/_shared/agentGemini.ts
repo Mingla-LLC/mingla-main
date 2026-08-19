@@ -114,7 +114,6 @@ const STRING_SCHEMA_FIELDS = new Set([
 ]);
 
 const STRING_ARRAY_SCHEMA_FIELDS = new Set([
-  "enum",
   "required",
   "propertyOrdering",
 ]);
@@ -131,13 +130,20 @@ const PROVIDER_TYPES = new Set([
 
 const MAX_SIGNED_INT64 = 9_223_372_036_854_775_807n;
 
-type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
+type JsonValue = null | boolean | number | string | JsonValue[] | {
+  [key: string]: JsonValue;
+};
 
 function escapeJsonPointerSegment(segment: string): string {
   return segment.replaceAll("~", "~0").replaceAll("/", "~1");
 }
 
-function schemaError(toolName: string, pointer: string, keyword: string, reason: string): GeminiError {
+function schemaError(
+  toolName: string,
+  pointer: string,
+  keyword: string,
+  reason: string,
+): GeminiError {
   return makeError(
     "schema",
     `Ari tool schema invalid: tool=${toolName} path=${pointer} keyword=${keyword} reason=${reason}`,
@@ -146,7 +152,9 @@ function schemaError(toolName: string, pointer: string, keyword: string, reason:
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
   const prototype = Object.getPrototypeOf(value);
   return prototype === Object.prototype || prototype === null;
 }
@@ -157,9 +165,13 @@ function cloneJsonValue(
   pointer: string,
   keyword: string,
 ): JsonValue {
-  if (value === null || typeof value === "string" || typeof value === "boolean") return value;
+  if (
+    value === null || typeof value === "string" || typeof value === "boolean"
+  ) return value;
   if (typeof value === "number") {
-    if (!Number.isFinite(value)) throw schemaError(toolName, pointer, keyword, "must be JSON-compatible");
+    if (!Number.isFinite(value)) {
+      throw schemaError(toolName, pointer, keyword, "must be JSON-compatible");
+    }
     return value;
   }
   if (Array.isArray(value)) {
@@ -191,19 +203,67 @@ function normalizeInt64(
   let normalized: string;
   if (typeof value === "number") {
     if (!Number.isSafeInteger(value) || value < 0) {
-      throw schemaError(toolName, pointer, keyword, "must be a safe nonnegative integer");
+      throw schemaError(
+        toolName,
+        pointer,
+        keyword,
+        "must be a safe nonnegative integer",
+      );
     }
     normalized = String(value);
   } else if (typeof value === "string" && /^(0|[1-9][0-9]*)$/.test(value)) {
     normalized = value;
   } else {
-    throw schemaError(toolName, pointer, keyword, "must be a canonical nonnegative decimal integer");
+    throw schemaError(
+      toolName,
+      pointer,
+      keyword,
+      "must be a canonical nonnegative decimal integer",
+    );
   }
 
   if (BigInt(normalized) > MAX_SIGNED_INT64) {
     throw schemaError(toolName, pointer, keyword, "exceeds signed int64 range");
   }
   return normalized;
+}
+
+function normalizeProviderEnum(
+  value: unknown,
+  schemaType: unknown,
+  toolName: string,
+  pointer: string,
+): string[] {
+  if (!Array.isArray(value)) {
+    throw schemaError(toolName, pointer, "enum", "must be an array");
+  }
+  if (value.every((entry) => typeof entry === "string")) {
+    return [...value];
+  }
+
+  const normalizedType = typeof schemaType === "string"
+    ? schemaType.toUpperCase()
+    : null;
+  if (
+    normalizedType === "INTEGER" &&
+    value.every((entry) =>
+      typeof entry === "number" && Number.isSafeInteger(entry)
+    )
+  ) {
+    return value.map(String);
+  }
+  if (
+    normalizedType === "NUMBER" &&
+    value.every((entry) => typeof entry === "number" && Number.isFinite(entry))
+  ) {
+    return value.map(String);
+  }
+  throw schemaError(
+    toolName,
+    pointer,
+    "enum",
+    "must be all strings or finite numbers matching the schema type",
+  );
 }
 
 function compileProviderSchema(
@@ -221,44 +281,101 @@ function compileProviderSchema(
 
     if (keyword === "additionalProperties") {
       if (value !== false) {
-        throw schemaError(toolName, keywordPointer, keyword, "only false can be consumed");
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "only false can be consumed",
+        );
       }
       continue;
     }
     if (!PROVIDER_SCHEMA_FIELDS.has(keyword)) {
-      throw schemaError(toolName, keywordPointer, keyword, "unsupported typed-schema keyword");
+      throw schemaError(
+        toolName,
+        keywordPointer,
+        keyword,
+        "unsupported typed-schema keyword",
+      );
     }
 
     if (keyword === "type") {
-      if (typeof value !== "string" || !PROVIDER_TYPES.has(value.toUpperCase())) {
-        throw schemaError(toolName, keywordPointer, keyword, "must be a supported schema type");
+      if (
+        typeof value !== "string" || !PROVIDER_TYPES.has(value.toUpperCase())
+      ) {
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be a supported schema type",
+        );
       }
       compiled[keyword] = value;
     } else if (STRING_SCHEMA_FIELDS.has(keyword)) {
       if (typeof value !== "string") {
-        throw schemaError(toolName, keywordPointer, keyword, "must be a string");
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be a string",
+        );
       }
       compiled[keyword] = value;
     } else if (keyword === "nullable") {
       if (typeof value !== "boolean") {
-        throw schemaError(toolName, keywordPointer, keyword, "must be a boolean");
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be a boolean",
+        );
       }
       compiled[keyword] = value;
+    } else if (keyword === "enum") {
+      compiled[keyword] = normalizeProviderEnum(
+        value,
+        schema.type,
+        toolName,
+        keywordPointer,
+      );
     } else if (STRING_ARRAY_SCHEMA_FIELDS.has(keyword)) {
-      if (!Array.isArray(value) || value.some((entry) => typeof entry !== "string")) {
-        throw schemaError(toolName, keywordPointer, keyword, "must be an array of strings");
+      if (
+        !Array.isArray(value) ||
+        value.some((entry) => typeof entry !== "string")
+      ) {
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be an array of strings",
+        );
       }
       compiled[keyword] = [...value];
     } else if (INT64_SCHEMA_FIELDS.has(keyword)) {
-      compiled[keyword] = normalizeInt64(value, toolName, keywordPointer, keyword);
+      compiled[keyword] = normalizeInt64(
+        value,
+        toolName,
+        keywordPointer,
+        keyword,
+      );
     } else if (keyword === "minimum" || keyword === "maximum") {
       if (typeof value !== "number" || !Number.isFinite(value)) {
-        throw schemaError(toolName, keywordPointer, keyword, "must be a finite number");
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be a finite number",
+        );
       }
       compiled[keyword] = value;
     } else if (keyword === "properties") {
       if (!isPlainRecord(value)) {
-        throw schemaError(toolName, keywordPointer, keyword, "must be an object of schemas");
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be an object of schemas",
+        );
       }
       const properties: Record<string, unknown> = {};
       for (const [propertyName, propertySchema] of Object.entries(value)) {
@@ -270,16 +387,30 @@ function compileProviderSchema(
       }
       compiled[keyword] = properties;
     } else if (keyword === "items") {
-      compiled[keyword] = compileProviderSchema(value, toolName, keywordPointer);
+      compiled[keyword] = compileProviderSchema(
+        value,
+        toolName,
+        keywordPointer,
+      );
     } else if (keyword === "anyOf") {
       if (!Array.isArray(value)) {
-        throw schemaError(toolName, keywordPointer, keyword, "must be an array of schemas");
+        throw schemaError(
+          toolName,
+          keywordPointer,
+          keyword,
+          "must be an array of schemas",
+        );
       }
       compiled[keyword] = value.map((entry, index) =>
         compileProviderSchema(entry, toolName, `${keywordPointer}/${index}`)
       );
     } else if (keyword === "example" || keyword === "default") {
-      compiled[keyword] = cloneJsonValue(value, toolName, keywordPointer, keyword);
+      compiled[keyword] = cloneJsonValue(
+        value,
+        toolName,
+        keywordPointer,
+        keyword,
+      );
     }
   }
 
@@ -292,15 +423,29 @@ export function compileGeminiToolDeclarations(
   return tools.map((tool, index) => {
     const fallbackName = `tools[${index}]`;
     if (typeof tool?.name !== "string" || tool.name.length === 0) {
-      throw schemaError(fallbackName, "/name", "name", "must be a nonempty string");
+      throw schemaError(
+        fallbackName,
+        "/name",
+        "name",
+        "must be a nonempty string",
+      );
     }
     if (typeof tool.description !== "string") {
-      throw schemaError(tool.name, "/description", "description", "must be a string");
+      throw schemaError(
+        tool.name,
+        "/description",
+        "description",
+        "must be a string",
+      );
     }
     return {
       name: tool.name,
       description: tool.description,
-      parameters: compileProviderSchema(tool.parameters, tool.name, "/parameters"),
+      parameters: compileProviderSchema(
+        tool.parameters,
+        tool.name,
+        "/parameters",
+      ),
     };
   });
 }
@@ -353,7 +498,11 @@ export async function callGemini(args: {
 
   let attempt = 0;
   let lastFinishReason = "";
-  let lastUsage: GeminiUsage = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  let lastUsage: GeminiUsage = {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  };
 
   while (attempt <= MAX_MALFORMED_RETRIES) {
     attempt++;
@@ -372,10 +521,21 @@ export async function callGemini(args: {
       let depErr: { code?: string; text?: string } | undefined;
       if (response.status === 429) {
         let parsedStatus = "";
-        try { parsedStatus = (JSON.parse(text)?.error?.status as string) ?? ""; } catch { /* non-JSON body */ }
-        depErr = { code: parsedStatus || "RESOURCE_EXHAUSTED", text: text.slice(0, 300) };
+        try {
+          parsedStatus = (JSON.parse(text)?.error?.status as string) ?? "";
+        } catch { /* non-JSON body */ }
+        depErr = {
+          code: parsedStatus || "RESOURCE_EXHAUSTED",
+          text: text.slice(0, 300),
+        };
       }
-      void recordApiCall("gemini", false, Date.now() - _t0, response.status, depErr); // ORCH-1201 Layer-C
+      void recordApiCall(
+        "gemini",
+        false,
+        Date.now() - _t0,
+        response.status,
+        depErr,
+      ); // ORCH-1201 Layer-C
       // 5xx is transient — retry once via the malformed loop.
       if (response.status >= 500 && attempt <= MAX_MALFORMED_RETRIES) {
         continue;
@@ -403,7 +563,10 @@ export async function callGemini(args: {
 
     // Retry on MALFORMED_FUNCTION_CALL — Gemini sometimes truncates a tool
     // call mid-emit when output tokens are tight.
-    if (lastFinishReason === "MALFORMED_FUNCTION_CALL" && attempt <= MAX_MALFORMED_RETRIES) {
+    if (
+      lastFinishReason === "MALFORMED_FUNCTION_CALL" &&
+      attempt <= MAX_MALFORMED_RETRIES
+    ) {
       continue;
     }
 

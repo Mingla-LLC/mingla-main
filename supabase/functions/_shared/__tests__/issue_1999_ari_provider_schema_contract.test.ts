@@ -92,11 +92,11 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 64 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 65 actual Ari tools compile for Gemini typed parameters", () => {
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    64,
+    65,
     "registry baseline changed; provider coverage must be reviewed",
   );
 
@@ -110,6 +110,18 @@ Deno.test("#1999 happy: all 64 actual Ari tools compile for Gemini typed paramet
   for (const declaration of compiled) {
     assertProviderSchema(declaration.parameters);
   }
+
+  const createEvent = compiled.find((tool) => tool.name === "create_event");
+  assert(createEvent);
+  const recurrenceRule = (createEvent.parameters.properties as Record<
+    string,
+    Record<string, unknown>
+  >).recurrence_rule;
+  const bySetPos = (recurrenceRule.properties as Record<
+    string,
+    Record<string, unknown>
+  >).bySetPos;
+  assertEquals(bySetPos.enum, ["1", "2", "3", "4", "-1"]);
 });
 
 Deno.test("#1999 happy: PR #1986 raw schemas fail the provider subset and projections pass", () => {
@@ -151,4 +163,38 @@ Deno.test("#1999 happy: compilation is non-mutating and int64-normalizing", () =
   >).title;
   assertEquals(title.minLength, "1");
   assertEquals(title.maxLength, "500");
+});
+
+Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum members fail closed", () => {
+  const [compiled] = compileGeminiToolDeclarations([{
+    name: "numeric_enum",
+    description: "Numeric enum projection",
+    parameters: {
+      type: "object",
+      properties: {
+        ordinal: { type: "integer", enum: [1, -1] },
+      },
+    },
+  }]);
+  const ordinal = (compiled.parameters.properties as Record<
+    string,
+    Record<string, unknown>
+  >).ordinal;
+  assertEquals(ordinal.enum, ["1", "-1"]);
+
+  for (const invalidEnum of [[1, "2"], [true], [Number.NaN], [1.5]]) {
+    assertThrows(
+      () =>
+        compileGeminiToolDeclarations([{
+          name: "invalid_numeric_enum",
+          description: "Invalid numeric enum",
+          parameters: {
+            type: "integer",
+            enum: invalidEnum,
+          },
+        }]),
+      Error,
+      "keyword=enum",
+    );
+  }
 });

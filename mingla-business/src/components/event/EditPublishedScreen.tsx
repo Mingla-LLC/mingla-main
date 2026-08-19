@@ -41,13 +41,7 @@ import React, {
   useRef,
   useState,
 } from "react";
-import {
-  Platform,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 // ORCH-0892-B v2: ScrollView via SmartScrollView wrapper. Keyboard listener
 // + state + auto-insets DELETED. useKeyboardIsVisible() preserves dock-hide and
 // (issue #1027) drives the deferred description-reveal scroll — no bespoke
@@ -126,18 +120,16 @@ import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
 import { isChipInPayoutReady } from "../../utils/chipInPayoutReadiness";
 import { canPerformAction } from "../../utils/permissionGates";
 import {
-  clearEventCover,
+  attestEventCoverSelection,
   EventCoverMediaError,
-  setEventCover,
 } from "../../services/eventCoverMediaService";
 // ORCH-0824 hotfix (Option B): post-publish RPC for the 5 new taxonomy
 // + city fields. Bridges the local-only EditPublishedScreen save flow to
 // the events DB row so legacy events become Discover-eligible after edit.
 import {
-  patchPublishedEventPricingSwitches,
-  patchPublishedEventTaxonomy,
+  type AtomicPublishedEventPatch,
+  patchPublishedEventAtomically,
   patchPublishedEventTheme,
-  patchPublishedEventWhen,
 } from "../../services/businessEvents";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
@@ -205,12 +197,10 @@ const ORCH_0824_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "address",
 ]);
 
-// ORCH-0877 Path B: keys whose patches now have a server-side mutation
-// path via the new `business_patch_event_when(uuid, jsonb, text, integer)`
-// RPC. When the patch touches ONLY these (or these + cover media + ORCH-0824
-// fields), the `disableLocalSaveReason` gate is lifted because the server
-// side IS reachable. Closes the ORCH-0704 v2 Zustand-only save gap that
-// silently kept post-publish When edits off buyers' phones.
+// ORCH-0877 Path B: keys whose patches now have a server-side mutation path.
+// The canonical atomic event owner delegates the When slice to the protected
+// leaf RPC in the same transaction. This closes the ORCH-0704 v2 Zustand-only
+// save gap that silently kept post-publish When edits off buyers' phones.
 const ORCH_0877_WHEN_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "whenMode",
   "date",
@@ -231,6 +221,30 @@ const ORCH_0964_THEME_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
 const ORCH_1006_PRICING_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   "pricingSwitches",
 ]);
+
+// issue #1972 — the typed core fields the ONE atomic live-event owner writes.
+// `visibility` is deliberately NOT here: issue #2009 landed
+// `business_set_event_visibility` as its sole authority, with its own audit
+// row, share revocation and discovery-generation bump, and the database
+// refuses every other writer. It is routed through ISSUE_2009_VISIBILITY_PATCH_KEYS
+// below, so this set and that one stay disjoint and visibility has ONE owner.
+const ISSUE_1972_CORE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
+  "name",
+  "description",
+  "format",
+  "venueName",
+  "onlineUrl",
+  "hideAddressUntilTicket",
+  "coverHue",
+  "tickets",
+  "requireApproval",
+  "allowTransfers",
+  "hideRemainingCount",
+  "passwordProtected",
+  "privateGuestList",
+  "inPersonPaymentsEnabled",
+]);
+
 
 // issue #2009 [published-event visibility] — visibility finally HAS an
 // authoritative server mutation (`business_set_event_visibility`), so it joins
@@ -263,6 +277,7 @@ const SERVER_EDITABLE_PATCH_KEYS = new Set<keyof EditableLiveEventFields>([
   ...ORCH_0877_WHEN_PATCH_KEYS,
   ...ORCH_0964_THEME_PATCH_KEYS,
   ...ORCH_1006_PRICING_PATCH_KEYS,
+  ...ISSUE_1972_CORE_PATCH_KEYS,
   ...ISSUE_2009_VISIBILITY_PATCH_KEYS,
 ]);
 
@@ -274,8 +289,7 @@ const isCoverMediaOnlyPatch = (
 ): boolean => {
   const keys = Object.keys(patch) as (keyof EditableLiveEventFields)[];
   return (
-    keys.length > 0 &&
-    keys.every((key) => COVER_MEDIA_PATCH_KEYS.has(key))
+    keys.length > 0 && keys.every((key) => COVER_MEDIA_PATCH_KEYS.has(key))
   );
 };
 
@@ -287,8 +301,7 @@ const isServerEditableOnlyPatch = (
 ): boolean => {
   const keys = Object.keys(patch) as (keyof EditableLiveEventFields)[];
   return (
-    keys.length > 0 &&
-    keys.every((key) => SERVER_EDITABLE_PATCH_KEYS.has(key))
+    keys.length > 0 && keys.every((key) => SERVER_EDITABLE_PATCH_KEYS.has(key))
   );
 };
 
@@ -374,7 +387,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     severity: "additive",
   });
   const [submitting, setSubmitting] = useState<boolean>(false);
-  const [coverVideoProcessing, setCoverVideoProcessing] = useState<boolean>(false);
+  const [coverVideoProcessing, setCoverVideoProcessing] =
+    useState<boolean>(false);
 
   // Reject dialog — driven by guard-rail rejections
   const [rejectDialog, setRejectDialog] = useState<RejectDialogContent | null>(
@@ -488,7 +502,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // theme. Ungating it would be scope creep.
   const chipInStripeStatus = useBrandStripeStatus(chipInBrandId);
   const chipInPayoutReady = useMemo(
-    () => isChipInPayoutReady(chipInBrandQuery.data ?? null, chipInStripeStatus.data?.status),
+    () =>
+      isChipInPayoutReady(
+        chipInBrandQuery.data ?? null,
+        chipInStripeStatus.data?.status,
+      ),
     [chipInBrandQuery.data, chipInStripeStatus.data?.status],
   );
 
@@ -534,12 +552,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   }, [editState]);
 
   // ---- Toggle section ----
-  const handleToggleSection = useCallback(
-    (key: SectionKey): void => {
-      setOpenSection((prev) => (prev === key ? null : key));
-    },
-    [],
-  );
+  const handleToggleSection = useCallback((key: SectionKey): void => {
+    setOpenSection((prev) => (prev === key ? null : key));
+  }, []);
 
   // ---- Diff computation ----
   const fieldDiffs = useMemo<FieldDiff[]>(
@@ -583,9 +598,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       return;
     }
     // 1. Validate sections
-    const hasErrors = sections.some(
-      (sec) => sectionErrors[sec.key].length > 0,
-    );
+    const hasErrors = sections.some((sec) => sectionErrors[sec.key].length > 0);
     if (hasErrors) {
       setShowErrors(true);
       // Open the first errored section so user sees inline errors
@@ -722,33 +735,36 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
         // Every buyer refunded → now it's safe to apply the schedule change.
-        await patchPublishedEventWhen({
-          eventId: liveEvent.serverEventId,
-          whenPayload: {
-            whenMode: patch.whenMode ?? liveEvent.whenMode,
-            timezone: patch.timezone ?? liveEvent.timezone,
+        await patchPublishedEventAtomically(
+          liveEvent.serverEventId,
+          {
+            core: {},
             when: {
-              date: patch.date !== undefined ? patch.date : liveEvent.date,
-              doorsOpen:
-                patch.doorsOpen !== undefined
-                  ? patch.doorsOpen
-                  : liveEvent.doorsOpen,
-              endsAt:
-                patch.endsAt !== undefined ? patch.endsAt : liveEvent.endsAt,
+              whenMode: patch.whenMode ?? liveEvent.whenMode,
+              timezone: patch.timezone ?? liveEvent.timezone,
+              when: {
+                date: patch.date !== undefined ? patch.date : liveEvent.date,
+                doorsOpen:
+                  patch.doorsOpen !== undefined
+                    ? patch.doorsOpen
+                    : liveEvent.doorsOpen,
+                endsAt:
+                  patch.endsAt !== undefined ? patch.endsAt : liveEvent.endsAt,
+              },
+              multiDates:
+                patch.multiDates !== undefined
+                  ? patch.multiDates
+                  : liveEvent.multiDates,
+              recurrenceRule:
+                patch.recurrenceRule !== undefined
+                  ? patch.recurrenceRule
+                  : liveEvent.recurrenceRule,
+              acknowledgeSoldImpact: true,
             },
-            multiDates:
-              patch.multiDates !== undefined
-                ? patch.multiDates
-                : liveEvent.multiDates,
-            recurrenceRule:
-              patch.recurrenceRule !== undefined
-                ? patch.recurrenceRule
-                : liveEvent.recurrenceRule,
           },
           reason,
-          clientRevision: null,
-          acknowledgeSoldImpact: true,
-        });
+          (liveEvent.clientRevision ?? 0) + 1,
+        );
         invalidateServerEventCaches();
         setSubmitting(false);
         setModal((prev) => ({ ...prev, visible: false }));
@@ -784,7 +800,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
 
   // ---- Map rejection result to dialog content ----
   const buildRejectDialog = useCallback(
-    (result: Extract<UpdateLiveEventResult, { ok: false }>): RejectDialogContent => {
+    (
+      result: Extract<UpdateLiveEventResult, { ok: false }>,
+    ): RejectDialogContent => {
       const closeAndOpenOrders = (): void => {
         setRejectDialog(null);
         // Cycle 9c — Orders ledger now exists; navigate to it.
@@ -941,7 +959,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         } catch (error) {
           setSubmitting(false);
           setModal((prev) => ({ ...prev, visible: false }));
-          const code = error instanceof Error ? error.message : "rsvp_update_failed";
+          const code =
+            error instanceof Error ? error.message : "rsvp_update_failed";
           const message = code.includes("event_not_an_rsvp")
             ? "This event isn't an RSVP — reopen it to edit."
             : code.includes("insufficient_event_permission")
@@ -1029,9 +1048,24 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // Defer so the reject dialog isn't dropped while the reason sheet is
         // still dismissing on iOS (see REJECT_DIALOG_HANDOFF_MS).
         const pendingReject = buildRejectDialog(validation);
-        setTimeout(() => setRejectDialog(pendingReject), REJECT_DIALOG_HANDOFF_MS);
+        setTimeout(
+          () => setRejectDialog(pendingReject),
+          REJECT_DIALOG_HANDOFF_MS,
+        );
         return;
       }
+      const corePatch = Object.fromEntries(
+        Object.entries(patch).filter(([key]) =>
+          ISSUE_1972_CORE_PATCH_KEYS.has(key as keyof EditableLiveEventFields),
+        ),
+      ) as Partial<EditableLiveEventFields>;
+      if (liveEvent.serverEventId === null) {
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        showToast("Save failed because this event is missing its server id.");
+        return;
+      }
+      const atomicPatch: AtomicPublishedEventPatch = { core: corePatch };
       const explicitCoverSet =
         patch.coverMediaUrl !== undefined && patch.coverMediaUrl !== null;
       const explicitCoverClear = patch.coverMediaUrl === null;
@@ -1043,81 +1077,13 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           patch.coverMediaCredit !== undefined ||
           patch.coverMediaCreditUrl !== undefined ||
           patch.coverMediaAlt !== undefined);
-      if (explicitCoverSet || explicitCoverClear) {
-        if (liveEvent.serverEventId === null) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast("Save failed because this event is missing its server id.");
-          return;
-        }
-        try {
-          if (explicitCoverClear) {
-            await clearEventCover(liveEvent.serverEventId);
-          } else {
-            const mediaUrl = patch.coverMediaUrl as string;
-            const mediaType = patch.coverMediaType ?? liveEvent.coverMediaType;
-            if (mediaType === null || mediaType === undefined) {
-              throw new EventCoverMediaError(
-                "upload_failed",
-                "Cover save failed: media type is missing.",
-              );
-            }
-            await setEventCover(liveEvent.serverEventId, mediaUrl, mediaType, {
-              provider:
-                patch.coverMediaProvider !== undefined
-                  ? patch.coverMediaProvider
-                  : liveEvent.coverMediaProvider ?? null,
-              sourceUrl:
-                patch.coverMediaSourceUrl !== undefined
-                  ? patch.coverMediaSourceUrl
-                  : liveEvent.coverMediaSourceUrl ?? null,
-              credit:
-                patch.coverMediaCredit !== undefined
-                  ? patch.coverMediaCredit
-                  : liveEvent.coverMediaCredit ?? null,
-              creditUrl:
-                patch.coverMediaCreditUrl !== undefined
-                  ? patch.coverMediaCreditUrl
-                  : liveEvent.coverMediaCreditUrl ?? null,
-              alt:
-                patch.coverMediaAlt !== undefined
-                  ? patch.coverMediaAlt
-                  : liveEvent.coverMediaAlt ?? null,
-            }, patch.coverMediaPosterUrl ?? (mediaType === "image" ? mediaUrl : null));
-          }
-        } catch (error) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          if (error instanceof EventCoverMediaError) {
-            if (error.code === "persist_mismatch") {
-              showToast(
-                "Save succeeded but the cover did not persist. Refresh and try again.",
-              );
-            } else {
-              showToast("Cover upload failed. Try again.");
-            }
-          } else {
-            showToast("Could not save cover media. Try again.");
-          }
-          return;
-        }
-      } else if (metadataOnlyPatch) {
-        console.warn(
-          "[ORCH-0978]",
-          "metadata-only cover patch skipped (no coverMediaUrl change)",
-          {
-            patchKeys: Object.keys(patch).filter((key) =>
-              key.startsWith("coverMedia"),
-            ),
-          },
-        );
+      if (metadataOnlyPatch) {
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        showToast("Choose the cover again so its attribution can be verified.");
+        return;
       }
-      // ORCH-0824 hotfix (Option B): if the patch touches any of the 5
-      // ORCH-0824 fields, push them to the events row via the post-publish
-      // RPC BEFORE the unified server-editable early-return. Server
-      // failure aborts; local stays in sync with the DB. This is the only
-      // field-set in EditPublishedScreen (besides cover media) that has a
-      // server-side propagation path.
+
       const taxonomyPatchPresent =
         patch.city !== undefined ||
         patch.partyTypes !== undefined ||
@@ -1127,229 +1093,15 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // ORCH-0824 hotfix-5: address re-picks (via Google Places) flow
         // through the same patch RPC.
         patch.address !== undefined;
-      if (taxonomyPatchPresent) {
-        if (liveEvent.serverEventId === null) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast(
-            "Save failed because this event is missing its server id.",
-          );
-          return;
-        }
-        // Compose final values: patch keys win, else fall through to the
-        // original LiveEvent values. `!== undefined` (not nullish) so an
-        // explicit null clear (e.g. user clears autocomplete) is honored.
-        const finalCity =
-          patch.city !== undefined ? patch.city : liveEvent.city ?? null;
-        const finalPartyTypes =
-          patch.partyTypes ?? liveEvent.partyTypes ?? [];
-        const finalVibeTags =
-          patch.vibeTags ?? liveEvent.vibeTags ?? [];
-        const finalMusicGenres =
-          patch.musicGenres ?? liveEvent.musicGenres ?? [];
-        const finalLocationGeo =
-          patch.locationGeo !== undefined
-            ? patch.locationGeo
-            : liveEvent.locationGeo ?? null;
-        // ORCH-0824 hotfix-5: send formatted address only when it
-        // changed. Null tells the RPC "leave location_text alone."
-        const finalLocationText =
-          patch.address !== undefined ? patch.address : null;
-
-        try {
-          await patchPublishedEventTaxonomy({
-            eventId: liveEvent.serverEventId,
-            city: finalCity ?? "",
-            partyTypes: finalPartyTypes,
-            vibeTags: finalVibeTags,
-            musicGenres: finalMusicGenres,
-            locationGeo: finalLocationGeo,
-            locationText: finalLocationText,
-          });
-          // Invalidate any cached business-event reads so a re-open of
-          // this event sees the freshly-written DB row.
-          invalidateServerEventCaches();
-        } catch (error) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          const code =
-            error instanceof Error ? error.message : "patch_failed";
-          // Map RPC error codes to user-friendly copy. Unknown codes fall
-          // back to a generic retry message — never blame the user.
-          const message =
-            code === "city_required"
-              ? "Pick the venue address from the suggestions so we have a city."
-              : code === "party_types_required"
-                ? "Pick at least one party type before saving."
-                : code === "party_types_not_canonical" ||
-                    code === "vibe_tags_not_canonical" ||
-                    code === "music_genres_not_canonical"
-                  ? "One of the selected tags is no longer supported. Pick again."
-                  : code === "insufficient_event_permission"
-                    ? "You don't have permission to edit this event."
-                    : code === "event_not_editable_status"
-                      ? "This event can't be edited (it may be ended or cancelled)."
-                      : "Couldn't save your changes. Tap to try again.";
-          showToast(message);
-          return;
-        }
-      }
-
-      // ORCH-0877 (Path B) — When-section edits route through the new
-      // `business_patch_event_when` RPC BEFORE both the unified server-
-      // editable early-return AND the local Zustand mutation, so the
-      // server-side event_dates row is rewritten and buyers see the
-      // corrected times. Mirrors the placement of cover-media + ORCH-0824
-      // taxonomy blocks above. Closes the ORCH-0704 v2 Zustand-only gap.
-      // Server-success-then-local pattern: RPC failure aborts; local
-      // updateLiveEventFields runs only after the server commit succeeds
-      // so the audit log + notification stack stay in sync with the DB.
-      const whenPatchPresent =
-        patch.whenMode !== undefined ||
-        patch.date !== undefined ||
-        patch.doorsOpen !== undefined ||
-        patch.endsAt !== undefined ||
-        patch.timezone !== undefined ||
-        patch.recurrenceRule !== undefined ||
-        patch.multiDates !== undefined;
-      if (whenPatchPresent) {
-        if (liveEvent.serverEventId === null) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast(
-            "Save failed because this event is missing its server id.",
-          );
-          return;
-        }
-        // Build the When payload by composing patch keys over the live
-        // event values. Patch wins on every When field; falls through to
-        // live values for fields the operator didn't touch.
-        const finalWhenMode = patch.whenMode ?? liveEvent.whenMode;
-        const finalTimezone = patch.timezone ?? liveEvent.timezone;
-        const finalDate = patch.date !== undefined ? patch.date : liveEvent.date;
-        const finalDoorsOpen =
-          patch.doorsOpen !== undefined ? patch.doorsOpen : liveEvent.doorsOpen;
-        const finalEndsAt =
-          patch.endsAt !== undefined ? patch.endsAt : liveEvent.endsAt;
-        const finalRecurrenceRule =
-          patch.recurrenceRule !== undefined
-            ? patch.recurrenceRule
-            : liveEvent.recurrenceRule;
-        const finalMultiDates =
-          patch.multiDates !== undefined
-            ? patch.multiDates
-            : liveEvent.multiDates;
-
-        try {
-          await patchPublishedEventWhen({
-            eventId: liveEvent.serverEventId,
-            whenPayload: {
-              whenMode: finalWhenMode,
-              timezone: finalTimezone,
-              when: {
-                date: finalDate,
-                doorsOpen: finalDoorsOpen,
-                endsAt: finalEndsAt,
-              },
-              multiDates: finalMultiDates,
-              recurrenceRule: finalRecurrenceRule,
-            },
-            reason: validation.trimmedReason,
-            clientRevision: null,
-          });
-          invalidateServerEventCaches();
-        } catch (error) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          const code =
-            error instanceof Error ? error.message : "patch_event_when_failed";
-          // ORCH-1075 — block shifting a PAID event onto an already-past date
-          // (Guard B only on this RPC). Surface the locked "Pick a future date"
-          // copy + leave the inline date field focused for the fix.
-          const guardCopy = resolvePaidPublishGuardCopy(code);
-          if (guardCopy !== null) {
-            showToast(guardCopy.body);
-            return;
-          }
-          const message =
-            code === "missing_edit_reason" || code === "invalid_edit_reason"
-              ? "Add a brief reason (10–200 characters) for this change."
-              : code === "insufficient_event_permission"
-                ? "You don't have permission to edit this event."
-                : code === "event_not_editable_status"
-                  ? "This event can't be edited — it may be ended or cancelled."
-                  : code === "event_deleted"
-                    ? "This event was deleted."
-                    : code === "event_date_required"
-                      ? "Set the event date before saving."
-                      : code === "event_end_must_differ_from_start"
-                        ? "End time must differ from start time."
-                        : code === "when_mode_drops_active_date" ||
-                            code === "recurrence_drops_occurrence" ||
-                            code === "multi_date_remove_with_sales"
-                          ? "This change would drop a date with active tickets. Cancel or refund those tickets first."
-                          : code === "schedule_change_with_sales"
-                            ? "This event has sold tickets. Refund those buyers before changing its time."
-                          : code === "stale_client_revision" ||
-                              code === "event_not_editable_race"
-                            ? "Someone else updated this event. Tap to reload."
-                            : "Couldn't save your changes. Tap to try again.";
-          showToast(message);
-          return;
-        }
-      }
-
-      const themePatchPresent = patch.themeOverrides !== undefined;
-      if (themePatchPresent) {
-        if (liveEvent.serverEventId === null) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast(
-            "Save failed because this event is missing its server id.",
-          );
-          return;
-        }
-        try {
-          await patchPublishedEventTheme({
-            eventId: liveEvent.serverEventId,
-            themeOverrides: patch.themeOverrides ?? null,
-          });
-          invalidateServerEventCaches();
-        } catch {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast("Couldn't save the public theme. Tap to try again.");
-          return;
-        }
-      }
-
-      // ORCH-1006 — "Who covers the costs?" switches route through a direct
-      // events.pass_* write (patchPublishedEventPricingSwitches), like the
-      // theme block above. Server-success-then-local so caches + audit stay in
-      // sync. The section is read-only once sold, so this only runs unsold.
-      if (patch.pricingSwitches !== undefined) {
-        if (liveEvent.serverEventId === null) {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast(
-            "Save failed because this event is missing its server id.",
-          );
-          return;
-        }
-        try {
-          await patchPublishedEventPricingSwitches(
-            liveEvent.serverEventId,
-            patch.pricingSwitches,
-          );
-          invalidateServerEventCaches();
-        } catch {
-          setSubmitting(false);
-          setModal((prev) => ({ ...prev, visible: false }));
-          showToast("Couldn't save who covers costs. Tap to try again.");
-          return;
-        }
-      }
-
+      // issue #1972 + #2009 CARRY-FORWARD ORDERING. The visibility leg runs
+      // BEFORE `patchPublishedEventAtomically`, not after it. #2009 pins
+      // `events.updated_at` AS LOADED as its optimistic-concurrency boundary,
+      // and #1972's atomic owner sets `updated_at=now()`. Running the atomic
+      // owner first therefore made every combined (core + visibility) save
+      // fail with `stale_event_visibility` AFTER the core change had already
+      // committed — a guaranteed partial commit reported as a failure.
+      // Visibility first keeps the refusal free of any prior write, which is
+      // also #2009's own model (its Ari tool refuses mixed calls outright).
       // issue #2009 [published-event visibility] — the visibility diff routes
       // through the narrow RPC BEFORE the unified server-editable early-return,
       // exactly like the cover / taxonomy / When / theme / pricing blocks above.
@@ -1378,6 +1130,163 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         }
         issue2009VisibilitySuccessToast = outcome.successToast;
         invalidateServerEventCaches();
+      }
+
+      if (taxonomyPatchPresent) {
+        atomicPatch.taxonomy = {
+          city:
+            patch.city !== undefined
+              ? (patch.city ?? "")
+              : (liveEvent.city ?? ""),
+          partyTypes: patch.partyTypes ?? liveEvent.partyTypes ?? [],
+          vibeTags: patch.vibeTags ?? liveEvent.vibeTags ?? [],
+          musicGenres: patch.musicGenres ?? liveEvent.musicGenres ?? [],
+          locationGeo:
+            patch.locationGeo !== undefined
+              ? patch.locationGeo
+              : (liveEvent.locationGeo ?? null),
+          locationText: patch.address !== undefined ? patch.address : null,
+        };
+      }
+
+      const whenPatchPresent =
+        patch.whenMode !== undefined ||
+        patch.date !== undefined ||
+        patch.doorsOpen !== undefined ||
+        patch.endsAt !== undefined ||
+        patch.timezone !== undefined ||
+        patch.recurrenceRule !== undefined ||
+        patch.multiDates !== undefined;
+      if (whenPatchPresent) {
+        atomicPatch.when = {
+          whenMode: patch.whenMode ?? liveEvent.whenMode,
+          timezone: patch.timezone ?? liveEvent.timezone,
+          when: {
+            date: patch.date !== undefined ? patch.date : liveEvent.date,
+            doorsOpen:
+              patch.doorsOpen !== undefined
+                ? patch.doorsOpen
+                : liveEvent.doorsOpen,
+            endsAt:
+              patch.endsAt !== undefined ? patch.endsAt : liveEvent.endsAt,
+          },
+          multiDates:
+            patch.multiDates !== undefined
+              ? patch.multiDates
+              : liveEvent.multiDates,
+          recurrenceRule:
+            patch.recurrenceRule !== undefined
+              ? patch.recurrenceRule
+              : liveEvent.recurrenceRule,
+        };
+      }
+
+      if (patch.themeOverrides !== undefined) {
+        atomicPatch.theme = patch.themeOverrides ?? null;
+      }
+      if (patch.pricingSwitches !== undefined) {
+        atomicPatch.pricing = patch.pricingSwitches;
+      }
+
+      try {
+        if (explicitCoverClear) {
+          atomicPatch.cover = { clear: true };
+        } else if (explicitCoverSet) {
+          const mediaUrl = patch.coverMediaUrl as string;
+          const mediaType = patch.coverMediaType ?? liveEvent.coverMediaType;
+          if (mediaType === null || mediaType === undefined) {
+            throw new EventCoverMediaError(
+              "upload_failed",
+              "Cover save failed: media type is missing.",
+            );
+          }
+          const attested = await attestEventCoverSelection(
+            liveEvent.serverEventId,
+            mediaUrl,
+            mediaType,
+            {
+              provider:
+                patch.coverMediaProvider !== undefined
+                  ? patch.coverMediaProvider
+                  : (liveEvent.coverMediaProvider ?? null),
+              sourceUrl:
+                patch.coverMediaSourceUrl !== undefined
+                  ? patch.coverMediaSourceUrl
+                  : (liveEvent.coverMediaSourceUrl ?? null),
+              credit:
+                patch.coverMediaCredit !== undefined
+                  ? patch.coverMediaCredit
+                  : (liveEvent.coverMediaCredit ?? null),
+              creditUrl:
+                patch.coverMediaCreditUrl !== undefined
+                  ? patch.coverMediaCreditUrl
+                  : (liveEvent.coverMediaCreditUrl ?? null),
+              alt:
+                patch.coverMediaAlt !== undefined
+                  ? patch.coverMediaAlt
+                  : (liveEvent.coverMediaAlt ?? null),
+            },
+            patch.coverMediaPosterUrl ??
+              (mediaType === "image" ? mediaUrl : null),
+          );
+          atomicPatch.cover = { selectionRef: attested.selectionRef };
+        }
+        await patchPublishedEventAtomically(
+          liveEvent.serverEventId,
+          atomicPatch,
+          validation.trimmedReason,
+          (liveEvent.clientRevision ?? 0) + 1,
+        );
+        invalidateServerEventCaches();
+      } catch (error) {
+        setSubmitting(false);
+        setModal((prev) => ({ ...prev, visible: false }));
+        if (error instanceof EventCoverMediaError) {
+          showToast("Cover upload failed. Try again.");
+          return;
+        }
+        const code =
+          error instanceof Error ? error.message : "live_event_update_failed";
+        const guardCopy = resolvePaidPublishGuardCopy(code);
+        if (guardCopy !== null) {
+          showToast(guardCopy.body);
+          return;
+        }
+        const message =
+          code.includes("ticket_change_with_sales") ||
+          code.includes("ticket_delete_with_sales")
+            ? "Refund affected buyers before changing or removing that ticket."
+            : code.includes("city_required")
+              ? "Pick the venue address from the suggestions so we have a city."
+              : code.includes("party_types_required")
+                ? "Pick at least one party type before saving."
+                : code.includes("party_types_not_canonical") ||
+                    code.includes("vibe_tags_not_canonical") ||
+                    code.includes("music_genres_not_canonical")
+                  ? "One of the selected tags is no longer supported. Pick again."
+                  : code.includes("event_date_dst_invalid")
+                    ? "That local time doesn't exist or occurs twice. Pick another time."
+                    : code.includes("event_date_required")
+                      ? "Set the event date before saving."
+                      : code.includes("event_end_must_differ_from_start")
+                        ? "End time must differ from start time."
+                        : code.includes("when_mode_drops_active_date") ||
+                            code.includes("recurrence_drops_occurrence") ||
+                            code.includes("multi_date_remove_with_sales")
+                          ? "This change would drop a date with active tickets. Cancel or refund those tickets first."
+                          : code.includes("schedule_change_with_sales")
+                            ? "This event has sold tickets. Refund those buyers before changing its time."
+                            : code.includes("stale_client_revision") ||
+                                code.includes("event_not_editable_race")
+                              ? "Someone else updated this event. Tap to reload."
+                              : code.includes("insufficient_event_permission")
+                                ? "You don't have permission to edit this event."
+                                : code.includes("event_not_editable_status") ||
+                                    code.includes("event_deleted")
+                                  ? "This event can't be edited — it may be ended or cancelled."
+                                  : "Couldn't save your changes. Tap to try again.";
+        showToast(message);
+        return;
       }
 
       // ORCH-0824 hotfix: unified early-return for server-editable-only
@@ -1445,7 +1354,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       // Guard-rail rejection — open dialog (deferred so it isn't dropped while
       // the reason sheet dismisses on iOS; see REJECT_DIALOG_HANDOFF_MS).
       const pendingReject = buildRejectDialog(result);
-      setTimeout(() => setRejectDialog(pendingReject), REJECT_DIALOG_HANDOFF_MS);
+      setTimeout(
+        () => setRejectDialog(pendingReject),
+        REJECT_DIALOG_HANDOFF_MS,
+      );
     },
     [
       submitting,
@@ -1525,7 +1437,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return (
             <ThemeControlRow
               value={editState.themeOverrides}
-              onChange={(themeOverrides) => handleUpdateDraft({ themeOverrides })}
+              onChange={(themeOverrides) =>
+                handleUpdateDraft({ themeOverrides })
+              }
               scope="offering"
               brandTheme={brandQuery.data?.theme ?? null}
               brandThemeStatus={
@@ -1684,8 +1598,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         {sections.map((sec) => {
           const isOpen = openSection === sec.key;
           const isEdited = editedSectionKeys.has(sec.key);
-          const hasErrors =
-            showErrors && sectionErrors[sec.key].length > 0;
+          const hasErrors = showErrors && sectionErrors[sec.key].length > 0;
           return (
             <View key={sec.key} style={styles.sectionCard}>
               <Pressable
@@ -1717,7 +1630,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                 />
               </Pressable>
               {isOpen ? (
-                <View style={styles.sectionBody}>{renderSectionBody(sec.key)}</View>
+                <View style={styles.sectionBody}>
+                  {renderSectionBody(sec.key)}
+                </View>
               ) : null}
             </View>
           );
@@ -1740,10 +1655,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       {/* Sticky bottom Save dock — hidden when keyboard up */}
       {!keyboardVisible ? (
         <View
-          style={[
-            styles.dock,
-            { paddingBottom: insets.bottom + spacing.md },
-          ]}
+          style={[styles.dock, { paddingBottom: insets.bottom + spacing.md }]}
         >
           <Button
             label="Save changes"

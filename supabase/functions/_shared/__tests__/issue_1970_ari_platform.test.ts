@@ -89,7 +89,14 @@ Deno.test("#1970 adversarial: unknown uuid is rejected before any RPC", async ()
   const tool = findTool("publish_event");
   assert(tool, "publish_event registered");
   await assertRejects(
-    () => tool!.executor({ event_id: "not-a-uuid" }, {} as never, "user-1"),
+    // #1972: keep the caller valid so this regression still isolates the
+    // malformed resource id before any database lookup.
+    () =>
+      tool!.executor(
+        { event_id: "not-a-uuid" },
+        {} as never,
+        "11111111-1111-4111-8111-111111111111",
+      ),
     ToolError,
     "event_id must be a uuid",
   );

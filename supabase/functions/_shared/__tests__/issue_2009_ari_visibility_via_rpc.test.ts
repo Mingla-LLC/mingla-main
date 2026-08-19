@@ -50,7 +50,9 @@ const assert = (value: unknown, message: string) => {
 };
 
 function updateEventTool() {
-  const found = AGENT_TOOLS.find((candidate) => candidate.name === "update_event");
+  const found = AGENT_TOOLS.find((candidate) =>
+    candidate.name === "update_event"
+  );
   if (!found) throw new Error("missing tool fixture: update_event");
   return found;
 }
@@ -106,7 +108,8 @@ function dbDouble(row: Row, options: DoubleOptions = {}) {
 
   /** public.business_set_event_visibility(uuid, text, text, timestamptz). */
   const businessSetEventVisibility = (args: Record<string, unknown>) => {
-    const requested = String(args.p_requested_visibility ?? "").trim().toLowerCase();
+    const requested = String(args.p_requested_visibility ?? "").trim()
+      .toLowerCase();
     if (!["public", "unlisted", "private"].includes(requested)) {
       return { data: null, error: { message: "invalid_visibility" } };
     }
@@ -119,7 +122,9 @@ function dbDouble(row: Row, options: DoubleOptions = {}) {
     if (args.p_event_id !== row.id || row.deleted_at !== null) {
       return { data: null, error: { message: "event_not_found" } };
     }
-    if (row.event_type !== "event" || !["scheduled", "live"].includes(row.status)) {
+    if (
+      row.event_type !== "event" || !["scheduled", "live"].includes(row.status)
+    ) {
       return { data: null, error: { message: "event_not_editable" } };
     }
 
@@ -140,9 +145,15 @@ function dbDouble(row: Row, options: DoubleOptions = {}) {
       };
     }
     if (target === "private" || previous === "private") {
-      return { data: null, error: { message: "private_visibility_unavailable" } };
+      return {
+        data: null,
+        error: { message: "private_visibility_unavailable" },
+      };
     }
-    if (args.p_expected_updated_at == null || args.p_expected_updated_at !== row.updated_at) {
+    if (
+      args.p_expected_updated_at == null ||
+      args.p_expected_updated_at !== row.updated_at
+    ) {
       return { data: null, error: { message: "stale_event_visibility" } };
     }
 
@@ -193,7 +204,8 @@ function dbDouble(row: Row, options: DoubleOptions = {}) {
         // — i.e. a concurrent editor lands between Ari's read and its write.
         if (driftArmed && String(q.__cols ?? "").includes("updated_at")) {
           driftArmed = false;
-          row.updated_at = new Date(Date.parse(row.updated_at) + 5000).toISOString();
+          row.updated_at = new Date(Date.parse(row.updated_at) + 5000)
+            .toISOString();
         }
         return { data: snapshot, error: null };
       };
@@ -207,7 +219,8 @@ function dbDouble(row: Row, options: DoubleOptions = {}) {
         Object.assign(row, values);
         return { data: { ...row }, error: null };
       };
-      q.maybeSingle = () => Promise.resolve(pending ? settleWrite() : settleRead());
+      q.maybeSingle = () =>
+        Promise.resolve(pending ? settleWrite() : settleRead());
       q.single = () => Promise.resolve(pending ? settleWrite() : settleRead());
       return q;
     },
@@ -253,7 +266,10 @@ Deno.test("#2009 A1 — Ari takes a published event Public -> Unlisted through t
     USER_ID,
   ) as any;
 
-  assert(row.visibility === "hidden", `row should be stored 'hidden', got ${row.visibility}`);
+  assert(
+    row.visibility === "hidden",
+    `row should be stored 'hidden', got ${row.visibility}`,
+  );
   assert(
     log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
     "the narrow RPC was never called — Ari is still writing the column directly",
@@ -262,10 +278,22 @@ Deno.test("#2009 A1 — Ari takes a published event Public -> Unlisted through t
     log.directUpdates.every((u) => !("visibility" in u)),
     "a direct events.visibility table update was attempted; the guard is the only thing standing between that and a regression",
   );
-  assert(result.event.visibility === "hidden", "the returned event does not carry the stored value");
-  assert(result.visibility.requested === "unlisted", "the bounded echo lost the Business label");
-  assert(result.visibility.changed === true, "the echo did not report a real change");
-  assert(result.visibility.revokedShareCount === 0, "revokedShareCount is missing from the echo");
+  assert(
+    result.event.visibility === "hidden",
+    "the returned event does not carry the stored value",
+  );
+  assert(
+    result.visibility.requested === "unlisted",
+    "the bounded echo lost the Business label",
+  );
+  assert(
+    result.visibility.changed === true,
+    "the echo did not report a real change",
+  );
+  assert(
+    result.visibility.revokedShareCount === 0,
+    "revokedShareCount is missing from the echo",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -280,9 +308,18 @@ Deno.test("#2009 A2 — Ari takes a published event Unlisted -> Public through t
     USER_ID,
   ) as any;
 
-  assert(row.visibility === "public", `row should be 'public', got ${row.visibility}`);
-  assert(log.directUpdates.every((u) => !("visibility" in u)), "direct visibility write attempted");
-  assert(result.visibility.previousStored === "hidden", "the echo lost the previous stored value");
+  assert(
+    row.visibility === "public",
+    `row should be 'public', got ${row.visibility}`,
+  );
+  assert(
+    log.directUpdates.every((u) => !("visibility" in u)),
+    "direct visibility write attempted",
+  );
+  assert(
+    result.visibility.previousStored === "hidden",
+    "the echo lost the previous stored value",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -306,7 +343,11 @@ Deno.test("#2009 A3a — a Private target returns private_visibility_unavailable
   const before = { ...row };
 
   const err = await expectToolError(() =>
-    updateEventTool().executor({ event_id: EVENT_ID, visibility: "public" }, client, USER_ID)
+    updateEventTool().executor(
+      { event_id: EVENT_ID, visibility: "public" },
+      client,
+      USER_ID,
+    )
   );
 
   assert(
@@ -329,9 +370,18 @@ Deno.test("#2009 A3a — a Private target returns private_visibility_unavailable
     !err.message.includes("Choose Public or Unlisted for now"),
     "the exit leg still repeats back the thing the organiser just asked for (P2-2)",
   );
-  assert(row.visibility === before.visibility, "the stored visibility changed on a refused Private call");
-  assert(row.updated_at === before.updated_at, "updated_at moved on a refused Private call");
-  assert(log.directUpdates.length === 0, "a refused Private call still attempted a table write");
+  assert(
+    row.visibility === before.visibility,
+    "the stored visibility changed on a refused Private call",
+  );
+  assert(
+    row.updated_at === before.updated_at,
+    "updated_at moved on a refused Private call",
+  );
+  assert(
+    log.directUpdates.length === 0,
+    "a refused Private call still attempted a table write",
+  );
   assert(
     log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
     "the refusal did not come from the RPC — it must be the authoritative layer talking",
@@ -342,16 +392,32 @@ Deno.test("#2009 A3b — the literal `private` is refused upstream by the advert
   const { client, log, row } = dbDouble(liveEvent({ visibility: "public" }));
 
   const err = await expectToolError(() =>
-    updateEventTool().executor({ event_id: EVENT_ID, visibility: "private" }, client, USER_ID)
+    updateEventTool().executor(
+      { event_id: EVENT_ID, visibility: "private" },
+      client,
+      USER_ID,
+    )
   );
 
   // Recorded, not endorsed: this is the pre-existing schema mismatch #2009
   // deliberately does not touch. What matters for THIS pass is that it is a
   // refusal with zero writes, not a silent success.
-  assert(err.code === "INVALID_ARGS", `expected the upstream arg refusal, got ${err.code}`);
-  assert(row.visibility === "public", "the upstream refusal still changed the row");
-  assert(log.directUpdates.length === 0, "the upstream refusal still wrote to the table");
-  assert(log.rpcCalls.every((c) => c.name !== "business_set_event_visibility"), "the RPC was reached");
+  assert(
+    err.code === "INVALID_ARGS",
+    `expected the upstream arg refusal, got ${err.code}`,
+  );
+  assert(
+    row.visibility === "public",
+    "the upstream refusal still changed the row",
+  );
+  assert(
+    log.directUpdates.length === 0,
+    "the upstream refusal still wrote to the table",
+  );
+  assert(
+    log.rpcCalls.every((c) => c.name !== "business_set_event_visibility"),
+    "the RPC was reached",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -374,12 +440,22 @@ Deno.test("#2009 A4 — visibility plus another field is refused before any writ
     `expected VISIBILITY_CHANGE_MUST_BE_SEPARATE, got ${err.code}`,
   );
   assert(
-    err.message === "Ask Ari to change visibility separately from other event edits. Nothing was changed.",
+    err.message ===
+      "Ask Ari to change visibility separately from other event edits. Nothing was changed.",
     "the mixed-action copy is not the approved sentence",
   );
-  assert(row.visibility === before.visibility, "the mixed call still changed visibility");
-  assert(row.title === before.title, "the mixed call PARTIALLY executed — the title was written");
-  assert(log.directUpdates.length === 0, "the mixed call reached a table write");
+  assert(
+    row.visibility === before.visibility,
+    "the mixed call still changed visibility",
+  );
+  assert(
+    row.title === before.title,
+    "the mixed call PARTIALLY executed — the title was written",
+  );
+  assert(
+    log.directUpdates.length === 0,
+    "the mixed call reached a table write",
+  );
   assert(
     !log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
     "the mixed call still reached the RPC",
@@ -387,21 +463,81 @@ Deno.test("#2009 A4 — visibility plus another field is refused before any writ
 });
 
 // ---------------------------------------------------------------------------
-// A5 — non-visibility fields keep their existing sparse direct path.
+// A5 — non-visibility fields no longer have a sparse DIRECT path.
+//
+// SUPERSEDED BY issue #1972 [canonical Ari event lifecycle]. This case used to
+// assert `log.directUpdates.length === 1` — that a plain title/description edit
+// reached `events` through a direct PostgREST update. #1972's Pass-4 finding 2
+// proved that path is the defect: it wrote raw lifecycle columns, carried no
+// optimistic concurrency, and had no exactly-once receipt, so a lost response
+// could replay the write. Every standard-event field edit now dispatches
+// through `ari_execute_event_operation` under the caller's JWT, keyed by the
+// confirmed pending-action id.
+//
+// What #2009 actually owns here is UNCHANGED and still asserted: a
+// non-visibility edit must never be routed through the visibility RPC, and a
+// refusal must write nothing. Both legs below prove the request is refused
+// BEFORE any table write, which is strictly stronger than the direct write this
+// replaced.
 // ---------------------------------------------------------------------------
-Deno.test("#2009 A5 — a non-visibility update still uses the existing direct path", async () => {
-  const { client, log, row } = dbDouble(liveEvent());
-
-  await updateEventTool().executor(
-    { event_id: EVENT_ID, title: "Renamed", description: "New copy" },
-    client,
-    USER_ID,
+Deno.test("#2009 A5 — a non-visibility update never touches the visibility RPC and never writes directly", async () => {
+  // Leg 1 — #1972 requires the exact next server revision.
+  const bare = dbDouble(liveEvent());
+  const missingRevision = await expectToolError(() =>
+    bare.client && updateEventTool().executor(
+      { event_id: EVENT_ID, title: "Renamed", description: "New copy" },
+      bare.client,
+      USER_ID,
+    )
+  );
+  assert(
+    missingRevision.code === "INVALID_ARGS",
+    `expected INVALID_ARGS without client_revision, got ${missingRevision.code}`,
+  );
+  assert(
+    bare.row.title !== "Renamed",
+    "the refused edit still wrote the title",
+  );
+  assert(
+    bare.log.directUpdates.length === 0,
+    "the refused edit reached a direct table write",
+  );
+  assert(
+    !bare.log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
+    "a non-visibility edit was routed through the visibility RPC",
   );
 
-  assert(row.title === "Renamed", "the sparse direct update no longer writes");
-  assert(log.directUpdates.length === 1, "the non-visibility path changed shape");
+  // Leg 2 — with a revision, the write still demands its confirmed proposal id,
+  // and it is the canonical dispatcher — never a direct update — that runs.
+  const revised = dbDouble(liveEvent());
+  const missingOperation = await expectToolError(() =>
+    updateEventTool().executor(
+      {
+        event_id: EVENT_ID,
+        title: "Renamed",
+        description: "New copy",
+        client_revision: 2,
+      },
+      revised.client,
+      USER_ID,
+    )
+  );
   assert(
-    !log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
+    missingOperation.code === "OPERATION_ID_REQUIRED",
+    `expected OPERATION_ID_REQUIRED, got ${missingOperation.code}`,
+  );
+  assert(
+    revised.row.title !== "Renamed",
+    "the unconfirmed edit still wrote the title",
+  );
+  assert(
+    revised.log.directUpdates.length === 0,
+    "the unconfirmed edit reached a direct table write",
+  );
+  assert(
+    !revised.log.rpcCalls.some((c) =>
+      c.name === "business_set_event_visibility"
+    ),
     "a non-visibility edit was routed through the visibility RPC",
   );
 });
@@ -411,7 +547,9 @@ Deno.test("#2009 A5 — a non-visibility update still uses the existing direct p
 // is invoked on the SAME caller-scoped client it was handed.
 // ---------------------------------------------------------------------------
 Deno.test("#2009 A6 — the RPC runs on the caller's own client, never a service-role escalation", async () => {
-  const { client, log } = dbDouble(liveEvent({ visibility: "public" }), { role: "authenticated" });
+  const { client, log } = dbDouble(liveEvent({ visibility: "public" }), {
+    role: "authenticated",
+  });
 
   await updateEventTool().executor(
     { event_id: EVENT_ID, visibility: "unlisted" },
@@ -419,20 +557,32 @@ Deno.test("#2009 A6 — the RPC runs on the caller's own client, never a service
     USER_ID,
   );
 
-  assert(client.__role === "authenticated", "the caller client's role was mutated");
   assert(
-    log.rpcCalls.filter((c) => c.name === "business_set_event_visibility").length === 1,
+    client.__role === "authenticated",
+    "the caller client's role was mutated",
+  );
+  assert(
+    log.rpcCalls.filter((c) => c.name === "business_set_event_visibility")
+      .length === 1,
     "the RPC was not invoked exactly once on the caller client",
   );
-  const call = log.rpcCalls.find((c) => c.name === "business_set_event_visibility")!;
-  assert(call.args.p_event_id === EVENT_ID, "the RPC was called for the wrong event");
+  const call = log.rpcCalls.find((c) =>
+    c.name === "business_set_event_visibility"
+  )!;
+  assert(
+    call.args.p_event_id === EVENT_ID,
+    "the RPC was called for the wrong event",
+  );
   assert(
     typeof call.args.p_reason === "string" &&
       (call.args.p_reason as string).length >= 10 &&
       (call.args.p_reason as string).length <= 200,
     "the fixed Ari reason is outside the RPC's bounded 10..200 range",
   );
-  assert(call.args.p_expected_updated_at != null, "no optimistic-concurrency pin was sent");
+  assert(
+    call.args.p_expected_updated_at != null,
+    "no optimistic-concurrency pin was sent",
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -445,28 +595,65 @@ Deno.test("#2009 A7 — a concurrent edit produces stale_event_visibility and no
   });
 
   const err = await expectToolError(() =>
-    updateEventTool().executor({ event_id: EVENT_ID, visibility: "unlisted" }, client, USER_ID)
+    updateEventTool().executor(
+      { event_id: EVENT_ID, visibility: "unlisted" },
+      client,
+      USER_ID,
+    )
   );
 
-  assert(err.code === "STALE_EVENT_VISIBILITY", `expected STALE_EVENT_VISIBILITY, got ${err.code}`);
-  assert(row.visibility === "public", "a stale rejection still wrote the value");
+  assert(
+    err.code === "STALE_EVENT_VISIBILITY",
+    `expected STALE_EVENT_VISIBILITY, got ${err.code}`,
+  );
+  assert(
+    row.visibility === "public",
+    "a stale rejection still wrote the value",
+  );
 });
 
 // ---------------------------------------------------------------------------
-// A8 — RSVP keeps its pre-#2009 direct path exactly (SC-22).
+// A8 — RSVP is still outside #2009 (SC-22), but is now DENIED rather than
+// written directly.
+//
+// SUPERSEDED BY issue #1972 [canonical Ari event lifecycle]. This case used to
+// assert the RSVP row was written through `update_event`'s direct path. #1972
+// bound `update_event` to `event_type = 'event'` in `EVENT_TYPE_BY_TOOL`
+// (Pass-4 finding 2: the tool had no event-type, deleted or status guard at
+// all), so `authorizeAgentTool` now denies a non-'event' offering before the
+// executor runs. RSVP visibility keeps its own owners — `biz_update_live_rsvp`
+// and the rsvp-bound Ari tools — and this tool is not one of them.
+//
+// #2009's SC-22 claim is unchanged and still asserted: an RSVP row must never
+// reach the ticketed-event visibility RPC. It is now additionally proven that
+// the refusal writes nothing.
 // ---------------------------------------------------------------------------
-Deno.test("#2009 A8 — an RSVP row is untouched by #2009 and keeps the direct path", async () => {
+Deno.test("#2009 A8 — an RSVP row never reaches the ticketed-event RPC and is denied with no write", async () => {
   const { client, log, row } = dbDouble(
     liveEvent({ event_type: "rsvp", visibility: "public" }),
   );
+  const before = { ...row };
 
-  await updateEventTool().executor(
-    { event_id: EVENT_ID, visibility: "unlisted" },
-    client,
-    USER_ID,
+  const err = await expectToolError(() =>
+    updateEventTool().executor(
+      { event_id: EVENT_ID, visibility: "unlisted" },
+      client,
+      USER_ID,
+    )
   );
 
-  assert(row.visibility === "unlisted", "the RSVP direct path stopped writing");
+  assert(
+    err.code === "BRAND_ACCESS_DENIED",
+    `expected the event-type resource binding to deny, got ${err.code}`,
+  );
+  assert(
+    row.visibility === before.visibility,
+    "the denied RSVP call still wrote visibility",
+  );
+  assert(
+    log.directUpdates.length === 0,
+    "the denied RSVP call reached a direct table write",
+  );
   assert(
     !log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
     "an RSVP row was routed through the ticketed-event RPC",
@@ -482,10 +669,17 @@ Deno.test("#2009 A9 — a forged echo is refused rather than reported as a save"
   });
 
   const err = await expectToolError(() =>
-    updateEventTool().executor({ event_id: EVENT_ID, visibility: "unlisted" }, client, USER_ID)
+    updateEventTool().executor(
+      { event_id: EVENT_ID, visibility: "unlisted" },
+      client,
+      USER_ID,
+    )
   );
 
-  assert(err.code === "VISIBILITY_ECHO_MISMATCH", `expected VISIBILITY_ECHO_MISMATCH, got ${err.code}`);
+  assert(
+    err.code === "VISIBILITY_ECHO_MISMATCH",
+    `expected VISIBILITY_ECHO_MISMATCH, got ${err.code}`,
+  );
 });
 
 // ---------------------------------------------------------------------------
@@ -493,14 +687,22 @@ Deno.test("#2009 A9 — a forged echo is refused rather than reported as a save"
 // never be used to unpublish a live one.
 // ---------------------------------------------------------------------------
 Deno.test("#2009 A10 — draft is idempotent on a draft, and refused on a published event", async () => {
-  const draft = dbDouble(liveEvent({ visibility: "draft", status: "scheduled" }));
+  const draft = dbDouble(
+    liveEvent({ visibility: "draft", status: "scheduled" }),
+  );
   await updateEventTool().executor(
     { event_id: EVENT_ID, visibility: "draft" },
     draft.client,
     USER_ID,
   );
-  assert(draft.row.visibility === "draft", "the draft no-op changed the stored value");
-  assert(draft.log.directUpdates.length === 0, "the draft no-op wrote to the table");
+  assert(
+    draft.row.visibility === "draft",
+    "the draft no-op changed the stored value",
+  );
+  assert(
+    draft.log.directUpdates.length === 0,
+    "the draft no-op wrote to the table",
+  );
   assert(
     !draft.log.rpcCalls.some((c) => c.name === "business_set_event_visibility"),
     "the draft no-op reached the RPC",
@@ -508,11 +710,18 @@ Deno.test("#2009 A10 — draft is idempotent on a draft, and refused on a publis
 
   const live = dbDouble(liveEvent({ visibility: "public" }));
   const err = await expectToolError(() =>
-    updateEventTool().executor({ event_id: EVENT_ID, visibility: "draft" }, live.client, USER_ID)
+    updateEventTool().executor(
+      { event_id: EVENT_ID, visibility: "draft" },
+      live.client,
+      USER_ID,
+    )
   );
   assert(
     err.code === "VISIBILITY_DRAFT_REQUIRES_UNPUBLISH",
     `expected VISIBILITY_DRAFT_REQUIRES_UNPUBLISH, got ${err.code}`,
   );
-  assert(live.row.visibility === "public", "a refused draft request still wrote");
+  assert(
+    live.row.visibility === "public",
+    "a refused draft request still wrote",
+  );
 });

@@ -66,6 +66,10 @@ export interface EventManageMenuProps {
    * Drafts only — live/upcoming events show Cancel event instead.
    */
   onDeleteDraft: () => void;
+  /** Create one complete editable draft graph from this event. */
+  onDuplicate: () => void;
+  /** Guarded scheduled/live → draft transition; server rejects unsafe events. */
+  onUnpublish: () => void;
   /**
    * Open Orders ledger — Cycle 9c. Wired by parent to
    * `router.push('/event/${eventId}/orders')`. Used by both the "Orders"
@@ -109,6 +113,8 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
   onEndSales,
   onCancelEvent,
   onDeleteDraft,
+  onDuplicate,
+  onUnpublish,
   onOpenOrders,
   onTransitionalToast,
   canEditEvent = true,
@@ -250,7 +256,17 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         tone: "default",
         onPress: () => {
           onClose();
-          onTransitionalToast("Duplicate lands a future polish dispatch.");
+          onDuplicate();
+        },
+      });
+      list.push({
+        key: "unpublish",
+        icon: "close",
+        label: "Unpublish to draft",
+        tone: "warn",
+        onPress: () => {
+          onClose();
+          onUnpublish();
         },
       });
     }
@@ -292,7 +308,7 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
         tone: "default",
         onPress: () => {
           onClose();
-          onTransitionalToast("Duplicate as new lands a future polish dispatch.");
+          onDuplicate();
         },
       });
     }
@@ -307,6 +323,8 @@ export const EventManageMenu: React.FC<EventManageMenuProps> = ({
     onEndSales,
     onCancelEvent,
     onDeleteDraft,
+    onDuplicate,
+    onUnpublish,
     onOpenOrders,
     onTransitionalToast,
     canEditEvent,

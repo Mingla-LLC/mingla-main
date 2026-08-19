@@ -44,13 +44,13 @@ export function check(sources) {
   }
   const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;
   if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 4 || confirm.includes("PROMPT_VERSION")) {
-    failures.push(`confirmation provenance registry incomplete: expected 4 tenant-v1 writes, found ${confirmationWrites}`);
+    failures.push(`confirmation provenance registry incomplete: expected 4 tenant-v1 attestations/writes, found ${confirmationWrites}`);
   }
   const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
   if (workflow.split(writerTestPath).length - 1 !== 3) {
     failures.push("writer-registry tester must trigger on push/PR and run unconditionally");
   }
-  for (const token of ['"agent-chat": 5', '"agent-confirm-action": 4', 'prompt_version\\s*:\\s*TENANT_CONTEXT_VERSION']) {
+  for (const token of ['"agent-chat": 5', '"agent-confirm-action": 1', 'prompt_version\\s*:\\s*TENANT_CONTEXT_VERSION']) {
     if (!writerTest.includes(token)) failures.push(`writer-registry tester missing ${token}`);
   }
   if (chat.indexOf("resolveAccessibleAgentBrands") > chat.indexOf('.from("agent_conversations")')) {

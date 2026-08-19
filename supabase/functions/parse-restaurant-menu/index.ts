@@ -1,10 +1,15 @@
 // ORCH-0881 — Ve5 parse-restaurant-menu
 //
-// SECURITY: caller JWT only (I-ARI-USER-JWT-ONLY). No service role. No menu Storage.
+// SECURITY: caller JWT owns all domain reads; service role is limited to the
+// server-authoritative pending-proposal insert. No menu Storage.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
-import { parseMenuWithGemini, type MenuFileInput } from "../_shared/geminiMenuParser.ts";
+import {
+  type MenuFileInput,
+  parseMenuWithGemini,
+} from "../_shared/geminiMenuParser.ts";
+import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 
 // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
 
@@ -47,7 +52,11 @@ function jsonResponse(status: number, body: ResponseBody): Response {
   });
 }
 
-function errorResponse(status: number, code: string, message: string): Response {
+function errorResponse(
+  status: number,
+  code: string,
+  message: string,
+): Response {
   return jsonResponse(status, { kind: "error", code, message });
 }
 
@@ -69,7 +78,11 @@ function checkRateLimit(userId: string, now = Date.now()): boolean {
 }
 
 function decodeBase64Size(dataBase64: string): number {
-  const padding = dataBase64.endsWith("==") ? 2 : dataBase64.endsWith("=") ? 1 : 0;
+  const padding = dataBase64.endsWith("==")
+    ? 2
+    : dataBase64.endsWith("=")
+    ? 1
+    : 0;
   return Math.floor((dataBase64.length * 3) / 4) - padding;
 }
 
@@ -103,9 +116,14 @@ Deno.serve(async (req) => {
     return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
   }
   const userId = userData.user.id;
+  const pendingStateClient = buildServiceClient();
 
   if (!checkRateLimit(userId)) {
-    return errorResponse(429, "RATE_LIMIT", "Daily menu parse limit reached. Try again tomorrow.");
+    return errorResponse(
+      429,
+      "RATE_LIMIT",
+      "Daily menu parse limit reached. Try again tomorrow.",
+    );
   }
 
   let body: RequestBody;
@@ -121,16 +139,30 @@ Deno.serve(async (req) => {
 
   const files = body.files;
   if (!Array.isArray(files) || files.length === 0 || files.length > MAX_FILES) {
-    return errorResponse(400, "BAD_REQUEST", `Provide 1-${MAX_FILES} menu files`);
+    return errorResponse(
+      400,
+      "BAD_REQUEST",
+      `Provide 1-${MAX_FILES} menu files`,
+    );
   }
 
   let totalBytes = 0;
   for (const f of files) {
-    if (!f || typeof f.mime_type !== "string" || typeof f.data_base64 !== "string") {
-      return errorResponse(400, "BAD_REQUEST", "Each file needs mime_type and data_base64");
+    if (
+      !f || typeof f.mime_type !== "string" || typeof f.data_base64 !== "string"
+    ) {
+      return errorResponse(
+        400,
+        "BAD_REQUEST",
+        "Each file needs mime_type and data_base64",
+      );
     }
     if (!ALLOWED_MIME.has(f.mime_type)) {
-      return errorResponse(400, "INVALID_MIME", `Unsupported type: ${f.mime_type}`);
+      return errorResponse(
+        400,
+        "INVALID_MIME",
+        `Unsupported type: ${f.mime_type}`,
+      );
     }
     const size = decodeBase64Size(f.data_base64);
     if (size <= 0) {
@@ -139,7 +171,11 @@ Deno.serve(async (req) => {
     totalBytes += size;
   }
   if (totalBytes > MAX_TOTAL_BYTES) {
-    return errorResponse(400, "FILE_TOO_LARGE", "Menu upload exceeds 10 MB total");
+    return errorResponse(
+      400,
+      "FILE_TOO_LARGE",
+      "Menu upload exceeds 10 MB total",
+    );
   }
 
   const { data: brand, error: brandErr } = await userClient
@@ -158,9 +194,11 @@ Deno.serve(async (req) => {
   // ORCH-1146 (Phase 3 — de-GBP): pass the brand currency through; when absent
   // pass null (not "GBP"). The parser leaves currency empty and the confirm
   // executor resolves it from brand.default_currency server-side.
-  const defaultCurrency = (brand.default_currency as string | null)?.trim() || undefined;
+  const defaultCurrency = (brand.default_currency as string | null)?.trim() ||
+    undefined;
   const temporaryCategory = "restaurant" as const;
-  const sourceCategory = (brand.venue_category as string | null)?.trim() || "unknown";
+  const sourceCategory = (brand.venue_category as string | null)?.trim() ||
+    "unknown";
 
   let parseResult;
   try {
@@ -173,7 +211,11 @@ Deno.serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Menu parsing failed";
     console.error("[parse-restaurant-menu] parse error:", msg.slice(0, 200));
-    return errorResponse(422, "PARSE_FAILED", "We couldn't read that menu. Try a clearer photo or PDF.");
+    return errorResponse(
+      422,
+      "PARSE_FAILED",
+      "We couldn't read that menu. Try a clearer photo or PDF.",
+    );
   }
 
   if (parseResult.experiences.length === 0) {
@@ -184,7 +226,8 @@ Deno.serve(async (req) => {
     });
   }
 
-  const expiresAt = new Date(Date.now() + HUB_EXPIRY_HOURS * 60 * 60 * 1000).toISOString();
+  const expiresAt = new Date(Date.now() + HUB_EXPIRY_HOURS * 60 * 60 * 1000)
+    .toISOString();
   const rows: Array<{
     id: string;
     tool_name: string;
@@ -210,7 +253,7 @@ Deno.serve(async (req) => {
       stops: exp.stops,
     };
 
-    const { data: inserted, error: insertErr } = await userClient
+    const { data: inserted, error: insertErr } = await pendingStateClient
       .from("agent_pending_actions")
       .insert({
         user_id: userId,
@@ -220,14 +263,22 @@ Deno.serve(async (req) => {
         tool_name: "create_experience",
         tool_args,
         status: "pending",
+        server_proposed_at: new Date().toISOString(),
         expires_at: expiresAt,
       })
       .select("id, tool_name, tool_args, expires_at")
       .single();
 
     if (insertErr || !inserted) {
-      console.error("[parse-restaurant-menu] pending insert failed:", insertErr?.message);
-      return errorResponse(500, "INTERNAL", "Failed to save experience proposals");
+      console.error(
+        "[parse-restaurant-menu] pending insert failed:",
+        insertErr?.message,
+      );
+      return errorResponse(
+        500,
+        "INTERNAL",
+        "Failed to save experience proposals",
+      );
     }
 
     rows.push({

@@ -1,0 +1,148 @@
+name: Issue 1972 Ari event lifecycle
+
+on:
+  push:
+    paths:
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/event-cover-attest-selection/**"
+      - "supabase/functions/parse-play-activities/**"
+      - "supabase/functions/parse-restaurant-menu/**"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts"
+      - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round3.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round4.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round5.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_terminalization_claims.implementor.test.sql"
+      - "mingla-business/src/**"
+      - ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs"
+      - ".github/workflows/issue-1972-ari-event-lifecycle.yml"
+  pull_request:
+    paths:
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/event-cover-attest-selection/**"
+      - "supabase/functions/parse-play-activities/**"
+      - "supabase/functions/parse-restaurant-menu/**"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts"
+      - "supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round3.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round4.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round5.implementor.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql"
+      - "supabase/migrations/__tests__/issue_1972_terminalization_claims.implementor.test.sql"
+      - "mingla-business/src/**"
+      - ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs"
+      - ".github/workflows/issue-1972-ari-event-lifecycle.yml"
+
+jobs:
+  deno-and-business:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Deno format, typecheck, and all #1972 guards
+        run: |
+          deno fmt --check supabase/functions/agent-confirm-action/index.ts supabase/functions/event-cover-attest-selection/index.ts supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentToolHelpers.ts
+          deno check supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts supabase/functions/event-cover-attest-selection/index.ts supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentToolAuthorization.ts supabase/functions/_shared/agentToolHelpers.ts supabase/functions/_shared/agentSystemPrompt.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.implementor.test.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_adversarial.test.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.ts
+      - name: True-revert strict gate
+        run: |
+          node .github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs
+          node .github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs --self-test
+      - name: Business regression matrix
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npx jest --runInBand \
+            src/services/__tests__/eventDraftsCurrency.test.ts \
+            src/services/__tests__/eventDraftsPublishTickets.test.ts \
+            src/services/__tests__/eventDraftsTaxonomyAutosave.test.ts \
+            src/services/__tests__/eventDraftsTaxonomyAutosaveAdversarial.test.ts \
+            src/services/__tests__/businessEventsPublish.test.ts \
+            src/services/__tests__/eventCoverMediaService.setClearSplit.test.ts \
+            src/services/__tests__/patchPublishedEventWhen.test.ts \
+            src/services/__tests__/patchPublishedEventWhen.adversarial.test.ts \
+            src/services/__tests__/issue_1972_round3_atomic_live_save.implementor.test.ts \
+            src/services/__tests__/issue_1972_event_lifecycle.implementor.test.ts \
+            src/components/event/__tests__/EditPublishedScreen.coverPersistence.test.tsx \
+            src/components/event/__tests__/EditPublishedScreen_silent_save_signals.test.ts \
+            src/components/event/__tests__/EditPublishedScreen_when_save_gate.test.ts \
+            src/utils/__tests__/serverDraftEventMapper.test.ts \
+            src/utils/__tests__/serverDraftLifecycleGuards.test.ts \
+            src/utils/__tests__/publishedEventEditGuards.test.ts
+
+  postgres-17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-issue-1972
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply the full migration chain
+        env:
+          PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-issue-1972
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' migration; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+          done
+      - name: Reapply migration and run all #1972 SQL guards
+        env:
+          PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-issue-1972
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270422001972_issue_1972_ari_event_lifecycle.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round2.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round3.implementor.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round3.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round4.implementor.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round4.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.round5.implementor.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_ari_event_lifecycle.tester_round5.adversarial.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1972_terminalization_claims.implementor.test.sql

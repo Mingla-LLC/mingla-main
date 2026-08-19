@@ -144,18 +144,11 @@ ari.partner.splits
 `.trim().split(/\s+/));
 
 // Independent classification authority established by the source-contract
-// reconciliation at this immutable revision. Ledger prose may explain a defect,
-// but it cannot remove one from this set or create a new proven-broken claim.
+// reconciliation at this immutable revision, minus rows whose concrete defects
+// are repaired by issue #1972. Ledger prose may explain a remaining defect, but
+// it cannot remove one from this set or create a new proven-broken claim.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
-ari.event.publish
-ari.event.unpublish
-ari.event.cancel
-ari.event.end_sales
-ari.event.duplicate
-ari.event.patch_when
-ari.event.cover
-ari.event.guest_privacy
 ari.ticket.upsert_tier
 ari.ticket.pricing_switches
 ari.experience.publish
@@ -335,9 +328,9 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 47) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 39) {
     failures.push(
-      `proven-broken authority must contain 47 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 39 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -551,7 +544,7 @@ function selfTest() {
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
   expectMutation("broken to unverified laundering", ({ ledger }) => {
-    const row = ledger.capabilities.find((c) => c.id === "ari.event.publish");
+    const row = ledger.capabilities.find((c) => c.id === "ari.ticket.upsert_tier");
     row.status = "registered_unverified";
     row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
     ledger.audit.status_breakdown.broken--;

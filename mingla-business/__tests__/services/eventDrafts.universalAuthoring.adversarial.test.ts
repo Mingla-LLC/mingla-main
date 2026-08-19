@@ -13,6 +13,7 @@ const mockGetUser = jest.fn<
   () => Promise<{ data: { user: { id: string } | null }; error: Error | null }>
 >();
 const mockFrom = jest.fn();
+const mockRpc = jest.fn();
 
 jest.mock("../../src/services/supabase", () => ({
   supabase: {
@@ -20,6 +21,7 @@ jest.mock("../../src/services/supabase", () => ({
       getUser: mockGetUser,
     },
     from: (...args: unknown[]) => mockFrom(...args),
+    rpc: (...args: unknown[]) => mockRpc(...args),
   },
 }));
 
@@ -75,6 +77,7 @@ describe("META-ORCH-0972 Sub-A adversarial — collateral-guards intact", () => 
   beforeEach(() => {
     mockGetUser.mockReset();
     mockFrom.mockReset();
+    mockRpc.mockReset();
   });
 
   test("ADV-A-01 createServerDraft throws when auth is missing (gate removal did NOT remove requireUserId guard)", async () => {
@@ -98,16 +101,13 @@ describe("META-ORCH-0972 Sub-A adversarial — collateral-guards intact", () => 
       });
     });
 
-    // Second mockFrom call is the events insert that simulates an RLS rejection
+    // The canonical event-draft RPC simulates an RLS rejection.
     const rlsError = Object.assign(new Error("RLS: insufficient permissions"), {
       code: "42501",
     });
-    mockFrom.mockImplementationOnce((...args: unknown[]) => {
-      expect(args[0]).toBe("events");
-      return queryBuilder({
-        method: "single",
-        result: { data: null as never, error: rlsError },
-      });
+    mockRpc.mockImplementationOnce(async (...args: unknown[]) => {
+      expect(args[0]).toBe("business_create_event_draft");
+      return { data: null, error: rlsError };
     });
 
     // Adversarial assertion — the error MUST surface, not be swallowed.

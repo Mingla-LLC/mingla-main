@@ -81,6 +81,10 @@ import {
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { canPerformAction } from "../../../src/utils/permissionGates";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
+import {
+  duplicateBusinessEventAsDraft,
+  unpublishBusinessEventToDraft,
+} from "../../../src/services/businessEvents";
 
 const CANCEL_PROCESSING_MS = 1200;
 const cancelSleep = (ms: number): Promise<void> =>
@@ -343,6 +347,34 @@ export default function EventDetailScreen(): React.ReactElement {
       "Draft delete not available from Event Detail. Use Events tab.",
     );
   }, [showToast]);
+
+  const handleDuplicate = useCallback(async (): Promise<void> => {
+    if (event === null || !isServerBackedEvent) {
+      showToast("Save this event to Mingla before duplicating it.");
+      return;
+    }
+    try {
+      const result = await duplicateBusinessEventAsDraft(event.serverEventId ?? event.id);
+      showToast("Draft copy created.");
+      router.push(`/event/${result.event.id}/edit` as never);
+    } catch {
+      showToast("Could not duplicate this event. Try again.");
+    }
+  }, [event, isServerBackedEvent, router, showToast]);
+
+  const handleUnpublish = useCallback(async (): Promise<void> => {
+    if (event === null || !isServerBackedEvent) return;
+    try {
+      const result = await unpublishBusinessEventToDraft(event.serverEventId ?? event.id);
+      showToast("Event moved back to drafts.");
+      router.replace(`/event/${result.event.id}/edit` as never);
+    } catch (error) {
+      const code = error instanceof Error ? error.message : "unpublish_failed";
+      showToast(code.includes("event_unpublish_has_commitments")
+        ? "This event has buyer activity and cannot be unpublished. Cancel it instead."
+        : "Could not unpublish this event. Try again.");
+    }
+  }, [event, isServerBackedEvent, router, showToast]);
 
   const eventOrdersQuery = useEventOrders(event?.id ?? null);
   const allOrderEntries = eventOrdersQuery.data ?? [];
@@ -930,6 +962,8 @@ export default function EventDetailScreen(): React.ReactElement {
             setManageMenuVisible(false);
             handleDeleteDraftStub();
           }}
+          onDuplicate={handleDuplicate}
+          onUnpublish={handleUnpublish}
           onOpenOrders={() => {
             setManageMenuVisible(false);
             router.push(`/event/${event.id}/orders` as never);

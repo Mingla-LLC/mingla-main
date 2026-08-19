@@ -181,6 +181,8 @@ export interface LiveEvent {
   eventSlug: string;                   // generated; brand-scoped unique
   // Lifecycle
   status: LiveEventStatus;
+  /** Server CAS revision for exact live-event updates. */
+  clientRevision?: number;
   publishedAt: string;                 // ISO 8601
   cancelledAt: string | null;          // populated when status = "cancelled" (Cycle 9)
   endedAt: string | null;              // populated when last event date passes (Cycle 13)

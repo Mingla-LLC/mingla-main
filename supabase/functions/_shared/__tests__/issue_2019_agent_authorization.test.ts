@@ -6,6 +6,13 @@ import { ToolError } from "../agentToolHelpers.ts";
 const assert = (value: unknown, message: string) => { if (!value) throw new Error(message); };
 const UUID = "11111111-1111-4111-8111-111111111111";
 const PARTNER = "33333333-3333-4333-8333-333333333333";
+const VALID_CREATE_EVENT_ARGS = {
+  brand_id: UUID,
+  title: "Test",
+  when_mode: "single",
+  start_at: "2027-01-01T00:00:00Z",
+  visibility: "public",
+};
 const tool = (name: string) => {
   const found = AGENT_TOOLS.find((candidate) => candidate.name === name);
   if (!found) throw new Error(`missing tool fixture: ${name}`);
@@ -13,9 +20,9 @@ const tool = (name: string) => {
 };
 
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
-  assert(AGENT_TOOLS.length === 64, `expected 64 tools, got ${AGENT_TOOLS.length}`);
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 64, "duplicate tool");
-  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 64, "authorization registry drift");
+  assert(AGENT_TOOLS.length === 65, `expected 65 tools, got ${AGENT_TOOLS.length}`);
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 65, "duplicate tool");
+  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 65, "authorization registry drift");
   for (const tool of AGENT_TOOLS) {
     const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
     assert(expected?.requiredRole === tool.requiredRole, `${tool.name}: role drift`);
@@ -35,7 +42,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     owner_or_admin: "brand_admin", owner: "deed_owner",
   };
   const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
-  assert(rows.length === 64, `expected 64 ledger rows, got ${rows.length}`);
+  assert(rows.length === 65, `expected 65 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole === translate[row.required_role],
@@ -65,14 +72,14 @@ function client(rank: number, required: number, deedOwner = false, rpcError = fa
 
 Deno.test("#2019 canonical role boundary is caller-bound and monotonic", async () => {
   const createEvent = tool("create_event");
-  await authorizeAgentTool(createEvent, { brand_id: UUID, title: "Test", start_at: "2027-01-01T00:00:00Z" }, client(40, 40), UUID);
-  await authorizeAgentTool(createEvent, { brand_id: UUID, title: "Test", start_at: "2027-01-01T00:00:00Z" }, client(50, 40), UUID);
+  await authorizeAgentTool(createEvent, VALID_CREATE_EVENT_ARGS, client(40, 40), UUID);
+  await authorizeAgentTool(createEvent, VALID_CREATE_EVENT_ARGS, client(50, 40), UUID);
   await authorizeAgentTool(
     tool("get_payout_status"),
     { brand_id: UUID }, client(40, 30), UUID,
   );
   let denied = false;
-  try { await authorizeAgentTool(createEvent, { brand_id: UUID, title: "Test", start_at: "2027-01-01T00:00:00Z" }, client(30, 40), UUID); }
+  try { await authorizeAgentTool(createEvent, VALID_CREATE_EVENT_ARGS, client(30, 40), UUID); }
   catch (e) { denied = e instanceof ToolError && e.code === "ROLE_DENIED"; }
   assert(denied, "one-rank-below caller reached executor boundary");
 });
@@ -110,7 +117,7 @@ Deno.test("#2019 full rank x operation-class matrix", async () => {
         await authorizeAgentTool(
           registered,
           name === "create_event"
-            ? { brand_id: UUID, title: "Test", start_at: "2027-01-01T00:00:00Z" }
+            ? VALID_CREATE_EVENT_ARGS
             : name === "draft_campaign"
               ? { brand_id: UUID, title: "Test" }
               : name === "update_brand"

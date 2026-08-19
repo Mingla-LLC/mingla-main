@@ -51,6 +51,9 @@ Deno.test("#2013 negative proof is anchored to the repository's public brand RLS
 Deno.test("#2013 proposal-confirm rows share provenance and replay while v4 stays excluded", async () => {
   const confirmSource = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
   assert(confirmSource.includes('import { TENANT_CONTEXT_VERSION }'));
+  // [TEST-MOD-APPROVED #1972] Terminal tool receipts moved into the atomic
+  // SQL owner; these four values are trusted RPC attestations + the sole
+  // remaining assistant-message writer, not five split Edge inserts.
   assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 4);
   assertEquals(confirmSource.includes("PROMPT_VERSION"), false);
 
