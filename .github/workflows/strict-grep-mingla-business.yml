@@ -846,6 +846,13 @@ jobs:
       # expandedCard/__tests__ because that is where the cart sheet's own
       # regression lives, and an unwired suite is the defect this repo has now
       # fixed three times in two days.
+      #
+      # Floor 10 -> 11: the tester's adversarial suite
+      # `issue_2264_return_leg_hostile_inputs.tester_adversarial.test.ts` is
+      # matched by BOTH the `issue_2264_*` and the `*.tester_adversarial*` globs
+      # and deduped by `sort -u`, so it counts once. It attacks the return-leg
+      # mapper with the hostile-input set #2229's own adversarial suite already
+      # pins against the create-leg mapper in the same module.
       - name: "Issues #2227/#2229/#2264/#2265: native Paystack hand-off, total error mapper + pending surface"
         working-directory: app-mobile
         shell: bash
@@ -862,8 +869,8 @@ jobs:
           echo "Suites matched:"
           echo "$suites"
           matched=$(printf '%s\n' "$suites" | grep -c '\.test\.ts$' || true)
-          if [ "$matched" -lt 10 ]; then
-            echo "FAIL: the suite globs matched $matched files, expected at least 10."
+          if [ "$matched" -lt 11 ]; then
+            echo "FAIL: the suite globs matched $matched files, expected at least 11."
             echo "A guard that matches nothing cannot fail. Fix the glob or the paths."
             exit 1
           fi
