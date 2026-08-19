@@ -25,6 +25,21 @@ export interface CheckoutResumePayload {
   buyerStatusToken: string;
   lines: CartLine[];
   buyer: BuyerDetails;
+  /**
+   * issue #2338 — the `event_dates.id` SET the guest chose on a multi-date
+   * EVENT (#2160). OPTIONAL, and optional on purpose: this payload is written
+   * by four checkout funnels and read after a provider redirect, so entries
+   * persisted by an older tab MUST keep validating. Absent means "this checkout
+   * has no chosen days", which is every trip, every experience, and every
+   * single-date event.
+   *
+   * WHY IT NEEDS PERSISTING AT ALL. Stripe's success_url forces a full-page
+   * reload; cart context is in-memory by design, so ORCH-0789/0790 restores
+   * `lines` + `buyer` from here. The chosen days were never added, so the paid
+   * WEB leg reached /confirm with an empty day set — and the order summary,
+   * which now names the days, would have had nothing to name.
+   */
+  eventDateIds?: string[];
 }
 
 export const checkoutResumeStorageKey = (eventId: string): string =>
@@ -66,7 +81,13 @@ export const isCheckoutResumePayload = (
     v.buyerStatusToken.length > 0 &&
     Array.isArray(v.lines) &&
     v.lines.every(isCartLine) &&
-    isBuyerDetails(v.buyer)
+    isBuyerDetails(v.buyer) &&
+    // issue #2338 — ABSENT is valid (older entries, and every funnel with no
+    // day choice). PRESENT must be a string array; a malformed one rejects the
+    // whole payload rather than half-restoring a checkout.
+    (v.eventDateIds === undefined ||
+      (Array.isArray(v.eventDateIds) &&
+        v.eventDateIds.every((id) => typeof id === "string")))
   );
 };
 

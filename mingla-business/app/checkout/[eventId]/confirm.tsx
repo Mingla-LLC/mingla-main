@@ -44,8 +44,12 @@ import {
 import { eventPublicPath } from "../../../src/constants/publicUrls";
 import { useAttendanceClaimArm } from "../../../src/hooks/useAttendanceClaimArm";
 import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
+// issue #2338 — the event's materialised days ride the SAME payload that
+// served the event (#2160/#2161); this screen already fetched them and threw
+// them away.
+import type { PublicEventOccurrence } from "../../../src/services/publicEventOccurrencesService";
 import { formatCurrency } from "../../../src/utils/currency";
-import { formatDraftDateLine } from "../../../src/utils/eventDateDisplay";
+import { resolveChosenDaysLine } from "../../../src/utils/eventDateDisplay";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -71,6 +75,11 @@ import {
 } from "../../../src/analytics/webAnalytics";
 import { phMaskProps } from "../../../src/analytics/phMask";
 
+
+// issue #2338 — stable empty reference (mirrors `checkout/[eventId]/index.tsx`)
+// so a confirmation with no occurrences never produces a new array identity per
+// render.
+const EMPTY_OCCURRENCES: readonly PublicEventOccurrence[] = [];
 
 export default function CheckoutConfirmScreen(): React.ReactElement | null {
   const [isClient, setIsClient] = useState<boolean>(false);
@@ -106,7 +115,31 @@ function CheckoutConfirmScreenInner({
     recordResult,
     setLineQuantity,
     setBuyer,
+    // issue #2338 — the day set the guest chose. It has been in the cart since
+    // #2160 (it is what mints one ticket per day); this screen simply never
+    // read it, so the order summary asked `formatDraftDateLine` — which reads
+    // the organiser's DRAFT `multiDates`, stripped by every public reader — and
+    // truthfully answered "Date TBD" over a two-day order.
+    eventDateId,
+    eventDateIds,
+    setEventDateIds,
   } = useCart();
+  // issue #2338 — the occurrences arrived on the event payload the whole time
+  // (#2160 / #2161: `PublicEventDetail.occurrences`, from the same SECURITY
+  // DEFINER reader that served the event). No new query, no new reader.
+  const occurrences = publicEventQuery.data?.occurrences ?? EMPTY_OCCURRENCES;
+  // issue #2338 — `eventDateIds` is the #2160 SET; `eventDateId` is the #2135
+  // single, still live in links minted between the two deploys. Same precedence
+  // the checkout request itself uses.
+  const chosenDayIds = useMemo<readonly string[]>(
+    () =>
+      eventDateIds.length > 0
+        ? eventDateIds
+        : eventDateId !== null
+          ? [eventDateId]
+          : [],
+    [eventDateIds, eventDateId],
+  );
   // ORCH-0852: bulletproof web confirmation. On `?cs=…` arrival we call the
   // new `ticket-checkout-confirm` edge function once. It synchronously
   // verifies the Stripe PaymentIntent and idempotently finalizes the order,
@@ -265,6 +298,20 @@ function CheckoutConfirmScreenInner({
     }
     if (buyer.email.length === 0 && buyer.phone.length === 0) {
       setBuyer(payload.buyer);
+    }
+    // issue #2338 — restore the chosen day SET too. Stripe's success_url forces
+    // a full-page reload that wipes cart context; before this, `lines` and
+    // `buyer` came back and the days did not, so a guest who paid for two days
+    // on the WEB read "Date TBD" on the summary even after this fix reached the
+    // free and native paths. Optional on the payload (#2150-era entries written
+    // before this field predate it and stay valid) — absent simply leaves the
+    // cart's own empty set in place.
+    if (
+      Array.isArray(payload.eventDateIds) &&
+      payload.eventDateIds.length > 0 &&
+      eventDateIds.length === 0
+    ) {
+      setEventDateIds(payload.eventDateIds);
     }
 
     let cancelled = false;
@@ -597,8 +644,18 @@ function CheckoutConfirmScreenInner({
             <Text style={styles.summaryEventName} numberOfLines={2}>
               {event.name.trim().length > 0 ? event.name : "Untitled event"}
             </Text>
-            <Text style={styles.summaryEventSubline} numberOfLines={1}>
-              {formatDraftDateLine(event)}
+            {/* issue #2338 — the day(s) the guest actually bought, worded the
+                way #2160 worded them on the way IN ("Sat 29 Aug + Sun 30 Aug"),
+                so the summary and the checkout header agree. Falls through to
+                the event's own date line when the chosen set did not survive to
+                this screen, and only to "Date TBD" when the event genuinely has
+                no readable date. */}
+            <Text
+              testID="issue-2338-summary-date-line"
+              style={styles.summaryEventSubline}
+              numberOfLines={1}
+            >
+              {resolveChosenDaysLine(event, occurrences, chosenDayIds)}
             </Text>
           </View>
           <View style={styles.summaryDivider} />
