@@ -7,11 +7,21 @@
 // other platform, and any budget built from it becomes NaN with no error
 // anywhere.
 //
-// Zero is the honest web value, not a placeholder: web has no soft keyboard
-// that overlaps content, so there is no Done bar above it and nothing to clear.
+// Zero is the honest web value, not a placeholder — but #2262 CORRECTS the
+// reason this file used to give ("web has no soft keyboard that overlaps
+// content"). That claim is FALSE on mobile web: a soft keyboard exists there and
+// it does overlap content. What is genuinely absent on web is the DONE BAR — the
+// `KeyboardToolbar` accessory row is a native library mount and never renders in
+// a browser — so there is no occluder above the keyboard and nothing to clear.
+// Zero is therefore still exactly right, and for a reason that survives contact.
 // It is NOT measured-and-rounded-down — there is no bar to measure
 // (Constitution rule 9: missing is zero-by-argument, never a fabricated
 // number).
+//
+// Web's own keyboard compensation is a VIEWPORT-HEIGHT PIN at the screen root
+// (`app/(tabs)/marketing/_layout.tsx`), because the mobile soft keyboard shrinks
+// `window.visualViewport` — which react-native-web's `Dimensions` already reads
+// — and never the CSS layout viewport the flex chain is rooted in.
 
 /** The bar's own height. Mirrors the library's KEYBOARD_TOOLBAR_HEIGHT. */
 export const KEYBOARD_TOOLBAR_HEIGHT = 42;

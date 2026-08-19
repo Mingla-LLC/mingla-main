@@ -37,6 +37,10 @@ on:
       - "mingla-marketing/next.config.ts"
       - "mingla-marketing/middleware.ts"
       - "mingla-marketing/vercel.json"
+      # #2272 extracted this suite's route resolver here so #2240 and #2272
+      # model the apex with ONE piece of code. A change to it changes the answer
+      # T1/T2/T5 give, so it must re-run this lane.
+      - "scripts/apex-route-model/**"
       # #2217 owns the confirmation page this email must agree with, and the
       # flip constant that moves both.
       - "mingla-business/src/constants/storeLinks.ts"

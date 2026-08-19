@@ -46,6 +46,11 @@ const NON_ROUTE_FILES = new Set([
   "+html",
   "+not-found",
   "__styleguide",
+  // #2180 — expo-router special, exactly like `+html` and `+not-found` above.
+  // `app/+native-intent.tsx` exports a pure `redirectSystemPath` string function
+  // that the router calls before any navigation state exists. It renders nothing
+  // and is not addressable, so it has no auth gate to classify.
+  "+native-intent",
 ]);
 
 type Bucket =

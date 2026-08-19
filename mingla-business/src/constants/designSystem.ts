@@ -81,6 +81,63 @@ export const venueSettingsMaxWidth = 720 as const;
 // to `VenueSettingsModule`.
 export const suiteFormMaxWidth = 720 as const;
 
+// ── #2262 [composer-responsive-layout] — composer layout tokens ────────────
+//
+// THREE tokens, each justified in the DESIGN contract on #2262 §1.2. They are
+// deliberately NOT viewport arithmetic: `bp*` are THRESHOLDS a boolean is
+// derived from (never a term in a height), and `composerSheetMinHeight` is a
+// FLOOR on a flexed child (a `minHeight:` value and nothing else — enforced by
+// the i-2262 gate rule R10). Neither is ever subtracted from a viewport height.
+
+/**
+ * Width breakpoint — below this the composer drops labels to glyphs and
+ * tightens its gutter to `spacing.sm`. `useResponsiveLayout` does not gate on
+ * it (it is a per-component width decision, not the desktop authority).
+ */
+export const bpCompact = 360 as const;
+
+/**
+ * Width breakpoint — at/above this a phone-shaped surface has room for a
+ * labelled Preview button and the sheet takes `suiteFormMaxWidth`.
+ */
+export const bpRegular = 600 as const;
+
+/**
+ * HEIGHT breakpoint. #2262's worst measured failure was 1024x700 — a SHORT
+ * window, not a narrow one, and structurally unreachable through a width-only
+ * responsive system. `useResponsiveLayout` derives `isShort` from this and
+ * exposes only the BOOLEAN: handing every consumer of the app's most-used
+ * layout hook a number that changes on every keyboard frame is exactly the
+ * `visualViewport` resize-churn ORCH-1098 spent a spike on.
+ */
+export const bpShort = 720 as const;
+
+/**
+ * The composer sheet's floor, in points.
+ *
+ * DERIVATION (#2262 SPEC AMENDMENT D-4 corrected the DESIGN's arithmetic, which
+ * omitted the subject row its own §3.3 puts inside the same sheet):
+ *
+ *     44   subject row            (design §3.3 — a raw TextInput, not `Input`)
+ *   + 44   toolbar foot           (design §3.5 — InsertionBar at the sheet foot)
+ *   + 12   vertical padding pair  (8 top + 8 bottom, rounded to the pair)
+ *   + 140  six body lines         (6 x 15px x 1.55 leading = 139.5)
+ *   ────
+ *     240
+ *
+ * On the SMS channel the subject row is absent, so SMS gets MORE body out of
+ * the same floor. There is deliberately ONE value — a second SMS-specific floor
+ * would be the same defect class (two numbers for one idea) that
+ * `PHONE_WEB_BODY_MIN_PX` vs `Math.max(120, ...)` already was.
+ *
+ * This is a floor on a FLEXED child, which is a different object from the
+ * `Math.max(120, rawBodyHeight)` this issue deletes: it participates in no
+ * subtraction and reads no viewport. When available space drops below it the
+ * sheet overflows the flex region and is CLIPPED there (Band B carries
+ * `overflow:'hidden'`), so it can never displace the commit bar.
+ */
+export const composerSheetMinHeight = 240 as const;
+
 // The PHONE / web-phone readable-measure caps the Stay modules already shipped
 // with (tokenised here, values unchanged, so the sub-1024px layout is
 // byte-identical). On wide desktop every one of these is released — the shared
@@ -395,6 +452,15 @@ export const androidOpaque = {
    * The translucent value stays the iOS/web truth; only Android composites.
    */
   accentFill: "#2b1d15",
+  /**
+   * #2262 — the Android opaque composite of `glass.border.control` (0.34 white)
+   * over canvas.discover, computed the same way as `rowFill`/`rowBorder`:
+   *   0.34*(255,255,255) + 0.66*(12,14,18) = (94.6, 95.9, 97.9) -> #5f6062
+   * Rounded to #5f6063 to match the design's stated value; the ratio is
+   * unchanged at 3.07:1. Android never receives translucent glass on a control
+   * border under ANDROID_GLASS_USES_OPAQUE_FALLBACK.
+   */
+  controlBorder: "#5f6063",
   // Issue #1008 — semantic chip composites over canvas.discover. Native
   // Android never receives translucent glass under rounded content.
   successFill: "#102f20",
@@ -430,6 +496,15 @@ export const glass = {
     profileBase: "rgba(255, 255, 255, 0.08)",
     profileElevated: "rgba(255, 255, 255, 0.12)",
     pending: "rgba(255, 255, 255, 0.28)",
+    /**
+     * #2262 — the boundary that IDENTIFIES an outlined control, and therefore
+     * the only glass border that has to clear WCAG 2.2 SC 1.4.11's 3:1.
+     * Composited over `canvas.discover` #0c0e12 every existing border tops out
+     * at 2.46:1 (`pending`); 0.34 composites to #5f6063 = 3.07:1 and is the
+     * LOWEST white alpha that clears the bar. Used ONLY on the commit bar's
+     * outlined controls — not on cards, not on the composer sheet.
+     */
+    control: "rgba(255, 255, 255, 0.34)",
   },
   highlight: {
     badge: "rgba(255, 255, 255, 0.22)",

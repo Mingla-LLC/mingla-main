@@ -30,26 +30,31 @@
  * before Stage D wires the callbacks to the editor instance.
  */
 
-import React, { useCallback } from "react";
+import React, { useCallback, useState } from "react";
 import {
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  type LayoutChangeEvent,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
   type StyleProp,
   type ViewStyle,
 } from "react-native";
+import { LinearGradient } from "expo-linear-gradient";
 
 import {
   accent,
+  androidOpaque,
   glass,
   radius,
   spacing,
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
-import { useResponsiveLayout } from "../../../hooks/useResponsiveLayout";
 import type { PersonalizationToken } from "../../../services/marketing/tenTapTokenBridge";
 import type { EventCardOption } from "../../../services/marketing/brandEvents";
 import {
@@ -95,8 +100,34 @@ export interface InsertionBarProps {
   onToggleUnderline: () => void;
   onToggleLink: () => void;
 
+  /**
+   * #2262 10.10 — the LIVE mark state of the current selection, WEB ONLY.
+   *
+   * `undefined` means "no channel exists on this platform", and the four format
+   * glyphs then render with NO active affordance at all. That is deliberate and
+   * it is the whole point: on native, `COMPOSER_SELECTION_TRACKER_JS` saves the
+   * selection into the pell WebView's own `window` and posts NOTHING back to
+   * React Native — there is no `postMessage`, no `onMessage`, no channel. An
+   * active fill wired to a source that can never become true is the UI form of
+   * a check that carries no information, and it is worse than no affordance,
+   * because the operator learns to read "not filled" as "not bold". The native
+   * WebView->RN selection channel is registered as its own work item.
+   *
+   * This prop replaces the four hardcoded `active={false}` props, which were
+   * the same defect with the same cause.
+   */
+  formatState?: FormatState;
+
   /** Optional style override on the root for embedding in keyboard accessory. */
   style?: StyleProp<ViewStyle>;
+}
+
+/** #2262 10.10 — live mark state of the selection. */
+export interface FormatState {
+  bold: boolean;
+  italic: boolean;
+  underline: boolean;
+  link: boolean;
 }
 
 // ─── Component ─────────────────────────────────────────────────────────────
@@ -116,9 +147,40 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
     onToggleItalic,
     onToggleUnderline,
     onToggleLink,
+    formatState,
     style,
   } = props;
-  const { isWideDesktop } = useResponsiveLayout();
+  // #2262 — the missing overflow AFFORDANCE. The rail genuinely scrolls
+  // (measured 383px of controls in a 288px viewport at 320pt) but
+  // `showsHorizontalScrollIndicator={false}` left no sign of it, and on desktop
+  // there is no sign at all. A 24pt edge fade paints on whichever side has
+  // hidden content. Two measurements, both from onLayout/onScroll — neither is
+  // a viewport height and neither sizes anything.
+  const [railScrollX, setRailScrollX] = useState(0);
+  const [railViewportW, setRailViewportW] = useState(0);
+  const [railContentW, setRailContentW] = useState(0);
+  const handleRailScroll = useCallback(
+    (e: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      setRailScrollX(e.nativeEvent.contentOffset.x);
+    },
+    [],
+  );
+  const handleRailLayout = useCallback((e: LayoutChangeEvent): void => {
+    setRailViewportW(e.nativeEvent.layout.width);
+  }, []);
+  const handleRailContentSize = useCallback((w: number): void => {
+    setRailContentW(w);
+  }, []);
+  const fadeLeft = railScrollX > 1;
+  const fadeRight =
+    railContentW > 0 &&
+    railViewportW > 0 &&
+    railScrollX + railViewportW < railContentW - 1;
+
+  // WEB ONLY, per #2262 10.10 + the operator decision recorded there. On native
+  // `formatState` is never supplied, so `active` stays undefined and the glyph
+  // renders neutral.
+  const marks = Platform.OS === "web" ? formatState : undefined;
 
   const toggle = useCallback(
     (panel: Exclude<InsertionBarState, "closed">): void => {
@@ -161,7 +223,7 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
     <View
       style={[styles.root, style]}
       accessibilityRole="toolbar"
-      accessibilityLabel="Insertion toolbar"
+      accessibilityLabel="Formatting and insert tools"
       testID="composer-v2-insertion-bar"
     >
       {/* F.9l: panels moved AFTER the pill row so they expand DOWNWARD
@@ -175,78 +237,6 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
           Horizontal scroll handles overflow gracefully: large screens
           show all pills; small screens let operator swipe. Divider
           dropped + Personalize label shortened to save width. */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.pillRow}
-        keyboardShouldPersistTaps="handled"
-      >
-        <Pill
-          label="B"
-          accessibilityLabel="Bold"
-          active={false}
-          onPress={onToggleBold}
-          compact
-          testID="composer-v2-format-bold"
-          desktopFlat={isWideDesktop}
-        />
-        <Pill
-          label="I"
-          accessibilityLabel="Italic"
-          active={false}
-          onPress={onToggleItalic}
-          compact
-          italic
-          testID="composer-v2-format-italic"
-          desktopFlat={isWideDesktop}
-        />
-        <Pill
-          label="U"
-          accessibilityLabel="Underline"
-          active={false}
-          onPress={onToggleUnderline}
-          compact
-          underline
-          testID="composer-v2-format-underline"
-          desktopFlat={isWideDesktop}
-        />
-        <Pill
-          label="Link"
-          accessibilityLabel="Insert link"
-          active={false}
-          onPress={onToggleLink}
-          compact
-          testID="composer-v2-format-link"
-          desktopFlat={isWideDesktop}
-        />
-        <Pill
-          label="+ Event"
-          accessibilityLabel="Insert event card"
-          active={state === "events-open"}
-          primary
-          onPress={() => toggle("events-open")}
-          testID="composer-v2-pill-event"
-          desktopFlat={isWideDesktop}
-        />
-        <Pill
-          label="Personalize"
-          accessibilityLabel="Insert personalization token"
-          active={state === "personalize-open"}
-          onPress={() => toggle("personalize-open")}
-          testID="composer-v2-pill-personalize"
-          desktopFlat={isWideDesktop}
-        />
-        <Pill
-          label="⋮"
-          accessibilityLabel="More insertion options"
-          active={state === "overflow-open"}
-          onPress={() => toggle("overflow-open")}
-          compact
-          testID="composer-v2-pill-overflow"
-          desktopFlat={isWideDesktop}
-        />
-      </ScrollView>
-
       {state === "events-open" ? (
         <EventsPanel events={events} onPick={handleInsertEvent} />
       ) : null}
@@ -256,64 +246,202 @@ export function InsertionBar(props: InsertionBarProps): React.ReactElement {
       {state === "overflow-open" ? (
         <OverflowPanel onPick={handleOverflow} />
       ) : null}
+      <View style={styles.foot}>
+        <View style={styles.railWrap} onLayout={handleRailLayout}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.pillRow}
+            keyboardShouldPersistTaps="handled"
+            onScroll={handleRailScroll}
+            onContentSizeChange={handleRailContentSize}
+            scrollEventThrottle={16}
+          >
+            <Glyph
+              label="B"
+              accessibilityLabel="Bold"
+              active={marks?.bold}
+              onPress={onToggleBold}
+              testID="composer-v2-format-bold"
+            />
+            <Glyph
+              label="I"
+              accessibilityLabel="Italic"
+              active={marks?.italic}
+              onPress={onToggleItalic}
+              italic
+              testID="composer-v2-format-italic"
+            />
+            <Glyph
+              label="U"
+              accessibilityLabel="Underline"
+              active={marks?.underline}
+              onPress={onToggleUnderline}
+              underline
+              testID="composer-v2-format-underline"
+            />
+            <Glyph
+              label="⌗"
+              accessibilityLabel="Insert link"
+              active={marks?.link}
+              onPress={onToggleLink}
+              testID="composer-v2-format-link"
+            />
+            {/* #2262 — DESIGN §4.2 wanted these two moved into the `⋮` menu
+                below `bpCompact`. `⋮`'s item list lives in `InsertionBarState.ts`,
+                which is DO-NOT-TOUCH on this issue, and the alternative loses
+                nothing: the rail genuinely scrolls, and it now carries the edge
+                fade that was the actual missing affordance. Deviation recorded
+                in the implementation report. */}
+            <TextButton
+              label="+ Event"
+              accessibilityLabel="Insert event card"
+              open={state === "events-open"}
+              onPress={() => toggle("events-open")}
+              testID="composer-v2-pill-event"
+            />
+            <TextButton
+              label="Personalize"
+              accessibilityLabel="Insert personalization token"
+              open={state === "personalize-open"}
+              onPress={() => toggle("personalize-open")}
+              testID="composer-v2-pill-personalize"
+            />
+          </ScrollView>
+          {fadeLeft ? (
+            <LinearGradient
+              colors={["rgba(19, 21, 25, 1)", "rgba(19, 21, 25, 0)"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.edgeFade, styles.edgeFadeLeft]}
+              testID="composer-v2-toolbar-fade-left"
+            />
+          ) : null}
+          {fadeRight ? (
+            <LinearGradient
+              colors={["rgba(19, 21, 25, 0)", "rgba(19, 21, 25, 1)"]}
+              start={{ x: 0, y: 0.5 }}
+              end={{ x: 1, y: 0.5 }}
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[styles.edgeFade, styles.edgeFadeRight]}
+              testID="composer-v2-toolbar-fade-right"
+            />
+          ) : null}
+        </View>
+        {/* Pinned right, never scrolls, never collapses — it is the escape
+            hatch, so everything dropped at a narrow width is reachable here. */}
+        <Glyph
+          label="⋮"
+          accessibilityLabel="More insert options"
+          open={state === "overflow-open"}
+          onPress={() => toggle("overflow-open")}
+          testID="composer-v2-pill-overflow"
+        />
+      </View>
     </View>
   );
 }
 
 // ─── Sub-components ────────────────────────────────────────────────────────
 
-interface PillProps {
+/**
+ * A 32x32 icon button. The letterforms B / I / U ARE the icons and are
+ * universally read; `hitSlop: 6` takes the effective target to 44pt
+ * (I-WCAG-AA-TOUCH-44PT).
+ *
+ * `active` is OPTIONAL and that is load-bearing. `undefined` means the platform
+ * has no channel that could ever report the state, and the button then renders
+ * with NO active affordance — see `InsertionBarProps.formatState`. `open` is a
+ * separate prop for the panel toggles, whose state has always been real
+ * (`state === "events-open"` etc.) and is reported through
+ * `accessibilityState.expanded` rather than `selected`.
+ */
+interface GlyphProps {
   label: string;
   accessibilityLabel: string;
-  active: boolean;
+  active?: boolean;
+  open?: boolean;
   onPress: () => void;
-  primary?: boolean;
-  compact?: boolean;
   italic?: boolean;
   underline?: boolean;
   testID?: string;
-  desktopFlat?: boolean;
 }
 
-function Pill(props: PillProps): React.ReactElement {
-  const {
-    label,
-    accessibilityLabel,
-    active,
-    onPress,
-    primary,
-    compact,
-    italic,
-    underline,
-    testID,
-    desktopFlat,
-  } = props;
+function Glyph(props: GlyphProps): React.ReactElement {
+  const { label, accessibilityLabel, active, open, onPress, italic, underline, testID } =
+    props;
+  const isActive = active === true || open === true;
   return (
     <Pressable
       onPress={onPress}
-      hitSlop={8}
+      hitSlop={6}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel}
-      accessibilityState={{ expanded: active }}
+      // A toggle reports `selected`; a disclosure reports `expanded`.
+      accessibilityState={
+        open === undefined ? { selected: active === true } : { expanded: open }
+      }
       style={({ pressed }) => [
-        styles.pill,
-        compact === true ? styles.pillCompact : null,
-        primary === true ? styles.pillPrimary : styles.pillNeutral,
-        desktopFlat === true ? styles.pillDesktopFlat : null,
-        active ? styles.pillActive : null,
-        desktopFlat === true && active ? styles.pillDesktopFlatActive : null,
-        pressed ? styles.pillPressed : null,
+        styles.glyph,
+        isActive
+          ? Platform.OS === "android"
+            ? styles.glyphActiveOpaque
+            : styles.glyphActive
+          : null,
+        pressed ? styles.glyphPressed : null,
       ]}
       testID={testID}
     >
       <Text
         style={[
-          styles.pillText,
-          primary === true ? styles.pillTextPrimary : styles.pillTextNeutral,
-          italic === true ? styles.pillTextItalic : null,
-          underline === true ? styles.pillTextUnderline : null,
+          styles.glyphText,
+          isActive ? styles.glyphTextActive : null,
+          italic === true ? styles.glyphTextItalic : null,
+          underline === true ? styles.glyphTextUnderline : null,
         ]}
       >
+        {label}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** A labelled insert action. `+ Event` no longer wears the primary fill — it is
+ *  not the primary action on this screen and should not carry that colour. */
+interface TextButtonProps {
+  label: string;
+  accessibilityLabel: string;
+  open: boolean;
+  onPress: () => void;
+  testID?: string;
+}
+
+function TextButton(props: TextButtonProps): React.ReactElement {
+  const { label, accessibilityLabel, open, onPress, testID } = props;
+  return (
+    <Pressable
+      onPress={onPress}
+      hitSlop={6}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      accessibilityState={{ expanded: open }}
+      style={({ pressed }) => [
+        styles.textBtn,
+        open
+          ? Platform.OS === "android"
+            ? styles.textBtnOpenOpaque
+            : styles.textBtnOpen
+          : null,
+        pressed ? styles.glyphPressed : null,
+      ]}
+      testID={testID}
+    >
+      <Text style={[styles.textBtnLabel, open ? styles.textBtnLabelOpen : null]}>
         {label}
       </Text>
     </Pressable>
@@ -435,73 +563,111 @@ function OverflowPanel(props: OverflowPanelProps): React.ReactElement {
 const styles = StyleSheet.create({
   // Root MUST always render. Do NOT add conditional display:none or
   // pointerEvents:"none" — I-PROPOSED-MKT-COMPOSER-V2-INSERTION-BAR-ALWAYS-VISIBLE.
+  /**
+   * #2262 — the toolbar now lives at the SHEET FOOT, as the sheet's own chrome
+   * rather than a pill row cutting the screen in half between the subject and
+   * the body. It is a CHILD of the sheet, so its 44pt is part of the sheet's
+   * height and not part of the chrome above it — which is exactly why moving it
+   * cost the height model nothing: `measuredBodyPx` is taken after layout, so
+   * it is automatically net of wherever this ended up.
+   *
+   * Root MUST always render. Do NOT add conditional display:none or
+   * pointerEvents:"none" — I-PROPOSED-MKT-COMPOSER-V2-INSERTION-BAR-ALWAYS-VISIBLE.
+   */
   root: {
-    // F.9i: dropped backgroundColor + borderTop. The tinted background +
-    // hairline top border sat directly under the subject text baseline
-    // and read visually as a bar clipping the subject's descenders
-    // (operator screenshot: "good" looked cut off). Toolbar now floats
-    // transparently over the dark canvas — matches the F.9d floating-CTA
-    // pattern in ComposerFooter. Each pill keeps its own border so the
-    // toolbar still reads as a discrete control row.
-    paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
+    flexShrink: 0,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: glass.border.profileBase,
+  },
+  foot: {
+    height: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: spacing.sm,
+    gap: spacing.xs,
+  },
+  railWrap: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: "center",
+  },
+  edgeFade: {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    width: 24,
+  },
+  edgeFadeLeft: {
+    left: 0,
+  },
+  edgeFadeRight: {
+    right: 0,
   },
   pillRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: spacing.xs, // F.9c: dropped flexWrap + divider; horizontal scroll
-                     // in parent handles overflow on narrow screens.
+    gap: spacing.xs,
   },
-  pill: {
-    minHeight: 36, // F.8: was 44 (still 44pt with hitSlop:8 → I-WCAG-AA-TOUCH-44PT)
-    minWidth: 36,
-    paddingHorizontal: spacing.sm, // F.8: was spacing.md
-    paddingVertical: spacing.xs, // F.8: was spacing.sm
-    borderRadius: radius.full,
+  glyph: {
+    height: 32,
+    minWidth: 32,
+    paddingHorizontal: spacing.xs,
+    borderRadius: radius.sm,
     alignItems: "center",
     justifyContent: "center",
-    borderWidth: StyleSheet.hairlineWidth,
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
   },
-  pillCompact: {
+  glyphActive: {
+    backgroundColor: accent.tint,
+    borderColor: glass.border.control,
+  },
+  glyphActiveOpaque: {
+    backgroundColor: androidOpaque.accentFill,
+    borderColor: androidOpaque.controlBorder,
+  },
+  glyphPressed: {
+    backgroundColor: glass.tint.profileElevated,
+  },
+  glyphText: {
+    ...typography.buttonMd,
+    fontSize: 15,
+    color: textTokens.secondary,
+  },
+  glyphTextActive: {
+    color: accent.warm,
+  },
+  glyphTextItalic: {
+    fontStyle: "italic",
+  },
+  glyphTextUnderline: {
+    textDecorationLine: "underline",
+  },
+  textBtn: {
+    height: 32,
     paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
+    backgroundColor: "transparent",
   },
-  pillPrimary: {
+  textBtnOpen: {
     backgroundColor: accent.tint,
     borderColor: accent.border,
   },
-  pillNeutral: {
-    backgroundColor: glass.tint.badge.idle,
-    borderColor: glass.border.chrome,
+  textBtnOpenOpaque: {
+    backgroundColor: androidOpaque.accentFill,
+    borderColor: accent.border,
   },
-  pillDesktopFlat: {
-    backgroundColor: "transparent",
-    borderColor: "rgba(255, 255, 255, 0.13)",
-  },
-  pillActive: {
-    backgroundColor: accent.glow,
-    borderColor: accent.warm,
-  },
-  pillDesktopFlatActive: {
-    backgroundColor: "transparent",
-    borderColor: "rgba(235, 120, 37, 0.62)",
-  },
-  pillPressed: {
-    opacity: 0.7,
-  },
-  pillText: {
+  textBtnLabel: {
     ...typography.buttonMd,
-  },
-  pillTextPrimary: {
-    color: textTokens.primary,
-  },
-  pillTextNeutral: {
     color: textTokens.secondary,
   },
-  pillTextItalic: {
-    fontStyle: "italic",
-  },
-  pillTextUnderline: {
-    textDecorationLine: "underline",
+  textBtnLabelOpen: {
+    color: textTokens.primary,
   },
 
   // Events panel

@@ -22,6 +22,17 @@ export interface ComposerStepWhoProps {
   totalAudience: number | null;
   onOpenPicker: () => void;
   disabled?: boolean;
+  /**
+   * #2262 bpShort ladder, step 1. On a short viewport (< 720pt tall — the
+   * 1024x700 desktop case and every phone with the keyboard up) the reach
+   * caption moves INTO the picker row as a right-aligned count instead of
+   * occupying its own line, recovering ~20pt for the composer sheet.
+   *
+   * Nothing is lost: the same two numbers are still on screen, and the full
+   * sentence stays in the picker's `accessibilityLabel`. The commit bar is
+   * never a step in this ladder — it is the last thing standing.
+   */
+  compact?: boolean;
 }
 
 export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
@@ -30,6 +41,7 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
   totalAudience,
   onOpenPicker,
   disabled,
+  compact,
 }) => {
   const { isWideDesktop } = useResponsiveLayout();
   const isEmpty = audienceName === null;
@@ -37,6 +49,8 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
     totalAudience !== null && reachableEmail !== null
       ? `${totalAudience} people · ${reachableEmail} with marketing consent`
       : null;
+  const reachCount = totalAudience !== null ? `${totalAudience}` : null;
+  const isCompact = compact === true;
   return (
     <View style={styles.host}>
       {/* F.8: dropped "STEP 1 — WHO" label per ORCH-0864 compact-layout brief.
@@ -47,7 +61,9 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
         disabled={disabled === true}
         accessibilityRole="button"
         accessibilityLabel={
-          isEmpty ? "Pick an audience" : `Change audience: ${audienceName ?? ""}`
+          isEmpty
+            ? "Pick an audience"
+            : `Change audience: ${audienceName ?? ""}${reachText !== null ? `. ${reachText}` : ""}`
         }
         accessibilityState={{ disabled: disabled === true }}
         style={({ pressed }) => [
@@ -59,12 +75,17 @@ export const ComposerStepWho: React.FC<ComposerStepWhoProps> = ({
           disabled === true ? styles.pickerDisabled : null,
         ]}
       >
-        <Text style={styles.pickerLabel}>
+        <Text style={styles.pickerLabel} numberOfLines={1}>
           {isEmpty ? "Pick an audience" : (audienceName ?? "Audience")}
         </Text>
+        {isCompact && reachCount !== null ? (
+          <Text style={styles.pickerCount} testID="composer-who-compact-count">
+            {reachCount}
+          </Text>
+        ) : null}
         <Text style={styles.pickerChevron}>›</Text>
       </Pressable>
-      {reachText !== null ? (
+      {isCompact ? null : reachText !== null ? (
         <Text style={styles.reachText}>{reachText}</Text>
       ) : disabled === true ? (
         <Text style={styles.disabledCaption}>
@@ -115,6 +136,11 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontWeight: "600",
     flex: 1,
+  },
+  pickerCount: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    flexShrink: 0,
   },
   pickerChevron: {
     ...typography.bodyLg,

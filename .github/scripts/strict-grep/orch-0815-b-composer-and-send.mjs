@@ -55,7 +55,12 @@ const NEW_MB_FILES = [
   "mingla-business/src/components/marketing/ComposerStepWhat.tsx",
   "mingla-business/src/components/marketing/ComposerStepWhen.tsx",
   "mingla-business/src/components/marketing/ComposerStepCompliance.tsx",
-  "mingla-business/src/components/marketing/ComposerFooter.tsx",
+  // #2262 [composer-responsive-layout] — RENAMED. `ComposerFooter` carried
+  // `desktopHost: { position: "absolute" }`, which was the whole of RC-3, so the
+  // file was renamed rather than left on disk beside a replacement where a later
+  // import could resurrect it. Same component, same responsibility, one contract
+  // on all five surfaces.
+  "mingla-business/src/components/marketing/ComposerCommitBar.tsx",
   "mingla-business/src/components/marketing/ComposerReviewSheet.tsx",
   "mingla-business/src/components/marketing/ComposerSentConfirmation.tsx",
   "mingla-business/src/components/marketing/AudiencePickerSheet.tsx",

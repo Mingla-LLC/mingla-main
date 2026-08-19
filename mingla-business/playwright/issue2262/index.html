@@ -1,0 +1,30 @@
+<!doctype html>
+<!--
+  #2262 [composer-responsive-layout] — the composer browser-harness page.
+
+  It reproduces the SHIPPED DOCUMENT CONDITIONS exactly, and that is the whole
+  point of it. `expo-router`'s `ScrollViewStyleReset` — which
+  `mingla-business/app/+html.tsx` already renders — emits precisely
+  `#root,body,html{height:100%}body{overflow:hidden}#root{display:flex}`.
+
+  So the page behind the composer DOES NOT SCROLL, which is why an action row
+  that overflowed the column was not merely awkward at 390x750: it was 89px
+  below the fold with nothing to scroll and no way to reach it. A harness that
+  let the document scroll would flatter the fix.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
+    <title>#2262 composer viewport-fit harness</title>
+    <style>
+      html, body { margin: 0; padding: 0; height: 100%; background: #0c0e12; }
+      body { overflow: hidden; }
+      #root { height: 100%; display: flex; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script src="../../node_modules/.cache/issue2262-harness/composer-entry.js"></script>
+  </body>
+</html>

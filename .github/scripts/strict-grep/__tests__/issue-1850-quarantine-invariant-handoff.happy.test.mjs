@@ -103,7 +103,17 @@ function stripLedgerFor(configText, needle) {
 }
 
 /** The seven files #1850 consciously dropped from the ORCH-1165 hand-off. */
+// [TEST-MOD-APPROVED #2262] — ORCHESTRATOR-GRANTED, not self-granted. The
+// authorising token lives in the COMMIT BODY, which is the only place
+// `.github/scripts/test-append-only-check.js` reads it; these in-file markers are
+// documentation for a human opening the file, and carry no authority on their own.
+//
+// Renamed in spirit, not in name: this is now "every
+// file the quarantined test described that NO gate reads", whoever dropped it.
+// #2262 added the composer — see the `dropped:` entry in jest.config.cjs, which
+// names both successors.
 const DROPPED_BY_1850 = [
+  "src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
   "app/checkout/[eventId]/buyer.tsx",
   "app/checkout/[eventId]/payment.tsx",
   "app/checkout-trip/[tripEventId]/buyer.tsx",
@@ -134,7 +144,15 @@ test("T-2 removing #1850's ledger turns the gate RED and names every dark file",
     assert.ok(text.includes(dark), `failure did not name the dark file ${dark}`);
   }
   // Named files only, never a count with no list.
-  assert.match(text, /7 of 17 file\(s\)/);
+  //
+  // [TEST-MOD-APPROVED #2262 — orchestrator-granted; token in the commit body]
+  // The count is DERIVED from the list above instead
+  // of typed. It used to read `/7 of 17 file\(s\)/`, which is a count-pin: it
+  // encodes today's number and breaks on every legitimate addition while
+  // catching nothing the naming loop above does not already catch. Deriving it
+  // keeps the real assertion — that the message reports a count CONSISTENT with
+  // the files it names, never a bare list — and drops only the literal.
+  assert.match(text, new RegExp(`${DROPPED_BY_1850.length} of 17 file\\(s\\)`));
 });
 
 // ── T-3 ────────────────────────────────────────────────────────────────────
@@ -162,20 +180,39 @@ test("T-4 a drop with no successor is rejected", () => {
 
 // ── T-5 ────────────────────────────────────────────────────────────────────
 test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated surface", () => {
+  // [TEST-MOD-APPROVED #2262 — orchestrator-granted; token in the commit body]
+  // The marketing composer was PROMOTED from the KEYED
+  // cohort (B) to the DERIVED cohort (D). (B)'s contract is "if you hand-type a
+  // 42, at least gate it on keyboard-open"; (D)'s is "never type one — derive it
+  // from DONE_BAR_OCCUPIED". (D) is strictly stronger: it FORBIDS the literal
+  // that (B) merely tolerates.
+  //
+  // #2262 deleted the composer's `keyboardHeight > 0 ? keyboardHeight + 42` and
+  // the bespoke Keyboard.addListener behind it, and moved the budget to the
+  // ROUTE, which reads DONE_BAR_OCCUPIED + MIN_VISIBLE_CLEARANCE from
+  // wrappers/keyboardClearance. The named gate's own header requires exactly
+  // this ordering: "Widening (D) means migrating the surface first — that
+  // ordering is the whole point."
+  //
+  // WHAT THE OLD ENTRY COULD CATCH THAT THIS CANNOT: nothing. It could catch an
+  // ungated literal in ComposerV2Editor. That file now holds no keyboard code at
+  // all, and i-2262-composer-measured-not-computed-layout.mjs rule R4 forbids
+  // `Keyboard.addListener` there outright — marker or no marker — while R1/R3
+  // forbid the constants. The composer's clearance is covered here instead, more
+  // strictly, at the file that now owns it.
   const DERIVED = [
     "src/components/groupChat/GroupChatPanel.tsx",
     "src/components/support/SupportThread.native.tsx",
     "src/components/brand/BrandPaystackOnboardView.tsx",
     "src/screens/ari/AriChatScreen.tsx",
+    "app/(tabs)/marketing/campaigns/compose.tsx",
   ];
   const MOUNT = ["app/_layout.tsx", "src/components/ui/SheetMobile.tsx", "src/components/ui/Modal.tsx"];
   const KEYED = [
     ["src/components/auth/BusinessWelcomeScreen.tsx", /keyboardPad\s*>\s*0\s*\?\s*keyboardPad\s*\+\s*42/],
     ["src/components/waitlist/JoinWaitlistSheet.tsx", /keyboardPadding\s*>\s*0\s*\?\s*42/],
-    [
-      "src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
-      /keyboardHeight\s*>\s*0\s*\?\s*keyboardHeight\s*\+\s*42/,
-    ],
+    // [TEST-MOD-APPROVED #2262 — orchestrator-granted] the composer moved to
+    // DERIVED, above.
   ];
   const NESTED = ["src/components/ui/SheetMobile.tsx", "src/components/ui/Modal.tsx"];
 
