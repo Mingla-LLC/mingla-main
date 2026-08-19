@@ -13,12 +13,26 @@
 --       format IN ('online','hybrid') AND persist the supplied format into
 --       theme.business_event.format. Both halves are ONE change.
 --   S4  ari_execute_event_operation — accept a `format` argument at all three
---       derivation sites and keep is_online in agreement with it.
+--       derivation sites on the create and LIVE-update arms, and keep
+--       is_online in agreement with it.
+--   S6  ari_execute_event_operation — the DRAFT-update arm, which S4 missed.
+--       It accepted a `format` and silently discarded it, and it wrote
+--       is_online without its source of truth so a hybrid draft could be
+--       published as `format=hybrid, is_online=false`. Both closed, with the
+--       create arm's precedence.
 --
 -- ONE CANONICAL-MEMBERSHIP TEST, WRITTEN THE SAME WAY EVERYWHERE. Every site
 -- above decides whether a format value is usable with the SAME expression —
--- `lower(btrim(COALESCE(<expr>,''))) IN ('in_person','online','hybrid')` — and
--- emits the SAME normalised value, `lower(btrim(<expr>))`. This supersedes the
+-- `lower(btrim(COALESCE(<expr>,''), E' \t\n\r\f\v'||chr(160)))
+--  IN ('in_person','online','hybrid')` — and emits the SAME normalised value.
+-- The second `btrim` argument is NOT decoration: one-argument `btrim(text)`
+-- strips ASCII SPACE ONLY. Measured on the harness rather than assumed —
+-- `sp_stripped=true`, `tab_stripped=false`, `nl_stripped=false`,
+-- `cr_stripped=false`, `nbsp_stripped=false` — so a tab-, newline-, CR- or
+-- U+00A0-padded `hybrid` fell straight through the canonical list and
+-- reproduced the whole escalation below verbatim: `stored=<TAB>hybrid,
+-- broadcast=f` became `stored=online, broadcast=t` after one round trip. The
+-- explicit character set closes that class. This supersedes the
 -- SPEC's §9 instruction to use a bare `IN (…)` with no `lower()`/`btrim()`.
 -- §9's premise was that "every writer emits a bare literal". That is true of
 -- the shipped TypeScript client and FALSE of the server contract:
@@ -228,10 +242,10 @@ BEGIN
       -- behaviour and never a fabricated 'hybrid'.
       'format', CASE
         WHEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',
-                                  v_event.theme#>>'{business_draft,format}','')))
+                                  v_event.theme#>>'{business_draft,format}',''), E' \t\n\r\f\v'||chr(160)))
              IN ('in_person','online','hybrid')
         THEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',
-                                  v_event.theme#>>'{business_draft,format}')))
+                                  v_event.theme#>>'{business_draft,format}'), E' \t\n\r\f\v'||chr(160)))
         WHEN v_event.is_online THEN 'online'
         ELSE 'in_person'
       END,
@@ -329,8 +343,8 @@ BEGIN
     -- fired on every hybrid save. Unrecognised values leave both columns
     -- untouched rather than resolving to a guess.
     is_online=CASE
-      WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')
-      THEN lower(btrim(p_patch->>'format')) IN ('online','hybrid')
+      WHEN lower(btrim(COALESCE(p_patch->>'format',''), E' \t\n\r\f\v'||chr(160))) IN ('in_person','online','hybrid')
+      THEN lower(btrim(p_patch->>'format', E' \t\n\r\f\v'||chr(160))) IN ('online','hybrid')
       ELSE is_online END,
     visibility=CASE WHEN p_patch ? 'visibility' THEN CASE p_patch->>'visibility' WHEN 'unlisted' THEN 'hidden' WHEN 'private' THEN 'private' ELSE 'public' END ELSE visibility END,
     theme=jsonb_set(
@@ -354,12 +368,12 @@ BEGIN
           -- key when present. Scoped to the format arm on purpose: the
           -- {business_event,settings} and {business_event,clientRevision}
           -- jsonb_set calls below are #1972's and are left exactly as written.
-          CASE WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')
+          CASE WHEN lower(btrim(COALESCE(p_patch->>'format',''), E' \t\n\r\f\v'||chr(160))) IN ('in_person','online','hybrid')
             THEN COALESCE(theme,'{}'::jsonb) || jsonb_build_object(
                    'business_event',
                    CASE WHEN jsonb_typeof(theme->'business_event')='object'
                      THEN theme->'business_event' ELSE '{}'::jsonb END
-                   || jsonb_build_object('format',lower(btrim(p_patch->>'format'))))
+                   || jsonb_build_object('format',lower(btrim(p_patch->>'format', E' \t\n\r\f\v'||chr(160)))))
             ELSE COALESCE(theme,'{}'::jsonb) END,
           '{business_event,settings}',v_settings,true),
         '{business_event,clientRevision}',to_jsonb(p_client_revision),true),
@@ -447,6 +461,8 @@ DECLARE
   v_date_text text;
   v_start_text text;
   v_end_text text;
+  v_draft_format text;   -- issue #2353, S6
+  v_draft_online boolean;-- issue #2353, S6
 BEGIN
   IF p_tool_name NOT IN('create_event','update_event','publish_event','unpublish_event','cancel_event',
     'end_event_sales','duplicate_event','patch_event_when','set_event_cover','set_event_guest_privacy','discard_event_draft')
@@ -536,8 +552,8 @@ BEGIN
         -- when it is absent or unrecognised, which reproduces the pre-fix
         -- output bit for bit and never fabricates 'hybrid'.
         'format',CASE
-          WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
-            THEN lower(btrim(p_args->>'format'))
+          WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \t\n\r\f\v'||chr(160))) IN ('in_person','online','hybrid')
+            THEN lower(btrim(p_args->>'format', E' \t\n\r\f\v'||chr(160)))
           WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'
           ELSE 'in_person' END,
         'partyTypes',COALESCE(p_args->'party_types','[]'::jsonb),
@@ -571,8 +587,8 @@ BEGIN
         -- true. With no format argument this is the previous expression
         -- exactly.
         'is_online',to_jsonb(CASE
-          WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
-            THEN lower(btrim(p_args->>'format')) IN ('online','hybrid')
+          WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \t\n\r\f\v'||chr(160))) IN ('in_person','online','hybrid')
+            THEN lower(btrim(p_args->>'format', E' \t\n\r\f\v'||chr(160))) IN ('online','hybrid')
           ELSE COALESCE((p_args->>'is_online')::boolean,false) END),
         'is_recurring',v_when_mode='recurring','is_multi_date',v_when_mode='multi_date',
         'recurrence_rules',CASE WHEN v_when_mode='recurring' THEN v_recurrence_rule ELSE NULL END,
@@ -599,6 +615,49 @@ BEGIN
           v_business:=jsonb_set(v_business,'{location,venueName}',p_args->'location_text',true);
         END IF;
         IF p_args ? 'is_online' THEN v_payload:=jsonb_set(v_payload,'{is_online}',p_args->'is_online',true);END IF;
+        -- issue #2353 S6 — the DRAFT arm. `update_event` has TWO arms and S4
+        -- taught only the LIVE one; this arm was in nobody's site list. The
+        -- tester drove the two holes that left open:
+        --
+        --   * a supplied `format` was accepted, reported SUCCESSFUL, and
+        --     silently DISCARDED. The host is told the edit landed and it did
+        --     not — Constitution rule 3, and this whole work item began with a
+        --     publish that failed silently. The asymmetry is CREATED by this
+        --     migration: before S4, neither arm accepted `format`, so the two
+        --     agreed by both refusing.
+        --   * a supplied `is_online` moved the DERIVED column and left the
+        --     SOURCE OF TRUTH stale, so a hybrid draft became
+        --     `format=hybrid, is_online=false` and the disagreement SURVIVED
+        --     publish into a live row. This needs no out-of-schema key:
+        --     `is_online` is an ADVERTISED parameter of the tool
+        --     (agentTools.ts:753), so a host saying "this one isn't online any
+        --     more" reaches it directly. It is the same "derived column written
+        --     without its source of truth" defect the investigation's F-9 found
+        --     on business_update_live_event, on a sixth site nobody enumerated.
+        --
+        -- Precedence matches the create arm (S4a/S4b): a usable `format` WINS
+        -- and is_online is projected from it. A bare `is_online` moves `format`
+        -- only when the two would otherwise DISAGREE — `is_online=true` on a
+        -- stored `hybrid` already agrees, so hybrid is PRESERVED rather than
+        -- flattened to `online`, which is the entire point of a three-valued
+        -- enum. An unrecognised `format` with no `is_online` stays a no-op,
+        -- exactly as on the live arm. Same canonical-membership test, written
+        -- the same way, as every other site in this file.
+        IF lower(btrim(COALESCE(p_args->>'format',''), E' \t\n\r\f\v'||chr(160)))
+             IN ('in_person','online','hybrid') THEN
+          v_draft_format:=lower(btrim(p_args->>'format', E' \t\n\r\f\v'||chr(160)));
+          v_business:=jsonb_set(v_business,'{format}',to_jsonb(v_draft_format),true);
+          v_payload:=jsonb_set(v_payload,'{is_online}',
+            to_jsonb(v_draft_format IN ('online','hybrid')),true);
+        ELSIF p_args ? 'is_online' THEN
+          v_draft_online:=COALESCE((v_payload->>'is_online')::boolean,false);
+          v_draft_format:=lower(btrim(COALESCE(v_business->>'format',''), E' \t\n\r\f\v'||chr(160)));
+          IF v_draft_format NOT IN ('in_person','online','hybrid')
+             OR (v_draft_format IN ('online','hybrid')) IS DISTINCT FROM v_draft_online THEN
+            v_business:=jsonb_set(v_business,'{format}',
+              to_jsonb(CASE WHEN v_draft_online THEN 'online' ELSE 'in_person' END),true);
+          END IF;
+        END IF;
         IF p_args ? 'online_url' THEN v_payload:=jsonb_set(v_payload,'{online_url}',p_args->'online_url',true);END IF;
         IF p_args ? 'visibility' THEN
           PERFORM public.business_assert_event_visibility(p_args->'visibility');
@@ -643,11 +702,11 @@ BEGIN
         -- for the UI's own word "Hybrid" gets there. Entering only on a value
         -- the CASE can honour restores the pre-fix no-op exactly, and is the
         -- same canonical-membership test used at every other site in this file.
-        IF lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
+        IF lower(btrim(COALESCE(p_args->>'format',''), E' \t\n\r\f\v'||chr(160))) IN ('in_person','online','hybrid')
            OR p_args ? 'is_online' THEN
           v_business:=v_business||jsonb_build_object('format',CASE
-            WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')
-              THEN lower(btrim(p_args->>'format'))
+            WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \t\n\r\f\v'||chr(160))) IN ('in_person','online','hybrid')
+              THEN lower(btrim(p_args->>'format', E' \t\n\r\f\v'||chr(160)))
             WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'
             ELSE 'in_person' END);
         END IF;

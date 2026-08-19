@@ -76,10 +76,21 @@
  *       #2353 migration. PostgreSQL keeps the last definition applied, so a
  *       later migration re-creating any of them silently reinstates the defect
  *       with every test still green until a hybrid event exists.
- *   A6. ONE CANONICAL-MEMBERSHIP TEST. Every `IN ('in_person','online','hybrid')`
- *       in the #2353 migration is normalised with `lower(btrim(…))`, and there
- *       are at least seven of them (S2's read, S3(a), S3(b), S4(a), S4(b), and
- *       BOTH halves of S4(c)). This supersedes SPEC §9's bare-`IN` instruction:
+ *   A6. ONE CANONICAL-MEMBERSHIP TEST, AND ONE CHARACTER SET. Every
+ *       `IN ('in_person','online','hybrid')` in the #2353 migration is
+ *       normalised with `lower(btrim(…))`, there are at least nine of them
+ *       (S2's read, S3(a), S3(b), S4(a), S4(b), both halves of S4(c), and both
+ *       halves of S6's draft arm), and EVERY `btrim` in the file passes the
+ *       SAME second argument. One-argument `btrim(text)` strips ASCII SPACE
+ *       ONLY — measured, not assumed: `sp_stripped=true`,
+ *       `tab_stripped=false`, `nl_stripped=false`, `cr_stripped=false`,
+ *       `nbsp_stripped=false`. A tab-padded `hybrid` therefore fell straight
+ *       through the canonical list and reproduced the entire escalation:
+ *       `stored=<TAB>hybrid, broadcast=f` became `stored=online, broadcast=t`
+ *       after one Unpublish/re-publish. Two sites that trim different
+ *       character sets are the #2333 P2-1 normalisation gap re-created inside
+ *       one file, so the gate pins the set's IDENTITY, not merely its presence.
+ *       This supersedes SPEC §9's bare-`IN` instruction:
  *       §9's premise, "every writer emits a bare literal", is true of the TS
  *       client and false of the server contract — `business_create_event_draft`
  *       stores `'Hybrid'` verbatim for any `authenticated` event_manager, and
@@ -94,6 +105,18 @@
  *       element, so on a live row with no `business_event` object the format
  *       write was a silent no-op while the is_online projection still fired.
  *       The write must merge a rebuilt namespace onto the theme.
+ *  A10. S6 — THE DRAFT ARM HANDLES `format`, AND RECONCILES ONLY ON
+ *       DISAGREEMENT. `ari_execute_event_operation`'s `update_event` has TWO
+ *       arms and S4 taught only the LIVE one. On the DRAFT arm a supplied
+ *       `format` was accepted, reported successful and silently DISCARDED
+ *       (Constitution rule 3), and a supplied `is_online` moved the derived
+ *       column while leaving the source of truth stale — so a hybrid draft
+ *       became `format=hybrid, is_online=false` and the disagreement SURVIVED
+ *       publish. `is_online` is an ADVERTISED tool parameter
+ *       (`agentTools.ts:753`), so that path needs no out-of-schema key at all.
+ *       The reconciliation must fire ONLY when the pair actually disagrees:
+ *       flattening every `is_online=true` to `'online'` would satisfy a naive
+ *       agreement test and destroy the very value this issue exists to protect.
  *   A9. S5 STAYS WITHDRAWN. #2353 must NOT re-create
  *       `business_guard_event_publish_visibility`. Its conjunct was measured to
  *       exempt two statement shapes the guard previously refused while fixing
@@ -336,10 +359,10 @@ export function checkFormatTruth(files, failures) {
       re: /theme#>>'\{business_draft,format\}'/,
       why: "the draft row's stored enum. The two namespaces are mutually exclusive, so both arms of the COALESCE are load-bearing" },
     { id: "S3(a) three-valued is_online projection",
-      re: /lower\(btrim\(p_patch->>'format'\)\)\s+IN\s*\(\s*'online'\s*,\s*'hybrid'\s*\)/i,
+      re: /lower\(btrim\(p_patch->>'format',\s*E'[^']*'\|\|chr\(160\)\)\)\s+IN\s*\(\s*'online'\s*,\s*'hybrid'\s*\)/i,
       why: "is_online = format IN ('online','hybrid'). The pre-fix `= 'online'` set is_online FALSE for a hybrid patch, against the client's own contract" },
     { id: "S4 Ari reads the supplied format",
-      re: /lower\(btrim\(COALESCE\(p_args->>'format',''\)\)\)\s+IN\s*\(\s*'in_person'\s*,\s*'online'\s*,\s*'hybrid'\s*\)/i,
+      re: /lower\(btrim\(COALESCE\(p_args->>'format',''\),\s*E'[^']*'\|\|chr\(160\)\)\)\s+IN\s*\(\s*'in_person'\s*,\s*'online'\s*,\s*'hybrid'\s*\)/i,
       why: "the create_event and update_event arms must accept a `format` argument rather than inverting is_online" },
   ];
   for (const { id, re, why } of REQUIRED) {
@@ -349,28 +372,65 @@ export function checkFormatTruth(files, failures) {
   // update_event guard — four reads on the create/update payloads and the
   // guard's own entry test. Fixing one site and not its sibling leaves the
   // pair able to disagree.
-  const ariReads = (fix.match(/lower\(btrim\(COALESCE\(p_args->>'format',''\)\)\)/g) || []).length;
-  if (ariReads < 4) {
+  const ariReads = (fix.match(/lower\(btrim\(COALESCE\(p_args->>'format',''\),\s*E'[^']*'\|\|chr\(160\)\)\)/g) || []).length;
+  if (ariReads < 5) {
     failures.push(
-      `${FIX}: only ${ariReads} of the 4 Ari \`format\` reads survive (create_event's format, ` +
-      `create_event's is_online projection, and BOTH the entry test and the CASE of ` +
-      `update_event's live branch). Fixing one site and not its sibling leaves the pair able to ` +
-      `disagree (#2353).`,
+      `${FIX}: only ${ariReads} of the 5 Ari \`format\` reads survive (create_event's format, ` +
+      `create_event's is_online projection, BOTH the entry test and the CASE of update_event's ` +
+      `LIVE branch, and the DRAFT branch's entry test). Fixing one site and not its sibling ` +
+      `leaves the pair able to disagree (#2353).`,
     );
   }
 
   // ---- A6 — ONE canonical-membership test, normalised, used everywhere.
   const memberships = [...fix.matchAll(/IN\s*\(\s*'in_person'\s*,\s*'online'\s*,\s*'hybrid'\s*\)/gi)];
-  if (memberships.length < 7) {
+  if (memberships.length < 9) {
     failures.push(
-      `${FIX}: only ${memberships.length} canonical-membership tests remain (expected at least 7: ` +
-      `S2's read, S3(a), S3(b), S4(a), S4(b), and BOTH halves of S4(c)). A site that stops asking ` +
-      `whether a format value is canonical either accepts junk or silently drops a real value ` +
-      `(#2353).`,
+      `${FIX}: only ${memberships.length} canonical-membership tests remain (expected at least 9: ` +
+      `S2's read, S3(a), S3(b), S4(a), S4(b), BOTH halves of S4(c), and BOTH halves of S6's draft ` +
+      `arm). A site that stops asking whether a format value is canonical either accepts junk or ` +
+      `silently drops a real value (#2353).`,
+    );
+  }
+
+  // A6b — ONE character set, pinned by identity. Walk every `btrim(` to its own
+  // matching paren and read the second argument. One-argument btrim strips
+  // ASCII space only, and two sites trimming different sets is the #2333 P2-1
+  // normalisation gap re-created inside a single file.
+  const trimSets = new Set();
+  for (const m of fix.matchAll(/\blower\s*\(\s*btrim\s*\(/gi)) {
+    let k = m.index + m[0].length;
+    let depth = 1;
+    let comma = -1;
+    while (depth > 0 && k < fix.length) {
+      const c = fix[k];
+      if (c === "(") depth++;
+      else if (c === ")") depth--;
+      else if (c === "," && depth === 1 && comma === -1) comma = k;
+      k++;
+    }
+    trimSets.add(comma === -1 ? "<one-argument btrim>" : norm(fix.slice(comma + 1, k - 1)));
+  }
+  if (trimSets.has("<one-argument btrim>")) {
+    failures.push(
+      `${FIX}: a one-argument \`btrim(text)\` survives. It strips ASCII SPACE ONLY — measured on ` +
+      `the harness: sp_stripped=true, tab_stripped=false, nl_stripped=false, cr_stripped=false, ` +
+      `nbsp_stripped=false. A tab-, newline-, CR- or U+00A0-padded \`hybrid\` then falls through ` +
+      `the canonical list, is rewritten to 'online' by one Unpublish/re-publish (the theme write ` +
+      `is a WHOLESALE replace), and #2333's carve-out broadcasts a venue-backed event into every ` +
+      `market. Pass the explicit set (#2353).`,
+    );
+  }
+  if (trimSets.size > 1) {
+    failures.push(
+      `${FIX}: ${trimSets.size} DIFFERENT btrim character sets in one file — ` +
+      `${[...trimSets].map((t) => `\`${t}\``).join(", ")}. Two sites that trim differently is the ` +
+      `#2333 P2-1 normalisation gap re-created inside a single migration: the read site and the ` +
+      `write site would disagree about the same stored string. One set, everywhere (#2353).`,
     );
   }
   for (const mm of memberships) {
-    const before = fix.slice(Math.max(0, mm.index - 160), mm.index);
+    const before = fix.slice(Math.max(0, mm.index - 400), mm.index);
     if (!/lower\(\s*btrim\(/i.test(before)) {
       failures.push(
         `${FIX}: a canonical-membership test is NOT normalised — \`` +
@@ -396,11 +456,40 @@ export function checkFormatTruth(files, failures) {
       `on a value the CASE can honour (#2353).`,
     );
   }
-  if (!/IF\s+lower\(btrim\(COALESCE\(p_args->>'format',''\)\)\)\s+IN\s*\([^)]*\)\s*(?:\r?\n\s*)?OR\s+p_args\s*\?\s*'is_online'\s+THEN/i.test(fix)) {
+  if (!/IF\s+lower\(btrim\(COALESCE\(p_args->>'format',''\),\s*E'[^']*'\|\|chr\(160\)\)\)\s+IN\s*\([^)]*\)\s*(?:\r?\n\s*)?OR\s+p_args\s*\?\s*'is_online'\s+THEN/i.test(fix)) {
     failures.push(
       `${FIX}: S4(c)'s fail-closed entry test is GONE. The live \`update_event\` arm must enter ` +
       `only when the supplied format is canonical after normalisation, OR when the caller sent ` +
       `\`is_online\` — which is the pre-#2353 condition, reproduced exactly (#2353).`,
+    );
+  }
+
+  // ---- A10 — S6, the draft arm.
+  if (!/v_business\s*:=\s*jsonb_set\(v_business,'\{format\}',to_jsonb\(v_draft_format\),true\)/i.test(fix)) {
+    failures.push(
+      `${FIX}: S6 is GONE — the DRAFT arm of ari_execute_event_operation no longer writes ` +
+      `\`format\`. \`update_event\` has TWO arms and S4 taught only the LIVE one, so a \`format\` ` +
+      `supplied on a draft was accepted, reported SUCCESSFUL and silently DISCARDED: the host is ` +
+      `told the edit landed and it did not (Constitution rule 3). The asymmetry is created by ` +
+      `this migration — before S4 neither arm accepted \`format\`, so the two agreed by both ` +
+      `refusing (#2353).`,
+    );
+  }
+  if (!/ELSIF\s+p_args\s*\?\s*'is_online'\s+THEN/i.test(fix)) {
+    failures.push(
+      `${FIX}: S6's \`is_online\` reconciliation is GONE. The draft arm wrote the DERIVED column ` +
+      `from \`p_args\` and never touched its SOURCE OF TRUTH, so a hybrid draft edited with ` +
+      `\`is_online:false\` became \`format=hybrid, is_online=false\` and the disagreement SURVIVED ` +
+      `publish into a live row. \`is_online\` is an ADVERTISED tool parameter ` +
+      `(agentTools.ts:753), so this needs no out-of-schema key at all (#2353).`,
+    );
+  }
+  if (!/IS\s+DISTINCT\s+FROM\s+v_draft_online/i.test(fix)) {
+    failures.push(
+      `${FIX}: S6 reconciles \`format\` UNCONDITIONALLY instead of only when the pair disagrees. ` +
+      `\`is_online=true\` on a stored \`hybrid\` ALREADY agrees; rewriting it to \`'online'\` ` +
+      `anyway would satisfy a naive "the pair agrees" assertion while destroying the exact value ` +
+      `this whole issue exists to protect. Move \`format\` only on a real disagreement (#2353).`,
     );
   }
 
@@ -414,7 +503,7 @@ export function checkFormatTruth(files, failures) {
       `reports 'online'. Merge a rebuilt namespace onto the theme instead (#2353).`,
     );
   }
-  if (!/jsonb_build_object\('format',lower\(btrim\(p_patch->>'format'\)\)\)/i.test(fix)) {
+  if (!/jsonb_build_object\('format',lower\(btrim\(p_patch->>'format',\s*E'[^']*'\|\|chr\(160\)\)\)\)/i.test(fix)) {
     failures.push(
       `${FIX}: S3(b) no longer PERSISTS the supplied format. business_update_live_event wrote the ` +
       `DERIVED column and never its SOURCE OF TRUTH; without this, S2's stored-first read ` +
@@ -561,6 +650,9 @@ if (process.argv.includes("--self-test")) {
   const selfFailures = [];
   const run = (files) => { const f = []; checkFormatTruth(files, f); return f; };
 
+  // The one whitespace set every normaliser in the migration must pass.
+  const WS_ARG = ", E' \\t\\n\\r\\f\\v'||chr(160)";
+
   const FROZEN_GOOD = [
     "CREATE OR REPLACE FUNCTION public.business_event_draft_payload_from_graph(p_event_id uuid)",
     "AS $fn$ BEGIN",
@@ -612,10 +704,10 @@ if (process.argv.includes("--self-test")) {
     "  v_business := jsonb_build_object(",
     "      'format', CASE",
     "        WHEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',",
-    "                                  v_event.theme#>>'{business_draft,format}','')))",
+    "                                  v_event.theme#>>'{business_draft,format}',''), E' \\t\\n\\r\\f\\v'||chr(160)))",
     "             IN ('in_person','online','hybrid')",
     "        THEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',",
-    "                                  v_event.theme#>>'{business_draft,format}')))",
+    "                                  v_event.theme#>>'{business_draft,format}'), E' \\t\\n\\r\\f\\v'||chr(160)))",
     "        WHEN v_event.is_online THEN 'online'",
     "        ELSE 'in_person'",
     "      END,",
@@ -625,38 +717,53 @@ if (process.argv.includes("--self-test")) {
 
   const S3A_GOOD = [
     "    is_online=CASE",
-    "      WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')",
-    "      THEN lower(btrim(p_patch->>'format')) IN ('online','hybrid')",
+    "      WHEN lower(btrim(COALESCE(p_patch->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
+    "      THEN lower(btrim(p_patch->>'format', E' \\t\\n\\r\\f\\v'||chr(160))) IN ('online','hybrid')",
     "      ELSE is_online END,",
   ].join("\n");
 
   const S3B_GOOD = [
     "        jsonb_set(",
-    "          CASE WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')",
+    "          CASE WHEN lower(btrim(COALESCE(p_patch->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
     "            THEN COALESCE(theme,'{}'::jsonb) || jsonb_build_object(",
     "                   'business_event',",
     "                   CASE WHEN jsonb_typeof(theme->'business_event')='object'",
     "                     THEN theme->'business_event' ELSE '{}'::jsonb END",
-    "                   || jsonb_build_object('format',lower(btrim(p_patch->>'format'))))",
+    "                   || jsonb_build_object('format',lower(btrim(p_patch->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))))",
     "            ELSE COALESCE(theme,'{}'::jsonb) END,",
     "          '{business_event,settings}',v_settings,true),",
   ].join("\n");
 
   const S4B_GOOD = [
     "        'is_online',to_jsonb(CASE",
-    "          WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')",
-    "            THEN lower(btrim(p_args->>'format')) IN ('online','hybrid')",
+    "          WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
+    "            THEN lower(btrim(p_args->>'format', E' \\t\\n\\r\\f\\v'||chr(160))) IN ('online','hybrid')",
     "          ELSE COALESCE((p_args->>'is_online')::boolean,false) END),",
   ].join("\n");
 
   const S4C_GOOD = [
-    "  IF lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')",
+    "  IF lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
     "     OR p_args ? 'is_online' THEN",
     "    v_business:=v_business||jsonb_build_object('format',CASE",
-    "      WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')",
-    "        THEN lower(btrim(p_args->>'format'))",
+    "      WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
+    "        THEN lower(btrim(p_args->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))",
     "      WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'",
     "      ELSE 'in_person' END);",
+    "  END IF;",
+  ].join("\n");
+
+  const S6_GOOD = [
+    "  IF lower(btrim(COALESCE(p_args->>'format','')" + WS_ARG + ")) IN ('in_person','online','hybrid') THEN",
+    "    v_draft_format:=lower(btrim(p_args->>'format'" + WS_ARG + "));",
+    "    v_business:=jsonb_set(v_business,'{format}',to_jsonb(v_draft_format),true);",
+    "    v_payload:=jsonb_set(v_payload,'{is_online}',to_jsonb(v_draft_format IN ('online','hybrid')),true);",
+    "  ELSIF p_args ? 'is_online' THEN",
+    "    v_draft_online:=COALESCE((v_payload->>'is_online')::boolean,false);",
+    "    v_draft_format:=lower(btrim(COALESCE(v_business->>'format','')" + WS_ARG + "));",
+    "    IF v_draft_format NOT IN ('in_person','online','hybrid')",
+    "       OR (v_draft_format IN ('online','hybrid')) IS DISTINCT FROM v_draft_online THEN",
+    "      v_business:=jsonb_set(v_business,'{format}',to_jsonb(CASE WHEN v_draft_online THEN 'online' ELSE 'in_person' END),true);",
+    "    END IF;",
     "  END IF;",
   ].join("\n");
 
@@ -680,13 +787,14 @@ if (process.argv.includes("--self-test")) {
     "AS $fn$ BEGIN",
     "  v_business:=jsonb_build_object(",
     "        'format',CASE",
-    "          WHEN lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')",
-    "            THEN lower(btrim(p_args->>'format'))",
+    "          WHEN lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')",
+    "            THEN lower(btrim(p_args->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))",
     "          WHEN COALESCE((p_args->>'is_online')::boolean,false) THEN 'online'",
     "          ELSE 'in_person' END,",
     S4B_GOOD,
     "        'city',p_args->'city');",
     S4C_GOOD,
+    S6_GOOD,
     "END; $fn$;",
     "COMMIT;",
     "",
@@ -747,9 +855,9 @@ if (process.argv.includes("--self-test")) {
       "                   'business_event',",
       "                   CASE WHEN jsonb_typeof(theme->'business_event')='object'",
       "                     THEN theme->'business_event' ELSE '{}'::jsonb END",
-      "                   || jsonb_build_object('format',lower(btrim(p_patch->>'format'))))",
+      "                   || jsonb_build_object('format',lower(btrim(p_patch->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))))",
     ].join("\n"),
-    "            THEN jsonb_set(COALESCE(theme,'{}'::jsonb),'{business_event,format}',to_jsonb(lower(btrim(p_patch->>'format'))),true)"),
+    "            THEN jsonb_set(COALESCE(theme,'{}'::jsonb),'{business_event,format}',to_jsonb(lower(btrim(p_patch->>'format', E' \\t\\n\\r\\f\\v'||chr(160)))),true)"),
     /CREATES the .business_event. namespace/);
 
   // 4 — one of the Ari format reads dropped.
@@ -760,15 +868,43 @@ if (process.argv.includes("--self-test")) {
   // 4b — S4(c) back on key PRESENCE. This is the P1 the tester proved: an
   // unrecognised format with no is_online was laundered into 'in_person'.
   expect("S4(c) entering on key presence instead of the membership test",
-    swap("  IF lower(btrim(COALESCE(p_args->>'format',''))) IN ('in_person','online','hybrid')\n     OR p_args ? 'is_online' THEN",
+    swap("  IF lower(btrim(COALESCE(p_args->>'format',''), E' \\t\\n\\r\\f\\v'||chr(160))) IN ('in_person','online','hybrid')\n     OR p_args ? 'is_online' THEN",
          "  IF p_args ? 'format' OR p_args ? 'is_online' THEN"),
     /enters on .IF p_args \? 'format'./);
 
   // 4c — normalisation stripped at one site only. SPEC §9's bare IN is banned.
-  expect("lower(btrim(...)) stripped from the S2 read",
-    swap("        WHEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',\n                                  v_event.theme#>>'{business_draft,format}','')))\n             IN ('in_person','online','hybrid')",
+  expect("lower(btrim(..., E' \\t\\n\\r\\f\\v'||chr(160))) stripped from the S2 read",
+    swap("        WHEN lower(btrim(COALESCE(v_event.theme#>>'{business_event,format}',\n                                  v_event.theme#>>'{business_draft,format}',''), E' \\t\\n\\r\\f\\v'||chr(160)))\n             IN ('in_person','online','hybrid')",
          "        WHEN COALESCE(v_event.theme#>>'{business_event,format}',\n                      v_event.theme#>>'{business_draft,format}')\n             IN ('in_person','online','hybrid')"),
     /is NOT normalised/);
+
+  // 4c2 — one normaliser reverted to the ONE-ARGUMENT btrim, which strips ASCII
+  // space only. Tab/NL/CR/NBSP-padded `hybrid` then falls through and is
+  // destroyed by the next round trip.
+  expect("a one-argument btrim survives at one site",
+    swap("      WHEN lower(btrim(COALESCE(p_patch->>'format','')" + WS_ARG + ")) IN ('in_person','online','hybrid')",
+         "      WHEN lower(btrim(COALESCE(p_patch->>'format',''))) IN ('in_person','online','hybrid')"),
+    /one-argument .btrim\(text\)/);
+
+  // 4c3 — two DIFFERENT character sets in one file. This is #2333's P2-1
+  // normalisation gap re-created inside a single migration.
+  expect("two different btrim character sets in one file",
+    swap("            THEN lower(btrim(p_args->>'format'" + WS_ARG + "))",
+         "            THEN lower(btrim(p_args->>'format', E' \\t'))"),
+    /DIFFERENT btrim character sets/);
+
+  // 4e — S6 deleted, one clause at a time. The draft arm is a separate arm from
+  // S4(c) and reverting either alone must be caught by its OWN rule.
+  expect("S6's format write deleted from the draft arm",
+    swap("    v_business:=jsonb_set(v_business,'{format}',to_jsonb(v_draft_format),true);\n", ""),
+    /S6 is GONE/);
+  expect("S6's is_online reconciliation deleted",
+    swap("  ELSIF p_args ? 'is_online' THEN", "  ELSIF false THEN"),
+    /reconciliation is GONE/);
+  expect("S6 reconciling format UNCONDITIONALLY instead of only on disagreement",
+    swap("    IF v_draft_format NOT IN ('in_person','online','hybrid')\n       OR (v_draft_format IN ('online','hybrid')) IS DISTINCT FROM v_draft_online THEN",
+         "    IF true THEN"),
+    /reconciles .format. UNCONDITIONALLY/);
 
   // 4d — S5 re-added. It was withdrawn deliberately and must stay withdrawn.
   expect("S5 re-added to the fix migration",
@@ -911,11 +1047,14 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "#2353 format-is-read-not-derived self-test PASS (31 cases: the compliant fixture; the S2\n" +
+    "#2353 format-is-read-not-derived self-test PASS (37 cases: the compliant fixture; the S2\n" +
       "  read, the S3(a) projection, the S3(b) persist, the S3(b) namespace creation and one of\n" +
       "  the four Ari reads each reverted INDEPENDENTLY and each caught by its OWN rule; S4(c)\n" +
-      "  put back on key presence (the P1 the tester proved); lower(btrim(...)) stripped from one\n" +
-      "  read site; S5 re-added; a fifth live copy injected in a new migration and an allowlisted\n" +
+      "  put back on key presence (the P1 the tester proved); the normaliser stripped from one\n" +
+      "  read site, reverted to a ONE-ARGUMENT btrim at another, and given a SECOND character\n" +
+      "  set at a third; S6's draft-arm format write, its is_online reconciliation and its\n" +
+      "  only-on-disagreement condition each deleted alone; S5 re-added; a fifth live copy\n" +
+      "  injected in a new migration and an allowlisted\n" +
       "  snippet copied into another file (the #2113 set-versus-count test, both directions);\n" +
       "  G3-G8, the six trivially-equivalent rewrites that evaded the previous revision — a\n" +
       "  parenthesised CASE behind 'format', a parenthesised CASE assigned to is_online, the\n" +
@@ -958,7 +1097,7 @@ console.log(
     "LAST writer of all three corrected functions and does NOT re-create the publish-visibility\n" +
     "guard; the stored-first read, the three-valued projection, the namespace-creating PERSIST\n" +
     "and all four Ari reads are present; every canonical-membership test is normalised with\n" +
-    "lower(btrim(...)) and S4(c) enters on it rather than on key presence; the [TRANSITIONAL]\n" +
+    "lower(btrim(..., E' \\t\\n\\r\\f\\v'||chr(160))) and S4(c) enters on it rather than on key presence; the [TRANSITIONAL]\n" +
     "authenticated grant is intact with a written exit condition and anon closed; and the\n" +
     "apply-order guard is still the first statement.",
 );

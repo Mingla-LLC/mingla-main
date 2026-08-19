@@ -852,6 +852,232 @@ BEGIN
     v_row.is_online, v_row.is_online::text);
 END $t14$;
 
+-- T-21 / S6 — Ari's DRAFT arm of update_event. Added at the second rework.
+-- `update_event` has TWO arms; S4 taught only the LIVE one, and the draft arm
+-- was in nobody's site list. Two holes, both driven here:
+--   (a) a supplied `format` was accepted, reported SUCCESSFUL and silently
+--       DISCARDED — Constitution rule 3, on the same work item that started
+--       with a publish failing silently;
+--   (b) a supplied `is_online` moved the DERIVED column and left the SOURCE OF
+--       TRUTH stale, and the disagreement SURVIVED publish into a live row.
+--       `is_online` is an ADVERTISED tool parameter (agentTools.ts:753), so
+--       this needs no out-of-schema key at all.
+-- The precedence rules are asserted, not just the happy path: a usable format
+-- WINS over a contradicting is_online, and a bare is_online that ALREADY
+-- agrees must PRESERVE hybrid rather than flatten it to online.
+DO $t21$
+DECLARE
+  v_manager uuid; v_b1 uuid; v_ev uuid; v_res jsonb; v_row public.events%ROWTYPE;
+  v_rev integer; v_p jsonb; v_rc text;
+BEGIN
+  SELECT v INTO v_manager FROM i2353t.ids WHERE k='manager';
+  SELECT v INTO v_b1 FROM i2353t.ids WHERE k='b1';
+
+  -- (a) format on a DRAFT is honoured, not dropped. Own fixture, reached the
+  --     real way (publish -> unpublish), so nothing else in this suite is
+  --     coupled to the mutations below.
+  v_ev := gen_random_uuid();
+  INSERT INTO public.events(
+    id,brand_id,created_by,title,slug,event_type,visibility,status,timezone,
+    currency,is_online,theme,city,published_at)
+  VALUES (v_ev, v_b1, (SELECT v FROM i2353t.ids WHERE k='owner'),
+          'I2353T draft arm', 'i2353t-draft-arm','event','public','scheduled','UTC','USD', true,
+          jsonb_build_object('coverHue',25,'business_event',
+            jsonb_build_object('schemaVersion',1,'clientRevision',0,
+                               'requestedVisibility','public','format','hybrid')),
+          'London', now());
+  INSERT INTO public.event_dates(event_id,start_at,end_at,is_master,timezone)
+    VALUES (v_ev, now()+interval '27 day', now()+interval '27 day 3 hour', true, 'UTC');
+  INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,is_unlimited,display_order)
+    VALUES (v_ev,'General',0,'USD',true,true,0);
+  INSERT INTO i2353t.fx VALUES ('draft_arm', v_ev);
+  PERFORM i2353t.act_as(v_manager);
+  PERFORM public.business_unpublish_event_to_draft(v_ev);
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','fixture is a hybrid DRAFT before the probe',
+    v_row.status='draft' AND v_row.theme#>>'{business_draft,format}'='hybrid',
+    v_row.status||'/'||coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'format','in_person',
+    'reason','Draft-arm probe: set the format explicitly',
+    'client_revision', v_rev+1));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','a format supplied on the DRAFT arm is APPLIED, not silently discarded',
+    v_row.theme#>>'{business_draft,format}'='in_person',
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+  PERFORM i2353t.assert('T-21/S6','...and is_online is projected from it',
+    NOT v_row.is_online, v_row.is_online::text);
+
+  -- ...and a MIS-CASED one is recognised on this arm too.
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'format','Hybrid',
+    'reason','Draft-arm probe: a mis-cased canonical format',
+    'client_revision', v_rev+1));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','a mis-cased format on the DRAFT arm normalises to the canonical value',
+    v_row.theme#>>'{business_draft,format}'='hybrid',
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+  PERFORM i2353t.assert('T-21/S6','...and is_online follows hybrid, not the caller',
+    v_row.is_online, v_row.is_online::text);
+
+  -- (b) a bare is_online that DISAGREES drags format with it.
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'is_online', false,
+    'reason','Draft-arm probe: turn is_online off on a hybrid draft',
+    'client_revision', v_rev+1));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','is_online=false on a hybrid DRAFT moves the stored format with it',
+    v_row.theme#>>'{business_draft,format}'='in_person',
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+  PERFORM i2353t.assert('T-21/S6','...so the pair AGREES (invariant B, on the draft arm)',
+    v_row.is_online = (v_row.theme#>>'{business_draft,format}' IN ('online','hybrid')),
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>')||'/'||v_row.is_online::text);
+
+  -- (b2) a bare is_online that ALREADY agrees must PRESERVE hybrid.
+  --      This is the assertion that stops the naive fix — flattening every
+  --      is_online=true to 'online' would pass every other row here and
+  --      destroy the very value this issue exists to protect.
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'format','hybrid',
+    'reason','Draft-arm probe: back to hybrid before the preserve test',
+    'client_revision', v_rev+1));
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'is_online', true,
+    'reason','Draft-arm probe: is_online true on a hybrid draft already agrees',
+    'client_revision', v_rev+1));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','is_online=true on a hybrid DRAFT PRESERVES hybrid — it is not flattened to online',
+    v_row.theme#>>'{business_draft,format}'='hybrid',
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+
+  -- (c) format WINS over a contradicting is_online, exactly as the create arm.
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'format','online', 'is_online', false,
+    'reason','Draft-arm probe: format and is_online contradict each other',
+    'client_revision', v_rev+1));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','a usable format WINS over a contradicting is_online',
+    v_row.theme#>>'{business_draft,format}'='online' AND v_row.is_online,
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>')||'/'||v_row.is_online::text);
+
+  -- (d) an UNRECOGNISED format with no is_online is a NO-OP on this arm too.
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'format','zoom', 'title','I2353T draft junk format',
+    'reason','Draft-arm probe: an unrecognised format must not launder',
+    'client_revision', v_rev+1));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','an unrecognised format on the DRAFT arm leaves the stored format UNCHANGED',
+    v_row.theme#>>'{business_draft,format}'='online',
+    coalesce(v_row.theme#>>'{business_draft,format}','<null>'));
+  PERFORM i2353t.assert('T-21/S6','...and leaves is_online unchanged',
+    v_row.is_online, v_row.is_online::text);
+  PERFORM i2353t.assert('T-21/S6','...while the edit the host DID ask for still landed',
+    v_row.title='I2353T draft junk format', v_row.title);
+
+  -- (e) the pair must still agree AFTER a real publish.
+  SELECT COALESCE((theme#>>'{business_draft,clientRevision}')::integer,0) INTO v_rev
+    FROM public.events WHERE id=v_ev;
+  v_res := i2353t.ari(v_manager,'update_event', jsonb_build_object(
+    'event_id', v_ev::text, 'format','hybrid',
+    'reason','Draft-arm probe: hybrid, then publish it for real',
+    'client_revision', v_rev+1));
+  PERFORM i2353t.act_as(v_manager);
+  v_p := public.business_event_draft_payload_from_graph(v_ev);
+  v_rc := i2353t.try_sql(v_manager, format(
+    'SELECT public.issue_1719_publish_event_with_poster(%L::uuid,%L::jsonb,%s)',
+    v_ev, v_p, COALESCE((v_p#>>'{theme,business_draft,clientRevision}')::integer,0)));
+  SELECT * INTO v_row FROM public.events WHERE id=v_ev;
+  PERFORM i2353t.assert('T-21/S6','a draft edited through Ari publishes with the pair still in agreement',
+    v_rc <> 'OK' OR v_row.is_online = (COALESCE(v_row.theme#>>'{business_event,format}',
+                                                v_row.theme#>>'{business_draft,format}') IN ('online','hybrid')),
+    v_rc||' -> '||coalesce(v_row.theme#>>'{business_event,format}',
+                           v_row.theme#>>'{business_draft,format}','<null>')||'/'||v_row.is_online::text);
+END $t21$;
+
+-- T-22 — the normalisation character set, pinned two-sidedly.
+-- One-argument btrim(text) strips ASCII SPACE ONLY; the explicit set
+-- E' \t\n\r\f\v'||chr(160) is what closes tab / newline / CR / form-feed /
+-- vertical-tab / U+00A0. Un-widened, a tab-padded `hybrid` fell through the
+-- canonical list, was rewritten to `online` by one round trip, and #2333's
+-- carve-out then broadcast a venue-backed event into every market.
+DO $t22$
+DECLARE r record; v_ev uuid; v_b1 uuid; v_mgr uuid; v_p jsonb; got text;
+BEGIN
+  SELECT v INTO v_b1 FROM i2353t.ids WHERE k='b1';
+  SELECT v INTO v_mgr FROM i2353t.ids WHERE k='manager';
+  FOR r IN SELECT * FROM (VALUES
+      ('t22_tab' , to_jsonb(E'\thybrid\t'::text)                 , 'hybrid'   , 'TAB-padded'),
+      ('t22_nl'  , to_jsonb(E'\nHYBRID'::text)                    , 'hybrid'   , 'newline-padded'),
+      ('t22_cr'  , to_jsonb(E'hybrid\r'::text)                    , 'hybrid'   , 'CR-padded'),
+      ('t22_ff'  , to_jsonb(E'\fonline'::text)                    , 'online'   , 'form-feed-padded'),
+      ('t22_vt'  , to_jsonb(E'\vin_person'::text)                 , 'in_person', 'vertical-tab-padded'),
+      ('t22_nbsp', to_jsonb((chr(160)||'Hybrid'||chr(160))::text)  , 'hybrid'   , 'U+00A0-padded'),
+      ('t22_mix' , to_jsonb((E'\t '||chr(160)||'HyBrId '||E'\n')::text), 'hybrid', 'mixed-whitespace')
+    ) AS t(key,fmt,want,label)
+  LOOP
+    v_ev := gen_random_uuid();
+    INSERT INTO public.events(
+      id,brand_id,created_by,title,slug,event_type,visibility,status,timezone,
+      currency,is_online,theme,city,published_at)
+    VALUES (v_ev, v_b1, (SELECT v FROM i2353t.ids WHERE k='owner'),
+            'I2353T '||r.key, 'i2353t-'||replace(r.key,'_','-'),
+            'event','public','scheduled','UTC','USD', false,
+            jsonb_build_object('coverHue',25,'business_event',
+              jsonb_build_object('schemaVersion',1,'clientRevision',0,
+                                 'requestedVisibility','public','format',r.fmt)),
+            'London', now());
+    INSERT INTO public.event_dates(event_id,start_at,end_at,is_master,timezone)
+      VALUES (v_ev, now()+interval '26 day', now()+interval '26 day 3 hour', true, 'UTC');
+    INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,is_unlimited,display_order)
+      VALUES (v_ev,'General',0,'USD',true,true,0);
+    INSERT INTO i2353t.fx VALUES (r.key, v_ev);
+    PERFORM i2353t.act_as(v_mgr);
+    v_p := public.business_event_draft_payload_from_graph(v_ev);
+    got := v_p#>>'{theme,business_draft,format}';
+    -- is_online is seeded FALSE, so the fallback would answer in_person.
+    -- Reading back `hybrid` or `online` can therefore ONLY be recognition.
+    PERFORM i2353t.assert('T-22','a '||r.label||' '||r.want||' is RECOGNISED, not dropped to the is_online fallback',
+      got = r.want, 'read back as '||coalesce(got,'<null>')||' (is_online seeded false)');
+  END LOOP;
+
+  -- ...and a value that is NOT merely padded is still refused.
+  v_ev := gen_random_uuid();
+  INSERT INTO public.events(
+    id,brand_id,created_by,title,slug,event_type,visibility,status,timezone,
+    currency,is_online,theme,city,published_at)
+  VALUES (v_ev, v_b1, (SELECT v FROM i2353t.ids WHERE k='owner'),
+          'I2353T t22 inner', 'i2353t-t22-inner','event','public','scheduled','UTC','USD', true,
+          jsonb_build_object('coverHue',25,'business_event',
+            jsonb_build_object('schemaVersion',1,'clientRevision',0,
+                               'requestedVisibility','public','format',to_jsonb(E'hy\tbrid'::text))),
+          'London', now());
+  INSERT INTO public.event_dates(event_id,start_at,end_at,is_master,timezone)
+    VALUES (v_ev, now()+interval '26 day', now()+interval '26 day 3 hour', true, 'UTC');
+  INSERT INTO public.ticket_types(event_id,name,price_cents,currency,is_free,is_unlimited,display_order)
+    VALUES (v_ev,'General',0,'USD',true,true,0);
+  INSERT INTO i2353t.fx VALUES ('t22_inner', v_ev);
+  PERFORM i2353t.act_as(v_mgr);
+  v_p := public.business_event_draft_payload_from_graph(v_ev);
+  got := v_p#>>'{theme,business_draft,format}';
+  PERFORM i2353t.assert('T-22','whitespace INSIDE the word is still not a canonical value — trimming is not stripping',
+    got = 'online', 'read back as '||coalesce(got,'<null>')||' (is_online seeded true)');
+END $t22$;
+
 -- T-16 / SC-14 — the live branch. Composes S4(c) with S3, so it proves the
 -- two together and neither alone.
 DO $t16$
