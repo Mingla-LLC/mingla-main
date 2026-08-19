@@ -85,7 +85,10 @@ import {
 } from "../../utils/draftEventValidation";
 import { isDraftEventPristine } from "../../utils/draftEventPristine";
 import { payoutGateStatus } from "../../utils/brandPayout";
-import { resolveProviderNeutralPaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import {
+  describeUnmappedPublishGuard,
+  resolveProviderNeutralPaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import { expandRecurrenceToDates } from "../../utils/recurrenceRule";
 
 import { Button } from "../ui/Button";
@@ -686,16 +689,40 @@ export const EventCreatorWizard: React.FC<EventCreatorWizardProps> = ({
       const guardCopy = resolveProviderNeutralPaidPublishGuardCopy(code);
       if (guardCopy !== null) {
         handleShowToast(guardCopy.body);
-        if (guardCopy.action === "payment_onboarding") {
-          onOpenPaymentOnboarding();
-        } else {
-          // Guard B — jump to the When step (index 1) and reveal step errors.
-          setShowStepErrors(true);
-          setCurrentStep(1);
+        // issue #2333 — an EXHAUSTIVE switch with a `never` default. The previous
+        // if/else sent every non-payment action to the When step, so adding
+        // `edit_where` to the union would have silently landed a location problem on
+        // the date field with no compiler complaint. Now a new action fails the build
+        // here until it is routed deliberately.
+        switch (guardCopy.action) {
+          case "payment_onboarding":
+            onOpenPaymentOnboarding();
+            break;
+          case "edit_date":
+            // Guard B — jump to the When step (index 1) and reveal step errors.
+            setShowStepErrors(true);
+            setCurrentStep(1);
+            break;
+          case "edit_where":
+            // issue #2333 — jump to the Where step (index 2; STEP_DEFS[2] "Where").
+            setShowStepErrors(true);
+            setCurrentStep(2);
+            break;
+          default: {
+            const exhaustive: never = guardCopy.action;
+            throw new Error(`Unhandled publish guard action: ${String(exhaustive)}`);
+          }
         }
         return;
       }
-      handleShowToast("Could not save this publish. Try again.");
+      // issue #2333 — this branch used to say "Could not save this publish. Try
+      // again.", which is FALSE whenever retrying cannot succeed — which is exactly
+      // what an unrecognised typed server guard means. `city_required` sat here for
+      // two days telling a paying customer to retry an impossible publish. The shared
+      // helper names a recognisable guard token, degrades honestly for anything else,
+      // never echoes a hostile server string verbatim, and always logs.
+      // Pinned by DRAFT invariant I-2333-UNMAPPED-SERVER-GUARD-NEVER-INVITES-RETRY.
+      handleShowToast(describeUnmappedPublishGuard(code));
     }
   }, [
     liveDraft,

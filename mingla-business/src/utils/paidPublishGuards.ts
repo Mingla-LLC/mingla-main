@@ -34,14 +34,24 @@ export type PaidPublishGuardReason =
 
 export type PaidPublishGuardAction = "stripe_onboarding" | "edit_date";
 
+/**
+ * issue #2333 — `city_required` joins the PROVIDER-NEUTRAL union ONLY. It is
+ * deliberately NOT added to `PaidPublishGuardReason` above: that union's whole
+ * contract is "money guards", and `city_required` is a location guard. Smuggling
+ * it in there would make `detectPaidPublishGuardReason` (used by edit paths that
+ * expect a payment problem) start returning a non-payment reason.
+ */
 export type ProviderNeutralPaidPublishGuardReason =
   | "payment_collection_unavailable"
   | "offering_date_past"
-  | "event_currency_required";
+  | "event_currency_required"
+  | "city_required";
 
 export type ProviderNeutralPaidPublishGuardAction =
   | "payment_onboarding"
-  | "edit_date";
+  | "edit_date"
+  // issue #2333 — jump to the Where step (wizard index 2).
+  | "edit_where";
 
 export interface ProviderNeutralPaidPublishGuardCopy {
   reason: ProviderNeutralPaidPublishGuardReason;
@@ -158,6 +168,11 @@ export const normalizeProviderNeutralPaidPublishGuardReason = (
   }
   if (s.includes("offering_date_past")) return "offering_date_past";
   if (s.includes("event_currency_required")) return "event_currency_required";
+  // issue #2333 — `city_required`, raised by business_publish_event_draft and
+  // business_patch_event_taxonomy, was the ONE guard nothing here recognised, so it
+  // fell through to "Could not save this publish. Try again." for at least two days
+  // while a paying customer retried something that could never succeed.
+  if (s.includes("city_required")) return "city_required";
   return null;
 };
 
@@ -186,6 +201,24 @@ const PROVIDER_NEUTRAL_PAID_PUBLISH_COPY: Record<
     actionLabel: PAID_PUBLISH_GUARD_COPY.event_currency_required.actionLabel,
     action: "payment_onboarding",
   },
+  // issue #2333 — LOCKED copy (SPEC §4 S4a). Do not reword without an orchestrator
+  // decision.
+  //
+  // WHY THIS POINTS AT AN ADDRESS FIELD, which reads oddly next to the rest of #2333:
+  // after migration 20270427002333 an ONLINE host can no longer reach `city_required`
+  // at all — the server stopped asking. The remaining producer of this guard is the
+  // in_person/hybrid host who FREE-TYPED an address instead of picking a Google Places
+  // suggestion, which leaves `city` null (validateWhere's own ORCH-0824 arm says the
+  // same thing). For that host the address field IS rendered, so the copy is true and
+  // the jump lands somewhere they can act. It also covers the window where an
+  // un-updated client meets an un-migrated server.
+  city_required: {
+    reason: "city_required",
+    title: "Add where it's happening",
+    body: "We need a city or a venue address before this can go live. Open the Where step and pick the address from the suggestions.",
+    actionLabel: "Open Where step",
+    action: "edit_where",
+  },
 };
 
 export const resolveProviderNeutralPaidPublishGuardCopy = (
@@ -193,6 +226,43 @@ export const resolveProviderNeutralPaidPublishGuardCopy = (
 ): ProviderNeutralPaidPublishGuardCopy | null => {
   const reason = normalizeProviderNeutralPaidPublishGuardReason(raw);
   return reason === null ? null : PROVIDER_NEUTRAL_PAID_PUBLISH_COPY[reason];
+};
+
+/**
+ * issue #2333 S4b — the LAST-RESORT copy for a server guard NOTHING above
+ * recognises. Pinned by DRAFT invariant
+ * I-2333-UNMAPPED-SERVER-GUARD-NEVER-INVITES-RETRY.
+ *
+ * THE CLASS BUG THIS REPLACES: every publish path degraded an unknown typed guard to
+ * "Could not save this publish. Try again." `city_required` was live and unpublishable
+ * for at least two days while the app told a paying customer to retry something that
+ * could never succeed. Every future typed server guard is a silent dead end by default
+ * until this is structural — so it lives here, in one tested place, not inline in a
+ * component's catch block.
+ *
+ * Three hard requirements, all exercised by the sibling tests:
+ *  1. It must NOT invite a retry. Neither branch contains the word "Try again".
+ *  2. It must be safe for an ARBITRARY server string. `error.message` can be a
+ *     PostgREST envelope, a constraint name, a 4 KB stack fragment, or markup. Only a
+ *     string that is ALREADY a bare snake_case guard token is ever echoed; anything
+ *     else is described, never quoted. That is why the shape test is anchored
+ *     (`^…$`) rather than a substring search.
+ *  3. It must leave a trace an engineer can act on — hence the unconditional
+ *     `console.error`, which is inside this function so it cannot be forgotten at a
+ *     call site.
+ */
+const UNMAPPED_GUARD_TOKEN_SHAPE = /^[a-z][a-z0-9_]{2,63}$/;
+
+export const describeUnmappedPublishGuard = (
+  raw: string | null | undefined,
+): string => {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  // Requirement 3 — always logged, before anything is shown.
+  console.error("[#2333] unmapped publish guard", s);
+  if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {
+    return `We couldn't publish this yet — the server reported "${s}". Contact support and quote that code.`;
+  }
+  return "We couldn't publish this yet. Nothing was lost — your draft is saved. Contact support if it keeps happening.";
 };
 
 /**
