@@ -103,7 +103,12 @@ function stripLedgerFor(configText, needle) {
 }
 
 /** The seven files #1850 consciously dropped from the ORCH-1165 hand-off. */
-// [TEST-MOD-APPROVED #2262] renamed in spirit, not in name: this is now "every
+// [TEST-MOD-APPROVED #2262] — ORCHESTRATOR-GRANTED, not self-granted. The
+// authorising token lives in the COMMIT BODY, which is the only place
+// `.github/scripts/test-append-only-check.js` reads it; these in-file markers are
+// documentation for a human opening the file, and carry no authority on their own.
+//
+// Renamed in spirit, not in name: this is now "every
 // file the quarantined test described that NO gate reads", whoever dropped it.
 // #2262 added the composer — see the `dropped:` entry in jest.config.cjs, which
 // names both successors.
@@ -140,7 +145,8 @@ test("T-2 removing #1850's ledger turns the gate RED and names every dark file",
   }
   // Named files only, never a count with no list.
   //
-  // [TEST-MOD-APPROVED #2262] the count is DERIVED from the list above instead
+  // [TEST-MOD-APPROVED #2262 — orchestrator-granted; token in the commit body]
+  // The count is DERIVED from the list above instead
   // of typed. It used to read `/7 of 17 file\(s\)/`, which is a count-pin: it
   // encodes today's number and breaks on every legitimate addition while
   // catching nothing the naming loop above does not already catch. Deriving it
@@ -174,7 +180,8 @@ test("T-4 a drop with no successor is rejected", () => {
 
 // ── T-5 ────────────────────────────────────────────────────────────────────
 test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated surface", () => {
-  // [TEST-MOD-APPROVED #2262] the marketing composer was PROMOTED from the KEYED
+  // [TEST-MOD-APPROVED #2262 — orchestrator-granted; token in the commit body]
+  // The marketing composer was PROMOTED from the KEYED
   // cohort (B) to the DERIVED cohort (D). (B)'s contract is "if you hand-type a
   // 42, at least gate it on keyboard-open"; (D)'s is "never type one — derive it
   // from DONE_BAR_OCCUPIED". (D) is strictly stronger: it FORBIDS the literal
@@ -204,7 +211,8 @@ test("T-5 the keyboard gate goes RED when a literal 42 returns to any migrated s
   const KEYED = [
     ["src/components/auth/BusinessWelcomeScreen.tsx", /keyboardPad\s*>\s*0\s*\?\s*keyboardPad\s*\+\s*42/],
     ["src/components/waitlist/JoinWaitlistSheet.tsx", /keyboardPadding\s*>\s*0\s*\?\s*42/],
-    // [TEST-MOD-APPROVED #2262] the composer moved to DERIVED, above.
+    // [TEST-MOD-APPROVED #2262 — orchestrator-granted] the composer moved to
+    // DERIVED, above.
   ];
   const NESTED = ["src/components/ui/SheetMobile.tsx", "src/components/ui/Modal.tsx"];
 
