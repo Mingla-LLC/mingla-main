@@ -148,6 +148,7 @@ import { postHogService } from "../../services/postHogService";
 import { useAppStore } from "../../store/appStore";
 import {
   type NativeCheckoutOutcome,
+  type NativeCheckoutPhase,
   useNativeCheckoutFlow,
 } from "../../payments/nativeCheckoutFlow";
 import { toastManager } from "../../components/ui/Toast";
@@ -303,6 +304,11 @@ export default function ConsumerTripDetailScreen({
     null,
   );
   const [checkoutInFlight, setCheckoutInFlight] = useState(false);
+  // issue #2265 — what the in-flight checkout is doing, driven by the flow's
+  // `onPhase` callback and rendered by the cart sheet's CTA.
+  const [checkoutPhase, setCheckoutPhase] = useState<NativeCheckoutPhase | null>(
+    null,
+  );
   // ORCH-1138 — the cart + native-checkout wiring the trip screen now owns
   // (ported from ExpandedBusinessEventSheet, scoped to the trip). The cart
   // fetches its own tickets/intake by eventId === tripId, exactly as EBES did.
@@ -723,12 +729,18 @@ export default function ConsumerTripDetailScreen({
   // (businessEventOrders + circle keys, plus the 3× polling loop for paid
   // checkouts) so a trip purchase refreshes the same surfaces (SPEC OQ-1).
   const handleBuy = useCallback(
-    async (payload: TicketCartCheckoutPayload): Promise<void> => {
-      if (checkoutInFlight) return;
-      if (detail === null) return;
+    async (
+      payload: TicketCartCheckoutPayload,
+    ): Promise<NativeCheckoutOutcome> => {
+      // issue #2265 — handleBuy now RETURNS its outcome so the cart sheet's
+      // lifetime can be conditioned on it (dismiss on success, stay open on
+      // failure so the recovery affordance lands where the buyer was buying).
+      // Every early return is `canceled`, which all callers treat as silent.
+      if (checkoutInFlight) return { outcome: "canceled" };
+      if (detail === null) return { outcome: "canceled" };
       if (user === null) {
         toastManager.show("Please sign in to get tickets.", "warning");
-        return;
+        return { outcome: "canceled" };
       }
       const buyerName =
         profile?.display_name?.trim() || user.email?.split("@")[0] || "Guest";
@@ -740,14 +752,14 @@ export default function ConsumerTripDetailScreen({
           "We need an email on your profile to issue tickets.",
           "warning",
         );
-        return;
+        return { outcome: "canceled" };
       }
       if (buyerPhone.length === 0) {
         toastManager.show(
           "Add a phone number to your profile to get tickets.",
           "warning",
         );
-        return;
+        return { outcome: "canceled" };
       }
 
       void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -777,12 +789,15 @@ export default function ConsumerTripDetailScreen({
           // pay-over-time choice ONLY for a plan trip (detail.hasPlan). Undefined
           // for no-plan trips → request byte-identical; NEVER a silent 'auto'.
           paymentPlanChoice: detail.hasPlan ? paymentPlanChoice : undefined,
+          // issue #2265 — feed the cart sheet's pending copy.
+          onPhase: setCheckoutPhase,
         });
       } catch (err) {
         const message = err instanceof Error ? err.message : "Payment failed.";
         result = { outcome: "failed", message };
       } finally {
         setCheckoutInFlight(false);
+        setCheckoutPhase(null);
       }
 
       if (result.outcome === "succeeded") {
@@ -812,6 +827,7 @@ export default function ConsumerTripDetailScreen({
         void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
         toastManager.show(result.message, "error");
       }
+      return result;
     },
     [
       checkoutInFlight,
@@ -824,12 +840,25 @@ export default function ConsumerTripDetailScreen({
     ],
   );
 
-  // ORCH-1138 — cart Continue/Claim → close the cart first (mirror EBES
-  // handleCartCheckout :446-449), then fire the checkout.
+  /**
+   * issue #2265 — the cart sheet OWNS the wait.
+   *
+   * This used to be `setCartVisible(false); void handleBuy(payload);`, which
+   * dismissed the sheet synchronously one line BEFORE any work started. The
+   * sheet's whole pending treatment — spinner, disabled controls, refused close
+   * — was unmounted before it could render a single frame, and the buyer was
+   * left on the trip screen with a greyed-out button and no explanation.
+   *
+   * Now: await the outcome with the sheet up, then dismiss ONLY on success. On
+   * failure the sheet stays open so the mapped copy and the buyer's next action
+   * land in the buying context they are about to use.
+   *
+   * Invariant: I-PROPOSED-CHECKOUT-PENDING-SURFACE-SURVIVES.
+   */
   const handleCartCheckout = useCallback(
-    (payload: TicketCartCheckoutPayload): void => {
-      setCartVisible(false);
-      void handleBuy(payload);
+    async (payload: TicketCartCheckoutPayload): Promise<void> => {
+      const result = await handleBuy(payload);
+      if (result.outcome === "succeeded") setCartVisible(false);
     },
     [handleBuy],
   );
@@ -1183,6 +1212,7 @@ export default function ConsumerTripDetailScreen({
         buyerEmail={user?.email ?? profile?.email ?? ""}
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
+        pendingPhase={checkoutPhase}
         clearFloatingNav={false}
         // ORCH-1182 (supersedes ORCH-1130's qty-1 `dueTodayCents` scalar) — hand
         // the cart the per-tier plan data so IT sums the qty-scaled deposit over
