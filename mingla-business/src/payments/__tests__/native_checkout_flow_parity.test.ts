@@ -125,3 +125,165 @@ describe("ORCH-0849 — mingla-business native PaymentSheet parity", () => {
     expect(normalize(businessVer)).toBe(normalize(consumerVer));
   });
 });
+
+/**
+ * issue #2264 [abandoned payment told the wrong story] — the TERMINAL-TOKEN
+ * half of the parity contract.
+ *
+ * The business app has no `checkoutErrorMessages.ts` (#2229 scoped that file to
+ * app-mobile), so its four return-leg strings are declared as module constants
+ * in `nativeCheckoutFlow.native.ts`. Two copies of a sentence with no shared
+ * owner is exactly how the retired "We couldn't confirm your payment yet"
+ * string ended up duplicated across three files and owned by none — so this
+ * asserts them BYTE-IDENTICAL against app-mobile's constants of the same name.
+ *
+ * SPEC #2264 §7 T-8 (neither flow discards the answer) and T-9 (copy parity).
+ *
+ * Fails on revert: narrow either flow's `ticket-checkout-status` response type
+ * back to `{ order }`, or let one app's copy drift, and this goes red.
+ */
+describe("#2264 — consumer/business terminal-token parity", () => {
+  const CONSUMER_FLOW = stripLineComments(
+    read("app-mobile/src/payments/nativeCheckoutFlow.ts"),
+  );
+  const BUSINESS_FLOW = stripLineComments(
+    read("mingla-business/src/payments/nativeCheckoutFlow.native.ts"),
+  );
+  const CONSUMER_COPY = read("app-mobile/src/payments/checkoutErrorMessages.ts");
+
+  const CONSTANTS = [
+    "CHECKOUT_ABANDONED_MESSAGE",
+    "CHECKOUT_PAYMENT_FAILED_MESSAGE",
+    "CHECKOUT_PAYMENT_MISMATCH_MESSAGE",
+    "CHECKOUT_AWAITING_CONFIRMATION_MESSAGE",
+    "CHECKOUT_UNAVAILABLE_MESSAGE",
+  ] as const;
+
+  /** The string literal a `const NAME =\n  "…";` declaration carries. */
+  const literalFor = (source: string, name: string): string => {
+    const match = new RegExp(
+      `\\b(?:export\\s+)?const\\s+${name}\\s*=\\s*\\n?\\s*"((?:[^"\\\\]|\\\\.)*)"`,
+    ).exec(source);
+    if (match === null) throw new Error(`no literal for ${name}`);
+    return match[1];
+  };
+
+  it("both native flows read `status` AND `error` off ticket-checkout-status", () => {
+    for (const source of [CONSUMER_FLOW, BUSINESS_FLOW]) {
+      expect(source).toMatch(/status\?:\s*string;[\s\S]{0,200}?error\?:\s*string;/);
+      expect(source).toMatch(/data\?\.status === "failed"/);
+      expect(source).toMatch(/data\.error \?\? null/);
+    }
+  });
+
+  it("neither native flow still carries the retired timeout string", () => {
+    for (const rel of [
+      "app-mobile/src/payments/nativeCheckoutFlow.ts",
+      "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+    ]) {
+      expect(read(rel)).not.toContain("We couldn't confirm your payment yet");
+    }
+  });
+
+  it("the four return-leg strings are BYTE-IDENTICAL across the two apps", () => {
+    for (const name of CONSTANTS) {
+      expect(literalFor(BUSINESS_FLOW, name)).toBe(
+        literalFor(CONSUMER_COPY, name),
+      );
+    }
+  });
+
+  it("both mappers are TOTAL — the fallback is UNGUARDED in each", () => {
+    // Same property, two constructions, and the difference is deliberate. The
+    // consumer mapper is a lookup table with a `??` tail (its token literals
+    // must stay unquoted: #2229's adversarial reverse-drift guard reads every
+    // double-quoted [a-z_] literal in `checkoutErrorMessages.ts` and demands it
+    // be a token `ticket-checkout-create` can emit, which these four are not —
+    // they come from `ticket-checkout-status`). The business mapper has no such
+    // neighbour and stays an if-chain. What must hold in BOTH is that nothing
+    // guards the fallback, so an unrecognised code can only ever degrade to
+    // "we don't know yet".
+    expect(BUSINESS_FLOW).toMatch(
+      /const paystackReturnMessage[\s\S]*?\n\s*return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;\s*\n\};/,
+    );
+    expect(CONSUMER_COPY).toMatch(
+      /nativePaystackReturnMessage[\s\S]*?\?\?\s*\n?\s*CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;/,
+    );
+    // …and neither fallback sits inside an `if`.
+    const consumerTail = CONSUMER_COPY.slice(
+      CONSUMER_COPY.indexOf("export const nativePaystackReturnMessage"),
+    );
+    expect(consumerTail).not.toMatch(
+      /if\s*\([^)]*\)[^;]*CHECKOUT_AWAITING_CONFIRMATION_MESSAGE/,
+    );
+  });
+
+  it("the four codes each mapper NAMES are the four the server can emit", () => {
+    // Reverse-drift, asserted against the file that actually mints the tokens —
+    // `paystackTicketReturnVerify.ts` — because #2229's guard is scoped to
+    // create-refusal tokens and structurally cannot cover these.
+    const verify = read(
+      "supabase/functions/_shared/paystackTicketReturnVerify.ts",
+    );
+    for (const code of [
+      "paystack_charge_abandoned",
+      "paystack_charge_failed",
+      "paystack_payment_mismatch",
+      "checkout_unavailable",
+    ]) {
+      expect(verify).toContain(`"${code}"`);
+      expect(BUSINESS_FLOW).toContain(code);
+      expect(CONSUMER_COPY).toContain(code);
+    }
+  });
+
+  /**
+   * #2264 tester P2-1 — the divergence this suite was BLIND to.
+   *
+   * Surface 4 (business iOS/Android) is MANUAL parity, and this suite is what
+   * guards it. It compared the four constants and the four routing rules, so it
+   * could not see that the two mappers were written in different SHAPES and
+   * therefore answered differently for every input outside those four: the
+   * consumer's plain-object lookup returned inherited `Object.prototype`
+   * members (Functions) where the business if-chain correctly fell through to
+   * the awaiting arm.
+   *
+   * The two shapes stay different on purpose — the consumer's token literals
+   * must remain UNQUOTED to stay out of #2229's create-leg reverse-drift guard,
+   * which the business file has no equivalent of. So rather than force one
+   * shape, this pins the PROPERTY that made them disagree: neither mapper may
+   * resolve anything it does not own.
+   */
+  it("neither mapper can resolve an INHERITED member (the P2-1 divergence)", () => {
+    // Consumer: a prototype-less table AND an own-property guard.
+    expect(CONSUMER_COPY).toMatch(
+      /PAYSTACK_RETURN_MESSAGE_BY_CODE[\s\S]{0,160}?Object\.create\(null\)/,
+    );
+    expect(CONSUMER_COPY).toMatch(
+      /Object\.prototype\.hasOwnProperty\.call\(\s*PAYSTACK_RETURN_MESSAGE_BY_CODE/,
+    );
+    // Business: an if-chain of strict === comparisons does no property lookup
+    // at all, so it cannot inherit. Pin that it stays comparisons, never a
+    // bare object index.
+    const mapper = /const paystackReturnMessage[\s\S]*?\n\};/.exec(BUSINESS_FLOW);
+    expect(mapper).not.toBeNull();
+    const body = mapper![0];
+    expect(body).toMatch(/code === "paystack_charge_abandoned"/);
+    expect(body).not.toMatch(/\[code\]/);
+  });
+
+  it("both flows carry the #2250 protective comment at the poll site", () => {
+    for (const rel of [
+      "app-mobile/src/payments/nativeCheckoutFlow.ts",
+      "mingla-business/src/payments/nativeCheckoutFlow.native.ts",
+    ]) {
+      const source = read(rel);
+      expect(source).toContain(
+        "I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES",
+      );
+      expect(source).toContain(
+        "I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED",
+      );
+    }
+  });
+});

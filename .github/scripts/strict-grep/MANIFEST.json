@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 555,
-  "selfTestWiredFloor": 357,
+  "expectedStrictGrepMjsFiles": 559,
+  "selfTestWiredFloor": 358,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -79,20 +79,6 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2075-force-update"
-      ]
-    },
-    {
-      "script": ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs",
-      "kind": "file",
-      "enforcement": "batch:A",
-      "invocation": "node",
-      "modes": [
-        "self-test",
-        "plain"
-      ],
-      "selfTest": "wired",
-      "jobKeys": [
-        "deno-and-business"
       ]
     },
     {
@@ -8455,6 +8441,68 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2262-composer-measured-not-computed-layout"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2306-lazy-native-imports.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2306-lazy-native-imports.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2306-lazy-native-imports"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2290-queue-worker-has-cron-caller.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2290-brand-person-ingest-cron.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2290-ingest-cron-adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "deno-and-business"
       ]
     }
   ]

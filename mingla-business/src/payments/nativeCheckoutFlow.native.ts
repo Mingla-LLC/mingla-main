@@ -147,21 +147,97 @@ const MERCHANT_DISPLAY_NAME = "Mingla";
 const PAYSTACK_POLL_INTERVAL_MS = 1500;
 const PAYSTACK_POLL_MAX_ATTEMPTS = 17;
 
+/**
+ * issue #2264 — the return-leg copy, declared HERE because this app has no
+ * `checkoutErrorMessages.ts` (#2229 scoped it to app-mobile).
+ *
+ * These four strings are BYTE-IDENTICAL to app-mobile's
+ * `src/payments/checkoutErrorMessages.ts` constants of the same names, and the
+ * parity test `src/payments/__tests__/native_checkout_flow_parity.test.ts`
+ * fails if they ever drift. Change one, change both.
+ */
+const CHECKOUT_ABANDONED_MESSAGE =
+  "You closed the payment page before paying, so no tickets were issued. You have not been charged — reopen the payment page to finish, or start again.";
+
+const CHECKOUT_PAYMENT_FAILED_MESSAGE =
+  "Your payment didn't go through, so no tickets were issued. You have not been charged — please try again.";
+
+const CHECKOUT_PAYMENT_MISMATCH_MESSAGE =
+  "Your payment came back with a different amount or currency than this order, so no tickets were issued. If money left your account, contact support@usemingla.com before paying again.";
+
+const CHECKOUT_AWAITING_CONFIRMATION_MESSAGE =
+  "Paystack hasn't confirmed this payment yet. If you completed it, your tickets will arrive here and by email within a few minutes — don't pay again. If nothing arrives, contact support@usemingla.com.";
+
+const CHECKOUT_UNAVAILABLE_MESSAGE =
+  "This sale is no longer available — the organiser may have paused or changed this event. You have not been charged.";
+
+/**
+ * issue #2264 — map `ticket-checkout-status`'s TERMINAL token to buyer copy.
+ * Mirror of app-mobile's `nativePaystackReturnMessage`. TOTAL by construction:
+ * the final return is unconditional, so an unrecognised code degrades to
+ * "we don't know yet" rather than to a false certainty about the buyer's money.
+ */
+const paystackReturnMessage = (code: string | null): string => {
+  if (code === "paystack_charge_abandoned") return CHECKOUT_ABANDONED_MESSAGE;
+  if (code === "paystack_charge_failed") return CHECKOUT_PAYMENT_FAILED_MESSAGE;
+  if (code === "paystack_payment_mismatch") {
+    return CHECKOUT_PAYMENT_MISMATCH_MESSAGE;
+  }
+  if (code === "checkout_unavailable") return CHECKOUT_UNAVAILABLE_MESSAGE;
+  return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;
+};
+
+/**
+ * issue #2264 — the three things the server can actually tell us, kept
+ * DISTINCT. The prior `Promise<string | null>` collapsed "the buyer never paid"
+ * and "no order yet" into the same `null`, which is the whole defect.
+ */
+type PaystackPollOutcome =
+  | { kind: "finalized"; orderId: string }
+  | { kind: "terminal"; code: string | null }
+  | { kind: "timeout" };
+
 async function pollPaystackOrder(
   checkoutSessionId: string,
   buyerStatusToken: string,
-): Promise<string | null> {
+): Promise<PaystackPollOutcome> {
   for (let attempt = 0; attempt < PAYSTACK_POLL_MAX_ATTEMPTS; attempt++) {
-    const { data } = await supabase.functions.invoke<{
-      order: { orderId: string } | null;
-    }>("ticket-checkout-status", {
-      body: { checkoutSessionId, buyerStatusToken },
-    });
+    let data:
+      | { status?: string; order: { orderId: string } | null; error?: string }
+      | null
+      | undefined;
+    try {
+      // #2264 — the response type MUST declare `status` and `error`. The
+      // previous generic named only `order`, so TypeScript hid the very fields
+      // the server was sending.
+      ({ data } = await supabase.functions.invoke<{
+        status?: string;
+        order: { orderId: string } | null;
+        error?: string;
+      }>("ticket-checkout-status", {
+        body: { checkoutSessionId, buyerStatusToken },
+      }));
+    } catch (err) {
+      // Transport failure is NOT an answer. Keep polling within the budget.
+      console.warn("[nativeCheckoutFlow:business] checkout-status poll failed", err);
+      data = null;
+    }
+    // A finalized order OUTRANKS any status string.
     const orderId = data?.order?.orderId;
-    if (orderId) return orderId;
+    if (orderId) return { kind: "finalized", orderId };
+    // #2264 — the server ALREADY answered this. ticket-checkout-status runs
+    // #2198's Paystack verify on every poll and returns
+    // { status:"failed", order:null, error:"paystack_charge_abandoned" } at HTTP 200
+    // for a buyer who left without paying. Reading only `order` is what made the
+    // app tell an unpaid buyer "we couldn't confirm your payment" after 25 seconds.
+    // Do not narrow this response type again.
+    // Invariant: I-PROPOSED-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED.
+    if (data?.status === "failed") {
+      return { kind: "terminal", code: data.error ?? null };
+    }
     await new Promise((resolve) => setTimeout(resolve, PAYSTACK_POLL_INTERVAL_MS));
   }
-  return null;
+  return { kind: "timeout" };
 }
 
 async function preflightPaymentSheet(
@@ -441,17 +517,29 @@ export const useNativeCheckoutFlow = (): (
         // Still poll — the buyer may have paid before the browser errored.
       }
 
-      const orderId = await pollPaystackOrder(
+      // #2264 F-6 — this poll runs ONLY after the browser has closed, and that
+      // ordering is load-bearing. Paystack reports a transaction as `abandoned`
+      // from initialize onward, before the buyer has typed anything, so a poll
+      // running concurrently with an OPEN browser would tell a paying buyer they
+      // walked away. #2250's auto-close needs a concurrent poll: when it lands,
+      // it must ignore the terminal token until the browser is confirmed closed.
+      // Invariant: I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES.
+      const poll = await pollPaystackOrder(
         data.checkoutSessionId,
         data.buyerStatusToken,
       );
-      if (orderId) {
-        return { outcome: "succeeded", orderId };
+      if (poll.kind === "finalized") {
+        return { outcome: "succeeded", orderId: poll.orderId };
+      }
+      if (poll.kind === "terminal") {
+        return {
+          outcome: "failed",
+          message: paystackReturnMessage(poll.code),
+        };
       }
       return {
         outcome: "failed",
-        message:
-          "We couldn't confirm your payment yet. If you completed it, your tickets will appear shortly.",
+        message: CHECKOUT_AWAITING_CONFIRMATION_MESSAGE,
       };
     }
 

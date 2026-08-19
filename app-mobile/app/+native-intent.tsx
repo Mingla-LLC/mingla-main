@@ -74,11 +74,31 @@ const OWNED_LINK_SCHEMES: ReadonlySet<string> = new Set(["com.mingla.app.v2"]);
  * has no group directories today; the enumerator in T-7 recurses into them anyway
  * so adding one cannot silently drop its routes.
  *
- * DELIBERATELY ABSENT: `invite`, `board`, `orders`, `chat`. All four are claimed by
- * `app-mobile/app.json`'s Android intent filters on `usemingla.com` but have NO
- * route in this app. Leaving them out is the correct behaviour — they now resolve
- * to "/" instead of the developer Unmatched view. Asserted by T-6. Do NOT "fix"
- * this by adding them here.
+ * DELIBERATELY ABSENT: `invite`, `orders`, `chat` (and `board`, see below). They
+ * are claimed Universal Link paths with no FILE route, and leaving them out is
+ * correct — but "/" is not a dead end for them, and #2245 corrected the earlier
+ * wording here that implied it was.
+ *
+ * "/" is `app/index.tsx`, the shell. The shell ALSO receives the raw URL, from
+ * `Linking.getInitialURL()` on a cold start and `Linking.addEventListener("url")`
+ * on a warm link — React Native APIs that this function does not consume — and
+ * hands it to `handleDeepLink` → `deepLinkService.parseDeepLink` →
+ * `executeDeepLink`, which navigates by `setCurrentPage`. So:
+ *
+ *   /invite/{code}      referral code captured, lands Home  (index.tsx branch)
+ *   /orders/{id}/chat   claims the trip chat and opens it   (ConnectionsPage)
+ *   /orders/{id}        the Calendar tab in Likes           (#2245)
+ *   /chat/{convId}      that conversation                   (ConnectionsPage)
+ *
+ * Sending them to "/" is what MAKES that work, because the shell has to mount
+ * for the Linking listener to run. Adding any of them here would push a file
+ * route instead and break it. Asserted by T-6; the end-to-end resolution is
+ * asserted by `scripts/issue-2245/declared-app-links-resolve.deno.test.ts`.
+ *
+ * `board` is different: #2245 WITHDREW `/board/*` from the apex AASA and from
+ * app.json's intent filters, because the app has no destination for it (the
+ * live `cs_select` RLS policy makes "join by invite code" unimplementable
+ * client-side) — see the `case 'board'` comment in `deepLinkService.ts`.
  *
  * Kept honest by T-7 (`issue_2180_native_intent.implementor.happy.test.ts`), which
  * re-enumerates the tree and fails the build on any drift.
