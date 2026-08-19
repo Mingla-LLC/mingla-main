@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 554,
-  "selfTestWiredFloor": 356,
+  "expectedStrictGrepMjsFiles": 555,
+  "selfTestWiredFloor": 357,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8390,6 +8390,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2240-email-app-link-sole-owner"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "i-2267-composer-editorstyle-literal-only"
       ]
     },
     {
