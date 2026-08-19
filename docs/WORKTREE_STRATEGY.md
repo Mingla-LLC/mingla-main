@@ -70,6 +70,40 @@ Reap does:
 
 CLOSE banner cites: `Worktree reaped: <path> + branch <branch-name>`.
 
+`reap.sh` now also reclaims the work item's **iOS simulator** and **Android AVD**
+(issue #2300). Until then CLOSE reclaimed the folder and nothing else, so every
+closed item leaked ~4 GB: a 1–3 GB simulator and a 1–5 GB emulator disk that no
+step ever named. Both are ownership-scoped — a **Booted** simulator or a live
+`qemu -avd` belongs to another session and is kept, whatever its name says.
+
+### Sweeping what already accumulated
+
+`reap.sh` handles one item at close. For everything that piled up — or that a
+close missed because the session died mid-flight:
+
+```bash
+scripts/orch-worktree/sweep.sh            # dry run: prints the plan, deletes nothing
+scripts/orch-worktree/sweep.sh --apply    # acts on it
+```
+
+Dry run is the default deliberately: this can delete tens of gigabytes across
+surfaces other live sessions are using. It prints every artifact it KEEPS with
+the reason it failed the gate.
+
+### The reap gate — and three predicates that must never come back
+
+The gate is in `scripts/orch-worktree/lib/artifact-liveness.sh`. A worktree is
+dead only when **all four** hold: issue `CLOSED`, PR `MERGED`, working tree
+clean, and idle beyond the window. Read the TRAP commentary in that file before
+touching any predicate — three obvious-looking gates each read a LIVE worktree
+as dead, and CI fails the build if any of them reappears:
+
+| Predicate | Why it is wrong here |
+|---|---|
+| `merge-base --is-ancestor` | A freshly-spawned worktree has HEAD == `main`, so it reads as merged. Flagged four live work items in one run. |
+| `rev-list --count origin/main..<branch>` | This repo squash-merges, so a *merged* branch always reads as ahead. This was `reap.sh`'s original Safety 2 and it rejected every legitimate reap — which is why 46 worktrees accumulated. |
+| `find -newermt '<relative>'` | `bfs` on macOS rejects relative timestamps, errors to stderr and returns empty stdout, so an `[ -z … ]` idle check matches everything. |
+
 ---
 
 ## Naming conventions
