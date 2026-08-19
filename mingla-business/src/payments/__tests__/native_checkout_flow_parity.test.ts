@@ -193,15 +193,48 @@ describe("#2264 — consumer/business terminal-token parity", () => {
     }
   });
 
-  it("the business mapper is TOTAL by the same construction as the consumer's", () => {
-    // The final `return` of each mapper is unconditional, so an unrecognised
-    // code degrades to "we don't know yet" instead of a false certainty.
+  it("both mappers are TOTAL — the fallback is UNGUARDED in each", () => {
+    // Same property, two constructions, and the difference is deliberate. The
+    // consumer mapper is a lookup table with a `??` tail (its token literals
+    // must stay unquoted: #2229's adversarial reverse-drift guard reads every
+    // double-quoted [a-z_] literal in `checkoutErrorMessages.ts` and demands it
+    // be a token `ticket-checkout-create` can emit, which these four are not —
+    // they come from `ticket-checkout-status`). The business mapper has no such
+    // neighbour and stays an if-chain. What must hold in BOTH is that nothing
+    // guards the fallback, so an unrecognised code can only ever degrade to
+    // "we don't know yet".
     expect(BUSINESS_FLOW).toMatch(
-      /const paystackReturnMessage[\s\S]*?return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;\s*\n\};/,
+      /const paystackReturnMessage[\s\S]*?\n\s*return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;\s*\n\};/,
     );
     expect(CONSUMER_COPY).toMatch(
-      /nativePaystackReturnMessage[\s\S]*?return CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;\s*\n\};/,
+      /nativePaystackReturnMessage[\s\S]*?\?\?\s*\n?\s*CHECKOUT_AWAITING_CONFIRMATION_MESSAGE;/,
     );
+    // …and neither fallback sits inside an `if`.
+    const consumerTail = CONSUMER_COPY.slice(
+      CONSUMER_COPY.indexOf("export const nativePaystackReturnMessage"),
+    );
+    expect(consumerTail).not.toMatch(
+      /if\s*\([^)]*\)[^;]*CHECKOUT_AWAITING_CONFIRMATION_MESSAGE/,
+    );
+  });
+
+  it("the four codes each mapper NAMES are the four the server can emit", () => {
+    // Reverse-drift, asserted against the file that actually mints the tokens —
+    // `paystackTicketReturnVerify.ts` — because #2229's guard is scoped to
+    // create-refusal tokens and structurally cannot cover these.
+    const verify = read(
+      "supabase/functions/_shared/paystackTicketReturnVerify.ts",
+    );
+    for (const code of [
+      "paystack_charge_abandoned",
+      "paystack_charge_failed",
+      "paystack_payment_mismatch",
+      "checkout_unavailable",
+    ]) {
+      expect(verify).toContain(`"${code}"`);
+      expect(BUSINESS_FLOW).toContain(code);
+      expect(CONSUMER_COPY).toContain(code);
+    }
   });
 
   it("both flows carry the #2250 protective comment at the poll site", () => {
