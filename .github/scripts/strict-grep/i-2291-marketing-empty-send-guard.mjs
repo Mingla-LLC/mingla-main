@@ -40,9 +40,19 @@
  *      `{kind:"email", body:"…"}` shape #2291 was filed about. The SPEC
  *      specified it uncoalesced; measured against production, it accepted the
  *      issue's own payload.
+ *   7. Its predicate mentions `status` — the DRAFT EXEMPTION, a decided
+ *      amendment on #2291. A draft may be empty; that is how writing a campaign
+ *      starts, and all 11 live violators are drafts created by autosave. Drop
+ *      the exemption and composer autosave of a NEW draft fails with
+ *      `check_violation`, which gets the whole constraint reverted — and then
+ *      there is neither the constraint nor the exemption. Pinned here so the
+ *      trade-off is re-argued rather than quietly undone. Note the exemption
+ *      costs nothing: the predicate is evaluated against the row an UPDATE
+ *      would PRODUCE, so the draft -> scheduled transition on an empty campaign
+ *      is still refused by the database.
  *
  * BAN, across `supabase/migrations/`:
- *   7. `VALIDATE CONSTRAINT marketing_campaigns_payload_content_required`.
+ *   8. `VALIDATE CONSTRAINT marketing_campaigns_payload_content_required`.
  *      Validating would fail on eleven live rows and, worse, would strand
  *      eleven operators inside drafts they can no longer save.
  *
@@ -149,6 +159,11 @@ export function checkEmptySendGuard(files, failures) {
         `${rel}: \`${CONSTRAINT}\`'s predicate has lost its \`coalesce(..., false)\`. Without it the CASE returns SQL NULL for a payload MISSING a key — and a CHECK treats NULL as SATISFIED — so the constraint silently accepts \`{"kind":"email"}\` and the exact \`{kind, subject, body}\` shape #2291 was filed about. The constraint becomes decorative (#2291).`,
       );
     }
+    if (!/\bstatus\b/i.test(body)) {
+      failures.push(
+        `${rel}: \`${CONSTRAINT}\` has lost its DRAFT EXEMPTION (no \`status\` in the predicate). A draft must be allowed to be empty — that is how writing a campaign starts, and all 11 live violators are drafts autosave created. Without the exemption, composer autosave of a NEW draft fails with check_violation and this constraint gets reverted wholesale. The exemption costs nothing: the draft -> scheduled UPDATE is still checked (#2291).`,
+      );
+    }
   }
 
   // 7 — validating it is banned outright.
@@ -199,7 +214,10 @@ async function sendSms(supabase, campaign, options) {
   const goodMigration = `
 ALTER TABLE public.marketing_campaigns
   ADD CONSTRAINT marketing_campaigns_payload_content_required CHECK (
-    coalesce(CASE channel_payload->>'kind' WHEN 'email' THEN true ELSE false END, false)
+    coalesce(
+      CASE WHEN status = 'draft' THEN true
+           ELSE CASE channel_payload->>'kind' WHEN 'email' THEN true ELSE false END
+      END, false)
   ) NOT VALID;
 `;
   const MIG = "supabase/migrations/20270425002291_issue_2291_campaign_payload_shape.sql";
@@ -260,12 +278,44 @@ function sendSms() { if (x) throw new Error("sms_body_empty"); }
     [MIG]: `
 ALTER TABLE public.marketing_campaigns
   ADD CONSTRAINT marketing_campaigns_payload_content_required CHECK (
-    CASE channel_payload->>'kind' WHEN 'email' THEN true ELSE false END
+    CASE WHEN status = 'draft' THEN true
+         ELSE CASE channel_payload->>'kind' WHEN 'email' THEN true ELSE false END
+    END
   ) NOT VALID;
 `,
   };
-  if (run(uncoalesced).length === 0) {
+  const uncoalescedFailures = run(uncoalesced);
+  if (uncoalescedFailures.length === 0) {
     selfFailures.push("the uncoalesced (NULL-returning, therefore inert) predicate was not flagged");
+  } else if (!uncoalescedFailures.some((f) => /coalesce/.test(f))) {
+    // Isolation: the fixture keeps NOT VALID and the status arm, so the ONLY
+    // thing wrong with it is the missing coalesce. If the failure that fires is
+    // some other rule, this assertion is passing for the wrong reason.
+    selfFailures.push(
+      "the uncoalesced predicate was flagged, but NOT by the coalesce rule: " +
+        JSON.stringify(uncoalescedFailures),
+    );
+  }
+
+  // 5b — THE DRAFT EXEMPTION dropped. Isolated the same way: coalesce and
+  // NOT VALID are intact, only `status` is gone.
+  const noExemption = {
+    ...good,
+    [MIG]: `
+ALTER TABLE public.marketing_campaigns
+  ADD CONSTRAINT marketing_campaigns_payload_content_required CHECK (
+    coalesce(CASE channel_payload->>'kind' WHEN 'email' THEN true ELSE false END, false)
+  ) NOT VALID;
+`,
+  };
+  const noExemptionFailures = run(noExemption);
+  if (noExemptionFailures.length === 0) {
+    selfFailures.push("dropping the draft exemption was NOT flagged");
+  } else if (!noExemptionFailures.some((f) => /DRAFT EXEMPTION/.test(f))) {
+    selfFailures.push(
+      "the missing draft exemption was flagged, but not by its own rule: " +
+        JSON.stringify(noExemptionFailures),
+    );
   }
 
   // 6 — the migration deleted entirely.
@@ -315,10 +365,11 @@ ALTER TABLE public.marketing_campaigns
     process.exit(1);
   }
   console.log(
-    "#2291 marketing-empty-send-guard self-test PASS (11 cases: each of the three\n" +
+    "#2291 marketing-empty-send-guard self-test PASS (12 cases: each of the three\n" +
       "  throws deleted, a commented-out guard, a guard moved below the first\n" +
       "  marketing_messages INSERT, NOT VALID dropped, the SPEC's uncoalesced\n" +
-      "  NULL-returning predicate, the migration deleted, a later VALIDATE\n" +
+      "  NULL-returning predicate and the dropped draft exemption (both isolated to\n" +
+      "  their own rule), the migration deleted, a later VALIDATE\n" +
       "  CONSTRAINT, a fully commented-out migration, prose about the ban, a\n" +
       "  missing send file, and the empty-map vacuity check).",
   );
@@ -349,5 +400,6 @@ if (failures.length > 0) {
 }
 console.log(
   "#2291 PASS — email body + subject guards present, ahead of the first message row;\n" +
-    "sms guard intact; the content constraint is NOT VALID, coalesced, and never validated.",
+    "sms guard intact; the content constraint is NOT VALID, coalesced, draft-exempt,\n" +
+    "and never validated.",
 );
