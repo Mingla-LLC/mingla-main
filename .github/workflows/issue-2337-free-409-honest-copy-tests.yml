@@ -1,0 +1,116 @@
+name: issue-2337-free-409-honest-copy
+# issue #2337 [free checkout says "no more tickets" for any conflict] — the
+# dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. The repository-wide `supabase-migrations-and-stripe-deno.yml`
+# names its Deno test files explicitly (it never globs a directory), and the
+# mingla-business jest config is only exercised by a full `npx jest` that no
+# workflow performs — the same reason recorded in the #2136 and #2150 lane
+# headers. Without this lane the #2337 suites would exist in the tree and gate
+# nothing.
+#
+# WHAT IT PROVES. The Deno job drives the REAL `ticket-checkout-create` handler
+# into all thirteen reachable free-rail 409 arms and runs each REAL response
+# through the REAL client mapper in the same process, so the arms and the copy
+# cannot drift apart silently. The jest job covers the browser-only transport
+# shapes, the mapper's totality, `invokeOrThrow`'s status/token/detail carry, and
+# the two call sites.
+#
+# Path filters err BROAD over the guarded SOURCE trees, not just the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard). They
+# include every migration that has ever re-emitted
+# `biz_ticket_checkout_create_session`, because that function owns the ONE
+# refusal on this rail that may honestly say the tickets are gone
+# (`RAISE EXCEPTION 'ticket_capacity_exceeded'`), and its NULL guard is what
+# keeps an UNLIMITED tier from ever reaching that sentence.
+
+on:
+  pull_request:
+    paths: &issue_2337_paths
+      # The mapper, its call sites, and the wrapper that carries the refusal.
+      - "mingla-business/src/services/checkoutErrorCopy.ts"
+      - "mingla-business/src/services/ticketCheckoutService.ts"
+      - "mingla-business/src/services/__tests__/issue_2337_free_409_token_mapper.test.ts"
+      - "mingla-business/src/services/__tests__/issue_2136_free_checkout_client_guard.test.ts"
+      - "mingla-business/src/services/__tests__/issue_2150_free_resubmit_client_guard.test.ts"
+      - "mingla-business/app/checkout/**"
+      - "mingla-business/app/checkout-trip/**"
+      - "mingla-business/src/components/checkout/checkoutPersistence.ts"
+      # The server half: every 409 arm the mapper answers for.
+      - "supabase/functions/ticket-checkout-create/**"
+      - "supabase/functions/_shared/checkoutSaleTruth.ts"
+      - "supabase/functions/_shared/ticketCheckout.ts"
+      # Every definer of the create-session wrapper. A re-emit can drop the
+      # `quantity_total IS NOT NULL` guard, at which point an UNLIMITED tier
+      # starts raising `ticket_capacity_exceeded` and the sold-out sentence
+      # becomes reachable for exactly the event this issue was filed about.
+      - "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
+      - "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql"
+      - "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql"
+      - "supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql"
+      - "supabase/migrations/20261101000000_meta_orch_1174_b1_multiline_installments.sql"
+      - "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql"
+      - ".github/workflows/issue-2337-free-409-honest-copy-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths: *issue_2337_paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-2337-edge-to-copy:
+    name: "#2337 Edge -> copy — every free-rail 409, executed, mapped to honest copy"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # 17 tests. Each arm case drives the real handler to a real 409 and runs
+      # the real mapper over it. Restoring the deleted line
+      #   `if (httpStatusOf(error) === 409) return FREE_CHECKOUT_UNAVAILABLE_MESSAGE;`
+      # turns 10 of the 17 red (measured 2026-08-19).
+      - name: "#2337 free-rail 409 honesty suite"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2337_free_409_honest_copy.test.ts
+      - name: "#2337 sibling ticket-checkout-create suites stay green"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-checkout-create/__tests__/issue_2136_free_checkout_contract.test.ts
+          supabase/functions/ticket-checkout-create/__tests__/issue_2150_free_resubmit_idempotent.test.ts
+          supabase/functions/ticket-checkout-create/__tests__/issue_2101_named_buyer_access.test.ts
+      - run: deno check supabase/functions/ticket-checkout-create/index.ts
+
+  issue-2337-client-copy:
+    name: "#2337 Client — the token decides the sentence, never the status"
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The pattern is a plain substring — never a bracketed route folder, which
+      # jest reads as a character class, matches nothing, and reports SUCCESS by
+      # running no tests. `--listTests` proves the pattern selects the file.
+      - name: "#2337 suite is actually selected by the pattern"
+        run: npx jest --listTests issue_2337 | tee /dev/stderr | grep -q issue_2337_free_409_token_mapper.test.ts
+      # 47 tests. Restoring the status-keyed mapper turns 15 red; dropping
+      # `failure.detail` in invokeOrThrow turns 2 red; dropping the
+      # already-reserved arm in either buyer screen turns 1 red each.
+      - name: "#2337 free-checkout copy suite"
+        run: npx jest issue_2337 --runInBand
+      - name: "#2136 and #2150 sibling client guards stay green"
+        run: npx jest issue_2136 issue_2150 --runInBand

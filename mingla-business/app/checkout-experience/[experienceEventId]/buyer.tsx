@@ -64,7 +64,16 @@ import {
 import { usePublicExperienceById } from "../../../src/hooks/usePublicExperience";
 import { formatCurrency } from "../../../src/utils/currency";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
-import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
+// issue #2337 — the THIRD free rail. Like `checkout-trip`, this catch rendered
+// `error.message` straight to the guest, so every handled 409 arrived as the
+// literal transport string "Edge Function returned a non-2xx status code". Same
+// mapper as the other two rails; no second decision path.
+import {
+  createTicketCheckout,
+  FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
+  freeCheckoutErrorMessage,
+  isFreeReservationAlreadyExists,
+} from "../../../src/services/ticketCheckoutService";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -295,11 +304,13 @@ export default function CheckoutExperienceBuyerScreen(): React.ReactElement {
           `/checkout-experience/${experienceEventId}/confirm` as never,
         );
       } catch (error) {
-        setSubmitError(
-          error instanceof Error
-            ? error.message
-            : "Could not reserve your spot. Please try again.",
-        );
+        // issue #2337 — the guest already holds this reservation; saying
+        // anything else pushes them to reserve a second time.
+        if (isFreeReservationAlreadyExists(error)) {
+          setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
+          return;
+        }
+        setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         setSubmitting(false);
       }

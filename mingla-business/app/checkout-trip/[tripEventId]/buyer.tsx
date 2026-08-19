@@ -80,7 +80,19 @@ import { useTripIntakeSchemasByEvent } from "../../../src/hooks/useIntakeSchema"
 import { formatCurrency } from "../../../src/utils/currency";
 import { projectInstallmentSchedule } from "../../../src/utils/installmentScheduleProjection";
 import { isValidE164, composeE164 } from "../../../src/utils/phone";
-import { createTicketCheckout } from "../../../src/services/ticketCheckoutService";
+// issue #2337 — the trip rail's FREE branch used to render `error.message`
+// straight to the guest, so a handled 409 arrived as the literal transport
+// string "Edge Function returned a non-2xx status code" (the #2136 defect, still
+// live on this route) and a resubmit of a completed free reservation — which
+// this rail cannot prove possession for, because it forwards no buyer status
+// token — arrived as exactly that. Same mapper as the event rail; no second
+// decision path.
+import {
+  createTicketCheckout,
+  FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
+  freeCheckoutErrorMessage,
+  isFreeReservationAlreadyExists,
+} from "../../../src/services/ticketCheckoutService";
 
 import { Button } from "../../../src/components/ui/Button";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
@@ -389,11 +401,13 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
         });
         router.replace(`/checkout-trip/${tripEventId}/confirm` as never);
       } catch (error) {
-        setSubmitError(
-          error instanceof Error
-            ? error.message
-            : "Could not reserve your spot. Please try again.",
-        );
+        // issue #2337 — the guest already holds this reservation; saying
+        // anything else pushes them to reserve a second time.
+        if (isFreeReservationAlreadyExists(error)) {
+          setSubmitError(FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE);
+          return;
+        }
+        setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
         setSubmitting(false);
       }

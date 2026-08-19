@@ -26,6 +26,9 @@ import { readFileSync } from "fs";
 import { join } from "path";
 
 import {
+  // issue #2337 — the honest non-specific sentence for a 409 whose bounded
+  // token the client could not read.
+  FREE_CHECKOUT_CONFLICT_MESSAGE,
   FREE_CHECKOUT_FAILED_MESSAGE,
   FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
   freeCheckoutErrorMessage,
@@ -107,20 +110,46 @@ describe("#2136 freeCheckoutErrorMessage — the guest never sees a raw runtime 
     expect(freeCheckoutErrorMessage(thrown)).not.toContain("map");
   });
 
-  test("a handled 409 from the server maps to the sale-is-gone copy", () => {
+  test("a handled 409 from the server is human copy — and, post-#2337, only claims what the server said", () => {
     // supabase-js collapses every non-2xx into a FunctionsHttpError whose
     // `.message` is opaque and whose status rides `.context`.
+    //
+    // issue #2337 CORRECTED THIS EXPECTATION. #2136's requirement was "never a
+    // raw runtime string", and that still holds below. But this test also
+    // pinned the mapper's FIRST LINE — `httpStatusOf(error) === 409` ->
+    // FREE_CHECKOUT_UNAVAILABLE_MESSAGE — and 409 is what
+    // `ticket-checkout-create` answers for THIRTEEN distinct free-rail
+    // conflicts. One of them, `free_reservation_already_exists`, means the guest
+    // ALREADY HOLDS the reservation, and it was being rendered as "no longer
+    // available … Nothing was reserved" on an event with UNLIMITED tickets.
+    //
+    // A 409 whose body we could not read is now the honest non-specific
+    // sentence: the sale-is-gone copy is reserved for the bounded token that
+    // actually means the sale is gone, which is asserted immediately below and
+    // exhaustively in issue_2337_free_409_token_mapper.test.ts.
     const httpError = Object.assign(
       new Error("Edge Function returned a non-2xx status code"),
       { context: { status: 409 } },
     );
     expect(freeCheckoutErrorMessage(httpError)).toBe(
-      FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
+      FREE_CHECKOUT_CONFLICT_MESSAGE,
     );
+    expect(freeCheckoutErrorMessage(httpError)).not.toMatch(/non-2xx/);
     const directStatus = Object.assign(new Error("boom"), { status: 409 });
     expect(freeCheckoutErrorMessage(directStatus)).toBe(
-      FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
+      FREE_CHECKOUT_CONFLICT_MESSAGE,
     );
+    expect(freeCheckoutErrorMessage(directStatus)).not.toBe("boom");
+
+    // The sale-is-gone copy is still exactly one bounded token away.
+    expect(
+      freeCheckoutErrorMessage(
+        Object.assign(new Error("Edge Function returned a non-2xx status code"), {
+          status: 409,
+          code: "checkout_unavailable",
+        }),
+      ),
+    ).toBe(FREE_CHECKOUT_UNAVAILABLE_MESSAGE);
   });
 
   test("the bounded server token is recognised even without a status", () => {
