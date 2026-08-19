@@ -1,0 +1,197 @@
+name: issue-2323-free-order-claim-and-cta
+# issue #2323 [a bought ticket never reaches the app because the order is never
+# armed] + issue #2326 ["Open in Mingla" on the confirmation page does nothing]
+# — the dedicated PR + push lane.
+#
+# WHY THIS FILE EXISTS. #2323 is a CLIENT defect with a DATABASE consequence:
+# the confirmation screen never called `attendance-claim-link` for a free order,
+# so `orders.attendance_identity_claim_armed_at` stayed NULL and
+# `claim_attendance_by_verified_identity` never considered the order. Measured
+# on production 2026-08-19: free_completed orders 9, armed 0. Proving the fix
+# therefore needs BOTH halves — a real mount that shows the client asks, and
+# real PostgreSQL that shows the resulting row makes the founder's ticket
+# findable and still hands a guesser nothing.
+#
+# #2326 is a RUNTIME property (does the navigation happen while the user gesture
+# is still live). A source grep cannot see that; the client job MOUNTS the card
+# and calls its real `onPress`.
+#
+# NOTE ON THE JEST INVOCATION BELOW: it names a CONFIG whose `testMatch` carries
+# FULL FILENAMES, never a route folder. `npx jest app/checkout/[eventId]` reads
+# `[eventId]` as a character class, matches nothing, and exits 0 having run no
+# tests — a green check carrying no information. `--listTests` runs first so the
+# lane fails loudly if the pattern ever stops resolving to both files.
+
+on:
+  pull_request:
+    paths: &issue_2323_paths
+      # The one owner of "arm the claim from a finalized order".
+      - "mingla-business/src/hooks/useAttendanceClaimArm.ts"
+      - "mingla-business/src/hooks/__tests__/issue2323FreeOrderArm.render.test.tsx"
+      # The three confirmation routes that consume it, and the three buyer
+      # screens that put the possession proof on the order in the first place.
+      - "mingla-business/app/checkout/**"
+      - "mingla-business/app/checkout-trip/**"
+      - "mingla-business/app/checkout-experience/**"
+      - "mingla-business/src/components/checkout/CartContext.tsx"
+      - "mingla-business/src/components/checkout/checkoutPersistence.ts"
+      # The tap.
+      - "mingla-business/src/components/checkout/DownloadMinglaCta.tsx"
+      - "mingla-business/src/components/checkout/__tests__/issue2326CtaGesture.render.test.tsx"
+      - "mingla-business/src/services/guestFunnelLink.ts"
+      - "mingla-business/src/services/attendanceClaimLinkService.ts"
+      - "mingla-business/src/utils/attendanceClaimDeepLink.ts"
+      - "mingla-business/src/constants/storeLinks.ts"
+      - "mingla-business/jest.issue2323.render.cjs"
+      - "mingla-business/jest.issue2323.babel.cjs"
+      - "mingla-business/jest.issue2323.dynamic-import.cjs"
+      # The server side the arming lands in.
+      - "supabase/functions/attendance-claim-link/**"
+      - "supabase/functions/attendance-claim-identity/**"
+      - "supabase/functions/_shared/attendanceClaim.ts"
+      - "supabase/migrations/20270421002217_issue_2217_identity_attendance_claim.sql"
+      - "supabase/migrations/20270422002269_issue_2269_verified_phone_possession.sql"
+      - "supabase/migrations/__tests__/issue_2323_free_order_identity_claim.test.sql"
+      - ".github/workflows/issue-2323-free-order-claim-and-cta-tests.yml"
+  push:
+    branches: [main]
+    paths: *issue_2323_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2323-client:
+    name: "#2323/#2326 Client — the screen asks, and the tap lands"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # THE BRACKET TRAP, GUARDED. Both suites live beside route folders named
+      # `[eventId]` / `[tripEventId]` / `[experienceEventId]`. Assert the config
+      # resolves to exactly the two files before the run counts as a pass.
+      - name: "Prove the jest config resolves to both real files"
+        run: |
+          set -euo pipefail
+          listed=$(npx jest --config jest.issue2323.render.cjs --listTests)
+          echo "$listed"
+          for f in issue2326CtaGesture.render.test.tsx issue2323FreeOrderArm.render.test.tsx; do
+            if [ "$(printf '%s\n' "$listed" | grep -c "$f")" -ne 1 ]; then
+              echo "jest config did not resolve $f exactly once"; exit 1
+            fi
+          done
+          if [ "$(printf '%s\n' "$listed" | grep -c '\.test\.tsx$')" -ne 2 ]; then
+            echo "jest config resolved an unexpected number of files"; exit 1
+          fi
+      # 20 tests.
+      #
+      # FAILS ON: dropping `buyerStatusToken` from the free path's recordResult;
+      # putting the mint back behind an arrival-path condition; accepting a
+      # sessionStorage resume payload whose checkoutSessionId does not match;
+      # re-introducing an `await`/dynamic `import()` between the gesture and the
+      # navigation; going back to `Linking.openURL` (react-native-web appends
+      # the null-returning 'noopener'); handing the app scheme to a new tab;
+      # deleting the popup-blocked fallback; or restoring "Preparing your Mingla
+      # link…" to the idle phase.
+      - name: "#2323/#2326 render proofs"
+        run: npx jest --config jest.issue2323.render.cjs --runInBand
+      # #2217 owns this card and these three routes; its assertions read their
+      # SOURCE, so a refactor here can silently break it.
+      - name: "#2217 sibling confirmation-CTA suite stays green"
+        run: npx jest issue_2217_confirmation_app_cta --runInBand
+      - name: "#1342 sibling guest-funnel suite stays green"
+        run: npx jest orch_1342_guest_funnel_link --runInBand
+
+  issue-2323-postgres-contract:
+    name: "#2323 PostgreSQL 17 — a free ticket follows its buyer, a guess follows nobody"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for PostgreSQL 17 bootstrap to complete
+        env:
+          PGPASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc \
+              "SELECT to_regnamespace('vault') IS NOT NULL AND to_regrole('supabase_admin') IS NOT NULL" \
+              2>/dev/null | grep -qx t; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not finish bootstrapping in 90s"; exit 1
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$f" >/dev/null
+          done
+      # This image's auth schema is the pre-GoTrue stub — copied verbatim from
+      # the #2217 lane, which is where the shape is explained. On hosted
+      # Supabase every one of these already exists and GoTrue owns it.
+      - name: Match hosted Supabase Auth identity shape
+        env:
+          PGPASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS deleted_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS is_anonymous boolean DEFAULT false" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS email_confirmed_at timestamptz" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone text" \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS phone_confirmed_at timestamptz" \
+            -c "CREATE TABLE IF NOT EXISTS auth.identities (id uuid PRIMARY KEY DEFAULT gen_random_uuid(), provider_id text, user_id uuid NOT NULL, identity_data jsonb NOT NULL DEFAULT '{}'::jsonb, provider text NOT NULL, last_sign_in_at timestamptz, created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now())" \
+            -c "GRANT SELECT, INSERT, UPDATE, DELETE ON auth.identities TO postgres"
+      # R-01..R-04, EXECUTED. R-01 reads the arming timestamp back out of
+      # `orders` — a row, not a log line. R-02 is the founder's exact journey:
+      # a FREE order bought with one email, claimed by an account signed in with
+      # a DIFFERENT email whose Twilio-verified phone matches. R-03 leaves an
+      # otherwise identical free order UNARMED and proves it is not claimed
+      # (measured: without that, R-03 was unfalsifiable). R-04 hands an attacker
+      # `auth.users.phone_confirmed_at` on an ARMED order and it claims nothing.
+      - name: "Prove a free ticket follows its buyer, and a guess follows nobody"
+        env:
+          PGPASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2323_free_order_identity_claim.test.sql
+      # #2217 owns the claim RPCs this suite arms through. Same database, run
+      # after — which also proves the two fixtures do not collide.
+      - name: "#2217 sibling PostgreSQL suite stays green"
+        env:
+          PGPASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2217_identity_attendance_claim.test.sql
+      # #2269 owns the phone arm this whole journey depends on and must not be
+      # touched by #2323.
+      - name: "#2269 sibling PostgreSQL suite stays green"
+        env:
+          PGPASSWORD: ${{ format('issue-2323-ci-{0}', github.run_id) }}
+        run: >-
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1
+          -f supabase/migrations/__tests__/issue_2269_verified_phone_possession.test.sql

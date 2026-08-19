@@ -2,6 +2,7 @@
 import {
   assert,
   assertEquals,
+  assertMatch,
   assertNotEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -531,7 +532,93 @@ Deno.test("#871 inherited request timeout keeps one submission in flight until s
   assertEquals(calls, 2);
 });
 
+/**
+ * #2323 [TEST-MOD-APPROVED #2323] — WHY THIS TEST WAS EDITED, AND WHAT WAS NOT
+ * WEAKENED.
+ *
+ * This case used to count `prepareAttendanceClaim` occurrences inside each
+ * confirmation route (>= 4) and pin their textual order. That counted a
+ * LOCATION, not a guarantee — and the location was the bug. Both of the call
+ * sites it counted hung off the PAID Stripe return leg (the `?cs=` sync
+ * confirm, and an `onOrderReady` that only ever subscribes because that same
+ * effect ran). A FREE reservation reaches /confirm through neither, so it had
+ * NO mint at all — and the count still read 4 and this test still passed.
+ *
+ * MEASURED on production 2026-08-19: free_completed orders 9, armed 0;
+ * paid_completed 5, armed 1. Instrumented on the DEPLOYED screen holding a
+ * completed free order (desktop Chrome and a real Galaxy A72): ZERO
+ * `attendance-claim-link` requests. The founder's ticket was unreachable.
+ *
+ * #2323 replaced the three per-route copies with ONE owner,
+ * `mingla-business/src/hooks/useAttendanceClaimArm.ts`, which mints from the
+ * ORDER rather than from the arrival path. So the assertions move to where the
+ * guarantee now lives:
+ *
+ *   - the OWNER mints, keeps one mint per checkout session, and still exposes
+ *     every terminal phase plus a retry;
+ *   - each ROUTE hands its finalized order to that owner, and every
+ *     finalization leg — sync, realtime, and (new) free — puts the possession
+ *     proof ON the order, which is exactly what makes the mint reachable from
+ *     that leg. Drop the proof from any one leg and that leg stops minting.
+ *
+ * NOT WEAKENED — every one of the following makes a named assertion below fail:
+ * deleting the sync leg's proof, deleting the realtime leg's proof, deleting
+ * the free leg's proof, unhooking a route from the owner, dropping the retry
+ * wiring, or removing a phase from the owner. The ordering guarantee (sync
+ * precedes the realtime subscription, which precedes the realtime mint) is
+ * kept verbatim, now expressed over the legs that feed the owner.
+ *
+ * The behaviour itself is proven by EXECUTION, not by this file:
+ * `mingla-business/src/hooks/__tests__/issue2323FreeOrderArm.render.test.tsx`
+ * mounts the owner and drives sync, realtime, retry, free, a second checkout
+ * session, and all four terminal phases.
+ */
 Deno.test("#871 all three confirmation routes prepare every observed finalization and terminate", () => {
+  // The ONE owner: it mints, it mints ONCE per checkout session, and it still
+  // terminates in every phase the card renders copy for.
+  const owner = read("mingla-business/src/hooks/useAttendanceClaimArm.ts");
+  assertStringIncludes(owner, "createAttendanceClaimLink(sessionId, token)");
+  assertStringIncludes(owner, "const retry = useCallback");
+  // ONE mint per checkout session — asserted as the GUARD, not as an
+  // identifier name, so a rename is allowed and a deleted guard is not.
+  assertMatch(
+    owner,
+    /if \(\w+\.current === \w+\.sessionId\) return;/,
+    "the owner must refuse to re-mint a checkout session it already minted",
+  );
+  assertMatch(
+    owner,
+    /\w+\.current = \w+\.sessionId;/,
+    "the owner must record which checkout session it minted",
+  );
+  // Every terminal phase, asserted as the MAPPING rather than as the token.
+  //
+  // The tokens alone were decoration and this was MEASURED: the previous
+  // version of this case asserted '"rate"' / '"terminal"' / '"error"' appear
+  // in the file, and a revert that broke the rate_limited mapping outright
+  // still passed, because the words survive in the phase type union. Behaviour
+  // is proven by execution in issue2323FreeOrderArm.render.test.tsx; this pins
+  // the branch so it cannot silently disappear.
+  assertMatch(
+    owner,
+    /code === "rate_limited"\s*\?\s*"rate"/,
+    "a rate-limited mint must land on the rate phase",
+  );
+  assertMatch(
+    owner,
+    /code === "invalid" \|\| code === "ineligible"\s*\?\s*"terminal"\s*:\s*"error"/,
+    "invalid/ineligible must be terminal and everything else must be a retryable error",
+  );
+
+  // Slice a named region so an assertion cannot be satisfied by the token
+  // appearing somewhere else entirely in the file.
+  const region = (src: string, from: string, to: string, why: string): string => {
+    const a = src.indexOf(from);
+    const b = src.indexOf(to, a);
+    assert(a > -1 && b > a, `could not locate ${why}`);
+    return src.slice(a, b);
+  };
+
   for (
     const path of [
       "mingla-business/app/checkout/[eventId]/confirm.tsx",
@@ -540,33 +627,70 @@ Deno.test("#871 all three confirmation routes prepare every observed finalizatio
     ]
   ) {
     const source = read(path);
+
+    // The route hands its finalized order to the owner. Without this the route
+    // mints nothing at all, on any leg.
     assert(
-      (source.match(/prepareAttendanceClaim/g)?.length ?? 0) >= 4,
-      `${path} lacks sync + realtime + retry preparation`,
+      /useAttendanceClaimArm\(result, \w+\)/.test(source),
+      `${path} does not hand its order to the attendance-claim owner`,
     );
+
+    // SYNC leg — the `?cs=` confirm that finalizes the order in-line.
+    assertStringIncludes(
+      region(source, "recordResult({", "});", `${path} sync recordResult`),
+      "buyerStatusToken: payload.buyerStatusToken",
+      `${path} sync confirm records the order WITHOUT the possession proof, so nothing can mint from it`,
+    );
+
+    // REALTIME leg — the webhook backup landing through onOrderReady.
+    assertStringIncludes(
+      region(source, "onOrderReady:", "setRealtimePending(false)", `${path} onOrderReady`),
+      "buyerStatusToken: pendingSession.buyerStatusToken",
+      `${path} realtime finalization records the order WITHOUT the possession proof, so nothing can mint from it`,
+    );
+
+    // Ordering, verbatim in meaning: the sync leg precedes the realtime
+    // subscription, which precedes the realtime leg's own finalization.
     assert(
-      source.indexOf("prepareAttendanceClaim(payload.checkoutSessionId") <
+      source.indexOf("buyerStatusToken: payload.buyerStatusToken") <
         source.indexOf("onOrderReady:"),
+      `${path} sync leg no longer precedes the realtime subscription`,
     );
     assert(
       source.indexOf("onOrderReady:") <
-        source.lastIndexOf(
-          "prepareAttendanceClaim(pendingSession.checkoutSessionId",
-        ),
+        source.lastIndexOf("buyerStatusToken: pendingSession.buyerStatusToken"),
+      `${path} realtime finalization no longer follows the subscription`,
     );
-    assertStringIncludes(source, '"error"');
-    assertStringIncludes(source, '"terminal"');
-    assertStringIncludes(source, '"rate"');
+
+    // RETRY leg.
+    assertStringIncludes(source, "const retryAttendanceClaim = attendanceClaim.retry;");
+
     // #2217 moved the presentation of the minted link out of a second card and
     // into the ONE app card (DownloadMinglaCta), which now owns the deep-link
-    // open, the device-aware store fallback and every phase's copy. The
-    // AUTHORITY assertions above are unchanged and still pin this route: it
-    // must still mint on sync, on realtime and on retry. What is pinned here is
-    // that the mint is HANDED to the card rather than dropped on the floor.
+    // open, the device-aware store fallback and every phase's copy. What is
+    // pinned here is that the mint is HANDED to the card rather than dropped
+    // on the floor.
     assertStringIncludes(source, "<DownloadMinglaCta");
     assertStringIncludes(source, "claimPhase={attendanceClaim.phase}");
     assertStringIncludes(source, "link.appClaimUrl");
     assertStringIncludes(source, "onRetryClaim={retryAttendanceClaim}");
+  }
+
+  // FREE leg — the arrival #2323 proved had no mint at all. It finalizes in
+  // buyer.tsx and lands on /confirm with no query string, so the possession
+  // proof has to ride the order or the ticket is unreachable forever.
+  for (
+    const path of [
+      "mingla-business/app/checkout/[eventId]/buyer.tsx",
+      "mingla-business/app/checkout-trip/[tripEventId]/buyer.tsx",
+      "mingla-business/app/checkout-experience/[experienceEventId]/buyer.tsx",
+    ]
+  ) {
+    assertStringIncludes(
+      region(read(path), "recordResult({", "});", `${path} free recordResult`),
+      "buyerStatusToken: result.buyerStatusToken",
+      `${path} free reservation records the order WITHOUT the possession proof — this is issue #2323 itself`,
+    );
   }
 });
 
@@ -588,8 +712,35 @@ Deno.test("#871 (via #2217) the app card still terminates every claim phase", ()
   assertStringIncludes(card, "openAttendanceClaimWithFallback(");
   // The claim link is an ENHANCEMENT: the button must render and reach a store
   // in EVERY phase, including the ones that never produce a link.
-  assertStringIncludes(card, "if (claimAppUrl === null)");
-  assertStringIncludes(card, "void Linking.openURL(target.ctaUrl);");
+  //
+  // #2323 [TEST-MOD-APPROVED #2323] — the two assertions below replace
+  //   assertStringIncludes(card, "if (claimAppUrl === null)");
+  //   assertStringIncludes(card, "void Linking.openURL(target.ctaUrl);");
+  //
+  // The second of those pinned the DEFECT issue #2326 exists to delete. On
+  // buyer-web react-native-web expands `Linking.openURL(url)` into
+  // `window.open(url, '_blank', 'noopener')` — the null-returning feature
+  // string ORCH-1381/1382 banned from this repository, arriving through a
+  // library instead of a call site, and with NO popup-blocked fallback, so a
+  // blocked open was a completely silent dead tap. Measured on the deployed
+  // screen (desktop Chrome and a real Galaxy A72): the handler fired, the
+  // gesture was live, and nothing happened.
+  //
+  // STRONGER, NOT WEAKER. The first assertion no longer merely proves a string
+  // exists — it proves the no-claim-link branch NAVIGATES, and to the store
+  // target. The second bans the shape that could not navigate, and pins the
+  // package's ONE external-open owner in its place.
+  assertMatch(
+    card,
+    /if \(claimAppUrl === null[^)]*\)\s*\{\s*\n\s*void navigateFromTap\(target\.ctaUrl\);/,
+    "the no-claim-link branch must navigate to the store target, synchronously",
+  );
+  assertStringIncludes(card, "openExternal(url);");
+  assertStringIncludes(card, "openAppScheme(url);");
+  assert(
+    !/Linking\.openURL\(target\.ctaUrl\)/.test(card),
+    "the store target must not be opened through Linking.openURL — on buyer-web that is window.open(…, 'noopener'), which cannot report a blocked popup and leaves the tap dead",
+  );
 });
 
 Deno.test("#871 guest sheet exposes close, party size, offline recovery and actionable unlock", () => {

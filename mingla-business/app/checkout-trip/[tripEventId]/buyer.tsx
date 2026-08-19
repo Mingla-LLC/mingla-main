@@ -371,6 +371,13 @@ export default function CheckoutTripBuyerScreen(): React.ReactElement {
           orderId: result.orderId,
           ticketIds: result.tickets.map((ticket) => ticket.ticketId),
           checkoutSessionId: result.checkoutSessionId,
+          // issue #2323 — see checkout/[eventId]/buyer.tsx. Free reservations
+          // reach /confirm with no query string, so the possession proof must
+          // ride the order result or the attendance claim can never be minted.
+          ...(typeof result.buyerStatusToken === "string" &&
+            result.buyerStatusToken.length > 0
+            ? { buyerStatusToken: result.buyerStatusToken }
+            : {}),
           paidAt: new Date().toISOString(),
           paymentMethod: "free",
           total: result.totalCents / 100,

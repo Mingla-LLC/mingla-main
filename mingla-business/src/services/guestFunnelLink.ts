@@ -238,6 +238,35 @@ export function openExternal(dest: string, w: Window | undefined = typeof window
 }
 
 /**
+ * Open a NON-http app scheme (`com.mingla.app.v2://…`) from buyer-web —
+ * issue #2326. Same owner file as `openExternal` on purpose: this package gets
+ * exactly one module that is allowed to move the browser.
+ *
+ * WHY THIS IS A SEPARATE FUNCTION AND NOT `openExternal`. A custom scheme must
+ * be assigned to the CURRENT tab, never handed to a new one:
+ *
+ *  - `openAttendanceClaimWithFallback` decides "the app took the navigation"
+ *    from `document.visibilitychange` on THIS page. Handing the scheme to a new
+ *    tab leaves this page visible no matter what the app does, so the 1200 ms
+ *    store fallback fires even on the success path — the buyer gets bounced to
+ *    the store immediately after Mingla opened.
+ *  - A new tab pointed at a scheme no app handles is a dead tab the buyer has
+ *    to find and close.
+ *
+ * Assigning in-place has neither problem: if an app claims the scheme the OS
+ * takes over and this page is backgrounded (which is exactly the signal the
+ * fallback watches for); if nothing claims it the page simply stays put and the
+ * fallback sends the same tap to the store.
+ *
+ * MUST stay synchronous — it is called from inside a tap handler and a browser
+ * only honours a navigation while the user gesture is still live.
+ */
+export function openAppScheme(dest: string, w: Window | undefined = typeof window === "undefined" ? undefined : window): void {
+  if (w === undefined) return;
+  w.location.assign(dest);
+}
+
+/**
  * Compose the CONFIRMATION-SCREEN app target — issue #2217.
  *
  * The confirmation screen used to carry TWO buttons ("Open in Mingla" and a
