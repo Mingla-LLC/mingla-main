@@ -44,6 +44,25 @@ export interface CalendarOccurrenceRow {
 export interface CalendarDayWindow {
   masterDateUtc: string | null;
   masterDateEndUtc: string | null;
+  /**
+   * issue #2347 — WHICH OCCURRENCE THIS WINDOW *IS*.
+   *
+   * The occurrence id when this window came from a day the passes actually
+   * admit; `undefined`/`null` when it came from the caller's fallback, which
+   * means "this window is not day-scoped".
+   *
+   * It exists so the caller can attach only the passes bound to THIS day.
+   * Without it the day rows were emitted correctly and then every one of them
+   * was handed the WHOLE order's ticket list — the day-2 QR rendered on the
+   * day-1 card, stamped "Valid", and failed at the door.
+   *
+   * OPTIONAL, and the fallback branch deliberately returns the caller's object
+   * UNTOUCHED, so a not-day-scoped order's window is byte-identical to the
+   * pre-#2347 one and `ticketsAdmittedOnDay` shows every pass — which is what
+   * "not day-scoped" means at the door (`biz_ticket_scan`'s `v_day_count = 0`
+   * rung: today's any-occurrence window, verbatim).
+   */
+  eventDateId?: string | null;
 }
 
 export interface CalendarOrderDayInput {
@@ -99,6 +118,10 @@ export const calendarDayWindowsForOrder = (
       .sort((a, b) => String(a.start_at ?? "").localeCompare(String(b.start_at ?? "")));
     if (booked.length > 0) {
       return booked.map((o) => ({
+        // issue #2347 — the day this window IS, so the caller can bind passes
+        // to it. Emitted ONLY on this branch: this is the only branch that
+        // knows which occurrence it is looking at.
+        eventDateId: o.id,
         masterDateUtc: o.start_at,
         // THE END, never the start (I-CALENDAR-BUSINESS-TICKET-END-NOT-START).
         // #2160 changes WHICH occurrence's end this is, never that it is one.
@@ -113,4 +136,57 @@ export const calendarDayWindowsForOrder = (
   // Not day-scoped — legacy, single-date, or no selection. The caller's
   // ORCH-1188 chain already answered this; emit it unchanged.
   return [input.fallback];
+};
+
+/**
+ * issue #2347 — THE PASSES THAT ADMIT ON ONE DAY.
+ *
+ * ── THE DEFECT THIS EXISTS TO KILL ─────────────────────────────────────────
+ * `calendarService` built the ticket list ONCE from the whole order and
+ * attached that same array to EVERY day row `calendarDayWindowsForOrder`
+ * emitted. Under `per_day` (D days -> D passes, one `ticket_event_dates` row
+ * each) the day-2 QR therefore rendered on the day-1 card, stamped "Valid",
+ * and `biz_ticket_scan` refused it at the door — the guest is turned away
+ * holding a pass the app told them was good. `ticketCount` read "2 tickets" on
+ * both days for the same reason.
+ *
+ * ── THE RULE, WHICH IS THE DOOR'S RULE ─────────────────────────────────────
+ * `ticket_event_dates` is the SOLE authority for which day a pass is valid on
+ * (I-PROPOSED-2160-A). This mirrors `biz_ticket_scan`'s ladder exactly:
+ *
+ *   * ZERO days on the pass  -> "not day-scoped": the pre-#2160 any-occurrence
+ *     admission window, so it shows on every window. Every pass issued before
+ *     #2160 is on this path and nothing is backfilled.
+ *   * The window is not day-scoped (the fallback) -> every pass, unchanged.
+ *     This is also the #2160 E-6 case (entitlement ids the query did not
+ *     return): an order that shows ZERO passes is worse than one showing all.
+ *   * Otherwise -> only the passes carrying THIS day. `all_days` mints one pass
+ *     with N rows, so it correctly appears on all N cards; `per_day` mints N
+ *     passes with one row each, so each appears on exactly one.
+ *
+ * ── PARITY WITH THE ORGANISER'S ROSTER ────────────────────────────────────
+ * The predicate below is term-for-term the one #2160 already shipped on the
+ * organiser side — `dayHeadCount` in
+ * `mingla-business/src/utils/guestDayFilter.ts`:
+ *   `t.eventDateIds.length === 0 || t.eventDateIds.includes(dayId)`
+ * That asymmetry WAS the bug: the host's day chip counted the right heads
+ * while the guest's own calendar card showed the wrong passes. Keep the two
+ * expressions identical — if one is ever loosened, the door and the roster
+ * start disagreeing about who is coming.
+ *
+ * FAILS-ON-REVERT: return `[...tickets]` unconditionally and the scan-level
+ * proof in `issue_2347_day_bound_passes.test.ts` goes red on VALUES.
+ */
+export const ticketsAdmittedOnDay = <
+  T extends { readonly eventDateIds: readonly string[] },
+>(
+  tickets: readonly T[],
+  dayEventDateId: string | null | undefined,
+): T[] => {
+  const all = [...tickets];
+  if (dayEventDateId === null || dayEventDateId === undefined) return all;
+  return all.filter(
+    (t) =>
+      t.eventDateIds.length === 0 || t.eventDateIds.includes(dayEventDateId),
+  );
 };

@@ -24,6 +24,19 @@ import { buildTicketPdf } from "../_shared/ticketPdf.ts";
 // wordmark when the secret was unset; PDFs now always embed the logo
 // (ticketPdf.ts still degrades to text if the fetch itself fails).
 import { minglaLogoUrl } from "../_shared/brandAssets.ts";
+// ── issue #2347 ───────────────────────────────────────────────────────────
+// THE SAME resolver `ticket-confirmation-dispatch` uses (#2162), not a second
+// copy of it. This endpoint read `is_master` and therefore handed a multi-day
+// guest the wrong day's PDF — and then cached it.
+import {
+  resolveChosenOccurrence,
+  ticketDaysForOrder,
+} from "../_shared/chosenOccurrence.ts";
+import {
+  isDayAwareTicketPdfPath,
+  shouldRerenderCachedTicketPdf,
+  ticketPdfStoragePath,
+} from "../_shared/ticketPdfPath.ts";
 
 const MINGLA_LOGO_URL = minglaLogoUrl();
 const SIGNED_URL_TTL_SECONDS = 60;
@@ -49,6 +62,9 @@ interface OrderRow {
   ticket_pdf_path: string | null;
   event_id: string;
   buyer_name: string | null;
+  // issue #2347 — the buyer's BOOKED occurrence. Rung 2 of the chosen-day
+  // ladder (#2135 single-select / #2160 anchor); NULL is legitimate.
+  event_date_id: string | null;
 }
 
 interface EventRow {
@@ -82,6 +98,8 @@ async function lazyBackfillPdf(
   orderId: string,
   eventId: string,
   buyerName: string | null,
+  // issue #2347 — the #2135 single-select fallback in the chosen-day ladder.
+  orderEventDateId: string | null,
 ): Promise<string> {
   // Reload the inputs ticketPdf.ts expects, mirroring the assembly inside
   // ticket-confirmation-dispatch's buildRenderContext.
@@ -123,13 +141,31 @@ async function lazyBackfillPdf(
   }
   const tickets = ticketRows as unknown as TicketRow[];
 
+  // ══ issue #2347 — THE PDF MUST NAME THE DAY THE GUEST ACTUALLY BOUGHT ═══
+  // This block read `is_master` alone — the EARLIEST occurrence — so every
+  // guest who bought day 2 of a multi-day event downloaded a PDF dated day 1,
+  // and the upload below made that the permanent artifact. `#2162` fixed the
+  // identical defect in `ticket-confirmation-dispatch`; this endpoint received
+  // none of it.
+  //
+  // Precedence is #2162's, unchanged, because it is the SAME function:
+  //   chosen (ticket days -> order anchor)  ??  master.
+  // `masterDate ?? chosenDate` would compile, render a date, and re-ship the
+  // defect verbatim.
   const { data: masterDate } = await supabase
     .from("event_dates")
     .select("start_at, end_at, timezone")
     .eq("event_id", event.id)
     .eq("is_master", true)
     .maybeSingle();
-  const md = (masterDate ?? null) as EventDateRow | null;
+  const chosenDate = await resolveChosenOccurrence(
+    supabase,
+    orderId,
+    event.id,
+    orderEventDateId,
+    "[ticket-pdf-fetch]",
+  );
+  const md = (chosenDate ?? masterDate ?? null) as EventDateRow | null;
 
   const pdf = await buildTicketPdf({
     event: {
@@ -158,7 +194,9 @@ async function lazyBackfillPdf(
     atob(pdf.contentBase64),
     (c) => c.charCodeAt(0),
   );
-  const pdfPath = `tickets/${orderId}.pdf`;
+  // issue #2347 — versioned so a cached object from the is_master era is
+  // distinguishable from a day-aware one. See `_shared/ticketPdfPath.ts`.
+  const pdfPath = ticketPdfStoragePath(orderId);
   const { error: uploadError } = await supabase.storage
     .from(STORAGE_BUCKET)
     .upload(pdfPath, pdfBytes, {
@@ -217,7 +255,7 @@ serve(async (req) => {
   const { data: orderRaw, error: orderError } = await supabase
     .from("orders")
     .select(
-      "id, buyer_user_id, payment_status, ticket_pdf_path, event_id, buyer_name",
+      "id, buyer_user_id, payment_status, ticket_pdf_path, event_id, buyer_name, event_date_id",
     )
     .eq("id", orderId)
     .maybeSingle();
@@ -253,6 +291,47 @@ serve(async (req) => {
 
   let pdfPath = order.ticket_pdf_path;
 
+  // ══ issue #2347 — INVALIDATE A PDF THAT MAY NAME THE WRONG DAY ══════════
+  // The wrong-day PDF this endpoint used to render was written back to
+  // `orders.ticket_pdf_path`, so it is the permanent artifact and WILL NOT
+  // regenerate on its own. It is repaired here rather than by a one-off
+  // UPDATE, deliberately: an UPDATE run even a minute before this function is
+  // deployed is undone by the very next download, whereas this ships and
+  // repairs atomically.
+  //
+  // NARROW ON PURPOSE. A re-render is forced only when BOTH hold:
+  //   * the cached path predates day-aware rendering (no version token), AND
+  //   * the order is actually DAY-SCOPED — its passes carry
+  //     `ticket_event_dates` rows, i.e. it is exactly the population that
+  //     could have been rendered against the wrong day.
+  // A single-date, legacy, trip, experience or RSVP order has ZERO day rows,
+  // so it takes neither branch: its object and its pointer are untouched and
+  // it never re-renders. That is the "single-day behaviour is unchanged"
+  // guarantee, enforced here rather than asserted.
+  // The path-shape test runs FIRST purely to avoid a ticket-ledger read on
+  // every download once an order has been re-rendered; it is a short-circuit,
+  // not the decision. `shouldRerenderCachedTicketPdf` below is the authority
+  // and re-checks it.
+  if (pdfPath !== null && !isDayAwareTicketPdfPath(pdfPath)) {
+    const days = await ticketDaysForOrder(
+      supabase,
+      order.id,
+      "[ticket-pdf-fetch]",
+    );
+    if (
+      shouldRerenderCachedTicketPdf({
+        cachedPath: pdfPath,
+        isDayScoped: days !== null && days.length > 0,
+      })
+    ) {
+      console.log(
+        `[ticket-pdf-fetch] issue-2347 stale day-scoped pdf, re-rendering order=${order.id}`,
+      );
+      // Fall into the backfill below, which renders day-aware and repoints.
+      pdfPath = null;
+    }
+  }
+
   // Lazy backfill for pre-cutover orders OR for orders whose dispatch
   // upload step failed.
   if (!pdfPath) {
@@ -262,6 +341,7 @@ serve(async (req) => {
         order.id,
         order.event_id,
         order.buyer_name,
+        order.event_date_id ?? null,
       );
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
@@ -287,6 +367,7 @@ serve(async (req) => {
         order.id,
         order.event_id,
         order.buyer_name,
+        order.event_date_id ?? null,
       );
       const { data: retryData, error: retryError } = await supabase.storage
         .from(STORAGE_BUCKET)
