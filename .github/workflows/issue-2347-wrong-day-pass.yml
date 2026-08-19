@@ -1,0 +1,126 @@
+name: issue-2347-wrong-day-pass
+# issue #2347 — a multi-day guest is shown the WRONG DAY'S pass, stamped
+# "Valid", and is refused at the door.
+#
+# WHY THIS FILE EXISTS. Neither guarded surface is reachable from an existing
+# lane. `supabase-migrations-and-stripe-deno.yml` names its Deno files
+# explicitly and never globs a directory, and the #2160 lane's Deno job is a
+# fixed list too — so without this workflow the scan-level proof would exist in
+# the tree and gate NOTHING, which is precisely how `ticket-pdf-fetch` missed
+# #2162's fix in the first place.
+#
+# Path filters err BROAD over the guarded SOURCE, not just the tests, so a
+# revert of the product re-triggers the lane (the docs-only-CLOSE hazard). They
+# include the #2160 migration because `ticket_event_dates` — the sole authority
+# for which day a pass admits (I-PROPOSED-2160-A) — is defined there, and every
+# assertion in this lane is downstream of that table's meaning.
+#
+# NOTE ON JEST: this lane runs Deno only. It deliberately invokes no jest
+# pattern, so it cannot hit the bracketed-route-folder trap (`[eventId]` reads
+# as a character class, matches zero files, and reports success).
+
+on:
+  pull_request:
+    paths: &issue_2347_paths
+      # The consumer calendar: the rule, its call site, and the two surfaces
+      # that render what it produces.
+      - "app-mobile/src/services/calendarOrderDays.ts"
+      - "app-mobile/src/services/calendarService.ts"
+      - "app-mobile/src/components/activity/TicketPdfSheet.tsx"
+      - "app-mobile/src/components/activity/BusinessEventCalendarRow.tsx"
+      - "app-mobile/src/services/__tests__/issue_2347_day_bound_passes.test.ts"
+      - "app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts"
+      - "app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts"
+      # The download endpoint, the confirmation that shares its resolver, and
+      # the two shared modules that are now the single authority for each.
+      - "supabase/functions/ticket-pdf-fetch/**"
+      - "supabase/functions/ticket-confirmation-dispatch/**"
+      - "supabase/functions/_shared/chosenOccurrence.ts"
+      - "supabase/functions/_shared/ticketPdfPath.ts"
+      - "supabase/functions/_shared/ticketPdf.ts"
+      - "supabase/functions/_shared/email/dateLine.ts"
+      # `ticket_event_dates` itself.
+      - "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
+      - ".github/workflows/issue-2347-wrong-day-pass.yml"
+  push:
+    branches: [main]
+    paths: *issue_2347_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2347-scan-level:
+    name: "#2347 the pass on a card scans on THAT card's day"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # Every named file must exist. A Deno test path that does not resolve is
+      # an error, not a silent skip — but a RENAMED file in a later refactor
+      # would otherwise turn this lane red for the wrong reason, so the failure
+      # is made legible here instead of inside the runner.
+      - name: Every guarded test file exists
+        run: |
+          set -euo pipefail
+          for f in \
+            app-mobile/src/services/__tests__/issue_2347_day_bound_passes.test.ts \
+            app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts \
+            app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts \
+            supabase/functions/ticket-pdf-fetch/__tests__/issue_2347_pdf_names_chosen_day.test.ts \
+            supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2162_confirmation_names_chosen_day.test.ts \
+            supabase/functions/_shared/chosenOccurrence.ts \
+            supabase/functions/_shared/ticketPdfPath.ts ; do
+            test -f "$f" || { echo "missing: $f"; exit 1; }
+          done
+      # S-1/S-2/S-9 are the proof: take the QR PAYLOAD off a card, resolve it
+      # back to a pass, and ask whether that pass's `ticket_event_dates` set
+      # contains that card's day. S-4 re-runs S-1 with every pass reattached to
+      # every day and asserts it THROWS, so the suite cannot be satisfied by a
+      # no-op. S-6/S-7 assert a single-day order is byte-identical.
+      - name: "#2347 consumer calendar — a card carries only ITS day's passes"
+        run: >-
+          deno test --allow-read --no-check
+          app-mobile/src/services/__tests__/issue_2347_day_bound_passes.test.ts
+      # The #2160 and ORCH-1188 suites are the regression guard for the rule
+      # this change extends: one entry per day attended, each dated from its
+      # OWN window, single-date unchanged.
+      - name: "#2160 + ORCH-1188 calendar suites stay green"
+        run: >-
+          deno test --allow-read --no-check
+          app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts
+          app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts
+
+  issue-2347-download-endpoint:
+    name: "#2347 the downloaded PDF names the day the guest bought"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      # P-1..P-7 call the REAL shipped resolver (it has no serve() and no
+      # supabase-js import, which is why it can be called at all). P-8..P-11
+      # are the cached-artifact truth table, including the row that guarantees
+      # a not-day-scoped order's PDF is never touched.
+      - name: "#2347 chosen-day resolution + cached-PDF invalidation"
+        run: >-
+          deno test --allow-read --no-check
+          supabase/functions/ticket-pdf-fetch/__tests__/issue_2347_pdf_names_chosen_day.test.ts
+      # #2162 is the fix this endpoint never received. Its suite must stay
+      # green THROUGH the extraction of the resolver into _shared.
+      - name: "#2162 the confirmation still names the day the guest chose"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-confirmation-dispatch/__tests__/issue_2162_confirmation_names_chosen_day.test.ts
+      - name: "sibling ticket-confirmation-dispatch suites stay green"
+        run: >-
+          deno test --allow-env --allow-read --no-check
+          supabase/functions/ticket-confirmation-dispatch/__tests__/installment_kinds.test.ts
+          supabase/functions/ticket-confirmation-dispatch/__tests__/issue2218_deferred_contract.test.ts
+      - run: deno check supabase/functions/_shared/chosenOccurrence.ts
+      - run: deno check supabase/functions/_shared/ticketPdfPath.ts
+      - run: deno check supabase/functions/ticket-pdf-fetch/index.ts
+      - run: deno check supabase/functions/ticket-confirmation-dispatch/index.ts
