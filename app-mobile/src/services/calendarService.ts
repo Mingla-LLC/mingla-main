@@ -2,7 +2,10 @@ import { supabase } from "./supabase";
 // issue #2160 — the "how many calendar entries does this order produce"
 // rule lives in its own RN-free module so it can actually be CALLED by a
 // test. This file imports ./supabase at module scope and cannot be.
-import { calendarDayWindowsForOrder } from "./calendarOrderDays";
+import {
+  calendarDayWindowsForOrder,
+  ticketsAdmittedOnDay,
+} from "./calendarOrderDays";
 import { userActivityService } from "./userActivityService";
 import { recordCardSchedule } from "./cardEngagementService";
 
@@ -81,6 +84,18 @@ export interface ConsumerTicketRow {
   status: "valid" | "used" | "void" | "transferred" | "refunded";
   attendeeName: string | null;
   attendeeEmail: string | null;
+  // issue #2347 — THE DAYS THIS PASS ADMITS (`ticket_event_dates`, #2160).
+  //
+  // EMPTY means "not day-scoped": the pre-#2160 any-occurrence admission
+  // window, which is what every legacy and every single-date pass has. It does
+  // NOT mean "no days" and must never be treated as an empty entitlement.
+  //
+  // This field is the reason the row type exists in this shape at all: without
+  // it, `BusinessEventCalendarRow.tickets` could not be bound to the day its
+  // row covers, and it was not — every day row carried the WHOLE order's
+  // passes, so a `per_day` guest saw the day-2 QR on the day-1 card, stamped
+  // "Valid", and was refused at the door.
+  eventDateIds: string[];
 }
 
 // ORCH-0842: venue info surfaced inside the consumer ticket sheet.
@@ -517,6 +532,11 @@ export class CalendarService {
         const masterDate =
           bookedOccurrence ??
           (event?.event_dates ?? []).find((ed) => ed?.is_master === true);
+        // issue #2347 — every pass of the order, each carrying the days it
+        // admits. This list is NOT what a day row gets: it is filtered per day
+        // at the emit site below. `ticket_event_dates` was already selected at
+        // the query above and simply thrown away here, which is exactly how the
+        // day-2 QR ended up on the day-1 card.
         const tickets: ConsumerTicketRow[] = (order.tickets ?? []).map(
           (t) => ({
             id: t.id,
@@ -525,6 +545,9 @@ export class CalendarService {
             status: t.status,
             attendeeName: t.attendee_name ?? null,
             attendeeEmail: t.attendee_email ?? null,
+            eventDateIds: (t.ticket_event_dates ?? [])
+              .map((link) => link?.event_date_id)
+              .filter((id): id is string => typeof id === "string"),
           }),
         );
         const geo = parseLocationGeo(event?.location_geo);
@@ -550,33 +573,45 @@ export class CalendarService {
           },
         });
 
-        return daysToEmit.map((day) => ({
-          orderId: order.id,
-          eventId: event?.id ?? order.event_id,
-          eventTitle: event?.title ?? "Event",
-          brandName: brand?.name ?? "",
-          brandSlug: brand?.slug ?? "",
-          coverMediaUrl: event?.cover_media_url ?? null,
-          masterDateUtc: day.masterDateUtc,
-          // ORCH-0853: end-of-event timestamp used by consumer Calendar
-          // partition. Still the END, never the start — the
-          // i-consumer-calendar-uses-end-not-start gate is unaffected: #2160
-          // only changes WHICH occurrence's end this is, never that it is one.
-          masterDateEndUtc: day.masterDateEndUtc,
-          timezone: event?.timezone ?? "UTC",
-          paymentStatus: order.payment_status,
-          ticketCount: tickets.length,
-          ticketCountValid: tickets.filter((t) => t.status === "valid").length,
-          tickets,
-          publicBuyerUrl:
-            brand && event
-              ? `${BUSINESS_BUYER_DOMAIN}/${buyerPagePrefixForEventType(
-                  event.event_type,
-                )}/${brand.slug}/${event.slug}`
-              : null,
-          ticketPdfPath: order.ticket_pdf_path ?? null,
-          venue,
-        }));
+        return daysToEmit.map((day) => {
+          // ══ issue #2347 — THIS DAY'S PASSES, AND ONLY THIS DAY'S ═════════
+          // The rule is `biz_ticket_scan`'s own and lives in the RN-free
+          // module so it is callable by a test. A pass with no days is "not
+          // day-scoped" and still shows on every window; a fallback window is
+          // not day-scoped either and still shows every pass. Neither of those
+          // is a regression of the single-date behaviour — they ARE it.
+          const dayTickets = ticketsAdmittedOnDay(tickets, day.eventDateId);
+          return {
+            orderId: order.id,
+            eventId: event?.id ?? order.event_id,
+            eventTitle: event?.title ?? "Event",
+            brandName: brand?.name ?? "",
+            brandSlug: brand?.slug ?? "",
+            coverMediaUrl: event?.cover_media_url ?? null,
+            masterDateUtc: day.masterDateUtc,
+            // ORCH-0853: end-of-event timestamp used by consumer Calendar
+            // partition. Still the END, never the start — the
+            // i-consumer-calendar-uses-end-not-start gate is unaffected: #2160
+            // only changes WHICH occurrence's end this is, never that it is one.
+            masterDateEndUtc: day.masterDateEndUtc,
+            timezone: event?.timezone ?? "UTC",
+            paymentStatus: order.payment_status,
+            // issue #2347 — THIS DAY's counts. Reading the whole order here made
+            // a one-pass-per-day guest read "2 tickets" on both days.
+            ticketCount: dayTickets.length,
+            ticketCountValid: dayTickets.filter((t) => t.status === "valid")
+              .length,
+            tickets: dayTickets,
+            publicBuyerUrl:
+              brand && event
+                ? `${BUSINESS_BUYER_DOMAIN}/${buyerPagePrefixForEventType(
+                    event.event_type,
+                  )}/${brand.slug}/${event.slug}`
+                : null,
+            ticketPdfPath: order.ticket_pdf_path ?? null,
+            venue,
+          };
+        });
       },
     );
   }
