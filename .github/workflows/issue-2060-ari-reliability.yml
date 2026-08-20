@@ -15,6 +15,7 @@ on:
       - "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
       - "mingla-business/src/services/agentReliability.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.test.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts"
@@ -41,6 +42,7 @@ on:
       - "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
       - "mingla-business/src/services/agentReliability.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.test.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts"
@@ -78,7 +80,7 @@ jobs:
       - name: Certification migration contract
         run: deno test --allow-read supabase/migrations/__tests__/issue_2060_ari_certification_foundation.test.ts
       - name: 116-row exact-release certification harness
-        run: node --test scripts/ari/__tests__/certify-capabilities.issue2060.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.canonical-digest.implementor.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.tester.adversarial.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.tester.attestation-completeness.test.mjs
+        run: node --test scripts/ari/__tests__/certify-capabilities.issue2060.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.canonical-digest.implementor.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.tester.adversarial.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.tester.attestation-completeness.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs
       - name: Permanent #2060 invariant gate
         run: |
           node .github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs --self-test
@@ -120,3 +122,4 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_provenance.tester.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql

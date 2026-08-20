@@ -21,6 +21,7 @@ const FILES = {
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
   crossRuntimeGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql",
   independentVerdictGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
+  unicodeBoundaryGuard: "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
 };
 
 function readLive() {
@@ -229,6 +230,8 @@ export function checkContract(fixture) {
     "issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql",
     "issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql",
     "certify-capabilities.issue2060.canonical-digest.implementor.test.mjs",
+    "certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs",
+    "issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql",
   ], "CI workflow");
   need(fixture.crossRuntimeGuard, [
     "issue_2060_cross_runtime_certification_not_correlated",
@@ -241,6 +244,12 @@ export function checkContract(fixture) {
     "has_table_privilege",
     "issue_2060_independent_verdict_boundary_open",
   ], "independent verdict certification guard");
+  need(fixture.unicodeBoundaryGuard, [
+    "issue_2060_unicode_node_pg_digest_mismatch",
+    "issue_2060_unicode_value_not_bound",
+    "issue_2060_invalid_native_begin_accepted",
+    "issue_2060_invalid_native_finalize_accepted",
+  ], "Unicode boundary certification guard");
 }
 
 function clone(value) {
@@ -281,7 +290,9 @@ function selfTest() {
   bad(good, (x) => { x.certifier = x.certifier.replace("signCertificationAttestation", "trustCallerAttestation"); }, "unsigned certification");
   bad(good, (x) => { x.migration = x.migration.replace("extensions.hmac", "caller_signature"); }, "server signature removed");
   bad(good, (x) => { x.migration = x.migration.replaceAll("private.ari_cert_verified_provenance", "private.unverified_claims"); }, "canonical provenance removed");
-  console.log("issue-2060 self-test: 1 GOOD + 25 BAD fixtures passed");
+  bad(good, (x) => { x.workflow = x.workflow.replaceAll("issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql", "missing-unicode-boundary.test.sql"); }, "Unicode boundary CI wiring");
+  bad(good, (x) => { x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace("issue_2060_unicode_value_not_bound", "unicode_values_unbound"); }, "Unicode bound-field guard removed");
+  console.log("issue-2060 self-test: 1 GOOD + 27 BAD fixtures passed");
 }
 
 if (process.argv.includes("--self-test")) selfTest();
