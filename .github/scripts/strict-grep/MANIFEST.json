@@ -6,7 +6,7 @@
     "strict-grep workflow invokes from outside this directory; they are registered so run-batch.mjs executes",
     "them and R4 counts them.",
     "'modes' is the exact set of invocation forms CI uses for that script \u2014 2 gates are --self-test ONLY and",
-    "must never gain a plain run; 229 are plain-only; 186 run both. Changing modes changes WHAT is asserted.",
+    "must never gain a plain run; 229 are plain-only; 187 run both. Changing modes changes WHAT is asserted.",
     "'jobKeys' preserves the PRE-BATCH job identity so a failure can still name its origin (SPEC \u00a75.1).",
     "Ratchets (selfTestWiredFloor, unenforcedCap, gates[]) are append-only \u2014 enforced by",
     "meta-1383-manifest-parity.mjs P7/P8 and by tests-append-only.yml. Shrinking needs a GATE-REMOVAL: token.",
@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 563,
-  "selfTestWiredFloor": 363,
+  "expectedStrictGrepMjsFiles": 564,
+  "selfTestWiredFloor": 364,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8547,6 +8547,20 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-2333-online-event-publish.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "deno-and-business"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

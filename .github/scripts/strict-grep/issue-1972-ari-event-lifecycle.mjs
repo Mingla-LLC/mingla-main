@@ -95,6 +95,7 @@ export function check(sources) {
   if (coverAttestationOwner.includes("request.jwt.claim.role"))
     failures.push("cover attestation trusts the legacy dotted scalar role");
   for (const token of [
+    "RECEIPT_BACKED_TOOL_NAMES",
     "RECEIPT_BACKED_EVENT_TOOL_NAMES",
     "RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name)",
     '"terminalize_agent_pending_action"',
@@ -129,14 +130,13 @@ export function check(sources) {
     "await clearEventCover(",
   ]) if (editor.includes(staleOwner)) failures.push(`Business live editor retains fragmented owner ${staleOwner}`);
   for (const [name, source] of [["menu", parseMenu], ["play", parsePlay]]) {
-    if (!source.includes("const pendingStateClient = buildServiceClient();"))
-      failures.push(`${name} parser lacks server-authoritative proposal client`);
-    if (!source.includes('pendingStateClient\n      .from("agent_pending_actions")'))
-      failures.push(`${name} parser does not constrain service role to pending proposals`);
-    if ((source.match(/pendingStateClient\s*\n?\s*\.from\(/g) ?? []).length !== 1)
-      failures.push(`${name} parser expands service role beyond one proposal write`);
-    if (!source.includes("server_proposed_at: new Date().toISOString()"))
-      failures.push(`${name} parser proposal lacks trusted server provenance`);
+    if (!source.includes("biz_brand_effective_rank_for_caller"))
+      failures.push(`${name} parser lacks delegated event-manager authorization`);
+    if (!source.includes('.from("agent_pending_actions")') ||
+        !source.includes(".insert(proposalRows)"))
+      failures.push(`${name} parser lacks one caller-RLS atomic proposal batch`);
+    if (source.includes("buildServiceClient") || source.includes("pendingStateClient"))
+      failures.push(`${name} parser reintroduces a service-role proposal bypass`);
   }
   const liveBlock = menu.slice(menu.indexOf('if (status === "live"'), menu.indexOf("// Cancel event"));
   if (liveBlock.includes("onUnpublish")) failures.push("live event still exposes impossible unpublish action");
@@ -182,7 +182,7 @@ if (process.argv.includes("--self-test")) {
     { ...sources, coverEdge: sources.coverEdge.replace("api.pexels.com/v1/photos/", "example.invalid/photos/") },
     { ...sources, migration: sources.migration.replace("CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic", "CREATE OR REPLACE FUNCTION public.business_update_live_event_fragmented") },
     { ...sources, editor: sources.editor.replace("await patchPublishedEventAtomically(", "await patchPublishedEventCore(") },
-    { ...sources, parseMenu: sources.parseMenu.replace("pendingStateClient\n      .from", "userClient\n      .from") },
+    { ...sources, parseMenu: sources.parseMenu.replace(".insert(proposalRows)", ".insert(proposal)") },
     { ...sources, workflow: sources.workflow.replaceAll("issue_1972_ari_event_lifecycle.tester.adversarial.test.sql", "removed.sql") },
     { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,requestedVisibility}'", "'public'::jsonb") },
     { ...sources, migration: sources.migration.replace("v_event.theme#>'{business_draft,location}'", "'null'::jsonb") },

@@ -79,6 +79,9 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "unpublish_experience",
   "delete_experience",
 ]);
+// [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
+// extending the exact same receipt gate to the experience lifecycle.
+const RECEIPT_BACKED_EVENT_TOOL_NAMES = RECEIPT_BACKED_TOOL_NAMES;
 
 async function terminalizePending(
   pendingStateClient: ReturnType<typeof buildServiceClient>,
@@ -282,7 +285,7 @@ Deno.serve(async (req) => {
   if (
     pending.status !== "pending" &&
     !(pending.status === "executing" &&
-      RECEIPT_BACKED_TOOL_NAMES.has(pending.tool_name))
+      RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name))
   ) {
     return errorResponse(
       400,
@@ -461,7 +464,7 @@ Deno.serve(async (req) => {
     // committed before the response was lost. Keep `executing` so confirm can
     // safely recover through the operation receipt. Deterministic pre-write
     // validation failures remain terminal.
-    const isAmbiguous = RECEIPT_BACKED_TOOL_NAMES.has(tool.name) &&
+    const isAmbiguous = RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name) &&
       (!(err instanceof ToolError) ||
         ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code));
     if (!isAmbiguous) {
@@ -498,7 +501,7 @@ Deno.serve(async (req) => {
       expectedStatus: "executing",
       outcome: "executed",
       result,
-      requireOperationReceipt: RECEIPT_BACKED_TOOL_NAMES.has(tool.name),
+      requireOperationReceipt: RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
     });
   } catch (error) {
     return errorResponse(
