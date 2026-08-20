@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 568,
+  "expectedStrictGrepMjsFiles": 569,
   "selfTestWiredFloor": 365,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -8616,6 +8616,19 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2286-ios-skadnetwork-roster-parity"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2286-ios-skan-source-and-endpoint.tester.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-2286-ios-skan-source-and-endpoint-tester"
       ]
     }
   ]
