@@ -360,6 +360,22 @@ const setPricingSwitches = writeTool(
 // C. Experiences
 // ----------------------------------------------------------------------------
 
+async function executeExperienceWrite(
+  name: string,
+  args: Record<string, unknown>,
+  client: any,
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  return await callRpc(client, "ari_execute_experience_operation", {
+    p_operation_id: requireAgentOperationId(context),
+    p_tool_name: name,
+    // The confirmed public tool payload is the receipt identity. Internal RPC
+    // patches are derived only after agent_operation_receipt_begin binds this
+    // exact object inside the canonical database transaction.
+    p_args: args,
+  });
+}
+
 const publishExperience = writeTool(
   "publish_experience",
   "Publish a draft experience from its complete fresh server graph. Missing publish requirements fail without partial writes.",
@@ -376,15 +392,12 @@ const publishExperience = writeTool(
       eventId,
     ).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
-    return await callRpc(client, "ari_execute_experience_operation", {
-      p_operation_id: requireAgentOperationId(context),
-      p_tool_name: "publish_experience",
-      p_args: {
-        event_id: eventId,
-        patch: args.patch ?? {},
-        expected_revision: args.expected_revision,
-      },
-    });
+    return await executeExperienceWrite(
+      "publish_experience",
+      args,
+      client,
+      context,
+    );
   },
 );
 
@@ -421,24 +434,19 @@ const updateExperience = writeTool(
   },
   ["event_id", "expected_revision"],
   async (args, client, userId, context) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    const patch = { ...args };
-    delete patch.event_id;
-    delete patch.expected_revision;
-    delete patch.edit_reason;
-    if (Object.keys(patch).length === 0) {
+    await requireEvent(args, client, userId);
+    const patchKeys = Object.keys(args).filter((key) =>
+      !["event_id", "expected_revision", "edit_reason"].includes(key)
+    );
+    if (patchKeys.length === 0) {
       throw new ToolError("INVALID_ARGS", "Nothing to update");
     }
-    return await callRpc(client, "ari_execute_experience_operation", {
-      p_operation_id: requireAgentOperationId(context),
-      p_tool_name: "update_experience",
-      p_args: {
-        event_id: eventId,
-        patch,
-        expected_revision: args.expected_revision,
-        edit_reason: args.edit_reason ?? null,
-      },
-    });
+    return await executeExperienceWrite(
+      "update_experience",
+      args,
+      client,
+      context,
+    );
   },
 );
 
@@ -467,20 +475,13 @@ const manageExperienceStops = writeTool(
   },
   ["event_id", "expected_revision", "stops", "experience_intents"],
   async (args, client, userId, context) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "ari_execute_experience_operation", {
-      p_operation_id: requireAgentOperationId(context),
-      p_tool_name: "manage_experience_stops",
-      p_args: {
-        event_id: eventId,
-        patch: {
-          stops: args.stops,
-          experience_intents: args.experience_intents,
-        },
-        expected_revision: args.expected_revision,
-        edit_reason: args.edit_reason ?? null,
-      },
-    });
+    await requireEvent(args, client, userId);
+    return await executeExperienceWrite(
+      "manage_experience_stops",
+      args,
+      client,
+      context,
+    );
   },
 );
 
@@ -493,15 +494,13 @@ const unpublishExperience = writeTool(
   },
   ["event_id", "expected_revision"],
   async (args, client, userId, context) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "ari_execute_experience_operation", {
-      p_operation_id: requireAgentOperationId(context),
-      p_tool_name: "unpublish_experience",
-      p_args: {
-        event_id: eventId,
-        expected_revision: args.expected_revision,
-      },
-    });
+    await requireEvent(args, client, userId);
+    return await executeExperienceWrite(
+      "unpublish_experience",
+      args,
+      client,
+      context,
+    );
   },
 );
 
@@ -533,11 +532,12 @@ const deleteExperience = writeTool(
         "Type the exact experience title to confirm discard",
       );
     }
-    return await callRpc(client, "ari_execute_experience_operation", {
-      p_operation_id: requireAgentOperationId(context),
-      p_tool_name: "delete_experience",
-      p_args: { event_id: eventId, confirm_title: args.confirm_title },
-    });
+    return await executeExperienceWrite(
+      "delete_experience",
+      args,
+      client,
+      context,
+    );
   },
 );
 

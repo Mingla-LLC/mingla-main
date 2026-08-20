@@ -11,6 +11,7 @@ on:
       - "supabase/functions/_shared/agentToolAuthorization.ts"
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1973_experience_receipt_payload.implementor.test.ts"
       - "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql"
       - "supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle*.sql"
       - "mingla-business/app/experience/**"
@@ -42,9 +43,13 @@ jobs:
             supabase/functions/parse-play-activities/index.ts
           deno fmt --check \
             supabase/functions/_shared/agentToolAuthorization.ts \
+            supabase/functions/_shared/agentDomainTools.ts \
+            supabase/functions/_shared/__tests__/issue_1973_experience_receipt_payload.implementor.test.ts \
             supabase/functions/agent-confirm-action/index.ts \
             supabase/functions/agent-confirm-action/__tests__/issue_1973_create_draft_followup.implementor.test.ts
           deno test --allow-read supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts
+          deno test --allow-env --allow-net --allow-read \
+            supabase/functions/_shared/__tests__/issue_1973_experience_receipt_payload.implementor.test.ts
           deno test --no-check --allow-env --allow-net --allow-read \
             supabase/functions/agent-confirm-action/__tests__/issue_1973_create_draft_followup.implementor.test.ts
           node .github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs
@@ -95,3 +100,5 @@ jobs:
             -f supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle.round2.tester.adversarial.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle.round3.tester.snap_authority.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1973_experience_public_payload_and_precision.implementor.pg17.test.sql
