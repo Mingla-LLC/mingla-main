@@ -9240,6 +9240,45 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Enforcement:** T-2 in `issue_2322_ios_picker_theming.implementor.happy.test.mjs` retains #2050's exact dark launch block, requires the Mingla owner before splash (reverse execution order), and executes its pure mutation helper against an `Automatic` plist while proving unrelated keys survive. Release proof reads `UIUserInterfaceStyle` from a freshly generated or built `Info.plist`; `expo config` alone is not accepted. A general warning gate remains tracked as #2342.
 - **Established:** DRAFT at #2322, 2026-08-19; flip to ACTIVE only after independent tester PASS, all-green merge, and merged-main verification.
 
+---
+
+## DRAFT — issue #2060 (Ari reliability and exact-release certification)
+
+These invariants remain DRAFT until #2060 is merged, both Ari functions and
+Business surfaces are deployed from the exact merge SHA, every ledger row is
+certified, cleanup reaches zero residue, rollback is rehearsed, and the
+independent tester returns PASS.
+
+### I-ARI-LOGICAL-TURN-ONCE (DRAFT)
+
+- **Rule:** One caller, tenant, and `client_turn_id` produces at most one durable user turn and proposal; every retry replays its current or terminal server state.
+- **Enforcement:** #1985 owns the durable client-turn constraint and atomic task turn. Issue #2060's shared response/recovery contract, 116-row certification validator, and `issue-2060-ari-reliability-foundation.mjs` gate require stable correlation and reject a second-ID retry after ambiguity.
+
+### I-ARI-EXECUTION-ONCE (DRAFT)
+
+- **Rule:** One immutable confirmed action version has one `execution_id`, propagates its idempotency identity to the canonical domain owner, and replays terminal truth without a second side effect.
+- **Enforcement:** #1972 owns the generic atomic operation receipt; each Pass 4 domain owns its mutation/readback adapter. #2060's finalization seam refuses success without a durable receipt and matched readback, while the certification plan requires duplicate-confirm and lost-ack replay for every write row.
+
+### I-ARI-RESULT-HONESTY (DRAFT)
+
+- **Rule:** Ari may display a completed action only after durable terminal state and matching canonical readback. Missing, mismatched, or lost results remain `RESULT_UNKNOWN` or `RECONCILIATION_REQUIRED` and never invite a new write ID.
+- **Enforcement:** `agentReliability.ts` on edge and Business, the typed error registry, exact-release evidence validator, and the issue #2060 implementor/tester regression pair.
+
+### I-ARI-RECOVERY-PARITY (DRAFT)
+
+- **Rule:** Business web, iOS, and Android restore the same server-authoritative sending, pending, executing, reconciling, and terminal state after offline, retry, refresh, relaunch, or a second session.
+- **Enforcement:** the platform-neutral Business recovery reducer, shared network-state integration after #1985 merge, per-row cache/readback ownership, and exact-artifact runtime evidence on all three Business surfaces.
+
+### I-ARI-CORRELATED-RELEASE-TRUTH (DRAFT)
+
+- **Rule:** Every Ari response, operation phase, log, and certification record carries safe request/client-turn/execution correlation and the independently verified release SHA/function version, with no prompt, args, result, PII, JWT, exception, SQL, or configuration payload.
+- **Enforcement:** the versioned #2060 envelope, allowlisted telemetry event, immutable `ari_cert_release_artifacts`, bundle-hash attestation, and CI gate. Missing `MINGLA_RELEASE_SHA` resolves to `unattested` and blocks certification.
+
+### I-ARI-LEDGER-CERTIFICATION (DRAFT)
+
+- **Rule:** No canonical Ari capability row becomes `verified` without exact-SHA evidence for every required scenario, tenant/role negative, Business surface, canonical readback, cleanup, rollback, and independent tester PASS.
+- **Enforcement:** `docs/contracts/ari-capability-ledger.json` is the only row inventory; `scripts/ari/certify-capabilities.mjs` derives and validates all 116 rows; `ari_cert_finalize_run` fails closed on missing evidence/artifacts/residue/rollback; the CI gate rejects a second inventory or unbound domain owner.
+
 ### I-PROPOSED-2322-AN-UNTOUCHED-PICKER-IS-NOT-AN-ANSWER (DRAFT)
 
 - **Rule:** In onboarding, tapping Done on a birthday wheel the user has never interacted with MUST NOT commit a value, and MUST NOT unblock the step's CTA. The wheel may seed at a default for display; the default may not become the stored answer.

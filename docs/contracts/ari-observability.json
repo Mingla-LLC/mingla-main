@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "contract": "I-ARI-CORRELATED-RELEASE-TRUTH",
+  "status": "integration_held_until_1972_1985_merge",
+  "event_name": "ari_reliability",
+  "required_dimensions": [
+    "release_sha",
+    "function_version",
+    "capability_id",
+    "operation_state",
+    "request_id",
+    "client_turn_id",
+    "execution_id",
+    "tenant_ref",
+    "attempt"
+  ],
+  "forbidden_fields": [
+    "prompt",
+    "message",
+    "final_args",
+    "raw_result",
+    "contact_data",
+    "jwt",
+    "raw_exception",
+    "sql",
+    "internal_table",
+    "configuration"
+  ],
+  "required_phases": [
+    "received",
+    "authorized",
+    "dedupe_hit",
+    "dedupe_miss",
+    "model_start",
+    "model_end",
+    "proposal_committed",
+    "execution_claimed",
+    "domain_call",
+    "canonical_readback",
+    "terminal",
+    "reconciliation",
+    "response"
+  ],
+  "required_metrics": [
+    "latency_ms",
+    "success_count",
+    "typed_failure_count",
+    "dedupe_replay_count",
+    "timeout_count",
+    "stuck_executing_count",
+    "reconciliation_age_ms",
+    "reconciliation_outcome_count",
+    "persistence_failure_count",
+    "authorization_denial_count",
+    "provider_failure_count",
+    "telemetry_missing_count"
+  ],
+  "required_alerts": [
+    {
+      "id": "canonical_readback_mismatch",
+      "severity": "critical",
+      "condition": "count(RECONCILIATION_REQUIRED caused by readback mismatch) >= 1"
+    },
+    {
+      "id": "stuck_or_unknown_operation",
+      "severity": "critical",
+      "condition": "executing lease or reconciliation age exceeds its domain-owner bound"
+    },
+    {
+      "id": "elevated_duplicate_or_reconciliation_rate",
+      "severity": "warning",
+      "condition": "release-and-capability rate exceeds the recorded baseline with minimum-volume protection"
+    },
+    {
+      "id": "missing_telemetry",
+      "severity": "critical",
+      "condition": "responses exist for a release/function pair without corresponding bounded phase events"
+    }
+  ]
+}
