@@ -7,7 +7,7 @@ import { ToolError } from "./agentToolHelpers.ts";
 export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_brands", "list_events", "quote_stay", "get_payout_status",
   "get_partner_status", "get_tax_status", "get_brand_analytics",
-  "list_guest_roster", "get_operator_snapshot",
+  "list_guest_roster", "get_operator_snapshot", "get_trip_order_money",
 ]);
 
 export interface AccessibleAgentBrand {
