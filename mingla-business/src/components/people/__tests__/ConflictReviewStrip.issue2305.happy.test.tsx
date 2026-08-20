@@ -232,4 +232,3 @@ describe("#2305 REWORK P3-3 — the destructive-confirm CTA must fit", () => {
     expect(src).not.toContain('"Yes, same person"');
   });
 });
-
