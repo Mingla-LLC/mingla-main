@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = Object.freeze({
-  migration: "supabase/migrations/20270404002063_issue_2063_ari_brand_management.sql",
+  migration: "supabase/migrations/20270501002063_issue_2063_ari_brand_management.sql",
   tools: "supabase/functions/_shared/agentTools.ts",
   auth: "supabase/functions/_shared/agentToolAuthorization.ts",
   prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
@@ -14,6 +14,7 @@ const PATHS = Object.freeze({
   edit: "mingla-business/src/components/ari/ToolEditForm.tsx",
   confirmHook: "mingla-business/src/hooks/useConfirmPendingAction.ts",
   chat: "supabase/functions/agent-chat/index.ts",
+  confirm: "supabase/functions/agent-confirm-action/index.ts",
   ledger: "docs/contracts/ari-capability-ledger.json",
   test: "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts",
   pgTest: "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
@@ -36,6 +37,7 @@ function audit(overrides = {}) {
   const edit = overrides.edit ?? read(PATHS.edit);
   const confirmHook = overrides.confirmHook ?? read(PATHS.confirmHook);
   const chat = overrides.chat ?? read(PATHS.chat);
+  const confirm = overrides.confirm ?? read(PATHS.confirm);
   const ledger = overrides.ledger ?? JSON.parse(read(PATHS.ledger));
   const brandExecutorStart = tools.indexOf("async function executeBrandOperation(");
   const brandExecutorEnd = tools.indexOf("// Legacy append-only source-test marker: const createBrand", brandExecutorStart);
@@ -165,6 +167,18 @@ function audit(overrides = {}) {
     ["ari.brand.audit_log", "list_brand_audit_log"],
     ["ari.brand.discovery_currency", "manage_brand_discovery_currency"],
   ]);
+  const receiptSetStart = confirm.indexOf("const RECEIPT_BACKED_EVENT_TOOL_NAMES");
+  const receiptSet = confirm.slice(receiptSetStart, confirm.indexOf("]);", receiptSetStart));
+  for (const tool of [
+    "create_brand",
+    "update_brand",
+    "delete_brand",
+    "manage_brand_hours",
+    "manage_brand_discovery_currency",
+  ]) {
+    requireText(failures, receiptSet, `"${tool}"`, `missing receipt-backed retry: ${tool}`);
+  }
+  if (receiptSet.includes('"list_brand_audit_log"')) failures.push("read tool gained receipt-backed write recovery");
   for (const [id, tool] of expectedMappings) {
     const row = ledger.capabilities.find((candidate) => candidate.id === id);
     if (!row) failures.push(`ledger missing ${id}`);
@@ -211,7 +225,8 @@ if (process.argv.includes("--self-test")) {
   expectMutation("stable audit order", "tools", '.order("id", { ascending: false })', "stable id tie-breaker");
   expectMutation("currency required version", "migration", "RAISE EXCEPTION 'expected_state_version_required'", "missing expected version");
   expectMutation("factory cache", "confirmHook", "brandHoursKeys.byBrand(brandId)", "missing brandHoursKeys.byBrand");
-  console.log("[issue-2063-ari-brand-management] self-test PASS (14 hostile reversions)");
+  expectMutation("brand retry", "confirm", '"create_brand",', "missing receipt-backed retry: create_brand");
+  console.log("[issue-2063-ari-brand-management] self-test PASS (15 hostile reversions)");
 } else {
   const failures = audit();
   if (failures.length) {

@@ -90,6 +90,7 @@ function errorResponse(
 }
 
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
+  "create_brand",
   "create_event",
   "update_event",
   "publish_event",
@@ -107,6 +108,13 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "manage_experience_stops",
   "unpublish_experience",
   "delete_experience",
+  // Issue #2063 — these writes commit through ari_execute_brand_operation and
+  // the shared #1972 operation receipt, so an ambiguous executing retry must
+  // replay that receipt instead of returning WRONG_STATE.
+  "update_brand",
+  "delete_brand",
+  "manage_brand_hours",
+  "manage_brand_discovery_currency",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.

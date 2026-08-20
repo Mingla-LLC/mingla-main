@@ -95,7 +95,7 @@ Deno.test("#2063 tester: Ari preserves the canonical Business overnight-hours co
 
   const migration = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20270404002063_issue_2063_ari_brand_management.sql",
+      "../../../migrations/20270501002063_issue_2063_ari_brand_management.sql",
       import.meta.url,
     ),
   );
@@ -212,5 +212,32 @@ Deno.test("#2063 tester: Ari invalidates brand-management caches through their f
       !source.includes(literal),
       `hardcoded query key ${literal} bypasses its canonical factory`,
     );
+  }
+});
+
+Deno.test("#2063 tester: every receipt-backed brand write can recover an executing confirmation", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../agent-confirm-action/index.ts", import.meta.url),
+  );
+  const setStart = source.indexOf("const RECEIPT_BACKED_EVENT_TOOL_NAMES");
+  const receiptBackedSet = source.slice(setStart, source.indexOf("]);", setStart));
+  for (const toolName of [
+    "create_brand",
+    "update_brand",
+    "delete_brand",
+    "manage_brand_hours",
+    "manage_brand_discovery_currency",
+  ]) {
+    assert(
+      receiptBackedSet.includes(`"${toolName}"`),
+      `${toolName} would reject an ambiguous executing retry before receipt replay`,
+    );
+  }
+  assert(
+    !receiptBackedSet.includes('"list_brand_audit_log"'),
+    "non-receipt-backed brand reads must not acquire executing-write recovery",
+  );
+  for (const eventTool of ["create_event", "update_event", "publish_event"]) {
+    assert(receiptBackedSet.includes(`"${eventTool}"`), `lost #1972 ${eventTool} recovery`);
   }
 });

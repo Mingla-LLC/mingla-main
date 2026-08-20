@@ -3,8 +3,7 @@ name: "Issue #2063 Ari brand management"
 on:
   pull_request:
     paths:
-      - "supabase/migrations/20270404001972_issue_1972_ari_event_lifecycle.sql"
-      - "supabase/migrations/20270404002063_issue_2063_ari_brand_management.sql"
+      - "supabase/migrations/20270501002063_issue_2063_ari_brand_management.sql"
       - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
@@ -30,8 +29,7 @@ on:
   push:
     branches: [main]
     paths:
-      - "supabase/migrations/20270404001972_issue_1972_ari_event_lifecycle.sql"
-      - "supabase/migrations/20270404002063_issue_2063_ari_brand_management.sql"
+      - "supabase/migrations/20270501002063_issue_2063_ari_brand_management.sql"
       - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
