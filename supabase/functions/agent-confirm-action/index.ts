@@ -9,13 +9,33 @@
 //      pending -> cancelled (terminal). pending -> expired (terminal).
 
 // deno-lint-ignore-file no-explicit-any
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
 import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
 import { findTool, ToolError } from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
 import { buildServiceClient } from "../_shared/agentRateLimit.ts";
+import {
+  assertEditedCreateEventProposal,
+  markAwaitingConfirmation,
+  parseTaskState,
+  reconcilePendingAction,
+  replaceCreateEventProposalArgs,
+  TaskStateError,
+  TaskStateV1,
+} from "../_shared/agentConversationState.ts";
+import {
+  AgentChoicesV2,
+  assertAgentChoicesV2,
+} from "../_shared/agentChoices.ts";
+import {
+  requireAccessibleAgentBrand,
+  resolveAccessibleAgentBrands,
+} from "../_shared/agentTenantScope.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -30,8 +50,17 @@ type Response_ =
     tool_name: string;
     result: unknown;
     followup_text?: string;
+    task_state_revision?: number;
   }
   | { kind: "cancelled"; pending_action_id: string }
+  | {
+    kind: "proposal_replaced";
+    pending_action_id: string;
+    replaced_pending_action_id: string;
+    tool_name: string;
+    tool_args: Record<string, unknown>;
+    task_state_revision: number;
+  }
   // META-ORCH-1009 Sub-E (C2): expired Hub proposal -> in-Hub regenerate CTA
   // instead of the old 410 "Ask Ari" dead-end (this Hub flow never uses Ari).
   | {
@@ -83,6 +112,31 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
 // extending the exact same receipt gate to the experience lifecycle.
 const RECEIPT_BACKED_EVENT_TOOL_NAMES = RECEIPT_BACKED_TOOL_NAMES;
 
+async function findTerminalMessageId(
+  client: ReturnType<typeof buildServiceClient>,
+  input: {
+    conversationId: string | null;
+    pendingActionId: string;
+    userId: string;
+    outcome: "executed" | "failed" | "cancelled" | "expired";
+  },
+): Promise<string | undefined> {
+  if (!input.conversationId) return undefined;
+  const { data, error } = await client.rpc(
+    "get_agent_pending_terminal_message_id",
+    {
+      p_user_id: input.userId,
+      p_conversation_id: input.conversationId,
+      p_pending_action_id: input.pendingActionId,
+      p_outcome: input.outcome,
+    },
+  );
+  if (error || !data) {
+    throw new Error(error?.message ?? "terminal_message_not_committed");
+  }
+  return data as string;
+}
+
 async function terminalizePending(
   pendingStateClient: ReturnType<typeof buildServiceClient>,
   input: {
@@ -94,7 +148,7 @@ async function terminalizePending(
     failureReason?: string;
     requireOperationReceipt?: boolean;
   },
-): Promise<{ id: string; status: string }> {
+): Promise<{ id: string; status: string; terminalMessageId?: string }> {
   const { data, error } = await pendingStateClient.rpc(
     "terminalize_agent_pending_action",
     {
@@ -108,11 +162,21 @@ async function terminalizePending(
       p_model_version: ARI_MODEL_VERSION,
       p_require_operation_receipt: input.requireOperationReceipt ?? false,
     },
-  ).select("id, status").maybeSingle();
+  ).select("id, status, conversation_id").maybeSingle();
   if (error || !data) {
     throw new Error(error?.message ?? "terminal_state_not_committed");
   }
-  return data as { id: string; status: string };
+  const terminalMessageId = await findTerminalMessageId(pendingStateClient, {
+    conversationId: data.conversation_id as string | null,
+    pendingActionId: input.id,
+    userId: input.userId,
+    outcome: input.outcome,
+  });
+  return {
+    id: data.id as string,
+    status: data.status as string,
+    ...(terminalMessageId ? { terminalMessageId } : {}),
+  };
 }
 
 /**
@@ -158,6 +222,149 @@ export function toolErrorHttpStatus(code: string): number {
   // #2113 exists to stop. One condition, one branch, either spelling.
   if (code.toUpperCase() === "PRIVATE_VISIBILITY_UNAVAILABLE") return 400;
   return 500;
+}
+
+interface ConversationTaskRow {
+  id: string;
+  brand_id: string | null;
+  task_state: unknown;
+  task_state_revision: number;
+  summary: string | null;
+}
+
+function safeSummary(previous: string | null, event: string): string {
+  const safePrevious = (previous ?? "")
+    .split("\n")
+    .filter((line) => line.startsWith("[task-v1] "))
+    .join("\n")
+    .slice(-1700);
+  const safeEvent = event.replace(/[^A-Za-z0-9 _.,:;()\-]/g, "").slice(0, 240);
+  return [safePrevious, `[task-v1] ${safeEvent}`].filter(Boolean).join("\n")
+    .slice(-2000);
+}
+
+function createdResource(
+  toolName: string,
+  result: unknown,
+): { kind: string; id: string; label: string } | undefined {
+  if (
+    toolName !== "create_event" || result === null || typeof result !== "object"
+  ) return undefined;
+  const event = (result as { event?: unknown }).event;
+  if (event === null || typeof event !== "object") return undefined;
+  const id = (event as { id?: unknown }).id;
+  const title = (event as { title?: unknown }).title;
+  return typeof id === "string" && typeof title === "string"
+    ? { kind: "event", id, label: title.slice(0, 240) }
+    : undefined;
+}
+
+function proactiveChoices(
+  resource: { kind: string; id: string; label: string } | undefined,
+): AgentChoicesV2 | undefined {
+  if (!resource || resource.kind !== "event") return undefined;
+  return assertAgentChoicesV2({
+    schema_version: 2,
+    question_id: crypto.randomUUID(),
+    kind: "next_step",
+    prompt: "What would you like to do next?",
+    required_slot_keys: [],
+    options: [
+      {
+        id: "open_event_workspace",
+        label: "Open event workspace",
+        payload: { type: "handoff", route: `/event/${resource.id}` },
+      },
+      {
+        id: "plan_another_event",
+        label: "Plan another event",
+        payload: { type: "task_command", command: "start_new" },
+      },
+    ],
+  });
+}
+
+async function loadConversationTask(
+  client: SupabaseClient,
+  conversationId: string | null,
+  userId: string,
+): Promise<{ row: ConversationTaskRow; state: TaskStateV1 } | null> {
+  if (!conversationId) return null;
+  const { data, error } = await client.from("agent_conversations")
+    .select("id, brand_id, task_state, task_state_revision, summary")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .maybeSingle();
+  if (error || !data) {
+    throw new TaskStateError(
+      "TASK_RECOVERY_REQUIRED",
+      "Conversation task state is unavailable",
+    );
+  }
+  const row = data as ConversationTaskRow;
+  return { row, state: parseTaskState(row.task_state) };
+}
+
+async function persistTaskOutcome(args: {
+  client: SupabaseClient;
+  userId: string;
+  conversation: { row: ConversationTaskRow; state: TaskStateV1 } | null;
+  pendingActionId: string;
+  outcome: "executed" | "failed" | "cancelled" | "expired";
+  toolName: string;
+  result?: unknown;
+  errorCode?: string;
+  assistantMessageId?: string;
+  choices?: AgentChoicesV2;
+}): Promise<number | undefined> {
+  if (
+    !args.conversation ||
+    args.conversation.state.active_task?.pending_action_id !==
+      args.pendingActionId
+  ) return undefined;
+  const resource = createdResource(args.toolName, args.result);
+  let next = reconcilePendingAction({
+    state: args.conversation.state,
+    pendingActionId: args.pendingActionId,
+    outcome: args.outcome,
+    nowIso: new Date().toISOString(),
+    errorCode: args.errorCode,
+    resource,
+  });
+  if (args.choices && args.assistantMessageId) {
+    next = {
+      ...next,
+      pending_question: {
+        question_id: args.choices.question_id,
+        required_slot_keys: [],
+        response_message_id: args.assistantMessageId,
+        mode: "single",
+        option_ids: args.choices.options.map((option) => option.id),
+      },
+    };
+    parseTaskState(next);
+  }
+  const expectedRevision = args.conversation.row.task_state_revision;
+  const nowIso = new Date().toISOString();
+  const { data, error } = await args.client.rpc("commit_agent_task_outcome", {
+    p_user_id: args.userId,
+    p_conversation_id: args.conversation.row.id,
+    p_expected_revision: expectedRevision,
+    p_task_state: next,
+    p_summary: safeSummary(
+      args.conversation.row.summary,
+      `Confirmation ${args.outcome} for ${args.toolName}.`,
+    ),
+    p_summary_through_message_id: args.assistantMessageId ?? null,
+    p_now: nowIso,
+  });
+  if (error || data !== true) {
+    throw new TaskStateError(
+      "TASK_STATE_CONFLICT",
+      "Task state changed during confirmation",
+    );
+  }
+  return expectedRevision + 1;
 }
 
 Deno.serve(async (req) => {
@@ -239,6 +446,52 @@ Deno.serve(async (req) => {
     );
   }
 
+  let conversationTask: { row: ConversationTaskRow; state: TaskStateV1 } | null;
+  try {
+    conversationTask = await loadConversationTask(
+      userClient,
+      pending.conversation_id,
+      userId,
+    );
+    if (conversationTask?.row.brand_id) {
+      const accessibleBrands = await resolveAccessibleAgentBrands(
+        userClient,
+        userId,
+      );
+      requireAccessibleAgentBrand(
+        accessibleBrands,
+        conversationTask.row.brand_id,
+      );
+      if (
+        conversationTask.state.active_task &&
+        conversationTask.state.active_task.brand_id !==
+          conversationTask.row.brand_id
+      ) {
+        return errorResponse(
+          409,
+          "TASK_STATE_INVALID",
+          "Ari couldn't safely continue this plan. Start a new chat or try again.",
+        );
+      }
+    }
+  } catch (err: unknown) {
+    if (err instanceof TaskStateError) {
+      const status = err.code === "TASK_STATE_INVALID" ? 500 : 409;
+      return errorResponse(
+        status,
+        err.code,
+        err.code === "TASK_STATE_VERSION_UNSUPPORTED"
+          ? "This chat is read-only. Start a new chat to continue."
+          : "Ari needs to reconcile this action. Refresh the chat and try again.",
+      );
+    }
+    return errorResponse(
+      403,
+      "BRAND_ACCESS_DENIED",
+      "You no longer have access to this conversation's brand.",
+    );
+  }
+
   // CANCEL path
   if (body.action === "cancel") {
     if (pending.status !== "pending") {
@@ -271,6 +524,39 @@ Deno.serve(async (req) => {
         `Cancel failed: ${
           cancelErr?.message ?? "terminal state not committed"
         }`,
+      );
+    }
+    try {
+      const terminalMessageId = await findTerminalMessageId(
+        pendingStateClient,
+        {
+          conversationId: pending.conversation_id,
+          pendingActionId: pending.id,
+          userId,
+          outcome: "cancelled",
+        },
+      );
+      await persistTaskOutcome({
+        client: pendingStateClient,
+        userId,
+        conversation: conversationTask,
+        pendingActionId: pending.id,
+        outcome: "cancelled",
+        toolName: pending.tool_name,
+        assistantMessageId: terminalMessageId,
+      });
+    } catch (err: unknown) {
+      if (err instanceof TaskStateError) {
+        return errorResponse(
+          409,
+          err.code,
+          "The action was cancelled, but Ari needs a refresh to reconcile the plan.",
+        );
+      }
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The action was cancelled, but Ari needs a refresh to reconcile the plan.",
       );
     }
     return jsonResponse(200, {
@@ -327,6 +613,36 @@ Deno.serve(async (req) => {
         }`,
       );
     }
+    if (pending.conversation_id) {
+      try {
+        const terminalMessageId = await findTerminalMessageId(
+          pendingStateClient,
+          {
+            conversationId: pending.conversation_id,
+            pendingActionId: pending.id,
+            userId,
+            outcome: "expired",
+          },
+        );
+        await persistTaskOutcome({
+          client: pendingStateClient,
+          userId,
+          conversation: conversationTask,
+          pendingActionId: pending.id,
+          outcome: "expired",
+          toolName: pending.tool_name,
+          assistantMessageId: terminalMessageId,
+        });
+      } catch (err: unknown) {
+        if (err instanceof TaskStateError) {
+          return errorResponse(
+            409,
+            err.code,
+            "This proposal expired. Refresh the chat to continue the plan.",
+          );
+        }
+      }
+    }
     return jsonResponse(200, {
       kind: "expired_regenerate",
       pending_action_id: pending.id,
@@ -379,20 +695,42 @@ Deno.serve(async (req) => {
       : code === "INVALID_ARGS"
       ? 400
       : 403;
+    let terminalMessageId: string | undefined;
     try {
-      await terminalizePending(pendingStateClient, {
+      const terminalized = await terminalizePending(pendingStateClient, {
         id: pending.id,
         userId,
         expectedStatus: "pending",
         outcome: "failed",
         failureReason: code,
       });
+      terminalMessageId = terminalized.terminalMessageId;
     } catch (terminalError) {
       return errorResponse(
         500,
         "TERMINALIZATION_FAILED",
         String(terminalError),
       );
+    }
+    if (pending.conversation_id) {
+      try {
+        await persistTaskOutcome({
+          client: pendingStateClient,
+          userId,
+          conversation: conversationTask,
+          pendingActionId: pending.id,
+          outcome: "failed",
+          toolName: pending.tool_name,
+          errorCode: code,
+          assistantMessageId: terminalMessageId,
+        });
+      } catch {
+        return errorResponse(
+          409,
+          "TASK_RECOVERY_REQUIRED",
+          "Permissions changed and the action was stopped. Refresh the chat to continue safely.",
+        );
+      }
     }
     return errorResponse(
       status,
@@ -401,6 +739,130 @@ Deno.serve(async (req) => {
         ? "Ari could not verify permissions right now"
         : "Your current access does not allow this action",
     );
+  }
+
+  if (
+    body.edited_args && pending.conversation_id &&
+    conversationTask?.state.active_task?.intent === "create_event"
+  ) {
+    const replacementPendingActionId = crypto.randomUUID();
+    const replacementMessageId = crypto.randomUUID();
+    const nowIso = new Date().toISOString();
+    let replacementState: TaskStateV1;
+    let canonicalArgs: Record<string, unknown>;
+    try {
+      const readyState = replaceCreateEventProposalArgs({
+        state: conversationTask.state,
+        pendingActionId: pending.id,
+        toolArgs: finalArgs,
+        nowIso,
+      });
+      canonicalArgs = assertEditedCreateEventProposal(readyState);
+      await authorizeAgentTool(tool, canonicalArgs, userClient, userId);
+      replacementState = markAwaitingConfirmation(
+        readyState,
+        replacementPendingActionId,
+      );
+    } catch (err: unknown) {
+      if (err instanceof TaskStateError) {
+        return errorResponse(
+          err.code === "TASK_STATE_INVALID" ? 400 : 409,
+          err.code,
+          err.message,
+        );
+      }
+      if (err instanceof ToolError) {
+        return errorResponse(400, err.code, err.message);
+      }
+      return errorResponse(
+        500,
+        "TASK_RECOVERY_REQUIRED",
+        "Ari could not safely replace this proposal.",
+      );
+    }
+
+    try {
+      await terminalizePending(pendingStateClient, {
+        id: pending.id,
+        userId,
+        expectedStatus: "pending",
+        outcome: "cancelled",
+        failureReason: `EDITED_REPLACEMENT:${replacementPendingActionId}`,
+      });
+    } catch {
+      return errorResponse(
+        409,
+        "WRONG_STATE",
+        "This proposal was already handled. Refresh the chat.",
+      );
+    }
+
+    const { error: replacementError } = await pendingStateClient
+      .from("agent_pending_actions")
+      .insert({
+        id: replacementPendingActionId,
+        user_id: userId,
+        conversation_id: pending.conversation_id,
+        tool_name: pending.tool_name,
+        tool_args: canonicalArgs,
+        status: "pending",
+        server_proposed_at: nowIso,
+      });
+    if (replacementError) {
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The old proposal was stopped, but Ari could not save the replacement. Refresh the chat.",
+      );
+    }
+
+    const toolCalls = {
+      tool_name: pending.tool_name,
+      args: canonicalArgs,
+      pending_action_id: replacementPendingActionId,
+    };
+    const { data: committed, error: commitError } = await pendingStateClient
+      .rpc(
+        "commit_agent_task_assistant_turn",
+        {
+          p_user_id: userId,
+          p_conversation_id: pending.conversation_id,
+          p_expected_revision: conversationTask.row.task_state_revision,
+          p_task_state: replacementState,
+          p_summary: safeSummary(
+            conversationTask.row.summary,
+            `Edited proposal replaced for ${pending.tool_name}.`,
+          ),
+          p_assistant_message_id: replacementMessageId,
+          p_content: { text: "" },
+          p_tool_calls: toolCalls,
+          p_client_turn_id: null,
+          p_prompt_version: TENANT_CONTEXT_VERSION,
+          p_model_version: ARI_MODEL_VERSION,
+          p_now: nowIso,
+        },
+      );
+    if (commitError || committed !== true) {
+      await pendingStateClient.from("agent_pending_actions")
+        .update({ status: "cancelled", failure_reason: "TASK_STATE_CONFLICT" })
+        .eq("id", replacementPendingActionId)
+        .eq("user_id", userId)
+        .eq("status", "pending");
+      return errorResponse(
+        409,
+        commitError ? "TASK_RECOVERY_REQUIRED" : "TASK_STATE_CONFLICT",
+        "The proposal changed in another session. Refresh the chat and review the latest plan.",
+      );
+    }
+
+    return jsonResponse(200, {
+      kind: "proposal_replaced",
+      pending_action_id: replacementPendingActionId,
+      replaced_pending_action_id: pending.id,
+      tool_name: pending.tool_name,
+      tool_args: canonicalArgs,
+      task_state_revision: conversationTask.row.task_state_revision + 1,
+    });
   }
 
   // Persist edited args together with the atomic pending -> executing flip.
@@ -468,20 +930,42 @@ Deno.serve(async (req) => {
       (!(err instanceof ToolError) ||
         ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code));
     if (!isAmbiguous) {
+      let terminalMessageId: string | undefined;
       try {
-        await terminalizePending(pendingStateClient, {
+        const terminalized = await terminalizePending(pendingStateClient, {
           id: pending.id,
           userId,
           expectedStatus: "executing",
           outcome: "failed",
           failureReason: reason,
         });
+        terminalMessageId = terminalized.terminalMessageId;
       } catch (terminalError) {
         return errorResponse(
           500,
           "TERMINALIZATION_FAILED",
           String(terminalError),
         );
+      }
+      if (pending.conversation_id) {
+        try {
+          await persistTaskOutcome({
+            client: pendingStateClient,
+            userId,
+            conversation: conversationTask,
+            pendingActionId: pending.id,
+            outcome: "failed",
+            toolName: tool.name,
+            errorCode: err instanceof ToolError ? err.code : "EXECUTION_FAILED",
+            assistantMessageId: terminalMessageId,
+          });
+        } catch {
+          return errorResponse(
+            409,
+            "TASK_RECOVERY_REQUIRED",
+            "The action failed safely, but Ari needs a refresh to continue the plan.",
+          );
+        }
       }
     }
     if (err instanceof ToolError) {
@@ -494,8 +978,9 @@ Deno.serve(async (req) => {
     return errorResponse(500, "EXECUTION_FAILED", String(reason));
   }
 
+  let terminalMessageId: string | undefined;
   try {
-    await terminalizePending(pendingStateClient, {
+    const terminalized = await terminalizePending(pendingStateClient, {
       id: pending.id,
       userId,
       expectedStatus: "executing",
@@ -503,6 +988,7 @@ Deno.serve(async (req) => {
       result,
       requireOperationReceipt: RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
     });
+    terminalMessageId = terminalized.terminalMessageId;
   } catch (error) {
     return errorResponse(
       500,
@@ -514,15 +1000,52 @@ Deno.serve(async (req) => {
   }
 
   const followupText = buildFollowupText(tool.name, result);
+  const resource = createdResource(tool.name, result);
+  const choices = proactiveChoices(resource);
+  const assistantMessageId = crypto.randomUUID();
   if (followupText && pending.conversation_id) {
     await userClient.from("agent_messages").insert({
+      id: assistantMessageId,
       conversation_id: pending.conversation_id,
       user_id: userId,
       role: "assistant",
-      content: { text: followupText },
+      content: {
+        text: followupText,
+        ...(choices ? { structured: { choices } } : {}),
+      },
       prompt_version: TENANT_CONTEXT_VERSION,
       model_version: ARI_MODEL_VERSION,
     });
+  }
+
+  let nextTaskRevision: number | undefined;
+  try {
+    nextTaskRevision = await persistTaskOutcome({
+      client: pendingStateClient,
+      userId,
+      conversation: conversationTask,
+      pendingActionId: pending.id,
+      outcome: "executed",
+      toolName: tool.name,
+      result,
+      assistantMessageId: followupText && pending.conversation_id
+        ? assistantMessageId
+        : terminalMessageId,
+      choices,
+    });
+  } catch (err: unknown) {
+    if (err instanceof TaskStateError) {
+      return errorResponse(
+        409,
+        "TASK_RECOVERY_REQUIRED",
+        "The action completed once, but Ari needs a refresh to reconcile the plan.",
+      );
+    }
+    return errorResponse(
+      409,
+      "TASK_RECOVERY_REQUIRED",
+      "The action completed once, but Ari needs a refresh to reconcile the plan.",
+    );
   }
 
   return jsonResponse(200, {
@@ -531,6 +1054,9 @@ Deno.serve(async (req) => {
     tool_name: tool.name,
     result,
     followup_text: followupText,
+    ...(nextTaskRevision !== undefined
+      ? { task_state_revision: nextTaskRevision }
+      : {}),
   });
 });
 
@@ -561,7 +1087,7 @@ export function buildFollowupText(
     if (toolName === "create_event") {
       const title = (result as any)?.event?.title;
       return title
-        ? `Created "${title}". Want to set ticket tiers?`
+        ? `Created “${title}” as a draft. Open the event workspace to refine tickets, publishing, and promotion when you're ready.`
         : undefined;
     }
     if (toolName === "update_event") {

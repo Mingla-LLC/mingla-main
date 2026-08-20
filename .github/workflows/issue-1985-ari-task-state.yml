@@ -1,0 +1,123 @@
+name: Issue 1985 Ari task state
+
+on:
+  push:
+    paths:
+      - "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql"
+      - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
+      - "supabase/functions/_shared/agentConversationState.ts"
+      - "supabase/functions/_shared/agentConversationPlanner.ts"
+      - "supabase/functions/_shared/agentRelativeTime.ts"
+      - "supabase/functions/_shared/agentChoices.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/agentRateLimit.ts"
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
+      - "mingla-business/src/components/ari/**"
+      - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/screens/ari/AriChatScreen.tsx"
+      - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/tsconfig.issue-1985.json"
+      - ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs"
+      - ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs"
+      - ".github/workflows/issue-1985-ari-task-state.yml"
+  pull_request:
+    paths:
+      - "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql"
+      - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
+      - "supabase/functions/_shared/agentConversationState.ts"
+      - "supabase/functions/_shared/agentConversationPlanner.ts"
+      - "supabase/functions/_shared/agentRelativeTime.ts"
+      - "supabase/functions/_shared/agentChoices.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/agentRateLimit.ts"
+      - "supabase/functions/agent-chat/**"
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
+      - "mingla-business/src/components/ari/**"
+      - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/screens/ari/AriChatScreen.tsx"
+      - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/tsconfig.issue-1985.json"
+      - ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs"
+      - ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs"
+      - ".github/workflows/issue-1985-ari-task-state.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  ari-task-state-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full migration replay and server-owned state authority
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do
+            if pg_isready -h localhost -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+              done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql
+
+  ari-task-state:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: Run task reducer and planning regressions
+        run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.test.ts supabase/functions/_shared/__tests__/issue_1985_agent_conversation_state.adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_active_task_replacement.retest_adversarial.test.ts supabase/functions/_shared/__tests__/issue_1985_rework2_integrity.test.ts supabase/functions/_shared/__tests__/issue_1985_dst_boundaries.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_containment.test.ts supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts
+      - name: Type-check edge and shared task boundaries
+        run: deno check supabase/functions/_shared/agentConversationState.ts supabase/functions/_shared/agentRelativeTime.ts supabase/functions/_shared/agentConversationPlanner.ts supabase/functions/_shared/agentChoices.ts supabase/functions/_shared/agentSystemPrompt.ts supabase/functions/_shared/agentRateLimit.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts
+      - name: Prove Class A task-state guard and protected security guards
+        run: node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs --self-test && node .github/scripts/strict-grep/issue-1985-ari-task-state.mjs && node .github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs && node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: mingla-business
+      - name: Run Business typed-choice and superseded-V1 contracts
+        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/components/ari/__tests__/orch_1103_choices_chips.test.ts --runInBand
+        working-directory: mingla-business
+      - name: Type-check Business client
+        run: node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs

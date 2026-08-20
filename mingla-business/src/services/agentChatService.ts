@@ -11,22 +11,28 @@ import { supabase } from "./supabase";
 // Types
 // ----------------------------------------------------------------------------
 
-// ORCH-1103 REWORK 2 — presentational suggested-replies payload. Tapping a chip
-// sends its `label` as a normal user turn (Q2 conversational feedback); it does
-// NOT pre-fill a tool arg. Purely additive to a text turn.
-export interface AgentChoices {
-  kind:
-    | "brand_disambiguation"
-    | "no_brand_handoff"
-    | "clarifying"
-    | "multi_select"
-    | "next_step";
+export type AgentChoicePayload =
+  | { type: "slot_patch"; slot_updates: Record<string, unknown> }
+  | { type: "task_command"; command: "pause" | "resume" | "cancel" | "start_new" | "continue_planning"; replacement_request?: string }
+  | { type: "handoff"; route: string };
+
+export interface AgentChoicesV2 {
+  schema_version: 2;
+  question_id: string;
+  kind: "clarifying" | "multi_select" | "next_step";
   prompt: string;
-  options: { id: string; label: string }[];
+  required_slot_keys: string[];
+  options: { id: string; label: string; payload: AgentChoicePayload }[];
+}
+
+export interface AgentChoiceSubmissionV2 {
+  question_id: string;
+  option_ids: string[];
+  free_text?: string;
 }
 
 export type AgentChatResponse =
-  | { kind: "text"; text: string; conversation_id: string; message_id: string; choices?: AgentChoices }
+  | { kind: "text"; text: string; conversation_id: string; message_id: string; task_state_revision: number; choices?: AgentChoicesV2; handoff_route?: string }
   | {
       kind: "pending_action";
       pending_action_id: string;
@@ -34,6 +40,7 @@ export type AgentChatResponse =
       tool_args: Record<string, unknown>;
       conversation_id: string;
       message_id: string;
+      task_state_revision: number;
     }
   | { kind: "error"; code: string; message: string; retry_after_seconds?: number; cooldown_until?: string };
 
@@ -46,6 +53,14 @@ export type AgentConfirmResponse =
       followup_text?: string;
     }
   | { kind: "cancelled"; pending_action_id: string }
+  | {
+      kind: "proposal_replaced";
+      pending_action_id: string;
+      replaced_pending_action_id: string;
+      tool_name: string;
+      tool_args: Record<string, unknown>;
+      task_state_revision: number;
+    }
   // META-ORCH-1009 Sub-E (C2): an expired Hub proposal no longer 410s — the
   // edge fn returns this so the Hub can render a regenerate / re-snap CTA.
   | {
@@ -61,7 +76,11 @@ export type AgentConfirmResponse =
 
 export interface SendMessageArgs {
   conversation_id: string | null;
-  message: string;
+  message?: string;
+  client_turn_id: string;
+  client_timezone: string;
+  locale: string;
+  choice_response?: AgentChoiceSubmissionV2;
   brand_id?: string | null;
 }
 
@@ -179,7 +198,8 @@ export interface AgentMessage {
   id: string;
   conversation_id: string;
   role: "user" | "assistant" | "tool";
-  content: { text?: string; structured?: unknown } | Record<string, unknown>;
+  content: { text?: string; structured?: unknown; local_delivery?: "sending" | "failed" } | Record<string, unknown>;
+  client_turn_id: string | null;
   tool_calls: {
     tool_name: string;
     args: Record<string, unknown>;
@@ -213,7 +233,7 @@ export async function fetchConversations(): Promise<AgentConversation[]> {
 export async function fetchMessages(conversationId: string): Promise<AgentMessage[]> {
   const { data, error } = await supabase
     .from("agent_messages")
-    .select("id, conversation_id, role, content, tool_calls, tool_results, created_at")
+    .select("id, conversation_id, role, content, tool_calls, tool_results, client_turn_id, created_at")
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: true });
   if (error) throw error;

@@ -118,8 +118,24 @@ Deno.test("#2013 tester retest: every chat and confirmation message writer emits
     }
   }
 
-  // [TEST-MOD-APPROVED #1972] Terminal tool rows are now inserted by the
-  // service-only atomic SQL owner. Edge retains only the assistant follow-up
-  // writer, whose provenance remains mandatory here.
-  assertEquals(observed, { "agent-chat": 5, "agent-confirm-action": 1 });
+  // [TEST-MOD-APPROVED #1985] #1972 still owns terminal tool rows atomically,
+  // and #1985 moves one chat assistant writer into its service-only state CAS.
+  // Edge retains four chat writers and one confirmation follow-up writer.
+  assertEquals(observed, { "agent-chat": 4, "agent-confirm-action": 1 });
+
+  const taskStateMigration = await Deno.readTextFile(
+    "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql",
+  );
+  const assistantWriter = taskStateMigration.slice(
+    taskStateMigration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.commit_agent_task_assistant_turn",
+    ),
+    taskStateMigration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.commit_agent_task_outcome",
+    ),
+  );
+  assert(assistantWriter.includes("INSERT INTO public.agent_messages"));
+  assert(assistantWriter.includes("p_prompt_version"));
+  assert(assistantWriter.includes("AND user_id = p_user_id"));
+  assert(assistantWriter.includes(") TO service_role;"));
 });

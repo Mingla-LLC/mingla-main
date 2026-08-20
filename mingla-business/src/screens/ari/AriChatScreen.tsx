@@ -46,6 +46,8 @@ import type { ConfirmOutcome } from "../../components/ari/toolProposalTypes";
 import { QuickReplyChips } from "../../components/ari/QuickReplyChips";
 import { StreamingText } from "../../components/ari/StreamingText";
 import { Toast } from "../../components/ui/Toast";
+import { useShareNetworkState } from "../../components/ui/useShareNetworkState";
+import type { AgentChoiceSubmissionV2 } from "../../services/agentChatService";
 import { BrandSwitcherSheet } from "../../components/brand/BrandSwitcherSheet";
 
 import { useAgentChat } from "../../hooks/useAgentChat";
@@ -122,6 +124,7 @@ const RecoveryPanel: React.FC<{ recovery: Recovery; onAction: () => void }> = ({
 export const AriChatScreen: React.FC = () => {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const online = useShareNetworkState();
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   // #1841 — library-backed; 0 on web and while the keyboard is closed. Same
@@ -209,6 +212,10 @@ export const AriChatScreen: React.FC = () => {
   };
 
   const handleSend = async (text: string): Promise<boolean> => {
+    if (!online) {
+      setLocalError("You're offline. Reconnect to continue this plan.");
+      return false;
+    }
     if (rateLimitUntil !== null && rateLimitUntil > Date.now()) return false;
     setLocalError(null);
     const result = await chat.sendMessage(text);
@@ -221,12 +228,37 @@ export const AriChatScreen: React.FC = () => {
         setRateLimitUntil(Number.isFinite(parsedUntil) && parsedUntil > Date.now() ? parsedUntil : Date.now() + fallbackMs);
         setCooldownNow(Date.now());
       } else {
-        setLocalError("Ari could not connect — check your connection and try again.");
+        const copy: Record<string, string> = {
+          TASK_STATE_CONFLICT: "This plan changed on another device. Ari refreshed it; choose again.",
+          CHOICE_STALE: "That choice is no longer active. Ari refreshed the current step.",
+          TIMEZONE_REQUIRED: "Ari needs your timezone before choosing an exact date and time.",
+          PLANNER_UNAVAILABLE: "Ari couldn't safely plan that step. Your progress is saved; try again.",
+          TASK_STATE_INVALID: "Ari couldn't safely read this plan. Nothing was changed.",
+          TASK_STATE_OVERSIZED: "This plan is too large to continue safely. Start a new Ari chat.",
+          TASK_RECOVERY_REQUIRED: "The action finished, but Ari needs to reconcile the plan before continuing.",
+        };
+        setLocalError(copy[result.code] ?? "Ari could not connect — check your connection and try again.");
       }
       return false;
     }
+    if (result.kind === "text" && result.handoff_route) router.push(result.handoff_route as never);
     setRetryText(null);
     return true;
+  };
+
+  const handleChoice = async (submission: AgentChoiceSubmissionV2, label: string): Promise<void> => {
+    if (!online) {
+      setLocalError("You're offline. Reconnect to continue this plan.");
+      return;
+    }
+    const result = await chat.sendChoice(submission, label);
+    if (result.kind === "error") {
+      setLocalError(result.code === "CHOICE_STALE"
+        ? "That choice is no longer active. Ari refreshed the current step."
+        : result.message);
+    } else if (result.kind === "text" && result.handoff_route) {
+      router.push(result.handoff_route as never);
+    }
   };
 
   const handleConfirm = async (
@@ -257,6 +289,10 @@ export const AriChatScreen: React.FC = () => {
       setLocalError(result.message);
       return { ok: false };
     }
+    if (result.kind === "proposal_replaced") {
+      chat.clearPendingAction();
+      return { ok: false };
+    }
     // ORCH-1103 — surface the freshly-created/updated brand id to the proposal
     // card so the Q7 create-row-first / attach-second cover flow can re-target
     // the picker to a real brandId. The executed result shape is
@@ -282,7 +318,7 @@ export const AriChatScreen: React.FC = () => {
     chat.clearPendingAction();
   };
 
-  const displayError = localError;
+  const displayError = localError ?? chat.errorMessage;
   const noMessages = chat.messages.length === 0 && chat.conversationId == null;
   const activeConversation = conversations.conversations.find((item) => item.id === chat.conversationId);
   const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
@@ -410,7 +446,21 @@ export const AriChatScreen: React.FC = () => {
             // ORCH-1103 REWORK 2 — a disambiguation / no-brand-handoff chip tap
             // sends the chip label as a normal user turn (Q2 conversational
             // feedback; Gemini re-proposes with the resolved target).
-            onSendChoice={(label) => void handleSend(label)}
+            onSendChoice={(submission, label) => void handleChoice(submission, label)}
+            onRetryTurn={(clientTurnId) => {
+              if (!online) {
+                setLocalError("You're offline. Reconnect to continue this plan.");
+                return;
+              }
+              void chat.retryTurn(clientTurnId).then((result) => {
+                if (result?.kind === "error") setLocalError(result.message);
+              }).catch((error: unknown) => {
+                setLocalError(error instanceof Error
+                  ? error.message
+                  : "Ari could not retry that message. Try again.");
+              });
+            }}
+            choicesDisabled={chat.isSending || !online}
             attachedCovers={attachedCovers}
             onAttachDone={(cover) => {
               // ORCH-1103 REWORK 3 — stash the attached cover against the
@@ -464,7 +514,7 @@ export const AriChatScreen: React.FC = () => {
             },
           ]}
         >
-          {suggestionsOpen && !recovery && !rateLimited ? (
+          {suggestionsOpen && online && !recovery && !rateLimited ? (
             <View style={styles.suggestionsPanel}>
               <QuickReplyChips
                 chips={[
@@ -485,6 +535,12 @@ export const AriChatScreen: React.FC = () => {
               edge; nothing needs the pill's own height. */}
           {recovery ? <RecoveryPanel recovery={recovery} onAction={handleRecovery} /> : (
             <>
+              {!online ? (
+                <RecoveryPanel
+                  recovery={{ code: "OFFLINE", title: "You're offline", body: "Reconnect to continue this plan." }}
+                  onAction={() => undefined}
+                />
+              ) : null}
               {rateLimited ? (
                 <RecoveryPanel
                   recovery={{
@@ -498,7 +554,7 @@ export const AriChatScreen: React.FC = () => {
               <InputBar
                 onSend={handleSend}
                 disabled={chat.isSending || brands.isLoading || rateLimited}
-                placeholder={brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
+                placeholder={!online ? "Reconnect to continue…" : brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
                 onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
               />
             </>
