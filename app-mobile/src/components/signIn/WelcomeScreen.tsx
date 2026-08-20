@@ -38,6 +38,9 @@ const googleIcon = require("../../../assets/google_icon.png");
 const logo = MINGLA_WORDMARK;
 
 import { LEGAL_URLS } from "../../constants/urls";
+// #2211 — the consumer app has no shared CTA primitive, so every capped label
+// imports the ceiling directly.
+import { BUTTON_MAX_FONT_SCALE } from '../../constants/dynamicType';
 
 interface WelcomeScreenProps {
   onGoogleSignIn: () => Promise<void>;
@@ -358,7 +361,10 @@ export default function WelcomeScreen({
                 ) : (
                   <AppleLogo size={22} color="#111827" />
                 )}
-                <Text style={styles.appleButtonText}>
+                <Text style={styles.appleButtonText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              >
                   {isAppleSignInInProgress
                     ? t('auth:welcome.connecting')
                     : t('auth:welcome.continue_with_apple')}
@@ -404,7 +410,10 @@ export default function WelcomeScreen({
                   resizeMode="contain"
                 />
               )}
-              <Text style={styles.googleButtonText}>
+              <Text style={styles.googleButtonText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              >
                 {isGoogleSignInInProgress
                   ? t('auth:welcome.connecting')
                   : t('auth:welcome.continue_with_google')}
@@ -499,7 +508,11 @@ const styles = StyleSheet.create({
   appleButton: {
     width: "100%",
     maxWidth: s(400),
-    height: vs(56),
+    // #2211 — `minHeight`, NOT `height`. `vs(56)` is blind to `fontScale`,
+    // so at accessibility text sizes BOTH labels cropped to "Continue wi"
+    // and a 22 pt icon was the only thing separating "sign in with the
+    // account tied to your phone" from "sign in with your Google account".
+    minHeight: vs(56),
     backgroundColor: "#ffffff",
     borderWidth: 1.5,
     borderColor: colors.gray[200],
@@ -513,13 +526,19 @@ const styles = StyleSheet.create({
   appleButtonText: {
     color: colors.text.primary,
     fontSize: 17,
+    // #2211 — explicit, so the multiplier cap governs the whole line box.
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
   },
   googleButton: {
     width: "100%",
     maxWidth: s(400),
-    height: vs(56),
+    // #2211 — `minHeight`, NOT `height`. `vs(56)` is blind to `fontScale`,
+    // so at accessibility text sizes BOTH labels cropped to "Continue wi"
+    // and a 22 pt icon was the only thing separating "sign in with the
+    // account tied to your phone" from "sign in with your Google account".
+    minHeight: vs(56),
     backgroundColor: colors.background.primary,
     borderWidth: 1.5,
     borderColor: colors.gray[200],
@@ -533,6 +552,8 @@ const styles = StyleSheet.create({
   googleButtonText: {
     color: colors.text.primary,
     fontSize: 17,
+    // #2211 — explicit, so the multiplier cap governs the whole line box.
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
   },

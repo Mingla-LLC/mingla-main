@@ -360,6 +360,16 @@ module.exports = {
     // specifier to the lightweight manual mock (see __manual_mocks__/react-native.js
     // for the safety argument). Anchored so react-native-* siblings are untouched.
     "^react-native$": "<rootDir>/__manual_mocks__/react-native.js",
+    // #2211 — the refund-attention route now reaches the canonical native
+    // SmartScrollView wrapper. Its implementation correctly imports
+    // react-native-keyboard-controller, whose package entry is ESM and cannot
+    // be parsed by this default node/ts-jest runner. Use the library's shipped
+    // Jest boundary mock so existing route suites keep executing real route
+    // logic without loading a native binary or weakening node_modules
+    // transforms globally. Dedicated RN render configs may still override this
+    // mapping, and an inline jest.mock() remains authoritative per suite.
+    "^react-native-keyboard-controller$":
+      "<rootDir>/node_modules/react-native-keyboard-controller/jest",
     // The @mingla/offering-rendering barrel eagerly re-exports RN component .tsx —
     // map to a mock that re-exports the REAL pure helpers + stubs the components.
     "^@mingla/offering-rendering$": "<rootDir>/__manual_mocks__/offering-rendering.js",
@@ -403,8 +413,14 @@ module.exports = {
     // about the existing suite changes.
     "^expo-router$": "<rootDir>/node_modules/expo-router",
     "^expo-router/(.*)$": "<rootDir>/node_modules/expo-router/$1",
+    // #2211 — InviteScreenShell is now the real safe-area owner for invitation
+    // routes. The package entry eagerly loads React Native codegen, which a
+    // default node/ts-jest suite cannot parse. Map only this native boundary to
+    // a zero-inset structural mock; route/component logic remains real, and an
+    // inline jest.mock() still overrides it for suites that assert custom
+    // insets. This also gives cross-app tests one stable resolvable target.
     "^react-native-safe-area-context$":
-      "<rootDir>/node_modules/react-native-safe-area-context",
+      "<rootDir>/__manual_mocks__/react-native-safe-area-context.js",
     // ESM-native expo packages (reached via expo-image-picker / expo-file-system /
     // mapboxToken / config reads).
     "^expo-constants$": "<rootDir>/__manual_mocks__/expo-constants.js",

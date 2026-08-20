@@ -80,6 +80,11 @@ function collect(node: unknown, acc: El[]): void {
   if (isEl(node)) {
     acc.push(node);
     collect(node.props?.children, acc);
+    // #2211 moves the actions into InviteScreenShell's pinned footer so they
+    // remain reachable at accessibility text sizes. They are intentionally a
+    // named prop rather than scrolling children; inspect that public slot too
+    // while preserving every original label/wiring assertion below.
+    collect(node.props?.actions, acc);
   }
 }
 

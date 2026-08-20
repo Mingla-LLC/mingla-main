@@ -20,6 +20,10 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — design-intent full-bleed cover on the public trip share-link page (mirrors /e/{brandSlug}/{eventSlug}); the buyer-facing banner aesthetic is intentional. TripPreview renders the cover full-bleed to the screen edge by design; status-bar overlap is the chosen look. Per ORCH-0859 [Tr2 Minimum Viable Trip] REWORK 5b operator design ruling 2026-05-17 (QA report §1, pattern parity with screenshot 17-PUBLIC-EVENT-PAGE.png). ORCH-0874 preserves this; ORCH-1138 keeps the full-bleed cover via the ParallaxCoverShell foundation, chrome absolute-positioned over the cover, no SafeScreen wrapping.
 
+// orch-strict-grep-allow fullscreen-route-must-scroll — the three centred `stateHost`
+// branches are ActivityIndicator + Text only: there is no control to be stranded from.
+// The file's single Pressable is in `ResolvedTripPage`, which renders inside
+// ParallaxCoverShell's ScrollView, not in any centred branch (#2211).
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,

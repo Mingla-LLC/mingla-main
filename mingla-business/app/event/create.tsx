@@ -26,7 +26,7 @@
  */
 
 import React, { useEffect, useRef, useState } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -210,7 +210,19 @@ export default function EventCreateRoute(): React.ReactElement {
           { paddingTop: insets.top, backgroundColor: canvas.discover },
         ]}
       >
-        <View style={styles.card}>
+        {/*
+          #2211 — this region SCROLLS. `card` was `flex: 1` +
+          `justifyContent: "center"` with no scroll container, and this is the
+          ONLY branch of the route that has any CTA at all: the two full-width
+          buttons below are the whole recovery path out of a terminal creation
+          state. The longest copy variants run to two sentences, so at
+          accessibility text sizes both buttons left the viewport with nothing
+          to scroll.
+        */}
+        <ScrollView
+          style={styles.card}
+          contentContainerStyle={styles.cardContent}
+        >
           <Text style={styles.title}>{copy.title}</Text>
           <Text style={styles.body}>{copy.body}</Text>
           <View style={styles.buttonStack}>
@@ -236,7 +248,7 @@ export default function EventCreateRoute(): React.ReactElement {
               variant="secondary"
             />
           </View>
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -319,8 +331,16 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     color: textTokens.secondary,
   },
+  // #2211 — `card` is now the scroll HOST; the centring it used to apply moved
+  // to `cardContent`, where `flexGrow: 1` reproduces it exactly while there is
+  // room and yields to scrolling once there is not.
   card: {
     flex: 1,
+    overflow: "hidden",
+  },
+  cardContent: {
+    // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+    flexGrow: 1,
     justifyContent: "center",
     paddingHorizontal: spacing.xl,
     gap: spacing.md,

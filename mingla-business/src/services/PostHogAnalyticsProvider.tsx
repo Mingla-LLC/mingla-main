@@ -27,6 +27,7 @@
 // The `import type` below is fully erased at build time (no runtime require).
 
 import React, { useEffect, useState } from "react";
+import { useWindowDimensions } from "react-native";
 import type { PostHog } from "posthog-react-native";
 import { postHogService } from "./postHogService";
 
@@ -47,6 +48,10 @@ export function PostHogAnalyticsProvider({
   const [Provider, setProvider] = useState<PostHogProviderComponent | null>(
     null,
   );
+
+  // #2211 — reactive, so a text-size change mid-session re-registers rather
+  // than leaving a stale value on every later event.
+  const { fontScale } = useWindowDimensions();
 
   useEffect(() => {
     let cancelled = false;
@@ -76,6 +81,14 @@ export function PostHogAnalyticsProvider({
       cancelled = true;
     };
   }, []);
+
+  // #2211 — attach the text-size setting to every subsequent event. Depends on
+  // `client` rather than the Provider, so it fires even on a binary where the
+  // lazy provider import is skipped but the client exists.
+  useEffect(() => {
+    if (client === null) return;
+    postHogService.registerTextSize(fontScale);
+  }, [client, fontScale]);
 
   if (client === null || Provider === null) {
     return <>{children}</>;

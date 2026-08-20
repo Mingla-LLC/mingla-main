@@ -47,7 +47,8 @@
  *   5. Error → friendly copy per mapped code. Every code has copy.
  */
 
-// orch-strict-grep-allow safearea-on-fullscreen-routes — all render paths are center-anchored cards (justifyContent:center); no top-anchored chrome
+// orch-strict-grep-allow safearea-on-fullscreen-routes — every render path goes through InviteScreenShell, which wraps in SafeAreaView (#2211)
+// orch-strict-grep-allow fullscreen-route-must-scroll — every render path goes through InviteScreenShell, whose content region is a ScrollView (#2211)
 import React, { useCallback, useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -62,10 +63,15 @@ import { BusinessAppDownloadCta } from "../src/components/invite/BusinessAppDown
 // ORCH-1404 [accept-invite-web-error-recovery] — the recoverable wrong-account
 // screen (F-1) + the ONE `?next=` validator it routes through (reused, unchanged).
 import { WrongAccountRecovery } from "../src/components/invite/WrongAccountRecovery";
+// #2211 — the scroll host + pinned-action shell every invite surface renders
+// into. Before it, all four branches below were a `flex: 1` +
+// `justifyContent: "center"` View with no scroll container, so at the largest
+// Dynamic Type setting the heading clipped off the TOP and the only Button
+// left the accessibility tree with no gesture that recovered it.
+import { InviteScreenShell } from "../src/components/invite/InviteScreenShell";
 import { sanitizeNextRoute } from "../src/utils/nextRoute";
 import {
   accent,
-  canvas,
   glass,
   radius as radiusTokens,
   spacing,
@@ -206,7 +212,20 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     const transferred = phase.result.transferred;
     const decision = decideBankFirstInviteNext(phase.result);
     return (
-      <View style={styles.host}>
+      <InviteScreenShell
+        actions={
+          <>
+            <Button
+              label="Go to team"
+              onPress={handleGoToTeam}
+              variant="primary"
+              size="lg"
+              fullWidth
+            />
+            {decision.kind === "download" ? <BusinessAppDownloadCta /> : null}
+          </>
+        }
+      >
         <View style={styles.card}>
           <Text style={styles.title}>
             {transferred ? "Ownership transferred" : "You're on the team"}
@@ -216,16 +235,8 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
               ? "You're now the brand owner. Manage settings, team, and payouts from the team tab."
               : "You've joined the team. Head to the team tab to see your role."}
           </Text>
-          <Button
-            label="Go to team"
-            onPress={handleGoToTeam}
-            variant="primary"
-            size="lg"
-            fullWidth
-          />
-          {decision.kind === "download" ? <BusinessAppDownloadCta /> : null}
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
@@ -243,10 +254,8 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
     }
     const { title, body } = errorCopyFor(phase.code);
     return (
-      <View style={styles.host}>
-        <View style={styles.card}>
-          <Text style={styles.title}>{title}</Text>
-          <Text style={styles.copy}>{body}</Text>
+      <InviteScreenShell
+        actions={
           <Button
             label="Back to Mingla"
             onPress={handleGoHome}
@@ -254,8 +263,13 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>{title}</Text>
+          <Text style={styles.copy}>{body}</Text>
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
@@ -266,12 +280,8 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
   // (orch_1373_mutual_exclusivity.test.ts, against the real authReadiness.ts).
   if (authStatus === "signed_out") {
     return (
-      <View style={styles.host}>
-        <View style={styles.card}>
-          <Text style={styles.title}>You're invited</Text>
-          <Text style={styles.copy}>
-            Sign in to accept this invitation. We'll bring you right back.
-          </Text>
+      <InviteScreenShell
+        actions={
           <Button
             label="Sign in"
             onPress={handleSignIn}
@@ -279,19 +289,22 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>You're invited</Text>
+          <Text style={styles.copy}>
+            Sign in to accept this invitation. We'll bring you right back.
+          </Text>
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
   if (authStatus === "error") {
     return (
-      <View style={styles.host}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Something went wrong</Text>
-          <Text style={styles.copy}>
-            We couldn't check your sign-in. Try again in a moment.
-          </Text>
+      <InviteScreenShell
+        actions={
           <Button
             label="Try again"
             onPress={handleRetryAuth}
@@ -299,22 +312,29 @@ export default function AcceptBrandInvitationRoute(): React.ReactElement {
             size="lg"
             fullWidth
           />
+        }
+      >
+        <View style={styles.card}>
+          <Text style={styles.title}>Something went wrong</Text>
+          <Text style={styles.copy}>
+            We couldn't check your sign-in. Try again in a moment.
+          </Text>
         </View>
-      </View>
+      </InviteScreenShell>
     );
   }
 
   // The ONLY legitimate spinners: auth genuinely transient, or the accept call
   // genuinely in flight.
   return (
-    <View style={styles.host}>
+    <InviteScreenShell>
       <ActivityIndicator size="large" color={accent.warm} />
       <Text style={styles.copy}>
         {authStatus === "signed_in_ready"
           ? "Accepting your invitation…"
           : "Checking your invitation…"}
       </Text>
-    </View>
+    </InviteScreenShell>
   );
 }
 
@@ -402,14 +422,12 @@ export function errorCopyFor(code: string): { title: string; body: string } {
 }
 
 const styles = StyleSheet.create({
-  host: {
-    flex: 1,
-    backgroundColor: canvas.discover,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.xl,
-    gap: spacing.md,
-  },
+  // #2211 — `host` is GONE, not merely unused. It was `flex: 1` +
+  // `justifyContent: "center"` with no scroll container: the exact shape that
+  // clipped the heading off the top of the screen and pushed the only Button
+  // out of the accessibility tree. InviteScreenShell owns the layout host now,
+  // and deleting this entry means the broken shape cannot be reintroduced by
+  // copying it.
   card: {
     maxWidth: 480,
     width: "100%",

@@ -21,6 +21,10 @@ import { AppleLogo } from "../ui/BrandIcons";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import { HapticFeedback } from "../../utils/hapticFeedback";
+// #2211 — the app's one Dynamic Type ceiling. These CTAs are hand-rolled
+// TouchableOpacitys and never touch the shared `Button` primitive, so capping
+// the primitive does nothing for THIS screen.
+import { BUTTON_MAX_FONT_SCALE } from "../../constants/dynamicType";
 import { Icon } from "../ui/Icon";
 import {
   spacing,
@@ -531,7 +535,10 @@ export default function BusinessWelcomeScreen({
             ) : (
               <AppleLogo size={22} color="#111827" />
             )}
-            <Text style={styles.appleButtonText}>
+            <Text style={styles.appleButtonText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              >
               {isAppleSignInInProgress ? "Connecting..." : "Continue with Apple"}
             </Text>
           </TouchableOpacity>
@@ -564,7 +571,10 @@ export default function BusinessWelcomeScreen({
           ) : (
             <Image source={googleIcon} style={styles.googleIcon} resizeMode="contain" />
           )}
-          <Text style={styles.googleButtonText}>
+          <Text style={styles.googleButtonText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              >
             {isGoogleSignInInProgress ? "Connecting..." : "Continue with Google"}
           </Text>
         </TouchableOpacity>
@@ -585,7 +595,10 @@ export default function BusinessWelcomeScreen({
           accessibilityRole="button"
         >
           <Icon name="mail" size={22} color={colors.text.primary} />
-          <Text style={styles.emailButtonText}>Continue with Email</Text>
+          <Text style={styles.emailButtonText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              >Continue with Email</Text>
         </TouchableOpacity>
       </Animated.View>
 
@@ -1046,7 +1059,12 @@ const styles = StyleSheet.create({
   appleButton: {
     width: "100%",
     maxWidth: s(400),
-    height: vs(56),
+    // #2211 — `minHeight`, NOT `height`. `vs(56)` resolves to 44 pt on a
+    // 375x667 device and is blind to `fontScale`, so at accessibility text
+    // sizes the 17 pt label could not fit and "Continue with Apple" cropped
+    // to "Continue wi" — leaving a 22 pt icon as the only thing telling the
+    // three sign-in methods apart.
+    minHeight: vs(56),
     backgroundColor: "#ffffff",
     borderWidth: 1.5,
     borderColor: colors.gray[200],
@@ -1060,13 +1078,22 @@ const styles = StyleSheet.create({
   appleButtonText: {
     color: colors.text.primary,
     fontSize: 17,
+    // #2211 — explicit, so `maxFontSizeMultiplier` governs the whole line
+    // box. iOS multiplies lineHeight by the same figure it multiplies
+    // fontSize by; leaving it implicit hid that from the layout.
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
   },
   googleButton: {
     width: "100%",
     maxWidth: s(400),
-    height: vs(56),
+    // #2211 — `minHeight`, NOT `height`. `vs(56)` resolves to 44 pt on a
+    // 375x667 device and is blind to `fontScale`, so at accessibility text
+    // sizes the 17 pt label could not fit and "Continue with Apple" cropped
+    // to "Continue wi" — leaving a 22 pt icon as the only thing telling the
+    // three sign-in methods apart.
+    minHeight: vs(56),
     backgroundColor: colors.background.primary,
     borderWidth: 1.5,
     borderColor: colors.gray[200],
@@ -1080,6 +1107,10 @@ const styles = StyleSheet.create({
   googleButtonText: {
     color: colors.text.primary,
     fontSize: 17,
+    // #2211 — explicit, so `maxFontSizeMultiplier` governs the whole line
+    // box. iOS multiplies lineHeight by the same figure it multiplies
+    // fontSize by; leaving it implicit hid that from the layout.
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
   },
@@ -1116,7 +1147,12 @@ const styles = StyleSheet.create({
   emailButton: {
     width: "100%",
     maxWidth: s(400),
-    height: vs(56),
+    // #2211 — `minHeight`, NOT `height`. `vs(56)` resolves to 44 pt on a
+    // 375x667 device and is blind to `fontScale`, so at accessibility text
+    // sizes the 17 pt label could not fit and "Continue with Apple" cropped
+    // to "Continue wi" — leaving a 22 pt icon as the only thing telling the
+    // three sign-in methods apart.
+    minHeight: vs(56),
     backgroundColor: colors.background.primary,
     borderWidth: 1.5,
     borderColor: colors.gray[200],
@@ -1130,6 +1166,10 @@ const styles = StyleSheet.create({
   emailButtonText: {
     color: colors.text.primary,
     fontSize: 17,
+    // #2211 — explicit, so `maxFontSizeMultiplier` governs the whole line
+    // box. iOS multiplies lineHeight by the same figure it multiplies
+    // fontSize by; leaving it implicit hid that from the layout.
+    lineHeight: 22,
     fontWeight: fontWeights.semibold,
     letterSpacing: 0.3,
   },

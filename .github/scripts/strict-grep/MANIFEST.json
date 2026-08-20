@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 569,
-  "selfTestWiredFloor": 365,
+  "expectedStrictGrepMjsFiles": 571,
+  "selfTestWiredFloor": 366,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8530,6 +8530,29 @@
       "jobKeys": [
         "issue-2291-marketing-empty-send-guard"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2211-fullscreen-route-must-scroll.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2211-fullscreen-route-must-scroll.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/i-2353-format-is-read-not-derived.mjs",

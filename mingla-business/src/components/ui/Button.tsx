@@ -50,6 +50,10 @@ import {
   readableTextFor,
 } from "../../utils/buttonAccentContrast";
 
+// #2211 — the app's one Dynamic Type ceiling. See src/constants/dynamicType.ts
+// for why 200 % is the requirement rather than a concession to it.
+import { BUTTON_MAX_FONT_SCALE } from "../../constants/dynamicType";
+
 import { Icon } from "./Icon";
 import type { IconName } from "./Icon";
 import { Spinner } from "./Spinner";
@@ -237,7 +241,15 @@ export const Button = forwardRef<
   const DISABLED_BORDER = "rgba(255, 255, 255, 0.10)";
 
   const containerStaticStyle: ViewStyle = {
-    height: containerHeight,
+    // #2211 — `minHeight`, NOT `height`. A hard `height` is what cropped every
+    // one of this primitive's 161 call sites at accessibility text sizes: iOS
+    // caps the Dynamic Type multiplier at 3.571 and applies it to line height
+    // too, so a 14/20 label drew at 50/71.4 pt inside a 44 pt box and the
+    // glyphs were simply cut off. `minHeight` keeps the same rendered height at
+    // ordinary text sizes (the content is smaller than the floor) and lets the
+    // pill GROW instead of cropping when the label genuinely needs the room.
+    // The 44 pt minimum touch target is preserved either way.
+    minHeight: containerHeight,
     paddingHorizontal: SIZE_PADDING_X[size],
     borderRadius: containerRadius,
     backgroundColor: disabled ? DISABLED_BACKGROUND : effectiveBg,
@@ -286,6 +298,14 @@ export const Button = forwardRef<
               labelStyle,
             ]}
             numberOfLines={1}
+            // #2211 — THE CAP. Without it `numberOfLines={1}` above turns a
+            // label the pill cannot fit into a TRUNCATED label: at AX5 all
+            // three business sign-in CTAs read "Continue wi" and only a 22 pt
+            // icon told Apple from Google. 200 % is WCAG 1.4.4's ask and is
+            // exactly what a 44 pt pill hosts intact, so the cap IS the
+            // requirement. Delete this line and the label renders at
+            // `base x fontScale` again.
+            maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
           >
             {label}
           </Text>

@@ -1,4 +1,8 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+// #2211 — the consumer app's Dynamic Type ceiling. It has no shared CTA
+// primitive, so every capped label imports this directly.
+import { BUTTON_MAX_FONT_SCALE } from '../../src/constants/dynamicType';
 import React, { useCallback, useEffect, useState } from 'react';
 import {
   ActivityIndicator,
@@ -99,18 +103,42 @@ export default function ContentShareRoute() {
   if (failure !== null) {
     const copy = errorCopy(failure);
     return (
-      <SafeAreaView style={styles.center}>
-        <Text style={styles.errorTitle}>{copy.title}</Text>
-        <Text style={styles.errorBody}>{copy.body}</Text>
-        {copy.retry ? (
-          <TouchableOpacity accessibilityRole="button" accessibilityLabel="Retry shared link" style={styles.retry} onPress={() => setAttempt((value) => value + 1)}>
-            <Text style={styles.retryText}>Try again</Text>
-          </TouchableOpacity>
-        ) : null}
+      <SafeAreaView style={styles.centerHost}>
+        {/*
+          #2211 — this region SCROLLS. `center` was `flex: 1` +
+          `justifyContent: "center"` with no scroll container, and on the
+          `temporarily_unavailable` branch the "Try again" button below is the
+          ONLY recovery a person who opened a shared Mingla link has. At the
+          largest text size a 22 pt title plus 16/23 body pushed it out of the
+          viewport with nothing to scroll.
+        */}
+        <ScrollView
+          style={styles.centerScroll}
+          contentContainerStyle={styles.center}
+        >
+          <Text style={styles.errorTitle}>{copy.title}</Text>
+          <Text style={styles.errorBody}>{copy.body}</Text>
+          {copy.retry ? (
+            <TouchableOpacity
+              accessibilityRole="button"
+              accessibilityLabel="Retry shared link"
+              style={styles.retry}
+              onPress={() => setAttempt((value) => value + 1)}
+            >
+              <Text
+                style={styles.retryText}
+                numberOfLines={1}
+                maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              >
+                Try again
+              </Text>
+            </TouchableOpacity>
+          ) : null}
+        </ScrollView>
       </SafeAreaView>
     );
   }
-  if (share === null) return <SafeAreaView style={styles.center}><ActivityIndicator color="#EB7825" /></SafeAreaView>;
+  if (share === null) return <SafeAreaView style={[styles.centerHost, styles.center]}><ActivityIndicator color="#EB7825" /></SafeAreaView>;
 
   const details = share.publicDetails;
   const heroUrl = share.media === null ? null : buildSharePortraitUrl(share.shortCode, share.version);
@@ -185,7 +213,13 @@ function Action({ label, value, kind, share }: { label: string; value: string; k
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#0C0E12' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#0C0E12', padding: 28 },
+  // #2211 — `center` is now a CONTENT CONTAINER, not a root. `flexGrow: 1`
+  // reproduces the old centring exactly while there is room and yields to
+  // scrolling once there is not. EXPLICIT because RN defaults content
+  // containers to `flexGrow: 0`.
+  centerHost: { flex: 1, backgroundColor: '#0C0E12' },
+  centerScroll: { flex: 1, overflow: 'hidden' },
+  center: { flexGrow: 1, alignItems: 'center', justifyContent: 'center', padding: 28 },
   content: { padding: 24, paddingBottom: 48 },
   hero: { width: '100%', aspectRatio: 4 / 5, borderRadius: 20, backgroundColor: '#22262C', marginBottom: 20 },
   kind: { color: '#EB7825', textTransform: 'capitalize', fontWeight: '700', fontSize: 14 },

@@ -34,6 +34,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -229,10 +230,13 @@ export default function VenueManagementPage(): React.ReactElement {
             testID="venue-page-topbar-loading"
           />
         </View>
-        <View style={styles.center}>
+        <ScrollView
+          style={styles.center}
+          contentContainerStyle={styles.centerContent}
+        >
           <ActivityIndicator />
           <Text style={styles.helper}>Loading venue…</Text>
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -248,7 +252,10 @@ export default function VenueManagementPage(): React.ReactElement {
             testID="venue-page-topbar-not-found"
           />
         </View>
-        <View style={styles.center}>
+        <ScrollView
+          style={styles.center}
+          contentContainerStyle={styles.centerContent}
+        >
           <Text style={styles.notFoundTitle}>Venue not found</Text>
           <Text style={styles.helper}>
             This venue may have been removed, or the link is out of date.
@@ -259,7 +266,7 @@ export default function VenueManagementPage(): React.ReactElement {
             size="md"
             onPress={() => handleBack()}
           />
-        </View>
+        </ScrollView>
       </View>
     );
   }
@@ -450,8 +457,15 @@ const styles = StyleSheet.create({
   bannerHost: {
     marginBottom: -spacing.sm,
   },
+  // #2211 — the not-found branch is centred and carries the only
+  // 'Back to your venues' Button; the loading branch shares the root.
   center: {
     flex: 1,
+    overflow: "hidden",
+  },
+  centerContent: {
+    // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     gap: spacing.sm,

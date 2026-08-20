@@ -118,6 +118,67 @@ export function buildCriticalEntry(buildDir) {
   // The shell markup is assigned through a single-quoted inline-JS string.
   // Preserve its contractions as escaped apostrophes in the emitted HTML.
   const payload = criticalPayload(scripts)
+    // #2211 hosted-CI rework — the live RNW tree paints through a composited
+    // runtime layer. Standalone Linux Chromium otherwise uses LCD glyph
+    // antialiasing for the copied HTML and produces a deterministic 1.13%
+    // text-only visual delta even though every computed box/style is equal.
+    // One host layer matches RNW's paint pipeline without changing geometry,
+    // hit ownership, focus semantics, or the strict visual threshold.
+    .replace(
+      "</style>",
+      ".i922-host{transform:translateZ(0)}</style>",
+    )
+    // #2211 — the React web owner keeps the action inside its centred scrolling
+    // region because the global first-visit consent panel occupies the bottom
+    // overlay. Match that geometry so the CTA stays actionable and the static
+    // shell remains pixel-identical to the real React route.
+    .replace(
+      ".i922-host{display:flex;flex:1;align-items:center;justify-content:center;padding:0 32px;background:#0c0e12}.i922-card",
+      ".i922-host{display:flex;flex:1;background:#0c0e12}.i922-scroll{flex:1;overflow:hidden}.i922-scroll-content{display:flex;align-items:center;justify-content:center;height:100%;padding:24px 32px}.i922-centerer{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}.i922-web-actions{width:100%;max-width:480px}.i922-card",
+    )
+    .replace(
+      `<main class="i922-host"><section class="i922-card" aria-labelledby="i922-title"><h1 class="i922-title" id="i922-title">You're invited</h1><p class="i922-copy">Sign in to accept this invitation. We'll bring you right back.</p><button class="i922-signin" type="button">Sign in</button></section><aside`,
+      `<main class="i922-host"><div class="i922-scroll"><div class="i922-scroll-content"><div class="i922-centerer"><section class="i922-card" aria-labelledby="i922-title"><h1 class="i922-title" id="i922-title">You're invited</h1><p class="i922-copy">Sign in to accept this invitation. We'll bring you right back.</p></section><div class="i922-web-actions"><button class="i922-signin" type="button">Sign in</button></div></div></div></div><aside`,
+    )
+    .replace(
+      "@media(max-width:420px){.i922-host{padding:0 32px}.i922-card",
+      "@media(max-width:420px){.i922-scroll-content{padding:24px 32px}.i922-card",
+    )
+    // #2211 CI rework — React Native Web renders each Button as a transparent
+    // semantic button wrapped around a flex face and a Text node. Painting the
+    // copied shell directly on a bare HTML button happened to be close on macOS,
+    // but Linux Chromium rasterized the native button box/font differently and
+    // produced a 1.22% false visual delta. Mirror the real owner structurally:
+    // the semantic outer button owns focus/click, while the nested face owns the
+    // border/background/geometry and the nested label owns typography.
+    .replace(
+      ".i922-signin,.i922-consent button{border:0;font:inherit;cursor:pointer}.i922-signin{width:100%;height:52px;padding:0 20px;border-radius:999px;background:#eb7825;color:#fff;font-size:16px;line-height:24px;font-weight:600}.i922-signin:hover{background:#f0843a}",
+      ".i922-signin,.i922-consent button{border:0;padding:0;background:transparent;font:inherit;cursor:pointer}.i922-signin{display:flex;width:100%;height:52px}.i922-signin-face{display:flex;flex:1;align-items:center;justify-content:center;height:52px;padding:0 20px;border-radius:999px;background:#eb7825}.i922-signin-face,.i922-signin-label{pointer-events:none}.i922-signin-label{color:#fff;font-size:16px;line-height:24px;font-weight:600}.i922-signin:hover .i922-signin-face{background:#f0843a}",
+    )
+    .replace(
+      ".i922-actions button{flex:1;height:44px;padding:0 16px;border-radius:999px;font-size:14px;line-height:20px;font-weight:600;letter-spacing:.2px}.i922-accept{background:#eb7825;color:#fff}.i922-reject{border:1px solid rgba(255,255,255,.12)!important;background:rgba(255,255,255,.06);color:rgba(255,255,255,.96)}.i922-manage{align-self:flex-start;padding:4px 0!important;background:transparent;color:rgba(255,255,255,.52);font-size:12px!important;font-weight:600!important}",
+      ".i922-actions button{display:flex;flex:1;height:44px}.i922-action-face{display:flex;flex:1;align-items:center;justify-content:center;height:44px;padding:0 16px;border-radius:999px}.i922-action-label{font-size:14px;line-height:20px;font-weight:600;letter-spacing:.2px}.i922-accept-face{background:#eb7825;color:#fff}.i922-reject-face{border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.06);color:rgba(255,255,255,.96)}.i922-manage{display:flex;align-self:flex-start;padding:4px 0!important}.i922-manage-label{color:rgba(255,255,255,.52);font-size:12px;font-weight:600}",
+    )
+    .replace(
+      '<button class="i922-signin" type="button">Sign in</button>',
+      '<button class="i922-signin" type="button"><span class="i922-signin-face"><span class="i922-signin-label">Sign in</span></span></button>',
+    )
+    .replace(
+      '<button class="i922-accept" type="button" aria-label="Accept cookies and analytics">Accept all</button><button class="i922-reject" type="button" aria-label="Reject cookies and analytics">Reject</button>',
+      '<button class="i922-accept" type="button" aria-label="Accept cookies and analytics"><span class="i922-action-face i922-accept-face"><span class="i922-action-label">Accept all</span></span></button><button class="i922-reject" type="button" aria-label="Reject cookies and analytics"><span class="i922-action-face i922-reject-face"><span class="i922-action-label">Reject</span></span></button>',
+    )
+    .replace(
+      '<button class="i922-manage" type="button" aria-label="Manage analytics preferences">Manage</button>',
+      '<button class="i922-manage" type="button" aria-label="Manage analytics preferences"><span class="i922-manage-label">Manage</span></button>',
+    )
+    .replace(
+      'var manage=root.querySelector(".i922-manage");',
+      'var manage=root.querySelector(".i922-manage");var manageLabel=root.querySelector(".i922-manage-label");',
+    )
+    .replace(
+      'manage.textContent=open?"Manage":"Hide details"',
+      'manageLabel.textContent=open?"Manage":"Hide details"',
+    )
     .replace(
       "font-family:Arial,sans-serif",
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',

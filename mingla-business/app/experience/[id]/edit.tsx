@@ -19,6 +19,7 @@ import React, { useMemo } from "react";
 import {
   ActivityIndicator,
   Platform,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -271,8 +272,13 @@ export default function ExperienceEditRoute(): React.ReactElement {
   if (typeof eventId !== "string" || eventId.length === 0) {
     return (
       <SafeScreen style={styles.host}>
+        <ScrollView
+          style={styles.hostScroll}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>Experience not found</Text>
         <Text style={styles.body}>This experience link is missing or invalid.</Text>
+      </ScrollView>
       </SafeScreen>
     );
   }
@@ -280,8 +286,13 @@ export default function ExperienceEditRoute(): React.ReactElement {
   if (detailQuery.isLoading) {
     return (
       <SafeScreen style={styles.host}>
+        <ScrollView
+          style={styles.hostScroll}
+          contentContainerStyle={styles.hostContent}
+        >
         <ActivityIndicator />
         <Text style={styles.body}>Loading experience…</Text>
+      </ScrollView>
       </SafeScreen>
     );
   }
@@ -289,12 +300,17 @@ export default function ExperienceEditRoute(): React.ReactElement {
   if (detailQuery.isError) {
     return (
       <SafeScreen style={styles.host}>
+        <ScrollView
+          style={styles.hostScroll}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>Couldn&rsquo;t load experience</Text>
         <Text style={styles.body}>
           {detailQuery.error instanceof Error
             ? detailQuery.error.message
             : "Check your connection and try again."}
         </Text>
+      </ScrollView>
       </SafeScreen>
     );
   }
@@ -302,10 +318,15 @@ export default function ExperienceEditRoute(): React.ReactElement {
   if (experience === null || initialDraft === null) {
     return (
       <SafeScreen style={styles.host}>
+        <ScrollView
+          style={styles.hostScroll}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>Experience not found</Text>
         <Text style={styles.body}>
           This experience may have been deleted or you don&rsquo;t have access.
         </Text>
+      </ScrollView>
       </SafeScreen>
     );
   }
@@ -313,6 +334,10 @@ export default function ExperienceEditRoute(): React.ReactElement {
   if (experience.status === "ended" || experience.status === "cancelled") {
     return (
       <SafeScreen style={styles.host}>
+        <ScrollView
+          style={styles.hostScroll}
+          contentContainerStyle={styles.hostContent}
+        >
         <Text style={styles.title}>
           {experience.status === "ended"
             ? "This experience has ended"
@@ -334,6 +359,7 @@ export default function ExperienceEditRoute(): React.ReactElement {
           accessibilityLabel="Back to experience"
           testID="experience-edit-readonly-back"
         />
+      </ScrollView>
       </SafeScreen>
     );
   }
@@ -378,13 +404,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
   },
+  // #2211 — all five early-return branches share this root. It was `flex: 1` +
+  // `justifyContent: "center"` with no scroll container, and the
+  // ended/cancelled branch carries the only CTA ("Back to experience").
   host: {
     flex: 1,
+    backgroundColor: canvas.discover,
+  },
+  hostScroll: { flex: 1, overflow: "hidden" },
+  hostContent: {
+    // #2211 — EXPLICIT flexGrow (RN defaults content containers to 0).
+    flexGrow: 1,
     alignItems: "center",
     justifyContent: "center",
     padding: spacing.xl,
     gap: spacing.md,
-    backgroundColor: canvas.discover,
   },
   editHost: {
     flex: 1,
