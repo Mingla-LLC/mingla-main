@@ -68,7 +68,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   set_event_guest_privacy: role("event_manager", "event"),
   discard_event_draft: role("event_manager", "event"),
   upsert_ticket_tier: role("event_manager", "event"),
-  set_pricing_switches: role("event_manager", "event"),
+  set_pricing_switches: role("finance_manager", "event"),
+  set_brand_pricing_defaults: role("finance_manager", "brand"),
   publish_experience: role("event_manager", "event"),
   update_experience: role("event_manager", "event"),
   delete_experience: role("event_manager", "event"),
@@ -179,7 +180,13 @@ async function resolveBrand(
       brandId = args.brand_id;
       break;
     case "event": {
-      const row = await rowBrand(client, "events", args.event_id, "brand_id, event_type", true);
+      const row = await rowBrand(
+        client,
+        "events",
+        args.event_id,
+        "brand_id, event_type",
+        true,
+      );
       assertExpectedEventType(toolName, row);
       brandId = row.brand_id;
       break;
@@ -213,7 +220,11 @@ async function resolveBrand(
 
   // Bind redundant high-risk finance/resource identifiers before role checks.
   if (isUuid(args.partner_id)) {
-    const partner = await rowBrand(client, "partner_brand_links", args.partner_id);
+    const partner = await rowBrand(
+      client,
+      "partner_brand_links",
+      args.partner_id,
+    );
     if (partner.brand_id !== brandId) unavailable();
   }
   if (isUuid(args.order_id)) {
@@ -290,9 +301,25 @@ async function resolveBrand(
   ]
     .filter(isUuid);
   for (const guestId of guestIds) {
-    const guest = await rowBrand(client, "event_rsvp_guests", guestId, "rsvp_id");
-    const rsvp = await rowBrand(client, "event_rsvps", guest.rsvp_id, "event_id");
-    const event = await rowBrand(client, "events", rsvp.event_id, "brand_id, event_type", true);
+    const guest = await rowBrand(
+      client,
+      "event_rsvp_guests",
+      guestId,
+      "rsvp_id",
+    );
+    const rsvp = await rowBrand(
+      client,
+      "event_rsvps",
+      guest.rsvp_id,
+      "event_id",
+    );
+    const event = await rowBrand(
+      client,
+      "events",
+      rsvp.event_id,
+      "brand_id, event_type",
+      true,
+    );
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
@@ -537,7 +564,16 @@ export function secureAgentTools(
       ...definition,
       ...declaration,
       executor: async (args, client, userId, context) => {
-        await authorizeAgentTool({ ...declaration, name: definition.name, parameters: definition.parameters }, args, client, userId);
+        await authorizeAgentTool(
+          {
+            ...declaration,
+            name: definition.name,
+            parameters: definition.parameters,
+          },
+          args,
+          client,
+          userId,
+        );
         return await rawExecutor(args, client, userId, context);
       },
     };
