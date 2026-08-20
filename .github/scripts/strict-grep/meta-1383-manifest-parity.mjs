@@ -25,7 +25,7 @@
 //   P4 every external:<wf> gate is actually invoked in <wf>   (YAML-parsed, never grep)
 //   P5 every batch:X gate is in run-batch.mjs's expected set for class X
 //   P6 selfTest field matches source reality (source has --self-test => never "none")
-//   P7 ratchet: count(selfTest === "wired") >= selfTestWiredFloor
+//   P7 exact truth: count(selfTest === "wired") === selfTestWiredFloor
 //   P8 ratchet: count(enforcement === "unenforced") <= unenforcedCap
 //   P10 ratchet: count(enforcement === "fixture") <= fixtureCap, AND every
 //       fixture/unenforced reason cites an ORCH (/ORCH-\d{3,4}/). No bypass token
@@ -38,9 +38,10 @@
 //   P-vacuous: discovering ZERO files is a FAILURE, never a pass. This is the
 //              "matched nothing -> green" mode (the rel="noopener" class).
 
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { expectedForClass, CLASSES } from "./run-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -225,12 +226,17 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
     }
   }
 
-  // P7 — self-test coverage may only ratchet up.
+  // P7 — self-test coverage is an exact measured truth. A floor that trails the
+  // wired count is a false green: the ratchet test rejects it later, while this
+  // designated authority used to say PASS. Equality makes one gate registration
+  // and one counter advance the same atomic review unit (issue #2207).
   const wired = gates.filter((g) => g.selfTest === "wired").length;
-  if (wired < manifest.selfTestWiredFloor) {
+  if (wired !== manifest.selfTestWiredFloor) {
     failures.push(
-      `P7: selfTest:"wired" count ${wired} is BELOW the floor ${manifest.selfTestWiredFloor}. ` +
-      `Self-test coverage may only increase. Lowering the floor needs a GATE-REMOVAL: commit token.`
+      `P7: selfTest:"wired" count ${wired} does not EQUAL selfTestWiredFloor ` +
+      `${manifest.selfTestWiredFloor}. The floor is measured truth, not a lower bound: wiring a ` +
+      `self-test and advancing the floor must land together. Lowering it still needs a ` +
+      `GATE-REMOVAL: commit token.`
     );
   }
 
@@ -373,6 +379,129 @@ export function stripComments(script) {
     .join("\n");
 }
 
+const MANIFEST_REL = `${SG_REL}/MANIFEST.json`;
+
+function gitOutput(repoRoot, args) {
+  return execFileSync("git", args, {
+    cwd: repoRoot,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  }).trim();
+}
+
+function manifestTruthAtRef(repoRoot, ref) {
+  try {
+    const manifest = JSON.parse(gitOutput(repoRoot, ["show", `${ref}:${MANIFEST_REL}`]));
+    return {
+      expectedFiles: manifest.expectedStrictGrepMjsFiles,
+      wiredFloor: manifest.selfTestWiredFloor,
+      wiredCount: (manifest.gates ?? []).filter((gate) => gate.selfTest === "wired").length,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Return recent first-parent commits that added strict-grep .mjs files. The
+ * output is evidence only: it never changes a ref and remains useful in a
+ * shallow checkout by returning the candidates whose parent is available.
+ */
+export function collectRecentGateRegistrationCommits({ repoRoot = REPO_ROOT, limit = 12 } = {}) {
+  let rows;
+  try {
+    rows = gitOutput(repoRoot, [
+      "log",
+      "--first-parent",
+      `-${limit}`,
+      "--format=%H%x1f%s",
+      "HEAD",
+    ]);
+  } catch {
+    return [];
+  }
+  if (!rows) return [];
+
+  const candidates = [];
+  for (const row of rows.split("\n")) {
+    const [sha, subject = ""] = row.split("\x1f");
+    if (!sha) continue;
+    const parent = `${sha}^`;
+    let addedGates;
+    try {
+      addedGates = gitOutput(repoRoot, [
+        "diff",
+        "--diff-filter=A",
+        "--name-only",
+        parent,
+        sha,
+        "--",
+        SG_REL,
+      ]).split("\n").filter((file) => file.endsWith(".mjs"));
+    } catch {
+      continue;
+    }
+    if (!addedGates.length) continue;
+    candidates.push({
+      sha,
+      subject,
+      addedGates,
+      before: manifestTruthAtRef(repoRoot, parent),
+      after: manifestTruthAtRef(repoRoot, sha),
+    });
+  }
+  return candidates;
+}
+
+function truthDelta(before, after, field) {
+  const left = before?.[field] ?? "?";
+  const right = after?.[field] ?? "?";
+  return `${left} -> ${right}`;
+}
+
+/**
+ * Rich #2207 diagnostic for the one state that cannot be known on either
+ * stale PR branch: the combined first-parent tree after both merges land.
+ */
+export function formatMergeCounterCollision({
+  declaredFiles,
+  diskFileCount,
+  wiredFloor,
+  wiredCount,
+  candidates,
+}) {
+  if (declaredFiles === diskFileCount && wiredFloor === wiredCount) return "";
+
+  const lines = [
+    "ISSUE #2207 MERGED-MAIN GATE-REGISTRATION COLLISION",
+    `Combined tree truth: files expected=${declaredFiles}, on-disk=${diskFileCount}; ` +
+      `wired floor=${wiredFloor}, wired entries=${wiredCount}.`,
+  ];
+  if (!candidates.length) {
+    lines.push(
+      "No recent first-parent gate-registration commit was readable. Re-run this job with " +
+        "actions/checkout fetch-depth >= 4 so the responsible merges can be named.",
+    );
+    return lines.join("\n");
+  }
+
+  lines.push("Recent first-parent gate-registration commits involved in the mismatch:");
+  for (const candidate of candidates) {
+    lines.push(
+      `  - ${candidate.sha.slice(0, 10)} ${candidate.subject}`,
+      `    added: ${candidate.addedGates.join(", ")}`,
+      `    expected files ${truthDelta(candidate.before, candidate.after, "expectedFiles")}; ` +
+        `wired floor ${truthDelta(candidate.before, candidate.after, "wiredFloor")}; ` +
+        `wired entries ${truthDelta(candidate.before, candidate.after, "wiredCount")}`,
+    );
+  }
+  lines.push(
+    "The individual branch checks could be correct while this combined merge result is not. " +
+      "Reconcile the measured values on current main; do not guess or blame the next PR.",
+  );
+  return lines.join("\n");
+}
+
 async function realRun() {
   const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "MANIFEST.json"), "utf8"));
   const diskFiles = walkMjs(path.join(REPO_ROOT, SG_REL));
@@ -399,6 +528,14 @@ async function realRun() {
   if (failures.length) {
     console.error(`\nMETA-1383 manifest parity FAILED — ${failures.length} violation(s):\n`);
     for (const f of failures) console.error("  - " + f);
+    const collision = formatMergeCounterCollision({
+      declaredFiles: manifest.expectedStrictGrepMjsFiles,
+      diskFileCount: diskFiles.length,
+      wiredFloor: manifest.selfTestWiredFloor,
+      wiredCount: (manifest.gates ?? []).filter((gate) => gate.selfTest === "wired").length,
+      candidates: collectRecentGateRegistrationCommits(),
+    });
+    if (collision) console.error(`\n${collision}`);
     process.exit(1);
   }
   console.log("META-1383 manifest parity: PASS (P1–P12 + P-vacuous).");
@@ -681,5 +818,7 @@ function selfTest() {
   console.log(`\nMETA-1383 parity self-test: ${cases.length}/${cases.length} PASS.`);
 }
 
-if (process.argv.includes("--self-test")) selfTest();
-else await realRun();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  if (process.argv.includes("--self-test")) selfTest();
+  else await realRun();
+}
