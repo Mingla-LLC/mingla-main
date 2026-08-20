@@ -57,7 +57,14 @@ fi
 
 # Strip every ALLOWED byte. Whatever survives is hostile. LC_ALL=C so multi-byte
 # characters are compared as raw bytes and cannot be folded into a range.
-OFFENDING="$(printf '%s' "$CANDIDATE" | LC_ALL=C tr -d -- '-A-Za-z0-9._/')"
+#
+# The SOH sentinel is load-bearing: Bash command substitution strips every
+# trailing newline from its output. Without a non-newline byte after CANDIDATE,
+# a path whose only hostile byte is `\n` collapses to an empty OFFENDING value
+# and bypasses the guard (#2210 tester P1). `tr` preserves SOH because it is not
+# allowlisted; remove exactly that final sentinel after substitution.
+OFFENDING_WITH_SENTINEL="$(printf '%s\001' "$CANDIDATE" | LC_ALL=C tr -d -- '-A-Za-z0-9._/')"
+OFFENDING="${OFFENDING_WITH_SENTINEL%$'\001'}"
 
 if [ -z "$OFFENDING" ]; then
   exit 0
