@@ -170,7 +170,7 @@ Deno.test("#1985 R2-2 edited create-event args replace canonical slots before a 
 
 Deno.test("#1985 R2-3 first-turn identity and task response commit are database-serialized", async () => {
   const migration = await source(
-    "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql",
+    "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
   );
   const chat = await source("supabase/functions/agent-chat/index.ts");
   assertMatch(

@@ -124,7 +124,7 @@ Deno.test("#2013 tester retest: every chat and confirmation message writer emits
   assertEquals(observed, { "agent-chat": 4, "agent-confirm-action": 1 });
 
   const taskStateMigration = await Deno.readTextFile(
-    "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql",
+    "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
   );
   const assistantWriter = taskStateMigration.slice(
     taskStateMigration.indexOf(

@@ -4,7 +4,7 @@ import fs from "node:fs";
 const read = (file) => fs.readFileSync(file, "utf8");
 const files = {
   migration:
-    "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql",
+    "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
   implementorPg:
     "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql",
   state: "supabase/functions/_shared/agentConversationState.ts",

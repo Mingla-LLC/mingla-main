@@ -3,7 +3,7 @@ name: Issue 1985 Ari task state
 on:
   push:
     paths:
-      - "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql"
+      - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
@@ -33,7 +33,7 @@ on:
       - ".github/workflows/issue-1985-ari-task-state.yml"
   pull_request:
     paths:
-      - "supabase/migrations/20270503001985_issue_1985_ari_conversation_task_state.sql"
+      - "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
