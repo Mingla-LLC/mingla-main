@@ -52,23 +52,45 @@ export interface RefundOrderError extends Error {
     | "stripe_declined"
     | "commit_failed_after_stripe_success"
     | "idempotency_key_required"
+    | "refund_reconciliation_pending"
+    | "refund_evidence_conflict"
     | "unauthenticated"
     | "internal_error"
     | "network_error";
   detail?: string;
   httpStatus?: number;
+  buyerRefundStatus?: string;
+  applicationFeeRefundStatus?: string;
+  applicationFeeRefundedCents?: number | null;
 }
+
+type RefundTruthErrorFields = Pick<
+  RefundOrderError,
+  | "buyerRefundStatus"
+  | "applicationFeeRefundStatus"
+  | "applicationFeeRefundedCents"
+>;
 
 const refundOrderError = (
   code: RefundOrderError["code"],
   message: string,
   detail?: string,
   httpStatus?: number,
+  truth?: RefundTruthErrorFields,
 ): RefundOrderError => {
   const err = new Error(message) as RefundOrderError;
   err.code = code;
   if (detail !== undefined) err.detail = detail;
   if (httpStatus !== undefined) err.httpStatus = httpStatus;
+  if (truth?.buyerRefundStatus !== undefined) {
+    err.buyerRefundStatus = truth.buyerRefundStatus;
+  }
+  if (truth?.applicationFeeRefundStatus !== undefined) {
+    err.applicationFeeRefundStatus = truth.applicationFeeRefundStatus;
+  }
+  if (truth?.applicationFeeRefundedCents !== undefined) {
+    err.applicationFeeRefundedCents = truth.applicationFeeRefundedCents;
+  }
   return err;
 };
 
@@ -105,7 +127,13 @@ export const issueOrderRefund = async (
     // supabase-js wraps non-2xx as FunctionsHttpError with the response body accessible
     // via .context. Use duck-typing for RN polyfill safety.
     const ctx = (response.error as { context?: Response }).context;
-    let payload: { error?: string; detail?: string } | null = null;
+    let payload: {
+      error?: string;
+      detail?: string;
+      buyer_refund_status?: unknown;
+      application_fee_refund_status?: unknown;
+      application_fee_refunded_cents?: unknown;
+    } | null = null;
     if (ctx && typeof ctx.text === "function") {
       try {
         const text = await ctx.text();
@@ -115,26 +143,88 @@ export const issueOrderRefund = async (
       }
     }
     const code = payload?.error ?? "internal_error";
-    const detail = payload?.detail ?? (response.error as Error).message ?? "Refund failed";
-    throw refundOrderError(code as RefundOrderError["code"], userMessageFor(code), detail);
+    const detail =
+      payload?.detail ?? (response.error as Error).message ?? "Refund failed";
+    if (
+      code === "refund_reconciliation_pending" ||
+      code === "refund_evidence_conflict"
+    ) {
+      const buyerRefundStatus = String(
+        payload?.buyer_refund_status ?? "not_started",
+      );
+      const applicationFeeRefundStatus = String(
+        payload?.application_fee_refund_status ?? "unknown_legacy",
+      );
+      const buyerTruth =
+        buyerRefundStatus === "succeeded"
+          ? "The buyer refund was issued."
+          : "The buyer money has not moved.";
+      const feeTruth =
+        code === "refund_reconciliation_pending"
+          ? "Mingla is still confirming the Stripe fee refund."
+          : "The Stripe fee evidence needs review; no amount has been guessed.";
+      const rawFeeAmount = payload?.application_fee_refunded_cents;
+      const applicationFeeRefundedCents =
+        typeof rawFeeAmount === "number" &&
+        Number.isSafeInteger(rawFeeAmount) &&
+        rawFeeAmount >= 0
+          ? rawFeeAmount
+          : null;
+      throw refundOrderError(
+        code,
+        `${buyerTruth} ${feeTruth}`,
+        detail,
+        code === "refund_reconciliation_pending" ? 202 : 409,
+        {
+          buyerRefundStatus,
+          applicationFeeRefundStatus,
+          applicationFeeRefundedCents,
+        },
+      );
+    }
+    throw refundOrderError(
+      code as RefundOrderError["code"],
+      userMessageFor(code),
+      detail,
+    );
   }
 
   const data = response.data as Record<string, unknown>;
-  const feeStatus = String(data.application_fee_refund_status ?? data.status ?? "unknown_legacy");
+  const feeStatus = String(
+    data.application_fee_refund_status ?? data.status ?? "unknown_legacy",
+  );
+  const buyerRefundStatus = String(
+    data.buyer_refund_status ??
+      (data.stripe_refund_id == null ? "not_started" : "succeeded"),
+  );
   if (["awaiting_application_fee", "pending_visibility"].includes(feeStatus)) {
     throw refundOrderError(
-      "internal_error",
-      "The buyer refund was issued. Mingla is still confirming the Stripe fee refund; tickets are safely blocked while this finishes.",
+      "refund_reconciliation_pending",
+      buyerRefundStatus === "succeeded"
+        ? "The buyer refund was issued. Mingla is still confirming the Stripe fee refund."
+        : "The buyer money has not moved. Mingla is still preparing the refund.",
       feeStatus,
       202,
+      { buyerRefundStatus, applicationFeeRefundStatus: feeStatus },
     );
   }
-  if (["application_fee_timeout", "application_fee_conflict", "fee_evidence_unavailable", "evidence_conflict", "rejected_preflight"].includes(feeStatus)) {
+  if (
+    [
+      "application_fee_timeout",
+      "application_fee_conflict",
+      "fee_evidence_unavailable",
+      "evidence_conflict",
+      "rejected_preflight",
+    ].includes(feeStatus)
+  ) {
     throw refundOrderError(
-      "internal_error",
-      "The buyer refund is recorded, but the platform-fee evidence needs review. No amount has been guessed.",
+      "refund_evidence_conflict",
+      buyerRefundStatus === "succeeded"
+        ? "The buyer refund was issued. The Stripe fee evidence needs review; no amount has been guessed."
+        : "The buyer money has not moved. The refund needs review before Mingla can proceed.",
       feeStatus,
       409,
+      { buyerRefundStatus, applicationFeeRefundStatus: feeStatus },
     );
   }
   return {
@@ -142,11 +232,18 @@ export const issueOrderRefund = async (
     orderId: String(data.order_id ?? input.orderId),
     amountCents: Number(data.amount_cents ?? 0),
     currency: String(data.currency ?? "GBP"),
-    status: String(data.application_fee_refund_status ?? data.status) as RefundOrderResult["status"],
-    stripeRefundId: data.stripe_refund_id == null ? null : String(data.stripe_refund_id),
-    applicationFeeRefundedCents: data.application_fee_refunded_cents == null ? null : Number(data.application_fee_refunded_cents),
+    status: String(
+      data.application_fee_refund_status ?? data.status,
+    ) as RefundOrderResult["status"],
+    stripeRefundId:
+      data.stripe_refund_id == null ? null : String(data.stripe_refund_id),
+    applicationFeeRefundedCents:
+      data.application_fee_refunded_cents == null
+        ? null
+        : Number(data.application_fee_refunded_cents),
     applicationFeeRefundStatus: feeStatus,
-    newPaymentStatus: data.new_payment_status as RefundOrderResult["newPaymentStatus"],
+    newPaymentStatus:
+      data.new_payment_status as RefundOrderResult["newPaymentStatus"],
     processedAt: data.processed_at == null ? null : String(data.processed_at),
     idempotentReplay: data.idempotent_replay === true,
   };
@@ -224,7 +321,8 @@ export const refundAllEventOrders = async (
 ): Promise<BulkRefundResult> => {
   const result: BulkRefundResult = { refundedOrderIds: [], failed: [] };
   for (const order of orders) {
-    if (order.status !== "paid" && order.status !== "refunded_partial") continue;
+    if (order.status !== "paid" && order.status !== "refunded_partial")
+      continue;
     const lines = fullRefundLines(order);
     if (lines.length === 0) continue;
     try {

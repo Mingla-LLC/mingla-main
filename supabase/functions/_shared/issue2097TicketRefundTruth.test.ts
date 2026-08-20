@@ -4,6 +4,7 @@ import {
   assertRejects,
 } from "https://deno.land/std@0.208.0/assert/mod.ts";
 import {
+  canonicalProviderInteger,
   classifyFeeRefundEvidence,
   decideFeeRefundPreflight,
   executeTicketRefundWithFeeTruth,
@@ -130,12 +131,18 @@ Deno.test("#2097 BigInt preflight is total at zero, threshold, full, and safe ma
   });
   assertEquals(
     decideFeeRefundPreflight(
-      "999999999999999",
-      "9999999999999999",
-      "9999999999999999",
+      "9007199254740990",
+      "9007199254740990",
+      String(Number.MAX_SAFE_INTEGER),
     ),
-    { allowed: true, kind: "full" },
+    { allowed: true, kind: "partial" },
   );
+  assertEquals(
+    canonicalProviderInteger(String(Number.MAX_SAFE_INTEGER)),
+    String(Number.MAX_SAFE_INTEGER),
+  );
+  assertEquals(canonicalProviderInteger("9007199254740992"), null);
+  assertEquals(canonicalProviderInteger("9999999999999999"), null);
   assertEquals(decideFeeRefundPreflight(Number.MAX_SAFE_INTEGER + 1, 1, 2), {
     allowed: false,
     status: "rejected_preflight",
@@ -548,4 +555,18 @@ Deno.test("#2097 no-fee oracle mutates only at observation eight and replays byt
   const replay = await executeTicketRefundWithFeeTruth(input);
   assertEquals(replay, completed);
   assertEquals(creates, 1);
+});
+
+Deno.test("#2097 Admin recovery is authenticated, audited, then permitted to use the shared mutation owner", () => {
+  const source = Deno.readTextFileSync(
+    "supabase/functions/admin-reconcile-ticket-refund/index.ts",
+  );
+  const userGate = source.indexOf("supabase.auth.getUser");
+  const adminGate = source.indexOf('from("admin_users")');
+  const audit = source.indexOf('rpc("admin_write_audit"');
+  const resolver = source.indexOf("executeTicketRefundWithFeeTruth({");
+  assert(userGate >= 0 && adminGate > userGate);
+  assert(audit > adminGate && resolver > audit);
+  assert(source.includes("p_actor_uid: user.id"));
+  assert(!source.includes("allowProviderMutation: false"));
 });

@@ -15,6 +15,7 @@ on:
       - "supabase/migrations/__tests__/issue_2097*"
       - "mingla-business/src/services/eventOrdersService.ts"
       - "mingla-business/src/services/orderRefundService.ts"
+      - "mingla-business/src/services/__tests__/orderRefundService.issue2097.test.ts"
       - "mingla-business/src/store/orderStore.ts"
       - "mingla-business/src/utils/moneySummary.ts"
       - "mingla-business/src/utils/reconciliation.ts"

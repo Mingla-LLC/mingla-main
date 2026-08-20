@@ -22,13 +22,14 @@ export type Issue2097PreflightReason =
   | "fee_preflight_conflict";
 
 const CANONICAL_PROVIDER_INTEGER = /^(0|[1-9][0-9]{0,15})$/;
+const MAX_SAFE_PROVIDER_INTEGER = BigInt(Number.MAX_SAFE_INTEGER);
 
 export function canonicalProviderInteger(value: unknown): string | null {
   if (typeof value === "number") {
     return Number.isSafeInteger(value) && value >= 0 ? String(value) : null;
   }
   if (typeof value === "string" && CANONICAL_PROVIDER_INTEGER.test(value)) {
-    return value;
+    return BigInt(value) <= MAX_SAFE_PROVIDER_INTEGER ? value : null;
   }
   return null;
 }

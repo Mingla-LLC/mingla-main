@@ -25,6 +25,19 @@ serve(async (req) => {
     .select("refund_id,order_id,request_fingerprint,connected_account_id,currency,charge_id,payment_intent_id,application_fee_amount_text,requested_refund_amount_text,expected_attempt_count")
     .eq("refund_id", body.refundId).order("created_at", { ascending: true });
   if (error || !attempts?.length) return reply({ error: "attempt_not_found" }, 404);
+  const { error: auditError } = await supabase.rpc("admin_write_audit", {
+    p_action: "ticket_refund.reconcile",
+    p_entity_type: "refund",
+    p_entity_id: body.refundId,
+    p_reason: "Explicit Admin ticket refund reconciliation",
+    p_metadata: { attempt_count: attempts.length },
+    p_actor_email: user.email,
+    p_actor_uid: user.id,
+  });
+  if (auditError) {
+    console.error("[admin-reconcile-ticket-refund] authorization audit failed");
+    return reply({ error: "audit_failed" }, 500);
+  }
   try {
     let status = 200;
     const results = [];
@@ -42,7 +55,6 @@ serve(async (req) => {
         requestedRefundAmount: attempt.requested_refund_amount_text,
         requestFingerprint: attempt.request_fingerprint,
         expectedAttemptCount: attempt.expected_attempt_count,
-        allowProviderMutation: false,
       });
       status = Math.max(status, result.httpStatus);
       results.push({ attempt_id: result.attemptId, application_fee_refund_status: result.status });
