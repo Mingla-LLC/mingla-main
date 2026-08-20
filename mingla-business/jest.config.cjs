@@ -108,6 +108,7 @@ module.exports = {
     // source-text pins.
     // ======================================================================
     "buttonAccentContrast\\.orch1162\\.test\\.ts$", // DENO test (Deno.test + https://deno.land/std import) — runs under Deno, never jest
+    "issue_2321_business_retained_copy\\.tester\\.adversarial\\.test\\.ts$", // DENO test — runs in issue-2321-account-deletion-tests.yml, never jest
     "meta_orch_0952_carousel_adversarial\\.test\\.ts$", // PLAYWRIGHT spec — runs under playwright.config.ts (`npm run test:browser`), never jest
     "meta_orch_0952_carousel_browser\\.test\\.ts$", // PLAYWRIGHT spec — runs under playwright.config.ts (`npm run test:browser`), never jest
     "orch_1138_event_foundation\\.test\\.ts$", // NODE-ASSERT script (node:assert at module scope, zero jest test()/it() blocks; header: "Run with: node …") — runs under node, never jest

@@ -1,5 +1,7 @@
 // @ts-nocheck — Deno-runtime contract test; the app TypeScript project does not
 // include Deno globals. This is the independent tester guard for issue #2321.
+// It stays Deno-native in the dedicated #2321 workflow; the default Business
+// Jest config excludes this wrong-runtime file instead of pretending it is Jest.
 //
 // Different angle from the implementor tests: those exercise the consumer step
 // selector and backend side evaluator. This guard attacks the Business mirror's
