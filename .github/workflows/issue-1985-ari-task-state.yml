@@ -8,6 +8,7 @@ on:
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql"
       - "supabase/functions/_shared/agentConversationState.ts"
       - "supabase/functions/_shared/agentConversationPlanner.ts"
       - "supabase/functions/_shared/agentRelativeTime.ts"
@@ -39,6 +40,7 @@ on:
       - "supabase/migrations/__tests__/issue_1985_task_state_authority.tester.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql"
       - "supabase/functions/_shared/agentConversationState.ts"
       - "supabase/functions/_shared/agentConversationPlanner.ts"
       - "supabase/functions/_shared/agentRelativeTime.ts"
@@ -104,6 +106,8 @@ jobs:
             -f supabase/migrations/__tests__/issue_1985_first_turn_identity.tester_round2.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql
 
   ari-task-state:
     runs-on: ubuntu-latest

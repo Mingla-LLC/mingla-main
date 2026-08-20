@@ -872,7 +872,7 @@ Deno.serve(async (req) => {
     // refresh surface. Replace its structured args before execution so a
     // reload cannot resurrect the model's pre-edit slots as confirmable.
     if (pending.conversation_id) {
-      const { error: proposalErr } = await userClient
+      const { error: proposalErr } = await pendingStateClient
         .from("agent_messages")
         .update({
           tool_calls: {
@@ -881,7 +881,9 @@ Deno.serve(async (req) => {
             pending_action_id: pending.id,
           },
         })
+        .eq("user_id", userId)
         .eq("conversation_id", pending.conversation_id)
+        .eq("role", "assistant")
         .contains("tool_calls", { pending_action_id: pending.id });
       if (proposalErr) {
         return errorResponse(
@@ -1004,7 +1006,7 @@ Deno.serve(async (req) => {
   const choices = proactiveChoices(resource);
   const assistantMessageId = crypto.randomUUID();
   if (followupText && pending.conversation_id) {
-    await userClient.from("agent_messages").insert({
+    await pendingStateClient.from("agent_messages").insert({
       id: assistantMessageId,
       conversation_id: pending.conversation_id,
       user_id: userId,

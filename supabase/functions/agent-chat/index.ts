@@ -1652,7 +1652,7 @@ async function handle(req: Request): Promise<Response> {
           },
         );
         // Log tool result as a tool message, then ask Gemini for a natural-language summary
-        await userClient
+        await serviceClient
           .from("agent_messages")
           .insert({
             conversation_id: conversationId,
@@ -1748,7 +1748,7 @@ async function handle(req: Request): Promise<Response> {
             }),
           );
           if (readInterruption) {
-            await userClient.from("agent_messages").insert({
+            await serviceClient.from("agent_messages").insert({
               conversation_id: conversationId,
               user_id: userId,
               role: "tool",

@@ -51,6 +51,32 @@ WHERE task_state IS NULL
 ALTER TABLE public.agent_messages
   ADD COLUMN IF NOT EXISTS client_turn_id uuid;
 
+-- Assistant/tool rows are server-owned inputs to Ari's reducer and
+-- confirmation machinery. Keep authenticated clients able to append their own
+-- untrusted user messages, but do not let caller authority reach persisted
+-- assistant choices or tool receipts. Conversation deletion still cascades its
+-- messages through the existing owner-scoped conversation policy.
+REVOKE INSERT, UPDATE, DELETE ON TABLE public.agent_messages FROM authenticated;
+GRANT INSERT ON TABLE public.agent_messages TO authenticated;
+
+DROP POLICY IF EXISTS "Owner can insert own agent messages"
+  ON public.agent_messages;
+DROP POLICY IF EXISTS "Owner can insert own user agent messages"
+  ON public.agent_messages;
+CREATE POLICY "Owner can insert own user agent messages"
+  ON public.agent_messages FOR INSERT TO authenticated
+  WITH CHECK (user_id = auth.uid() AND role = 'user');
+
+DROP POLICY IF EXISTS "Owner can update own agent messages"
+  ON public.agent_messages;
+DROP POLICY IF EXISTS "Owner can update own user agent messages"
+  ON public.agent_messages;
+
+DROP POLICY IF EXISTS "Owner can delete own agent messages"
+  ON public.agent_messages;
+DROP POLICY IF EXISTS "Owner can delete own user agent messages"
+  ON public.agent_messages;
+
 CREATE INDEX IF NOT EXISTS idx_agent_messages_conversation_client_turn
   ON public.agent_messages (conversation_id, client_turn_id)
   WHERE client_turn_id IS NOT NULL;

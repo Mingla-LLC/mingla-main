@@ -7,6 +7,10 @@ const files = {
     "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
   implementorPg:
     "supabase/migrations/__tests__/issue_1985_task_state_authority.implementor.pg17.test.sql",
+  messageRolePg:
+    "supabase/migrations/__tests__/issue_1985_message_role_authority.implementor.pg17.test.sql",
+  testerChoicePg:
+    "supabase/migrations/__tests__/issue_1985_choice_payload_authority.tester_round3.pg17.test.sql",
   state: "supabase/functions/_shared/agentConversationState.ts",
   time: "supabase/functions/_shared/agentRelativeTime.ts",
   planner: "supabase/functions/_shared/agentConversationPlanner.ts",
@@ -95,6 +99,23 @@ export function check(s) {
     failures.push(
       "authenticated conversation UPDATE is not narrowed to owner metadata",
     );
+  }
+  for (
+    const token of [
+      "REVOKE INSERT, UPDATE, DELETE ON TABLE public.agent_messages FROM authenticated;",
+      'CREATE POLICY "Owner can insert own user agent messages"',
+      "WITH CHECK (user_id = auth.uid() AND role = 'user');",
+    ]
+  ) {
+    if (!s.migration.includes(token)) {
+      failures.push(`message role authority missing ${token}`);
+    }
+  }
+  if (
+    s.migration.includes('CREATE POLICY "Owner can update own agent messages"') ||
+    s.migration.includes('CREATE POLICY "Owner can delete own agent messages"')
+  ) {
+    failures.push("authenticated assistant/tool message mutation policy returned");
   }
   for (
     const token of [
@@ -278,6 +299,27 @@ export function check(s) {
   }
   for (
     const token of [
+      'await serviceClient\n          .from("agent_messages")',
+      'await serviceClient.from("agent_messages").insert({',
+    ]
+  ) {
+    if (!s.chat.includes(token)) {
+      failures.push(`server-owned chat message writer missing ${token}`);
+    }
+  }
+  for (
+    const token of [
+      'await pendingStateClient\n        .from("agent_messages")\n        .update({',
+      '.eq("user_id", userId)\n        .eq("conversation_id", pending.conversation_id)\n        .eq("role", "assistant")',
+      'await pendingStateClient.from("agent_messages").insert({',
+    ]
+  ) {
+    if (!s.confirm.includes(token)) {
+      failures.push(`server-owned confirmation message writer missing ${token}`);
+    }
+  }
+  for (
+    const token of [
       "legitimate owner metadata update failed",
       "authenticated state RPC execution was accepted",
       "SET LOCAL ROLE service_role",
@@ -289,6 +331,32 @@ export function check(s) {
     if (!s.implementorPg.includes(token)) {
       failures.push(`implementor PG17 authority proof missing ${token}`);
     }
+  }
+  for (
+    const token of [
+      "legitimate user-message append failed",
+      "authenticated assistant update was accepted",
+      "authenticated assistant insert was accepted",
+      "authenticated assistant delete was accepted",
+      "service-owned assistant update lost canonical choice payload",
+    ]
+  ) {
+    if (!s.messageRolePg.includes(token)) {
+      failures.push(`implementor message-role proof missing ${token}`);
+    }
+  }
+  if (
+    !s.testerChoicePg.includes(
+      "authenticated assistant choice payload overwrite was accepted",
+    ) ||
+    s.workflow.split(
+        "issue_1985_choice_payload_authority.tester_round3.pg17.test.sql",
+      ).length - 1 !== 3 ||
+    s.workflow.split(
+        "issue_1985_message_role_authority.implementor.pg17.test.sql",
+      ).length - 1 !== 3
+  ) {
+    failures.push("message-role PG17 tester/implementor workflow wiring incomplete");
   }
   if (
     !s.choiceTest.includes(
@@ -456,6 +524,13 @@ if (process.argv.includes("--self-test")) {
     },
     {
       key: "migration",
+      from:
+        "REVOKE INSERT, UPDATE, DELETE ON TABLE public.agent_messages FROM authenticated;",
+      to:
+        "GRANT INSERT, UPDATE, DELETE ON TABLE public.agent_messages TO authenticated;",
+    },
+    {
+      key: "migration",
       from: ") TO service_role;",
       to: ") TO authenticated;",
     },
@@ -522,6 +597,11 @@ if (process.argv.includes("--self-test")) {
     },
     {
       key: "chat",
+      from: 'await serviceClient.from("agent_messages").insert({',
+      to: 'await userClient.from("agent_messages").insert({',
+    },
+    {
+      key: "chat",
       from: "TASK_REPLACED_BY_NEW_TASK",
       to: "REMOVED_TASK_REPLACEMENT",
     },
@@ -535,6 +615,11 @@ if (process.argv.includes("--self-test")) {
       key: "confirm",
       from: "client: pendingStateClient",
       to: "client: userClient",
+    },
+    {
+      key: "confirm",
+      from: 'await pendingStateClient.from("agent_messages").insert({',
+      to: 'await userClient.from("agent_messages").insert({',
     },
     { key: "confirm", from: "EDITED_REPLACEMENT:", to: "REMOVED_REPLACEMENT:" },
     {
@@ -568,6 +653,12 @@ if (process.argv.includes("--self-test")) {
       key: "deliveryTest",
       from: "reconcileAgentDeliveryMessages([server], [optimistic], [failed], true)",
       to: "reconcileAgentDeliveryMessages([server], [], [], true)",
+    },
+    {
+      key: "workflow",
+      from:
+        "issue_1985_message_role_authority.implementor.pg17.test.sql",
+      to: "removed_message_role_authority.implementor.pg17.test.sql",
     },
     {
       key: "typecheck",
