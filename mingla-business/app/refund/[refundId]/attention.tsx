@@ -1,10 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text } from "react-native";
+import { ActivityIndicator, StyleSheet, Text } from "react-native";
 import { useLocalSearchParams } from "expo-router";
 import { SourceRefundAttentionForm } from "../../../src/components/refunds/SourceRefundAttentionForm";
 import type { RefundBank } from "../../../src/components/refunds/SourceRefundAttentionForm";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { supabase } from "../../../src/services/supabase";
+import { ScrollView } from "../../../src/wrappers/SmartScrollView";
 
 function fragmentAttentionToken(): string {
   if (typeof window === "undefined") return "";
