@@ -3,11 +3,7 @@ import {
   assertEquals,
   assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
-import {
-  bindAgentProposalState,
-  findTool,
-  ToolError,
-} from "../agentTools.ts";
+import { bindAgentProposalState, findTool, ToolError } from "../agentTools.ts";
 
 const USER_ID = "20630000-0000-4000-8000-000000000001";
 const BRAND_ID = "20630000-0000-4000-8000-000000000002";
@@ -18,7 +14,9 @@ type RpcCall = { name: string; params: Record<string, unknown> };
 
 function thenableQuery(result: { data: unknown; error: unknown }) {
   const query: Record<string, unknown> = {};
-  for (const method of ["select", "eq", "is", "not", "order", "limit", "lt", "or"]) {
+  for (
+    const method of ["select", "eq", "is", "not", "order", "limit", "lt", "or"]
+  ) {
     query[method] = () => query;
   }
   query.maybeSingle = () => Promise.resolve(result);
@@ -29,7 +27,9 @@ function thenableQuery(result: { data: unknown; error: unknown }) {
   return query;
 }
 
-function clientFixture(options: { auditRows?: unknown[]; withScope?: boolean } = {}) {
+function clientFixture(
+  options: { auditRows?: unknown[]; withScope?: boolean } = {},
+) {
   const rpcCalls: RpcCall[] = [];
   const fromCalls: string[] = [];
   const client = {
@@ -260,11 +260,15 @@ Deno.test("#2063 discovery-currency state is a read-only finance-gated action", 
     { operationId: null },
   );
   assertEquals(
-    fixture.rpcCalls.filter((call) => call.name === "issue_1384_brand_currency_state").length,
+    fixture.rpcCalls.filter((call) =>
+      call.name === "issue_1384_brand_currency_state"
+    ).length,
     1,
   );
   assertEquals(
-    fixture.rpcCalls.some((call) => call.name === "ari_execute_brand_operation"),
+    fixture.rpcCalls.some((call) =>
+      call.name === "ari_execute_brand_operation"
+    ),
     false,
   );
 });
@@ -283,11 +287,15 @@ Deno.test("#2063 proposal preparation binds canonical currency state instead of 
   );
   assertEquals(bound.expected_state_version, 7);
   assertEquals(
-    fixture.rpcCalls.filter((call) => call.name === "issue_1384_brand_currency_state").length,
+    fixture.rpcCalls.filter((call) =>
+      call.name === "issue_1384_brand_currency_state"
+    ).length,
     1,
   );
   assertEquals(
-    fixture.rpcCalls.some((call) => call.name === "ari_execute_brand_operation"),
+    fixture.rpcCalls.some((call) =>
+      call.name === "ari_execute_brand_operation"
+    ),
     false,
   );
 });
