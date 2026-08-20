@@ -1,0 +1,27 @@
+{
+  "schema_version": 1,
+  "contract": "I-ARI-LEDGER-CERTIFICATION",
+  "domains": {
+    "account": { "cache_owner_id": "ari.account", "readback_owner": "agent_user_profile/auth.users", "dependency_issue": null },
+    "analytics": { "cache_owner_id": "ari.analytics", "readback_owner": "canonical analytics RPC for the capability", "dependency_issue": null },
+    "brands": { "cache_owner_id": "ari.brands", "readback_owner": "brands plus the capability-specific canonical brand owner", "dependency_issue": 2063 },
+    "events": { "cache_owner_id": "ari.events", "readback_owner": "business event management RPC/view", "dependency_issue": 1972 },
+    "experiences": { "cache_owner_id": "ari.experiences", "readback_owner": "experience event canonical management RPC/view", "dependency_issue": 1973 },
+    "growth": { "cache_owner_id": "ari.growth", "readback_owner": "growth tool run ledger", "dependency_issue": null },
+    "guests": { "cache_owner_id": "ari.guests", "readback_owner": "RSVP guest roster owner", "dependency_issue": 1977 },
+    "intelligence": { "cache_owner_id": "ari.intelligence", "readback_owner": "server intelligence result owner", "dependency_issue": null },
+    "marketing": { "cache_owner_id": "ari.marketing", "readback_owner": "campaign and delivery owner", "dependency_issue": null },
+    "media": { "cache_owner_id": "ari.media", "readback_owner": "canonical media attachment owner", "dependency_issue": null },
+    "notifications": { "cache_owner_id": "ari.notifications", "readback_owner": "notification preference and delivery owner", "dependency_issue": null },
+    "orders": { "cache_owner_id": "ari.orders", "readback_owner": "order/refund/installment canonical owner", "dependency_issue": null },
+    "payments": { "cache_owner_id": "ari.payments", "readback_owner": "payout/partner/payment canonical owner", "dependency_issue": null },
+    "people": { "cache_owner_id": "ari.people", "readback_owner": "Brand People canonical owner", "dependency_issue": null },
+    "rsvp": { "cache_owner_id": "ari.rsvp", "readback_owner": "RSVP draft/live/guest/contribution owner", "dependency_issue": 1977 },
+    "stays": { "cache_owner_id": "ari.stays", "readback_owner": "Stay quote/reservation/inventory owner", "dependency_issue": 1975 },
+    "support": { "cache_owner_id": "ari.support", "readback_owner": "support ticket owner", "dependency_issue": null },
+    "team": { "cache_owner_id": "ari.team", "readback_owner": "brand team/invitation/scanner owner", "dependency_issue": null },
+    "tickets": { "cache_owner_id": "ari.tickets", "readback_owner": "ticket tier/pricing owner", "dependency_issue": 1974 },
+    "trips": { "cache_owner_id": "ari.trips", "readback_owner": "Trip draft/live/booking owner", "dependency_issue": 1971 },
+    "venues": { "cache_owner_id": "ari.venues", "readback_owner": "venue listing/claim owner (#1978) plus availability/tables/waitlist/menu/SMS operations owner (#1979)", "dependency_issues": [1978, 1979] }
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://usemingla.com/contracts/ari-certification-digest-v1.json",
+  "contract": "ARI-CERT-TUPLE-V1",
+  "encoding": "UTF-8",
+  "tuple_format": "ARI-CERT-TUPLE-V1\\n<byteLength(kind)>:<kind>\\n<valueCount>\\n<encodedValue>...",
+  "scalar_format": {
+    "null": "-1:",
+    "text": "<UTF-8-byte-length>:<text>"
+  },
+  "digest": "SHA-256 lowercase hexadecimal",
+  "attestation": "HMAC-SHA-256 over the canonical attestation tuple",
+  "ordered_kinds": [
+    "scenario-evidence",
+    "capability-evidence",
+    "release-artifact",
+    "artifact-set",
+    "evidence-set",
+    "capability-set",
+    "native-artifact",
+    "native-artifact-set",
+    "cleanup",
+    "rollback",
+    "run-manifest",
+    "attestation"
+  ]
+}

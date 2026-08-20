@@ -1,0 +1,125 @@
+name: "Issue #2060 — Ari reliability foundation"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts"
+      - "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_foundation.test.ts"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_foundation.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_foundation.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_provenance.tester.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
+      - "mingla-business/src/services/agentReliability.ts"
+      - "mingla-business/src/services/__tests__/agentReliability.issue2060.test.ts"
+      - "mingla-business/src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - "docs/contracts/ari-certification-*.json"
+      - "docs/contracts/ari-observability.json"
+      - "docs/contracts/ari-pass5-integration-seams.json"
+      - "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md"
+      - "scripts/ari/**"
+      - ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs"
+      - ".github/workflows/issue-2060-ari-reliability.yml"
+  push:
+    branches: ["**"]
+    paths:
+      - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts"
+      - "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_foundation.test.ts"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_foundation.tester_adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_foundation.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_provenance.tester.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
+      - "mingla-business/src/services/agentReliability.ts"
+      - "mingla-business/src/services/__tests__/agentReliability.issue2060.test.ts"
+      - "mingla-business/src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - "docs/contracts/ari-certification-*.json"
+      - "docs/contracts/ari-observability.json"
+      - "docs/contracts/ari-pass5-integration-seams.json"
+      - "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md"
+      - "scripts/ari/**"
+      - ".github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs"
+      - ".github/workflows/issue-2060-ari-reliability.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  reliability-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Edge reliability type and unit contracts
+        run: |
+          deno fmt --check supabase/functions/_shared/agentReliability.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts
+          deno check supabase/functions/_shared/agentReliability.ts
+          deno test supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts
+      - name: Certification migration contract
+        run: deno test --allow-read supabase/migrations/__tests__/issue_2060_ari_certification_foundation.test.ts
+      - name: 116-row exact-release certification harness
+        run: node --test scripts/ari/__tests__/certify-capabilities.issue2060.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.canonical-digest.implementor.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.tester.adversarial.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.tester.attestation-completeness.test.mjs scripts/ari/__tests__/certify-capabilities.issue2060.unicode-boundary.tester.adversarial.test.mjs
+      - name: Permanent #2060 invariant gate
+        run: |
+          node .github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs --self-test
+          node .github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs
+      - name: Business recovery state machine
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npx jest --runInBand src/services/__tests__/agentReliability.issue2060.test.ts src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts
+          npx tsc --noEmit --pretty false --target es2021 --module commonjs --strict --skipLibCheck src/services/agentReliability.ts
+
+  reliability-certification-pg17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply, reapply, and adversarially verify the certification migration
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          for attempt in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -Atc "SELECT to_regrole('service_role') IS NOT NULL" 2>/dev/null | grep -qx t; then break; fi
+            sleep 1
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_foundation.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_foundation.tester_adversarial.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_provenance.tester.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_independent_verdict.tester.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_cross_runtime.tester.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql

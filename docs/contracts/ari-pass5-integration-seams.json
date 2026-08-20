@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "issue": 2060,
+  "seams": [
+    {
+      "id": "task_state_and_client_turn",
+      "owner_issue": 1985,
+      "state": "dependency_pending",
+      "required_symbols": [
+        "client_turn_id",
+        "claim_agent_first_turn",
+        "commit_agent_task_assistant_turn"
+      ],
+      "consumer_after_merge": "agent-chat and useAgentChat import the #2060 reliability envelope/recovery helpers without redefining task state"
+    },
+    {
+      "id": "atomic_execution_receipt",
+      "owner_issue": 1972,
+      "state": "dependency_pending",
+      "required_symbols": [
+        "agent_operation_receipts",
+        "agent_operation_receipt_begin",
+        "agent_operation_receipt_complete"
+      ],
+      "consumer_after_merge": "agent-confirm-action aliases pending action id as execution_id and finalizes only through the receipt plus canonical readback seam"
+    },
+    {
+      "id": "brand_domain_readback",
+      "owner_issue": 2063,
+      "state": "dependency_pending",
+      "required_symbols": [
+        "ari_execute_brand_operation"
+      ],
+      "consumer_after_merge": "brand certification adapter supplies the canonical readback reference and query-key owner"
+    },
+    {
+      "id": "venue_operations_readback",
+      "owner_issue": 1979,
+      "state": "dependency_pending",
+      "required_symbols": [
+        "ari.venue.manage_availability",
+        "tables_waitlist_menu_sms_operation_receipts"
+      ],
+      "consumer_after_merge": "venue availability, tables, waitlist, menu, and SMS certification adapters use #1979 canonical executor/readback ownership; listing and claims remain #1978"
+    }
+  ],
+  "forbidden_competing_owners": [
+    "a second Ari task-state table",
+    "a second generic atomic domain receipt",
+    "Pass 4 domain business logic inside issue #2060"
+  ]
+}
