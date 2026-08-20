@@ -1,0 +1,62 @@
+name: issue-1971-ari-trip-lifecycle
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270502001971_issue_1971_ari_trip_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue_1971_*"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/__tests__/issue_1971_*"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/intakeSchemaService.ts"
+      - "mingla-business/src/hooks/useTrips.ts"
+      - "mingla-business/src/hooks/useIntakeSchema.ts"
+      - ".github/scripts/strict-grep/issue-1971-trip-lifecycle.mjs"
+      - ".github/workflows/issue-1971-ari-trip-lifecycle.yml"
+
+jobs:
+  deno-and-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - run: node .github/scripts/strict-grep/issue-1971-trip-lifecycle.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-1971-trip-lifecycle.mjs
+      - run: >-
+          deno test --allow-read
+          supabase/functions/_shared/__tests__/issue_1971_ari_trips.test.ts
+          supabase/migrations/__tests__/issue_1971_trip_lifecycle.test.ts
+
+  postgres-17-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-1971
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply full migration chain and run executable tester guards
+        env:
+          PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-1971
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' migration; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1971_trip_receipt_actor.tester_adversarial.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1971_business_live_patch_compat.tester.pg17.test.sql
