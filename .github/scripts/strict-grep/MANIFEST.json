@@ -8704,6 +8704,19 @@
       "jobKeys": [
         "merged-main-manifest-awareness"
       ]
+    },
+    {
+      "script": ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2207-manifest-merge-awareness.yml",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "merged-main-manifest-awareness"
+      ]
     }
   ]
 }

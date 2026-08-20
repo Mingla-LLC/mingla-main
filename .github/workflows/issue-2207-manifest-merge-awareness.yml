@@ -5,11 +5,13 @@ on:
     branches: [main]
     paths:
       - ".github/scripts/strict-grep/**"
+      - ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs"
       - ".github/workflows/issue-2207-manifest-merge-awareness.yml"
   push:
     branches: [main]
     paths:
       - ".github/scripts/strict-grep/**"
+      - ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs"
       - ".github/workflows/issue-2207-manifest-merge-awareness.yml"
 
 permissions:
@@ -38,6 +40,8 @@ jobs:
         run: npm install --no-save yaml
       - name: Prove merge-aware regression behavior
         run: node --test .github/scripts/strict-grep/__tests__/issue-2207-manifest-merge-awareness.test.js
+      - name: Prove merged-checkout workflow contract
+        run: node --test .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs
       - name: Prove META-1383 hostile fixtures
         run: node .github/scripts/strict-grep/meta-1383-manifest-parity.mjs --self-test
       - name: Check the exact combined checkout
