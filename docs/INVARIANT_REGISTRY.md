@@ -1,5 +1,32 @@
 # Invariant Registry
 
+## ACTIVE — issues #2264 / #2265 / #2253 (the buyer was told nothing, then told something false)
+
+### I-2264-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED (ACTIVE)
+- **Rule:** Every caller of `ticket-checkout-status` consumes its TERMINAL verdict, not only `order.orderId`. A response typed narrowly enough that `{status:"failed", error:"paystack_charge_abandoned"}` is indistinguishable from "no order yet" is a discarded answer, and it costs the buyer the full poll budget followed by a message that is not true.
+- **Enforcement:** `scripts/ci/check-checkout-status-consumers.sh`, wired into the class-D lane with `--self-test` running FIRST, plus `issue_2264_checkout_outcome_honesty.test.ts` and the tester-owned hostile-input suite. Scope is honest and bounded: the gate registers `ticket-checkout-status` callers only — the reservation and venue-ordering rails are #2289, not this.
+- **Status:** ACTIVE after tester FAIL → rework → all conditions cleared, hardware confirmation by Seth on the 1.1.5 OTA (2026-08-19), and verified merge of PR #2288.
+
+### I-2265-CHECKOUT-PENDING-SURFACE-SURVIVES (ACTIVE)
+- **Rule:** From the moment a buyer commits until there is an outcome, the surface they committed on stays up and visibly says so, and cannot be dismissed by ANY route. `BaseBottomSheet` dismisses by four: the close button and the backdrop go through props; hardware-back and `onRequestClose` call `onClose()` DIRECTLY and never touch a prop. A guard that pins only the prop routes leaves Android hardware-back able to kill a pending sheet while staying green.
+- **Enforcement:** `issue_2265_pending_surface_survives.test.ts` pinning all four routes individually, plus the runtime-proven swipe refusal. The pending state itself was already built at `TicketCartSheet.tsx:910` and had never rendered a frame in production because `setCartVisible(false)` ran one line before `handleBuy`.
+- **Status:** ACTIVE after hardware confirmation and verified merge of PR #2288.
+
+### I-2253-NATIVE-CHECKOUT-SINGLE-FLIGHT (ACTIVE)
+- **Rule:** `useNativeCheckoutFlow` refuses a second concurrent call for the same cart ON ITS OWN. Safety does not depend on every screen remembering to guard it — that arrangement is what produced #2242 (a five-site migration that moved four) and #2227 (five call sites, four never run on iOS).
+- **Enforcement:** T-12 calls the returned function twice **directly, with no screen and no component**, and asserts exactly one `ticket-checkout-create`. Verified against real production rows: a full paid journey produced one session; a UI rapid double-tap produced zero extras.
+- **Status:** ACTIVE after verified merge of PR #2288.
+
+### I-2264-NATIVE-CHECKOUT-ERRORS-TOTAL-MAPPER (ACTIVE)
+- **Rule:** The return-leg mapper is TOTAL against hostile input, not merely against expected input. A lookup table carrying `Object.prototype` returns a Function for `toString`, `constructor`, `valueOf` and `__proto__`, which `?? fallback` cannot catch. Tables reached by an untrusted key are `Object.create(null)` AND own-property guarded — the guard fixes the call site, the missing prototype fixes every one added later.
+- **Enforcement:** `issue_2264_checkout_outcome_honesty.test.ts` T-2 covering ten prototype keys behaviourally, the tester's `issue_2264_return_leg_hostile_inputs.tester_adversarial.test.ts`, and a parity assertion pinning that neither the consumer nor business mapper resolves anything it does not own.
+- **Status:** ACTIVE after rework and verified merge of PR #2288. The repo had already written this trap down — #2229's adversarial suite warns of it in the same module — and we walked into it one function further down the same file, out of the pin's reach.
+
+### I-PROPOSED-PAYSTACK-ABANDONED-ONLY-AFTER-BROWSER-CLOSES (DRAFT — owned by #2250)
+- **Rule:** Paystack records a transaction as `abandoned` from initialize onward, BEFORE the buyer types anything. So a poll running CONCURRENTLY with an open browser must never honour the terminal abandoned token — it would tell a buyer mid-payment that they walked away. This repo's own bank transfer (`06fd4518…`, created 01:37:50, paid 01:41:05) is a 3m15s window of exactly that exposure.
+- **Enforcement:** Protective comment planted at both poll sites, pinned by source position rather than by comment text. Flips ACTIVE with #2250, which cannot restructure auto-close without honouring it.
+- **Status:** DRAFT. Runtime-supported: T-19 confirmed a Transfer buyer who closes the browser is NOT told they left, because Paystack held the charge non-terminal throughout. USSD and Bank channels remain unfired.
+
 ## ACTIVE — issues #2242 / #2227 / #2229 (Explorer buyers could not load tickets from a link, and could not pay at all)
 
 ### I-2242-CART-READS-THE-SCREENS-TICKET-SOURCE (ACTIVE)
