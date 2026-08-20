@@ -1,0 +1,56 @@
+name: Issue 2321 account deletion truth
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/accountDeletionSides.ts"
+      - "supabase/functions/delete-user/**"
+      - "supabase/functions/_shared/__tests__/issue_2321_*"
+      - "app-mobile/src/components/profile/AccountSettings.tsx"
+      - "app-mobile/src/components/profile/__tests__/issue_2321_*"
+      - "app-mobile/src/i18n/locales/*/settings.json"
+      - "mingla-business/app/account/delete.tsx"
+      - "mingla-business/app/account/__tests__/issue_2321_*"
+      - "mingla-business/src/hooks/useAccountDeletion.ts"
+      - ".github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs"
+      - ".github/workflows/issue-2321-account-deletion-tests.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/accountDeletionSides.ts"
+      - "supabase/functions/delete-user/**"
+      - "supabase/functions/_shared/__tests__/issue_2321_*"
+      - "app-mobile/src/components/profile/AccountSettings.tsx"
+      - "app-mobile/src/components/profile/__tests__/issue_2321_*"
+      - "app-mobile/src/i18n/locales/*/settings.json"
+      - "mingla-business/app/account/delete.tsx"
+      - "mingla-business/app/account/__tests__/issue_2321_*"
+      - "mingla-business/src/hooks/useAccountDeletion.ts"
+      - ".github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs"
+      - ".github/workflows/issue-2321-account-deletion-tests.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  account-deletion-contract:
+    name: "#2321 deletion contract — implementor + tester guards"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - name: Execute both implementor guards and the tester adversarial guard
+        run: >-
+          deno test --no-check --allow-read
+          supabase/functions/_shared/__tests__/issue_2321_account_deletion_sides.implementor.happy.test.ts
+          app-mobile/src/components/profile/__tests__/issue_2321_retained_branch_cannot_claim_deleted.implementor.happy.test.ts
+          mingla-business/app/account/__tests__/issue_2321_business_retained_copy.tester.adversarial.test.ts
+      - name: Execute the invariant gate in both modes
+        run: |
+          node .github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs --self-test
+          node .github/scripts/strict-grep/issue-2321-retained-auth-cannot-claim-deleted.mjs
+      - name: Keep the original dual-side contract live
+        run: node app-mobile/scripts/ci/orch-1240-dual-account-deletion-check.mjs
