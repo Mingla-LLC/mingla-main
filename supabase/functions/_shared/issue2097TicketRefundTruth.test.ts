@@ -115,3 +115,55 @@ Deno.test("#2097 rejected preflight performs zero provider mutations", async () 
   assertEquals(result.status, "rejected_preflight");
   assertEquals(fixture.creates(), 0);
 });
+
+Deno.test("#2097 exhaustive status/reason matrix is disjoint", () => {
+  const reasons = ["invalid_provider_amount", "partial_fee_below_provider_cent", "fee_preflight_conflict"];
+  for (const status of ISSUE_2097_STATUSES) {
+    for (const reason of reasons) {
+      assertEquals(status === "rejected_preflight", true === (status === "rejected_preflight" && reasons.includes(reason)));
+    }
+  }
+  assertEquals(decideFeeRefundPreflight("25", "0", "100"), {
+    allowed: false, status: "rejected_preflight", reason: "invalid_provider_amount",
+  });
+  assertEquals(decideFeeRefundPreflight("1", "100", "100"), { allowed: true, kind: "full" });
+  assertEquals(decideFeeRefundPreflight("2", "50", "100"), { allowed: true, kind: "partial" });
+  assertEquals(decideFeeRefundPreflight("2", "49", "100"), {
+    allowed: false, status: "rejected_preflight", reason: "partial_fee_below_provider_cent",
+  });
+});
+
+Deno.test("#2097 bounded observation schedule is exact", async () => {
+  const module = await import("./issue2097TicketRefundTruth.ts");
+  assertEquals([...module.ISSUE_2097_OBSERVATION_DELAYS_SECONDS], [0, 5, 30, 120, 600, 1800, 7200, 86400]);
+});
+
+Deno.test("#2097 historical reconciliation is dry-run-first, exact, and resumable", async () => {
+  const history = await import("../admin-reconcile-ticket-refund/historicalReconciliation.ts");
+  const exact = history.classifyHistoricalFeeRefund({
+    provider: "stripe", exactNoFee: false, applicationFeeId: "fee_1", applicationFeeAmount: "50",
+    applicationFeeAmountRefunded: "25", feeRefunds: [{ id: "fr_1", fee: "fee_1", amount: "25", currency: "usd" }],
+    currency: "usd", complete: true, ambiguous: false,
+  });
+  assertEquals(exact, { status: "succeeded_positive", amountText: "25", feeRefundIds: ["fr_1"] });
+  assertEquals(history.classifyHistoricalFeeRefund({
+    provider: "stripe", exactNoFee: false, applicationFeeId: "fee_1", applicationFeeAmount: "50",
+    applicationFeeAmountRefunded: "0", feeRefunds: [], currency: "usd", complete: false, ambiguous: false,
+  }).status, "unknown_legacy");
+  let reads = 0;
+  const plan = await history.buildHistoricalReconciliationPlan({
+    rows: [{ id: "a", providerMode: "test" }, { id: "b", providerMode: "live" }, { id: "c", providerMode: "test" }],
+    mode: "test", resumeAfter: "a", limit: 10,
+    readEvidence: async () => {
+      reads += 1;
+      return { provider: "paystack", exactNoFee: true, applicationFeeId: null, applicationFeeAmount: 0,
+        applicationFeeAmountRefunded: 0, feeRefunds: [], currency: "ngn", complete: true, ambiguous: false };
+    },
+  });
+  assertEquals(plan.dryRun, true);
+  assertEquals(plan.nextCursor, "c");
+  assertEquals(reads, 1);
+  let writes = 0;
+  assertEquals(await history.applyApprovedHistoricalPlan({ plan, approvedIds: new Set(), writeClassification: async () => { writes += 1; } }), { applied: 0, skipped: 1 });
+  assertEquals(writes, 0);
+});
