@@ -56,19 +56,21 @@ describe("ORCH-0859 — useTrips structural contract", () => {
     expect(useTripsSource).toMatch(/export const useTrip\b/);
   });
 
-  test("tripsService.publishTrip calls business_publish_trip_draft RPC (NOT event RPC)", () => {
-    // [TEST-MOD-APPROVED #1719] Pin the new atomic poster wrapper instead of
-    // the retired direct entry point; the event/trip separation is unchanged.
+  test("tripsService.publishTrip calls the canonical trip command (NOT event RPC)", () => {
+    // [TEST-MOD-APPROVED #1971] The command loads the persisted graph and
+    // delegates to the proven poster wrapper inside the database transaction.
     expect(tripsServiceSource).toMatch(
-      /supabase\.rpc\(\s*"issue_1719_publish_trip_with_poster"/,
+      /supabase\.rpc\(\s*"biz_publish_trip_command"/,
     );
     expect(tripsServiceSource).not.toMatch(
       /supabase\.rpc\(\s*"business_publish_event_draft"/,
     );
   });
 
-  test("tripsService.createTripDraft inserts event_type='trip'", () => {
-    expect(tripsServiceSource).toMatch(/event_type:\s*"trip"/);
+  test("tripsService.createTripDraft enters the canonical trip command", () => {
+    expect(tripsServiceSource).toMatch(
+      /supabase\.rpc\(\s*"biz_create_trip_draft"/,
+    );
   });
 
   test("tripKeys are immutable readonly literal tuples (cache discipline)", () => {

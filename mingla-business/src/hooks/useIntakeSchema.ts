@@ -22,6 +22,7 @@ import {
   type IntakeSchema,
   type IntakeSchemaServiceError,
 } from "../services/intakeSchemaService";
+import { getTripRevision, newTripOperationId } from "../services/tripsService";
 
 // ---------------------------------------------------------------------------
 // Query keys
@@ -69,6 +70,8 @@ interface UpsertIntakeSchemaInput {
   reason?: string;
   /** Optimisation hint when caller already knows draft state. */
   skipStatusProbe?: boolean;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }
 
 /**
@@ -93,14 +96,12 @@ export function useUpsertTripIntakeSchema(): UseMutationResult<
 > {
   const qc = useQueryClient();
   return useMutation<void, IntakeSchemaServiceError, UpsertIntakeSchemaInput>({
-    mutationFn: ({ eventId, ticketTypeId, schema, reason, skipStatusProbe }) =>
-      upsertTripIntakeSchema({
-        eventId,
-        ticketTypeId,
-        schema,
-        reason,
-        skipStatusProbe,
-      }),
+    mutationFn: async (input) => {
+      if (!input.operationId) input.operationId = newTripOperationId();
+      if (!input.expectedUpdatedAt)
+        input.expectedUpdatedAt = await getTripRevision(input.eventId);
+      return upsertTripIntakeSchema(input);
+    },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({
         queryKey: intakeSchemaKeys.byEvent(vars.eventId),

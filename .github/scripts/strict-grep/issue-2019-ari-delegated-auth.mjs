@@ -14,8 +14,8 @@ const sources = {
 function check(s) {
   const failures = [];
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
-  // [TEST-MOD-APPROVED #1972] discard_event_draft is the 65th real tool.
-  if (declarationCount !== 65) failures.push(`expected 65 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1971] five trip graph/read tools bring the registry to 70.
+  if (declarationCount !== 70) failures.push(`expected 70 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

@@ -33,15 +33,16 @@ const read = (rel: string): string =>
   readFileSync(join(REPO_ROOT, rel), "utf8");
 
 describe("ORCH-1119 — trip-day media persistence (draft path)", () => {
-  test("upsertTripDays INSERT row object includes a media key", () => {
+  test("upsertTripDays passes complete day objects to the canonical graph command", () => {
     const src = read("mingla-business/src/services/tripsService.ts");
-    // The INSERT-row map literal in upsertTripDays must carry media. Reverting
-    // this to the prior `stops: []`-only literal removes the `media:` key and
-    // fails this assertion.
     const upsertIdx = src.indexOf("export async function upsertTripDays");
     expect(upsertIdx).toBeGreaterThan(-1);
     const upsertBody = src.slice(upsertIdx, upsertIdx + 1200);
-    expect(upsertBody).toMatch(/media:\s*d\.media\s*\?\?\s*\[\]/);
+    expect(upsertBody).toMatch(/applyTripDraftCommand\(\s*eventId,\s*\{ days \}/);
+    const commandSql = read(
+      "supabase/migrations/20270502001971_issue_1971_ari_trip_lifecycle.sql",
+    );
+    expect(commandSql).toContain("COALESCE(v_item->'media','[]')");
   });
 });
 
@@ -84,14 +85,14 @@ describe("ORCH-1119 — upload service rejects over-cap + unsupported (SC-3)", (
   });
   test("every returned item carries an explicit image|video type", () => {
     // The renderer never auto-detects (ORCH-1069/0978).
-    expect(svc).toMatch(/type:\s*isVideoMime\(contentType\)\s*\?\s*"video"\s*:\s*"image"/);
+    expect(svc).toMatch(
+      /type:\s*isVideoMime\(contentType\)\s*\?\s*"video"\s*:\s*"image"/,
+    );
   });
 });
 
 describe("ORCH-1119 — change-summary is media-aware (additive)", () => {
-  const baseOldDay = (
-    media: TripDay["media"],
-  ): TripDay => ({
+  const baseOldDay = (media: TripDay["media"]): TripDay => ({
     id: "d1",
     eventId: "e1",
     ordinal: 1,
@@ -124,7 +125,12 @@ describe("ORCH-1119 — change-summary is media-aware (additive)", () => {
     const same = [{ url: "https://x/a.jpg", type: "image" as const }];
     const old: TripDay[] = [baseOldDay(same)];
     const next: TripDayInput[] = [
-      { ordinal: 1, title: "Arrival", narrative: "Settle in", media: [...same] },
+      {
+        ordinal: 1,
+        title: "Arrival",
+        narrative: "Settle in",
+        media: [...same],
+      },
     ];
     expect(computeTripDayDiffs(old, next)).toHaveLength(0);
   });

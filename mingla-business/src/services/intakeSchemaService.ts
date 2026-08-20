@@ -32,6 +32,7 @@
  */
 
 import { supabase } from "./supabase";
+import { newTripOperationId } from "./tripsService";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -161,35 +162,79 @@ function mapPgError(error: unknown): IntakeSchemaServiceError {
 
   if (lower.includes("i-proposed-tr5-intake-schema-valid-at-write")) {
     if (lower.includes("duplicate question id")) {
-      return makeError("schema_duplicate_question_id", "Each question must have a unique ID.", message);
+      return makeError(
+        "schema_duplicate_question_id",
+        "Each question must have a unique ID.",
+        message,
+      );
     }
     if (lower.includes("duplicate question position")) {
-      return makeError("schema_duplicate_position", "Each question position must be unique.", message);
+      return makeError(
+        "schema_duplicate_position",
+        "Each question position must be unique.",
+        message,
+      );
     }
     if (lower.includes("max 20 questions")) {
-      return makeError("schema_question_count_invalid", "Maximum 20 questions per intake form.", message);
+      return makeError(
+        "schema_question_count_invalid",
+        "Maximum 20 questions per intake form.",
+        message,
+      );
     }
     if (lower.includes("question label must be 1-200 chars")) {
-      return makeError("schema_label_invalid", "Question label must be 1-200 characters.", message);
+      return makeError(
+        "schema_label_invalid",
+        "Question label must be 1-200 characters.",
+        message,
+      );
     }
     if (lower.includes("choice questions must have 2-10 options")) {
-      return makeError("schema_choice_options_invalid", "Choice questions must have 2-10 options.", message);
+      return makeError(
+        "schema_choice_options_invalid",
+        "Choice questions must have 2-10 options.",
+        message,
+      );
     }
     if (lower.includes("file_upload max_files must be 1-5")) {
-      return makeError("schema_file_upload_max_files_invalid", "File-upload questions allow 1-5 files max.", message);
+      return makeError(
+        "schema_file_upload_max_files_invalid",
+        "File-upload questions allow 1-5 files max.",
+        message,
+      );
     }
     if (lower.includes("question type must be one of")) {
-      return makeError("schema_type_invalid", "Unsupported question type.", message);
+      return makeError(
+        "schema_type_invalid",
+        "Unsupported question type.",
+        message,
+      );
     }
-    return makeError("schema_invalid", "Intake form schema is invalid.", message);
+    return makeError(
+      "schema_invalid",
+      "Intake form schema is invalid.",
+      message,
+    );
   }
-  if (lower.includes("permission") || lower.includes("rls") || lower.includes("not_authorized")) {
-    return makeError("unauthorized", "You don't have permission to update this trip's intake form.", message);
+  if (
+    lower.includes("permission") ||
+    lower.includes("rls") ||
+    lower.includes("not_authorized")
+  ) {
+    return makeError(
+      "unauthorized",
+      "You don't have permission to update this trip's intake form.",
+      message,
+    );
   }
   if (lower.includes("not found")) {
     return makeError("not_found", "Trip or tier not found.", message);
   }
-  return makeError("internal_error", "Couldn't save intake form. Try again.", message);
+  return makeError(
+    "internal_error",
+    "Couldn't save intake form. Try again.",
+    message,
+  );
 }
 
 function mapRpcResponse(
@@ -200,15 +245,27 @@ function mapRpcResponse(
   if (ok) return null;
   switch (reason) {
     case "missing_edit_reason":
-      return makeError("edit_reason_required", "Reason for change is required (10-200 characters).");
+      return makeError(
+        "edit_reason_required",
+        "Reason for change is required (10-200 characters).",
+      );
     case "invalid_edit_reason":
-      return makeError("edit_reason_invalid_length", "Reason must be 10-200 characters.");
+      return makeError(
+        "edit_reason_invalid_length",
+        "Reason must be 10-200 characters.",
+      );
     case "trip_not_found":
       return makeError("not_found", "Trip not found.");
     case "trip_not_editable_status":
-      return makeError("trip_not_editable_status", "This trip's status doesn't allow edits.");
+      return makeError(
+        "trip_not_editable_status",
+        "This trip's status doesn't allow edits.",
+      );
     case "intake_schema_unknown_ticket_type":
-      return makeError("ticket_type_unknown", "That tier doesn't exist on this trip.");
+      return makeError(
+        "ticket_type_unknown",
+        "That tier doesn't exist on this trip.",
+      );
     case "intake_schema_missing_ticket_type_id":
       return makeError(
         "ticket_type_unknown",
@@ -216,7 +273,12 @@ function mapRpcResponse(
       );
     case "invalid_intake_schema":
     case "invalid_intake_schemas_payload":
-      return makeError("schema_invalid", "Intake form schema failed validation.", undefined, reason);
+      return makeError(
+        "schema_invalid",
+        "Intake form schema failed validation.",
+        undefined,
+        reason,
+      );
     default:
       return makeError(
         "rpc_rejected",
@@ -318,8 +380,11 @@ export async function upsertTripIntakeSchema(args: {
   /** Caller's hint to skip the status probe; only set true when caller already
    * knows the trip is in draft state. */
   skipStatusProbe?: boolean;
+  operationId?: string;
+  expectedUpdatedAt?: string;
 }): Promise<void> {
   const { eventId, ticketTypeId, schema, reason, skipStatusProbe } = args;
+  const operationId = args.operationId ?? newTripOperationId();
   if (!eventId || !ticketTypeId) {
     throw makeError("not_found", "Trip or tier not found.");
   }
@@ -332,10 +397,11 @@ export async function upsertTripIntakeSchema(args: {
 
   // Status probe: decide direct-write vs RPC route.
   let isPublished = false;
+  let currentRevision: string | null = null;
   if (!skipStatusProbe) {
     const { data: statusRow, error: statusErr } = await supabase
       .from("events")
-      .select("status")
+      .select("status,updated_at")
       .eq("id", eventId)
       .eq("event_type", "trip")
       .maybeSingle();
@@ -344,7 +410,9 @@ export async function upsertTripIntakeSchema(args: {
     if (statusRow === null) {
       throw makeError("not_found", "Trip not found.");
     }
-    isPublished = statusRow.status === "scheduled" || statusRow.status === "live";
+    isPublished =
+      statusRow.status === "scheduled" || statusRow.status === "live";
+    currentRevision = statusRow.updated_at as string | null;
   }
 
   if (isPublished) {
@@ -358,15 +426,15 @@ export async function upsertTripIntakeSchema(args: {
     }
 
     const { data: rpcResult, error: rpcErr } = await supabase.rpc(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       {
         p_event_id: eventId,
         p_patch: {
-          intake_schemas: [
-            { ticket_type_id: ticketTypeId, schema },
-          ],
+          intake_schemas: [{ ticket_type_id: ticketTypeId, schema }],
         },
         p_reason: trimmedReason,
+        p_expected_updated_at: args.expectedUpdatedAt ?? currentRevision,
+        p_operation_id: operationId,
       },
     );
 
@@ -379,51 +447,21 @@ export async function upsertTripIntakeSchema(args: {
     return;
   }
 
-  // Draft path: direct upsert per RLS policy.
-  // I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED: chain .select("id").maybeSingle()
-  // — but use .upsert() return rows directly since onConflict requires no
-  // separate .select.
-  if (schema === null) {
-    // Clear the tier's schema = DELETE the row.
-    const { data, error } = await supabase
-      .from("trip_intake_schemas")
-      .delete()
-      .eq("event_id", eventId)
-      .eq("ticket_type_id", ticketTypeId)
-      .select("id")
-      .maybeSingle();
-
-    if (error) throw mapPgError(error);
-    // Delete with no row is fine (idempotent — already cleared). Don't throw
-    // not_found here; that would noisy the planner if they delete twice.
-    void data;
-    return;
-  }
-
-  // Upsert with schema_version_id from the schema payload (planner mints new
-  // UUIDs client-side on every "Save question" tap for cache-busting).
-  const { data, error } = await supabase
-    .from("trip_intake_schemas")
-    .upsert(
-      {
-        event_id: eventId,
-        ticket_type_id: ticketTypeId,
-        schema,
-        schema_version_id: schema.schema_version_id,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "event_id,ticket_type_id" },
-    )
-    .select("id")
+  const revision = await supabase
+    .from("events")
+    .select("updated_at")
+    .eq("id", eventId)
+    .eq("event_type", "trip")
     .maybeSingle();
-
+  if (revision.error) throw mapPgError(revision.error);
+  if (!revision.data) throw makeError("not_found", "Trip not found.");
+  const { error } = await supabase.rpc("biz_apply_trip_draft_graph", {
+    p_event_id: eventId,
+    p_patch: { intake_schemas: [{ ticket_type_id: ticketTypeId, schema }] },
+    p_expected_updated_at: args.expectedUpdatedAt ?? revision.data.updated_at,
+    p_operation_id: operationId,
+  });
   if (error) throw mapPgError(error);
-  if (data === null) {
-    throw makeError(
-      "unauthorized",
-      "Couldn't save intake form — permission denied.",
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -456,15 +494,24 @@ export function validateIntakeSchemaClient(
       return makeError("schema_invalid", "Each question must have a valid ID.");
     }
     if (seenIds.has(q.id)) {
-      return makeError("schema_duplicate_question_id", "Each question must have a unique ID.");
+      return makeError(
+        "schema_duplicate_question_id",
+        "Each question must have a unique ID.",
+      );
     }
     seenIds.add(q.id);
 
     if (!Number.isInteger(q.position) || q.position < 0) {
-      return makeError("schema_invalid", "Question position must be a non-negative integer.");
+      return makeError(
+        "schema_invalid",
+        "Question position must be a non-negative integer.",
+      );
     }
     if (seenPositions.has(q.position)) {
-      return makeError("schema_duplicate_position", "Each question position must be unique.");
+      return makeError(
+        "schema_duplicate_position",
+        "Each question position must be unique.",
+      );
     }
     seenPositions.add(q.position);
 
@@ -486,15 +533,28 @@ export function validateIntakeSchemaClient(
       q.label.length === 0 ||
       q.label.length > 200
     ) {
-      return makeError("schema_label_invalid", "Question label must be 1-200 characters.");
+      return makeError(
+        "schema_label_invalid",
+        "Question label must be 1-200 characters.",
+      );
     }
     if (typeof q.required !== "boolean") {
-      return makeError("schema_invalid", "Question 'required' flag must be true or false.");
+      return makeError(
+        "schema_invalid",
+        "Question 'required' flag must be true or false.",
+      );
     }
 
     if (q.type === "single_choice" || q.type === "multi_choice") {
-      if (!Array.isArray(q.options) || q.options.length < 2 || q.options.length > 10) {
-        return makeError("schema_choice_options_invalid", "Choice questions must have 2-10 options.");
+      if (
+        !Array.isArray(q.options) ||
+        q.options.length < 2 ||
+        q.options.length > 10
+      ) {
+        return makeError(
+          "schema_choice_options_invalid",
+          "Choice questions must have 2-10 options.",
+        );
       }
     }
     if (q.type === "file_upload") {
@@ -588,14 +648,20 @@ export function validateAnswerAgainstSchema(
     }
     if (q.type === "single_choice" && typeof answer === "string") {
       if (!q.options?.includes(answer)) {
-        errors.push({ question_id: q.id, error: "Pick one of the listed options." });
+        errors.push({
+          question_id: q.id,
+          error: "Pick one of the listed options.",
+        });
       }
     }
     if (q.type === "multi_choice" && Array.isArray(answer)) {
       const allowed = new Set(q.options ?? []);
       for (const v of answer) {
         if (typeof v !== "string" || !allowed.has(v)) {
-          errors.push({ question_id: q.id, error: "One or more selections aren't in the options list." });
+          errors.push({
+            question_id: q.id,
+            error: "One or more selections aren't in the options list.",
+          });
           break;
         }
       }
@@ -603,7 +669,10 @@ export function validateAnswerAgainstSchema(
     if (q.type === "file_upload" && Array.isArray(answer)) {
       const max = q.max_files ?? 1;
       if (answer.length > max) {
-        errors.push({ question_id: q.id, error: `Maximum ${max} file${max === 1 ? "" : "s"} per question.` });
+        errors.push({
+          question_id: q.id,
+          error: `Maximum ${max} file${max === 1 ? "" : "s"} per question.`,
+        });
       }
     }
   }
@@ -691,7 +760,10 @@ export async function uploadIntakeFile(
     }
     signResponse = data as typeof signResponse;
   } catch (e) {
-    if (e instanceof Error && (e as IntakeSchemaServiceError).code !== undefined) {
+    if (
+      e instanceof Error &&
+      (e as IntakeSchemaServiceError).code !== undefined
+    ) {
       throw e;
     }
     throw makeError(
@@ -705,16 +777,40 @@ export async function uploadIntakeFile(
     // Edge fn returned an error envelope; map known codes to typed errors.
     const code = signResponse.error;
     const detail = signResponse.detail;
-    if (code === "trip_not_found" || code === "schema_not_found" || code === "question_not_found") {
-      throw makeError("not_found", "Trip, schema, or question not found.", detail);
+    if (
+      code === "trip_not_found" ||
+      code === "schema_not_found" ||
+      code === "question_not_found"
+    ) {
+      throw makeError(
+        "not_found",
+        "Trip, schema, or question not found.",
+        detail,
+      );
     }
-    if (code === "mime_not_allowed" || code === "file_too_large" || code === "filename_invalid") {
-      throw makeError("schema_invalid", "File type or size is not allowed.", `${code}: ${detail ?? ""}`);
+    if (
+      code === "mime_not_allowed" ||
+      code === "file_too_large" ||
+      code === "filename_invalid"
+    ) {
+      throw makeError(
+        "schema_invalid",
+        "File type or size is not allowed.",
+        `${code}: ${detail ?? ""}`,
+      );
     }
     if (code === "unauthorized") {
-      throw makeError("unauthorized", "You don't have permission to upload to this trip.", detail);
+      throw makeError(
+        "unauthorized",
+        "You don't have permission to upload to this trip.",
+        detail,
+      );
     }
-    throw makeError("internal_error", "Couldn't get an upload URL. Try again.", `${code}: ${detail ?? ""}`);
+    throw makeError(
+      "internal_error",
+      "Couldn't get an upload URL. Try again.",
+      `${code}: ${detail ?? ""}`,
+    );
   }
 
   const signedUrl = signResponse.signed_url;
@@ -761,7 +857,10 @@ export async function uploadIntakeFile(
       );
     }
   } catch (e) {
-    if (e instanceof Error && (e as IntakeSchemaServiceError).code !== undefined) {
+    if (
+      e instanceof Error &&
+      (e as IntakeSchemaServiceError).code !== undefined
+    ) {
       throw e;
     }
     throw makeError(
