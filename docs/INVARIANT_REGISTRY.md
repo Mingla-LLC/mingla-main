@@ -9174,3 +9174,22 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Both dependents degrade fail-closed, not fail-wrong.** A missing key means the patch demands a city again and the event stops surfacing — recoverable and loud-ish — rather than a hybrid event leaking into every market.
 - **Enforcement:** merged #2353 is authoritative for every writer that can affect this key: `.github/scripts/strict-grep/i-2353-format-is-read-not-derived.mjs` scans `supabase/migrations/**`, freezes the derivation occurrence set in both directions, pins #2353 as the last writer of the corrected functions, and separately requires the format projection and persist; its implementor and adversarial PostgreSQL suites drive publish, Duplicate, Unpublish, Ari live and Ari draft hops. #2333's gate additionally pins the publish namespace merge and refuses `format` in its strip list. Together they catch both a writer that derives the wrong value and the #2333 publish writer dropping the key.
 - **Established:** DRAFT at #2333, 2026-08-19.
+
+---
+
+## DRAFT — issue #1973 (canonical Ari experience lifecycle)
+
+### I-PROPOSED-1973-ONE-EXPERIENCE-GRAPH (DRAFT)
+
+- **Rule:** Ari, Snap, and Business web/iOS/Android mutate one canonical experience graph through the existing Business transaction owners; no agent executor directly writes lifecycle, stops, tickets, dates, theme/privacy, or media columns.
+- **Enforcement:** `business_create_experience_graph`, `business_apply_experience_action`, canonical full readback, and issue #1973 append-only regression suites. Activate only after independent deployed runtime proof.
+
+### I-PROPOSED-1973-SAFE-EXPERIENCE-DEMOTION (DRAFT)
+
+- **Rule:** Only a future unsold dependency-free scheduled experience can return to draft; demotion atomically removes public dates and checkout exposure while preserving the private editable graph. Draft discard never applies to a published lifecycle.
+- **Enforcement:** `business_unpublish_experience_to_draft`, `business_discard_experience_draft`, the shared Business action, and issue #1973 lifecycle regressions.
+
+### I-PROPOSED-1973-EXPERIENCE-MEDIA-PROVENANCE (DRAFT)
+
+- **Rule:** Ari can retain only media already persisted on the caller-bound experience; camera/file/provider acquisition remains a guided picker flow and the model cannot author a raw URL.
+- **Enforcement:** server-side persisted-reference checks in `business_apply_experience_action`, strict tool schemas, the `/experience/snap` handoff, and forged-reference regressions.

@@ -10,8 +10,6 @@
 // passed in is the user-scoped client built by agent-confirm-action.
 
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
-import { filterPlayIntentTags } from "./playIntentTags.ts";
-import { mapToCanonicalExperienceIntents } from "./canonicalExperienceIntents.ts";
 import { DOMAIN_READ_ONLY, DOMAIN_TOOLS } from "./agentDomainTools.ts";
 import {
   assertAgentReadBrand,
@@ -1140,32 +1138,32 @@ const deleteBrand: AgentToolDefinition = {
 // 6. create_experience (ORCH-0881 Ve5)
 // ----------------------------------------------------------------------------
 
-function asOptionalCapacity(v: unknown): number | null {
-  if (typeof v !== "number" || !Number.isFinite(v) || v < 1) return null;
-  return Math.round(v);
-}
-
 // Legacy append-only source-test marker: const createExperience: AgentTool = {
 const createExperience: AgentToolDefinition = {
   name: "create_experience",
-  // META-ORCH-1059 Sub-A (Layer 6): the AI tool now creates a DRAFT SHELL, never
-  // a dateless sellable publish. Under the new always-2–5-stops + always-a-date +
-  // one-ticket rules an AI proposal (no stops, no date, no ticket) cannot be
-  // published directly. The brand opens the draft in the wizard ("Set up &
-  // publish") to add stops + a date + pricing, then publishes. This keeps the
-  // I-1/I-2/I-4 invariants: no AI path produces a published, sellable, dateless
-  // experience.
   description:
-    "Create a DRAFT experience shell under a verified physical venue (Restaurant or Play). The draft is NOT published or sellable — the brand finishes it (stops, date, price) in the wizard before publishing.",
+    "Create one private experience draft through the same transactional graph owner used by the Business wizard. Returns the stored graph; it does not publish.",
   parameters: {
     type: "object",
+    additionalProperties: false,
     required: ["brand_id", "title", "narrative"],
     properties: {
-      brand_id: { type: "string", description: "UUID of the venue brand" },
-      title: { type: "string", description: "Experience title (1-120 chars)" },
+      brand_id: {
+        type: "string",
+        format: "uuid",
+        description: "UUID of the venue brand",
+      },
+      title: {
+        type: "string",
+        minLength: 1,
+        maxLength: 120,
+        description: "Experience title (1-120 chars)",
+      },
       narrative: {
         type: "string",
-        description: "Experience description (1-2000 chars)",
+        minLength: 1,
+        maxLength: 500,
+        description: "Experience description (1-500 chars)",
       },
       suggested_price_min_cents: {
         type: "integer",
@@ -1206,6 +1204,7 @@ const createExperience: AgentToolDefinition = {
       // shell (unchanged ORCH-1146 behavior).
       stops: {
         type: "array",
+        maxItems: 5,
         description:
           "Snap path only: the menu items / activities as ordered stops. Each becomes one experience_stops row; the experience price is the sum of stop prices.",
         items: {
@@ -1213,324 +1212,85 @@ const createExperience: AgentToolDefinition = {
           properties: {
             name: {
               type: "string",
+              maxLength: 120,
               description: "Stop / item name (1-120 chars)",
             },
+            place_name: { type: "string", maxLength: 120 },
             description: {
               type: "string",
+              maxLength: 280,
               description: "Optional one-line blurb (≤280)",
             },
+            ai_description: { type: "string", maxLength: 280 },
             price_cents: {
               type: "integer",
+              minimum: 0,
               description: "Printed price in cents (null → 0)",
+            },
+            address: { type: "string" },
+            city: { type: "string" },
+            region: { type: "string" },
+            country_code: { type: "string" },
+            place_id: { type: "string" },
+            lat: { type: "number" },
+            lng: { type: "number" },
+            coordinate_precision: {
+              type: "string",
+              enum: ["exact", "approximate"],
+            },
+            start_time: { type: "string" },
+            image_urls: {
+              type: "array",
+              maxItems: 5,
+              items: { type: "string" },
             },
           },
         },
       },
+      experience_intents: {
+        type: "array",
+        minItems: 1,
+        maxItems: 4,
+        items: {
+          type: "string",
+          enum: ["adventurous", "first-date", "romantic", "group-fun"],
+        },
+      },
+      location_mode: { type: "string", enum: ["single", "per_stop"] },
+      pricing_mode: { type: "string", enum: ["whole", "per_stop"] },
+      whole_price_cents: { type: "integer", minimum: 0 },
+      capacity: { type: "integer", minimum: 1 },
+      timezone: { type: "string" },
+      whenMode: { type: "string", enum: ["single", "multi_date", "recurring"] },
+      when: { type: "object" },
+      multiDates: { type: "array", items: { type: "object" } },
+      recurrence_rules: { type: ["array", "object", "null"] },
+      cover: { type: "object" },
     },
   },
-  executor: async (args, client, userId) => {
+  executor: async (args, client, _userId, context) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
     if (!isString(args.title) || args.title.length > 120) {
       throw new ToolError("INVALID_ARGS", "title is required (1-120 chars)");
     }
-    if (!isString(args.narrative) || args.narrative.length > 2000) {
+    if (!isString(args.narrative) || args.narrative.length > 500) {
       throw new ToolError(
         "INVALID_ARGS",
         "narrative is required (1-2000 chars)",
       );
     }
-
-    // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
-    const { data: brandRow, error: brandErr } = await client
-      .from("brands")
-      .select("venue_category, default_currency")
-      .eq("id", args.brand_id)
-      .maybeSingle();
-    if (brandErr) {
-      throw new ToolError("OWNERSHIP_CHECK_FAILED", brandErr.message);
-    }
-    if (!brandRow) throw new ToolError("OWNERSHIP_DENIED", "Brand not found");
-
-    const brand = brandRow as {
-      venue_category: string | null;
-      default_currency: string | null;
-    };
-    const venueCategory = brand.venue_category;
-    // ORCH-1146 (Phase 3 — de-GBP): resolve currency from the explicit arg else
-    // the brand's default_currency. NEVER hardcode "GBP". When both are absent,
-    // `currency` is null and the `events`/`ticket_types` INSERTs OMIT the column
-    // so the DB default applies (single source of truth = brand currency).
-    const currency: string | null = isString(args.currency)
-      ? args.currency.toUpperCase().slice(0, 3)
-      : (isString(brand.default_currency)
-        ? brand.default_currency.toUpperCase().slice(0, 3)
-        : null);
-
-    let intentTags: string[] = [];
-    if (venueCategory === "play") {
-      intentTags = filterPlayIntentTags(args.intent_tags);
-    } else if (Array.isArray(args.intent_tags)) {
-      for (const t of args.intent_tags) {
-        if (typeof t === "string" && t.trim()) {
-          intentTags.push(t.trim().slice(0, 40));
-        }
-      }
-      intentTags = intentTags.slice(0, 12);
-    }
-
-    // ORCH-1146 (Phase 1): map the raw parser tags → the canonical 4-id vocab
-    // the `events.experience_intents` CHECK enforces. Unmappable tags are
-    // dropped; an empty result means we write NULL to the column (NEVER an
-    // empty array — the CHECK requires length 1–4 when non-null). The RAW tags
-    // stay in the blob (experienceMeta.intent_tags) for audit.
-    const canonicalIntents = mapToCanonicalExperienceIntents(
-      args.intent_tags,
-      venueCategory,
+    const { data, error } = await client.rpc(
+      "ari_execute_experience_operation",
+      {
+        p_operation_id: requireAgentOperationId(context),
+        p_tool_name: "create_experience",
+        p_args: args,
+      },
     );
-
-    let capacityMin: number | null = null;
-    let capacityMax: number | null = null;
-    let suggestedTimeOfDay: string | null = null;
-    if (venueCategory === "play") {
-      capacityMin = asOptionalCapacity(args.capacity_min);
-      capacityMax = asOptionalCapacity(args.capacity_max);
-      if (
-        capacityMin !== null && capacityMax !== null &&
-        capacityMin > capacityMax
-      ) {
-        const swap = capacityMin;
-        capacityMin = capacityMax;
-        capacityMax = swap;
-      }
-      if (isString(args.suggested_time_of_day)) {
-        suggestedTimeOfDay = args.suggested_time_of_day.trim().slice(0, 80);
-      }
-    }
-
-    const slug = deriveSlug(args.title) || `experience-${Date.now()}`;
-    const experienceMeta: Record<string, unknown> = {
-      intent_tags: intentTags,
-      suggested_price_min_cents:
-        typeof args.suggested_price_min_cents === "number"
-          ? Math.max(0, Math.round(args.suggested_price_min_cents))
-          : null,
-      suggested_price_max_cents:
-        typeof args.suggested_price_max_cents === "number"
-          ? Math.max(0, Math.round(args.suggested_price_max_cents))
-          : null,
-      currency,
-      confidence: typeof args.confidence === "number"
-        ? Math.max(0, Math.min(1, args.confidence))
-        : null,
-      ai_source: venueCategory === "play"
-        ? "activities_snap"
-        : venueCategory === "restaurant"
-        ? "menu_snap"
-        : "business_snap",
-    };
-    if (venueCategory === "play") {
-      experienceMeta.capacity_min = capacityMin;
-      experienceMeta.capacity_max = capacityMax;
-      experienceMeta.suggested_time_of_day = suggestedTimeOfDay;
-      experienceMeta.ai_metadata = {
-        generator: "parse-play-activities",
-        confidence: experienceMeta.confidence,
-      };
-    }
-
-    const theme = { experience_meta: experienceMeta };
-
-    // META-ORCH-1059 Sub-A (Layer 6): DRAFT shell — NOT live/public, no
-    // published_at. A draft has no stops/date/ticket; the brand finishes +
-    // publishes via the wizard. Seed location_mode/pricing_mode + a whole-price
-    // midpoint from the suggested range so the wizard lands prefilled. A draft
-    // is allowed to have <2 stops (the 2–5 gate fires only on publish).
-    const suggestedMidCents =
-      typeof experienceMeta.suggested_price_min_cents === "number" &&
-        typeof experienceMeta.suggested_price_max_cents === "number"
-        ? Math.round(
-          ((experienceMeta.suggested_price_min_cents as number) +
-            (experienceMeta.suggested_price_max_cents as number)) /
-            2,
-        )
-        : null;
-
-    // ORCH-1151: stops present = SNAP path (menu/activities items-as-stops,
-    // summed-price single ticket, NO free per-dish ticket); stops absent =
-    // Ari/manual shell (unchanged ORCH-1146 behavior — one events row + one
-    // free-when-zero ticket + no stops). Do NOT collapse these branches.
-    const stopArgs: Array<Record<string, unknown>> = Array.isArray(args.stops)
-      ? (args.stops as Array<Record<string, unknown>>)
-      : [];
-    const hasStops = stopArgs.length > 0;
-    // The summed price (cents) is the authoritative experience price when stops
-    // are present. A NULL/absent stop price contributes 0 (no fabrication).
-    const stopSumCents = hasStops
-      ? stopArgs.reduce(
-        (sum, s) => sum + Math.max(0, Math.round(Number(s?.price_cents) || 0)),
-        0,
-      )
-      : 0;
-
-    const row: Record<string, unknown> = {
-      brand_id: args.brand_id,
-      created_by: userId,
-      title: args.title.trim(),
-      slug,
-      description: args.narrative.trim(),
-      event_type: "experience",
-      status: "draft",
-      visibility: "draft",
-      published_at: null,
-      timezone: "UTC",
-      location_mode: "single",
-      // ORCH-1151: per_stop pricing when stops are present (the manual RPC's
-      // mode); whole_price_cents is NULL in per_stop mode (audit redundancy —
-      // the sellable price is the single ticket). Without stops, keep today's
-      // whole-mode midpoint seed.
-      pricing_mode: hasStops ? "per_stop" : "whole",
-      whole_price_cents: hasStops ? null : suggestedMidCents,
-      theme,
-    };
-    // ORCH-1146: write currency into its real column when resolved (else OMIT
-    // so the DB default applies — never a literal "GBP").
-    if (currency) row.currency = currency;
-    // ORCH-1146: write the canonical vibes into experience_intents ONLY when at
-    // least one tag mapped. When empty → OMIT the key (column stays NULL) — the
-    // CHECK forbids an empty array. The wizard prefills from this column.
-    if (canonicalIntents.length > 0) row.experience_intents = canonicalIntents;
-
-    const { data, error } = await client
-      .from("events")
-      .insert(row)
-      .select(
-        "id, brand_id, title, slug, event_type, visibility, status, created_at",
-      )
-      .single();
-    if (error) {
-      if ((error as { code?: string }).code === "23505") {
-        throw new ToolError(
-          "SLUG_TAKEN",
-          `An experience titled "${args.title}" already exists under that brand. Try a small variation.`,
-        );
-      }
-      throw new ToolError("WRITE_FAILED", error.message);
-    }
-
-    const eventId = (data as { id?: string } | null)?.id;
-    if (!isString(eventId)) {
-      throw new ToolError("WRITE_FAILED", "Experience insert returned no id");
-    }
-
-    // ORCH-1151 (snap path only): write one experience_stops row per item-stop.
-    // Order = events insert → stops insert → ticket insert. A menu/activity item
-    // has no address, so place_id/lat/lng stay NULL and address='' (the column
-    // is NOT-NULL but accepts ''; lat/lng are publish-gated, not insert-gated) —
-    // the experience stays an unpublishable DRAFT until the brand adds real stop
-    // locations in the wizard. No address is fabricated.
-    if (hasStops) {
-      const stopRows = stopArgs.map((s, i) => {
-        const placeName = isString(s?.name) ? s.name.trim().slice(0, 120) : "";
-        const description = isString(s?.description)
-          ? s.description.trim().slice(0, 280)
-          : "";
-        return {
-          event_id: eventId,
-          stop_order: i,
-          place_name: placeName || `Stop ${i + 1}`,
-          address: "",
-          ai_description: description,
-          price_cents: Math.max(0, Math.round(Number(s?.price_cents) || 0)),
-        };
-      });
-
-      const { error: stopsErr } = await client
-        .from("experience_stops")
-        .insert(stopRows);
-      if (stopsErr) {
-        // ORCH-1151 atomicity (DISC-1151-B): the executor is direct inserts, not
-        // a transaction. A stops-insert failure after the events insert must
-        // COMPENSATE — soft-delete the orphan events row (mirrors the ticket-fail
-        // branch below) so a snap never leaves a stop-less / ticket-less draft.
-        await client
-          .from("events")
-          .update({ deleted_at: new Date().toISOString() })
-          .eq("id", eventId);
-        throw new ToolError(
-          "WRITE_FAILED",
-          `Experience draft created but stops setup failed: ${stopsErr.message}`,
-        );
-      }
-    }
-
-    // ORCH-1146 (Phase 1): write the ONE ticket_types row the wizard reads back
-    // for the free/capacity/price prefill (I-1 ONE-TICKET — never N). Mirrors
-    // the RPC's single-ticket defaults (`20260824…:489-507`). The draft has no
-    // date → still unsellable (I-2/I-4 preserved).
-    //
-    // ORCH-1151 (snap path): the SUMMED stop price is authoritative — the ticket
-    // is the sum of the item-stops' prices and is free ONLY when that sum is 0
-    // (the explicit args.is_free / midpoint derivation is ignored on this path).
-    // ORCH-1146 (Ari/manual path): is_free precedence — explicit args.is_free
-    // wins; else derive from the suggested-price absence.
-    const ticketPriceCents = hasStops ? stopSumCents : (suggestedMidCents ?? 0);
-    const isFree = hasStops
-      ? stopSumCents === 0
-      : (typeof args.is_free === "boolean"
-        ? args.is_free
-        : (suggestedMidCents === null || suggestedMidCents <= 0));
-    // Capacity is a Play-only signal (Ve6). Restaurants (Ve5) never state party
-    // size → always unlimited. quantity_total NULL ⇒ is_unlimited true.
-    const quantityTotal =
-      venueCategory === "play" && capacityMax !== null && capacityMax > 0
-        ? capacityMax
-        : null;
-    const ticketRow: Record<string, unknown> = {
-      event_id: eventId,
-      name: "Standard",
-      description: null,
-      price_cents: isFree ? 0 : ticketPriceCents,
-      quantity_total: quantityTotal,
-      is_unlimited: quantityTotal === null,
-      is_free: isFree,
-      min_purchase_qty: 1,
-      max_purchase_qty: null,
-      is_hidden: false,
-      is_disabled: false,
-      requires_approval: false,
-      allow_transfers: true,
-      password_protected: false,
-      available_online: true,
-      available_in_person: true,
-      waitlist_enabled: false,
-      display_order: 0,
-    };
-    // Currency on the ticket too — OMIT when unresolved (DB default applies).
-    if (currency) ticketRow.currency = currency;
-
-    const { error: ticketErr } = await client
-      .from("ticket_types")
-      .insert(ticketRow);
-    if (ticketErr) {
-      // ORCH-1146 atomicity (SPEC §4.1-3, Q4 LOCKED): the executor is two
-      // direct inserts, not a transaction. If the ticket insert fails after the
-      // events insert succeeded, COMPENSATE so a snap never leaves a
-      // ticket-less draft: soft-delete the orphan events row (deleted_at), then
-      // throw. Soft-delete (not hard) because RLS may block a hard delete; the
-      // event is a draft so a stamp is sufficient to hide it.
-      await client
-        .from("events")
-        .update({ deleted_at: new Date().toISOString() })
-        .eq("id", eventId);
-      throw new ToolError(
-        "WRITE_FAILED",
-        `Experience draft created but pricing setup failed: ${ticketErr.message}`,
-      );
-    }
-
-    return { event: data };
+    if (error) throw new ToolError("WRITE_FAILED", error.message);
+    return data;
   },
 };
 

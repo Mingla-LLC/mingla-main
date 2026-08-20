@@ -1,7 +1,6 @@
 // Ve6 — parse-play-activities
 //
-// SECURITY: caller JWT owns all domain reads; service role is limited to the
-// server-authoritative pending-proposal insert. No file Storage.
+// SECURITY: caller JWT only (I-ARI-USER-JWT-ONLY). No file Storage.
 
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
 import { corsHeaders } from "../_shared/cors.ts";
@@ -9,7 +8,6 @@ import {
   type ActivitiesFileInput,
   parseActivitiesWithGemini,
 } from "../_shared/geminiActivitiesParser.ts";
-import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 
 // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
 
@@ -116,7 +114,6 @@ Deno.serve(async (req) => {
     return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
   }
   const userId = userData.user.id;
-  const pendingStateClient = buildServiceClient();
 
   if (!checkRateLimit(userId)) {
     return errorResponse(
@@ -176,7 +173,7 @@ Deno.serve(async (req) => {
 
   const { data: brand, error: brandErr } = await userClient
     .from("brands")
-    .select("id, name, venue_category, default_currency, account_id")
+    .select("id, name, venue_category, default_currency")
     .eq("id", body.brand_id)
     .is("deleted_at", null)
     .maybeSingle();
@@ -184,8 +181,28 @@ Deno.serve(async (req) => {
   if (brandErr || !brand) {
     return errorResponse(404, "NOT_FOUND", "Brand not found");
   }
-  if (brand.account_id !== userId) {
-    return errorResponse(403, "FORBIDDEN", "Brand not owned by caller");
+  const [
+    { data: actualRank, error: actualRankErr },
+    { data: requiredRank, error: requiredRankErr },
+  ] = await Promise.all([
+    userClient.rpc("biz_brand_effective_rank_for_caller", {
+      p_brand_id: body.brand_id,
+    }),
+    userClient.rpc("biz_role_rank", { p_role: "event_manager" }),
+  ]);
+  if (actualRankErr || requiredRankErr) {
+    return errorResponse(
+      503,
+      "AUTH_UNAVAILABLE",
+      "Could not verify brand permissions",
+    );
+  }
+  if (Number(actualRank ?? 0) < Number(requiredRank ?? 40)) {
+    return errorResponse(
+      403,
+      "FORBIDDEN",
+      "Event manager access is required",
+    );
   }
   // ORCH-1146 (Phase 3 — de-GBP): pass the brand currency through; when absent
   // pass undefined (not "GBP"). The parser leaves currency empty and the confirm
@@ -226,14 +243,7 @@ Deno.serve(async (req) => {
 
   const expiresAt = new Date(Date.now() + HUB_EXPIRY_HOURS * 60 * 60 * 1000)
     .toISOString();
-  const rows: Array<{
-    id: string;
-    tool_name: string;
-    tool_args: Record<string, unknown>;
-    expires_at: string;
-  }> = [];
-
-  for (const exp of parseResult.experiences) {
+  const proposalRows = parseResult.experiences.map((exp) => {
     const tool_args: Record<string, unknown> = {
       brand_id: body.brand_id,
       title: exp.title,
@@ -253,41 +263,40 @@ Deno.serve(async (req) => {
       stops: exp.stops,
     };
 
-    const { data: inserted, error: insertErr } = await pendingStateClient
-      .from("agent_pending_actions")
-      .insert({
-        user_id: userId,
-        conversation_id: null,
-        source: "hub_experience",
-        related_brand_id: body.brand_id,
-        tool_name: "create_experience",
-        tool_args,
-        status: "pending",
-        server_proposed_at: new Date().toISOString(),
-        expires_at: expiresAt,
-      })
-      .select("id, tool_name, tool_args, expires_at")
-      .single();
-
-    if (insertErr || !inserted) {
-      console.error(
-        "[parse-play-activities] pending insert failed:",
-        insertErr?.message,
-      );
-      return errorResponse(
-        500,
-        "INTERNAL",
-        "Failed to save experience proposals",
-      );
-    }
-
-    rows.push({
-      id: inserted.id as string,
-      tool_name: inserted.tool_name as string,
-      tool_args: inserted.tool_args as Record<string, unknown>,
-      expires_at: inserted.expires_at as string,
-    });
+    return {
+      user_id: userId,
+      conversation_id: null,
+      source: "hub_experience",
+      related_brand_id: body.brand_id,
+      tool_name: "create_experience",
+      tool_args,
+      status: "pending",
+      expires_at: expiresAt,
+    };
+  });
+  const { data: insertedRows, error: insertErr } = await userClient
+    .from("agent_pending_actions")
+    .insert(proposalRows)
+    .select("id, tool_name, tool_args, expires_at");
+  if (
+    insertErr || !insertedRows || insertedRows.length !== proposalRows.length
+  ) {
+    console.error(
+      "[parse-play-activities] pending batch insert failed:",
+      insertErr?.message,
+    );
+    return errorResponse(
+      500,
+      "INTERNAL",
+      "Failed to save experience proposals",
+    );
   }
+  const rows = insertedRows.map((inserted) => ({
+    id: inserted.id as string,
+    tool_name: inserted.tool_name as string,
+    tool_args: inserted.tool_args as Record<string, unknown>,
+    expires_at: inserted.expires_at as string,
+  }));
 
   return jsonResponse(200, {
     kind: "ok",
