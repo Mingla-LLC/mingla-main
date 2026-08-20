@@ -120,6 +120,7 @@ jest.mock("../src/components/ui/Spinner", () => ({ Spinner: "Spinner" }));
  * fontScale` below.
  */
 const RN_MOCK = require("../__manual_mocks__/react-native.js") as {
+  Platform: { OS: string };
   useWindowDimensions: () => {
     width: number;
     height: number;
@@ -127,6 +128,16 @@ const RN_MOCK = require("../__manual_mocks__/react-native.js") as {
     fontScale: number;
   };
 };
+
+function withPlatform<T>(os: string, body: () => T): T {
+  const original = RN_MOCK.Platform.OS;
+  RN_MOCK.Platform.OS = os;
+  try {
+    return body();
+  } finally {
+    RN_MOCK.Platform.OS = original;
+  }
+}
 
 /**
  * The shared react-native mock renders `Pressable` as a passthrough, so a
@@ -226,10 +237,15 @@ describe("#2211 T-1..T-3 — InviteScreenShell", () => {
   }
 
   function renderShell(actions?: React.ReactNode) {
-    return renderTree(
-      <InviteScreenShell actions={actions}>
-        <Marker />
-      </InviteScreenShell>,
+    // The pinned sibling is the NATIVE guarantee. Web deliberately keeps the
+    // action inside the scrolling centre so the absolute first-visit consent
+    // panel cannot cover it; issue #922's browser suite owns that branch.
+    return withPlatform("ios", () =>
+      renderTree(
+        <InviteScreenShell actions={actions}>
+          <Marker />
+        </InviteScreenShell>,
+      ),
     );
   }
 
@@ -427,7 +443,9 @@ describe("#2211 T-2b — the invitation routes render through the shell", () => 
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const Route = require(modulePath).default as React.ComponentType;
       for (const fontScale of RN_IOS_FONT_SCALES) {
-        const root = withFontScale(fontScale, () => renderTree(<Route />));
+        const root = withPlatform("ios", () =>
+          withFontScale(fontScale, () => renderTree(<Route />)),
+        );
 
         // (a) The content region scrolls. Before #2211 there was no ScrollView
         //     anywhere in this render path, which is why one swipe changed

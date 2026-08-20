@@ -93,6 +93,7 @@ jest.mock("react-native", () => {
     },
     View: "View",
     Text: "Text",
+    ScrollView: "ScrollView",
     ActivityIndicator: "ActivityIndicator",
     Pressable: ReactActual.Fragment,
   };

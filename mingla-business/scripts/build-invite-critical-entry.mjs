@@ -118,6 +118,22 @@ export function buildCriticalEntry(buildDir) {
   // The shell markup is assigned through a single-quoted inline-JS string.
   // Preserve its contractions as escaped apostrophes in the emitted HTML.
   const payload = criticalPayload(scripts)
+    // #2211 — the React web owner keeps the action inside its centred scrolling
+    // region because the global first-visit consent panel occupies the bottom
+    // overlay. Match that geometry so the CTA stays actionable and the static
+    // shell remains pixel-identical to the real React route.
+    .replace(
+      ".i922-host{display:flex;flex:1;align-items:center;justify-content:center;padding:0 32px;background:#0c0e12}.i922-card",
+      ".i922-host{display:flex;flex:1;background:#0c0e12}.i922-scroll{flex:1;overflow:hidden}.i922-scroll-content{display:flex;align-items:center;justify-content:center;height:100%;padding:24px 32px}.i922-centerer{display:flex;flex-direction:column;align-items:center;gap:16px;width:100%}.i922-web-actions{width:100%;max-width:480px}.i922-card",
+    )
+    .replace(
+      `<main class="i922-host"><section class="i922-card" aria-labelledby="i922-title"><h1 class="i922-title" id="i922-title">You're invited</h1><p class="i922-copy">Sign in to accept this invitation. We'll bring you right back.</p><button class="i922-signin" type="button">Sign in</button></section><aside`,
+      `<main class="i922-host"><div class="i922-scroll"><div class="i922-scroll-content"><div class="i922-centerer"><section class="i922-card" aria-labelledby="i922-title"><h1 class="i922-title" id="i922-title">You're invited</h1><p class="i922-copy">Sign in to accept this invitation. We'll bring you right back.</p></section><div class="i922-web-actions"><button class="i922-signin" type="button">Sign in</button></div></div></div></div><aside`,
+    )
+    .replace(
+      "@media(max-width:420px){.i922-host{padding:0 32px}.i922-card",
+      "@media(max-width:420px){.i922-scroll-content{padding:24px 32px}.i922-card",
+    )
     .replace(
       "font-family:Arial,sans-serif",
       'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif',

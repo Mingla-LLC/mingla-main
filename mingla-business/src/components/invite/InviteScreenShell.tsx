@@ -23,14 +23,14 @@
  *    ScrollView's content container defaults to `flexGrow: 0`, and omitting it
  *    is the silent footgun recorded in
  *    `feedback_rn_scrollview_flex_grow_default_one_silent_footgun`.
- * 2. **The action lives OUTSIDE the scrolling region**, as a `flexShrink: 0`
- *    sibling, exactly as #2180 rebuilt `+not-found.tsx`. On these screens the
- *    CTA is the entire point — an invitee whose only job is to press "Sign in"
- *    must never have to discover that the screen scrolls first. `scroll` is
- *    `flex: 1` + `overflow: hidden`, so anything that mis-measures inside it is
- *    clipped THERE rather than growing the column and pushing the footer off
- *    the bottom of the screen. That is the failure mode that made #2180
- *    terminal, and it cannot happen to a sibling.
+ * 2. **Native actions live OUTSIDE the scrolling region**, as a `flexShrink: 0`
+ *    sibling, exactly as #2180 rebuilt `+not-found.tsx`. On web the global
+ *    first-visit consent panel is itself an absolute bottom overlay; placing a
+ *    CTA in that same bottom band makes it visible but unclickable. Web actions
+ *    therefore live in the centred scrolling region, where browser zoom can
+ *    still reach them and the consent panel cannot intercept them. `scroll` is
+ *    `flex: 1` + `overflow: hidden`, so native measurement surprises remain
+ *    clipped there instead of pushing the pinned footer off screen.
  *
  * `SafeAreaView` is applied here rather than at each call site because at large
  * text the heading now reaches the top of the scroll region, where it would
@@ -38,7 +38,7 @@
  */
 
 import React from "react";
-import { ScrollView, StyleSheet, View } from "react-native";
+import { Platform, ScrollView, StyleSheet, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 import { canvas, spacing } from "../../constants/designSystem";
@@ -82,9 +82,16 @@ export function InviteScreenShell({
           margin centres while there is slack and collapses to 0 when there is
           none, so the top of the card can never leave the scrollable range.
         */}
-        <View style={styles.centerer}>{children}</View>
+        <View style={styles.centerer}>
+          {children}
+          {Platform.OS === "web" && actions !== undefined && actions !== null ? (
+            <View style={styles.webActions} testID="invite-shell-web-actions">
+              {actions}
+            </View>
+          ) : null}
+        </View>
       </ScrollView>
-      {actions === undefined || actions === null ? null : (
+      {Platform.OS === "web" || actions === undefined || actions === null ? null : (
         <View style={styles.footer} testID="invite-shell-footer">
           {/* Same 480 pt ceiling the card uses, so the action stays visually
               bound to the card it belongs to on wide screens. */}
@@ -134,6 +141,16 @@ const styles = StyleSheet.create({
     gap: spacing.md,
   },
   footerInner: {
+    width: "100%",
+    maxWidth: 480,
+    gap: spacing.md,
+  },
+  // #2211 web correction — the global first-visit consent panel is an
+  // absolute bottom overlay. A native-style bottom footer sits underneath it
+  // and becomes impossible to click. Web keeps the action in this scrolling,
+  // centred region instead: it remains reachable under browser zoom while the
+  // consent panel cannot intercept it. Native retains the pinned sibling above.
+  webActions: {
     width: "100%",
     maxWidth: 480,
     gap: spacing.md,
