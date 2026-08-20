@@ -67,6 +67,10 @@ import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts"
 // #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
 // unit-testable without importing this serve()-on-load entry).
 import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+import {
+  authorizeFreshTicketCheckout,
+  type TicketCheckoutAccessGate,
+} from "../_shared/ticketCheckoutAccess.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
@@ -311,6 +315,24 @@ export const createTicketCheckoutCreateHandler = (
 
     const userId = await deps.userIdFromAuthHeader(req);
     const supabase = deps.serviceClient();
+
+    // #2101: token identity is the only buyer authority. Run this before any
+    // session, capacity, provider, or free-ticket side effect. Buyer contact
+    // fields and request-body UUIDs are deliberately ignored.
+    let accessGate: TicketCheckoutAccessGate;
+    try {
+      accessGate = await authorizeFreshTicketCheckout(
+        supabase,
+        eventId,
+        userId,
+      );
+    } catch (error) {
+      console.error("[ticket-checkout-create] access decision failed", error);
+      return jsonResponse({ error: "checkout_access_unavailable" }, 503);
+    }
+    if (!accessGate.allowed) {
+      return jsonResponse({ error: accessGate.error }, accessGate.status);
+    }
 
     // ORCH-0792: reject checkout against events with no current/future date.
     // Pairs with the publish-RPC fix that writes event_dates and the
