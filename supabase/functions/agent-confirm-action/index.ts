@@ -60,7 +60,7 @@ function errorResponse(
   return jsonResponse(status, { kind: "error", code, message });
 }
 
-const RECEIPT_BACKED_EVENT_TOOL_NAMES = new Set([
+const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "create_event",
   "update_event",
   "publish_event",
@@ -72,7 +72,16 @@ const RECEIPT_BACKED_EVENT_TOOL_NAMES = new Set([
   "set_event_cover",
   "set_event_guest_privacy",
   "discard_event_draft",
+  "create_experience",
+  "publish_experience",
+  "update_experience",
+  "manage_experience_stops",
+  "unpublish_experience",
+  "delete_experience",
 ]);
+// [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
+// extending the exact same receipt gate to the experience lifecycle.
+const RECEIPT_BACKED_EVENT_TOOL_NAMES = RECEIPT_BACKED_TOOL_NAMES;
 
 async function terminalizePending(
   pendingStateClient: ReturnType<typeof buildServiceClient>,

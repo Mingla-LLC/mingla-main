@@ -381,3 +381,24 @@ export async function getExperienceDetail(
     })),
   };
 }
+
+/** #1973 — guarded scheduled→draft lifecycle owner shared by web/iOS/Android. */
+export async function unpublishExperienceToDraft(
+  eventId: string,
+  expectedRevision?: string | null,
+): Promise<ExperienceDetail> {
+  const { data, error } = await supabase.rpc("business_unpublish_experience_to_draft", {
+    p_event_id: eventId,
+    p_expected_revision: expectedRevision ?? null,
+  });
+  if (error) throw error;
+  const graph = data as { event?: { id?: string; status?: string } } | null;
+  if (graph?.event?.id !== eventId || graph.event.status !== "draft") {
+    throw new Error("Experience was not returned to draft.");
+  }
+  const detail = await getExperienceDetail(eventId);
+  if (detail === null || detail.status !== "draft") {
+    throw new Error("Experience draft readback failed.");
+  }
+  return detail;
+}

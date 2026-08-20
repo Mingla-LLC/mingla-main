@@ -1,0 +1,87 @@
+name: Issue 1973 Ari experience lifecycle
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/agent-confirm-action/**"
+      - "supabase/functions/parse-play-activities/**"
+      - "supabase/functions/parse-restaurant-menu/**"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts"
+      - "supabase/migrations/20270503001973_issue_1973_ari_experience_lifecycle.sql"
+      - "supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle*.sql"
+      - "mingla-business/app/experience/**"
+      - "mingla-business/src/services/experienceDetailService.ts"
+      - "mingla-business/src/services/__tests__/issue1973ExperienceLifecycle.test.ts"
+      - ".github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs"
+      - ".github/workflows/issue-1973-ari-experience-lifecycle.yml"
+
+jobs:
+  deno-business-and-guard:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Deno compile and issue guards
+        run: |
+          deno check \
+            supabase/functions/_shared/agentTools.ts \
+            supabase/functions/_shared/agentDomainTools.ts \
+            supabase/functions/_shared/agentToolAuthorization.ts \
+            supabase/functions/agent-confirm-action/index.ts \
+            supabase/functions/parse-restaurant-menu/index.ts \
+            supabase/functions/parse-play-activities/index.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts
+          node .github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs
+          node .github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs --self-test
+      - name: Business shared-surface proof
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npx jest --runInBand \
+            src/services/__tests__/issue1973ExperienceLifecycle.test.ts \
+            src/services/__tests__/experienceGenerationService.contract.test.ts \
+            src/services/__tests__/experiencesService.test.ts \
+            src/utils/__tests__/publishedExperienceEditGuards.test.ts
+
+  postgres-17:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-issue-1973
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply full migration chain and run both #1973 proofs
+        env:
+          PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-issue-1973
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' migration; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle.round2.implementor.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle.tester.adversarial.pg17.test.sql
