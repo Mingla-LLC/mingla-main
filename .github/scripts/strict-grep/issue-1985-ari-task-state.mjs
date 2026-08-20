@@ -21,6 +21,8 @@ const files = {
   clientChoices: "mingla-business/src/components/ari/agentChoices.ts",
   choiceTest:
     "mingla-business/src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx",
+  deliveryTest:
+    "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts",
   typecheck: "mingla-business/tsconfig.issue-1985.json",
   typecheckRunner:
     ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
@@ -44,6 +46,17 @@ export function check(s) {
   ) {
     if (!s.migration.includes(token)) {
       failures.push(`migration contract missing ${token}`);
+    }
+  }
+  for (
+    const token of [
+      "reconcileAgentDeliveryMessages([], [], [failed], true)",
+      "reconcileAgentDeliveryMessages([server], [optimistic], [failed], true)",
+      "reconcileAgentDeliveryMessages([server], [optimistic], [], true)",
+    ]
+  ) {
+    if (!s.deliveryTest.includes(token)) {
+      failures.push(`Business delivery identity proof missing ${token}`);
     }
   }
   if (
@@ -385,6 +398,11 @@ export function check(s) {
       "#1985 workflow does not run the issue-scoped Business typecheck",
     );
   }
+  if (
+    s.workflow.split("issue_1985_message_delivery_identity.test.ts").length - 1 !== 3
+  ) {
+    failures.push("#1985 workflow does not trigger on and run the delivery identity proof");
+  }
   const reworkIntegrityWorkflowRefs =
     s.workflow.split("issue_1985_rework2_integrity.test.ts").length - 1;
   if (reworkIntegrityWorkflowRefs !== 3) {
@@ -545,6 +563,11 @@ if (process.argv.includes("--self-test")) {
       key: "choiceTest",
       from: "const submission = await Promise.resolve(",
       to: "const submission = Promise.resolve(",
+    },
+    {
+      key: "deliveryTest",
+      from: "reconcileAgentDeliveryMessages([server], [optimistic], [failed], true)",
+      to: "reconcileAgentDeliveryMessages([server], [], [], true)",
     },
     {
       key: "typecheck",

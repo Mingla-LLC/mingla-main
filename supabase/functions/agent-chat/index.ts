@@ -1702,16 +1702,16 @@ async function handle(req: Request): Promise<Response> {
           if (schemaResponse) return schemaResponse;
           followup = undefined;
         }
-        const answer = followup?.textResponse ?? "Here's what I found.";
+        const text = followup?.textResponse ?? "Here's what I found.";
         const resumedState = readInterruption
           ? resumeInterruption(interruptionState)
           : taskState;
         const resumePrompt = readInterruption
           ? liveChoices?.prompt ?? pendingQuestionPrompt(resumedState)
           : null;
-        const text = resumePrompt
-          ? `${answer}\n\nBack to your event plan: ${resumePrompt}`
-          : answer;
+        const resumedText = resumePrompt
+          ? `${text}\n\nBack to your event plan: ${resumePrompt}`
+          : text;
         return await commitTextTurn({
           client: serviceClient,
           userId,
@@ -1721,7 +1721,7 @@ async function handle(req: Request): Promise<Response> {
           nextState: resumedState,
           expectedRevision: taskStateRevision,
           previousSummary: conversationSummary,
-          text,
+          text: resumedText,
           classification: readInterruption
             ? "read_interruption"
             : "general_read",

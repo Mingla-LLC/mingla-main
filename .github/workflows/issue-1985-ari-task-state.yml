@@ -24,6 +24,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
       - "mingla-business/src/components/ari/**"
       - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
       - "mingla-business/tsconfig.issue-1985.json"
@@ -53,6 +54,7 @@ on:
       - "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"
       - "mingla-business/src/components/ari/**"
       - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts"
       - "mingla-business/src/screens/ari/AriChatScreen.tsx"
       - "mingla-business/src/services/agentChatService.ts"
       - "mingla-business/tsconfig.issue-1985.json"
@@ -121,7 +123,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - name: Run Business typed-choice and superseded-V1 contracts
-        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/components/ari/__tests__/orch_1103_choices_chips.test.ts --runInBand
+        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts --runInBand
         working-directory: mingla-business
       - name: Type-check Business client
         run: node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs

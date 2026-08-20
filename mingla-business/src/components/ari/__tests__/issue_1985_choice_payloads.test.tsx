@@ -55,7 +55,7 @@ describe("#1985 AgentChoicesV2 client boundary", () => {
     const hook = read("src/hooks/useAgentChat.ts");
     const screen = read("src/screens/ari/AriChatScreen.tsx");
     expect(hook).toContain("clientTurnId = newClientTurnId()");
-    expect(hook).toContain("sendTurn((optimistic.content");
+    expect(hook).toContain("sendTurn((failed.content");
     expect(hook).toContain("payload, clientTurnId");
     expect(screen).toContain("You're offline. Reconnect to continue this plan.");
     expect(screen).toContain("choicesDisabled={chat.isSending || !online}");

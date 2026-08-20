@@ -60,17 +60,56 @@ function newClientTurnId(): string {
   });
 }
 
-function makeOptimisticMessage(text: string, conversationId: string | null, clientTurnId: string): AgentMessage {
+function makeOptimisticMessage(text: string, conversationId: string | null): AgentMessage {
   return {
-    id: `optimistic-${clientTurnId}`,
+    id: `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     conversation_id: conversationId ?? "new",
     role: "user",
-    content: { text, local_delivery: "sending" },
+    content: { text },
+    client_turn_id: null,
+    tool_calls: null,
+    tool_results: null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+function makeFailedMessage(
+  text: string,
+  conversationId: string | null,
+  clientTurnId: string,
+): AgentMessage {
+  return {
+    id: `failed-${clientTurnId}`,
+    conversation_id: conversationId ?? "new",
+    role: "user",
+    content: { text, local_delivery: "failed" },
     client_turn_id: clientTurnId,
     tool_calls: null,
     tool_results: null,
     created_at: new Date().toISOString(),
   };
+}
+
+export function reconcileAgentDeliveryMessages(
+  serverMessages: AgentMessage[],
+  optimisticMessages: AgentMessage[],
+  failedMessages: AgentMessage[],
+  currentScope: boolean,
+): AgentMessage[] {
+  const liveOptimistic = optimisticMessages.filter(
+    (o) =>
+      currentScope && !serverMessages.some(
+        (s) => s.role === "user" && (s.content as { text?: string })?.text === (o.content as { text?: string })?.text,
+      ),
+  );
+  const mergedMessages: AgentMessage[] = [...serverMessages, ...liveOptimistic];
+  const liveFailed = failedMessages.filter(
+    (failed) => currentScope && !serverMessages.some(
+      (server) => server.role === "user" && server.client_turn_id === failed.client_turn_id,
+    ),
+  );
+  mergedMessages.push(...liveFailed);
+  return mergedMessages;
 }
 
 export function useAgentChat(
@@ -90,6 +129,9 @@ export function useAgentChat(
   // not after the edge round-trip. Reconciled (cleared) once the real thread
   // refetch lands, or dropped on send error.
   const [optimisticMessages, setOptimisticMessages] = useState<AgentMessage[]>([]);
+  // Failed delivery is a separate terminal local state. The sending placeholder
+  // is always removed on failure; this row alone owns retry retention.
+  const [failedMessages, setFailedMessages] = useState<AgentMessage[]>([]);
   const turnPayloads = useRef(new Map<string, { message?: string; choice_response?: AgentChoiceSubmissionV2 }>());
   const previousBrandId = useRef(brandId);
   const [stateBrandId, setStateBrandId] = useState(brandId);
@@ -103,6 +145,8 @@ export function useAgentChat(
     setConversationId(null);
     setPendingAction(null);
     setOptimisticMessages([]);
+    setFailedMessages([]);
+    turnPayloads.current.clear();
     setErrorMessage(null);
     setErrorCode(null);
     sendMutation.reset();
@@ -118,7 +162,7 @@ export function useAgentChat(
   });
 
   const sendMutation = useMutation({
-    mutationFn: (vars: { displayText: string; clientTurnId: string; epoch: number; message?: string; choice_response?: AgentChoiceSubmissionV2 }) =>
+    mutationFn: (vars: { displayText: string; optimisticId: string; clientTurnId: string; epoch: number; message?: string; choice_response?: AgentChoiceSubmissionV2 }) =>
       sendAgentMessage({
         conversation_id: conversationId,
         ...(vars.message ? { message: vars.message } : {}),
@@ -135,9 +179,11 @@ export function useAgentChat(
       if (response.kind === "error") {
         setErrorMessage(response.message);
         setErrorCode(response.code);
-        setOptimisticMessages((prev) => prev.map((m) => m.client_turn_id === vars.clientTurnId
-          ? { ...m, content: { ...(m.content as object), local_delivery: "failed" } }
-          : m));
+        setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
+        setFailedMessages((prev) => [
+          ...prev.filter((m) => m.client_turn_id !== vars.clientTurnId),
+          makeFailedMessage(vars.displayText, conversationId, vars.clientTurnId),
+        ]);
         if (response.code === "TASK_STATE_CONFLICT" || response.code === "CHOICE_STALE") {
           void qc.invalidateQueries({ queryKey: agentQueryKeys.messages(conversationId) });
         }
@@ -160,7 +206,8 @@ export function useAgentChat(
       // user+assistant rows are in the cache before we remove the placeholder, so
       // the user's bubble never blinks out between optimistic-clear and refetch.
       await qc.invalidateQueries({ queryKey: agentQueryKeys.messages(response.conversation_id) });
-      setOptimisticMessages((prev) => prev.filter((m) => m.client_turn_id !== vars.clientTurnId));
+      setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
+      setFailedMessages((prev) => prev.filter((m) => m.client_turn_id !== vars.clientTurnId));
       turnPayloads.current.delete(vars.clientTurnId);
     },
     onError: (err: unknown, vars) => {
@@ -168,9 +215,11 @@ export function useAgentChat(
       const message = err instanceof Error ? err.message : "Couldn't send — try again";
       setErrorMessage(message);
       setErrorCode("EDGE_ERROR");
-      setOptimisticMessages((prev) => prev.map((m) => m.client_turn_id === vars.clientTurnId
-        ? { ...m, content: { ...(m.content as object), local_delivery: "failed" } }
-        : m));
+      setOptimisticMessages((prev) => prev.filter((m) => m.id !== vars.optimisticId));
+      setFailedMessages((prev) => [
+        ...prev.filter((m) => m.client_turn_id !== vars.clientTurnId),
+        makeFailedMessage(vars.displayText, conversationId, vars.clientTurnId),
+      ]);
     },
   });
 
@@ -182,19 +231,35 @@ export function useAgentChat(
     setErrorMessage(null);
     setErrorCode(null);
     turnPayloads.current.set(clientTurnId, payload);
-    setOptimisticMessages((prev) => {
-      const optimistic = makeOptimisticMessage(displayText, conversationId, clientTurnId);
-      const found = prev.findIndex((m) => m.client_turn_id === clientTurnId);
-      return found < 0 ? [...prev, optimistic] : prev.map((m, index) => index === found ? optimistic : m);
+    setFailedMessages((prev) => prev.filter((m) => m.client_turn_id !== clientTurnId));
+    const optimistic = makeOptimisticMessage(displayText, conversationId);
+    setOptimisticMessages((prev) => [...prev, optimistic]);
+    return sendMutation.mutateAsync({
+      displayText,
+      optimisticId: optimistic.id,
+      clientTurnId,
+      epoch: brandEpoch.current,
+      ...payload,
     });
-    return sendMutation.mutateAsync({ displayText, clientTurnId, epoch: brandEpoch.current, ...payload });
   }, [conversationId, sendMutation]);
 
   const sendMessage = useCallback(
     async (text: string): Promise<AgentChatResponse> => {
-      return sendTurn(text, { message: text });
+      setErrorMessage(null);
+      setErrorCode(null);
+      const clientTurnId = newClientTurnId();
+      turnPayloads.current.set(clientTurnId, { message: text });
+      const optimistic = makeOptimisticMessage(text, conversationId);
+      setOptimisticMessages((prev) => [...prev, optimistic]);
+      return sendMutation.mutateAsync({
+        displayText: text,
+        message: text,
+        optimisticId: optimistic.id,
+        clientTurnId,
+        epoch: brandEpoch.current,
+      });
     },
-    [sendTurn],
+    [conversationId, sendMutation],
   );
 
   const sendChoice = useCallback(
@@ -204,10 +269,10 @@ export function useAgentChat(
 
   const retryTurn = useCallback(async (clientTurnId: string): Promise<AgentChatResponse | null> => {
     const payload = turnPayloads.current.get(clientTurnId);
-    const optimistic = optimisticMessages.find((message) => message.client_turn_id === clientTurnId);
-    if (!payload || !optimistic) return null;
-    return sendTurn((optimistic.content as { text?: string }).text ?? "Retry", payload, clientTurnId);
-  }, [optimisticMessages, sendTurn]);
+    const failed = failedMessages.find((message) => message.client_turn_id === clientTurnId);
+    if (!payload || !failed) return null;
+    return sendTurn((failed.content as { text?: string }).text ?? "Retry", payload, clientTurnId);
+  }, [failedMessages, sendTurn]);
 
   const clearPendingAction = useCallback((): void => {
     setPendingAction(null);
@@ -248,13 +313,12 @@ export function useAgentChat(
     }
     setPendingAction(unresolved);
   }, [currentScope, serverMessages]);
-  const liveOptimistic = optimisticMessages.filter(
-    (o) =>
-      currentScope && !serverMessages.some(
-        (s) => s.role === "user" && s.client_turn_id === o.client_turn_id,
-      ),
+  const mergedMessages = reconcileAgentDeliveryMessages(
+    serverMessages,
+    optimisticMessages,
+    failedMessages,
+    currentScope,
   );
-  const mergedMessages: AgentMessage[] = [...serverMessages, ...liveOptimistic];
 
   return {
     messages: mergedMessages,

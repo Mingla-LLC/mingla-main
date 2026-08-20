@@ -238,3 +238,33 @@ Deno.test("#1985 R2-5 retry errors are rendered and retry awaits its typed resul
     /if \(result\?\.kind === "error"\) setLocalError\(result\.message\)/,
   );
 });
+
+Deno.test("#1985 R2-6 provider follow-up and Business delivery ownership preserve protected contracts", async () => {
+  const chat = await source("supabase/functions/agent-chat/index.ts");
+  const hook = await source("mingla-business/src/hooks/useAgentChat.ts");
+
+  const followupStart = chat.indexOf(
+    "// Follow-up Gemini call to summarise the read result",
+  );
+  const followupEnd = chat.indexOf("const text = followup?.textResponse");
+  assert(followupStart >= 0 && followupEnd > followupStart);
+  const followupBoundary = chat.slice(followupStart, followupEnd);
+  assertMatch(followupBoundary, /callGemini\(\{/);
+  assertMatch(
+    followupBoundary,
+    /const schemaResponse = schemaErrorResponse\(err\);\s*if \(schemaResponse\) return schemaResponse;/s,
+  );
+
+  assertMatch(hook, /content: \{ text \}/);
+  assertMatch(
+    hook,
+    /setOptimisticMessages\(\(prev\) => prev\.filter\(\(m\) => m\.id !== vars\.optimisticId\)\)/,
+  );
+  assertMatch(hook, /function makeFailedMessage\(/);
+  assertMatch(hook, /id: `failed-\$\{clientTurnId\}`/);
+  assertMatch(hook, /export function reconcileAgentDeliveryMessages\(/);
+  assertMatch(
+    hook,
+    /server\.client_turn_id === failed\.client_turn_id/,
+  );
+});
