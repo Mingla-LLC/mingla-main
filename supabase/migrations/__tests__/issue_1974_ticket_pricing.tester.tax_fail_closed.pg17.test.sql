@@ -3,7 +3,6 @@
 -- Independent tester security-boundary proof for #1974. A client preflight is
 -- not an authorization boundary: the authenticated SECURITY DEFINER command
 -- itself must refuse pass-tax=true when no fresh provider attestation exists.
--- This test is deliberately red while the RPC accepts that direct bypass.
 BEGIN;
 
 SELECT set_config('request.jwt.claim.sub','19740000-0000-4000-8000-000000000401',true);
@@ -29,19 +28,20 @@ INSERT INTO public.events(
   'event','scheduled','EUR','{}'::jsonb,false
 );
 
--- A brand created only in this disposable database has no Stripe tax
--- registration. The direct authenticated RPC nevertheless commits true.
-SELECT public.business_patch_pricing_switches(
-  '19740000-0000-4000-8000-000000000420',
-  '{"pass_tax":true}'::jsonb
-);
-
 DO $$
 BEGIN
-  IF (SELECT pass_tax FROM public.events
-      WHERE id='19740000-0000-4000-8000-000000000420') IS TRUE THEN
+  BEGIN
+    PERFORM public.business_patch_pricing_switches(
+      '19740000-0000-4000-8000-000000000420',
+      '{"pass_tax":true}'::jsonb
+    );
     RAISE EXCEPTION 'tax_registration_direct_rpc_bypass';
-  END IF;
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM <> 'tax_registration_required' THEN RAISE; END IF;
+  END;
+  IF (SELECT pass_tax FROM public.events
+      WHERE id='19740000-0000-4000-8000-000000000420') IS DISTINCT FROM false
+  THEN RAISE EXCEPTION 'rejected_tax_bypass_mutated_event'; END IF;
 END $$;
 
 ROLLBACK;

@@ -10,8 +10,10 @@ on:
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/agent-chat/index.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
-      - "supabase/migrations/20270430001974_issue_1974_ari_ticket_pricing.sql"
+      - "supabase/functions/brand-tax-registrations-list/index.ts"
+      - "supabase/migrations/20270502001974_issue_1974_ari_ticket_pricing.sql"
       - "supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1974_initial_proposal_context.implementor.test.ts"
       - "supabase/migrations/__tests__/issue_1974_ticket_pricing*"
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/services/pricingSwitchesService.ts"
@@ -19,6 +21,7 @@ on:
       - "mingla-business/src/components/ari/ToolProposalCard.tsx"
       - "mingla-business/src/components/brand/BrandPricingDefaultsView.tsx"
       - "mingla-business/src/components/event/CreatorStep5Tickets.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       - "mingla-business/src/components/pricing/WhoCoversCostsSection.tsx"
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs"
@@ -33,8 +36,10 @@ on:
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/agent-chat/index.ts"
       - "supabase/functions/agent-confirm-action/index.ts"
-      - "supabase/migrations/20270430001974_issue_1974_ari_ticket_pricing.sql"
+      - "supabase/functions/brand-tax-registrations-list/index.ts"
+      - "supabase/migrations/20270502001974_issue_1974_ari_ticket_pricing.sql"
       - "supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1974_initial_proposal_context.implementor.test.ts"
       - "supabase/migrations/__tests__/issue_1974_ticket_pricing*"
       - "mingla-business/src/services/eventDrafts.ts"
       - "mingla-business/src/services/pricingSwitchesService.ts"
@@ -42,6 +47,7 @@ on:
       - "mingla-business/src/components/ari/ToolProposalCard.tsx"
       - "mingla-business/src/components/brand/BrandPricingDefaultsView.tsx"
       - "mingla-business/src/components/event/CreatorStep5Tickets.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
       - "mingla-business/src/components/pricing/WhoCoversCostsSection.tsx"
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs"
@@ -79,8 +85,8 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - name: Edge compile and #1974 Deno contracts
         run: |
-          deno check supabase/functions/_shared/agentTicketPricing.ts supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentToolAuthorization.ts supabase/functions/_shared/agentToolHelpers.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts
-          deno test --allow-read supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts supabase/migrations/__tests__/issue_1974_ticket_pricing_contract.test.ts
+          deno check supabase/functions/_shared/agentTicketPricing.ts supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentToolAuthorization.ts supabase/functions/_shared/agentToolHelpers.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts supabase/functions/brand-tax-registrations-list/index.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts supabase/functions/_shared/__tests__/issue_1974_initial_proposal_context.implementor.test.ts supabase/migrations/__tests__/issue_1974_ticket_pricing_contract.test.ts
       - name: Revert-sensitive and authority gates
         run: |
           node .github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs --self-test
@@ -99,6 +105,7 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.tester.adversarial.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.tester.one_writer.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.tester.tax_fail_closed.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.implementor.tax_attestation.pg17.test.sql
       - name: Shared Business regression matrix
         working-directory: mingla-business
         run: |

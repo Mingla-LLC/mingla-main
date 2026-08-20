@@ -16,6 +16,38 @@ export const PRICING_STATE_VALUES = [
 
 export type PricingState = typeof PRICING_STATE_VALUES[number];
 
+const VERIFIED_PROPOSAL_CONTEXT_KEYS = new Set([
+  "lifecycle",
+  "action",
+  "tier_name",
+  "current_price_cents",
+  "proposed_price_cents",
+  "current_capacity",
+  "proposed_capacity",
+  "effective_currency",
+  "available_at",
+  "payout_ready",
+  "current_tax",
+  "current_mingla_fee",
+  "current_service_fee",
+  "proposed_tax",
+  "proposed_mingla_fee",
+  "proposed_service_fee",
+]);
+
+export function verifiedProposalArgs(
+  toolArgs: Record<string, unknown>,
+  proposalContext: Record<string, unknown> | null,
+): Record<string, unknown> {
+  if (proposalContext === null) return { ...toolArgs };
+  const safeContext = Object.fromEntries(
+    Object.entries(proposalContext).filter(([key]) =>
+      VERIFIED_PROPOSAL_CONTEXT_KEYS.has(key)
+    ),
+  );
+  return { ...toolArgs, __proposal_context: safeContext };
+}
+
 export interface CanonicalTicketTier {
   id: string;
   name: string;

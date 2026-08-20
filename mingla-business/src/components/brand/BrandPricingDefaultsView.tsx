@@ -94,9 +94,12 @@ export const BrandPricingDefaultsView: React.FC<
         })
         .catch((err: unknown) => {
           setDefaults(previous);
+          const message = err instanceof Error ? err.message : "";
           setSaveError(
-            err instanceof Error
-              ? err.message
+            message.includes("tax_registration_required")
+              ? "Set up an active tax registration in Payments before passing tax to buyers."
+              : message.length > 0
+              ? message
               : "Couldn't save — check your connection and try again.",
           );
         });

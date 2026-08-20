@@ -221,10 +221,26 @@ BEGIN
       RAISE EXCEPTION 'invalid_edit_reason';
     END IF;
 
+    -- Business creates new client-side tiers with the established `t_*`
+    -- temporary identity. Resolve those markers inside this transaction before
+    -- validating or writing the graph; any other malformed identity remains a
+    -- hard failure. The #1972 client revision gate makes an ambiguous retry
+    -- stale instead of creating a second row.
     IF EXISTS (
       SELECT 1 FROM jsonb_array_elements(v_tiers) t
       WHERE (t->>'id') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        AND (t->>'id') !~ '^t_[a-z0-9]+$'
     ) THEN RAISE EXCEPTION 'live_ticket_id_must_be_uuid'; END IF;
+    SELECT COALESCE(jsonb_agg(
+      CASE
+        WHEN tier->>'id' ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+          THEN tier
+        ELSE jsonb_set(tier,'{id}',to_jsonb(gen_random_uuid()::text),false)
+      END
+      ORDER BY ordinality
+    ),'[]'::jsonb)
+    INTO v_tiers
+    FROM jsonb_array_elements(v_tiers) WITH ORDINALITY rows(tier,ordinality);
 
     -- Supplied ids may be new or belong to this event, never another graph.
     IF EXISTS (
@@ -347,6 +363,51 @@ $$;
 REVOKE ALL ON FUNCTION public.business_patch_event_ticket_tiers(uuid,jsonb,timestamptz,integer,uuid,text) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.business_patch_event_ticket_tiers(uuid,jsonb,timestamptz,integer,uuid,text) TO authenticated, service_role;
 
+-- The Stripe registration probe is provider-authoritative but cannot run
+-- inside PostgreSQL. It records only this short-lived server attestation using
+-- the service role; authenticated clients have no table privileges or RLS
+-- policy that could mint or refresh one themselves.
+CREATE TABLE IF NOT EXISTS public.brand_tax_registration_attestations (
+  brand_id uuid PRIMARY KEY REFERENCES public.brands(id) ON DELETE CASCADE,
+  stripe_account_id text,
+  has_active_registration boolean NOT NULL,
+  observed_at timestamptz NOT NULL,
+  source text NOT NULL CHECK (source='brand-tax-registrations-list'),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE public.brand_tax_registration_attestations ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.brand_tax_registration_attestations FROM PUBLIC,anon,authenticated;
+GRANT SELECT,INSERT,UPDATE,DELETE ON TABLE public.brand_tax_registration_attestations TO service_role;
+
+CREATE OR REPLACE FUNCTION public.issue_1974_require_fresh_tax_registration(p_brand_id uuid)
+RETURNS void
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM public.brand_tax_registration_attestations attestation
+    JOIN public.stripe_connect_accounts account
+      ON account.brand_id=attestation.brand_id
+     AND account.detached_at IS NULL
+     AND account.stripe_account_id=attestation.stripe_account_id
+    WHERE attestation.brand_id=p_brand_id
+      AND attestation.has_active_registration
+      AND attestation.source='brand-tax-registrations-list'
+      AND attestation.observed_at>=clock_timestamp()-interval '5 minutes'
+      AND attestation.observed_at<=clock_timestamp()+interval '30 seconds'
+  ) THEN
+    RAISE EXCEPTION 'tax_registration_required';
+  END IF;
+END;
+$$;
+REVOKE ALL ON FUNCTION public.issue_1974_require_fresh_tax_registration(uuid)
+  FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.issue_1974_require_fresh_tax_registration(uuid)
+  TO service_role;
+
 CREATE OR REPLACE FUNCTION public.business_patch_pricing_switches(p_event_id uuid,p_patch jsonb)
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp AS $$
 DECLARE v_event public.events%ROWTYPE;v_uid uuid:=auth.uid();v_tax boolean;v_mingla boolean;v_service boolean;
@@ -362,6 +423,9 @@ BEGIN
   v_tax:=CASE WHEN p_patch?'pass_tax' THEN (p_patch->>'pass_tax')::boolean ELSE v_event.pass_tax END;
   v_mingla:=CASE WHEN p_patch?'pass_mingla_fee' THEN (p_patch->>'pass_mingla_fee')::boolean ELSE v_event.pass_mingla_fee END;
   v_service:=CASE WHEN p_patch?'pass_service_fee' THEN (p_patch->>'pass_service_fee')::boolean ELSE v_event.pass_service_fee END;
+  IF p_patch?'pass_tax' AND v_tax IS TRUE THEN
+    PERFORM public.issue_1974_require_fresh_tax_registration(v_event.brand_id);
+  END IF;
   UPDATE public.events SET pass_tax=v_tax,pass_mingla_fee=v_mingla,pass_service_fee=v_service,updated_at=now() WHERE id=p_event_id;
   RETURN jsonb_build_object('event_id',p_event_id,'updated_at',(SELECT updated_at FROM public.events WHERE id=p_event_id),
     'overrides',jsonb_build_object('pass_tax',v_tax,'pass_mingla_fee',v_mingla,'pass_service_fee',v_service),
@@ -386,6 +450,9 @@ BEGIN
   v_mingla:=CASE WHEN p_patch?'default_pass_mingla_fee' THEN (p_patch->>'default_pass_mingla_fee')::boolean ELSE v_brand.default_pass_mingla_fee END;
   v_service:=CASE WHEN p_patch?'default_pass_service_fee' THEN (p_patch->>'default_pass_service_fee')::boolean ELSE v_brand.default_pass_service_fee END;
   IF v_tax IS NULL OR v_mingla IS NULL OR v_service IS NULL THEN RAISE EXCEPTION 'brand_defaults_must_be_concrete';END IF;
+  IF p_patch?'default_pass_tax' AND v_tax IS TRUE THEN
+    PERFORM public.issue_1974_require_fresh_tax_registration(p_brand_id);
+  END IF;
   UPDATE public.brands SET default_pass_tax=v_tax,default_pass_mingla_fee=v_mingla,default_pass_service_fee=v_service,updated_at=now() WHERE id=p_brand_id;
   RETURN jsonb_build_object('brand_id',p_brand_id,'defaults',jsonb_build_object('pass_tax',v_tax,'pass_mingla_fee',v_mingla,'pass_service_fee',v_service));
 END;$$;
@@ -406,6 +473,144 @@ RETURNS void LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 BEGIN PERFORM public.business_patch_brand_pricing_defaults(p_brand_id,jsonb_build_object('default_pass_tax',p_default_pass_tax,'default_pass_mingla_fee',p_default_pass_mingla_fee,'default_pass_service_fee',p_default_pass_service_fee));END;$$;
 REVOKE ALL ON FUNCTION public.business_set_brand_pricing_defaults(uuid,boolean,boolean,boolean) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.business_set_brand_pricing_defaults(uuid,boolean,boolean,boolean) TO authenticated,service_role;
+
+-- Re-emit only #1972's transactional owner. Its #2353-corrected core leaf is
+-- left untouched and receives a ticket-free patch; the ticket and pricing legs
+-- delegate to #1974's canonical commands in the same transaction.
+CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic(
+  p_event_id uuid,p_patch jsonb,p_reason text,p_client_revision integer
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $fn$
+DECLARE
+  v_core jsonb:=COALESCE(p_patch->'core','{}'::jsonb);
+  v_core_without_tickets jsonb:=COALESCE(p_patch->'core','{}'::jsonb)-'tickets';
+  v_taxonomy jsonb:=p_patch->'taxonomy';
+  v_when jsonb:=p_patch->'when';
+  v_cover jsonb:=p_patch->'cover';
+  v_selection public.event_cover_selections%ROWTYPE;
+  v_event public.events%ROWTYPE;
+  v_tickets jsonb;
+  v_item jsonb;
+  v_mode text;
+  v_timezone text;
+  v_local_when jsonb;
+  v_pricing_patch jsonb:='{}'::jsonb;
+BEGIN
+  IF v_core ? 'visibility'
+     AND COALESCE(v_core->>'visibility','') NOT IN('public','unlisted','private') THEN
+    RAISE EXCEPTION 'event_visibility_invalid';
+  END IF;
+  PERFORM public.business_update_live_event(
+    p_event_id,v_core_without_tickets,p_reason,p_client_revision
+  );
+  IF v_core ? 'tickets' THEN
+    PERFORM public.business_patch_event_ticket_tiers(
+      p_event_id,v_core->'tickets',NULL,NULL,NULL,p_reason
+    );
+  END IF;
+
+  IF v_taxonomy IS NOT NULL THEN
+    PERFORM public.business_patch_event_taxonomy(
+      p_event_id,
+      v_taxonomy->>'city',
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_taxonomy->'partyTypes','[]'::jsonb))),
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_taxonomy->'vibeTags','[]'::jsonb))),
+      ARRAY(SELECT jsonb_array_elements_text(COALESCE(v_taxonomy->'musicGenres','[]'::jsonb))),
+      NULLIF(v_taxonomy#>>'{locationGeo,lat}','')::numeric,
+      NULLIF(v_taxonomy#>>'{locationGeo,lng}','')::numeric,
+      NULLIF(v_taxonomy->>'locationText',''),
+      COALESCE(v_taxonomy->>'coordinatePrecision','')
+    );
+  END IF;
+
+  IF v_when IS NOT NULL THEN
+    v_mode:=COALESCE(NULLIF(v_when->>'whenMode',''),'single');
+    v_timezone:=COALESCE(NULLIF(v_when->>'timezone',''),
+      (SELECT timezone FROM public.events WHERE id=p_event_id),'UTC');
+    IF v_mode IN('single','recurring') THEN
+      v_local_when:=v_when->'when';
+      PERFORM public.business_resolve_event_local_datetime(
+        v_local_when->>'date',COALESCE(NULLIF(v_local_when->>'doorsOpen',''),'00:00'),v_timezone
+      );
+      PERFORM public.business_resolve_event_local_datetime(
+        v_local_when->>'date',COALESCE(NULLIF(v_local_when->>'endsAt',''),
+          COALESCE(NULLIF(v_local_when->>'doorsOpen',''),'00:00')),v_timezone
+      );
+    ELSIF v_mode='multi_date' THEN
+      FOR v_item IN SELECT value FROM jsonb_array_elements(COALESCE(v_when->'multiDates','[]'::jsonb)) LOOP
+        PERFORM public.business_resolve_event_local_datetime(
+          v_item->>'date',COALESCE(NULLIF(v_item->>'startTime',''),'00:00'),v_timezone
+        );
+        PERFORM public.business_resolve_event_local_datetime(
+          v_item->>'date',COALESCE(NULLIF(v_item->>'endTime',''),
+            COALESCE(NULLIF(v_item->>'startTime',''),'00:00')),v_timezone
+        );
+      END LOOP;
+    END IF;
+    PERFORM public.business_patch_event_when(
+      p_event_id,v_when,p_reason,p_client_revision
+    );
+  END IF;
+
+  IF p_patch ? 'theme' THEN
+    UPDATE public.events SET
+      theme_color_override=NULLIF(p_patch#>>'{theme,color}',''),
+      theme_font_override=NULLIF(p_patch#>>'{theme,font}',''),
+      theme_animation_override=NULLIF(p_patch#>>'{theme,animation}',''),
+      updated_at=now()
+    WHERE id=p_event_id;
+  END IF;
+
+  IF p_patch ? 'pricing' THEN
+    IF p_patch->'pricing' ? 'passTax' THEN
+      v_pricing_patch:=v_pricing_patch || jsonb_build_object('pass_tax',p_patch#>'{pricing,passTax}');
+    END IF;
+    IF p_patch->'pricing' ? 'passMinglaFee' THEN
+      v_pricing_patch:=v_pricing_patch || jsonb_build_object('pass_mingla_fee',p_patch#>'{pricing,passMinglaFee}');
+    END IF;
+    IF p_patch->'pricing' ? 'passServiceFee' THEN
+      v_pricing_patch:=v_pricing_patch || jsonb_build_object('pass_service_fee',p_patch#>'{pricing,passServiceFee}');
+    END IF;
+    PERFORM public.business_patch_pricing_switches(p_event_id,v_pricing_patch);
+  END IF;
+
+  IF v_cover IS NOT NULL THEN
+    IF COALESCE((v_cover->>'clear')::boolean,false) THEN
+      PERFORM public.business_clear_event_cover_media(p_event_id);
+    ELSE
+      SELECT * INTO v_selection FROM public.event_cover_selections
+      WHERE selection_ref=v_cover->>'selectionRef'
+        AND user_id=auth.uid() AND event_id=p_event_id
+        AND consumed_at IS NULL AND expires_at>now() FOR UPDATE;
+      IF NOT FOUND THEN RAISE EXCEPTION 'cover_selection_unverified';END IF;
+      PERFORM public.business_set_event_cover_media(
+        p_event_id,v_selection.selection_ref,v_selection.media_url,
+        v_selection.media_type,v_selection.poster_url,v_selection.provider,
+        v_selection.source_url,v_selection.credit,v_selection.credit_url,
+        v_selection.alt
+      );
+    END IF;
+  END IF;
+
+  SELECT * INTO v_event FROM public.events WHERE id=p_event_id;
+  SELECT COALESCE(jsonb_agg(to_jsonb(tt) ORDER BY tt.display_order,tt.created_at),'[]'::jsonb)
+    INTO v_tickets FROM public.ticket_types tt
+    WHERE tt.event_id=p_event_id AND tt.deleted_at IS NULL;
+  RETURN jsonb_build_object(
+    'event',to_jsonb(v_event),'tickets',v_tickets,
+    'client_revision',p_client_revision
+  );
+END;$fn$;
+REVOKE ALL ON FUNCTION public.business_update_live_event_atomic(uuid,jsonb,text,integer)
+  FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.business_update_live_event_atomic(uuid,jsonb,text,integer)
+  TO authenticated,service_role;
+
+-- The #2353-corrected leaf remains an owner-internal core helper. Removing its
+-- external service-role grant closes the only remaining route to its legacy
+-- ticket loop; authenticated Business callers already use the atomic owner.
+REVOKE EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)
+  FROM service_role;
 
 -- #1974 consumes #1972's receipt owner instead of inventing a second
 -- terminal-truth table. The immutable pending-action UUID, exact confirmed

@@ -42,7 +42,10 @@ import {
   enforceTurnRateLimit,
 } from "../_shared/agentRateLimit.ts";
 import { AgentChoices, detectChoices } from "../_shared/agentChoices.ts";
-import { preflightTicketPricingProposal } from "../_shared/agentTicketPricing.ts";
+import {
+  preflightTicketPricingProposal,
+  verifiedProposalArgs,
+} from "../_shared/agentTicketPricing.ts";
 import { logError } from "../_shared/structuredLog.ts";
 import {
   AccessibleAgentBrand,
@@ -867,6 +870,11 @@ async function handle(req: Request): Promise<Response> {
       );
     }
 
+    const proposalArgs = verifiedProposalArgs(
+      pending.tool_args as Record<string, unknown>,
+      proposalContext,
+    );
+
     const { data: asstMsg, error: asstErr } = await userClient
       .from("agent_messages")
       .insert({
@@ -876,9 +884,7 @@ async function handle(req: Request): Promise<Response> {
         content: { text: "" },
         tool_calls: {
           tool_name: tool.name,
-          args: proposalContext === null
-            ? gemini.toolCall.args
-            : { ...gemini.toolCall.args, __proposal_context: proposalContext },
+          args: proposalArgs,
           pending_action_id: pending.id,
         },
         prompt_version: TENANT_CONTEXT_VERSION,
@@ -898,7 +904,7 @@ async function handle(req: Request): Promise<Response> {
       kind: "pending_action",
       pending_action_id: pending.id,
       tool_name: tool.name,
-      tool_args: pending.tool_args as Record<string, unknown>,
+      tool_args: proposalArgs,
       conversation_id: conversationId,
       message_id: asstMsg.id,
     });

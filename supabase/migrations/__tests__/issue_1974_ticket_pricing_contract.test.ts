@@ -6,7 +6,7 @@ import {
 
 const sql = await Deno.readTextFile(
   new URL(
-    "../20270430001974_issue_1974_ari_ticket_pricing.sql",
+    "../20270502001974_issue_1974_ari_ticket_pricing.sql",
     import.meta.url,
   ),
 );
@@ -78,4 +78,34 @@ Deno.test("#1974 stays a command seam and does not duplicate #1972 transaction/r
     "#1974 must not create #1972's receipt table",
   );
   assertStringIncludes(sql, "p_operation_id uuid DEFAULT NULL");
+});
+
+Deno.test("#1974 routes Business tickets through the same owner and binds tax to fresh provider evidence", () => {
+  const businessWriter = sql.slice(
+    sql.indexOf(
+      "CREATE OR REPLACE FUNCTION public.business_update_live_event_atomic(",
+    ),
+    sql.indexOf(
+      "CREATE OR REPLACE FUNCTION public.ari_execute_ticket_pricing_operation(",
+    ),
+  );
+  assertStringIncludes(
+    businessWriter,
+    "public.business_patch_event_ticket_tiers(",
+  );
+  assertStringIncludes(businessWriter, "v_core_without_tickets");
+  assert(
+    !/\b(?:INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+public\.ticket_types\b/i.test(
+      businessWriter,
+    ),
+    "Business editor must not regain a competing ticket_types writer",
+  );
+  assertStringIncludes(sql, "brand_tax_registration_attestations");
+  assertStringIncludes(sql, "issue_1974_require_fresh_tax_registration");
+  assertStringIncludes(sql, "interval '5 minutes'");
+  assertStringIncludes(sql, "stripe_connect_accounts");
+  assertStringIncludes(
+    sql,
+    "REVOKE EXECUTE ON FUNCTION public.business_update_live_event(uuid,jsonb,text,integer)",
+  );
 });
