@@ -37,6 +37,7 @@ describe("issue #922 dedicated invitation entry", () => {
     expect(Buffer.byteLength(output)).toBeLessThanOrEqual(20_000);
     expect(gzipSync(output).byteLength).toBeLessThanOrEqual(6_000);
     expect(output.match(/id="issue-922-critical-entry"/g)).toHaveLength(1);
+    expect(output).toContain(".i922-host{transform:translateZ(0)}");
   });
 
   test("pins the copied UI, storage, consent, routing, and owner contracts", () => {

@@ -118,6 +118,16 @@ export function buildCriticalEntry(buildDir) {
   // The shell markup is assigned through a single-quoted inline-JS string.
   // Preserve its contractions as escaped apostrophes in the emitted HTML.
   const payload = criticalPayload(scripts)
+    // #2211 hosted-CI rework — the live RNW tree paints through a composited
+    // runtime layer. Standalone Linux Chromium otherwise uses LCD glyph
+    // antialiasing for the copied HTML and produces a deterministic 1.13%
+    // text-only visual delta even though every computed box/style is equal.
+    // One host layer matches RNW's paint pipeline without changing geometry,
+    // hit ownership, focus semantics, or the strict visual threshold.
+    .replace(
+      "</style>",
+      ".i922-host{transform:translateZ(0)}</style>",
+    )
     // #2211 — the React web owner keeps the action inside its centred scrolling
     // region because the global first-visit consent panel occupies the bottom
     // overlay. Match that geometry so the CTA stays actionable and the static
