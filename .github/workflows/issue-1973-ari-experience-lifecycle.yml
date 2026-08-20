@@ -11,7 +11,7 @@ on:
       - "supabase/functions/_shared/agentToolAuthorization.ts"
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts"
-      - "supabase/migrations/20270503001973_issue_1973_ari_experience_lifecycle.sql"
+      - "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql"
       - "supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle*.sql"
       - "mingla-business/app/experience/**"
       - "mingla-business/src/services/experienceDetailService.ts"
@@ -40,7 +40,13 @@ jobs:
             supabase/functions/agent-confirm-action/index.ts \
             supabase/functions/parse-restaurant-menu/index.ts \
             supabase/functions/parse-play-activities/index.ts
+          deno fmt --check \
+            supabase/functions/_shared/agentToolAuthorization.ts \
+            supabase/functions/agent-confirm-action/index.ts \
+            supabase/functions/agent-confirm-action/__tests__/issue_1973_create_draft_followup.implementor.test.ts
           deno test --allow-read supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts
+          deno test --no-check --allow-env --allow-net --allow-read \
+            supabase/functions/agent-confirm-action/__tests__/issue_1973_create_draft_followup.implementor.test.ts
           node .github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs
           node .github/scripts/strict-grep/issue-1973-ari-experience-lifecycle.mjs --self-test
       - name: Business shared-surface proof

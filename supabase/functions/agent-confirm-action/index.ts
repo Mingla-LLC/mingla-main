@@ -534,7 +534,7 @@ Deno.serve(async (req) => {
   });
 });
 
-function buildFollowupText(
+export function buildFollowupText(
   toolName: string,
   result: unknown,
 ): string | undefined {
@@ -568,10 +568,21 @@ function buildFollowupText(
       return `Updated. Anything else to change?`;
     }
     if (toolName === "create_experience") {
-      const title = (result as any)?.event?.title;
-      return title
-        ? `Published experience "${title}" to your venue.`
-        : undefined;
+      const event = (result as { event?: unknown } | null)?.event;
+      if (!event || typeof event !== "object" || Array.isArray(event)) {
+        return undefined;
+      }
+      const canonical = event as Record<string, unknown>;
+      const title = typeof canonical.title === "string"
+        ? canonical.title.trim()
+        : "";
+      if (
+        !title || canonical.status !== "draft" ||
+        canonical.visibility !== "draft" || canonical.published_at !== null
+      ) {
+        return undefined;
+      }
+      return `Created draft experience "${title}".`;
     }
   } catch {
     // ignore

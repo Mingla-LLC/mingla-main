@@ -183,6 +183,7 @@ async function resolveBrand(
       brandId = args.brand_id;
       break;
     case "event": {
+      // deno-fmt-ignore -- #2019's append-only guard pins this security binding as one auditable expression.
       const row = await rowBrand(client, "events", args.event_id, "brand_id, event_type", true);
       assertExpectedEventType(toolName, row);
       brandId = row.brand_id;
@@ -217,6 +218,7 @@ async function resolveBrand(
 
   // Bind redundant high-risk finance/resource identifiers before role checks.
   if (isUuid(args.partner_id)) {
+    // deno-fmt-ignore -- #2019's append-only guard pins the deployed relation and identifier together.
     const partner = await rowBrand(client, "partner_brand_links", args.partner_id);
     if (partner.brand_id !== brandId) unavailable();
   }
@@ -294,8 +296,11 @@ async function resolveBrand(
   ]
     .filter(isUuid);
   for (const guestId of guestIds) {
+    // deno-fmt-ignore -- #2019's append-only guard pins the physical guest-to-RSVP foreign key.
     const guest = await rowBrand(client, "event_rsvp_guests", guestId, "rsvp_id");
+    // deno-fmt-ignore -- #2019's append-only guard pins the physical RSVP-to-event foreign key.
     const rsvp = await rowBrand(client, "event_rsvps", guest.rsvp_id, "event_id");
+    // deno-fmt-ignore -- #2019's append-only guard pins the terminal event tenant/type lookup.
     const event = await rowBrand(client, "events", rsvp.event_id, "brand_id, event_type", true);
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
@@ -541,6 +546,7 @@ export function secureAgentTools(
       ...definition,
       ...declaration,
       executor: async (args, client, userId, context) => {
+        // deno-fmt-ignore -- #2019's append-only guard pins registry metadata to runtime reauthorization.
         await authorizeAgentTool({ ...declaration, name: definition.name, parameters: definition.parameters }, args, client, userId);
         return await rawExecutor(args, client, userId, context);
       },

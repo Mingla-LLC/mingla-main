@@ -5,6 +5,68 @@
 -- proposal boundary, both timezone contracts, and the safe unpublish path.
 BEGIN;
 
+-- Latest-main certification integration: #1973 is capability 117. The
+-- forward-only migration must register it and reject the prior 116-row set.
+DO $certification$
+DECLARE
+  v_run_id uuid;
+  v_error text;
+BEGIN
+  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 117 THEN
+    RAISE EXCEPTION '#1973 expected exactly 117 certification requirements';
+  END IF;
+  IF NOT EXISTS (
+    SELECT 1 FROM public.ari_cert_capability_requirements
+    WHERE capability_id = 'ari.experience.unpublish' AND evidence_mode = 'write'
+  ) THEN
+    RAISE EXCEPTION '#1973 unpublish certification requirement missing';
+  END IF;
+
+  INSERT INTO public.ari_cert_runs (
+    release_sha, requirements_digest, function_versions, web_deployment_id,
+    native_artifacts, status, tester_verdict, rollback_rehearsed_at,
+    prior_compatible_pair, stranded_operation_count
+  ) VALUES (
+    repeat('7', 40),
+    '5e06801c4afe20600517a53d228b58e0b776a1e59b4e6b6fd123a77b778ba4aa',
+    '{"agent_chat":"v1973","agent_confirm_action":"v1973"}'::jsonb,
+    'business-web-1973',
+    '[
+      {"surface":"business_ios_simulator","artifact_id":"ios-sim-1973","runtime_version":"1.1.3","device":"iPhone simulator"},
+      {"surface":"business_ios_physical","artifact_id":"ios-device-1973","runtime_version":"1.1.3","device":"Physical iPhone"},
+      {"surface":"business_android","artifact_id":"android-1973","runtime_version":"1.1.3","device":"Pixel 7"}
+    ]'::jsonb,
+    'running', 'PASS', now(), 'v1972+v1973', 0
+  ) RETURNING id INTO v_run_id;
+
+  INSERT INTO public.ari_cert_release_artifacts (
+    run_id, artifact_type, artifact_id, release_sha, sha256
+  ) VALUES
+    (v_run_id, 'business_ios_simulator', 'ios-sim-1973', repeat('7', 40), repeat('8', 64)),
+    (v_run_id, 'business_ios_physical', 'ios-device-1973', repeat('7', 40), repeat('8', 64)),
+    (v_run_id, 'business_android', 'android-1973', repeat('7', 40), repeat('8', 64));
+
+  INSERT INTO public.ari_cert_evidence (
+    run_id, capability_id, surface, tenant_case, role_case, scenario,
+    outcome, safe_evidence, evidence_digest
+  )
+  SELECT v_run_id, capability_id, 'backend', 'owner_tenant', 'owner',
+         'confirm_one_side_effect', 'passed', '{}'::jsonb, repeat('9', 64)
+  FROM public.ari_cert_capability_requirements
+  WHERE capability_id <> 'ari.experience.unpublish';
+
+  BEGIN
+    PERFORM public.ari_cert_finalize_run(v_run_id);
+    RAISE EXCEPTION '#1973 finalizer accepted the obsolete 116-row evidence set';
+  EXCEPTION WHEN OTHERS THEN
+    GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
+    IF v_error <> 'ari_cert_missing_capabilities:116' THEN
+      RAISE EXCEPTION '#1973 expected 116-row rejection, received %', v_error;
+    END IF;
+  END;
+END;
+$certification$;
+
 INSERT INTO auth.users(id,email) VALUES
   ('19730000-0000-4000-8000-000000000301','issue1973-r2-owner@example.com'),
   ('19730000-0000-4000-8000-000000000302','issue1973-r2-manager@example.com'),

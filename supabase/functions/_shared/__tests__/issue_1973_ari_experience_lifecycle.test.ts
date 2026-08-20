@@ -54,7 +54,7 @@ Deno.test("#1973 Ari experience tools use canonical graph owners", async () => {
 
 Deno.test("#1973 SQL owns graph readback, revision gates, media provenance, demotion and grants", async () => {
   const sql = await read(
-    "supabase/migrations/20270503001973_issue_1973_ari_experience_lifecycle.sql",
+    "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql",
   );
   for (
     const fn of [

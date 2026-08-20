@@ -4,7 +4,7 @@ import fs from "node:fs";
 const read = (path) => fs.readFileSync(path, "utf8");
 const sources = {
   migration: read(
-    "supabase/migrations/20270503001973_issue_1973_ari_experience_lifecycle.sql",
+    "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql",
   ),
   tools: read("supabase/functions/_shared/agentTools.ts"),
   domain: read("supabase/functions/_shared/agentDomainTools.ts"),
@@ -13,6 +13,13 @@ const sources = {
   menu: read("supabase/functions/parse-restaurant-menu/index.ts"),
   business: read("mingla-business/src/services/experienceDetailService.ts"),
   prompt: read("supabase/functions/_shared/agentSystemPrompt.ts"),
+  truthTest: read(
+    "supabase/functions/agent-confirm-action/__tests__/issue_1973_create_draft_followup.implementor.test.ts",
+  ),
+  certificationTest: read(
+    "supabase/migrations/__tests__/issue_1973_ari_experience_lifecycle.round2.implementor.happy.pg17.test.sql",
+  ),
+  workflow: read(".github/workflows/issue-1973-ari-experience-lifecycle.yml"),
 };
 
 function check(s) {
@@ -74,6 +81,34 @@ function check(s) {
     '"manage_experience_stops"',
     '"unpublish_experience"',
     "RECEIPT_BACKED_TOOL_NAMES",
+  ]);
+  const followup = s.confirm.slice(
+    s.confirm.indexOf("export function buildFollowupText"),
+  );
+  requireAll("truthful create follow-up", followup, [
+    'canonical.status !== "draft"',
+    'canonical.visibility !== "draft"',
+    "canonical.published_at !== null",
+    "Created draft experience",
+  ]);
+  if (followup.includes("Published experience")) {
+    failures.push("create follow-up still fabricates a published lifecycle");
+  }
+  requireAll("truthful create behavior proof", s.truthTest, [
+    'buildFollowupText("create_experience", canonicalDraft)',
+    'assertEquals(copy?.includes("Published"), false)',
+    'status: "scheduled"',
+    "undefined",
+  ]);
+  requireAll("117-capability certification proof", s.certificationTest, [
+    "ari.experience.unpublish",
+    "ari_cert_missing_capabilities:116",
+    "expected exactly 117 certification requirements",
+  ]);
+  requireAll("workflow", s.workflow, [
+    "issue_1973_create_draft_followup.implementor.test.ts",
+    "deno fmt --check",
+    "agentToolAuthorization.ts",
   ]);
   for (const [label, parser] of [["play", s.play], ["menu", s.menu]]) {
     requireAll(label, parser, [
@@ -137,12 +172,33 @@ if (process.argv.includes("--self-test")) {
         "removed_rpc",
       ),
     },
+    {
+      ...sources,
+      confirm: sources.confirm.replace(
+        "Created draft experience",
+        "Published experience",
+      ),
+    },
+    {
+      ...sources,
+      truthTest: sources.truthTest.replace(
+        'assertEquals(copy?.includes("Published"), false)',
+        'assertEquals(copy?.includes("Published"), true)',
+      ),
+    },
+    {
+      ...sources,
+      certificationTest: sources.certificationTest.replace(
+        "ari_cert_missing_capabilities:116",
+        "accepted_obsolete_inventory",
+      ),
+    },
   ];
   if (mutations.some((mutation) => check(mutation).length === 0)) {
     console.error("issue-1973 self-test FAIL: a material revert escaped");
     process.exit(1);
   }
-  console.log("issue-1973 self-test PASS (5 hostile mutations)");
+  console.log("issue-1973 self-test PASS (8 hostile mutations)");
   process.exit(0);
 }
 
