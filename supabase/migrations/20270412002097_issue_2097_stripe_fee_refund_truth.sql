@@ -30,6 +30,7 @@ ALTER TABLE public.refunds ADD CONSTRAINT refunds_application_fee_refund_status_
 ALTER TABLE public.refunds DROP CONSTRAINT IF EXISTS refunds_application_fee_terminal_reason_check;
 ALTER TABLE public.refunds ADD CONSTRAINT refunds_application_fee_terminal_reason_check CHECK (
   (application_fee_refund_status = 'rejected_preflight'
+    AND application_fee_refund_terminal_reason IS NOT NULL
     AND application_fee_refund_terminal_reason IN (
       'invalid_provider_amount','partial_fee_below_provider_cent','fee_preflight_conflict'
     ))
@@ -107,7 +108,7 @@ CREATE TABLE IF NOT EXISTS public.ticket_refund_attempts (
     'fee_evidence_unavailable','evidence_conflict','not_applicable','unknown_legacy'
   )),
   CONSTRAINT ticket_refund_attempt_reason_check CHECK (
-    (status='rejected_preflight' AND terminal_reason IN (
+    (status='rejected_preflight' AND terminal_reason IS NOT NULL AND terminal_reason IN (
       'invalid_provider_amount','partial_fee_below_provider_cent','fee_preflight_conflict'
     )) OR (status<>'rejected_preflight' AND terminal_reason IS NULL)
   ),

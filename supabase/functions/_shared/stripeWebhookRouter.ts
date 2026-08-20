@@ -1342,8 +1342,10 @@ async function handleApplicationFeeRefund(
       .in("status", ["pending_visibility", "awaiting_application_fee"]);
     if (attemptError) throw new Error(`ticket fee attempt lookup failed:${attemptError.message}`);
     if (!attempts?.length) throw new Error("application_fee_refund_source_identity_missing");
+    // orch-strict-grep-allow stripe-no-idempotency-key — signed-webhook recovery performs read-only evidence lookup.
     const fee = await stripe.applicationFees.retrieve(feeId);
     const rows = await listAllFeeRefunds(async (startingAfter) => {
+      // orch-strict-grep-allow stripe-no-idempotency-key — signed-webhook recovery paginates read-only evidence.
       const page = await stripe.applicationFees.listRefunds(feeId, { limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
       return { data: page.data.map((row: { id: string; fee: string; amount: number; currency: string }) => ({ id: String(row.id), fee: String(row.fee), amount: row.amount, currency: String(row.currency) })), has_more: page.has_more === true };
     });

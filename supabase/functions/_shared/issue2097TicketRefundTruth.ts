@@ -298,6 +298,7 @@ async function feeRefundSnapshot(
   feeId: string,
 ): Promise<{ ids: string[]; rows: FeeRefundEvidence[] }> {
   const rows = await listAllFeeRefunds(async (startingAfter) => {
+    // orch-strict-grep-allow stripe-no-idempotency-key — Stripe GET evidence read; idempotency keys govern mutations only.
     const page = await stripe.applicationFees.listRefunds(feeId, {
       limit: 100,
       ...(startingAfter ? { starting_after: startingAfter } : {}),
@@ -327,6 +328,7 @@ export async function executeTicketRefundWithFeeTruth(
     ? null
     : canonicalProviderInteger(input.expectedApplicationFeeAmount);
   const requested = canonicalProviderInteger(input.requestedRefundAmount);
+  // orch-strict-grep-allow stripe-no-idempotency-key — Stripe GET identity read; idempotency keys govern mutations only.
   const pi = await input.stripe.paymentIntents.retrieve(
     input.paymentIntentId,
     { expand: ["latest_charge.application_fee"] },
@@ -340,6 +342,7 @@ export async function executeTicketRefundWithFeeTruth(
   const charge =
     typeof pi.latest_charge === "object" && pi.latest_charge?.id === chargeId
       ? pi.latest_charge
+      // orch-strict-grep-allow stripe-no-idempotency-key — Stripe GET identity read; idempotency keys govern mutations only.
       : await input.stripe.charges.retrieve(chargeId, {
         expand: ["application_fee"],
       }, { stripeAccount: input.connectedAccountId });
@@ -385,6 +388,27 @@ export async function executeTicketRefundWithFeeTruth(
   if (persistedExpectedFee === "0" && !feeIdentity) {
     const state = await recordPreRefundState("awaiting_application_fee");
     if (state.provider_call_permitted !== true) {
+      if (state.status === "not_applicable") {
+        const { data: existingAttempt, error: existingAttemptError } =
+          await input
+            .supabase.from("ticket_refund_attempts")
+            .select("buyer_refund_id")
+            .eq("id", state.attempt_id).single();
+        if (
+          existingAttemptError ||
+          typeof existingAttempt?.buyer_refund_id !== "string" ||
+          existingAttempt.buyer_refund_id.length === 0
+        ) {
+          throw new Error("refund_attempt_replay_lookup_failed");
+        }
+        return {
+          status: "not_applicable",
+          buyerRefundId: existingAttempt.buyer_refund_id,
+          applicationFeeRefundedCents: 0,
+          attemptId: state.attempt_id as string,
+          httpStatus: 200,
+        };
+      }
       return {
         status: state.status as Issue2097Status,
         buyerRefundId: null,
@@ -453,6 +477,7 @@ export async function executeTicketRefundWithFeeTruth(
       httpStatus: 409,
     };
   }
+  // orch-strict-grep-allow stripe-no-idempotency-key — Stripe GET evidence read; idempotency keys govern mutations only.
   const fee = await input.stripe.applicationFees.retrieve(feeIdentity);
   const feeAmount = canonicalProviderInteger(fee.amount);
   // Legacy trip installments did not persist their per-PI fee, so their
@@ -624,6 +649,7 @@ export async function executeTicketRefundWithFeeTruth(
   } else {
     // The durable replay lookup above owns provider identity adoption.
   }
+  // orch-strict-grep-allow stripe-no-idempotency-key — Stripe GET evidence read; idempotency keys govern mutations only.
   const afterFee = await input.stripe.applicationFees.retrieve(feeIdentity);
   const after = await feeRefundSnapshot(input.stripe, feeIdentity);
   const decision = classifyFeeRefundEvidence({
