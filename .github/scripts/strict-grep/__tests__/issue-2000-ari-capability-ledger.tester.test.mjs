@@ -23,7 +23,7 @@ const EXPECTED_TOOL_NAMES = [
   "publish_trip", "quote_stay", "refund_order", "refund_rsvp_contribution",
   "request_account_deletion", "retry_installment", "revoke_brand_member",
   "run_growth_tool", "schedule_campaign", "send_campaign_now", "send_venue_sms",
-  "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
+  "set_brand_pricing_defaults", "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
   "set_pricing_switches", "set_rsvp_guest_status", "submit_venue_claim",
   "transition_stay", "transition_venue_reservation", "unpublish_event",
   "update_ari_prefs", "update_brand", "update_event", "update_experience",
@@ -35,16 +35,16 @@ const EXPECTED = Object.freeze({
   capabilityCount: 116,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 25,
-    broken: 39,
+    registered_unverified: 28,
+    broken: 37,
     guided_handoff: 7,
-    unsupported: 41,
+    unsupported: 40,
     in_flight: 4,
   }),
   idDigest: "a63afe467e81ac3fd2441d0ccbc92dcb8c8afea8fd8ee4327c3f6fdb1a8a95c0",
-  statusDigest: "4c7752fa3f7c8f4b4623cdeb37e6456a5ffbca8af78512863ddf6b00da1db6df",
-  mappingDigest: "f5fe23c5ef8421bd9cc035756e9266e88b39260f27b41e48818da3a2ef16c077",
-  sourceRefDigest: "2e2c112c814af4b5bf9607e0d497d40bbba22e7234ff79317b95a8ef86f8dd6f",
+  statusDigest: "8f2fcf8bdee0a101438cf59aab2bf0f0300c4effc63c906f2a87eec90d39de6f",
+  mappingDigest: "45362ebae3c76bc8a676d277fbad0b59b4bd54f65a2ad64b853584fa33fd8b26",
+  sourceRefDigest: "4b081e15d847b8fb4892136e4776eb9a6dc5845fac39cb868b2df48befd63769",
 });
 
 function readLedger() {
@@ -70,8 +70,8 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("65-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("39/25/41/7/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("66-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("37/28/40/7/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
@@ -104,7 +104,7 @@ test("tester rejects a bijective but semantically swapped tool mapping", () => {
 
 test("tester rejects broken-to-unverified status laundering with reconciled counters", () => {
   const ledger = readLedger();
-  const row = ledger.capabilities.find((capability) => capability.id === "ari.ticket.upsert_tier");
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.experience.publish");
   row.status = "registered_unverified";
   ledger.audit.status_breakdown.broken--;
   ledger.audit.status_breakdown.registered_unverified++;

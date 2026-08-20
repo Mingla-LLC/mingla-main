@@ -149,8 +149,6 @@ ari.partner.splits
 // it cannot remove one from this set or create a new proven-broken claim.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
-ari.ticket.upsert_tier
-ari.ticket.pricing_switches
 ari.experience.publish
 ari.experience.update
 ari.experience.delete
@@ -328,9 +326,9 @@ function validateRef(root, auditSha, ref, label, failures) {
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 39) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 37) {
     failures.push(
-      `proven-broken authority must contain 39 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 37 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -433,7 +431,7 @@ export function validateLedger({ root, ledger, registered, advertised }) {
     const blockers = Array.isArray(capability.blockers) ? capability.blockers : [];
     const verificationGap = blockers.length > 0 && blockers.every((blocker) =>
       typeof blocker === "string" &&
-      /(?:runtime|surface|parity).*(?:proof|evidence)|(?:proof|evidence).*(?:runtime|surface|parity)/i.test(blocker)
+      /(?:runtime|surface|parity).*(?:proof|evidence|certification)|(?:proof|evidence|certification).*(?:runtime|surface|parity)/i.test(blocker)
     );
     if (capability.status === "registered_unverified" && !verificationGap) {
       failures.push(`${label}: registered_unverified blockers must describe verification gaps only`);
@@ -544,7 +542,7 @@ function selfTest() {
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
   expectMutation("broken to unverified laundering", ({ ledger }) => {
-    const row = ledger.capabilities.find((c) => c.id === "ari.ticket.upsert_tier");
+    const row = ledger.capabilities.find((c) => c.id === "ari.experience.publish");
     row.status = "registered_unverified";
     row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
     ledger.audit.status_breakdown.broken--;
