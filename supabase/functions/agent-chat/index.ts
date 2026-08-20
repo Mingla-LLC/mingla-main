@@ -33,6 +33,7 @@ import {
 import {
   AGENT_TOOLS,
   bindAgentProposalState,
+  canonicalizeAgentProposalArgs,
   findTool,
   isReadOnlyAgentToolCall,
   ToolError,
@@ -1107,7 +1108,9 @@ async function handle(req: Request): Promise<Response> {
   // deno-fmt-ignore -- protected #2013 provenance gate requires this exact select boundary.
   const { data: historyRows } = await userClient
     .from("agent_messages")
-    .select("role, content, tool_calls, tool_results, prompt_version, created_at")
+    .select(
+      "role, content, tool_calls, tool_results, prompt_version, created_at",
+    )
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(HISTORY_WINDOW);
@@ -1850,6 +1853,10 @@ async function handle(req: Request): Promise<Response> {
     // #2063: bind canonical optimistic state before authorization/persistence.
     // The proposal, confirmation, and SQL owner all receive the same version.
     try {
+      gemini.toolCall.args = canonicalizeAgentProposalArgs(
+        tool.name,
+        gemini.toolCall.args,
+      );
       gemini.toolCall.args = await bindAgentProposalState(
         tool.name,
         gemini.toolCall.args,

@@ -39,7 +39,10 @@ export function check(sources) {
     '"LEGACY_CONVERSATION_UNSCOPED"', '"BRAND_ACCESS_DENIED"',
     '.select("id, summary, brand_id")', 'brand_id: body.brand_id ?? null',
   ]) if (!chat.includes(token)) failures.push(`conversation lifecycle missing ${token}`);
-  for (const token of ['.select("role, content, tool_calls, tool_results, prompt_version, created_at")', 'trustedHistoryPromptVersion = "tenant-v1"', "m.prompt_version !== trustedHistoryPromptVersion", "prompt_version: TENANT_CONTEXT_VERSION"]) {
+  if (!/\.select\(\s*"role, content, tool_calls, tool_results, prompt_version, created_at",?\s*\)/.test(chat)) {
+    failures.push('persisted-context provenance boundary missing .select("role, content, tool_calls, tool_results, prompt_version, created_at")');
+  }
+  for (const token of ['trustedHistoryPromptVersion = "tenant-v1"', "m.prompt_version !== trustedHistoryPromptVersion", "prompt_version: TENANT_CONTEXT_VERSION"]) {
     if (!chat.includes(token)) failures.push(`persisted-context provenance boundary missing ${token}`);
   }
   const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;

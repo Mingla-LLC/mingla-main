@@ -16,7 +16,11 @@ import {
 import { corsHeaders } from "../_shared/cors.ts";
 import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
-import { findTool, ToolError } from "../_shared/agentTools.ts";
+import {
+  canonicalizeAgentProposalArgs,
+  findTool,
+  ToolError,
+} from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
 import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 import {
@@ -672,10 +676,28 @@ Deno.serve(async (req) => {
   }
 
   // #2019: resolve and authorize final edited scope while still pending.
-  const finalArgs = pending.status === "pending" && body.edited_args &&
+  const candidateArgs = pending.status === "pending" && body.edited_args &&
       typeof body.edited_args === "object"
     ? body.edited_args
     : (pending.tool_args as Record<string, unknown>);
+
+  let canonicalArgs: Record<string, unknown>;
+  try {
+    canonicalArgs = canonicalizeAgentProposalArgs(
+      pending.tool_name,
+      candidateArgs,
+    );
+  } catch (err: unknown) {
+    if (err instanceof ToolError) {
+      return errorResponse(400, err.code, err.message);
+    }
+    return errorResponse(
+      400,
+      "INVALID_ARGS",
+      "The edited proposal is invalid.",
+    );
+  }
+  const finalArgs = canonicalArgs;
 
   // Find tool + validate
   const tool = findTool(pending.tool_name);

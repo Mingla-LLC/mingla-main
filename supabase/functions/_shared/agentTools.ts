@@ -84,7 +84,10 @@ async function executeBrandOperation(
   if (error) {
     const message = error.message ?? "Brand operation failed";
     if ((error as { code?: string }).code === "23505") {
-      throw new ToolError("SLUG_TAKEN", "That brand web address is already in use.");
+      throw new ToolError(
+        "SLUG_TAKEN",
+        "That brand web address is already in use.",
+      );
     }
     if (message.includes("brand_delete_blocked_by_events")) {
       throw new ToolError(
@@ -93,13 +96,22 @@ async function executeBrandOperation(
       );
     }
     if (message.includes("brand_name_confirmation_mismatch")) {
-      throw new ToolError("INVALID_ARGS", "Type the exact brand name to confirm deletion.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Type the exact brand name to confirm deletion.",
+      );
     }
     if (message.includes("venue_brand_mismatch")) {
-      throw new ToolError("BRAND_ACCESS_DENIED", "That venue does not belong to the selected brand.");
+      throw new ToolError(
+        "BRAND_ACCESS_DENIED",
+        "That venue does not belong to the selected brand.",
+      );
     }
     if (message.includes("idempotency_conflict")) {
-      throw new ToolError("IDEMPOTENCY_CONFLICT", "This confirmation no longer matches its proposal.");
+      throw new ToolError(
+        "IDEMPOTENCY_CONFLICT",
+        "This confirmation no longer matches its proposal.",
+      );
     }
     if (message.includes("range_version_conflict")) {
       throw new ToolError(
@@ -109,7 +121,12 @@ async function executeBrandOperation(
     }
     throw new ToolError("WRITE_FAILED", message);
   }
-  if (data === null) throw new ToolError("WRITE_FAILED", "Brand operation returned no readback.");
+  if (data === null) {
+    throw new ToolError(
+      "WRITE_FAILED",
+      "Brand operation returned no readback.",
+    );
+  }
   return data;
 }
 
@@ -186,7 +203,10 @@ const createBrand: AgentToolDefinition = {
       "cover_media_poster_url",
     ].some((key) => args[key] !== undefined);
     if (hasCoverInput && cover === null) {
-      throw new ToolError("INVALID_ARGS", "Cover URL, type, and stable poster must be supplied together.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Cover URL, type, and stable poster must be supplied together.",
+      );
     }
 
     // Receipt identity is the exact confirmed payload. SQL performs the same
@@ -863,9 +883,22 @@ const updateBrand: AgentToolDefinition = {
         description: "New short description (<=500 chars)",
       },
       contact_email: { type: "string", description: "New brand contact email" },
-      cover_media_url: { type: "string", description: "Cover media URL — set by the Add cover picker, NOT by you." },
-      cover_media_type: { type: "string", enum: ["image", "gif", "video"], description: "Cover media type, set by the picker alongside cover_media_url." },
-      cover_media_poster_url: { type: "string", description: "Stable cover still — set by the Add cover picker alongside GIF/video media." },
+      cover_media_url: {
+        type: "string",
+        description:
+          "Cover media URL — set by the Add cover picker, NOT by you.",
+      },
+      cover_media_type: {
+        type: "string",
+        enum: ["image", "gif", "video"],
+        description:
+          "Cover media type, set by the picker alongside cover_media_url.",
+      },
+      cover_media_poster_url: {
+        type: "string",
+        description:
+          "Stable cover still — set by the Add cover picker alongside GIF/video media.",
+      },
     },
   },
   executor: async (args, client, _userId, context) => {
@@ -918,7 +951,10 @@ const updateBrand: AgentToolDefinition = {
       "cover_media_poster_url",
     ].some((key) => args[key] !== undefined);
     if (hasCoverInput && cover === null) {
-      throw new ToolError("INVALID_ARGS", "Cover URL, type, and stable poster must be supplied together.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Cover URL, type, and stable poster must be supplied together.",
+      );
     }
     if (cover !== null) {
       updates.cover_media_url = cover.cover_media_url;
@@ -954,7 +990,11 @@ const deleteBrand: AgentToolDefinition = {
     required: ["brand_id"],
     properties: {
       brand_id: { type: "string", description: "UUID of the brand to delete" },
-      confirm_phrase: { type: "string", description: "Exact brand name supplied only by the type-to-confirm UI." },
+      confirm_phrase: {
+        type: "string",
+        description:
+          "Exact brand name supplied only by the type-to-confirm UI.",
+      },
     },
   },
   executor: async (args, client, _userId, context) => {
@@ -963,7 +1003,10 @@ const deleteBrand: AgentToolDefinition = {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
     if (!isString(args.confirm_phrase)) {
-      throw new ToolError("INVALID_ARGS", "Type the exact brand name to confirm deletion.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Type the exact brand name to confirm deletion.",
+      );
     }
     return await executeBrandOperation("delete_brand", args, client, context);
   },
@@ -980,10 +1023,97 @@ const brandHourSchema = {
   properties: {
     weekday: { type: "integer", minimum: 0, maximum: 6 },
     open_time: { type: "string", description: "Local HH:MM time when open." },
-    close_time: { type: "string", description: "Local HH:MM time when closed." },
+    close_time: {
+      type: "string",
+      description: "Local HH:MM time when closed.",
+    },
     is_closed: { type: "boolean" },
   },
 };
+
+function canonicalizeBrandHoursArgs(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (
+    !isUuid(args.brand_id) ||
+    !isUuid(args.venue_id) ||
+    !Array.isArray(args.hours)
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "brand_id, venue_id, and seven hours rows are required.",
+    );
+  }
+  const weekdays = new Set<number>();
+  const hours = args.hours.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    if (
+      !Number.isInteger(row.weekday) ||
+      Number(row.weekday) < 0 ||
+      Number(row.weekday) > 6
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Each weekday must be an integer from 0 through 6.",
+      );
+    }
+    const weekday = Number(row.weekday);
+    if (weekdays.has(weekday)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Each weekday must appear exactly once.",
+      );
+    }
+    weekdays.add(weekday);
+    const isClosed = row.is_closed === true;
+    const openTime = typeof row.open_time === "string" ? row.open_time : null;
+    const closeTime = typeof row.close_time === "string"
+      ? row.close_time
+      : null;
+    if (
+      !isClosed &&
+      (
+        !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(openTime ?? "") ||
+        !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(closeTime ?? "")
+      )
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Open days need local open_time and close_time in HH:MM format.",
+      );
+    }
+    if (!isClosed && openTime === closeTime) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Open and close time cannot be the same.",
+      );
+    }
+    return {
+      weekday,
+      open_time: isClosed ? null : openTime,
+      close_time: isClosed ? null : closeTime,
+      is_closed: isClosed,
+    };
+  }).sort((a, b) => a.weekday - b.weekday);
+  if (weekdays.size !== 7) {
+    throw new ToolError("INVALID_ARGS", "All seven weekdays are required.");
+  }
+  return { ...args, hours };
+}
+
+/**
+ * Canonicalize mutable proposal arguments before #1972 persists their receipt
+ * binding. Confirmation calls this seam again for edited proposals, making it
+ * idempotent while keeping the pending bytes and SQL operation bytes equal.
+ */
+export function canonicalizeAgentProposalArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  return toolName === "manage_brand_hours"
+    ? canonicalizeBrandHoursArgs(args)
+    : args;
+}
 
 const manageBrandHours: AgentToolDefinition = {
   name: "manage_brand_hours",
@@ -994,8 +1124,16 @@ const manageBrandHours: AgentToolDefinition = {
     additionalProperties: false,
     required: ["brand_id", "venue_id", "hours"],
     properties: {
-      brand_id: { type: "string", format: "uuid", description: "Selected brand UUID." },
-      venue_id: { type: "string", format: "uuid", description: "Venue listing UUID owned by that brand." },
+      brand_id: {
+        type: "string",
+        format: "uuid",
+        description: "Selected brand UUID.",
+      },
+      venue_id: {
+        type: "string",
+        format: "uuid",
+        description: "Venue listing UUID owned by that brand.",
+      },
       hours: {
         type: "array",
         minItems: 7,
@@ -1005,44 +1143,12 @@ const manageBrandHours: AgentToolDefinition = {
     },
   },
   executor: async (args, client, _userId, context) => {
-    if (!isUuid(args.brand_id) || !isUuid(args.venue_id) || !Array.isArray(args.hours)) {
-      throw new ToolError("INVALID_ARGS", "brand_id, venue_id, and seven hours rows are required.");
-    }
-    const weekdays = new Set<number>();
-    const normalized = args.hours.map((raw) => {
-      const row = raw as Record<string, unknown>;
-      if (!Number.isInteger(row.weekday) || Number(row.weekday) < 0 || Number(row.weekday) > 6) {
-        throw new ToolError("INVALID_ARGS", "Each weekday must be an integer from 0 through 6.");
-      }
-      const weekday = Number(row.weekday);
-      if (weekdays.has(weekday)) throw new ToolError("INVALID_ARGS", "Each weekday must appear exactly once.");
-      weekdays.add(weekday);
-      const isClosed = row.is_closed === true;
-      const openTime = typeof row.open_time === "string" ? row.open_time : null;
-      const closeTime = typeof row.close_time === "string" ? row.close_time : null;
-      if (
-        !isClosed &&
-        (
-          !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(openTime ?? "") ||
-          !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(closeTime ?? "")
-        )
-      ) {
-        throw new ToolError("INVALID_ARGS", "Open days need local open_time and close_time in HH:MM format.");
-      }
-      if (!isClosed && openTime === closeTime) {
-        throw new ToolError("INVALID_ARGS", "Open and close time cannot be the same.");
-      }
-      return {
-        weekday,
-        open_time: isClosed ? null : openTime,
-        close_time: isClosed ? null : closeTime,
-        is_closed: isClosed,
-      };
-    }).sort((a, b) => a.weekday - b.weekday);
-    if (weekdays.size !== 7) throw new ToolError("INVALID_ARGS", "All seven weekdays are required.");
+    // Defense in depth for direct executor calls. Deliberately do not replace
+    // `args`: #1972 binds the exact already-canonical pending payload.
+    canonicalizeBrandHoursArgs(args);
     return await executeBrandOperation(
       "manage_brand_hours",
-      { ...args, hours: normalized },
+      args,
       client,
       context,
     );
@@ -1062,20 +1168,26 @@ const listBrandAuditLog: AgentToolDefinition = {
       before_created_at: {
         type: "string",
         format: "date-time",
-        description: "Compound cursor timestamp returned by the prior page; pass with before_id.",
+        description:
+          "Compound cursor timestamp returned by the prior page; pass with before_id.",
       },
       before_id: {
         type: "string",
         format: "uuid",
-        description: "Compound cursor row id returned by the prior page; pass with before_created_at.",
+        description:
+          "Compound cursor row id returned by the prior page; pass with before_created_at.",
       },
       limit: { type: "integer", minimum: 1, maximum: 50 },
     },
   },
   executor: async (args, client, userId) => {
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
     await assertAgentReadBrand(client, userId, args.brand_id);
-    const limit = typeof args.limit === "number" ? Math.min(50, Math.max(1, args.limit)) : 25;
+    const limit = typeof args.limit === "number"
+      ? Math.min(50, Math.max(1, args.limit))
+      : 25;
     const hasBeforeCreatedAt = typeof args.before_created_at === "string";
     const hasBeforeId = typeof args.before_id === "string";
     if (hasBeforeCreatedAt !== hasBeforeId) {
@@ -1086,9 +1198,13 @@ const listBrandAuditLog: AgentToolDefinition = {
     }
     if (
       hasBeforeCreatedAt &&
-      (Number.isNaN(Date.parse(args.before_created_at as string)) || !isUuid(args.before_id))
+      (Number.isNaN(Date.parse(args.before_created_at as string)) ||
+        !isUuid(args.before_id))
     ) {
-      throw new ToolError("INVALID_ARGS", "The audit pagination cursor is invalid.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "The audit pagination cursor is invalid.",
+      );
     }
     const beforeCreatedAt = hasBeforeCreatedAt
       ? new Date(args.before_created_at as string).toISOString()
@@ -1114,7 +1230,8 @@ const listBrandAuditLog: AgentToolDefinition = {
       next_cursor: rows.length === limit
         ? {
           before_created_at:
-            (rows[rows.length - 1] as { created_at?: string }).created_at ?? null,
+            (rows[rows.length - 1] as { created_at?: string }).created_at ??
+              null,
           before_id: (rows[rows.length - 1] as { id?: string }).id ?? null,
         }
         : null,
@@ -1134,12 +1251,19 @@ const manageBrandDiscoveryCurrency: AgentToolDefinition = {
       brand_id: { type: "string", format: "uuid" },
       action: {
         type: "string",
-        enum: ["get_state", "set_provisional_currency", "resolve_reconciliation"],
+        enum: [
+          "get_state",
+          "set_provisional_currency",
+          "resolve_reconciliation",
+        ],
       },
       currency_code: { type: "string", minLength: 3, maxLength: 3 },
       expected_state_version: { type: "integer", minimum: 1 },
       reconciliation_id: { type: "string", format: "uuid" },
-      decision: { type: "string", enum: ["convert", "reenter", "accept_no_ranges"] },
+      decision: {
+        type: "string",
+        enum: ["convert", "reenter", "accept_no_ranges"],
+      },
       fx_snapshot_id: { type: "string", format: "uuid" },
       ranges: {
         type: "array",
@@ -1159,17 +1283,33 @@ const manageBrandDiscoveryCurrency: AgentToolDefinition = {
     },
   },
   executor: async (args, client, _userId, context) => {
-    if (!isUuid(args.brand_id)) throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
     if (args.action === "get_state") {
-      const { data, error } = await client.rpc("issue_1384_brand_currency_state", {
-        p_brand_id: args.brand_id,
-      });
+      const { data, error } = await client.rpc(
+        "issue_1384_brand_currency_state",
+        {
+          p_brand_id: args.brand_id,
+        },
+      );
       if (error) throw new ToolError("READ_FAILED", error.message);
-      if (data === null) throw new ToolError("READ_FAILED", "Currency state returned no readback.");
+      if (data === null) {
+        throw new ToolError(
+          "READ_FAILED",
+          "Currency state returned no readback.",
+        );
+      }
       return data;
     } else if (args.action === "set_provisional_currency") {
-      if (!isString(args.currency_code) || !/^[A-Za-z]{3}$/.test(args.currency_code)) {
-        throw new ToolError("INVALID_ARGS", "currency_code must be a 3-letter ISO code.");
+      if (
+        !isString(args.currency_code) ||
+        !/^[A-Za-z]{3}$/.test(args.currency_code)
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "currency_code must be a 3-letter ISO code.",
+        );
       }
       if (
         !Number.isInteger(args.expected_state_version) ||
@@ -1182,12 +1322,23 @@ const manageBrandDiscoveryCurrency: AgentToolDefinition = {
       }
     } else if (args.action === "resolve_reconciliation") {
       if (!isUuid(args.reconciliation_id) || !isString(args.decision)) {
-        throw new ToolError("INVALID_ARGS", "reconciliation_id and decision are required.");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "reconciliation_id and decision are required.",
+        );
       }
     } else {
-      throw new ToolError("INVALID_ARGS", "Unsupported discovery-currency action.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Unsupported discovery-currency action.",
+      );
     }
-    return await executeBrandOperation("manage_brand_discovery_currency", args, client, context);
+    return await executeBrandOperation(
+      "manage_brand_discovery_currency",
+      args,
+      client,
+      context,
+    );
   },
 };
 
@@ -1219,7 +1370,8 @@ export async function bindAgentProposalState(
       "Ari could not read the current discovery-currency state.",
     );
   }
-  const stateVersion = (data as { stateVersion?: unknown } | null)?.stateVersion;
+  const stateVersion = (data as { stateVersion?: unknown } | null)
+    ?.stateVersion;
   if (!Number.isInteger(stateVersion) || Number(stateVersion) < 1) {
     throw new ToolError(
       "ROLE_CHECK_UNAVAILABLE",
@@ -1426,5 +1578,6 @@ export function isReadOnlyAgentToolCall(
   args: Record<string, unknown>,
 ): boolean {
   return READ_ONLY_TOOL_NAMES.has(toolName) ||
-    (toolName === "manage_brand_discovery_currency" && args.action === "get_state");
+    (toolName === "manage_brand_discovery_currency" &&
+      args.action === "get_state");
 }

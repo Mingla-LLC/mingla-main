@@ -95,7 +95,7 @@ Deno.test("#2063 tester: Ari preserves the canonical Business overnight-hours co
 
   const migration = await Deno.readTextFile(
     new URL(
-      "../../../migrations/20270501002063_issue_2063_ari_brand_management.sql",
+      "../../../migrations/20270507002063_issue_2063_ari_brand_management.sql",
       import.meta.url,
     ),
   );

@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = Object.freeze({
-  migration: "supabase/migrations/20270501002063_issue_2063_ari_brand_management.sql",
+  migration: "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql",
   tools: "supabase/functions/_shared/agentTools.ts",
   auth: "supabase/functions/_shared/agentToolAuthorization.ts",
   prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
@@ -20,6 +20,7 @@ const PATHS = Object.freeze({
   pgTest: "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
   businessTest: "mingla-business/src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts",
   receiptBindingTest: "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
+  canonicalHoursTest: "supabase/functions/_shared/__tests__/issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
   workflow: ".github/workflows/issue-2063-ari-brand-management.yml",
 });
 
@@ -42,6 +43,7 @@ function audit(overrides = {}) {
   const confirm = overrides.confirm ?? read(PATHS.confirm);
   const ledger = overrides.ledger ?? JSON.parse(read(PATHS.ledger));
   const receiptBindingTest = overrides.receiptBindingTest ?? read(PATHS.receiptBindingTest);
+  const canonicalHoursTest = overrides.canonicalHoursTest ?? read(PATHS.canonicalHoursTest);
   const workflow = overrides.workflow ?? read(PATHS.workflow);
   const brandExecutorStart = tools.indexOf("async function executeBrandOperation(");
   const brandExecutorEnd = tools.indexOf("// Legacy append-only source-test marker: const createBrand", brandExecutorStart);
@@ -63,6 +65,7 @@ function audit(overrides = {}) {
   if (!fs.existsSync(path.join(ROOT, PATHS.pgTest))) failures.push("missing PG17 regression");
   if (!fs.existsSync(path.join(ROOT, PATHS.businessTest))) failures.push("missing Business parity regression");
   if (!fs.existsSync(path.join(ROOT, PATHS.receiptBindingTest))) failures.push("missing receipt-binding tester regression");
+  if (!fs.existsSync(path.join(ROOT, PATHS.canonicalHoursTest))) failures.push("missing canonical-hours implementor regression");
 
   requireText(failures, migration, "public.agent_operation_receipt_begin(", "missing receipt begin");
   requireText(failures, migration, "public.agent_operation_receipt_complete(", "missing receipt complete");
@@ -120,6 +123,36 @@ function audit(overrides = {}) {
     workflow,
     "issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
     "receipt-binding tester regression is not CI-wired",
+  );
+  requireText(
+    failures,
+    workflow,
+    "issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
+    "canonical-hours implementor regression is not CI-wired",
+  );
+  requireText(
+    failures,
+    tools,
+    "export function canonicalizeAgentProposalArgs(",
+    "canonical proposal seam missing",
+  );
+  requireText(
+    failures,
+    chat,
+    "gemini.toolCall.args = canonicalizeAgentProposalArgs(",
+    "hours are not canonicalized before proposal persistence",
+  );
+  requireText(
+    failures,
+    confirm,
+    "canonicalArgs = canonicalizeAgentProposalArgs(",
+    "edited hours are not canonicalized before confirmation persistence",
+  );
+  requireText(
+    failures,
+    canonicalHoursTest,
+    "canonicalization must be idempotent across proposal and confirmation",
+    "canonical-hours implementor regression lost idempotency proof",
   );
   requireText(failures, tools, '.from("audit_log")', "audit tool bypasses canonical audit table");
   requireText(failures, tools, '.order("id", { ascending: false })', "audit order lacks stable id tie-breaker");
@@ -258,7 +291,25 @@ if (process.argv.includes("--self-test")) {
     "issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
     "not CI-wired",
   );
-  console.log("[issue-2063-ari-brand-management] self-test PASS (16 hostile reversions)");
+  expectMutation(
+    "proposal hours canonicalization",
+    "chat",
+    "gemini.toolCall.args = canonicalizeAgentProposalArgs(",
+    "not canonicalized before proposal persistence",
+  );
+  expectMutation(
+    "edited hours canonicalization",
+    "confirm",
+    "canonicalArgs = canonicalizeAgentProposalArgs(",
+    "not canonicalized before confirmation persistence",
+  );
+  expectAllMutation(
+    "canonical-hours CI",
+    "workflow",
+    "issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
+    "not CI-wired",
+  );
+  console.log("[issue-2063-ari-brand-management] self-test PASS (19 hostile reversions)");
 } else {
   const failures = audit();
   if (failures.length) {
