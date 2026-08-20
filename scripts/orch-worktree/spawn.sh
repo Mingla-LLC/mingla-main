@@ -14,7 +14,7 @@
 #   scripts/orch-worktree/spawn.sh orch-0946 paywall-tier-copy-refresh
 #
 # Creates:
-#   ~/Desktop/mingla-orchs/<ORCH_ID>-[<label>]/
+#   ~/Desktop/mingla-orchs/<ORCH_ID>-<label>/   (bracket-free — see #2210)
 #   Branched from origin/main as <ORCH_ID>-<label>
 #   .env* files copied from ~/Desktop/mingla-main
 #   node_modules symlinked (no real install unless package.json touched)
@@ -39,8 +39,31 @@ ORCH_ID="$1"
 LABEL="$2"
 ANCHOR="$HOME/Desktop/mingla-main"
 ORCH_DIR="$HOME/Desktop/mingla-orchs"
-WT="$ORCH_DIR/${ORCH_ID}-[${LABEL}]"
+# #2210 — the directory name matches the branch name EXACTLY. It used to be
+# "${ORCH_ID}-[${LABEL}]". The square brackets made CMake's file(GLOB ...) match
+# ZERO files and exit 0 inside the worktree, so every local Android/native build
+# got an empty source list (see assert-safe-worktree-path.sh for the mechanism).
+#
+# DO NOT ADD A MIGRATION FOR EXISTING BRACKETED WORKTREES. Renaming a live
+# worktree in place requires `git worktree repair` and breaks any session
+# already holding that path — open editors, a running Metro, a background build
+# — for zero benefit, because git keeps using whatever absolute path it
+# recorded at `worktree add` time. The bracketed population drains on its own as
+# those issues close and their worktrees are reaped. Leave them alone.
+WT="$ORCH_DIR/${ORCH_ID}-${LABEL}"
 BRANCH="${ORCH_ID}-${LABEL}"
+
+# #2210 GUARD — assert the path we are about to create is safe for build tools
+# BEFORE touching the anchor, so a hostile label costs nothing but an error.
+# A missing guard is a HARD FAIL, never a silent skip (the repo has produced six
+# classes of dark gate; a skippable guard is the seventh).
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+PATH_GUARD="$SCRIPT_DIR/assert-safe-worktree-path.sh"
+if [ ! -f "$PATH_GUARD" ]; then
+  echo "ERROR: path guard missing at $PATH_GUARD — refusing to spawn (#2210)." >&2
+  exit 1
+fi
+bash "$PATH_GUARD" "$WT"
 
 # Validate anchor checkout exists + is on main.
 if [ ! -d "$ANCHOR/.git" ]; then

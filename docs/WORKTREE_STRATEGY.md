@@ -12,7 +12,7 @@
 
 ## The rule
 
-**Every ORCH gets its own git worktree** at `~/Desktop/mingla-orchs/<ORCH_ID>-[<short-kebab-label>]/` on a dedicated branch `<ORCH_ID>-<label>`, branched from `main`.
+**Every ORCH gets its own git worktree** at `~/Desktop/mingla-orchs/<ORCH_ID>-<short-kebab-label>/` on a dedicated branch `<ORCH_ID>-<label>` — **the directory name and the branch name are identical** — branched from `main`.
 
 `~/Desktop/mingla-main` is the **anchor checkout** — permanently parked on `main`, read-mostly, never edited directly. It exists to:
 - Provide a stable base for `git worktree add`
@@ -40,7 +40,7 @@ scripts/orch-worktree/spawn.sh orch-0946 paywall-tier-copy-refresh
 
 Spawn does:
 1. Sync anchor with `origin/main` (fast-forward)
-2. `git worktree add ~/Desktop/mingla-orchs/orch-0946-[paywall-tier-copy-refresh] -b orch-0946-paywall-tier-copy-refresh main`
+2. Assert the path is free of build-hostile characters (`scripts/orch-worktree/assert-safe-worktree-path.sh`), then `git worktree add ~/Desktop/mingla-orchs/orch-0946-paywall-tier-copy-refresh -b orch-0946-paywall-tier-copy-refresh main`
 3. Copy gitignored `.env*` files from anchor
 4. Symlink `node_modules` for each sub-project (saves ~5 min per spawn)
 5. Echo: worktree path, branch name, suggested Metro port, suggested sim assignment
@@ -58,7 +58,7 @@ After spawn, every subsequent dispatch's prompt begins with `cd <worktree-path>`
 
 After PR merges to main:
 ```bash
-scripts/orch-worktree/reap.sh ~/Desktop/mingla-orchs/<ORCH_ID>-[<label>]
+scripts/orch-worktree/reap.sh ~/Desktop/mingla-orchs/<ORCH_ID>-<label>
 ```
 
 Reap does:
@@ -110,12 +110,18 @@ as dead, and CI fails the build if any of them reappears:
 
 | Pattern | Example |
 |---|---|
-| Worktree directory | `~/Desktop/mingla-orchs/orch-0946-[paywall-tier-copy-refresh]/` |
+| Worktree directory | `~/Desktop/mingla-orchs/orch-0946-paywall-tier-copy-refresh/` |
 | Branch | `orch-0946-paywall-tier-copy-refresh` |
-| META-ORCH worktree | `~/Desktop/mingla-orchs/meta-orch-0952-[buyer-web-confirm-deep-forensics]/` |
+| META-ORCH worktree | `~/Desktop/mingla-orchs/meta-orch-0952-buyer-web-confirm-deep-forensics/` |
 | META-ORCH branch | `meta-orch-0952-buyer-web-confirm-deep-forensics` |
 
-Brackets in directory names are for human glance; git ignores them. Always quote paths in shell because `[` is a glob metacharacter.
+### Path characters — hard rule (#2210)
+
+A worktree path may contain **only** `A-Z a-z 0-9 . _ / -`. `spawn.sh` asserts this via `scripts/orch-worktree/assert-safe-worktree-path.sh` and **refuses to spawn** otherwise. It is an allowlist on purpose: a denylist is how `[` survived 86 days.
+
+This is not cosmetic. Directories used to be named `<ORCH_ID>-[<label>]`. Inside a bracketed path, CMake's `file(GLOB …)` reads the brackets as a POSIX character class, matches **zero files, prints nothing, and exits 0** — so every local Android/native build got an empty source list. It failed loudly only because `add_library` rejects empty sources; a glob feeding anything optional would have built an incomplete binary and reported success. RN 0.81 codegen has the same shape (COMMS-0150). Spaces, `#`, and non-ASCII are equally banned: `URL.pathname` percent-encodes them, and `#` silently *truncates* the path (#958).
+
+**Existing bracketed worktrees are NOT migrated.** Renaming one needs `git worktree repair` and breaks any session holding that path, for zero benefit — git keeps using the path it recorded. `reap.sh` is path-agnostic and reaps them normally; the population drains as those issues close.
 
 Short labels: kebab-case, ≤4 words, descriptive enough that the directory listing alone tells you what the ORCH is about.
 
