@@ -57,6 +57,70 @@ BEGIN
   THEN RAISE EXCEPTION 'insufficient_event_permission'; END IF;
 END;$$;
 
+CREATE OR REPLACE FUNCTION public.biz_validate_trip_installment_schedule(p_tier_metadata jsonb)
+RETURNS void LANGUAGE plpgsql IMMUTABLE SET search_path=public,pg_temp AS $$
+DECLARE
+  v_schedule jsonb;
+  v_installments jsonb;
+  v_item jsonb;
+  v_deposit_pct numeric;
+  v_installment_pct numeric;
+  v_pct_sum numeric;
+  v_index int;
+BEGIN
+  IF p_tier_metadata IS NULL OR NOT (p_tier_metadata ? 'installments')
+     OR jsonb_typeof(p_tier_metadata->'installments')='null' THEN
+    RETURN;
+  END IF;
+
+  v_schedule:=p_tier_metadata->'installments';
+  IF jsonb_typeof(v_schedule) IS DISTINCT FROM 'object' THEN
+    RAISE EXCEPTION 'installment_schedule_malformed' USING ERRCODE='22023';
+  END IF;
+  IF jsonb_typeof(v_schedule->'deposit_pct') IS DISTINCT FROM 'number' THEN
+    RAISE EXCEPTION 'installment_deposit_pct_out_of_range' USING ERRCODE='22023';
+  END IF;
+
+  v_deposit_pct:=(v_schedule->>'deposit_pct')::numeric;
+  IF v_deposit_pct<=0 OR v_deposit_pct>100 THEN
+    RAISE EXCEPTION 'installment_deposit_pct_out_of_range' USING ERRCODE='22023';
+  END IF;
+
+  v_installments:=v_schedule->'installments';
+  IF v_installments IS NULL OR jsonb_typeof(v_installments) IS DISTINCT FROM 'array' THEN
+    RAISE EXCEPTION 'installment_schedule_malformed' USING ERRCODE='22023';
+  END IF;
+  IF jsonb_array_length(v_installments)<1 OR jsonb_array_length(v_installments)>11 THEN
+    RAISE EXCEPTION 'installment_count_out_of_range' USING ERRCODE='22023';
+  END IF;
+
+  v_pct_sum:=v_deposit_pct;
+  FOR v_index IN 0..jsonb_array_length(v_installments)-1 LOOP
+    v_item:=v_installments->v_index;
+    IF jsonb_typeof(v_item) IS DISTINCT FROM 'object'
+       OR jsonb_typeof(v_item->'ordinal') IS DISTINCT FROM 'number'
+       OR (v_item->>'ordinal')::numeric<>v_index+1 THEN
+      RAISE EXCEPTION 'installment_ordinal_invalid' USING ERRCODE='22023';
+    END IF;
+    IF jsonb_typeof(v_item->'pct') IS DISTINCT FROM 'number' THEN
+      RAISE EXCEPTION 'installment_pct_out_of_range' USING ERRCODE='22023';
+    END IF;
+    v_installment_pct:=(v_item->>'pct')::numeric;
+    IF v_installment_pct<=0 OR v_installment_pct>=100 THEN
+      RAISE EXCEPTION 'installment_pct_out_of_range' USING ERRCODE='22023';
+    END IF;
+    IF ((NULLIF(v_item->>'days_after_booking','') IS NULL)::int
+        +(NULLIF(v_item->>'fixed_date','') IS NULL)::int)<>1 THEN
+      RAISE EXCEPTION 'installment_due_mode_invalid' USING ERRCODE='22023';
+    END IF;
+    v_pct_sum:=v_pct_sum+v_installment_pct;
+  END LOOP;
+
+  IF abs(v_pct_sum-100)>0.01 THEN
+    RAISE EXCEPTION 'installment_pct_sum_mismatch' USING ERRCODE='22023';
+  END IF;
+END;$$;
+
 CREATE OR REPLACE FUNCTION public.biz_get_trip_draft_graph(p_event_id uuid)
 RETURNS jsonb LANGUAGE sql SECURITY DEFINER STABLE SET search_path=public,pg_temp AS $$
   SELECT jsonb_build_object(
@@ -110,7 +174,7 @@ BEGIN
   IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'trip_not_found'; END IF;
   IF v_event.event_type<>'trip' THEN RAISE EXCEPTION 'event_not_a_trip'; END IF;
   PERFORM public.biz_trip_require_manager(v_event.brand_id);
-  v_replay:=public.biz_trip_command_begin(p_operation_id,'apply_trip_draft_graph',v_event.brand_id,p_event_id,jsonb_build_object('patch',p_patch));
+  v_replay:=public.biz_trip_command_begin(p_operation_id,'apply_trip_draft_graph',v_event.brand_id,p_event_id,jsonb_build_object('patch',p_patch,'expected_updated_at',p_expected_updated_at));
   IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
   IF v_event.status<>'draft' THEN RAISE EXCEPTION 'trip_not_draft'; END IF;
   IF p_expected_updated_at IS NULL OR v_event.updated_at IS DISTINCT FROM p_expected_updated_at THEN RAISE EXCEPTION 'trip_revision_conflict' USING ERRCODE='40001'; END IF;
@@ -174,6 +238,7 @@ BEGIN
         UPDATE public.ticket_types SET deleted_at=now(),updated_at=now() WHERE id=v_tt AND event_id=p_event_id AND deleted_at IS NULL;
         CONTINUE;
       END IF;
+      PERFORM public.biz_validate_trip_installment_schedule(v_item->'tier_metadata');
       IF v_tt IS NULL THEN
         IF NULLIF(btrim(v_item->>'tier_name'),'') IS NULL OR COALESCE((v_item->>'price_cents')::int,-1)<0 OR COALESCE((v_item->>'capacity')::int,0)<1 THEN RAISE EXCEPTION 'trip_tier_invalid' USING ERRCODE='22023'; END IF;
         INSERT INTO public.ticket_types(event_id,name,price_cents,currency,quantity_total,is_unlimited,is_free,min_purchase_qty,available_online,available_in_person,display_order)
@@ -241,7 +306,7 @@ BEGIN
  IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'trip_not_found'; END IF;
  IF v_event.event_type<>'trip' THEN RAISE EXCEPTION 'event_not_a_trip'; END IF;
  PERFORM public.biz_trip_require_manager(v_event.brand_id);
- v_replay:=public.biz_trip_command_begin(p_operation_id,'update_trip_live',v_event.brand_id,p_event_id,jsonb_build_object('patch',p_patch,'reason',p_reason));
+ v_replay:=public.biz_trip_command_begin(p_operation_id,'update_trip_live',v_event.brand_id,p_event_id,jsonb_build_object('patch',p_patch,'reason',p_reason,'expected_updated_at',p_expected_updated_at));
  IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
  IF p_expected_updated_at IS NULL OR v_event.updated_at IS DISTINCT FROM p_expected_updated_at THEN RAISE EXCEPTION 'trip_revision_conflict' USING ERRCODE='40001'; END IF;
  IF v_event.status NOT IN('scheduled','live') THEN RAISE EXCEPTION 'trip_not_live'; END IF;
@@ -276,8 +341,19 @@ BEGIN
  IF p_patch?'days' THEN v_forward:=v_forward||jsonb_build_object('days',p_patch->'days'); END IF;
  IF p_patch?'inclusions' THEN v_forward:=v_forward||jsonb_build_object('inclusions',p_patch->'inclusions'); END IF;
  IF p_patch?'intake_schemas' THEN v_forward:=v_forward||jsonb_build_object('intake_schemas',p_patch->'intake_schemas'); END IF;
+ IF p_patch?'pricing_tiers' THEN
+   IF jsonb_typeof(p_patch->'pricing_tiers')<>'array' THEN RAISE EXCEPTION 'trip_tiers_invalid' USING ERRCODE='22023'; END IF;
+   FOR v_item IN SELECT value FROM jsonb_array_elements(p_patch->'pricing_tiers') LOOP
+     PERFORM public.biz_validate_trip_installment_schedule(v_item->'tier_metadata');
+   END LOOP;
+ END IF;
  IF p_patch?'tiers' THEN
    IF jsonb_typeof(p_patch->'tiers')<>'array' THEN RAISE EXCEPTION 'trip_tiers_invalid' USING ERRCODE='22023'; END IF;
+   FOR v_item IN SELECT value FROM jsonb_array_elements(p_patch->'tiers') LOOP
+     IF NOT COALESCE((v_item->>'deleted')::boolean,false) THEN
+       PERFORM public.biz_validate_trip_installment_schedule(v_item->'tier_metadata');
+     END IF;
+   END LOOP;
    -- The existing live gate expects the complete retained tier set. Merge the
    -- requested updates into it, omit explicit deletes, and add new rows below
    -- only after its sold-count/refund/readiness checks return ok.
@@ -347,7 +423,7 @@ BEGIN
  IF NOT FOUND OR v_event.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'trip_not_found'; END IF;
  IF v_event.event_type<>'trip' THEN RAISE EXCEPTION 'event_not_a_trip'; END IF;
  PERFORM public.biz_trip_require_manager(v_event.brand_id);
- v_replay:=public.biz_trip_command_begin(p_operation_id,'publish_trip',v_event.brand_id,p_event_id,'{}'::jsonb);
+ v_replay:=public.biz_trip_command_begin(p_operation_id,'publish_trip',v_event.brand_id,p_event_id,jsonb_build_object('expected_updated_at',p_expected_updated_at));
  IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
  IF p_expected_updated_at IS NULL OR v_event.updated_at IS DISTINCT FROM p_expected_updated_at THEN RAISE EXCEPTION 'trip_revision_conflict' USING ERRCODE='40001'; END IF;
  SELECT start_at,end_at INTO v_start,v_end FROM public.event_dates WHERE event_id=p_event_id AND is_master=true ORDER BY start_at LIMIT 1;
@@ -370,7 +446,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'trip_not_found'; END IF;
  IF v_event.event_type<>'trip' THEN RAISE EXCEPTION 'event_not_a_trip'; END IF;
  PERFORM public.biz_trip_require_manager(v_event.brand_id);
- v_replay:=public.biz_trip_command_begin(p_operation_id,'delete_trip',v_event.brand_id,p_event_id,'{}'::jsonb);
+ v_replay:=public.biz_trip_command_begin(p_operation_id,'delete_trip',v_event.brand_id,p_event_id,jsonb_build_object('expected_updated_at',p_expected_updated_at));
  IF v_replay IS NOT NULL THEN RETURN v_replay; END IF;
  IF v_event.deleted_at IS NOT NULL THEN RAISE EXCEPTION 'trip_not_found'; END IF;
  IF p_expected_updated_at IS NULL OR v_event.updated_at IS DISTINCT FROM p_expected_updated_at THEN RAISE EXCEPTION 'trip_revision_conflict' USING ERRCODE='40001'; END IF;
@@ -506,7 +582,7 @@ CREATE POLICY trip_inclusions_write_event_managers ON public.trip_inclusions FOR
 DROP POLICY IF EXISTS trip_pricing_tiers_write_brand_members ON public.trip_pricing_tiers;
 CREATE POLICY trip_pricing_tiers_write_event_managers ON public.trip_pricing_tiers FOR ALL TO authenticated USING(EXISTS(SELECT 1 FROM public.events e WHERE e.id=event_id AND e.event_type='trip' AND public.biz_brand_effective_rank(e.brand_id,auth.uid())>=public.biz_role_rank('event_manager'))) WITH CHECK(EXISTS(SELECT 1 FROM public.events e WHERE e.id=event_id AND e.event_type='trip' AND public.biz_brand_effective_rank(e.brand_id,auth.uid())>=public.biz_role_rank('event_manager')));
 
-REVOKE ALL ON FUNCTION public.biz_trip_command_begin(uuid,text,uuid,uuid,jsonb),public.biz_trip_command_finish(uuid,jsonb),public.biz_trip_require_manager(uuid),public.biz_get_trip_draft_graph(uuid) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.biz_trip_command_begin(uuid,text,uuid,uuid,jsonb),public.biz_trip_command_finish(uuid,jsonb),public.biz_trip_require_manager(uuid),public.biz_validate_trip_installment_schedule(jsonb),public.biz_get_trip_draft_graph(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.biz_create_trip_draft(uuid,jsonb,uuid),public.biz_apply_trip_draft_graph(uuid,jsonb,timestamptz,uuid),public.biz_update_trip_live_command(uuid,jsonb,text,timestamptz,uuid),public.biz_publish_trip_command(uuid,timestamptz,uuid),public.biz_soft_delete_trip(uuid,timestamptz,uuid),public.biz_get_trip_order_money_snapshot(uuid),public.biz_trip_order_delete_lock() FROM PUBLIC,anon;
 REVOKE ALL ON FUNCTION public.ari_execute_trip_operation(uuid,text,jsonb) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.biz_create_trip_draft(uuid,jsonb,uuid),public.biz_apply_trip_draft_graph(uuid,jsonb,timestamptz,uuid),public.biz_update_trip_live_command(uuid,jsonb,text,timestamptz,uuid),public.biz_publish_trip_command(uuid,timestamptz,uuid),public.biz_soft_delete_trip(uuid,timestamptz,uuid),public.biz_get_trip_order_money_snapshot(uuid) TO authenticated,service_role;
