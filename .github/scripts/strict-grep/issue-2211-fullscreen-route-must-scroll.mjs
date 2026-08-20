@@ -45,7 +45,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -192,6 +192,20 @@ if (process.argv.includes("--self-test")) {
 }
 
 // ---- Live mode ------------------------------------------------------------
+//
+// Guarded so the module is IMPORT-SAFE. Without this, importing the gate to
+// unit-test its predicate runs the whole repo scan and calls `process.exit`
+// before a single test registers — which is exactly what happened on the first
+// run of the sibling adversarial suite: `node --test` reported "1 pass" for a
+// file containing ten tests, none of which had executed. A green that counts
+// zero assertions is the worst possible outcome for a regression guard.
+const INVOKED_DIRECTLY =
+  process.argv[1] !== undefined &&
+  import.meta.url === pathToFileURL(process.argv[1]).href;
+
+if (!INVOKED_DIRECTLY) {
+  // Imported for testing: export the predicates, run nothing.
+} else {
 let violations = 0;
 let filesScanned = 0;
 
@@ -214,3 +228,4 @@ console.log(
   `I-PROPOSED-2211-FULLSCREEN-ROUTE-MUST-SCROLL: scanned ${filesScanned} files, ${violations} violations`,
 );
 process.exit(violations === 0 ? 0 : 1);
+}

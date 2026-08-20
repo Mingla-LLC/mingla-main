@@ -183,7 +183,25 @@ class PostHogService {
   registerTextSize(fontScale: number): void {
     if (!this.isReady() || this.client === null) return;
     try {
-      void this.client.register(textSizeAnalyticsProperties(fontScale));
+      // #2211 TESTER FINDING — `register` returns a PROMISE. A synchronous
+      // try/catch does NOT catch a rejection, so `void client.register(...)`
+      // left a rejected promise unhandled: reachable on any transient PostHog
+      // network failure, and an unhandled rejection is a crash in Node and a
+      // red box in a dev build. The `.catch` is the fix; the try/catch stays
+      // for a client that throws SYNCHRONOUSLY (a stubbed or partial client on
+      // a binary without the native module). Both paths are covered by the
+      // adversarial suite, which is how this was found.
+      const pending: unknown = this.client.register(
+        textSizeAnalyticsProperties(fontScale),
+      );
+      if (
+        pending !== null &&
+        typeof (pending as { catch?: unknown }).catch === "function"
+      ) {
+        void (pending as Promise<void>).catch(() => {
+          // Non-fatal — analytics never breaks the UI.
+        });
+      }
     } catch {
       // Non-fatal — analytics never breaks the UI.
     }
