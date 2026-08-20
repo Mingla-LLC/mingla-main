@@ -7,6 +7,7 @@
  */
 
 import {
+  describeUnmappedEditGuard,
   describeUnmappedPublishGuard,
   resolveProviderNeutralPaidPublishGuardCopy,
 } from "../../../utils/paidPublishGuards";
@@ -39,6 +40,38 @@ describe("issue #2333 — unmapped server guards fail honestly", () => {
       expect(copy).not.toContain(raw);
       expect(copy).toContain("Nothing was lost");
       expect(copy).not.toMatch(/try again/i);
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test("a bare edit guard names the code and truthfully preserves the published event", () => {
+    const errorSpy = spy();
+    try {
+      const copy = describeUnmappedEditGuard("future_edit_guard");
+      expect(copy).toContain('"future_edit_guard"');
+      expect(copy).toContain("Your published event was not changed");
+      expect(copy).not.toMatch(/couldn't publish|draft|try again/i);
+      expect(errorSpy).toHaveBeenCalledWith(
+        "[#2333] unmapped edit guard",
+        "future_edit_guard",
+      );
+    } finally {
+      errorSpy.mockRestore();
+    }
+  });
+
+  test("an untrusted edit envelope is neither echoed nor described as a draft failure", () => {
+    const errorSpy = spy();
+    try {
+      const raw = '{"message":"future_edit_guard","details":"<script>x</script>"}';
+      const copy = describeUnmappedEditGuard(raw);
+      expect(copy).not.toContain(raw);
+      expect(copy).toBe(
+        "We couldn't save these changes. Your published event was not changed. Contact support if it keeps happening.",
+      );
+      expect(copy).not.toMatch(/couldn't publish|draft|try again/i);
+      expect(errorSpy).toHaveBeenCalledWith("[#2333] unmapped edit guard", raw);
     } finally {
       errorSpy.mockRestore();
     }

@@ -268,6 +268,25 @@ export const describeUnmappedPublishGuard = (
 };
 
 /**
+ * #2333 edit-context sibling of describeUnmappedPublishGuard.
+ *
+ * A published-event edit has no draft-preservation contract, so its terminal
+ * fallback must describe the operation that actually failed and must not borrow
+ * publish/draft claims. The same untrusted-input and engineer-visible logging
+ * rules apply.
+ */
+export const describeUnmappedEditGuard = (
+  raw: string | null | undefined,
+): string => {
+  const s = typeof raw === "string" ? raw.trim() : "";
+  console.error("[#2333] unmapped edit guard", s);
+  if (UNMAPPED_GUARD_TOKEN_SHAPE.test(s)) {
+    return `We couldn't save these changes — the server reported "${s}". Your published event was not changed. Contact support and quote that code.`;
+  }
+  return "We couldn't save these changes. Your published event was not changed. Contact support if it keeps happening.";
+};
+
+/**
  * The canonical Stripe Connect onboarding route for a brand — the same entry
  * BrandOnboardView ("Set up payments") drives the brand to so its
  * charges_enabled flips true. Used by the `stripe_onboarding` action.

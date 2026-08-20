@@ -176,6 +176,20 @@ export function check(sources) {
   if (/Try again/i.test(tsCode(guards).slice(tsCode(guards).indexOf("describeUnmappedPublishGuard")))) {
     failures.push("describeUnmappedPublishGuard invites a retry");
   }
+  for (const token of [
+    'console.error("[#2333] unmapped edit guard", s)',
+    "export const describeUnmappedEditGuard",
+    "Your published event was not changed",
+  ]) {
+    if (!tsCode(guards).includes(token))
+      failures.push(`the edit-context unmapped-guard describer lost a load-bearing part: ${token}`);
+  }
+  const editGuardStart = tsCode(guards).indexOf("export const describeUnmappedEditGuard");
+  const editGuardEnd = tsCode(guards).indexOf("export const brandStripeOnboardingRoute");
+  const editGuardCode = tsCode(guards).slice(editGuardStart, editGuardEnd);
+  if (/couldn't publish|draft is saved|Try again/i.test(editGuardCode)) {
+    failures.push("describeUnmappedEditGuard makes a publish, draft, or retry claim");
+  }
   // Compare the repository occurrence SET, not the size of the allowlist declared in
   // this gate (#2113). A new live copy and a vanished allowlisted copy both fail.
   if (
@@ -231,10 +245,10 @@ export function check(sources) {
         "online host to pick a venue address the online Where step never renders",
     );
   }
-  if (!editCode.includes(": describeUnmappedPublishGuard(code);")) {
+  if (!editCode.includes(": describeUnmappedEditGuard(code);")) {
     failures.push(
-      "EditPublishedScreen's terminal server-guard fallback invites a blind retry " +
-        "instead of using describeUnmappedPublishGuard",
+      "EditPublishedScreen's terminal server-guard fallback is not using the " +
+        "context-correct describeUnmappedEditGuard",
     );
   }
 
@@ -430,8 +444,8 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       editor: sources.editor.replace(
+        ": describeUnmappedEditGuard(code);",
         ": describeUnmappedPublishGuard(code);",
-        ': "Couldn\'t save your changes. Tap to try again.";',
       ),
     },
     {

@@ -79,7 +79,7 @@ import {
 } from "../../utils/liveEventAdapter";
 import { validateLiveEventFieldUpdate } from "../../utils/publishedEventEditGuards";
 import {
-  describeUnmappedPublishGuard,
+  describeUnmappedEditGuard,
   resolvePaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
 import type { EditSeverity } from "../../store/eventEditLogStore";
@@ -1299,7 +1299,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                                 : code.includes("event_not_editable_status") ||
                                     code.includes("event_deleted")
                                   ? "This event can't be edited — it may be ended or cancelled."
-                                  : describeUnmappedPublishGuard(code);
+                                  : describeUnmappedEditGuard(code);
         showToast(message);
         return;
       }
