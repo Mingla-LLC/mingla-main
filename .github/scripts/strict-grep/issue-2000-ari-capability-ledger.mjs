@@ -148,7 +148,7 @@ ari.partner.splits
 // reconciliation at this immutable revision, minus rows whose concrete defects
 // are repaired by issue #1972. Ledger prose may explain a remaining defect, but
 // it cannot remove one from this set or create a new proven-broken claim.
-const PROVEN_BROKEN_AUDIT_SHA = "a6469471707ed0abe116c0d22c1c78ebe77d8b30";
+const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
 ari.ticket.upsert_tier
 ari.ticket.pricing_switches
@@ -302,7 +302,7 @@ function readAtAuditSha(root, sha, relative) {
   }
 }
 
-function validateRef(root, auditSha, ref, label, failures) {
+function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef = false) {
   if (!ref || typeof ref.path !== "string" || typeof ref.symbol !== "string") {
     failures.push(`${label}: source reference requires path + symbol`);
     return;
@@ -316,6 +316,7 @@ function validateRef(root, auditSha, ref, label, failures) {
   if (!hasExactCodeSymbol(currentSource, ref.symbol)) {
     failures.push(`${label}: exact code symbol "${ref.symbol}" is stale in ${ref.path}`);
   }
+  if (!requireHistoricalRef) return;
   const auditedSource = readAtAuditSha(root, auditSha, ref.path);
   if (auditedSource === null) {
     failures.push(`${label}: source path is absent at audit SHA: ${ref.path}`);
@@ -394,6 +395,7 @@ export function validateLedger({ root, ledger, registered, advertised }) {
         ref,
         `${label}.owners.source[${index}]`,
         failures,
+        PROVEN_BROKEN_CAPABILITY_IDS.has(label),
       )
     );
 
@@ -551,6 +553,30 @@ function selfTest() {
   expectMutation("stale symbol", ({ ledger }) => {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
+  expectMutation("proven-broken historical source must exist", ({ ledger }) => {
+    const broken = ledger.capabilities.find((c) => c.id === "ari.ticket.upsert_tier");
+    const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
+    broken.owners.source[0] = { ...postBaseline.owners.source[0] };
+  }, (failure) => failure.includes("absent at audit SHA"));
+  expectMutation("post-baseline current symbol remains exact", ({ ledger }) => {
+    const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
+    postBaseline.owners.source[0].symbol = "symbol_that_does_not_exist";
+  }, (failure) => failure.includes("symbol") && failure.includes("stale"));
+  const postBaseline = JSON.parse(read(ROOT, LEDGER_PATH)).capabilities.find(
+    (capability) => capability.id === "ari.experience.unpublish",
+  );
+  const postBaselineRef = postBaseline.owners.source[0];
+  const postBaselineSource = readAtAuditSha(
+    ROOT,
+    PROVEN_BROKEN_AUDIT_SHA,
+    postBaselineRef.path,
+  );
+  if (
+    postBaselineSource !== null &&
+    hasExactCodeSymbol(postBaselineSource, postBaselineRef.symbol)
+  ) {
+    throw new Error("post-baseline capability unexpectedly exists at the historical audit SHA");
+  }
   expectMutation("extant generic token", ({ ledger }) => {
     ledger.capabilities.find((c) => c.id === "ari.brand.create").owners.source[0].symbol = "brand";
   }, (failure) => failure.includes("exact code symbol"));
@@ -571,7 +597,7 @@ function selfTest() {
   const promptWithoutTool = promptSource.replace(new RegExp(`^- ${firstTool} —.*$`, "m"), "");
   const promptFailures = audit(ROOT, { promptSource: promptWithoutTool });
   if (!promptFailures.some((failure) => failure.includes("absent from prompt"))) throw new Error("prompt drift mutation passed");
-  console.log("[issue-2000-ari-capability-ledger] self-test PASS (10 hostile mutations)");
+  console.log("[issue-2000-ari-capability-ledger] self-test PASS (12 hostile mutations + post-baseline control)");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

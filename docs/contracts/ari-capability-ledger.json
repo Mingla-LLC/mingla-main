@@ -8,7 +8,7 @@
     "product_operations": "declared Business source roots below"
   },
   "audit": {
-    "baseline_sha": "a6469471707ed0abe116c0d22c1c78ebe77d8b30",
+    "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
     "registered_tool_count": 67,
     "capability_count": 117,
@@ -1122,7 +1122,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "a6469471707ed0abe116c0d22c1c78ebe77d8b30",
+          "sha": "4ea0230156632648423ce9aa3c2b6a607d069831",
           "reference": "issue_1973_ari_experience_lifecycle.test.ts",
           "guard_role": "implementor"
         }
