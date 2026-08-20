@@ -198,7 +198,10 @@ AS $function$
          -- I-2333-ONLINE-ONLY-CARVE-OUT-IS-FORMAT-SCOPED.
          OR (
               e.is_online IS TRUE
-              AND lower(COALESCE(e.theme->'business_event'->>'format', '')) = 'online'
+              AND lower(btrim(
+                COALESCE(e.theme->'business_event'->>'format', ''),
+                E' \t\n\r\f\v' || chr(160)
+              )) = 'online'
             )
       )
       AND (p_upper_start IS NULL OR ed.start_at <= p_upper_start)

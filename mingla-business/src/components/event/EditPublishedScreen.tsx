@@ -78,7 +78,10 @@ import {
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
 import { validateLiveEventFieldUpdate } from "../../utils/publishedEventEditGuards";
-import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import {
+  describeUnmappedPublishGuard,
+  resolvePaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import {
   validateStep,
@@ -1296,7 +1299,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                                 : code.includes("event_not_editable_status") ||
                                     code.includes("event_deleted")
                                   ? "This event can't be edited — it may be ended or cancelled."
-                                  : "Couldn't save your changes. Tap to try again.";
+                                  : describeUnmappedPublishGuard(code);
         showToast(message);
         return;
       }

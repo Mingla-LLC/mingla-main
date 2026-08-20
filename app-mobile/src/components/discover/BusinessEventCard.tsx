@@ -113,8 +113,8 @@ const BusinessEventCardImpl: React.FC<BusinessEventCardProps> = ({
   //
   // Seth's decision (OQ-1, 2026-08-19): render an explicit "Online" badge where the
   // venue line sits. `format` is already on every card (`mapRpcRowToCard` →
-  // `deriveSharedFormat`, _business-query.ts:123-126), so this is a display change over
-  // data already present — no new query and no brand-city lookup.
+  // `deriveSharedFormat` in `supabase/functions/discover-merged-events/`), so this is
+  // a display change over data already present — no new query and no brand-city lookup.
   //
   // The test is `format === "online"` and NOT the truthiness of some is-online flag:
   // `deriveSharedFormat` returns "hybrid" for a hybrid event, which HAS a real venue and
@@ -298,10 +298,9 @@ const styles = StyleSheet.create({
   // It lightens instead, the same inversion `StayFilterChips`/`TripsContent` use for a
   // chip on an already-dark surface.
   //
-  // Metrics are tuned to preserve the meta row's rhythm rather than to decorate: 11px
-  // date text has a ~14px line box, and paddingVertical 1 + lineHeight 12 + 1px border
-  // gives the badge the same 14px, so an online card's info chip is EXACTLY as tall as
-  // its in-person neighbours in the same grid row. No layout shift, no ragged grid.
+  // The card itself has a fixed height and this chip is absolutely positioned, so the
+  // 16px badge grows upward inside the card instead of changing the grid row height.
+  // That preserves the grid while keeping the label legible.
   onlineBadge: {
     paddingHorizontal: 6,
     paddingVertical: 1,

@@ -430,11 +430,14 @@ const validateWhere = (d: DraftEvent): ValidationError[] => {
       // format chips live on Step 1 (index 0). The copy therefore names Step 1 in
       // words rather than jumping there — jumping backwards past the step the host is
       // standing on would lose their place.
+      const formatFix =
+        d.format === "hybrid"
+          ? "switch to In person and add the venue address"
+          : "go back to Step 1 and choose In person or Hybrid";
       errs.push({
         fieldKey: "onlineUrl",
         step: 2,
-        message:
-          "That's a map location, not a joining link. If this event happens at a venue, go back to Step 1 and choose In person or Hybrid.",
+        message: `That's a map location, not a joining link. If this event happens at a venue, ${formatFix}.`,
       });
     }
   }
@@ -481,7 +484,7 @@ const isMapLocationUrl = (raw: string): boolean => {
   let path: string;
   try {
     const u = new URL(candidate);
-    host = u.hostname.toLowerCase().replace(/^www\./, "");
+    host = u.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
     path = u.pathname.toLowerCase();
   } catch {
     return false;
@@ -490,6 +493,11 @@ const isMapLocationUrl = (raw: string): boolean => {
     host === suffix || host.endsWith(`.${suffix}`);
 
   if (MAP_HOST_SUFFIXES.some(matchesHost)) return true;
+
+  // `maps.google.<regional-tld>` is itself a Maps host even when the path is `/`.
+  // The broader `google.<tld>` family below still requires a `/maps` path so a
+  // regular Google link is never mistaken for a joining-link error.
+  if (/^maps\.google\.[a-z.]{2,}$/.test(host)) return true;
 
   // `google.*` covers every regional TLD (google.co.uk, google.com.ng, …) plus the
   // `maps.` subdomain already caught above. Only a /maps path counts.

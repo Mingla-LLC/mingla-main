@@ -172,7 +172,9 @@ export const normalizeProviderNeutralPaidPublishGuardReason = (
   // business_patch_event_taxonomy, was the ONE guard nothing here recognised, so it
   // fell through to "Could not save this publish. Try again." for at least two days
   // while a paying customer retried something that could never succeed.
-  if (s.includes("city_required")) return "city_required";
+  if (/(?:^|[^a-z0-9_])city_required(?:$|[^a-z0-9_])/.test(s)) {
+    return "city_required";
+  }
   return null;
 };
 

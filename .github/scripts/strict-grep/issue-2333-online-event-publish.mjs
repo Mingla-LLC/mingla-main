@@ -22,6 +22,14 @@ import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const read = (name) => fs.readFileSync(path.join(root, name), "utf8");
+const walkSourceFiles = (dir) =>
+  fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const absolute = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      return entry.name === "__tests__" ? [] : walkSourceFiles(absolute);
+    }
+    return /\.[cm]?[jt]sx?$/.test(entry.name) ? [absolute] : [];
+  });
 
 /** Strip SQL line comments — every #2333 migration EXPLAINS the is_online trap in prose
  *  directly above the guard it gates, and business_publish_event_draft legitimately
@@ -42,8 +50,17 @@ const KNOWN_RETRY_LIE_FILES = ["mingla-business/src/components/rsvp/RsvpCreatorW
 
 export function check(sources) {
   const failures = [];
-  const { publishMig, patchMig, discoverMig, guards, wizard, editor, validation, card } =
-    sources;
+  const {
+    publishMig,
+    patchMig,
+    discoverMig,
+    guards,
+    wizard,
+    editor,
+    validation,
+    card,
+    retryLieOccurrences,
+  } = sources;
 
   // ── I-2333-CITY-GUARDS-ARE-FORMAT-AWARE-NOT-ONLINE-AWARE ────────────────────────
   // The publish guard reads format off the SAME jsonb node v_city comes from.
@@ -57,7 +74,7 @@ export function check(sources) {
   }
   // The patch guard has NO format argument, so it reads the durable stored signal.
   for (const token of [
-    "lower(COALESCE(v_event.theme->'business_event'->>'format', '')) <> 'online'",
+    "lower(btrim(\n       COALESCE(v_event.theme->'business_event'->>'format', ''),",
     "RAISE EXCEPTION 'city_required'",
   ]) {
     if (!sqlCode(patchMig).includes(token))
@@ -89,7 +106,7 @@ export function check(sources) {
   const discover = sqlCode(discoverMig);
   if (
     !discover.includes(
-      "e.is_online IS TRUE\n              AND lower(COALESCE(e.theme->'business_event'->>'format', '')) = 'online'",
+      "e.is_online IS TRUE\n              AND lower(btrim(\n                COALESCE(e.theme->'business_event'->>'format', ''),",
     )
   ) {
     failures.push(
@@ -159,10 +176,15 @@ export function check(sources) {
   if (/Try again/i.test(tsCode(guards).slice(tsCode(guards).indexOf("describeUnmappedPublishGuard")))) {
     failures.push("describeUnmappedPublishGuard invites a retry");
   }
-  // The class-bug debt is pinned, not ignored: exactly one other live copy.
-  if (KNOWN_RETRY_LIE_FILES.length !== 1) {
+  // Compare the repository occurrence SET, not the size of the allowlist declared in
+  // this gate (#2113). A new live copy and a vanished allowlisted copy both fail.
+  if (
+    retryLieOccurrences.length !== KNOWN_RETRY_LIE_FILES.length ||
+    retryLieOccurrences.some((name, index) => name !== KNOWN_RETRY_LIE_FILES[index])
+  ) {
     failures.push(
-      "the known-copies list for the retry-lie changed without updating this gate",
+      `retry-lie occurrence set changed: expected ${KNOWN_RETRY_LIE_FILES.join(", ")}; ` +
+        `found ${retryLieOccurrences.join(", ") || "none"}`,
     );
   }
 
@@ -171,7 +193,7 @@ export function check(sources) {
   for (const token of [
     '| "city_required"',
     '| "edit_where"',
-    'if (s.includes("city_required")) return "city_required"',
+    "city_required(?:$|[^a-z0-9_])/.test(s)",
     'title: "Add where it\'s happening"',
     'action: "edit_where"',
   ]) {
@@ -207,6 +229,12 @@ export function check(sources) {
     failures.push(
       "EditPublishedScreen's city_required copy is unconditional again — it tells an " +
         "online host to pick a venue address the online Where step never renders",
+    );
+  }
+  if (!editCode.includes(": describeUnmappedPublishGuard(code);")) {
+    failures.push(
+      "EditPublishedScreen's terminal server-guard fallback invites a blind retry " +
+        "instead of using describeUnmappedPublishGuard",
     );
   }
 
@@ -268,6 +296,14 @@ const sources = {
   editor: read("mingla-business/src/components/event/EditPublishedScreen.tsx"),
   validation: read("mingla-business/src/utils/draftEventValidation.ts"),
   card: read("app-mobile/src/components/discover/BusinessEventCard.tsx"),
+  retryLieOccurrences: walkSourceFiles(path.join(root, "mingla-business/src"))
+    .flatMap((absolute) => {
+      const relative = path.relative(root, absolute);
+      return tsCode(fs.readFileSync(absolute, "utf8")).includes(RETRY_LIE)
+        ? [relative]
+        : [];
+    })
+    .sort(),
 };
 
 if (process.argv.includes("--self-test")) {
@@ -284,14 +320,14 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       patchMig: sources.patchMig.replace(
-        "lower(COALESCE(v_event.theme->'business_event'->>'format', '')) <> 'online'",
+        "lower(btrim(\n       COALESCE(v_event.theme->'business_event'->>'format', ''),",
         "v_event.is_online IS NOT TRUE",
       ),
     },
     {
       ...sources,
       discoverMig: sources.discoverMig.replace(
-        "e.is_online IS TRUE\n              AND lower(COALESCE(e.theme->'business_event'->>'format', '')) = 'online'",
+        "e.is_online IS TRUE\n              AND lower(btrim(\n                COALESCE(e.theme->'business_event'->>'format', ''),",
         "e.is_online IS TRUE",
       ),
     },
@@ -299,7 +335,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       discoverMig: sources.discoverMig.replace(
-        "AND lower(COALESCE(e.theme->'business_event'->>'format', '')) = 'online'",
+        "AND lower(btrim(\n                COALESCE(e.theme->'business_event'->>'format', ''),",
         "",
       ),
     },
@@ -364,7 +400,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       guards: sources.guards.replace(
-        'if (s.includes("city_required")) return "city_required";',
+        "if (/(?:^|[^a-z0-9_])city_required(?:$|[^a-z0-9_])/.test(s)) {",
         "",
       ),
     },
@@ -390,6 +426,20 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       editor: sources.editor.replace('liveEvent.format === "online"', "false"),
+    },
+    {
+      ...sources,
+      editor: sources.editor.replace(
+        ": describeUnmappedPublishGuard(code);",
+        ': "Couldn\'t save your changes. Tap to try again.";',
+      ),
+    },
+    {
+      ...sources,
+      retryLieOccurrences: [
+        ...sources.retryLieOccurrences,
+        "mingla-business/src/components/event/FakeRetryLie.tsx",
+      ].sort(),
     },
     // The map deny.
     { ...sources, validation: sources.validation.replace("isMapLocationUrl(d.onlineUrl)", "false") },

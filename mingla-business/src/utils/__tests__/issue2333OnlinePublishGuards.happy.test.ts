@@ -187,8 +187,10 @@ describe("issue #2333 S4b — an unmapped guard never invites a retry (T-15, T-1
 });
 
 describe("issue #2333 S4d — a map pin is not a joining link (T-17, T-18)", () => {
-  const MAP_MSG =
-    "That's a map location, not a joining link. If this event happens at a venue, go back to Step 1 and choose In person or Hybrid.";
+const MAP_MSG =
+  "That's a map location, not a joining link. If this event happens at a venue, go back to Step 1 and choose In person or Hybrid.";
+const HYBRID_MAP_MSG =
+  "That's a map location, not a joining link. If this event happens at a venue, switch to In person and add the venue address.";
 
   it("rejects the exact link the reporting customer pasted (T-17)", () => {
     expect(
@@ -265,7 +267,7 @@ describe("issue #2333 S4d — a map pin is not a joining link (T-17, T-18)", () 
         city: "London",
         onlineUrl: "https://maps.app.goo.gl/abc",
       }),
-    ).toContain(MAP_MSG);
+    ).toContain(HYBRID_MAP_MSG);
   });
 
   it("does not touch the IN_PERSON branch, which has no link field", () => {

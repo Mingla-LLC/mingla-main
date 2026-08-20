@@ -191,8 +191,8 @@ ROLLBACK;
 
 
 -- ═══════════════════════════════════════════════════════════════════════════════════
--- X-02 — ONE TOKEN, THREE READERS, THREE ANSWERS.
---        S1 normalises with lower(btrim(...)); S2 and S3 normalise with lower(...) only.
+-- X-02 — ONE TOKEN, THREE READERS, ONE ANSWER.
+--        S1, S2 and S3 must all use #2353's canonical lower(btrim(..., trim-set)).
 --        A format string that publishes must also be editable and findable, or the relax
 --        hands the host exactly the two failures this issue exists to remove: the
 --        soft-bricked edit (blast-radius audit §2) and the silent invisibility (§1).
@@ -245,8 +245,8 @@ BEGIN
   IF v_disagreements <> '' THEN
     RAISE EXCEPTION
       'X-02 FAIL (NORMALISATION ASYMMETRY): the three city guards do not agree on which '
-      'format string is online.%  20270427002333 uses lower(btrim(...)); 20270427002334 '
-      'and 20270427002335 use lower(...) with no btrim. A string that publishes but '
+      'format string is online.%  All three readers must use the same canonical '
+      'lower(btrim(..., trim-set)). A string that publishes but '
       'cannot be patched or found reproduces BOTH failures this issue set out to fix.',
       v_disagreements;
   END IF;

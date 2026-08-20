@@ -74,7 +74,10 @@ BEGIN
   END IF;
   IF position(
        'e.is_online IS TRUE' || chr(10) ||
-       '              AND lower(COALESCE(e.theme->''business_event''->>''format'', '''')) = ''online'''
+       '              AND lower(btrim(' || chr(10) ||
+       '                COALESCE(e.theme->''business_event''->>''format'', ''''),' || chr(10) ||
+       '                E'' \t\n\r\f\v'' || chr(160)' || chr(10) ||
+       '              )) = ''online'''
        in d_code) = 0 THEN
     RAISE EXCEPTION 'D-00 FAIL: e.is_online is not conjoined with format = online — is_online is TRUE for HYBRID too (serverDraftEventMapper.ts:708)';
   END IF;

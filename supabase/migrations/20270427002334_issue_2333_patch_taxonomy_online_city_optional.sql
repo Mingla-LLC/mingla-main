@@ -104,7 +104,10 @@ BEGIN
   -- never have its party types, vibes, genres or cover changed again.
   -- is_online is deliberately NOT the test — it is TRUE for hybrid.
   IF v_city IS NULL
-     AND lower(COALESCE(v_event.theme->'business_event'->>'format', '')) <> 'online' THEN
+     AND lower(btrim(
+       COALESCE(v_event.theme->'business_event'->>'format', ''),
+       E' \t\n\r\f\v' || chr(160)
+     )) <> 'online' THEN
     RAISE EXCEPTION 'city_required';
   END IF;
 
