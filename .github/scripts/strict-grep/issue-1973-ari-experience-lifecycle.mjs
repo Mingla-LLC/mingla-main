@@ -3,7 +3,9 @@ import fs from "node:fs";
 
 const read = (path) => fs.readFileSync(path, "utf8");
 const sources = {
-  migration: read("supabase/migrations/20270503001973_issue_1973_ari_experience_lifecycle.sql"),
+  migration: read(
+    "supabase/migrations/20270503001973_issue_1973_ari_experience_lifecycle.sql",
+  ),
   tools: read("supabase/functions/_shared/agentTools.ts"),
   domain: read("supabase/functions/_shared/agentDomainTools.ts"),
   confirm: read("supabase/functions/agent-confirm-action/index.ts"),
@@ -17,7 +19,9 @@ function check(s) {
   const failures = [];
   const requireAll = (label, source, needles) => {
     for (const needle of needles) {
-      if (!source.includes(needle)) failures.push(`${label}: missing ${needle}`);
+      if (!source.includes(needle)) {
+        failures.push(`${label}: missing ${needle}`);
+      }
     }
   };
 
@@ -45,7 +49,9 @@ function check(s) {
     failures.push("migration duplicates #1972 receipt storage");
   }
   if (s.tools.includes("p_payload")) {
-    failures.push("create payload is not derived from immutable receipt-bound args");
+    failures.push(
+      "create payload is not derived from immutable receipt-bound args",
+    );
   }
   requireAll("tools", s.tools, [
     '"create_experience"',
@@ -96,11 +102,41 @@ function check(s) {
 
 if (process.argv.includes("--self-test")) {
   const mutations = [
-    { ...sources, migration: sources.migration.replaceAll("agent_operation_receipt_begin", "removed_receipt_begin") },
-    { ...sources, tools: sources.tools.replaceAll("p_args: args", "p_args: args, p_payload: payload") },
-    { ...sources, domain: sources.domain.replaceAll('"unpublish_experience"', '"removed_unpublish"') },
-    { ...sources, play: sources.play.replaceAll("issue_1973_create_snap_proposals", "removed_snap_boundary") },
-    { ...sources, business: sources.business.replaceAll("business_unpublish_experience_to_draft", "removed_rpc") },
+    {
+      ...sources,
+      migration: sources.migration.replaceAll(
+        "agent_operation_receipt_begin",
+        "removed_receipt_begin",
+      ),
+    },
+    {
+      ...sources,
+      tools: sources.tools.replaceAll(
+        "p_args: args",
+        "p_args: args, p_payload: payload",
+      ),
+    },
+    {
+      ...sources,
+      domain: sources.domain.replaceAll(
+        '"unpublish_experience"',
+        '"removed_unpublish"',
+      ),
+    },
+    {
+      ...sources,
+      play: sources.play.replaceAll(
+        "issue_1973_create_snap_proposals",
+        "removed_snap_boundary",
+      ),
+    },
+    {
+      ...sources,
+      business: sources.business.replaceAll(
+        "business_unpublish_experience_to_draft",
+        "removed_rpc",
+      ),
+    },
   ];
   if (mutations.some((mutation) => check(mutation).length === 0)) {
     console.error("issue-1973 self-test FAIL: a material revert escaped");
@@ -112,7 +148,9 @@ if (process.argv.includes("--self-test")) {
 
 const failures = check(sources);
 if (failures.length) {
-  console.error("issue-1973 FAIL:\n" + failures.map((item) => `  - ${item}`).join("\n"));
+  console.error(
+    "issue-1973 FAIL:\n" + failures.map((item) => `  - ${item}`).join("\n"),
+  );
   process.exit(1);
 }
 console.log("issue-1973 PASS");
