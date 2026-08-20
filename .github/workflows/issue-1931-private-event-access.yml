@@ -81,6 +81,23 @@ jobs:
               # twice. Any future migration that re-emits a #1931-defined object
               # belongs on this list too.
               *_issue_2160_*) continue ;;
+              # issue #2333 — SKIPPED ON THE SAME GROUND, per the standing
+              # instruction three lines above ("any future migration that
+              # re-emits a #1931-defined object belongs on this list too").
+              #
+              # 20270427002335 re-emits `pg_discover_business_events` to add the
+              # online carve-out. That function's CURRENT body — defined by #1931
+              # itself — calls `issue_1931_event_ordinary_read_blocked`, and a
+              # `LANGUAGE sql` body is validated at CREATE time, so applying it in
+              # this deliberately-pre-#1931 chain aborts with "function
+              # public.issue_1931_event_ordinary_read_blocked(uuid) does not exist".
+              # The reference is CORRECT — it is the private-event guard on a public
+              # reader — and stripping it to green this lane would delete a security
+              # control. #2333's own lane replays the FULL chain in true order.
+              #
+              # Only ...002335 is listed: ...002333 and ...002334 re-emit plpgsql
+              # bodies, which are NOT validated at CREATE time, so they replay clean.
+              *_issue_2333_discover_online_carveout*) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done

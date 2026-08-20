@@ -417,9 +417,96 @@ const validateWhere = (d: DraftEvent): ValidationError[] => {
         step: 2,
         message: "Enter a valid link (e.g. https://zoom.us/j/123).",
       });
+    } else if (isMapLocationUrl(d.onlineUrl)) {
+      // issue #2333 — the reporting customer set format=Online and pasted
+      // `https://maps.app.goo.gl/Qr8MotQCkTcSw7bp8?g_st=ic`, a Google Maps VENUE PIN,
+      // into the conferencing-link field, because Online was the only branch offering
+      // a link field. `isValidUrl` accepted it — it is a URL validator doing duty as a
+      // conferencing-link validator, and any http(s) host with a dot passes. His
+      // exhibition is physical; the `city_required` publish failure was the
+      // second-order symptom of THIS first-order UX failure.
+      //
+      // fieldKey/step are unchanged: the Where step is wizard index 2, while the
+      // format chips live on Step 1 (index 0). The copy therefore names Step 1 in
+      // words rather than jumping there — jumping backwards past the step the host is
+      // standing on would lose their place.
+      const formatFix =
+        d.format === "hybrid"
+          ? "switch to In person and add the venue address"
+          : "go back to Step 1 and choose In person or Hybrid";
+      errs.push({
+        fieldKey: "onlineUrl",
+        step: 2,
+        message: `That's a map location, not a joining link. If this event happens at a venue, ${formatFix}.`,
+      });
     }
   }
   return errs;
+};
+
+/**
+ * issue #2333 — hosts that serve MAP/PLACE links and are therefore never a
+ * conferencing link.
+ *
+ * Seth's decision (OQ-2, 2026-08-19): block KNOWN MAP HOSTS ONLY. This is
+ * deliberately NOT an allow-list of video providers — an allow-list silently rejects
+ * self-hosted and regional tools we did not anticipate, trading this dead end for a
+ * new one. Denying a map host is the one case where the input is PROVABLY not a
+ * joining link, so it is the only case we act on.
+ *
+ * Matched on the parsed hostname (exact, or any subdomain of), never on a substring
+ * of the raw string — a substring test would reject
+ * `https://meet.example.com/google.com/maps-review` and similar innocent paths.
+ * `goo.gl` and `google.<tld>` additionally require a `/maps` path prefix, because
+ * those hosts serve far more than maps.
+ */
+const MAP_HOST_SUFFIXES: readonly string[] = [
+  "maps.app.goo.gl",
+  "maps.google.com",
+  "maps.apple.com",
+  "mapy.cz",
+  "openstreetmap.org",
+  "waze.com",
+  "what3words.com",
+  "w3w.co",
+];
+
+/** Hosts that are only a map link when the PATH says so. */
+const MAP_PATH_HOSTS: readonly string[] = ["goo.gl", "google.com"];
+
+const isMapLocationUrl = (raw: string): boolean => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return false;
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `https://${trimmed}`;
+  let host: string;
+  let path: string;
+  try {
+    const u = new URL(candidate);
+    host = u.hostname.toLowerCase().replace(/\.$/, "").replace(/^www\./, "");
+    path = u.pathname.toLowerCase();
+  } catch {
+    return false;
+  }
+  const matchesHost = (suffix: string): boolean =>
+    host === suffix || host.endsWith(`.${suffix}`);
+
+  if (MAP_HOST_SUFFIXES.some(matchesHost)) return true;
+
+  // `maps.google.<regional-tld>` is itself a Maps host even when the path is `/`.
+  // The broader `google.<tld>` family below still requires a `/maps` path so a
+  // regular Google link is never mistaken for a joining-link error.
+  if (/^maps\.google\.[a-z.]{2,}$/.test(host)) return true;
+
+  // `google.*` covers every regional TLD (google.co.uk, google.com.ng, …) plus the
+  // `maps.` subdomain already caught above. Only a /maps path counts.
+  const isGoogleHost =
+    MAP_PATH_HOSTS.some(matchesHost) || /(^|\.)google\.[a-z.]{2,}$/.test(host);
+  if (isGoogleHost && (path === "/maps" || path.startsWith("/maps/"))) {
+    return true;
+  }
+  return false;
 };
 
 /**

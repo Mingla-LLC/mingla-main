@@ -78,7 +78,10 @@ import {
   type TicketDiff,
 } from "../../utils/liveEventAdapter";
 import { validateLiveEventFieldUpdate } from "../../utils/publishedEventEditGuards";
-import { resolvePaidPublishGuardCopy } from "../../utils/paidPublishGuards";
+import {
+  describeUnmappedEditGuard,
+  resolvePaidPublishGuardCopy,
+} from "../../utils/paidPublishGuards";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import {
   validateStep,
@@ -1257,7 +1260,19 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           code.includes("ticket_delete_with_sales")
             ? "Refund affected buyers before changing or removing that ticket."
             : code.includes("city_required")
-              ? "Pick the venue address from the suggestions so we have a city."
+              ? // issue #2333 — this arm was UNCONDITIONAL, so an online host was told
+                // to "Pick the venue address from the suggestions", naming a field the
+                // online Where step never renders (CreatorStep3Where.tsx:138-140 gates
+                // the ONLY writer of city behind in_person|hybrid). A dead end dressed
+                // as an instruction. After migration 20270427002334 an online event no
+                // longer reaches this guard at all, but a LEGACY online row whose
+                // theme.business_event.format is missing still can — and that host has
+                // no address field either. Branch on the live event's format so the
+                // copy is true for whoever actually sees it; the in_person/hybrid
+                // string is unchanged.
+                liveEvent.format === "online"
+                ? "This online event can't be updated right now. Contact support and quote city_required."
+                : "Pick the venue address from the suggestions so we have a city."
               : code.includes("party_types_required")
                 ? "Pick at least one party type before saving."
                 : code.includes("party_types_not_canonical") ||
@@ -1284,7 +1299,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
                                 : code.includes("event_not_editable_status") ||
                                     code.includes("event_deleted")
                                   ? "This event can't be edited — it may be ended or cancelled."
-                                  : "Couldn't save your changes. Tap to try again.";
+                                  : describeUnmappedEditGuard(code);
         showToast(message);
         return;
       }

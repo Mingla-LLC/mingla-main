@@ -1,0 +1,199 @@
+name: issue-2333-online-event-publish
+
+# Issue #2333 — an ONLINE-ONLY event could not be published; once the publish guard is
+# relaxed it must stay EDITABLE; and once it is publishable it must be FINDABLE. The
+# first three halves are server-side, so this lane needs a real PostgreSQL 17 with every
+# migration applied — there is no way to prove a plpgsql RAISE or an OR-arm from a
+# static read. The fourth (S4, the client OTA) is TypeScript and runs beside it.
+#
+# S3 and the consumer "Online" badge are ONE UNIT (Seth, OQ-1, 2026-08-19): the carve-out
+# puts online events into every market's Discover grid, and without the badge those cards
+# render a blank location line. Both are gated here.
+on:
+  pull_request:
+    paths: &issue2333Paths
+      - "supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql"
+      - "supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql"
+      - "supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql"
+      - "supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2333_discover_online_carveout.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2333_online_publish_hybrid_boundary.tester.pg17.test.sql"
+      - "mingla-business/src/utils/paidPublishGuards.ts"
+      - "mingla-business/src/utils/draftEventValidation.ts"
+      - "mingla-business/src/components/event/EventCreatorWizard.tsx"
+      - "mingla-business/src/components/event/EditPublishedScreen.tsx"
+      - "mingla-business/src/utils/__tests__/issue2333OnlinePublishGuards.happy.test.ts"
+      - "mingla-business/src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx"
+      - "mingla-business/src/utils/__tests__/issue2333OnlineGuards.tester.adversarial.test.ts"
+      - "app-mobile/src/components/discover/BusinessEventCard.tsx"
+      - "app-mobile/src/components/discover/__tests__/issue2333OnlineBadge.test.mjs"
+      - ".github/scripts/strict-grep/issue-2333-online-event-publish.mjs"
+      - ".github/workflows/issue-2333-online-event-publish.yml"
+  push:
+    branches: [main]
+    paths: *issue2333Paths
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  issue-2333-postgres-contract:
+    name: "#2333 online publish + edit + discovery, hybrid stays guarded"
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        # Same image and env contract as the shared `migrations` job in
+        # supabase-migrations-and-stripe-deno.yml: the supabase-flavoured Postgres
+        # carries pg_cron/pgcrypto/pgsodium/plv8 that the baseline migration requires,
+        # POSTGRES_USER and POSTGRES_DB are deliberately NOT overridden, and the major
+        # version is pinned to 17.x to match production.
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.sha }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for postgres
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          for i in {1..90}; do
+            if psql -h localhost -U postgres -d postgres -c "SELECT 1" >/dev/null 2>&1; then
+              echo "postgres ready"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "postgres did not become ready in 90s"
+          exit 1
+
+      - name: Apply migrations in timestamp order
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -e
+          for f in $(ls supabase/migrations/*.sql | sort); do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
+          done
+          echo "all migrations applied"
+
+      # The proof. Every case EXECUTES the real RPC (issue #2113 — a check that only
+      # greps a definition carries no information). C-03 and C-07 are the hybrid
+      # boundary: `is_online` is TRUE for hybrid as well as online
+      # (serverDraftEventMapper.ts:708), so an is_online-keyed relax compiles, passes
+      # the online happy path, and silently exempts hybrid from a city the client
+      # REQUIRES for hybrid. Those two cases are the only thing that catches it.
+      - name: "#2333 online publish + edit contract (C-00 … C-09)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql
+
+      # S3. D-03 and D-09 are the discovery half of the SAME trap: a carve-out keyed on
+      # a bare `e.is_online` compiles, passes every online happy path here, and
+      # broadcasts every HYBRID event — which has a real venue in a real city — into
+      # every market on earth. D-05 proves the arm widened LOCATION and nothing else,
+      # one negative case per unrelated gate.
+      - name: "#2333 discovery online carve-out contract (D-00 … D-09)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2333_discover_online_carveout.implementor.pg17.test.sql
+
+      # TESTER adversarial probe (issue #2333). Attacks the half the implementor's C-*/D-*
+      # cases cannot reach: they SEED theme.business_event.format and assert on it in the
+      # same transaction, which proves the guards READ the key but not that the key still
+      # holds the right value when they read it. X-01 round-trips a real HYBRID event
+      # through the live duplicate/unpublish RPCs; X-02 checks all three guards agree on
+      # what "online" spells; X-06 checks S2 is reachable by `authenticated`, the role the
+      # business app calls it as.
+      - name: "#2333 TESTER adversarial probe (X-01 … X-06)"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2333_online_publish_hybrid_boundary.tester.pg17.test.sql
+
+      # Both migrations are idempotent CREATE OR REPLACE with no DROP. Re-applying them
+      # must be a no-op that leaves the function definitions and their ACLs identical —
+      # a replay that silently revoked EXECUTE from `authenticated` would take the whole
+      # business app's publish and edit paths down.
+      - name: "#2333 replay safety — second apply leaves definitions and grants identical"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          snapshot() {
+            psql -h localhost -U postgres -d postgres -At -v ON_ERROR_STOP=1 -c "
+              SELECT string_agg(x, E'\n' ORDER BY x) FROM (
+                SELECT p.oid::regprocedure::text || '|' || md5(p.prosrc) || '|'
+                       || p.prosecdef::text || '|'
+                       || COALESCE(array_to_string(p.proconfig, ','), '') || '|'
+                       || COALESCE(p.proacl::text, '') AS x
+                FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
+                WHERE n.nspname = 'public'
+                  AND p.proname IN ('business_publish_event_draft','business_patch_event_taxonomy','pg_discover_business_events')
+              ) s;"
+          }
+          before="$(snapshot)"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql
+          after="$(snapshot)"
+          test "$before" = "$after"
+          echo "OK — replay is definition- and grant-equivalent."
+
+  # S4 + the S3 consumer co-requisite. Separate job: no database needed, and it must not
+  # queue behind a 300-migration apply.
+  issue-2333-client-contract:
+    name: "#2333 client guards, map-host deny, and the consumer Online badge"
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # The structural gate for all four SPEC §6 DRAFT invariants. Both modes: the
+      # self-test performs TRUE source mutations (including the naive bare-is_online
+      # carve-out and the naive is_online-keyed city guard) and proves each one is
+      # caught. `run-batch.mjs --class A` also runs it; this lane makes a #2333 change
+      # fail fast without waiting for the whole batch.
+      - name: "#2333 true-revert strict gate"
+        run: |
+          node .github/scripts/strict-grep/issue-2333-online-event-publish.mjs
+          node .github/scripts/strict-grep/issue-2333-online-event-publish.mjs --self-test
+
+      # The consumer badge. Plain `node --test` — it EXTRACTS the shipped isOnlineEvent
+      # expression from BusinessEventCard and EXECUTES it, so the client-side form of the
+      # hybrid trap is caught by evaluation, not by a string match.
+      - name: "#2333 consumer Online badge contract"
+        working-directory: app-mobile
+        run: >
+          node --test
+          src/components/discover/__tests__/issue2333OnlineBadge.test.mjs
+
+      - name: "#2333 business client guard + validation suites"
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npx jest --runInBand \
+            src/utils/__tests__/issue2333OnlinePublishGuards.happy.test.ts \
+            src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx \
+            src/utils/__tests__/issue2333OnlineGuards.tester.adversarial.test.ts
