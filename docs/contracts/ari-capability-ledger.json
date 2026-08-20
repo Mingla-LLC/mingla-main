@@ -889,7 +889,7 @@
       "evidence": [
         {
           "tier": "registration",
-          "sha": "26ab9b38b8340a74fe7fc13862255cfabfda74b2",
+          "sha": "2f7367b402945da3665b0d608d9cf5f0e940c515",
           "reference": "issue_1974_ticket_pricing_canonical.test.ts + issue_1974_ticket_pricing_service.test.ts"
         }
       ],
@@ -934,7 +934,7 @@
       "evidence": [
         {
           "tier": "registration",
-          "sha": "26ab9b38b8340a74fe7fc13862255cfabfda74b2",
+          "sha": "2f7367b402945da3665b0d608d9cf5f0e940c515",
           "reference": "issue_1974_ticket_pricing_canonical.test.ts + issue_1974_ticket_pricing_contract.test.ts"
         }
       ],
@@ -3219,7 +3219,7 @@
       "evidence": [
         {
           "tier": "registration",
-          "sha": "26ab9b38b8340a74fe7fc13862255cfabfda74b2",
+          "sha": "2f7367b402945da3665b0d608d9cf5f0e940c515",
           "reference": "issue_1974_ticket_pricing_service.test.ts: sparse concrete default readback"
         }
       ],
