@@ -70,6 +70,19 @@ jest.mock("../../../hooks/marketing/useBrandPeople", () => ({
 jest.mock("../../../hooks/marketing/useAudienceList", () => ({
   useAudienceList: () => groupState,
 }));
+// #2305 — same reason as useBrandPeople above: this suite renders PeoplePage with no
+// QueryClientProvider. An empty queue is the #2024 baseline; the strip renders null.
+jest.mock("../../../hooks/marketing/useBrandPersonConflicts", () => ({
+  useBrandPersonConflicts: () => ({
+    kind: "success",
+    openCount: 0,
+    rows: [],
+    refetch: () => Promise.resolve(),
+  }),
+  useResolveBrandPersonConflict: () => ({
+    mutateAsync: () => Promise.resolve({ personId: null, mergedPersonIds: [] }),
+  }),
+}));
 jest.mock("../../ui/useShareNetworkState", () => ({ useShareNetworkState: () => true }), {
   virtual: true,
 });
@@ -102,6 +115,12 @@ jest.mock("../../marketing/AudienceCard", () => ({
   AudienceCard: ({ entry }: { entry: { display_name: string } }) => <Text>{entry.display_name}</Text>,
 }));
 jest.mock("../AddPersonSheet", () => ({ AddPersonSheet: () => null }));
+// #2305 — same reason as the Add sheet above: ConflictReviewSheet imports the
+// reanimated-backed ConfirmDialog, which this suite does not transform.
+jest.mock("../ConflictReviewSheet", () => ({
+  ConflictReviewSheet: () => null,
+  ConflictReviewStrip: () => null,
+}));
 jest.mock("../PeoplePrimitives", () => ({
   PeopleBlock: ({
     title,

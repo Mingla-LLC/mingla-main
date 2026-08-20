@@ -29,6 +29,10 @@ import { useAuth } from "../../context/AuthContext";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import { useAudienceList } from "../../hooks/marketing/useAudienceList";
 import { useBrandPeople } from "../../hooks/marketing/useBrandPeople";
+import {
+  useBrandPersonConflicts,
+  useResolveBrandPersonConflict,
+} from "../../hooks/marketing/useBrandPersonConflicts";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
 import { useFeatureFlag } from "../../hooks/useFeatureFlag";
@@ -38,9 +42,16 @@ import {
   ensureBrandBuyersAudience,
   ensureEventBuyersAudience,
 } from "../../services/marketing/marketingCampaignService";
+import { PeopleServiceError } from "../../services/peopleService";
 import type { AudienceListEntry } from "../../types/marketing";
-import type { AddBrandPersonResult, BrandPersonSummary } from "../../types/people";
+import type {
+  AddBrandPersonResult,
+  BrandPersonSummary,
+  ConflictResolution,
+} from "../../types/people";
 import { AddPersonSheet } from "./AddPersonSheet";
+import { ConflictReviewSheet, ConflictReviewStrip } from "./ConflictReviewSheet";
+import { createPeopleRequestId } from "./peopleRequestId";
 import {
   BookSheet,
   DependencyStatus,
@@ -169,17 +180,29 @@ export function PeoplePage(): React.ReactElement {
     online,
   );
   const groups=useAudienceList(user?.id??null);
+  // #2305 — the identity-conflict review queue. Read at rank 20; the RPC gates
+  // resolving at rank 50 and reports it per row as `canResolve`.
+  const conflicts = useBrandPersonConflicts(
+    brand?.id ?? null,
+    roleResolved,
+    role.accepted,
+    role.rank,
+    online,
+  );
+  const resolveConflict = useResolveBrandPersonConflict(brand?.id ?? "");
   const flag = useFeatureFlag("contact_import_v1");
   const importEnabled=authorized&&online&&!flag.isPending&&!flag.isFetching&&!flag.isError&&flag.data===true;
   const [bookOpen, setBookOpen] = React.useState(false);
   const [groupsOpen, setGroupsOpen] = React.useState(false);
   const [addOpen, setAddOpen] = React.useState(false);
+  const [conflictOpen, setConflictOpen] = React.useState(false);
+  const [conflictsResolved, setConflictsResolved] = React.useState(0);
   const [creatingKey, setCreatingKey] = React.useState<string | null>(null);
   const [toast, setToast] = React.useState<{
     message: string;
     kind: "success" | "error";
   } | null>(null);
-  const modalOpen = bookOpen || groupsOpen || addOpen;
+  const modalOpen = bookOpen || groupsOpen || addOpen || conflictOpen;
 
   React.useEffect(() => {
     capturePeople("people_page_viewed", { surface: "page" });
@@ -188,6 +211,7 @@ export function PeoplePage(): React.ReactElement {
     setBookOpen(false);
     setGroupsOpen(false);
     setAddOpen(false);
+    setConflictOpen(false);
     setBookSearch("");
   }, [brand?.id, isAuthReady, role.accepted, role.rank]);
   React.useEffect(() => {
@@ -195,6 +219,7 @@ export function PeoplePage(): React.ReactElement {
       setBookOpen(false);
       setGroupsOpen(false);
       setAddOpen(false);
+      setConflictOpen(false);
       setBookSearch("");
     }
   }, [book.kind, sheetBook.kind]);
@@ -348,6 +373,16 @@ export function PeoplePage(): React.ReactElement {
                 elevated
                 testID="people-book-block"
               >
+                <ConflictReviewStrip
+                  kind={conflicts.kind}
+                  openCount={conflicts.openCount}
+                  oldestCreatedAt={conflicts.rows[0]?.createdAt ?? null}
+                  stacked={actionColumns === 1}
+                  onReview={() => {
+                    capturePeople("people_conflict_queue_opened", { surface: "page" });
+                    setConflictOpen(true);
+                  }}
+                />
                 {book.kind==="authLoading"||book.kind==="roleLoading"||book.kind==="loading" ? (
                   <View accessibilityLiveRegion="polite" style={styles.skeletons}>
                     {[0, 1, 2].map((row) => (
@@ -550,6 +585,57 @@ export function PeoplePage(): React.ReactElement {
         reach={groups.reach}
         creatingKey={creatingKey}
         onPress={openGroup}
+      />
+      <ConflictReviewSheet
+        visible={conflictOpen}
+        onClose={() => {
+          setConflictOpen(false);
+          // No toast while the sheet is open: `Sheet` renders at the OS-level
+          // root on native, so the page's Toast would sit behind it. One summary
+          // on close beats six toasts anyway.
+          if (conflictsResolved > 0) {
+            setToast({
+              message: `${conflictsResolved} ${conflictsResolved === 1 ? "buyer" : "buyers"} added to your book.`,
+              kind: "success",
+            });
+            setConflictsResolved(0);
+          }
+        }}
+        kind={conflicts.kind}
+        rows={conflicts.rows}
+        openCount={conflicts.openCount}
+        online={online}
+        onRetry={() => {
+          void conflicts.refetch();
+        }}
+        onResolvedCountChange={setConflictsResolved}
+        onResolve={async (input: {
+          conflictIds: string[];
+          resolution: ConflictResolution;
+          winnerPersonId: string | null;
+        }) => {
+          try {
+            const result = await resolveConflict.mutateAsync({
+              brandId: brand.id,
+              conflictIds: input.conflictIds,
+              resolution: input.resolution,
+              winnerPersonId: input.winnerPersonId,
+              clientRequestId: createPeopleRequestId(),
+            });
+            capturePeople("people_conflict_resolved", {
+              surface: "conflict_sheet",
+              resolution: input.resolution,
+              candidateCount: input.conflictIds.length,
+            });
+            return { personId: result.personId, mergedPersonIds: result.mergedPersonIds };
+          } catch (error) {
+            capturePeople("people_conflict_resolve_failed", {
+              surface: "conflict_sheet",
+              errorCode: error instanceof PeopleServiceError ? error.code : "people_unknown",
+            });
+            throw error;
+          }
+        }}
       />
       <AddPersonSheet
         visible={addOpen}

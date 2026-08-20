@@ -18,6 +18,10 @@ jest.mock("../../../hooks/useResponsiveLayout",()=>({useResponsiveLayout:()=>({i
 jest.mock("../../../hooks/useStickyFooterOffset",()=>({useStickyFooterOffset:()=>120}));
 jest.mock("../../../hooks/marketing/useBrandPeople",()=>({useBrandPeople:(...args:any[])=>peopleHook(args[0],args[1],args[2],args[3],args[4])}));
 jest.mock("../../../hooks/marketing/useAudienceList",()=>({useAudienceList:()=>groupState}));
+// #2305 — the conflict queue hook uses React Query like useBrandPeople above, so it
+// is stubbed for the same reason: this suite renders PeoplePage without a QueryClient.
+// An empty queue is the #1774 baseline — the strip renders null at zero.
+jest.mock("../../../hooks/marketing/useBrandPersonConflicts",()=>({useBrandPersonConflicts:()=>({kind:"success",openCount:0,rows:[],refetch:()=>Promise.resolve()}),useResolveBrandPersonConflict:()=>({mutateAsync:()=>Promise.resolve({personId:null,mergedPersonIds:[]})})}));
 jest.mock("../../ui/useShareNetworkState",()=>({useShareNetworkState:()=>online}),{virtual:true});
 jest.mock("../MarketingBrandSwitcherContext",()=>({useMarketingBrandSwitcher:()=>openSwitcher}));
 jest.mock("../../../features/people/peopleAnalytics",()=>({capturePeople:jest.fn()}));
@@ -29,6 +33,10 @@ jest.mock("../../ui/Icon",()=>({Icon:()=>React.createElement("MockIcon")}));
 jest.mock("../../ui/Toast",()=>({Toast:(props:any)=>props.visible?<Text>{props.message}</Text>:null}));
 jest.mock("../../marketing/AudienceCard",()=>({AudienceCard:({entry}:any)=><Text>{entry.display_name}</Text>}));
 jest.mock("../AddPersonSheet",()=>({AddPersonSheet:({visible}:any)=>visible?<Text>ADD SHEET</Text>:null}));
+// #2305 — the conflict review sheet is a sibling of AddPersonSheet in PeoplePage's
+// module graph and pulls the same reanimated-backed ConfirmDialog, so it is stubbed
+// here for the identical reason the Add sheet is.
+jest.mock("../ConflictReviewSheet",()=>({ConflictReviewSheet:()=>null,ConflictReviewStrip:()=>null}));
 jest.mock("../PeoplePrimitives",()=>({
   PeopleBlock:({title,count,children}:any)=><View><Text>{title}</Text>{count?<Text>{count}</Text>:null}{children}</View>,
   DependencyStatus:({status,body}:any)=><View><Text>{status}</Text><Text>{body}</Text></View>,

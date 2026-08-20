@@ -22,8 +22,28 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- #2305 re-pinned biz_resolve_brand_person_source: 20270430002305 (the REWORK
+  -- forward migration) is now the legitimate current last writer of that
+  -- definition. It adds P1-1(b) -- the automatic chain-merge refuses to collapse
+  -- a pair the separation ledger says are different people -- and P2-4, which
+  -- keeps link_method='manual_resolution' across a re-ingest so the record that
+  -- a human decided it is not erased. 20270426002305 last wrote it before that. It applies four localized
+  -- amendments the issue exists to make -- A-1 (the name test consults active
+  -- alternate names, F-5), A-2 (separated candidates are excluded from the
+  -- conflict test AND the chain-merge, F-6), A-3 (the detach block no longer
+  -- runs on the way into a conflict, F-3) and their ordering. The fingerprint
+  -- HAD to move; that is the tripwire working, not a bypass.
+  --
+  -- The BEHAVIOURAL block below is unchanged and was proven to pass against the
+  -- new writer on its own merits BEFORE this value was touched: strict-E164
+  -- linking, the phone_country_iso revision path, the national-only email path,
+  -- invalid-ISO rejection and strict E.164 as the match key all still hold.
+  --
+  -- issue_1770_enqueue_source is deliberately NOT re-pinned. #2305 does not touch
+  -- the enqueue trigger, and its md5 is unchanged -- which is also the control
+  -- proving this fingerprint pipeline still reproduces the original values.
   FOR v_signature,v_expected_md5 IN SELECT * FROM (VALUES
-    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','eddd993b656af66cd75f588a5df64b5f'),
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','4e5a1f5f52803223843d843f9868ecc4'),
     ('public.issue_1770_enqueue_source()','b6f76457afc333703f59d065cd4224ba')
   ) AS expected(signature,definition_md5) LOOP
     SELECT pg_get_functiondef(to_regprocedure(v_signature)) INTO STRICT v_definition;
