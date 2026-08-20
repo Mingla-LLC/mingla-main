@@ -148,7 +148,7 @@ ari.partner.splits
 // reconciliation at this immutable revision, minus rows whose concrete defects
 // are repaired by issue #1972. Ledger prose may explain a remaining defect, but
 // it cannot remove one from this set or create a new proven-broken claim.
-const PROVEN_BROKEN_AUDIT_SHA = "cb42c1442ae854ec47079cd3a179beea7b00b000";
+const PROVEN_BROKEN_AUDIT_SHA = "a6469471707ed0abe116c0d22c1c78ebe77d8b30";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
 ari.ticket.upsert_tier
 ari.ticket.pricing_switches
