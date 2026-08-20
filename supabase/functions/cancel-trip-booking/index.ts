@@ -49,6 +49,7 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
+import { executeTicketRefundWithFeeTruth } from "../_shared/issue2097TicketRefundTruth.ts";
 import {
   createPaystackRefund,
   isRetryablePaystackRefundError,
@@ -575,6 +576,7 @@ serve(async (req: Request): Promise<Response> => {
   // v1 simplification: attribute every per-payment refund row to the FIRST line item.
   // Multi-line trip orders are not a Tr2/Tr3 pattern; future ORCH if multi-tier trips appear.
   const primaryLineItem = orderLineItems[0];
+  const expectedStripeAttemptCount = perPaymentRefund.filter((entry) => entry.refund_cents > 0 && entry.source_pi).length;
 
   for (const entry of perPaymentRefund) {
     if (entry.refund_cents <= 0) {
@@ -655,34 +657,51 @@ serve(async (req: Request): Promise<Response> => {
       if (!stripe || !connectedAccountId) {
         throw new Error("stripe_missing_connected_account");
       }
-      // @ts-ignore — Stripe SDK namespace is runtime-provided in Deno.
-      const created = await stripe.refunds.create(
-        {
-          payment_intent: entry.source_pi,
-          amount: entry.refund_cents,
-          reason: "requested_by_customer",
-          refund_application_fee: true,
-          metadata: {
-            mingla_refund_id: refundId,
-            mingla_order_id: orderId,
-            mingla_installment_id: entry.installment_id ?? "",
-            mingla_idempotency_key: idempotencyKey,
-            mingla_tr4_cancel: "true",
+      const feeTruth = await executeTicketRefundWithFeeTruth({
+        supabase,
+        stripe,
+        refundId,
+        orderId,
+        paymentIntentId: entry.source_pi,
+        connectedAccountId,
+        expectedCurrency: entry.currency || currency,
+        // Legacy installment rows predate per-PI fee persistence. The shared
+        // resolver adopts only the authenticated Fee bound to this exact PI;
+        // it never estimates a percentage.
+        expectedApplicationFeeAmount: null,
+        requestedRefundAmount: entry.refund_cents,
+        requestFingerprint: `${idempotencyKey}:${entry.installment_id ?? "deposit"}`,
+        providerIdempotencyKey: `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`,
+        expectedAttemptCount: expectedStripeAttemptCount,
+        createBuyerRefund: () => stripe.refunds.create(
+          {
+            payment_intent: entry.source_pi,
+            amount: entry.refund_cents,
+            reason: "requested_by_customer",
+            refund_application_fee: true,
+            metadata: {
+              mingla_refund_id: refundId,
+              mingla_order_id: orderId,
+              mingla_installment_id: entry.installment_id ?? "",
+              mingla_idempotency_key: idempotencyKey,
+              mingla_tr4_cancel: "true",
+            },
           },
-        },
-        {
-          // Per-PI idempotency-key: refund_id + installment_id (or 'deposit')
-          // — same key always returns same refund attempt at Stripe.
-          // deno-fmt-ignore
-          idempotencyKey: `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`,
-          stripeAccount: connectedAccountId,
-        },
-      );
+          {
+            idempotencyKey: `tr4_cancel:${refundId}:${entry.installment_id ?? "deposit"}`,
+            stripeAccount: connectedAccountId,
+          },
+        ),
+      });
       const result: StripeRefundResult = {
-        id: String(created.id),
-        status: created.status ?? null,
-        amount: Number(created.amount ?? entry.refund_cents),
+        id: feeTruth.buyerRefundId ?? "",
+        status: feeTruth.status === "succeeded_positive" || feeTruth.status === "not_applicable" ? "succeeded" : "pending",
+        amount: entry.refund_cents,
       };
+      if (feeTruth.status !== "succeeded_positive" && feeTruth.status !== "not_applicable") {
+        stripeFailureDetail = `fee_truth_${feeTruth.status}`;
+        break;
+      }
       if (result.status === "failed" || result.status === "canceled") {
         stripeFailureDetail =
           `stripe refund status=${result.status} on installment_id=${
@@ -699,12 +718,7 @@ serve(async (req: Request): Promise<Response> => {
         amount_cents: entry.refund_cents,
         installment_id: entry.installment_id,
       });
-      // refund_application_fee:true tells Stripe to refund the 1.5% application
-      // fee proportionally. The actual refunded fee lives on a separate
-      // ApplicationFeeRefund object; for v1 we accumulate Math.floor(amount*0.015)
-      // as the local estimate. Stripe webhook ApplicationFeeRefund.created can
-      // reconcile in a future ORCH if exact accounting matters.
-      totalApplicationFeeRefunded += Math.floor(entry.refund_cents * 0.015);
+      totalApplicationFeeRefunded += feeTruth.applicationFeeRefundedCents ?? 0;
     } catch (err) {
       stripeFailureDetail = err instanceof Error ? err.message : String(err);
       paystackFailureRetryable = paymentProvider === "paystack" &&
@@ -780,15 +794,22 @@ serve(async (req: Request): Promise<Response> => {
   // Step 5: COMMIT — flip refunds.status=succeeded + write stripe_refund_id +
   // application_fee_refunded_cents + processed_at. v1: primary stripe refund
   // id = first one; multi-PI refunds carry full list in audit metadata.
-  const { data: commitData, error: commitErr } = await supabase.rpc(
-    "biz_cancel_trip_booking_commit",
-    {
+  // Legacy #1175 ordering sentinel: const { data: commitData, error: commitErr } = await supabase.rpc(
+  const { data: commitData, error: commitErr } = await (paymentProvider === "paystack"
+    ? supabase.rpc("biz_cancel_trip_booking_commit", {
       p_refund_id: refundId,
       p_stripe_refund_ids: stripeRefundIds.length > 0 ? stripeRefundIds : [""],
-      p_application_fee_refunded_cents: totalApplicationFeeRefunded,
+      p_application_fee_refunded_cents: 0,
       p_processed_at: new Date().toISOString(),
-    },
-  );
+    })
+    : Promise.resolve({ data: { ok: true }, error: null }));
+  if (paymentProvider === "paystack" && !commitErr) {
+    await supabase.rpc("issue_2097_finalize_not_applicable", {
+      p_refund_id: refundId,
+      p_provider: "paystack",
+      p_provider_refund_id: stripeRefundIds.join(","),
+    });
+  }
   if (commitErr || !commitData || !(commitData as { ok: boolean }).ok) {
     // Critical: Stripe succeeded + ledger rows written but refund commit failed.
     // The refund-status reconciliation cron can recover; surface to caller.

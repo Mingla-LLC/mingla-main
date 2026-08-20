@@ -8241,6 +8241,18 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/__tests__/issue-2050-native-launch-identity.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",

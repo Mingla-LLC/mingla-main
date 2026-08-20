@@ -112,7 +112,11 @@ export interface RefundRecord {
    * refund-order edge function / stripe-webhook on `charge.refunded`. Added
    * back when computing expected-payout-to-organiser per ORCH-0796.
    */
-  applicationFeeRefundedCents?: number;
+  applicationFeeRefundedCents?: number | null;
+  applicationFeeRefundStatus?:
+    | "awaiting_application_fee" | "application_fee_timeout" | "application_fee_conflict"
+    | "rejected_preflight" | "pending_visibility" | "succeeded_positive"
+    | "fee_evidence_unavailable" | "evidence_conflict" | "not_applicable" | "unknown_legacy";
 }
 
 /**

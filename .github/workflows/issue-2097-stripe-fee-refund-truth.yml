@@ -1,0 +1,69 @@
+name: issue-2097-stripe-fee-refund-truth
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/ticket-checkout-create/**"
+      - "supabase/functions/refund-order/**"
+      - "supabase/functions/admin-refund-order/**"
+      - "supabase/functions/event-cancel-refund-fanout/**"
+      - "supabase/functions/cancel-trip-booking/**"
+      - "supabase/functions/admin-reconcile-ticket-refund/**"
+      - "supabase/functions/_shared/issue2097TicketRefundTruth*"
+      - "supabase/functions/_shared/__tests__/issue_2097_refund_truth.retest2_adversarial.test.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/migrations/20270412002097_issue_2097_stripe_fee_refund_truth.sql"
+      - "supabase/migrations/__tests__/issue_2097*"
+      - "mingla-business/src/services/eventOrdersService.ts"
+      - "mingla-business/src/services/orderRefundService.ts"
+      - "mingla-business/src/services/__tests__/orderRefundService.issue2097.test.ts"
+      - "mingla-business/src/store/orderStore.ts"
+      - "mingla-business/src/utils/moneySummary.ts"
+      - "mingla-business/src/utils/reconciliation.ts"
+      - "mingla-admin/src/pages/BusinessMoneyLedgerPage.jsx"
+      - "mingla-admin/src/services/adminRefundReconciliationService.js"
+      - ".github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs"
+      - ".github/workflows/issue-2097-stripe-fee-refund-truth.yml"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  issue-2097-deno-and-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with: { deno-version: v2.x }
+      - run: node .github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2097-stripe-fee-refund-truth.mjs
+      - run: deno test --allow-read supabase/functions/_shared/issue2097TicketRefundTruth.test.ts supabase/functions/_shared/__tests__/issue_2097_stripe_fee_refund_truth.happy.test.ts supabase/functions/_shared/__tests__/issue_2097_fee_refund_truth.tester.test.ts supabase/functions/_shared/__tests__/issue_2097_refund_truth.retest2_adversarial.test.ts
+      - run: deno check supabase/functions/refund-order/index.ts supabase/functions/admin-refund-order/index.ts supabase/functions/event-cancel-refund-fanout/index.ts supabase/functions/cancel-trip-booking/index.ts supabase/functions/admin-reconcile-ticket-refund/index.ts supabase/functions/_shared/stripeWebhookRouter.ts
+
+  issue-2097-postgres-17:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with: { version: 2.98.2 }
+      - name: Full-chain PostgreSQL 17 contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_root="$(mktemp -d /tmp/issue-2097-sql.XXXXXX)"
+          cleanup() { supabase stop --workdir "$sql_root" --no-backup --yes || true; }
+          trap cleanup EXIT
+          supabase init --workdir "$sql_root" --yes
+          target="$sql_root/supabase/migrations"
+          rsync -a supabase/migrations/ "$target/"
+          mv "$target/20260612000001_tr4_revoke_rpc_anon_grants.sql" "$target/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          mv "$target/20260612000000_tr4_refund_tiers_booking_deadline.sql" "$target/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+          mv "$target/20260615000000_orch_426_discover_cache_gzip.sql" "$target/20260615010000_orch_426_discover_cache_gzip.sql"
+          mv "$target/20261012000000_orch_1150_rsvp_maybe.sql" "$target/20261012010000_orch_1150_rsvp_maybe.sql"
+          mv "$target/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" "$target/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          mv "$target/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" "$target/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+          mv "$target/20261117000001_orch_1188_finalize_persist_event_date_id.sql" "$target/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          mv "$target/20261117000000_orch_1188_orders_event_date_id.sql" "$target/20261117000001_orch_1188_orders_event_date_id.sql"
+          supabase start --workdir "$sql_root" --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor --yes
+          db_container="$(docker ps --filter "label=com.supabase.cli.project=$(basename "$sql_root")" --format '{{.Names}}' | awk '/^supabase_db_/ {print; exit}')"
+          db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2097_stripe_fee_refund_truth.test.sql

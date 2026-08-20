@@ -1,6 +1,7 @@
 // @ts-ignore — Deno ESM import
 import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2";
 import type { StripeClient } from "./stripe.ts";
+import { classifyFeeRefundEvidence, listAllFeeRefunds } from "./issue2097TicketRefundTruth.ts";
 import {
   STRIPE_API_VERSION,
   stripeTicketCheckout,
@@ -883,6 +884,10 @@ async function handleRefundEvent(
   const orderIdHint = typeof metadata.mingla_order_id === "string"
     ? metadata.mingla_order_id
     : null;
+  const ticketRefundIdHint = typeof metadata.mingla_refund_id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(metadata.mingla_refund_id)
+    ? metadata.mingla_refund_id
+    : null;
 
   // #1221 typed Venue/RSVP refunds are resolved by immutable operation metadata
   // before every legacy order fallback. Provider evidence must match exactly.
@@ -1008,6 +1013,47 @@ async function handleRefundEvent(
     return brandId;
   }
 
+  // #2097 ticket refunds have separate buyer-money and Fee Refund truth.
+  // A settled buyer Refund quarantines tickets in the shared resolver; this
+  // webhook must never collapse a missing Fee Refund object to fabricated zero.
+  const { data: truthAttempt, error: truthAttemptError } = await supabase
+    .from("ticket_refund_attempts")
+    .select("id")
+    .eq("buyer_refund_id", refundId)
+    .maybeSingle();
+  if (truthAttemptError) throw new Error(`ticket refund attempt lookup failed: ${truthAttemptError.message}`);
+  if (truthAttempt) return brandId;
+  // Crash recovery: Stripe may acknowledge the buyer Refund before the edge
+  // function durably records its ID. Adopt only the exact local refund + PI,
+  // under the same lease fencing; never fall through to the legacy committer.
+  if (ticketRefundIdHint && paymentIntentId) {
+    const { data: pendingAttempt, error: pendingAttemptError } = await supabase
+      .from("ticket_refund_attempts")
+      .select("id,buyer_refund_id")
+      .eq("refund_id", ticketRefundIdHint)
+      .eq("payment_intent_id", paymentIntentId)
+      .maybeSingle();
+    if (pendingAttemptError) throw new Error(`ticket refund adoption lookup failed: ${pendingAttemptError.message}`);
+    if (pendingAttempt) {
+      if (!pendingAttempt.buyer_refund_id) {
+        const owner = crypto.randomUUID();
+        const { data: claim, error: claimError } = await supabase.rpc("issue_2097_claim_refund_attempt", { p_attempt_id: pendingAttempt.id, p_lease_owner: owner });
+        if (claimError) throw new Error(`ticket refund adoption claim failed: ${claimError.message}`);
+        if (claim?.claimed === true) {
+          const { error: adoptError } = await supabase.rpc("issue_2097_record_buyer_refund", {
+            p_attempt_id: pendingAttempt.id,
+            p_lease_owner: owner,
+            p_lease_epoch: claim.lease_epoch,
+            p_buyer_refund_id: refundId,
+            p_buyer_refund_amount_text: String(amountCents),
+          });
+          if (adoptError) throw new Error(`ticket refund adoption failed: ${adoptError.message}`);
+        }
+      }
+      return brandId;
+    }
+  }
+
   // Reconcile into public.refunds (UPSERT path + ticket void + status advance).
   // The RPC is SECURITY DEFINER service-role and handles both:
   //   - Match-existing-by-stripe_refund_id (idempotent webhook replay).
@@ -1020,9 +1066,10 @@ async function handleRefundEvent(
       p_stripe_refund_id: refundId,
       p_amount_cents: amountCents,
       p_currency: currency,
-      p_application_fee_refunded_cents: Number(
-        refund.application_fee_refunded ?? 0,
-      ),
+      // #2097: an ordinary Refund has no authoritative application-fee
+      // refunded amount. Dashboard-originated legacy reconciliation remains
+      // unknown until Application Fee/Fee Refund evidence is resolved.
+      p_application_fee_refunded_cents: null,
       p_idempotency_key_hint: idempotencyHint,
     },
   );
@@ -1274,6 +1321,7 @@ async function handleApplicationFee(
 
 async function handleApplicationFeeRefund(
   supabase: SupabaseClient,
+  stripe: StripeClient,
   event: StripeWebhookEvent,
 ): Promise<string | null> {
   const feeRefund = event.data.object;
@@ -1281,13 +1329,55 @@ async function handleApplicationFeeRefund(
   const sourceRefundId = typeof metadata.source_refund_id === "string"
     ? metadata.source_refund_id
     : null;
-  if (!sourceRefundId) {
-    throw new Error("application_fee_refund_source_identity_missing");
-  }
   const feeRefundId = objectString(feeRefund, "id");
   const feeId = objectString(feeRefund, "fee") ??
     objectString(feeRefund, "application_fee");
   const amount = Number(feeRefund.amount ?? 0);
+  if (!sourceRefundId) {
+    if (!feeRefundId || !feeId) throw new Error("application_fee_refund_identity_missing");
+    const { data: attempts, error: attemptError } = await supabase
+      .from("ticket_refund_attempts")
+      .select("id,status,application_fee_id,application_fee_amount_text,baseline_fee_refund_ids,baseline_amount_refunded_text,currency,connected_account_id,charge_id")
+      .eq("application_fee_id", feeId)
+      .in("status", ["pending_visibility", "awaiting_application_fee"]);
+    if (attemptError) throw new Error(`ticket fee attempt lookup failed:${attemptError.message}`);
+    if (!attempts?.length) throw new Error("application_fee_refund_source_identity_missing");
+    // orch-strict-grep-allow stripe-no-idempotency-key — signed-webhook recovery performs read-only evidence lookup.
+    const fee = await stripe.applicationFees.retrieve(feeId);
+    const rows = await listAllFeeRefunds(async (startingAfter) => {
+      // orch-strict-grep-allow stripe-no-idempotency-key — signed-webhook recovery paginates read-only evidence.
+      const page = await stripe.applicationFees.listRefunds(feeId, { limit: 100, ...(startingAfter ? { starting_after: startingAfter } : {}) });
+      return { data: page.data.map((row: { id: string; fee: string; amount: number; currency: string }) => ({ id: String(row.id), fee: String(row.fee), amount: row.amount, currency: String(row.currency) })), has_more: page.has_more === true };
+    });
+    const matches = attempts.map((attempt: any) => ({ attempt, decision: classifyFeeRefundEvidence({
+      applicationFeeId: feeId, currency: attempt.currency,
+      originalFeeAmount: attempt.application_fee_amount_text,
+      baselineAmountRefunded: attempt.baseline_amount_refunded_text,
+      baselineIds: attempt.baseline_fee_refund_ids,
+      afterAmountRefunded: fee.amount_refunded, afterRefunds: rows, listComplete: true,
+    }) })).filter(({ decision }: any) => decision.status === "succeeded_positive" && decision.feeRefundId === feeRefundId);
+    if (matches.length !== 1) throw new Error("ticket_fee_refund_attempt_identity_conflict");
+    const { attempt, decision } = matches[0];
+    if (decision.status !== "pending_visibility") {
+      const leaseOwner = crypto.randomUUID();
+      const { data: claim, error: claimError } = await supabase.rpc("issue_2097_claim_refund_attempt", { p_attempt_id: attempt.id, p_lease_owner: leaseOwner });
+      if (claimError) throw new Error(`ticket fee claim failed:${claimError.message}`);
+      if (claim?.claimed === true) {
+        const { error: finalizeError } = await supabase.rpc("issue_2097_finalize_refund_attempt", {
+          p_attempt_id: attempt.id,
+          p_lease_owner: leaseOwner,
+          p_lease_epoch: claim.lease_epoch,
+          p_status: decision.status,
+          p_fee_refund_id: decision.feeRefundId,
+          p_fee_refund_amount_text: decision.status === "succeeded_positive" ? decision.amountText : decision.observedAmountText,
+          p_after_amount_refunded_text: String(fee.amount_refunded),
+          p_stripe_event_id: event.id,
+        });
+        if (finalizeError) throw new Error(`ticket fee finalize failed:${finalizeError.message}`);
+      }
+    }
+    return await brandIdForStripeAccount(supabase, attempt.connected_account_id);
+  }
   const { data: operation, error } = await supabase.from("source_refunds")
     .select(
       "id,brand_id,provider,currency,fee_reversal_required_cents,stripe_application_fee_id,active_fee_attempt_no",
@@ -1885,7 +1975,7 @@ export async function routeStripeEvent(
       brandId = await handleApplicationFee(supabase, event);
       break;
     case "application_fee.refund.updated":
-      brandId = await handleApplicationFeeRefund(supabase, event);
+      brandId = await handleApplicationFeeRefund(supabase, stripe, event);
       break;
     case "payment_intent.succeeded":
     case "payment_intent.payment_failed":

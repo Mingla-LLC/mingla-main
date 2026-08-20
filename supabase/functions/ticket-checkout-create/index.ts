@@ -1694,10 +1694,8 @@ export const createTicketCheckoutCreateHandler = (
     // whether to pass refund_application_fee:true. The finalize RPC copies
     // ticket_checkout_sessions.stripe_application_fee_amount_cents into
     // orders.stripe_application_fee_amount_cents (migrations 20260515000013
-    // lines 555-568). Defensive UPDATE here means we don't need an RPC
-    // signature change. Failure is logged but non-fatal — the worst case is
-    // a future refund that doesn't refund the platform fee component
-    // (Mingla keeps that cut), which is acceptable degrade behavior at v1.
+    // lines 555-568). #2097 makes this the fail-closed money-truth boundary:
+    // no hosted Checkout or native PaymentIntent may be created when it fails.
     const { error: feePersistError } = await supabase
       .from("ticket_checkout_sessions")
       .update({
@@ -1707,9 +1705,9 @@ export const createTicketCheckoutCreateHandler = (
       .eq("id", checkoutSessionId);
     if (feePersistError) {
       console.error(
-        "[ticket-checkout-create] application_fee persistence failed (non-fatal)",
-        feePersistError,
+        "[ticket-checkout-create] application fee persistence failed",
       );
+      return jsonResponse({ error: "application_fee_persistence_failed" }, 503);
     }
 
     // ORCH-0790: web buyer flow uses Stripe Checkout Sessions (hosted page +

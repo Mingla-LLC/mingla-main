@@ -30,6 +30,7 @@ interface RefundRow {
   created_at: string;
   stripe_refund_id: string | null;
   application_fee_refunded_cents: number | null;
+  application_fee_refund_status: RefundRecord["applicationFeeRefundStatus"];
   refund_line_items: RefundLineItemRow[];
 }
 
@@ -118,7 +119,8 @@ const mapRefundRow = (row: RefundRow, orderCurrency: string): RefundRecord => {
       amountGbp: rli.amount_cents / 100,
       amount: rli.amount_cents / 100,
     })),
-    applicationFeeRefundedCents: row.application_fee_refunded_cents ?? 0,
+    applicationFeeRefundedCents: row.application_fee_refunded_cents,
+    applicationFeeRefundStatus: row.application_fee_refund_status,
   };
 };
 
@@ -201,6 +203,7 @@ export const fetchEventOrders = async (
         created_at,
         stripe_refund_id,
         application_fee_refunded_cents,
+        application_fee_refund_status,
         refund_line_items (
           order_line_item_id,
           ticket_type_id,

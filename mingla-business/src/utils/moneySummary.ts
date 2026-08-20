@@ -8,7 +8,8 @@ type MoneyRefund = {
   amount?: number;
   amountGbp: number;
   /** ORCH-0796 — app-fee portion of the refund in minor units. */
-  applicationFeeRefundedCents?: number;
+  applicationFeeRefundedCents?: number | null;
+  applicationFeeRefundStatus?: string;
 };
 
 type MoneyOrderRecord = {
@@ -144,6 +145,7 @@ export const summarizeEventMoney = (args: {
   let stripeFeeOnlineCents = 0;
   let hasAnyOnlinePayment = false;
   let hasAnyDoorPayment = false;
+  let hasUnknownApplicationFeeRefund = false;
 
   const addRevenue = (
     method: CheckoutPaymentMethod | MoneyDoorPaymentMethod,
@@ -193,10 +195,13 @@ export const summarizeEventMoney = (args: {
         ?? 0;
       const refundedCents = order.refundedAmountCents
         ?? Math.round((order.refundedAmount ?? order.refundedAmountGbp) * 100);
-      const appFeeRefundedCents = order.refunds.reduce(
-        (acc, r) => acc + (r.applicationFeeRefundedCents ?? 0),
-        0,
-      );
+      const appFeeRefundedCents = order.refunds.reduce((acc, r) => {
+        if (r.applicationFeeRefundedCents === null && refundAmount(r) > 0) {
+          hasUnknownApplicationFeeRefund = true;
+          return acc;
+        }
+        return acc + (r.applicationFeeRefundedCents ?? 0);
+      }, 0);
       // Destination-charge model: organiser receives (total - app_fee), reduced
       // by net refunds (refund_amount - app_fee_refunded). Math.max guards a
       // pathological refund-overshoot edge case.
@@ -238,10 +243,10 @@ export const summarizeEventMoney = (args: {
   const totalRefunded = round2(onlineRefunded + doorRefunded);
 
   // ORCH-0796 — null signals "no payments" so UI renders "—" instead of £0.00.
-  const onlineNetMajor = hasAnyOnlinePayment ? round2(onlineNetCents / 100) : null;
-  const stripeFeeOnlineMajor = hasAnyOnlinePayment ? round2(stripeFeeOnlineCents / 100) : null;
+  const onlineNetMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(onlineNetCents / 100) : null;
+  const stripeFeeOnlineMajor = hasAnyOnlinePayment && !hasUnknownApplicationFeeRefund ? round2(stripeFeeOnlineCents / 100) : null;
   const expectedPayoutMajor =
-    hasAnyOnlinePayment || hasAnyDoorPayment
+    (hasAnyOnlinePayment || hasAnyDoorPayment) && !hasUnknownApplicationFeeRefund
       ? round2((onlineNetCents / 100) + (hasAnyDoorPayment ? doorRevenue : 0))
       : null;
 
