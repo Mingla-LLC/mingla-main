@@ -13,6 +13,7 @@ on:
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts"
       - "mingla-business/src/components/ari/ToolProposalCard.tsx"
@@ -39,6 +40,7 @@ on:
       - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts"
       - "mingla-business/src/components/ari/ToolProposalCard.tsx"
@@ -73,6 +75,7 @@ jobs:
           deno test --allow-read
           supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts
           supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.tester-adversarial.test.ts
+          supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts
           supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts
           supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts
       - name: Shared chat and confirmation typecheck

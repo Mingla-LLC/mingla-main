@@ -19,6 +19,8 @@ const PATHS = Object.freeze({
   test: "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts",
   pgTest: "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
   businessTest: "mingla-business/src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts",
+  receiptBindingTest: "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
+  workflow: ".github/workflows/issue-2063-ari-brand-management.yml",
 });
 
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
@@ -39,6 +41,8 @@ function audit(overrides = {}) {
   const chat = overrides.chat ?? read(PATHS.chat);
   const confirm = overrides.confirm ?? read(PATHS.confirm);
   const ledger = overrides.ledger ?? JSON.parse(read(PATHS.ledger));
+  const receiptBindingTest = overrides.receiptBindingTest ?? read(PATHS.receiptBindingTest);
+  const workflow = overrides.workflow ?? read(PATHS.workflow);
   const brandExecutorStart = tools.indexOf("async function executeBrandOperation(");
   const brandExecutorEnd = tools.indexOf("// Legacy append-only source-test marker: const createBrand", brandExecutorStart);
   const brandExecutor = brandExecutorStart >= 0 && brandExecutorEnd > brandExecutorStart
@@ -58,6 +62,7 @@ function audit(overrides = {}) {
   if (!fs.existsSync(path.join(ROOT, PATHS.test))) failures.push("missing Deno regression");
   if (!fs.existsSync(path.join(ROOT, PATHS.pgTest))) failures.push("missing PG17 regression");
   if (!fs.existsSync(path.join(ROOT, PATHS.businessTest))) failures.push("missing Business parity regression");
+  if (!fs.existsSync(path.join(ROOT, PATHS.receiptBindingTest))) failures.push("missing receipt-binding tester regression");
 
   requireText(failures, migration, "public.agent_operation_receipt_begin(", "missing receipt begin");
   requireText(failures, migration, "public.agent_operation_receipt_complete(", "missing receipt complete");
@@ -104,6 +109,18 @@ function audit(overrides = {}) {
   );
   requireText(failures, tools, '"ari_execute_brand_operation"', "executors bypass atomic brand wrapper");
   requireText(failures, tools, 'name: "list_brand_audit_log"', "missing audit read tool");
+  requireText(
+    failures,
+    receiptBindingTest,
+    "normalizing after proposal persistence makes #1972 reject the confirmation",
+    "receipt-binding tester regression lost exact-payload assertion",
+  );
+  requireText(
+    failures,
+    workflow,
+    "issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
+    "receipt-binding tester regression is not CI-wired",
+  );
   requireText(failures, tools, '.from("audit_log")', "audit tool bypasses canonical audit table");
   requireText(failures, tools, '.order("id", { ascending: false })', "audit order lacks stable id tie-breaker");
   requireText(failures, tools, "created_at.eq", "audit cursor loses tied timestamps");
@@ -200,6 +217,15 @@ function expectMutation(name, key, needle, expected) {
   }
 }
 
+function expectAllMutation(name, key, needle, expected) {
+  const overrides = {};
+  overrides[key] = read(PATHS[key]).replaceAll(needle, "");
+  const failures = audit(overrides);
+  if (!failures.some((failure) => failure.includes(expected))) {
+    throw new Error(`${name}: hostile mutation survived: ${failures.join("; ")}`);
+  }
+}
+
 if (process.argv.includes("--self-test")) {
   expectMutation("receipt begin", "migration", "public.agent_operation_receipt_begin(", "receipt begin");
   expectMutation("hours owner", "migration", "PERFORM public.biz_upsert_brand_hours(", "hours bypass");
@@ -226,7 +252,13 @@ if (process.argv.includes("--self-test")) {
   expectMutation("currency required version", "migration", "RAISE EXCEPTION 'expected_state_version_required'", "missing expected version");
   expectMutation("factory cache", "confirmHook", "brandHoursKeys.byBrand(brandId)", "missing brandHoursKeys.byBrand");
   expectMutation("brand retry", "confirm", '"create_brand",', "missing receipt-backed retry: create_brand");
-  console.log("[issue-2063-ari-brand-management] self-test PASS (15 hostile reversions)");
+  expectAllMutation(
+    "receipt-binding CI",
+    "workflow",
+    "issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts",
+    "not CI-wired",
+  );
+  console.log("[issue-2063-ari-brand-management] self-test PASS (16 hostile reversions)");
 } else {
   const failures = audit();
   if (failures.length) {
