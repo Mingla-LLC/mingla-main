@@ -9132,6 +9132,30 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Enforcement:** the same strict-grep gate as A — which requires the `IN ('online','hybrid')` projection, the namespace-creating merge, the normalised `format` PERSIST, and (rule A10) S6's three draft-arm clauses — the `format` write, the `is_online` reconciliation, and the `IS DISTINCT FROM` condition that makes it fire *only* on disagreement — as SEPARATE rules, so deleting any one alone reds it — plus the pg17 behavioural suite `supabase/migrations/__tests__/issue_2353_format_truth.implementor.pg17.test.sql`, which drives a real published-hybrid → live-edit-to-`in_person` → unpublish round trip (T-13), a namespace-less live row (T-12c), and normalisation at both the write and the read (T-12b), asserting `is_online` and `theme.business_event.format` agree at every hop; the draft arm's full precedence table (T-21: format wins over a contradicting `is_online`; a bare `is_online` that already agrees preserves `hybrid`; an unrecognised format is a no-op; the pair still agrees after a real publish); and the tester's five-hop lifecycle (X-1), driven namespace gap (X-4) and draft-arm probes (X-8, X-8b) in `…tester.adversarial.pg17.test.sql`. Fails-on-revert is measured by true line deletion, not comment-out, and the halves were proven red INDEPENDENTLY at `7236ff27c`: reverting the projection reds 13 implementor assertions, all of them about `is_online` (including a `null value in column "is_online"` crash on a JSON-null patch) plus X-2 and X-4; deleting the persist reds 9 implementor assertions, all about the stored format, plus X-1's hops 4-5; and reverting only the namespace creation reds exactly T-12c ×2 and X-4 ×2 and nothing else — three disjoint sets, none of which the others would have caught.
 - **Established:** DRAFT at #2353, 2026-08-19.
 
+---
+
+## DRAFT — issue #1971 (canonical Ari/manual trip lifecycle)
+
+### I-PROPOSED-1971-TRIP-GRAPH-ONE-COMMAND (DRAFT)
+- **Rule:** Every manual and Ari trip mutation writes the canonical event plus sidecar graph through the same database command boundary; publish derives its payload only from persisted server state.
+- **Enforcement:** the six `biz_*_trip_*` commands, Business service adapters, Ari trip tools, and `issue-1971-trip-lifecycle.mjs`.
+
+### I-PROPOSED-1971-TRIP-WRITES-IDEMPOTENT (DRAFT)
+- **Rule:** Every trip command has one caller operation UUID; exact replay returns the durable result and reuse with different actor, target, tool, or semantic arguments fails closed.
+- **Enforcement:** `biz_trip_command_receipts`, advisory operation locks, argument hashes, and same-transaction command completion.
+
+### I-PROPOSED-1971-TRIP-DELETE-NO-CONFIRMED-ORDERS (DRAFT)
+- **Rule:** A trip cannot be deleted while any order is outside `failed` or `cancelled`, and order creation/payment transition serializes with deletion on the trip id.
+- **Enforcement:** `biz_soft_delete_trip`, `trg_biz_trip_order_delete_lock`, and the #1971 migration regression.
+
+### I-PROPOSED-1971-TRIP-SIDECAR-EVENT-MANAGER (DRAFT)
+- **Rule:** Authenticated direct writes to trip days, inclusions, and pricing-tier sidecars require effective `event_manager` rank or above on the parent trip brand.
+- **Enforcement:** the three `*_write_event_managers` RLS policies.
+
+### I-PROPOSED-1971-TRIP-ORDER-MONEY-NO-PII (DRAFT)
+- **Rule:** Ari's trip money read requires `finance_manager` and returns only aggregate order, refund, status, and installment amounts—never buyer identity or contact fields.
+- **Enforcement:** `biz_get_trip_order_money_snapshot`, declarative Ari authorization, and the #1971 migration regression.
+
 ### I-PROPOSED-2353-C-A-REVOKE-SHIPS-WITH-ITS-CALLER (DRAFT)
 - **Rule:** A migration may not revoke `EXECUTE` from `authenticated` on a function that a **shipped** client build still calls, unless the same release lands the replacement owner AND the client change that uses it, and the two are applied as one unit. Where the replacement owner is created by the same migration as the revoke, the revoke is split into a follow-on migration so that the expand step is safe to apply on its own.
 - **Why it is a rule rather than a preference.** #2089 did this correctly in code and incorrectly in time. It revoked `business_patch_event_taxonomy` and `business_patch_event_when` from `authenticated`, created `business_update_live_event_atomic` as the single transactional owner, granted it to `authenticated`, and migrated `EditPublishedScreen` onto it — all in one commit, `0d9476573`, with a regression test pinning the client half. The architecture is sound and the file states it plainly: *"Business and Ari must call `business_update_live_event_atomic` instead"* (`20270422001972:838-840`). What it did not account for is that the `CREATE` and the `REVOKE` are in the **same migration** while the client half reaches devices by OTA. Apply before the OTA lands and every shipped build gets `permission denied for function business_patch_event_taxonomy`; ship the OTA before the apply and every build gets `function does not exist`. Both close published-event editing for **every** event, and no ordering of the two avoids a window.

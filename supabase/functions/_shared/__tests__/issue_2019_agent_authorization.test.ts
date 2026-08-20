@@ -20,9 +20,9 @@ const tool = (name: string) => {
 };
 
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
-  assert(AGENT_TOOLS.length === 65, `expected 65 tools, got ${AGENT_TOOLS.length}`);
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 65, "duplicate tool");
-  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 65, "authorization registry drift");
+  assert(AGENT_TOOLS.length === 70, `expected 70 tools, got ${AGENT_TOOLS.length}`);
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 70, "duplicate tool");
+  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 70, "authorization registry drift");
   for (const tool of AGENT_TOOLS) {
     const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
     assert(expected?.requiredRole === tool.requiredRole, `${tool.name}: role drift`);
@@ -42,7 +42,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     owner_or_admin: "brand_admin", owner: "deed_owner",
   };
   const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
-  assert(rows.length === 65, `expected 65 ledger rows, got ${rows.length}`);
+  assert(rows.length === 70, `expected 70 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole === translate[row.required_role],
@@ -164,7 +164,14 @@ Deno.test("#2019 foreign, deleted, nonexistent, and type-confused events are una
   const codes: string[] = [];
   const messages: string[] = [];
   for (const state of ["foreign", "deleted", "missing", "wrong_type"] as const) {
-    try { await authorizeAgentTool(tool("publish_trip"), { event_id: EVENT }, eventClient(state), UUID); }
+    try {
+      await authorizeAgentTool(
+        tool("publish_trip"),
+        { event_id: EVENT, expected_updated_at: "2027-01-01T00:00:00Z" },
+        eventClient(state),
+        UUID,
+      );
+    }
     catch (error) {
       if (error instanceof ToolError) {
         codes.push(error.code);

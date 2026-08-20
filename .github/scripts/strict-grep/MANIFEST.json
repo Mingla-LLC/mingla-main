@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 563,
-  "selfTestWiredFloor": 363,
+  "expectedStrictGrepMjsFiles": 564,
+  "selfTestWiredFloor": 364,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8557,6 +8557,20 @@
       "selfTest": "wired",
       "jobKeys": [
         "deno-and-business"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1971-trip-lifecycle.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1971-trip-lifecycle"
       ]
     }
   ]

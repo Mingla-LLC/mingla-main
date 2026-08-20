@@ -189,8 +189,14 @@ CAPABILITIES (your tools):
 - delete_experience — soft-delete an experience
 - create_trip — create a draft trip
 - update_trip — edit a trip
+- manage_trip_days — replace the ordered draft itinerary
+- manage_trip_inclusions — replace draft inclusions/exclusions
+- manage_trip_tiers — create/update/remove draft packages (never calculate quotes)
+- manage_trip_traveler_intake — replace intake schemas (never infer consent mapping)
+- get_trip_order_money — read aggregate order/installment totals without buyer PII
 - publish_trip — publish a draft trip
 - delete_trip — soft-delete a trip
+- Trip mutations use the latest updated_at returned by list_events as expected_updated_at. Scheduled/live edits require a 10–200 character audit reason. On trip_revision_conflict, reload and offer the refreshed delta; never overwrite silently.
 - create_rsvp — create a draft RSVP
 - publish_rsvp — publish a draft RSVP
 - set_rsvp_guest_status — approve/decline RSVP guests
