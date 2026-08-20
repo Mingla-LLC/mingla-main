@@ -10,13 +10,13 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 65,
-    "capability_count": 116,
+    "registered_tool_count": 67,
+    "capability_count": 117,
     "status_breakdown": {
-      "registered_unverified": 25,
-      "broken": 39,
-      "guided_handoff": 7,
-      "unsupported": 41,
+      "registered_unverified": 30,
+      "broken": 36,
+      "guided_handoff": 8,
+      "unsupported": 39,
       "in_flight": 4,
       "verified": 0
     }
@@ -461,10 +461,11 @@
         }
       ],
       "owning_issues": [
+        1973,
         2000
       ],
       "blockers": [
-        "No exact-revision runtime proof"
+        "No deployed runtime or cross-surface parity proof after #1972 integration"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -979,7 +980,7 @@
         ]
       },
       "ari_tool": "publish_experience",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -988,10 +989,11 @@
         }
       ],
       "owning_issues": [
+        1973,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No deployed runtime or cross-surface parity proof after #1972 integration"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1024,7 +1026,7 @@
         ]
       },
       "ari_tool": "update_experience",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -1033,10 +1035,11 @@
         }
       ],
       "owning_issues": [
+        1973,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No deployed runtime or cross-surface parity proof after #1972 integration"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1044,7 +1047,7 @@
     {
       "id": "ari.experience.delete",
       "domain": "experiences",
-      "outcome": "Soft-delete an experience",
+      "outcome": "Discard a draft experience",
       "safety": "destructive",
       "required_role": "owner_or_event_manager",
       "confirmation": "standard",
@@ -1069,7 +1072,7 @@
         ]
       },
       "ari_tool": "delete_experience",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -1078,13 +1081,60 @@
         }
       ],
       "owning_issues": [
+        1973,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No deployed runtime or cross-surface parity proof after #1972 integration"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.experience.unpublish",
+      "domain": "experiences",
+      "outcome": "Return an eligible scheduled experience to a private draft",
+      "safety": "destructive",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "issue_1973",
+        "introduced_by": "ISSUE-1973"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/experience/[id]/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const unpublishExperience"
+          }
+        ]
+      },
+      "ari_tool": "unpublish_experience",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "4ea0230156632648423ce9aa3c2b6a607d069831",
+          "reference": "issue_1973_ari_experience_lifecycle.test.ts",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        1973
+      ],
+      "blockers": [
+        "No deployed runtime or cross-surface parity proof after #1972 integration"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-14"
     },
     {
       "id": "ari.trip.create",
@@ -5017,7 +5067,7 @@
       "outcome": "Generate an experience draft from a venue snap",
       "safety": "write",
       "required_role": "owner_or_event_manager",
-      "confirmation": "standard",
+      "confirmation": "guided_handoff",
       "surfaces": [
         "business_ios",
         "business_android",
@@ -5039,7 +5089,11 @@
         ]
       },
       "ari_tool": null,
-      "status": "unsupported",
+      "status": "guided_handoff",
+      "guided_handoff": {
+        "path": "mingla-business/app/experience/snap.tsx",
+        "symbol": "ExperienceSnapRoute"
+      },
       "evidence": [
         {
           "tier": "source_contract",
@@ -5048,10 +5102,11 @@
         }
       ],
       "owning_issues": [
+        1973,
         2000
       ],
       "blockers": [
-        "create_experience does not cover snap generation"
+        "No cross-surface runtime proof after #1972 integration"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -5083,8 +5138,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_experience_stops",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -5093,10 +5148,11 @@
         }
       ],
       "owning_issues": [
+        1973,
         2000
       ],
       "blockers": [
-        "update_experience does not establish full stop parity"
+        "No deployed runtime or cross-surface parity proof after #1972 integration"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"

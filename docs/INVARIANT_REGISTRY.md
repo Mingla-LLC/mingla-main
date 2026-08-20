@@ -9240,6 +9240,25 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Enforcement:** `app-mobile/src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs`, registered by explicit filename in `.github/ci-batch/MANIFEST.json` (`issue-2322-ios-picker-theming-tests`, `expectedSuites` 20→21).
 - **Established:** DRAFT at #2322, 2026-08-19; flip to ACTIVE only after independent tester PASS on a real onboarding screen, all-green merge, and merged-main verification.
 
+---
+
+## DRAFT — issue #1973 (canonical Ari experience lifecycle)
+
+### I-PROPOSED-1973-ONE-EXPERIENCE-GRAPH (DRAFT)
+
+- **Rule:** Ari, Snap, and Business web/iOS/Android mutate one canonical experience graph through the existing Business transaction owners; no agent executor directly writes lifecycle, stops, tickets, dates, theme/privacy, or media columns.
+- **Enforcement:** `business_create_experience_graph`, `business_apply_experience_action`, canonical full readback, and issue #1973 append-only regression suites. Activate only after independent deployed runtime proof.
+
+### I-PROPOSED-1973-SAFE-EXPERIENCE-DEMOTION (DRAFT)
+
+- **Rule:** Only a future unsold dependency-free scheduled experience can return to draft; demotion atomically removes public dates and checkout exposure while preserving the private editable graph. Draft discard never applies to a published lifecycle.
+- **Enforcement:** `business_unpublish_experience_to_draft`, `business_discard_experience_draft`, the shared Business action, and issue #1973 lifecycle regressions.
+
+### I-PROPOSED-1973-EXPERIENCE-MEDIA-PROVENANCE (DRAFT)
+
+- **Rule:** Ari can retain only media already persisted on the caller-bound experience; camera/file/provider acquisition remains a guided picker flow and the model cannot author a raw URL.
+- **Enforcement:** server-side persisted-reference checks in `business_apply_experience_action`, strict tool schemas, the `/experience/snap` handoff, and forged-reference regressions.
+
 ### I-PROPOSED-2322-DECLARED-APPEARANCE-EQUALS-BUILT-APPEARANCE (DRAFT)
 
 - **Rule:** The `userInterfaceStyle` declared in `app-mobile/app.json` MUST equal the `UIUserInterfaceStyle` in the generated native `Info.plist`. No plugin config may silently override it.
