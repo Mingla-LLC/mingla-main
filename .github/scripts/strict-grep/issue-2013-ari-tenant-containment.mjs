@@ -71,7 +71,10 @@ export function check(sources) {
   for (const token of ["RecoveryPanel", "BrandSwitcherSheet", "This older chat is read-only", "Ari cannot verify your brand right now", "setDrawerOpen(false)"]) {
     if (!screen.includes(token)) failures.push(`binding recovery UI missing ${token}`);
   }
-  for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "disabled={chat.isSending || brands.isLoading || rateLimited}"]) {
+  // [TEST-MOD-APPROVED #1985] The existing cooldown pin now also requires the
+  // active-conversation hydration gate; this is additive and keeps all three
+  // #2013 disabling terms exact.
+  for (const token of ["rateLimitUntil", "cooldown_until", "retry_after_seconds", "disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}"]) {
     if (!(screen + chat).includes(token)) failures.push(`persistent cooldown missing ${token}`);
   }
   for (const token of ["Older chats · Read-only", "Could not load conversations.", "loadingRow", "older read-only conversation"]) {
@@ -133,11 +136,13 @@ if (process.argv.includes("--self-test")) {
   const writerWorkflowRevertDetected = writerWorkflowReverted.some((failure) => failure.includes("writer-registry tester must trigger"));
   const scopeReverted = check({ ...sources, scopeMigration: sources.scopeMigration.replace("NEW.brand_id IS DISTINCT FROM OLD.brand_id", "false") });
   const scopeRevertDetected = scopeReverted.some((failure) => failure.includes("database scope immutability"));
-  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected || !scopeRevertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted, scopeReverted });
+  const composerReverted = check({ ...sources, screen: sources.screen.replace("disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}", "disabled={chat.isSending}") });
+  const composerRevertDetected = composerReverted.some((failure) => failure.includes("persistent cooldown"));
+  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected || !scopeRevertDetected || !composerRevertDetected) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted, scopeReverted, composerReverted });
     process.exit(1);
   }
-  console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, tester-wiring, and immutable-scope reverts fail.");
+  console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, tester-wiring, immutable-scope, and composer-gate reverts fail.");
   process.exit(0);
 }
 

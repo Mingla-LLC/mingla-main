@@ -115,6 +115,7 @@ export function reconcileAgentDeliveryMessages(
 export function useAgentChat(
   initialConversationId: string | null = null,
   brandId: string | null = null,
+  onConversationIdChange?: (conversationId: string | null) => void,
 ): UseAgentChatResult {
   const qc = useQueryClient();
   // ORCH-1004 — agent conversation messages are RLS auth.uid()-scoped; gate on
@@ -136,6 +137,11 @@ export function useAgentChat(
   const previousBrandId = useRef(brandId);
   const [stateBrandId, setStateBrandId] = useState(brandId);
   const brandEpoch = useRef(0);
+
+  const selectConversation = useCallback((id: string | null): void => {
+    setConversationId(id);
+    onConversationIdChange?.(id);
+  }, [onConversationIdChange]);
 
   useEffect(() => {
     if (previousBrandId.current === brandId) return;
@@ -191,7 +197,7 @@ export function useAgentChat(
       }
       // Adopt the conversation id if the server created one
       if (response.conversation_id !== conversationId) {
-        setConversationId(response.conversation_id);
+        selectConversation(response.conversation_id);
         void qc.invalidateQueries({ queryKey: agentQueryKeys.conversations(brandId) });
       }
       if (response.kind === "pending_action") {
@@ -330,7 +336,7 @@ export function useAgentChat(
     pendingAction: currentScope ? pendingAction : null,
     clearPendingAction,
     conversationId: currentScope ? conversationId : null,
-    setConversationId,
+    setConversationId: selectConversation,
     brandId,
     errorMessage: currentScope ? errorMessage : null,
     errorCode: currentScope ? errorCode : null,

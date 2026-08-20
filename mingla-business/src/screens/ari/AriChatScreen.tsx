@@ -57,6 +57,12 @@ import { useConversationList } from "../../hooks/useConversationList";
 import { useBrands } from "../../hooks/useBrands";
 import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useAuth } from "../../context/AuthContext";
+import {
+  ariConversationScopeKey,
+  hasStoredAriConversationSelection,
+  resolveRestoredAriConversation,
+  useAriConversationSelectionStore,
+} from "../../store/ariConversationSelectionStore";
 // #1841 [keyboard-guard-blind-spots] — the composer's keyboard height now comes
 // from a react-native-keyboard-controller-backed wrapper instead of a bespoke
 // Keyboard.addListener pair. See src/wrappers/useKeyboardHeight.native.ts for
@@ -165,6 +171,10 @@ export const AriChatScreen: React.FC = () => {
   const currentBrand = useCurrentBrand();
   const selectedBrandId = currentBrand?.id ?? null;
   const conversations = useConversationList(selectedBrandId);
+  const conversationScopeKey = ariConversationScopeKey(accountId, selectedBrandId);
+  const storedConversationSelections = useAriConversationSelectionStore((state) => state.selections);
+  const conversationSelectionHydrated = useAriConversationSelectionStore((state) => state.hasHydrated);
+  const setStoredConversationSelection = useAriConversationSelectionStore((state) => state.setSelection);
   // ORCH-1103 — brand name lookup for delete/update target display +
   // type-to-confirm matching. Mirrors the prompt-known brand list.
   const brands = useBrands(accountId);
@@ -174,7 +184,51 @@ export const AriChatScreen: React.FC = () => {
     return out;
   }, [brands.data]);
 
-  const chat = useAgentChat(null, selectedBrandId);
+  const persistConversationSelection = React.useCallback((conversationId: string | null): void => {
+    if (conversationScopeKey) {
+      setStoredConversationSelection(conversationScopeKey, conversationId);
+    }
+  }, [conversationScopeKey, setStoredConversationSelection]);
+  const chat = useAgentChat(null, selectedBrandId, persistConversationSelection);
+  const [restoredConversationScope, setRestoredConversationScope] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (!conversationScopeKey || !selectedBrandId) {
+      setRestoredConversationScope(null);
+      return;
+    }
+    if (
+      !conversationSelectionHydrated ||
+      conversations.isLoading ||
+      conversations.isError ||
+      restoredConversationScope === conversationScopeKey
+    ) return;
+
+    const hasStoredSelection = hasStoredAriConversationSelection(
+      storedConversationSelections,
+      conversationScopeKey,
+    );
+    const storedSelection = hasStoredSelection
+      ? storedConversationSelections[conversationScopeKey]
+      : undefined;
+    const restoredConversationId = resolveRestoredAriConversation(
+      storedSelection,
+      conversations.conversations,
+      selectedBrandId,
+    );
+    chat.setConversationId(restoredConversationId);
+    setRestoredConversationScope(conversationScopeKey);
+  }, [
+    chat.setConversationId,
+    conversationScopeKey,
+    conversationSelectionHydrated,
+    conversations.conversations,
+    conversations.isError,
+    conversations.isLoading,
+    restoredConversationScope,
+    selectedBrandId,
+    storedConversationSelections,
+  ]);
   const previousBrandId = React.useRef(selectedBrandId);
   const brandScopeStable = previousBrandId.current === selectedBrandId;
 
@@ -187,9 +241,6 @@ export const AriChatScreen: React.FC = () => {
     setRetryText(null);
     setRateLimitUntil(null);
     Keyboard.dismiss();
-    if (currentBrand?.displayName) {
-      AccessibilityInfo.announceForAccessibility(`Started a new Ari chat for ${currentBrand.displayName}.`);
-    }
   }, [currentBrand?.displayName, selectedBrandId]);
   const confirm = useConfirmPendingAction(chat.conversationId);
 
@@ -319,7 +370,9 @@ export const AriChatScreen: React.FC = () => {
   };
 
   const displayError = localError ?? chat.errorMessage;
-  const noMessages = chat.messages.length === 0 && chat.conversationId == null;
+  const conversationSelectionReady =
+    conversationScopeKey === null || restoredConversationScope === conversationScopeKey;
+  const noMessages = conversationSelectionReady && chat.messages.length === 0 && chat.conversationId == null;
   const activeConversation = conversations.conversations.find((item) => item.id === chat.conversationId);
   const legacyReadOnly = !!selectedBrandId && activeConversation?.brand_id === null;
   const brandSelectionRequired = !selectedBrandId && (brands.data?.length ?? 0) > 0;
@@ -405,7 +458,11 @@ export const AriChatScreen: React.FC = () => {
       />
 
       <View style={styles.kav}>
-        {noMessages ? (
+        {!conversationSelectionReady ? (
+          <View style={styles.flexSpacer} accessibilityLabel="Restoring Ari conversation">
+            <StreamingText visible />
+          </View>
+        ) : noMessages ? (
           <>
             {/* Hero lives in an absolute overlay so the composer rising with the
                 keyboard can NOT squeeze the flex column and re-center (jump) the
@@ -553,8 +610,8 @@ export const AriChatScreen: React.FC = () => {
               ) : null}
               <InputBar
                 onSend={handleSend}
-                disabled={chat.isSending || brands.isLoading || rateLimited}
-                placeholder={!online ? "Reconnect to continue…" : brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
+                disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}
+                placeholder={!conversationSelectionReady ? "Restoring your chat…" : !online ? "Reconnect to continue…" : brands.isLoading ? "Checking brand access…" : rateLimited ? "Sending paused…" : "Ask Ari…"}
                 onShowSuggestions={() => setSuggestionsOpen((v) => !v)}
               />
             </>

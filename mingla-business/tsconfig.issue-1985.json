@@ -50,7 +50,11 @@
     "src/hooks/useAgentChat.ts",
     "src/screens/ari/AriChatScreen.tsx",
     "src/screens/ari/__tests__/issue_2013_ari_tenant_containment.test.ts",
-    "src/services/agentChatService.ts"
+    "src/services/agentChatService.ts",
+    "src/store/ariConversationSelectionStore.ts",
+    "src/store/__tests__/issue_1985_active_conversation_persistence.test.ts",
+    "src/utils/clearAllStores.ts",
+    "src/utils/reapOrphanStorageKeys.ts"
   ],
   "include": [],
   "exclude": []

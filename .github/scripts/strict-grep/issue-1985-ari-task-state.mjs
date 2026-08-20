@@ -27,6 +27,12 @@ const files = {
     "mingla-business/src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx",
   deliveryTest:
     "mingla-business/src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts",
+  activeSelectionStore:
+    "mingla-business/src/store/ariConversationSelectionStore.ts",
+  activeSelectionTest:
+    "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts",
+  storageReaper: "mingla-business/src/utils/reapOrphanStorageKeys.ts",
+  clearStores: "mingla-business/src/utils/clearAllStores.ts",
   typecheck: "mingla-business/tsconfig.issue-1985.json",
   typecheckRunner:
     ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
@@ -384,6 +390,48 @@ export function check(s) {
   }
   for (
     const token of [
+      "ARI_CONVERSATION_SELECTION_STORAGE_KEY",
+      "ariConversationScopeKey",
+      "resolveRestoredAriConversation",
+      "if (storedSelection === null) return null;",
+    ]
+  ) {
+    if (!s.activeSelectionStore.includes(token)) {
+      failures.push(`active conversation restoration missing ${token}`);
+    }
+  }
+  const selectedBrandFilters =
+    s.activeSelectionStore.match(/conversation\.brand_id === selectedBrandId/g)?.length ?? 0;
+  if (selectedBrandFilters !== 2) {
+    failures.push(
+      `active conversation restoration expected two selected-brand filters, found ${selectedBrandFilters}`,
+    );
+  }
+  for (
+    const token of [
+      "persists one active pointer per account and brand across rehydration",
+      "treats explicit New conversation as durable null",
+      "fails closed when a stored chat was deleted",
+    ]
+  ) {
+    if (!s.activeSelectionTest.includes(token)) {
+      failures.push(`active conversation persistence proof missing ${token}`);
+    }
+  }
+  if (
+    !s.storageReaper.includes("mingla-business.ariConversationSelection.v1") ||
+    !s.screen.includes("conversationSelectionReady") ||
+    !s.screen.includes("Restoring your chat…") ||
+    !s.screen.includes("!conversationSelectionReady ? (") ||
+    !s.hook.includes("onConversationIdChange?.(id)") ||
+    !s.clearStores.includes("useAriConversationSelectionStore.getState().reset()")
+  ) {
+    failures.push(
+      "Business Ari does not durably restore the account+brand active conversation",
+    );
+  }
+  for (
+    const token of [
       "newClientTurnId",
       "turnPayloads",
       "payload, clientTurnId",
@@ -439,6 +487,10 @@ export function check(s) {
     "src/screens/ari/AriChatScreen.tsx",
     "src/screens/ari/__tests__/issue_2013_ari_tenant_containment.test.ts",
     "src/services/agentChatService.ts",
+    "src/store/ariConversationSelectionStore.ts",
+    "src/store/__tests__/issue_1985_active_conversation_persistence.test.ts",
+    "src/utils/clearAllStores.ts",
+    "src/utils/reapOrphanStorageKeys.ts",
   ];
   for (const file of typedBusinessFiles) {
     if (!s.typecheck.includes(`"${file}"`)) {
@@ -470,6 +522,13 @@ export function check(s) {
     s.workflow.split("issue_1985_message_delivery_identity.test.ts").length - 1 !== 3
   ) {
     failures.push("#1985 workflow does not trigger on and run the delivery identity proof");
+  }
+  if (
+    s.workflow.split("issue_1985_active_conversation_persistence.test.ts").length - 1 !== 3
+  ) {
+    failures.push(
+      "#1985 workflow does not trigger on and run the active conversation proof",
+    );
   }
   const reworkIntegrityWorkflowRefs =
     s.workflow.split("issue_1985_rework2_integrity.test.ts").length - 1;
@@ -631,6 +690,26 @@ if (process.argv.includes("--self-test")) {
       key: "hook",
       from: "payload, clientTurnId",
       to: "payload, newClientTurnId()",
+    },
+    {
+      key: "activeSelectionStore",
+      from: "if (storedSelection === null) return null;",
+      to: "if (storedSelection === null) return visibleConversations[0]?.id ?? null;",
+    },
+    {
+      key: "activeSelectionStore",
+      from: "conversation.brand_id === selectedBrandId",
+      to: "conversation.brand_id !== selectedBrandId",
+    },
+    {
+      key: "activeSelectionTest",
+      from: "treats explicit New conversation as durable null",
+      to: "removed explicit new conversation proof",
+    },
+    {
+      key: "clearStores",
+      from: "useAriConversationSelectionStore.getState().reset()",
+      to: "removedAriConversationSelectionReset()",
     },
     {
       key: "screen",
