@@ -18,8 +18,11 @@
         "NSFaceIDUsageDescription": "Mingla Host uses Face ID to confirm Apple Pay transactions at the door.",
         "NSUserTrackingUsageDescription": "Mingla Host uses your advertising identifier to measure the performance of our ads and help us reach more organizers like you.",
         "NSLocationWhenInUseUsageDescription": "Mingla Host uses your location to help measure the performance of our marketing and improve our services.",
+        "NSAdvertisingAttributionReportEndpoint": "https://appsflyer-skadnetwork.com/",
         "SKAdNetworkItems": [
-          { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" }
+          { "SKAdNetworkIdentifier": "v9wttpbfk9.skadnetwork" },
+          { "SKAdNetworkIdentifier": "n38lu8286q.skadnetwork" },
+          { "SKAdNetworkIdentifier": "cstr6suwn9.skadnetwork" }
         ]
       },
       "entitlements": {
