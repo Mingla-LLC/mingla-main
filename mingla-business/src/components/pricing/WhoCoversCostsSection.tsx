@@ -119,6 +119,9 @@ export interface WhoCoversCostsSectionProps {
   effectiveTakeRateBps: number;
   /** Surface 3 — sold a ticket → read-only. */
   locked?: boolean;
+  /** Role/loading gate. Unlike `locked`, this does not claim tickets sold. */
+  disabled?: boolean;
+  disabledReason?: string;
   /**
    * Surface 4 — `true` = registered (VAT row interactive); `false`/`undefined`
    * = no active registration (nudge, VAT fail-closed to absorb).
@@ -153,6 +156,8 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
   currency,
   effectiveTakeRateBps,
   locked = false,
+  disabled = false,
+  disabledReason,
   vatRegistered,
   onSetupVat,
   onEditDefaults,
@@ -211,7 +216,7 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
         {ROWS.map((row, i) => {
           const resolvedPass = resolved[row.key];
           const isLast = i === ROWS.length - 1;
-          const isVatNudge = row.key === "passTax" && vatUnregistered && !locked;
+          const isVatNudge = row.key === "passTax" && vatUnregistered && !locked && !disabled;
 
           return (
             <View
@@ -237,6 +242,8 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
                 <Text style={styles.lockedValue}>
                   {resolvedPass ? row.lockedPassed : row.lockedAbsorbed}
                 </Text>
+              ) : disabled ? (
+                <Text style={styles.lockedValue}>Unavailable</Text>
               ) : isVatNudge ? (
                 <Pressable
                   onPress={onSetupVat}
@@ -303,6 +310,13 @@ export const WhoCoversCostsSection: React.FC<WhoCoversCostsSectionProps> = ({
           <Text style={styles.lockReason}>
             Pricing locks once your first ticket sells, so every buyer pays on
             the same terms.
+          </Text>
+        </View>
+      ) : disabled ? (
+        <View style={styles.lockFooter} accessibilityLiveRegion="polite">
+          <Icon name="shield" size={14} color={textTokens.tertiary} />
+          <Text style={styles.lockReason}>
+            {disabledReason ?? "You don't have permission to change these settings."}
           </Text>
         </View>
       ) : footerOverride !== undefined ? (

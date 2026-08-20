@@ -1,0 +1,103 @@
+name: Issue 1974 Ari ticket pricing
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentTicketPricing.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/agent-chat/index.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/migrations/20270430001974_issue_1974_ari_ticket_pricing.sql"
+      - "supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts"
+      - "supabase/migrations/__tests__/issue_1974_ticket_pricing*"
+      - "mingla-business/src/services/eventDrafts.ts"
+      - "mingla-business/src/services/pricingSwitchesService.ts"
+      - "mingla-business/src/services/__tests__/issue_1974_ticket_pricing_service.test.ts"
+      - "mingla-business/src/components/ari/ToolProposalCard.tsx"
+      - "mingla-business/src/components/brand/BrandPricingDefaultsView.tsx"
+      - "mingla-business/src/components/event/CreatorStep5Tickets.tsx"
+      - "mingla-business/src/components/pricing/WhoCoversCostsSection.tsx"
+      - "docs/contracts/ari-capability-ledger.json"
+      - ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs"
+      - ".github/workflows/issue-1974-ari-ticket-pricing.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentTicketPricing.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/agent-chat/index.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/migrations/20270430001974_issue_1974_ari_ticket_pricing.sql"
+      - "supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts"
+      - "supabase/migrations/__tests__/issue_1974_ticket_pricing*"
+      - "mingla-business/src/services/eventDrafts.ts"
+      - "mingla-business/src/services/pricingSwitchesService.ts"
+      - "mingla-business/src/services/__tests__/issue_1974_ticket_pricing_service.test.ts"
+      - "mingla-business/src/components/ari/ToolProposalCard.tsx"
+      - "mingla-business/src/components/brand/BrandPricingDefaultsView.tsx"
+      - "mingla-business/src/components/event/CreatorStep5Tickets.tsx"
+      - "mingla-business/src/components/pricing/WhoCoversCostsSection.tsx"
+      - "docs/contracts/ari-capability-ledger.json"
+      - ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs"
+      - ".github/workflows/issue-1974-ari-ticket-pricing.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.run_number }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Edge compile and #1974 Deno contracts
+        run: |
+          deno check supabase/functions/_shared/agentTicketPricing.ts supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentToolAuthorization.ts supabase/functions/_shared/agentToolHelpers.ts supabase/functions/agent-chat/index.ts supabase/functions/agent-confirm-action/index.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1974_ticket_pricing_canonical.test.ts supabase/migrations/__tests__/issue_1974_ticket_pricing_contract.test.ts
+      - name: Revert-sensitive and authority gates
+        run: |
+          node .github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs --self-test
+          node .github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs
+          node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
+          node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs
+      - name: Apply all migrations and execute behavioral proof
+        env:
+          PGPASSWORD: ${{ github.run_id }}-${{ github.run_attempt }}-${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 | sort -z | while IFS= read -r -d '' migration; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+          done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.behavior.pg17.test.sql
+      - name: Shared Business regression matrix
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npx jest --runInBand src/services/__tests__/issue_1974_ticket_pricing_service.test.ts src/services/__tests__/eventDraftsCurrency.test.ts src/services/__tests__/eventDraftsPublishTickets.test.ts src/services/__tests__/eventDraftsTaxonomyAutosave.test.ts src/services/__tests__/eventDraftsTaxonomyAutosaveAdversarial.test.ts src/utils/__tests__/publishedEventEditGuards.test.ts src/utils/__tests__/pricingPreview.test.ts src/utils/__tests__/serverDraftAutosaveGuards.test.ts
