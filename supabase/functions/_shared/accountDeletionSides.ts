@@ -65,22 +65,28 @@ export async function userHasActiveBusinessSide(
   adminClient: SupabaseClient,
   userId: string,
 ): Promise<boolean> {
-  const { count: ownedBrands } = await adminClient
-    .from("brands")
-    .select("id", { count: "exact", head: true })
-    .eq("account_id", userId)
-    .is("deleted_at", null);
+  const ownedBrands = await countOrThrow(
+    "brands",
+    adminClient
+      .from("brands")
+      .select("id", { count: "exact", head: true })
+      .eq("account_id", userId)
+      .is("deleted_at", null),
+  );
 
-  if ((ownedBrands ?? 0) > 0) return true;
+  if (ownedBrands > 0) return true;
 
-  const { count: teamRows } = await adminClient
-    .from("brand_team_members")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .is("removed_at", null)
-    .not("accepted_at", "is", null);
+  const teamRows = await countOrThrow(
+    "brand_team_members",
+    adminClient
+      .from("brand_team_members")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .is("removed_at", null)
+      .not("accepted_at", "is", null),
+  );
 
-  return (teamRows ?? 0) > 0;
+  return teamRows > 0;
 }
 
 export async function userHasActiveExplorerSide(

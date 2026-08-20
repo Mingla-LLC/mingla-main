@@ -46,6 +46,7 @@ jobs:
         run: >-
           deno test --no-check --allow-read
           supabase/functions/_shared/__tests__/issue_2321_account_deletion_sides.implementor.happy.test.ts
+          supabase/functions/_shared/__tests__/issue_2321_business_side_probe_errors.implementor.rework.test.ts
           app-mobile/src/components/profile/__tests__/issue_2321_retained_branch_cannot_claim_deleted.implementor.happy.test.ts
           mingla-business/app/account/__tests__/issue_2321_business_retained_copy.tester.adversarial.test.ts
       - name: Execute the invariant gate in both modes

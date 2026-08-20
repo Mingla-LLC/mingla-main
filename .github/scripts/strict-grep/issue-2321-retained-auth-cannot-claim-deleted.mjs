@@ -91,6 +91,24 @@ function terminalStatementOf(source, fnName) {
   return null;
 }
 
+/** Complete exported async function, including its balanced body. */
+function functionSourceOf(source, fnName) {
+  const sig = new RegExp(`export\\s+async\\s+function\\s+${fnName}\\s*\\(`);
+  const m = sig.exec(source);
+  if (m === null) return null;
+  const bodyStart = source.indexOf("{", m.index + m[0].length);
+  if (bodyStart === -1) return null;
+  let depth = 0;
+  for (let i = bodyStart; i < source.length; i += 1) {
+    if (source[i] === "{") depth += 1;
+    else if (source[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return source.slice(m.index, i + 1);
+    }
+  }
+  return null;
+}
+
 export function validate(readFile, readLocales) {
   const failures = [];
 
@@ -203,6 +221,24 @@ export function validate(readFile, readLocales) {
           `A3: ${fn}() ends in \`return true\` — a predicate that cannot return false is not a check. ` +
             `This exact shape made all six probes in userHasActiveExplorerSide decorative (#2321).`,
         );
+      }
+    }
+
+    const businessSide = functionSourceOf(shared, "userHasActiveBusinessSide");
+    if (businessSide === null) {
+      failures.push(`A3: could not read userHasActiveBusinessSide() in ${SHARED}`);
+    } else {
+      for (const table of ["brands", "brand_team_members"]) {
+        const escaped = table.replaceAll("_", "\\_");
+        const failClosedProbe = new RegExp(
+          `countOrThrow\\(\\s*"${escaped}"\\s*,\\s*adminClient\\s*\\.from\\("${escaped}"\\)`,
+        );
+        if (!failClosedProbe.test(businessSide)) {
+          failures.push(
+            `A3: userHasActiveBusinessSide() must route the ${table} count through countOrThrow. ` +
+              `A failed Business probe may never be read as zero rows and authorize auth deletion.`,
+          );
+        }
       }
     }
 
@@ -405,6 +441,23 @@ function selfTest() {
     'queries pairings by "user_id"',
   );
 
+  // A3 — either Business count losing its fail-closed wrapper must be caught
+  // independently. These are the two probes that authorized auth deletion when
+  // PostgREST errored in the tester's P0 reproduction.
+  for (const table of ["brands", "brand_team_members"]) {
+    expect(
+      `the ${table} Business probe dropping countOrThrow`,
+      validate(
+        mutate(SHARED, (s) => {
+          const label = `    "${table}",\n`;
+          return s.replace("await countOrThrow(\n" + label, "await Promise.resolve(\n" + label);
+        }),
+        readLocales,
+      ),
+      `route the ${table} count through countOrThrow`,
+    );
+  }
+
   // A4 — the identity scrub reverted to a discarded result.
   expect(
     "the identity scrub reverted to a discarded result",
@@ -429,7 +482,7 @@ function selfTest() {
   );
 
   console.log(
-    "#2321 self-test passed (clean green; 9 reverted defects across A1/A2/A3/A4/A5 all caught).",
+    "#2321 self-test passed (clean green; 11 reverted defects across A1/A2/A3/A4/A5 all caught).",
   );
 }
 
