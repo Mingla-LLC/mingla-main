@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 573,
-  "selfTestWiredFloor": 368,
+  "expectedStrictGrepMjsFiles": 574,
+  "selfTestWiredFloor": 369,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8690,6 +8690,32 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2060-ari-reliability-foundation"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2207-manifest-merge-awareness.test.js",
+      "kind": "file",
+      "enforcement": "external:issue-2207-manifest-merge-awareness.yml",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "merged-main-manifest-awareness"
+      ]
+    },
+    {
+      "script": ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2207-manifest-merge-awareness.yml",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "merged-main-manifest-awareness"
       ]
     }
   ]
