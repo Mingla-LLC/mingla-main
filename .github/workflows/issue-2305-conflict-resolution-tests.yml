@@ -7,6 +7,7 @@ on:
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution_rework.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_dismiss_replay_control_flow.tester.test.mjs"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
@@ -25,6 +26,7 @@ on:
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.test.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution_rework.test.sql"
+      - "supabase/migrations/__tests__/issue_2305_dismiss_replay_control_flow.tester.test.mjs"
       - "supabase/migrations/__tests__/issue_2305_conflict_resolution.tester_adversarial.test.sql"
       - "supabase/migrations/20270305001770_issue_1770_ring1_brand_people_foundation.sql"
       - "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql"
@@ -87,6 +89,10 @@ jobs:
           # P1-2 asserts the dismissing write actually COMMITS, and the absence
           # case pins the rule that keeps `dismiss` from becoming silent data loss.
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2305_conflict_resolution_rework.test.sql
+          # Independent tester guard: pins control-flow order as well as values.
+          # A Dismiss replay must be outcome-checked and canonicalized, then
+          # return before the inner-join reconstruction that has no dismissed row.
+          node --test supabase/migrations/__tests__/issue_2305_dismiss_replay_control_flow.tester.test.mjs
 
   # The structural half. `issue-2305-status-table-has-a-resolver.mjs` is
   # registered `batch:A` and executes through run-batch.mjs like every other
