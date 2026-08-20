@@ -96,6 +96,9 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
           done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.behavior.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.tester.adversarial.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.tester.one_writer.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1974_ticket_pricing.tester.tax_fail_closed.pg17.test.sql
       - name: Shared Business regression matrix
         working-directory: mingla-business
         run: |
