@@ -526,12 +526,21 @@ export default function PostExperienceModal({
         </TouchableOpacity>
       </View>
 
+      {/* [#2322] themeVariant/textColor are LOAD-BEARING on BOTH wheels below — do not
+          delete them as "redundant on a light-only app". Installed builds do not gain the
+          native withForcedLightAppearance repair until a store update, and a future config-plugin
+          regression must not make these wheels unreadable again. Unthemed, they draw UIColor.label
+          — near-white in Dark Mode — onto `styles.container.backgroundColor: "#FFFFFF"`, which
+          makes them COMPLETELY invisible inside a modal that is deliberately not dismissible
+          (COMMS-0140). */}
       {showDatePicker && (
         <DateTimePicker
           value={rescheduleDate || new Date()}
           mode="date"
           display={Platform.OS === "ios" ? "spinner" : "default"}
           minimumDate={new Date()}
+          themeVariant="light"
+          textColor={colors.gray900}
           onChange={(event, selectedDate) => {
             if (Platform.OS === "android") {
               setShowDatePicker(false);
@@ -549,6 +558,8 @@ export default function PostExperienceModal({
           value={rescheduleTime || rescheduleDate}
           mode="time"
           display={Platform.OS === "ios" ? "spinner" : "default"}
+          themeVariant="light"
+          textColor={colors.gray900}
           onChange={(event, selectedTime) => {
             if (Platform.OS === "android") {
               setShowTimePicker(false);

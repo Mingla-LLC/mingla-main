@@ -187,6 +187,7 @@
         "organization": "mingla-llc",
         "project": "react-native"
       }],
+      "./plugins/withForcedLightAppearance",
       [
         "expo-splash-screen",
         {

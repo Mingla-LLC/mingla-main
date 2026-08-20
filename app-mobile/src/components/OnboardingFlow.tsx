@@ -2579,7 +2579,14 @@ const OnboardingFlow = ({
           <Pressable
             style={styles.detailsPickerButton}
             onPress={() => {
-              pendingBirthdayRef.current = data.userBirthday || BIRTHDAY_PICKER_DEFAULT
+              // [#2322 OQ-1] Open with NO pending value. The wheel still SHOWS
+              // BIRTHDAY_PICKER_DEFAULT (01/01/2000) through the `value` fallback below, so the
+              // control looks normal — but seeding the ref made "Done" commit that date as if the
+              // user had chosen it, which also unblocked the "Let's go" CTA (`disabled:
+              // !data.userBirthday`) with a birthday nobody picked. It then fed buildOccasions().
+              // The ref is now written ONLY by onChange, so Done on an untouched wheel commits
+              // nothing. Re-opening when a birthday is already set keeps it: Done just closes.
+              pendingBirthdayRef.current = null
               setShowDatePicker(true)
             }}
           >
@@ -2625,12 +2632,20 @@ const OnboardingFlow = ({
                   }}>{t('common:done')}</Text>
                 </Pressable>
               )}
+              {/* [#2322] themeVariant/textColor are LOAD-BEARING — do not delete them as
+                  "redundant on a light-only app". Installed builds do not gain the native
+                  withForcedLightAppearance repair until a store update, and a future config-plugin
+                  regression must not make this wheel unreadable again. Unthemed, it draws
+                  UIColor.label — near-white in Dark Mode — onto this hard-coded light card, and the
+                  user scrolls and commits a birthday they cannot read. */}
               <DateTimePicker
                 value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
                 display={Platform.OS === 'android' ? 'default' : 'spinner'}
                 minimumDate={MIN_BIRTHDAY_DATE}
                 maximumDate={new Date()}
+                themeVariant="light"
+                textColor={colors.text.primary}
                 onChange={(_event, selectedDate) => {
                   if (Platform.OS === 'android') {
                     // Android spinner fires once on confirm/dismiss
