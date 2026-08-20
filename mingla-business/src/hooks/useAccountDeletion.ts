@@ -19,6 +19,12 @@ export interface DeletionResponse {
   success: boolean;
   authDeleted?: boolean;
   authRetained?: boolean;
+  /**
+   * #2321 — present iff `authRetained === true`. The reason the auth login
+   * survived. `authRetained` alone is not a signal: before #2321 the server
+   * returned it for every user, including accounts with no other side at all.
+   */
+  retainedReason?: "business_side_active" | "explorer_side_active";
   message?: string;
 }
 

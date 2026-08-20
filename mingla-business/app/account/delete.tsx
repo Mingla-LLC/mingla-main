@@ -100,6 +100,10 @@ export default function DeleteAccountRoute(): React.ReactElement {
     useRequestAccountDeletion();
 
   const [step, setStep] = useState<DeleteStep>(1);
+  // #2321 — the success view must know whether the login actually went away.
+  // A hardcoded headline over a surviving login is the same lie the consumer app
+  // shipped. See I-2321-RETAINED-AUTH-CANNOT-CLAIM-DELETED.
+  const [authRetained, setAuthRetained] = useState<boolean>(false);
   const [confirmEmailInput, setConfirmEmailInput] = useState<string>("");
   const [toast, setToast] = useState<{ visible: boolean; message: string }>({
     visible: false,
@@ -183,11 +187,15 @@ export default function DeleteAccountRoute(): React.ReactElement {
     if (!confirmMatches || deleting) return;
     try {
       const result = await requestDeletion();
+      const retained = result.authRetained === true;
+      setAuthRetained(retained);
       setStep(4);
+      // #2321 — the server's own `message` can be wrong (it claimed a surviving
+      // Explorer login for accounts that had none), so the client states the
+      // outcome from `authRetained` and no longer echoes `result.message`.
       showToast(
-        result.authRetained
-          ? (result.message ??
-              "Business account removed. Your explorer login is unchanged.")
+        retained
+          ? "Business account removed. Your Explorer login still works."
           : "Account deleted. Signing you out…",
       );
       setTimeout(async (): Promise<void> => {
@@ -260,7 +268,7 @@ export default function DeleteAccountRoute(): React.ReactElement {
             onBack={handleBack}
           />
         ) : null}
-        {step === 4 ? <Step4Success /> : null}
+        {step === 4 ? <Step4Success retained={authRetained} /> : null}
       </ScrollView>
 
       <View style={styles.toastWrap} pointerEvents="box-none">
@@ -539,16 +547,37 @@ const Step3Confirm: React.FC<Step3ConfirmProps> = ({
 // Step 4 — Success
 // ============================================================
 
-const Step4Success: React.FC = () => (
+interface Step4SuccessProps {
+  /** #2321 — true when the server kept the auth login because the Explorer side is active. */
+  retained: boolean;
+}
+
+const Step4Success: React.FC<Step4SuccessProps> = ({ retained }) => (
   <View style={styles.successHost}>
     <View style={styles.successIconWrap}>
-      <Icon name="check" size={48} color="#34c759" />
+      {/* #2321 — a retained login is not a green tick. Same check glyph (no new
+          asset), recoloured to the warm accent so the affordance is not "done". */}
+      <Icon name="check" size={48} color={retained ? "#eb7825" : "#34c759"} />
     </View>
-    <Text style={styles.successTitle}>Account scheduled for deletion</Text>
-    <Text style={styles.successBody}>
-      You can recover it by signing in again within 30 days. After that,
-      everything will be permanently erased.
-    </Text>
+    {retained ? (
+      <>
+        <Text style={styles.successTitle}>Business Account Deleted</Text>
+        <Text style={styles.successBody}>
+          Your business account is gone. Your Explorer login still works.
+        </Text>
+        <Text style={styles.successBody}>
+          To remove that too, delete your account in the Mingla app.
+        </Text>
+      </>
+    ) : (
+      <>
+        <Text style={styles.successTitle}>Account scheduled for deletion</Text>
+        <Text style={styles.successBody}>
+          You can recover it by signing in again within 30 days. After that,
+          everything will be permanently erased.
+        </Text>
+      </>
+    )}
     <ActivityIndicator
       size="small"
       color={textTokens.tertiary}
