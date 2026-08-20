@@ -527,14 +527,12 @@ export default function PostExperienceModal({
       </View>
 
       {/* [#2322] themeVariant/textColor are LOAD-BEARING on BOTH wheels below — do not
-          delete them as "redundant on a light-only app". app.json declares
-          `userInterfaceStyle: "light"`, but the expo-splash-screen config plugin overwrites
-          the built Info.plist `UIUserInterfaceStyle` to `Automatic`, so every NATIVE view
-          inherits the DEVICE appearance. Unthemed, these wheels draw UIColor.label —
-          near-white in Dark Mode — onto `styles.container.backgroundColor: "#FFFFFF"`, which
+          delete them as "redundant on a light-only app". Installed builds do not gain the
+          native withForcedLightAppearance repair until a store update, and a future config-plugin
+          regression must not make these wheels unreadable again. Unthemed, they draw UIColor.label
+          — near-white in Dark Mode — onto `styles.container.backgroundColor: "#FFFFFF"`, which
           makes them COMPLETELY invisible inside a modal that is deliberately not dismissible
-          (COMMS-0140). Pinning the trait keeps them legible whatever the build resolves the
-          app-wide style to. */}
+          (COMMS-0140). */}
       {showDatePicker && (
         <DateTimePicker
           value={rescheduleDate || new Date()}

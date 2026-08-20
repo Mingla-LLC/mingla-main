@@ -187,13 +187,17 @@
         "organization": "mingla-llc",
         "project": "react-native"
       }],
+      "./plugins/withForcedLightAppearance",
       [
         "expo-splash-screen",
         {
           "image": "./assets/splash-icon.png",
           "imageWidth": 240,
           "resizeMode": "contain",
-          "backgroundColor": "#FAFAFA"
+          "backgroundColor": "#FAFAFA",
+          "dark": {
+            "backgroundColor": "#FAFAFA"
+          }
         }
       ],
       "expo-location",

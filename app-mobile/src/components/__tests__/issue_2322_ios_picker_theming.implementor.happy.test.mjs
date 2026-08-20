@@ -4,7 +4,10 @@
 // expo-splash-screen config plugin overwrites the built Info.plist
 // `UIUserInterfaceStyle` to `Automatic` whenever the plugin entry carries ANY truthy
 // `dark.*` key — even one that is byte-identical to the light value and therefore
-// changes no pixel. Every NATIVE view then follows the DEVICE appearance. An
+// changes no pixel. #2050 requires that explicit dark launch colour, so #2322 owns
+// the final Info.plist value with a config plugin registered before splash instead
+// of deleting the launch contract. Without that repair every NATIVE view follows
+// the DEVICE appearance. An
 // <DateTimePicker> with no `themeVariant` draws UIColor.label — near-white in Dark
 // Mode — onto a hard-coded light card, so the user scrolls a wheel they cannot read
 // and commits a birthday they never saw. On PostExperienceModal (#FFFFFF container,
@@ -12,7 +15,7 @@
 //
 // TWO HALVES, DIFFERENT SHIP VEHICLES:
 //   * the `themeVariant`/`textColor` props are JavaScript and reach installed users by OTA;
-//   * the app.json deletion is native and only lands in the next build.
+//   * the final Info.plist config plugin is native and only lands in the next build.
 // The props must therefore be correct UNDER `Automatic` on their own. Nobody may remove
 // them later on the grounds that the trait is now Light. T-1 is what enforces that.
 //
@@ -22,15 +25,17 @@
 // Done on an untouched wheel must now commit nothing.
 //
 // This suite runs under `node --test` with NO node_modules: it reads source and
-// config off disk. T-2 asserts the app.json SHAPE (the cause) rather than shelling
-// out to `expo config` (the effect), because an introspect call needs an install and
-// would silently skip without one — the unfalsifiable-gate class of #2113.
+// config off disk. T-2 executes the plugin's pure mutation helper and pins its order
+// before splash (Expo executes same-mod interceptors in reverse registration order).
+// A separate prebuild receipt reads the generated Info.plist; `expo
+// config` alone is not accepted because it does not execute native mods.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const APP_MOBILE = path.resolve(HERE, "../../..");
@@ -39,7 +44,9 @@ const REPO_ROOT = path.resolve(HERE, "../../../..");
 const ONBOARDING = path.join(APP_MOBILE, "src/components/OnboardingFlow.tsx");
 const POST_EXPERIENCE = path.join(APP_MOBILE, "src/components/PostExperienceModal.tsx");
 const APP_JSON = path.join(APP_MOBILE, "app.json");
+const APPEARANCE_PLUGIN = path.join(APP_MOBILE, "plugins/withForcedLightAppearance.js");
 const CI_MANIFEST = path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json");
+const require = createRequire(import.meta.url);
 
 const read = (p) => fs.readFileSync(p, "utf8");
 
@@ -244,7 +251,7 @@ test("T-5: the Android-only exemption is real and narrow", () => {
 
 // ── T-2 ────────────────────────────────────────────────────────────────────────
 
-test("T-2: the declared light appearance survives prebuild — no dark splash config", () => {
+test("T-2: the declared light appearance owns the final Info.plist value", () => {
   const cfg = JSON.parse(read(APP_JSON));
   assert.equal(
     cfg.expo.userInterfaceStyle,
@@ -252,27 +259,32 @@ test("T-2: the declared light appearance survives prebuild — no dark splash co
     "app-mobile declares a light-only UI; this invariant is about that declaration surviving the build",
   );
 
-  const entry = (cfg.expo.plugins || []).find(
+  const plugins = cfg.expo.plugins || [];
+  const splashIndex = plugins.findIndex(
     (p) => Array.isArray(p) && p[0] === "expo-splash-screen",
   );
-  assert.ok(entry, "expected a configured expo-splash-screen plugin entry in app.json");
+  assert.notEqual(splashIndex, -1, "expected expo-splash-screen in app.json");
+  const splash = plugins[splashIndex][1] || {};
+  assert.deepEqual(
+    splash.dark,
+    { backgroundColor: "#FAFAFA" },
+    "#2050 requires Explorer launch to remain explicit #FAFAFA in both themes",
+  );
 
-  const opts = entry[1] || {};
-  const DARK_KEYS = ["image", "tabletImage", "backgroundColor", "tabletBackgroundColor"];
-  for (const key of DARK_KEYS) {
-    assert.ok(
-      !opts.dark || !opts.dark[key],
-      `app.json's expo-splash-screen plugin sets a truthy dark.${key}. ` +
-        "@expo/prebuild-config's withIosSplashInfoPlist treats ANY truthy dark.* as " +
-        "\"dark mode enabled\" and unconditionally assigns Info.plist " +
-        "UIUserInterfaceStyle = 'Automatic', silently defeating expo.userInterfaceStyle: " +
-        "'light'. That is #2322's root cause, and it cost nothing visually — the dark " +
-        "background was #FAFAFA, identical to the light one.",
-    );
-  }
+  const ownerIndex = plugins.indexOf("./plugins/withForcedLightAppearance");
   assert.ok(
-    !(cfg.expo.splash && cfg.expo.splash.dark),
-    "the legacy expo.splash block must not grow a dark variant either — same plugin, same override",
+    ownerIndex < splashIndex,
+    "withForcedLightAppearance must be registered before expo-splash-screen: Expo executes " +
+      "same-mod interceptors in reverse registration order, making Light the final native value",
+  );
+  assert.ok(fs.existsSync(APPEARANCE_PLUGIN), "the configured appearance plugin must exist");
+  const { forceLightAppearance } = require(APPEARANCE_PLUGIN);
+  assert.equal(typeof forceLightAppearance, "function", "the pure native mutation helper must export");
+  const built = forceLightAppearance({ UIUserInterfaceStyle: "Automatic", Untouched: "yes" });
+  assert.deepEqual(
+    built,
+    { UIUserInterfaceStyle: "Light", Untouched: "yes" },
+    "the final mod must replace Automatic with Light without dropping unrelated plist keys",
   );
 });
 

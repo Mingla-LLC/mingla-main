@@ -2633,13 +2633,11 @@ const OnboardingFlow = ({
                 </Pressable>
               )}
               {/* [#2322] themeVariant/textColor are LOAD-BEARING — do not delete them as
-                  "redundant on a light-only app". app.json declares `userInterfaceStyle: "light"`,
-                  but the expo-splash-screen config plugin overwrites the built
-                  Info.plist `UIUserInterfaceStyle` to `Automatic`, so every NATIVE view inherits
-                  the DEVICE appearance. Unthemed, this wheel draws UIColor.label — near-white in
-                  Dark Mode — onto this hard-coded light card, and the user scrolls and commits a
-                  birthday they cannot read. Pinning the trait keeps it legible regardless of what
-                  the build resolves the app-wide style to. */}
+                  "redundant on a light-only app". Installed builds do not gain the native
+                  withForcedLightAppearance repair until a store update, and a future config-plugin
+                  regression must not make this wheel unreadable again. Unthemed, it draws
+                  UIColor.label — near-white in Dark Mode — onto this hard-coded light card, and the
+                  user scrolls and commits a birthday they cannot read. */}
               <DateTimePicker
                 value={pendingBirthdayRef.current || data.userBirthday || BIRTHDAY_PICKER_DEFAULT}
                 mode="date"
