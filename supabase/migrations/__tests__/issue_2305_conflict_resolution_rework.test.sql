@@ -348,4 +348,63 @@ BEGIN
 END;
 $p2_4$;
 
+-- --------------------------------------------------------- dismiss replay --
+-- SC-12 / exact-head TEST FAIL 5353482286. Dismiss intentionally writes no
+-- source link, so replay must not use the merge/separate link reconstruction
+-- query. Both an exact request-id retry and a fresh request-id retry are the
+-- same durable success. A different requested outcome remains a typed conflict.
+DO $dismiss_replay$
+DECLARE
+  v_brand uuid := '23059000-0000-4000-8000-000000000010';
+  v_owner uuid := '23059000-0000-4000-8000-000000000001';
+  v_conflict uuid;
+  v_same jsonb;
+  v_fresh jsonb;
+  v_caught text;
+BEGIN
+  SELECT id INTO STRICT v_conflict
+  FROM public.brand_person_identity_conflicts
+  WHERE brand_id=v_brand
+    AND source_kind='order'
+    AND source_id='23059000-0000-4000-8000-000000000050'
+    AND status='resolved_dismissed';
+
+  PERFORM set_config('request.jwt.claim.sub',v_owner::text,true);
+  v_same := public.biz_resolve_brand_person_conflict(
+    v_brand,ARRAY[v_conflict],'dismiss',NULL,'23059000-0000-4000-8000-0000000000b1');
+  v_fresh := public.biz_resolve_brand_person_conflict(
+    v_brand,ARRAY[v_conflict],'dismiss',NULL,'23059000-0000-4000-8000-0000000000b2');
+
+  IF v_same->>'resolution'<>'dismiss'
+     OR v_same->'personId'<>'null'::jsonb
+     OR v_same->'links'<>'[]'::jsonb
+     OR v_same->'mergedPersonIds'<>'[]'::jsonb
+     OR v_same->>'replayed'<>'true' THEN
+    RAISE EXCEPTION 'DISMISS-REPLAY FAIL: same request id returned %',v_same;
+  END IF;
+  IF v_fresh->>'resolution'<>'dismiss'
+     OR v_fresh->'personId'<>'null'::jsonb
+     OR v_fresh->'links'<>'[]'::jsonb
+     OR v_fresh->'mergedPersonIds'<>'[]'::jsonb
+     OR v_fresh->>'replayed'<>'true' THEN
+    RAISE EXCEPTION 'DISMISS-REPLAY FAIL: fresh request id returned %',v_fresh;
+  END IF;
+  IF v_same <> v_fresh THEN
+    RAISE EXCEPTION 'DISMISS-REPLAY FAIL: request-id choice changed durable replay: same %, fresh %',v_same,v_fresh;
+  END IF;
+
+  BEGIN
+    PERFORM public.biz_resolve_brand_person_conflict(
+      v_brand,ARRAY[v_conflict],'separate',NULL,'23059000-0000-4000-8000-0000000000b3');
+    RAISE EXCEPTION 'DISMISS-REPLAY FAIL: different outcome was accepted';
+  EXCEPTION WHEN SQLSTATE '23505' THEN
+    GET STACKED DIAGNOSTICS v_caught = MESSAGE_TEXT;
+    IF v_caught <> 'people_conflict_already_resolved' THEN
+      RAISE EXCEPTION 'DISMISS-REPLAY FAIL: expected typed already-resolved error, got %',v_caught;
+    END IF;
+  END;
+  RAISE NOTICE 'DISMISS-REPLAY PASS: same/fresh request ids return deterministic empty arrays; different outcome stays typed';
+END;
+$dismiss_replay$;
+
 ROLLBACK;

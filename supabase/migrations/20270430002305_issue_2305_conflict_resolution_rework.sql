@@ -428,6 +428,16 @@ BEGIN
   -- A pure replay: every conflict already carries the requested resolution.
   -- Reconstruct the original answer from the durable rows rather than a ledger.
   IF v_open_count=0 THEN
+    -- #2305 REWORK P1-1 (round 2): dismiss deliberately creates NO source
+    -- links. Sending it through the link reconstruction below made the aggregate
+    -- return no group, leaving `v_links` NULL; the client correctly rejects that
+    -- as a malformed response. A dismissed group has one deterministic durable
+    -- answer regardless of whether the caller reuses or refreshes its request id.
+    IF p_resolution='dismiss' THEN
+      RETURN jsonb_build_object(
+        'conflictIds',to_jsonb(v_ids),'resolution','dismiss','personId',NULL,
+        'links','[]'::jsonb,'mergedPersonIds','[]'::jsonb,'replayed',true);
+    END IF;
     SELECT public.biz_brand_person_canonical(l.brand_person_id),
            COALESCE(jsonb_agg(jsonb_build_object('conflictId',c.id,'sourceLinkId',l.id)),'[]'::jsonb)
     INTO v_person, v_links
