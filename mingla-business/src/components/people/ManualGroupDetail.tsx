@@ -9,12 +9,27 @@ import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast } from "../ui/Toast";
-import { useManualGroup, useManualGroupMutations } from "../../hooks/marketing/useManualGroups";
-import { capturePeople } from "../../features/people/peopleAnalytics";
-import { stableManualMutationRequest } from "../../services/marketing/manualGroupService";
+import { useManualGroup, useManualGroupMutations } from "../../hooks/marketing/useManualGroupDetail";
 import { randomId } from "../../utils/randomId";
-import { ManualGroupFlow } from "./ManualGroupFlow";
 import { accent, canvas, glass, semantic, spacing, text, typography } from "../../constants/designSystem";
+
+// Loading the add/import workflow only when requested keeps its contact-import
+// dependency graph out of the eager web chunk shared by People routes.
+const ManualGroupFlow = React.lazy(async () => {
+  const module = await import("./ManualGroupFlow");
+  return { default: module.ManualGroupFlow };
+});
+
+const stableManualMutationRequest = (
+  current: { key: string; id: string } | null,
+  key: string,
+  createId: () => string,
+): { key: string; id: string } => current?.key === key ? current : { key, id: createId() };
+const capturePeople = (event: string, properties: Record<string, unknown>): void => {
+  void import("../../features/people/peopleAnalytics").then((analytics) => {
+    analytics.capturePeople(event as Parameters<typeof analytics.capturePeople>[0], properties);
+  });
+};
 
 type Dialog = "none" | "overflow" | "remove" | "rename" | "delete" | "delete_blocked";
 
@@ -120,7 +135,7 @@ export function ManualGroupDetail({
           </Pressable>;
         }} />}
     </GlassCard>
-    <ManualGroupFlow visible={addOpen} brandId={brandId} online={online} group={data} onAddPerson={() => undefined} onClose={() => setAddOpen(false)} onCompleted={() => { setAddOpen(false); setToast("People added."); }} />
+    {addOpen ? <React.Suspense fallback={null}><ManualGroupFlow visible brandId={brandId} online={online} group={data} onAddPerson={() => undefined} onClose={() => setAddOpen(false)} onCompleted={() => { setAddOpen(false); setToast("People added."); }} /></React.Suspense> : null}
     <Sheet visible={dialog !== "none"} onClose={pending ? () => undefined : () => { setDialog("none"); setError(null); }} snapPoint="half" testID="manual-group-confirm-sheet"><View style={styles.dialog}>
       {dialog === "overflow" ? <><Text accessibilityRole="header" style={styles.dialogTitle}>Group actions</Text><Button label="Rename group" variant="secondary" leadingIcon="edit" disabled={!online} fullWidth onPress={() => setDialog("rename")} /><Button label="Delete group" variant="destructive" leadingIcon="trash" disabled={!online} fullWidth onPress={() => setDialog("delete")} /><Button label="Cancel" variant="ghost" fullWidth onPress={() => setDialog("none")} /></>
       : dialog === "delete_blocked" ? <><Text accessibilityRole="header" style={styles.dialogTitle}>This group is in use</Text><Text accessibilityLiveRegion="assertive" style={styles.contact}>{deleteBlockedCount} {deleteBlockedCount === 1 ? "campaign is" : "campaigns are"} still using “{data.name}”. Choose another audience or cancel {deleteBlockedCount === 1 ? "it" : "them"} before deleting this group.</Text><Button label="Open campaigns" variant="secondary" fullWidth onPress={() => { setDialog("none"); router.push("/(tabs)/marketing/campaigns" as never); }} /><Button label="Close" variant="ghost" fullWidth onPress={() => setDialog("none")} /></>

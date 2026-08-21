@@ -61,6 +61,24 @@ const errorCopy = (e: unknown): string =>
   e instanceof ContactImportError
     ? `${e.message}${e.requestId ? ` Request ID: ${e.requestId}` : ""}`
     : "We couldn't finish the import. Try again.";
+const hydrateCompletionRows = async (
+  brandId: string,
+  result: ContactImportResult,
+): Promise<ContactImportResult> => {
+  const { pageSize, total } = result.resultPage;
+  const remainingPages = Array.from(
+    { length: Math.max(0, Math.ceil(total / pageSize) - 1) },
+    (_, index) => index + 1,
+  );
+  if (remainingPages.length === 0) return result;
+  const remaining = await Promise.all(
+    remainingPages.map((page) => getContactImportStatus(brandId, result.batchId, page, pageSize)),
+  );
+  return {
+    ...result,
+    resultRows: [...result.resultRows, ...remaining.flatMap((page) => page.resultRows)],
+  };
+};
 export function ContactImportFlow({
   brandId,
   onViewBook,
@@ -123,7 +141,7 @@ export function ContactImportFlow({
           setResult(recovered);
           setStep("result");
           setError(null);
-          onCompleted?.(recovered);
+          onCompleted?.(context === "manual_group" ? await hydrateCompletionRows(brandId, recovered) : recovered);
         } else if (recovered.state === "failed") {
           setStep("permission");
           setError("We couldn't confirm the result yet. Try again.");
@@ -138,7 +156,7 @@ export function ContactImportFlow({
       stopped = true;
       clearInterval(timer);
     };
-  }, [brandId, online, onCompleted, preview, step]);
+  }, [brandId, context, online, onCompleted, preview, step]);
   useEffect(() => {
     if (Platform.OS !== "web" || step !== "importing") return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -276,7 +294,7 @@ export function ContactImportFlow({
       });
       setResult(r);
       setStep("result");
-      onCompleted?.(r);
+      onCompleted?.(context === "manual_group" ? await hydrateCompletionRows(brandId, r) : r);
       captureContactImport("execute_completed", {
         row_count: r.counts.rowCount,
         context,
@@ -297,7 +315,7 @@ export function ContactImportFlow({
           if (recovered.state === "completed") {
             setResult(recovered);
             setStep("result");
-            onCompleted?.(recovered);
+            onCompleted?.(context === "manual_group" ? await hydrateCompletionRows(brandId, recovered) : recovered);
           } else if (recovered.state === "failed") {
             setError("We couldn't confirm the result yet. Try again.");
             setStep("permission");

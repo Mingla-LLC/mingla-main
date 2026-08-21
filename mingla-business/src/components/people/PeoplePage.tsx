@@ -28,7 +28,6 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import { useAudienceList } from "../../hooks/marketing/useAudienceList";
-import { useManualGroups } from "../../hooks/marketing/useManualGroups";
 import { useBrandPeople } from "../../hooks/marketing/useBrandPeople";
 import {
   useBrandPersonConflicts,
@@ -50,7 +49,6 @@ import type {
   BrandPersonSummary,
   ConflictResolution,
 } from "../../types/people";
-import { AddPersonSheet } from "./AddPersonSheet";
 import { ConflictReviewSheet, ConflictReviewStrip } from "./ConflictReviewSheet";
 import { createPeopleRequestId } from "./peopleRequestId";
 import {
@@ -61,7 +59,22 @@ import {
   PeopleRow,
 } from "./PeoplePrimitives";
 import { useMarketingBrandSwitcher } from "./MarketingBrandSwitcherContext";
-import { ManualGroupFlow } from "./ManualGroupFlow";
+
+// The create/add workflow includes contact-import parsing and is only needed
+// after an operator opens it. Keeping this boundary here prevents Metro from
+// hoisting the workflow shared with group detail into every web boot.
+const ManualGroupFlow = React.lazy(async () => {
+  const module = await import("./ManualGroupFlow");
+  return { default: module.ManualGroupFlow };
+});
+const ManualGroupsLoader = React.lazy(async () => {
+  const module = await import("./ManualGroupFlow");
+  return { default: module.ManualGroupsLoader };
+});
+const AddPersonSheet = React.lazy(async () => {
+  const module = await import("./AddPersonSheet");
+  return { default: module.AddPersonSheet };
+});
 
 
 const contacts = (count: number | null): string | undefined =>
@@ -184,7 +197,19 @@ export function PeoplePage(): React.ReactElement {
   const groups=useAudienceList(user?.id??null);
   const manualFlag = useFeatureFlag("manual_contact_groups_v1");
   const manualEnabled = authorized && manualFlag.data === true;
-  const manualGroups = useManualGroups(brand?.id ?? null, manualEnabled);
+  const [manualGroupsState, setManualGroupsState] = React.useState<{
+    brandId: string | null;
+    data: ManualGroupSummary[];
+    isLoading: boolean;
+    isError: boolean;
+    refetch: () => Promise<unknown>;
+  }>({ brandId: null, data: [], isLoading: true, isError: false, refetch: async () => undefined });
+  const receiveManualGroups = React.useCallback((state: typeof manualGroupsState): void => {
+    setManualGroupsState(state);
+  }, []);
+  const manualGroups = manualEnabled && manualGroupsState.brandId === brand?.id
+    ? manualGroupsState
+    : { ...manualGroupsState, data: [], isLoading: manualEnabled, isError: false };
   // #2305 — the identity-conflict review queue. Read at rank 20; the RPC gates
   // resolving at rank 50 and reports it per row as `canResolve`.
   const conflicts = useBrandPersonConflicts(
@@ -350,6 +375,7 @@ export function PeoplePage(): React.ReactElement {
   const preview = book.rows.slice(0, 3);
   return (
     <View style={styles.host}>
+      {manualEnabled ? <React.Suspense fallback={null}><ManualGroupsLoader brandId={brand.id} onState={receiveManualGroups} /></React.Suspense> : null}
       <View
         accessibilityElementsHidden={modalOpen}
         importantForAccessibility={modalOpen ? "no-hide-descendants" : "auto"}
@@ -531,7 +557,7 @@ export function PeoplePage(): React.ReactElement {
                     cta={{
                       label: "Try again",
                       onPress: async (): Promise<void> => {
-                        await groups.refetch();
+                        await Promise.all([groups.refetch(), ...(manualEnabled ? [manualGroups.refetch()] : [])]);
                       },
                       variant: "secondary",
                     }}
@@ -604,7 +630,7 @@ export function PeoplePage(): React.ReactElement {
         onPressManual={openManualGroup}
         onCreate={() => { setGroupsOpen(false); setCreateGroupOpen(true); capturePeople("manual_group_create_started", { surface: "groups_sheet" }); }}
       />
-      {brand ? <ManualGroupFlow visible={createGroupOpen} brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created) => { setCreateGroupOpen(false); openManualGroup(created); }} /> : null}
+      {brand && createGroupOpen ? <React.Suspense fallback={null}><ManualGroupFlow visible brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created) => { setCreateGroupOpen(false); openManualGroup(created); }} /></React.Suspense> : null}
       <ConflictReviewSheet
         visible={conflictOpen}
         onClose={() => {
@@ -656,14 +682,14 @@ export function PeoplePage(): React.ReactElement {
           }
         }}
       />
-      <AddPersonSheet
-        visible={addOpen}
+      {addOpen ? <React.Suspense fallback={null}><AddPersonSheet
+        visible
         onClose={() => setAddOpen(false)}
         brandId={brand.id}
         online={online}
         authorized={authorized}
         onCompleted={addDone}
-      />
+      /></React.Suspense> : null}
       <View style={styles.toast}>
         <Toast
           visible={toast !== null}

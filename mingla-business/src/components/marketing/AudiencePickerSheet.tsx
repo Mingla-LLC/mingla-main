@@ -35,7 +35,6 @@ import {
 import { Sheet } from "../ui/Sheet";
 import { supabase } from "../../services/supabase";
 import { getOrCreateMarketingBookAudience } from "../../services/marketing/marketingCampaignService";
-import { listManualGroups } from "../../services/marketing/manualGroupService";
 import {
   accent,
   glass,
@@ -112,7 +111,9 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     (async () => {
       try {
         let book: null | { audienceId: string; activeBookTotal: number } = null;
-        const manualGroups = manualGroupsEnabled === true ? await listManualGroups(brandId) : [];
+        const manualGroups = manualGroupsEnabled === true
+          ? await import("../../services/marketing/manualGroupService").then((service) => service.listManualGroups(brandId))
+          : [];
         if (bookBlastEnabled === true && actorId != null) {
           try {
             book = await getOrCreateMarketingBookAudience({

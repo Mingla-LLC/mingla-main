@@ -7,15 +7,25 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
-import { ContactImportFlow } from "../../features/contact-import/ContactImportFlow";
-import { capturePeople } from "../../features/people/peopleAnalytics";
 import { useManualGroupBookPicker, useManualGroupMutations, useManualGroups } from "../../hooks/marketing/useManualGroups";
-import { ManualGroupError, manualGroupDraftNameError, previewManualGroupResult, resultingManualMemberCount, stableManualMutationRequest } from "../../services/marketing/manualGroupService";
-import { getContactImportStatus, type ContactImportCounts, type ContactImportResult } from "../../services/contactImportService";
+import type { ContactImportCounts, ContactImportResult } from "../../services/contactImportService";
 import type { ManualGroupDetail, ManualGroupMember, ManualGroupSummary } from "../../types/marketing";
 import { randomId } from "../../utils/randomId";
 import { accent, canvas, glass, radius, semantic, spacing, text, typography } from "../../constants/designSystem";
-import { AddPersonSheet } from "./AddPersonSheet";
+
+const ContactImportFlow = React.lazy(async () => {
+  const module = await import("../../features/contact-import/ContactImportFlow");
+  return { default: module.ContactImportFlow };
+});
+const AddPersonSheet = React.lazy(async () => {
+  const module = await import("./AddPersonSheet");
+  return { default: module.AddPersonSheet };
+});
+const capturePeople = (event: string, properties: Record<string, unknown>): void => {
+  void import("../../features/people/peopleAnalytics").then((analytics) => {
+    analytics.capturePeople(event as Parameters<typeof analytics.capturePeople>[0], properties);
+  });
+};
 
 type Step = "name" | "sources" | "book" | "upload" | "review";
 type ImportCompletion = { batchId: string; counts: ContactImportCounts; personIds: string[]; outcomes: { added: string[]; updated: string[]; unchanged: string[] } };
@@ -24,10 +34,57 @@ const countBucket = (count: number): "0" | "1_10" | "11_50" | "51_100" | "101_pl
   count === 0 ? "0" : count <= 10 ? "1_10" : count <= 50 ? "11_50" : count <= 100 ? "51_100" : "101_plus";
 
 const normalizedName = (value: string): string => value.trim().replace(/\s+/g, " ");
+const stableManualMutationRequest = (
+  current: { key: string; id: string } | null,
+  key: string,
+  createId: () => string,
+): { key: string; id: string } => current?.key === key ? current : { key, id: createId() };
+const manualGroupDraftNameError = (name: string, existingNames: string[]): string | null => {
+  const normalized = normalizedName(name).toLocaleLowerCase();
+  if (!normalized) return "Enter a group name.";
+  if ([...name].length > 60) return "Use 60 characters or fewer.";
+  if (/\p{Cc}/u.test(name)) return "Remove control characters from the name.";
+  if (normalized === "your book") return "Choose a name other than Your Book.";
+  return existingNames.some((candidate) => normalizedName(candidate).toLocaleLowerCase() === normalized)
+    ? "A Manual group already uses this name."
+    : null;
+};
+const resultingManualMemberCount = (...personIdSets: string[][]): number =>
+  new Set(personIdSets.flat()).size;
+const manualGroupErrorCode = (caught: unknown): string =>
+  caught !== null && typeof caught === "object" && "code" in caught && typeof caught.code === "string"
+    ? caught.code
+    : "manual_group_unknown";
 const memberSummary = (person: ManualGroupMember): string =>
   person.contacts.find((contact) => contact.isPrimary)?.value ??
   person.contacts[0]?.value ??
   "Contact details unavailable";
+
+export function ManualGroupsLoader({
+  brandId,
+  onState,
+}: {
+  brandId: string;
+  onState: (state: {
+    brandId: string;
+    data: ManualGroupSummary[];
+    isLoading: boolean;
+    isError: boolean;
+    refetch: () => Promise<unknown>;
+  }) => void;
+}): null {
+  const groups = useManualGroups(brandId, true);
+  React.useEffect(() => {
+    onState({
+      brandId,
+      data: groups.data ?? [],
+      isLoading: groups.isLoading,
+      isError: groups.isError,
+      refetch: groups.refetch,
+    });
+  }, [brandId, groups.data, groups.isError, groups.isLoading, groups.refetch, onState]);
+  return null;
+}
 
 export function ManualGroupFlow({
   visible,
@@ -101,15 +158,15 @@ export function ManualGroupFlow({
     });
   };
   const hydrateImport = async (result: ContactImportResult): Promise<void> => {
+    // ContactImportFlow owns getContactImportStatus pagination so this
+    // composition callback always receives the complete opaque person-ID set.
     const generation = ++hydrationGeneration.current;
     setImportHydration("loading");
     importRetry.current = result;
     try {
-      const pageSize = result.resultPage.pageSize;
-      const remainingPages = Array.from({ length: Math.max(0, Math.ceil(result.resultPage.total / pageSize) - 1) }, (_, index) => index + 1);
-      const remaining = await Promise.all(remainingPages.map((page) => getContactImportStatus(brandId, result.batchId, page, pageSize)));
       if (generation !== hydrationGeneration.current) return;
-      const allRows = [...result.resultRows, ...remaining.flatMap((page) => page.resultRows)];
+      const allRows = result.resultRows;
+      if (allRows.length < result.resultPage.total) throw new Error("Incomplete import result");
       const outcomeIds = (outcome: "added" | "updated" | "unchanged"): string[] => allRows
       .filter((row) => row.outcome === outcome && typeof row.personId === "string")
       .map((row) => row.personId as string);
@@ -131,6 +188,7 @@ export function ManualGroupFlow({
     setReviewLoading(true);
     setError(null);
     try {
+      const { previewManualGroupResult } = await import("../../services/marketing/manualGroupService");
       const preview = await previewManualGroupResult({ brandId, groupId: group.groupId,
         personIds: [...selected].sort(), importBatchIds: imports.map((item) => item.batchId).sort() });
       setReviewPreview(preview);
@@ -160,7 +218,7 @@ export function ManualGroupFlow({
       requestIntent.current = null; onCompleted(result.group);
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "We couldn't create this group. Nothing changed.");
-      capturePeople("manual_group_create_failed", { surface: editing ? "detail" : "groups_sheet", errorCode: caught instanceof ManualGroupError ? caught.code : "manual_group_unknown" });
+      capturePeople("manual_group_create_failed", { surface: editing ? "detail" : "groups_sheet", errorCode: manualGroupErrorCode(caught) });
     }
   };
 
@@ -247,7 +305,7 @@ export function ManualGroupFlow({
           <View style={styles.sticky}><Button label={`Keep ${selected.size} selected`} accentColor={accent.warm} fullWidth onPress={() => setStep("sources")} /></View>
         </View> : null}
 
-        {step === "upload" ? <View style={styles.flex}><ContactImportFlow brandId={brandId} context="manual_group" onCompleted={importCompleted} onViewBook={() => setStep("sources")} /></View> : null}
+        {step === "upload" ? <View style={styles.flex}><React.Suspense fallback={null}><ContactImportFlow brandId={brandId} context="manual_group" onCompleted={importCompleted} onViewBook={() => setStep("sources")} /></React.Suspense></View> : null}
 
         {step === "review" ? <View style={styles.body}>
           <GlassCard variant="base" style={styles.reviewCard}>
@@ -264,7 +322,7 @@ export function ManualGroupFlow({
         </View> : null}
       </View>
       <Sheet visible={discardOpen} onClose={() => setDiscardOpen(false)} snapPoint="half" testID="manual-group-discard-confirm"><View style={styles.discard}><Text accessibilityRole="header" style={styles.title}>Discard this group setup?</Text><Text style={styles.helper}>Your selections will be cleared. Contacts already imported remain in Your Book.</Text><Button label="Keep editing" variant="secondary" fullWidth onPress={() => setDiscardOpen(false)} /><Button label="Discard setup" variant="destructive" fullWidth onPress={() => { requestIntent.current = null; setDiscardOpen(false); onClose(); }} /></View></Sheet>
-      {editing ? <AddPersonSheet visible={nestedAddPersonOpen} onClose={() => setNestedAddPersonOpen(false)} brandId={brandId} online={online} authorized onCompleted={(result) => { if (result.person) setSelected((current) => new Set(current).add(result.person!.personId)); void picker.refetch(); }} /> : null}
+      {editing && nestedAddPersonOpen ? <React.Suspense fallback={null}><AddPersonSheet visible onClose={() => setNestedAddPersonOpen(false)} brandId={brandId} online={online} authorized onCompleted={(result) => { if (result.person) setSelected((current) => new Set(current).add(result.person!.personId)); void picker.refetch(); }} /></React.Suspense> : null}
     </Sheet>
   );
 }

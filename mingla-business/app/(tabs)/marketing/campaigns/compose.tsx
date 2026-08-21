@@ -154,7 +154,6 @@ import {
   MarketingBookSendError,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
-import { listManualGroups } from "../../../../src/services/marketing/manualGroupService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 // issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
@@ -448,6 +447,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
       try {
         if (audienceParam.kind === "manual") {
           if (manualGroupFlag.data !== true) throw new Error("Manual groups aren't available.");
+          const { listManualGroups } = await import("../../../../src/services/marketing/manualGroupService");
           const manual = (await listManualGroups(brandId)).find((group) => group.groupId === audienceParam.id);
           if (!manual) throw new Error("This Manual group is unavailable.");
           if (cancelled) return;

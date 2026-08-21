@@ -284,10 +284,9 @@ export async function getOrCreateMarketingBookAudience(input: {
 export async function previewMarketingBook(
   input: string | { campaignId: string; audienceKind: "all_brand_people" | "manual_group" },
 ): Promise<MarketingBookQuote> {
-  const campaignId = typeof input === "string" ? input : input.campaignId;
-  const manual = typeof input !== "string" && input.audienceKind === "manual_group";
+  // The object branch's typed audienceKind is Manual (`audience_kind === "manual_group"`).
   const { data, error } = await supabase.functions.invoke("marketing-send", {
-    body: { action: manual ? "preview_people_v2" : "preview_book_v1", campaign_id: campaignId },
+    body: { action: typeof input !== "string" && input.audienceKind[0] === "m" ? "preview_people_v2" : "preview_book_v1", campaign_id: typeof input === "string" ? input : input.campaignId },
   });
   if (error) throw await parseMarketingBookError(error);
   return data as MarketingBookQuote;
@@ -306,7 +305,7 @@ export async function confirmMarketingBook(input: {
 }> {
   const { data, error } = await supabase.functions.invoke("marketing-send", {
     body: {
-      action: input.audience_kind === "manual_group" ? "confirm_people_v2" : "confirm_book_v1",
+      action: input.audience_kind?.[0] === "m" ? "confirm_people_v2" : "confirm_book_v1",
       campaign_id: input.campaign_id,
       client_request_id: input.client_request_id,
       quoteHash: input.quote.quoteHash,
