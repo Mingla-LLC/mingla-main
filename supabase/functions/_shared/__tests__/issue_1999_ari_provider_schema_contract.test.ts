@@ -47,6 +47,12 @@ const INT64_FIELDS = new Set([
   "maxLength",
 ]);
 
+const ISSUE_1977_PROVIDER_ADDITIONS = [
+  "update_rsvp",
+  "update_rsvp_contribution_settings",
+  "list_rsvp_contributions",
+] as const;
+
 function assertProviderSchema(schema: unknown, pointer = "/parameters"): void {
   assert(
     schema !== null && typeof schema === "object" && !Array.isArray(schema),
@@ -92,12 +98,28 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 70 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 72 actual Ari tools compile for Gemini typed parameters", () => {
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    70,
+    72,
     "registry baseline changed; provider coverage must be reviewed",
+  );
+  assertEquals(
+    ISSUE_1977_PROVIDER_ADDITIONS.length,
+    3,
+    "#1977 must review all three additions behind the net 70-to-72 census",
+  );
+  const registryNames = tools.map((tool) => tool.name);
+  for (const name of ISSUE_1977_PROVIDER_ADDITIONS) {
+    assert(
+      registryNames.includes(name),
+      `#1977 provider census is missing ${name}`,
+    );
+  }
+  assert(
+    !registryNames.includes("set_guest_approval"),
+    "#1977 provider census retained the removed duplicate guest writer",
   );
 
   const compiled = compileGeminiToolDeclarations(tools);
