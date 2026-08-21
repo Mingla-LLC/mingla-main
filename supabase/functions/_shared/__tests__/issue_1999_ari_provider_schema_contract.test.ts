@@ -92,13 +92,12 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 70 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 74 actual Ari tools compile for Gemini typed parameters", () => {
+  // [TEST-MOD-APPROVED #1975] Stay authoring tools extend the provider-schema denominator.
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    70,
-Deno.test("#1999 happy: all 68 actual Ari tools compile for Gemini typed parameters", () => {
-    68,
+    74,
     "registry baseline changed; provider coverage must be reviewed",
   );
 

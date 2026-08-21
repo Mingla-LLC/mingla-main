@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json");
 
+// [TEST-MOD-APPROVED #1975] Stay/venue reservation repair promotes four proven-broken
+// rows to registered_unverified and registers three Stay authoring tools (inventory/
+// publish/policy-price-media), extending the registered-tool set from 71→74 while
+// keeping the reviewed capability denominator at 117.
 const EXPECTED_TOOL_NAMES = [
   "cancel_campaign", "cancel_event", "cancel_order", "cancel_trip_booking",
   "create_brand", "create_event", "create_experience", "create_rsvp",
@@ -20,9 +24,10 @@ const EXPECTED_TOOL_NAMES = [
   "get_payout_status", "get_tax_status", "invite_brand_member", "invite_scanner",
   "list_brand_audit_log", "list_brands", "list_events", "list_guest_roster",
   "manage_brand_discovery_currency", "manage_brand_hours", "manage_experience_stops",
+  "manage_stay_inventory", "manage_stay_policy_price_media",
   "mark_claim_feedback_fixed",
   "patch_event_when", "publish_event", "publish_experience", "publish_rsvp",
-  "publish_trip", "quote_stay", "refund_order", "refund_rsvp_contribution",
+  "publish_stay", "publish_trip", "quote_stay", "refund_order", "refund_rsvp_contribution",
   "request_account_deletion", "retry_installment", "revoke_brand_member",
   "run_growth_tool", "schedule_campaign", "send_campaign_now", "send_venue_sms",
   "set_brand_pricing_defaults", "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
@@ -38,21 +43,16 @@ const EXPECTED = Object.freeze({
   capabilityCount: 117,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 33,
-    broken: 36,
+    registered_unverified: 43,
+    broken: 30,
     guided_handoff: 8,
-    unsupported: 36,
+    unsupported: 32,
     in_flight: 4,
   }),
   idDigest: "9366acdea4ba816a7b69b6cdc970b9b75ec705eba0832683013397bd9ad6e05b",
-  statusDigest: "b550638521af91408a961e08c162222c0dd5772777fa80e354e3e7388af12387",
-  mappingDigest: "d7e46c75cd8b5948a210c6938b9ac9e2e69d1afa73a9c16083b3729c5a9e8e57",
-  sourceRefDigest: "761d3cf68c6f5e0ff8060e8d7f070a452c1f1de15856467a40e0b6e175298012",
-    broken: 34,
-    unsupported: 38,
-  statusDigest: "3f4d11a2b40cc4e650bdd9de49c5b4cd5de03759ac7dd5afa612ae6cfacc84fb",
-  mappingDigest: "1d0131b018408d9251310ce4812ca7f01f6b7e83b42ae3db4864afd8430d8ab9",
-  sourceRefDigest: "d1b3aef21f619445232f46ecdaed7a333f0a56a765819dba174a685addf87170",
+  statusDigest: "ed9e24c98bcf3135b4066322afc5d9a6c6240e3e8b328201d1fc76f8305bfa46",
+  mappingDigest: "9c288952be08a65d8593868bc4851345f517478fc58cd689931b06b28553e5fb",
+  sourceRefDigest: "e712c91252f940733ddd82cab20181340c5bc8729a67018141ff67c76cb87913",
 });
 
 function readLedger() {
@@ -78,13 +78,17 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("70-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("36/33/36/8/4/0 classification changed");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("68-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("34/33/38/8/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("74-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
+    failures.push("30/43/32/8/4/0 classification changed");
+  }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
-  if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
-  if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
+  if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) {
+    failures.push("status assignment changed");
+  }
+  if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) {
+    failures.push("tool-to-capability mapping changed");
+  }
   const refs = capabilities.flatMap((capability) =>
     (capability.owners?.source ?? []).map((ref) => `${capability.id}\t${ref.path}\t${ref.symbol}`),
   );

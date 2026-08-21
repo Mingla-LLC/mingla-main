@@ -10,13 +10,13 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 71,
+    "registered_tool_count": 74,
     "capability_count": 117,
     "status_breakdown": {
-      "registered_unverified": 36,
-      "broken": 34,
+      "registered_unverified": 43,
+      "broken": 30,
       "guided_handoff": 8,
-      "unsupported": 35,
+      "unsupported": 32,
       "in_flight": 4,
       "verified": 0
     }
@@ -1562,21 +1562,22 @@
         ]
       },
       "ari_tool": "quote_stay",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:quoteStay wrong stay-reservations envelope"
+          "reference": "issue_1975_stay_reservations.test.ts asserts the exact quote envelope {action:quote, payload:{venueId,lines,idempotencyKey}}"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "Wrong action and request envelope"
+        "No exact-revision runtime proof on all required surfaces"
       ],
-      "confidence": "high",
+      "confidence": "medium",
       "verified_at": "2026-08-13"
     },
     {
@@ -1611,21 +1612,22 @@
         ]
       },
       "ari_tool": "create_stay_reservation",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:createStayReservation wrong envelope"
+          "reference": "issue_1975_stay_reservations.test.ts asserts create_group with quoteId, operation-derived idempotency, and required expectedVersion"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "Wrong action and required fields"
+        "No exact-revision runtime proof on all required surfaces"
       ],
-      "confidence": "high",
+      "confidence": "medium",
       "verified_at": "2026-08-13"
     },
     {
@@ -1660,29 +1662,30 @@
         ]
       },
       "ari_tool": "transition_stay",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:transitionStay wrong actions/envelope"
+          "reference": "issue_1975_stay_reservations.test.ts asserts approve_request/decline_request envelopes and cancel via server preview id+hash"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "All transition action contracts differ from canonical service"
+        "No exact-revision runtime proof on all required surfaces"
       ],
-      "confidence": "high",
+      "confidence": "medium",
       "verified_at": "2026-08-13"
     },
     {
       "id": "ari.venue.create_reservation",
       "domain": "venues",
-      "outcome": "Create a venue reservation",
-      "safety": "money",
-      "required_role": "brand_member",
+      "outcome": "Create a free manual operator venue reservation",
+      "safety": "write",
+      "required_role": "owner_or_manager",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -1699,8 +1702,8 @@
         ],
         "source": [
           {
-            "path": "mingla-business/src/services/venueGuestReservationService.ts",
-            "symbol": "createGuestVenueReservation"
+            "path": "mingla-business/src/hooks/useVenueReservations.ts",
+            "symbol": "useCreateReservation"
           },
           {
             "path": "supabase/functions/_shared/agentDomainTools.ts",
@@ -1709,21 +1712,22 @@
         ]
       },
       "ari_tool": "create_venue_reservation",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:createVenueReservation sends nonexistent p_start_at"
+          "reference": "issue_1975_venue_reservations.test.ts asserts biz_reservation_create with p_reserved_for and the full operator contract"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "RPC request shape does not match canonical reservation contract"
+        "No exact-revision runtime proof on all required surfaces"
       ],
-      "confidence": "high",
+      "confidence": "medium",
       "verified_at": "2026-08-13"
     },
     {
@@ -1757,16 +1761,17 @@
       "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "registration",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:transitionVenueReservation"
+          "reference": "issue_1975_venue_reservations.test.ts asserts the versioned issue_1975_reservation_transition envelope with the legal status enum"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "No canonical parity runtime proof"
+        "No canonical parity runtime proof on all required surfaces"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -3828,20 +3833,27 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_stay_inventory",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "stayInventoryService.ts"
+        },
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "issue_1975_ari_stays_reservations.test.ts: manage_stay_inventory strict union, 'get' inline-read classification, event_manager gate",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -3873,20 +3885,27 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "publish_stay",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "stayInventoryService.ts:publishStay"
+        },
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "issue_1975_ari_stays_reservations.test.ts: publish_stay requires current settings version (no force publish)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -3918,20 +3937,27 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_stay_policy_price_media",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
           "reference": "stayInventoryService.ts policy/price/media operation family"
+        },
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "issue_1975_ari_stays_reservations.test.ts: manage_stay_policy_price_media strict union + canonical camelCase envelope, operation-id required",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1975
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
