@@ -61,7 +61,7 @@ VALUES('87300000-0000-4000-8000-000000000051','87300000-0000-4000-8000-000000000
 INSERT INTO public.marketing_campaigns(id,account_id,brand_id,audience_id,name,channel,channel_payload,status)
 VALUES('87300000-0000-4000-8000-000000000052','87300000-0000-4000-8000-000000000001',
   '87300000-0000-4000-8000-000000000010','87300000-0000-4000-8000-000000000050',
-  'Issue 873 Campaign','email','{"kind":"email"}','sending');
+  'Issue 873 Campaign','email','{"kind":"email","subject":"Issue 873 roster fixture","body_html":"Issue 873 roster fixture"}','sending');
 INSERT INTO public.brand_offering_invite_delivery_attempts(id,invite_id,send_group_id,campaign_id,
   contact_method_id,channel,attempt_kind,attempt_ordinal,status,provider_message_id,
   provider_accepted_at,sent_at,queued_at)
