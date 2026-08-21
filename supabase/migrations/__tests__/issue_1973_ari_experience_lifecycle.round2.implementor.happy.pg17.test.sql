@@ -5,15 +5,16 @@
 -- proposal boundary, both timezone contracts, and the safe unpublish path.
 BEGIN;
 
--- Latest-main certification integration: #1973 is capability 117. The
--- forward-only migration must register it and reject the prior 116-row set.
+-- Latest-main certification integration: #1973 registered capability 117.
+-- [TEST-MOD-APPROVED #1978] #1978 adds three venue-read requirements (120 total).
+-- Reject an incomplete evidence set that omits ari.experience.unpublish.
 DO $certification$
 DECLARE
   v_run_id uuid;
   v_error text;
 BEGIN
-  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 117 THEN
-    RAISE EXCEPTION '#1973 expected exactly 117 certification requirements';
+  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 120 THEN
+    RAISE EXCEPTION '#1973/#1978 expected exactly 120 certification requirements';
   END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
@@ -28,7 +29,7 @@ BEGIN
     prior_compatible_pair, stranded_operation_count
   ) VALUES (
     repeat('7', 40),
-    '5e06801c4afe20600517a53d228b58e0b776a1e59b4e6b6fd123a77b778ba4aa',
+    'be0add47c599687bada05a16a2cf1bcc3cf4c8a8212e30e5ffeff6ca362a960f',
     '{"agent_chat":"v1973","agent_confirm_action":"v1973"}'::jsonb,
     'business-web-1973',
     '[
@@ -57,11 +58,11 @@ BEGIN
 
   BEGIN
     PERFORM public.ari_cert_finalize_run(v_run_id);
-    RAISE EXCEPTION '#1973 finalizer accepted the obsolete 116-row evidence set';
+    RAISE EXCEPTION '#1973/#1978 finalizer accepted incomplete evidence missing unpublish';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
-    IF v_error <> 'ari_cert_missing_capabilities:116' THEN
-      RAISE EXCEPTION '#1973 expected 116-row rejection, received %', v_error;
+    IF v_error <> 'ari_cert_missing_capabilities:119' THEN
+      RAISE EXCEPTION '#1973/#1978 expected 119-row rejection, received %', v_error;
     END IF;
   END;
 END;
