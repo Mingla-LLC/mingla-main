@@ -135,7 +135,7 @@ interface TicketTypeRow {
   name: string;
   description: string | null;
   price_cents: number;
-  currency: string;
+  currency: string | null;
   quantity_total: number | null;
   is_unlimited: boolean;
   is_free: boolean;
@@ -246,6 +246,11 @@ const asRecord = (value: unknown): JsonRecord =>
 const asStringOrNull = (value: unknown): string | null =>
   typeof value === "string" && value.length > 0 ? value : null;
 
+const asIsoCurrencyCodeOrNull = (value: unknown): string | null => {
+  const code = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return /^[A-Z]{3}$/.test(code) ? code : null;
+};
+
 const asNumber = (value: unknown, fallback: number): number =>
   typeof value === "number" && Number.isFinite(value) ? value : fallback;
 
@@ -313,7 +318,7 @@ export const ticketRowToTicketStub = (row: TicketTypeRow): TicketStub => ({
   id: row.id,
   name: row.name,
   priceGbp: row.is_free ? null : row.price_cents / 100,
-  currency: row.currency,
+  currency: asIsoCurrencyCodeOrNull(row.currency) ?? undefined,
   capacity: row.quantity_total,
   isFree: row.is_free,
   isUnlimited: row.is_unlimited,
@@ -499,8 +504,11 @@ const eventFromRow = (
     coverMediaCreditUrl: asStringOrNull(row.cover_media_credit_url),
     coverMediaAlt: asStringOrNull(row.cover_media_alt),
     currency:
-      asStringOrNull(row.currency) ??
-      tickets.find((ticket) => ticket.currency !== undefined)?.currency,
+      asIsoCurrencyCodeOrNull(row.currency) ??
+      tickets.find(
+        (ticket) =>
+          !ticket.isFree && asIsoCurrencyCodeOrNull(ticket.currency) !== null,
+      )?.currency,
     tickets,
     visibility: asVisibility(row.visibility),
     requireApproval: asBoolean(
@@ -831,11 +839,19 @@ export const eventFromPublishResponse = (
   response: PublishRpcResponse,
 ): PublishedBusinessEvent => {
   const businessEvent = asRecord(asRecord(response.event.theme).business_event);
-  if (
-    response.event.currency === null ||
-    response.event.currency === undefined
-  ) {
-    throw new Error("Published event is missing currency.");
+  const eventCurrency = asIsoCurrencyCodeOrNull(response.event.currency);
+  const paidTicketMissingCurrency = (response.tickets ?? []).some(
+    (ticket) =>
+      ticket.price_cents > 0 &&
+      eventCurrency === null &&
+      asIsoCurrencyCodeOrNull(ticket.currency) === null,
+  );
+  if (paidTicketMissingCurrency) {
+    // The server's money-bearing transition contract should reject this before
+    // committing. Keep the client fail-closed if a malformed response ever
+    // escapes that boundary, while allowing genuinely free events to retain
+    // their truthful null currency.
+    throw new Error("event_currency_required");
   }
   // ORCH-0792: extract master event_dates row from the RPC response so the
   // synthetic BusinessManagementEventRow has master_* populated, matching
@@ -867,7 +883,7 @@ export const eventFromPublishResponse = (
     cover_media_credit: response.event.cover_media_credit ?? null,
     cover_media_credit_url: response.event.cover_media_credit_url ?? null,
     cover_media_alt: response.event.cover_media_alt ?? null,
-    currency: response.event.currency,
+    currency: eventCurrency,
     visibility: response.event.visibility,
     show_on_discover: false,
     status: response.event.status,

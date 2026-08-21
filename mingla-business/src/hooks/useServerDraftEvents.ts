@@ -19,6 +19,7 @@ import {
   useDraftEventStore,
   type DraftEvent,
 } from "../store/draftEventStore";
+import type { LiveEvent } from "../store/liveEventStore";
 import { useAuth } from "../context/AuthContext";
 import {
   isBusinessAuthNotReadyError,
@@ -69,6 +70,61 @@ export const eventDraftKeys = {
     [...eventDraftKeys.all, "detail"] as const,
   detail: (draftId: string): readonly ["event-drafts", "detail", string] =>
     [...eventDraftKeys.details(), draftId] as const,
+};
+
+export const reconcilePublishedEventDrafts = (
+  queryClient: QueryClient,
+  brandId: string,
+  authoritativeLiveEvents: readonly Pick<LiveEvent, "id">[],
+  localDrafts: DraftEvent[],
+  deleteDraft: (draftId: string) => void,
+): string[] => {
+  const liveEventIds = new Set(authoritativeLiveEvents.map((event) => event.id));
+  const staleDraftIds: string[] = [];
+  for (const draft of localDrafts) {
+    if (
+      draft.brandId === brandId &&
+      !isLocalOnlyDraftId(draft.id) &&
+      liveEventIds.has(draft.id)
+    ) {
+      staleDraftIds.push(draft.id);
+    }
+  }
+
+  if (staleDraftIds.length === 0) return [];
+
+  const staleIdSet = new Set(staleDraftIds);
+  staleDraftIds.forEach((draftId) => {
+    deleteDraft(draftId);
+    queryClient.removeQueries({ queryKey: eventDraftKeys.detail(draftId) });
+  });
+  queryClient.setQueryData<DraftEvent[]>(
+    eventDraftKeys.list(brandId),
+    (previous) =>
+      (previous ?? []).filter((draft) => !staleIdSet.has(draft.id)),
+  );
+
+  return staleDraftIds;
+};
+
+export const useReconcilePublishedEventDrafts = (
+  brandId: string | null,
+  authoritativeLiveEvents: LiveEvent[] | undefined,
+): void => {
+  const queryClient = useQueryClient();
+  const localDrafts = useDraftEventStore((state) => state.drafts);
+  const deleteDraft = useDraftEventStore((state) => state.deleteDraft);
+
+  useEffect(() => {
+    if (brandId === null || authoritativeLiveEvents === undefined) return;
+    reconcilePublishedEventDrafts(
+      queryClient,
+      brandId,
+      authoritativeLiveEvents,
+      localDrafts,
+      deleteDraft,
+    );
+  }, [authoritativeLiveEvents, brandId, deleteDraft, localDrafts, queryClient]);
 };
 
 export const useServerDraftsForBrand = (
