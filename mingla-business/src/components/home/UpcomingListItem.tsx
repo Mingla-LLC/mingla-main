@@ -94,6 +94,8 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
   const salesSummary = eventSalesSummaries[event.id];
   const rowSoldLabel = salesSummary?.soldLabel ?? "Loading…";
   const revenueLabel = salesSummary?.revenueLabel ?? "Loading…";
+  const refreshErrorLabel =
+    salesSummary?.readStatus === "stale-error" ? "Unable to refresh" : null;
   const salesAccessibility =
     salesSummary === undefined ||
     salesSummary.readStatus === "loading" ||
@@ -101,7 +103,9 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
       ? "Sales loading"
       : salesSummary.readStatus === "error"
         ? "Sales unavailable"
-        : `${rowSoldLabel}. ${revenueLabel}`;
+        : `${rowSoldLabel}. ${revenueLabel}${
+            refreshErrorLabel === null ? "" : `. ${refreshErrorLabel}`
+          }`;
   const isLive = item.status === "live";
 
   return (
@@ -140,6 +144,9 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
       <View style={styles.eventSoldCol}>
         <Text style={styles.eventSoldValue}>{rowSoldLabel}</Text>
         <Text style={styles.eventRevenueValue}>{revenueLabel}</Text>
+        {refreshErrorLabel === null ? null : (
+          <Text style={styles.eventRevenueValue}>{refreshErrorLabel}</Text>
+        )}
       </View>
     </Pressable>
   );

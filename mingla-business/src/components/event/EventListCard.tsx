@@ -77,7 +77,15 @@ const isLiveEvent = (
 const COVER_W = 76;
 const COVER_H = 92;
 
-export const EventListCard: React.FC<EventListCardProps> = ({
+export const EventListCard: React.FC<EventListCardProps> = (props) => {
+  const eventType = (props.event as { event_type?: string }).event_type;
+  if (eventType !== undefined && eventType !== "event" && eventType !== "rsvp") {
+    return null;
+  }
+  return <EventListCardBody {...props} />;
+};
+
+const EventListCardBody: React.FC<EventListCardProps> = ({
   event,
   kind,
   brand,
@@ -169,7 +177,11 @@ export const EventListCard: React.FC<EventListCardProps> = ({
           ? `Open ${title}. Sales loading.`
           : salesSummary.readStatus === "error"
             ? `Open ${title}. Sales unavailable.`
-            : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.`;
+            : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.${
+                salesSummary.readStatus === "stale-error"
+                  ? " Unable to refresh."
+                  : ""
+              }`;
 
   // Past + 0 sold → fade per Q-9-9.
   const isFaded =
@@ -185,10 +197,6 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   const isCheckboxRow = selectionMode && selectable;
 
   // ----- Render -----------------------------------------------------
-  if (eventType !== undefined && eventType !== "event" && eventType !== "rsvp") {
-    return null;
-  }
-
   return (
     <Animated.View
       style={[
@@ -302,6 +310,9 @@ export const EventListCard: React.FC<EventListCardProps> = ({
           ) : (
             <Text style={styles.subText}>{salesSummary.soldLabel}</Text>
           )}
+          {salesSummary.readStatus === "stale-error" ? (
+            <Text style={styles.subText}>Unable to refresh</Text>
+          ) : null}
         </View>
 
         {/* Tap affordance — chevron-right at the inner end of the card

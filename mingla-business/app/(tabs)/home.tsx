@@ -456,10 +456,14 @@ export default function HomeTab(): React.ReactElement {
           capacity !== null && capacity > 0 && soldCount !== null
             ? Math.min(1, soldCount / capacity)
             : 0,
+        refreshErrorLabel:
+          salesSummary?.readStatus === "stale-error"
+            ? "Unable to refresh"
+            : undefined,
       };
     }
     return map;
-  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries, liveRsvpSummaryById]);
+  }, [liveEventViews, eventSalesSummaries, liveRsvpSummaryById]);
 
   // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
   // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
@@ -862,6 +866,10 @@ export default function HomeTab(): React.ReactElement {
                     const salesSummary = eventSalesSummaries[event.id];
                     const rowSoldLabel = salesSummary?.soldLabel ?? "Loading…";
                     const revenueLabel = salesSummary?.revenueLabel ?? "Loading…";
+                    const refreshErrorLabel =
+                      salesSummary?.readStatus === "stale-error"
+                        ? "Unable to refresh"
+                        : null;
                     const isLive = item.status === "live";
 
                     return (
@@ -874,7 +882,11 @@ export default function HomeTab(): React.ReactElement {
                         accessibilityRole="button"
                         accessibilityLabel={`Open ${item.kind}: ${
                           event.name || "Untitled"
-                        }. ${rowSoldLabel}. ${revenueLabel}.`}
+                        }. ${rowSoldLabel}. ${revenueLabel}.${
+                          refreshErrorLabel === null
+                            ? ""
+                            : ` ${refreshErrorLabel}.`
+                        }`}
                         style={styles.eventRow}
                       >
                         <View style={styles.eventCoverWrap}>
@@ -911,6 +923,11 @@ export default function HomeTab(): React.ReactElement {
                           <Text style={styles.eventRevenueValue}>
                             {revenueLabel}
                           </Text>
+                          {refreshErrorLabel === null ? null : (
+                            <Text style={styles.eventRevenueValue}>
+                              {refreshErrorLabel}
+                            </Text>
+                          )}
                         </View>
                       </Pressable>
                       </View>
