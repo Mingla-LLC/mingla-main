@@ -1,12 +1,12 @@
 # Invariant Registry
 
-## DRAFT — issue #2063 (Ari brand-management certification)
+## ACTIVE — issue #2063 (Ari brand-management certification)
 
-### I-PROPOSED-2063-ARI-BRAND-MANAGEMENT-CANONICAL-EXACTLY-ONCE (DRAFT)
+### I-2063-ARI-BRAND-MANAGEMENT-CANONICAL-EXACTLY-ONCE (ACTIVE)
 
 - **Rule:** Ari brand create, update, delete, venue-scoped hours, and discovery-currency writes execute only after explicit confirmation through one caller-JWT brand transaction wrapper bound to the immutable pending-action operation ID. The wrapper reuses the canonical Business domain owners, enforces current deed-owner/delegated-role and brand/resource containment at execution time, returns stored readback, and replays a completed operation without repeating its mutation. Brand list and metadata-only audit reads remain non-mutating; pricing defaults remain outside #2063.
-- **Enforcement:** the issue #2063 additive migration, the #1972 shared operation-receipt contract already present on main, the #2063 Deno/PG17 regressions, `.github/scripts/strict-grep/issue-2063-ari-brand-management.mjs`, and `.github/workflows/issue-2063-ari-brand-management.yml`. The capability ledger keeps all seven rows `registered_unverified` until independent runtime evidence exists on Business web, iOS, and Android.
-- **Status:** DRAFT at IMPLEMENT; activate only after independent tester PASS, all-green merge, exact-revision database/Edge deployment, and production readback on every required Business surface.
+- **Enforcement:** the issue #2063 additive migration, the #1972 shared operation-receipt contract already present on main, the #2063 Deno/PG17 regressions, `.github/scripts/strict-grep/issue-2063-ari-brand-management.mjs`, and `.github/workflows/issue-2063-ari-brand-management.yml`. The capability ledger keeps all seven rows `registered_unverified` until the final release-wide #2060 certification promotes the complete post-Ari capability universe; #2063's independent Business web, iOS, and Android runtime evidence is recorded on the issue.
+- **Status:** ACTIVE after independent tester PASS, all-green merge, exact-revision production migration and Edge deployment, production fail-closed/readback verification, and authenticated Business web, iOS, and Android runtime PASS (2026-08-21).
 
 ## ACTIVE — issues #2264 / #2265 / #2253 (the buyer was told nothing, then told something false)
 
