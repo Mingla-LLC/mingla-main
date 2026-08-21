@@ -65,6 +65,7 @@ import { HapticFeedback } from "../../../src/utils/hapticFeedback";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useDiscardServerDraft,
+  useReconcilePublishedEventDrafts,
   useServerDraftsForBrand,
 } from "../../../src/hooks/useServerDraftEvents";
 import {
@@ -161,6 +162,10 @@ export default function EventsTab(): React.ReactElement {
   const currentBrand = useCurrentBrand();
   useServerDraftsForBrand(currentBrand?.id ?? null);
   const businessEventsQuery = useBusinessEventsForBrand(currentBrand?.id ?? null);
+  useReconcilePublishedEventDrafts(
+    currentBrand?.id ?? null,
+    businessEventsQuery.data,
+  );
   const drafts = useDraftsForBrand(currentBrand?.id ?? null);
   const legacyLiveEvents = useLiveEventsForBrand(currentBrand?.id ?? null);
   const liveEvents = useMemo(
