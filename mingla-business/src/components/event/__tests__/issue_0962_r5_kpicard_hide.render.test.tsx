@@ -20,6 +20,11 @@
 import React from "react";
 import TestRenderer, { act } from "react-test-renderer";
 
+// #2411 — this legacy suite exercises ready-state money hiding only. Isolate it
+// from the retry Button's native Worklets dependency; #2411's own render suite
+// imports and asserts the real error/retry control.
+jest.mock("../../ui/Button", () => ({ Button: (): null => null }));
+
 import { EventDetailKpiCard } from "../EventDetailKpiCard";
 
 type KpiProps = {

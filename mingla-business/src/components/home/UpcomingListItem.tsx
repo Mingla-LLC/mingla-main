@@ -93,7 +93,13 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
   const event = item.source as LiveEvent;
   const salesSummary = eventSalesSummaries[event.id];
   const rowSoldLabel = salesSummary?.soldLabel ?? "Loading…";
-  const revenueLabel = salesSummary?.revenueLabel ?? "Loading…";
+  const isTruthfulEmptyWithoutCurrency =
+    (salesSummary?.readStatus === "ready" || salesSummary?.readStatus === "stale-error") &&
+    salesSummary.soldCount === 0 &&
+    salesSummary.displayCurrency === null;
+  const revenueLabel = isTruthfulEmptyWithoutCurrency
+    ? "No sales yet"
+    : salesSummary?.revenueLabel ?? "Loading…";
   const refreshErrorLabel =
     salesSummary?.readStatus === "stale-error" ? "Unable to refresh" : null;
   const salesAccessibility =
