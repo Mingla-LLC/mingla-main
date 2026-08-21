@@ -60,13 +60,17 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
   });
 
   test("eventDrafts.resolveMissingDraftLifecycle filters event_type IN (event,rsvp)", () => {
-    const fn = EVENT_DRAFTS.match(/resolveMissingDraftLifecycle = async[^]*?^\};/m);
+    const fn = EVENT_DRAFTS.match(
+      /resolveMissingDraftLifecycle = async[^]*?^\};/m,
+    );
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
   test("eventDrafts.fetchExistingDraftSaveContext filters event_type IN (event,rsvp)", () => {
-    const fn = EVENT_DRAFTS.match(/fetchExistingDraftSaveContext = async[^]*?^\};/m);
+    const fn = EVENT_DRAFTS.match(
+      /fetchExistingDraftSaveContext = async[^]*?^\};/m,
+    );
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
@@ -147,19 +151,14 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"trip"\)/);
   });
 
-  test("tripsService.updateTripBasics theme SELECT pins event_type='trip'", () => {
-    // [TEST-MOD-APPROVED ORCH-1062] B1 stale-anchor repair — a comment at
-    // tripsService.ts:644 ("same policy that governs `updateTripBasics`") made the
-    // bare-name anchor match that mention instead of the real function, capturing
-    // an earlier body with only 1 filter. Anchor on the declaration. The two
-    // event_type='trip' filters (theme SELECT + UPDATE, lines 1023 + 1062) are
-    // intact; assertion unchanged. Fails-on-revert: removing either filter drops
-    // the count below 2.
+  test("tripsService.updateTripBasics retains its trip-only read before the canonical command", () => {
+    // [TEST-MOD-APPROVED #1971] The direct UPDATE is intentionally gone. The
+    // remaining read is trip-scoped and the write enters biz_apply_trip_draft_graph.
     const fn = TRIPS.match(/export async function updateTripBasics[^]*?^\}/m);
     expect(fn).not.toBeNull();
-    // updateTripBasics has TWO event_type='trip' filters (theme SELECT + UPDATE).
     const matches = fn?.[0].match(/\.eq\("event_type",\s*"trip"\)/g);
-    expect((matches ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((matches ?? []).length).toBeGreaterThanOrEqual(1);
+    expect(TRIPS).toContain('supabase.rpc("biz_apply_trip_draft_graph"');
   });
 
   test("tripsService has at least 4 .eq event_type='trip' filters (getTrip + updateBasics select + updateBasics update + updatePricing probe)", () => {
@@ -168,7 +167,7 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     expect((matches ?? []).length).toBeGreaterThanOrEqual(4);
   });
 
-  test("tripsService.updateTripPricing source contains the trip-currency probe filter", () => {
+  test("tripsService.updateTripPricing routes through the canonical graph command", () => {
     // Locate the function by its signature and scan to the next `export `.
     const idx = TRIPS.indexOf("export async function updateTripPricing");
     expect(idx).toBeGreaterThan(-1);
@@ -177,7 +176,7 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
       idx,
       nextExport === -1 ? TRIPS.length : nextExport,
     );
-    expect(fnSource).toMatch(/\.eq\("event_type",\s*"trip"\)/);
+    expect(fnSource).toMatch(/applyTripDraftCommand\(\s*eventId/);
   });
 
   // ============================================================
@@ -203,12 +202,14 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     // declaration. The real function (line 1666) still pins `.eq("event_type",
     // "trip")` at line 1675; assertion unchanged. Fails-on-revert: removing that
     // filter flips this red.
-    const fn = PUBLIC_EVENTS.match(/export const getPublicTripById = async[^]*?^\};/m);
+    const fn = PUBLIC_EVENTS.match(
+      /export const getPublicTripById = async[^]*?^\};/m,
+    );
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"trip"\)/);
   });
 
-  test("tripsService.updateLiveTripFields routes through biz_update_live_trip RPC", () => {
+  test("tripsService.updateLiveTripFields routes through the canonical live command", () => {
     const idx = TRIPS.indexOf("export async function updateLiveTripFields");
     expect(idx).toBeGreaterThan(-1);
     const nextExport = TRIPS.indexOf("export ", idx + 1);
@@ -216,9 +217,11 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
       idx,
       nextExport === -1 ? TRIPS.length : nextExport,
     );
-    // [TEST-MOD-APPROVED #1719] Live edits now enter the atomic poster wrapper;
-    // the wrapper delegates to the existing refund-gated trip function.
-    expect(fnSource).toMatch(/supabase\.rpc\(["']issue_1719_update_live_trip_with_poster["']/);
+    // [TEST-MOD-APPROVED #1971] The canonical command delegates to the existing
+    // refund-gated poster wrapper in the same database transaction.
+    expect(fnSource).toMatch(
+      /supabase\.rpc\(["']biz_update_trip_live_command["']/,
+    );
   });
 
   test("ORCH-0876 migration body enforces event_type='trip' + raises event_not_a_trip", () => {
@@ -268,9 +271,7 @@ describe("ORCH-0859 REWORK 3 — item A (trip publish RPC dual session flag)", (
 
   test("migration self-verify probe asserts both flags are present in installed function", () => {
     expect(MIGRATION).toMatch(/event_flag_count < 1/);
-    expect(MIGRATION).toMatch(
-      /slug trigger will reject publish/,
-    );
+    expect(MIGRATION).toMatch(/slug trigger will reject publish/);
   });
 });
 
@@ -364,7 +365,8 @@ describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () 
     expect(migration).toMatch(/UPDATE\s+public\.events\s+SET/);
     expect(migration).not.toMatch(/INSERT\s+INTO\s+public\.events/);
     // Exactly one ticket_types INSERT (I-1 one-ticket).
-    const ticketInserts = migration.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
+    const ticketInserts =
+      migration.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
     expect(ticketInserts.length).toBe(1);
   });
 });
@@ -374,9 +376,7 @@ describe("META-ORCH-1059 Sub-C/D — buyer journey (public page + checkout entry
   const PUBLIC_SERVICE = read("services/publicExperienceService.ts");
 
   test("the public experience route exists at app/exp/[brandSlug]/[experienceSlug]", () => {
-    expect(() =>
-      appRead("exp/[brandSlug]/[experienceSlug].tsx"),
-    ).not.toThrow();
+    expect(() => appRead("exp/[brandSlug]/[experienceSlug].tsx")).not.toThrow();
   });
 
   test("the experience checkout chain exists (index/buyer/payment/confirm/_layout)", () => {

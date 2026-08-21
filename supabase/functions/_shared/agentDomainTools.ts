@@ -545,86 +545,202 @@ const deleteExperience = writeTool(
 // D. Trips
 // ----------------------------------------------------------------------------
 
+async function executeTripWrite(
+  name: string,
+  args: Record<string, unknown>,
+  client: any,
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  return await callRpc(client, "ari_execute_trip_operation", {
+    p_operation_id: requireAgentOperationId(context),
+    p_tool_name: name,
+    p_args: args,
+  });
+}
+
 const createTrip = writeTool(
   "create_trip",
   "Create a draft trip under an owned brand.",
   { brand_id: UUID, title: STR, description: { type: "string" } },
   ["brand_id", "title"],
-  async (args, client, userId) => {
-    const brandId = await requireBrand(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .insert({
-        brand_id: brandId,
-        created_by: userId,
-        title: args.title,
-        description: args.description ?? null,
-        event_type: "trip",
-        status: "draft",
-      })
-      .select("id, title, status")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+  async (args, client, userId, context) => {
+    await requireBrand(args, client, userId);
+    return await executeTripWrite("create_trip", args, client, context);
   },
 );
 
 const updateTrip = writeTool(
   "update_trip",
-  "Update an owned trip's title/description.",
-  { event_id: UUID, title: STR, description: { type: "string" } },
+  "Update an owned trip's title/description. Scheduled/live trips require an audit reason.",
+  {
+    event_id: UUID,
+    expected_updated_at: { type: "string", format: "date-time" },
+    title: STR,
+    description: { type: "string" },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["event_id", "expected_updated_at"],
+  async (args, client, userId, context) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    void eventId;
+    if (!isString(args.title) && typeof args.description !== "string") {
+      throw new ToolError("INVALID_ARGS", "Nothing to update");
+    }
+    return await executeTripWrite("update_trip", args, client, context);
+  },
+);
+
+function tripGraphTool({
+  name,
+  description,
+  itemProperties,
+  requiredItem,
+  beforeExecute,
+}: {
+  name: string;
+  description: string;
+  itemProperties: Record<string, unknown>;
+  requiredItem: string[];
+  beforeExecute?: (
+    args: Record<string, unknown>,
+    client: Parameters<AgentToolDefinition["executor"]>[1],
+    brandId: string,
+  ) => Promise<void>;
+}): AgentToolDefinition {
+  return writeTool(
+    name,
+    description,
+    {
+      event_id: UUID,
+      expected_updated_at: { type: "string", format: "date-time" },
+      reason: { type: "string", minLength: 10, maxLength: 200 },
+      items: {
+        type: "array",
+        maxItems: 100,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: itemProperties,
+          required: requiredItem,
+        },
+      },
+    },
+    ["event_id", "expected_updated_at", "items"],
+    async (args, client, userId, context) => {
+      const { eventId, brandId } = await requireEvent(args, client, userId);
+      void eventId;
+      if (beforeExecute) await beforeExecute(args, client, brandId);
+      return await executeTripWrite(name, args, client, context);
+    },
+  );
+}
+
+const manageTripDays = tripGraphTool({
+  name: "manage_trip_days",
+  description: "Replace the ordered itinerary days on a trip.",
+  itemProperties: {
+    ordinal: { type: "integer", minimum: 1 },
+    title: STR,
+    narrative: { type: "string" },
+    date: { type: "string", format: "date" },
+    media: { type: "array", items: { type: "object" } },
+    stops: { type: "array" },
+  },
+  requiredItem: ["ordinal", "title"],
+});
+
+const manageTripInclusions = tripGraphTool({
+  name: "manage_trip_inclusions",
+  description: "Replace a trip's included and excluded items.",
+  itemProperties: {
+    kind: { type: "string", enum: ["included", "excluded"] },
+    item: STR,
+    ordinal: { type: "integer", minimum: 0 },
+  },
+  requiredItem: ["kind", "item", "ordinal"],
+});
+
+const manageTripTiers = tripGraphTool({
+  name: "manage_trip_tiers",
+  description: "Create, update, or explicitly remove trip packages.",
+  itemProperties: {
+    ticket_type_id: UUID,
+    tier_name: STR,
+    tier_metadata: { type: "object" },
+    price_cents: { type: "integer", minimum: 0 },
+    capacity: { type: "integer", minimum: 1 },
+    display_order: { type: "integer", minimum: 0 },
+    deleted: { type: "boolean" },
+  },
+  requiredItem: [],
+  beforeExecute: async (args, client, brandId) => {
+    const items = Array.isArray(args.items)
+      ? args.items as Array<Record<string, unknown>>
+      : [];
+    if (
+      items.some((item) =>
+        typeof item.price_cents === "number" && item.price_cents > 0
+      )
+    ) {
+      await assertCanCollect(client, brandId);
+    }
+  },
+});
+
+const manageTripTravelerIntake = tripGraphTool({
+  name: "manage_trip_traveler_intake",
+  description: "Replace per-tier traveler intake schemas.",
+  itemProperties: {
+    ticket_type_id: UUID,
+    schema: { type: "object", nullable: true },
+  },
+  requiredItem: ["ticket_type_id", "schema"],
+});
+
+const getTripOrderMoney = writeTool(
+  "get_trip_order_money",
+  "Read aggregate trip order and installment money totals without buyer PII.",
+  { event_id: UUID },
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const patch: Record<string, unknown> = {};
-    if (isString(args.title)) patch.title = args.title;
-    if (typeof args.description === "string") {
-      patch.description = args.description;
-    }
-    if (Object.keys(patch).length === 0) {
-      throw new ToolError("INVALID_ARGS", "Nothing to update");
-    }
-    const { data, error } = await client.from("events").update(patch).eq(
-      "id",
-      eventId,
-    ).select("id, title").single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await callRpc(client, "biz_get_trip_order_money_snapshot", {
+      p_event_id: eventId,
+    });
   },
 );
 
 const publishTrip = writeTool(
   "publish_trip",
-  "Publish a draft trip via issue_1719_publish_trip_with_poster.",
-  { event_id: UUID },
-  ["event_id"],
-  async (args, client, userId) => {
+  "Publish a draft trip from its persisted canonical graph.",
+  {
+    event_id: UUID,
+    expected_updated_at: { type: "string", format: "date-time" },
+  },
+  ["event_id", "expected_updated_at"],
+  async (args, client, userId, context) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
     const { data: paid } = await client.from("ticket_types").select("id").eq(
       "event_id",
       eventId,
     ).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
-    return await callRpc(client, "issue_1719_publish_trip_with_poster", {
-      p_event_id: eventId,
-      p_draft_payload: {},
-      p_client_revision: null,
-    });
+    return await executeTripWrite("publish_trip", args, client, context);
   },
 );
 
 const deleteTrip = writeTool(
   "delete_trip",
   "Soft-delete an owned trip.",
-  { event_id: UUID },
-  ["event_id"],
-  async (args, client, userId) => {
+  {
+    event_id: UUID,
+    expected_updated_at: { type: "string", format: "date-time" },
+  },
+  ["event_id", "expected_updated_at"],
+  async (args, client, userId, context) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const { error } = await client.from("events").update({
-      deleted_at: new Date().toISOString(),
-    }).eq("id", eventId);
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return { id: eventId, deleted: true };
+    void eventId;
+    return await executeTripWrite("delete_trip", args, client, context);
   },
 );
 
@@ -1664,6 +1780,11 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   deleteExperience,
   createTrip,
   updateTrip,
+  manageTripDays,
+  manageTripInclusions,
+  manageTripTiers,
+  manageTripTravelerIntake,
+  getTripOrderMoney,
   publishTrip,
   deleteTrip,
   createRsvp,
@@ -1709,6 +1830,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
 
 export const DOMAIN_READ_ONLY = new Set<string>([
   "quote_stay",
+  "get_trip_order_money",
   "get_payout_status",
   "get_partner_status",
   "get_tax_status",

@@ -10,13 +10,13 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 67,
+    "registered_tool_count": 72,
     "capability_count": 117,
     "status_breakdown": {
-      "registered_unverified": 30,
-      "broken": 36,
+      "registered_unverified": 39,
+      "broken": 32,
       "guided_handoff": 8,
-      "unsupported": 39,
+      "unsupported": 34,
       "in_flight": 4,
       "verified": 0
     }
@@ -1168,7 +1168,7 @@
         ]
       },
       "ari_tool": "create_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -1177,10 +1177,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Shallow event row is not the canonical trip draft"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1217,7 +1218,7 @@
         ]
       },
       "ari_tool": "update_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -1226,10 +1227,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1266,7 +1268,7 @@
         ]
       },
       "ari_tool": "publish_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -1275,10 +1277,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1315,7 +1318,7 @@
         ]
       },
       "ari_tool": "delete_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -1324,10 +1327,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -3501,8 +3505,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_days",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -3511,10 +3515,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -3546,8 +3551,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_inclusions",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -3556,10 +3561,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -3591,8 +3597,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_tiers",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -3601,10 +3607,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -5278,8 +5285,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_traveler_intake",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -5288,10 +5295,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "medium",
       "verified_at": "2026-08-13"
@@ -5421,8 +5429,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_trip_order_money",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -5431,10 +5439,11 @@
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered read tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"

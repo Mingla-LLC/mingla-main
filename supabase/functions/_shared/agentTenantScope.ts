@@ -5,9 +5,16 @@ import type { SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4
 import { ToolError } from "./agentToolHelpers.ts";
 
 export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
-  "list_brands", "list_events", "quote_stay", "get_payout_status",
-  "get_partner_status", "get_tax_status", "get_brand_analytics",
-  "list_guest_roster", "get_operator_snapshot",
+  "list_brands",
+  "list_events",
+  "quote_stay",
+  "get_payout_status",
+  "get_partner_status",
+  "get_tax_status",
+  "get_brand_analytics",
+  "list_guest_roster",
+  "get_operator_snapshot",
+  "get_trip_order_money",
 ]);
 
 export interface AccessibleAgentBrand {
@@ -21,7 +28,10 @@ export interface AccessibleAgentBrand {
 }
 
 export class TenantScopeError extends Error {
-  constructor(public code: "BRAND_ACCESS_DENIED" | "TENANT_SCOPE_UNAVAILABLE", message: string) {
+  constructor(
+    public code: "BRAND_ACCESS_DENIED" | "TENANT_SCOPE_UNAVAILABLE",
+    message: string,
+  ) {
     super(message);
     this.name = "TenantScopeError";
   }
@@ -47,12 +57,17 @@ export async function resolveAccessibleAgentBrands(
       .select("id, name, slug, default_currency, cover_media_url")
       .eq("account_id", userId).is("deleted_at", null),
     client.from("brand_team_members")
-      .select("brand_id, role, brand:brands!inner(id, name, slug, default_currency, cover_media_url, deleted_at)")
+      .select(
+        "brand_id, role, brand:brands!inner(id, name, slug, default_currency, cover_media_url, deleted_at)",
+      )
       .eq("user_id", userId).not("accepted_at", "is", null)
       .is("removed_at", null).is("brand.deleted_at", null),
   ]);
   if (ownedResult.error || memberResult.error) {
-    throw new TenantScopeError("TENANT_SCOPE_UNAVAILABLE", "Ari couldn't verify your brand access. Try again.");
+    throw new TenantScopeError(
+      "TENANT_SCOPE_UNAVAILABLE",
+      "Ari couldn't verify your brand access. Try again.",
+    );
   }
 
   const byId = new Map<string, AccessibleAgentBrand>();
@@ -61,19 +76,25 @@ export async function resolveAccessibleAgentBrands(
     if (!brand?.id) continue;
     const role = typeof raw.role === "string" ? raw.role : "member";
     byId.set(brand.id, {
-      id: brand.id, name: brand.name, slug: brand.slug,
+      id: brand.id,
+      name: brand.name,
+      slug: brand.slug,
       default_currency: brand.default_currency ?? null,
       cover_media_url: brand.cover_media_url ?? null,
-      role, effective_rank: ROLE_RANK[role] ?? 0,
+      role,
+      effective_rank: ROLE_RANK[role] ?? 0,
     });
   }
   // Ownership wins a duplicate membership row.
   for (const brand of (ownedResult.data ?? []) as any[]) {
     byId.set(brand.id, {
-      id: brand.id, name: brand.name, slug: brand.slug,
+      id: brand.id,
+      name: brand.name,
+      slug: brand.slug,
       default_currency: brand.default_currency ?? null,
       cover_media_url: brand.cover_media_url ?? null,
-      role: "owner", effective_rank: 60,
+      role: "owner",
+      effective_rank: 60,
     });
   }
   return [...byId.values()];
@@ -83,8 +104,15 @@ export function requireAccessibleAgentBrand(
   scope: AccessibleAgentBrand[],
   brandId: unknown,
 ): AccessibleAgentBrand {
-  const brand = typeof brandId === "string" ? scope.find((item) => item.id === brandId) : undefined;
-  if (!brand) throw new TenantScopeError("BRAND_ACCESS_DENIED", "That brand is not available to this account.");
+  const brand = typeof brandId === "string"
+    ? scope.find((item) => item.id === brandId)
+    : undefined;
+  if (!brand) {
+    throw new TenantScopeError(
+      "BRAND_ACCESS_DENIED",
+      "That brand is not available to this account.",
+    );
+  }
   return brand;
 }
 
@@ -94,9 +122,14 @@ export async function assertAgentReadBrand(
   brandId: unknown,
 ): Promise<AccessibleAgentBrand> {
   try {
-    return requireAccessibleAgentBrand(await resolveAccessibleAgentBrands(client, userId), brandId);
+    return requireAccessibleAgentBrand(
+      await resolveAccessibleAgentBrands(client, userId),
+      brandId,
+    );
   } catch (error) {
-    if (error instanceof TenantScopeError) throw new ToolError(error.code, error.message);
+    if (error instanceof TenantScopeError) {
+      throw new ToolError(error.code, error.message);
+    }
     throw error;
   }
 }
@@ -106,15 +139,27 @@ export async function assertAgentReadEvent(
   userId: string,
   eventId: unknown,
 ): Promise<string> {
-  const scope = await resolveAccessibleAgentBrands(client, userId).catch((error) => {
-    if (error instanceof TenantScopeError) throw new ToolError(error.code, error.message);
-    throw error;
-  });
+  const scope = await resolveAccessibleAgentBrands(client, userId).catch(
+    (error) => {
+      if (error instanceof TenantScopeError) {
+        throw new ToolError(error.code, error.message);
+      }
+      throw error;
+    },
+  );
   const { data, error } = await client.from("events").select("id, brand_id")
     .eq("id", String(eventId ?? "")).is("deleted_at", null).maybeSingle();
-  if (error) throw new ToolError("TENANT_SCOPE_UNAVAILABLE", "Ari couldn't verify event access. Try again.");
+  if (error) {
+    throw new ToolError(
+      "TENANT_SCOPE_UNAVAILABLE",
+      "Ari couldn't verify event access. Try again.",
+    );
+  }
   if (!data || !scope.some((brand) => brand.id === (data as any).brand_id)) {
-    throw new ToolError("BRAND_ACCESS_DENIED", "That event is not available to this account.");
+    throw new ToolError(
+      "BRAND_ACCESS_DENIED",
+      "That event is not available to this account.",
+    );
   }
   return (data as any).brand_id;
 }
