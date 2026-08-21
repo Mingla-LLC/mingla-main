@@ -131,12 +131,48 @@ export const doorSaleLiveAmount = (sale: MoneyDoorSaleRecord): number =>
 export const refundAmount = (refund: { amount?: number; amountGbp: number }): number =>
   refund.amount ?? refund.amountGbp;
 
+const singleStoredMoneyCurrency = (
+  orders: MoneyOrderRecord[],
+  doorSales: MoneyDoorSaleRecord[],
+): string | null => {
+  const currencies = new Set<string>();
+  const add = (value: string | null | undefined): void => {
+    const currency = currencyCodeOrNull(value);
+    if (currency !== null) currencies.add(currency);
+  };
+
+  for (const order of orders) {
+    const total = order.totalAtPurchase ?? order.totalGbpAtPurchase;
+    const refunded = order.refundedAmount ?? order.refundedAmountGbp;
+    if (total > 0 || refunded > 0) add(order.currency);
+    for (const refund of order.refunds) {
+      if (refundAmount(refund) > 0) {
+        add(refund.currency === undefined ? order.currency : refund.currency);
+      }
+    }
+  }
+  for (const sale of doorSales) {
+    const total = sale.totalAtSale ?? sale.totalGbpAtSale;
+    const refunded = sale.refundedAmount ?? sale.refundedAmountGbp;
+    if (total > 0 || refunded > 0 || sale.refunds.some((refund) => refundAmount(refund) > 0)) {
+      add(sale.currency);
+    }
+  }
+
+  return currencies.size === 1 ? [...currencies][0] : null;
+};
+
 export const summarizeEventMoney = (args: {
   expectedCurrency?: string | null;
   orders: MoneyOrderRecord[];
   doorSales: MoneyDoorSaleRecord[];
 }): EventMoneySummary => {
-  const expectedCurrency = currencyCodeOrNull(args.expectedCurrency);
+  // #2411 + #962 — an unset event/brand currency is not permission to invent
+  // GBP, but it must not erase real money either. A single currency carried by
+  // the money-bearing records is authoritative; zero-money rows establish none.
+  const expectedCurrency =
+    currencyCodeOrNull(args.expectedCurrency)
+    ?? singleStoredMoneyCurrency(args.orders, args.doorSales);
   const byCurrency = new Map<string, CurrencyBreakdown>();
   const mismatches: CurrencyMismatch[] = [];
   const revenueByMethod: EventMoneySummary["revenueByMethod"] = {};

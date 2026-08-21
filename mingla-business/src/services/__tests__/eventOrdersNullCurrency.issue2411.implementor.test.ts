@@ -10,6 +10,7 @@ import {
 } from "../eventOrdersService";
 import { summarizeEventMoney } from "../../utils/moneySummary";
 import { OrderCurrencyContractError } from "../../utils/orderCurrencyContract";
+import { serializeGuestsToCsv } from "../../utils/guestCsvExport";
 
 const freeRow = (id: string, quantity: number): OrderRow => ({
   id,
@@ -91,6 +92,13 @@ describe("#2411 free orders with no established currency", () => {
       byCurrency: [],
       currenciesPresent: [],
     });
+
+    const csv = serializeGuestsToCsv([
+      { kind: "order", id: orders[0].id, order: orders[0], sortKey: orders[0].paidAt },
+    ]);
+    const csvCells = csv.split("\r\n")[1].split(",");
+    expect([csvCells[12], csvCells[14], csvCells[16]]).toEqual(["", "", ""]);
+    expect(csv).not.toMatch(/\b(?:null|GBP|USD)\b/);
   });
 
   test("fails the entire mapping for positive money without a valid currency", () => {
