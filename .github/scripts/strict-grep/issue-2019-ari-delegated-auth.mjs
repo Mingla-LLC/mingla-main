@@ -14,12 +14,10 @@ const sources = {
 function check(s) {
   const failures = [];
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
-  // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
-  // #1973/#1985 authorization denominator without changing inherited roles.
-  if (declarationCount !== 70) failures.push(`expected 70 declarations, got ${declarationCount}`);
-  // [TEST-MOD-APPROVED #1973] [TEST-MOD-APPROVED #1974] experience lifecycle
-  // and ticket-pricing tools are additive delegated declarations.
-  if (declarationCount !== 68) failures.push(`expected 68 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #2421] The #1973, #1985, #2063, and #1974 tools are
+  // additive delegated declarations. Keep one current denominator so an older
+  // feature cannot leave a second, contradictory assertion behind.
+  if (declarationCount !== 71) failures.push(`expected 71 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
@@ -44,6 +42,8 @@ if (process.argv.includes("--self-test")) {
     { ...sources, chat: sources.chat.replace("await authorizeAgentTool(tool, gemini.toolCall.args", "await removed(tool, gemini.toolCall.args") },
     { ...sources, confirm: sources.confirm.replace('status: "executing"', 'status: "removed"') },
     { ...sources, auth: sources.auth.replace(/:\s*role\("/, ": removed(") },
+    // [TEST-MOD-APPROVED #2421] The denominator must reject silent additions too.
+    { ...sources, auth: `${sources.auth}\nconst addedTool: role("brand_owner");` },
   ];
   if (mutations.some((mutation) => check(mutation).length === 0)) {
     console.error("issue-2019 self-test FAIL: a material revert escaped");
