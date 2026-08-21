@@ -129,7 +129,9 @@ export const OrderListCard: React.FC<OrderListCardProps> = ({
       initials: getInitials(order.buyer.name),
       amountLabel: order.totalGbpAtPurchase === 0
         ? "Free"
-        : formatCurrencyRound(order.totalGbpAtPurchase, order.currency),
+        : order.currency === null
+          ? "—"
+          : formatCurrencyRound(order.totalGbpAtPurchase, order.currency),
       subline: `${order.id} · ${summarizeLines(order.lines)} · ${formatRelativeTime(order.paidAt)}`,
     };
   }, [order]);

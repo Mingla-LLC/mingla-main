@@ -1,5 +1,12 @@
 import { supabase } from "./supabase";
 import type { OrderRecord, RefundRecord } from "../store/orderStore";
+import { reportNonFatal } from "../diagnostics/reportNonFatal";
+import {
+  assertOrderCurrencyForMoney,
+  assertRefundCurrencyForMoney,
+  orderCurrencyOrNull,
+  OrderCurrencyContractError,
+} from "../utils/orderCurrencyContract";
 
 // ORCH-0787: Order shape now includes server-truth refunds + line-level refund accounting
 // + cancellation columns. The hardcoded `refunds: []` stub is gone.
@@ -20,10 +27,10 @@ interface RefundLineItemRow {
   amount_cents: number;
 }
 
-interface RefundRow {
+export interface RefundRow {
   id: string;
   amount_cents: number;
-  currency: string;
+  currency: string | null;
   reason: string | null;
   status: string;
   processed_at: string | null;
@@ -34,7 +41,7 @@ interface RefundRow {
   refund_line_items: RefundLineItemRow[];
 }
 
-interface OrderRow {
+export interface OrderRow {
   id: string;
   event_id: string;
   buyer_email: string | null;
@@ -42,7 +49,7 @@ interface OrderRow {
   buyer_phone_e164: string | null;
   buyer_phone: string | null;
   total_cents: number;
-  currency: string;
+  currency: string | null;
   payment_method: string;
   payment_status: string;
   confirmed_at: string | null;
@@ -72,7 +79,7 @@ export interface EventOrderRevenue {
   revenue: number;
   refunded: number;
   netRevenue: number;
-  currency: string;
+  currency: string | null;
 }
 
 export interface EventOrderActivity {
@@ -81,7 +88,7 @@ export interface EventOrderActivity {
   buyerName: string;
   summary: string;
   amountGbp?: number;
-  currency?: string;
+  currency?: string | null;
   at: string;
 }
 
@@ -104,13 +111,14 @@ const statusFromPayment = (status: string): OrderRecord["status"] => {
   return "paid";
 };
 
-const mapRefundRow = (row: RefundRow, orderCurrency: string): RefundRecord => {
+const mapRefundRow = (row: RefundRow): RefundRecord => {
   const amountMajor = row.amount_cents / 100;
   return {
     id: row.id,
     orderId: "", // populated by caller
     amountGbp: amountMajor,
     amount: amountMajor,
+    currency: orderCurrencyOrNull(row.currency),
     reason: row.reason ?? "",
     refundedAt: row.processed_at ?? row.created_at,
     lines: (row.refund_line_items ?? []).map((rli) => ({
@@ -217,11 +225,49 @@ export const fetchEventOrders = async (
 
   if (error) throw error;
 
-  return ((data ?? []) as unknown as OrderRow[]).map((order) => {
+  try {
+    return mapEventOrderRows((data ?? []) as unknown as OrderRow[]);
+  } catch (caught) {
+    if (caught instanceof OrderCurrencyContractError) {
+      reportNonFatal("event-orders.currency-contract", caught, {
+        feature: "event-orders",
+        code: caught.code,
+        eventId,
+      });
+    }
+    throw caught;
+  }
+};
+
+const validateOrderRowCurrency = (order: OrderRow): void => {
+  const orderCurrency = orderCurrencyOrNull(order.currency);
+  const succeededRefunds = (order.refunds ?? []).filter(
+    (refund) => refund.status === "succeeded",
+  );
+  const hasOrderMoney =
+    order.total_cents > 0 ||
+    (order.refunded_amount_cents ?? 0) > 0 ||
+    order.order_line_items.some(
+      (line) => line.unit_price_cents > 0 || line.total_cents > 0,
+    );
+  assertOrderCurrencyForMoney(orderCurrency, hasOrderMoney);
+  for (const refund of succeededRefunds) {
+    assertRefundCurrencyForMoney(
+      orderCurrency,
+      orderCurrencyOrNull(refund.currency),
+      refund.amount_cents > 0,
+    );
+  }
+};
+
+export const mapEventOrderRows = (rows: OrderRow[]): OrderRecord[] => {
+  for (const order of rows) validateOrderRowCurrency(order);
+
+  return rows.map((order) => {
     // ORCH-0787: filter refunds to status='succeeded' for the visible refund ledger.
     // Pending/failed refunds do not appear in the UI (they exist for reconciliation only).
     const succeededRefunds = (order.refunds ?? []).filter((r) => r.status === "succeeded");
-    const orderCurrency = order.currency.trim();
+    const orderCurrency = orderCurrencyOrNull(order.currency);
 
     // Build per-line refund accounting from refund_line_items across succeeded refunds.
     const refundedQtyByLine: Record<string, number> = {};
@@ -250,14 +296,7 @@ export const fetchEventOrders = async (
       // issue #2160 — the days each pass of this order admits. EMPTY on every
       // pre-#2160 order and every single-date event, which is what "not
       // day-scoped" means: that pass is valid on any occurrence.
-      ticketDays: ((order as unknown as {
-        tickets?: Array<{
-          id: string;
-          status: string | null;
-          used_at: string | null;
-          ticket_event_dates?: Array<{ event_date_id: string }> | null;
-        }> | null;
-      }).tickets ?? []).map((ticket) => ({
+      ticketDays: (order.tickets ?? []).map((ticket) => ({
         ticketId: ticket.id,
         eventDateIds: (ticket.ticket_event_dates ?? []).map(
           (link) => link.event_date_id,
@@ -285,7 +324,11 @@ export const fetchEventOrders = async (
       totalAtPurchase: order.total_cents / 100,
       totalCents: order.total_cents,
       currency: orderCurrency,
-      paymentMethod: paymentMethodFromRow(order.payment_method),
+      paymentMethod:
+        order.total_cents === 0 &&
+        order.order_line_items.every((line) => line.total_cents === 0)
+          ? "free"
+          : paymentMethodFromRow(order.payment_method),
       paidAt: order.confirmed_at ?? order.created_at,
       status: statusFromPayment(order.payment_status),
       refundedAmountGbp: refundedAmountMajor,
@@ -299,7 +342,7 @@ export const fetchEventOrders = async (
       stripeApplicationFeeAmountCents: order.stripe_application_fee_amount_cents,
       absorbedCostsCents: parseAbsorbedCents(order.pricing_breakdown),
       refunds: succeededRefunds.map((row) => ({
-        ...mapRefundRow(row, orderCurrency),
+        ...mapRefundRow(row),
         orderId: order.id,
       })),
       // ORCH-0787: cancelled_at is the canonical column. Failed payments are NOT mapped to cancelled.
@@ -316,7 +359,7 @@ export const getEventOrderById = (
 
 export const getEventOrderRevenue = (
   orders: OrderRecord[],
-  currency = "GBP",
+  currency: string | null,
 ): EventOrderRevenue => {
   let soldCount = 0;
   let revenue = 0;
@@ -410,7 +453,7 @@ export const getEventOrderActivity = (
         buyerName,
         summary: `refunded ${refundedQty}x tickets`,
         amountGbp: refund.amount ?? refund.amountGbp,
-        currency: order.currency,
+        currency: refund.currency,
         at: refund.refundedAt,
       });
     }

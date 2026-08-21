@@ -163,6 +163,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
   // dashboard's money summary + activity feed). Declared before any early
   // return so hook order is stable.
   const allOrders = ordersQuery.data ?? [];
+  const ordersReady =
+    ordersQuery.status === "ready" || ordersQuery.status === "stale-error";
   const moneySummary = useMemo(
     () =>
       summarizeEventMoney({
@@ -184,8 +186,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           ),
     [allOrders, experience],
   );
-  const soldCount = useMemo<number>(() => {
-    if (experience === null) return 0;
+  const soldCount = useMemo<number | null>(() => {
+    if (experience === null || !ordersReady) return null;
     return allOrders
       .filter(
         (o) =>
@@ -201,7 +203,7 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           ),
         0,
       );
-  }, [allOrders, experience]);
+  }, [allOrders, experience, ordersReady]);
   const tiles = useMemo(
     () => withListingInsights(buildOfferingDashboardTiles("experience")),
     [],
@@ -372,7 +374,12 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
                 }
                 sub={
                   tile.key === "orders"
-                    ? `${soldCount} sold`
+                    ? soldCount === null
+                      ? ordersQuery.status === "loading" ||
+                        ordersQuery.status === "disabled"
+                        ? "Loading…"
+                        : "Unable to load"
+                      : `${soldCount} sold`
                     : tile.sub
                 }
                 onPress={() =>
@@ -395,6 +402,8 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
           revenueGbp={moneySummary.onlineRevenue}
           payoutGbp={moneySummary.onlineNetMajor}
           currency={experience.currency}
+          readStatus={ordersQuery.status}
+          onRetry={() => void ordersQuery.refetch()}
         />
 
         {/* Pricing summary (price + capacity) — kept below the money card. */}
@@ -424,7 +433,19 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
         {/* Pass 2 — Recent activity (purchase / refund / cancel). */}
         <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
         <GlassCard variant="base" radius="md" padding={spacing.md}>
-          {recentActivity.length === 0 ? (
+          {ordersQuery.status === "loading" || ordersQuery.status === "disabled" ? (
+            <Text style={styles.emptySectionText} accessibilityRole="progressbar">
+              Loading activity…
+            </Text>
+          ) : ordersQuery.status === "error" ? (
+            <Button
+              label="Try again"
+              variant="secondary"
+              size="md"
+              onPress={() => void ordersQuery.refetch()}
+              fullWidth
+            />
+          ) : recentActivity.length === 0 ? (
             <Text style={styles.emptySectionText}>No activity yet.</Text>
           ) : (
             <View style={styles.activityList}>

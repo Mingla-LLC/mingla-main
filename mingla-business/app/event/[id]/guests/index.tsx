@@ -263,7 +263,8 @@ export default function EventGuestsListRoute(): React.ReactElement {
   );
 
   // Raw subscriptions — merge in useMemo to maintain stable refs.
-  const allOrderEntries = useEventGuestList(typeof eventId === "string" ? eventId : null);
+  const allOrderEntriesRead = useEventGuestList(typeof eventId === "string" ? eventId : null);
+  const allOrderEntries = allOrderEntriesRead.data ?? [];
   const allCompEntries = useGuestStore((s) => s.entries);
   // Cycle 12 — door sale entries merged into the J-G1 list.
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
@@ -606,6 +607,44 @@ export default function EventGuestsListRoute(): React.ReactElement {
           />
         </View>
       </>
+    );
+  }
+
+  if (
+    allOrderEntriesRead.status === "loading" ||
+    allOrderEntriesRead.status === "disabled"
+  ) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading guests…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (allOrderEntriesRead.status === "error") {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>{headcountPluralCap}</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load guests"
+            description="No order-backed guest count is shown until orders load."
+            cta={{ label: "Try again", onPress: () => { void allOrderEntriesRead.refetch(); }, variant: "primary" }}
+          />
+        </View>
+      </View>
     );
   }
 

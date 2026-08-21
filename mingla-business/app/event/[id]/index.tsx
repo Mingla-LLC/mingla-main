@@ -378,6 +378,9 @@ export default function EventDetailScreen(): React.ReactElement {
 
   const eventOrdersQuery = useEventOrders(event?.id ?? null);
   const allOrderEntries = eventOrdersQuery.data ?? [];
+  const ordersReady =
+    eventOrdersQuery.status === "ready" ||
+    eventOrdersQuery.status === "stale-error";
   const totalSoldCount = useMemo<number>(
     () =>
       allOrderEntries.reduce(
@@ -762,13 +765,13 @@ export default function EventDetailScreen(): React.ReactElement {
           <ActionTile
             icon="ticket"
             label="Orders"
-            sub={`${totalSoldCount} sold`}
+            sub={ordersReady ? `${totalSoldCount} sold` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
             onPress={handleOrders}
           />
           <ActionTile
             icon="user"
             label="Guests"
-            sub={`${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}`}
+            sub={ordersReady ? `${totalGuestCount} ${totalGuestCount === 1 ? "guest" : "guests"}` : eventOrdersQuery.status === "error" ? "Unable to load" : "Loading…"}
             onPress={handleGuests}
           />
           {canShowListingInsights ? (
@@ -835,6 +838,8 @@ export default function EventDetailScreen(): React.ReactElement {
           payoutGbp={payoutGbp}
           coveredGbp={coveredGbp}
           currency={displayCurrency}
+          readStatus={eventOrdersQuery.status}
+          onRetry={() => { void eventOrdersQuery.refetch(); }}
         />
 
         {moneySummary.mismatches.length > 0 ? (
@@ -861,7 +866,7 @@ export default function EventDetailScreen(): React.ReactElement {
                 <EventDetailTicketTypeRow
                   key={ticket.id}
                   ticket={ticket}
-                  soldCount={soldCountByTier[ticket.id] ?? 0}
+                  soldCount={ordersReady ? soldCountByTier[ticket.id] ?? 0 : null}
                 />
               ))}
           </View>
@@ -870,7 +875,11 @@ export default function EventDetailScreen(): React.ReactElement {
         {/* Recent activity section — Cycle 9c rework v3 live wire */}
         <Text style={styles.sectionLabelSpacer}>RECENT ACTIVITY</Text>
         <GlassCard variant="base" radius="md" padding={spacing.md}>
-          {recentActivity.length === 0 ? (
+          {!ordersReady ? (
+            <Text style={styles.emptySectionText}>
+              {eventOrdersQuery.status === "error" ? "Unable to load activity." : "Loading activity…"}
+            </Text>
+          ) : recentActivity.length === 0 ? (
             <Text style={styles.emptySectionText}>No activity yet.</Text>
           ) : (
             <View style={styles.activityList}>

@@ -554,6 +554,8 @@ export default function TripDashboardRoute(): React.ReactElement {
           revenueGbp={moneySummary.onlineRevenue}
           payoutGbp={moneySummary.onlineNetMajor}
           currency={displayCurrency}
+          readStatus={recordOrdersQuery.status}
+          onRetry={() => void recordOrdersQuery.refetch()}
         />
 
         <TripDetailKpiCard

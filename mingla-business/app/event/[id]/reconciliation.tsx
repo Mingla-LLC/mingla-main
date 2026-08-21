@@ -98,7 +98,8 @@ export default function ReconciliationRoute(): React.ReactElement {
   const { rank } = useCurrentBrandRole(brand?.id ?? null);
 
   // Raw entries + useMemo per selector pattern rule (T-41 grep gate)
-  const allOrderEntries = useEventReconciliation(typeof eventId === "string" ? eventId : null);
+  const allOrderEntriesRead = useEventReconciliation(typeof eventId === "string" ? eventId : null);
+  const allOrderEntries = allOrderEntriesRead.data ?? [];
   const allDoorEntries = useDoorSalesStore((s) => s.entries);
   const allCompEntries = useGuestStore((s) => s.entries);
   const allScanEntries = useScanStore((s) => s.entries);
@@ -113,7 +114,7 @@ export default function ReconciliationRoute(): React.ReactElement {
       // #962 G4 — computation input only: a valid-or-undefined code so
       // computeReconciliation's mismatch math is unaffected (a pre-bank brand
       // has 0 sales). The DISPLAY currency below is resolved null-safe.
-      currency: currencyCodeOrNull(event.currency) ?? undefined,
+      currency: currencyCodeOrNull(event.currency),
       orderEntries: allOrderEntries,
       doorEntries: allDoorEntries,
       compEntries: allCompEntries,
@@ -183,9 +184,10 @@ export default function ReconciliationRoute(): React.ReactElement {
         0,
     [summary],
   );
+  const exportReady = allOrderEntriesRead.status === "ready";
 
   const handleExport = useCallback(async (): Promise<void> => {
-    if (event === null || !hasAnyData || exporting) return;
+    if (event === null || !hasAnyData || !exportReady || exporting) return;
     setExporting(true);
     try {
       // Cycle 13 v2 (D-CYCLE13-IMPL-6): honest toast per export result.
@@ -217,6 +219,7 @@ export default function ReconciliationRoute(): React.ReactElement {
     eventComps,
     summary,
     hasAnyData,
+    exportReady,
     exporting,
     showToast,
   ]);
@@ -293,6 +296,36 @@ export default function ReconciliationRoute(): React.ReactElement {
     );
   }
 
+  if (
+    allOrderEntriesRead.status === "loading" ||
+    allOrderEntriesRead.status === "disabled"
+  ) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <ChromeRow onBack={handleBack} />
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading reconciliation…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (allOrderEntriesRead.status === "error") {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <ChromeRow onBack={handleBack} />
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load reconciliation"
+            description="No totals or export are shown until online orders load."
+            cta={{ label: "Try again", onPress: () => { void allOrderEntriesRead.refetch(); }, variant: "primary" }}
+          />
+        </View>
+      </View>
+    );
+  }
+
   // 3. Populated render — full screen
   const dateLine = formatDraftDateLine(event);
 
@@ -318,7 +351,7 @@ export default function ReconciliationRoute(): React.ReactElement {
             size={36}
             onPress={handleExport}
             accessibilityLabel="Export reconciliation CSV"
-            disabled={!hasAnyData || exporting}
+            disabled={!hasAnyData || !exportReady || exporting}
           />
         </View>
       </View>
@@ -369,6 +402,7 @@ export default function ReconciliationRoute(): React.ReactElement {
         {/* EXPORT section */}
         <ExportSection
           hasAnyData={hasAnyData}
+          exportReady={exportReady}
           exporting={exporting}
           onExportCsv={handleExport}
         />
@@ -725,12 +759,14 @@ const DiscrepanciesSection: React.FC<DiscrepanciesSectionProps> = ({
 
 interface ExportSectionProps {
   hasAnyData: boolean;
+  exportReady: boolean;
   exporting: boolean;
   onExportCsv: () => void;
 }
 
 const ExportSection: React.FC<ExportSectionProps> = ({
   hasAnyData,
+  exportReady,
   exporting,
   onExportCsv,
 }) => (
@@ -738,13 +774,13 @@ const ExportSection: React.FC<ExportSectionProps> = ({
     <Text style={styles.sectionHeading}>EXPORT</Text>
     <Pressable
       onPress={onExportCsv}
-      disabled={!hasAnyData || exporting}
+      disabled={!hasAnyData || !exportReady || exporting}
       accessibilityRole="button"
       accessibilityLabel="Export reconciliation CSV"
       style={({ pressed }) => [
         styles.exportPrimaryCta,
-        (!hasAnyData || exporting) && styles.exportCtaDisabled,
-        pressed && hasAnyData && !exporting && styles.exportCtaPressed,
+        (!hasAnyData || !exportReady || exporting) && styles.exportCtaDisabled,
+        pressed && hasAnyData && exportReady && !exporting && styles.exportCtaPressed,
       ]}
     >
       <Icon name="download" size={18} color={accent.warm} />
@@ -754,6 +790,8 @@ const ExportSection: React.FC<ExportSectionProps> = ({
     </Pressable>
     {!hasAnyData ? (
       <Text style={styles.exportCaption}>No data to export yet.</Text>
+    ) : !exportReady ? (
+      <Text style={styles.exportCaption}>Refresh orders before exporting.</Text>
     ) : null}
     {/* "Email PDF report" — DEFERRED to B-cycle per D-13-7. Visibly disabled, never tappable (Const #1 + #7). */}
     <View style={styles.exportSecondaryDisabled}>

@@ -45,7 +45,7 @@ import type { OrderRecord } from "../../store/orderStore";
 // real refund-order edge function via useRefundOrder mutation. Event-edit-log + parent
 // notification rollup side effects are removed in v1 (owned by ORCH-0782 if it needs them).
 import { useRefundOrder } from "../../hooks/useEventOrders";
-import { formatCurrency } from "../../utils/currency";
+import { currencyCodeOrNull, formatCurrency } from "../../utils/currency";
 import { randomId } from "../../utils/randomId";
 
 import { Button } from "../ui/Button";
@@ -111,6 +111,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
   }, [visible, order.lines]);
 
   const submitting = refundMutation.isPending;
+  const moneyCurrency = currencyCodeOrNull(order.currency);
 
   // Available lines for partial refund (only those with remaining qty)
   const refundableLines = useMemo(
@@ -152,6 +153,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
     !submitting &&
     reasonValid &&
     canRefund &&
+    moneyCurrency !== null &&
     (mode === "full" ? fullHasAmount : partialHasSelection);
 
   const handleStepperChange = useCallback(
@@ -244,7 +246,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
 
   const title =
     mode === "full"
-      ? `Refund ${formatCurrency(refundAmount, order.currency)}?`
+      ? `Refund ${moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}?`
       : `Refund partial`;
 
   return (
@@ -267,7 +269,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {formatCurrency(refundAmount, order.currency)}
+                  {moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}
                 </Text>
               </View>
             </View>
@@ -289,7 +291,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
                         {line.ticketNameAtPurchase}
                       </Text>
                       <Text style={styles.lineSubline}>
-                        {maxRefundable} remaining · {formatCurrency(line.unitPriceGbpAtPurchase, order.currency)} each
+                        {maxRefundable} remaining · {moneyCurrency === null ? "—" : formatCurrency(line.unitPriceGbpAtPurchase, moneyCurrency)} each
                       </Text>
                     </View>
                     <View style={styles.stepper}>
@@ -342,7 +344,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Refund total</Text>
                 <Text style={styles.summaryValueBold}>
-                  {formatCurrency(partialTotalGbp, order.currency)}
+                  {moneyCurrency === null ? "—" : formatCurrency(partialTotalGbp, moneyCurrency)}
                 </Text>
               </View>
             </View>
@@ -411,7 +413,7 @@ export const RefundSheet: React.FC<RefundSheetProps> = ({
             label={
               mode === "full"
                 ? "Send refund"
-                : `Refund ${formatCurrency(refundAmount, order.currency)}`
+                : `Refund ${moneyCurrency === null ? "—" : formatCurrency(refundAmount, moneyCurrency)}`
             }
             onPress={handleConfirm}
             variant="destructive"

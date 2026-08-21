@@ -44,7 +44,7 @@ export function offeringActivityFromOrders(
         buyerName,
         summary: `refunded ${refundedQty}× tickets`,
         amountGbp: r.amountGbp,
-        currency: o.currency,
+        currency: r.currency,
         at: r.refundedAt,
       });
     }

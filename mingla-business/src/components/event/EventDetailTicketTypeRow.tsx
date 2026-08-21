@@ -21,7 +21,7 @@ import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 interface EventDetailTicketTypeRowProps {
   ticket: TicketStub;
   /** Cycle 9c — derived in parent from useOrderStore (per-tier live count). */
-  soldCount: number;
+  soldCount: number | null;
   capacityTestID?: string;
 }
 
@@ -34,7 +34,7 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
   const cap = ticket.isUnlimited
     ? Number.POSITIVE_INFINITY
     : (ticket.capacity ?? 0);
-  const isSoldOut = !ticket.isUnlimited && cap > 0 && sold >= cap;
+  const isSoldOut = sold !== null && !ticket.isUnlimited && cap > 0 && sold >= cap;
   // #962 G14 — hide the price ("—") when the ticket has no established currency
   // (pre-bank brand); never manufacture GBP. Mirrors G8 (ticketDisplay.ts).
   const ticketCode = currencyCodeOrNull(ticket.currency);
@@ -43,7 +43,9 @@ const EventDetailTicketTypeRowInner: React.FC<EventDetailTicketTypeRowProps> = (
     : ticketCode !== null
       ? formatCurrency(ticket.priceGbp ?? 0, ticketCode)
       : "—";
-  const capText = ticket.isUnlimited ? `${sold} sold` : `${sold} / ${cap}`;
+  const capText = sold === null
+    ? "—"
+    : ticket.isUnlimited ? `${sold} sold` : `${sold} / ${cap}`;
 
   return (
     <View style={styles.host}>

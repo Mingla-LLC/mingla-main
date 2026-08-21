@@ -8,8 +8,8 @@ import {
 
 export interface EventSalesSummary {
   eventId: string;
-  soldCount: number;
-  onlineRevenue: number;
+  soldCount: number | null;
+  onlineRevenue: number | null;
   // #962 G3 — null when the brand has no established currency (pre-bank);
   // the revenue label is then "—" (never a fabricated GBP).
   displayCurrency: string | null;
@@ -18,15 +18,28 @@ export interface EventSalesSummary {
   hasUnlimitedTickets: boolean;
   soldLabel: string;
   revenueLabel: string;
+  readStatus: EventOrdersReadStatus;
+  isRefreshing: boolean;
+  /** Compatibility projection; new consumers must branch on readStatus. */
   hasError: boolean;
 }
+
+export type EventOrdersReadStatus =
+  | "disabled"
+  | "loading"
+  | "error"
+  | "ready"
+  | "stale-error";
 
 export interface EventSalesSummaryInput {
   eventId: string;
   tickets: TicketStub[];
   eventCurrency?: string | null;
   brandDefaultCurrency?: string | null;
-  orders: OrderRecord[];
+  orders: OrderRecord[] | null;
+  readStatus?: EventOrdersReadStatus;
+  isRefreshing?: boolean;
+  /** Compatibility input for existing pure tests; hooks use readStatus. */
   hasError?: boolean;
 }
 
@@ -74,49 +87,60 @@ export const buildEventSalesSummary = ({
   eventCurrency,
   brandDefaultCurrency,
   orders,
+  readStatus: suppliedReadStatus,
+  isRefreshing = false,
   hasError = false,
 }: EventSalesSummaryInput): EventSalesSummary => {
+  const readStatus: EventOrdersReadStatus =
+    suppliedReadStatus ?? (hasError ? "error" : "ready");
   // #962 G3 — null-safe: null when the brand has no established currency.
   // summarizeEventMoney accepts null and normalizes internally for its
   // (0-order, pre-bank) computation; the DISPLAY label hides when null.
   const displayCurrency = currencyCodeOrNull(eventCurrency ?? brandDefaultCurrency);
   const { finiteCapacity, hasUnlimitedTickets } = summarizeTicketCapacity(tickets);
-  const soldCount = getEventTicketsSold(orders);
-  const moneySummary = summarizeEventMoney({
-    expectedCurrency: displayCurrency,
-    orders,
-    doorSales: [],
-  });
-
-  if (hasError) {
+  const isReady =
+    orders !== null && !(suppliedReadStatus === undefined && hasError);
+  if (!isReady) {
+    const isLoading = readStatus === "loading" || readStatus === "disabled";
     return {
       eventId,
-      soldCount: 0,
-      onlineRevenue: 0,
+      soldCount: null,
+      onlineRevenue: null,
       displayCurrency,
       mismatches: [],
       finiteCapacity,
       hasUnlimitedTickets,
-      soldLabel: "Unable to load",
-      revenueLabel: "Unable to load",
-      hasError: true,
+      soldLabel: isLoading ? "Loading…" : "Unable to load",
+      revenueLabel: isLoading ? "Loading…" : "Unable to load",
+      readStatus,
+      isRefreshing: false,
+      hasError: readStatus === "error",
     };
   }
+  const readyOrders = orders ?? [];
+  const readySoldCount = getEventTicketsSold(readyOrders);
+  const moneySummary = summarizeEventMoney({
+    expectedCurrency: displayCurrency,
+    orders: readyOrders,
+    doorSales: [],
+  });
 
   const soldLabel =
     finiteCapacity !== null
-      ? `${formatCount(soldCount)} / ${formatCount(finiteCapacity)}`
-      : `${formatCount(soldCount)} sold`;
+      ? `${formatCount(readySoldCount)} / ${formatCount(finiteCapacity)}`
+      : `${formatCount(readySoldCount)} sold`;
   const revenueLabel =
     displayCurrency === null
       ? "—"
-      : moneySummary.mismatches.length > 0 && moneySummary.onlineRevenue === 0
+      : readStatus === "stale-error"
+        ? "Unable to refresh"
+        : moneySummary.mismatches.length > 0 && moneySummary.onlineRevenue === 0
         ? "Currency review"
         : formatCurrencyRound(moneySummary.onlineRevenue, displayCurrency);
 
   return {
     eventId,
-    soldCount,
+    soldCount: readySoldCount,
     onlineRevenue: moneySummary.onlineRevenue,
     displayCurrency,
     mismatches: moneySummary.mismatches,
@@ -124,6 +148,8 @@ export const buildEventSalesSummary = ({
     hasUnlimitedTickets,
     soldLabel,
     revenueLabel,
-    hasError: false,
+    readStatus,
+    isRefreshing,
+    hasError: readStatus === "error",
   };
 };
