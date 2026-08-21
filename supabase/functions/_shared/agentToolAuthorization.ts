@@ -91,8 +91,16 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   quote_stay: role("scanner", "brand"),
   create_stay_reservation: role("scanner", "brand"),
   transition_stay: role("event_manager", "stay_reservation"),
-  create_venue_reservation: role("scanner", "brand"),
+  // #1975 — a free manual operator booking; the database requires effective
+  // rank event_manager or higher, so the proposal-time gate matches.
+  create_venue_reservation: role("event_manager", "brand"),
   transition_venue_reservation: role("event_manager", "venue_reservation"),
+  // #1975 — Stay authoring. The coarse proposal-time gate is event_manager;
+  // manage-stay-inventory + owning SQL enforce the exact read/inventory/finance
+  // capability split per action (issue_1387_has_brand_capability).
+  manage_stay_inventory: role("event_manager", "brand"),
+  publish_stay: role("event_manager", "brand"),
+  manage_stay_policy_price_media: role("event_manager", "brand"),
   create_venue_listing: role("brand_admin", "brand"),
   submit_venue_claim: role("brand_admin", "brand"),
   mark_claim_feedback_fixed: role("brand_admin", "brand"),
@@ -208,10 +216,13 @@ async function resolveBrand(
       break;
     }
     case "stay_reservation": {
+      // #1975 — transition_stay identifies the reservation by its canonical
+      // group id for every operation (approve/decline/cancel) so tenant/brand
+      // is always resolvable before authorization.
       const row = await rowBrand(
         client,
         "stay_reservation_groups",
-        args.reservation_id,
+        args.group_id,
       );
       brandId = row.brand_id;
       break;
