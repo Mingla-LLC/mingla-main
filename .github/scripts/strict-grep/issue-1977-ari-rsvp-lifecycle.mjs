@@ -24,6 +24,7 @@ const files = {
   jestTest: "mingla-business/src/services/__tests__/issue1977RsvpLifecycle.test.ts",
   certifier: "scripts/ari/certify-capabilities.mjs",
   evidenceSchema: "docs/contracts/ari-certification-evidence.schema.json",
+  workflow: ".github/workflows/issue-1977-ari-rsvp-lifecycle.yml",
 };
 
 export function audit(base) {
@@ -34,7 +35,7 @@ export function audit(base) {
     return fs.readFileSync(target, "utf8");
   };
   const migration=read("migration"),tools=read("tools"),auth=read("auth"),prompt=read("prompt"),refund=read("refund"),drafts=read("drafts"),events=read("events"),approvals=read("approvals"),roster=read("roster"),refunds=read("refunds");
-  const receiptTest=read("receiptTest"),certificationTest=read("certificationTest"),certifier=read("certifier"),evidenceSchema=read("evidenceSchema");
+  const receiptTest=read("receiptTest"),certificationTest=read("certificationTest"),certifier=read("certifier"),evidenceSchema=read("evidenceSchema"),workflow=read("workflow");
   read("pgTest"); read("denoTest"); read("taskStateTest"); read("jestTest");
   for (const fn of ["business_create_rsvp_draft_graph","business_update_rsvp_graph","business_publish_rsvp_graph","business_discard_rsvp_draft","business_list_rsvp_roster","business_set_rsvp_guest_status","business_list_rsvp_contributions","biz_prepare_rsvp_contribution_refund"]) {
     if (!migration.includes(`FUNCTION public.${fn}`)) failures.push(`canonical migration is missing ${fn}`);
@@ -56,6 +57,7 @@ export function audit(base) {
   if (!receiptTest.includes("v_replay:=public.ari_execute_rsvp_operation") || !receiptTest.includes("idempotency_conflict") || !receiptTest.includes("operation_binding_mismatch")) failures.push("implementor receipt proof no longer covers exact replay/conflict");
   if (!certificationTest.includes("expected exactly 118 certification requirements") || !certificationTest.includes("ari_cert_missing_capabilities:117") || !certificationTest.includes("bac1588dd5d65fd2accdbaebfc7168fd2d682b41c9a253f98e1b3afd97d3dab6")) failures.push("118-row certification regression is incomplete");
   if (!certifier.includes("ledger.capabilities.length !== 118") || !certifier.includes("rows.length === 118") || !evidenceSchema.includes('"minItems": 118') || !evidenceSchema.includes('"maxItems": 118')) failures.push("current certifier/schema is not pinned to 118 rows");
+  if (!/- uses: actions\/checkout@v4\s+with:\s+fetch-depth:\s*0(?:\s|$)/.test(workflow)) failures.push("#1977 historical ledger checks require a full-history checkout");
   return failures;
 }
 
@@ -74,6 +76,9 @@ function selfTest() {
     const certification=path.join(tmp,files.certificationTest),cleanCertification=fs.readFileSync(certification,"utf8");
     fs.writeFileSync(certification,cleanCertification.replace("ari_cert_missing_capabilities:117","ari_cert_missing_capabilities:116"));
     if (!audit(tmp).some((failure)=>failure.includes("certification regression"))) throw new Error("true mutation: obsolete certifier evidence count was not detected");
+    const workflow=path.join(tmp,files.workflow),cleanWorkflow=fs.readFileSync(workflow,"utf8");
+    fs.writeFileSync(workflow,cleanWorkflow.replace("fetch-depth: 0","fetch-depth: 1"));
+    if (!audit(tmp).some((failure)=>failure.includes("full-history checkout"))) throw new Error("hostile mutation: shallow checkout was not detected");
     console.log("[issue-1977-ari-rsvp-lifecycle] self-test PASS");
   } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 }
