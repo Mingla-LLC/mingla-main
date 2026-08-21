@@ -1,0 +1,98 @@
+name: "#2418 Bank List and Native Identity"
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "mingla-business/src/services/appVersionIdentity.ts"
+      - "mingla-business/src/services/brandPaystackService.ts"
+      - "mingla-business/src/services/supabase.ts"
+      - "mingla-business/src/hooks/useBrandPaystack.ts"
+      - "mingla-business/src/components/brand/BrandPaystackOnboardView.tsx"
+      - "mingla-business/src/**/__tests__/issue_2418_*.test.ts"
+      - "mingla-business/src/**/__tests__/issue_2418_*.test.tsx"
+      - "mingla-business/app.json"
+      - "docs/QUERY_KEY_REGISTRY.md"
+      - "supabase/functions/_shared/appVersionPolicy.ts"
+      - "supabase/functions/brand-paystack-onboard/index.ts"
+      - "supabase/functions/brand-stripe-onboard/index.ts"
+      - "supabase/functions/brand-stripe-account-session/index.ts"
+      - "supabase/functions/brand-stripe-tax-account-session/index.ts"
+      - ".github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2418-bank-list-native-identity.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: issue-2418-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  structural-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node .github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs
+      - name: Prove release fallback revert fails
+        run: |
+          if ISSUE_2418_SIMULATE_IDENTITY_REVERT=1 node .github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs; then
+            echo "#2418 release fallback simulated revert unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove truthful error branch revert fails
+        run: |
+          if ISSUE_2418_SIMULATE_BANK_ERROR_REVERT=1 node .github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs; then
+            echo "#2418 bank error simulated revert unexpectedly passed"
+            exit 1
+          fi
+      - name: Prove auth-ready fold revert fails
+        run: |
+          if ISSUE_2418_SIMULATE_AUTH_REVERT=1 node .github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs; then
+            echo "#2418 auth-ready simulated revert unexpectedly passed"
+            exit 1
+          fi
+
+  host-contract:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - run: >-
+          npx jest --runInBand
+          src/services/__tests__/issue_2418_native_identity_and_bank_payload.test.ts
+          src/hooks/__tests__/issue_2418_bank_query_contract.test.ts
+          src/components/brand/__tests__/issue_2418_bank_picker_states.test.tsx
+          src/components/brand/__tests__/issue_2418_tester_adversarial.test.tsx
+
+  existing-version-policy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - run: >-
+          deno test --allow-env
+          supabase/functions/_shared/appVersionPolicy.test.ts
+          supabase/functions/_shared/appVersionPolicy.tester-adversarial.test.ts
+      - run: >-
+          deno check
+          supabase/functions/app-version-policy/index.ts
+          supabase/functions/brand-stripe-onboard/index.ts
+          supabase/functions/brand-stripe-account-session/index.ts
+          supabase/functions/brand-stripe-tax-account-session/index.ts
+          supabase/functions/brand-paystack-onboard/index.ts

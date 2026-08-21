@@ -48,6 +48,91 @@ export interface PaystackRecipientResult {
   is_active: true;
 }
 
+export type PaystackBankListErrorCode =
+  | "unauthenticated"
+  | "forbidden"
+  | "app_update_required"
+  | "invalid_response"
+  | "unknown";
+
+export class PaystackBankListError extends Error {
+  readonly code: PaystackBankListErrorCode;
+  readonly status: number | null;
+
+  constructor(code: PaystackBankListErrorCode, status: number | null) {
+    super(
+      code === "invalid_response"
+        ? "listPaystackBanks: invalid response"
+        : "listPaystackBanks: request failed",
+    );
+    this.name = "PaystackBankListError";
+    this.code = code;
+    this.status = status;
+  }
+}
+
+function isRecordLike(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
+}
+
+function safeBankListCode(value: unknown): PaystackBankListErrorCode {
+  return value === "unauthenticated" ||
+    value === "forbidden" ||
+    value === "app_update_required"
+    ? value
+    : "unknown";
+}
+
+async function classifyBankListInvocationError(
+  error: unknown,
+): Promise<PaystackBankListError> {
+  const context = isRecordLike(error) ? error.context : null;
+  const status =
+    isRecordLike(context) && typeof context.status === "number"
+      ? context.status
+      : null;
+  let code: PaystackBankListErrorCode = "unknown";
+
+  if (isRecordLike(context) && typeof context.json === "function") {
+    try {
+      const body = await context.json();
+      if (isRecordLike(body)) {
+        code = safeBankListCode(body.error);
+      }
+    } catch {
+      code = "unknown";
+    }
+  }
+
+  if (code === "unknown") {
+    if (status === 401) code = "unauthenticated";
+    if (status === 403) code = "forbidden";
+    if (status === 426) code = "app_update_required";
+  }
+  return new PaystackBankListError(code, status);
+}
+
+function parsePaystackBanks(value: unknown): PaystackBankOption[] {
+  if (!isRecordLike(value) || !Array.isArray(value.banks)) {
+    throw new PaystackBankListError("invalid_response", null);
+  }
+
+  const banks: PaystackBankOption[] = [];
+  for (const row of value.banks) {
+    if (
+      !isRecordLike(row) ||
+      typeof row.name !== "string" ||
+      row.name.trim().length === 0 ||
+      typeof row.code !== "string" ||
+      row.code.trim().length === 0
+    ) {
+      throw new PaystackBankListError("invalid_response", null);
+    }
+    banks.push({ name: row.name, code: row.code });
+  }
+  return banks;
+}
+
 async function unwrapError(fn: string, error: unknown): Promise<Error> {
   // Supabase FunctionsHttpError carries the JSON body on error.context.
   const ctx = (error as { context?: Response })?.context;
@@ -55,7 +140,9 @@ async function unwrapError(fn: string, error: unknown): Promise<Error> {
     try {
       const body = await ctx.json();
       if (body?.detail || body?.error) {
-        return new Error(`${fn}: ${body.error ?? "error"}${body.detail ? ` (${body.detail})` : ""}`);
+        return new Error(
+          `${fn}: ${body.error ?? "error"}${body.detail ? ` (${body.detail})` : ""}`,
+        );
       }
     } catch {
       // fall through to generic
@@ -66,12 +153,12 @@ async function unwrapError(fn: string, error: unknown): Promise<Error> {
 
 /** List NG NUBAN settlement banks for the picker. */
 export async function listPaystackBanks(): Promise<PaystackBankOption[]> {
-  const { data, error } = await supabase.functions.invoke<{ banks: PaystackBankOption[] }>(
+  const { data, error } = await supabase.functions.invoke<unknown>(
     "brand-paystack-onboard",
     { body: { action: "list_banks" } },
   );
-  if (error) throw await unwrapError("listPaystackBanks", error);
-  return data?.banks ?? [];
+  if (error) throw await classifyBankListInvocationError(error);
+  return parsePaystackBanks(data);
 }
 
 /** Verify an account number against a bank; returns the holder name to confirm. */
@@ -80,17 +167,18 @@ export async function resolvePaystackAccount(
   accountNumber: string,
   bankCode: string,
 ): Promise<PaystackResolvedAccount> {
-  const { data, error } = await supabase.functions.invoke<PaystackResolvedAccount>(
-    "brand-paystack-onboard",
-    {
-      body: {
-        action: "resolve_account",
-        brand_id: brandId,
-        account_number: accountNumber,
-        bank_code: bankCode,
+  const { data, error } =
+    await supabase.functions.invoke<PaystackResolvedAccount>(
+      "brand-paystack-onboard",
+      {
+        body: {
+          action: "resolve_account",
+          brand_id: brandId,
+          account_number: accountNumber,
+          bank_code: bankCode,
+        },
       },
-    },
-  );
+    );
   if (error) throw await unwrapError("resolvePaystackAccount", error);
   if (!data) throw new Error("resolvePaystackAccount: edge fn returned null");
   return data;
@@ -102,17 +190,18 @@ export async function createPaystackSubaccount(
   accountNumber: string,
   bankCode: string,
 ): Promise<PaystackSubaccountResult> {
-  const { data, error } = await supabase.functions.invoke<PaystackSubaccountResult>(
-    "brand-paystack-onboard",
-    {
-      body: {
-        action: "create_subaccount",
-        brand_id: brandId,
-        account_number: accountNumber,
-        bank_code: bankCode,
+  const { data, error } =
+    await supabase.functions.invoke<PaystackSubaccountResult>(
+      "brand-paystack-onboard",
+      {
+        body: {
+          action: "create_subaccount",
+          brand_id: brandId,
+          account_number: accountNumber,
+          bank_code: bankCode,
+        },
       },
-    },
-  );
+    );
   if (error) throw await unwrapError("createPaystackSubaccount", error);
   if (!data) throw new Error("createPaystackSubaccount: edge fn returned null");
   return data;
@@ -124,17 +213,18 @@ export async function updatePaystackSubaccount(
   accountNumber: string,
   bankCode: string,
 ): Promise<PaystackSubaccountResult> {
-  const { data, error } = await supabase.functions.invoke<PaystackSubaccountResult>(
-    "brand-paystack-onboard",
-    {
-      body: {
-        action: "update_subaccount",
-        brand_id: brandId,
-        account_number: accountNumber,
-        bank_code: bankCode,
+  const { data, error } =
+    await supabase.functions.invoke<PaystackSubaccountResult>(
+      "brand-paystack-onboard",
+      {
+        body: {
+          action: "update_subaccount",
+          brand_id: brandId,
+          account_number: accountNumber,
+          bank_code: bankCode,
+        },
       },
-    },
-  );
+    );
   if (error) throw await unwrapError("updatePaystackSubaccount", error);
   if (!data) throw new Error("updatePaystackSubaccount: edge fn returned null");
   return data;
@@ -146,17 +236,18 @@ async function savePaystackRecipient(
   accountNumber: string,
   bankCode: string,
 ): Promise<PaystackRecipientResult> {
-  const { data, error } = await supabase.functions.invoke<PaystackRecipientResult>(
-    "brand-paystack-onboard",
-    {
-      body: {
-        action,
-        brand_id: brandId,
-        account_number: accountNumber,
-        bank_code: bankCode,
+  const { data, error } =
+    await supabase.functions.invoke<PaystackRecipientResult>(
+      "brand-paystack-onboard",
+      {
+        body: {
+          action,
+          brand_id: brandId,
+          account_number: accountNumber,
+          bank_code: bankCode,
+        },
       },
-    },
-  );
+    );
   if (error) throw await unwrapError("savePaystackRecipient", error);
   if (!data) throw new Error("savePaystackRecipient: edge fn returned null");
   return data;
@@ -196,10 +287,9 @@ export function updatePaystackRecipient(
  * the bank-details form.
  */
 export async function selectPaystackProvider(brandId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke(
-    "brand-paystack-onboard",
-    { body: { action: "select_provider", brand_id: brandId } },
-  );
+  const { error } = await supabase.functions.invoke("brand-paystack-onboard", {
+    body: { action: "select_provider", brand_id: brandId },
+  });
   if (error) throw await unwrapError("selectPaystackProvider", error);
 }
 
@@ -208,19 +298,17 @@ export async function selectPaystackProvider(brandId: string): Promise<void> {
  * connected a bank reverts to the Stripe rail (to choose a different country).
  */
 export async function clearPaystackProvider(brandId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke(
-    "brand-paystack-onboard",
-    { body: { action: "clear_provider", brand_id: brandId } },
-  );
+  const { error } = await supabase.functions.invoke("brand-paystack-onboard", {
+    body: { action: "clear_provider", brand_id: brandId },
+  });
   if (error) throw await unwrapError("clearPaystackProvider", error);
 }
 
 /** Disconnect the brand's payout bank (clears the subaccount link). */
 export async function disconnectPaystack(brandId: string): Promise<void> {
-  const { error } = await supabase.functions.invoke(
-    "brand-paystack-onboard",
-    { body: { action: "disconnect", brand_id: brandId } },
-  );
+  const { error } = await supabase.functions.invoke("brand-paystack-onboard", {
+    body: { action: "disconnect", brand_id: brandId },
+  });
   if (error) throw await unwrapError("disconnectPaystack", error);
 }
 
@@ -228,10 +316,11 @@ export async function disconnectPaystack(brandId: string): Promise<void> {
 export async function refreshPaystackStatus(
   brandId: string,
 ): Promise<PaystackOnboardStatus> {
-  const { data, error } = await supabase.functions.invoke<PaystackOnboardStatus>(
-    "brand-paystack-onboard",
-    { body: { action: "refresh_status", brand_id: brandId } },
-  );
+  const { data, error } =
+    await supabase.functions.invoke<PaystackOnboardStatus>(
+      "brand-paystack-onboard",
+      { body: { action: "refresh_status", brand_id: brandId } },
+    );
   if (error) throw await unwrapError("refreshPaystackStatus", error);
   if (!data) throw new Error("refreshPaystackStatus: edge fn returned null");
   return data;

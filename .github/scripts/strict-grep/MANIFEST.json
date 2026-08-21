@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 579,
-  "selfTestWiredFloor": 373,
+  "expectedStrictGrepMjsFiles": 580,
+  "selfTestWiredFloor": 374,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -25,6 +25,20 @@
     "scripts/ota"
   ],
   "gates": [
+    {
+      "script": ".github/scripts/strict-grep/issue-2418-bank-list-native-identity.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2418-bank-list-native-identity.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "structural-contract"
+      ]
+    },
     {
       "script": ".github/scripts/strict-grep/issue-1974-ari-ticket-pricing.mjs",
       "kind": "file",

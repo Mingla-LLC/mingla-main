@@ -121,6 +121,28 @@ The consuming `loading` flag is bound to "no data yet for the current auth
 scope", never to `isFetching`, so a background refetch does not re-disable a
 resolved CTA (`docs/INVARIANT_REGISTRY.md:6537` bug class).
 
+### brandPaystackKeys (useBrandPaystack.ts) — issue #2418
+
+| Sub-key | Shape |
+|---------|-------|
+| `all` | `['brand-paystack']` |
+| `banks()` | `['brand-paystack', 'banks', 'NG', 'NGN', 'nuban']` |
+| `status(brandId)` | `['brand-paystack', 'status', brandId]` |
+
+**Catalogue dimensions:** `banks()` is the one fixed Paystack settlement-bank
+catalogue for country `NG`, currency `NGN`, and type `nuban`. It is not scoped
+to a brand or user and never contains a token, email, account number, or other
+credential.
+
+**Readiness and freshness:** the catalogue query is enabled only after root
+auth readiness and any caller-provided enablement are both true. Valid data has
+`staleTime: 1 hour` and `gcTime: 2 hours`; errors never become data. Logout's
+existing global React Query clear remains the cache/privacy boundary.
+
+**Refresh rule:** there is no mutation invalidation. Manual `refetch()`,
+reconnect, staleness, and mount behavior own refresh. Valid cached rows stay
+visible while a background refresh is pending or fails.
+
 ---
 
 ---
