@@ -37,16 +37,16 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
   const BUSINESS_EVENTS = read("services/businessEvents.ts");
   const PUBLIC_EVENTS = read("services/publicEventsService.ts");
 
-  // [TEST-MOD-APPROVED ORCH-1062] B2 drift (tests below) — ORCH-1150 [RSVP event
-  // wizard] stores RSVP drafts as event_type='rsvp' and every event-only draft
-  // READ/UPDATE now admits BOTH via `.in("event_type", DRAFT_EVENT_TYPES)`
+  // [TEST-MOD-APPROVED ORCH-1062] B2 drift (read tests below) — ORCH-1150 [RSVP
+  // event wizard] stores RSVP drafts as event_type='rsvp' and every event-only
+  // draft READ now admits BOTH via `.in("event_type", DRAFT_EVENT_TYPES)`
   // (= ["event","rsvp"], eventDrafts.ts:64) instead of `.eq("event_type","event")`,
   // or RSVP drafts vanish from the Hub. The trip-exclusion invariant is preserved
   // (trips still never match). The extraction anchors also gained `= async` because
   // ORCH-1150's header comment (eventDrafts.ts:56-63) mentions several of these
   // function names before their definitions. Same-strength drift updates, not a
-  // loosening. Fails-on-revert: reverting a `.in(...)` back to `.eq("event_type",
-  // "event")` (dropping RSVP) flips the matching assertion red.
+  // loosening. Fails-on-revert: reverting a read `.in(...)` back to
+  // `.eq("event_type", "event")` (dropping RSVP) flips the matching assertion red.
   test("eventDrafts.fetchDraftsForBrand filters event_type IN (event,rsvp)", () => {
     const fn = EVENT_DRAFTS.match(/fetchDraftsForBrand = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
@@ -60,29 +60,46 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
   });
 
   test("eventDrafts.resolveMissingDraftLifecycle filters event_type IN (event,rsvp)", () => {
-    const fn = EVENT_DRAFTS.match(/resolveMissingDraftLifecycle = async[^]*?^\};/m);
+    const fn = EVENT_DRAFTS.match(
+      /resolveMissingDraftLifecycle = async[^]*?^\};/m,
+    );
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
   test("eventDrafts.fetchExistingDraftSaveContext filters event_type IN (event,rsvp)", () => {
-    const fn = EVENT_DRAFTS.match(/fetchExistingDraftSaveContext = async[^]*?^\};/m);
+    const fn = EVENT_DRAFTS.match(
+      /fetchExistingDraftSaveContext = async[^]*?^\};/m,
+    );
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.autosaveServerDraft (UPDATE) filters event_type IN (event,rsvp)", () => {
+  // [TEST-MOD-APPROVED #1977] RSVP autosave no longer performs a caller-owned
+  // row UPDATE, so the old `.in(...)` query assertion described a path that must
+  // stay deleted. The canonical graph owner performs the same event_type='rsvp'
+  // check under lock. This replacement pins both the required owner and the
+  // hostile negative space: reintroducing the direct UPDATE flips this test red.
+  test("eventDrafts.autosaveServerDraft routes RSVP writes through the typed graph owner", () => {
     const fn = EVENT_DRAFTS.match(/autosaveServerDraft = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
+    expect(fn?.[0]).toMatch(
+      /if \(draft\.isRsvp === true\)[^]*?supabase\.rpc\("business_update_rsvp_graph"/,
+    );
+    expect(fn?.[0]).not.toMatch(/\.from\("events"\)[^]*?\.update\(/);
   });
 
-  test("eventDrafts.createServerDraft INSERT payload sets event_type (event|rsvp)", () => {
-    // ORCH-1150: the insert writes the event_type via the `eventTypeForInsert`
-    // variable ("event" | "rsvp", draft.isRsvp), not a bare literal.
-    expect(EVENT_DRAFTS).toMatch(
-      /insert\(\{[^}]*event_type:\s*eventTypeForInsert/,
+  // [TEST-MOD-APPROVED #1977] The server-owned graph now supplies the persisted
+  // event_type='rsvp'; requiring a client INSERT would restore the competing
+  // writer that #1977 removes. The existing mounted #1150 test independently
+  // proves isRsvp:true selects this RPC and forwards the typed draft payload.
+  test("eventDrafts.createServerDraft delegates RSVP typing to the canonical graph owner", () => {
+    const fn = EVENT_DRAFTS.match(/createServerDraft = async[^]*?^\};/m);
+    expect(fn).not.toBeNull();
+    expect(fn?.[0]).toMatch(
+      /if \(eventTypeForInsert === "rsvp"\)[^]*?supabase\.rpc\("business_create_rsvp_draft_graph"/,
     );
+    expect(fn?.[0]).not.toMatch(/\.from\("events"\)[^]*?\.insert\(/);
   });
 
   test("useBrands brand-stats counters (past/scheduled/live) all filter event_type='event'", () => {
@@ -203,7 +220,9 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     // declaration. The real function (line 1666) still pins `.eq("event_type",
     // "trip")` at line 1675; assertion unchanged. Fails-on-revert: removing that
     // filter flips this red.
-    const fn = PUBLIC_EVENTS.match(/export const getPublicTripById = async[^]*?^\};/m);
+    const fn = PUBLIC_EVENTS.match(
+      /export const getPublicTripById = async[^]*?^\};/m,
+    );
     expect(fn).not.toBeNull();
     expect(fn?.[0]).toMatch(/\.eq\("event_type",\s*"trip"\)/);
   });
@@ -218,7 +237,9 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     );
     // [TEST-MOD-APPROVED #1719] Live edits now enter the atomic poster wrapper;
     // the wrapper delegates to the existing refund-gated trip function.
-    expect(fnSource).toMatch(/supabase\.rpc\(["']issue_1719_update_live_trip_with_poster["']/);
+    expect(fnSource).toMatch(
+      /supabase\.rpc\(["']issue_1719_update_live_trip_with_poster["']/,
+    );
   });
 
   test("ORCH-0876 migration body enforces event_type='trip' + raises event_not_a_trip", () => {
@@ -268,9 +289,7 @@ describe("ORCH-0859 REWORK 3 — item A (trip publish RPC dual session flag)", (
 
   test("migration self-verify probe asserts both flags are present in installed function", () => {
     expect(MIGRATION).toMatch(/event_flag_count < 1/);
-    expect(MIGRATION).toMatch(
-      /slug trigger will reject publish/,
-    );
+    expect(MIGRATION).toMatch(/slug trigger will reject publish/);
   });
 });
 
@@ -364,7 +383,8 @@ describe("META-ORCH-1059 Sub-B — experience routing via routeForEventRow", () 
     expect(migration).toMatch(/UPDATE\s+public\.events\s+SET/);
     expect(migration).not.toMatch(/INSERT\s+INTO\s+public\.events/);
     // Exactly one ticket_types INSERT (I-1 one-ticket).
-    const ticketInserts = migration.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
+    const ticketInserts =
+      migration.match(/INSERT\s+INTO\s+public\.ticket_types/gi) ?? [];
     expect(ticketInserts.length).toBe(1);
   });
 });
@@ -374,9 +394,7 @@ describe("META-ORCH-1059 Sub-C/D — buyer journey (public page + checkout entry
   const PUBLIC_SERVICE = read("services/publicExperienceService.ts");
 
   test("the public experience route exists at app/exp/[brandSlug]/[experienceSlug]", () => {
-    expect(() =>
-      appRead("exp/[brandSlug]/[experienceSlug].tsx"),
-    ).not.toThrow();
+    expect(() => appRead("exp/[brandSlug]/[experienceSlug].tsx")).not.toThrow();
   });
 
   test("the experience checkout chain exists (index/buyer/payment/confirm/_layout)", () => {
