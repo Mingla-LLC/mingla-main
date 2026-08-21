@@ -65,3 +65,67 @@ describe("#2395 Manual contact groups happy-path surface", () => {
     }
   });
 });
+
+jest.mock("../../ui/Icon", () => ({ Icon: () => null }));
+
+const ReactRuntime = require("react") as typeof import("react");
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+const TestRenderer = require("react-test-renderer") as {
+  create: (node: React.ReactElement) => {
+    root: {
+      findAll: (predicate: (node: RenderedNode) => boolean) => RenderedNode[];
+    };
+    toJSON: () => unknown;
+  };
+  act: (callback: () => void) => void;
+};
+
+interface RenderedNode {
+  props: {
+    accessibilityLabel?: string;
+    onPress?: () => void;
+  };
+}
+
+function renderedText(node: unknown): string {
+  if (typeof node === "string") return node;
+  if (Array.isArray(node)) return node.map(renderedText).join(" ");
+  if (node !== null && typeof node === "object" && "children" in node) {
+    return renderedText((node as { children?: unknown }).children);
+  }
+  return "";
+}
+
+describe("#2395 Manual contact groups rendered happy path", () => {
+  test("a Manual group renders its real organizational count and opens the selected group", () => {
+    const { ManualGroupCard } = require("../../marketing/AudienceCard") as typeof import("../../marketing/AudienceCard");
+    const group = {
+      groupId: "11111111-1111-4111-8111-111111111111",
+      name: "VIP regulars",
+      kind: "manual" as const,
+      memberCount: 3,
+      pendingReviewCount: 2,
+      membershipVersion: 4,
+      lastUsedAt: null,
+      createdAt: "2026-08-21T00:00:00.000Z",
+      updatedAt: "2026-08-21T00:00:00.000Z",
+    };
+    const onPress = jest.fn();
+    let tree!: ReturnType<typeof TestRenderer.create>;
+
+    TestRenderer.act(() => {
+      tree = TestRenderer.create(
+        ReactRuntime.createElement(ManualGroupCard, { group, onPress }),
+      );
+    });
+
+    expect(renderedText(tree.toJSON())).toMatch(/VIP regulars.*Manual.*3 people.*2\s+need review/);
+    const card = tree.root.findAll(
+      (node) => node.props.accessibilityLabel ===
+        "VIP regulars, Manual group, 3 people. Opens group details.",
+    )[0];
+    expect(card).toBeDefined();
+    TestRenderer.act(() => card?.props.onPress?.());
+    expect(onPress).toHaveBeenCalledWith(group);
+  });
+});
