@@ -14,6 +14,7 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "get_brand_analytics",
   "list_brand_audit_log",
   "list_guest_roster",
+  "list_rsvp_contributions",
   "get_operator_snapshot",
 ]);
 

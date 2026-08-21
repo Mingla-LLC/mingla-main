@@ -43,7 +43,7 @@ export function useSetRsvpStatus(eventId: string | null) {
     Error,
     { rsvpId: string; status: "approved" | "denied" }
   >({
-    mutationFn: ({ rsvpId, status }) => setRsvpStatus(rsvpId, status),
+    mutationFn: ({ rsvpId, status }) => setRsvpStatus(eventId!, rsvpId, status),
     onSuccess: () => {
       if (eventId !== null && eventId.length > 0) {
         void queryClient.invalidateQueries({ queryKey: rsvpGuestKeys.list(eventId) });

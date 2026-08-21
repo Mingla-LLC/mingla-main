@@ -1,0 +1,81 @@
+name: Issue 1977 Ari RSVP lifecycle
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/**1977**"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/rsvp-contribution-refund/**"
+      - "mingla-business/src/services/**"
+      - "mingla-business/src/hooks/useRsvpApprovals.ts"
+      - "mingla-business/src/components/rsvp/RsvpGuestConsole.tsx"
+      - "docs/contracts/ari-capability-ledger.json"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs"
+      - ".github/workflows/issue-1977-ari-rsvp-lifecycle.yml"
+  workflow_dispatch:
+
+jobs:
+  issue-1977-ari-rsvp-lifecycle:
+    name: "#1977 canonical RSVP contract"
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ format('issue-1977-ci-{0}', github.run_id) }}
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+          --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "2.x"
+      - name: Apply the full migration chain on PostgreSQL 17
+        env:
+          PGPASSWORD: ${{ format('issue-1977-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration"
+              done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_ari_rsvp_guest_contribution.test.sql
+      - name: Run Ari and Edge type/behavior contracts
+        run: |
+          deno test --allow-env --allow-read \
+            supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts
+          deno check \
+            supabase/functions/_shared/agentDomainTools.ts \
+            supabase/functions/_shared/agentToolAuthorization.ts \
+            supabase/functions/_shared/agentSystemPrompt.ts \
+            supabase/functions/rsvp-contribution-refund/index.ts
+      - name: Run Business shared web/iOS/Android service contracts
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npm test -- --runInBand --runTestsByPath \
+            src/services/__tests__/issue1977RsvpLifecycle.test.ts \
+            src/services/__tests__/orch_1150_r2_rsvp_draft_type.test.ts
+      - name: Run strict RSVP and ledger gates
+        run: |
+          npm install --no-save yaml
+          node .github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs --self-test
+          node .github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs
+          node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs --self-test
+          node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs
+          node .github/scripts/strict-grep/meta-1383-manifest-parity.mjs

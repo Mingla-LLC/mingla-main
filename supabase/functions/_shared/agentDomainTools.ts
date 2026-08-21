@@ -96,6 +96,107 @@ function requireBrand(
   return args.brand_id;
 }
 
+const RSVP_PARTY_TYPES = [
+  "birthday-party",
+  "rooftop-party",
+  "club-night",
+  "house-party",
+  "warehouse-party",
+  "beach-party",
+  "pool-party",
+  "boat-party",
+  "themed-party",
+  "corporate-event",
+  "graduation-party",
+  "holiday-party",
+  "networking-event",
+  "rave",
+  "festival",
+] as const;
+
+function compactRsvpPayload(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  const copy = (target: string, source = target): void => {
+    if (args[source] !== undefined) payload[target] = args[source];
+  };
+  copy("title");
+  copy("description");
+  copy("timezone");
+  copy("city");
+  copy("partyTypes", "party_types");
+  copy("vibeTags", "vibe_tags");
+  copy("musicGenres", "music_genres");
+  copy("requestedVisibility", "requested_visibility");
+  copy("rsvpCapacity", "capacity");
+  copy("rsvpAllowPlusOnes", "allow_plus_ones");
+  copy("rsvpPlusOnesMax", "plus_ones_max");
+  copy("rsvpWaitlistEnabled", "waitlist_enabled");
+  copy("rsvpApprovalMode", "approval_mode");
+  copy("rsvpDiscoverable", "discoverable");
+  copy("privateGuestList", "private_guest_list");
+  copy("hideRemainingCount", "hide_remaining_count");
+  copy("hideAddressUntilTicket", "hide_address_until_rsvp");
+  copy("rsvpContributionEnabled", "contribution_enabled");
+  copy("rsvpContributionSuggestedCents", "suggested_cents");
+  copy("rsvpContributionMinCents", "minimum_cents");
+  if (
+    args.date !== undefined || args.doors_open !== undefined ||
+    args.ends_at !== undefined
+  ) {
+    payload.when = {
+      ...(args.date !== undefined ? { date: args.date } : {}),
+      ...(args.doors_open !== undefined ? { doorsOpen: args.doors_open } : {}),
+      ...(args.ends_at !== undefined ? { endsAt: args.ends_at } : {}),
+      ...(args.timezone !== undefined ? { timezone: args.timezone } : {}),
+    };
+  }
+  if (args.format !== undefined) {
+    payload.format = args.format;
+    payload.is_online = args.format === "online" || args.format === "hybrid";
+  }
+  copy("location_text");
+  copy("online_url");
+  return payload;
+}
+
+const RSVP_WRITE_PROPERTIES = {
+  title: { type: "string", minLength: 1, maxLength: 180 },
+  description: { type: "string", maxLength: 5000 },
+  timezone: { type: "string", minLength: 1, maxLength: 100 },
+  format: { type: "string", enum: ["in_person", "online", "hybrid"] },
+  date: { type: "string", minLength: 10, maxLength: 10 },
+  doors_open: { type: "string", minLength: 5, maxLength: 5 },
+  ends_at: { type: "string", minLength: 5, maxLength: 5 },
+  location_text: { type: "string", maxLength: 500 },
+  online_url: { type: "string", maxLength: 2000 },
+  city: { type: "string", maxLength: 120 },
+  party_types: {
+    type: "array",
+    maxItems: 15,
+    items: { type: "string", enum: RSVP_PARTY_TYPES },
+  },
+  vibe_tags: { type: "array", maxItems: 16, items: { type: "string" } },
+  music_genres: { type: "array", maxItems: 18, items: { type: "string" } },
+  requested_visibility: {
+    type: "string",
+    enum: ["public", "unlisted", "private"],
+  },
+  capacity: { type: "integer", minimum: 1, maximum: 100000 },
+  allow_plus_ones: { type: "boolean" },
+  plus_ones_max: { type: "integer", minimum: 0, maximum: 20 },
+  waitlist_enabled: { type: "boolean" },
+  approval_mode: { type: "string", enum: ["auto", "manual"] },
+  discoverable: { type: "boolean" },
+  private_guest_list: { type: "boolean" },
+  hide_remaining_count: { type: "boolean" },
+  hide_address_until_rsvp: { type: "boolean" },
+  contribution_enabled: { type: "boolean" },
+  suggested_cents: { type: "integer", minimum: 1 },
+  minimum_cents: { type: "integer", minimum: 1 },
+} as const;
+
 async function executeEventWrite(
   name: string,
   args: Record<string, unknown>,
@@ -103,6 +204,19 @@ async function executeEventWrite(
   context: Parameters<AgentToolDefinition["executor"]>[3],
 ): Promise<unknown> {
   return await callRpc(client, "ari_execute_event_operation", {
+    p_operation_id: requireAgentOperationId(context),
+    p_tool_name: name,
+    p_args: args,
+  });
+}
+
+async function executeRsvpWrite(
+  name: string,
+  args: Record<string, unknown>,
+  client: any,
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  return await callRpc(client, "ari_execute_rsvp_operation", {
     p_operation_id: requireAgentOperationId(context),
     p_tool_name: name,
     p_args: args,
@@ -700,91 +814,137 @@ const deleteTrip = writeTool(
 
 const createRsvp = writeTool(
   "create_rsvp",
-  "Create a draft RSVP under an owned brand.",
-  { brand_id: UUID, title: STR },
-  ["brand_id", "title"],
-  async (args, client, userId) => {
-    const brandId = await requireBrand(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .insert({
-        brand_id: brandId,
-        created_by: userId,
-        title: args.title,
-        event_type: "rsvp",
-        status: "draft",
-      })
-      .select("id, title, status")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+  "Create one private canonical RSVP draft. Dates, tickets, and public visibility are never created before publish.",
+  { brand_id: UUID, ...RSVP_WRITE_PROPERTIES },
+  ["brand_id", "title", "timezone", "format"],
+  async (args, client, userId, context) => {
+    await requireBrand(args, client, userId);
+    return await executeRsvpWrite("create_rsvp", args, client, context);
+  },
+);
+
+const updateRsvp = writeTool(
+  "update_rsvp",
+  "Update the same canonical RSVP draft or live RSVP. A live edit requires a 10–200 character reason.",
+  {
+    event_id: UUID,
+    ...RSVP_WRITE_PROPERTIES,
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["event_id"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    const payload = compactRsvpPayload(args);
+    if (Object.keys(payload).length === 0) {
+      throw new ToolError("INVALID_ARGS", "Nothing to update");
+    }
+    return await executeRsvpWrite("update_rsvp", args, client, context);
   },
 );
 
 const publishRsvp = writeTool(
   "publish_rsvp",
-  "Publish a draft RSVP via business_publish_rsvp_draft.",
+  "Publish the fresh stored canonical RSVP draft through business_publish_rsvp_draft. Never creates tickets.",
   { event_id: UUID },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_publish_rsvp_draft", {
-      p_event_id: eventId,
-    });
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeRsvpWrite("publish_rsvp", args, client, context);
+  },
+);
+
+const updateRsvpContributionSettings = writeTool(
+  "update_rsvp_contribution_settings",
+  "Update chip-in settings through the same RSVP draft/live owner. Values are minor units in the event currency.",
+  {
+    event_id: UUID,
+    contribution_enabled: { type: "boolean" },
+    suggested_cents: { type: "integer", minimum: 1 },
+    minimum_cents: { type: "integer", minimum: 1 },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["event_id", "contribution_enabled"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeRsvpWrite(
+      "update_rsvp_contribution_settings",
+      args,
+      client,
+      context,
+    );
   },
 );
 
 const setRsvpGuestStatus = writeTool(
   "set_rsvp_guest_status",
-  "Approve or decline an RSVP guest via host_set_rsvp_status. Use guest_ids for bulk approve.",
+  "Approve or deny exactly selected RSVP roster keys, or explicitly act on all pending guests.",
   {
     event_id: UUID,
-    guest_id: UUID,
-    guest_ids: { type: "array", items: UUID },
-    status: { type: "string", enum: ["approved", "denied", "pending"] },
+    decision: { type: "string", enum: ["approve", "deny"] },
+    scope: { type: "string", enum: ["selected", "all_pending"] },
+    roster_keys: {
+      type: "array",
+      minItems: 1,
+      maxItems: 100,
+      items: { type: "string", minLength: 6, maxLength: 50 },
+    },
+    roster_watermark: { type: "integer", minimum: 0 },
   },
-  ["event_id", "status"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    if (Array.isArray(args.guest_ids) && args.guest_ids.length > 0) {
-      if (args.status !== "approved") {
-        throw new ToolError(
-          "INVALID_ARGS",
-          "guest_ids bulk path only approves. Pass status=approved, or a single guest_id to deny/pend.",
-        );
-      }
-      return await callRpc(client, "host_bulk_approve_rsvps", {
-        p_event_id: eventId,
-      });
+  ["event_id", "decision", "scope"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    if (
+      args.scope === "selected" &&
+      (!Array.isArray(args.roster_keys) || args.roster_keys.length === 0)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "roster_keys are required for selected scope",
+      );
     }
-    if (!isUuid(args.guest_id)) {
-      throw new ToolError("INVALID_ARGS", "guest_id or guest_ids required");
+    if (args.scope === "all_pending" && args.roster_keys !== undefined) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "roster_keys must be omitted for all_pending scope",
+      );
     }
-    return await callRpc(client, "host_set_rsvp_status", {
-      p_rsvp_id: args.guest_id,
-      p_status: args.status,
-    });
+    return await executeRsvpWrite(
+      "set_rsvp_guest_status",
+      args,
+      client,
+      context,
+    );
   },
 );
 
 const refundRsvpContribution = writeTool(
   "refund_rsvp_contribution",
-  "Refund an RSVP chip-in via rsvp-contribution-create refund path / refund-order. Destructive.",
+  "Refund an RSVP chip-in through the contribution source-refund path. The server derives exact refundable cents.",
   {
     event_id: UUID,
-    order_id: UUID,
-    amount_cents: { type: "integer", minimum: 1 },
+    contribution_id: UUID,
+    mode: { type: "string", enum: ["discretionary", "cancellation"] },
+    reason: { type: "string", minLength: 3, maxLength: 200 },
   },
-  ["event_id", "order_id"],
-  async (args, client, userId) => {
-    await requireEvent(args, client, userId);
-    if (!isUuid(args.order_id)) {
-      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+  ["event_id", "contribution_id", "mode", "reason"],
+  async (args, client, userId, context) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    if (!isUuid(args.contribution_id)) {
+      throw new ToolError("INVALID_ARGS", "contribution_id must be a uuid");
     }
-    return await invokeFn(client, "refund-order", {
-      order_id: args.order_id,
-      amount_cents: args.amount_cents ?? null,
-    }, { "Idempotency-Key": newIdempotencyKey() });
+    return await invokeFn(
+      client,
+      "rsvp-contribution-refund",
+      {
+        eventId,
+        contributionId: args.contribution_id,
+        mode: args.mode,
+        reason: args.reason,
+        operationId: requireAgentOperationId(context),
+        operationArgs: args,
+      },
+      { "Idempotency-Key": requireAgentOperationId(context) },
+    );
   },
   "REFUND",
 );
@@ -1500,29 +1660,47 @@ const revokeBrandMember = writeTool(
 
 const listGuestRoster = writeTool(
   "list_guest_roster",
-  "List guest roster for an owned event via biz_guest_roster_list. No PII dump into the model beyond names/status.",
-  { event_id: UUID },
+  "List the server-minimized RSVP roster. Returns display names and attendance/approval state, never contact or payment PII.",
+  {
+    event_id: UUID,
+    search: { type: "string", maxLength: 120 },
+    cursor: { type: "object" },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
   ["event_id"],
   async (args, client, userId) => {
     await assertAgentReadEvent(client, userId, args.event_id);
     await requireEvent(args, client, userId);
-    return await callRpc(client, "biz_guest_roster_list", {
+    return await callRpc(client, "business_list_rsvp_roster", {
       p_event_id: args.event_id,
+      p_search: args.search ?? null,
+      p_cursor: args.cursor ?? null,
+      p_limit: args.limit ?? 50,
     });
   },
 );
 
-const setGuestApproval = writeTool(
-  "set_guest_approval",
-  "Approve or decline a guest on the brand people roster.",
-  { event_id: UUID, guest_id: UUID, approved: { type: "boolean" } },
-  ["event_id", "guest_id", "approved"],
+const listRsvpContributions = writeTool(
+  "list_rsvp_contributions",
+  "List refundable RSVP contributions with safe labels and exact server-derived amounts. Never returns orders or provider references.",
+  {
+    event_id: UUID,
+    status: {
+      type: "string",
+      enum: ["paid", "partially_refunded", "refunded"],
+    },
+    cursor: { type: "object" },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["event_id"],
   async (args, client, userId) => {
+    await assertAgentReadEvent(client, userId, args.event_id);
     await requireEvent(args, client, userId);
-    return await callRpc(client, "biz_guest_roster_access", {
+    return await callRpc(client, "business_list_rsvp_contributions", {
       p_event_id: args.event_id,
-      p_guest_id: args.guest_id,
-      p_approved: args.approved,
+      p_status: args.status ?? null,
+      p_cursor: args.cursor ?? null,
+      p_limit: args.limit ?? 50,
     });
   },
 );
@@ -1734,7 +1912,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   publishTrip,
   deleteTrip,
   createRsvp,
+  updateRsvp,
   publishRsvp,
+  updateRsvpContributionSettings,
   setRsvpGuestStatus,
   refundRsvpContribution,
   quoteStay,
@@ -1765,7 +1945,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   inviteScanner,
   revokeBrandMember,
   listGuestRoster,
-  setGuestApproval,
+  listRsvpContributions,
   exportBrandPeople,
   updateAriPrefs,
   updateNotificationPrefs,
@@ -1781,6 +1961,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_tax_status",
   "get_brand_analytics",
   "list_guest_roster",
+  "list_rsvp_contributions",
   "get_operator_snapshot",
 ]);
 

@@ -35,11 +35,13 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   publish_trip: "trip",
   delete_trip: "trip",
   cancel_trip_booking: "trip",
+  update_rsvp: "rsvp",
   publish_rsvp: "rsvp",
+  update_rsvp_contribution_settings: "rsvp",
   set_rsvp_guest_status: "rsvp",
   refund_rsvp_contribution: "rsvp",
   list_guest_roster: "rsvp",
-  set_guest_approval: "rsvp",
+  list_rsvp_contributions: "rsvp",
 });
 
 const role = (
@@ -85,7 +87,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   publish_trip: role("event_manager", "event"),
   delete_trip: role("event_manager", "event"),
   create_rsvp: role("event_manager", "brand"),
+  update_rsvp: role("event_manager", "event"),
   publish_rsvp: role("event_manager", "event"),
+  update_rsvp_contribution_settings: role("event_manager", "event"),
   set_rsvp_guest_status: role("event_manager", "event"),
   refund_rsvp_contribution: role("finance_manager", "event"),
   quote_stay: role("scanner", "brand"),
@@ -116,7 +120,7 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   invite_scanner: role("event_manager", "brand"),
   revoke_brand_member: role("brand_admin", "brand"),
   list_guest_roster: role("event_manager", "event"),
-  set_guest_approval: role("event_manager", "event"),
+  list_rsvp_contributions: role("finance_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),
   update_notification_prefs: role("self", "none"),
@@ -257,6 +261,25 @@ async function resolveBrand(
     );
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
+  }
+  if (isUuid(args.contribution_id)) {
+    const contribution = await rowBrand(
+      client,
+      "event_rsvp_contributions",
+      args.contribution_id,
+      "event_id",
+    );
+    const event = await rowBrand(
+      client,
+      "events",
+      contribution.event_id,
+      "brand_id, event_type",
+      true,
+    );
+    assertExpectedEventType(toolName, event);
+    if (event.brand_id !== brandId || contribution.event_id !== args.event_id) {
+      unavailable();
+    }
   }
   if (isUuid(args.installment_id)) {
     const installment = await rowBrand(

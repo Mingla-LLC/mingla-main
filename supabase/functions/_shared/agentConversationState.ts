@@ -511,13 +511,14 @@ export function createEventTaskState(args: {
   nowIso: string;
   brief: EventBrief;
   title?: string;
+  intent?: "create_event" | "create_rsvp";
 }): TaskStateV1 {
   const state: TaskStateV1 = {
     schema_version: TASK_STATE_SCHEMA_VERSION,
     status: "gathering",
     active_task: {
       task_id: requiredString(args.taskId, "taskId"),
-      intent: "create_event",
+      intent: args.intent ?? "create_event",
       brand_id: requiredString(args.brandId, "brandId"),
       stage: "gathering",
       origin_message_id: requiredString(
@@ -905,6 +906,62 @@ export function assertCreateEventProposal(
     );
   }
   return { brand_id: brandId, title, start_at: startAt };
+}
+
+export function assertCreateRsvpProposal(
+  state: TaskStateV1,
+): Record<string, unknown> {
+  if (
+    !state.active_task || state.active_task.intent !== "create_rsvp" ||
+    state.status !== "ready_to_propose"
+  ) {
+    throw new TaskStateError(
+      "TASK_STATE_INVALID",
+      "create_rsvp task is not ready to propose",
+    );
+  }
+  const slots = state.active_task.slots;
+  for (const key of ["brand_id", "title", "start_at", "timezone"]) {
+    if (slots[key]?.status !== "resolved") {
+      throw new TaskStateError(
+        "TASK_STATE_INVALID",
+        `create_rsvp required slot ${key} is unresolved`,
+      );
+    }
+  }
+  const brandId = slots.brand_id.value;
+  const title = slots.title.value;
+  const startAt = slots.start_at.value;
+  const timezone = slots.timezone.value;
+  if (
+    typeof brandId !== "string" || brandId !== state.active_task.brand_id ||
+    typeof title !== "string" || typeof startAt !== "string" ||
+    typeof timezone !== "string" || !isValidIanaTimezone(timezone)
+  ) {
+    throw new TaskStateError(
+      "TASK_STATE_INVALID",
+      "create_rsvp proposal values are invalid",
+    );
+  }
+  const localParts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: timezone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(new Date(startAt));
+  const part = (type: string): string =>
+    localParts.find((entry) => entry.type === type)?.value ?? "";
+  return {
+    brand_id: brandId,
+    title,
+    timezone,
+    format: "in_person",
+    date: `${part("year")}-${part("month")}-${part("day")}`,
+    doors_open: `${part("hour")}:${part("minute")}`,
+  };
 }
 
 export function assertEditedCreateEventProposal(

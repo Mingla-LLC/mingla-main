@@ -123,6 +123,12 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "upsert_ticket_tier",
   "set_pricing_switches",
   "set_brand_pricing_defaults",
+  "create_rsvp",
+  "update_rsvp",
+  "publish_rsvp",
+  "update_rsvp_contribution_settings",
+  "set_rsvp_guest_status",
+  "refund_rsvp_contribution",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -273,21 +279,27 @@ function createdResource(
   result: unknown,
 ): { kind: string; id: string; label: string } | undefined {
   if (
-    toolName !== "create_event" || result === null || typeof result !== "object"
+    !["create_event", "create_rsvp"].includes(toolName) || result === null ||
+    typeof result !== "object"
   ) return undefined;
   const event = (result as { event?: unknown }).event;
   if (event === null || typeof event !== "object") return undefined;
   const id = (event as { id?: unknown }).id;
   const title = (event as { title?: unknown }).title;
   return typeof id === "string" && typeof title === "string"
-    ? { kind: "event", id, label: title.slice(0, 240) }
+    ? {
+      kind: toolName === "create_rsvp" ? "rsvp" : "event",
+      id,
+      label: title.slice(0, 240),
+    }
     : undefined;
 }
 
 function proactiveChoices(
   resource: { kind: string; id: string; label: string } | undefined,
 ): AgentChoicesV2 | undefined {
-  if (!resource || resource.kind !== "event") return undefined;
+  if (!resource || !["event", "rsvp"].includes(resource.kind)) return undefined;
+  const isRsvp = resource.kind === "rsvp";
   return assertAgentChoicesV2({
     schema_version: 2,
     question_id: crypto.randomUUID(),
@@ -296,13 +308,16 @@ function proactiveChoices(
     required_slot_keys: [],
     options: [
       {
-        id: "open_event_workspace",
-        label: "Open event workspace",
-        payload: { type: "handoff", route: `/event/${resource.id}` },
+        id: isRsvp ? "open_rsvp_workspace" : "open_event_workspace",
+        label: isRsvp ? "Open RSVP workspace" : "Open event workspace",
+        payload: {
+          type: "handoff",
+          route: isRsvp ? `/rsvp/${resource.id}` : `/event/${resource.id}`,
+        },
       },
       {
-        id: "plan_another_event",
-        label: "Plan another event",
+        id: isRsvp ? "plan_another_rsvp" : "plan_another_event",
+        label: isRsvp ? "Plan another RSVP" : "Plan another event",
         payload: { type: "task_command", command: "start_new" },
       },
     ],
@@ -1144,6 +1159,19 @@ export function buildFollowupText(
       return title
         ? `Created “${title}” as a draft. Open the event workspace to refine tickets, publishing, and promotion when you're ready.`
         : undefined;
+    }
+    if (toolName === "create_rsvp") {
+      const event = (result as { event?: unknown } | null)?.event;
+      if (!event || typeof event !== "object" || Array.isArray(event)) {
+        return undefined;
+      }
+      const row = event as Record<string, unknown>;
+      const title = typeof row.title === "string" ? row.title.trim() : "";
+      if (
+        !title || row.event_type !== "rsvp" || row.status !== "draft" ||
+        row.visibility !== "draft" || row.published_at !== null
+      ) return undefined;
+      return `Created “${title}” as a private RSVP draft. Open the RSVP workspace to refine guest settings, chip-ins, and publishing.`;
     }
     if (toolName === "update_event") {
       return `Updated. Anything else to change?`;
