@@ -30,6 +30,7 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // #1973/#1985 denominator without changing inherited authorization semantics.
 // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay authoring (+3), venue listing
 // reads (+3), and venue manage tools (+3); 71 + 9 = 80.
+// [TEST-MOD-APPROVED #1979] Registry pin 77→80 after additive #1978 rebase.
   assert(
     AGENT_TOOLS.length === 80,
     `expected 80 tools, got ${AGENT_TOOLS.length}`,
