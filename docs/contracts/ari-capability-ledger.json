@@ -1374,7 +1374,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical draft graph",
           "guard_role": "implementor"
         }
@@ -1424,7 +1424,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical publish graph",
           "guard_role": "implementor"
         }
@@ -1474,7 +1474,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts exact selected/all-pending scopes",
           "guard_role": "implementor"
         }
@@ -1524,7 +1524,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts event-bound source refund",
           "guard_role": "implementor"
         }
@@ -2874,7 +2874,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts database-minimized roster",
           "guard_role": "implementor"
         }
@@ -5216,7 +5216,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts shared contribution-settings owner",
           "guard_role": "implementor"
         }
@@ -5585,7 +5585,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical update graph",
           "guard_role": "implementor"
         }
@@ -5631,7 +5631,7 @@
       "evidence": [
         {
           "tier": "regression",
-          "sha": "4838f60e8a7932530d0c63bd88bd601067cb34ca",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
           "reference": "issue_1977_ari_rsvp_lifecycle.test.ts minimized contribution selection",
           "guard_role": "implementor"
         }
