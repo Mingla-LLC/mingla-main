@@ -496,21 +496,9 @@ export async function handleMarketingSendRequest(
     if (candidates.error) {
       return bookRpcErrorResponse(candidates.error.message);
     }
-    const candidateEnvelope = candidates.data as Record<string, unknown> | null;
-    const audienceMetadata = {
-      audienceId: typeof candidateEnvelope?.audienceId === "string"
-        ? candidateEnvelope.audienceId
-        : null,
-      audienceKind: typeof candidateEnvelope?.audienceKind === "string"
-        ? candidateEnvelope.audienceKind
-        : null,
-      audienceVersion: typeof candidateEnvelope?.audienceVersion === "number"
-        ? candidateEnvelope.audienceVersion
-        : null,
-    };
     const publicPeopleQuote = (
       value: Awaited<ReturnType<typeof buildMarketingBookQuote>>,
-    ) => ({ ...publicMarketingBookQuote(value), ...audienceMetadata });
+    ) => publicMarketingBookQuote(value);
     const requestedQuotedAt = isConfirmPeopleAction
       ? parseBookQuotedAt(body.quotedAt)
       : new Date();

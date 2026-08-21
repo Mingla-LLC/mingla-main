@@ -233,7 +233,14 @@ export function publicMarketingBookQuote(
     rateIds: _rateIds,
     sourceReferences: _sources,
     audienceName: _audienceName,
+    audienceId,
+    audienceKind,
+    audienceVersion,
     ...safe
   } = quote;
-  return safe;
+  return audienceKind === "manual_group" &&
+      typeof audienceId === "string" &&
+      typeof audienceVersion === "number"
+    ? { ...safe, audienceId, audienceKind, audienceVersion }
+    : safe;
 }

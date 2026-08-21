@@ -41,6 +41,7 @@ try {
     ["supabase/migrations/20270507002395_issue_2395_manual_contact_groups.sql", "biz_role_rank('marketing_manager')", "biz_role_rank('scanner')", "rank-20"],
     ["supabase/migrations/20270507002395_issue_2395_manual_contact_groups.sql", "reversal_manifest->'manualGroupMemberships'", "reversal_manifest->'lostMembershipManifest'", "merge provenance"],
     ["supabase/functions/_shared/marketingAudience.ts", "biz_marketing_people_send_audience_v2", "unsafe_live_group_people", "campaign seal"],
+    ["supabase/functions/marketing-send/index.ts", "publicMarketingBookQuote(value)", "value", "public quote boundary"],
     ["mingla-business/src/components/people/ManualGroupFlow.tsx", "Everyone uploaded is saved to Your Book first.", "Upload directly to this group.", "Book-first copy"],
     ["mingla-business/app/(tabs)/marketing/campaigns/compose.tsx", "This group changed after preview", "Continue with old preview", "stale preview"],
     ["supabase/migrations/20270507002395_issue_2395_manual_contact_groups.sql", "pg_advisory_xact_lock", "pg_advisory_xact_unlock", "concurrent receipt"],
@@ -54,5 +55,5 @@ try {
     const failures = audit(tmp); if (failures.length === 0) throw new Error(`negative control stayed green: ${label}`);
     fs.writeFileSync(target, original);
   }
-  console.log("[issue-2395 self-test] PASS — eight true-deletion-equivalent negative controls fail and restore cleanly.");
+  console.log("[issue-2395 self-test] PASS — nine true-deletion-equivalent negative controls fail and restore cleanly.");
 } finally { fs.rmSync(tmp, { recursive: true, force: true }); }
