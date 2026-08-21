@@ -9422,6 +9422,12 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Enforcement:** the append-only #2343 implementor and tester suites inspect the real Host config and picker source, execute the pure Info.plist owner, pin plugin order and #2050 splash bytes, and are explicitly registered in `.github/ci-batch/MANIFEST.json`. Release proof must inspect generated/built `UIUserInterfaceStyle=Light` and Android `expo_system_ui_user_interface_style=light`, then compare settled Light/Dark-device runtime pixels on the exact replacement artifacts.
 - **Established:** DRAFT at #2343, 2026-08-21; flip to ACTIVE only after independent tester PASS, all-green merge, exact replacement Host artifact inspection, and Light/Dark runtime verification.
 
+### I-PROPOSED-2399-MULTIDAY-CHOICE-LIVES-WITH-PURCHASE (DRAFT)
+
+- **Rule:** A buyable multi-day event must place its day chooser first inside the Tickets purchase container, keep the displayed box and floating-bar totals synchronized with the selected-day pricing mode, and fail closed while no valid day truth is selected. Single-day callers that omit the optional purchase context preserve their rendered tree and checkout request.
+- **Enforcement:** `issue_2399_multiday_picker_ticket_box.happy.test.tsx`, `.github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs`, and `.github/workflows/issue-2399-multiday-picker-ticket-box.yml` cover buyer-web desktop/mobile and the Business web preview tree.
+- **Established:** DRAFT at #2399, 2026-08-21; flip to ACTIVE only after independent tester PASS, all-green merge, and merged-main verification.
+
 ---
 
 ## DRAFT — issue #2060 (Ari reliability and exact-release certification)

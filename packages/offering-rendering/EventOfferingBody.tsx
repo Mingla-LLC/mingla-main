@@ -292,6 +292,18 @@ export interface EventOfferingBodyProps {
    */
   pricingNote?: string | null;
   /**
+   * issue #2399 — optional app-owned content rendered as the FIRST child of the
+   * purchase card. The shared package never imports the buyer app's day chooser;
+   * omitted/null preserves the pre-#2399 tree exactly.
+   */
+  leadingPurchaseSection?: React.ReactNode | null;
+  /** issue #2399 — multiplier for the displayed total only; line quantities stay canonical. */
+  priceMultiplier?: number;
+  /** issue #2399 — false keeps the total unknown and routes CTA taps to app-owned recovery. */
+  purchaseReady?: boolean;
+  /** Exact app-owned recovery label while purchaseReady is false. */
+  purchaseBlockedLabel?: string | null;
+  /**
    * ORCH-1339 — the pg_public_social_proof payload (surface-fetched, props-only
    * per I-MOR-0827). null (default) → no momentum unit, zero layout shift.
    */
@@ -322,6 +334,10 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   onTicketBoxLayout,
   hideTicketBox = false,
   pricingNote = null,
+  leadingPurchaseSection = null,
+  priceMultiplier = 1,
+  purchaseReady = true,
+  purchaseBlockedLabel = null,
   socialProof = null,
   onSeeWhosGoing,
   testID,
@@ -565,6 +581,10 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
                 submitting={submitting}
                 showHeading
                 pricingNote={pricingNote}
+                leadingPurchaseSection={leadingPurchaseSection}
+                priceMultiplier={priceMultiplier}
+                purchaseReady={purchaseReady}
+                purchaseBlockedLabel={purchaseBlockedLabel}
               />
             </View>
           )}
@@ -812,6 +832,13 @@ export interface EventTicketBoxProps {
    * A FREE event passes null in both modes — there is no price to qualify.
    */
   pricingNote?: string | null;
+  /** issue #2399 — app-local content injected before ticket tiers. */
+  leadingPurchaseSection?: React.ReactNode | null;
+  /** issue #2399 — selected-day multiplier; defaults to the byte-identical 1. */
+  priceMultiplier?: number;
+  /** issue #2399 — false renders an unknown total and recovery CTA copy. */
+  purchaseReady?: boolean;
+  purchaseBlockedLabel?: string | null;
   testID?: string;
 }
 
@@ -826,6 +853,10 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   onProceedToCart,
   submitting = false,
   pricingNote = null,
+  leadingPurchaseSection = null,
+  priceMultiplier = 1,
+  purchaseReady = true,
+  purchaseBlockedLabel = null,
   showHeading = true,
   testID,
 }) => {
@@ -848,10 +879,11 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
     [variant, bookable, visibleTickets, event.currency],
   );
 
-  const runningTotal = computeRunningTotal(event.tickets, ticketQuantities);
+  const runningTotal =
+    computeRunningTotal(event.tickets, ticketQuantities) * priceMultiplier;
   const selectedQty = totalSelectedQuantity(ticketQuantities);
   const totalLabel =
-    selectedQty === 0
+    !purchaseReady || selectedQty === 0
       ? null
       : runningTotal === 0
         ? "Free"
@@ -869,15 +901,17 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
   const ctaActionable = boxCta.tappable;
   const proceedEnabled = ctaActionable && !submitting;
   const proceedLabel =
-    boxCta.kind === "buy"
-      ? totalLabel !== null
-        ? `${boxCta.label} · ${totalLabel}`
-        : boxCta.label
-      : boxCta.kind === "free"
-        ? boxCta.label
-        : boxCta.kind === "waitlist"
+    !purchaseReady && purchaseBlockedLabel !== null
+      ? purchaseBlockedLabel
+      : boxCta.kind === "buy"
+        ? totalLabel !== null
+          ? `${boxCta.label} · ${totalLabel}`
+          : boxCta.label
+        : boxCta.kind === "free"
           ? boxCta.label
-          : boxCta.title;
+          : boxCta.kind === "waitlist"
+            ? boxCta.label
+            : boxCta.title;
 
   return (
     <View testID={testID}>
@@ -903,6 +937,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
           style={[styles.ticketBox, surface.card]}
           testID="orch-1167-ticket-box"
         >
+          {leadingPurchaseSection}
           {visibleTickets.map((t) => (
             <TicketStepperRow
               key={t.id}
@@ -932,6 +967,7 @@ export const EventTicketBox: React.FC<EventTicketBoxProps> = ({
                 { fontFamily: boldFamily },
               ]}
               testID="orch-1167-running-total"
+              accessibilityLiveRegion="polite"
             >
               {totalLabel ?? "—"}
             </Text>
@@ -996,6 +1032,11 @@ export interface EventOfferingFloatingBarProps {
   ticketQuantities: Record<string, number>;
   onProceedToCart: () => void;
   submitting?: boolean;
+  /** issue #2399 — selected-day multiplier; omitted is byte-identical. */
+  priceMultiplier?: number;
+  /** false keeps the total unknown and lets the app-owned handler reveal recovery. */
+  purchaseReady?: boolean;
+  purchaseBlockedLabel?: string | null;
   testID?: string;
 }
 
@@ -1010,6 +1051,9 @@ export const EventOfferingFloatingBar: React.FC<
   ticketQuantities,
   onProceedToCart,
   submitting = false,
+  priceMultiplier = 1,
+  purchaseReady = true,
+  purchaseBlockedLabel = null,
   testID,
 }) => {
   const boldFamily = boldFontFamily(theme);
@@ -1028,10 +1072,11 @@ export const EventOfferingFloatingBar: React.FC<
     [variant, bookable, visibleTickets, event.currency],
   );
 
-  const runningTotal = computeRunningTotal(event.tickets, ticketQuantities);
+  const runningTotal =
+    computeRunningTotal(event.tickets, ticketQuantities) * priceMultiplier;
   const selectedQty = totalSelectedQuantity(ticketQuantities);
   const totalLabel =
-    selectedQty === 0
+    !purchaseReady || selectedQty === 0
       ? null
       : runningTotal === 0
         ? "Free"
@@ -1044,15 +1089,17 @@ export const EventOfferingFloatingBar: React.FC<
   // `cta.tappable` (false for sold-out/past/ended/cancelled/not-bookable/door-only).
   const enabled = cta.tappable && !submitting;
   const label =
-    cta.kind === "buy"
-      ? totalLabel !== null
-        ? `${cta.label} · ${totalLabel}`
-        : cta.label
-      : cta.kind === "free"
-        ? cta.label
-        : cta.kind === "waitlist"
+    !purchaseReady && purchaseBlockedLabel !== null
+      ? purchaseBlockedLabel
+      : cta.kind === "buy"
+        ? totalLabel !== null
+          ? `${cta.label} · ${totalLabel}`
+          : cta.label
+        : cta.kind === "free"
           ? cta.label
-          : cta.title;
+          : cta.kind === "waitlist"
+            ? cta.label
+            : cta.title;
 
   return (
     <Pressable

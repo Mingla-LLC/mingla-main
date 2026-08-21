@@ -172,6 +172,7 @@ jest.mock("../FoundationEventPreview", () => ({
       datesList: string[];
     };
     stateBanner: React.ReactNode;
+    leadingPurchaseSection: React.ReactNode;
     onProceedToCart: () => void;
   }) => (
     <View testID="issue-2209-foundation">
@@ -183,6 +184,7 @@ jest.mock("../FoundationEventPreview", () => ({
         {props.event.datesList.join(" | ")}
       </Text>
       {props.stateBanner}
+      {props.leadingPurchaseSection}
       <Pressable
         testID="issue-2209-proceed"
         accessibilityLabel="Proceed to cart"
@@ -402,17 +404,21 @@ describe("issue #2209 — a shared multi-day event names its days", () => {
     );
   });
 
-  test("D-4 zero materialised days still degrades HONESTLY", async () => {
+  test("D-4 zero materialised days keeps date copy honest and purchase fails closed", async () => {
     const tree = await mount("multi_date", []);
     expect(textOf(tree, "issue-2209-date-line")).toBe("Date TBD");
     expect(textOf(tree, "issue-2209-date-subline")).toBe(
       "Multi-date (no dates yet)",
     );
     expect(textOf(tree, "issue-2209-dates-list")).toBe("");
-    // No dead affordance: nothing to choose between.
+    // #2399 replaces the old silent fall-through with explicit recovery.
     expect(
       tree.root.findAllByProps({ testID: "issue-2135-day-chooser" }).length,
-    ).toBe(0);
+    ).toBeGreaterThan(0);
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2399-day-recovery" })[0]?.props
+        .children,
+    ).toBe("We couldn’t load the event days.");
   });
 
   test("D-5 a SINGLE-DATE event's eyebrow is unchanged", async () => {

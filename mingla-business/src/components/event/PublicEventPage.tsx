@@ -26,7 +26,13 @@
  * (checkoutPublicPathWithSeed(event.id, …)) — no address, no taxCalculationId.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AppState,
   Linking,
@@ -174,6 +180,8 @@ interface PublicEventPageAdapterProps {
   occurrences?: readonly PublicEventOccurrence[];
   /** issue #2160 — the organiser's multi-day pricing choice. */
   multiDatePricingMode?: MultiDatePricingMode;
+  /** issue #2399 — route-owned refresh for malformed/stale day recovery. */
+  onRetryOccurrences?: () => void;
   /**
    * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — when false, this is a
    * PAID event whose brand cannot charge yet; the CTA is the non-tappable
@@ -224,7 +232,9 @@ const mapTicket = (t: TicketStub): PublicTicketProps => ({
 // they only ever render single-date fixtures, so the fallback is the pre-#2209
 // behaviour verbatim rather than a degraded one. A real bundle always takes the
 // real export — it is a static import of a module this file already loads.
-const EventDateDisplayCompat = EventDateDisplay as Partial<typeof EventDateDisplay>;
+const EventDateDisplayCompat = EventDateDisplay as Partial<
+  typeof EventDateDisplay
+>;
 const resolvePublicEventDateDisplay = (
   event: LiveEvent,
   occurrences: readonly PublicEventOccurrence[],
@@ -390,6 +400,24 @@ const FLOATING_BAR_CLEARANCE = 96;
 // issue #2135 — stable empty reference so a single-date page (query disabled →
 // `data` undefined) never produces a new array identity per render.
 const NO_OCCURRENCES: readonly PublicEventOccurrence[] = [];
+
+const useBuyerWebOnline = (): boolean => {
+  const [online, setOnline] = useState(
+    () => Platform.OS !== "web" || globalThis.navigator?.onLine !== false,
+  );
+  useEffect(() => {
+    if (Platform.OS !== "web") return undefined;
+    const markOnline = (): void => setOnline(true);
+    const markOffline = (): void => setOnline(false);
+    globalThis.addEventListener?.("online", markOnline);
+    globalThis.addEventListener?.("offline", markOffline);
+    return () => {
+      globalThis.removeEventListener?.("online", markOnline);
+      globalThis.removeEventListener?.("offline", markOffline);
+    };
+  }, []);
+  return online;
+};
 // issue #2160 — stable empty reference for the chosen-day SET, so a single-date
 // page never produces a new array identity per render.
 const NO_SELECTION: readonly string[] = [];
@@ -400,21 +428,27 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   bookable = true,
   occurrences = NO_OCCURRENCES,
   multiDatePricingMode = "per_day",
+  onRetryOccurrences,
 }) => {
   const router = useRouter();
   // ORCH-1295 [chip-in-post-payment-polish] — BUG 1: the chip-in web return lands
   // here as `?contribution=paid` (or `=cancel`). Read it to show a gift-framed
   // return banner (the shared chip-in panel mounts are gated on a live RSVP status
   // that a fresh page load no longer has, so the confirmation must live here).
-  const routeParams = useLocalSearchParams<{ contribution?: string | string[] }>();
+  const routeParams = useLocalSearchParams<{
+    contribution?: string | string[];
+  }>();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
   const userBrands = useBrandList();
   const { isDesktop } = useResponsiveLayout();
+  const online = useBuyerWebOnline();
 
   // ORCH-1291 [rsvp-chip-in] — the last-submitted guest contact, captured at RSVP
   // so an anon web chip-in can supply guestEmail to rsvp-contribution-create.
-  const lastRsvpContactRef = useRef<{ name: string; email: string } | null>(null);
+  const lastRsvpContactRef = useRef<{ name: string; email: string } | null>(
+    null,
+  );
   const chipInIdempotencyRef = useRef<string | null>(null);
 
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
@@ -431,9 +465,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // (REPLACES the ORCH-1138 single-select radiogroup). The shared EventOfferingBody
   // reads/writes this; in-box Proceed + the floating bar carry it into the cart
   // (pre-populated, editable) at the checkout cart step (i). Empty → nothing picked.
-  const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>(
-    {},
-  );
+  const [ticketQuantities, setTicketQuantities] = useState<
+    Record<string, number>
+  >({});
   // issue #2135 [multi-date public day picker] — the guest's chosen occurrence
   // (event_dates.id), and whether they have already tried to check out without
   // choosing one (which turns the inline chooser's silent block into an explicit
@@ -441,10 +475,11 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // issue #2160 — a SET. A guest attending both days of an exhibition makes ONE
   // reservation covering both. Empty until they choose: the default is never a
   // day, because an explicit choice is exactly what #2135 established.
-  const [selectedOccurrenceIds, setSelectedOccurrenceIds] = useState<
-    readonly string[]
-  >(NO_SELECTION);
+  const [selectedOccurrenceIds, setSelectedOccurrenceIds] =
+    useState<readonly string[]>(NO_SELECTION);
   const [dayChoiceMissing, setDayChoiceMissing] = useState<boolean>(false);
+  const [occurrencesStale, setOccurrencesStale] = useState<boolean>(false);
+  const eventIdentityRef = useRef(event.id);
   // issue #2160 / #2161 — the occurrences are a PROP now. `handleOccurrencesResolved`
   // and the reported-up state are gone: the days ride the event payload, so
   // there is no second query to resolve, no second cache key to go stale, and
@@ -541,23 +576,53 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // only one row) offers NO choice — the guest is never blocked behind an empty
   // picker, and the CTA behaves exactly as it does today.
   const hasOccurrenceChoice = isMultiDate && occurrences.length > 1;
+  useEffect(() => {
+    if (eventIdentityRef.current === event.id) return;
+    eventIdentityRef.current = event.id;
+    setSelectedOccurrenceIds(NO_SELECTION);
+    setDayChoiceMissing(false);
+    setOccurrencesStale(false);
+    setTicketQuantities({});
+  }, [event.id, occurrences]);
+
+  useEffect(() => {
+    const nextIds = occurrences.map((row) => row.id);
+    setSelectedOccurrenceIds((selected) => {
+      const valid = selected.filter((id) => nextIds.includes(id));
+      if (
+        valid.length !== selected.length &&
+        eventIdentityRef.current === event.id
+      ) {
+        setOccurrencesStale(true);
+      }
+      return valid.length === selected.length ? selected : valid;
+    });
+  }, [event.id, occurrences]);
   // issue #2135 — recording the guest's pick. Clears the "you must choose"
   // prompt the moment they do.
-  const handleOccurrenceToggle = useCallback((eventDateId: string): void => {
-    setSelectedOccurrenceIds((prev) => {
-      const next = prev.includes(eventDateId)
-        ? prev.filter((id) => id !== eventDateId)
-        : [...prev, eventDateId];
-      // Clear the "you must choose" prompt only when the result is non-empty —
-      // deselecting the last day puts the guest back where they started.
-      if (next.length > 0) setDayChoiceMissing(false);
-      return next;
-    });
-  }, []);
+  const handleOccurrenceToggle = useCallback(
+    (eventDateId: string): void => {
+      setSelectedOccurrenceIds((prev) => {
+        const toggled = prev.includes(eventDateId)
+          ? prev.filter((id) => id !== eventDateId)
+          : [...prev, eventDateId];
+        const next = occurrences
+          .map((row) => row.id)
+          .filter((id) => toggled.includes(id));
+        // Clear the "you must choose" prompt only when the result is non-empty —
+        // deselecting the last day puts the guest back where they started.
+        if (next.length > 0) setDayChoiceMissing(false);
+        return next;
+      });
+    },
+    [occurrences],
+  );
   // The third `checkoutPublicPathWithSeed` argument. NULL on every single-date
   // page (and on a multi-date page that offers no real choice), which makes the
   // helper emit the byte-identical path it emitted before issue #2135.
-  const chosenOccurrenceParams = hasOccurrenceChoice ? selectedOccurrenceIds : null;
+  const chosenOccurrenceParams = hasOccurrenceChoice
+    ? selectedOccurrenceIds
+    : null;
   // issue #2160 §7 — does this event carry a priced ticket? Drives whether the
   // chooser qualifies the price ("per day" / "for all days"); a free event has
   // nothing to qualify.
@@ -575,7 +640,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         ? "for all days"
         : "per day"
       : null;
-  const onSeeWhosGoingProp = Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
+  const onSeeWhosGoingProp =
+    Platform.OS === "web" ? handleSeeWhosGoingWeb : undefined;
   useEffect(() => {
     const refresh = (): void => setNowMs(Date.now());
     const delay = nextEventAcquisitionBoundaryDelayMs(
@@ -631,7 +697,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // ORCH-1138 — palette + surface + bold fonts (mirror the trip route). The bold
   // family is required or native bold no-ops (a loaded custom font ignores
   // fontWeight); load BOTH the base + bold families on demand.
-  const palette = useMemo(() => createThemePalette(resolvedTheme), [resolvedTheme]);
+  const palette = useMemo(
+    () => createThemePalette(resolvedTheme),
+    [resolvedTheme],
+  );
   const boldFamily = boldFontFamily(resolvedTheme);
   useThemeFont(resolvedTheme.fontFamilyValue);
   useThemeFont(boldFamily);
@@ -651,10 +720,19 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       lng: geo.lng,
       accentHex: palette.accent,
       // city-level when only cityGeo present (no exact pin leak); zoomed when exact.
-      zoom: publicEvent.locationGeo !== null && publicEvent.locationGeo !== undefined ? 14 : 11,
+      zoom:
+        publicEvent.locationGeo !== null &&
+        publicEvent.locationGeo !== undefined
+          ? 14
+          : 11,
       height: 180,
     });
-  }, [publicEvent.format, publicEvent.locationGeo, publicEvent.cityGeo, palette.accent]);
+  }, [
+    publicEvent.format,
+    publicEvent.locationGeo,
+    publicEvent.cityGeo,
+    palette.accent,
+  ]);
 
   // ORCH-1167-R2 (change 4) — the floating Get-tickets bar is now PERSISTENT on
   // phone/native: it stays pinned/visible the whole scroll (Seth-directed; it was
@@ -738,8 +816,67 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const isPurchaseEntryKind =
     offeringCta.kind === "buy" || offeringCta.kind === "free";
   const purchaseBlockedByAccess = isPurchaseEntryKind && routeAccess.blocked;
-  const purchaseNeedsSignIn =
-    isPurchaseEntryKind && routeAccess.requiresSignIn;
+  const purchaseNeedsSignIn = isPurchaseEntryKind && routeAccess.requiresSignIn;
+  const requiresMultiDatePurchase =
+    isMultiDate &&
+    isPurchaseEntryKind &&
+    bookable &&
+    acquisitionState.kind === "current";
+  const dayChooserState: "ready" | "error" | "offline" | "stale" = !online
+    ? "offline"
+    : occurrencesStale
+      ? "stale"
+      : occurrences.length <= 1
+        ? "error"
+        : "ready";
+  const multiDatePurchaseReady =
+    !requiresMultiDatePurchase ||
+    (dayChooserState === "ready" && selectedOccurrenceIds.length > 0);
+  const selectedDayMultiplier =
+    requiresMultiDatePurchase && multiDatePricingMode === "per_day"
+      ? selectedOccurrenceIds.length
+      : 1;
+  const dayBlockedLabel =
+    dayChooserState === "ready"
+      ? "Pick at least one day above"
+      : dayChooserState === "offline"
+        ? "Reconnect to continue"
+        : "Refresh days above";
+
+  const revealDayChooser = useCallback((): void => {
+    if (Platform.OS !== "web" || typeof document === "undefined") return;
+    const firstRow = occurrences[0];
+    const target = document.getElementById(
+      dayChooserState !== "ready" || firstRow === undefined
+        ? "issue-2399-day-section"
+        : `issue-2160-day-row-${firstRow.id}`,
+    );
+    if (target === null) return;
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true;
+    target.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "center",
+    });
+    target.focus?.({ preventScroll: true });
+  }, [dayChooserState, occurrences]);
+
+  const blockForDayTruth = useCallback((): boolean => {
+    if (multiDatePurchaseReady) return false;
+    if (dayChooserState === "ready") setDayChoiceMissing(true);
+    revealDayChooser();
+    showToast(
+      dayChooserState === "offline"
+        ? "You’re offline. Reconnect to continue."
+        : dayChooserState === "stale"
+          ? "Those dates just changed. Refresh and choose again."
+          : dayChooserState === "error"
+            ? "We couldn’t load the event days."
+            : "Choose at least one day you're attending.",
+    );
+    return true;
+  }, [dayChooserState, multiDatePurchaseReady, revealDayChooser, showToast]);
 
   // The canonical post-sign-in return target, built ONLY with the canonical
   // path helper — never `eventPublicUrl`, `canonicalUrl(event)`,
@@ -796,6 +933,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // waitlist and `!bookable` branches so offering-native copy still wins.
     // Disabling the control is necessary but not sufficient: a programmatic or
     // legacy invocation must not be able to navigate either.
+    if (blockForDayTruth()) return;
     if (purchaseNeedsSignIn) {
       router.push(signInResumeHref as never);
       return;
@@ -807,18 +945,17 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     // exact navigation with the chosen occurrence attached. Single-date events
     // (and multi-date events whose occurrences have not resolved) skip this
     // entirely and fall through to the unchanged push below.
-    if (hasOccurrenceChoice && selectedOccurrenceIds.length === 0) {
-      setDayChoiceMissing(true);
-      showToast("Choose at least one day you're attending.");
-      return;
-    }
     // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
     // on-sale button is always tappable, and tapping at 0 selected pushes to the
     // cart step (i) where the buyer picks/edits quantities. An empty seed encodes
     // to nothing → the bare /checkout/[eventId] cart path. The genuinely non-
     // purchasable states never reach here (their CTA resolves tappable:false).
     router.push(
-      checkoutPublicPathWithSeed(event.id, ticketQuantities, chosenOccurrenceParams) as never,
+      checkoutPublicPathWithSeed(
+        event.id,
+        ticketQuantities,
+        chosenOccurrenceParams,
+      ) as never,
     );
   }, [
     offeringCta.kind,
@@ -831,9 +968,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     purchaseNeedsSignIn,
     purchaseBlockedByAccess,
     signInResumeHref,
-    hasOccurrenceChoice,
-    selectedOccurrenceIds,
     chosenOccurrenceParams,
+    blockForDayTruth,
   ]);
 
   const handleClose = useCallback((): void => {
@@ -857,7 +993,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       }).then((result) => {
         if (result === "copied") showToast("Link copied");
         if (result === "failed") {
-          showToast("The link could not be shared. Copy it from the address bar.");
+          showToast(
+            "The link could not be shared. Copy it from the address bar.",
+          );
         }
       });
       return;
@@ -884,6 +1022,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         // password-gate legacy variant the shared package owns the tier
         // control and is passed no disable lever, so the handler itself is the
         // only in-scope fence; the notice carries the explanation.
+        if (blockForDayTruth()) return;
         if (purchaseNeedsSignIn) {
           router.push(signInResumeHref as never);
           return;
@@ -891,13 +1030,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         if (purchaseBlockedByAccess) return;
         // issue #2135 — same day-first gate as handleProceedToCart, so no
         // entry point into checkout can skip the multi-date choice.
-        if (hasOccurrenceChoice && selectedOccurrenceIds.length === 0) {
-          setDayChoiceMissing(true);
-          showToast("Choose at least one day you're attending.");
-          return;
-        }
         router.push(
-          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParams) as never,
+          checkoutPublicPathWithSeed(
+            event.id,
+            {},
+            chosenOccurrenceParams,
+          ) as never,
         );
       },
       onClaimFreeTicket: (_ticketId: string) => {
@@ -909,6 +1047,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         }
         // issue #2101 — fail-closed, same contract as onBuyTicket. The free
         // ticket path moves entitlement, so it is a value-moving entry.
+        if (blockForDayTruth()) return;
         if (purchaseNeedsSignIn) {
           router.push(signInResumeHref as never);
           return;
@@ -916,13 +1055,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         if (purchaseBlockedByAccess) return;
         // issue #2135 — same day-first gate (the free path moves entitlement,
         // and a free multi-date guest must still choose their day).
-        if (hasOccurrenceChoice && selectedOccurrenceIds.length === 0) {
-          setDayChoiceMissing(true);
-          showToast("Choose at least one day you're attending.");
-          return;
-        }
         router.push(
-          checkoutPublicPathWithSeed(event.id, {}, chosenOccurrenceParams) as never,
+          checkoutPublicPathWithSeed(
+            event.id,
+            {},
+            chosenOccurrenceParams,
+          ) as never,
         );
       },
       onJoinWaitlist: (ticketId: string) => {
@@ -955,9 +1093,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       purchaseNeedsSignIn,
       purchaseBlockedByAccess,
       signInResumeHref,
-      hasOccurrenceChoice,
-      selectedOccurrenceIds,
       chosenOccurrenceParams,
+      blockForDayTruth,
     ],
   );
 
@@ -982,45 +1119,28 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       </View>
     ) : null;
 
-  // ── issue #2135 [multi-date public day picker] — the INLINE day chooser ───
-  //
-  // The bug is that a guest could not SEE the other days, not only that they
-  // could not choose one. So every day is rendered on the page itself, in the
-  // flow, with no tap required to reveal it.
-  //
-  // It rides the EXISTING `stateBanner` slot (ParallaxCoverShell renders it
-  // above the body on phone AND desktop), so no shared-package prop had to be
-  // added and the shell/body are untouched. It is only mounted for a multi-date
-  // event on a live page; the lazy chunk is otherwise never resolved.
-  const multiDateDayChooser =
-    isMultiDate && acquisitionState.kind === "current" ? (
-      <React.Suspense fallback={null}>
-        <MultiDateDayChooser
-          timezone={event.timezone ?? "UTC"}
-          palette={palette}
-          fontFamily={boldFamily}
-          occurrences={occurrences}
-          selectedOccurrenceIds={selectedOccurrenceIds}
-          pricingMode={multiDatePricingMode}
-          isPaid={eventHasPaidTicket}
-          highlightUnchosen={dayChoiceMissing}
-          onToggle={handleOccurrenceToggle}
-        />
-      </React.Suspense>
-    ) : null;
-
-  // The ticketed page's banner slot = the unchanged state banner PLUS the day
-  // chooser. When there is no chooser this is the SAME `stateBanner` value
-  // (identical node, identical null) — single-date rendering is untouched.
-  const ticketedStateBanner =
-    multiDateDayChooser === null ? (
-      stateBanner
-    ) : (
-      <>
-        {stateBanner}
-        {multiDateDayChooser}
-      </>
-    );
+  // issue #2399 — app-local, lazy chooser injected as the shared purchase
+  // card's first child. Non-purchase states do not ask the buyer for a day.
+  const multiDateDayChooser = requiresMultiDatePurchase ? (
+    <React.Suspense fallback={null}>
+      <MultiDateDayChooser
+        timezone={event.timezone ?? "UTC"}
+        palette={palette}
+        fontFamily={boldFamily}
+        occurrences={occurrences}
+        selectedOccurrenceIds={selectedOccurrenceIds}
+        pricingMode={multiDatePricingMode}
+        isPaid={eventHasPaidTicket}
+        highlightUnchosen={dayChoiceMissing}
+        state={dayChooserState}
+        onRetry={() => {
+          setOccurrencesStale(false);
+          onRetryOccurrences?.();
+        }}
+        onToggle={handleOccurrenceToggle}
+      />
+    </React.Suspense>
+  ) : null;
 
   // ORCH-1167-R2 (change 5) — DESKTOP WEB two-column reflow. On wide web the
   // primary content (cover/name/pills/about/where-you'll-be) stays in the left
@@ -1031,30 +1151,42 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   // EventOfferingFloatingBar (phone only; hidden on desktop). `offeringCta` is kept
   // only for the page-level state banner (one owner, never disagrees).
   void ctaUnavailableLabel; // retained import; legacy callers removed.
-  const stickyPanel = isDesktop && acquisitionState.kind === "current" ? (
-    <View style={[styles.deskPanel, { backgroundColor: palette.card, borderColor: palette.panelBorder }]}>
-      <View style={[styles.deskAccent, { backgroundColor: palette.accent }]} />
-      <View style={styles.deskInner}>
-        <EventTicketBox
-          event={publicEvent}
-          bookable={bookable}
-          palette={palette}
-          theme={resolvedTheme}
-          variant={pageVariant}
-          ticketQuantities={ticketQuantities}
-          onChangeTicketQuantity={handleChangeTicketQuantity}
-          onProceedToCart={handleProceedToCart}
-          // issue #2101 — the desktop sticky-panel purchase control. This page
-          // renders EventTicketBox directly, so the accessible disabled state
-          // is set from here with no edit to the shared package.
-          submitting={purchaseBlockedByAccess}
-          showHeading
-          pricingNote={ticketPricingNote}
-          testID="orch-1167-event-desktop-ticket-box"
+  const stickyPanel =
+    isDesktop && acquisitionState.kind === "current" ? (
+      <View
+        style={[
+          styles.deskPanel,
+          { backgroundColor: palette.card, borderColor: palette.panelBorder },
+        ]}
+      >
+        <View
+          style={[styles.deskAccent, { backgroundColor: palette.accent }]}
         />
+        <View style={styles.deskInner}>
+          <EventTicketBox
+            event={publicEvent}
+            bookable={bookable}
+            palette={palette}
+            theme={resolvedTheme}
+            variant={pageVariant}
+            ticketQuantities={ticketQuantities}
+            onChangeTicketQuantity={handleChangeTicketQuantity}
+            onProceedToCart={handleProceedToCart}
+            // issue #2101 — the desktop sticky-panel purchase control. This page
+            // renders EventTicketBox directly, so the accessible disabled state
+            // is set from here with no edit to the shared package.
+            submitting={purchaseBlockedByAccess}
+            showHeading
+            pricingNote={ticketPricingNote}
+            leadingPurchaseSection={multiDateDayChooser}
+            priceMultiplier={selectedDayMultiplier}
+            purchaseReady={multiDatePurchaseReady}
+            purchaseBlockedLabel={dayBlockedLabel}
+            testID="orch-1167-event-desktop-ticket-box"
+          />
+        </View>
       </View>
-    </View>
-  ) : null;
+    ) : null;
 
   // ORCH-1150 — RSVP branch. An event_type='rsvp' row has zero tickets + no
   // checkout; it renders the Going/Not-going RsvpPublicBody and returns early.
@@ -1112,35 +1244,39 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     [event.id],
   );
 
-  const handleDownloadRsvpPass = useCallback(async (
-    credential: import("@mingla/offering-rendering").RsvpPassCredential,
-    recovery: import("@mingla/offering-rendering").RsvpAnonymousRecovery | null,
-  ): Promise<void> => {
-    const surface = "anonymous_web_success";
-    captureWeb("rsvp_pass_pdf_requested", { surface });
-    try {
-      const pdf = await fetchPublicRsvpPassPdf(
-        credential.entityType,
-        credential.entityId,
-        recovery?.recoveryToken ?? null,
-      );
-      if (Platform.OS !== "web" || typeof document === "undefined") {
-        throw new Error("rsvp_pdf_web_only");
+  const handleDownloadRsvpPass = useCallback(
+    async (
+      credential: import("@mingla/offering-rendering").RsvpPassCredential,
+      recovery:
+        import("@mingla/offering-rendering").RsvpAnonymousRecovery | null,
+    ): Promise<void> => {
+      const surface = "anonymous_web_success";
+      captureWeb("rsvp_pass_pdf_requested", { surface });
+      try {
+        const pdf = await fetchPublicRsvpPassPdf(
+          credential.entityType,
+          credential.entityId,
+          recovery?.recoveryToken ?? null,
+        );
+        if (Platform.OS !== "web" || typeof document === "undefined") {
+          throw new Error("rsvp_pdf_web_only");
+        }
+        const objectUrl = URL.createObjectURL(pdf.blob);
+        const anchor = document.createElement("a");
+        anchor.href = objectUrl;
+        anchor.download = pdf.filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        URL.revokeObjectURL(objectUrl);
+        captureWeb("rsvp_pass_pdf_result", { surface, outcome: "success" });
+      } catch (error) {
+        captureWeb("rsvp_pass_pdf_result", { surface, outcome: "failure" });
+        throw error;
       }
-      const objectUrl = URL.createObjectURL(pdf.blob);
-      const anchor = document.createElement("a");
-      anchor.href = objectUrl;
-      anchor.download = pdf.filename;
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      URL.revokeObjectURL(objectUrl);
-      captureWeb("rsvp_pass_pdf_result", { surface, outcome: "success" });
-    } catch (error) {
-      captureWeb("rsvp_pass_pdf_result", { surface, outcome: "failure" });
-      throw error;
-    }
-  }, [event.id]);
+    },
+    [event.id],
+  );
 
   // ORCH-1291 [rsvp-chip-in] — the buyer-web payment hand-off for a voluntary
   // gift. surface:'web' → the edge fn returns a hosted Stripe Checkout URL (or a
@@ -1185,7 +1321,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const contributionParam = Array.isArray(routeParams.contribution)
     ? routeParams.contribution[0]
     : routeParams.contribution;
-  const [returnBanner, setReturnBanner] = useState<"paid" | "cancel" | "return" | null>(
+  const [returnBanner, setReturnBanner] = useState<
+    "paid" | "cancel" | "return" | null
+  >(
     contributionParam === "paid"
       ? "paid"
       : contributionParam === "cancel"
@@ -1201,7 +1339,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       contributionParam !== "paid" &&
       contributionParam !== "cancel" &&
       contributionParam !== "return"
-    ) return;
+    )
+      return;
     returnBannerHandledRef.current = true;
     setReturnBanner(contributionParam);
     if (Platform.OS === "web" && typeof window !== "undefined") {
@@ -1379,7 +1518,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // `measured + 24 + 16 + safeAreaBottom` — that measured override does the
           // real clearance work so the last section always clears the bar even when
           // the micro subcopy wraps. 0 on desktop (sticky panel owns clearance).
-          contentBottomInset={isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom}
+          contentBottomInset={
+            isDesktop ? 0 : FLOATING_BAR_CLEARANCE + insets.bottom
+          }
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
           safeAreaTop={insets.top}
@@ -1423,7 +1564,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                 // `palette.page` is the guaranteed-OPAQUE 6-digit hex the palette is
                 // built on (and the exact opaque fill RsvpChipInPanel uses on Android),
                 // so the cover can no longer show through on web or native; border kept.
-                { backgroundColor: palette.page, borderColor: palette.panelBorder },
+                {
+                  backgroundColor: palette.page,
+                  borderColor: palette.panelBorder,
+                },
               ]}
               testID="orch-1295-chipin-return-banner"
             >
@@ -1440,7 +1584,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                       ? "Confirming your chip-in"
                       : "Payment canceled"}
                 </Text>
-                <Text style={[styles.returnBannerBody, { color: palette.secondaryText }]}>
+                <Text
+                  style={[
+                    styles.returnBannerBody,
+                    { color: palette.secondaryText },
+                  ]}
+                >
                   {returnBanner === "paid"
                     ? `Your gift to ${brand?.displayName ?? "the host"} came through — your RSVP's all set.`
                     : returnBanner === "return"
@@ -1456,7 +1605,12 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                 style={styles.returnBannerClose}
                 testID="orch-1295-chipin-return-banner-dismiss"
               >
-                <Text style={[styles.returnBannerCloseText, { color: palette.tertiaryText }]}>
+                <Text
+                  style={[
+                    styles.returnBannerCloseText,
+                    { color: palette.tertiaryText },
+                  ]}
+                >
                   ✕
                 </Text>
               </Pressable>
@@ -1561,9 +1715,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForQuery}
           staticMapUrl={staticMapUrl}
-          // issue #2135 — the unchanged state banner, plus the multi-date day
-          // strip when (and only when) this event has >1 occurrence.
-          stateBanner={ticketedStateBanner}
+          stateBanner={stateBanner}
           stickyPanel={stickyPanel}
           onScroll={handleScroll}
           onScrollViewLayout={handleScrollLayout}
@@ -1584,6 +1736,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           // issue #2160 §7(a) — the phone inline ticket box. Null on every
           // single-date and free event, so the rendered tree is unchanged there.
           pricingNote={ticketPricingNote}
+          leadingPurchaseSection={multiDateDayChooser}
+          priceMultiplier={selectedDayMultiplier}
+          purchaseReady={multiDatePurchaseReady}
+          purchaseBlockedLabel={dayBlockedLabel}
           ticketQuantities={ticketQuantities}
           onChangeTicketQuantity={handleChangeTicketQuantity}
           onProceedToCart={handleProceedToCart}
@@ -1626,6 +1782,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             // issue #2101 — the PHONE floating purchase control, rendered
             // directly by this page.
             submitting={purchaseBlockedByAccess}
+            priceMultiplier={selectedDayMultiplier}
+            purchaseReady={multiDatePurchaseReady}
+            purchaseBlockedLabel={dayBlockedLabel}
             testID="orch-1167-event-floating-bar"
           />
         </View>
@@ -1776,7 +1935,12 @@ const styles = StyleSheet.create({
   },
   returnBannerText: { flex: 1, minWidth: 0 },
   returnBannerTitle: { fontSize: 15, fontWeight: "900", letterSpacing: -0.2 },
-  returnBannerBody: { fontSize: 13, lineHeight: 18, fontWeight: "600", marginTop: 3 },
+  returnBannerBody: {
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: "600",
+    marginTop: 3,
+  },
   returnBannerClose: {
     width: 28,
     height: 28,
