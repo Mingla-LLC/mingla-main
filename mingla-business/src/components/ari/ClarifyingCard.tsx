@@ -103,7 +103,7 @@ export const ClarifyingCard: React.FC<ClarifyingCardProps> = ({
           accessibilityLabel={`Answer: ${question}`}
         />
         <View style={styles.actions}>
-          <Pressable
+          {onSkip ? <Pressable
             onPress={!isLoading && !isDisabled ? onSkip : undefined}
             disabled={isLoading || isDisabled}
             hitSlop={{ top: 5, bottom: 5 }}
@@ -115,7 +115,7 @@ export const ClarifyingCard: React.FC<ClarifyingCardProps> = ({
             accessibilityLabel="Skip this detail"
           >
             <Text style={styles.ghostText}>Skip</Text>
-          </Pressable>
+          </Pressable> : null}
           <Pressable
             onPress={canSend ? onSubmit : undefined}
             disabled={!canSend}
@@ -179,7 +179,7 @@ const styles = StyleSheet.create({
     gap: 6,
   },
   ghostBtn: {
-    height: ariThread.btnHeight,
+    minHeight: 44,
     borderRadius: 10,
     paddingHorizontal: spacing.md,
     alignItems: "center",
@@ -192,7 +192,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.1,
   },
   primaryBtn: {
-    height: ariThread.btnHeight,
+    minHeight: 44,
     minWidth: 88,
     borderRadius: 10,
     paddingHorizontal: spacing.md,

@@ -4,14 +4,17 @@
 //   1. Max 200 user-role messages / 24h per user (cost + abuse cap)
 //   2. Max 1 in-flight executing pending_action per user
 //
-// Uses service-role client because counting rows across the user's own data
-// is faster with an admin client, AND this is a SYSTEM table read (the gate
-// itself), not a tool execution. This is the ONLY service-role usage in the
-// Ari surface — per the I-ARI-USER-JWT-ONLY invariant, executors NEVER use
-// service role.
+// Owns creation of Ari's narrowly used service client. It is used for system
+// rate-limit/pending-action access and for #1985 reducer-validated,
+// explicitly user-scoped task-state CAS RPCs. Authentication, tenant checks,
+// and tool executors continue to use the caller's JWT; executors NEVER receive
+// this service client.
 
 // deno-lint-ignore-file no-explicit-any
-import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.45.4";
+import {
+  createClient,
+  SupabaseClient,
+} from "https://esm.sh/@supabase/supabase-js@2.45.4";
 
 const TURN_LIMIT_24H = 200;
 

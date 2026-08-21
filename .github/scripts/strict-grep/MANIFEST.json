@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 575,
-  "selfTestWiredFloor": 370,
+  "expectedStrictGrepMjsFiles": 577,
+  "selfTestWiredFloor": 371,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -65,6 +65,33 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-2079-provider-correct-late-refund"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1985-business-typecheck.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-1985-ari-task-state.yml",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "ari-task-state"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1985-ari-task-state.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "ari-task-state"
       ]
     },
     {

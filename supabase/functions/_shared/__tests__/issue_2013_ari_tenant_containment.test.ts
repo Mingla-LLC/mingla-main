@@ -51,11 +51,19 @@ Deno.test("#2013 negative proof is anchored to the repository's public brand RLS
 Deno.test("#2013 proposal-confirm rows share provenance and replay while v4 stays excluded", async () => {
   const confirmSource = await Deno.readTextFile("supabase/functions/agent-confirm-action/index.ts");
   assert(confirmSource.includes('import { TENANT_CONTEXT_VERSION }'));
-  // [TEST-MOD-APPROVED #1972] Terminal tool receipts moved into the atomic
-  // SQL owner; these four values are trusted RPC attestations + the sole
-  // remaining assistant-message writer, not five split Edge inserts.
-  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 4);
+  // [TEST-MOD-APPROVED #1985] #1972 remains the sole terminal-tool writer;
+  // #1985 adds one service-only assistant/state CAS attestation. These five
+  // values are four trusted RPC attestations plus the sole remaining direct
+  // assistant-message writer, never split terminal Edge inserts.
+  assertEquals(confirmSource.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1, 5);
   assertEquals(confirmSource.includes("PROMPT_VERSION"), false);
+
+  const taskStateMigration = await Deno.readTextFile(
+    "supabase/migrations/20270506001985_issue_1985_ari_conversation_task_state.sql",
+  );
+  assert(taskStateMigration.includes("commit_agent_task_assistant_turn"));
+  assert(taskStateMigration.includes("p_prompt_version"));
+  assert(taskStateMigration.includes(") TO service_role;"));
 
   const chatSource = await Deno.readTextFile("supabase/functions/agent-chat/index.ts");
   const start = chatSource.indexOf("const contents: GeminiContentMessage[] = [];");

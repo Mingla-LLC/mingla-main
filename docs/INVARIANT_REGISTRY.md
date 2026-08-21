@@ -147,6 +147,30 @@
 - **Rule:** Explorer native launch uses the regular Mingla wordmark on `#FAFAFA`; Host native launch uses the approved full-width white Host lockup on `#EB7825`; Host launcher/adaptive/monochrome/favicon slots use the descriptor-free Mingla badge. Welcome screens remain the regular Mingla wordmark and never add a second JavaScript splash owner.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2050-native-launch-identity.mjs`, its independent adversarial test, asset byte/dimension checks, and cold-launch runtime screenshots on both platforms.
 
+---
+
+## DRAFT — issue #1985 (Ari durable task planning)
+
+### I-PROPOSED-ARI-TASK-STATE-AUTHORITY (DRAFT)
+
+- **Rule:** Ari's persisted, schema-versioned `agent_conversations.task_state` is the sole authority for active intent, resolved/missing slots, pending questions, interruptions, confirmation state, and completed outcomes. Prose, message history, model output, and cumulative summary are context only. Every terminal turn commits state and summary with `task_state_revision` compare-and-swap; a repeated `client_turn_id` returns its already-persisted terminal response and never repeats planning or a write.
+- **Enforcement:** `agentConversationState.ts`, the additive #1985 migration, `agent-chat` reducer/CAS/idempotency boundary, confirmation reconciliation, the #1985 Deno suite, and `.github/scripts/strict-grep/issue-1985-ari-task-state.mjs` with functional revert self-test.
+- **Established:** DRAFT at #1985 IMPLEMENT; flip to ACTIVE only after independent tester PASS, all-green merge, surgical migration apply, exact edge deployment, and production verification.
+
+### I-PROPOSED-ARI-CHOICES-CARRY-VALUES (DRAFT)
+
+- **Rule:** Interactive Ari choices use `AgentChoicesV2`: a persisted `question_id`, server-owned option IDs, and typed payloads. The client submits only the question ID, selected option IDs, and permitted free text; visible labels are display-only. The server reloads the persisted question and payload before reducing state. Historical V1 rows remain visible as prose but inert, stale IDs fail closed, and unresolved required slots never offer an affirmative-only shortcut.
+- **Enforcement:** shared/client `agentChoices.ts`, `agentConversationPlanner.ts`, `agent-chat`, Business service/hook/MessageList, the #1985 client and Deno regressions, and the Class A #1985 strict gate.
+- **Established:** DRAFT at #1985 IMPLEMENT; activation requires the same #1985 tester/merge/deploy/production close evidence.
+
+### I-PROPOSED-ARI-INTERRUPTIONS-RESUME (DRAFT)
+
+- **Rule:** A read or general Q&A interruption cannot erase, replace, or silently advance an active Ari task. The reducer records the interruption, answers it without executing a write, then resumes the exact persisted pending question, choices, and resolved/missing slots. Failed interruption reads also resume the plan honestly.
+- **Enforcement:** `beginInterruption`/`resumeInterruption` in `agentConversationState.ts`, the read branch in `agent-chat`, persisted pending-question response IDs, the #1985 twelve-turn/interruption Deno regressions, and the Class A #1985 strict gate.
+- **Established:** DRAFT at #1985 IMPLEMENT; activation requires the same #1985 tester/merge/deploy/production close evidence.
+
+---
+
 ## DRAFT — issue #2000 (Ari capability truth ledger)
 
 ### I-PROPOSED-2000-ARI-CAPABILITY-LEDGER-FAIL-CLOSED (DRAFT)
