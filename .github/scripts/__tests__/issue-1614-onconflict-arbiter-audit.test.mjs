@@ -24,7 +24,9 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //          — app-mobile/src/services/brandFollowsService.ts
   //   +  2  #1789 menu_modifier_groups (id) + menu_modifiers (id)
   //          — mingla-business/src/hooks/useMenuModifiers.ts:206 and :232
-  //   = 86
+  //   +  1  #1974 brand_tax_registration_attestations (brand_id)
+  //          — supabase/functions/brand-tax-registrations-list/index.ts
+  //   = 87
   //
   // [TEST-MOD-APPROVED #1789] Both #1789 sites resolve to a real, non-partial
   // arbiter — `PRIMARY KEY (id)` on each table, created at
@@ -32,12 +34,22 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // and :565. Verified on PostgreSQL 17, which reported
   // `Conflict Arbiter Indexes: menu_modifier_groups_pkey` and
   // `Conflict Arbiter Indexes: menu_modifiers_pkey` for this audit's own
-  // EXPLAIN. Every other assertion in this file is untouched.
-  assert.equal(sites.length, 86);
+  // EXPLAIN.
+  // [TEST-MOD-APPROVED #1974] The #1974 site resolves to the table's
+  // `PRIMARY KEY (brand_id)` in its issue-owned migration. Every behavioral
+  // assertion in this file is untouched; only the additive census advances.
+  assert.equal(sites.length, 87);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
   assert.equal(sites.some((site) => site.table === "brand_follows"), true);
+  assert.equal(
+    sites.some((site) =>
+      site.table === "brand_tax_registration_attestations" &&
+      site.columns.join(",") === "brand_id"
+    ),
+    true,
+  );
 });
 
 test("discovers future literals and rejects dynamic/unresolved/duplicate targets", () => {
