@@ -27,6 +27,7 @@ import { Icon } from "../ui/Icon";
 import type {
   AudienceListEntry,
   AudienceReachSummary,
+  ManualGroupSummary,
 } from "../../types/marketing";
 
 function formatLastSent(iso: string | null): string {
@@ -53,6 +54,7 @@ export interface AudienceCardProps {
   reach: AudienceReachSummary | null | undefined;
   onPress: (entry: AudienceListEntry) => void;
   isCreating?: boolean;
+  showAutomaticKind?: boolean;
 }
 
 export const AudienceCard: React.FC<AudienceCardProps> = ({
@@ -60,6 +62,7 @@ export const AudienceCard: React.FC<AudienceCardProps> = ({
   reach,
   onPress,
   isCreating,
+  showAutomaticKind = false,
 }) => {
   const handlePress = useCallback(() => {
     onPress(entry);
@@ -84,12 +87,12 @@ export const AudienceCard: React.FC<AudienceCardProps> = ({
 
   const accLabel = (() => {
     if (reach === undefined) {
-      return `${entry.display_name}, loading reach count`;
+      return `${entry.display_name}, ${showAutomaticKind ? "Automatic group, " : ""}loading reach count`;
     }
     if (reach === null) {
-      return `${entry.display_name}, reach unavailable, ${lastSentLabel.toLowerCase()}`;
+      return `${entry.display_name}, ${showAutomaticKind ? "Automatic group, " : ""}reach unavailable, ${lastSentLabel.toLowerCase()}`;
     }
-    return `${entry.display_name}, ${reach.total} buyers, ${reach.reachable_email} reachable, ${lastSentLabel.toLowerCase()}`;
+    return `${entry.display_name}, ${showAutomaticKind ? "Automatic group, " : ""}${reach.total} buyers, ${reach.reachable_email} reachable, ${lastSentLabel.toLowerCase()}`;
   })();
 
   return (
@@ -106,9 +109,7 @@ export const AudienceCard: React.FC<AudienceCardProps> = ({
       ]}
     >
       <View style={styles.headerRow}>
-        <Text style={styles.title} numberOfLines={1}>
-          {entry.display_name}
-        </Text>
+        {showAutomaticKind ? <View style={styles.automaticTitle}><Icon name="flash" size={16} color={textTokens.secondary} /><Text style={styles.title} numberOfLines={1}>{entry.display_name}</Text><View style={styles.automaticBadge}><Text style={styles.automaticBadgeText}>Automatic</Text></View></View> : <Text style={styles.title} numberOfLines={1}>{entry.display_name}</Text>}
         {isCreating === true ? (
           <ActivityIndicator size="small" color={textTokens.secondary} />
         ) : (
@@ -124,6 +125,33 @@ export const AudienceCard: React.FC<AudienceCardProps> = ({
     </Pressable>
   );
 };
+
+/** #2395 — Manual groups are organizational membership, not buyer reach. */
+export function ManualGroupCard({
+  group,
+  onPress,
+}: {
+  group: ManualGroupSummary;
+  onPress: (group: ManualGroupSummary) => void;
+}): React.ReactElement {
+  const people = `${group.memberCount} ${group.memberCount === 1 ? "person" : "people"}`;
+  return <Pressable
+    onPress={() => onPress(group)}
+    accessibilityRole="button"
+    accessibilityLabel={`${group.name}, Manual group, ${people}. Opens group details.`}
+    style={({ pressed }) => [styles.host, styles.manualHost, pressed ? styles.hostPressed : null]}
+  >
+    <View style={styles.manualRow}>
+      <View style={styles.manualGlyph}><Icon name="users" size={20} color="#ffb47d" /></View>
+      <View style={styles.manualCopy}>
+        <View style={styles.headerRow}><Text style={styles.title} numberOfLines={1}>{group.name}</Text><View style={styles.manualBadge}><Text style={styles.manualBadgeText}>Manual</Text></View></View>
+        <Text style={styles.reach}>{people}</Text>
+        {group.pendingReviewCount > 0 ? <Text style={styles.lastSent}>{group.pendingReviewCount} need review</Text> : null}
+      </View>
+      <Icon name="chevR" size={16} color={textTokens.tertiary} />
+    </View>
+  </Pressable>;
+}
 
 const styles = StyleSheet.create({
   host: {
@@ -143,6 +171,15 @@ const styles = StyleSheet.create({
   hostDisabled: {
     opacity: 0.6,
   },
+  manualHost: { minHeight: 80, paddingVertical: 12 },
+  manualRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  manualGlyph: { width: 40, height: 40, borderRadius: 12, alignItems: "center", justifyContent: "center", backgroundColor: "rgba(235,120,37,.12)", borderWidth: 1, borderColor: "rgba(235,120,37,.32)" },
+  manualCopy: { flex: 1, gap: 2 },
+  manualBadge: { borderRadius: 8, paddingHorizontal: 8, minHeight: 22, justifyContent: "center", borderWidth: 1, borderColor: "rgba(235,120,37,.32)" },
+  manualBadgeText: { ...typography.caption, fontWeight: "600", color: "#ffb47d" },
+  automaticTitle: { flex: 1, flexDirection: "row", alignItems: "center", gap: spacing.xs },
+  automaticBadge: { borderRadius: 12, paddingHorizontal: 8, minHeight: 22, justifyContent: "center", borderWidth: 1, borderColor: glass.border.profileElevated },
+  automaticBadgeText: { ...typography.caption, fontWeight: "600", color: textTokens.secondary },
   headerRow: {
     flexDirection: "row",
     alignItems: "baseline",

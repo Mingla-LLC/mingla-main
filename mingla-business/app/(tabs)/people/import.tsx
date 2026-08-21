@@ -2,7 +2,7 @@ import React from "react";
 import { Text, StyleSheet } from "react-native";
 import { useLocalSearchParams, useNavigation, useRouter } from "expo-router";
 import { SafeScreen } from "../../../src/components/ui/SafeScreen";
-import { ContactImportFlow } from "../../../src/features/contact-import/ContactImportFlow";
+import { RetryableLazyErrorBoundary } from "../../../src/components/ui/RetryableLazyBoundary";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import {
   canvas,
@@ -10,6 +10,12 @@ import {
   text,
   typography,
 } from "../../../src/constants/designSystem";
+
+const loadContactImportFlow = async () => {
+  const module = await import("../../../src/features/contact-import/ContactImportFlow");
+  return { default: module.ContactImportFlow };
+};
+
 export default function ContactImportRoute(): React.ReactElement {
   const brand = useCurrentBrand();
   const router = useRouter();
@@ -37,9 +43,11 @@ export default function ContactImportRoute(): React.ReactElement {
   return (
     <SafeScreen edges={["top"]} style={s.host}>
       {brand && validRoute ? (
-        <ContactImportFlow
-          brandId={brand.id}
-          onViewBook={returnToPeople}
+        <RetryableLazyErrorBoundary
+          loader={loadContactImportFlow}
+          accessibilityLiveRegion="polite"
+          loadingLabel="Opening contact import…"
+          componentProps={{ brandId: brand.id, onViewBook: returnToPeople }}
         />
       ) : (
         <Text style={s.empty} onPress={returnToPeople} accessibilityRole="button">This import belongs to another brand. Return to People and try again.</Text>

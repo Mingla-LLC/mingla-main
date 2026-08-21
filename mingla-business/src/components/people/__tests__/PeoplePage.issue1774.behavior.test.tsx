@@ -33,6 +33,7 @@ jest.mock("../../ui/Icon",()=>({Icon:()=>React.createElement("MockIcon")}));
 jest.mock("../../ui/Toast",()=>({Toast:(props:any)=>props.visible?<Text>{props.message}</Text>:null}));
 jest.mock("../../marketing/AudienceCard",()=>({AudienceCard:({entry}:any)=><Text>{entry.display_name}</Text>}));
 jest.mock("../AddPersonSheet",()=>({AddPersonSheet:({visible}:any)=>visible?<Text>ADD SHEET</Text>:null}));
+jest.mock("../ManualGroupsLoader",()=>({ManualGroupsLoader:()=>null}));
 // #2305 — the conflict review sheet is a sibling of AddPersonSheet in PeoplePage's
 // module graph and pulls the same reanimated-backed ConfirmDialog, so it is stubbed
 // here for the identical reason the Add sheet is.

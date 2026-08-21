@@ -4,14 +4,14 @@
  * it without pulling in supabase / RN modules through hooks transitives.
  */
 
-export type AudienceKind = "brand" | "event";
+export type AudienceKind = "brand" | "event" | "manual";
 
 export interface ParsedAudienceParam {
   kind: AudienceKind;
   id: string;
 }
 
-const KIND_RE = /^(brand|event):([0-9a-fA-F-]{36})$/;
+const KIND_RE = /^(brand|event|manual):([0-9a-fA-F-]{36})$/;
 
 export function parseAudienceParam(
   value: string | null | undefined,

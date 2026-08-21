@@ -205,6 +205,13 @@ const AUTH_SCOPED_HOOK_FILES = [
   // #1774 — canonical Brand People Book/detail RPCs are accepted-role and
   // auth.uid()-scoped; both queries wait for auth, brand and role truth.
   "marketing/useBrandPeople.ts",
+  // #2395 — Manual-group list/detail/Book-picker RPCs read auth.uid() and
+  // require an accepted rank-20 brand relationship. Every query waits for
+  // auth readiness, a concrete user, its identifiers, and the caller's gate.
+  "marketing/useManualGroups.ts",
+  // #2395 — the route-scoped Manual-group detail reader has the same rank-20
+  // RPC contract and independently folds auth/user/identifier readiness.
+  "marketing/useManualGroupDetail.ts",
   // #2305 — the identity-conflict review queue. `biz_list_brand_person_conflicts`
   // reads auth.uid() and gates on biz_brand_effective_rank >= marketing_manager,
   // so the query folds isAuthReady, user, brandId and resolved role into

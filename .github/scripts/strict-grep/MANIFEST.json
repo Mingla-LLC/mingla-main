@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 581,
-  "selfTestWiredFloor": 375,
+  "expectedStrictGrepMjsFiles": 583,
+  "selfTestWiredFloor": 376,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -8811,6 +8811,32 @@
       "selfTest": "wired",
       "jobKeys": [
         "deno-business-and-guard"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2395-manual-contact-groups.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2395-manual-contact-groups-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "manual-group-client-edge-contract"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2395-manual-contact-groups.self-test.mjs",
+      "kind": "file",
+      "enforcement": "external:issue-2395-manual-contact-groups-tests.yml",
+      "invocation": "node",
+      "modes": [
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "manual-group-client-edge-contract"
       ]
     }
   ]

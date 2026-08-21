@@ -115,6 +115,7 @@ jest.mock("../../marketing/AudienceCard", () => ({
   AudienceCard: ({ entry }: { entry: { display_name: string } }) => <Text>{entry.display_name}</Text>,
 }));
 jest.mock("../AddPersonSheet", () => ({ AddPersonSheet: () => null }));
+jest.mock("../ManualGroupsLoader", () => ({ ManualGroupsLoader: () => null }));
 // #2305 — same reason as the Add sheet above: ConflictReviewSheet imports the
 // reanimated-backed ConfirmDialog, which this suite does not transform.
 jest.mock("../ConflictReviewSheet", () => ({

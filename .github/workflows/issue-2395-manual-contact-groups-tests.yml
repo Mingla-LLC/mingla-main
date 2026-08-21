@@ -1,0 +1,95 @@
+name: issue-2395-manual-contact-groups
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270507002395_issue_2395_manual_contact_groups.sql"
+      - "supabase/migrations/__tests__/issue_2395_manual_contact_groups.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2395_manual_contact_groups.tester.pg17.test.sql"
+      - "supabase/functions/_shared/marketingAudience.ts"
+      - "supabase/functions/_shared/marketingBookQuote.ts"
+      - "supabase/functions/marketing-send/index.ts"
+      - "supabase/functions/marketing-send/issue_2395_manual_contact_groups.happy.test.ts"
+      - "mingla-business/src/**"
+      - "mingla-business/app/(tabs)/people/groups/**"
+      - "mingla-business/app/(tabs)/people/import.tsx"
+      - "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx"
+      - ".github/scripts/strict-grep/issue-2395-manual-contact-groups*.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2395-manual-contact-groups-tests.yml"
+      - "docs/INVARIANT_REGISTRY.md"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270507002395_issue_2395_manual_contact_groups.sql"
+      - "supabase/functions/_shared/marketingAudience.ts"
+      - "supabase/functions/_shared/marketingBookQuote.ts"
+      - "supabase/functions/marketing-send/**"
+      - "supabase/migrations/__tests__/issue_2395_manual_contact_groups.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2395_manual_contact_groups.tester.pg17.test.sql"
+      - "mingla-business/src/**"
+      - "mingla-business/app/(tabs)/people/groups/**"
+      - "mingla-business/app/(tabs)/people/import.tsx"
+      - "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx"
+      - ".github/scripts/strict-grep/issue-2395-manual-contact-groups*.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2395-manual-contact-groups-tests.yml"
+  workflow_dispatch:
+
+jobs:
+  manual-group-client-edge-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci --ignore-scripts
+        working-directory: mingla-business
+      - name: Service and component happy paths
+        working-directory: mingla-business
+        run: npx jest --runInBand src/services/marketing/__tests__/issue_2395_manual_group_service.happy.test.ts src/services/marketing/__tests__/issue_2395_manual_group_service.tester.test.ts src/components/people/__tests__/issue_2395_manual_contact_groups.happy.test.ts src/components/people/__tests__/issue_2395_manual_contact_groups.tester.test.ts src/components/marketing/__tests__/issue_2395_manual_contact_groups_feature_off.tester.test.ts src/components/people/__tests__/issue_2395_manual_group_lazy_boundaries.tester.test.ts src/components/ui/__tests__/issue_2395_retryable_lazy_boundary.tester.test.tsx src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx
+      - name: Edge type and sealed-resolver behavior
+        run: |
+          deno check supabase/functions/_shared/marketingAudience.ts supabase/functions/marketing-send/index.ts
+          deno test --allow-read supabase/functions/marketing-send/issue_2395_manual_contact_groups.happy.test.ts
+      - name: Structural guard and negative controls
+        run: |
+          node .github/scripts/strict-grep/issue-2395-manual-contact-groups.self-test.mjs --self-test
+          node .github/scripts/strict-grep/issue-2395-manual-contact-groups.mjs
+
+  manual-group-postgres-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 2.98.2
+      - name: PostgreSQL 17 Manual-group contract
+        shell: bash
+        run: |
+          set -euo pipefail
+          sql_root="$(mktemp -d /tmp/issue-2395-sql.XXXXXX)"
+          cleanup() { supabase stop --workdir "$sql_root" --no-backup --yes || true; }
+          trap cleanup EXIT
+          supabase init --workdir "$sql_root" --yes
+          target="$sql_root/supabase/migrations"
+          rsync -a --exclude '__tests__/' supabase/migrations/ "$target/"
+          mv "$target/20260612000001_tr4_revoke_rpc_anon_grants.sql" "$target/20260612000002_tr4_revoke_rpc_anon_grants.sql"
+          mv "$target/20260612000000_tr4_refund_tiers_booking_deadline.sql" "$target/20260612000001_tr4_refund_tiers_booking_deadline.sql"
+          mv "$target/20260615000000_orch_426_discover_cache_gzip.sql" "$target/20260615010000_orch_426_discover_cache_gzip.sql"
+          mv "$target/20261012000000_orch_1150_rsvp_maybe.sql" "$target/20261012010000_orch_1150_rsvp_maybe.sql"
+          mv "$target/20261113000000_orch_1172_rsvp_edit_privacy_settings.sql" "$target/20261113010000_orch_1172_rsvp_edit_privacy_settings.sql"
+          mv "$target/20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql" "$target/20261116010000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+          mv "$target/20261117000001_orch_1188_finalize_persist_event_date_id.sql" "$target/20261117000002_orch_1188_finalize_persist_event_date_id.sql"
+          mv "$target/20261117000000_orch_1188_orders_event_date_id.sql" "$target/20261117000001_orch_1188_orders_event_date_id.sql"
+          supabase start --workdir "$sql_root" --exclude gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor --yes
+          db_container="$(docker ps --filter "label=com.supabase.cli.project=$(basename "$sql_root")" --format '{{.Names}}' | awk '/^supabase_db_/ {print; exit}')"
+          test -n "$db_container"
+          db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2395_manual_contact_groups.happy.pg17.test.sql
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U supabase_admin -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2395_manual_contact_groups.tester.pg17.test.sql

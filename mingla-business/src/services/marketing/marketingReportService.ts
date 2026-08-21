@@ -82,7 +82,7 @@ export async function getCampaignReport(
   const { data: campaignData, error: campaignErr } = await supabase
     .from("marketing_campaigns")
     .select(
-      "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
+      "id, account_id, brand_id, audience_id, audience_name_snapshot, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
     )
     .eq("id", campaignId)
     .maybeSingle();

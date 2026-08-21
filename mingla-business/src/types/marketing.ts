@@ -54,12 +54,57 @@ export interface AudienceQueryAllBrandPeople {
   brand_id: string;
 }
 
+/** #2395 — a reusable membership overlay over canonical Brand People. */
+export interface AudienceQueryManualGroup {
+  kind: "manual_group";
+}
+
 export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
   | AudienceQueryCustomSegment
-  | AudienceQueryAllBrandPeople;
+  | AudienceQueryAllBrandPeople
+  | AudienceQueryManualGroup;
+
+export interface ManualGroupSummary {
+  groupId: string;
+  name: string;
+  kind: "manual";
+  memberCount: number;
+  pendingReviewCount: number;
+  membershipVersion: number;
+  lastUsedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ManualGroupMember {
+  personId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  contacts: {
+    id: string;
+    channel: "email" | "phone";
+    value: string;
+    isPrimary: boolean;
+  }[];
+  suppressions: { channel: "email" | "sms"; scope: string }[];
+  isMember?: boolean;
+}
+
+export interface ManualGroupDetail extends ManualGroupSummary {
+  members: ManualGroupMember[];
+  totalMembers: number;
+  filteredTotal: number;
+  nextCursor: Record<string, unknown> | null;
+}
+
+export interface ManualGroupReviewResult {
+  currentMemberCount: number;
+  resultingMemberCount: number;
+  newMemberCount: number;
+}
 
 export interface MarketingBookQuote {
   quoteVersion: 1;
@@ -74,6 +119,9 @@ export interface MarketingBookQuote {
   costKind: "provider_estimate" | "not_metered";
   estimatedCostMinor: number | null;
   currency: string | null;
+  audienceId?: string;
+  audienceKind?: "all_brand_people" | "manual_group";
+  audienceVersion?: number;
 }
 export type MarketingBookPreviewState =
   | { kind: "idle" }
@@ -135,6 +183,7 @@ export interface MarketingCampaignRow {
   account_id: string;
   brand_id: string;
   audience_id: string;
+  audience_name_snapshot?: string | null;
   template_id: string | null;
   name: string;
   channel: MarketingChannel;

@@ -65,6 +65,10 @@ export interface MarketingBookCandidateResponse {
   selectedCount: number;
   content: Record<string, unknown>;
   candidates: MarketingBookCandidate[];
+  audienceId?: string;
+  audienceKind?: "all_brand_people" | "manual_group";
+  audienceVersion?: number;
+  audienceName?: string;
 }
 export function parseBookQuotedAt(
   value: unknown,
@@ -176,6 +180,10 @@ export async function buildMarketingBookQuote(
     contentHash,
     quotedAt,
     selectedCount: input.selectedCount,
+    audienceId: input.audienceId ?? null,
+    audienceKind: input.audienceKind ?? null,
+    audienceVersion: input.audienceVersion ?? null,
+    audienceName: input.audienceName ?? null,
     reachableCount: reachable.length,
     suppressedCount,
     unavailableCount,
@@ -224,7 +232,15 @@ export function publicMarketingBookQuote(
     contentHash: _contentHash,
     rateIds: _rateIds,
     sourceReferences: _sources,
+    audienceName: _audienceName,
+    audienceId,
+    audienceKind,
+    audienceVersion,
     ...safe
   } = quote;
-  return safe;
+  return audienceKind === "manual_group" &&
+      typeof audienceId === "string" &&
+      typeof audienceVersion === "number"
+    ? { ...safe, audienceId, audienceKind, audienceVersion }
+    : safe;
 }

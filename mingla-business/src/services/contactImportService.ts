@@ -72,6 +72,12 @@ export type ContactImportResult = {
   failureCode?: string | null;
 };
 
+/** Safe composition payload used by Manual groups; contains no contact values. */
+export const contactImportGroupCompletion = (result: ContactImportResult): {
+  batchId: string;
+  counts: ContactImportCounts;
+} => ({ batchId: result.batchId, counts: result.counts });
+
 export class ContactImportError extends Error {
   constructor(
     public code: string,

@@ -37,6 +37,9 @@ export function useResolveAudience(
     if (parsed === null) {
       return { data: undefined, isLoading: false, isError: false };
     }
+    if (parsed.kind === "manual") {
+      return { data: undefined, isLoading: false, isError: false };
+    }
     const source = parsed.kind === "brand" ? brandQuery : eventQuery;
     return {
       data: source.data,
