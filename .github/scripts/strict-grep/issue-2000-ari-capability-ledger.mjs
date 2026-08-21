@@ -150,8 +150,6 @@ ari.partner.splits
 // it cannot remove one from this set or create a new proven-broken claim.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
-ari.ticket.upsert_tier
-ari.ticket.pricing_switches
 ari.trip.create
 ari.trip.update
 ari.trip.publish
@@ -327,9 +325,9 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 36) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 34) {
     failures.push(
-      `proven-broken authority must contain 36 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 34 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -433,7 +431,7 @@ export function validateLedger({ root, ledger, registered, advertised }) {
     const blockers = Array.isArray(capability.blockers) ? capability.blockers : [];
     const verificationGap = blockers.length > 0 && blockers.every((blocker) =>
       typeof blocker === "string" &&
-      /(?:runtime|surface|parity).*(?:proof|evidence)|(?:proof|evidence).*(?:runtime|surface|parity)/i.test(blocker)
+      /(?:runtime|surface|parity).*(?:proof|evidence|certification)|(?:proof|evidence|certification).*(?:runtime|surface|parity)/i.test(blocker)
     );
     if (capability.status === "registered_unverified" && !verificationGap) {
       failures.push(`${label}: registered_unverified blockers must describe verification gaps only`);
@@ -544,7 +542,7 @@ function selfTest() {
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
   expectMutation("broken to unverified laundering", ({ ledger }) => {
-    const row = ledger.capabilities.find((c) => c.id === "ari.ticket.upsert_tier");
+    const row = ledger.capabilities.find((c) => c.id === "ari.trip.create");
     row.status = "registered_unverified";
     row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
     ledger.audit.status_breakdown.broken--;
@@ -554,7 +552,7 @@ function selfTest() {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
   expectMutation("proven-broken historical source must exist", ({ ledger }) => {
-    const broken = ledger.capabilities.find((c) => c.id === "ari.ticket.upsert_tier");
+    const broken = ledger.capabilities.find((c) => c.id === "ari.trip.create");
     const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
     broken.owners.source[0] = { ...postBaseline.owners.source[0] };
   }, (failure) => failure.includes("absent at audit SHA"));

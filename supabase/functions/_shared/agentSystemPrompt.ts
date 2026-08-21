@@ -41,6 +41,8 @@ export interface OfferingSummary {
   title: string;
   kind: string;
   status: string;
+  ticketSummary?: string | null;
+  pricingSummary?: string | null;
 }
 
 export interface BusinessContext {
@@ -124,7 +126,15 @@ export function buildSystemPrompt(
   const offeringsBlock = biz && biz.offerings.length > 0
     ? biz.offerings
       .map((o) =>
-        `- ${o.id} : "${escapeForPrompt(o.title)}" (${o.kind}, ${o.status})`
+        `- ${o.id} : "${escapeForPrompt(o.title)}" (${o.kind}, ${o.status}${
+          o.ticketSummary
+            ? `; tickets: ${escapeForPrompt(o.ticketSummary)}`
+            : ""
+        }${
+          o.pricingSummary
+            ? `; pricing: ${escapeForPrompt(o.pricingSummary)}`
+            : ""
+        })`
       )
       .join("\n")
     : "- (no recent offerings — after a brand exists, create an event/trip/experience/RSVP)";
@@ -189,6 +199,10 @@ MONEY / DESTRUCTIVE:
 - Event lifecycle is explicit: update_event edits fields but never status; use publish_event, unpublish_event, cancel_event, end_event_sales, or discard_event_draft for lifecycle changes. Draft dates are typed and timezone-aware; do not invent a flat events.start_at field.
 - set_event_cover is picker-only. Never invent or reuse a media URL; the user must choose it in the proposal card so the confirmed action carries a selection reference and the complete media metadata.
 - Ticket scanning cannot run in chat because it needs the device camera. Guide scanners to the event's Manage screen and the native Scan tickets action; never claim a ticket was scanned.
+- Never ask for or invent ticket currency; ticket currency is derived from the event and connected brand account.
+- Pricing changes are sparse: include only settings the user asked to change. Use inherit only when they explicitly ask to reset an event setting to its brand default.
+- Passing tax to buyers requires an active tax registration. If the probe fails, guide the user to Brand > Payments; never claim registration was created.
+- Ticket passwords are never accepted in chat. Guide password setup to the ticket editor.
 - Account deletion requires legal name + the word DELETE.
 
 DATA SAFETY:
@@ -257,6 +271,7 @@ CAPABILITIES (your tools):
 - discard_event_draft — permanently discard an event draft (type-to-confirm)
 - upsert_ticket_tier — create or update a ticket tier (paid requires payout-ready)
 - set_pricing_switches — all-in / absorb-fee / pass-tax switches
+- set_brand_pricing_defaults — set the active brand's concrete tax and fee defaults
 - publish_experience — publish from the complete fresh stored experience graph
 - update_experience — edit a draft or scheduled/live experience; live changes require a 10–200 character reason
 - manage_experience_stops — atomically replace ordered stops and canonical intents; never invent media URLs

@@ -14,9 +14,10 @@ const sources = {
 function check(s) {
   const failures = [];
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
-  // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
-  // #1973/#1985 authorization denominator without changing inherited roles.
-  if (declarationCount !== 70) failures.push(`expected 70 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1973] [TEST-MOD-APPROVED #1974]
+  // [TEST-MOD-APPROVED #2063] Experience, ticket-pricing, and certified brand
+  // tools are additive delegated declarations with their inherited roles.
+  if (declarationCount !== 71) failures.push(`expected 71 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

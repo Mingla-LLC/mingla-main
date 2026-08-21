@@ -206,6 +206,33 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     }
     return out;
   }
+  const context = args.__proposal_context !== null && typeof args.__proposal_context === "object"
+    ? args.__proposal_context as Record<string, unknown>
+    : {};
+  if (toolName === "upsert_ticket_tier") {
+    out.push({ label: "Event state", value: String(context.lifecycle ?? "event") });
+    out.push({ label: "Action", value: String(context.action ?? "update") });
+    const tierName = typeof args.name === "string" ? args.name : context.tier_name;
+    if (typeof tierName === "string") out.push({ label: "Tier", value: tierName });
+    const currency = typeof context.effective_currency === "string" ? context.effective_currency : "currency pending";
+    if (typeof context.current_price_cents === "number" || typeof context.proposed_price_cents === "number") {
+      out.push({
+        label: "Price",
+        value: `${typeof context.current_price_cents === "number" ? `${(context.current_price_cents / 100).toFixed(2)} ${currency}` : "new"} → ${typeof context.proposed_price_cents === "number" ? `${(context.proposed_price_cents / 100).toFixed(2)} ${currency}` : "Free"}`,
+      });
+    }
+    out.push({
+      label: "Capacity",
+      value: `${context.current_capacity ?? "new"} → ${context.proposed_capacity ?? "Unlimited"}`,
+    });
+    out.push({ label: "Payout check", value: context.payout_ready === true ? "Ready" : "Not needed" });
+    out.push({ label: "Available", value: String(context.available_at ?? "both") });
+  }
+  if (toolName === "set_pricing_switches" || toolName === "set_brand_pricing_defaults") {
+    if (args.tax !== undefined) out.push({ label: "Tax", value: `${String(context.current_tax ?? "inherit")} → ${String(args.tax)}` });
+    if (args.mingla_fee !== undefined) out.push({ label: "Mingla fee", value: `${String(context.current_mingla_fee ?? "inherit")} → ${String(args.mingla_fee)}` });
+    if (args.service_fee !== undefined) out.push({ label: "Service fee", value: `${String(context.current_service_fee ?? "inherit")} → ${String(args.service_fee)}` });
+  }
   if (toolName === "create_event" || toolName === "update_event") {
     if (typeof args.start_at === "string") {
       const d = new Date(args.start_at);
@@ -260,6 +287,7 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
       "cover_media_poster_url",
       "cover_media_type",
       "confirm_phrase",
+      "__proposal_context",
     ]);
     for (const [key, value] of Object.entries(args)) {
       if (skip.has(key) || value == null || value === "") continue;

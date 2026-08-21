@@ -50,6 +50,10 @@ import {
   validateAgentChoicesV2,
   validateChoiceSubmission,
 } from "../_shared/agentChoices.ts";
+import {
+  preflightTicketPricingProposal,
+  verifiedProposalArgs,
+} from "../_shared/agentTicketPricing.ts";
 import { logError } from "../_shared/structuredLog.ts";
 import {
   AccessibleAgentBrand,
@@ -1170,18 +1174,79 @@ async function handle(req: Request): Promise<Response> {
   if (brandIds.length > 0) {
     const { data: offeringRows } = await userClient
       .from("events")
-      .select("id, title, status, event_type")
+      .select(
+        "id, title, status, event_type, currency, theme, pass_tax, pass_mingla_fee, pass_service_fee",
+      )
       .in("brand_id", brandIds)
       .is("deleted_at", null)
       .order("created_at", { ascending: false })
       .limit(12);
     for (const row of (offeringRows ?? []) as any[]) {
+      const draftTickets = row.status === "draft" &&
+          Array.isArray(row.theme?.business_draft?.tickets)
+        ? row.theme.business_draft.tickets.slice(0, 6)
+        : [];
       offerings.push({
         id: row.id,
         title: String(row.title ?? "untitled").slice(0, 80),
         kind: String(row.event_type ?? "event"),
         status: String(row.status ?? "draft"),
+        ticketSummary: draftTickets.length > 0
+          ? draftTickets.map((tier: any) =>
+            `${String(tier.name ?? "Tier").slice(0, 40)} ${
+              tier.isFree === true
+                ? "free"
+                : `${Number(tier.priceGbp ?? tier.price ?? 0).toFixed(2)} ${
+                  String(row.currency ?? "currency pending")
+                }`
+            }`
+          ).join("; ")
+          : null,
+        pricingSummary: `tax=${
+          row.pass_tax === null
+            ? "inherit"
+            : row.pass_tax
+            ? "included"
+            : "absorbed"
+        }, mingla=${
+          row.pass_mingla_fee === null
+            ? "inherit"
+            : row.pass_mingla_fee
+            ? "buyer"
+            : "absorbed"
+        }, service=${
+          row.pass_service_fee === null
+            ? "inherit"
+            : row.pass_service_fee
+            ? "buyer"
+            : "absorbed"
+        }`,
       });
+    }
+    const liveOfferingIds = offerings.filter((offering) =>
+      offering.status !== "draft"
+    ).map((offering) => offering.id);
+    if (liveOfferingIds.length > 0) {
+      const { data: liveTiers } = await userClient.from("ticket_types")
+        .select("event_id,name,price_cents,is_free,currency")
+        .in("event_id", liveOfferingIds).is("deleted_at", null)
+        .order("display_order", { ascending: true }).limit(24);
+      for (const offering of offerings) {
+        const tiers = (liveTiers ?? []).filter((tier: any) =>
+          tier.event_id === offering.id
+        ).slice(0, 6);
+        if (tiers.length > 0) {
+          offering.ticketSummary = tiers.map((tier: any) =>
+            `${String(tier.name ?? "Tier").slice(0, 40)} ${
+              tier.is_free === true
+                ? "free"
+                : `${(Number(tier.price_cents ?? 0) / 100).toFixed(2)} ${
+                  String(tier.currency ?? "currency pending")
+                }`
+            }`
+          ).join("; ");
+        }
+      }
     }
     const probeBrand = activeBrand?.id;
     try {
@@ -1878,8 +1943,14 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // #2019: authorization precedes every persisted proposal.
+    let proposalContext: Record<string, unknown> | null = null;
     try {
       await authorizeAgentTool(tool, gemini.toolCall.args, userClient, userId);
+      proposalContext = await preflightTicketPricingProposal(
+        tool.name,
+        gemini.toolCall.args,
+        userClient,
+      );
     } catch (err: unknown) {
       if (err instanceof ToolError) {
         const status = err.code === "ROLE_CHECK_UNAVAILABLE"
@@ -1908,6 +1979,7 @@ async function handle(req: Request): Promise<Response> {
       previousSummary: conversationSummary,
       toolName: tool.name,
       toolArgs: gemini.toolCall.args,
+      proposalContext,
       classification: "general_write_proposal",
       startedAt: turnStartedAt,
     });
@@ -1962,6 +2034,7 @@ async function commitPendingTurn(args: {
   previousSummary: string | null;
   toolName: string;
   toolArgs: Record<string, unknown>;
+  proposalContext?: Record<string, unknown> | null;
   classification: string;
   startedAt: number;
 }): Promise<Response> {
@@ -2001,9 +2074,13 @@ async function commitPendingTurn(args: {
   }
 
   const nowIso = new Date().toISOString();
+  const proposalArgs = verifiedProposalArgs(
+    args.toolArgs,
+    args.proposalContext ?? null,
+  );
   const toolCalls = {
     tool_name: args.toolName,
-    args: args.toolArgs,
+    args: proposalArgs,
     pending_action_id: pendingActionId,
   };
   const committed = await commitTaskAssistantTurn({
@@ -2060,7 +2137,7 @@ async function commitPendingTurn(args: {
     kind: "pending_action",
     pending_action_id: pendingActionId,
     tool_name: args.toolName,
-    tool_args: args.toolArgs,
+    tool_args: proposalArgs,
     conversation_id: args.conversationId,
     message_id: assistantMessageId,
     task_state_revision: args.expectedRevision + 1,
