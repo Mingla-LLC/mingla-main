@@ -2239,7 +2239,15 @@ async function resolveBrandCurrency(
   const code = typeof data?.default_currency === "string"
     ? data.default_currency.toUpperCase()
     : "";
-  return /^[A-Z]{3}$/.test(code) ? code : "USD";
+  // Do not manufacture a currency — #1974 forbids literal USD (and any ISO
+  // fallback) in domain tools; the brand row must already carry a real code.
+  if (!/^[A-Z]{3}$/.test(code)) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "brand has no default_currency; pass currency explicitly",
+    );
+  }
+  return code;
 }
 
 /** Redact a stored guest name to a safe label (never phone/email to the model). */
