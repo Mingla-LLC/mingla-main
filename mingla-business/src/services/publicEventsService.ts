@@ -340,33 +340,29 @@ export interface PublicVenueDiscoveryPrice {
 export async function getPublicVenueDiscoveryPrice(
   placePoolId: string,
 ): Promise<PublicVenueDiscoveryPrice | null> {
-  const [
-    { data: projected, error },
-    { data: currencies, error: currencyError },
-  ] = await Promise.all([
-    supabase.rpc("place_discovery_range_for_viewer", {
-      p_place_pool_id: placePoolId,
-      p_display_currency: null,
-      p_snapshot: null,
-    }),
-    supabase.rpc("issue_1384_supported_currencies"),
-  ]);
+  const [{ data: projected, error }, { data: currencies, error: currencyError }] =
+    await Promise.all([
+      supabase.rpc("place_discovery_range_for_viewer", {
+        p_place_pool_id: placePoolId,
+        p_display_currency: null,
+        p_snapshot: null,
+      }),
+      supabase.rpc("issue_1384_supported_currencies"),
+    ]);
   if (error || currencyError) throw error ?? currencyError;
   const row = Array.isArray(projected) ? projected[0] : projected;
   if (
     row?.price_range_status !== "active" ||
     !Number.isSafeInteger(Number(row.source_min_minor)) ||
     typeof row.source_currency_code !== "string"
-  )
-    return null;
+  ) return null;
   const metadata = Array.isArray(currencies)
     ? currencies.find((item) => item.code === row.source_currency_code)
     : null;
   if (!Number.isInteger(metadata?.minor_unit_exponent)) return null;
   return {
     minMinor: Number(row.source_min_minor),
-    maxMinor:
-      row.source_max_minor === null ? null : Number(row.source_max_minor),
+    maxMinor: row.source_max_minor === null ? null : Number(row.source_max_minor),
     currencyCode: row.source_currency_code,
     minorUnitExponent: metadata.minor_unit_exponent,
   };
@@ -1557,8 +1553,7 @@ const detailFromRow = async (
 };
 
 const isDirectEventBundle = (value: unknown): value is JsonRecord => {
-  if (value === null || typeof value !== "object" || Array.isArray(value))
-    return false;
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
   const payload = value as JsonRecord;
   const brand = payload.brand;
   return (
@@ -1583,10 +1578,8 @@ const directBundleTicketToStub = (
 ): PublicTicketTypeRecord => {
   const ticket = asRecord(value);
   const isFree = ticket.isFree === true;
-  const priceCents =
-    typeof ticket.priceCents === "number" ? ticket.priceCents : 0;
-  const allInCents =
-    typeof ticket.allInCents === "number" ? ticket.allInCents : priceCents;
+  const priceCents = typeof ticket.priceCents === "number" ? ticket.priceCents : 0;
+  const allInCents = typeof ticket.allInCents === "number" ? ticket.allInCents : priceCents;
   return {
     id: String(ticket.id ?? ""),
     name: String(ticket.name ?? ""),
@@ -1610,8 +1603,7 @@ const directBundleTicketToStub = (
         : ticket.isDisabled === true
           ? "disabled"
           : "public",
-    displayOrder:
-      typeof ticket.displayOrder === "number" ? ticket.displayOrder : 0,
+    displayOrder: typeof ticket.displayOrder === "number" ? ticket.displayOrder : 0,
     approvalRequired: ticket.requiresApproval === true,
     passwordProtected: ticket.passwordProtected === true,
     password: null,
@@ -1631,9 +1623,7 @@ const directBundleTicketToStub = (
   };
 };
 
-const detailFromDirectBundle = async (
-  payload: JsonRecord,
-): Promise<PublicEventDetail> => {
+const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventDetail> => {
   const brand = payload.brand as JsonRecord;
   const currency = asStringOrNull(payload.currency) ?? "USD";
   const tickets = (payload.tickets as unknown[]).map((ticket) =>
@@ -1689,9 +1679,7 @@ const detailFromDirectBundle = async (
     recurrence_rules: null,
     cover_media_url: asStringOrNull(payload.coverMediaUrl),
     cover_media_type: payload.coverMediaType,
-    cover_media_gallery: Array.isArray(payload.coverGallery)
-      ? payload.coverGallery
-      : [],
+    cover_media_gallery: Array.isArray(payload.coverGallery) ? payload.coverGallery : [],
     cover_media_provider: payload.coverMediaProvider,
     cover_media_source_url: null,
     cover_media_credit: asStringOrNull(payload.coverMediaCredit),
@@ -1741,15 +1729,10 @@ const detailFromDirectBundle = async (
   };
 };
 
-const readDirectEventBundle = async (args: {
-  p_event_id: string | null;
-  p_brand_slug: string | null;
-  p_event_slug: string | null;
-}): Promise<PublicEventDetail | null | "fallback"> => {
-  const { data, error } = await supabase.rpc(
-    "pg_direct_event_checkout_bundle",
-    args,
-  );
+const readDirectEventBundle = async (
+  args: { p_event_id: string | null; p_brand_slug: string | null; p_event_slug: string | null },
+): Promise<PublicEventDetail | null | "fallback"> => {
+  const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
   if (error !== null) throw error;
   if (data === null) return "fallback";
   if (!isDirectEventBundle(data)) {

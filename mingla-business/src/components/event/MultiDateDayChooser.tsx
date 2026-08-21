@@ -118,14 +118,13 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   // A guest who sees £10 on a two-day event and picks both days pays £20; the
   // floating bar must never be the first place they learn that. A free event
   // carries no price qualifier because there is nothing to qualify.
-  const countLine =
-    chosen === 0
-      ? `${occurrences.length} days`
-      : isPaid && pricingMode === "per_day"
-        ? `Priced per day · ${chosen} of ${occurrences.length} selected`
-        : isPaid && pricingMode === "all_days"
-          ? `One price for all days · ${chosen} of ${occurrences.length} selected`
-          : `${chosen} of ${occurrences.length} selected`;
+  const countLine = chosen === 0
+    ? `${occurrences.length} days`
+    : isPaid && pricingMode === "per_day"
+      ? `Priced per day · ${chosen} of ${occurrences.length} selected`
+      : isPaid && pricingMode === "all_days"
+        ? `One price for all days · ${chosen} of ${occurrences.length} selected`
+        : `${chosen} of ${occurrences.length} selected`;
 
   const recovery =
     state === "error"
