@@ -219,7 +219,11 @@ Deno.test("#2063 tester: every receipt-backed brand write can recover an executi
   const source = await Deno.readTextFile(
     new URL("../../agent-confirm-action/index.ts", import.meta.url),
   );
-  const setStart = source.indexOf("const RECEIPT_BACKED_EVENT_TOOL_NAMES");
+  const setStart = [
+    source.indexOf("const RECEIPT_BACKED_TOOL_NAMES = new Set(["),
+    source.indexOf("const RECEIPT_BACKED_EVENT_TOOL_NAMES = new Set(["),
+  ].find((index) => index >= 0) ?? -1;
+  assert(setStart >= 0, "receipt-backed write set is absent");
   const receiptBackedSet = source.slice(
     setStart,
     source.indexOf("]);", setStart),

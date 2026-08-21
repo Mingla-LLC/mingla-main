@@ -92,11 +92,11 @@ function actualRegistry(): GeminiToolDef[] {
   }));
 }
 
-Deno.test("#1999 happy: all 67 actual Ari tools compile for Gemini typed parameters", () => {
+Deno.test("#1999 happy: all 70 actual Ari tools compile for Gemini typed parameters", () => {
   const tools = actualRegistry();
   assertEquals(
     tools.length,
-    67,
+    70,
     "registry baseline changed; provider coverage must be reviewed",
   );
 

@@ -217,7 +217,11 @@ function audit(overrides = {}) {
     ["ari.brand.audit_log", "list_brand_audit_log"],
     ["ari.brand.discovery_currency", "manage_brand_discovery_currency"],
   ]);
-  const receiptSetStart = confirm.indexOf("const RECEIPT_BACKED_EVENT_TOOL_NAMES");
+  const receiptSetStart = [
+    confirm.indexOf("const RECEIPT_BACKED_TOOL_NAMES = new Set(["),
+    confirm.indexOf("const RECEIPT_BACKED_EVENT_TOOL_NAMES = new Set(["),
+  ].find((index) => index >= 0) ?? -1;
+  if (receiptSetStart < 0) failures.push("receipt-backed write set is absent");
   const receiptSet = confirm.slice(receiptSetStart, confirm.indexOf("]);", receiptSetStart));
   for (const tool of [
     "create_brand",

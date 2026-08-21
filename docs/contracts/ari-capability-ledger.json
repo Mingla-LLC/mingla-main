@@ -10,13 +10,13 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 67,
+    "registered_tool_count": 70,
     "capability_count": 117,
     "status_breakdown": {
-      "registered_unverified": 30,
+      "registered_unverified": 33,
       "broken": 36,
       "guided_handoff": 8,
-      "unsupported": 39,
+      "unsupported": 36,
       "in_flight": 4,
       "verified": 0
     }
@@ -108,7 +108,8 @@
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
         "No exact-revision runtime evidence on all required surfaces"
@@ -157,7 +158,8 @@
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
         "No exact-revision runtime evidence"
@@ -207,7 +209,8 @@
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
         "No independent exact-revision runtime proof"
@@ -257,7 +260,8 @@
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
         "No full surface runtime proof"
@@ -3223,20 +3227,21 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_brand_hours",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "brandsService.ts:upsertBrandHours has no Ari mapping"
+          "reference": "brandsService.ts:upsertBrandHours canonical owner"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -4818,8 +4823,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_brand_audit_log",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -4828,10 +4833,11 @@
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -4841,7 +4847,7 @@
       "domain": "brands",
       "outcome": "Manage brand discovery currency and price range",
       "safety": "money",
-      "required_role": "owner_or_admin",
+      "required_role": "owner_or_finance_manager",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -4863,8 +4869,8 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_brand_discovery_currency",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
@@ -4873,10 +4879,11 @@
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        2063
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"

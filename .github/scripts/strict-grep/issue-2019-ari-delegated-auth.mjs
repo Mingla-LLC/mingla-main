@@ -14,9 +14,9 @@ const sources = {
 function check(s) {
   const failures = [];
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
-  // [TEST-MOD-APPROVED #1973] experience stop management and unpublish are
-  // additive delegated event-manager tools.
-  if (declarationCount !== 67) failures.push(`expected 67 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
+  // #1973/#1985 authorization denominator without changing inherited roles.
+  if (declarationCount !== 70) failures.push(`expected 70 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }
