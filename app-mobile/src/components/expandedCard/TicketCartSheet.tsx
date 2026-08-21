@@ -816,7 +816,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // its own paddingBottom: insets.bottom+16 (parity floor, SPEC §7.2).
   const header = (
     <View style={styles.headerRow}>
-      <Text style={styles.headerTitle} numberOfLines={1} allowFontScaling>
+      <Text
+        style={styles.headerTitle}
+        numberOfLines={multiDaySelection === null ? 1 : undefined}
+        allowFontScaling
+      >
         Get tickets
       </Text>
       <Pressable
@@ -855,6 +859,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         theme={CONSUMER_TICKET_CART_THEME}
         fallbackCurrency={fallbackCurrency}
         installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
+        allowUnboundedNameWrap={multiDaySelection !== null}
       />
     );
   });

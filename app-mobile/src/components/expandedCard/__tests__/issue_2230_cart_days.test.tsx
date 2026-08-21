@@ -32,6 +32,7 @@ const APP_ROOT = join(__dirname, "..", "..", "..", "..");
 const read = (rel: string): string => readFileSync(join(APP_ROOT, rel), "utf8");
 const SHEET = read("src/components/expandedCard/TicketCartSheet.tsx");
 const CHOOSER = read("src/components/expandedCard/EventDayChooser.tsx");
+const QUANTITY_ROW = read("../packages/offering-rendering/QuantityRow.tsx");
 
 let sequence = 0;
 const input = (extra: Record<string, unknown> = {}) => ({
@@ -174,6 +175,25 @@ describe("#2230 ticket sheet placement, pricing, validation, and accessibility",
     );
     expect(SHEET).toMatch(
       /const dayTruthUnavailable =\s*multiDaySelection !== null && multiDaySelection\.status !== "ready";/,
+    );
+  });
+
+  it("lets only the multi-day Consumer sheet wrap labels while preserving null-path caps", () => {
+    const headerStart = SHEET.indexOf("const header = (");
+    const headerEnd = SHEET.indexOf("const ticketRows", headerStart);
+    expect(headerStart).toBeGreaterThan(-1);
+    expect(SHEET.slice(headerStart, headerEnd)).toContain("Get tickets");
+    expect(SHEET.slice(headerStart, headerEnd)).toContain(
+      "numberOfLines={multiDaySelection === null ? 1 : undefined}",
+    );
+    expect(SHEET).toContain(
+      "allowUnboundedNameWrap={multiDaySelection !== null}",
+    );
+
+    expect(QUANTITY_ROW).toContain("allowUnboundedNameWrap?: boolean;");
+    expect(QUANTITY_ROW).toContain("allowUnboundedNameWrap = false");
+    expect(QUANTITY_ROW).toContain(
+      "numberOfLines={allowUnboundedNameWrap ? undefined : 2}",
     );
   });
 

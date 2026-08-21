@@ -13,6 +13,9 @@ const PATHS = {
   sheet: "app-mobile/src/components/expandedCard/TicketCartSheet.tsx",
   chooser: "app-mobile/src/components/expandedCard/EventDayChooser.tsx",
   flow: "app-mobile/src/payments/nativeCheckoutFlow.ts",
+  quantityRow: "packages/offering-rendering/QuantityRow.tsx",
+  businessQuantityRow: "mingla-business/src/components/checkout/QuantityRow.tsx",
+  workflow: ".github/workflows/issue-2230-consumer-multiday-tests.yml",
 };
 const readSources = () => Object.fromEntries(
   Object.entries(PATHS).map(([key, rel]) => [key, fs.readFileSync(path.join(ROOT, rel), "utf8")]),
@@ -28,6 +31,9 @@ export function check(raw) {
   const sheet = code(raw.sheet);
   const chooser = code(raw.chooser);
   const flow = code(raw.flow);
+  const quantityRow = code(raw.quantityRow);
+  const businessQuantityRow = code(raw.businessQuantityRow);
+  const workflow = raw.workflow;
 
   for (const token of [
     "occurrences: mapOccurrences(payload.occurrences, timezone)",
@@ -59,6 +65,31 @@ export function check(raw) {
   }
   if (screen.includes("<EventDayChooser")) {
     failures.push("day chooser escaped the purchase container");
+  }
+
+  const headerStart = sheet.indexOf("const header = (");
+  const headerEnd = sheet.indexOf("const ticketRows", headerStart);
+  const header = sheet.slice(headerStart, headerEnd);
+  if (headerStart === -1 || headerEnd === -1 ||
+      !header.includes("numberOfLines={multiDaySelection === null ? 1 : undefined}") ||
+      !header.includes("Get tickets")) {
+    failures.push("Consumer ticket-sheet heading does not preserve null-path clamp and unwrap multi-day");
+  }
+  if (!sheet.includes("allowUnboundedNameWrap={multiDaySelection !== null}") ||
+      !quantityRow.includes("allowUnboundedNameWrap?: boolean;") ||
+      !quantityRow.includes("allowUnboundedNameWrap = false") ||
+      !quantityRow.includes("numberOfLines={allowUnboundedNameWrap ? undefined : 2}")) {
+    failures.push("Consumer ticket-name wrapping is not opt-in with a two-line default");
+  }
+  if (businessQuantityRow.includes("allowUnboundedNameWrap")) {
+    failures.push("Business QuantityRow caller opted into Consumer-only unbounded wrapping");
+  }
+  const testerSuite = "app-mobile/src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx";
+  const sharedQuantityRow = "packages/offering-rendering/QuantityRow.tsx";
+  if ((workflow.match(new RegExp(testerSuite.replaceAll(".", "\\."), "g")) ?? []).length < 2 ||
+      !workflow.includes("src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx") ||
+      (workflow.match(new RegExp(sharedQuantityRow.replaceAll(".", "\\."), "g")) ?? []).length < 2) {
+    failures.push("scaled-text tester suite or shared QuantityRow is not fully workflow-wired");
   }
 
   const chooserAt = sheet.indexOf("<EventDayChooser");
@@ -120,6 +151,10 @@ if (process.argv.includes("--self-test")) {
     ["screen", "tickets={cartTickets}", "tickets={ticketsQuery.data}"],
     ["screen", "multiDaySelection={multiDaySelection}", "multiDaySelection={null}"],
     ["sheet", "<EventDayChooser", "<View"],
+    ["sheet", "allowUnboundedNameWrap={multiDaySelection !== null}", "allowUnboundedNameWrap={false}"],
+    ["sheet", "numberOfLines={multiDaySelection === null ? 1 : undefined}", "numberOfLines={1}"],
+    ["quantityRow", "allowUnboundedNameWrap = false", "allowUnboundedNameWrap = true"],
+    ["workflow", "src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx", "src/components/expandedCard/__tests__/missing-scaled-text-suite.tsx"],
     ["flow", "...(eventDateIds.length > 0 ? { eventDateIds } : {})", ""],
     ["flow", "? { eventDateIds: normalizedEventDateIds(input) }", "? {}"],
   ];
