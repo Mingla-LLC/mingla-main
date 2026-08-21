@@ -98,6 +98,9 @@ export interface NativeCheckoutInput {
   // ticket-checkout-create so a recurring/multi-date experience books the right
   // date. Omitted for events/trips/one-off → request shape byte-identical.
   eventDateId?: string | null;
+  // #2230: chosen multi-day EVENT occurrences. The existing singular field
+  // above remains the experience authority and is deliberately untouched.
+  eventDateIds?: readonly string[] | null;
   // ORCH-1016: trip intake answers ride the existing ticket-checkout-create body
   // key → orders.intake_form_data. The key is already supported server-side
   // (ticket-checkout-create reads it for trip checkouts); this just forwards it
@@ -308,10 +311,18 @@ const PAYSTACK_HANDOFF_TTL_MS = 15 * 60 * 1000;
 
 const heldPaystackHandoffs = new Map<string, HeldPaystackHandoff>();
 
-const checkoutFingerprint = (input: NativeCheckoutInput): string =>
-  JSON.stringify({
+const normalizedEventDateIds = (
+  input: NativeCheckoutInput,
+): string[] => [...new Set(
+  (input.eventDateIds ?? []).filter((id) => typeof id === "string" && id.length > 0),
+)];
+
+const checkoutFingerprint = (input: NativeCheckoutInput): string => {
+  const eventDateIds = normalizedEventDateIds(input);
+  return JSON.stringify({
     eventId: input.eventId,
     eventDateId: input.eventDateId ?? null,
+    ...(eventDateIds.length > 0 ? { eventDateIds } : {}),
     email: input.buyer.email.trim().toLowerCase(),
     phone: input.buyer.phone.trim(),
     lines: input.lines.map((line) => [line.ticketTypeId, line.quantity]),
@@ -319,6 +330,7 @@ const checkoutFingerprint = (input: NativeCheckoutInput): string =>
     intakeFormData: input.intakeFormData ?? null,
     idempotencyKey: input.idempotencyKey ?? null,
   });
+};
 
 /** The live held hand-off for an event, or null. Expired entries are deleted. */
 const readHeldHandoff = (eventId: string): HeldPaystackHandoff | null => {
@@ -566,6 +578,12 @@ export const useNativeCheckoutFlow = (): ((
           // edge fn validates it (future + belongs to event + not sold out) and
           // persists it; absent → unchanged single-date path.
           ...(input.eventDateId ? { eventDateId: input.eventDateId } : {}),
+          // ⚠️ DELETE THIS AND every Explorer pass mints undated, admitting on
+          // any day and inflating every day's roster (#2230 F-3/F-4). Omitted
+          // entirely for the existing single-date / experience request shape.
+          ...(normalizedEventDateIds(input).length > 0
+            ? { eventDateIds: normalizedEventDateIds(input) }
+            : {}),
           // ORCH-1130 / DISC-1130-A — forward the explicit pay-full vs
           // pay-over-time choice for plan trips. Omitted when absent (no-plan
           // trips) → byte-identical request, edge-fn default 'auto' path

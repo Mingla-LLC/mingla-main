@@ -25,6 +25,11 @@ export interface ConsumerEventTimeFields {
   timezone: string;
 }
 
+export interface ConsumerOccurrenceDateLike {
+  startAt: string;
+  endAt?: string | null;
+}
+
 const isValidIso = (iso: string | null | undefined): iso is string => {
   if (!iso) return false;
   const d = new Date(iso);
@@ -228,4 +233,50 @@ export const formatEventDoorsTimes = (
     close = formatDoorsTimeInTz(fields.masterEndAtUtc as string, tz, locale);
   }
   return { open, close };
+};
+
+/** One canonical consumer occurrence label; invalid truth stays absent. */
+export const formatOccurrenceLine = (
+  occurrence: ConsumerOccurrenceDateLike,
+  fallbackTimezone: string,
+): string | null => {
+  if (!isValidIso(occurrence.startAt)) return null;
+  const timezone = fallbackTimezone.length > 0 ? fallbackTimezone : "UTC";
+  try {
+    const startDate = formatShortDateInTz(occurrence.startAt, timezone);
+    const startTime = formatTimeInTz(occurrence.startAt, timezone);
+    if (startTime.length === 0) return startDate;
+    if (!isValidIso(occurrence.endAt)) return `${startDate} · ${startTime}`;
+    const endTime = formatTimeInTz(occurrence.endAt, timezone);
+    if (endTime.length === 0) return `${startDate} · ${startTime}`;
+    if (
+      calendarDayInTz(occurrence.startAt, timezone) ===
+      calendarDayInTz(occurrence.endAt, timezone)
+    ) {
+      return `${startDate} · ${startTime} – ${endTime}`;
+    }
+    return `${startDate} · ${startTime} – ${formatShortDateInTz(
+      occurrence.endAt,
+      timezone,
+    )} · ${endTime}`;
+  } catch {
+    return null;
+  }
+};
+
+/** Multi-day summary used beneath the master occurrence line. */
+export const formatOccurrenceSummary = (
+  occurrences: readonly ConsumerOccurrenceDateLike[],
+  fallbackTimezone: string,
+): string | null => {
+  if (occurrences.length < 2 || !isValidIso(occurrences[0]?.startAt)) return null;
+  const timezone = fallbackTimezone.length > 0 ? fallbackTimezone : "UTC";
+  try {
+    return `${occurrences.length} dates · first ${formatShortDateInTz(
+      occurrences[0].startAt,
+      timezone,
+    )}`;
+  } catch {
+    return null;
+  }
 };
