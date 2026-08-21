@@ -31,6 +31,7 @@ on:
       - "mingla-business/src/services/agentChatService.ts"
       - "mingla-business/src/store/ariConversationSelectionStore.ts"
       - "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts"
+      - "mingla-business/src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts"
       - "mingla-business/src/utils/clearAllStores.ts"
       - "mingla-business/src/utils/reapOrphanStorageKeys.ts"
       - "mingla-business/tsconfig.issue-1985.json"
@@ -67,6 +68,7 @@ on:
       - "mingla-business/src/services/agentChatService.ts"
       - "mingla-business/src/store/ariConversationSelectionStore.ts"
       - "mingla-business/src/store/__tests__/issue_1985_active_conversation_persistence.test.ts"
+      - "mingla-business/src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts"
       - "mingla-business/src/utils/clearAllStores.ts"
       - "mingla-business/src/utils/reapOrphanStorageKeys.ts"
       - "mingla-business/tsconfig.issue-1985.json"
@@ -139,7 +141,7 @@ jobs:
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - name: Run Business typed-choice and superseded-V1 contracts
-        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts src/store/__tests__/issue_1985_active_conversation_persistence.test.ts --runInBand
+        run: npx jest src/components/ari/__tests__/issue_1985_choice_payloads.test.tsx src/components/ari/__tests__/issue_1985_value_choices.adversarial.test.tsx src/hooks/__tests__/issue_1985_message_delivery_identity.test.ts src/components/ari/__tests__/orch_1103_choices_chips.test.ts src/store/__tests__/issue_1985_active_conversation_persistence.test.ts src/store/__tests__/issue_1985_first_created_conversation_selection.tester_adversarial.test.ts --runInBand
         working-directory: mingla-business
       - name: Type-check Business client
         run: node .github/scripts/strict-grep/issue-1985-business-typecheck.mjs
