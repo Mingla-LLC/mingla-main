@@ -198,6 +198,11 @@ export default function CampaignReportRoute(): React.ReactElement {
                     ? "Going out now — refresh in a moment"
                     : `Updated ${formatDateTime(campaign.updated_at)}`}
           </Text>
+          {campaign.audience_name_snapshot ? (
+            <Text style={styles.heroSub}>
+              Audience: {campaign.audience_name_snapshot}
+            </Text>
+          ) : null}
         </View>
 
         {/* Preview-only banner — visible only while the live email gate is off. */}

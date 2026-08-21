@@ -8,7 +8,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 
-import { AudienceCard } from "../marketing/AudienceCard";
+import { AudienceCard, ManualGroupCard } from "../marketing/AudienceCard";
 import { Button } from "../ui/Button";
 import { EmptyState } from "../ui/EmptyState";
 import { Icon } from "../ui/Icon";
@@ -28,6 +28,7 @@ import {
 import { useAuth } from "../../context/AuthContext";
 import { capturePeople } from "../../features/people/peopleAnalytics";
 import { useAudienceList } from "../../hooks/marketing/useAudienceList";
+import { useManualGroups } from "../../hooks/marketing/useManualGroups";
 import { useBrandPeople } from "../../hooks/marketing/useBrandPeople";
 import {
   useBrandPersonConflicts,
@@ -43,7 +44,7 @@ import {
   ensureEventBuyersAudience,
 } from "../../services/marketing/marketingCampaignService";
 import { PeopleServiceError } from "../../services/peopleService";
-import type { AudienceListEntry } from "../../types/marketing";
+import type { AudienceListEntry, ManualGroupSummary } from "../../types/marketing";
 import type {
   AddBrandPersonResult,
   BrandPersonSummary,
@@ -60,6 +61,7 @@ import {
   PeopleRow,
 } from "./PeoplePrimitives";
 import { useMarketingBrandSwitcher } from "./MarketingBrandSwitcherContext";
+import { ManualGroupFlow } from "./ManualGroupFlow";
 
 
 const contacts = (count: number | null): string | undefined =>
@@ -180,6 +182,9 @@ export function PeoplePage(): React.ReactElement {
     online,
   );
   const groups=useAudienceList(user?.id??null);
+  const manualFlag = useFeatureFlag("manual_contact_groups_v1");
+  const manualEnabled = authorized && manualFlag.data === true;
+  const manualGroups = useManualGroups(brand?.id ?? null, manualEnabled);
   // #2305 — the identity-conflict review queue. Read at rank 20; the RPC gates
   // resolving at rank 50 and reports it per row as `canResolve`.
   const conflicts = useBrandPersonConflicts(
@@ -194,6 +199,7 @@ export function PeoplePage(): React.ReactElement {
   const importEnabled=authorized&&online&&!flag.isPending&&!flag.isFetching&&!flag.isError&&flag.data===true;
   const [bookOpen, setBookOpen] = React.useState(false);
   const [groupsOpen, setGroupsOpen] = React.useState(false);
+  const [createGroupOpen, setCreateGroupOpen] = React.useState(false);
   const [addOpen, setAddOpen] = React.useState(false);
   const [conflictOpen, setConflictOpen] = React.useState(false);
   const [conflictsResolved, setConflictsResolved] = React.useState(0);
@@ -202,7 +208,7 @@ export function PeoplePage(): React.ReactElement {
     message: string;
     kind: "success" | "error";
   } | null>(null);
-  const modalOpen = bookOpen || groupsOpen || addOpen || conflictOpen;
+  const modalOpen = bookOpen || groupsOpen || addOpen || conflictOpen || createGroupOpen;
 
   React.useEffect(() => {
     capturePeople("people_page_viewed", { surface: "page" });
@@ -212,6 +218,7 @@ export function PeoplePage(): React.ReactElement {
     setGroupsOpen(false);
     setAddOpen(false);
     setConflictOpen(false);
+    setCreateGroupOpen(false);
     setBookSearch("");
   }, [brand?.id, isAuthReady, role.accepted, role.rank]);
   React.useEffect(() => {
@@ -241,6 +248,10 @@ export function PeoplePage(): React.ReactElement {
   }, []);
   const openPerson = (person: BrandPersonSummary): void => {
     router.push(`/(tabs)/people/${person.personId}` as never);
+  };
+  const openManualGroup = (entry: ManualGroupSummary): void => {
+    capturePeople("manual_group_viewed", { surface: groupsOpen ? "groups_sheet" : "page", groupId: entry.groupId });
+    router.push(`/(tabs)/people/groups/${entry.groupId}` as never);
   };
   const openGroup = async (entry: AudienceListEntry): Promise<void> => {
     capturePeople("people_group_opened", {
@@ -504,16 +515,17 @@ export function PeoplePage(): React.ReactElement {
             >
               <PeopleBlock
                 title="Groups"
-                caption="Buyer groups that update automatically."
+                caption={manualEnabled ? "Organize people for focused campaigns." : "Buyer groups that update automatically."}
                 testID="people-groups-block"
               >
-                {!groups.hasResolved&&!groups.isError ? (
+                {manualEnabled ? <View style={styles.createGroupRow}><Button label="Create group" leadingIcon="plus" accentColor={accent.warm} fullWidth={width > 0 && width < 352} disabled={!online} onPress={() => { capturePeople("manual_group_create_started", { surface: "page" }); setCreateGroupOpen(true); }} /></View> : null}
+                {(!groups.hasResolved&&!groups.isError) || (manualEnabled && manualGroups.isLoading) ? (
                   <View testID="people-groups-skeleton" style={styles.skeletons}>
                     {[0, 1, 2].map((row) => (
                       <Skeleton key={row} width="100%" height={76} radius="lg" />
                     ))}
                   </View>
-                ) : groups.isError ? (
+                ) : groups.isError || (manualEnabled && manualGroups.isError) ? (
                   <EmptyState
                     title="Couldn’t load groups."
                     cta={{
@@ -524,11 +536,12 @@ export function PeoplePage(): React.ReactElement {
                       variant: "secondary",
                     }}
                   />
-                ) : groups.entries.length === 0 ? (
-                  <EmptyState title="No buyer groups yet." />
+                ) : groups.entries.length === 0 && (manualGroups.data?.length ?? 0) === 0 ? (
+                  manualEnabled ? <View style={styles.emptyGroup}><EmptyState title="No groups yet." description="Create a group to organize people for campaigns." /><Button label="Create group" leadingIcon="plus" accentColor={accent.warm} onPress={() => setCreateGroupOpen(true)} /></View> : <EmptyState title="No buyer groups yet." />
                 ) : (
                   <>
-                    {groups.entries.slice(0, 3).map((entry) => {
+                    {(manualGroups.data ?? []).slice(0, 3).map((entry) => <ManualGroupCard key={entry.groupId} group={entry} onPress={openManualGroup} />)}
+                    {groups.entries.slice(0, Math.max(0, 3 - (manualGroups.data?.length ?? 0))).map((entry) => {
                       const reach = groups.reach.has(entry.client_key)
                         ? groups.reach.get(entry.client_key)
                         : undefined;
@@ -539,10 +552,11 @@ export function PeoplePage(): React.ReactElement {
                           reach={reach}
                           onPress={openGroup}
                           isCreating={creatingKey === entry.client_key}
+                          showAutomaticKind={manualEnabled}
                         />
                       );
                     })}
-                    {groups.entries.length > 3 ? (
+                    {groups.entries.length + (manualGroups.data?.length ?? 0) > 3 ? (
                       <Button
                         label="See all"
                         trailingIcon="chevR"
@@ -582,10 +596,15 @@ export function PeoplePage(): React.ReactElement {
         visible={groupsOpen}
         onClose={() => setGroupsOpen(false)}
         entries={groups.entries}
+        manualGroups={manualGroups.data ?? []}
+        canCreate={manualEnabled}
         reach={groups.reach}
         creatingKey={creatingKey}
         onPress={openGroup}
+        onPressManual={openManualGroup}
+        onCreate={() => { setGroupsOpen(false); setCreateGroupOpen(true); capturePeople("manual_group_create_started", { surface: "groups_sheet" }); }}
       />
+      {brand ? <ManualGroupFlow visible={createGroupOpen} brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created) => { setCreateGroupOpen(false); openManualGroup(created); }} /> : null}
       <ConflictReviewSheet
         visible={conflictOpen}
         onClose={() => {
@@ -725,6 +744,8 @@ const styles = StyleSheet.create({
     minHeight: 64,
     alignItems: "center",
   },
+  createGroupRow: { alignItems: "flex-end" },
+  emptyGroup: { alignItems: "center", gap: spacing.sm },
   skeletonSurface: {
     padding: spacing.md,
     gap: spacing.md,

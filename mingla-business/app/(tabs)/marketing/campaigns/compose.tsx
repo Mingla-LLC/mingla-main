@@ -151,9 +151,10 @@ import {
   ensureBrandBuyersAudience,
   ensureEventBuyersAudience,
   getCampaign,
+  MarketingBookSendError,
   updateDraft,
 } from "../../../../src/services/marketing/marketingCampaignService";
-import { MarketingBookSendError } from "../../../../src/services/marketing/marketingCampaignService";
+import { listManualGroups } from "../../../../src/services/marketing/manualGroupService";
 import { getTemplate } from "../../../../src/services/marketing/marketingTemplateService";
 import { extractEmbeddedEventIds } from "../../../../src/services/marketing/tenTapTokenBridge";
 // issue #2291 — the ONE payload contract, shared with the send path's Deno copy.
@@ -284,7 +285,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const brandName = currentBrand?.displayName ?? null;
   const brandAddress = currentBrand?.address ?? null;
   const importFlag = useFeatureFlag("contact_import_v1"),
-    bookFlag = useFeatureFlag("brand_book_blast_v1");
+    bookFlag = useFeatureFlag("brand_book_blast_v1"),
+    manualGroupFlag = useFeatureFlag("manual_contact_groups_v1");
   const bookBlastEnabled = isBookBlastFeatureReady(importFlag, bookFlag);
 
   const resolvedAudience = useResolveAudience(audienceParam);
@@ -341,6 +343,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const [audienceId, setAudienceId] = useState<string | null>(null);
   const [audienceName, setAudienceName] = useState<string | null>(null);
   const [isBookAudience, setIsBookAudience] = useState(false);
+  const [isManualAudience, setIsManualAudience] = useState(false);
   const [bookQuote, setBookQuote] = useState<MarketingBookQuote | null>(null);
   const [bookRequestId, setBookRequestId] = useState<string | null>(null);
   const [bookStaleWarning, setBookStaleWarning] = useState(false);
@@ -387,6 +390,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
 
   const bookPreviewFailure = (error: unknown): string => {
     const code = error instanceof Error ? error.message : "BOOK_BLAST_FAILED";
+    if (code.includes("PREVIEW_STALE") && isManualAudience)
+      return "This group changed after preview. Refresh to get the current recipients and cost.";
     if (code.includes("COST"))
       return "Provider cost could not be verified. Refresh the preview before confirming.";
     if (code.includes("MMS"))
@@ -441,7 +446,16 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     let cancelled = false;
     (async () => {
       try {
-        if (audienceParam.kind === "brand") {
+        if (audienceParam.kind === "manual") {
+          if (manualGroupFlag.data !== true) throw new Error("Manual groups aren't available.");
+          const manual = (await listManualGroups(brandId)).find((group) => group.groupId === audienceParam.id);
+          if (!manual) throw new Error("This Manual group is unavailable.");
+          if (cancelled) return;
+          setAudienceId(manual.groupId);
+          setAudienceName(manual.name);
+          setIsBookAudience(true);
+          setIsManualAudience(true);
+        } else if (audienceParam.kind === "brand") {
           const id = await ensureBrandBuyersAudience({
             account_id: accountId,
             brand_id: audienceParam.id,
@@ -449,6 +463,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(id);
           setAudienceName("All brand buyers");
+          setIsManualAudience(false);
         } else {
           const id = await ensureEventBuyersAudience({
             account_id: accountId,
@@ -458,6 +473,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           if (cancelled) return;
           setAudienceId(id);
           setAudienceName("Event buyers");
+          setIsManualAudience(false);
         }
       } catch (err) {
         if (!cancelled) {
@@ -472,7 +488,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
     return () => {
       cancelled = true;
     };
-  }, [audienceParam, accountId, brandId, audienceId]);
+  }, [audienceParam, accountId, brandId, audienceId, manualGroupFlag.data]);
 
   // Hydrate from ?template=[id]. Draft restore wins when both present.
   useEffect(() => {
@@ -750,6 +766,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           campaign_id: campaignId,
           client_request_id: bookRequestId,
           quote: bookQuote,
+          audience_kind: isManualAudience ? "manual_group" : "all_brand_people",
           scheduled_for:
             sendMode === "now" ? null : new Date(scheduledForIso).toISOString(),
         },
@@ -807,6 +824,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   }, [
     campaignId,
     isBookAudience,
+    isManualAudience,
     bookQuote,
     bookRequestId,
     bookConfirmMutation,
@@ -1115,7 +1133,8 @@ export default function ComposeCampaignRoute(): React.ReactElement {
   const handleSelectAudience = useCallback(
     async (option: AudienceOption) => {
       setAudienceName(option.name);
-      setIsBookAudience(option.kind === "all_brand_people");
+      setIsBookAudience(option.kind === "all_brand_people" || option.kind === "manual_group");
+      setIsManualAudience(option.kind === "manual_group");
       setBookQuote(null);
       setIsDirty(true);
       if (option.existing_audience_id !== null) {
@@ -1123,7 +1142,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
         return;
       }
       if (accountId === null || brandId === null) return;
-      if (option.kind === "all_brand_people") return;
+      if (option.kind === "all_brand_people" || option.kind === "manual_group") return;
       try {
         const id =
           option.kind === "brand_buyers"
@@ -1271,7 +1290,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           setBookQuote(null);
           setShowReview(true);
           try {
-            const quote = await bookPreviewMutation.mutateAsync(id);
+            const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" });
             setBookQuote(quote);
             setBookStaleWarning(false);
             setBookRequestId(
@@ -1508,7 +1527,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                       setBookQuote(null);
                       setShowReview(true);
                       try {
-                        const quote = await bookPreviewMutation.mutateAsync(id);
+                        const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" });
                         setBookQuote(quote);
                         setBookStaleWarning(false);
                         setBookRequestId(
@@ -1571,6 +1590,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
           onSelect={handleSelectAudience}
           actorId={accountId}
           bookBlastEnabled={bookBlastEnabled}
+          manualGroupsEnabled={bookBlastEnabled && manualGroupFlag.data === true}
         />
         <ComposerReviewSheet
           visible={showReview}
@@ -1624,7 +1644,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
             isBookAudience && campaignId !== null
               ? () => {
                   setBookPreviewError(null);
-                  bookPreviewMutation.mutate(campaignId, {
+                  bookPreviewMutation.mutate({ campaignId, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" }, {
                     onSuccess: (quote) => {
                       setBookQuote(quote);
                       setBookNow(Date.now());
@@ -1662,7 +1682,7 @@ export default function ComposeCampaignRoute(): React.ReactElement {
                 setBookQuote(null);
                 setShowReview(true);
                 try {
-                  const quote = await bookPreviewMutation.mutateAsync(id);
+                  const quote = await bookPreviewMutation.mutateAsync({ campaignId: id, audienceKind: isManualAudience ? "manual_group" : "all_brand_people" });
                   setBookQuote(quote);
                   setBookStaleWarning(false);
                   setBookRequestId(

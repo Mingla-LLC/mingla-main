@@ -9421,3 +9421,33 @@ independent tester returns PASS.
 - **Accepted cost, recorded deliberately:** a user genuinely born 01/01/2000 must now scroll away and back to register an interaction. Seth accepted this on 2026-08-19 when choosing "make Done inert until they scroll" over leaving the silent default in place; making the birthday skippable was rejected as an onboarding-consent scope change needing its own issue.
 - **Enforcement:** the OQ-1 assertions in `issue_2322_ios_picker_theming.implementor.happy.test.mjs`, which extract and EXECUTE the real handler bodies out of the shipped source rather than matching strings.
 - **Established:** DRAFT at #2322, 2026-08-19; flip to ACTIVE only after independent tester PASS, all-green merge, and merged-main verification.
+
+### I-PROPOSED-2395-BOOK-ONLY-MEMBERSHIP (DRAFT)
+
+- **Rule:** Every active Manual-group membership references one active canonical same-brand `brand_people` row. A Manual group never stores copied names, emails, phones, consent, suppression, or a JSON person list.
+- **Enforcement:** `marketing_manual_group_memberships` composite brand foreign keys, active uniqueness, `issue_2395_membership_guard`, RPC-only client service, PostgreSQL happy-path suite, and `issue-2395-manual-contact-groups.mjs`.
+- **Established:** DRAFT at #2395; activate only after independent tester PASS, reviewed migration apply, all-green merge, and merged-main/runtime verification.
+
+### I-PROPOSED-2395-MERGE-SPLIT-MEMBERSHIP (DRAFT)
+
+- **Rule:** A Book-person merge deduplicates Manual memberships onto the winner and records exact provenance; a supported split restores precisely the loser memberships recorded by that merge without deleting pre-existing or later explicit winner memberships.
+- **Enforcement:** `issue_2395_merge_membership_projection`, `reversal_manifest.manualGroupMemberships`, `issue_2395_split_membership_restore`, active uniqueness, PostgreSQL/strict-grep regression guards.
+- **Established:** DRAFT at #2395; activate only after independent merge→remove→split adversarial proof and normal CLOSE gates.
+
+### I-PROPOSED-2395-GROUP-AUTHORITY (DRAFT)
+
+- **Rule:** Manual group metadata, counts, members, and mutations are available only to an accepted same-brand rank-20+ actor through server-authorized RPCs. An account, group, person, batch, or campaign ID grants no authority by itself.
+- **Enforcement:** restrictive table grants/RLS, kind-safe `marketing_audiences` policies, `issue_2395_assert_actor`, same-brand RPC checks, idempotency receipts, and the #2395 SQL/structural guards.
+- **Established:** DRAFT at #2395; activate only after tester cross-brand/lower-role/anonymous probes and normal CLOSE gates.
+
+### I-PROPOSED-2395-GUARDED-MANUAL-SEND (DRAFT)
+
+- **Rule:** A Manual group's member count is organizational truth only. Eligibility, suppression, channel reach, and provider-grounded cost are server truth, sealed at confirmation; changed membership, identity, eligibility, content, or cost makes confirmation stale and produces zero provider I/O.
+- **Enforcement:** generalized #1995 candidate/quote/target seal, `membership_version`, `biz_confirm_marketing_people_send_v2`, `biz_marketing_people_send_audience_v2`, Manual claim gating, edge resolver test, and CI structural guard.
+- **Established:** DRAFT at #2395; activate only after independent stale-quote/no-provider-I/O runtime proof and normal CLOSE gates.
+
+### I-PROPOSED-2395-IMPORT-INTENT (DRAFT)
+
+- **Rule:** Successful group-context import rows are canonical Book people before membership. Open identity conflicts remain pending and outside member/reach counts; they complete at most once only after authorized resolution while the Manual group remains active.
+- **Enforcement:** the unchanged #1775 import flow plus `marketing_manual_group_pending_memberships`, import/conflict projection triggers, active uniqueness, audit rows, and #2395 PostgreSQL/strict-grep guards.
+- **Established:** DRAFT at #2395; activate only after tester mixed-import and conflict-after-group-delete proofs and normal CLOSE gates.

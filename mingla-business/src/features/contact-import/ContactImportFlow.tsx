@@ -65,10 +65,14 @@ export function ContactImportFlow({
   brandId,
   onViewBook,
   onReview,
+  context = "book",
+  onCompleted,
 }: {
   brandId: string;
   onViewBook: () => void;
   onReview?: () => void;
+  context?: "book" | "manual_group";
+  onCompleted?: (result: ContactImportResult) => void;
 }): React.ReactElement {
   const api = useContactImport();
   const navigation = useNavigation();
@@ -119,6 +123,7 @@ export function ContactImportFlow({
           setResult(recovered);
           setStep("result");
           setError(null);
+          onCompleted?.(recovered);
         } else if (recovered.state === "failed") {
           setStep("permission");
           setError("We couldn't confirm the result yet. Try again.");
@@ -133,7 +138,7 @@ export function ContactImportFlow({
       stopped = true;
       clearInterval(timer);
     };
-  }, [brandId, online, preview, step]);
+  }, [brandId, online, onCompleted, preview, step]);
   useEffect(() => {
     if (Platform.OS !== "web" || step !== "importing") return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -271,8 +276,10 @@ export function ContactImportFlow({
       });
       setResult(r);
       setStep("result");
+      onCompleted?.(r);
       captureContactImport("execute_completed", {
         row_count: r.counts.rowCount,
+        context,
       });
       captureContactImport("result_viewed");
     } catch (e) {
@@ -290,6 +297,7 @@ export function ContactImportFlow({
           if (recovered.state === "completed") {
             setResult(recovered);
             setStep("result");
+            onCompleted?.(recovered);
           } else if (recovered.state === "failed") {
             setError("We couldn't confirm the result yet. Try again.");
             setStep("permission");
@@ -562,10 +570,12 @@ export function ContactImportFlow({
   return (
     <View style={s.section}>
       <Text accessibilityRole="header" style={s.h2}>
-        Import contacts
+        {context === "manual_group" ? "Upload contacts" : "Import contacts"}
       </Text>
       <Text style={s.body}>
-        Upload a CSV with a name, email, or phone column.
+        {context === "manual_group"
+          ? "Everyone uploaded is saved to Your Book first."
+          : "Upload a CSV with a name, email, or phone column."}
       </Text>
       <GlassCard variant="base" style={s.fileCard}>
         <Text style={s.h3}>{file?.name ?? "Choose CSV"}</Text>

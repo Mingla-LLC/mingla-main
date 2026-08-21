@@ -35,6 +35,7 @@ import {
 import { Sheet } from "../ui/Sheet";
 import { supabase } from "../../services/supabase";
 import { getOrCreateMarketingBookAudience } from "../../services/marketing/marketingCampaignService";
+import { listManualGroups } from "../../services/marketing/manualGroupService";
 import {
   accent,
   glass,
@@ -45,7 +46,7 @@ import {
 } from "../../constants/designSystem";
 
 export type AudienceOptionKind =
-  "brand_buyers" | "event_buyers" | "all_brand_people";
+  "brand_buyers" | "event_buyers" | "all_brand_people" | "manual_group";
 
 export interface AudienceOption {
   /** Stable client-side key. NOT the marketing_audiences row id. */
@@ -70,6 +71,7 @@ export interface AudiencePickerSheetProps {
   onSelect: (option: AudienceOption) => void;
   actorId?: string | null;
   bookBlastEnabled?: boolean;
+  manualGroupsEnabled?: boolean;
 }
 
 interface OrderJoinRow {
@@ -95,6 +97,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
   onSelect,
   actorId,
   bookBlastEnabled,
+  manualGroupsEnabled,
 }) => {
   const [options, setOptions] = useState<AudienceOption[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -109,6 +112,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     (async () => {
       try {
         let book: null | { audienceId: string; activeBookTotal: number } = null;
+        const manualGroups = manualGroupsEnabled === true ? await listManualGroups(brandId) : [];
         if (bookBlastEnabled === true && actorId != null) {
           try {
             book = await getOrCreateMarketingBookAudience({
@@ -191,6 +195,14 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
                   existing_audience_id: book.audienceId,
                 },
               ];
+        built.push(...manualGroups.map((group) => ({
+          key: `manual:${group.groupId}`,
+          name: group.name,
+          kind: "manual_group" as const,
+          target_id: group.groupId,
+          buyer_count: group.memberCount,
+          existing_audience_id: group.groupId,
+        })));
 
         // Brand-buyers option (only when the brand has ≥1 paid order).
         if (brandBuyerCount > 0) {
@@ -239,15 +251,29 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [visible, brandId, brandName, actorId, bookBlastEnabled]);
+  }, [visible, brandId, brandName, actorId, bookBlastEnabled, manualGroupsEnabled]);
+
+  const renderOption = (option: AudienceOption): React.ReactElement => {
+    const isSelected = option.existing_audience_id !== null && option.existing_audience_id === selectedAudienceId;
+    const peopleAudience = option.kind === "manual_group" || option.kind === "all_brand_people";
+    return <Pressable key={option.key} onPress={() => { onSelect(option); onClose(); }} accessibilityRole="button"
+      accessibilityLabel={`Pick audience ${option.name} with ${option.buyer_count} ${peopleAudience ? "people" : "buyers"}`}
+      accessibilityState={{ selected: isSelected }} style={({ pressed }) => [styles.row, isSelected ? styles.rowSelected : null, pressed ? styles.rowPressed : null]}>
+      <Text style={styles.rowName} numberOfLines={1}>{option.name}</Text>
+      <Text style={styles.rowMeta}>{option.buyer_count} {peopleAudience ? (option.buyer_count === 1 ? "person" : "people") : (option.buyer_count === 1 ? "buyer" : "buyers")}{" · "}
+        {option.kind === "manual_group" ? "Manual group" : option.kind === "all_brand_people" ? "Your Book" : option.kind === "brand_buyers" ? "Brand rollup" : "Event buyers"}
+      </Text>
+    </Pressable>;
+  };
 
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <View style={styles.host}>
         <Text style={styles.title}>Pick an audience</Text>
         <Text style={styles.subtitle}>
-          Your Book shows active saved people; buyer lists come from paid
-          orders.
+          {manualGroupsEnabled === true
+            ? "Choose Your Book, a Manual group, or an Automatic buyer group."
+            : "Choose Your Book or an Automatic buyer group."}
         </Text>
         {bookError !== null ? (
           <Text accessibilityRole="alert" style={styles.errorText}>
@@ -272,40 +298,16 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
             contentContainerStyle={styles.listContent}
             keyboardShouldPersistTaps="handled"
           >
-            {options.map((option) => {
-              const isSelected =
-                option.existing_audience_id !== null &&
-                option.existing_audience_id === selectedAudienceId;
-              return (
-                <Pressable
-                  key={option.key}
-                  onPress={() => {
-                    onSelect(option);
-                    onClose();
-                  }}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Pick audience ${option.name} with ${option.buyer_count} buyers`}
-                  accessibilityState={{ selected: isSelected }}
-                  style={({ pressed }) => [
-                    styles.row,
-                    isSelected ? styles.rowSelected : null,
-                    pressed ? styles.rowPressed : null,
-                  ]}
-                >
-                  <Text style={styles.rowName} numberOfLines={1}>
-                    {option.name}
-                  </Text>
-                  <Text style={styles.rowMeta}>
-                    {option.buyer_count}{" "}
-                    {option.buyer_count === 1 ? "buyer" : "buyers"}
-                    {" · "}
-                    {option.kind === "brand_buyers"
-                      ? "Brand rollup"
-                      : "Event buyers"}
-                  </Text>
-                </Pressable>
-              );
-            })}
+            {manualGroupsEnabled === true ? [
+              { title: "Your Book", data: options.filter((option) => option.kind === "all_brand_people") },
+              { title: "Manual groups", data: options.filter((option) => option.kind === "manual_group") },
+              { title: "Automatic groups", data: options.filter((option) => option.kind === "brand_buyers" || option.kind === "event_buyers") },
+            ].map((section) => (
+              <View key={section.title} style={styles.section}>
+                <Text accessibilityRole="header" style={styles.sectionTitle}>{section.title}</Text>
+                {section.data.length === 0 ? <Text style={styles.sectionEmpty}>None yet</Text> : section.data.map(renderOption)}
+              </View>
+            )) : options.map(renderOption)}
           </ScrollView>
         )}
       </View>
@@ -360,6 +362,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
     paddingBottom: spacing.lg,
   },
+  section: { gap: spacing.xs, marginBottom: spacing.sm },
+  sectionTitle: { ...typography.labelCap, color: textTokens.secondary },
+  sectionEmpty: { ...typography.bodySm, color: textTokens.tertiary, paddingVertical: spacing.xs },
   row: {
     minHeight: 56,
     paddingHorizontal: spacing.md,

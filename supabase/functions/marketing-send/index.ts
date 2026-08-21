@@ -426,8 +426,11 @@ export async function handleMarketingSendRequest(
   const auth = req.headers.get("authorization") ?? "";
   const isServiceRole = serviceKey.length > 0 &&
     auth === `Bearer ${serviceKey}`;
-  const isBookAction = body.action === "preview_book_v1" ||
-    body.action === "confirm_book_v1";
+  const isPreviewPeopleAction = body.action === "preview_book_v1" ||
+    body.action === "preview_people_v2";
+  const isConfirmPeopleAction = body.action === "confirm_book_v1" ||
+    body.action === "confirm_people_v2";
+  const isBookAction = isPreviewPeopleAction || isConfirmPeopleAction;
 
   // Direct invocation path requires a campaign_id AND a user JWT we can
   // verify ownership against. Cron path has neither.
@@ -452,7 +455,7 @@ export async function handleMarketingSendRequest(
     if (actor.user === null) {
       return jsonResponse({ error: "BOOK_BLAST_FORBIDDEN" }, 403);
     }
-    if (body.action === "confirm_book_v1") {
+    if (isConfirmPeopleAction) {
       if (
         typeof body.client_request_id !== "string" ||
         typeof body.quoteHash !== "string" ||
@@ -493,7 +496,22 @@ export async function handleMarketingSendRequest(
     if (candidates.error) {
       return bookRpcErrorResponse(candidates.error.message);
     }
-    const requestedQuotedAt = body.action === "confirm_book_v1"
+    const candidateEnvelope = candidates.data as Record<string, unknown> | null;
+    const audienceMetadata = {
+      audienceId: typeof candidateEnvelope?.audienceId === "string"
+        ? candidateEnvelope.audienceId
+        : null,
+      audienceKind: typeof candidateEnvelope?.audienceKind === "string"
+        ? candidateEnvelope.audienceKind
+        : null,
+      audienceVersion: typeof candidateEnvelope?.audienceVersion === "number"
+        ? candidateEnvelope.audienceVersion
+        : null,
+    };
+    const publicPeopleQuote = (
+      value: Awaited<ReturnType<typeof buildMarketingBookQuote>>,
+    ) => ({ ...publicMarketingBookQuote(value), ...audienceMetadata });
+    const requestedQuotedAt = isConfirmPeopleAction
       ? parseBookQuotedAt(body.quotedAt)
       : new Date();
     if (requestedQuotedAt === null) {
@@ -516,8 +534,8 @@ export async function handleMarketingSendRequest(
           : "BOOK_BLAST_COST_UNAVAILABLE",
       }, error instanceof Error && error.message.includes("mms") ? 409 : 503);
     }
-    if (body.action === "preview_book_v1") {
-      return jsonResponse(publicMarketingBookQuote(quote));
+    if (isPreviewPeopleAction) {
+      return jsonResponse(publicPeopleQuote(quote));
     }
     if (
       body.quoteHash !== quote.quoteHash ||
@@ -526,19 +544,24 @@ export async function handleMarketingSendRequest(
     ) {
       return jsonResponse({
         error: "BOOK_BLAST_PREVIEW_STALE",
-        preview: publicMarketingBookQuote(quote),
+        preview: publicPeopleQuote(quote),
       }, 409);
     }
     if (quote.reachableCount === 0) {
       return jsonResponse({ error: "BOOK_BLAST_ZERO_RECIPIENTS" }, 409);
     }
-    const confirmed = await supabase.rpc("biz_confirm_marketing_book_send_v1", {
+    const confirmed = await supabase.rpc(
+      body.action === "confirm_people_v2"
+        ? "biz_confirm_marketing_people_send_v2"
+        : "biz_confirm_marketing_book_send_v1",
+      {
       p_actor_id: actor.user.id,
       p_campaign_id: body.campaign_id,
       p_client_request_id: body.client_request_id,
       p_quote_snapshot: quote,
       p_scheduled_for: body.scheduledFor ?? null,
-    });
+      },
+    );
     if (confirmed.error) {
       return bookRpcErrorResponse(confirmed.error.message);
     }

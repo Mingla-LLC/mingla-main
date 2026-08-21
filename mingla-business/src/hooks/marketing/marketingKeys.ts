@@ -50,6 +50,25 @@ export const marketingKeys = {
     // book, so a stale book is a visible bug).
     conflicts: (brandId: string): readonly unknown[] =>
       [...marketingKeys.people.all(brandId), "conflicts"] as const,
+    groups: {
+      all: (brandId: string): readonly unknown[] =>
+        [...marketingKeys.people.all(brandId), "groups"] as const,
+      list: (brandId: string): readonly unknown[] =>
+        [...marketingKeys.people.groups.all(brandId), "list"] as const,
+      detail: (brandId: string, groupId: string, search: string): readonly unknown[] =>
+        [...marketingKeys.people.groups.all(brandId), "detail", groupId, search.trim()] as const,
+      picker: (
+        brandId: string,
+        groupIdOrNew: string | null,
+        search: string,
+      ): readonly unknown[] =>
+        [
+          ...marketingKeys.people.groups.all(brandId),
+          "picker",
+          groupIdOrNew ?? "new",
+          search.trim(),
+        ] as const,
+    },
   },
   templates: {
     all: ["marketing", "templates"] as const,

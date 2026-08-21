@@ -49,13 +49,17 @@ export interface AudienceQueryAllBrandPeople {
   kind: "all_brand_people";
   brand_id: string;
 }
+export interface AudienceQueryManualGroup {
+  kind: "manual_group";
+}
 export type AudienceQueryDefinition =
   | AudienceQueryBrandBuyers
   | AudienceQueryEventBuyers
   | AudienceQueryBrandFollowers
   | AudienceQueryCustomSegment
   | AudienceQueryOfferingSendGroup
-  | AudienceQueryAllBrandPeople;
+  | AudienceQueryAllBrandPeople
+  | AudienceQueryManualGroup;
 
 export interface ResolvedContact {
   contact_key: string;
@@ -282,6 +286,21 @@ export async function resolveAudience(
         result === null || result.brand_id !== query.brand_id ||
         !Array.isArray(result.rows)
       ) throw new Error("book_blast_audience_invalid_response");
+      return result as ResolveResult;
+    }
+    case "manual_group": {
+      if (campaignId === undefined) {
+        throw new Error("manual_group_campaign_context_required");
+      }
+      const { data, error } = await client.rpc(
+        "biz_marketing_people_send_audience_v2",
+        { p_campaign_id: campaignId },
+      );
+      if (error) throw new Error(`manual_group_audience_failed:${error.message}`);
+      const result = data as Partial<ResolveResult> | null;
+      if (result === null || !Array.isArray(result.rows)) {
+        throw new Error("manual_group_audience_invalid_response");
+      }
       return result as ResolveResult;
     }
     default: {
