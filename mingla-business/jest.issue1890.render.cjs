@@ -57,6 +57,16 @@ module.exports = {
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",
   ],
   moduleNameMapper: {
+    // [TEST-MOD-APPROVED #1985] AriChatScreen now owns a durable, account+
+    // brand-scoped conversation pointer. Its production store must keep using
+    // native AsyncStorage, while this protected render harness has no linked
+    // native module. Resolve only that boundary to AsyncStorage's canonical
+    // shipped Jest implementation so the suite still mounts the real screen
+    // and executes all #1890 clearance assertions.
+    "^@react-native-async-storage/async-storage$": path.join(
+      bizModules,
+      "@react-native-async-storage/async-storage/jest/async-storage-mock.js",
+    ),
     "^react$": path.join(bizModules, "react"),
     "^react/(.*)$": path.join(bizModules, "react", "$1"),
     "^react-native$": path.join(bizModules, "react-native"),
