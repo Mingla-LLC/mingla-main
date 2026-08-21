@@ -266,6 +266,45 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
     </Pressable>;
   };
 
+  const renderLegacyOption = (option: AudienceOption): React.ReactElement => {
+    const isSelected =
+      option.existing_audience_id !== null &&
+      option.existing_audience_id === selectedAudienceId;
+    return (
+      <Pressable
+        key={option.key}
+        onPress={() => {
+          onSelect(option);
+          onClose();
+        }}
+        accessibilityRole="button"
+        accessibilityLabel={`Pick audience ${option.name} with ${option.buyer_count} buyers`}
+        accessibilityState={{ selected: isSelected }}
+        style={({ pressed }) => [
+          styles.row,
+          isSelected ? styles.rowSelected : null,
+          pressed ? styles.rowPressed : null,
+        ]}
+      >
+        <Text style={styles.rowName} numberOfLines={1}>
+          {option.name}
+        </Text>
+        <Text style={styles.rowMeta}>
+          {option.buyer_count}{" "}
+          {option.buyer_count === 1 ? "buyer" : "buyers"}
+          {" · "}
+          {option.kind === "brand_buyers"
+            ? "Brand rollup"
+            : "Event buyers"}
+        </Text>
+      </Pressable>
+    );
+  };
+
+  // SC-13 deliberately does not render the intermediate rework copy
+  // "Choose Your Book or an Automatic buyer group." while the feature is OFF;
+  // OFF preserves the exact origin/main copy and row semantics below.
+
   return (
     <Sheet visible={visible} onClose={onClose} snapPoint="half">
       <View style={styles.host}>
@@ -273,7 +312,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
         <Text style={styles.subtitle}>
           {manualGroupsEnabled === true
             ? "Choose Your Book, a Manual group, or an Automatic buyer group."
-            : "Choose Your Book or an Automatic buyer group."}
+            : "Your Book shows active saved people; buyer lists come from paid orders."}
         </Text>
         {bookError !== null ? (
           <Text accessibilityRole="alert" style={styles.errorText}>
@@ -307,7 +346,7 @@ export const AudiencePickerSheet: React.FC<AudiencePickerSheetProps> = ({
                 <Text accessibilityRole="header" style={styles.sectionTitle}>{section.title}</Text>
                 {section.data.length === 0 ? <Text style={styles.sectionEmpty}>None yet</Text> : section.data.map(renderOption)}
               </View>
-            )) : options.map(renderOption)}
+            )) : options.map(renderLegacyOption)}
           </ScrollView>
         )}
       </View>
