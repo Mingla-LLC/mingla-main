@@ -523,6 +523,9 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
               placeholderTextColor={textTokens.tertiary}
               clearable
               disabled={!searchInteractive}
+              tabIndex={
+                Platform.OS === "web" && !searchInteractive ? -1 : undefined
+              }
               autoFocus={searchAutoFocus && searchInteractive}
               accessibilityLabel="Search banks"
             />

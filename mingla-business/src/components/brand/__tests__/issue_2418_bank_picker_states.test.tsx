@@ -384,3 +384,106 @@ describe("#2418 bank retry mutex", () => {
     },
   );
 });
+
+describe("#2418 web bank search tab order", () => {
+  const { Platform } = require("react-native") as {
+    Platform: { OS: string };
+  };
+  const originalPlatformOS = Platform.OS;
+
+  beforeAll(() => {
+    Object.defineProperty(Platform, "OS", {
+      configurable: true,
+      value: "web",
+    });
+  });
+
+  afterAll(() => {
+    Object.defineProperty(Platform, "OS", {
+      configurable: true,
+      value: originalPlatformOS,
+    });
+  });
+
+  beforeEach(() => {
+    mockAuthReady = true;
+    mockRefetch.mockReset();
+    mockRefetch.mockResolvedValue({ data: undefined });
+    mockReportNonFatal.mockClear();
+  });
+
+  it.each([
+    [
+      "terminal error",
+      true,
+      baseQuery({
+        error: new PaystackBankListError("unknown", 500),
+        errorUpdatedAt: 5,
+        isError: true,
+      }),
+    ],
+    ["provider empty", true, baseQuery({ data: [], isSuccess: true })],
+    ["auth pending", false, baseQuery()],
+  ])(
+    "removes disabled %s Search from web Tab order",
+    (_label, authReady, state) => {
+      mockAuthReady = authReady;
+      mockBanksQuery = state;
+      const mounted = openPicker();
+      const search = nodesWithLabel(mounted, "Search banks").find(
+        (node) => typeof node.props.editable === "boolean",
+      );
+      if (!search) throw new Error("bank search is missing");
+
+      expect(search.props.tabIndex).toBe(-1);
+      expect(search.props.editable).toBe(false);
+      expect(search.props.accessibilityState).toEqual({ disabled: true });
+      unmount(mounted);
+    },
+  );
+
+  it.each([
+    ["loading", baseQuery({ isFetching: true, isLoading: true })],
+    [
+      "populated",
+      baseQuery({
+        data: [{ name: "Access Bank", code: "044" }],
+        isSuccess: true,
+      }),
+    ],
+  ])("keeps interactive %s Search in web Tab order", (_label, state) => {
+    mockBanksQuery = state;
+    const mounted = openPicker();
+    const search = nodesWithLabel(mounted, "Search banks").find(
+      (node) => typeof node.props.editable === "boolean",
+    );
+    if (!search) throw new Error("bank search is missing");
+
+    expect(search.props.tabIndex).toBeUndefined();
+    expect(search.props.editable).toBe(true);
+    expect(search.props.accessibilityState).toEqual({ disabled: false });
+    unmount(mounted);
+  });
+
+  it("does not add a native tabIndex while retaining disabled semantics", () => {
+    Object.defineProperty(Platform, "OS", {
+      configurable: true,
+      value: "android",
+    });
+    mockBanksQuery = baseQuery({ data: [], isSuccess: true });
+    const mounted = openPicker();
+    const search = nodesWithLabel(mounted, "Search banks").find(
+      (node) => typeof node.props.editable === "boolean",
+    );
+    if (!search) throw new Error("bank search is missing");
+
+    expect(search.props.tabIndex).toBeUndefined();
+    expect(search.props.editable).toBe(false);
+    expect(search.props.accessibilityState).toEqual({ disabled: true });
+    unmount(mounted);
+    Object.defineProperty(Platform, "OS", {
+      configurable: true,
+      value: "web",
+    });
+  });
+});
