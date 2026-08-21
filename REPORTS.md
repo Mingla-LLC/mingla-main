@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-21 — Free events no longer report a false failure after they have published successfully; Mingla Host now removes any stranded same-event draft on refresh, and organisers can continue editing the published event without a fabricated currency. (#2396, PR #2402)
 - 2026-08-21 — PostgreSQL CI now verifies that every restored snapshot has an exact, ordered migration prefix before applying a suffix, safely accepts reviewed policy removals, rejects corrupt manifests, and runs the repaired marketing fixtures against current schema contracts without weakening their assertions. (#2391, #2393, PRs #2392, #2394)
 - 2026-08-21 — Ari now resumes each business account's last active brand conversation after tab changes, refreshes, or app restarts; explicit New stays blank until the first message, server-owned task state and choices survive interruptions, and retries cannot duplicate a turn. (#1985, PR #2257)
 - 2026-08-20 — Ari can now create, read back, edit, publish, unpublish, and safely discard complete Experience graphs through the same canonical lifecycle used by Mingla Host, with exact-once confirmations, server-owned Snap proposals, truthful timezone and stop precision, and production-verified rollback-safe buyer exposure. (#1973, PR #2255)
