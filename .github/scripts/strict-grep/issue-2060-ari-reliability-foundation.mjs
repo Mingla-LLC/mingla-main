@@ -16,7 +16,7 @@ const FILES = {
   digest: "docs/contracts/ari-certification-digest-v1.json",
   certifier: "scripts/ari/certify-capabilities.mjs",
   migration: "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
-  currentMigration: "supabase/migrations/20270505001973_issue_1973_ari_experience_lifecycle.sql",
+  currentMigration: "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql",
   invariants: "docs/INVARIANT_REGISTRY.md",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
@@ -54,8 +54,8 @@ function errorTuples(source, marker) {
 }
 
 export function checkContract(fixture) {
-  assert.equal(fixture.ledger.capabilities.length, 117, "canonical ledger must stay exactly 117 rows");
-  assert.equal(new Set(fixture.ledger.capabilities.map((row) => row.id)).size, 117, "capability IDs must be unique");
+  assert.equal(fixture.ledger.capabilities.length, 120, "canonical ledger must stay exactly 120 rows");
+  assert.equal(new Set(fixture.ledger.capabilities.map((row) => row.id)).size, 120, "capability IDs must be unique");
   for (const row of fixture.ledger.capabilities) {
     const owner = fixture.owners.domains?.[row.domain];
     assert.ok(owner, `missing certification owner for ${row.id}`);
@@ -67,8 +67,8 @@ export function checkContract(fixture) {
     "venue operations must depend on #1979",
   );
 
-  assert.equal(fixture.schema.properties.capabilities.minItems, 117, "evidence schema row floor");
-  assert.equal(fixture.schema.properties.capabilities.maxItems, 117, "evidence schema row ceiling");
+  assert.equal(fixture.schema.properties.capabilities.minItems, 120, "evidence schema row floor");
+  assert.equal(fixture.schema.properties.capabilities.maxItems, 120, "evidence schema row ceiling");
   assert.ok(
     fixture.schema.properties.capabilities.items.properties.scenario_evidence,
     "evidence schema must require structured scenario evidence",
@@ -145,7 +145,7 @@ export function checkContract(fixture) {
   );
 
   need(fixture.certifier, [
-    "ledger.capabilities.length !== 117",
+    "ledger.capabilities.length !== 120",
     '`ledger_not_certifiable:${planned.capability_id}',
     '`status_laundering:${planned.capability_id}',
     'verified_zero_residue === true',
@@ -176,9 +176,9 @@ export function checkContract(fixture) {
   ], "certifier");
 
   need(fixture.currentMigration, [
-    "'ari.experience.unpublish'",
-    "v_capability_count <> 117",
-    "'capability_count', 117",
+    "'ari.venue.list_listings'",
+    "v_capability_count <> 120",
+    "'capability_count', 120",
   ], "#1973 current certification upgrade");
 
   need(fixture.migration, [
@@ -279,7 +279,7 @@ function selfTest() {
   bad(good, (x) => { x.observability.required_alerts.pop(); }, "missing alert");
   bad(good, (x) => { x.edge = x.edge.replaceAll('"RESULT_UNKNOWN"', '"RESULT_LOST"'); }, "unknown result family");
   bad(good, (x) => { x.business = x.business.replaceAll('reason: "offline"', 'reason: "terminal"'); }, "offline gate");
-  bad(good, (x) => { x.certifier = x.certifier.replace("ledger.capabilities.length !== 117", "false"); }, "row completeness");
+  bad(good, (x) => { x.certifier = x.certifier.replace("ledger.capabilities.length !== 120", "false"); }, "row completeness");
   bad(good, (x) => { x.migration = x.migration.replace("ari_cert_evidence_is_immutable", "evidence_is_mutable"); }, "immutable evidence");
   bad(good, (x) => { x.invariants = x.invariants.replace("I-ARI-RESULT-HONESTY (DRAFT)", "I-ARI-RESULT-HONESTY (REMOVED)"); }, "result honesty invariant");
   bad(good, (x) => { x.rollback = x.rollback.replace("Do not down-migrate additive #2060 tables", "Down-migrate #2060 tables"); }, "forward rollback");
@@ -306,5 +306,5 @@ function selfTest() {
 if (process.argv.includes("--self-test")) selfTest();
 else {
   checkContract(readLive());
-  console.log("issue-2060 Ari reliability foundation: PASS (117 capabilities; #2060 history remains 116)");
+  console.log("issue-2060 Ari reliability foundation: PASS (120 capabilities; #2060 history remains 116)");
 }

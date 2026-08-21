@@ -28,14 +28,15 @@ const tool = (name: string) => {
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
   // #1973/#1985 denominator without changing inherited authorization semantics.
-  // [TEST-MOD-APPROVED #1975] Three Stay authoring tools join the same registry.
+  // [TEST-MOD-APPROVED #1975+#1978] Stay authoring (+3) and venue reads (+3)
+  // join the registry (71 + 6 = 77).
   assert(
-    AGENT_TOOLS.length === 74,
-    `expected 74 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 77,
+    `expected 77 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 74, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 77, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 74,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 77,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -73,12 +74,15 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     owner_or_event_manager: "event_manager",
     owner_or_manager: "event_manager",
     owner_or_admin: "brand_admin",
+    // issue #1978 — venue claim feedback/resubmit are brand-owner-only, matching
+    // the canonical biz_role_rank('brand_owner') gate.
+    brand_owner: "brand_owner",
     owner: "deed_owner",
   };
   const rows = ledger.capabilities.filter((row: any) =>
     AGENT_TOOL_AUTHORIZATION[row.ari_tool]
   );
-  assert(rows.length === 74, `expected 74 ledger rows, got ${rows.length}`);
+  assert(rows.length === 77, `expected 77 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

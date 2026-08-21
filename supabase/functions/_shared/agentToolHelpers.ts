@@ -11,6 +11,9 @@ export type AgentRequiredRole =
   | "marketing_manager"
   | "finance_manager"
   | "event_manager"
+  // issue #1978 — venue claim feedback/resubmit are brand-owner-only, matching
+  // the canonical `biz_role_rank('brand_owner')` gate the RPCs enforce.
+  | "brand_owner"
   | "brand_admin"
   | "deed_owner";
 
@@ -21,7 +24,12 @@ export type AgentResourceKind =
   | "event"
   | "campaign"
   | "stay_reservation"
-  | "venue_reservation";
+  | "venue_reservation"
+  // issue #1978 — venue lifecycle resources. `venue` derives the tenant brand
+  // from `venue_listings.id`; `venue_feedback` derives it from the feedback row
+  // and requires its venue to agree, so a claim id can never straddle brands.
+  | "venue"
+  | "venue_feedback";
 
 export interface AgentAuthorizationDeclaration {
   requiredRole: AgentRequiredRole;

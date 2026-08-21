@@ -152,10 +152,10 @@ function check(s) {
     'status: "scheduled"',
     "undefined",
   ]);
-  requireAll("117-capability certification proof", s.certificationTest, [
+  requireAll("120-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:116",
-    "expected exactly 117 certification requirements",
+    "ari_cert_missing_capabilities:119",
+    "expected exactly 120 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -257,7 +257,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:116",
+        "ari_cert_missing_capabilities:119",
         "accepted_obsolete_inventory",
       ),
     },

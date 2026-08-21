@@ -15,6 +15,10 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_brand_audit_log",
   "list_guest_roster",
   "get_operator_snapshot",
+  // issue #1978 — venue discovery reads run inline under the same tenant scope.
+  "list_venue_listings",
+  "get_venue_listing_status",
+  "list_venue_claim_feedback",
 ]);
 
 export interface AccessibleAgentBrand {
