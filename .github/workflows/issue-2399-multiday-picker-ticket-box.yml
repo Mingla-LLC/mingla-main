@@ -8,6 +8,7 @@ on:
       - "mingla-business/src/components/event/FoundationEventPreview.tsx"
       - "mingla-business/src/components/event/MultiDateDayChooser.tsx"
       - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx"
+      - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx"
       - "mingla-business/src/services/publicEventsService.ts"
       - "mingla-business/src/utils/publicEventOccurrenceTruth.ts"
       - "packages/offering-rendering/EventOfferingBody.tsx"
@@ -23,6 +24,7 @@ on:
       - "mingla-business/src/components/event/FoundationEventPreview.tsx"
       - "mingla-business/src/components/event/MultiDateDayChooser.tsx"
       - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx"
+      - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx"
       - "mingla-business/src/services/publicEventsService.ts"
       - "mingla-business/src/utils/publicEventOccurrenceTruth.ts"
       - "packages/offering-rendering/EventOfferingBody.tsx"
@@ -49,6 +51,7 @@ jobs:
         run: >-
           npx jest --runInBand
           src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx
+          src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx
           src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx
           src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx
           src/components/event/__tests__/PublicEventPage.issue2101.test.tsx

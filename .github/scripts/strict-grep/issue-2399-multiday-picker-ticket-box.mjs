@@ -14,6 +14,7 @@ const PATHS = {
   shared: "packages/offering-rendering/EventOfferingBody.tsx",
   route: "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
   test: "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
+  tester: "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
   workflow: ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
 };
 const readSources = () =>
@@ -126,6 +127,18 @@ export function check(raw) {
       !raw.test.includes("zero selected days keeps Total unknown")) {
     failures.push("implementor happy-path regression is incomplete");
   }
+  for (const token of [
+    'mount("error"',
+    'mount("offline"',
+    'mount("stale"',
+    'accessibilityLabel: "Try again"',
+    'accessibilityLabel: "Refresh days"',
+  ]) {
+    if (!raw.tester.includes(token)) failures.push(`tester recovery guard missing: ${token}`);
+  }
+  if (!raw.workflow.includes(PATHS.tester)) {
+    failures.push("tester adversarial guard is not executed by #2399 CI");
+  }
 
   if (failures.length > 0) {
     throw new Error(`issue-2399-multiday-picker-ticket-box:\n- ${failures.join("\n- ")}`);
@@ -145,6 +158,7 @@ if (process.argv.includes("--self-test")) {
     ["chooser", 'accessibilityRole="checkbox"', 'accessibilityRole="radio"'],
     ["truth", "new Map<string, PublicEventOccurrence>()", "new Map()"],
     ["route", "publicEventQuery.refetch", "Promise.resolve"],
+    ["tester", 'mount("stale"', 'mount("ready"'],
   ];
   for (const [key, from, to] of mutations) {
     if (!sources[key].includes(from)) throw new Error(`self-test fixture missing: ${from}`);
