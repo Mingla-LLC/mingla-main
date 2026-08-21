@@ -80,14 +80,16 @@ export const reconcilePublishedEventDrafts = (
   deleteDraft: (draftId: string) => void,
 ): string[] => {
   const liveEventIds = new Set(authoritativeLiveEvents.map((event) => event.id));
-  const staleDraftIds = localDrafts
-    .filter(
-      (draft) =>
-        draft.brandId === brandId &&
-        !isLocalOnlyDraftId(draft.id) &&
-        liveEventIds.has(draft.id),
-    )
-    .map((draft) => draft.id);
+  const staleDraftIds: string[] = [];
+  for (const draft of localDrafts) {
+    if (
+      draft.brandId === brandId &&
+      !isLocalOnlyDraftId(draft.id) &&
+      liveEventIds.has(draft.id)
+    ) {
+      staleDraftIds.push(draft.id);
+    }
+  }
 
   if (staleDraftIds.length === 0) return [];
 
