@@ -124,6 +124,10 @@ describe("#2230 ticket sheet placement, pricing, validation, and accessibility",
   });
 
   it("multiplies displayed/payload cents by selected days without changing line quantities", () => {
+    expect(SHEET).toContain("const pricing = (():");
+    expect(SHEET).not.toMatch(
+      /const pricing = useMemo<[\s\S]{0,1800}selectedEventDateIds/,
+    );
     expect(SHEET).toContain('multiDaySelection?.pricingMode === "per_day"');
     expect(SHEET).toContain("allInCents *= dayMultiplier");
     expect(SHEET).toContain("baseCents *= dayMultiplier");

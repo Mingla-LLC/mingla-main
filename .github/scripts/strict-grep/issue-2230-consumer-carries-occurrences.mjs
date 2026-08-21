@@ -105,6 +105,10 @@ export function check(raw) {
     'accessibilityLiveRegion="polite"',
     "void Haptics.selectionAsync()",
   ]) if (!sheet.includes(token)) failures.push(`cart contract missing: ${token}`);
+  if (!sheet.includes("const pricing = (():") ||
+      /const pricing = useMemo<[\s\S]{0,1800}selectedEventDateIds/.test(sheet)) {
+    failures.push("day-priced cart total can remain stale behind the native sheet host");
+  }
   for (const token of [
     'accessibilityLabel="Days you\'re attending"',
     'accessibilityRole="checkbox"',
@@ -153,6 +157,7 @@ if (process.argv.includes("--self-test")) {
     ["sheet", "<EventDayChooser", "<View"],
     ["sheet", "allowUnboundedNameWrap={multiDaySelection !== null}", "allowUnboundedNameWrap={false}"],
     ["sheet", "numberOfLines={multiDaySelection === null ? 1 : undefined}", "numberOfLines={1}"],
+    ["sheet", "const pricing = (():", "const pricing = useMemo<"],
     ["quantityRow", "allowUnboundedNameWrap = false", "allowUnboundedNameWrap = true"],
     ["workflow", "src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx", "src/components/expandedCard/__tests__/missing-scaled-text-suite.tsx"],
     ["flow", "...(eventDateIds.length > 0 ? { eventDateIds } : {})", ""],

@@ -401,12 +401,16 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // When a tier has no server all-in (RPC miss → priceAllInGbp falls back to
   // priceGbp in the service), its all-in == base, contributing 0 to feesTax and
   // dropping the "includes VAT & fees" affordance for that tier automatically.
-  const pricing = useMemo<{
+  // #2230 physical-Android proof: day selection can update while this sheet is
+  // held open by the native bottom-sheet host. Recompute this tiny cart sum on
+  // every render so a host that preserves the selection wrapper identity can
+  // never leave the displayed total one day behind the chooser.
+  const pricing = ((): {
     baseCents: number;
     allInCents: number;
     feesTaxCents: number;
     hasAllInDelta: boolean;
-  }>(() => {
+  } => {
     let baseCents = 0;
     let allInCents = 0;
     for (const line of lines) {
@@ -439,7 +443,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       feesTaxCents,
       hasAllInDelta: feesTaxCents > 0,
     };
-  }, [lines, multiDaySelection, tickets]);
+  })();
 
   // ORCH-1182 — the qty-scaled "Due today" for a pay-over-time plan cart, summed
   // over the cart's OWN LIVE lines (the BUG: the parent previously passed the
