@@ -39,7 +39,7 @@ import {
   typography,
 } from "../../constants/designSystem";
 import { AriOrb } from "./AriOrb";
-import { ToolEditForm } from "./ToolEditForm";
+import { isToolProposalEditable, ToolEditForm } from "./ToolEditForm";
 import { GlassChrome } from "../ui/GlassChrome";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 import type { CoverPatch } from "../ui/CoverPicker";
@@ -114,6 +114,8 @@ function humanizeToolName(toolName: string): string {
     case "create_brand": return "Create brand";
     case "update_brand": return "Update brand";
     case "delete_brand": return "Delete brand";
+    case "manage_brand_hours": return "Update venue hours";
+    case "manage_brand_discovery_currency": return "Update discovery currency";
     case "create_event": return "Create event";
     case "update_event": return "Update event";
     case "cancel_event": return "Cancel event";
@@ -176,6 +178,34 @@ function coverTypeLabel(type: unknown): string | null {
 
 function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
   const out: Field[] = [];
+  if (toolName === "manage_brand_hours" && Array.isArray(args.hours)) {
+    const weekdayLabels = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const rows = args.hours
+      .filter((raw): raw is Record<string, unknown> => typeof raw === "object" && raw !== null)
+      .slice()
+      .sort((a, b) => Number(a.weekday) - Number(b.weekday));
+    for (const row of rows) {
+      const weekday = Number(row.weekday);
+      const label = weekdayLabels[weekday] ?? `Day ${weekday}`;
+      const value = row.is_closed === true
+        ? "Closed"
+        : `${String(row.open_time ?? "—")}–${String(row.close_time ?? "—")}`;
+      out.push({ label, value });
+    }
+    return out;
+  }
+  if (toolName === "manage_brand_discovery_currency") {
+    if (typeof args.currency_code === "string") {
+      out.push({ label: "Currency", value: args.currency_code.toUpperCase() });
+    }
+    if (typeof args.expected_state_version === "number") {
+      out.push({ label: "State version", value: String(args.expected_state_version) });
+    }
+    if (typeof args.decision === "string") {
+      out.push({ label: "Decision", value: args.decision.replace(/_/g, " ") });
+    }
+    return out;
+  }
   if (toolName === "create_event" || toolName === "update_event") {
     if (typeof args.start_at === "string") {
       const d = new Date(args.start_at);
@@ -201,6 +231,15 @@ function fieldsFor(toolName: string, args: Record<string, unknown>): Field[] {
     }
   }
   if (toolName === "create_brand" || toolName === "update_brand") {
+    if (typeof args.name === "string" && args.name) {
+      out.push({ label: "Name", value: args.name });
+    }
+    if (typeof args.description === "string" && args.description) {
+      out.push({ label: "Description", value: args.description });
+    }
+    if (typeof args.contact_email === "string" && args.contact_email) {
+      out.push({ label: "Contact email", value: args.contact_email });
+    }
     if (typeof args.default_currency === "string") {
       out.push({ label: "Currency", value: args.default_currency });
     }
@@ -373,6 +412,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   const [createdBrandId, setCreatedBrandId] = useState<string | null>(null);
   const [createDescription, setCreateDescription] = useState<string | null>(null);
   const [creatingForCover, setCreatingForCover] = useState(false);
+  const [proposalError, setProposalError] = useState<string | null>(null);
 
   const verb = humanizeToolName(toolName);
   // ORCH-1103 REWORK 3 — after a "Create & attach" commit the picker writes the
@@ -518,6 +558,26 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
     // host always passes accountId + brand_id for an update proposal).
   };
 
+  const confirmProposal = async (
+    nextArgs?: Record<string, unknown>,
+    keepPending?: boolean,
+  ): Promise<ConfirmOutcome> => {
+    setProposalError(null);
+    try {
+      const outcome = await onConfirm(nextArgs, keepPending);
+      if (!outcome.ok && outcome.error && outcome.terminal !== "expired") {
+        setProposalError(outcome.error);
+      }
+      return outcome;
+    } catch (error) {
+      const message = error instanceof Error
+        ? error.message
+        : "Couldn't complete that action — try again.";
+      setProposalError(message);
+      return { ok: false, error: message };
+    }
+  };
+
   // ORCH-1103 Q7 — mint the brand, then open the full picker against it. The
   // picker can't have its target swapped while mounted, so we close it (it is
   // not yet open here), set the new brandId (which builds coverTarget), and
@@ -537,7 +597,11 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       // keepPending = true → the host does NOT clear the pending action, so this
       // card stays mounted to host the picker and run the attach. We clear it
       // ourselves (onAttachDone) once the cover sheet closes.
+      setProposalError(null);
       const outcome = await onConfirm(editing ? editedArgs : undefined, true);
+      if (!outcome.ok && outcome.error && outcome.terminal !== "expired") {
+        setProposalError(outcome.error);
+      }
       if (outcome.ok && outcome.brandId) {
         setCreatedBrandId(outcome.brandId);
         // Open the full picker against the freshly-minted brand. coverTarget is
@@ -551,6 +615,10 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
       }
       // If the commit failed (outcome.ok false) the screen toast already shows;
       // the card stays put with the Add-cover affordance still live.
+    } catch (error) {
+      setProposalError(error instanceof Error
+        ? error.message
+        : "Couldn't complete that action — try again.");
     } finally {
       setCreatingForCover(false);
     }
@@ -600,6 +668,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
   };
 
   const confirmDisabled = isExecuting || creatingForCover || coverUploadState !== "idle";
+  const canEditProposal = isToolProposalEditable(toolName, liveArgs);
 
   return (
     <GlassChrome
@@ -761,6 +830,12 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           )
         )}
 
+        {proposalError ? (
+          <Text style={styles.proposalError} accessibilityRole="alert">
+            {proposalError} Confirm again to retry safely.
+          </Text>
+        ) : null}
+
         <View style={styles.actions}>
           {/* ORCH-1103 REWORK 3 — POST-COMMIT (create-and-attach minted the
               brand): the pending action is EXECUTED. The ONLY action is "Done"
@@ -805,7 +880,12 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           {/* Delete-variant has no Edit button; the typed-name field is the gate */}
           {isBrandDelete ? (
             <Pressable
-              onPress={() => onConfirm(editing ? editedArgs : undefined)}
+              onPress={() =>
+                void confirmProposal({
+                  ...args,
+                  confirm_phrase: typedName.trim(),
+                })
+              }
               disabled={isExecuting || !canDelete}
               hitSlop={{ top: 5, bottom: 5 }}
               style={({ pressed }) => [
@@ -825,7 +905,7 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
           ) : isMoneyConfirm && moneyPhrase ? (
             <Pressable
               onPress={() =>
-                onConfirm({
+                void confirmProposal({
                   ...(editing ? editedArgs : args),
                   confirm_phrase: moneyPhrase,
                 })
@@ -848,23 +928,25 @@ export const ToolProposalCard: React.FC<ToolProposalCardProps> = ({
             </Pressable>
           ) : (
             <>
+              {canEditProposal ? (
+                <Pressable
+                  onPress={() => setEditing((e) => !e)}
+                  disabled={isExecuting}
+                  hitSlop={{ top: 5, bottom: 5 }}
+                  style={({ pressed }) => [
+                    styles.actionBtn,
+                    styles.editBtn,
+                    pressed && styles.btnPressed,
+                    isExecuting && styles.btnDisabled,
+                  ]}
+                  accessibilityRole="button"
+                  accessibilityLabel={editing ? "Stop editing" : "Edit proposal"}
+                >
+                  <Text style={styles.editText}>{editing ? "Done editing" : "Edit"}</Text>
+                </Pressable>
+              ) : null}
               <Pressable
-                onPress={() => setEditing((e) => !e)}
-                disabled={isExecuting}
-                hitSlop={{ top: 5, bottom: 5 }}
-                style={({ pressed }) => [
-                  styles.actionBtn,
-                  styles.editBtn,
-                  pressed && styles.btnPressed,
-                  isExecuting && styles.btnDisabled,
-                ]}
-                accessibilityRole="button"
-                accessibilityLabel={editing ? "Stop editing" : "Edit proposal"}
-              >
-                <Text style={styles.editText}>{editing ? "Done editing" : "Edit"}</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => onConfirm(editing ? editedArgs : undefined)}
+                onPress={() => void confirmProposal(editing ? editedArgs : undefined)}
                 disabled={confirmDisabled}
                 hitSlop={{ top: 5, bottom: 5 }}
                 style={({ pressed }) => [
@@ -1171,6 +1253,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     fontSize: 13,
     color: textTokens.primary,
+  },
+  proposalError: {
+    marginTop: spacing.sm,
+    color: semantic.error,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
   },
   // ----- actions -----------------------------------------------------------
   actions: {

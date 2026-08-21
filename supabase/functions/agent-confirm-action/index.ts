@@ -16,7 +16,11 @@ import {
 import { corsHeaders } from "../_shared/cors.ts";
 import { TENANT_CONTEXT_VERSION } from "../_shared/agentSystemPrompt.ts";
 import { ARI_MODEL_VERSION } from "../_shared/agentGemini.ts";
-import { findTool, ToolError } from "../_shared/agentTools.ts";
+import {
+  canonicalizeAgentProposalArgs,
+  findTool,
+  ToolError,
+} from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
 import { buildServiceClient } from "../_shared/agentRateLimit.ts";
 import {
@@ -90,6 +94,7 @@ function errorResponse(
 }
 
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
+  "create_brand",
   "create_event",
   "update_event",
   "publish_event",
@@ -107,6 +112,13 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "manage_experience_stops",
   "unpublish_experience",
   "delete_experience",
+  // Issue #2063 — these writes commit through ari_execute_brand_operation and
+  // the shared #1972 operation receipt, so an ambiguous executing retry must
+  // replay that receipt instead of returning WRONG_STATE.
+  "update_brand",
+  "delete_brand",
+  "manage_brand_hours",
+  "manage_brand_discovery_currency",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -664,10 +676,28 @@ Deno.serve(async (req) => {
   }
 
   // #2019: resolve and authorize final edited scope while still pending.
-  const finalArgs = pending.status === "pending" && body.edited_args &&
+  const candidateArgs = pending.status === "pending" && body.edited_args &&
       typeof body.edited_args === "object"
     ? body.edited_args
     : (pending.tool_args as Record<string, unknown>);
+
+  let canonicalArgs: Record<string, unknown>;
+  try {
+    canonicalArgs = canonicalizeAgentProposalArgs(
+      pending.tool_name,
+      candidateArgs,
+    );
+  } catch (err: unknown) {
+    if (err instanceof ToolError) {
+      return errorResponse(400, err.code, err.message);
+    }
+    return errorResponse(
+      400,
+      "INVALID_ARGS",
+      "The edited proposal is invalid.",
+    );
+  }
+  const finalArgs = canonicalArgs;
 
   // Find tool + validate
   const tool = findTool(pending.tool_name);

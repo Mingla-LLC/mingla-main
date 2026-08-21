@@ -32,8 +32,10 @@ import {
 } from "../_shared/agentGemini.ts";
 import {
   AGENT_TOOLS,
+  bindAgentProposalState,
+  canonicalizeAgentProposalArgs,
   findTool,
-  READ_ONLY_TOOL_NAMES,
+  isReadOnlyAgentToolCall,
   ToolError,
 } from "../_shared/agentTools.ts";
 import { authorizeAgentTool } from "../_shared/agentToolAuthorization.ts";
@@ -1106,7 +1108,9 @@ async function handle(req: Request): Promise<Response> {
   // deno-fmt-ignore -- protected #2013 provenance gate requires this exact select boundary.
   const { data: historyRows } = await userClient
     .from("agent_messages")
-    .select("role, content, tool_calls, tool_results, prompt_version, created_at")
+    .select(
+      "role, content, tool_calls, tool_results, prompt_version, created_at",
+    )
     .eq("conversation_id", conversationId)
     .order("created_at", { ascending: false })
     .limit(HISTORY_WINDOW);
@@ -1641,7 +1645,7 @@ async function handle(req: Request): Promise<Response> {
     }
 
     // For READ-ONLY tools, execute inline (no confirmation needed)
-    if (READ_ONLY_TOOL_NAMES.has(tool.name)) {
+    if (isReadOnlyAgentToolCall(tool.name, gemini.toolCall.args)) {
       try {
         const result = await tool.executor(
           gemini.toolCall.args,
@@ -1844,6 +1848,33 @@ async function handle(req: Request): Promise<Response> {
         choices: liveChoices ?? undefined,
         resumed: true,
       });
+    }
+
+    // #2063: bind canonical optimistic state before authorization/persistence.
+    // The proposal, confirmation, and SQL owner all receive the same version.
+    try {
+      gemini.toolCall.args = canonicalizeAgentProposalArgs(
+        tool.name,
+        gemini.toolCall.args,
+      );
+      gemini.toolCall.args = await bindAgentProposalState(
+        tool.name,
+        gemini.toolCall.args,
+        userClient,
+      );
+    } catch (err: unknown) {
+      if (err instanceof ToolError) {
+        return errorResponse(
+          err.code === "INVALID_ARGS" ? 400 : 503,
+          err.code,
+          err.message,
+        );
+      }
+      return errorResponse(
+        503,
+        "ROLE_CHECK_UNAVAILABLE",
+        "Ari could not read the current state for this proposal.",
+      );
     }
 
     // #2019: authorization precedes every persisted proposal.

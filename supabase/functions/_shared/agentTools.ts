@@ -69,34 +69,65 @@ function resolveCoverPair(
   return null; // atomic — if only one is present, ignore both
 }
 
-/**
- * Resolve the create-time default currency WITHOUT writing a literal "GBP".
- * Order: (a) explicit valid 3-letter arg → uppercased; (b) the user's
- * agent_user_profile.preferred_currency; (c) null → OMIT the column so the
- * `brands` column DEFAULT applies. ORCH-1103 de-GBP ([[orch-1034]]): the
- * string "GBP" is NEVER written by this executor. (Strict-grep gate G-1.)
- */
-async function resolveCreateCurrency(
+async function executeBrandOperation(
+  toolName: string,
   args: Record<string, unknown>,
   client: SupabaseClient,
-  userId: string,
-): Promise<string | null> {
-  if (
-    isString(args.default_currency) && args.default_currency.trim().length >= 3
-  ) {
-    return args.default_currency.toUpperCase().slice(0, 3);
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  const operationId = requireAgentOperationId(context);
+  const { data, error } = await client.rpc("ari_execute_brand_operation", {
+    p_operation_id: operationId,
+    p_tool_name: toolName,
+    p_args: args,
+  });
+  if (error) {
+    const message = error.message ?? "Brand operation failed";
+    if ((error as { code?: string }).code === "23505") {
+      throw new ToolError(
+        "SLUG_TAKEN",
+        "That brand web address is already in use.",
+      );
+    }
+    if (message.includes("brand_delete_blocked_by_events")) {
+      throw new ToolError(
+        "DELETE_BLOCKED_BY_EVENTS",
+        "This brand still has a future scheduled or live offering. Cancel or transfer it first.",
+      );
+    }
+    if (message.includes("brand_name_confirmation_mismatch")) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Type the exact brand name to confirm deletion.",
+      );
+    }
+    if (message.includes("venue_brand_mismatch")) {
+      throw new ToolError(
+        "BRAND_ACCESS_DENIED",
+        "That venue does not belong to the selected brand.",
+      );
+    }
+    if (message.includes("idempotency_conflict")) {
+      throw new ToolError(
+        "IDEMPOTENCY_CONFLICT",
+        "This confirmation no longer matches its proposal.",
+      );
+    }
+    if (message.includes("range_version_conflict")) {
+      throw new ToolError(
+        "STALE_STATE",
+        "Discovery-currency settings changed after this proposal. Refresh the state and ask Ari to prepare it again.",
+      );
+    }
+    throw new ToolError("WRITE_FAILED", message);
   }
-  const { data } = await client
-    .from("agent_user_profile")
-    .select("preferred_currency")
-    .eq("user_id", userId)
-    .maybeSingle();
-  const pref = (data as { preferred_currency?: string | null } | null)
-    ?.preferred_currency;
-  if (isString(pref) && pref.trim().length >= 3) {
-    return pref.toUpperCase().slice(0, 3);
+  if (data === null) {
+    throw new ToolError(
+      "WRITE_FAILED",
+      "Brand operation returned no readback.",
+    );
   }
-  return null; // let the column default decide — do NOT write a literal code
+  return data;
 }
 
 // Legacy append-only source-test marker: const createBrand: AgentTool = {
@@ -109,6 +140,7 @@ const createBrand: AgentToolDefinition = {
   // executor — the model schema is for shape only.
   parameters: {
     type: "object",
+    additionalProperties: false,
     required: ["name"],
     properties: {
       name: {
@@ -151,7 +183,7 @@ const createBrand: AgentToolDefinition = {
       },
     },
   },
-  executor: async (args, client, userId, _context) => {
+  executor: async (args, client, _userId, context) => {
     const name = args.name;
     if (!isString(name) || name.length > 80) {
       throw new ToolError("INVALID_ARGS", "name is required (1-80 chars)");
@@ -164,87 +196,23 @@ const createBrand: AgentToolDefinition = {
       );
     }
 
-    // ORCH-1103 — de-GBP: resolve currency or OMIT so the column default
-    // applies. The executor never writes a hard-coded currency string.
-    const resolvedCurrency = await resolveCreateCurrency(args, client, userId);
     const cover = resolveCoverPair(args);
-
-    const row: Record<string, unknown> = {
-      account_id: userId,
-      name: name.trim(),
-      slug,
-      description: isString(args.description) ? args.description : null,
-      contact_email: isString(args.contact_email) ? args.contact_email : null,
-    };
-    // Only set default_currency when explicitly resolved — otherwise omit the
-    // key entirely so the `brands.default_currency` column DEFAULT decides.
-    if (resolvedCurrency !== null) {
-      row.default_currency = resolvedCurrency;
-    }
-    // ORCH-1103 — optional cover, atomic pair only (picker-sourced).
-    if (cover !== null) {
-      row.cover_media_url = cover.cover_media_url;
-      row.cover_media_type = cover.cover_media_type;
-      row.cover_media_poster_url = cover.cover_media_poster_url;
-    }
-
-    const { data, error } = await client
-      .from("brands")
-      .insert(row)
-      .select(
-        "id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, created_at",
-      )
-      .single();
-    if (error) {
-      // 23505 = Postgres unique_violation. The manual create-brand UI
-      // surfaces this as "This brand name is taken" inline (see
-      // mingla-business/src/services/brandsService.ts SlugCollisionError).
-      // Match that behavior here so Ari and the manual flow give consistent
-      // outcomes for the same conflict.
-      if ((error as { code?: string }).code === "23505") {
-        throw new ToolError(
-          "SLUG_TAKEN",
-          `A brand named "${name.trim()}" already exists. Try a small variation (e.g., "${name.trim()} Events").`,
-        );
-      }
-      throw new ToolError("WRITE_FAILED", error.message);
-    }
-
-    const newBrandId = (data as { id: string }).id;
-
-    // ORCH-1103 — set as default on the user's FIRST brand (wizard parity,
-    // BrandCreationFlow.commitDefaultBrand). Non-fatal fire-and-forget per
-    // I-PROPOSED-B: a failure here must NOT fail the create.
-    let setAsDefault = false;
-    try {
-      const { count } = await client
-        .from("brands")
-        .select("id", { count: "exact", head: true })
-        .eq("account_id", userId)
-        .is("deleted_at", null);
-      if (count === 1) {
-        const { error: defaultErr } = await client
-          .from("creator_accounts")
-          .update({ default_brand_id: newBrandId })
-          .eq("id", userId);
-        if (defaultErr) {
-          console.warn(
-            "[create_brand] set default_brand_id failed:",
-            defaultErr.message,
-          );
-        } else {
-          setAsDefault = true;
-        }
-      }
-    } catch (e) {
-      // Non-fatal — brand is already created. Surface, do not throw.
-      console.warn(
-        "[create_brand] default-brand check failed:",
-        (e as Error)?.message ?? e,
+    const hasCoverInput = [
+      "cover_media_url",
+      "cover_media_type",
+      "cover_media_poster_url",
+    ].some((key) => args[key] !== undefined);
+    if (hasCoverInput && cover === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Cover URL, type, and stable poster must be supplied together.",
       );
     }
 
-    return { brand: data, set_as_default: setAsDefault };
+    // Receipt identity is the exact confirmed payload. SQL performs the same
+    // trimming/slug/currency/cover normalization inside the atomic mutation;
+    // never replace the pending row's args with a derived parallel payload.
+    return await executeBrandOperation("create_brand", args, client, context);
   },
 };
 
@@ -902,6 +870,7 @@ const updateBrand: AgentToolDefinition = {
     "Modify fields on a brand owned by the user. Only the provided fields are updated. Cover media is set via the Add cover button, not by you.",
   parameters: {
     type: "object",
+    additionalProperties: false,
     required: ["brand_id"],
     properties: {
       brand_id: { type: "string", description: "UUID of the brand to update" },
@@ -914,10 +883,6 @@ const updateBrand: AgentToolDefinition = {
         description: "New short description (<=500 chars)",
       },
       contact_email: { type: "string", description: "New brand contact email" },
-      default_currency: {
-        type: "string",
-        description: "New 3-letter ISO currency code",
-      },
       cover_media_url: {
         type: "string",
         description:
@@ -936,13 +901,13 @@ const updateBrand: AgentToolDefinition = {
       },
     },
   },
-  executor: async (args, client, _userId) => {
+  executor: async (args, client, _userId, context) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
     // FK/ownership pre-check under the user JWT (RLS is the final wall).
 
-    const updates: Record<string, unknown> = {};
+    const updates: Record<string, unknown> = { brand_id: args.brand_id };
     if (args.name !== undefined) {
       if (
         !isString(args.name) || args.name.trim().length === 0 ||
@@ -976,55 +941,31 @@ const updateBrand: AgentToolDefinition = {
       }
       updates.contact_email = args.contact_email.trim();
     }
-    if (args.default_currency !== undefined) {
-      if (
-        !isString(args.default_currency) ||
-        args.default_currency.trim().length < 3
-      ) {
-        throw new ToolError(
-          "INVALID_ARGS",
-          "default_currency must be a 3-letter ISO code",
-        );
-      }
-      updates.default_currency = args.default_currency.toUpperCase().slice(
-        0,
-        3,
-      );
-    }
     // Cover — atomic pair only (picker-sourced). On update a real brandId
     // exists so the picker has already persisted live; we still thread the
     // pair so the row reflects it idempotently (same URL).
     const cover = resolveCoverPair(args);
+    const hasCoverInput = [
+      "cover_media_url",
+      "cover_media_type",
+      "cover_media_poster_url",
+    ].some((key) => args[key] !== undefined);
+    if (hasCoverInput && cover === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Cover URL, type, and stable poster must be supplied together.",
+      );
+    }
     if (cover !== null) {
       updates.cover_media_url = cover.cover_media_url;
       updates.cover_media_type = cover.cover_media_type;
       updates.cover_media_poster_url = cover.cover_media_poster_url;
     }
 
-    if (Object.keys(updates).length === 0) {
+    if (Object.keys(updates).length === 1) {
       throw new ToolError("INVALID_ARGS", "No fields provided to update");
     }
-    updates.updated_at = new Date().toISOString();
-
-    const { data, error } = await client
-      .from("brands")
-      .update(updates)
-      .eq("id", args.brand_id)
-      .is("deleted_at", null)
-      .select(
-        "id, name, slug, default_currency, cover_media_url, cover_media_poster_url, cover_media_type, updated_at",
-      )
-      .single();
-    if (error) {
-      if ((error as { code?: string }).code === "23505") {
-        throw new ToolError(
-          "SLUG_TAKEN",
-          `A brand with that name already exists. Try a small variation.`,
-        );
-      }
-      throw new ToolError("WRITE_FAILED", error.message);
-    }
-    return { brand: data };
+    return await executeBrandOperation("update_brand", args, client, context);
   },
 };
 
@@ -1038,9 +979,6 @@ const updateBrand: AgentToolDefinition = {
 // Invariants: I-ARI-BRAND-DELETE-GUARD, I-ARI-NO-HARD-DELETE, I-ARI-USER-JWT-ONLY.
 // ----------------------------------------------------------------------------
 
-const BRAND_DELETE_BLOCKING_EVENT_STATUSES = ["scheduled", "live"] as const;
-const BRAND_RECOVERY_WINDOW_DAYS = 30;
-
 // Legacy append-only source-test marker: const deleteBrand: AgentTool = {
 const deleteBrand: AgentToolDefinition = {
   name: "delete_brand",
@@ -1048,91 +986,400 @@ const deleteBrand: AgentToolDefinition = {
     "Delete a brand the user owns. Soft-delete only — recoverable for 30 days via support. REFUSED if the brand has any scheduled or live future-dated event/trip/experience; the user must cancel or transfer those first. The user must type the brand name to confirm.",
   parameters: {
     type: "object",
+    additionalProperties: false,
     required: ["brand_id"],
     properties: {
       brand_id: { type: "string", description: "UUID of the brand to delete" },
+      confirm_phrase: {
+        type: "string",
+        description:
+          "Exact brand name supplied only by the type-to-confirm UI.",
+      },
     },
   },
-  executor: async (args, client, _userId) => {
+  executor: async (args, client, _userId, context) => {
     // 1 — shape
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
     }
-    const brandId = args.brand_id;
-
-    // 2 — ownership + not-already-deleted (under the user JWT)
-
-    // 3 — GUARD: blocking-events count BEFORE any write (softDeleteBrand step 1).
-    // Type-agnostic by design (a brand with scheduled trips/experiences also
-    // blocks delete). Mirrors the canonical guard's date-aware end_at filter.
-    // orch-strict-grep-allow events-type-filter — intentionally NO event_type filter.
-    const nowIso = new Date().toISOString();
-    const { count, error: countError } = await client
-      .from("events")
-      .select("id, event_dates!inner(end_at)", { count: "exact", head: true })
-      .eq("brand_id", brandId)
-      .in("status", BRAND_DELETE_BLOCKING_EVENT_STATUSES)
-      .is("deleted_at", null)
-      .gt("event_dates.end_at", nowIso);
-    if (countError) {
-      throw new ToolError("OWNERSHIP_CHECK_FAILED", countError.message);
-    }
-    if (count !== null && count > 0) {
-      // Recoverable refusal — surfaced as a clear Ari message (409), NOT a crash.
+    if (!isString(args.confirm_phrase)) {
       throw new ToolError(
-        "DELETE_BLOCKED_BY_EVENTS",
-        `This brand has ${count} upcoming or live event${
-          count === 1 ? "" : "s"
-        }. Cancel or transfer them before deleting.`,
+        "INVALID_ARGS",
+        "Type the exact brand name to confirm deletion.",
       );
     }
+    return await executeBrandOperation("delete_brand", args, client, context);
+  },
+};
 
-    // 4 — soft-delete (softDeleteBrand step 2). Rowcount-verified +
-    // idempotent via .is("deleted_at", null).
-    const { data, error: updateError } = await client
-      .from("brands")
-      .update({ deleted_at: nowIso })
-      .eq("id", brandId)
-      .is("deleted_at", null)
-      .select("id")
-      .maybeSingle();
-    if (updateError) {
-      throw new ToolError("WRITE_FAILED", updateError.message);
-    }
-    if (!data) {
+// ----------------------------------------------------------------------------
+// Issue #2063 — brand hours, audit history, and discovery currency.
+// ----------------------------------------------------------------------------
+
+const brandHourSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["weekday", "is_closed"],
+  properties: {
+    weekday: { type: "integer", minimum: 0, maximum: 6 },
+    open_time: { type: "string", description: "Local HH:MM time when open." },
+    close_time: {
+      type: "string",
+      description: "Local HH:MM time when closed.",
+    },
+    is_closed: { type: "boolean" },
+  },
+};
+
+function canonicalizeBrandHoursArgs(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  if (
+    !isUuid(args.brand_id) ||
+    !isUuid(args.venue_id) ||
+    !Array.isArray(args.hours)
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "brand_id, venue_id, and seven hours rows are required.",
+    );
+  }
+  const weekdays = new Set<number>();
+  const hours = args.hours.map((raw) => {
+    const row = raw as Record<string, unknown>;
+    if (
+      !Number.isInteger(row.weekday) ||
+      Number(row.weekday) < 0 ||
+      Number(row.weekday) > 6
+    ) {
       throw new ToolError(
-        "WRITE_FAILED",
-        "Brand could not be deleted (already removed or not permitted).",
+        "INVALID_ARGS",
+        "Each weekday must be an integer from 0 through 6.",
       );
     }
-
-    // 5 — clear default_brand_id pointer (softDeleteBrand step 3, I-PROPOSED-B).
-    // Non-fatal fire-and-forget — the brand is already soft-deleted.
-    try {
-      const { error: clearErr } = await client
-        .from("creator_accounts")
-        .update({ default_brand_id: null })
-        .eq("default_brand_id", brandId);
-      if (clearErr) {
-        console.warn(
-          "[delete_brand] clear default_brand_id failed:",
-          clearErr.message,
-        );
-      }
-    } catch (e) {
-      console.warn(
-        "[delete_brand] clear default_brand_id threw:",
-        (e as Error)?.message ?? e,
+    const weekday = Number(row.weekday);
+    if (weekdays.has(weekday)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Each weekday must appear exactly once.",
       );
     }
-
+    weekdays.add(weekday);
+    const isClosed = row.is_closed === true;
+    const openTime = typeof row.open_time === "string" ? row.open_time : null;
+    const closeTime = typeof row.close_time === "string"
+      ? row.close_time
+      : null;
+    if (
+      !isClosed &&
+      (
+        !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(openTime ?? "") ||
+        !/^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(closeTime ?? "")
+      )
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Open days need local open_time and close_time in HH:MM format.",
+      );
+    }
+    if (!isClosed && openTime === closeTime) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Open and close time cannot be the same.",
+      );
+    }
     return {
-      brand: { id: brandId },
-      deleted: true,
-      recovery_window_days: BRAND_RECOVERY_WINDOW_DAYS,
+      weekday,
+      open_time: isClosed ? null : openTime,
+      close_time: isClosed ? null : closeTime,
+      is_closed: isClosed,
+    };
+  }).sort((a, b) => a.weekday - b.weekday);
+  if (weekdays.size !== 7) {
+    throw new ToolError("INVALID_ARGS", "All seven weekdays are required.");
+  }
+  return { ...args, hours };
+}
+
+/**
+ * Canonicalize mutable proposal arguments before #1972 persists their receipt
+ * binding. Confirmation calls this seam again for edited proposals, making it
+ * idempotent while keeping the pending bytes and SQL operation bytes equal.
+ */
+export function canonicalizeAgentProposalArgs(
+  toolName: string,
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  return toolName === "manage_brand_hours"
+    ? canonicalizeBrandHoursArgs(args)
+    : args;
+}
+
+const manageBrandHours: AgentToolDefinition = {
+  name: "manage_brand_hours",
+  description:
+    "Replace one venue's complete Monday-to-Sunday opening-hours week. Requires all seven weekdays and returns the canonical stored rows.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id", "venue_id", "hours"],
+    properties: {
+      brand_id: {
+        type: "string",
+        format: "uuid",
+        description: "Selected brand UUID.",
+      },
+      venue_id: {
+        type: "string",
+        format: "uuid",
+        description: "Venue listing UUID owned by that brand.",
+      },
+      hours: {
+        type: "array",
+        minItems: 7,
+        maxItems: 7,
+        items: brandHourSchema,
+      },
+    },
+  },
+  executor: async (args, client, _userId, context) => {
+    // Defense in depth for direct executor calls. Deliberately do not replace
+    // `args`: #1972 binds the exact already-canonical pending payload.
+    canonicalizeBrandHoursArgs(args);
+    return await executeBrandOperation(
+      "manage_brand_hours",
+      args,
+      client,
+      context,
+    );
+  },
+};
+
+const listBrandAuditLog: AgentToolDefinition = {
+  name: "list_brand_audit_log",
+  description:
+    "Read recent immutable audit-history entries for one accessible brand. Returns action metadata only, never before/after payloads or contact details.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id"],
+    properties: {
+      brand_id: { type: "string", format: "uuid" },
+      before_created_at: {
+        type: "string",
+        format: "date-time",
+        description:
+          "Compound cursor timestamp returned by the prior page; pass with before_id.",
+      },
+      before_id: {
+        type: "string",
+        format: "uuid",
+        description:
+          "Compound cursor row id returned by the prior page; pass with before_created_at.",
+      },
+      limit: { type: "integer", minimum: 1, maximum: 50 },
+    },
+  },
+  executor: async (args, client, userId) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    const limit = typeof args.limit === "number"
+      ? Math.min(50, Math.max(1, args.limit))
+      : 25;
+    const hasBeforeCreatedAt = typeof args.before_created_at === "string";
+    const hasBeforeId = typeof args.before_id === "string";
+    if (hasBeforeCreatedAt !== hasBeforeId) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Audit pagination requires both before_created_at and before_id from the prior page.",
+      );
+    }
+    if (
+      hasBeforeCreatedAt &&
+      (Number.isNaN(Date.parse(args.before_created_at as string)) ||
+        !isUuid(args.before_id))
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "The audit pagination cursor is invalid.",
+      );
+    }
+    const beforeCreatedAt = hasBeforeCreatedAt
+      ? new Date(args.before_created_at as string).toISOString()
+      : null;
+    let query = client
+      .from("audit_log")
+      .select("id, user_id, action, target_type, target_id, created_at")
+      .eq("brand_id", args.brand_id)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .limit(limit);
+    if (beforeCreatedAt !== null && hasBeforeId) {
+      query = query.or(
+        `created_at.lt.${beforeCreatedAt},and(created_at.eq.${beforeCreatedAt},id.lt.${args.before_id})`,
+      );
+    }
+    const { data, error } = await query;
+    if (error) throw new ToolError("READ_FAILED", error.message);
+    const rows = data ?? [];
+    return {
+      brand_id: args.brand_id,
+      entries: rows,
+      next_cursor: rows.length === limit
+        ? {
+          before_created_at:
+            (rows[rows.length - 1] as { created_at?: string }).created_at ??
+              null,
+          before_id: (rows[rows.length - 1] as { id?: string }).id ?? null,
+        }
+        : null,
     };
   },
 };
+
+const manageBrandDiscoveryCurrency: AgentToolDefinition = {
+  name: "manage_brand_discovery_currency",
+  description:
+    "Read current discovery-currency state, set provisional currency, or resolve a pending reconciliation through the same guarded owner as Business Settings. Read state before proposing a currency write.",
+  parameters: {
+    type: "object",
+    additionalProperties: false,
+    required: ["brand_id", "action"],
+    properties: {
+      brand_id: { type: "string", format: "uuid" },
+      action: {
+        type: "string",
+        enum: [
+          "get_state",
+          "set_provisional_currency",
+          "resolve_reconciliation",
+        ],
+      },
+      currency_code: { type: "string", minLength: 3, maxLength: 3 },
+      expected_state_version: { type: "integer", minimum: 1 },
+      reconciliation_id: { type: "string", format: "uuid" },
+      decision: {
+        type: "string",
+        enum: ["convert", "reenter", "accept_no_ranges"],
+      },
+      fx_snapshot_id: { type: "string", format: "uuid" },
+      ranges: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["placePoolId", "expectedVersion"],
+          properties: {
+            placePoolId: { type: "string", format: "uuid" },
+            expectedVersion: { type: "integer", minimum: 1 },
+            currencyCode: { type: "string", minLength: 3, maxLength: 3 },
+            sourceMinMinor: { type: "integer", minimum: 0 },
+            sourceMaxMinor: { type: "integer", minimum: 0 },
+          },
+        },
+      },
+    },
+  },
+  executor: async (args, client, _userId, context) => {
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    if (args.action === "get_state") {
+      const { data, error } = await client.rpc(
+        "issue_1384_brand_currency_state",
+        {
+          p_brand_id: args.brand_id,
+        },
+      );
+      if (error) throw new ToolError("READ_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "READ_FAILED",
+          "Currency state returned no readback.",
+        );
+      }
+      return data;
+    } else if (args.action === "set_provisional_currency") {
+      if (
+        !isString(args.currency_code) ||
+        !/^[A-Za-z]{3}$/.test(args.currency_code)
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "currency_code must be a 3-letter ISO code.",
+        );
+      }
+      if (
+        !Number.isInteger(args.expected_state_version) ||
+        Number(args.expected_state_version) < 1
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Read the current discovery-currency state first, then include its positive expected_state_version.",
+        );
+      }
+    } else if (args.action === "resolve_reconciliation") {
+      if (!isUuid(args.reconciliation_id) || !isString(args.decision)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "reconciliation_id and decision are required.",
+        );
+      }
+    } else {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Unsupported discovery-currency action.",
+      );
+    }
+    return await executeBrandOperation(
+      "manage_brand_discovery_currency",
+      args,
+      client,
+      context,
+    );
+  },
+};
+
+/**
+ * Bind server-owned optimistic state before a write proposal is persisted.
+ * The model may request a currency change, but it never chooses the version
+ * that protects that change from overwriting newer Business settings.
+ */
+export async function bindAgentProposalState(
+  toolName: string,
+  args: Record<string, unknown>,
+  client: SupabaseClient,
+): Promise<Record<string, unknown>> {
+  if (
+    toolName !== "manage_brand_discovery_currency" ||
+    args.action !== "set_provisional_currency"
+  ) {
+    return args;
+  }
+  if (!isUuid(args.brand_id)) {
+    throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+  }
+  const { data, error } = await client.rpc("issue_1384_brand_currency_state", {
+    p_brand_id: args.brand_id,
+  });
+  if (error) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not read the current discovery-currency state.",
+    );
+  }
+  const stateVersion = (data as { stateVersion?: unknown } | null)
+    ?.stateVersion;
+  if (!Number.isInteger(stateVersion) || Number(stateVersion) < 1) {
+    throw new ToolError(
+      "ROLE_CHECK_UNAVAILABLE",
+      "Ari could not read a valid discovery-currency state version.",
+    );
+  }
+  return { ...args, expected_state_version: stateVersion };
+}
 
 // ----------------------------------------------------------------------------
 // 6. create_experience (ORCH-0881 Ve5)
@@ -1307,6 +1554,9 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   updateEvent,
   updateBrand,
   deleteBrand,
+  manageBrandHours,
+  listBrandAuditLog,
+  manageBrandDiscoveryCurrency,
   ...DOMAIN_TOOLS,
 ]);
 
@@ -1317,6 +1567,17 @@ export function findTool(name: string): AgentTool | undefined {
 // READ-ONLY tools that can run inline in agent-chat (no confirmation needed)
 export const READ_ONLY_TOOL_NAMES = new Set<string>([
   "list_brands",
+  "list_brand_audit_log",
   "list_events",
   ...DOMAIN_READ_ONLY,
 ]);
+
+/** Server-owned call classification for tools with both read and write actions. */
+export function isReadOnlyAgentToolCall(
+  toolName: string,
+  args: Record<string, unknown>,
+): boolean {
+  return READ_ONLY_TOOL_NAMES.has(toolName) ||
+    (toolName === "manage_brand_discovery_currency" &&
+      args.action === "get_state");
+}

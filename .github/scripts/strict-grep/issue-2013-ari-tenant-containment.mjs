@@ -8,7 +8,7 @@ const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const read = (p) => fs.readFileSync(path.join(root, p), "utf8");
 const NAMES = [
   "list_brands", "list_events", "quote_stay", "get_payout_status", "get_partner_status",
-  "get_tax_status", "get_brand_analytics", "list_guest_roster", "get_operator_snapshot",
+  "get_tax_status", "get_brand_analytics", "list_brand_audit_log", "list_guest_roster", "get_operator_snapshot",
 ];
 
 export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
@@ -27,7 +27,7 @@ export function check(sources) {
   const registered = NAMES.filter((name) => helper.includes(`"${name}"`));
   if (registered.length !== NAMES.length) failures.push("nine-read registry is incomplete");
   for (const name of NAMES) {
-    const owner = name === "list_brands" || name === "list_events" ? tools : domain;
+    const owner = name === "list_brands" || name === "list_events" || name === "list_brand_audit_log" ? tools : domain;
     const at = owner.indexOf(`"${name}"`);
     const window = owner.slice(at, at + (name === "get_operator_snapshot" ? 2600 : 1500));
     if (at < 0 || !/(resolveAccessibleAgentBrands|assertAgentReadBrand|assertAgentReadEvent)/.test(window)) {
@@ -39,7 +39,10 @@ export function check(sources) {
     '"LEGACY_CONVERSATION_UNSCOPED"', '"BRAND_ACCESS_DENIED"',
     '.select("id, summary, brand_id")', 'brand_id: body.brand_id ?? null',
   ]) if (!chat.includes(token)) failures.push(`conversation lifecycle missing ${token}`);
-  for (const token of ['.select("role, content, tool_calls, tool_results, prompt_version, created_at")', 'trustedHistoryPromptVersion = "tenant-v1"', "m.prompt_version !== trustedHistoryPromptVersion", "prompt_version: TENANT_CONTEXT_VERSION"]) {
+  if (!/\.select\(\s*"role, content, tool_calls, tool_results, prompt_version, created_at",?\s*\)/.test(chat)) {
+    failures.push('persisted-context provenance boundary missing .select("role, content, tool_calls, tool_results, prompt_version, created_at")');
+  }
+  for (const token of ['trustedHistoryPromptVersion = "tenant-v1"', "m.prompt_version !== trustedHistoryPromptVersion", "prompt_version: TENANT_CONTEXT_VERSION"]) {
     if (!chat.includes(token)) failures.push(`persisted-context provenance boundary missing ${token}`);
   }
   const confirmationWrites = confirm.split("prompt_version: TENANT_CONTEXT_VERSION").length - 1;

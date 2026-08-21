@@ -1,0 +1,147 @@
+name: "Issue #2063 Ari brand management"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql"
+      - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/agent-chat/index.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts"
+      - "mingla-business/src/components/ari/ToolProposalCard.tsx"
+      - "mingla-business/src/components/ari/ToolEditForm.tsx"
+      - "mingla-business/src/components/ari/toolProposalTypes.ts"
+      - "mingla-business/src/hooks/useConfirmPendingAction.ts"
+      - "mingla-business/src/screens/ari/AriChatScreen.tsx"
+      - "mingla-business/src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/scripts/strict-grep/issue-2063-ari-brand-management.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2063-ari-brand-management.yml"
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql"
+      - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
+      - "supabase/functions/_shared/agentToolHelpers.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/agent-chat/index.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts"
+      - "mingla-business/src/components/ari/ToolProposalCard.tsx"
+      - "mingla-business/src/components/ari/ToolEditForm.tsx"
+      - "mingla-business/src/components/ari/toolProposalTypes.ts"
+      - "mingla-business/src/hooks/useConfirmPendingAction.ts"
+      - "mingla-business/src/screens/ari/AriChatScreen.tsx"
+      - "mingla-business/src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - "docs/INVARIANT_REGISTRY.md"
+      - ".github/scripts/strict-grep/issue-2063-ari-brand-management.mjs"
+      - ".github/scripts/strict-grep/MANIFEST.json"
+      - ".github/workflows/issue-2063-ari-brand-management.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  issue-2063-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: "1.46.x"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Brand executors and inherited authorization contracts
+        run: >-
+          deno test --allow-read
+          supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.test.ts
+          supabase/functions/_shared/__tests__/issue_2063_ari_brand_management.tester-adversarial.test.ts
+          supabase/functions/_shared/__tests__/issue_2063_ari_brand_receipt_binding.tester-adversarial.test.ts
+          supabase/functions/_shared/__tests__/issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts
+          supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts
+          supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts
+      - name: Shared chat and confirmation typecheck
+        run: >-
+          deno check
+          supabase/functions/_shared/agentTools.ts
+          supabase/functions/agent-chat/index.ts
+          supabase/functions/agent-confirm-action/index.ts
+      - name: Capability ledger and fail-on-revert gate
+        run: |
+          node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs
+          node .github/scripts/strict-grep/issue-2063-ari-brand-management.mjs --self-test
+          node .github/scripts/strict-grep/issue-2063-ari-brand-management.mjs
+
+  issue-2063-business-parity:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+        working-directory: mingla-business
+      - name: Shared web, iOS, and Android brand proposal contract
+        working-directory: mingla-business
+        run: >-
+          npx jest --runInBand
+          src/components/ari/__tests__/issue_2063_brand_confirmation_recovery.test.ts
+          src/components/ari/__tests__/orch_1103_ari_brand_crud_ui.test.ts
+          src/components/ari/__tests__/orch_1103_rework3_create_attach_lifecycle.test.ts
+
+  issue-2063-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: supabase/postgres:17.4.1.075
+        env:
+          POSTGRES_PASSWORD: ${{ github.run_id }}
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s --health-timeout 5s --health-retries 10 --health-start-period 30s
+    steps:
+      - uses: actions/checkout@v4
+      - name: Full migration replay and executable brand matrix
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          for attempt in {1..90}; do
+            if pg_isready -h localhost -U postgres >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          find supabase/migrations -maxdepth 1 -type f -name '*.sql' -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' migration; do
+                psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
+              done
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql
