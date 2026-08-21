@@ -74,8 +74,9 @@ Deno.test("#424 adversarial: refund_order / send_campaign_now reject bad ids", a
 
 Deno.test("#424 adversarial: cancel_event rejects a missing or wrong confirm_phrase before any RPC", async () => {
   const tool = findTool("cancel_event")!;
-  // #2019 requires a real caller id (isUuid) before the schema/confirm gate, so
-  // the userId must be a uuid to reach the confirm_phrase assertion under test.
+  // [TEST-MOD-APPROVED #1979] #2019 requires a real caller id (isUuid) before the
+  // schema/confirm gate, so the userId must be a uuid to reach the confirm_phrase
+  // assertion under test.
   const CALLER = "99999999-9999-4999-8999-999999999999";
   await assertRejects(
     () =>

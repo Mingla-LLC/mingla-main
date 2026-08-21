@@ -1621,7 +1621,9 @@ const venueOpsAction = writeTool(
         break;
       case "settle":
         body.orderId = requireUuid(args.order_id, "order_id");
-        if (args.method !== "venue_collected" && args.method !== "bill_to_phone") {
+        if (
+          args.method !== "venue_collected" && args.method !== "bill_to_phone"
+        ) {
           throw new ToolError(
             "INVALID_ARGS",
             "method must be venue_collected or bill_to_phone",
@@ -1810,7 +1812,7 @@ const manageVenueAvailability = writeTool(
         }
         const { data, error } = await client
           .from("venue_reservation_settings")
-          .upsert(patch, { onConflict: "brand_id" })
+          .upsert(patch, { onConflict: "venue_id" })
           .select(
             "brand_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, cancel_cutoff_hours, no_show_fee_policy, updated_at",
           )
@@ -1970,7 +1972,10 @@ const manageVenueMenu = writeTool(
             .maybeSingle();
           if (error) throw new ToolError("RPC_FAILED", error.message);
           if (!data) {
-            throw new ToolError("BRAND_ACCESS_DENIED", "That menu is unavailable");
+            throw new ToolError(
+              "BRAND_ACCESS_DENIED",
+              "That menu is unavailable",
+            );
           }
           return data;
         }
@@ -2029,14 +2034,18 @@ const manageVenueMenu = writeTool(
             .maybeSingle();
           if (error) throw new ToolError("RPC_FAILED", error.message);
           if (!data) {
-            throw new ToolError("BRAND_ACCESS_DENIED", "That item is unavailable");
+            throw new ToolError(
+              "BRAND_ACCESS_DENIED",
+              "That item is unavailable",
+            );
           }
           return data;
         }
         // Weld the item's currency to its parent menu's brand default when the
         // caller did not pin one, so a public price never renders currency-less.
         patch.menu_id = args.menu_id;
-        patch.currency = currency ?? await resolveBrandCurrency(client, brandId);
+        patch.currency = currency ??
+          await resolveBrandCurrency(client, brandId);
         const { data, error } = await client
           .from("menu_items")
           .insert(patch)
@@ -2073,7 +2082,10 @@ const manageVenueMenu = writeTool(
           .maybeSingle();
         if (error) throw new ToolError("RPC_FAILED", error.message);
         if (!data) {
-          throw new ToolError("BRAND_ACCESS_DENIED", "That item is unavailable");
+          throw new ToolError(
+            "BRAND_ACCESS_DENIED",
+            "That item is unavailable",
+          );
         }
         return data;
       }
@@ -2170,11 +2182,19 @@ const manageVenueMenu = writeTool(
             if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
           }
         }
-        return { modifier_group_id: groupId, modifier_count: Array.isArray(args.modifiers) ? args.modifiers.length : null };
+        return {
+          modifier_group_id: groupId,
+          modifier_count: Array.isArray(args.modifiers)
+            ? args.modifiers.length
+            : null,
+        };
       }
       case "delete_modifier_group": {
         if (!isUuid(args.modifier_group_id)) {
-          throw new ToolError("INVALID_ARGS", "modifier_group_id must be a uuid");
+          throw new ToolError(
+            "INVALID_ARGS",
+            "modifier_group_id must be a uuid",
+          );
         }
         const { error } = await client
           .from("menu_modifier_groups")
@@ -2263,7 +2283,10 @@ const manageVenueWaitlist = writeTool(
           .order("created_at", { ascending: true })
           .limit(200);
         if (error) throw new ToolError("RPC_FAILED", error.message);
-        return ((data ?? []) as Array<Record<string, unknown>>).map((row, index) => ({
+        return ((data ?? []) as Array<Record<string, unknown>>).map((
+          row,
+          index,
+        ) => ({
           id: row.id,
           position: index + 1,
           guest_label: safeGuestLabel(row.guest_name),
@@ -2350,7 +2373,8 @@ const manageVenueWaitlist = writeTool(
         return {
           reservation_id: (res as { id?: string })?.id ?? null,
           status: (res as { status?: string })?.status ?? null,
-          reserved_for: (res as { reserved_for?: string })?.reserved_for ?? null,
+          reserved_for: (res as { reserved_for?: string })?.reserved_for ??
+            null,
         };
       }
       default:

@@ -26,7 +26,10 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //          — mingla-business/src/hooks/useMenuModifiers.ts:206 and :232
   //   +  1  #1974 brand_tax_registration_attestations (brand_id)
   //          — supabase/functions/brand-tax-registrations-list/index.ts
-  //   = 87
+  //   +  1  #1979 venue_reservation_settings (venue_id) call site
+  //          — supabase/functions/_shared/agentDomainTools.ts
+  //            (same ORCH-1255 venue_id PK already used by Business hooks)
+  //   = 88
   //
   // [TEST-MOD-APPROVED #1789] Both #1789 sites resolve to a real, non-partial
   // arbiter — `PRIMARY KEY (id)` on each table, created at
@@ -38,7 +41,9 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // [TEST-MOD-APPROVED #1974] The #1974 site resolves to the table's
   // `PRIMARY KEY (brand_id)` in its issue-owned migration. Every behavioral
   // assertion in this file is untouched; only the additive census advances.
-  assert.equal(sites.length, 87);
+  // [TEST-MOD-APPROVED #1979] Additive call site on the existing venue_id PK
+  // (ORCH-1255). No new arbiter columns; census +1 for the Ari upsert only.
+  assert.equal(sites.length, 88);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);

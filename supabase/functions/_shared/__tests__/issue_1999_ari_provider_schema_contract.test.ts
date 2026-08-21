@@ -93,7 +93,7 @@ function actualRegistry(): GeminiToolDef[] {
 }
 
 Deno.test("#1999 happy: all 77 actual Ari tools compile for Gemini typed parameters", () => {
-  // [TEST-MOD-APPROVED #1975+#1978] Stay authoring + venue read tools extend provider-schema denominator.
+// [TEST-MOD-APPROVED #1975+#1978+#1979] Stay + venue listing + venue manage tools; 77→80.
   const tools = actualRegistry();
   // [TEST-MOD-APPROVED #1975+#1978] Stay authoring (+3) and venue reads (+3)
   // extend the provider schema denominator to 77 tools.
