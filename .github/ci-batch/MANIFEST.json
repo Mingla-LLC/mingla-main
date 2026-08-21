@@ -62,7 +62,7 @@
     "below ~4.2 min however many ways this is split. Adding shards past 4 buys nothing",
     "and costs a fresh npm ci (~80s) each."
   ],
-  "expectedSuites": 21,
+  "expectedSuites": 22,
   "classes": [
     "business-node20-1",
     "business-node20-2",
@@ -682,6 +682,26 @@
           "name": "feature-flags",
           "cwd": "mingla-business",
           "run": "npx jest src/config/__tests__/featureFlags.test.ts --runInBand"
+        }
+      ]
+    },
+    {
+      "id": "issue-2343-host-forced-light-appearance-tests",
+      "$comment": "#2343. Both implementor and tester suites are named explicitly. Do not replace them with a glob: a missing appearance guard must fail CI rather than silently match zero files.",
+      "class": "node20-noinstall",
+      "origin": ".github/workflows/issue-2343-host-forced-light-appearance-tests.yml",
+      "originPaths": [
+        "mingla-business/app.json",
+        "mingla-business/plugins/withForcedLightAppearance.js",
+        "mingla-business/src/components/trip/PaymentPlanEditor.tsx",
+        "mingla-business/__tests__/hostForcedLightAppearance.issue2343.implementor.happy.test.mjs",
+        "mingla-business/__tests__/hostForcedLightAppearance.issue2343.tester.adversarial.test.mjs"
+      ],
+      "steps": [
+        {
+          "name": "Run ISSUE-2343 Host fixed-Light appearance gates",
+          "cwd": "mingla-business",
+          "run": "node --test __tests__/hostForcedLightAppearance.issue2343.implementor.happy.test.mjs __tests__/hostForcedLightAppearance.issue2343.tester.adversarial.test.mjs"
         }
       ]
     },
