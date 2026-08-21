@@ -1579,5 +1579,8 @@ export function isReadOnlyAgentToolCall(
 ): boolean {
   return READ_ONLY_TOOL_NAMES.has(toolName) ||
     (toolName === "manage_brand_discovery_currency" &&
-      args.action === "get_state");
+      args.action === "get_state") ||
+    // #1975 — manage_stay_inventory 'get' is a pure read that may run inline;
+    // every other action is a confirmed mutation.
+    (toolName === "manage_stay_inventory" && args.action === "get");
 }

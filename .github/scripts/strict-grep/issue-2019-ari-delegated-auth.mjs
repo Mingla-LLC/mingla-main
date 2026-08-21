@@ -16,10 +16,10 @@ function check(s) {
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
   // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
   // #1973/#1985 authorization denominator without changing inherited roles.
-  if (declarationCount !== 70) failures.push(`expected 70 declarations, got ${declarationCount}`);
-  // [TEST-MOD-APPROVED #1973] [TEST-MOD-APPROVED #1974] experience lifecycle
-  // and ticket-pricing tools are additive delegated declarations.
-  if (declarationCount !== 68) failures.push(`expected 68 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1975] Three registered Stay authoring tools
+  // (manage_stay_inventory, publish_stay, manage_stay_policy_price_media) join
+  // the same event_manager/brand denominator (71 on main + 3 = 74).
+  if (declarationCount !== 74) failures.push(`expected 74 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

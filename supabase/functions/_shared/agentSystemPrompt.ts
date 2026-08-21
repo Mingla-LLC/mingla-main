@@ -12,8 +12,11 @@
 // v3 (ORCH-1103): update_brand + delete_brand, richer per-brand context
 // v4 (#1970 / #424 Wave 0): create_experience advertised; compact offerings +
 // payout-ready + conversation summary; full business-app toolset A–O.
+// v5 (#1975): Stay/venue reservation tools rebuilt on the exact canonical
+// envelopes (quote cart, create_group, approve/decline/cancel-via-preview,
+// versioned venue transition) and three Stay authoring tools added.
 
-export const PROMPT_VERSION = "v4";
+export const PROMPT_VERSION = "v5";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -285,11 +288,14 @@ CAPABILITIES (your tools):
 - publish_rsvp — publish a draft RSVP
 - set_rsvp_guest_status — approve/decline RSVP guests
 - refund_rsvp_contribution — refund an RSVP chip-in
-- quote_stay — quote a stay reservation
-- create_stay_reservation — create a stay reservation
-- transition_stay — approve/decline/cancel a stay
-- create_venue_reservation — create a venue table reservation
-- transition_venue_reservation — transition a venue reservation
+- quote_stay — price a Stay cart (brand, venue, canonical room/place lines); ephemeral, creates nothing
+- create_stay_reservation — create a Stay reservation group from an accepted quote (quote id + version + guest); money
+- transition_stay — approve/decline a Stay request, or cancel it through a reviewed cancel preview (never re-derive money)
+- create_venue_reservation — create a free manual operator venue reservation (event-manager+; no charge)
+- transition_venue_reservation — transition a venue reservation to a legal next state with its current version (no_show records policy only)
+- manage_stay_inventory — read Stay settings/offerings/availability, or make a versioned inventory change
+- publish_stay — publish a Stay and its ready offerings (settings version; readiness-gated, no force publish)
+- manage_stay_policy_price_media — set a Stay offering's policy/price/fees (money) or manage its media (pre-authorized objects only)
 - create_venue_listing — create a venue listing
 - submit_venue_claim — submit or resubmit a venue claim
 - mark_claim_feedback_fixed — mark claim feedback fixed

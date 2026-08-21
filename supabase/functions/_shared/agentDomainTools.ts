@@ -793,118 +793,469 @@ const refundRsvpContribution = writeTool(
 // F. Stays / venue reservations
 // ----------------------------------------------------------------------------
 
+// #1975 — Stay/venue tools are STRICT adapters over the exact canonical
+// Edge/RPC envelopes used by Business web/iOS/Android. No invented action,
+// header, or RPC signature. Caller JWT only; the database re-authorizes the
+// exact resource, role/capability, optimistic version, and idempotency.
+
+const STAY_GUEST_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name"],
+  properties: {
+    name: STR,
+    email: { type: "string" },
+    phone: { type: "string" },
+    phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
+  },
+};
+
+/** Canonical stay-reservations guest object (camelCase, edge-validated shape). */
+function buildStayGuest(raw: unknown): Record<string, unknown> {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    throw new ToolError("INVALID_ARGS", "guest is required");
+  }
+  const guest = raw as Record<string, unknown>;
+  if (!isString(guest.name)) {
+    throw new ToolError("INVALID_ARGS", "guest.name is required");
+  }
+  const out: Record<string, unknown> = { name: guest.name.trim() };
+  const hasEmail = isString(guest.email);
+  const hasPhone = isString(guest.phone);
+  if (hasEmail) out.email = (guest.email as string).trim();
+  if (hasPhone) out.phone = (guest.phone as string).trim();
+  if (isString(guest.phone_country_iso)) {
+    if (!hasPhone) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "guest.phone_country_iso requires guest.phone",
+      );
+    }
+    out.phoneCountryIso = (guest.phone_country_iso as string).toUpperCase();
+  }
+  if (!hasEmail && !hasPhone) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "guest needs at least an email or an E.164 phone",
+    );
+  }
+  return out;
+}
+
 const quoteStay = writeTool(
   "quote_stay",
-  "Quote a stay reservation via stay-reservations (read quote, no write until create).",
+  "Quote a Stay reservation cart via stay-reservations (canonical quote envelope; ephemeral snapshot that creates no reservation, hold, or payment).",
   {
     brand_id: UUID,
-    listing_id: UUID,
-    check_in: { type: "string" },
-    check_out: { type: "string" },
+    venue_id: UUID,
+    // Canonical room/place discriminated-union cart. The Edge + owning SQL
+    // validate each line's exact allocation, dates, and inventory.
+    lines: {
+      type: "array",
+      minItems: 1,
+      maxItems: 50,
+      items: { type: "object" },
+    },
   },
-  ["brand_id", "listing_id", "check_in", "check_out"],
+  ["brand_id", "venue_id", "lines"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
-    await requireBrand(args, client, userId);
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    if (
+      !Array.isArray(args.lines) || args.lines.length < 1 ||
+      args.lines.length > 50
+    ) {
+      throw new ToolError("INVALID_ARGS", "lines must contain 1-50 cart lines");
+    }
     return await invokeFn(client, "stay-reservations", {
       action: "quote",
-      listing_id: args.listing_id,
-      check_in: args.check_in,
-      check_out: args.check_out,
+      payload: {
+        venueId: args.venue_id,
+        lines: args.lines,
+        // A quote is ephemeral; a fresh server-derived key is safe and never
+        // creates a reservation group, hold, or payment.
+        idempotencyKey: newIdempotencyKey(),
+      },
     });
   },
 );
 
 const createStayReservation = writeTool(
   "create_stay_reservation",
-  "Create a stay reservation via stay-reservations. Sends Idempotency-Key.",
+  "Create a Stay reservation group from an accepted quote via stay-reservations create_group. Money: it holds priced inventory and creates a request obligation (it does not itself charge a payment method).",
   {
     brand_id: UUID,
-    listing_id: UUID,
-    check_in: { type: "string" },
-    check_out: { type: "string" },
+    quote_id: UUID,
+    expected_version: { type: "integer", minimum: 1 },
+    guest: STAY_GUEST_SCHEMA,
+    attribution_click_id: { type: "string" },
   },
-  ["brand_id", "listing_id", "check_in", "check_out"],
-  async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+  ["brand_id", "quote_id", "expected_version", "guest"],
+  async (args, client, _userId, context) => {
+    const operationId = requireAgentOperationId(context);
+    if (!isUuid(args.quote_id)) {
+      throw new ToolError("INVALID_ARGS", "quote_id must be a uuid");
+    }
+    if (
+      !Number.isInteger(args.expected_version) ||
+      Number(args.expected_version) < 1
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "expected_version must be the accepted quote version",
+      );
+    }
+    const payload: Record<string, unknown> = {
+      quoteId: args.quote_id,
+      // Stable operation-derived idempotency: same confirmed proposal + retry
+      // returns the same group; it never creates a second reservation.
+      idempotencyKey: operationId,
+      guest: buildStayGuest(args.guest),
+    };
+    if (isString(args.attribution_click_id)) {
+      payload.attributionClickId = (args.attribution_click_id as string).trim();
+    }
     return await invokeFn(
       client,
       "stay-reservations",
       {
-        action: "create",
-        listing_id: args.listing_id,
-        check_in: args.check_in,
-        check_out: args.check_out,
+        action: "create_group",
+        payload,
+        expectedVersion: args.expected_version,
       },
-      { "Idempotency-Key": newIdempotencyKey() },
+      { "Idempotency-Key": operationId },
     );
   },
 );
 
 const transitionStay = writeTool(
   "transition_stay",
-  "Approve, decline, or cancel a stay reservation via stay-reservations (expectedVersion).",
+  "Approve, decline, or cancel a Stay reservation request via stay-reservations. Approve/decline use the canonical staff actions with the current group version; cancel executes only a server preview from cancel_preview (never re-derives money client-side).",
   {
-    reservation_id: UUID,
-    action: { type: "string", enum: ["approve", "decline", "cancel"] },
-    expected_version: { type: "integer" },
+    operation: {
+      type: "string",
+      enum: ["approve_request", "decline_request", "cancel"],
+    },
+    group_id: UUID,
+    expected_version: { type: "integer", minimum: 1 },
+    // Cancellation must reference an existing canonical cancel_preview result.
+    preview_id: UUID,
+    preview_hash: { type: "string", minLength: 64, maxLength: 64 },
+    reason: { type: "string", minLength: 3, maxLength: 500 },
   },
-  ["reservation_id", "action"],
-  async (args, client, _userId) => {
-    if (!isUuid(args.reservation_id)) {
-      throw new ToolError("INVALID_ARGS", "reservation_id must be a uuid");
+  ["operation", "group_id"],
+  async (args, client, _userId, context) => {
+    const operationId = requireAgentOperationId(context);
+    if (!isUuid(args.group_id)) {
+      throw new ToolError("INVALID_ARGS", "group_id must be a uuid");
+    }
+    if (
+      args.operation === "approve_request" ||
+      args.operation === "decline_request"
+    ) {
+      if (
+        !Number.isInteger(args.expected_version) ||
+        Number(args.expected_version) < 1
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "expected_version (current group version) is required",
+        );
+      }
+      return await invokeFn(
+        client,
+        "stay-reservations",
+        {
+          action: args.operation,
+          payload: { groupId: args.group_id, idempotencyKey: operationId },
+          expectedVersion: args.expected_version,
+        },
+        { "Idempotency-Key": operationId },
+      );
+    }
+    // cancel — a two-stage contract: the proposal owner runs cancel_preview and
+    // binds previewId/previewHash; only the confirmed, same-hash preview may
+    // execute the canonical cancel. A direct cancel(groupId) path does not exist.
+    if (
+      !isUuid(args.preview_id) ||
+      typeof args.preview_hash !== "string" ||
+      !/^[a-f0-9]{64}$/.test(args.preview_hash)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "cancellation requires preview_id and preview_hash from cancel_preview",
+      );
+    }
+    const reason = typeof args.reason === "string" ? args.reason.trim() : "";
+    if (reason.length < 3) {
+      throw new ToolError("INVALID_ARGS", "a cancellation reason is required");
     }
     return await invokeFn(
       client,
       "stay-reservations",
       {
-        action: args.action,
-        reservation_id: args.reservation_id,
-        expectedVersion: args.expected_version ?? 1,
+        action: "cancel",
+        payload: {
+          previewId: args.preview_id,
+          previewHash: args.preview_hash,
+          idempotencyKey: operationId,
+          reason,
+        },
       },
-      { "Idempotency-Key": newIdempotencyKey() },
+      { "Idempotency-Key": operationId },
     );
   },
 );
 
+const VENUE_RESERVATION_SOURCES = [
+  "mingla",
+  "phone",
+  "walk_in",
+  "website",
+  "instagram",
+];
+
 const createVenueReservation = writeTool(
   "create_venue_reservation",
-  "Create a venue table reservation via biz_reservation_create.",
+  "Create a FREE manual operator venue reservation via biz_reservation_create (created_via='operator', no charge). Requires effective rank event_manager or higher.",
   {
     brand_id: UUID,
     venue_id: UUID,
-    party_size: { type: "integer", minimum: 1 },
-    start_at: { type: "string", format: "date-time" },
+    reserved_for: { type: "string", format: "date-time" },
+    party_size: { type: "integer", minimum: 1, maximum: 100 },
+    source: { type: "string", enum: VENUE_RESERVATION_SOURCES },
+    guest_name: { type: "string" },
+    guest_phone_e164: { type: "string" },
+    guest_email: { type: "string" },
+    table_id: UUID,
+    occasion: { type: "string" },
+    guest_notes: { type: "string" },
+    tags: { type: "array", items: STR },
+    // A manual booking starts in a non-terminal, sensible state only.
+    status: { type: "string", enum: ["requested", "confirmed", "seated"] },
   },
-  ["brand_id", "venue_id", "party_size", "start_at"],
-  async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+  ["brand_id", "venue_id", "reserved_for", "party_size"],
+  async (args, client, _userId, context) => {
+    requireAgentOperationId(context);
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    if (
+      typeof args.reserved_for !== "string" ||
+      Number.isNaN(Date.parse(args.reserved_for))
+    ) {
+      throw new ToolError("INVALID_ARGS", "reserved_for must be a date-time");
+    }
+    if (
+      !Number.isInteger(args.party_size) ||
+      Number(args.party_size) < 1 || Number(args.party_size) > 100
+    ) {
+      throw new ToolError("INVALID_ARGS", "party_size must be 1-100");
+    }
+    if (
+      isString(args.guest_phone_e164) &&
+      !/^\+[1-9][0-9]{7,14}$/.test((args.guest_phone_e164 as string).trim())
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "guest_phone_e164 must be E.164 (e.g. +14155550123)",
+      );
+    }
     return await callRpc(client, "biz_reservation_create", {
-      p_venue_id: args.venue_id,
+      p_brand_id: args.brand_id,
+      p_reserved_for: args.reserved_for,
       p_party_size: args.party_size,
-      p_start_at: args.start_at,
+      p_source: isString(args.source) ? args.source : "phone",
+      p_guest_name: isString(args.guest_name) ? args.guest_name : null,
+      p_guest_phone_e164: isString(args.guest_phone_e164)
+        ? (args.guest_phone_e164 as string).trim()
+        : null,
+      p_guest_email: isString(args.guest_email) ? args.guest_email : null,
+      p_table_id: isUuid(args.table_id) ? args.table_id : null,
+      p_occasion: isString(args.occasion) ? args.occasion : null,
+      p_guest_notes: isString(args.guest_notes) ? args.guest_notes : null,
+      p_tags: Array.isArray(args.tags) ? args.tags : [],
+      p_status: isString(args.status) ? args.status : "confirmed",
     });
   },
 );
 
+const VENUE_RESERVATION_STATES = [
+  "requested",
+  "confirmed",
+  "seated",
+  "completed",
+  "no_show",
+  "cancelled_by_guest",
+  "cancelled_by_venue",
+  "waitlisted",
+];
+
 const transitionVenueReservation = writeTool(
   "transition_venue_reservation",
-  "Transition a venue reservation via biz_reservation_transition.",
+  "Transition a venue reservation via the versioned issue_1975_reservation_transition. Only legal next states execute; no_show records policy only and captures no money. Requires the observed reservation version.",
   {
     reservation_id: UUID,
-    to_status: {
-      type: "string",
-      enum: ["approved", "declined", "cancelled", "seated", "completed"],
-    },
+    to_status: { type: "string", enum: VENUE_RESERVATION_STATES },
+    expected_version: { type: "integer", minimum: 1 },
+    table_id: UUID,
+    reason: { type: "string", maxLength: 500 },
   },
-  ["reservation_id", "to_status"],
-  async (args, client, _userId) => {
+  ["reservation_id", "to_status", "expected_version"],
+  async (args, client, _userId, context) => {
+    requireAgentOperationId(context);
     if (!isUuid(args.reservation_id)) {
       throw new ToolError("INVALID_ARGS", "reservation_id must be a uuid");
     }
-    return await callRpc(client, "biz_reservation_transition", {
+    if (
+      !Number.isInteger(args.expected_version) ||
+      Number(args.expected_version) < 1
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "expected_version (current reservation version) is required",
+      );
+    }
+    return await callRpc(client, "issue_1975_reservation_transition", {
       p_reservation_id: args.reservation_id,
       p_to_status: args.to_status,
+      p_expected_version: args.expected_version,
+      p_table_id: isUuid(args.table_id) ? args.table_id : null,
+      p_reason: isString(args.reason) ? args.reason : null,
+    });
+  },
+);
+
+// #1975 — Stay authoring family. Reads (`get`) may run inline; every mutation
+// is a confirmed proposal carrying the exact current version. The manage-stay-
+// inventory Edge + owning SQL enforce the canonical read/inventory/finance
+// capability split (issue_1387_has_brand_capability); we never widen authority.
+
+const manageStayInventory = writeTool(
+  "manage_stay_inventory",
+  "Manage Stay settings/offerings/units/availability via manage-stay-inventory. 'get' reads inline; every other action is a confirmed mutation carrying the exact current version.",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "get",
+        "save_settings",
+        "create_offering",
+        "update_offering",
+        "replace_units",
+        "change_status",
+        "upsert_room_nights",
+        "upsert_place_schedule",
+        "materialize_place_windows",
+        "upsert_place_windows",
+        "bulk_create",
+        "resolve_currency_reconciliation",
+      ],
+    },
+    payload: { type: "object" },
+    expected_version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "venue_id", "action"],
+  async (args, client, userId, context) => {
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    if (args.action === "get") {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      return await invokeFn(client, "manage-stay-inventory", {
+        action: "get",
+        venueId: args.venue_id,
+        payload: (args.payload as Record<string, unknown>) ?? {},
+      });
+    }
+    requireAgentOperationId(context);
+    const body: Record<string, unknown> = {
+      action: args.action,
+      venueId: args.venue_id,
+      payload: (args.payload as Record<string, unknown>) ?? {},
+    };
+    if (args.expected_version !== undefined) {
+      body.expectedVersion = args.expected_version;
+    }
+    return await invokeFn(client, "manage-stay-inventory", body);
+  },
+);
+
+const publishStay = writeTool(
+  "publish_stay",
+  "Publish a Stay and its ready draft offerings via manage-stay-inventory publish_stay. Requires the current settings version; all readiness/verification/bank/currency gates are enforced by the owner (no force publish).",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    expected_version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "venue_id", "expected_version"],
+  async (args, client, _userId, context) => {
+    requireAgentOperationId(context);
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    if (
+      !Number.isInteger(args.expected_version) ||
+      Number(args.expected_version) < 1
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "expected_version (current settings version) is required",
+      );
+    }
+    return await invokeFn(client, "manage-stay-inventory", {
+      action: "publish_stay",
+      venueId: args.venue_id,
+      expectedVersion: args.expected_version,
+    });
+  },
+);
+
+const manageStayPolicyPriceMedia = writeTool(
+  "manage_stay_policy_price_media",
+  "Set a Stay offering's policy/price/fees or manage its media via manage-stay-inventory. Policy/price/fees are money changes; media actions accept only pre-authorized uploaded objects (never an invented URL or storage key). Requires the exact offering version.",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "set_policy",
+        "set_price",
+        "replace_fees",
+        "attach_media",
+        "reorder_media",
+        "remove_media",
+      ],
+    },
+    payload: { type: "object" },
+    expected_version: { type: "integer", minimum: 1 },
+  },
+  ["brand_id", "venue_id", "action", "payload", "expected_version"],
+  async (args, client, _userId, context) => {
+    requireAgentOperationId(context);
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    if (
+      !Number.isInteger(args.expected_version) ||
+      Number(args.expected_version) < 1
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "expected_version (current offering version) is required",
+      );
+    }
+    return await invokeFn(client, "manage-stay-inventory", {
+      action: args.action,
+      venueId: args.venue_id,
+      payload: (args.payload as Record<string, unknown>) ?? {},
+      expectedVersion: args.expected_version,
     });
   },
 );
@@ -1742,6 +2093,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   transitionStay,
   createVenueReservation,
   transitionVenueReservation,
+  manageStayInventory,
+  publishStay,
+  manageStayPolicyPriceMedia,
   createVenueListing,
   submitVenueClaim,
   markClaimFeedbackFixed,
@@ -1795,4 +2149,10 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "cancel_trip_booking",
   "export_brand_people",
   "request_account_deletion",
+  // #1975 — money-affecting Stay operations. create/transition hold priced
+  // inventory or move cancellation/refund obligations; policy/price/fees are
+  // versioned money changes. Confirmed (not read-only), never inline.
+  "create_stay_reservation",
+  "transition_stay",
+  "manage_stay_policy_price_media",
 ]);
