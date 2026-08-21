@@ -26,8 +26,10 @@ function brand(id: string, name: string): BrandSummary {
   };
 }
 
-Deno.test("#1970 happy: PROMPT_VERSION is v4 and create_experience is advertised", () => {
-  assertEquals(PROMPT_VERSION, "v4");
+Deno.test("#1970 happy: PROMPT_VERSION is v5 and create_experience is advertised", () => {
+  // [TEST-MOD-APPROVED #1978] issue #1978 bumps PROMPT_VERSION v4 → v5 (venue
+  // listings/claims corrected + PII-minimised venue reads advertised).
+  assertEquals(PROMPT_VERSION, "v5");
   const prompt = buildSystemPrompt(null, []);
   const caps = prompt.slice(prompt.indexOf("CAPABILITIES"));
   assertStringIncludes(caps, "create_experience");

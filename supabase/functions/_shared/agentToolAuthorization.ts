@@ -101,9 +101,15 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_stay_inventory: role("event_manager", "brand"),
   publish_stay: role("event_manager", "brand"),
   manage_stay_policy_price_media: role("event_manager", "brand"),
-  create_venue_listing: role("brand_admin", "brand"),
-  submit_venue_claim: role("brand_admin", "brand"),
-  mark_claim_feedback_fixed: role("brand_admin", "brand"),
+  // #1978 — venue create/adopt matches biz_create_venue_listing (event_manager+).
+  // Feedback toggle and claim resubmit are brand-owner-only. Reads are
+  // member-scoped (owner-only for raw feedback notes).
+  create_venue_listing: role("event_manager", "brand"),
+  submit_venue_claim: role("brand_owner", "venue"),
+  mark_claim_feedback_fixed: role("brand_owner", "venue_feedback"),
+  list_venue_listings: role("scanner", "brand"),
+  get_venue_listing_status: role("scanner", "venue"),
+  list_venue_claim_feedback: role("brand_owner", "venue"),
   venue_ops_action: role("event_manager", "brand"),
   send_venue_sms: role("event_manager", "brand"),
   draft_campaign: role("marketing_manager", "brand"),
@@ -232,6 +238,31 @@ async function resolveBrand(
       brandId = row.brand_id;
       break;
     }
+    // issue #1978 — the venue row owns the tenant identity; the model-supplied
+    // brand id (if any) is verified against it below, never trusted alone.
+    case "venue": {
+      const row = await rowBrand(client, "venue_listings", args.venue_id);
+      brandId = row.brand_id;
+      break;
+    }
+    // issue #1978 — load the feedback row, then require its venue exists and
+    // carries the SAME brand, so a spliced feedback/venue pair fails closed.
+    case "venue_feedback": {
+      const feedback = await rowBrand(
+        client,
+        "venue_claim_feedback",
+        args.feedback_id,
+        "brand_id, venue_id",
+      );
+      const venue = await rowBrand(
+        client,
+        "venue_listings",
+        feedback.venue_id,
+      );
+      if (venue.brand_id !== feedback.brand_id) unavailable();
+      brandId = feedback.brand_id;
+      break;
+    }
   }
   if (!isUuid(brandId)) unavailable();
   if (args.brand_id !== undefined && args.brand_id !== brandId) unavailable();
@@ -295,18 +326,6 @@ async function resolveBrand(
   if (isUuid(args.member_id)) {
     const member = await rowBrand(client, "brand_team_members", args.member_id);
     if (member.brand_id !== brandId) unavailable();
-  }
-  if (isUuid(args.feedback_item_id)) {
-    const feedback = await rowBrand(
-      client,
-      "venue_claim_feedback",
-      args.feedback_item_id,
-    );
-    if (feedback.brand_id !== brandId) unavailable();
-  }
-  if (isUuid(args.claim_id)) {
-    const venue = await rowBrand(client, "venue_listings", args.claim_id);
-    if (venue.brand_id !== brandId) unavailable();
   }
   for (const resourceId of [args.listing_id, args.venue_id]) {
     if (!isUuid(resourceId)) continue;

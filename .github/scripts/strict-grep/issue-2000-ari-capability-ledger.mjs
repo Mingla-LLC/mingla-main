@@ -63,6 +63,9 @@ ari.venue.transition_reservation
 ari.venue.create_listing
 ari.venue.submit_claim
 ari.venue.mark_claim_feedback
+ari.venue.list_listings
+ari.venue.get_listing_status
+ari.venue.list_claim_feedback
 ari.venue.ops
 ari.venue.send_sms
 ari.marketing.draft_campaign
@@ -146,13 +149,14 @@ ari.partner.splits
 
 // Independent classification authority established by the source-contract
 // reconciliation at this immutable revision, minus rows whose concrete defects
-// are repaired by issue #1972, and minus the four Stay/venue reservation rows
+// are repaired by issue #1972, minus the four Stay/venue reservation rows
 // whose envelope/role defects are repaired by issue #1975 (quote/create/
-// transition stay + create_venue_reservation). Ledger prose may explain a
-// remaining defect, but it cannot remove one from this set or create a new
-// proven-broken claim.
-// [TEST-MOD-APPROVED #1975] Proven-broken authority shrinks only for rows
-// whose concrete defects this issue repairs; no behavioral coverage removed.
+// transition stay + create_venue_reservation), and minus the three venue
+// write rows whose canonical-arity/role defects are repaired by issue #1978.
+// Ledger prose may explain a remaining defect, but it cannot remove one from
+// this set or create a new proven-broken claim.
+// [TEST-MOD-APPROVED #1975+#1978] Proven-broken authority shrinks only for
+// rows whose concrete defects these issues repair; no behavioral coverage removed.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
 ari.trip.create
@@ -163,9 +167,6 @@ ari.rsvp.create
 ari.rsvp.publish
 ari.rsvp.bulk_status
 ari.rsvp.refund_contribution
-ari.venue.create_listing
-ari.venue.submit_claim
-ari.venue.mark_claim_feedback
 ari.venue.ops
 ari.venue.send_sms
 ari.marketing.send_now
@@ -326,9 +327,9 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 30) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 27) {
     failures.push(
-      `proven-broken authority must contain 30 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 27 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(

@@ -1264,44 +1264,256 @@ const manageStayPolicyPriceMedia = writeTool(
 // G. Venue listings / claims
 // ----------------------------------------------------------------------------
 
+// issue #1978 — the venue category vocabulary the canonical create RPC accepts
+// (`biz_create_venue_listing`: 'restaurant' | 'play' | 'creative_and_arts').
+const VENUE_CATEGORIES = ["restaurant", "play", "creative_and_arts"] as const;
+
+// issue #1978 — one canonical opening-hours row shape, identical to
+// manage_brand_hours and to the seven rows the create RPC parses out of
+// `p_hours` (weekday 0..6, HH:MM open/close, is_closed).
+const VENUE_HOUR_ROW = {
+  type: "object",
+  additionalProperties: false,
+  required: ["weekday", "is_closed"],
+  properties: {
+    weekday: { type: "integer", minimum: 0, maximum: 6 },
+    open_time: { type: "string", description: "Local HH:MM when open." },
+    close_time: { type: "string", description: "Local HH:MM when closed." },
+    is_closed: { type: "boolean" },
+  },
+} as const;
+
+// issue #1978 — the venue create/adopt submission. This reproduces the EXACT
+// 22-argument envelope the Business wizard sends through
+// `venueListingsService.createVenueListing` → `biz_create_venue_listing`
+// (event_manager+; lands `pending_review`, never public). Cover media and the
+// place choice arrive from the proposal-card pickers — Ari never invents a
+// cover url, poster, coordinate, or place id. Publication remains the automatic
+// downstream result of admin verification; there is deliberately no publish
+// tool.
 const createVenueListing = writeTool(
   "create_venue_listing",
-  "Create a venue listing via biz_create_venue_listing.",
-  { brand_id: UUID, name: STR, city: STR },
-  ["brand_id", "name"],
+  "Submit a venue listing for admin review via biz_create_venue_listing (event_manager+). Lands pending_review; it becomes public only after admin verification — never claim you published it.",
+  {
+    brand_id: UUID,
+    name: STR,
+    slug: { type: "string", minLength: 1, maxLength: 32 },
+    description: { type: "string", maxLength: 4000 },
+    google_place_id: { type: "string", maxLength: 300 },
+    lat: { type: "number", minimum: -90, maximum: 90 },
+    lng: { type: "number", minimum: -180, maximum: 180 },
+    city: { type: "string", maxLength: 200 },
+    country_code: { type: "string", maxLength: 8 },
+    address: { type: "string", maxLength: 500 },
+    venue_category: { type: "string", enum: [...VENUE_CATEGORIES] },
+    contact_email: { type: "string", maxLength: 320 },
+    contact_phone: { type: "string", maxLength: 64 },
+    cover_media_url: { type: "string", maxLength: 2000 },
+    cover_media_poster_url: { type: "string", maxLength: 2000 },
+    cover_media_type: { type: "string", enum: ["image", "video", "gif"] },
+    hours: { type: "array", minItems: 7, maxItems: 7, items: VENUE_HOUR_ROW },
+    place_pool_id: UUID,
+    coordinate_precision: {
+      type: "string",
+      enum: ["exact", "approximate"],
+    },
+    theme_color: { type: "string", maxLength: 64 },
+    theme_font: { type: "string", maxLength: 64 },
+    theme_animation: { type: "string", maxLength: 64 },
+  },
+  ["brand_id", "name", "slug", "lat", "lng", "venue_category", "hours"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    if (!isString(args.slug)) {
+      throw new ToolError("INVALID_ARGS", "slug is required (1-32 chars)");
+    }
+    if (typeof args.lat !== "number" || typeof args.lng !== "number") {
+      throw new ToolError("INVALID_ARGS", "lat and lng must be numbers");
+    }
+    if (
+      !VENUE_CATEGORIES.includes(args.venue_category as never)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "venue_category must be restaurant, play, or creative_and_arts",
+      );
+    }
+    if (!Array.isArray(args.hours) || args.hours.length !== 7) {
+      throw new ToolError("INVALID_ARGS", "hours must contain exactly 7 rows");
+    }
+    // The empty-string sentinels are canonical: the create RPC coalesces '' to
+    // NULL per column (media/theme/precision inherit or clear), so a stale
+    // client can never block a submission over an optional field.
     return await callRpc(client, "biz_create_venue_listing", {
       p_brand_id: args.brand_id,
       p_name: args.name,
-      p_city: args.city ?? null,
+      p_slug: args.slug,
+      p_description: args.description ?? "",
+      p_google_place_id: args.google_place_id ?? "",
+      p_lat: args.lat,
+      p_lng: args.lng,
+      p_city: args.city ?? "",
+      p_country_code: args.country_code ?? "",
+      p_address: args.address ?? "",
+      p_venue_category: args.venue_category,
+      p_contact_email: args.contact_email ?? "",
+      p_contact_phone: args.contact_phone ?? "",
+      p_cover_media_url: args.cover_media_url ?? "",
+      p_cover_media_poster_url: args.cover_media_poster_url ?? "",
+      p_cover_media_type: args.cover_media_type ?? "",
+      p_hours: args.hours,
+      p_place_pool_id: args.place_pool_id ?? null,
+      p_coordinate_precision: args.coordinate_precision ?? "",
+      p_theme_color: args.theme_color ?? "",
+      p_theme_font: args.theme_font ?? "",
+      p_theme_animation: args.theme_animation ?? "",
     });
   },
 );
 
+// issue #1978 — resubmit a feedback-blocked claim. Venue-keyed to match the
+// canonical `biz_resubmit_venue_claim(p_venue_id)` (brand_owner only); returns
+// the venue to admin review. There is no separate "initial claim" object — a
+// new/adopted listing is already created as pending_review by create above.
 const submitVenueClaim = writeTool(
   "submit_venue_claim",
-  "Submit or resubmit a venue claim via biz_resubmit_venue_claim.",
-  { brand_id: UUID, claim_id: UUID },
-  ["brand_id", "claim_id"],
-  async (args, client, userId) => {
-    await requireBrand(args, client, userId);
+  "Resubmit a feedback-blocked venue claim via biz_resubmit_venue_claim (brand_owner only). Sends the venue back to admin review.",
+  { venue_id: UUID },
+  ["venue_id"],
+  async (args, client, _userId) => {
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
     return await callRpc(client, "biz_resubmit_venue_claim", {
-      p_claim_id: args.claim_id,
+      p_venue_id: args.venue_id,
     });
   },
 );
 
+// issue #1978 — reversible feedback toggle. Row-keyed to match the canonical
+// `biz_mark_feedback_item_fixed(p_feedback_id, p_fixed)` (brand_owner only),
+// carrying the fixed/open boolean so Ari can reproduce Business's reversible
+// behaviour instead of a one-way "mark fixed".
 const markClaimFeedbackFixed = writeTool(
   "mark_claim_feedback_fixed",
-  "Mark a venue-claim feedback item fixed via biz_mark_feedback_item_fixed.",
-  { brand_id: UUID, feedback_item_id: UUID },
-  ["brand_id", "feedback_item_id"],
+  "Mark a venue-claim feedback item fixed or open via biz_mark_feedback_item_fixed (brand_owner only). Reversible; fixed defaults to true.",
+  { feedback_id: UUID, fixed: { type: "boolean" } },
+  ["feedback_id"],
+  async (args, client, _userId) => {
+    if (!isUuid(args.feedback_id)) {
+      throw new ToolError("INVALID_ARGS", "feedback_id must be a uuid");
+    }
+    return await callRpc(client, "biz_mark_feedback_item_fixed", {
+      p_feedback_id: args.feedback_id,
+      p_fixed: args.fixed ?? true,
+    });
+  },
+);
+
+// issue #1978 — PII-minimised venue reads so Ari can discover safe identifiers
+// (venue_id, place_pool_id, claim state) instead of guessing UUIDs. No contact
+// email/phone, exact coordinates, address, rejection free text, or admin ids.
+const listVenueListings = writeTool(
+  "list_venue_listings",
+  "List a brand's venue listings (scanner+). PII-minimised: identity, category, claim status, follow-up flag — never contact details, coordinates, address, or rejection text.",
+  { brand_id: UUID },
+  ["brand_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await callRpc(client, "biz_mark_feedback_item_fixed", {
-      p_feedback_item_id: args.feedback_item_id,
-    });
+    const { data, error } = await client
+      .from("venue_listings")
+      .select(
+        "id, name, slug, city, venue_category, claim_status, claim_follow_up_at, place_pool_id, created_at",
+      )
+      .eq("brand_id", args.brand_id)
+      .order("created_at", { ascending: true });
+    if (error) throw new ToolError("READ_FAILED", error.message);
+    return {
+      venues: (data ?? []).map((row: Record<string, unknown>) => ({
+        venue_id: row.id,
+        name: row.name,
+        slug: row.slug,
+        city: row.city,
+        venue_category: row.venue_category,
+        claim_status: row.claim_status,
+        needs_follow_up: row.claim_follow_up_at !== null,
+        place_pool_id: row.place_pool_id,
+        created_at: row.created_at,
+      })),
+    };
+  },
+);
+
+const getVenueListingStatus = writeTool(
+  "get_venue_listing_status",
+  "Read one venue listing's review status (scanner+). Returns the minimised identity, lifecycle label, public eligibility, and follow-up flag; no raw feedback notes.",
+  { venue_id: UUID },
+  ["venue_id"],
+  async (args, client, _userId) => {
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("venue_listings")
+      .select(
+        "id, name, slug, city, venue_category, claim_status, claim_follow_up_at, place_pool_id, created_at",
+      )
+      .eq("id", args.venue_id)
+      .maybeSingle();
+    if (error) throw new ToolError("READ_FAILED", error.message);
+    if (!data) {
+      throw new ToolError(
+        "BRAND_ACCESS_DENIED",
+        "That brand or resource is unavailable",
+      );
+    }
+    const row = data as Record<string, unknown>;
+    return {
+      venue_id: row.id,
+      name: row.name,
+      slug: row.slug,
+      city: row.city,
+      venue_category: row.venue_category,
+      claim_status: row.claim_status,
+      needs_follow_up: row.claim_follow_up_at !== null,
+      // Public only after admin verification — never a business-owned toggle.
+      public: row.claim_status === "verified",
+      place_pool_id: row.place_pool_id,
+      created_at: row.created_at,
+    };
+  },
+);
+
+const listVenueClaimFeedback = writeTool(
+  "list_venue_claim_feedback",
+  "Read the active-round admin feedback for one venue (brand_owner only). Returns the current round's items; never created_by, contact fields, or historical rounds.",
+  { venue_id: UUID },
+  ["venue_id"],
+  async (args, client, _userId) => {
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("venue_claim_active_feedback")
+      .select(
+        "id, round, category, note, overall_message, status, resolved_at",
+      )
+      .eq("venue_id", args.venue_id)
+      .order("category", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (error) throw new ToolError("READ_FAILED", error.message);
+    return {
+      venue_id: args.venue_id,
+      feedback: (data ?? []).map((row: Record<string, unknown>) => ({
+        feedback_id: row.id,
+        round: row.round,
+        category: row.category,
+        note: row.note,
+        overall_message: row.overall_message,
+        status: row.status,
+        resolved_at: row.resolved_at,
+      })),
+    };
   },
 );
 
@@ -2099,6 +2311,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   createVenueListing,
   submitVenueClaim,
   markClaimFeedbackFixed,
+  listVenueListings,
+  getVenueListingStatus,
+  listVenueClaimFeedback,
   venueOpsAction,
   sendVenueSms,
   draftCampaign,
@@ -2136,6 +2351,10 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_brand_analytics",
   "list_guest_roster",
   "get_operator_snapshot",
+  // issue #1978 — venue discovery reads run inline; they never mutate.
+  "list_venue_listings",
+  "get_venue_listing_status",
+  "list_venue_claim_feedback",
 ]);
 
 export const MONEY_CONFIRM_TOOLS = new Set<string>([

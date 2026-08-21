@@ -10,11 +10,11 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 74,
-    "capability_count": 117,
+    "registered_tool_count": 77,
+    "capability_count": 120,
     "status_breakdown": {
-      "registered_unverified": 43,
-      "broken": 30,
+      "registered_unverified": 49,
+      "broken": 27,
       "guided_handoff": 8,
       "unsupported": 32,
       "in_flight": 4,
@@ -1781,7 +1781,7 @@
       "domain": "venues",
       "outcome": "Create a venue listing",
       "safety": "write",
-      "required_role": "owner_or_admin",
+      "required_role": "owner_or_event_manager",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -1808,19 +1808,21 @@
         ]
       },
       "ari_tool": "create_venue_listing",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:createVenueListing omits required RPC arguments"
+          "reference": "issue_1978_venue_listings_claims.test.ts: exact 22-arg biz_create_venue_listing envelope, event_manager role",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1978
       ],
       "blockers": [
-        "Incomplete canonical RPC envelope"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1830,7 +1832,7 @@
       "domain": "venues",
       "outcome": "Submit or resubmit a venue claim",
       "safety": "write",
-      "required_role": "owner_or_admin",
+      "required_role": "brand_owner",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -1843,7 +1845,7 @@
       },
       "owners": {
         "ui": [
-          "mingla-business/app/attendance/claim.tsx"
+          "mingla-business/app/venue/[venueId]/index.tsx"
         ],
         "source": [
           {
@@ -1857,19 +1859,21 @@
         ]
       },
       "ari_tool": "submit_venue_claim",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
+          "tier": "regression",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:submitVenueClaim wrong RPC parameters"
+          "reference": "issue_1978_venue_listings_claims.test.ts: venue-keyed biz_resubmit_venue_claim(p_venue_id), brand_owner role",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
-        2000
+        2000,
+        1978
       ],
       "blockers": [
-        "Claim submission parameters mismatch canonical service"
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1879,7 +1883,7 @@
       "domain": "venues",
       "outcome": "Mark a venue-claim feedback item fixed",
       "safety": "write",
-      "required_role": "owner_or_admin",
+      "required_role": "brand_owner",
       "confirmation": "standard",
       "surfaces": [
         "business_ios",
@@ -1906,19 +1910,168 @@
         ]
       },
       "ari_tool": "mark_claim_feedback_fixed",
-      "status": "broken",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "issue_1978_venue_listings_claims.test.ts: row-keyed biz_mark_feedback_item_fixed(p_feedback_id,p_fixed), reversible, brand_owner role",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        2000,
+        1978
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.list_listings",
+      "domain": "venues",
+      "outcome": "List a brand's venue listings and claim status",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue-1978"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/venue/[venueId]/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueListingsService.ts",
+            "symbol": "fetchVenueListings"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listVenueListings"
+          }
+        ]
+      },
+      "ari_tool": "list_venue_listings",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:markClaimFeedbackFixed wrong RPC parameters"
+          "reference": "agentDomainTools.ts:listVenueListings PII-minimised venue_listings read"
         }
       ],
       "owning_issues": [
-        2000
+        1978
       ],
       "blockers": [
-        "Feedback RPC parameters mismatch canonical service"
+        "No exact-revision runtime evidence on all required surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.get_listing_status",
+      "domain": "venues",
+      "outcome": "Read one venue listing's review status",
+      "safety": "read",
+      "required_role": "brand_member",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue-1978"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/venue/[venueId]/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueClaimService.ts",
+            "symbol": "fetchVenueClaimStatus"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getVenueListingStatus"
+          }
+        ]
+      },
+      "ari_tool": "get_venue_listing_status",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:getVenueListingStatus venue-bound lifecycle read"
+        }
+      ],
+      "owning_issues": [
+        1978
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required surfaces"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.venue.list_claim_feedback",
+      "domain": "venues",
+      "outcome": "Read a venue's active-round admin feedback",
+      "safety": "read",
+      "required_role": "brand_owner",
+      "confirmation": "none",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "post_1986",
+        "introduced_by": "issue-1978"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/venue/[venueId]/index.tsx"
+        ],
+        "source": [
+          {
+            "path": "mingla-business/src/services/venueClaimService.ts",
+            "symbol": "fetchVenueClaimFeedback"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listVenueClaimFeedback"
+          }
+        ]
+      },
+      "ari_tool": "list_venue_claim_feedback",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "source_contract",
+          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
+          "reference": "agentDomainTools.ts:listVenueClaimFeedback owner-only active-round read"
+        }
+      ],
+      "owning_issues": [
+        1978
+      ],
+      "blockers": [
+        "No exact-revision runtime evidence on all required surfaces"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"

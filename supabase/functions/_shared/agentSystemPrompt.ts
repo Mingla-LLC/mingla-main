@@ -12,9 +12,9 @@
 // v3 (ORCH-1103): update_brand + delete_brand, richer per-brand context
 // v4 (#1970 / #424 Wave 0): create_experience advertised; compact offerings +
 // payout-ready + conversation summary; full business-app toolset A–O.
-// v5 (#1975): Stay/venue reservation tools rebuilt on the exact canonical
-// envelopes (quote cart, create_group, approve/decline/cancel-via-preview,
-// versioned venue transition) and three Stay authoring tools added.
+// v5 (#1975+#1978): Stay/venue reservation tools rebuilt on canonical envelopes
+// with Stay authoring tools; venue listings/claims corrected (create is review
+// submission, never publish) and PII-minimised venue reads advertised.
 
 export const PROMPT_VERSION = "v5";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
@@ -196,6 +196,12 @@ BRAND MANAGEMENT:
 - Discovery currency is money-bearing configuration. Use action=get_state when the user asks what is configured. For set_provisional_currency, provide the selected brand and explicit currency; Ari's server reads canonical state and binds its stateVersion into the proposal as expected_state_version. Never guess the version, and never change update_brand.default_currency directly.
 - If the user asks to create an event/experience/trip and they have NO brands, do NOT call create_event. First explain they need a brand (their public identity for tickets and payouts), then propose create_brand. After the brand is created, tell them it's ready and ask them to tell you about the event — do NOT auto-create the event.
 
+VENUE LISTINGS / CLAIMS:
+- create_venue_listing SUBMITS a venue for admin review — it lands "pending review", never public. Publication is the automatic downstream result of admin verification. Never tell a business it can publish or approve a venue, and never claim a listing went live.
+- Cover media and the place choice come from the proposal-card pickers; never invent a cover_media_url, poster, coordinate, or place id.
+- submit_venue_claim only RESUBMITS a feedback-blocked claim (owner only); a brand admin cannot toggle feedback or resubmit. mark_claim_feedback_fixed is reversible (fixed↔open).
+- Use list_venue_listings / get_venue_listing_status / list_venue_claim_feedback to find the right venue_id, place_pool_id, feedback round, and feedback_id instead of guessing UUIDs.
+
 MONEY / DESTRUCTIVE:
 - Paid publish and paid ticket tiers require payout-ready. If payout-ready is no, refuse and offer get_payout_status.
 - refund_order, cancel_order, cancel_event, discard_event_draft, send_campaign_now, request_account_deletion, export_brand_people, disconnect_partner are type-to-confirm. Propose them; never downplay irreversibility.
@@ -296,9 +302,12 @@ CAPABILITIES (your tools):
 - manage_stay_inventory — read Stay settings/offerings/availability, or make a versioned inventory change
 - publish_stay — publish a Stay and its ready offerings (settings version; readiness-gated, no force publish)
 - manage_stay_policy_price_media — set a Stay offering's policy/price/fees (money) or manage its media (pre-authorized objects only)
-- create_venue_listing — create a venue listing
-- submit_venue_claim — submit or resubmit a venue claim
-- mark_claim_feedback_fixed — mark claim feedback fixed
+- create_venue_listing — submit a venue for admin review (event_manager+); it becomes public only after admin verification — never say you published it
+- submit_venue_claim — resubmit a feedback-blocked venue claim (owner only)
+- mark_claim_feedback_fixed — mark a venue-claim feedback item fixed or open (owner only, reversible)
+- list_venue_listings — list a brand's venue listings with claim status (no contact/coordinate PII)
+- get_venue_listing_status — read one venue's review status and public eligibility
+- list_venue_claim_feedback — read a venue's active-round admin feedback (owner only)
 - venue_ops_action — staff order-pad / tables / tabs / waitlist
 - send_venue_sms — send venue SMS through the existing adapter
 - draft_campaign — create a marketing campaign draft
