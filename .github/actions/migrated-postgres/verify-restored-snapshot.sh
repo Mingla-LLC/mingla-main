@@ -14,26 +14,34 @@ if [ ! -f "$manifest" ]; then
   exit 1
 fi
 
-# `read` can return 1 at EOF after assigning every field when the final newline
-# is missing. The manifest writer includes one, but accepting the assignments
-# here keeps verification fail-closed on content instead of shell trivia.
-read -r expected_policies expected_triggers expected_indexes \
-  expected_rls expected_tables extra < "$manifest" || true
+# Accept exactly one five-integer record, with either the writer's single final
+# LF or no final LF. Comparing the complete file to those two canonical byte
+# sequences rejects every blank, trailing, additional, partial, CRLF, or binary
+# record instead of trusting only the first line read by Bash.
+manifest_record=""
+IFS= read -r manifest_record < "$manifest" || true
+if ! [[ "$manifest_record" =~ ^([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)\ ([0-9]+)$ ]]; then
+  echo "::error::snapshot count manifest must contain exactly one record of five non-negative integers" >&2
+  exit 1
+fi
+if ! cmp -s "$manifest" <(printf '%s' "$manifest_record") && \
+   ! cmp -s "$manifest" <(printf '%s\n' "$manifest_record"); then
+  echo "::error::snapshot count manifest contains trailing or additional bytes" >&2
+  exit 1
+fi
 
-values=(
-  "$expected_policies" "$expected_triggers" "$expected_indexes"
-  "$expected_rls" "$expected_tables" "$@"
-)
-for value in "${values[@]}"; do
+expected_policies=${BASH_REMATCH[1]}
+expected_triggers=${BASH_REMATCH[2]}
+expected_indexes=${BASH_REMATCH[3]}
+expected_rls=${BASH_REMATCH[4]}
+expected_tables=${BASH_REMATCH[5]}
+
+for value in "$@"; do
   if ! [[ "$value" =~ ^[0-9]+$ ]]; then
     echo "::error::snapshot count manifest and restored counts must contain exactly five non-negative integers" >&2
     exit 1
   fi
 done
-if [ -n "${extra:-}" ]; then
-  echo "::error::snapshot count manifest contains unexpected fields" >&2
-  exit 1
-fi
 
 expected=(
   "$expected_policies" "$expected_triggers" "$expected_indexes"

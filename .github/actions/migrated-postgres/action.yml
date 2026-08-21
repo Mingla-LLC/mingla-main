@@ -139,6 +139,7 @@ runs:
         APPLIED="$SNAPDIR/applied.txt"
         COUNTS="$SNAPDIR/counts.txt"
         VERIFY_RESTORED_SNAPSHOT=".github/actions/migrated-postgres/verify-restored-snapshot.sh"
+        VERIFY_APPLIED_PREFIX=".github/actions/migrated-postgres/verify-applied-prefix.sh"
 
         wait_ready() {
           for _ in $(seq 1 120); do
@@ -218,9 +219,14 @@ runs:
 
         MODE=full
         if [ -f "$SNAP" ] && [ -f "$APPLIED" ] && [ -f "$COUNTS" ]; then
+          # Exact bytes must equal a non-empty canonical repository prefix before
+          # any set-difference or newest-boundary operation may select a restore.
+          if ! bash "$VERIFY_APPLIED_PREFIX" "$APPLIED" /tmp/repo-migrations.txt; then
+            echo "::warning::snapshot applied-migration manifest is malformed — falling back to a full replay"
           # (a) snapshot must be a PREFIX of current history — nothing it contains
-          #     may have vanished from the repo.
-          if comm -23 "$APPLIED" /tmp/repo-migrations.txt | grep -q .; then
+          #     may have vanished from the repo. This remains as defense in depth
+          #     and preserves the independently tested rejection boundary.
+          elif comm -23 "$APPLIED" /tmp/repo-migrations.txt | grep -q .; then
             echo "::warning::snapshot contains migrations the repo no longer has (renamed/deleted) — falling back to a full replay"
           else
             comm -13 "$APPLIED" /tmp/repo-migrations.txt > /tmp/delta.txt

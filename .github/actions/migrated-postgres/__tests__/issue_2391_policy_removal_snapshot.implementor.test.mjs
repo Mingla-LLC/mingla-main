@@ -7,6 +7,7 @@ import test from "node:test";
 
 const actionPath = new URL("../action.yml", import.meta.url);
 const verifierPath = new URL("../verify-restored-snapshot.sh", import.meta.url);
+const prefixVerifierPath = new URL("../verify-applied-prefix.sh", import.meta.url);
 const action = readFileSync(actionPath, "utf8");
 
 function runVerifier(manifest, counts) {
@@ -68,6 +69,24 @@ test("#2391 fails closed on corrupt or untrusted restore manifests", () => {
 
     writeFileSync(manifest, "654 bad 1475 415 446\n");
     assert.notEqual(runVerifier(manifest, [654, 345, 1475, 415, 446]).status, 0);
+    for (const corrupt of [
+      "654 345 1475 415 446\nCORRUPT TRAILING MANIFEST DATA\n",
+      "654 345 1475 415 446\n\n",
+      "654 345 1475 415 446 ",
+      "654 345 1475 415 446\r\n",
+      "654 345 1475 415 446 447\n",
+    ]) {
+      writeFileSync(manifest, corrupt);
+      const result = runVerifier(manifest, [654, 345, 1475, 415, 446]);
+      assert.notEqual(result.status, 0, `corrupt count manifest unexpectedly passed: ${JSON.stringify(corrupt)}`);
+    }
+
+    writeFileSync(manifest, "654 345 1475 415 446");
+    assert.equal(
+      runVerifier(manifest, [654, 345, 1475, 415, 446]).status,
+      0,
+      "one canonical record without a final LF should remain valid",
+    );
     rmSync(manifest);
     assert.notEqual(runVerifier(manifest, [654, 345, 1475, 415, 446]).status, 0);
 
@@ -80,6 +99,43 @@ test("#2391 fails closed on corrupt or untrusted restore manifests", () => {
   }
 });
 
+test("#2391 permits incremental restore only for a non-empty exact repository prefix", () => {
+  const dir = mkdtempSync(join(tmpdir(), "issue-2391-prefix-"));
+  const applied = join(dir, "applied.txt");
+  const repository = join(dir, "repo.txt");
+  const verify = () => spawnSync("bash", [prefixVerifierPath.pathname, applied, repository], {
+    encoding: "utf8",
+  });
+  try {
+    writeFileSync(repository, "001.sql\n002.sql\n003.sql\n004.sql\n");
+    writeFileSync(applied, "001.sql\n002.sql\n003.sql\n");
+    assert.equal(verify().status, 0, verify().stderr);
+
+    for (const corrupt of [
+      "",
+      "001.sql\n003.sql\n",
+      "001.sql\n002.sql\n002.sql\n",
+      "002.sql\n001.sql\n",
+      "001.sql\n002.sql",
+      "001.sql\n002.sql\n\n",
+      "001.sql\n999.sql\n",
+    ]) {
+      writeFileSync(applied, corrupt);
+      const result = verify();
+      assert.notEqual(result.status, 0, `untrusted applied manifest unexpectedly passed: ${JSON.stringify(corrupt)}`);
+    }
+
+    assert.match(action, /if ! bash "\$VERIFY_APPLIED_PREFIX" "\$APPLIED" \/tmp\/repo-migrations\.txt; then/);
+    const prefixCheck = action.indexOf('if ! bash "$VERIFY_APPLIED_PREFIX" "$APPLIED" /tmp/repo-migrations.txt; then');
+    const incrementalMode = action.indexOf("MODE=incremental", prefixCheck);
+    assert.ok(prefixCheck >= 0, "action must execute the exact-prefix verifier");
+    assert.ok(incrementalMode > prefixCheck, "incremental mode must be unreachable before prefix verification");
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("#2391 verifier is valid strict Bash", () => {
   execFileSync("bash", ["-n", verifierPath.pathname], { stdio: "pipe" });
+  execFileSync("bash", ["-n", prefixVerifierPath.pathname], { stdio: "pipe" });
 });
