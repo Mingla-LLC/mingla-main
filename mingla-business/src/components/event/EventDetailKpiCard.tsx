@@ -59,6 +59,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   // (pre-bank brand). NEVER manufacture GBP.
   const code = currencyCodeOrNull(currency);
   const hasData = readStatus === "ready" || readStatus === "stale-error";
+  const revenueLabel = code === null ? "—" : !hasData ? "—" : formatCurrency(revenueGbp, code);
   const showCovered =
     hasData &&
     typeof coveredGbp === "number" &&
@@ -75,9 +76,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
       <View style={styles.row}>
         <View style={styles.col}>
           <Text style={styles.label}>REVENUE</Text>
-          <Text style={styles.bigValue}>
-            {code === null || !hasData ? "—" : formatCurrency(revenueGbp, code)}
-          </Text>
+          <Text style={styles.bigValue}>{revenueLabel}</Text>
         </View>
         <View style={styles.colRight}>
           <Text style={styles.label}>PAYOUT</Text>

@@ -96,7 +96,10 @@ import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
-import { formatCurrencyRound } from "../../src/utils/currency";
+import {
+  currencyCodeOrNull,
+  formatCurrencyRound,
+} from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
@@ -439,8 +442,13 @@ export default function HomeTab(): React.ReactElement {
       const capacity = finiteTicketCapacity(view);
       const salesSummary = eventSalesSummaries[view.id];
       const soldCount = salesSummary?.soldCount ?? null;
+      const defensiveCurrency = currencyCodeOrNull(
+        view.currency ?? currentBrand?.defaultCurrency,
+      );
       map[view.id] = {
-        revenueLabel: salesSummary?.revenueLabel ?? "Loading…",
+        revenueLabel:
+          salesSummary?.revenueLabel ??
+          (defensiveCurrency === null ? "—" : "Loading…"),
         soldValue:
           salesSummary?.readStatus === "error"
             ? "Unable"
@@ -463,7 +471,12 @@ export default function HomeTab(): React.ReactElement {
       };
     }
     return map;
-  }, [liveEventViews, eventSalesSummaries, liveRsvpSummaryById]);
+  }, [
+    liveEventViews,
+    currentBrand?.defaultCurrency,
+    eventSalesSummaries,
+    liveRsvpSummaryById,
+  ]);
 
   // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
   // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
