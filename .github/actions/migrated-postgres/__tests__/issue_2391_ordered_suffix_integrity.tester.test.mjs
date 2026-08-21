@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   readFileSync,
@@ -11,63 +11,44 @@ import { join } from "node:path";
 import test from "node:test";
 
 const action = readFileSync(new URL("../action.yml", import.meta.url), "utf8");
+const prefixVerifier = new URL("../verify-applied-prefix.sh", import.meta.url);
 
-const classifier = String.raw`
-set -euo pipefail
-applied=$1
-repo=$2
-if comm -23 "$applied" "$repo" | grep -q .; then
-  printf 'full-replay:unknown\n'
-  exit 0
-fi
-comm -13 "$applied" "$repo" > "$repo.delta"
-delta_n=$(wc -l < "$repo.delta" | tr -d ' ')
-newest_in_snapshot=$(tail -n1 "$applied")
-if [ "$delta_n" -gt 0 ] && [ "$(sort "$repo.delta" | head -n1)" \< "$newest_in_snapshot" ]; then
-  printf 'full-replay:order\n'
-  exit 0
-fi
-printf 'incremental:'
-tr '\n' ',' < "$repo.delta"
-printf '\n'
-`;
-
-function classify(dir, applied) {
+function verifyPrefix(dir, applied) {
   const appliedPath = join(dir, "applied.txt");
   const repoPath = join(dir, "repo.txt");
   writeFileSync(appliedPath, `${applied.join("\n")}\n`);
   writeFileSync(repoPath, "001.sql\n002.sql\n003.sql\n004.sql\n");
-  return execFileSync("bash", ["-c", classifier, "bash", appliedPath, repoPath], {
+  return spawnSync("bash", [prefixVerifier.pathname, appliedPath, repoPath], {
     encoding: "utf8",
-  }).trim();
+  });
 }
 
 test("#2391 tester: only an exact ordered prefix may receive an incremental suffix", () => {
   const dir = mkdtempSync(join(tmpdir(), "issue-2391-ordered-suffix-"));
   try {
     assert.equal(
-      classify(dir, ["001.sql", "002.sql", "003.sql"]),
-      "incremental:004.sql,",
+      verifyPrefix(dir, ["001.sql", "002.sql", "003.sql"]).status,
+      0,
       "a valid ordered prefix lost the cache top-up path",
     );
     assert.equal(
-      classify(dir, ["001.sql", "003.sql"]),
-      "full-replay:order",
+      verifyPrefix(dir, ["001.sql", "003.sql"]).status,
+      1,
       "a missing middle migration was applied out of repository order",
     );
     assert.equal(
-      classify(dir, ["001.sql", "002.sql", "002.sql", "003.sql"]),
-      "full-replay:unknown",
+      verifyPrefix(dir, ["001.sql", "002.sql", "002.sql", "003.sql"]).status,
+      1,
       "a duplicate applied-migration row was trusted",
     );
     assert.equal(
-      classify(dir, ["001.sql", "003.sql", "002.sql"]),
-      "full-replay:unknown",
+      verifyPrefix(dir, ["001.sql", "003.sql", "002.sql"]).status,
+      1,
       "an unsorted applied-migration manifest was trusted",
     );
     assert.equal(
-      classify(dir, ["001.sql", "002.sql", "999.sql"]),
-      "full-replay:unknown",
+      verifyPrefix(dir, ["001.sql", "002.sql", "999.sql"]).status,
+      1,
       "a snapshot containing a migration absent from the repository was trusted",
     );
   } finally {
