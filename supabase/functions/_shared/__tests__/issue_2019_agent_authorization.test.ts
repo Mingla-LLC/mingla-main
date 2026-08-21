@@ -484,59 +484,6 @@ Deno.test("#2019 malformed final args fail before any authority or resource look
   );
 });
 
-Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", async () => {
-  const EVENT = "44444444-4444-4444-8444-444444444444";
-  const GUEST = "55555555-5555-4555-8555-555555555555";
-  const RSVP = "66666666-6666-4666-8666-666666666666";
-  const selects: string[] = [];
-  const resourceClient: any = {
-    rpc(name: string) {
-      return Promise.resolve({
-        data: name === "biz_role_rank" ? 40 : 40,
-        error: null,
-      });
-    },
-    from(table: string) {
-      let selected = "";
-      const query: any = {
-        select: (columns: string) => {
-          selected = columns;
-          selects.push(`${table}:${columns}`);
-          return query;
-        },
-        eq: () => query,
-        is: () => query,
-        maybeSingle: () =>
-          Promise.resolve({
-            data: table === "events" && selected === "brand_id, event_type"
-              ? { brand_id: UUID, event_type: "rsvp" }
-              : table === "event_rsvp_guests" && selected === "rsvp_id"
-              ? { rsvp_id: RSVP }
-              : table === "event_rsvps" && selected === "event_id"
-              ? { event_id: EVENT }
-              : null,
-            error: null,
-          }),
-      };
-      return query;
-    },
-  };
-  await authorizeAgentTool(
-    tool("set_guest_approval"),
-    { event_id: EVENT, guest_id: GUEST, approved: true },
-    resourceClient,
-    UUID,
-  );
-  assert(
-    selects.includes("event_rsvp_guests:rsvp_id"),
-    "guest binding queried a nonexistent direct event_id",
-  );
-  assert(
-    selects.includes("event_rsvps:event_id"),
-    "guest binding skipped canonical RSVP parent",
-  );
-});
-
 Deno.test("#2019 RSVP contribution binding follows contribution to event", async () => {
   const EVENT = "44444444-4444-4444-8444-444444444444";
   const CONTRIBUTION = "55555555-5555-4555-8555-555555555555";

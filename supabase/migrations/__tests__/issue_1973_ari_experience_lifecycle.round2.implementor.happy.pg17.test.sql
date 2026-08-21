@@ -5,22 +5,24 @@
 -- proposal boundary, both timezone contracts, and the safe unpublish path.
 BEGIN;
 
--- Latest-main certification integration: #1973 is capability 117. The
--- forward-only migration must register it and reject the prior 116-row set.
+-- [TEST-MOD-APPROVED #1977] #1973 historically inserted capability 117, but
+-- later migrations own the additive current registry. Omit only #1973's row
+-- from the complete current inventory and require the finalizer to reject the
+-- exact current-minus-one set instead of freezing the final registry at 117.
 DO $certification$
 DECLARE
   v_run_id uuid;
   v_error text;
+  v_expected_present integer;
 BEGIN
-  IF (SELECT count(*) FROM public.ari_cert_capability_requirements) <> 117 THEN
-    RAISE EXCEPTION '#1973 expected exactly 117 certification requirements';
-  END IF;
   IF NOT EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
     WHERE capability_id = 'ari.experience.unpublish' AND evidence_mode = 'write'
   ) THEN
     RAISE EXCEPTION '#1973 unpublish certification requirement missing';
   END IF;
+  SELECT count(*) - 1 INTO v_expected_present
+  FROM public.ari_cert_capability_requirements;
 
   INSERT INTO public.ari_cert_runs (
     release_sha, requirements_digest, function_versions, web_deployment_id,
@@ -57,11 +59,12 @@ BEGIN
 
   BEGIN
     PERFORM public.ari_cert_finalize_run(v_run_id);
-    RAISE EXCEPTION '#1973 finalizer accepted the obsolete 116-row evidence set';
+    RAISE EXCEPTION '#1973 finalizer accepted evidence missing its historical capability';
   EXCEPTION WHEN OTHERS THEN
     GET STACKED DIAGNOSTICS v_error = MESSAGE_TEXT;
-    IF v_error <> 'ari_cert_missing_capabilities:116' THEN
-      RAISE EXCEPTION '#1973 expected 116-row rejection, received %', v_error;
+    IF v_error <> format('ari_cert_missing_capabilities:%s', v_expected_present) THEN
+      RAISE EXCEPTION '#1973 expected current-minus-one rejection (%), received %',
+        v_expected_present, v_error;
     END IF;
   END;
 END;
