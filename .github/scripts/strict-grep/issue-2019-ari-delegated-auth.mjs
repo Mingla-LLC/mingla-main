@@ -20,6 +20,8 @@ function check(s) {
   // [TEST-MOD-APPROVED #1973] [TEST-MOD-APPROVED #1974] experience lifecycle
   // and ticket-pricing tools are additive delegated declarations.
   if (declarationCount !== 68) failures.push(`expected 68 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1971] five trip graph/read tools bring the registry to 72.
+  if (declarationCount !== 72) failures.push(`expected 72 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

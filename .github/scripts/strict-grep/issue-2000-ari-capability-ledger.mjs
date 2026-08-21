@@ -146,7 +146,7 @@ ari.partner.splits
 
 // Independent classification authority established by the source-contract
 // reconciliation at this immutable revision, minus rows whose concrete defects
-// are repaired by issue #1972. Ledger prose may explain a remaining defect, but
+// are repaired by issues #1972 and #1971. Ledger prose may explain a remaining defect, but
 // it cannot remove one from this set or create a new proven-broken claim.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
@@ -154,6 +154,8 @@ ari.trip.create
 ari.trip.update
 ari.trip.publish
 ari.trip.delete
+ari.ticket.upsert_tier
+ari.ticket.pricing_switches
 ari.rsvp.create
 ari.rsvp.publish
 ari.rsvp.bulk_status
@@ -216,6 +218,7 @@ export function extractRegisteredTools(toolSources) {
   const patterns = [
     /^\s*name:\s*"([a-z][a-z0-9_]*)"\s*,/gm,
     /writeTool\(\s*"([a-z][a-z0-9_]*)"/g,
+    /tripGraphTool\(\s*"([a-z][a-z0-9_]*)"/g,
   ];
   for (const source of toolSources) {
     for (const pattern of patterns) {
@@ -328,6 +331,8 @@ export function validateLedger({ root, ledger, registered, advertised }) {
   if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 34) {
     failures.push(
       `proven-broken authority must contain 34 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 32) {
+      `proven-broken authority must contain 32 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(

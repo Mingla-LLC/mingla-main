@@ -99,6 +99,8 @@ Deno.test("#1999 happy: all 70 actual Ari tools compile for Gemini typed paramet
     70,
 Deno.test("#1999 happy: all 68 actual Ari tools compile for Gemini typed parameters", () => {
     68,
+Deno.test("#1999 happy: all 72 actual Ari tools compile for Gemini typed parameters", () => {
+    72,
     "registry baseline changed; provider coverage must be reviewed",
   );
 

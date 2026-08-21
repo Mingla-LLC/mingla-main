@@ -35,6 +35,10 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 70, "duplicate tool");
   assert(
     Object.keys(AGENT_TOOL_AUTHORIZATION).length === 70,
+    AGENT_TOOLS.length === 72,
+    `expected 72 tools, got ${AGENT_TOOLS.length}`,
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 72, "duplicate tool");
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 72,
     "authorization registry drift",
   );
   assert(AGENT_TOOLS.length === 68, `expected 68 tools, got ${AGENT_TOOLS.length}`);
@@ -83,6 +87,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   assert(rows.length === 70, `expected 70 ledger rows, got ${rows.length}`);
   const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
   assert(rows.length === 68, `expected 68 ledger rows, got ${rows.length}`);
+  assert(rows.length === 72, `expected 72 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
@@ -288,6 +293,7 @@ Deno.test("#2019 foreign, deleted, nonexistent, and type-confused events are una
       await authorizeAgentTool(
         tool("publish_trip"),
         { event_id: EVENT },
+        { event_id: EVENT, expected_updated_at: "2027-01-01T00:00:00Z" },
         eventClient(state),
         UUID,
       );

@@ -59,7 +59,7 @@ function sliceTool(src: string, marker: string): string {
 }
 
 // ── G-1: de-GBP — create_brand executor must not contain the literal "GBP" ──
-Deno.test("ORCH-1103 G-1: create_brand executor never writes the literal \"GBP\"", () => {
+Deno.test('ORCH-1103 G-1: create_brand executor never writes the literal "GBP"', () => {
   const createSrc = sliceTool(TOOLS_SRC, "const createBrand: AgentTool = {");
   // The DESCRIPTION may mention GBP as an example currency for the model; the
   // EXECUTOR body must not. Slice from the `executor:` keyword onward.
@@ -69,7 +69,7 @@ Deno.test("ORCH-1103 G-1: create_brand executor never writes the literal \"GBP\"
   assertEquals(
     /["']GBP["']/.test(execBody),
     false,
-    "create_brand executor must not contain a literal \"GBP\" string",
+    'create_brand executor must not contain a literal "GBP" string',
   );
 });
 
@@ -81,7 +81,11 @@ Deno.test("ORCH-1103 G-2: delete_brand executor has no hard-delete / admin / ser
   const execBody = delSrc.slice(execStart);
   assertEquals(/\.delete\(/.test(execBody), false, "no .delete(");
   assertEquals(/DELETE FROM/i.test(execBody), false, "no DELETE FROM");
-  assertEquals(/admin_suspend_listing/.test(execBody), false, "no admin_suspend_listing");
+  assertEquals(
+    /admin_suspend_listing/.test(execBody),
+    false,
+    "no admin_suspend_listing",
+  );
   assertEquals(/service.?role/i.test(execBody), false, "no service role");
 });
 
@@ -102,11 +106,10 @@ Deno.test("ORCH-1103 G-3: update_brand + delete_brand are in BOTH registry and C
   assertStringIncludes(caps, "delete_brand");
 });
 
-// #1970 Wave 0 bumped PROMPT_VERSION v3 → v4 (create_experience advertised +
-// full CAPABILITIES list). The v3 pin was correct for ORCH-1103 and is now
-// wrong: the prompt changed in the same PR as the registry.
-Deno.test("ORCH-1103: PROMPT_VERSION bumped (v4 Wave 0 keeps the v3 tools)", () => {
-  assertEquals(PROMPT_VERSION, "v4");
+// #1970 Wave 0 bumped PROMPT_VERSION v3 → v4; issue #1971 bumps v4 → v5
+// when the four canonical trip graph tools become advertised and registered.
+Deno.test("ORCH-1103: PROMPT_VERSION bumped (v5 keeps the v3 tools)", () => {
+  assertEquals(PROMPT_VERSION, "v5");
 });
 
 // ── richer brand context in the prompt (currency / cover / deletable hint) ──
@@ -239,7 +242,11 @@ Deno.test("ORCH-1103 G-4: delete_brand with a blocking future event is REFUSED (
 
   // CRITICAL: no deleted_at stamp happened (no update to `brands`).
   const brandUpdates = rec.updates.filter((u) => u.table === "brands");
-  assertEquals(brandUpdates.length, 0, "deleted_at must NOT be stamped on refusal");
+  assertEquals(
+    brandUpdates.length,
+    0,
+    "deleted_at must NOT be stamped on refusal",
+  );
 });
 
 // ── SC-2: delete with NO blocking events stamps deleted_at + clears default ──
@@ -254,7 +261,11 @@ Deno.test("ORCH-1103 SC-2: delete_brand with no blocking events soft-deletes + c
     rec,
   );
   const del = findTool("delete_brand");
-  const result = await del!.executor({ brand_id: OWNED_BRAND_ID }, client, USER_ID) as {
+  const result = await del!.executor(
+    { brand_id: OWNED_BRAND_ID },
+    client,
+    USER_ID,
+  ) as {
     deleted: boolean;
     recovery_window_days: number;
   };
@@ -262,11 +273,16 @@ Deno.test("ORCH-1103 SC-2: delete_brand with no blocking events soft-deletes + c
   assertEquals(result.recovery_window_days, 30);
 
   const brandUpdates = rec.updates.filter((u) => u.table === "brands");
-  assertEquals(brandUpdates.length, 1, "exactly one brands update (the soft-delete)");
+  assertEquals(
+    brandUpdates.length,
+    1,
+    "exactly one brands update (the soft-delete)",
+  );
   assert("deleted_at" in brandUpdates[0].payload, "deleted_at stamped");
 
   const defaultClears = rec.updates.filter(
-    (u) => u.table === "creator_accounts" && u.payload.default_brand_id === null,
+    (u) =>
+      u.table === "creator_accounts" && u.payload.default_brand_id === null,
   );
   assertEquals(defaultClears.length, 1, "default_brand_id cleared (non-fatal)");
 });
@@ -314,14 +330,24 @@ Deno.test("ORCH-1103 SC-4b: create_brand honors an explicit currency arg (upperc
   const client = makeClient(
     {
       brands: {
-        single: { id: OWNED_BRAND_ID, name: "Lumen", slug: "lumen", default_currency: "USD", created_at: "x" },
+        single: {
+          id: OWNED_BRAND_ID,
+          name: "Lumen",
+          slug: "lumen",
+          default_currency: "USD",
+          created_at: "x",
+        },
         count: 2, // not the first brand → default not changed
       },
     },
     rec,
   );
   const create = findTool("create_brand");
-  await create!.executor({ name: "Lumen", default_currency: "usd" }, client, USER_ID);
+  await create!.executor(
+    { name: "Lumen", default_currency: "usd" },
+    client,
+    USER_ID,
+  );
   const brandInsert = rec.inserts.find((i) => i.table === "brands");
   assertEquals(brandInsert!.payload.default_currency, "USD");
 });
@@ -329,7 +355,10 @@ Deno.test("ORCH-1103 SC-4b: create_brand honors an explicit currency arg (upperc
 // ── update_brand: empty patch → INVALID_ARGS ──
 Deno.test("ORCH-1103: update_brand with no editable fields → INVALID_ARGS", async () => {
   const rec: Recorder = { updates: [], inserts: [] };
-  const client = makeClient({ brands: { single: { id: OWNED_BRAND_ID } } }, rec);
+  const client = makeClient(
+    { brands: { single: { id: OWNED_BRAND_ID } } },
+    rec,
+  );
   const upd = findTool("update_brand");
   const err = await assertRejects(
     () => upd!.executor({ brand_id: OWNED_BRAND_ID }, client, USER_ID),

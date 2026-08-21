@@ -15,6 +15,7 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_brand_audit_log",
   "list_guest_roster",
   "get_operator_snapshot",
+  "get_trip_order_money",
 ]);
 
 export interface AccessibleAgentBrand {

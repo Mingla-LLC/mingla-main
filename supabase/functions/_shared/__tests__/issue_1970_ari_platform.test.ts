@@ -10,7 +10,12 @@ import {
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { detectChoices } from "../agentChoices.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
-import { AGENT_TOOLS, findTool, READ_ONLY_TOOL_NAMES, ToolError } from "../agentTools.ts";
+import {
+  AGENT_TOOLS,
+  findTool,
+  READ_ONLY_TOOL_NAMES,
+  ToolError,
+} from "../agentTools.ts";
 import { assertCanCollect, isUuid } from "../agentToolHelpers.ts";
 import { DOMAIN_READ_ONLY, MONEY_CONFIRM_TOOLS } from "../agentDomainTools.ts";
 import type { BrandSummary } from "../agentSystemPrompt.ts";
@@ -26,8 +31,8 @@ function brand(id: string, name: string): BrandSummary {
   };
 }
 
-Deno.test("#1970 happy: PROMPT_VERSION is v4 and create_experience is advertised", () => {
-  assertEquals(PROMPT_VERSION, "v4");
+Deno.test("#1970 happy: PROMPT_VERSION is v5 and create_experience is advertised", () => {
+  assertEquals(PROMPT_VERSION, "v5");
   const prompt = buildSystemPrompt(null, []);
   const caps = prompt.slice(prompt.indexOf("CAPABILITIES"));
   assertStringIncludes(caps, "create_experience");
@@ -40,7 +45,10 @@ Deno.test("#1970 happy: every registered tool name appears in CAPABILITIES", () 
   const prompt = buildSystemPrompt(null, []);
   const caps = prompt.slice(prompt.indexOf("CAPABILITIES"));
   for (const tool of AGENT_TOOLS) {
-    assert(caps.includes(`- ${tool.name} —`), `missing CAPABILITIES line for ${tool.name}`);
+    assert(
+      caps.includes(`- ${tool.name} —`),
+      `missing CAPABILITIES line for ${tool.name}`,
+    );
   }
 });
 
@@ -49,7 +57,12 @@ Deno.test("#1970 happy: richer prompt context injects offerings + payout + summa
     injectStrictReminder: false,
     business: {
       brands: [brand("b1", "Lumen")],
-      offerings: [{ id: "e1", title: "Friday Social", kind: "ticketed", status: "draft" }],
+      offerings: [{
+        id: "e1",
+        title: "Friday Social",
+        kind: "ticketed",
+        status: "draft",
+      }],
       payoutReady: false,
       roleHint: "owner",
       conversationSummary: "User asked to publish Friday Social",

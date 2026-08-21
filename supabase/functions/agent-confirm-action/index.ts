@@ -153,6 +153,22 @@ async function findTerminalMessageId(
   return data as string;
 }
 
+const RECEIPT_BACKED_TRIP_TOOL_NAMES = new Set([
+  "create_trip",
+  "update_trip",
+  "manage_trip_days",
+  "manage_trip_inclusions",
+  "manage_trip_tiers",
+  "manage_trip_traveler_intake",
+  "publish_trip",
+  "delete_trip",
+]);
+
+function isReceiptBackedToolName(name: string): boolean {
+  return RECEIPT_BACKED_EVENT_TOOL_NAMES.has(name) ||
+    RECEIPT_BACKED_TRIP_TOOL_NAMES.has(name);
+}
+
 async function terminalizePending(
   pendingStateClient: ReturnType<typeof buildServiceClient>,
   input: {
@@ -596,7 +612,8 @@ Deno.serve(async (req) => {
   if (
     pending.status !== "pending" &&
     !(pending.status === "executing" &&
-      RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name))
+      (RECEIPT_BACKED_EVENT_TOOL_NAMES.has(pending.tool_name) ||
+        RECEIPT_BACKED_TRIP_TOOL_NAMES.has(pending.tool_name)))
   ) {
     return errorResponse(
       400,
@@ -981,7 +998,7 @@ Deno.serve(async (req) => {
     // committed before the response was lost. Keep `executing` so confirm can
     // safely recover through the operation receipt. Deterministic pre-write
     // validation failures remain terminal.
-    const isAmbiguous = RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name) &&
+    const isAmbiguous = isReceiptBackedToolName(tool.name) &&
       (!(err instanceof ToolError) ||
         ["RPC_FAILED", "EDGE_FAILED", "WRITE_FAILED"].includes(err.code));
     if (!isAmbiguous) {
@@ -1041,7 +1058,7 @@ Deno.serve(async (req) => {
       expectedStatus: "executing",
       outcome: "executed",
       result,
-      requireOperationReceipt: RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
+      requireOperationReceipt: isReceiptBackedToolName(tool.name),
     });
     terminalMessageId = terminalized.terminalMessageId;
   } catch (error) {
