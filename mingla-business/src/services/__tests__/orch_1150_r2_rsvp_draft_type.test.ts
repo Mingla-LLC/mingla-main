@@ -203,6 +203,8 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
   // [TEST-MOD-APPROVED #1977] The protected #1150 assertion remains a real
   // createServerDraft mount, but now pins the canonical RSVP graph owner that
   // guarantees event_type='rsvp' instead of a caller-written insert field.
+  // Written reason: #1977 retires the unsafe caller-owned INSERT without
+  // weakening #1150's persisted RSVP type guarantee.
   test("RSVP draft (isRsvp:true) → canonical RSVP graph owner receives the typed RSVP draft", async () => {
     const { rpcNames, rpcArgs } = await runCreate(baseDraft({ isRsvp: true }));
     expect(rpcNames).toEqual(["business_create_rsvp_draft_graph"]);
