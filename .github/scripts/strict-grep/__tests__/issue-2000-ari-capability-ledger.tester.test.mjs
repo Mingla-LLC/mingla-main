@@ -102,7 +102,7 @@ const EXPECTED = Object.freeze({
     registered_unverified: 54,
     broken: 25,
     guided_handoff: 8,
-    unsupported: 32,
+    unsupported: 29,
     in_flight: 4,
   }),
   idDigest: "e28cf99d53c6a2c3205a2a5aaab5f3b0cd4dd4a36cdd8b834ee3ab86b57cc556",

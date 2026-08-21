@@ -66,6 +66,8 @@ ari.venue.mark_claim_feedback
 ari.venue.list_listings
 ari.venue.get_listing_status
 ari.venue.list_claim_feedback
+ari.venue.ops
+ari.venue.send_sms
 ari.marketing.draft_campaign
 ari.marketing.schedule_campaign
 ari.marketing.send_now
