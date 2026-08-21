@@ -32,6 +32,7 @@ const TESTS = [
   "src/services/__tests__/issue_2418_native_identity_and_bank_payload.test.ts",
   "src/hooks/__tests__/issue_2418_bank_query_contract.test.ts",
   "src/components/brand/__tests__/issue_2418_bank_picker_states.test.tsx",
+  "src/components/brand/__tests__/issue_2418_tester_adversarial.test.tsx",
 ];
 
 function loadSources() {
@@ -196,8 +197,13 @@ function validate(sources) {
     "bankRetryInFlightRef.current = false",
     "picker retry must release its lock after the request settles",
   );
-  if ((sources.component.match(/onPress=\{handleRetryBanks\}/g) ?? []).length !== 3) {
-    failures.push("all three picker retry controls must share the mutex callback");
+  if (
+    (sources.component.match(/onPress=\{handleRetryBanks\}/g) ?? []).length !==
+    3
+  ) {
+    failures.push(
+      "all three picker retry controls must share the mutex callback",
+    );
   }
   requireText(
     "component",

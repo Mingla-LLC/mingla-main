@@ -76,6 +76,7 @@ jobs:
           src/services/__tests__/issue_2418_native_identity_and_bank_payload.test.ts
           src/hooks/__tests__/issue_2418_bank_query_contract.test.ts
           src/components/brand/__tests__/issue_2418_bank_picker_states.test.tsx
+          src/components/brand/__tests__/issue_2418_tester_adversarial.test.tsx
 
   existing-version-policy:
     runs-on: ubuntu-latest
