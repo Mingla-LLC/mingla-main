@@ -2797,7 +2797,10 @@ const disconnectPartner = writeTool(
         );
       }
       if (message.includes("link_not_found")) {
-        throw new ToolError("INVALID_ARGS", "That partner link no longer exists.");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "That partner link no longer exists.",
+        );
       }
       if (message.includes("link_not_active")) {
         throw new ToolError(
@@ -2952,9 +2955,10 @@ const cancelTripBooking = writeTool(
       "cancel-trip-booking",
       { mode: "preview", orderId: args.booking_id },
     );
-    const expectedRefundTotalCents = typeof preview?.refundTotalCents === "number"
-      ? preview.refundTotalCents
-      : 0;
+    const expectedRefundTotalCents =
+      typeof preview?.refundTotalCents === "number"
+        ? preview.refundTotalCents
+        : 0;
     return await invokeFn(
       client,
       "cancel-trip-booking",

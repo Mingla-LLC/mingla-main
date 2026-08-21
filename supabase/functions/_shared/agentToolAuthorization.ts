@@ -363,6 +363,26 @@ async function resolveBrand(
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
+  // #1984 — bind a bare rsvp_id (host_set_rsvp_status target) to its event's
+  // brand. Keep identifiers distinct from the guest two-hop anchors so the
+  // #2019 tester proofs stay specific to that chain.
+  if (isUuid(args.rsvp_id)) {
+    const bareRsvp = await rowBrand(
+      client,
+      "event_rsvps",
+      args.rsvp_id,
+      "event_id",
+    );
+    const bareRsvpEvent = await rowBrand(
+      client,
+      "events",
+      bareRsvp.event_id,
+      "brand_id, event_type",
+      true,
+    );
+    assertExpectedEventType(toolName, bareRsvpEvent);
+    if (bareRsvpEvent.brand_id !== brandId) unavailable();
+  }
   return brandId;
 }
 
