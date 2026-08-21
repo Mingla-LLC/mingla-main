@@ -38,20 +38,15 @@ const EXPECTED = Object.freeze({
   capabilityCount: 117,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 33,
-    broken: 36,
+    registered_unverified: 36,
+    broken: 34,
     guided_handoff: 8,
-    unsupported: 36,
+    unsupported: 35,
     in_flight: 4,
   }),
   idDigest: "9366acdea4ba816a7b69b6cdc970b9b75ec705eba0832683013397bd9ad6e05b",
-  statusDigest: "b550638521af91408a961e08c162222c0dd5772777fa80e354e3e7388af12387",
-  mappingDigest: "d7e46c75cd8b5948a210c6938b9ac9e2e69d1afa73a9c16083b3729c5a9e8e57",
-  sourceRefDigest: "761d3cf68c6f5e0ff8060e8d7f070a452c1f1de15856467a40e0b6e175298012",
-    broken: 34,
-    unsupported: 38,
-  statusDigest: "3f4d11a2b40cc4e650bdd9de49c5b4cd5de03759ac7dd5afa612ae6cfacc84fb",
-  mappingDigest: "1d0131b018408d9251310ce4812ca7f01f6b7e83b42ae3db4864afd8430d8ab9",
+  statusDigest: "782a184917797c197e3a338d06bea87be31e1d3f65c4ee016b898c0f7675177f",
+  mappingDigest: "e32941eda6386d12c2647f63919d3afe72bf92fe1698f0551970309635984210",
   sourceRefDigest: "d1b3aef21f619445232f46ecdaed7a333f0a56a765819dba174a685addf87170",
 });
 
@@ -78,10 +73,8 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("70-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("36/33/36/8/4/0 classification changed");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("68-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("34/33/38/8/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("71-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("34/36/35/8/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
