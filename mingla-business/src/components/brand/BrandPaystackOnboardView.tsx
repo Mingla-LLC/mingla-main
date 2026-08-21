@@ -8,23 +8,37 @@
  * rail, so the (already-shipped) checkout deferred-split starts routing money.
  */
 
-import React, { useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
-  ActivityIndicator,
+  AccessibilityInfo,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
+import type { PressableStateCallbackType, ViewStyle } from "react-native";
+import { useReducedMotion } from "react-native-reanimated";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 // ORCH-0892: KeyboardAvoidingView must come from react-native-keyboard-controller
 // (frame-perfect native animation; drop-in for the RN one).
 import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 
 import {
   accent,
+  bpCompact,
+  bpRegular,
+  canvas,
+  glass,
   radius,
   semantic,
   spacing,
@@ -34,6 +48,7 @@ import {
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { Input } from "../ui/Input";
+import { Spinner } from "../ui/Spinner";
 import {
   useBrandBanks,
   useCreatePaystackRecipient,
@@ -42,6 +57,9 @@ import {
   useUpdatePaystackRecipient,
   useUpdatePaystackSubaccount,
 } from "../../hooks/useBrandPaystack";
+import { useAuth } from "../../context/AuthContext";
+import { reportNonFatal } from "../../diagnostics/reportNonFatal";
+import { PaystackBankListError } from "../../services/brandPaystackService";
 // #1850 — the bank picker's lift is budgeted against the DERIVED Done-bar cost.
 import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 // #1890 — whether the Done bar is actually IN this raw <Modal>'s own native
@@ -60,6 +78,11 @@ interface Props {
 }
 
 const ACCOUNT_LEN = 10;
+const BANK_PICKER_MAX_WIDTH = 640;
+const BANK_PICKER_MIN_HEIGHT = 360;
+const BANK_PICKER_MAX_HEIGHT = 720;
+const BANK_PICKER_ROW_MIN_HEIGHT = 56;
+const BANK_PICKER_SCRIM = "rgba(0, 0, 0, 0.50)";
 
 export const BrandPaystackOnboardView: React.FC<Props> = ({
   brandId,
@@ -69,6 +92,10 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   onCancel,
 }) => {
   const isUpdate = mode === "update";
+  const { isAuthReady } = useAuth();
+  const { width: windowWidth, height: windowHeight } = useWindowDimensions();
+  const safeArea = useSafeAreaInsets();
+  const reduceMotion = useReducedMotion();
   const banksQuery = useBrandBanks();
   const resolveMutation = useResolvePaystackAccount();
   const createMutation = useCreatePaystackSubaccount();
@@ -97,6 +124,9 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const [accountNumber, setAccountNumber] = useState("");
   const [resolvedName, setResolvedName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const pickerOpenerRef = useRef<React.ElementRef<typeof Pressable>>(null);
+  const lastAnnouncementRef = useRef<string | null>(null);
+  const lastReportedBankErrorRef = useRef<unknown>(null);
 
   // #1834 D2 — iOS is the constant `true`, so the Input's key never changes,
   // no remount ever happens there, and today's immediate mount-time focus is
@@ -104,10 +134,30 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   // slide animation, regressing a cell that already passes.
   const searchAutoFocus = Platform.OS === "android" ? pickerShown : true;
   /** Every close path must disarm, or the next open remounts nothing. */
-  const closePicker = (): void => {
+  const closePicker = useCallback((): void => {
     setPickerOpen(false);
     setPickerShown(false);
-  };
+    if (Platform.OS === "web") {
+      setTimeout(() => pickerOpenerRef.current?.focus(), 0);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (
+      !pickerOpen ||
+      Platform.OS !== "web" ||
+      typeof document === "undefined"
+    ) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      closePicker();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return (): void => document.removeEventListener("keydown", onKeyDown);
+  }, [closePicker, pickerOpen]);
 
   // Paystack's /bank list can return multiple entries that share a `code`
   // (same settlement code listed under different slugs). Dedupe by code so the
@@ -128,10 +178,108 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
     if (q.length === 0) return banks;
     return banks.filter((b) => b.name.toLowerCase().includes(q));
   }, [banks, bankSearch]);
+  const trimmedBankSearch = bankSearch.trim();
+  const hasBanks = banks.length > 0;
+  const authPending = !isAuthReady && !hasBanks;
+  const terminalBankError = banksQuery.isError && !hasBanks;
+  const providerEmpty = banksQuery.isSuccess && !hasBanks && !terminalBankError;
+  const initialBankLoading = isAuthReady && banksQuery.isLoading && !hasBanks;
+  const backgroundRefreshError = banksQuery.isError && hasBanks;
+  const filteredEmpty =
+    hasBanks && trimmedBankSearch.length > 0 && filteredBanks.length === 0;
+  const searchInteractive =
+    !authPending && !terminalBankError && !providerEmpty;
+  const retryingBanks = banksQuery.isFetching === true;
+
+  const sheetDynamicStyle = useMemo<ViewStyle>(() => {
+    const regular = windowWidth >= bpRegular;
+    return {
+      height: regular
+        ? Math.min(
+            BANK_PICKER_MAX_HEIGHT,
+            Math.max(BANK_PICKER_MIN_HEIGHT, windowHeight * 0.72),
+          )
+        : windowHeight * 0.64,
+      maxWidth: regular ? BANK_PICKER_MAX_WIDTH : undefined,
+      paddingHorizontal: windowWidth < bpCompact ? spacing.md : spacing.lg,
+      paddingBottom: Math.max(safeArea.bottom, spacing.md),
+    };
+  }, [safeArea.bottom, windowHeight, windowWidth]);
+
+  const bankRowStyle = useCallback(
+    (
+      state: PressableStateCallbackType & {
+        hovered?: boolean;
+        focused?: boolean;
+      },
+    ): ViewStyle[] => [
+      styles.bankRow,
+      state.pressed || state.hovered === true
+        ? styles.bankRowActive
+        : styles.bankRowIdle,
+      Platform.OS === "web" && state.focused === true
+        ? styles.bankRowFocused
+        : styles.bankRowUnfocused,
+    ],
+    [],
+  );
+
+  useEffect(() => {
+    if (!banksQuery.isError || banksQuery.error == null) return;
+    const cycle = banksQuery.errorUpdatedAt ?? banksQuery.error;
+    if (lastReportedBankErrorRef.current === cycle) return;
+    lastReportedBankErrorRef.current = cycle;
+    const classified =
+      banksQuery.error instanceof PaystackBankListError
+        ? banksQuery.error
+        : new PaystackBankListError("unknown", null);
+    reportNonFatal(
+      "paystackBankList",
+      new Error(`paystack_bank_list_${classified.code}`),
+      {
+        feature: "paystack_bank_list",
+        errorClass: classified.code,
+        status: classified.status,
+        platform: Platform.OS,
+      },
+      ["paystack_bank_list", classified.code, String(classified.status)],
+    );
+  }, [banksQuery.error, banksQuery.errorUpdatedAt, banksQuery.isError]);
+
+  const bankStatusAnnouncement = authPending
+    ? "Finishing sign-in…"
+    : initialBankLoading
+      ? "Loading banks…"
+      : terminalBankError
+        ? "Couldn't load banks. Banks are unavailable right now."
+        : providerEmpty
+          ? "No banks are available right now."
+          : backgroundRefreshError
+            ? "Couldn't refresh banks."
+            : filteredEmpty
+              ? `No banks match “${trimmedBankSearch}”.`
+              : hasBanks
+                ? "Banks loaded."
+                : null;
+
+  useEffect(() => {
+    if (
+      !pickerOpen ||
+      Platform.OS !== "ios" ||
+      bankStatusAnnouncement === null ||
+      lastAnnouncementRef.current === bankStatusAnnouncement
+    ) {
+      return;
+    }
+    lastAnnouncementRef.current = bankStatusAnnouncement;
+    AccessibilityInfo.announceForAccessibility(bankStatusAnnouncement);
+  }, [bankStatusAnnouncement, pickerOpen]);
 
   const accountComplete = accountNumber.length === ACCOUNT_LEN;
-  const canVerify = bankCode !== null && accountComplete && !resolveMutation.isPending;
-  const canConnect = resolvedName !== null &&
+  const canVerify =
+    bankCode !== null && accountComplete && !resolveMutation.isPending;
+  const canConnect =
+    resolvedName !== null &&
     !submitMutation.isPending &&
     !recipientMutation.isPending;
 
@@ -215,6 +363,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       {/* Bank picker */}
       <Text style={styles.label}>Bank</Text>
       <Pressable
+        ref={pickerOpenerRef}
         accessibilityRole="button"
         accessibilityLabel="Choose your bank"
         onPress={() => setPickerOpen(true)}
@@ -263,10 +412,15 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
           />
         ) : (
           <Button
-            label={submitMutation.isPending
-                || recipientMutation.isPending
-              ? (isUpdate ? "Updating…" : "Connecting…")
-              : (isUpdate ? "Update bank account" : "Connect bank & get paid")}
+            label={
+              submitMutation.isPending || recipientMutation.isPending
+                ? isUpdate
+                  ? "Updating…"
+                  : "Connecting…"
+                : isUpdate
+                  ? "Update bank account"
+                  : "Connect bank & get paid"
+            }
             variant="primary"
             size="lg"
             fullWidth
@@ -292,7 +446,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
       <Modal
         visible={pickerOpen}
         transparent
-        animationType="slide"
+        animationType={reduceMotion ? "none" : "slide"}
         onRequestClose={closePicker}
         // #1834 D2 — fires once the Android Dialog window is actually on
         // screen and focusable; flipping this remounts the search Input via
@@ -336,7 +490,12 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
             accessibilityLabel="Close bank picker"
             onPress={closePicker}
           />
-          <View style={styles.sheet}>
+          <View
+            style={[styles.sheet, sheetDynamicStyle]}
+            accessibilityViewIsModal
+            accessibilityLabel="Choose your bank"
+            role="dialog"
+          >
             <Text style={styles.sheetTitle}>Choose your bank</Text>
             <Input
               // #1834 D2 — Input is a plain React.FC, not forwardRef, so there
@@ -345,43 +504,120 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
               // on Android it changes exactly once per open (false -> true on
               // the Modal's onShow), remounting the field against a focusable
               // window; on iOS it is constant, so nothing remounts.
-              key={`bank-search-${searchAutoFocus}`}
+              key={`bank-search-${searchAutoFocus}-${searchInteractive}`}
               variant="search"
               value={bankSearch}
               onChangeText={setBankSearch}
               placeholder="Search banks"
+              placeholderTextColor={textTokens.tertiary}
               clearable
-              autoFocus={searchAutoFocus}
+              disabled={!searchInteractive}
+              autoFocus={searchAutoFocus && searchInteractive}
               accessibilityLabel="Search banks"
             />
-            {banksQuery.isLoading ? (
-              <ActivityIndicator color={accent.warm} style={{ marginTop: spacing.lg }} />
-            ) : (
-              <ScrollView
-                style={styles.bankList}
-                // #1834 — no Done bar in this raw Modal window (nothing renders
-                // <KeyboardToolbarRoot/> here, and the app-root provider does
-                // not propagate into an RN Modal window), so there is nothing
-                // to pad for. The ORCH-1165 Android 42dp compensator that used
-                // to sit here was padding for a bar that is not there.
-                keyboardShouldPersistTaps="handled"
-                showsVerticalScrollIndicator={false}
+            {authPending || initialBankLoading ? (
+              <View style={styles.noDataState} accessibilityLiveRegion="polite">
+                <Spinner size={24} color={accent.warm} />
+                <Text style={styles.statusText}>
+                  {authPending ? "Finishing sign-in…" : "Loading banks…"}
+                </Text>
+              </View>
+            ) : terminalBankError ? (
+              <View
+                style={styles.noDataState}
+                accessibilityRole="alert"
+                aria-live="assertive"
               >
-                {filteredBanks.map((b, i) => (
-                  <Pressable
-                    key={`${b.code}-${i}`}
-                    accessibilityRole="button"
-                    accessibilityLabel={b.name}
-                    onPress={() => onPickBank(b.code, b.name)}
-                    style={styles.bankRow}
+                <Text style={styles.errorTitle}>Couldn't load banks</Text>
+                <Text style={styles.statusText}>
+                  Banks are unavailable right now.
+                </Text>
+                <Button
+                  label={retryingBanks ? "Trying again…" : "Try again"}
+                  variant="ghost"
+                  size="md"
+                  loading={retryingBanks}
+                  disabled={retryingBanks}
+                  accessibilityLabel="Try loading banks again"
+                  onPress={() => {
+                    if (!retryingBanks) void banksQuery.refetch();
+                  }}
+                  style={styles.retryButton}
+                />
+              </View>
+            ) : providerEmpty ? (
+              <View style={styles.noDataState} accessibilityLiveRegion="polite">
+                <Text style={styles.statusText}>
+                  No banks are available right now.
+                </Text>
+                <Button
+                  label={retryingBanks ? "Trying again…" : "Try again"}
+                  variant="ghost"
+                  size="md"
+                  loading={retryingBanks}
+                  disabled={retryingBanks}
+                  accessibilityLabel="Try loading banks again"
+                  onPress={() => {
+                    if (!retryingBanks) void banksQuery.refetch();
+                  }}
+                  style={styles.retryButton}
+                />
+              </View>
+            ) : (
+              <View style={styles.catalogueRegion}>
+                {backgroundRefreshError ? (
+                  <View
+                    style={styles.refreshNotice}
+                    accessibilityLiveRegion="polite"
                   >
-                    <Text style={styles.bankRowText}>{b.name}</Text>
-                  </Pressable>
-                ))}
-                {filteredBanks.length === 0 ? (
-                  <Text style={styles.bankEmpty}>No banks match “{bankSearch}”.</Text>
+                    <Text style={styles.refreshNoticeText}>
+                      Couldn't refresh banks.
+                    </Text>
+                    <Button
+                      label={retryingBanks ? "Trying again…" : "Try again"}
+                      variant="ghost"
+                      size="md"
+                      loading={retryingBanks}
+                      disabled={retryingBanks}
+                      accessibilityLabel="Try loading banks again"
+                      onPress={() => {
+                        if (!retryingBanks) void banksQuery.refetch();
+                      }}
+                    />
+                  </View>
                 ) : null}
-              </ScrollView>
+                <ScrollView
+                  style={styles.bankList}
+                  // #1834 — no Done bar in this raw Modal window (nothing renders
+                  // <KeyboardToolbarRoot/> here, and the app-root provider does
+                  // not propagate into an RN Modal window), so there is nothing
+                  // to pad for. The ORCH-1165 Android 42dp compensator that used
+                  // to sit here was padding for a bar that is not there.
+                  keyboardShouldPersistTaps="handled"
+                  showsVerticalScrollIndicator={false}
+                >
+                  {filteredBanks.map((b, i) => (
+                    <Pressable
+                      key={`${b.code}-${i}`}
+                      accessibilityRole="button"
+                      accessibilityLabel={b.name}
+                      accessibilityHint="Select this bank"
+                      onPress={() => onPickBank(b.code, b.name)}
+                      style={bankRowStyle}
+                    >
+                      <Text style={styles.bankRowText}>{b.name}</Text>
+                    </Pressable>
+                  ))}
+                  {filteredEmpty ? (
+                    <Text
+                      style={styles.bankEmpty}
+                      accessibilityLiveRegion="polite"
+                    >
+                      No banks match “{trimmedBankSearch}”.
+                    </Text>
+                  ) : null}
+                </ScrollView>
+              </View>
             )}
           </View>
         </KeyboardAvoidingView>
@@ -447,30 +683,86 @@ const styles = StyleSheet.create({
   },
   actions: { marginTop: spacing.lg },
   modalRoot: { flex: 1, justifyContent: "flex-end" },
-  backdrop: { flex: 1, backgroundColor: "rgba(0, 0, 0, 0.5)" },
+  backdrop: { flex: 1, backgroundColor: BANK_PICKER_SCRIM },
   sheet: {
-    height: "64%",
-    padding: spacing.lg,
+    alignSelf: "center",
+    width: "100%",
+    paddingTop: spacing.lg,
     borderTopLeftRadius: radius.xl,
     borderTopRightRadius: radius.xl,
-    backgroundColor: "#14110f",
+    backgroundColor: canvas.profile,
+    overflow: "hidden",
   },
   sheetTitle: {
     ...typography.bodyLg,
     color: textTokens.primary,
     marginBottom: spacing.md,
   },
-  bankList: { flex: 1, marginTop: spacing.md },
+  noDataState: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
+  },
+  statusText: {
+    ...typography.body,
+    color: textTokens.secondary,
+    marginTop: spacing.sm,
+    textAlign: "center",
+  },
+  errorTitle: {
+    ...typography.bodyLg,
+    color: semantic.error,
+    textAlign: "center",
+  },
+  retryButton: {
+    marginTop: spacing.md,
+  },
+  catalogueRegion: {
+    flex: 1,
+    marginTop: spacing.md,
+  },
+  refreshNotice: {
+    alignItems: "center",
+    backgroundColor: semantic.errorTint,
+    borderRadius: radius.md,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.xs,
+    justifyContent: "space-between",
+    marginBottom: spacing.sm,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+  },
+  refreshNoticeText: {
+    ...typography.bodySm,
+    color: textTokens.primary,
+    flexShrink: 1,
+  },
+  bankList: { flex: 1 },
   bankRow: {
+    minHeight: BANK_PICKER_ROW_MIN_HEIGHT,
+    justifyContent: "center",
     paddingVertical: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255, 255, 255, 0.08)",
+    borderBottomColor: glass.border.profileBase,
   },
+  bankRowIdle: { backgroundColor: "transparent" },
+  bankRowActive: { backgroundColor: glass.tint.profileBase },
+  bankRowFocused: {
+    outlineColor: accent.warm,
+    outlineOffset: -2,
+    outlineStyle: "solid",
+    outlineWidth: 2,
+  },
+  bankRowUnfocused: { outlineWidth: 0 },
   bankRowText: { ...typography.body, color: textTokens.primary },
   bankEmpty: {
-    ...typography.caption,
+    ...typography.body,
     color: textTokens.tertiary,
     marginTop: spacing.lg,
+    paddingHorizontal: spacing.md,
     textAlign: "center",
   },
 });

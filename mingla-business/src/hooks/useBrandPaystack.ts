@@ -27,6 +27,7 @@ import {
   selectPaystackProvider,
   updatePaystackRecipient,
   updatePaystackSubaccount,
+  PaystackBankListError,
   type PaystackBankOption,
   type PaystackOnboardStatus,
   type PaystackRecipientResult,
@@ -38,7 +39,8 @@ import { useAuth } from "../context/AuthContext";
 
 export const brandPaystackKeys = {
   all: ["brand-paystack"] as const,
-  banks: () => [...brandPaystackKeys.all, "banks"] as const,
+  banks: () =>
+    [...brandPaystackKeys.all, "banks", "NG", "NGN", "nuban"] as const,
   status: (brandId: string) =>
     [...brandPaystackKeys.all, "status", brandId] as const,
 };
@@ -46,13 +48,32 @@ export const brandPaystackKeys = {
 const DISABLED_KEY = ["brand-paystack-status-disabled"] as const;
 
 /** NG NUBAN settlement banks. Static-ish → long stale time. */
-export function useBrandBanks(enabled = true): UseQueryResult<PaystackBankOption[], Error> {
+export function shouldRetryPaystackBankList(
+  failureCount: number,
+  error: Error,
+): boolean {
+  if (error instanceof PaystackBankListError) {
+    if (error.code === "invalid_response") return false;
+    if (error.status === 401 || error.status === 403 || error.status === 426) {
+      return false;
+    }
+  }
+  return failureCount < 2;
+}
+
+export function useBrandBanks(
+  requestedEnabled = true,
+): UseQueryResult<PaystackBankOption[], Error> {
+  const { isAuthReady } = useAuth();
+  const enabled = isAuthReady && requestedEnabled;
   return useQuery<PaystackBankOption[], Error>({
     queryKey: brandPaystackKeys.banks(),
     queryFn: listPaystackBanks,
     enabled,
     staleTime: 1000 * 60 * 60, // 1h — bank list rarely changes
     gcTime: 1000 * 60 * 60 * 2,
+    retry: shouldRetryPaystackBankList,
+    retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 2000),
   });
 }
 
@@ -64,7 +85,9 @@ export function useBrandPaystackStatus(
   const enabled =
     isAuthReady && typeof brandId === "string" && brandId.length > 0;
   return useQuery<PaystackOnboardStatus, Error>({
-    queryKey: enabled ? brandPaystackKeys.status(brandId as string) : DISABLED_KEY,
+    queryKey: enabled
+      ? brandPaystackKeys.status(brandId as string)
+      : DISABLED_KEY,
     queryFn: () => refreshPaystackStatus(brandId as string),
     enabled,
     staleTime: 1000 * 30,
@@ -100,7 +123,9 @@ export function useCreatePaystackSubaccount(): UseMutationResult<
     mutationFn: ({ brandId, accountNumber, bankCode }) =>
       createPaystackSubaccount(brandId, accountNumber, bankCode),
     onSuccess: (_data, { brandId }) => {
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
     },
@@ -124,7 +149,9 @@ export function useUpdatePaystackSubaccount(): UseMutationResult<
     mutationFn: ({ brandId, accountNumber, bankCode }) =>
       updatePaystackSubaccount(brandId, accountNumber, bankCode),
     onSuccess: (_data, { brandId }) => {
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
     },
   });
@@ -140,7 +167,9 @@ export function useCreatePaystackRecipient(): UseMutationResult<
     mutationFn: ({ brandId, accountNumber, bankCode }) =>
       createPaystackRecipient(brandId, accountNumber, bankCode),
     onSuccess: (_data, { brandId }) => {
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
     },
   });
 }
@@ -155,44 +184,64 @@ export function useUpdatePaystackRecipient(): UseMutationResult<
     mutationFn: ({ brandId, accountNumber, bankCode }) =>
       updatePaystackRecipient(brandId, accountNumber, bankCode),
     onSuccess: (_data, { brandId }) => {
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
     },
   });
 }
 
 /** Flip the brand onto the Paystack rail (Nigeria) from the country picker. */
-export function useSelectPaystackProvider(): UseMutationResult<void, Error, string> {
+export function useSelectPaystackProvider(): UseMutationResult<
+  void,
+  Error,
+  string
+> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (brandId) => selectPaystackProvider(brandId),
     onSuccess: (_data, brandId) => {
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
     },
   });
 }
 
 /** Revert a not-yet-connected Paystack brand back to Stripe (re-pick country). */
-export function useClearPaystackProvider(): UseMutationResult<void, Error, string> {
+export function useClearPaystackProvider(): UseMutationResult<
+  void,
+  Error,
+  string
+> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (brandId) => clearPaystackProvider(brandId),
     onSuccess: (_data, brandId) => {
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
     },
   });
 }
 
 /** Disconnect the brand's payout bank. */
-export function useDisconnectPaystack(): UseMutationResult<void, Error, string> {
+export function useDisconnectPaystack(): UseMutationResult<
+  void,
+  Error,
+  string
+> {
   const queryClient = useQueryClient();
   return useMutation<void, Error, string>({
     mutationFn: (brandId) => disconnectPaystack(brandId),
     onSuccess: (_data, brandId) => {
-      queryClient.invalidateQueries({ queryKey: brandPaystackKeys.status(brandId) });
+      queryClient.invalidateQueries({
+        queryKey: brandPaystackKeys.status(brandId),
+      });
       queryClient.invalidateQueries({ queryKey: brandKeys.detail(brandId) });
       queryClient.invalidateQueries({ queryKey: brandKeys.lists() });
     },
