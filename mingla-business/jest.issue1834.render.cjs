@@ -62,6 +62,15 @@ module.exports = {
     "node_modules/(?!(jest-)?react-native|@react-native|@react-native-community|@testing-library|test-renderer|react-clone-referenced-element|@react-native-async-storage|expo|@expo|react-native-safe-area-context|@gorhom)",
   ],
   moduleNameMapper: {
+    // #2418 — this suite proves keyboard layout, not telemetry transport.
+    // Keep its native resolution path while replacing only the ESM SDK leaf
+    // with the existing platform-neutral Sentry shim used by web.
+    "^@sentry/react-native$": path.join(
+      businessRoot,
+      "src",
+      "diagnostics",
+      "sentry.ts",
+    ),
     "^react$": path.join(bizModules, "react"),
     "^react/(.*)$": path.join(bizModules, "react", "$1"),
     "^react-native$": path.join(bizModules, "react-native"),
