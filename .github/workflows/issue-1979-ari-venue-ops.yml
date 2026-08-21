@@ -32,7 +32,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
+      # fetch-depth: 0 — issue-2000 ledger reads owners.source at the
+      # immutable proven-broken audit SHA via `git show`.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: denoland/setup-deno@v1
         with:
           deno-version: "1.46.x"

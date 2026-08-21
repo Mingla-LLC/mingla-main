@@ -1760,15 +1760,24 @@ const manageVenueAvailability = writeTool(
     const action = String(args.action);
     switch (action) {
       case "read_config": {
+        // ORCH-1255 rekeyed venue_reservation_settings PK to venue_id.
+        if (!isUuid(args.venue_id)) {
+          throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+        }
         const { data, error } = await client
           .from("venue_reservation_settings")
           .select(
-            "brand_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, fee_refundable, cancel_cutoff_hours, no_show_fee_policy, updated_at",
+            "brand_id, venue_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, fee_refundable, cancel_cutoff_hours, no_show_fee_policy, updated_at",
           )
+          .eq("venue_id", args.venue_id)
           .eq("brand_id", brandId)
           .maybeSingle();
         if (error) throw new ToolError("RPC_FAILED", error.message);
-        return data ?? { brand_id: brandId, reservations_enabled: false };
+        return data ?? {
+          brand_id: brandId,
+          venue_id: args.venue_id,
+          reservations_enabled: false,
+        };
       }
       case "read_slots": {
         if (!isString(args.date)) {
@@ -1785,7 +1794,14 @@ const manageVenueAvailability = writeTool(
         });
       }
       case "update_config": {
-        const patch: Record<string, unknown> = { brand_id: brandId };
+        // ORCH-1255: PK is venue_id (not brand_id). Match Business hook upserts.
+        if (!isUuid(args.venue_id)) {
+          throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+        }
+        const patch: Record<string, unknown> = {
+          brand_id: brandId,
+          venue_id: args.venue_id,
+        };
         if (typeof args.reservations_enabled === "boolean") {
           patch.reservations_enabled = args.reservations_enabled;
         }
@@ -1807,14 +1823,14 @@ const manageVenueAvailability = writeTool(
         ) {
           patch.no_show_fee_policy = args.no_show_fee_policy;
         }
-        if (Object.keys(patch).length === 1) {
+        if (Object.keys(patch).length === 2) {
           throw new ToolError("INVALID_ARGS", "Nothing to update");
         }
         const { data, error } = await client
           .from("venue_reservation_settings")
           .upsert(patch, { onConflict: "venue_id" })
           .select(
-            "brand_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, cancel_cutoff_hours, no_show_fee_policy, updated_at",
+            "brand_id, venue_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, cancel_cutoff_hours, no_show_fee_policy, updated_at",
           )
           .single();
         if (error) throw new ToolError("RPC_FAILED", error.message);
