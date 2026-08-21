@@ -19,35 +19,39 @@ const EXPECTED_TOOL_NAMES = [
   "get_brand_analytics", "get_operator_snapshot", "get_partner_status",
   "get_payout_status", "get_tax_status", "invite_brand_member", "invite_scanner",
   "list_brand_audit_log", "list_brands", "list_events", "list_guest_roster",
-  "manage_brand_discovery_currency", "manage_brand_hours", "manage_experience_stops",
+  "list_rsvp_contributions", "manage_brand_discovery_currency", "manage_brand_hours",
+  "manage_experience_stops",
   "mark_claim_feedback_fixed",
   "patch_event_when", "publish_event", "publish_experience", "publish_rsvp",
   "publish_trip", "quote_stay", "refund_order", "refund_rsvp_contribution",
   "request_account_deletion", "retry_installment", "revoke_brand_member",
   "run_growth_tool", "schedule_campaign", "send_campaign_now", "send_venue_sms",
-  "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
-  "set_pricing_switches", "set_rsvp_guest_status", "submit_venue_claim",
+  "set_event_cover", "set_event_guest_privacy", "set_pricing_switches",
+  "set_rsvp_guest_status", "submit_venue_claim",
   "transition_stay", "transition_venue_reservation", "unpublish_event",
   "unpublish_experience",
   "update_ari_prefs", "update_brand", "update_event", "update_experience",
-  "update_notification_prefs", "update_trip", "upsert_ticket_tier",
+  "update_notification_prefs", "update_rsvp", "update_rsvp_contribution_settings",
+  "update_trip", "upsert_ticket_tier",
   "venue_ops_action",
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 117,
+  // [TEST-MOD-APPROVED #1977] One duplicate guest-approval capability is
+  // removed and two canonical RSVP outcomes are added (net denominator +1).
+  capabilityCount: 118,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 33,
-    broken: 36,
+    registered_unverified: 41,
+    broken: 30,
     guided_handoff: 8,
-    unsupported: 36,
+    unsupported: 35,
     in_flight: 4,
   }),
-  idDigest: "9366acdea4ba816a7b69b6cdc970b9b75ec705eba0832683013397bd9ad6e05b",
-  statusDigest: "b550638521af91408a961e08c162222c0dd5772777fa80e354e3e7388af12387",
-  mappingDigest: "d7e46c75cd8b5948a210c6938b9ac9e2e69d1afa73a9c16083b3729c5a9e8e57",
-  sourceRefDigest: "761d3cf68c6f5e0ff8060e8d7f070a452c1f1de15856467a40e0b6e175298012",
+  idDigest: "ebf5656fd330ec714f485d49a065f165f22274dff50b9bdb74f2a1d57fdd9ff2",
+  statusDigest: "758550e175f69d3174fc25f83041d7742af958676d442fd3ebb71342bc0fb9b8",
+  mappingDigest: "fd204f031c39645cee5979c59933b00f6c9a048b6a21318c0c52522d78718f65",
+  sourceRefDigest: "1712db2bc07fe20cb25dc6a109d0cb3b0664f1ef20811f929fbe9aae379dede0",
 });
 
 function readLedger() {
@@ -73,8 +77,8 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("70-tool set changed");
-  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("36/33/36/8/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("72-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("30/41/35/8/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");

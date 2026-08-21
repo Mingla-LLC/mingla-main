@@ -80,8 +80,8 @@
     },
     "capabilities": {
       "type": "array",
-      "minItems": 117,
-      "maxItems": 117,
+      "minItems": 118,
+      "maxItems": 118,
       "items": {
         "type": "object",
         "required": ["capability_id", "status", "surfaces", "scenarios", "canonical_readback", "tenant_role_matrix", "scenario_evidence", "evidence_digest"],

@@ -183,11 +183,13 @@ function passingEvidence(plan) {
   return evidence;
 }
 
-test("#2060 plan covers the current exact 117-row ledger with one cache/readback owner", () => {
+// [TEST-MOD-APPROVED #1977] The #2060 certifier is the canonical current-state
+// owner; #1977 extends its authoritative requirement set from 117 to 118.
+test("#2060 plan covers the current exact 118-row ledger with one cache/readback owner", () => {
   const { ledger, owners } = loadCertificationInputs();
   const plan = buildCertificationPlan(ledger, owners);
-  assert.equal(plan.capability_count, 117);
-  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 117);
+  assert.equal(plan.capability_count, 118);
+  assert.equal(new Set(plan.rows.map((row) => row.capability_id)).size, 118);
   assert.equal(
     plan.rows.every((row) =>
       row.cache_owner_id && row.canonical_readback_owner
@@ -239,7 +241,7 @@ test("#2060 rejects missing rows, SHA mismatch surfaces, dirty cleanup, and stra
       "requirements_digest",
       "release_artifact_sha:agent_chat_bundle",
       "native_artifact:business_android",
-      "evidence_capability_count:116",
+      "evidence_capability_count:117",
       "cleanup_zero_residue",
       "rollback_no_stranded_operations",
     ]

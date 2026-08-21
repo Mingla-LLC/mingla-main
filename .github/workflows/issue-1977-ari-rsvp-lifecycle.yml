@@ -12,6 +12,8 @@ on:
       - "mingla-business/src/hooks/useRsvpApprovals.ts"
       - "mingla-business/src/components/rsvp/RsvpGuestConsole.tsx"
       - "docs/contracts/ari-capability-ledger.json"
+      - "docs/contracts/ari-certification-evidence.schema.json"
+      - "scripts/ari/certify-capabilities.mjs"
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs"
       - ".github/workflows/issue-1977-ari-rsvp-lifecycle.yml"
@@ -55,10 +57,15 @@ jobs:
               done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1977_ari_rsvp_guest_contribution.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_ari_rsvp_receipt.implementor.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_ari_certification_118.implementor.pg17.test.sql
       - name: Run Ari and Edge type/behavior contracts
         run: |
           deno test --allow-env --allow-read \
-            supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts
+            supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts \
+            supabase/functions/_shared/__tests__/issue_1977_rsvp_task_state.implementor.test.ts
           deno check \
             supabase/functions/_shared/agentDomainTools.ts \
             supabase/functions/_shared/agentToolAuthorization.ts \
@@ -78,4 +85,9 @@ jobs:
           node .github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs
           node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs --self-test
           node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs
+          node .github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs --self-test
+          node .github/scripts/strict-grep/issue-2060-ari-reliability-foundation.mjs
+          node --test scripts/ari/__tests__/certify-capabilities.issue2060.test.mjs \
+            scripts/ari/__tests__/certify-capabilities.issue2060.tester.attestation-completeness.test.mjs \
+            scripts/ari/__tests__/certify-capabilities.issue2060.tester.adversarial.test.mjs
           node .github/scripts/strict-grep/meta-1383-manifest-parity.mjs

@@ -52,9 +52,11 @@ ari.trip.update
 ari.trip.publish
 ari.trip.delete
 ari.rsvp.create
+ari.rsvp.update
 ari.rsvp.publish
 ari.rsvp.bulk_status
 ari.rsvp.refund_contribution
+ari.rsvp.list_contributions
 ari.stay.quote
 ari.stay.create_reservation
 ari.stay.transition
@@ -83,7 +85,6 @@ ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
 ari.guests.list_roster
-ari.guests.set_approval
 ari.people.export
 ari.settings.preferences
 ari.settings.notifications
@@ -187,6 +188,24 @@ ari.guests.set_approval
 ari.people.export
 ari.operator.snapshot
 `.trim().split(/\s+/));
+
+// #1977 repairs five historically broken RSVP families and retires the
+// duplicate one-guest registration in favour of set_rsvp_guest_status's exact
+// selected scope. Keep the immutable baseline authority above intact while
+// deriving the smaller set that must still be classified broken today.
+const REPAIRED_OR_RETIRED_CAPABILITY_IDS = new Set([
+  "ari.rsvp.create",
+  "ari.rsvp.publish",
+  "ari.rsvp.bulk_status",
+  "ari.rsvp.refund_contribution",
+  "ari.guests.list_roster",
+  "ari.guests.set_approval",
+]);
+const CURRENT_PROVEN_BROKEN_CAPABILITY_IDS = new Set(
+  [...PROVEN_BROKEN_CAPABILITY_IDS].filter((id) =>
+    !REPAIRED_OR_RETIRED_CAPABILITY_IDS.has(id)
+  ),
+);
 
 const STATUSES = new Set([
   "verified",
@@ -332,11 +351,15 @@ export function validateLedger({ root, ledger, registered, advertised }) {
       `proven-broken authority must contain 36 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
+  const reviewedOrRetired = new Set([
+    ...REQUIRED_CAPABILITY_IDS,
+    "ari.guests.set_approval",
+  ]);
   addSetDiff(
     failures,
     PROVEN_BROKEN_CAPABILITY_IDS,
-    REQUIRED_CAPABILITY_IDS,
-    "proven-broken authority references an operation outside the reviewed universe",
+    reviewedOrRetired,
+    "proven-broken authority references an operation outside the reviewed or explicitly retired universe",
   );
   if (ledger.schema_version !== 1) failures.push("schema_version must equal 1");
   if (!/^[0-9a-f]{40}$/.test(ledger.audit?.baseline_sha ?? "")) {
@@ -395,7 +418,7 @@ export function validateLedger({ root, ledger, registered, advertised }) {
         ref,
         `${label}.owners.source[${index}]`,
         failures,
-        PROVEN_BROKEN_CAPABILITY_IDS.has(label),
+        CURRENT_PROVEN_BROKEN_CAPABILITY_IDS.has(label),
       )
     );
 
@@ -482,14 +505,14 @@ export function validateLedger({ root, ledger, registered, advertised }) {
   );
   addSetDiff(
     failures,
-    PROVEN_BROKEN_CAPABILITY_IDS,
+    CURRENT_PROVEN_BROKEN_CAPABILITY_IDS,
     brokenIds,
     "proven-broken capability was laundered to another status",
   );
   addSetDiff(
     failures,
     brokenIds,
-    PROVEN_BROKEN_CAPABILITY_IDS,
+    CURRENT_PROVEN_BROKEN_CAPABILITY_IDS,
     "broken classification lacks proven-broken authority",
   );
 

@@ -9303,6 +9303,30 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 
 ---
 
+## DRAFT — issue #1977 (canonical Ari RSVP lifecycle)
+
+### I-PROPOSED-1977-ONE-RSVP-GRAPH (DRAFT)
+
+- **Rule:** Ari and Business web, iOS, and Android create, edit, publish, discard, roster-manage, and contribution-manage one RSVP graph through the same canonical transaction owners; RSVP event graphs never gain ticket types.
+- **Enforcement:** `business_create_rsvp_draft_graph`, `business_update_rsvp_graph`, `business_publish_rsvp_graph`, `business_discard_rsvp_draft`, the shared Business services, and the append-only #1977 SQL/Deno/Jest regressions.
+
+### I-PROPOSED-1977-ONE-GUEST-STATUS-EFFECT (DRAFT)
+
+- **Rule:** A selected or all-pending guest decision has one capacity-checked effect owner, one roster-watermark boundary, and at most one pass enqueue; legacy helpers delegate to that owner rather than writing a second status transition.
+- **Enforcement:** `business_set_rsvp_guest_status`, its legacy delegators, and the #1977 selected/all-pending/capacity/idempotency regressions.
+
+### I-PROPOSED-1977-CONTRIBUTION-SOURCE-REFUND (DRAFT)
+
+- **Rule:** Contribution reads and refunds require finance-manager rank, bind the contribution to the requested RSVP event, and prepare the refund through the canonical source-refund ledger; a contribution refund cannot be reshaped as an order refund.
+- **Enforcement:** `business_list_rsvp_contributions`, `biz_prepare_rsvp_contribution_refund`, `rsvp-contribution-refund`, source-refund Business services, and the #1977 tenant/role/event/replay guards.
+
+### I-PROPOSED-1977-ARI-RSVP-RECEIPT-AND-STATE (DRAFT)
+
+- **Rule:** Ari RSVP mutations use #1972's actor-bound immutable receipt and #1985's persisted task state. Exact operation arguments replay one result; changed arguments conflict with zero new effects; scanner work remains an honest guided handoff.
+- **Enforcement:** `ari_execute_rsvp_operation`, agent confirmation, RSVP task planning/recovery, the shared authorization registry, and the #1977 implementor receipt/task-state proofs.
+
+---
+
 ## DRAFT — issue #2060 (Ari reliability and exact-release certification)
 
 These invariants remain DRAFT until #2060 is merged, both Ari functions and
