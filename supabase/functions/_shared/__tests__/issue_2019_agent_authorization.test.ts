@@ -31,6 +31,8 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
 // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay authoring (+3), venue listing
 // reads (+3), and venue manage tools (+3); 71 + 9 = 80.
 // [TEST-MOD-APPROVED #1979] Registry pin 77→80 after additive #1978 rebase.
+// [TEST-MOD-APPROVED #424] Guest-binding fixture uses set_rsvp_guest_status
+// (set_guest_approval now requires rsvp_id for #1984 host_set_rsvp_status).
   assert(
     AGENT_TOOLS.length === 80,
     `expected 80 tools, got ${AGENT_TOOLS.length}`,
@@ -529,8 +531,8 @@ Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", as
     },
   };
   await authorizeAgentTool(
-    tool("set_guest_approval"),
-    { event_id: EVENT, guest_id: GUEST, approved: true },
+    tool("set_rsvp_guest_status"),
+    { event_id: EVENT, guest_id: GUEST, status: "approved" },
     resourceClient,
     UUID,
   );
