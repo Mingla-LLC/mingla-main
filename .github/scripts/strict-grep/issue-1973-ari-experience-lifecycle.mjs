@@ -154,8 +154,9 @@ function check(s) {
   ]);
   requireAll("117-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:116",
-    "expected exactly 117 certification requirements",
+    "SELECT count(*) - 1 INTO v_expected_present",
+    "format('ari_cert_missing_capabilities:%s', v_expected_present)",
+    "expected current-minus-one rejection",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -257,7 +258,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:116",
+        "SELECT count(*) - 1 INTO v_expected_present",
         "accepted_obsolete_inventory",
       ),
     },
