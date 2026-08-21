@@ -19,6 +19,9 @@ const CHILD_TOOLS = [
   "create_venue_listing",
   "venue_ops_action",
   "send_venue_sms",
+  "manage_venue_availability",
+  "manage_venue_menu",
+  "manage_venue_waitlist",
   "draft_campaign",
   "send_campaign_now",
   "run_growth_tool",
@@ -71,12 +74,15 @@ Deno.test("#424 adversarial: refund_order / send_campaign_now reject bad ids", a
 
 Deno.test("#424 adversarial: cancel_event rejects a missing or wrong confirm_phrase before any RPC", async () => {
   const tool = findTool("cancel_event")!;
+  // #2019 requires a real caller id (isUuid) before the schema/confirm gate, so
+  // the userId must be a uuid to reach the confirm_phrase assertion under test.
+  const CALLER = "99999999-9999-4999-8999-999999999999";
   await assertRejects(
     () =>
       tool.executor(
         { event_id: "11111111-1111-4111-8111-111111111111" },
         {} as never,
-        "u",
+        CALLER,
       ),
     ToolError,
     "confirm_phrase must be CANCEL",
@@ -89,7 +95,7 @@ Deno.test("#424 adversarial: cancel_event rejects a missing or wrong confirm_phr
           confirm_phrase: "cancel",
         },
         {} as never,
-        "u",
+        CALLER,
       ),
     ToolError,
     "confirm_phrase must be CANCEL",

@@ -1,0 +1,45 @@
+name: Issue 1979 Ari venue ops / SMS / availability / menu / waitlist
+
+on:
+  push:
+    paths:
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
+      - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
+      - ".github/scripts/strict-grep/issue-1970-ari-capabilities-sync.mjs"
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
+      - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
+      - ".github/scripts/strict-grep/issue-1970-ari-capabilities-sync.mjs"
+
+permissions:
+  contents: read
+
+jobs:
+  venue-ops-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      # Source contract + adversarial rejection for the repaired/registered tools.
+      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts
+      - run: deno check supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentToolAuthorization.ts
+      # The registry / prompt / ledger / authorization contracts stay in bijection.
+      - run: node .github/scripts/strict-grep/issue-1970-ari-capabilities-sync.mjs
+      - run: node .github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs
+      - run: node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs

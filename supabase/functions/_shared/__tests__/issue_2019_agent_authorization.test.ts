@@ -28,15 +28,15 @@ const tool = (name: string) => {
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
   // #1973/#1985 denominator without changing inherited authorization semantics.
-  // [TEST-MOD-APPROVED #1975+#1978] Stay authoring (+3) and venue reads (+3)
-  // join the registry (71 + 6 = 77).
+// [TEST-MOD-APPROVED #1975+#1978+#1979] Stay authoring (+3), venue listing
+// reads (+3), and venue manage tools (+3); 71 + 9 = 80.
   assert(
-    AGENT_TOOLS.length === 77,
-    `expected 77 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 80,
+    `expected 80 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 77, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 80, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 77,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 80,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
