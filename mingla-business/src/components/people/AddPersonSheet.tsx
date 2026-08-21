@@ -10,6 +10,8 @@ import { ScrollView } from "../../wrappers/SmartScrollView";
 import { createPeopleRequestId } from "./peopleRequestId";
 import { Button } from "../ui/Button"; import { ConfirmDialog } from "../ui/ConfirmDialog"; import { Icon } from "../ui/Icon"; import { Input } from "../ui/Input"; import { Sheet } from "../ui/Sheet";
 
+export { createPeopleRequestId } from "./peopleRequestId";
+
 const emailOk=(v:string):boolean=>v.trim()===""||/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 export function AddPersonSheet({visible,onClose,brandId,online,authorized,onCompleted}:{visible:boolean;onClose:()=>void;brandId:string;online:boolean;authorized:boolean;onCompleted:(result:AddBrandPersonResult)=>void}):React.ReactElement{
   const submittingRef=React.useRef(false);

@@ -50,7 +50,6 @@ import type {
   ConflictResolution,
 } from "../../types/people";
 import { ConflictReviewSheet, ConflictReviewStrip } from "./ConflictReviewSheet";
-import { createPeopleRequestId } from "./peopleRequestId";
 import {
   BookSheet,
   DependencyStatus,
@@ -660,12 +659,13 @@ export function PeoplePage(): React.ReactElement {
           winnerPersonId: string | null;
         }) => {
           try {
+            const clientRequestId = await import("./AddPersonSheet").then((module) => module.createPeopleRequestId());
             const result = await resolveConflict.mutateAsync({
               brandId: brand.id,
               conflictIds: input.conflictIds,
               resolution: input.resolution,
               winnerPersonId: input.winnerPersonId,
-              clientRequestId: createPeopleRequestId(),
+              clientRequestId,
             });
             capturePeople("people_conflict_resolved", {
               surface: "conflict_sheet",
