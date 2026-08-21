@@ -30,7 +30,7 @@ DECLARE
 BEGIN
   INSERT INTO public.marketing_campaigns (id, account_id, brand_id, audience_id, name, channel, channel_payload, status)
     VALUES (c,  gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'ADV', 'sms',   '{"kind":"sms","body":"x"}', 'sending'),
-           (c2, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'ADV2','email', '{"kind":"email"}',          'sending');
+           (c2, gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'ADV2','email', '{"kind":"email","subject":"ORCH-1270 double-send fixture","body_html":"ORCH-1270 double-send fixture"}', 'sending');
 
   -- ANGLE 1b — a duplicate (campaign_id, recipient_phone) INSERT is REJECTED.
   INSERT INTO public.marketing_messages (campaign_id, recipient_phone, channel, status) VALUES (c, '+14155550000', 'sms', 'sent');

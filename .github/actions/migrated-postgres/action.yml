@@ -138,6 +138,8 @@ runs:
         SNAP="$SNAPDIR/pgdata.tar"
         APPLIED="$SNAPDIR/applied.txt"
         COUNTS="$SNAPDIR/counts.txt"
+        VERIFY_RESTORED_SNAPSHOT=".github/actions/migrated-postgres/verify-restored-snapshot.sh"
+        VERIFY_APPLIED_PREFIX=".github/actions/migrated-postgres/verify-applied-prefix.sh"
 
         wait_ready() {
           for _ in $(seq 1 120); do
@@ -203,15 +205,28 @@ runs:
           psql -h 127.0.0.1 -p "$CPORT" -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$1" \
             || { echo "::error::migration failed: $1"; exit 1; }
         }
+        object_counts() {
+          psql -h 127.0.0.1 -p "$CPORT" -U postgres -d postgres -At -F' ' -c \
+            "SELECT (SELECT count(*) FROM pg_policies),
+                    (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal),
+                    (SELECT count(*) FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog','information_schema')),
+                    (SELECT count(*) FROM pg_class WHERE relrowsecurity),
+                    (SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema'))"
+        }
 
         ls -1 supabase/migrations/*.sql 2>/dev/null | xargs -n1 basename | sort > /tmp/repo-migrations.txt
         REPO_N=$(wc -l < /tmp/repo-migrations.txt | tr -d ' ')
 
         MODE=full
-        if [ -f "$SNAP" ] && [ -f "$APPLIED" ]; then
+        if [ -f "$SNAP" ] && [ -f "$APPLIED" ] && [ -f "$COUNTS" ]; then
+          # Exact bytes must equal a non-empty canonical repository prefix before
+          # any set-difference or newest-boundary operation may select a restore.
+          if ! bash "$VERIFY_APPLIED_PREFIX" "$APPLIED" /tmp/repo-migrations.txt; then
+            echo "::warning::snapshot applied-migration manifest is malformed — falling back to a full replay"
           # (a) snapshot must be a PREFIX of current history — nothing it contains
-          #     may have vanished from the repo.
-          if comm -23 "$APPLIED" /tmp/repo-migrations.txt | grep -q .; then
+          #     may have vanished from the repo. This remains as defense in depth
+          #     and preserves the independently tested rejection boundary.
+          elif comm -23 "$APPLIED" /tmp/repo-migrations.txt | grep -q .; then
             echo "::warning::snapshot contains migrations the repo no longer has (renamed/deleted) — falling back to a full replay"
           else
             comm -13 "$APPLIED" /tmp/repo-migrations.txt > /tmp/delta.txt
@@ -237,6 +252,17 @@ runs:
           docker start "$CNAME" >/dev/null
           adopt_password        # MUST precede wait_ready — see the note above
           wait_ready
+
+          # Verify the physical restore BEFORE applying any repository suffix.
+          # This distinguishes restore corruption from an intentional migration
+          # that removes an object. Exact equality across all five catalog
+          # families is stronger than the old post-delta "not lower" check.
+          read -r RPOL RTRG RIDX RRLS RTBL <<EOF
+          $(object_counts)
+        EOF
+          bash "$VERIFY_RESTORED_SNAPSHOT" "$COUNTS" \
+            "$RPOL" "$RTRG" "$RIDX" "$RRLS" "$RTBL"
+
           while IFS= read -r m; do [ -n "$m" ] && { echo "  + $m"; apply "supabase/migrations/$m"; }; done < /tmp/delta.txt
           echo "::endgroup::"
           [ "$DELTA_N" -eq 0 ] && OUT=exact-hit || OUT=topped-up
@@ -252,12 +278,7 @@ runs:
 
         # ---- Verification. This is the whole point; see the pg_dump note above. ----
         read -r POL TRG IDX RLS TBL <<EOF
-        $(psql -h 127.0.0.1 -p "$CPORT" -U postgres -d postgres -At -F' ' -c \
-          "SELECT (SELECT count(*) FROM pg_policies),
-                  (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal),
-                  (SELECT count(*) FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog','information_schema')),
-                  (SELECT count(*) FROM pg_class WHERE relrowsecurity),
-                  (SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema'))")
+        $(object_counts)
         EOF
         echo "how=$OUT  migrations=$REPO_N  policies=$POL triggers=$TRG indexes=$IDX rls_tables=$RLS tables=$TBL"
 
@@ -265,29 +286,6 @@ runs:
           echo "::error::Database came up but is not the migrated database (policies=$POL rls_tables=$RLS tables=$TBL). Refusing to run tests against it."
           exit 1
         fi
-        # A topped-up database must never have FEWER enforcing objects than the
-        # snapshot it grew from. Migrations add; a drop here means the restore lost
-        # something — the pg_dump failure mode, caught rather than trusted.
-        if [ "$OUT" != "full-replay" ] && [ -f "$COUNTS" ]; then
-          # `|| true` is REQUIRED, not defensive clutter. `read` returns 1 when it
-          # reaches EOF without a trailing newline — having ALREADY assigned every
-          # variable correctly. Under `set -e` that aborts the step instantly, with
-          # no message and no failing command to point at. That is exactly what
-          # happened here: the database restored perfectly, printed
-          # `policies=652 triggers=330 indexes=1427 rls_tables=397 tables=426`, and
-          # the step then died in silence one line later. The counts file is also
-          # written with a trailing newline now; both ends are fixed because either
-          # alone would leave the trap armed for the next person.
-          read -r P0 T0 I0 R0 B0 < "$COUNTS" || true
-          if [ "$POL" -lt "$P0" ] || [ "$RLS" -lt "$R0" ] || [ "$TBL" -lt "$B0" ]; then
-            echo "::error::Restored database has fewer objects than the snapshot it came from."
-            echo "::error::snapshot: policies=$P0 rls_tables=$R0 tables=$B0"
-            echo "::error::restored: policies=$POL rls_tables=$RLS tables=$TBL"
-            exit 1
-          fi
-          echo "verified against snapshot manifest (policies $P0 -> $POL, rls_tables $R0 -> $RLS, tables $B0 -> $TBL)"
-        fi
-
         # Re-export whenever this run's exact key is not already cached, so the next
         # run gets an exact hit and the snapshot keeps pace with main.
         if [ "${{ steps.restore.outputs.cache-hit }}" != "true" ]; then
