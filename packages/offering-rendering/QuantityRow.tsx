@@ -157,6 +157,12 @@ export interface QuantityRowProps {
    * component stays pure-presentational: it never computes the deposit (I-MOR-0827).
    */
   installmentNote?: string | null;
+  /**
+   * #2230 — allow the ticket name to use as many lines as Dynamic Type needs.
+   * Default false preserves the existing two-line cap for every shared caller;
+   * only the Consumer native ticket sheet opts in.
+   */
+  allowUnboundedNameWrap?: boolean;
 }
 
 export const QuantityRow: React.FC<QuantityRowProps> = ({
@@ -170,6 +176,7 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
   fallbackCurrency = null,
   onJoinWaitlist,
   installmentNote,
+  allowUnboundedNameWrap = false,
 }) => {
   const t: Required<QuantityRowTheme> = useMemo(
     () => ({ ...DEFAULT_THEME, ...(theme ?? {}) }),
@@ -332,7 +339,10 @@ export const QuantityRow: React.FC<QuantityRowProps> = ({
     <CardComponent style={[styles.host, isDisabled && styles.hostDisabled]}>
       <View style={styles.headerRow}>
         <View style={styles.nameCol}>
-          <Text style={nameStyle} numberOfLines={2}>
+          <Text
+            style={nameStyle}
+            numberOfLines={allowUnboundedNameWrap ? undefined : 2}
+          >
             {ticket.name}
           </Text>
         </View>

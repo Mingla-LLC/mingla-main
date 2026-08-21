@@ -37,6 +37,17 @@ export interface CanonicalPublicEvent {
   timezone: string;
   city: string | null;
   coverGallery: OfferingGalleryImage[];
+  occurrences: readonly PublicEventOccurrenceLike[];
+  isMultiDate: boolean;
+  multiDatePricingMode: "per_day" | "all_days";
+}
+
+export interface PublicEventOccurrenceLike {
+  id: string;
+  startAt: string;
+  endAt: string;
+  timezone: string;
+  isMaster: boolean;
 }
 
 export const publicEventBySlugKeys = {
@@ -102,6 +113,63 @@ const asFormat = (v: unknown): "in-person" | "online" | "hybrid" => {
 
 const asCoverType = (v: unknown): "image" | "video" | "gif" | null =>
   v === "image" || v === "video" || v === "gif" ? v : null;
+
+const isValidInstant = (value: string): boolean =>
+  Number.isFinite(new Date(value).getTime());
+
+const validTimezoneOr = (value: unknown, fallback: string): string => {
+  const candidate = asString(value);
+  if (candidate !== null) {
+    try {
+      new Intl.DateTimeFormat("en", { timeZone: candidate }).format(0);
+      return candidate;
+    } catch {
+      // Fall through to the bundle timezone; never carry an invalid zone.
+    }
+  }
+  return fallback;
+};
+
+const mapOccurrences = (
+  value: unknown,
+  fallbackTimezone: string,
+): PublicEventOccurrenceLike[] => {
+  if (!Array.isArray(value)) return [];
+  const byId = new Map<string, PublicEventOccurrenceLike>();
+  for (const candidate of value) {
+    if (candidate === null || typeof candidate !== "object" || Array.isArray(candidate)) {
+      continue;
+    }
+    const row = candidate as Record<string, unknown>;
+    const id = asString(row.id)?.trim() ?? null;
+    const startAt = asString(row.startAt);
+    const endAt = asString(row.endAt);
+    if (
+      id === null ||
+      id.length === 0 ||
+      startAt === null ||
+      endAt === null ||
+      !isValidInstant(startAt) ||
+      !isValidInstant(endAt) ||
+      byId.has(id)
+    ) continue;
+    byId.set(id, {
+      id,
+      startAt,
+      endAt,
+      timezone: validTimezoneOr(row.timezone, fallbackTimezone),
+      isMaster: row.isMaster === true,
+    });
+  }
+  return [...byId.values()].sort((a, b) => {
+    const aTime = new Date(a.startAt).getTime();
+    const bTime = new Date(b.startAt).getTime();
+    if (!Number.isFinite(aTime) && !Number.isFinite(bTime)) return a.id.localeCompare(b.id);
+    if (!Number.isFinite(aTime)) return 1;
+    if (!Number.isFinite(bTime)) return -1;
+    return aTime - bTime || a.id.localeCompare(b.id);
+  });
+};
 
 export const isDirectEventBundlePayload = (
   value: unknown,
@@ -169,6 +237,7 @@ export const mapRpcPayloadToPublicEvent = (
   payload: Record<string, unknown>,
 ): CanonicalPublicEvent => {
   const currency = asString(payload.currency) ?? "USD";
+  const timezone = validTimezoneOr(payload.timezone, "UTC");
   const brandRaw = (payload.brand ?? null) as Record<string, unknown> | null;
   const event: PublicEventProps = {
     id: String(payload.id ?? ""),
@@ -182,6 +251,8 @@ export const mapRpcPayloadToPublicEvent = (
     // here (the deck warm path supplies the formatted line). Empty → omitted.
     dateLine: "",
     dateSubline: null,
+    // Deliberately retained: EventOfferingBody reads dateLine/dateSubline, not
+    // datesList. #2230 carries checkout occurrences separately below.
     datesList: [],
     status:
       payload.status === "cancelled"
@@ -234,11 +305,17 @@ export const mapRpcPayloadToPublicEvent = (
     brand,
     masterStartAt: asString(payload.masterStartAt),
     masterEndAt: asString(payload.masterEndAt),
-    timezone: asString(payload.timezone) ?? "UTC",
+    timezone,
     city: asString(payload.city),
     coverGallery: Array.isArray(payload.coverGallery)
       ? (payload.coverGallery as OfferingGalleryImage[])
       : [],
+    // ⚠️ DELETE THIS AND the Explorer app shows a two-day event as one day
+    // again. The direct bundle is the sole guest-safe occurrence source.
+    occurrences: mapOccurrences(payload.occurrences, timezone),
+    isMultiDate: payload.isMultiDate === true,
+    multiDatePricingMode:
+      payload.multiDatePricingMode === "all_days" ? "all_days" : "per_day",
   };
 };
 

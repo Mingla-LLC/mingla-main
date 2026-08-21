@@ -130,6 +130,7 @@ import {
   directEventColdReadPlan,
   usePublicEventBySlug,
   type CanonicalPublicEvent,
+  type PublicEventOccurrenceLike,
 } from "../../hooks/usePublicEventBySlug";
 import { useTripIntakeSchemas } from "../../hooks/useTripIntakeSchemas";
 import { useEventTheme } from "../../hooks/useEventTheme";
@@ -165,7 +166,10 @@ import { glass } from "../../constants/designSystem";
 // ORCH-1162 Bug 2 — shared static-Mapbox builder (re-exported from
 // @mingla/offering-rendering) for the consumer EVENT "Where you'll be" map.
 import { buildStaticMapUrl } from "../../utils/mapboxStaticImage";
-import { formatEventDateLine } from "../../utils/eventDateDisplay";
+import {
+  formatEventDateLine,
+  formatOccurrenceSummary,
+} from "../../utils/eventDateDisplay";
 import type { BusinessEventCard } from "../../types/mergedDiscover";
 
 const ACCENT = "#FF6B35";
@@ -331,12 +335,14 @@ export default function ConsumerEventDetailScreen({
 
   // ORCH-1342 (D6, SPEC §4.7) — the cold /e/ route passes seed=null; resolve a
   // seed by slug from the anon public view so the FULL page (RSVP branch
-  // included) renders cold. Deck path (seedProp present) → query disabled,
-  // byte-identical behavior. In-file sibling key convention (rsvpMomentum).
+  // included) renders cold. #2230 also runs the bundle on a warm deck open so
+  // it can supplement occurrence truth only after matching the event id.
   const canonicalQuery = usePublicEventBySlug(
-    seedProp == null ? (brandSlug ?? null) : null,
-    seedProp == null ? (eventSlug ?? null) : null,
+    seedProp?.brandSlug ?? brandSlug ?? null,
+    seedProp?.eventSlug ?? eventSlug ?? null,
   );
+  // #2230: directEventColdReadPlan is deliberately unchanged. A warm bundle
+  // supplements day truth only; it must never take over seed or ticket authority.
   const coldReadPlan = directEventColdReadPlan(
     seedProp !== null,
     canonicalQuery,
@@ -371,6 +377,9 @@ export default function ConsumerEventDetailScreen({
   const [ticketQuantities, setTicketQuantities] = useState<Record<string, number>>(
     {},
   );
+  const [selectedEventDateIds, setSelectedEventDateIds] = useState<string[]>([]);
+  const [dayTruthStale, setDayTruthStale] = useState<boolean>(false);
+  const priorDayTruthRef = useRef<{ eventId: string; signature: string } | null>(null);
   const [checkoutInFlight, setCheckoutInFlight] = useState<boolean>(false);
   // issue #2265 — what the in-flight checkout is doing, driven by the flow's
   // `onPhase` callback and rendered by the cart sheet's CTA.
@@ -448,6 +457,138 @@ export default function ConsumerEventDetailScreen({
   const intakeSchemasQuery = useTripIntakeSchemas(eventId);
   const themeQuery = useEventTheme(canonical === null ? seed : null);
   const runNativeCheckout = useNativeCheckoutFlow();
+
+  const validatedDayCanonical =
+    canonicalQuery.data !== null &&
+    canonicalQuery.data !== undefined &&
+    eventId !== null &&
+    canonicalQuery.data.event.id === eventId
+      ? canonicalQuery.data
+      : null;
+  const validOccurrences = useMemo<readonly PublicEventOccurrenceLike[]>(
+    () => validatedDayCanonical?.occurrences ?? [],
+    [validatedDayCanonical],
+  );
+
+  useEffect(() => {
+    setSelectedEventDateIds([]);
+    setDayTruthStale(false);
+    priorDayTruthRef.current = null;
+  }, [eventId]);
+
+  useEffect(() => {
+    if (eventId === null || validatedDayCanonical === null) return;
+    const signature = validOccurrences
+      .map((day) => `${day.id}:${day.startAt}:${day.endAt}`)
+      .join("|");
+    const previous = priorDayTruthRef.current;
+    priorDayTruthRef.current = { eventId, signature };
+    if (
+      previous === null ||
+      previous.eventId !== eventId ||
+      previous.signature === signature
+    ) return;
+    const validIds = new Set(validOccurrences.map((day) => day.id));
+    setSelectedEventDateIds((selected) => selected.filter((id) => validIds.has(id)));
+    setDayTruthStale(true);
+    AccessibilityInfo.announceForAccessibility(
+      "Those dates just changed. Refresh and choose again.",
+    );
+  }, [eventId, validOccurrences, validatedDayCanonical]);
+
+  const toggleEventDay = useCallback((eventDateId: string): void => {
+    setSelectedEventDateIds((selected) => {
+      const next = new Set(selected);
+      if (next.has(eventDateId)) next.delete(eventDateId);
+      else next.add(eventDateId);
+      return validOccurrences.filter((day) => next.has(day.id)).map((day) => day.id);
+    });
+  }, [validOccurrences]);
+
+  const retryEventDays = useCallback((): void => {
+    void canonicalQuery.refetch().then((result) => {
+      if (!result.isError) setDayTruthStale(false);
+    });
+  }, [canonicalQuery]);
+
+  const multiDaySelection = useMemo(() => {
+    if (isRsvp || eventId === null) return null;
+    if (
+      validatedDayCanonical !== null &&
+      !validatedDayCanonical.isMultiDate &&
+      validOccurrences.length <= 1
+    ) return null;
+    if (canonicalQuery.fetchStatus === "paused") {
+      return {
+        status: "offline" as const,
+        occurrences: validOccurrences,
+        selectedEventDateIds,
+        pricingMode: validatedDayCanonical?.multiDatePricingMode ?? "per_day" as const,
+        timezone: validatedDayCanonical?.timezone ?? seed?.timezone ?? "UTC",
+        onToggle: toggleEventDay,
+        onRetry: retryEventDays,
+      };
+    }
+    if (canonicalQuery.isLoading || canonicalQuery.isPending) {
+      return {
+        status: "loading" as const,
+        occurrences: [] as readonly PublicEventOccurrenceLike[],
+        selectedEventDateIds,
+        pricingMode: "per_day" as const,
+        timezone: seed?.timezone ?? "UTC",
+        onToggle: toggleEventDay,
+        onRetry: retryEventDays,
+      };
+    }
+    if (canonicalQuery.isError || validatedDayCanonical === null) {
+      return {
+        status: "error" as const,
+        occurrences: validOccurrences,
+        selectedEventDateIds,
+        pricingMode: "per_day" as const,
+        timezone: seed?.timezone ?? "UTC",
+        onToggle: toggleEventDay,
+        onRetry: retryEventDays,
+      };
+    }
+    const shapeIsValid =
+      validatedDayCanonical.isMultiDate === (validOccurrences.length > 1);
+    if (!shapeIsValid) {
+      return {
+        status: "error" as const,
+        occurrences: validOccurrences,
+        selectedEventDateIds,
+        pricingMode: validatedDayCanonical.multiDatePricingMode,
+        timezone: validatedDayCanonical.timezone,
+        onToggle: toggleEventDay,
+        onRetry: retryEventDays,
+      };
+    }
+    if (!validatedDayCanonical.isMultiDate) return null;
+    return {
+      status: dayTruthStale ? "stale" as const : "ready" as const,
+      occurrences: validOccurrences,
+      selectedEventDateIds,
+      pricingMode: validatedDayCanonical.multiDatePricingMode,
+      timezone: validatedDayCanonical.timezone,
+      onToggle: toggleEventDay,
+      onRetry: retryEventDays,
+    };
+  }, [
+    canonicalQuery.fetchStatus,
+    canonicalQuery.isError,
+    canonicalQuery.isLoading,
+    canonicalQuery.isPending,
+    dayTruthStale,
+    eventId,
+    isRsvp,
+    retryEventDays,
+    seed?.timezone,
+    selectedEventDateIds,
+    toggleEventDay,
+    validOccurrences,
+    validatedDayCanonical,
+  ]);
 
   // ORCH-1157 [rsvp-public-redesign] OQ-1 (option a) — fetch the live RSVP
   // momentum (going-count + capacity + waitlist/approval) from the SAME anon-safe
@@ -787,6 +928,9 @@ export default function ConsumerEventDetailScreen({
           // installment plan) — request byte-identical to the EBES event path.
           ...(payload.intakeFormData.length > 0
             ? { intakeFormData: payload.intakeFormData }
+            : {}),
+          ...(payload.eventDateIds !== undefined && payload.eventDateIds.length > 0
+            ? { eventDateIds: payload.eventDateIds }
             : {}),
           // issue #2265 — feed the cart sheet's pending copy.
           onPhase: setCheckoutPhase,
@@ -1239,10 +1383,20 @@ export default function ConsumerEventDetailScreen({
   // map URL is privacy-gated: exact pin when the street is public, else null on the
   // warm path (no city centroid on the deck seed) → text venue card (rule 9).
   const seededPublicEvent = cardToPublicEvent(seed, tickets);
+  const occurrenceSummary = validOccurrences.length > 1
+    ? formatOccurrenceSummary(
+        validOccurrences,
+        validatedDayCanonical?.timezone ?? seed.timezone,
+      )
+    : null;
   const publicEventForBody: PublicEventProps =
     canonical === null
-      ? seededPublicEvent
-      : { ...canonical.event, dateLine: seededPublicEvent.dateLine };
+      ? { ...seededPublicEvent, dateSubline: occurrenceSummary }
+      : {
+          ...canonical.event,
+          dateLine: seededPublicEvent.dateLine,
+          dateSubline: occurrenceSummary,
+        };
   const bodyStaticMapUrl: string | null = (() => {
     if (publicEventForBody.format === "online") return null;
     if (publicEventForBody.hideAddressUntilTicket) return null;
@@ -1433,6 +1587,17 @@ export default function ConsumerEventDetailScreen({
                 onOpenMaps={openMapsForQuery}
                 staticMapUrl={bodyStaticMapUrl}
                 submitting={checkoutInFlight}
+                pricingNote={
+                  validOccurrences.length > 1 &&
+                  tickets.some((ticket) => !ticket.isFree) &&
+                  validatedDayCanonical?.multiDatePricingMode === "per_day"
+                    ? "per day"
+                    : validOccurrences.length > 1 &&
+                        tickets.some((ticket) => !ticket.isFree) &&
+                        validatedDayCanonical?.multiDatePricingMode === "all_days"
+                      ? "for all days"
+                      : null
+                }
                 onTicketBoxLayout={handleDockLayout}
                 // ORCH-1339 — cross-entity social proof (server-gated payload).
                 socialProof={socialProofQuery.data ?? null}
@@ -1539,6 +1704,7 @@ export default function ConsumerEventDetailScreen({
         buyerPhone={profile?.phone ?? ""}
         isSubmitting={checkoutInFlight}
         pendingPhase={checkoutPhase}
+        multiDaySelection={multiDaySelection}
         clearFloatingNav={false}
         onCancel={handleCartCancel}
         onCheckout={handleCartCheckout}

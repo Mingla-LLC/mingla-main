@@ -79,6 +79,11 @@ import { Icon } from "../ui/Icon";
 // from pg_public_event_tier_allin). The cart now shows the all-in total upfront
 // and goes straight to the native PaymentSheet — no address typed.
 import { ConsumerCartCard } from "./ConsumerCartCard";
+import {
+  EventDayChooser,
+  type EventDayChooserStatus,
+} from "./EventDayChooser";
+import type { PublicEventOccurrenceLike } from "../../hooks/usePublicEventBySlug";
 import { type CartLineSeed, useTicketCart } from "../../hooks/useTicketCart";
 import {
   ConsumerIntakeForm,
@@ -197,6 +202,18 @@ export interface TicketCartCheckoutPayload {
    * schema (the common case) so non-intake checkouts add nothing to the body.
    */
   intakeFormData: IntakeFormData[];
+  /** #2230: omitted for every single-date/trip/experience checkout. */
+  eventDateIds?: string[];
+}
+
+export interface TicketCartMultiDaySelection {
+  status: EventDayChooserStatus;
+  occurrences: readonly PublicEventOccurrenceLike[];
+  selectedEventDateIds: readonly string[];
+  pricingMode: "per_day" | "all_days";
+  timezone: string;
+  onToggle: (eventDateId: string) => void;
+  onRetry: () => void;
 }
 
 export interface TicketCartSheetProps {
@@ -279,6 +296,11 @@ export interface TicketCartSheetProps {
    * byte-identical to today. The cart sheet never computes the deposit itself.
    */
   installmentNoteByTicketId?: Record<string, string>;
+  /**
+   * #2230 — interactive multi-day decision inside this purchase container.
+   * null/omitted preserves the existing single-date tree and payload exactly.
+   */
+  multiDaySelection?: TicketCartMultiDaySelection | null;
   onCancel: () => void;
   onCheckout: (payload: TicketCartCheckoutPayload) => void;
 }
@@ -300,6 +322,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   clearFloatingNav = true,
   planTiersByTicketId,
   installmentNoteByTicketId,
+  multiDaySelection = null,
   onCancel,
   onCheckout,
 }) => {
@@ -318,6 +341,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const [marketingOptIn, setMarketingOptIn] = useState<boolean>(false);
   // ORCH-1025 — "What's included" breakdown panel expand/collapse.
   const [breakdownOpen, setBreakdownOpen] = useState<boolean>(false);
+  const [highlightUnchosen, setHighlightUnchosen] = useState<boolean>(false);
   // ORCH-1016 REWORK (D2) — per-tier intake answers + per-tier per-question
   // validation errors. Keyed by ticket_type_id → { [questionId]: value/error }.
   const [intakeAnswers, setIntakeAnswers] = useState<
@@ -377,12 +401,16 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // When a tier has no server all-in (RPC miss → priceAllInGbp falls back to
   // priceGbp in the service), its all-in == base, contributing 0 to feesTax and
   // dropping the "includes VAT & fees" affordance for that tier automatically.
-  const pricing = useMemo<{
+  // #2230 physical-Android proof: day selection can update while this sheet is
+  // held open by the native bottom-sheet host. Recompute this tiny cart sum on
+  // every render so a host that preserves the selection wrapper identity can
+  // never leave the displayed total one day behind the chooser.
+  const pricing = ((): {
     baseCents: number;
     allInCents: number;
     feesTaxCents: number;
     hasAllInDelta: boolean;
-  }>(() => {
+  } => {
     let baseCents = 0;
     let allInCents = 0;
     for (const line of lines) {
@@ -401,6 +429,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       baseCents += lineBaseCents;
       allInCents += lineAllInCents;
     }
+    const selectedDayCount = multiDaySelection === null
+      ? 1
+      : new Set(multiDaySelection.selectedEventDateIds).size;
+    const dayMultiplier =
+      multiDaySelection?.pricingMode === "per_day" ? selectedDayCount : 1;
+    baseCents *= dayMultiplier;
+    allInCents *= dayMultiplier;
     const feesTaxCents = Math.max(0, allInCents - baseCents);
     return {
       baseCents,
@@ -408,7 +443,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       feesTaxCents,
       hasAllInDelta: feesTaxCents > 0,
     };
-  }, [lines, tickets]);
+  })();
 
   // ORCH-1182 — the qty-scaled "Due today" for a pay-over-time plan cart, summed
   // over the cart's OWN LIVE lines (the BUG: the parent previously passed the
@@ -516,6 +551,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       lastOpenSeedRef.current = null;
       reset();
       setMarketingOptIn(false);
+      setHighlightUnchosen(false);
       setIntakeAnswers({});
       setIntakeErrors({});
     }
@@ -572,7 +608,21 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   const handleConfirm = useCallback((): void => {
     // ORCH-1025 — no taxPreview gate: the buyer can pay immediately. The cart is
     // unblocked the moment it has lines (and any required intake is valid).
-    if (totals.isEmpty || isSubmitting) return;
+    if (isSubmitting) return;
+    if (multiDaySelection !== null) {
+      const validIds = new Set(multiDaySelection.occurrences.map((day) => day.id));
+      const selectedIds = [...new Set(multiDaySelection.selectedEventDateIds)].filter(
+        (id) => validIds.has(id),
+      );
+      if (multiDaySelection.status !== "ready") return;
+      if (selectedIds.length === 0) {
+        // ⚠️ DELETE THIS AND a guest buys a day they never chose.
+        setHighlightUnchosen(true);
+        void Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        return;
+      }
+    }
+    if (totals.isEmpty) return;
     if (hasUnsupportedRequired) return;
 
     // ORCH-1016 REWORK (D2) — required-field validation BEFORE payment.
@@ -611,6 +661,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     // ORCH-1025 — payload omits `address` and `taxCalculationId` (G-2). The
     // all-in total (derived only from server all_in_cents) rides as `totalCents`
     // for the paid/free branch + telemetry; the charge is the PI amount.
+    const selectedEventDateIds = multiDaySelection === null
+      ? []
+      : multiDaySelection.occurrences
+          .filter((day) => multiDaySelection.selectedEventDateIds.includes(day.id))
+          .map((day) => day.id);
     onCheckout({
       lines: lines
         .filter((l) => l.quantity > 0)
@@ -618,6 +673,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       marketingOptIn,
       totalCents: pricing.allInCents,
       intakeFormData,
+      // ⚠️ DELETE THIS AND every Explorer pass mints undated, admitting on
+      // any day and inflating every day's roster (#2230 F-3/F-4).
+      ...(selectedEventDateIds.length > 0
+        ? { eventDateIds: selectedEventDateIds }
+        : {}),
     });
   }, [
     totals.isEmpty,
@@ -629,6 +689,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     lines,
     marketingOptIn,
     pricing.allInCents,
+    multiDaySelection,
     onCheckout,
   ]);
 
@@ -662,7 +723,17 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       return "populated";
     })();
 
-  const ctaLabel = totals.isEmpty
+  const selectedDayCount = multiDaySelection === null
+    ? 0
+    : new Set(multiDaySelection.selectedEventDateIds).size;
+  const dayTruthUnavailable =
+    multiDaySelection !== null && multiDaySelection.status !== "ready";
+  const missingRequiredDay =
+    multiDaySelection !== null && selectedDayCount === 0;
+
+  const ctaLabel = missingRequiredDay
+    ? "Pick at least one day above"
+    : totals.isEmpty
     ? "Add tickets above"
     : hasUnsupportedRequired
     ? "Reserve on web to continue"
@@ -670,7 +741,13 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     ? "Claim Free Ticket"
     : "Continue to Payment";
   const ctaDisabled =
-    totals.isEmpty || isSubmitting || hasUnsupportedRequired;
+    dayTruthUnavailable ||
+    (!missingRequiredDay && totals.isEmpty) ||
+    isSubmitting ||
+    hasUnsupportedRequired;
+  const ctaPressDisabled =
+    isSubmitting || hasUnsupportedRequired || dayTruthUnavailable ||
+    (!missingRequiredDay && totals.isEmpty);
 
   // issue #2265 — the pending vocabulary. The old treatment was a bare spinner
   // (and, on the screen's fallback CTA, nothing at all but `disabled`), which is
@@ -705,7 +782,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
     dueToday.cents > 0 &&
     !totals.isEmpty &&
     !totals.isFree;
-  const subtotalValueText = totals.isEmpty
+  const subtotalValueText = missingRequiredDay || dayTruthUnavailable || totals.isEmpty
     ? "—"
     : totals.isFree
     ? "Free"
@@ -743,7 +820,11 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
   // its own paddingBottom: insets.bottom+16 (parity floor, SPEC §7.2).
   const header = (
     <View style={styles.headerRow}>
-      <Text style={styles.headerTitle} numberOfLines={1} allowFontScaling>
+      <Text
+        style={styles.headerTitle}
+        numberOfLines={multiDaySelection === null ? 1 : undefined}
+        allowFontScaling
+      >
         Get tickets
       </Text>
       <Pressable
@@ -758,6 +839,34 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       </Pressable>
     </View>
   );
+
+  const ticketRows = visibleTickets.map((ticket) => {
+    const line = lines.find((l) => l.ticketTypeId === ticket.id);
+    const seed: CartLineSeed = {
+      ticketTypeId: ticket.id,
+      ticketName: ticket.name,
+      unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
+      currency: ticket.currency ?? fallbackCurrency,
+      isFree: ticket.isFree,
+    };
+    return (
+      <QuantityRow
+        key={ticket.id}
+        ticket={ticket}
+        quantity={line?.quantity ?? 0}
+        onQuantityChange={(next: number) => setLineQuantity(seed, next)}
+        CardComponent={ConsumerCartCard}
+        renderPlusIcon={(iconProps: { size: number; color: string }) => (
+          <Icon name="add" size={iconProps.size} color={iconProps.color} />
+        )}
+        formatCurrency={formatMajorCurrency}
+        theme={CONSUMER_TICKET_CART_THEME}
+        fallbackCurrency={fallbackCurrency}
+        installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
+        allowUnboundedNameWrap={multiDaySelection !== null}
+      />
+    );
+  });
 
   const body =
     renderState === "loading" ? (
@@ -783,37 +892,42 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       </View>
     ) : (
       <>
+        {multiDaySelection !== null ? (
+          <EventDayChooser
+            occurrences={multiDaySelection.occurrences}
+            selectedEventDateIds={multiDaySelection.selectedEventDateIds}
+            pricingMode={multiDaySelection.pricingMode}
+            isPaid={visibleTickets.some((ticket) => !ticket.isFree)}
+            timezone={multiDaySelection.timezone}
+            status={multiDaySelection.status}
+            highlightUnchosen={highlightUnchosen}
+            rowsDisabled={
+              isSubmitting ||
+              (multiDaySelection.status !== "ready" &&
+                multiDaySelection.status !== "offline")
+            }
+            retryDisabled={isSubmitting}
+            onToggle={(eventDateId) => {
+              setHighlightUnchosen(false);
+              void Haptics.selectionAsync();
+              multiDaySelection.onToggle(eventDateId);
+            }}
+            onRetry={multiDaySelection.onRetry}
+          />
+        ) : null}
         <Text style={styles.sectionLabel}>SELECT YOUR TICKETS</Text>
-        {visibleTickets.map((ticket) => {
-          const line = lines.find((l) => l.ticketTypeId === ticket.id);
-          const seed: CartLineSeed = {
-            ticketTypeId: ticket.id,
-            ticketName: ticket.name,
-            unitPriceCents: Math.round((ticket.priceGbp ?? 0) * 100),
-            currency: ticket.currency ?? fallbackCurrency,
-            isFree: ticket.isFree,
-          };
-          return (
-            <QuantityRow
-              key={ticket.id}
-              ticket={ticket}
-              quantity={line?.quantity ?? 0}
-              onQuantityChange={(next: number) => setLineQuantity(seed, next)}
-              CardComponent={ConsumerCartCard}
-              renderPlusIcon={(iconProps: { size: number; color: string }) => (
-                <Icon
-                  name="add"
-                  size={iconProps.size}
-                  color={iconProps.color}
-                />
-              )}
-              formatCurrency={formatMajorCurrency}
-              theme={CONSUMER_TICKET_CART_THEME}
-              fallbackCurrency={fallbackCurrency}
-              installmentNote={installmentNoteByTicketId?.[ticket.id] ?? null}
-            />
-          );
-        })}
+        {multiDaySelection !== null ? (
+          <View
+            pointerEvents={dayTruthUnavailable ? "none" : "auto"}
+            style={dayTruthUnavailable ? styles.unavailableTickets : undefined}
+            accessibilityElementsHidden={dayTruthUnavailable}
+            importantForAccessibility={
+              dayTruthUnavailable ? "no-hide-descendants" : "auto"
+            }
+          >
+            {ticketRows}
+          </View>
+        ) : ticketRows}
 
         {/* Marketing opt-in */}
         <Pressable
@@ -880,7 +994,7 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
             The public RPC exposes no VAT/service-fee SPLIT, so we never fabricate
             separate numbers — when an all-in delta exists we add the qualitative
             "Includes VAT & fees" note (G-3). Hidden for free-only carts. */}
-        {!totals.isEmpty && !totals.isFree ? (
+        {!missingRequiredDay && !dayTruthUnavailable && !totals.isEmpty && !totals.isFree ? (
           <View style={styles.breakdownWrap}>
             <Pressable
               onPress={() => setBreakdownOpen((v) => !v)}
@@ -940,7 +1054,12 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
       <View style={stickyBarStyle}>
         <View style={styles.subtotalRow}>
           <Text style={styles.subtotalLabel}>{subtotalLabelText}</Text>
-          <Text style={styles.subtotalValue}>{subtotalValueText}</Text>
+          <Text
+            style={styles.subtotalValue}
+            accessibilityLiveRegion="polite"
+          >
+            {subtotalValueText}
+          </Text>
         </View>
         {/* ORCH-1182 — pay-over-time carts show the qty-scaled deposit DUE TODAY
             on a second line beneath the all-in Total (mirrors the business
@@ -953,10 +1072,10 @@ export const TicketCartSheet: React.FC<TicketCartSheetProps> = ({
         ) : null}
         <Pressable
           onPress={handleConfirm}
-          disabled={ctaDisabled}
+          disabled={ctaPressDisabled}
           accessibilityRole="button"
           accessibilityLabel={isSubmitting ? pendingCtaLabel : ctaLabel}
-          accessibilityState={{ disabled: ctaDisabled, busy: isSubmitting }}
+          accessibilityState={{ disabled: ctaPressDisabled, busy: isSubmitting }}
           style={({ pressed }) => [
             styles.ctaButton,
             ctaDisabled && styles.ctaButtonDisabled,
@@ -1141,6 +1260,7 @@ const styles = StyleSheet.create({
     letterSpacing: 1.4,
     marginBottom: 8,
   },
+  unavailableTickets: { opacity: 0.45 },
   // Marketing opt-in
   checkboxRow: {
     flexDirection: "row",

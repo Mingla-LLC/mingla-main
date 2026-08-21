@@ -97,11 +97,11 @@ for (const [name, src] of routeCases) {
 
 // ── §4.7: cold seed resolution on the event screen ────────────────────────────
 
-Deno.test("ORCH-1342 T-07: deck-first canonical bundle owns cold standard events; legacy is RSVP-only after settled NULL", () => {
+Deno.test("ORCH-1342 T-07: the canonical bundle owns cold standard events and may supplement warm day truth; legacy is RSVP-only after settled NULL", () => {
   const compact = eventScreen.replace(/\s+/g, " ");
   assertStringIncludes(
     compact,
-    "const canonicalQuery = usePublicEventBySlug( seedProp == null ? (brandSlug ?? null) : null, seedProp == null ? (eventSlug ?? null) : null, );",
+    "const canonicalQuery = usePublicEventBySlug( seedProp?.brandSlug ?? brandSlug ?? null, seedProp?.eventSlug ?? eventSlug ?? null, );",
   );
   assertStringIncludes(
     compact,

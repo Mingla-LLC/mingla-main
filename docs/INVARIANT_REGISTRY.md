@@ -22,6 +22,20 @@
 - **Enforcement:** the issue #2063 additive migration, the #1972 shared operation-receipt contract already present on main, the #2063 Deno/PG17 regressions, `.github/scripts/strict-grep/issue-2063-ari-brand-management.mjs`, and `.github/workflows/issue-2063-ari-brand-management.yml`. The capability ledger keeps all seven rows `registered_unverified` until the final release-wide #2060 certification promotes the complete post-Ari capability universe; #2063's independent Business web, iOS, and Android runtime evidence is recorded on the issue.
 - **Status:** ACTIVE after independent tester PASS, all-green merge, exact-revision production migration and Edge deployment, production fail-closed/readback verification, and authenticated Business web, iOS, and Android runtime PASS (2026-08-21).
 
+## DRAFT — issue #2230 (Consumer native multi-day ticket scope)
+
+### I-PROPOSED-2230-A (DRAFT)
+- **Rule:** A Consumer native checkout for a valid multi-date event cannot proceed without at least one current, canonical occurrence selection. The chooser lives inside the ticket sheet, selection survives sheet close/reopen, event identity changes reset it, stale/offline/malformed day truth fails closed, and single-date behavior remains unchanged.
+- **Enforcement:** `issue_2230_screen_hands_down_days.test.tsx`, `issue_2230_cart_days.test.tsx`, and the issue-specific strict-grep/workflow. Activate only after independent Consumer iOS and Android verification and merged-main proof.
+
+### I-PROPOSED-2230-B (DRAFT)
+- **Rule:** Every Consumer event read carries only occurrence rows with a non-empty id, valid start/end instants, and a valid or canonical fallback IANA timezone, sorted chronologically and deduplicated by id. Warm/deck truth is accepted only after event-id validation; `directEventColdReadPlan`, the named `cartTickets` authority, and singular `eventDateId` remain intact.
+- **Enforcement:** `issue_2230_consumer_event_days.test.ts`, `issue_2230_screen_hands_down_days.test.tsx`, `issue_2230_native_day_payload.test.ts`, and `issue-2230-consumer-carries-occurrences.mjs` with self-test.
+
+### I-PROPOSED-2230-C (DRAFT)
+- **Rule:** Consumer occurrence labels and multi-day summaries are produced by `app-mobile/src/utils/eventDateDisplay.ts`; the chooser must not grow a second locale/date-format owner.
+- **Enforcement:** `issue_2230_cart_days.test.tsx` plus the issue-specific strict-grep gate. This remains DRAFT until #2230 is merged and independently verified.
+
 ## ACTIVE — issues #2264 / #2265 / #2253 (the buyer was told nothing, then told something false)
 
 ### I-2264-CHECKOUT-STATUS-ANSWER-NOT-DISCARDED (ACTIVE)
