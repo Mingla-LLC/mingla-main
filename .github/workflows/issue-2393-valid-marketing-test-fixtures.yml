@@ -1,0 +1,91 @@
+name: Issue 2393 valid marketing test fixtures
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
+      - "supabase/migrations/__tests__/issue_1821_accepted_email_sms_invites.test.sql"
+      - "supabase/migrations/__tests__/orch_1270_tester_double_send.test.sql"
+      - ".github/scripts/__tests__/issue-2393-valid-marketing-fixtures.test.mjs"
+      - ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml"
+      - ".github/actions/migrated-postgres/**"
+  pull_request:
+    paths:
+      - "supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql"
+      - "supabase/migrations/__tests__/issue_1821_accepted_email_sms_invites.test.sql"
+      - "supabase/migrations/__tests__/orch_1270_tester_double_send.test.sql"
+      - ".github/scripts/__tests__/issue-2393-valid-marketing-fixtures.test.mjs"
+      - ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml"
+      - ".github/actions/migrated-postgres/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  pg17:
+    name: "Issue 2393 repaired fixtures (fresh PG17)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Guard exact fixture setup contracts
+        run: node --test .github/scripts/__tests__/issue-2393-valid-marketing-fixtures.test.mjs
+      - name: PostgreSQL 17 with every migration applied
+        uses: ./.github/actions/migrated-postgres
+        with:
+          image: supabase/postgres:17.4.1.075
+          password: ${{ format('issue-2393-ci-{0}', github.run_id) }}
+      - name: Match hosted Supabase Auth user shape
+        env:
+          PGPASSWORD: ${{ format('issue-2393-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -c "ALTER TABLE auth.users ADD COLUMN IF NOT EXISTS banned_until timestamptz"
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -Atc \
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_schema='auth' AND table_name='users'
+               AND column_name='banned_until'" | grep -qx 1
+      - name: Run all three repaired suites
+        env:
+          PGPASSWORD: ${{ format('issue-2393-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_0873_guest_status_roster.test.sql
+          psql -h localhost -U supabase_admin -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1821_accepted_email_sms_invites.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/orch_1270_tester_double_send.test.sql
+      - name: Prove Issue 2291 still rejects a bare non-draft email payload
+        env:
+          PGPASSWORD: ${{ format('issue-2393-ci-{0}', github.run_id) }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+          DO $proof$
+          DECLARE
+            v_constraint text;
+          BEGIN
+            BEGIN
+              INSERT INTO public.marketing_campaigns(
+                id,account_id,brand_id,audience_id,name,channel,channel_payload,status
+              ) VALUES (
+                gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),gen_random_uuid(),
+                'Issue 2393 invalid-payload proof','email','{"kind":"email"}','sending'
+              );
+              RAISE EXCEPTION '#2393 FAIL: #2291 accepted a bare non-draft email payload';
+            EXCEPTION WHEN check_violation THEN
+              GET STACKED DIAGNOSTICS v_constraint = CONSTRAINT_NAME;
+              IF v_constraint <> 'marketing_campaigns_payload_content_required' THEN
+                RAISE;
+              END IF;
+            END;
+          END
+          $proof$;
+          SQL

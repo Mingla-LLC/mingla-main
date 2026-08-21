@@ -1,9 +1,17 @@
 -- #1821 provider-accepted email/SMS invitation state and group matrix.
 -- Run after the full migration chain on a fresh PostgreSQL 17 database.
 \set ON_ERROR_STOP on
+-- #2393: dblink opens new sessions, so inherit this run's generated CI
+-- credential through this psql session only. \getenv does not print it, and
+-- the setting must survive the suite's intentional first-phase ROLLBACK.
+\getenv issue_2393_dblink_password PGPASSWORD
+SET issue_2393.dblink_password TO :'issue_2393_dblink_password';
 BEGIN;
 
 INSERT INTO auth.users(id)
+VALUES ('18210000-0000-4000-8000-000000000001');
+
+INSERT INTO public.creator_accounts(id)
 VALUES ('18210000-0000-4000-8000-000000000001');
 
 INSERT INTO public.brands(
@@ -98,7 +106,16 @@ BEGIN
     '18210000-0000-4000-8000-000000000002',
     '18210000-0000-4000-8000-000000000010',
     'Issue 1821 Campaign',p_channel,
-    jsonb_build_object('kind',p_channel),'sending'
+    CASE p_channel
+      WHEN 'email' THEN jsonb_build_object(
+        'kind','email',
+        'subject','Issue 1821 accepted email fixture',
+        'body_html','Issue 1821 accepted email fixture'
+      )
+      ELSE jsonb_build_object(
+        'kind','sms','body','Issue 1821 accepted SMS fixture'
+      )
+    END,'sending'
   );
 END;
 $function$;
@@ -602,6 +619,8 @@ CREATE EXTENSION IF NOT EXISTS dblink;
 
 INSERT INTO auth.users(id)
 VALUES ('18218888-0000-4000-8000-000000000001');
+INSERT INTO public.creator_accounts(id)
+VALUES ('18218888-0000-4000-8000-000000000001');
 INSERT INTO public.brands(
   id,account_id,name,slug,default_currency,created_at,updated_at
 ) VALUES (
@@ -667,14 +686,14 @@ INSERT INTO public.marketing_campaigns(
   '18218888-0000-4000-8000-000000000001',
   '18218888-0000-4000-8000-000000000002',
   '18218888-0000-4000-8000-000000000007',
-  'Concurrent Email','email','{"kind":"email"}','sending'
+  'Concurrent Email','email','{"kind":"email","subject":"Issue 1821 concurrent email fixture","body_html":"Issue 1821 concurrent email fixture"}','sending'
 ),
 (
   '18218888-0000-4000-8000-000000000009',
   '18218888-0000-4000-8000-000000000001',
   '18218888-0000-4000-8000-000000000002',
   '18218888-0000-4000-8000-000000000007',
-  'Concurrent SMS','sms','{"kind":"sms"}','sending'
+  'Concurrent SMS','sms','{"kind":"sms","body":"Issue 1821 concurrent SMS fixture"}','sending'
 );
 INSERT INTO public.marketing_send_groups(
   id,event_id,brand_id,purpose,client_request_id,channels,selection_snapshot,
@@ -754,8 +773,9 @@ $function$;
 DO $concurrency$
 DECLARE
   v_conn text:=format(
-    'dbname=%L user=%L host=%L port=%L',
+    'dbname=%L user=%L password=%L host=%L port=%L',
     current_database(),current_user,
+    current_setting('issue_2393.dblink_password'),
     current_setting('unix_socket_directories'),current_setting('port')
   );
   v_ok boolean;
