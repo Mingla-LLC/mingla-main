@@ -16,6 +16,11 @@ import {
   ToolError,
 } from "./agentToolHelpers.ts";
 import {
+  applyTierPatch,
+  loadEventTicketState,
+  requireActiveTaxRegistration,
+} from "./agentTicketPricing.ts";
+import {
   assertAgentReadBrand,
   assertAgentReadEvent,
   resolveAccessibleAgentBrands,
@@ -274,85 +279,146 @@ const discardEventDraft = writeTool(
 
 const upsertTicketTier = writeTool(
   "upsert_ticket_tier",
-  "Create or update a ticket tier on an owned event. Paid tiers require pg_brand_can_collect.",
+  "Create or sparsely update a complete canonical ticket tier. Currency is derived by the server; paid tiers require payout readiness.",
   {
     event_id: UUID,
-    ticket_type_id: UUID,
+    tier_id: { type: "string", minLength: 1, maxLength: 100 },
     name: STR,
     price_cents: { type: "integer", minimum: 0 },
-    quantity: { type: "integer", minimum: 1 },
-    currency: { type: "string", minLength: 3, maxLength: 3 },
+    is_free: { type: "boolean" },
+    is_unlimited: { type: "boolean" },
+    capacity: { type: "integer", minimum: 1, nullable: true },
+    visibility: { type: "string", enum: ["public", "hidden", "disabled"] },
+    display_order: { type: "integer", minimum: 0 },
+    approval_required: { type: "boolean" },
+    waitlist_enabled: { type: "boolean" },
+    min_purchase_qty: { type: "integer", minimum: 1 },
+    max_purchase_qty: { type: "integer", minimum: 1, nullable: true },
+    allow_transfers: { type: "boolean" },
+    description: { type: "string", maxLength: 280, nullable: true },
+    sale_start_at: { type: "string", format: "date-time", nullable: true },
+    sale_end_at: { type: "string", format: "date-time", nullable: true },
+    available_at: { type: "string", enum: ["online", "door", "both"] },
   },
-  ["event_id", "name", "price_cents"],
-  async (args, client, userId) => {
-    const price = Number(args.price_cents);
-    if (!Number.isFinite(price) || price < 0) {
-      throw new ToolError("INVALID_ARGS", "price_cents must be ≥ 0");
-    }
-    if (
-      args.quantity !== undefined &&
-      (typeof args.quantity !== "number" || args.quantity < 1)
-    ) {
+  ["event_id"],
+  async (args, client, userId, context) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    const operationId = context?.operationId;
+    if (!isUuid(operationId)) {
       throw new ToolError(
-        "INVALID_ARGS",
-        "quantity must be ≥ 1 when set (omit for unlimited)",
+        "EXECUTION_CONTEXT_REQUIRED",
+        "Ticket writes require a confirmed server operation id",
       );
     }
-    const { eventId, brandId } = await requireEvent(args, client, userId);
-    if (price > 0) await assertCanCollect(client, brandId);
-    const currency = typeof args.currency === "string"
-      ? args.currency.toUpperCase()
-      : "USD";
-    if (!/^[A-Z]{3}$/.test(currency)) {
-      throw new ToolError("INVALID_ARGS", "currency must be a 3-letter code");
+    const { event, tiers } = await loadEventTicketState(client, eventId);
+    const requestedId =
+      typeof args.tier_id === "string" && args.tier_id.length > 0
+        ? args.tier_id
+        : null;
+    const existing = requestedId === null
+      ? null
+      : tiers.find((tier) => tier.id === requestedId) ?? null;
+    if (requestedId !== null && existing === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "That tier is stale or belongs to another event",
+      );
     }
-    const row: Record<string, unknown> = {
-      event_id: eventId,
-      name: args.name,
-      price_cents: price,
-      quantity_total: typeof args.quantity === "number" ? args.quantity : null,
-      currency,
-    };
-    if (isUuid(args.ticket_type_id)) {
-      const { data, error } = await client
-        .from("ticket_types")
-        .update(row)
-        .eq("id", args.ticket_type_id)
-        .eq("event_id", eventId)
-        .select("id, name, price_cents")
-        .single();
-      if (error) throw new ToolError("RPC_FAILED", error.message);
-      return data;
+    const next = applyTierPatch(
+      existing,
+      args,
+      operationId,
+      tiers.reduce((max, tier) => Math.max(max, tier.displayOrder), -1) + 1,
+    );
+    if (!next.isFree && (existing === null || existing.isFree)) {
+      await assertCanCollect(client, brandId);
     }
-    const { data, error } = await client
-      .from("ticket_types")
-      .insert(row)
-      .select("id, name, price_cents")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await callRpc(client, "ari_execute_ticket_pricing_operation", {
+      p_operation_id: operationId,
+      p_tool_name: "upsert_ticket_tier",
+      p_args: args,
+    });
   },
 );
 
 const setPricingSwitches = writeTool(
   "set_pricing_switches",
-  "Set all-in / absorb-fee / pass-tax switches via business_set_pricing_switches.",
+  "Sparsely set event tax and fee decisions; omitted keys are unchanged and inherit writes SQL NULL.",
   {
     event_id: UUID,
-    pass_tax: { type: "boolean" },
-    pass_mingla_fee: { type: "boolean" },
-    pass_service_fee: { type: "boolean" },
+    tax: {
+      type: "string",
+      enum: [
+        "inherit",
+        "pass_to_buyer",
+        "included_in_price",
+        "absorb_by_brand",
+      ],
+    },
+    mingla_fee: {
+      type: "string",
+      enum: ["inherit", "pass_to_buyer", "absorb_by_brand"],
+    },
+    service_fee: {
+      type: "string",
+      enum: ["inherit", "pass_to_buyer", "absorb_by_brand"],
+    },
   },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    await callRpc(client, "business_set_pricing_switches", {
-      p_event_id: eventId,
-      p_pass_tax: args.pass_tax ?? true,
-      p_pass_mingla_fee: args.pass_mingla_fee ?? true,
-      p_pass_service_fee: args.pass_service_fee ?? true,
+  async (args, client, userId, context) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    const supplied = ["tax", "mingla_fee", "service_fee"].filter((key) =>
+      args[key] !== undefined
+    );
+    if (supplied.length === 0) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Choose at least one pricing setting",
+      );
+    }
+    if (args.tax === "pass_to_buyer" || args.tax === "included_in_price") {
+      await requireActiveTaxRegistration(client, brandId);
+    }
+    return await callRpc(client, "ari_execute_ticket_pricing_operation", {
+      p_operation_id: requireAgentOperationId(context),
+      p_tool_name: "set_pricing_switches",
+      p_args: args,
     });
-    return { event_id: eventId, ok: true };
+  },
+);
+
+const setBrandPricingDefaults = writeTool(
+  "set_brand_pricing_defaults",
+  "Sparsely set concrete brand tax and fee defaults. Omitted keys remain unchanged.",
+  {
+    brand_id: UUID,
+    tax: {
+      type: "string",
+      enum: ["pass_to_buyer", "included_in_price", "absorb_by_brand"],
+    },
+    mingla_fee: { type: "string", enum: ["pass_to_buyer", "absorb_by_brand"] },
+    service_fee: { type: "string", enum: ["pass_to_buyer", "absorb_by_brand"] },
+  },
+  ["brand_id"],
+  async (args, client, userId, context) => {
+    const brandId = requireBrand(args, client, userId);
+    const supplied = ["tax", "mingla_fee", "service_fee"].filter((key) =>
+      args[key] !== undefined
+    );
+    if (supplied.length === 0) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Choose at least one pricing default",
+      );
+    }
+    if (args.tax === "pass_to_buyer" || args.tax === "included_in_price") {
+      await requireActiveTaxRegistration(client, brandId);
+    }
+    return await callRpc(client, "ari_execute_ticket_pricing_operation", {
+      p_operation_id: requireAgentOperationId(context),
+      p_tool_name: "set_brand_pricing_defaults",
+      p_args: args,
+    });
   },
 );
 
@@ -1657,6 +1723,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   discardEventDraft,
   upsertTicketTier,
   setPricingSwitches,
+  setBrandPricingDefaults,
   publishExperience,
   updateExperience,
   manageExperienceStops,

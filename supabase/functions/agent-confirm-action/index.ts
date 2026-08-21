@@ -119,6 +119,10 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "delete_brand",
   "manage_brand_hours",
   "manage_brand_discovery_currency",
+  // Issue #1974 — ticket/pricing writes are receipt-backed.
+  "upsert_ticket_tier",
+  "set_pricing_switches",
+  "set_brand_pricing_defaults",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.
@@ -208,8 +212,17 @@ export function toolErrorHttpStatus(code: string): number {
   if (
     ["OWNERSHIP_DENIED", "ROLE_DENIED", "BRAND_ACCESS_DENIED"].includes(code)
   ) return 403;
-  if (code === "ROLE_CHECK_UNAVAILABLE") return 503;
+  if (["ROLE_CHECK_UNAVAILABLE", "PAYOUT_CHECK_FAILED"].includes(code)) {
+    return 503;
+  }
   if (code === "INVALID_ARGS" || code === "SLUG_TAKEN") return 400;
+  if (
+    [
+      "PAYOUT_NOT_READY",
+      "TAX_REGISTRATION_REQUIRED",
+      "EVENT_CURRENCY_REQUIRED",
+    ].includes(code)
+  ) return 409;
   // ORCH-1103 — delete refused because the brand has upcoming/live events.
   // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
   if (code === "DELETE_BLOCKED_BY_EVENTS") return 409;
@@ -676,10 +689,18 @@ Deno.serve(async (req) => {
   }
 
   // #2019: resolve and authorize final edited scope while still pending.
+  const storedArgs = { ...(pending.tool_args as Record<string, unknown>) };
+  // Proposal context is server-owned presentation data. It is neither editable
+  // nor part of any model tool schema, so it must never enter final auth or the
+  // domain executor (which both reject undeclared arguments).
+  delete storedArgs.__proposal_context;
   const candidateArgs = pending.status === "pending" && body.edited_args &&
       typeof body.edited_args === "object"
-    ? body.edited_args
-    : (pending.tool_args as Record<string, unknown>);
+    ? { ...(body.edited_args as Record<string, unknown>) }
+    : storedArgs;
+  if ("__proposal_context" in candidateArgs) {
+    delete candidateArgs.__proposal_context;
+  }
 
   let canonicalArgs: Record<string, unknown>;
   try {
@@ -948,6 +969,8 @@ Deno.serve(async (req) => {
   let result: unknown;
   try {
     result = await tool.executor(finalArgs, userClient, userId, {
+      // Immutable server context: never copied into editable_args/tool_args.
+      // #1972's receipt-backed dispatcher binds this UUID to the confirmed args.
       operationId: pending.id,
     });
   } catch (err: any) {
@@ -1141,6 +1164,19 @@ export function buildFollowupText(
         return undefined;
       }
       return `Created draft experience "${title}".`;
+    }
+    if (toolName === "upsert_ticket_tier") {
+      const tierName = (result as any)?.tier?.name ??
+        (result as any)?.tiers?.[0]?.name;
+      return tierName
+        ? `Saved ticket tier "${tierName}" and verified it on the event.`
+        : `Saved the ticket tier and verified it.`;
+    }
+    if (toolName === "set_pricing_switches") {
+      return `Saved the event pricing settings and verified the resolved result.`;
+    }
+    if (toolName === "set_brand_pricing_defaults") {
+      return `Saved the brand pricing defaults and verified the resolved result.`;
     }
   } catch {
     // ignore
