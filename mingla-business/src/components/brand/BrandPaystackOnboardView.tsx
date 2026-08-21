@@ -127,6 +127,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const pickerOpenerRef = useRef<React.ElementRef<typeof Pressable>>(null);
   const lastAnnouncementRef = useRef<string | null>(null);
   const lastReportedBankErrorRef = useRef<unknown>(null);
+  const bankRetryInFlightRef = useRef(false);
 
   // #1834 D2 — iOS is the constant `true`, so the Input's key never changes,
   // no remount ever happens there, and today's immediate mount-time focus is
@@ -190,6 +191,16 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
   const searchInteractive =
     !authPending && !terminalBankError && !providerEmpty;
   const retryingBanks = banksQuery.isFetching === true;
+
+  const handleRetryBanks = useCallback((): void => {
+    if (retryingBanks || bankRetryInFlightRef.current) return;
+    bankRetryInFlightRef.current = true;
+    void banksQuery.refetch().finally(() => {
+      // Ref-only cleanup is safe after unmount and unlocks the next deliberate
+      // retry without introducing a second visual busy-state owner.
+      bankRetryInFlightRef.current = false;
+    });
+  }, [banksQuery.refetch, retryingBanks]);
 
   const sheetDynamicStyle = useMemo<ViewStyle>(() => {
     const regular = windowWidth >= bpRegular;
@@ -539,9 +550,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
                   loading={retryingBanks}
                   disabled={retryingBanks}
                   accessibilityLabel="Try loading banks again"
-                  onPress={() => {
-                    if (!retryingBanks) void banksQuery.refetch();
-                  }}
+                  onPress={handleRetryBanks}
                   style={styles.retryButton}
                 />
               </View>
@@ -557,9 +566,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
                   loading={retryingBanks}
                   disabled={retryingBanks}
                   accessibilityLabel="Try loading banks again"
-                  onPress={() => {
-                    if (!retryingBanks) void banksQuery.refetch();
-                  }}
+                  onPress={handleRetryBanks}
                   style={styles.retryButton}
                 />
               </View>
@@ -580,9 +587,7 @@ export const BrandPaystackOnboardView: React.FC<Props> = ({
                       loading={retryingBanks}
                       disabled={retryingBanks}
                       accessibilityLabel="Try loading banks again"
-                      onPress={() => {
-                        if (!retryingBanks) void banksQuery.refetch();
-                      }}
+                      onPress={handleRetryBanks}
                     />
                   </View>
                 ) : null}

@@ -323,3 +323,64 @@ describe("#2418 truthful bank picker states", () => {
     unmount(mounted);
   });
 });
+
+describe("#2418 bank retry mutex", () => {
+  beforeEach(() => {
+    mockAuthReady = true;
+    mockRefetch.mockReset();
+    mockReportNonFatal.mockClear();
+  });
+
+  it.each([
+    [
+      "terminal error",
+      {
+        error: new PaystackBankListError("unknown", 500),
+        errorUpdatedAt: 3,
+        isError: true,
+      },
+    ],
+    ["provider empty", { data: [], isSuccess: true }],
+    [
+      "background refresh error",
+      {
+        data: [{ name: "Access Bank", code: "044" }],
+        error: new PaystackBankListError("unknown", 500),
+        errorUpdatedAt: 4,
+        isError: true,
+      },
+    ],
+  ])(
+    "coalesces same-frame %s retry taps and unlocks after settle",
+    async (_label, queryState) => {
+      let settleFirstRetry: (() => void) | null = null;
+      const firstRetry = new Promise<{ data: undefined }>((resolve) => {
+        settleFirstRetry = () => resolve({ data: undefined });
+      });
+      mockRefetch
+        .mockReturnValueOnce(firstRetry)
+        .mockResolvedValueOnce({ data: undefined });
+      mockBanksQuery = baseQuery(queryState);
+      const mounted = openPicker();
+      const retry = nodesWithLabel(mounted, "Try loading banks again")[0];
+      if (!retry) throw new Error("retry control is missing");
+
+      act(() => {
+        invokeProp(retry, "onPress");
+        invokeProp(retry, "onPress");
+      });
+      expect(mockRefetch).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        settleFirstRetry?.();
+        await firstRetry;
+        await Promise.resolve();
+      });
+
+      act(() => invokeProp(retry, "onPress"));
+      expect(mockRefetch).toHaveBeenCalledTimes(2);
+      await act(async () => Promise.resolve());
+      unmount(mounted);
+    },
+  );
+});

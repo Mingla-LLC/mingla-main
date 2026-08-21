@@ -183,9 +183,22 @@ function validate(sources) {
   );
   requireText(
     "component",
-    "if (!retryingBanks) void banksQuery.refetch()",
-    "picker retry must call the real query refetch without overlap",
+    "if (retryingBanks || bankRetryInFlightRef.current) return",
+    "picker retry must synchronously reject overlapping activations",
   );
+  requireText(
+    "component",
+    "bankRetryInFlightRef.current = true",
+    "picker retry must claim its synchronous in-flight lock",
+  );
+  requireText(
+    "component",
+    "bankRetryInFlightRef.current = false",
+    "picker retry must release its lock after the request settles",
+  );
+  if ((sources.component.match(/onPress=\{handleRetryBanks\}/g) ?? []).length !== 3) {
+    failures.push("all three picker retry controls must share the mutex callback");
+  }
   requireText(
     "component",
     "hasBanks && trimmedBankSearch.length > 0 && filteredBanks.length === 0",
@@ -288,6 +301,16 @@ if (process.argv.includes("--self-test")) {
         component: sources.component.replace(
           "terminalBankError ? (",
           "false ? (",
+        ),
+      },
+    ],
+    [
+      "Paystack retry mutex",
+      {
+        ...sources,
+        component: sources.component.replace(
+          "if (retryingBanks || bankRetryInFlightRef.current) return;",
+          "if (retryingBanks) return;",
         ),
       },
     ],
