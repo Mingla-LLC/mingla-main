@@ -61,6 +61,8 @@ jobs:
             -f supabase/migrations/__tests__/issue_1977_ari_rsvp_receipt.implementor.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1977_ari_certification_118.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_rsvp_refund_event_binding.tester.adversarial.pg17.test.sql
       - name: Run Ari and Edge type/behavior contracts
         run: |
           deno test --allow-env --allow-read \
