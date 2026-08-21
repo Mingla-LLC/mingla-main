@@ -10,21 +10,15 @@
 # stops invoking the whole suite).
 #
 # REQUIRED PR GATE since #1062 CLOSE (2026-07-22, Seth-gated flip — admin-bypassable):
-#   - Triggers are `schedule` (nightly) + `workflow_dispatch` ONLY. It does NOT run
-#     on `pull_request`, so it can never gate a PR.
-#   - It is NOT in the branch-protection ruleset (`13549056` / `19508605`), so it is
-#     not a required check and cannot block a merge.
+#   - It runs on EVERY `pull_request` to main, with no paths filter, and also runs
+#     nightly plus on `workflow_dispatch`.
+#   - The exact job context `mingla-business jest (full suite)` is required by the
+#     live ruleset and blocks merge on failure (admin review bypass does not make
+#     a red check acceptable under Mingla's all-green rule).
 #   - It is a standalone test workflow, NOT a strict-grep batch gate, so it needs
 #     NO MANIFEST.json entry (MANIFEST governs only .github/scripts/strict-grep/*.mjs).
-#   The job DOES go red when tests fail (so a real regression is visibly observed —
-#   it reports failures, it does not merely exist), but a red run here blocks
-#   nothing because of the three points above.
-#
-# REQUIRED-FLIP PATH (LATER, Seth-gated — NOT done here): once the residual red
-# count reaches zero (the §4.5 burn-down backlog on #1047), Seth adds this job's
-# check-name to the required-checks ruleset and (optionally) adds a `pull_request`
-# trigger so it blocks PRs. Until then it stays advisory/nightly. See
-# docs/MINGLA_ENGINEERING_HANDBOOK.md ("mingla-business jest suite — required-flip path").
+#   The #1062 required flip is complete; this comment records current truth rather
+#   than the retired burn-down transition.
 
 name: mingla-business jest suite (required + nightly)
 
@@ -89,10 +83,8 @@ jobs:
           path: mingla-business/jest-summary.json
           if-no-files-found: warn
 
-      # Make the JOB reflect the suite result (red on any failure) so a planted
-      # regression is observed — while remaining non-blocking (schedule/dispatch
-      # only, not a required check). This is the burn-down signal: it stays red
-      # until the §4.5 residual reaches zero, then Seth flips it to required.
+      # Make the REQUIRED job reflect the suite result. A planted regression must
+      # make the exact required context red and block the PR.
       - name: Suite verdict (required — red on any failure blocks the PR)
         run: |
           node -e '
@@ -105,7 +97,7 @@ jobs:
             console.log(`Suites: ${numFailedTestSuites} failed, ${numPassedTestSuites} passed, ${numTotalTestSuites} total`);
             console.log(`Tests:  ${numFailedTests} failed, ${numPassedTests} passed, ${numTotalTests} total`);
             if (numFailedTests > 0 || numFailedTestSuites > 0) {
-              console.error(`\n#1047 residual burn-down: ${numFailedTests} test(s) / ${numFailedTestSuites} suite(s) still red — see the uploaded summary. This job is ADVISORY and blocks nothing.`);
+              console.error(`\nmingla-business required suite: ${numFailedTests} test(s) / ${numFailedTestSuites} suite(s) failed — see the uploaded summary. This red required context blocks merge.`);
               process.exit(1);
             }
             console.log("\nmingla-business jest suite is GREEN.");

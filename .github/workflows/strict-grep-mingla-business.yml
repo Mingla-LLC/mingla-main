@@ -14,6 +14,10 @@ on:
       - ".claude/skills/**"
       - "AGENTS.md"
       - ".github/scripts/strict-grep/**"
+      # issue #2431 — the topology brake must run when ANY workflow is added;
+      # otherwise a workflow-only PR could add the exact wrapper it forbids
+      # without starting this batch.
+      - ".github/workflows/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
       # #994 — the 2026-08-06 landmine was a DOCUMENT. A bypass-prevention gate
       # that cannot run on the file class the bug lives in is theatre, so
@@ -48,6 +52,9 @@ on:
       - ".claude/skills/**"
       - "AGENTS.md"
       - ".github/scripts/strict-grep/**"
+      # issue #2431 — keep the post-merge topology proof reachable for every
+      # workflow change, including workflow-only commits.
+      - ".github/workflows/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
       # #994 — the 2026-08-06 landmine was a DOCUMENT. A bypass-prevention gate
       # that cannot run on the file class the bug lives in is theatre, so
