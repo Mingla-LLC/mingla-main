@@ -28,17 +28,14 @@ const tool = (name: string) => {
 Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
   // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
   // #1973/#1985 denominator without changing inherited authorization semantics.
+  // [TEST-MOD-APPROVED #1971] five trip graph/read tools bring the registry to 75.
   assert(
-    AGENT_TOOLS.length === 70,
-    `expected 70 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 75,
+    `expected 75 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 70, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 75, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 70,
-    AGENT_TOOLS.length === 72,
-    `expected 72 tools, got ${AGENT_TOOLS.length}`,
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 72, "duplicate tool");
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 72,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 75,
     "authorization registry drift",
   );
   assert(AGENT_TOOLS.length === 68, `expected 68 tools, got ${AGENT_TOOLS.length}`);
@@ -88,6 +85,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
   assert(rows.length === 68, `expected 68 ledger rows, got ${rows.length}`);
   assert(rows.length === 72, `expected 72 ledger rows, got ${rows.length}`);
+  assert(rows.length === 75, `expected 75 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

@@ -22,6 +22,8 @@ function check(s) {
   if (declarationCount !== 68) failures.push(`expected 68 declarations, got ${declarationCount}`);
   // [TEST-MOD-APPROVED #1971] five trip graph/read tools bring the registry to 72.
   if (declarationCount !== 72) failures.push(`expected 72 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1971] five trip graph/read tools bring the registry to 75.
+  if (declarationCount !== 75) failures.push(`expected 75 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

@@ -14,8 +14,7 @@ const EXPECTED_TOOL_NAMES = [
   "create_stay_reservation", "create_support_ticket", "create_trip",
   "create_venue_listing", "create_venue_reservation", "delete_brand",
   "delete_experience", "delete_trip", "discard_event_draft", "disconnect_partner",
-  "draft_campaign",
-  "duplicate_event", "end_event_sales", "export_brand_people",
+  "draft_campaign", "duplicate_event", "end_event_sales", "export_brand_people",
   "get_brand_analytics", "get_operator_snapshot", "get_partner_status",
   "get_payout_status", "get_tax_status", "invite_brand_member", "invite_scanner",
   "list_brand_audit_log", "list_brands", "list_events", "list_guest_roster",
@@ -32,6 +31,19 @@ const EXPECTED_TOOL_NAMES = [
   "set_pricing_switches", "set_rsvp_guest_status", "submit_venue_claim",
   "transition_stay", "transition_venue_reservation", "unpublish_event",
   "unpublish_experience",
+  "get_payout_status", "get_tax_status", "get_trip_order_money",
+  "invite_brand_member", "invite_scanner", "list_brand_audit_log", "list_brands",
+  "list_events", "list_guest_roster", "manage_brand_discovery_currency",
+  "manage_brand_hours", "manage_experience_stops", "manage_trip_days",
+  "manage_trip_inclusions", "manage_trip_tiers", "manage_trip_traveler_intake",
+  "mark_claim_feedback_fixed", "patch_event_when", "publish_event",
+  "publish_experience", "publish_rsvp", "publish_trip", "quote_stay",
+  "refund_order", "refund_rsvp_contribution", "request_account_deletion",
+  "retry_installment", "revoke_brand_member", "run_growth_tool",
+  "schedule_campaign", "send_campaign_now", "send_venue_sms", "set_event_cover",
+  "set_event_guest_privacy", "set_guest_approval", "set_pricing_switches",
+  "set_rsvp_guest_status", "submit_venue_claim", "transition_stay",
+  "transition_venue_reservation", "unpublish_event", "unpublish_experience",
   "update_ari_prefs", "update_brand", "update_event", "update_experience",
   "update_notification_prefs", "update_trip", "upsert_ticket_tier",
   "venue_ops_action",
@@ -41,20 +53,15 @@ const EXPECTED = Object.freeze({
   capabilityCount: 117,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 33,
-    broken: 36,
+    registered_unverified: 42,
+    broken: 32,
     guided_handoff: 8,
-    unsupported: 36,
+    unsupported: 31,
     in_flight: 4,
   }),
   idDigest: "9366acdea4ba816a7b69b6cdc970b9b75ec705eba0832683013397bd9ad6e05b",
-  statusDigest: "b550638521af91408a961e08c162222c0dd5772777fa80e354e3e7388af12387",
-  mappingDigest: "d7e46c75cd8b5948a210c6938b9ac9e2e69d1afa73a9c16083b3729c5a9e8e57",
-    registered_unverified: 39,
-    broken: 32,
-    unsupported: 34,
-  statusDigest: "ac3be32a2dd17f3d85f8d97f6505d6871902b87763f71528e5181bc95cb5d90a",
-  mappingDigest: "0d3d6a6f8a870a47630251d888b0c70d19d11fd7f174617f6f2ac243f9e5e5be",
+  statusDigest: "0547e3030b0328d5f9c9d3ac9ef1cabf5b9b689b09da75e7a73399120f5c639a",
+  mappingDigest: "3611ef0183296d47a57b085378ab7bb58d4e04c7760d57de15ae3d21eb258ab3",
   sourceRefDigest: "761d3cf68c6f5e0ff8060e8d7f070a452c1f1de15856467a40e0b6e175298012",
     broken: 34,
     unsupported: 38,
@@ -92,6 +99,8 @@ function independentlyValidateSnapshot(ledger) {
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("34/33/38/8/4/0 classification changed");
   if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("72-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("32/39/34/8/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("75-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("42/32/8/31/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
