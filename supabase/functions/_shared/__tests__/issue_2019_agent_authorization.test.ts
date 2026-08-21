@@ -536,3 +536,59 @@ Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", as
     "guest binding skipped canonical RSVP parent",
   );
 });
+
+Deno.test("#2019 RSVP contribution binding follows contribution to event", async () => {
+  const EVENT = "44444444-4444-4444-8444-444444444444";
+  const CONTRIBUTION = "55555555-5555-4555-8555-555555555555";
+  const selects: string[] = [];
+  const resourceClient: any = {
+    rpc(name: string) {
+      return Promise.resolve({
+        data: name === "biz_role_rank" ? 30 : 30,
+        error: null,
+      });
+    },
+    from(table: string) {
+      let selected = "";
+      const query: any = {
+        select: (columns: string) => {
+          selected = columns;
+          selects.push(`${table}:${columns}`);
+          return query;
+        },
+        eq: () => query,
+        is: () => query,
+        maybeSingle: () =>
+          Promise.resolve({
+            data: table === "events" && selected === "brand_id, event_type"
+              ? { brand_id: UUID, event_type: "rsvp" }
+              : table === "event_rsvp_contributions" &&
+                  selected === "event_id"
+              ? { event_id: EVENT }
+              : null,
+            error: null,
+          }),
+      };
+      return query;
+    },
+  };
+  // [TEST-MOD-APPROVED #1977] The duplicate set_guest_approval tool was
+  // removed by the binding SPEC. Preserve #2019's indirect-resource guard on
+  // the replacement high-risk RSVP contribution identity.
+  await authorizeAgentTool(
+    tool("refund_rsvp_contribution"),
+    {
+      event_id: EVENT,
+      contribution_id: CONTRIBUTION,
+      mode: "discretionary",
+      reason: "Guest requested a refund",
+      confirm_phrase: "REFUND",
+    },
+    resourceClient,
+    UUID,
+  );
+  assert(
+    selects.includes("event_rsvp_contributions:event_id"),
+    "contribution binding skipped canonical RSVP parent",
+  );
+});

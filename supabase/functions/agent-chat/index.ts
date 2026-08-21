@@ -70,6 +70,7 @@ import {
 import {
   applyStoredChoice,
   isCreateEventPlanningRequest,
+  isCreateRsvpPlanningRequest,
   isReadInterruption,
   planEventTurn,
   PlannerClassification,
@@ -166,19 +167,27 @@ function taskResourceFromResult(
   result: unknown,
 ): { kind: string; id: string; label: string } | undefined {
   if (
-    toolName !== "create_event" || result === null || typeof result !== "object"
+    !["create_event", "create_rsvp"].includes(toolName) || result === null ||
+    typeof result !== "object"
   ) return undefined;
   const event = (result as { event?: unknown }).event;
   if (event === null || typeof event !== "object") return undefined;
   const id = (event as { id?: unknown }).id;
   const title = (event as { title?: unknown }).title;
   return typeof id === "string" && typeof title === "string"
-    ? { kind: "event", id, label: title.slice(0, 240) }
+    ? {
+      kind: toolName === "create_rsvp" ? "rsvp" : "event",
+      id,
+      label: title.slice(0, 240),
+    }
     : undefined;
 }
 
 function stateSummaryEvent(classification: string, state: TaskStateV1): string {
-  if (state.active_task?.intent === "create_event") {
+  if (
+    state.active_task &&
+    ["create_event", "create_rsvp"].includes(state.active_task.intent)
+  ) {
     const resolved = Object.entries(state.active_task.slots)
       .filter(([, slot]) => slot.status === "resolved")
       .map(([key]) => key)
@@ -1358,7 +1367,9 @@ async function handle(req: Request): Promise<Response> {
       questionId: crypto.randomUUID(),
     }
     : null;
-  const activeEventPlan = taskState.active_task?.intent === "create_event" &&
+  const activeEventPlan = ["create_event", "create_rsvp"].includes(
+    taskState.active_task?.intent ?? "",
+  ) &&
     !["completed", "cancelled"].includes(taskState.status);
   const readInterruption = activeEventPlan &&
     isReadInterruption(semanticMessage);
@@ -1478,11 +1489,13 @@ async function handle(req: Request): Promise<Response> {
 
   if (
     plannerContext && !readInterruption && !questionInterruption &&
-    (activeEventPlan || isCreateEventPlanningRequest(semanticMessage))
+    (activeEventPlan || isCreateEventPlanningRequest(semanticMessage) ||
+      isCreateRsvpPlanningRequest(semanticMessage))
   ) {
     try {
       const baseState = ["completed", "cancelled"].includes(taskState.status) &&
-          isCreateEventPlanningRequest(semanticMessage)
+          (isCreateEventPlanningRequest(semanticMessage) ||
+            isCreateRsvpPlanningRequest(semanticMessage))
         ? {
           ...IDLE_TASK_STATE,
           last_completed_step: taskState.last_completed_step,
@@ -1969,7 +1982,9 @@ async function commitPendingTurn(args: {
   const assistantMessageId = crypto.randomUUID();
   let nextState: TaskStateV1;
   try {
-    nextState = args.readyState.active_task?.intent === "create_event"
+    nextState = ["create_event", "create_rsvp"].includes(
+        args.readyState.active_task?.intent ?? "",
+      )
       ? markAwaitingConfirmation(args.readyState, pendingActionId)
       : args.readyState;
   } catch (err: unknown) {

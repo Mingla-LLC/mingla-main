@@ -66,30 +66,46 @@ serve(async (req: Request): Promise<Response> => {
     return jsonResponse({ error: "invalid_json" }, 400);
   }
 
-  const reason =
-    typeof body.reason === "string" && body.reason.trim().length >= 3
-      ? body.reason.trim()
-      : "Organiser refund";
+  const reason = typeof body.reason === "string" ? body.reason.trim() : "";
   const cancelAll = body.cancelAll === true;
   const eventId = typeof body.eventId === "string" ? body.eventId : "";
   const contributionId = typeof body.contributionId === "string"
     ? body.contributionId
     : "";
+  const operationId = typeof body.operationId === "string"
+    ? body.operationId
+    : null;
+  const operationArgs = body.operationArgs !== null &&
+      typeof body.operationArgs === "object" &&
+      !Array.isArray(body.operationArgs)
+    ? body.operationArgs as Record<string, unknown>
+    : null;
 
   const supabase = serviceClient();
   const asUser = userClient(req); // JWT-bound → host-read RLS is the permission gate.
 
   // #1221 typed path. Preparation owns the exact cents and authorization; the
   // provider runner is best-effort and the durable nonterminal state is returned.
-  const prepareOne = async (id: string, mode: RefundMode) => {
+  const prepareOne = async (
+    boundEventId: string,
+    id: string,
+    mode: RefundMode,
+  ) => {
     const idempotency = req.headers.get("idempotency-key") ??
       `${id}:${mode}`;
-    const prepared = await asUser.rpc("biz_prepare_rsvp_contribution_refund", {
-      p_contribution_id: id,
-      p_mode: mode,
-      p_reason: reason,
-      p_client_idempotency_key: idempotency,
-    });
+    const prepared = operationId && operationArgs
+      ? await asUser.rpc("ari_execute_rsvp_operation", {
+        p_operation_id: operationId,
+        p_tool_name: "refund_rsvp_contribution",
+        p_args: operationArgs,
+      })
+      : await asUser.rpc("biz_prepare_rsvp_contribution_refund", {
+        p_event_id: boundEventId,
+        p_contribution_id: id,
+        p_mode: mode,
+        p_reason: reason,
+        p_client_idempotency_key: idempotency,
+      });
     if (prepared.error) throw new Error(prepared.error.message);
     const refundId = prepared.data?.refund_id;
     if (typeof refundId === "string") {
@@ -113,8 +129,14 @@ serve(async (req: Request): Promise<Response> => {
     }
     return prepared.data;
   };
+  if (!eventId) return jsonResponse({ error: "event_id_required" }, 400);
+  if ((operationId === null) !== (operationArgs === null)) {
+    return jsonResponse({ error: "operation_binding_invalid" }, 400);
+  }
+  if (reason.length < 3 || reason.length > 500) {
+    return jsonResponse({ error: "refund_reason_invalid" }, 400);
+  }
   if (cancelAll) {
-    if (!eventId) return jsonResponse({ error: "event_id_required" }, 400);
     const { data: contributions, error } = await asUser
       .from("event_rsvp_contributions").select("id")
       .eq("event_id", eventId).in("status", ["paid", "partially_refunded"]);
@@ -122,7 +144,7 @@ serve(async (req: Request): Promise<Response> => {
     const operations = [];
     for (const contribution of contributions ?? []) {
       operations.push(
-        await prepareOne(String(contribution.id), "cancellation"),
+        await prepareOne(eventId, String(contribution.id), "cancellation"),
       );
     }
     return jsonResponse({ operations }, 202);
@@ -130,12 +152,13 @@ serve(async (req: Request): Promise<Response> => {
   if (!contributionId) {
     return jsonResponse({ error: "contribution_id_required" }, 400);
   }
-  const typedMode: RefundMode = body.mode === "cancellation"
-    ? "cancellation"
-    : "discretionary";
+  if (body.mode !== "cancellation" && body.mode !== "discretionary") {
+    return jsonResponse({ error: "refund_mode_invalid" }, 400);
+  }
+  const typedMode: RefundMode = body.mode;
   try {
     return jsonResponse({
-      refund: await prepareOne(contributionId, typedMode),
+      refund: await prepareOne(eventId, contributionId, typedMode),
     }, 202);
   } catch (caught) {
     const message = caught instanceof Error ? caught.message : "";

@@ -150,9 +150,14 @@ beforeEach(() => {
 describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ness", () => {
   const runCreate = async (
     source: DraftEvent,
-  ): Promise<{ insertPayloads: unknown[]; rpcNames: unknown[] }> => {
+  ): Promise<{
+    insertPayloads: unknown[];
+    rpcNames: unknown[];
+    rpcArgs: unknown[];
+  }> => {
     const capture = { inFilters: [] as InFilter[], insertPayloads: [] as unknown[] };
     const rpcNames: unknown[] = [];
+    const rpcArgs: unknown[] = [];
     const insertedRow = {
       id: "00000000-0000-4000-8000-0000000000aa",
       brand_id: source.brandId,
@@ -186,20 +191,27 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
       async (name: unknown, rawArgs: unknown) => {
         const args = rawArgs as { p_payload?: unknown };
         rpcNames.push(name);
-        expect(name).toBe("business_create_event_draft");
+        rpcArgs.push(args);
         capture.insertPayloads.push(args.p_payload);
         return { data: { event: insertedRow }, error: null };
       },
     );
     await createServerDraft(source.brandId, source);
-    return { insertPayloads: capture.insertPayloads, rpcNames };
+    return { insertPayloads: capture.insertPayloads, rpcNames, rpcArgs };
   };
 
-  test("RSVP draft (isRsvp:true) → server row inserted with event_type:'rsvp'", async () => {
-    const { insertPayloads } = await runCreate(baseDraft({ isRsvp: true }));
-    expect(insertPayloads).toHaveLength(1);
-    expect((insertPayloads[0] as { event_type?: string }).event_type).toBe(
-      "rsvp",
+  // [TEST-MOD-APPROVED #1977] The protected #1150 assertion remains a real
+  // createServerDraft mount, but now pins the canonical RSVP graph owner that
+  // guarantees event_type='rsvp' instead of a caller-written insert field.
+  test("RSVP draft (isRsvp:true) → canonical RSVP graph owner receives the typed RSVP draft", async () => {
+    const { rpcNames, rpcArgs } = await runCreate(baseDraft({ isRsvp: true }));
+    expect(rpcNames).toEqual(["business_create_rsvp_draft_graph"]);
+    expect(
+      (rpcArgs[0] as {
+        p_payload?: { theme?: { business_draft?: { isRsvp?: boolean } } };
+      }).p_payload?.theme?.business_draft?.isRsvp,
+    ).toBe(
+      true,
     );
   });
 
