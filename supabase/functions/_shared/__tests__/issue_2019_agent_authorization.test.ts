@@ -37,6 +37,9 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
     Object.keys(AGENT_TOOL_AUTHORIZATION).length === 70,
     "authorization registry drift",
   );
+  assert(AGENT_TOOLS.length === 68, `expected 68 tools, got ${AGENT_TOOLS.length}`);
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 68, "duplicate tool");
+  assert(Object.keys(AGENT_TOOL_AUTHORIZATION).length === 68, "authorization registry drift");
   for (const tool of AGENT_TOOLS) {
     const expected = AGENT_TOOL_AUTHORIZATION[tool.name];
     assert(
@@ -78,6 +81,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     AGENT_TOOL_AUTHORIZATION[row.ari_tool]
   );
   assert(rows.length === 70, `expected 70 ledger rows, got ${rows.length}`);
+  const rows = ledger.capabilities.filter((row: any) => AGENT_TOOL_AUTHORIZATION[row.ari_tool]);
+  assert(rows.length === 68, `expected 68 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

@@ -25,7 +25,7 @@ const EXPECTED_TOOL_NAMES = [
   "publish_trip", "quote_stay", "refund_order", "refund_rsvp_contribution",
   "request_account_deletion", "retry_installment", "revoke_brand_member",
   "run_growth_tool", "schedule_campaign", "send_campaign_now", "send_venue_sms",
-  "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
+  "set_brand_pricing_defaults", "set_event_cover", "set_event_guest_privacy", "set_guest_approval",
   "set_pricing_switches", "set_rsvp_guest_status", "submit_venue_claim",
   "transition_stay", "transition_venue_reservation", "unpublish_event",
   "unpublish_experience",
@@ -48,6 +48,11 @@ const EXPECTED = Object.freeze({
   statusDigest: "b550638521af91408a961e08c162222c0dd5772777fa80e354e3e7388af12387",
   mappingDigest: "d7e46c75cd8b5948a210c6938b9ac9e2e69d1afa73a9c16083b3729c5a9e8e57",
   sourceRefDigest: "761d3cf68c6f5e0ff8060e8d7f070a452c1f1de15856467a40e0b6e175298012",
+    broken: 34,
+    unsupported: 38,
+  statusDigest: "3f4d11a2b40cc4e650bdd9de49c5b4cd5de03759ac7dd5afa612ae6cfacc84fb",
+  mappingDigest: "1d0131b018408d9251310ce4812ca7f01f6b7e83b42ae3db4864afd8430d8ab9",
+  sourceRefDigest: "d1b3aef21f619445232f46ecdaed7a333f0a56a765819dba174a685addf87170",
 });
 
 function readLedger() {
@@ -75,6 +80,8 @@ function independentlyValidateSnapshot(ledger) {
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
   if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("70-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("36/33/36/8/4/0 classification changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("68-tool set changed");
+  if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) failures.push("34/33/38/8/4/0 classification changed");
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
   if (digest(mapped.map((capability) => `${capability.ari_tool}\t${capability.id}`)) !== EXPECTED.mappingDigest) failures.push("tool-to-capability mapping changed");
@@ -107,7 +114,7 @@ test("tester rejects a bijective but semantically swapped tool mapping", () => {
 
 test("tester rejects broken-to-unverified status laundering with reconciled counters", () => {
   const ledger = readLedger();
-  const row = ledger.capabilities.find((capability) => capability.id === "ari.ticket.upsert_tier");
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.trip.create");
   row.status = "registered_unverified";
   ledger.audit.status_breakdown.broken--;
   ledger.audit.status_breakdown.registered_unverified++;
