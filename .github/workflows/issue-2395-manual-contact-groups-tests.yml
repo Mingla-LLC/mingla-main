@@ -50,7 +50,7 @@ jobs:
         working-directory: mingla-business
       - name: Service and component happy paths
         working-directory: mingla-business
-        run: npx jest --runInBand src/services/marketing/__tests__/issue_2395_manual_group_service.happy.test.ts src/services/marketing/__tests__/issue_2395_manual_group_service.tester.test.ts src/components/people/__tests__/issue_2395_manual_contact_groups.happy.test.ts src/components/people/__tests__/issue_2395_manual_contact_groups.tester.test.ts src/components/marketing/__tests__/issue_2395_manual_contact_groups_feature_off.tester.test.ts
+        run: npx jest --runInBand src/services/marketing/__tests__/issue_2395_manual_group_service.happy.test.ts src/services/marketing/__tests__/issue_2395_manual_group_service.tester.test.ts src/components/people/__tests__/issue_2395_manual_contact_groups.happy.test.ts src/components/people/__tests__/issue_2395_manual_contact_groups.tester.test.ts src/components/marketing/__tests__/issue_2395_manual_contact_groups_feature_off.tester.test.ts src/components/people/__tests__/issue_2395_manual_group_lazy_boundaries.tester.test.ts src/components/people/__tests__/PeoplePage.issue1774.behavior.test.tsx src/components/people/__tests__/PeoplePage.issue2024.happy.test.tsx
       - name: Edge type and sealed-resolver behavior
         run: |
           deno check supabase/functions/_shared/marketingAudience.ts supabase/functions/marketing-send/index.ts
