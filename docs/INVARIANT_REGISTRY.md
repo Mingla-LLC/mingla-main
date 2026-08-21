@@ -1,5 +1,19 @@
 # Invariant Registry
 
+## ACTIVE — issue #2411 (free orders remain visible and countable without currency)
+
+### I-PROPOSED-2411-ZERO-MONEY-ORDER-CURRENCY-NULL (ACTIVE)
+
+- **Rule:** A zero-money order may carry null currency and must map and count normally without a fallback. Any positive order, line, or succeeded-refund money requires a real, consistent currency or the entire event-order read fails closed.
+- **Enforcement:** the #2411 implementor raw-row regression, the independent mixed-row/refund adversarial regression, and the shared `orderCurrencyContract` used by Host order mapping and money summaries.
+- **Status:** ACTIVE after independent tester CONDITIONAL PASS, exact fail-on-revert proof, mobile runtime parity, and merge of PR #2420 (2026-08-21). The tester's two P4 limitations concern organizer-session and browser-tool provenance, not the protected contract.
+
+### I-PROPOSED-2411-ORDER-READ-STATE-NOT-ZERO (ACTIVE)
+
+- **Rule:** No event-order consumer may convert disabled, loading, or error into empty, zero, false, or not-found. Only a successful ready-empty payload represents zero; a background failure retains the last truthful data and exposes an explicit stale-error signal.
+- **Enforcement:** the #2411 implementor state-matrix regression, the independent rendered/source adversarial regression, and discriminated `EventOrdersRead` propagation across Host Home, Hub, event, order, guest, reconciliation, experience, and trip surfaces.
+- **Status:** ACTIVE after independent tester CONDITIONAL PASS, exact fail-on-revert proof, mobile runtime parity, and merge of PR #2420 (2026-08-21). Production read-only truth at close was 6 orders and 12 valid free tickets, all legitimately zero-total with null currency.
+
 ## ACTIVE — issue #2063 (Ari brand-management certification)
 
 ### I-2063-ARI-BRAND-MANAGEMENT-CANONICAL-EXACTLY-ONCE (ACTIVE)

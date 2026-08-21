@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-21 — Mingla Host now counts free orders and tickets even when they correctly carry no currency, keeps the last truthful sales count during refresh failures, and distinguishes loading or errors from a genuine zero across Home, Hub, event editing, orders, guests, reconciliation, experiences, and trips. (#2411, PR #2420)
 - 2026-08-21 — Ari can now manage event ticket tiers and pricing switches through the same canonical server commands Mingla Host uses, with tax fail-closed on fresh Stripe registration attestation and truthful proposal context on confirm; ticket capability rows are registered_unverified pending Pass-5 runtime certification. (#1974, PR #2069)
 - 2026-08-21 — Free events no longer report a false failure after they have published successfully; Mingla Host now removes any stranded same-event draft on refresh, and organisers can continue editing the published event without a fabricated currency. (#2396, PR #2402)
 - 2026-08-21 — Ari can now create and manage a business brand from chat, including canonical weekly hours with overnight and closed-day schedules, currency, discovery settings, and guarded deletion; confirmations use exact server-owned receipts, survive retries, and remain isolated by brand and role across Mingla Host web, iOS, and Android. (#2063, PR #2259)
