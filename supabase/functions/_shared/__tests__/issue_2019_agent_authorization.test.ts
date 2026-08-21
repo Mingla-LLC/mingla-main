@@ -82,7 +82,7 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   const rows = ledger.capabilities.filter((row: any) =>
     AGENT_TOOL_AUTHORIZATION[row.ari_tool]
   );
-  assert(rows.length === 74, `expected 74 ledger rows, got ${rows.length}`);
+  assert(rows.length === 77, `expected 77 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
