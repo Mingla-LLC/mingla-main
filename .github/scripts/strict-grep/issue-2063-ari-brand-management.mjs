@@ -45,6 +45,10 @@ function audit(overrides = {}) {
   const receiptBindingTest = overrides.receiptBindingTest ?? read(PATHS.receiptBindingTest);
   const canonicalHoursTest = overrides.canonicalHoursTest ?? read(PATHS.canonicalHoursTest);
   const workflow = overrides.workflow ?? read(PATHS.workflow);
+  const contractsJob = workflow.slice(
+    workflow.indexOf("  issue-2063-contracts:"),
+    workflow.indexOf("  issue-2063-business-parity:"),
+  );
   const brandExecutorStart = tools.indexOf("async function executeBrandOperation(");
   const brandExecutorEnd = tools.indexOf("// Legacy append-only source-test marker: const createBrand", brandExecutorStart);
   const brandExecutor = brandExecutorStart >= 0 && brandExecutorEnd > brandExecutorStart
@@ -129,6 +133,13 @@ function audit(overrides = {}) {
     workflow,
     "issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
     "canonical-hours implementor regression is not CI-wired",
+  );
+  // [TEST-MOD-APPROVED #2063] This job invokes a historical-audit gate and must fetch its baseline.
+  requireText(
+    failures,
+    contractsJob,
+    "fetch-depth: 0",
+    "contracts checkout does not fetch the full capability-audit history",
   );
   requireText(
     failures,
@@ -313,7 +324,13 @@ if (process.argv.includes("--self-test")) {
     "issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts",
     "not CI-wired",
   );
-  console.log("[issue-2063-ari-brand-management] self-test PASS (19 hostile reversions)");
+  expectMutation(
+    "full-history checkout",
+    "workflow",
+    "fetch-depth: 0",
+    "does not fetch the full capability-audit history",
+  );
+  console.log("[issue-2063-ari-brand-management] self-test PASS (20 hostile reversions)");
 } else {
   const failures = audit();
   if (failures.length) {
