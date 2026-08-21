@@ -8,7 +8,8 @@ describe("#2395 Manual contact groups happy-path surface", () => {
   test("creation remains name-first and composes the existing importer", () => {
     const flow = read("src/components/people/ManualGroupFlow.tsx");
     expect(flow).toContain('type Step = "name" | "sources" | "book" | "upload" | "review"');
-    expect(flow).toContain('<ContactImportFlow brandId={brandId} context="manual_group"');
+    expect(flow).toContain("loader={loadContactImportFlow}");
+    expect(flow).toContain('context: "manual_group" as const');
     expect(flow).toContain("Everyone uploaded is saved to Your Book first.");
     expect(flow).toContain("Create empty group");
     expect(flow).toContain("They are not members yet and do not increase campaign reach.");

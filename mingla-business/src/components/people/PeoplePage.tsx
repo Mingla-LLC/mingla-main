@@ -14,6 +14,7 @@ import { EmptyState } from "../ui/EmptyState";
 import { Icon } from "../ui/Icon";
 import { Skeleton } from "../ui/Skeleton";
 import { Toast } from "../ui/Toast";
+import { createRetryableLazyErrorBoundary, RetryableLazyErrorBoundary } from "../ui/RetryableLazyBoundary";
 import { useShareNetworkState } from "../ui/useShareNetworkState";
 import {
   accent,
@@ -62,18 +63,22 @@ import { useMarketingBrandSwitcher } from "./MarketingBrandSwitcherContext";
 // The create/add workflow includes contact-import parsing and is only needed
 // after an operator opens it. Keeping this boundary here prevents Metro from
 // hoisting the workflow shared with group detail into every web boot.
-const ManualGroupFlow = React.lazy(async () => {
+const loadManualGroupFlow = async () => {
   const module = await import("./ManualGroupFlow");
   return { default: module.ManualGroupFlow };
+};
+const ManualGroupFlow = createRetryableLazyErrorBoundary(loadManualGroupFlow, {
+  accessibilityLiveRegion: "polite",
+  loadingLabel: "Opening group setup…",
 });
-const ManualGroupsLoader = React.lazy(async () => {
-  const module = await import("./ManualGroupFlow");
+const loadManualGroupsLoader = async () => {
+  const module = await import("./ManualGroupsLoader");
   return { default: module.ManualGroupsLoader };
-});
-const AddPersonSheet = React.lazy(async () => {
+};
+const loadAddPersonSheet = async () => {
   const module = await import("./AddPersonSheet");
   return { default: module.AddPersonSheet };
-});
+};
 
 
 const contacts = (count: number | null): string | undefined =>
@@ -374,7 +379,7 @@ export function PeoplePage(): React.ReactElement {
   const preview = book.rows.slice(0, 3);
   return (
     <View style={styles.host}>
-      {manualEnabled ? <React.Suspense fallback={null}><ManualGroupsLoader brandId={brand.id} onState={receiveManualGroups} /></React.Suspense> : null}
+      {manualEnabled ? <RetryableLazyErrorBoundary loader={loadManualGroupsLoader} accessibilityLiveRegion="polite" loadingLabel="Loading Manual groups…" componentProps={{ brandId: brand.id, onState: receiveManualGroups }} style={styles.manualGroupsLoader} /> : null}
       <View
         accessibilityElementsHidden={modalOpen}
         importantForAccessibility={modalOpen ? "no-hide-descendants" : "auto"}
@@ -629,7 +634,7 @@ export function PeoplePage(): React.ReactElement {
         onPressManual={openManualGroup}
         onCreate={() => { setGroupsOpen(false); setCreateGroupOpen(true); capturePeople("manual_group_create_started", { surface: "groups_sheet" }); }}
       />
-      {brand && createGroupOpen ? <React.Suspense fallback={null}><ManualGroupFlow visible brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created) => { setCreateGroupOpen(false); openManualGroup(created); }} /></React.Suspense> : null}
+      {brand && createGroupOpen ? <ManualGroupFlow visible brandId={brand.id} online={online} onAddPerson={() => setAddOpen(true)} onClose={() => setCreateGroupOpen(false)} onCompleted={(created: ManualGroupSummary) => { setCreateGroupOpen(false); openManualGroup(created); }} /> : null}
       <ConflictReviewSheet
         visible={conflictOpen}
         onClose={() => {
@@ -682,14 +687,7 @@ export function PeoplePage(): React.ReactElement {
           }
         }}
       />
-      {addOpen ? <React.Suspense fallback={null}><AddPersonSheet
-        visible
-        onClose={() => setAddOpen(false)}
-        brandId={brand.id}
-        online={online}
-        authorized={authorized}
-        onCompleted={addDone}
-      /></React.Suspense> : null}
+      {addOpen ? <RetryableLazyErrorBoundary loader={loadAddPersonSheet} accessibilityLiveRegion="polite" loadingLabel="Opening Add person…" componentProps={{ visible: true, onClose: () => setAddOpen(false), brandId: brand.id, online, authorized, onCompleted: addDone }} /> : null}
       <View style={styles.toast}>
         <Toast
           visible={toast !== null}
@@ -709,6 +707,9 @@ const styles = StyleSheet.create({
   },
   workspace: {
     flex: 1,
+  },
+  manualGroupsLoader: {
+    flex: 0,
   },
   content: {
     paddingHorizontal: spacing.md,
