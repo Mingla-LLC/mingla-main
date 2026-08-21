@@ -17,8 +17,13 @@ const files = {
   roster: "mingla-business/src/services/guestRosterService.ts",
   refunds: "mingla-business/src/services/sourceRefundService.ts",
   pgTest: "supabase/migrations/__tests__/issue_1977_ari_rsvp_guest_contribution.test.sql",
+  receiptTest: "supabase/migrations/__tests__/issue_1977_ari_rsvp_receipt.implementor.test.sql",
+  certificationTest: "supabase/migrations/__tests__/issue_1977_ari_certification_118.implementor.pg17.test.sql",
   denoTest: "supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts",
+  taskStateTest: "supabase/functions/_shared/__tests__/issue_1977_rsvp_task_state.implementor.test.ts",
   jestTest: "mingla-business/src/services/__tests__/issue1977RsvpLifecycle.test.ts",
+  certifier: "scripts/ari/certify-capabilities.mjs",
+  evidenceSchema: "docs/contracts/ari-certification-evidence.schema.json",
 };
 
 export function audit(base) {
@@ -29,7 +34,8 @@ export function audit(base) {
     return fs.readFileSync(target, "utf8");
   };
   const migration=read("migration"),tools=read("tools"),auth=read("auth"),prompt=read("prompt"),refund=read("refund"),drafts=read("drafts"),events=read("events"),approvals=read("approvals"),roster=read("roster"),refunds=read("refunds");
-  read("pgTest"); read("denoTest"); read("jestTest");
+  const receiptTest=read("receiptTest"),certificationTest=read("certificationTest"),certifier=read("certifier"),evidenceSchema=read("evidenceSchema");
+  read("pgTest"); read("denoTest"); read("taskStateTest"); read("jestTest");
   for (const fn of ["business_create_rsvp_draft_graph","business_update_rsvp_graph","business_publish_rsvp_graph","business_discard_rsvp_draft","business_list_rsvp_roster","business_set_rsvp_guest_status","business_list_rsvp_contributions","biz_prepare_rsvp_contribution_refund"]) {
     if (!migration.includes(`FUNCTION public.${fn}`)) failures.push(`canonical migration is missing ${fn}`);
   }
@@ -47,6 +53,9 @@ export function audit(base) {
   if (!events.includes('rpc("business_publish_rsvp_graph"') || !events.includes('rpc("business_update_rsvp_graph"')) failures.push("Business publish/live edit bypasses the canonical RSVP graph");
   for (const source of [approvals,roster]) if (!source.includes('rpc("business_set_rsvp_guest_status"')) failures.push("Business guest path bypasses the single status owner");
   if (!refunds.includes("eventId: string") || !refunds.includes("`${input.eventId}:${input.contributionId}:${input.mode}`")) failures.push("Business contribution refund is not event-bound/idempotent");
+  if (!receiptTest.includes("v_replay:=public.ari_execute_rsvp_operation") || !receiptTest.includes("idempotency_conflict") || !receiptTest.includes("operation_binding_mismatch")) failures.push("implementor receipt proof no longer covers exact replay/conflict");
+  if (!certificationTest.includes("expected exactly 118 certification requirements") || !certificationTest.includes("ari_cert_missing_capabilities:117") || !certificationTest.includes("bac1588dd5d65fd2accdbaebfc7168fd2d682b41c9a253f98e1b3afd97d3dab6")) failures.push("118-row certification regression is incomplete");
+  if (!certifier.includes("ledger.capabilities.length !== 118") || !certifier.includes("rows.length === 118") || !evidenceSchema.includes('"minItems": 118') || !evidenceSchema.includes('"maxItems": 118')) failures.push("current certifier/schema is not pinned to 118 rows");
   return failures;
 }
 
@@ -62,6 +71,9 @@ function selfTest() {
     const drafts=path.join(tmp,files.drafts),cleanDrafts=fs.readFileSync(drafts,"utf8");
     fs.writeFileSync(drafts,cleanDrafts.replace('rpc("business_create_rsvp_draft_graph"','from("events").insert'));
     if (!audit(tmp).some((failure)=>failure.includes("drafts bypass"))) throw new Error("true mutation: direct RSVP draft write was not detected");
+    const certification=path.join(tmp,files.certificationTest),cleanCertification=fs.readFileSync(certification,"utf8");
+    fs.writeFileSync(certification,cleanCertification.replace("ari_cert_missing_capabilities:117","ari_cert_missing_capabilities:116"));
+    if (!audit(tmp).some((failure)=>failure.includes("certification regression"))) throw new Error("true mutation: obsolete certifier evidence count was not detected");
     console.log("[issue-1977-ari-rsvp-lifecycle] self-test PASS");
   } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 }

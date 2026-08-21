@@ -353,6 +353,8 @@ export const autosaveServerDraft = async (
 };
 
 export const discardServerDraft = async (draftId: string): Promise<void> => {
+  // orch-strict-grep-allow events-type-filter — #1977 canonical discard must read
+  // both event and RSVP drafts; the adjacent DRAFT_EVENT_TYPES filter is exact.
   const { data: row, error: readError } = await supabase
     .from("events")
     .select("event_type")
