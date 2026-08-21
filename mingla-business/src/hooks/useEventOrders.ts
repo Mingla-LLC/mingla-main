@@ -4,7 +4,6 @@ import {
   useQuery,
   useQueryClient,
   type UseMutationResult,
-  type UseQueryResult,
 } from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
@@ -32,6 +31,7 @@ import type { OrderRecord } from "../store/orderStore";
 import {
   buildEventSalesSummary,
   type EventSalesSummary,
+  type EventOrdersReadStatus,
 } from "../utils/eventSalesSummary";
 import { currencyCodeOrNull } from "../utils/currency";
 
@@ -56,12 +56,95 @@ export const eventOrdersKeys = {
 
 const DISABLED_KEY = ["event-orders-disabled"] as const;
 
+export type EventOrdersRefetch = () => Promise<unknown>;
+
+export type EventOrdersRead<T> =
+  | {
+      status: "disabled" | "loading" | "error";
+      data: null;
+      error: Error | null;
+      isRefreshing: false;
+      refetch: EventOrdersRefetch;
+    }
+  | {
+      status: "ready";
+      data: T;
+      error: null;
+      isRefreshing: boolean;
+      refetch: EventOrdersRefetch;
+    }
+  | {
+      status: "stale-error";
+      data: T;
+      error: Error;
+      isRefreshing: false;
+      refetch: EventOrdersRefetch;
+    };
+
+interface EventOrdersQuerySnapshot<T> {
+  enabled: boolean;
+  data: T | undefined;
+  error: Error | null;
+  isError: boolean;
+  isPending: boolean;
+  isFetching: boolean;
+  refetch: EventOrdersRefetch;
+}
+
+export const projectEventOrdersRead = <T,>(
+  query: EventOrdersQuerySnapshot<T>,
+): EventOrdersRead<T> => {
+  if (!query.enabled) {
+    return {
+      status: "disabled",
+      data: null,
+      error: null,
+      isRefreshing: false,
+      refetch: query.refetch,
+    };
+  }
+  if (query.isError && query.data !== undefined) {
+    return {
+      status: "stale-error",
+      data: query.data,
+      error: query.error ?? new Error("event_orders_refresh_failed"),
+      isRefreshing: false,
+      refetch: query.refetch,
+    };
+  }
+  if (query.isError) {
+    return {
+      status: "error",
+      data: null,
+      error: query.error ?? new Error("event_orders_load_failed"),
+      isRefreshing: false,
+      refetch: query.refetch,
+    };
+  }
+  if (query.isPending || query.data === undefined) {
+    return {
+      status: "loading",
+      data: null,
+      error: null,
+      isRefreshing: false,
+      refetch: query.refetch,
+    };
+  }
+  return {
+    status: "ready",
+    data: query.data,
+    error: null,
+    isRefreshing: query.isFetching,
+    refetch: query.refetch,
+  };
+};
+
 export const useEventOrders = (
   eventId: string | null,
-): UseQueryResult<OrderRecord[]> => {
+): EventOrdersRead<OrderRecord[]> => {
   const { loading, session } = useAuth();
   const enabled = !loading && session !== null && eventId !== null;
-  return useQuery<OrderRecord[]>({
+  const query = useQuery<OrderRecord[]>({
     queryKey: enabled && eventId !== null ? eventOrdersKeys.detail(eventId) : DISABLED_KEY,
     enabled,
     staleTime: 15 * 1000,
@@ -70,15 +153,24 @@ export const useEventOrders = (
       return fetchEventOrders(eventId);
     },
   });
+  return projectEventOrdersRead({
+    enabled,
+    data: query.data,
+    error: query.error,
+    isError: query.isError,
+    isPending: query.isPending,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+  });
 };
 
 export const useEventOrderById = (
   eventId: string | null,
   orderId: string | null,
-): UseQueryResult<OrderRecord | null> => {
+): EventOrdersRead<OrderRecord | null> => {
   const { loading, session } = useAuth();
   const enabled = !loading && session !== null && eventId !== null && orderId !== null;
-  return useQuery<OrderRecord | null>({
+  const query = useQuery<OrderRecord | null>({
     queryKey:
       enabled && eventId !== null && orderId !== null
         ? eventOrdersKeys.order(eventId, orderId)
@@ -90,26 +182,40 @@ export const useEventOrderById = (
       return getEventOrderById(await fetchEventOrders(eventId), orderId);
     },
   });
+  return projectEventOrdersRead({
+    enabled,
+    data: query.data,
+    error: query.error,
+    isError: query.isError,
+    isPending: query.isPending,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+  });
 };
 
-export const useEventGuestList = (eventId: string | null): OrderRecord[] => {
+export const useEventGuestList = (
+  eventId: string | null,
+): EventOrdersRead<OrderRecord[]> => {
   const ordersQuery = useEventOrders(eventId);
-  return getEventGuestList(ordersQuery.data ?? []);
+  if (ordersQuery.data === null) return ordersQuery;
+  return { ...ordersQuery, data: getEventGuestList(ordersQuery.data) };
 };
 
 export const useEventGuestById = (
   eventId: string | null,
   guestId: string | null,
-): OrderRecord | null => {
-  const ordersQuery = useEventOrders(eventId);
-  if (guestId === null) return null;
-  return getEventGuestById(ordersQuery.data ?? [], guestId);
+): EventOrdersRead<OrderRecord | null> => {
+  const ordersQuery = useEventOrders(guestId === null ? null : eventId);
+  if (ordersQuery.data === null) return ordersQuery;
+  return {
+    ...ordersQuery,
+    data: guestId === null ? null : getEventGuestById(ordersQuery.data, guestId),
+  };
 };
 
-export const useEventReconciliation = (eventId: string | null): OrderRecord[] => {
-  const ordersQuery = useEventOrders(eventId);
-  return ordersQuery.data ?? [];
-};
+export const useEventReconciliation = (
+  eventId: string | null,
+): EventOrdersRead<OrderRecord[]> => useEventOrders(eventId);
 
 export interface EventSalesSummarySource {
   id: string;
@@ -150,22 +256,38 @@ export const useEventSalesSummaries = (
 
   return events.reduce<Record<string, EventSalesSummary>>((acc, event, index) => {
     const query = queries[index];
+    const enabled = !loading && session !== null;
+    const read = projectEventOrdersRead<OrderRecord[]>({
+      enabled,
+      data: query?.data,
+      error: query?.error ?? null,
+      isError: query?.isError ?? false,
+      isPending: query?.isPending ?? true,
+      isFetching: query?.isFetching ?? false,
+      refetch: query?.refetch ?? (async () => undefined),
+    });
     acc[event.id] = buildEventSalesSummary({
       eventId: event.id,
       tickets: event.tickets,
       eventCurrency: event.currency,
       brandDefaultCurrency,
-      orders: query?.data ?? [],
-      hasError: query?.isError ?? false,
+      orders: read.data,
+      readStatus: read.status,
+      isRefreshing: read.isRefreshing,
     });
     return acc;
   }, {});
 };
 
-export const useEventHasWebPurchases = (eventId: string | null): boolean => {
+export const useEventHasWebPurchases = (
+  eventId: string | null,
+): EventOrdersRead<boolean> => {
   const ordersQuery = useEventOrders(eventId);
-  return getEventHasWebPurchases(ordersQuery.data ?? []);
+  if (ordersQuery.data === null) return ordersQuery;
+  return { ...ordersQuery, data: getEventHasWebPurchases(ordersQuery.data) };
 };
+
+export type { EventOrdersReadStatus };
 
 // ============================================================
 // ORCH-0787: Refund + Cancel mutations

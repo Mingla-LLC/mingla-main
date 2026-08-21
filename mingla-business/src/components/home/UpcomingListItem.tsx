@@ -13,7 +13,6 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { formatCurrencyRound } from "../../utils/currency";
 import { formatDraftDateLine } from "../../utils/eventDateDisplay";
 import { formatRelativeTime } from "../../utils/relativeTime";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
@@ -34,7 +33,6 @@ const getEventName = (name: string, fallback: string): string =>
 
 const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
   item,
-  currentBrandCurrency,
   eventSalesSummaries,
   onOpenDraft,
   onOpenTrip,
@@ -94,20 +92,26 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
 
   const event = item.source as LiveEvent;
   const salesSummary = eventSalesSummaries[event.id];
-  const soldLabel = salesSummary?.soldLabel ?? "0 sold";
-  const rowSoldLabel =
-    salesSummary?.finiteCapacity !== null && salesSummary !== undefined
-      ? `${soldLabel} sold`
-      : soldLabel;
-  // issue #1014 — a currency-less brand's NULL-currency free event must not
-  // imply £0: with no resolvable currency there are no sales to denominate,
-  // so render the honest words instead of a fabricated-currency formatter call.
-  const revenueFallbackCurrency = event.currency ?? currentBrandCurrency ?? null;
-  const revenueLabel =
-    salesSummary?.revenueLabel ??
-    (revenueFallbackCurrency !== null
-      ? formatCurrencyRound(0, revenueFallbackCurrency)
-      : "No sales yet");
+  const rowSoldLabel = salesSummary?.soldLabel ?? "Loading…";
+  const isTruthfulEmptyWithoutCurrency =
+    (salesSummary?.readStatus === "ready" || salesSummary?.readStatus === "stale-error") &&
+    salesSummary.soldCount === 0 &&
+    salesSummary.displayCurrency === null;
+  const revenueLabel = isTruthfulEmptyWithoutCurrency
+    ? "No sales yet"
+    : salesSummary?.revenueLabel ?? "Loading…";
+  const refreshErrorLabel =
+    salesSummary?.readStatus === "stale-error" ? "Unable to refresh" : null;
+  const salesAccessibility =
+    salesSummary === undefined ||
+    salesSummary.readStatus === "loading" ||
+    salesSummary.readStatus === "disabled"
+      ? "Sales loading"
+      : salesSummary.readStatus === "error"
+        ? "Sales unavailable"
+        : `${rowSoldLabel}. ${revenueLabel}${
+            refreshErrorLabel === null ? "" : `. ${refreshErrorLabel}`
+          }`;
   const isLive = item.status === "live";
 
   return (
@@ -116,7 +120,7 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
       accessibilityRole="button"
       accessibilityLabel={`Open ${item.kind}: ${
         event.name || "Untitled"
-      }. ${rowSoldLabel}. ${revenueLabel}.`}
+      }. ${salesAccessibility}.`}
       style={styles.eventRow}
     >
       <View style={styles.eventCoverWrap}>
@@ -146,6 +150,9 @@ const UpcomingListItemComponent: React.FC<UpcomingListItemProps> = ({
       <View style={styles.eventSoldCol}>
         <Text style={styles.eventSoldValue}>{rowSoldLabel}</Text>
         <Text style={styles.eventRevenueValue}>{revenueLabel}</Text>
+        {refreshErrorLabel === null ? null : (
+          <Text style={styles.eventRevenueValue}>{refreshErrorLabel}</Text>
+        )}
       </View>
     </Pressable>
   );

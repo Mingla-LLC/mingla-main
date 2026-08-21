@@ -118,7 +118,7 @@ interface StatusBannerSpec {
 const statusBannerSpec = (
   status: OrderStatus,
   refundedAmountGbp: number,
-  currency: string,
+  currency: string | null,
 ): StatusBannerSpec => {
   switch (status) {
     case "paid":
@@ -127,7 +127,7 @@ const statusBannerSpec = (
         borderColor: "rgba(34, 197, 94, 0.32)",
         iconName: "check",
         iconColor: "#34c759",
-        copy: "Paid · Stripe will settle in 3–5 days",
+        copy: currency === null ? "Free order · confirmed" : "Paid · Stripe will settle in 3–5 days",
       };
     case "refunded_full":
       return {
@@ -135,7 +135,7 @@ const statusBannerSpec = (
         borderColor: "rgba(239, 68, 68, 0.32)",
         iconName: "refund",
         iconColor: semantic.error,
-        copy: `Refunded ${formatCurrency(refundedAmountGbp, currency)} · buyer will see in 3–5 days`,
+        copy: `Refunded ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)} · buyer will see in 3–5 days`,
       };
     case "refunded_partial":
       return {
@@ -143,7 +143,7 @@ const statusBannerSpec = (
         borderColor: accent.border,
         iconName: "refund",
         iconColor: accent.warm,
-        copy: `Partially refunded ${formatCurrency(refundedAmountGbp, currency)}`,
+        copy: `Partially refunded ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)}`,
       };
     case "cancelled":
       return {
@@ -269,6 +269,41 @@ export default function OrderDetailRoute(): React.ReactElement {
         </View>
         <View style={styles.emptyHost}>
           <Text style={styles.emptyLoadingText}>Loading event...</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (orderQuery.status === "loading" || orderQuery.status === "disabled") {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Order</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading order…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (orderQuery.status === "error") {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Order</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load order"
+            description="No order details are shown until this order loads."
+            cta={{ label: "Try again", onPress: () => { void orderQuery.refetch(); }, variant: "primary" }}
+          />
         </View>
       </View>
     );
@@ -410,7 +445,9 @@ export default function OrderDetailRoute(): React.ReactElement {
               value={
                 line.isFreeAtPurchase
                   ? "Free"
-                  : formatCurrency(
+                  : order.currency === null
+                    ? "—"
+                    : formatCurrency(
                       line.unitPriceGbpAtPurchase * line.quantity,
                       order.currency,
                     )
@@ -420,7 +457,7 @@ export default function OrderDetailRoute(): React.ReactElement {
           ))}
           <DetailRow
             label="Subtotal"
-            value={formatCurrency(subtotal, order.currency)}
+            value={subtotal === 0 ? "Free" : order.currency === null ? "—" : formatCurrency(subtotal, order.currency)}
             mono
           />
           <DetailRow
@@ -428,7 +465,9 @@ export default function OrderDetailRoute(): React.ReactElement {
             value={
               order.totalGbpAtPurchase === 0
                 ? "Free"
-                : formatCurrency(order.totalGbpAtPurchase, order.currency)
+                : order.currency === null
+                  ? "—"
+                  : formatCurrency(order.totalGbpAtPurchase, order.currency)
             }
             mono
             bold
@@ -546,7 +585,7 @@ export default function OrderDetailRoute(): React.ReactElement {
             // DEFERRED-PAST-DISMISSAL).
             setRefundSheetMode(null);
             deferAfterDismiss(() =>
-              showToast(`Refunded ${formatCurrency(amountGbp, order.currency)}`),
+              showToast(`Refunded ${order.currency === null ? "—" : formatCurrency(amountGbp, order.currency)}`),
             );
           }}
         />
@@ -616,14 +655,14 @@ const DetailRow: React.FC<DetailRowProps> = ({
 
 interface RefundLedgerRowProps {
   refund: RefundRecord;
-  currency: string;
+  currency: string | null;
 }
 
 const RefundLedgerRow: React.FC<RefundLedgerRowProps> = ({ refund, currency }) => (
   <View style={styles.refundLedgerRow}>
     <View style={styles.refundLedgerHeader}>
       <Text style={styles.refundLedgerAmount}>
-        {formatCurrency(refund.amountGbp, currency)}
+        {currency === null ? "—" : formatCurrency(refund.amountGbp, currency)}
       </Text>
       <Text style={styles.refundLedgerDate}>
         {formatRelativeDay(refund.refundedAt)}

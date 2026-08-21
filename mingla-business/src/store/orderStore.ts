@@ -102,6 +102,8 @@ export interface RefundRecord {
   amountGbp: number;
   /** Currency-neutral alias for new ORCH-0769 records. */
   amount?: number;
+  /** Null is valid only for a zero-money refund/order snapshot. */
+  currency?: string | null;
   /** REQUIRED 10..200 chars trimmed (spec §3.1.1 D-9c-9). */
   reason: string;
   refundedAt: string;
@@ -160,7 +162,7 @@ export interface OrderRecord {
   /** Currency-neutral alias for new ORCH-0769 records. */
   totalAtPurchase?: number;
   /** Locked per Const #10. */
-  currency: string;
+  currency: string | null;
   paymentMethod: CheckoutPaymentMethod;
   paidAt: string;
   // Mutable lifecycle
@@ -446,7 +448,7 @@ export const useOrderStore = create<OrderStoreState>()(
 
       getRevenueSummaryForEvent: (
         eventId,
-        expectedCurrency = "GBP",
+        expectedCurrency = null,
       ): EventMoneySummary => {
         const orders = get().entries.filter(
           (o) =>

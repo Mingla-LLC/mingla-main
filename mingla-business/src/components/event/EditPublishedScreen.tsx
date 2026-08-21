@@ -477,7 +477,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   // orders so validateLiveEventFieldUpdate reliably fires the "Refund first"
   // dialog. serverEventId === null → query disabled → empty (the server RPC
   // still backstops every structural change).
-  const serverOrders = useEventReconciliation(liveEvent.serverEventId);
+  const serverOrdersRead = useEventReconciliation(liveEvent.serverEventId);
+  const serverOrders = serverOrdersRead.data ?? [];
   const soldCountCtx = useMemo(
     () => buildSoldCountContextFromOrders(serverOrders),
     [serverOrders],
@@ -597,6 +598,10 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
 
   // ---- Save flow ----
   const handleSavePress = useCallback((): void => {
+    if (!rsvpMode && serverOrdersRead.status !== "ready") {
+      showToast("Couldn't load ticket sales. Try again.");
+      return;
+    }
     if (coverVideoProcessing) {
       showToast("Wait for the cover video to finish processing first.");
       return;
@@ -670,6 +675,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
     fieldDiffs,
     liveEvent.tickets,
     rsvpMode,
+    serverOrdersRead.status,
     sections,
     sectionErrors,
     showToast,
@@ -1570,7 +1576,8 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
   }, [fieldDiffs]);
 
   // ---- webPurchasePresent ----
-  const webPurchasePresent = useEventHasWebPurchases(liveEvent.id);
+  const webPurchaseRead = useEventHasWebPurchases(rsvpMode ? null : liveEvent.id);
+  const webPurchasePresent = webPurchaseRead.data ?? false;
 
   // ---- Render ----
   return (
@@ -1678,6 +1685,30 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         <View
           style={[styles.dock, { paddingBottom: insets.bottom + spacing.md }]}
         >
+          {!rsvpMode && serverOrdersRead.status === "error" ? (
+            <Text style={styles.ordersReadMessage}>
+              Couldn&apos;t load ticket sales. Try again.
+            </Text>
+          ) : !rsvpMode && serverOrdersRead.status === "stale-error" ? (
+            <Text style={styles.ordersReadMessage}>
+              Unable to refresh ticket sales. Try again.
+            </Text>
+          ) : null}
+          {!rsvpMode && serverOrdersRead.status !== "ready" ? (
+            <Button
+              label={
+                serverOrdersRead.status === "loading" || serverOrdersRead.status === "disabled"
+                  ? "Checking ticket sales…"
+                  : "Try again"
+              }
+              onPress={() => { void serverOrdersRead.refetch(); }}
+              variant="secondary"
+              size="md"
+              fullWidth
+              disabled={serverOrdersRead.status === "loading" || serverOrdersRead.status === "disabled"}
+              accessibilityLabel="Retry loading ticket sales"
+            />
+          ) : null}
           <Button
             label="Save changes"
             onPress={handleSavePress}
@@ -1687,6 +1718,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
             disabled={
               submitting ||
               coverVideoProcessing ||
+              (!rsvpMode && serverOrdersRead.status !== "ready") ||
               // issue #2009 SC-2 — a clean editor disables Save. Before this,
               // "no diff" was absent from the disabled predicate, so some loads
               // showed an ACTIVE button whose only outcome was the misleading
@@ -1881,6 +1913,12 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(12, 14, 18, 0.94)",
     borderTopWidth: 1,
     borderTopColor: "rgba(255, 255, 255, 0.06)",
+  },
+  ordersReadMessage: {
+    color: textTokens.secondary,
+    fontSize: 13,
+    marginBottom: spacing.sm,
+    textAlign: "center",
   },
 });
 

@@ -96,7 +96,10 @@ import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
-import { formatCurrencyRound, currencyCodeOrNull } from "../../src/utils/currency";
+import {
+  currencyCodeOrNull,
+  formatCurrencyRound,
+} from "../../src/utils/currency";
 import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
 import { formatRelativeTime } from "../../src/utils/relativeTime";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
@@ -438,30 +441,42 @@ export default function HomeTab(): React.ReactElement {
       }
       const capacity = finiteTicketCapacity(view);
       const salesSummary = eventSalesSummaries[view.id];
-      const soldCount = salesSummary?.soldCount ?? 0;
-      // #962 G2 — never manufacture GBP; hide the revenue label ("—") when the
-      // brand has no established currency, else format the real code.
-      const fallbackCode = currencyCodeOrNull(
+      const soldCount = salesSummary?.soldCount ?? null;
+      const defensiveCurrency = currencyCodeOrNull(
         view.currency ?? currentBrand?.defaultCurrency,
       );
       map[view.id] = {
         revenueLabel:
           salesSummary?.revenueLabel ??
-          (fallbackCode === null ? "—" : formatCurrencyRound(0, fallbackCode)),
+          (defensiveCurrency === null ? "—" : "Loading…"),
         soldValue:
-          salesSummary?.hasError === true
+          salesSummary?.readStatus === "error"
             ? "Unable"
-            : soldCount.toLocaleString("en-GB"),
+            : salesSummary?.readStatus === "loading" ||
+                salesSummary?.readStatus === "disabled"
+              ? "Loading…"
+              : soldCount === null
+                ? "—"
+                : soldCount.toLocaleString("en-GB"),
         capacityLabel: formatCapacityLabel(view),
-        capacity,
+        capacity: soldCount === null ? null : capacity,
         progress:
-          capacity !== null && capacity > 0
+          capacity !== null && capacity > 0 && soldCount !== null
             ? Math.min(1, soldCount / capacity)
             : 0,
+        refreshErrorLabel:
+          salesSummary?.readStatus === "stale-error"
+            ? "Unable to refresh"
+            : undefined,
       };
     }
     return map;
-  }, [liveEventViews, currentBrand?.defaultCurrency, eventSalesSummaries, liveRsvpSummaryById]);
+  }, [
+    liveEventViews,
+    currentBrand?.defaultCurrency,
+    eventSalesSummaries,
+    liveRsvpSummaryById,
+  ]);
 
   // ORCH-1038: the no-brand / choose-brand / add-venue / deck-readiness /
   // rule-ladder / offering-chooser logic now lives in the shared useBusinessTodos
@@ -862,20 +877,12 @@ export default function HomeTab(): React.ReactElement {
                     // 'event' or 'experience' — rendered through the LiveEvent row JSX.
                     const event = item.source as LiveEvent;
                     const salesSummary = eventSalesSummaries[event.id];
-                    const soldLabel = salesSummary?.soldLabel ?? "0 sold";
-                    const rowSoldLabel =
-                      salesSummary?.finiteCapacity !== null && salesSummary !== undefined
-                        ? `${soldLabel} sold`
-                        : soldLabel;
-                    // #962 G2 — hide ("—") when no established currency; never GBP.
-                    const upcomingFallbackCode = currencyCodeOrNull(
-                      event.currency ?? currentBrand.defaultCurrency,
-                    );
-                    const revenueLabel =
-                      salesSummary?.revenueLabel ??
-                      (upcomingFallbackCode === null
-                        ? "—"
-                        : formatCurrencyRound(0, upcomingFallbackCode));
+                    const rowSoldLabel = salesSummary?.soldLabel ?? "Loading…";
+                    const revenueLabel = salesSummary?.revenueLabel ?? "Loading…";
+                    const refreshErrorLabel =
+                      salesSummary?.readStatus === "stale-error"
+                        ? "Unable to refresh"
+                        : null;
                     const isLive = item.status === "live";
 
                     return (
@@ -888,7 +895,11 @@ export default function HomeTab(): React.ReactElement {
                         accessibilityRole="button"
                         accessibilityLabel={`Open ${item.kind}: ${
                           event.name || "Untitled"
-                        }. ${rowSoldLabel}. ${revenueLabel}.`}
+                        }. ${rowSoldLabel}. ${revenueLabel}.${
+                          refreshErrorLabel === null
+                            ? ""
+                            : ` ${refreshErrorLabel}.`
+                        }`}
                         style={styles.eventRow}
                       >
                         <View style={styles.eventCoverWrap}>
@@ -925,6 +936,11 @@ export default function HomeTab(): React.ReactElement {
                           <Text style={styles.eventRevenueValue}>
                             {revenueLabel}
                           </Text>
+                          {refreshErrorLabel === null ? null : (
+                            <Text style={styles.eventRevenueValue}>
+                              {refreshErrorLabel}
+                            </Text>
+                          )}
                         </View>
                       </Pressable>
                       </View>

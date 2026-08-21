@@ -52,6 +52,8 @@ export interface LiveCardMetrics {
   capacity: number | null;
   /** 0..1 sold-vs-capacity fraction. */
   progress: number;
+  /** Visible stale-data warning; cached metrics remain unchanged. */
+  refreshErrorLabel?: string;
   checkedInValue?: string;
 }
 
@@ -96,6 +98,16 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
   const dateLine =
     displayEvent !== null ? formatDraftDateLine(displayEvent) : "";
   const isRsvp = metrics.mode === "rsvp";
+  const salesAccessibility =
+    metrics.soldValue === "Loading…"
+      ? "Sales loading"
+      : metrics.soldValue === "Unable"
+        ? "Sales unavailable"
+        : `${metrics.soldValue} tickets sold. ${metrics.revenueLabel} revenue${
+            metrics.refreshErrorLabel === undefined
+              ? ""
+              : `. ${metrics.refreshErrorLabel}`
+          }`;
 
   // ORCH-1143 §4.4-A (continuous-section fix): the hero content tree is the
   // same in both modes. In FLAT mode (single-live) it renders chrome-less so
@@ -118,6 +130,9 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
           <Text style={styles.amountSuffix}> revenue</Text>
         </View>
       )}
+      {!isRsvp && metrics.refreshErrorLabel !== undefined ? (
+        <Text style={styles.refreshStatus}>{metrics.refreshErrorLabel}</Text>
+      ) : null}
 
       {metrics.capacity !== null ? (
         <View style={styles.progressTrack}>
@@ -130,7 +145,11 @@ export const LiveOfferingCard: React.FC<LiveOfferingCardProps> = ({
         </View>
       ) : null}
 
-      <View style={styles.statRow}>
+      <View
+        style={styles.statRow}
+        accessible={!isRsvp}
+        accessibilityLabel={isRsvp ? undefined : salesAccessibility}
+      >
         <View style={styles.statCell}>
           <Text style={styles.statValue}>{metrics.soldValue}</Text>
           <Text style={styles.statLabel}>{isRsvp ? "Going" : "Tickets sold"}</Text>
@@ -234,6 +253,12 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     fontWeight: "500",
     color: textTokens.tertiary,
+  },
+  refreshStatus: {
+    color: textTokens.secondary,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    marginBottom: spacing.sm,
   },
   progressTrack: {
     height: 4,

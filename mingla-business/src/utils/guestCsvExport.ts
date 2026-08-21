@@ -38,16 +38,19 @@ export type ExportGuestRow =
   | { kind: "comp"; id: string; comp: CompGuestEntry; sortKey: string }
   | { kind: "door"; id: string; sale: DoorSaleRecord; sortKey: string };
 
-const csvEscape = (value: string): string => {
+const csvEscape = (value: string | null): string => {
+  // #2411 — a zero-money online order legitimately has no currency. Preserve
+  // that truth as an empty CSV cell; never stringify null or invent a code.
+  const normalized = value ?? "";
   if (
-    value.includes(",") ||
-    value.includes("\"") ||
-    value.includes("\n") ||
-    value.includes("\r")
+    normalized.includes(",") ||
+    normalized.includes("\"") ||
+    normalized.includes("\n") ||
+    normalized.includes("\r")
   ) {
-    return `"${value.replace(/"/g, "\"\"")}"`;
+    return `"${normalized.replace(/"/g, "\"\"")}"`;
   }
-  return value;
+  return normalized;
 };
 
 const formatYmd = (iso: string): string => {

@@ -168,10 +168,11 @@ export default function GuestDetailRoute(): React.ReactElement {
   // Cycle 11 J-S5/S6 — derived check-in state from useScanStore.
   // Raw subscription + useMemo per selector pattern rule.
   const allScanEntries = useScanStore((s) => s.entries);
-  const order = useEventGuestById(
+  const orderRead = useEventGuestById(
     typeof eventId === "string" ? eventId : null,
     parsed !== null && parsed.kind === "order" ? parsed.innerId : null,
   );
+  const order = orderRead.data;
   const comp = useGuestStore((s) =>
     parsed !== null && parsed.kind === "comp"
       ? s.getCompEntryById(parsed.innerId)
@@ -185,7 +186,10 @@ export default function GuestDetailRoute(): React.ReactElement {
   );
 
   // Cross-event purchase history for this buyer's email (same brand only).
-  const allOrderEntries = useEventGuestList(typeof eventId === "string" ? eventId : null);
+  const allOrderEntriesRead = useEventGuestList(
+    typeof eventId === "string" && parsed?.kind === "order" ? eventId : null,
+  );
+  const allOrderEntries = allOrderEntriesRead.data ?? [];
   const otherOrders = useMemo<OrderRecord[]>(() => {
     if (order === null) return [];
     const lower = order.buyer.email.toLowerCase();
@@ -396,6 +400,44 @@ export default function GuestDetailRoute(): React.ReactElement {
     );
   }
 
+  if (
+    parsed?.kind === "order" &&
+    (orderRead.status === "loading" || orderRead.status === "disabled")
+  ) {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guest</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
+          <Text style={styles.emptyLoadingText}>Loading guest…</Text>
+        </View>
+      </View>
+    );
+  }
+
+  if (parsed?.kind === "order" && orderRead.status === "error") {
+    return (
+      <View style={[styles.host, { paddingTop: insets.top, backgroundColor: canvas.discover }]}>
+        <View style={styles.chromeRow}>
+          <IconChrome icon="close" size={36} onPress={handleBack} accessibilityLabel="Back" />
+          <Text style={styles.chromeTitle}>Guest</Text>
+          <View style={styles.chromeRightSlot} />
+        </View>
+        <View style={styles.emptyHost}>
+          <EmptyState
+            illustration="ticket"
+            title="Couldn't load guest"
+            description="No order-backed guest details are shown until orders load."
+            cta={{ label: "Try again", onPress: () => { void orderRead.refetch(); }, variant: "primary" }}
+          />
+        </View>
+      </View>
+    );
+  }
+
   // ---- Not-found shell ---------------------------------------------
   if (
     typeof eventId !== "string" ||
@@ -595,7 +637,9 @@ export default function GuestDetailRoute(): React.ReactElement {
                         <Text style={styles.perTicketSubline}>
                           {t.isFreeAtPurchase
                             ? "Free"
-                            : formatCurrency(t.unitPriceGbpAtPurchase, order.currency)}{" "}
+                            : order.currency === null
+                              ? "—"
+                              : formatCurrency(t.unitPriceGbpAtPurchase, order.currency)}{" "}
                           · #{idx + 1}
                         </Text>
                       </View>
@@ -703,7 +747,11 @@ export default function GuestDetailRoute(): React.ReactElement {
               <View style={styles.summaryRow}>
                 <Text style={styles.summaryLabel}>Paid</Text>
                 <Text style={styles.summaryValue}>
-                  {formatCurrency(order.totalGbpAtPurchase, order.currency)}
+                  {order.totalGbpAtPurchase === 0
+                    ? "Free"
+                    : order.currency === null
+                      ? "—"
+                      : formatCurrency(order.totalGbpAtPurchase, order.currency)}
                 </Text>
               </View>
               <View style={styles.summaryRow}>
@@ -725,7 +773,9 @@ export default function GuestDetailRoute(): React.ReactElement {
                         Refunded {formatRelativeTime(r.refundedAt)}
                       </Text>
                       <Text style={styles.summaryValueWarn}>
-                        −{formatCurrency(r.amountGbp, order.currency)}
+                        −{order.currency === null
+                          ? "—"
+                          : formatCurrency(r.amountGbp, order.currency)}
                       </Text>
                     </View>
                   ))}

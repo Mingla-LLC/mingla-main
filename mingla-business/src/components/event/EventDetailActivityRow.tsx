@@ -36,7 +36,7 @@ export type ActivityEvent =
       buyerName: string;
       summary: string;
       amountGbp: number;
-      currency?: string;
+      currency?: string | null;
       at: string;
     }
   | {
@@ -45,7 +45,7 @@ export type ActivityEvent =
       buyerName: string;
       summary: string;
       amountGbp: number;
-      currency?: string;
+      currency?: string | null;
       at: string;
     }
   | {
@@ -260,10 +260,9 @@ const EventDetailActivityRowInner: React.FC<EventDetailActivityRowProps> = ({
   // Purchase with totalGbpAtPurchase === 0 renders "Free" instead of "+£0.00".
   let amountLabel: string | null = null;
   // #962 G15 — resolve the activity's REAL currency (from the order/refund).
-  // When unset, render the bare amount with no symbol (never a fabricated £).
-  // Effectively unreachable pre-bank (0 orders), converted to kill the literal.
+  // When unset, fail closed instead of rendering an unlabelled money amount.
   const amountMoney = (code: string | null, amount: number): string =>
-    code !== null ? formatCurrency(amount, code) : String(amount);
+    code !== null ? formatCurrency(amount, code) : "—";
   if (a.kind === "purchase") {
     amountLabel =
       a.amountGbp === 0

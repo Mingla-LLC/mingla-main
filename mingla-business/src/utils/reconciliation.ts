@@ -124,7 +124,7 @@ export interface ReconciliationInputs {
   eventId: string;
   status: EventLifecycleStatus;
   eventName: string;
-  currency?: string;
+  currency?: string | null;
   orderEntries: OrderRecord[];
   doorEntries: DoorSaleRecord[];
   compEntries: CompGuestEntry[];
@@ -219,7 +219,7 @@ export const computeReconciliation = (
   const {
     eventId,
     status,
-    currency = "GBP",
+    currency,
     orderEntries,
     doorEntries,
     compEntries,
@@ -341,15 +341,17 @@ export const computeReconciliation = (
   if (d2Diff > 0.005) {
     discrepancies.push({
       kind: "method_sum_mismatch",
-      copy: `${formatCurrency(d2Diff, currency)} unattributed across payment methods`,
-      followupHint: `Sum-by-method (${formatCurrency(methodSum, currency)}) doesn't equal grand revenue (${formatCurrency(grossRevenue, currency)}). Likely rounding artifact; verify in B-cycle.`,
+      copy: `${currency === null || currency === undefined ? "—" : formatCurrency(d2Diff, currency)} unattributed across payment methods`,
+      followupHint: currency === null || currency === undefined
+        ? "Revenue totals differ, but no event currency is available. Review the source records."
+        : `Sum-by-method (${formatCurrency(methodSum, currency)}) doesn't equal grand revenue (${formatCurrency(grossRevenue, currency)}). Likely rounding artifact; verify in B-cycle.`,
     });
   }
 
   for (const mismatch of moneySummary.mismatches) {
     discrepancies.push({
       kind: "method_sum_mismatch",
-      copy: `${mismatch.actualCurrency} ${mismatch.source === "order" ? "order" : "door sale"} excluded from ${moneySummary.expectedCurrency} totals`,
+      copy: `${mismatch.actualCurrency} ${mismatch.source === "order" ? "order" : "door sale"} excluded from ${moneySummary.expectedCurrency ?? "unavailable-currency"} totals`,
       followupHint:
         "Currency mismatch detected. Review the source record before using this reconciliation total for finance.",
     });

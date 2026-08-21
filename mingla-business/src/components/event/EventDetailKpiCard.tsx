@@ -20,6 +20,8 @@ import {
 import { formatCurrency, currencyCodeOrNull } from "../../utils/currency";
 
 import { GlassCard } from "../ui/GlassCard";
+import { Button } from "../ui/Button";
+import type { EventOrdersReadStatus } from "../../utils/eventSalesSummary";
 
 export interface EventDetailKpiCardProps {
   /** Major units. 0 when there are no orders. */
@@ -41,6 +43,8 @@ export interface EventDetailKpiCardProps {
    * normally. GBP is never manufactured (the old `= "GBP"` default is gone).
    */
   currency?: string | null;
+  readStatus?: EventOrdersReadStatus;
+  onRetry?: () => void;
 }
 
 export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
@@ -48,13 +52,19 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
   payoutGbp,
   coveredGbp,
   currency,
+  readStatus = "ready",
+  onRetry,
 }) => {
   // #962 G16 — resolve the real code or null; hide money ("—") when null
   // (pre-bank brand). NEVER manufacture GBP.
   const code = currencyCodeOrNull(currency);
-  const hasData = revenueGbp > 0;
+  const hasData = readStatus === "ready" || readStatus === "stale-error";
+  const revenueLabel = code === null ? "—" : !hasData ? "—" : formatCurrency(revenueGbp, code);
   const showCovered =
-    typeof coveredGbp === "number" && Number.isFinite(coveredGbp) && coveredGbp > 0;
+    hasData &&
+    typeof coveredGbp === "number" &&
+    Number.isFinite(coveredGbp) &&
+    coveredGbp > 0;
 
   return (
     <GlassCard
@@ -66,9 +76,7 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
       <View style={styles.row}>
         <View style={styles.col}>
           <Text style={styles.label}>REVENUE</Text>
-          <Text style={styles.bigValue}>
-            {code === null ? "—" : formatCurrency(hasData ? revenueGbp : 0, code)}
-          </Text>
+          <Text style={styles.bigValue}>{revenueLabel}</Text>
         </View>
         <View style={styles.colRight}>
           <Text style={styles.label}>PAYOUT</Text>
@@ -84,6 +92,17 @@ export const EventDetailKpiCard: React.FC<EventDetailKpiCardProps> = ({
           You covered {formatCurrency(coveredGbp as number, code)} in VAT &
           fees
         </Text>
+      ) : null}
+      {readStatus === "error" && onRetry !== undefined ? (
+        <Button
+          label="Try again"
+          onPress={onRetry}
+          variant="secondary"
+          size="md"
+          accessibilityLabel="Retry loading orders"
+        />
+      ) : readStatus === "stale-error" ? (
+        <Text style={styles.coveredLine}>Unable to refresh</Text>
       ) : null}
       <SparklineBar />
     </GlassCard>

@@ -95,7 +95,7 @@ interface StatusBannerSpec {
 const statusBannerSpec = (
   status: OrderStatus,
   refundedAmountGbp: number,
-  currency: string,
+  currency: string | null,
 ): StatusBannerSpec => {
   switch (status) {
     case "paid":
@@ -113,7 +113,7 @@ const statusBannerSpec = (
         borderColor: "rgba(239, 68, 68, 0.32)",
         iconName: "refund",
         iconColor: semantic.error,
-        copy: `Order refunded — ${formatCurrency(refundedAmountGbp, currency)} returned to your card. Ticket no longer valid.`,
+        copy: `Order refunded — ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)} returned to your card. Ticket no longer valid.`,
         hideQr: true,
       };
     case "refunded_partial":
@@ -122,7 +122,7 @@ const statusBannerSpec = (
         borderColor: accent.border,
         iconName: "refund",
         iconColor: accent.warm,
-        copy: `Partial refund — ${formatCurrency(refundedAmountGbp, currency)} returned. Remaining tickets still valid.`,
+        copy: `Partial refund — ${currency === null ? "—" : formatCurrency(refundedAmountGbp, currency)} returned. Remaining tickets still valid.`,
         hideQr: false,
       };
     case "cancelled":
@@ -368,7 +368,9 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
               value={
                 line.isFreeAtPurchase
                   ? "Free"
-                  : formatCurrency(
+                  : order.currency === null
+                    ? "—"
+                    : formatCurrency(
                       line.unitPriceGbpAtPurchase * line.quantity,
                       order.currency,
                     )
@@ -378,7 +380,7 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
           ))}
           <DetailRow
             label="Subtotal"
-            value={formatCurrency(subtotal, order.currency)}
+            value={subtotal === 0 ? "Free" : order.currency === null ? "—" : formatCurrency(subtotal, order.currency)}
             mono
           />
           <DetailRow
@@ -386,7 +388,9 @@ export default function BuyerOrderDetailRoute(): React.ReactElement {
             value={
               order.totalGbpAtPurchase === 0
                 ? "Free"
-                : formatCurrency(order.totalGbpAtPurchase, order.currency)
+                : order.currency === null
+                  ? "—"
+                  : formatCurrency(order.totalGbpAtPurchase, order.currency)
             }
             mono
             bold
@@ -487,14 +491,14 @@ const DetailRow: React.FC<DetailRowProps> = ({
 
 interface RefundLedgerRowProps {
   refund: RefundRecord;
-  currency: string;
+  currency: string | null;
 }
 
 const RefundLedgerRow: React.FC<RefundLedgerRowProps> = ({ refund, currency }) => (
   <View style={styles.refundLedgerRow}>
     <View style={styles.refundLedgerHeader}>
       <Text style={styles.refundLedgerAmount}>
-        {formatCurrency(refund.amountGbp, currency)}
+        {currency === null ? "—" : formatCurrency(refund.amountGbp, currency)}
       </Text>
       <Text style={styles.refundLedgerDate}>
         {formatDay(refund.refundedAt)}

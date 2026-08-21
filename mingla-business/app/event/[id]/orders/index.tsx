@@ -167,7 +167,7 @@ export default function EventOrdersListRoute(): React.ReactElement {
     );
   }
 
-  if (ordersQuery.isLoading) {
+  if (ordersQuery.status === "loading" || ordersQuery.status === "disabled") {
     return (
       <View
         style={[
@@ -185,14 +185,14 @@ export default function EventOrdersListRoute(): React.ReactElement {
           <Text style={styles.chromeTitle}>Orders</Text>
           <View style={styles.chromeRightSlot} />
         </View>
-        <View style={styles.emptyHost}>
+        <View style={styles.emptyHost} accessibilityRole="progressbar">
           <Text style={styles.emptyLoadingText}>Loading orders...</Text>
         </View>
       </View>
     );
   }
 
-  if (ordersQuery.isError) {
+  if (ordersQuery.status === "error") {
     return (
       <View
         style={[
@@ -214,7 +214,12 @@ export default function EventOrdersListRoute(): React.ReactElement {
           <EmptyState
             illustration="ticket"
             title="Couldn't load orders"
-            description="Something went wrong loading orders. Pull to retry."
+            description="No order totals are shown until the order list loads."
+            cta={{
+              label: "Try again",
+              onPress: () => { void ordersQuery.refetch(); },
+              variant: "primary",
+            }}
           />
         </View>
       </View>

@@ -1,5 +1,9 @@
 import type { CheckoutPaymentMethod } from "../components/checkout/CartContext";
-import { normalizeCurrency } from "./currency";
+import { currencyCodeOrNull, normalizeCurrency } from "./currency";
+import {
+  assertOrderCurrencyForMoney,
+  assertRefundCurrencyForMoney,
+} from "./orderCurrencyContract";
 
 export type MoneySource = "order" | "door_sale" | "refund" | "legacy_brand";
 export type MoneyDoorPaymentMethod = "cash" | "card_reader" | "nfc" | "manual";
@@ -7,6 +11,7 @@ export type MoneyDoorPaymentMethod = "cash" | "card_reader" | "nfc" | "manual";
 type MoneyRefund = {
   amount?: number;
   amountGbp: number;
+  currency?: string | null;
   /** ORCH-0796 — app-fee portion of the refund in minor units. */
   applicationFeeRefundedCents?: number | null;
   applicationFeeRefundStatus?: string;
@@ -23,7 +28,7 @@ type MoneyOrderRecord = {
   refundedAmountCents?: number;
   applicationFeeAmountCents?: number;
   stripeApplicationFeeAmountCents?: number | null;
-  currency: string;
+  currency: string | null;
   status: "paid" | "refunded_full" | "refunded_partial" | "cancelled";
   paymentMethod: CheckoutPaymentMethod;
   refunds: MoneyRefund[];
@@ -43,7 +48,7 @@ type MoneyDoorSaleRecord = {
 export interface CurrencyMismatch {
   source: MoneySource;
   id: string;
-  expectedCurrency: string;
+  expectedCurrency: string | null;
   actualCurrency: string;
   amount: number;
 }
@@ -55,7 +60,7 @@ export interface CurrencyBreakdown {
 }
 
 export interface EventMoneySummary {
-  expectedCurrency: string;
+  expectedCurrency: string | null;
   onlineRevenue: number;
   doorRevenue: number;
   grossRevenue: number;
@@ -126,12 +131,48 @@ export const doorSaleLiveAmount = (sale: MoneyDoorSaleRecord): number =>
 export const refundAmount = (refund: { amount?: number; amountGbp: number }): number =>
   refund.amount ?? refund.amountGbp;
 
+const singleStoredMoneyCurrency = (
+  orders: MoneyOrderRecord[],
+  doorSales: MoneyDoorSaleRecord[],
+): string | null => {
+  const currencies = new Set<string>();
+  const add = (value: string | null | undefined): void => {
+    const currency = currencyCodeOrNull(value);
+    if (currency !== null) currencies.add(currency);
+  };
+
+  for (const order of orders) {
+    const total = order.totalAtPurchase ?? order.totalGbpAtPurchase;
+    const refunded = order.refundedAmount ?? order.refundedAmountGbp;
+    if (total > 0 || refunded > 0) add(order.currency);
+    for (const refund of order.refunds) {
+      if (refundAmount(refund) > 0) {
+        add(refund.currency === undefined ? order.currency : refund.currency);
+      }
+    }
+  }
+  for (const sale of doorSales) {
+    const total = sale.totalAtSale ?? sale.totalGbpAtSale;
+    const refunded = sale.refundedAmount ?? sale.refundedAmountGbp;
+    if (total > 0 || refunded > 0 || sale.refunds.some((refund) => refundAmount(refund) > 0)) {
+      add(sale.currency);
+    }
+  }
+
+  return currencies.size === 1 ? [...currencies][0] : null;
+};
+
 export const summarizeEventMoney = (args: {
   expectedCurrency?: string | null;
   orders: MoneyOrderRecord[];
   doorSales: MoneyDoorSaleRecord[];
 }): EventMoneySummary => {
-  const expectedCurrency = normalizeCurrency(args.expectedCurrency);
+  // #2411 + #962 — an unset event/brand currency is not permission to invent
+  // GBP, but it must not erase real money either. A single currency carried by
+  // the money-bearing records is authoritative; zero-money rows establish none.
+  const expectedCurrency =
+    currencyCodeOrNull(args.expectedCurrency)
+    ?? singleStoredMoneyCurrency(args.orders, args.doorSales);
   const byCurrency = new Map<string, CurrencyBreakdown>();
   const mismatches: CurrencyMismatch[] = [];
   const revenueByMethod: EventMoneySummary["revenueByMethod"] = {};
@@ -155,16 +196,33 @@ export const summarizeEventMoney = (args: {
   };
 
   for (const order of args.orders) {
-    const currency = normalizeCurrency(order.currency);
+    const currency = currencyCodeOrNull(order.currency);
     const isRevenueLive =
       order.status === "paid" || order.status === "refunded_partial";
     const live = isRevenueLive ? orderLiveAmount(order) : 0;
-    if (live > 0) addCurrency(byCurrency, currency, live);
+    const totalAmount = order.totalAtPurchase ?? order.totalGbpAtPurchase;
+    const refundedAmount = order.refundedAmount ?? order.refundedAmountGbp;
+    assertOrderCurrencyForMoney(
+      currency,
+      totalAmount > 0 || refundedAmount > 0,
+    );
+    if (live > 0 && currency !== null) addCurrency(byCurrency, currency, live);
     for (const refund of order.refunds) {
       const amount = refundAmount(refund);
-      if (amount > 0) addCurrency(byCurrency, currency, amount);
-      if (currency === expectedCurrency) onlineRefunded += amount;
+      // Legacy in-memory refund fixtures predate a refund currency field and
+      // inherit their already-validated parent order currency. An explicit
+      // null is current server data and must fail closed for positive money.
+      const refundCurrency =
+        refund.currency === undefined
+          ? currency
+          : currencyCodeOrNull(refund.currency);
+      assertRefundCurrencyForMoney(currency, refundCurrency, amount > 0);
+      if (amount > 0 && refundCurrency !== null) {
+        addCurrency(byCurrency, refundCurrency, amount);
+      }
+      if (refundCurrency === expectedCurrency) onlineRefunded += amount;
     }
+    if (currency === null) continue;
     if (currency !== expectedCurrency) {
       if (live > 0) {
         mismatches.push({
@@ -183,7 +241,7 @@ export const summarizeEventMoney = (args: {
     // ORCH-0796 — net-to-organiser per order from real Stripe columns.
     // Only paid + refunded_partial orders contribute (refunded_full nets to 0 via the
     // total - refunded subtraction; cancelled never went through Stripe).
-    if (isRevenueLive) {
+    if (isRevenueLive && totalAmount > 0) {
       hasAnyOnlinePayment = true;
       const totalCents = order.totalCents
         ?? Math.round((order.totalAtPurchase ?? order.totalGbpAtPurchase) * 100);

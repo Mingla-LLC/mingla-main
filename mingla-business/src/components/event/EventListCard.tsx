@@ -77,7 +77,15 @@ const isLiveEvent = (
 const COVER_W = 76;
 const COVER_H = 92;
 
-export const EventListCard: React.FC<EventListCardProps> = ({
+export const EventListCard: React.FC<EventListCardProps> = (props) => {
+  const eventType = (props.event as { event_type?: string }).event_type;
+  if (eventType !== undefined && eventType !== "event" && eventType !== "rsvp") {
+    return null;
+  }
+  return <EventListCardBody {...props} />;
+};
+
+const EventListCardBody: React.FC<EventListCardProps> = ({
   event,
   kind,
   brand,
@@ -101,10 +109,6 @@ export const EventListCard: React.FC<EventListCardProps> = ({
   // "N going" metric instead of revenue/tickets-sold. Trips/experiences still
   // bail (they have their own surfaces).
   const isRsvp = eventType === "rsvp" || (event as DraftEvent).isRsvp === true;
-  if (eventType !== undefined && eventType !== "event" && eventType !== "rsvp") {
-    return null;
-  }
-
   // ----- Computed display values ------------------------------------
   const title = event.name.trim().length > 0 ? event.name : "Untitled event";
   const dateLine = useMemo<string>((): string => {
@@ -126,7 +130,6 @@ export const EventListCard: React.FC<EventListCardProps> = ({
 
   // ----- Sales summary ---------------------------------------------------
   const eventOrdersQuery = useEventOrders(kind === "live" ? event.id : null);
-  const orderEntries = eventOrdersQuery.data ?? [];
   const salesSummary = useMemo(
     () =>
       buildEventSalesSummary({
@@ -134,13 +137,21 @@ export const EventListCard: React.FC<EventListCardProps> = ({
         tickets: event.tickets,
         eventCurrency: isLiveEvent(event, kind) ? event.currency : null,
         brandDefaultCurrency: brand.defaultCurrency,
-        orders: orderEntries,
-        hasError: eventOrdersQuery.isError,
+        orders: eventOrdersQuery.data,
+        readStatus: eventOrdersQuery.status,
+        isRefreshing: eventOrdersQuery.isRefreshing,
       }),
-    [brand.defaultCurrency, event, eventOrdersQuery.isError, kind, orderEntries],
+    [
+      brand.defaultCurrency,
+      event,
+      eventOrdersQuery.data,
+      eventOrdersQuery.isRefreshing,
+      eventOrdersQuery.status,
+      kind,
+    ],
   );
   const pct =
-    salesSummary.finiteCapacity !== null
+    salesSummary.finiteCapacity !== null && salesSummary.soldCount !== null
       ? Math.min(100, Math.round((salesSummary.soldCount / salesSummary.finiteCapacity) * 100))
       : 0;
 
@@ -161,10 +172,22 @@ export const EventListCard: React.FC<EventListCardProps> = ({
       ? `Open ${title}`
       : isRsvp
         ? `Open ${title}. ${rsvpGoingLabel}.`
-        : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.`;
+        : salesSummary.readStatus === "loading" ||
+            salesSummary.readStatus === "disabled"
+          ? `Open ${title}. Sales loading.`
+          : salesSummary.readStatus === "error"
+            ? `Open ${title}. Sales unavailable.`
+            : `Open ${title}. ${salesSummary.soldLabel}. ${salesSummary.revenueLabel}.${
+                salesSummary.readStatus === "stale-error"
+                  ? " Unable to refresh."
+                  : ""
+              }`;
 
   // Past + 0 sold → fade per Q-9-9.
-  const isFaded = status === "past" && salesSummary.soldCount === 0;
+  const isFaded =
+    status === "past" &&
+    salesSummary.readStatus === "ready" &&
+    salesSummary.soldCount === 0;
 
   // ORCH-1123 — selection affordances. A non-selectable row under "All" while
   // selection mode is active dims + goes inert (drafts-only enforced visually).
@@ -267,7 +290,7 @@ export const EventListCard: React.FC<EventListCardProps> = ({
                 ? "Series template"
                 : "Not published"}
             </Text>
-          ) : salesSummary.finiteCapacity !== null ? (
+          ) : salesSummary.finiteCapacity !== null && salesSummary.soldCount !== null ? (
             <View style={styles.progressRow}>
               <View style={styles.progressTrack}>
                 <View
@@ -287,6 +310,9 @@ export const EventListCard: React.FC<EventListCardProps> = ({
           ) : (
             <Text style={styles.subText}>{salesSummary.soldLabel}</Text>
           )}
+          {salesSummary.readStatus === "stale-error" ? (
+            <Text style={styles.subText}>Unable to refresh</Text>
+          ) : null}
         </View>
 
         {/* Tap affordance — chevron-right at the inner end of the card
