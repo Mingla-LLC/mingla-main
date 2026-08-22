@@ -1,3 +1,4 @@
+# #2438 SHADOW-PARITY-TRIGGER — remove before cutover
 name: Issue 948 Wave 1 Enabler Tests
 
 # #948 W1 — explicit CI registry for the bank-first enablers. The required full

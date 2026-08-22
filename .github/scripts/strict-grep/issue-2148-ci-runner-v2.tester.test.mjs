@@ -195,7 +195,8 @@ test("JSON and summary redact values present in runner environment", () => {
   }
 });
 
-test("workflow matrix retains the exact trust boundary and additive 55-suite registry", () => {
+test("workflow matrix retains the exact trust boundary and independently locked Phase 3A registry", () => {
+  // [TEST-MOD-APPROVED #2438] The Phase 3A slice remains exact after Phase 3B is appended.
   const workflow = fs.readFileSync(batchWorkflow(), "utf8");
   const manifest = readManifest();
   assert.match(workflow, /permissions:\s*\n\s+contents:\s*read/);
@@ -203,7 +204,7 @@ test("workflow matrix retains the exact trust boundary and additive 55-suite reg
   assert.doesNotMatch(workflow, /^\s*paths(?:-ignore)?:/m);
   assert.match(workflow, /fail-fast:\s*false/);
   const baseline = manifest.suites.slice(0, 23);
-  const shadow = manifest.suites.slice(23);
+  const shadow = manifest.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
   const waveOriginPaths = [...new Set(shadow.map((item) => item.origin))];
   const presentOriginPaths = waveOriginPaths.filter((originPath) => fs.existsSync(path.join(DEFAULT_ROOT, originPath)));
   assert.equal(waveOriginPaths.length, 31);
@@ -216,15 +217,15 @@ test("workflow matrix retains the exact trust boundary and additive 55-suite reg
     id: item.id,
     steps: item.steps.map(({ name, cwd, run, invocation }) => ({ name, cwd, run, invocation })),
   }));
-  assert.equal(manifest.suites.length, 55);
+  assert.equal(manifest.suites.length, 67);
   assert.equal(baseline.reduce((sum, item) => sum + item.steps.length, 0), 51);
   assert.equal(shadow.length, 32);
   assert.equal(shadow.reduce((sum, item) => sum + item.steps.length, 0), 107);
-  assert.equal(new Set(manifest.suites.map((item) => item.id)).size, 55);
+  assert.equal(new Set(manifest.suites.map((item) => item.id)).size, 67);
   assert.equal(digest(assertionRows(baseline)), "46b4392592c5d6cb56bc600adc98e083b14880b79dad29fe4e1438ac41923764");
   assert.equal(digest(manifest.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(assertionRows(shadow)), "9dea11e17920bd597c737fd1a9afa096ae740aab28eabb82d93029fbb0be7b3e");
-  assert.equal(digest(manifest.commandCapabilities.commands.slice(51)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
+  assert.equal(digest(manifest.commandCapabilities.commands.slice(51, 158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   for (const item of baseline) {
     assert.equal(item.timeoutSeconds, 480);
     assert.equal(item.isolation, "clean-worktree");

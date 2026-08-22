@@ -1,3 +1,4 @@
+# #2438 SHADOW-PARITY-TRIGGER — remove before cutover
 name: Issue 885 Scanner Invite Loader Guard Tests
 
 # #885 [scanner-invite-loader-guard] — the /accept-scanner-invitation route must

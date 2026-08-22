@@ -42,6 +42,14 @@
 - **Enforcement:** the Phase 2 runner, artifact upload with `if-no-files-found: error`, and the Class A reporting regression.
 - **Status:** DRAFT until the complete #2148 consolidation programme establishes final topology and performance budgets.
 
+## DRAFT — issue #2148 / Phase 3B issue #2438 (Postgres/static Host checks are shadow-batched)
+
+### I-PROPOSED-2148-PHASE3B-SHADOW-PARITY (DRAFT)
+
+- **Rule:** The exact 12 Phase 3B historical wrappers remain live during shadow while one typed registry suite per origin runs conditionally inside the existing 14 public batch contexts. Selection comes only from complete NUL-delimited local Git history; missing or corrupt selection evidence runs every suite owned by that host and ends red after evidence upload.
+- **Enforcement:** `.github/ci-batch/MANIFEST.json`, the deterministic Phase 3B selector, the isolated batch runner, and the issue #2438 implementor/adversarial Class A proofs. Frozen truth is 12 suites, 36 outer assertions, 40 maximum leaves, current 37 executed plus 3 predicate-absent, under 9 secondary classes hosted by 14 unchanged matrix jobs.
+- **Status:** DRAFT shadow stage. All 12 old wrappers remain live with the exact same-SHA marker; no terminal deletion or external-reference cutover is represented yet.
+
 ## ACTIVE — issue #2411 (free orders remain visible and countable without currency)
 
 ### I-PROPOSED-2411-ZERO-MONEY-ORDER-CURRENCY-NULL (ACTIVE)

@@ -16,7 +16,7 @@
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 601,
-  "selfTestWiredFloor": 383,
+  "selfTestWiredFloor": 384,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -40,6 +40,39 @@
     },
     {
       "script": ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/ci-batch/select-phase3b-suites.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/ci-batch/__tests__/select-phase3b-suites.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",

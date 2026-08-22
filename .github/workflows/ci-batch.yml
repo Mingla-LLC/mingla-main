@@ -48,7 +48,7 @@ jobs:
     # deliberately uses only the event context available at that point.
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: ${{ matrix.hostTimeoutMinutes }}
     strategy:
       # fail-fast MUST stay false: one class going red must not cancel the others,
       # or a single failure hides the state of every suite in every other class —
@@ -64,6 +64,10 @@ jobs:
             node: "20"
             cache: ""
             cache-lock: ""
+            hostTimeoutMinutes: 50
+            secondaryClass: phase3b-tenant-node20-deno146
+            secondaryNode: "20"
+            secondaryDeno: "1.46.x"
           # The business suites are split 4 ways: MEASURED locally they take ~730s
           # end to end, so as ONE job they would become the new critical path — a
           # regression, since today they run in parallel. The split is round-robin
@@ -73,54 +77,106 @@ jobs:
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
+            hostTimeoutMinutes: 25
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
           - class: business-node20-2
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
+            hostTimeoutMinutes: 25
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
           - class: business-node20-3
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
+            hostTimeoutMinutes: 25
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
           - class: business-node20-4
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
+            hostTimeoutMinutes: 25
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
           - class: admin-node20-install
             node: "20"
             cache: npm
             cache-lock: mingla-admin/package-lock.json
+            hostTimeoutMinutes: 55
+            secondaryClass: phase3b-lifecycle-node20-deno2
+            secondaryNode: "20"
+            secondaryDeno: "v2.x"
           - class: node22-noinstall
             node: "22"
             cache: ""
             cache-lock: ""
+            hostTimeoutMinutes: 55
+            secondaryClass: phase3b-theme-node20
+            secondaryNode: "20"
+            secondaryDeno: ""
           - class: app-node22-install
             node: "22"
             cache: npm
             cache-lock: app-mobile/package-lock.json
+            hostTimeoutMinutes: 25
+            secondaryClass: ""
+            secondaryNode: ""
+            secondaryDeno: ""
           - class: business-node22-ignore-scripts
             node: "22"
             cache: npm
             cache-lock: mingla-business/package-lock.json
+            hostTimeoutMinutes: 60
+            secondaryClass: phase3b-brand-follow-node20-deno146
+            secondaryNode: "20"
+            secondaryDeno: "1.46.x"
           - class: cross-root-node22-ignore-scripts
             node: "22"
             cache: ""
             cache-lock: ""
+            hostTimeoutMinutes: 52
+            secondaryClass: phase3b-draft-node20-renderer
+            secondaryNode: "20"
+            secondaryDeno: ""
           - class: root-node20-yaml-no-save
             node: "20"
             cache: ""
             cache-lock: ""
+            hostTimeoutMinutes: 55
+            secondaryClass: phase3b-scanner-node20-renderer
+            secondaryNode: "20"
+            secondaryDeno: ""
           - class: node20-19-noinstall
             node: "20.19.4"
             cache: ""
             cache-lock: ""
+            hostTimeoutMinutes: 55
+            secondaryClass: phase3b-screens-node20-deno2-renderer
+            secondaryNode: "20"
+            secondaryDeno: "v2.x"
           - class: ota-app-node20-19-install
             node: "20.19.4"
             cache: npm
             cache-lock: app-mobile/package-lock.json
+            hostTimeoutMinutes: 105
+            secondaryClass: phase3b-business-node22
+            secondaryNode: "22"
+            secondaryDeno: ""
           - class: ota-business-node20-19-install
             node: "20.19.4"
             cache: npm
             cache-lock: mingla-business/package-lock.json
+            hostTimeoutMinutes: 55
+            secondaryClass: phase3b-enablers-node20-deno2
+            secondaryNode: "20"
+            secondaryDeno: "v2.x"
     steps:
       # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
       # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
@@ -135,7 +191,34 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+      - name: Select Phase 3B suites from complete local Git history
+        id: phase3b-select
+        timeout-minutes: 2
+        continue-on-error: true
+        run: >-
+          node .github/scripts/ci-batch/select-phase3b-suites.mjs --select
+          --host "${{ matrix.class }}"
+          --document "$RUNNER_TEMP/phase3b-raw-${{ matrix.class }}.json"
+      - name: Normalize Phase 3B decision fail-safe
+        id: phase3b-decision
+        if: always()
+        timeout-minutes: 1
+        continue-on-error: true
+        run: >-
+          node .github/scripts/ci-batch/select-phase3b-suites.mjs --normalize
+          --host "${{ matrix.class }}"
+          --input "$RUNNER_TEMP/phase3b-raw-${{ matrix.class }}.json"
+          --outcome "${{ steps.phase3b-select.outcome }}"
+          --document "$RUNNER_TEMP/phase3b-decision-${{ matrix.class }}.json"
+      - name: Upload Phase 3B selection evidence
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: phase3b-selection-${{ matrix.class }}
+          path: ${{ runner.temp }}/phase3b-decision-${{ matrix.class }}.json
+          if-no-files-found: error
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        if: always()
         with:
           node-version: ${{ matrix.node }}
           cache: ${{ matrix.cache }}
@@ -145,15 +228,18 @@ jobs:
       # executes each exact argv capability once, then writes non-forgeable evidence
       # before any assertion suite is admitted.
       - name: Execute and record one typed shard setup
+        if: always()
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"
 
       # The runner's own guarantees are load-bearing: it is the only thing standing
       # between "one job for many suites" and "one green lie". Prove it still bites
       # BEFORE trusting it to report on anything.
       - name: Batch runner self-test (proves a vanished suite fails the run)
+        if: always()
         run: node --test .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
+        if: always()
         run: node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"
 
       - name: Upload suite results
@@ -163,6 +249,48 @@ jobs:
           name: suite-results-${{ matrix.class }}
           path: suite-results.json
           if-no-files-found: error
+
+      - name: Select secondary Node runtime
+        if: always() && matrix.secondaryClass != '' && (steps.phase3b-decision.outputs.runSecondary != 'false' || steps.phase3b-select.outcome != 'success' || steps.phase3b-decision.outcome != 'success')
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.secondaryNode }}
+      - name: Select immutable Deno 1.46 runtime
+        if: always() && matrix.secondaryDeno == '1.46.x' && (steps.phase3b-decision.outputs.runSecondary != 'false' || steps.phase3b-select.outcome != 'success' || steps.phase3b-decision.outcome != 'success')
+        uses: denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d
+        with:
+          deno-version: 1.46.x
+      - name: Select immutable Deno v2 runtime
+        if: always() && matrix.secondaryDeno == 'v2.x' && (steps.phase3b-decision.outputs.runSecondary != 'false' || steps.phase3b-select.outcome != 'success' || steps.phase3b-decision.outcome != 'success')
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.x
+      - name: Execute one typed Phase 3B setup
+        if: always() && matrix.secondaryClass != '' && (steps.phase3b-decision.outputs.runSecondary != 'false' || steps.phase3b-select.outcome != 'success' || steps.phase3b-decision.outcome != 'success')
+        timeout-minutes: 5
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.secondaryClass }}"
+      - name: Run selected Phase 3B suites with exact attribution
+        if: always() && matrix.secondaryClass != '' && (steps.phase3b-decision.outputs.runSecondary != 'false' || steps.phase3b-select.outcome != 'success' || steps.phase3b-decision.outcome != 'success')
+        run: >-
+          node .github/scripts/ci-batch/run-suite-batch.mjs --run-phase3b-host
+          "${{ matrix.class }}" "$RUNNER_TEMP/phase3b-decision-${{ matrix.class }}.json"
+          --fail-safe-host "${{ matrix.secondaryClass }}"
+      - name: Upload Phase 3B suite results
+        if: always() && matrix.secondaryClass != '' && (steps.phase3b-decision.outputs.runSecondary != 'false' || steps.phase3b-select.outcome != 'success' || steps.phase3b-decision.outcome != 'success')
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-results-phase3b-${{ matrix.class }}
+          path: suite-results-phase3b.json
+          if-no-files-found: error
+      - name: Reconcile Phase 3B host and surface deferred selector errors
+        if: always()
+        timeout-minutes: 2
+        run: >-
+          node .github/scripts/ci-batch/select-phase3b-suites.mjs --reconcile
+          --host "${{ matrix.class }}"
+          --input "$RUNNER_TEMP/phase3b-decision-${{ matrix.class }}.json"
+          --primary "suite-results.json"
+          --secondary "suite-results-phase3b.json"
 
   dispatch:
     name: "CI batch: issue-2300-orch-artifact-reap (bounded dispatch)"

@@ -1,0 +1,186 @@
+// #2438 implementor-owned happy-path and fail-on-revert proof.
+import assert from "node:assert/strict";
+import crypto from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+import test from "node:test";
+import { fileURLToPath } from "node:url";
+import { canonicalizeShadowWrapperSource, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, validateRegistry } from "../validate-manifest-v2.mjs";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import { minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
+import { expectedPhase3bIdentities } from "../select-phase3b-suites.mjs";
+
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
+const manifest = () => JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+const digest = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
+const WRAPPERS = {
+  "issue-1022-theme-control-tests.yml":"f4d461a534e2d0a0273e9ea60957605a4f6e9f832229f74cf9f695445ff655df",
+  "issue-1461-venue-current-brand-race-tests.yml":"30bff6582d3d775133eb9c1ffc997b8985f24fc6985fec7585a2ba0f1ce88785",
+  "issue-1467-venue-submit-idempotency-tests.yml":"39c84667a17817587b4c1b66813b7a5d028e7ef33ec2bda47e04f1cc19763597",
+  "issue-1485-web-missing-chunk-404-tests.yml":"056e93d8b5e3f24a51c0ca874192607da05a90b43565293ee9318efb004d749b",
+  "issue-1685-venue-draft-multi-tests.yml":"b738a1749da6d5a22a440bf2c12c6d0a62bb97c7f9fc93b9a5f7bb5ea0056ab8",
+  "issue-1902-public-event-lifecycle-tests.yml":"ee303de029f2ff1abe129f42c8fbbcefca17287bfa8536cc60ee7c1f10c8b900",
+  "issue-2013-ari-tenant-containment.yml":"ac59c3d6b732d34db7a5ddb4b03d407330d9916619812da7b49a339e9911601c",
+  "issue-679-brand-follow-tests.yml":"613f672bb1da1644a0de30695ea0dd5a4d24086c01dd0e9540e6e75dfb200e90",
+  "issue-885-scanner-invite-loader-tests.yml":"931afbb3ca488138de1ed0b2c2f669f7d3359f66edf46cbaaa9651a1e6426a8b",
+  "issue-948-w1-enablers-tests.yml":"6cc978c1adb0635dfe2ed669745a2889d8e70a043c4ad88c581489753684bd66",
+  "issue-948-w3-screens-copy-tests.yml":"55a53aeece48e2c07a2915190c1a1c4861d24295518b537e1b07346000ca5e9f",
+  "orch-0976-draft-promotion-tests.yml":"74d7bc9877095f150b423373072bd7f4172428b1f0ed1df43f667c1600278ba1",
+};
+const MARKER = "# #2438 SHADOW-PARITY-TRIGGER — remove before cutover";
+const RESERVED_TESTER = ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs";
+const PROVIDER_DIGEST = "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c90d3ab86d";
+const PHASE3B_PROVIDER_NAMES = new Set(["issue-1022-theme-control-tests.yml","issue-1902-public-event-lifecycle-tests.yml","issue-2013-ari-tenant-containment.yml","issue-885-scanner-invite-loader-tests.yml","issue-948-w1-enablers-tests.yml","orch-0976-draft-promotion-tests.yml"]);
+const PHASE3B_PROVIDER_DIGEST = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
+
+function git(root, args) { return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); }
+function providerSnapshot(root) {
+  const value = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
+  const providers = discoverWorkflowProviders(root);
+  return JSON.stringify({ providers, errors: validateRegistry(value, { root }) });
+}
+
+function assertWave(value) {
+  const suites = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
+  assert.equal(value.legacyOrigins.length, 199); assert.equal(value.suites.length, 67); assert.equal(value.commandCapabilities.commands.length, 194); assert.equal(value.workflowProviders.length, 89);
+  assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
+  assert.deepEqual([...new Set(suites.map((suite) => suite.lifecycle))], ["shadow-active"]);
+  assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
+  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 23);
+  assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
+  assert.equal(digest(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
+  assert.equal(digest(value.commandCapabilities.commands.slice(158)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
+  assert.equal(digest(value.phase3bLeafCapabilities.leaves), "76d627f1f117923c41dc2a4b928d606a134c2a3a0d948010e565828fa91be89d");
+  assert.equal(value.phase3bContractSha256, "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9");
+  const lifecycle=value.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests");
+  assert.deepEqual(lifecycle.steps.map((step)=>step.env||null).filter(Boolean),[{NODE_PATH:"./node_modules"}]);
+  assert.deepEqual(value.setupProfiles["phase3b-lifecycle-node20-deno2"].installs.map((install)=>[install.cwd,install.invocation.argv]),[["mingla-business",["ci"]],["app-mobile",["ci"]]]);
+}
+
+test("shadow registry has exact identities, counts, digests, and marker-stripped bytes", () => {
+  const value = manifest(); assertWave(value); assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  for (const [name, expected] of Object.entries(WRAPPERS)) {
+    const source = fs.readFileSync(path.join(ROOT, ".github/workflows", name), "utf8");
+    assert.equal(source.split("\n").filter((line) => line === MARKER).length, 1); assert.equal(source.startsWith(`${MARKER}\n`), true);
+    assert.equal(digest(canonicalizeShadowWrapperSource(name, source)), expected);
+  }
+  assert.equal(digest(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad");
+});
+
+test("provider authority ignores reserved tester bytes but rejects eligible source drift", () => {
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-provider-authority-")));
+  try {
+    execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
+    git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
+    fs.rmSync(path.join(temp, RESERVED_TESTER), { force: true }); git(temp, ["add", "-A"]);
+    if (git(temp, ["status", "--porcelain"])) git(temp, ["commit", "-qm", "tester absent"]);
+    const absent = providerSnapshot(temp); const absentValue = JSON.parse(absent);
+    assert.equal(absentValue.providers.length, 71); assert.equal(digest(absentValue.providers), PROVIDER_DIGEST); assert.deepEqual(absentValue.errors, []);
+    const phase3bProviders = absentValue.providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
+    assert.equal(phase3bProviders.length, 6); assert.equal(digest(phase3bProviders), PHASE3B_PROVIDER_DIGEST);
+
+    const testerPath = path.join(temp, RESERVED_TESTER); fs.mkdirSync(path.dirname(testerPath), { recursive: true });
+    const allWrapperNames = Object.keys(WRAPPERS);
+    const variants = [
+      "",
+      "arbitrary text\n",
+      allWrapperNames.join("\n"),
+      allWrapperNames.slice(0, 5).join("\n"),
+      [...allWrapperNames].reverse().join("\n"),
+      [...allWrapperNames, ...[...allWrapperNames].reverse()].join("\n"),
+    ];
+    for (const [index, source] of variants.entries()) {
+      fs.writeFileSync(testerPath, source); git(temp, ["add", RESERVED_TESTER]); git(temp, ["commit", "-qm", `tester variant ${index}`]);
+      assert.equal(providerSnapshot(temp), absent);
+    }
+    git(temp, ["rm", "-q", RESERVED_TESTER]); git(temp, ["commit", "-qm", "tester absent again"]); assert.equal(providerSnapshot(temp), absent);
+
+    const eligible = "mingla-business/src/utils/__tests__/serverDraftEventMapper.storeEcho.tester.test.ts";
+    const eligiblePath = path.join(temp, eligible); const original = fs.readFileSync(eligiblePath, "utf8");
+    fs.writeFileSync(eligiblePath, original.replaceAll("issue-1022-theme-control-tests.yml", "issue-1022-theme-control-test.yml"));
+    let changed = providerSnapshot(temp); assert.notEqual(changed, absent); assert.match(changed, /authority drifted|inventory drifted|stale external provider/);
+    fs.writeFileSync(eligiblePath, `${original}\nissue-948-w3-screens-copy-tests.yml\n`);
+    changed = providerSnapshot(temp); assert.notEqual(changed, absent); assert.match(changed, /authority drifted|externally referenced workflow provider omitted/);
+    fs.writeFileSync(eligiblePath, original); assert.equal(providerSnapshot(temp), absent);
+
+    const fixtureSource = fs.readFileSync(path.join(temp, ".github/scripts/ci-batch/__tests__/fixtures/issue-2438-cost-baseline-v1.jsonl"), "utf8");
+    fs.writeFileSync(eligiblePath, `${original}\n${fixtureSource}`); changed = providerSnapshot(temp); assert.notEqual(changed, absent); assert.match(changed, /authority drifted/);
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+test("provider evidence role grammar is bounded and production has no exact tester coupling", () => {
+  assert.equal(isNonAuthoritativeProviderEvidence(RESERVED_TESTER), true);
+  assert.equal(isNonAuthoritativeProviderEvidence(".github/scripts/strict-grep/issue-2148-ci-node-wave-shadow.tester.test.mjs"), true);
+  assert.equal(isNonAuthoritativeProviderEvidence(".github/scripts/ci-batch/__tests__/fixtures/evidence.jsonl"), true);
+  for (const relative of [
+    ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.implementor.test.mjs",
+    ".github/scripts/strict-grep/issue-2148-ci-postgres-wave.tester.test.mjs",
+    ".github/scripts/strict-grep/issue-0-ci-postgres-wave-shadow.tester.test.mjs",
+    ".github/scripts/strict-grep/ordinary.tester.test.mjs",
+    ".github/scripts/ci-batch/__tests__/ordinary.test.mjs",
+    "elsewhere/__tests__/fixtures/evidence.jsonl",
+  ]) assert.equal(isNonAuthoritativeProviderEvidence(relative), false, relative);
+  const production = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/validate-manifest-v2.mjs"), "utf8");
+  assert.equal(production.includes(RESERVED_TESTER), false);
+  assert.equal(production.includes("issue-2148-ci-node-wave-shadow.tester.test.mjs"), false);
+});
+
+test("#1902 setup, env, compounds, and conditional leaf accounting are separate and exact", () => {
+  const value = manifest(); const suite = value.suites.find((item) => item.id === "issue-1902-public-event-lifecycle-tests");
+  assert.equal(suite.steps.length, 11); assert.deepEqual(suite.steps.map((step) => step.env || null).filter(Boolean), [{ NODE_PATH: "./node_modules" }]);
+  assert.deepEqual(value.setupProfiles[suite.setupProfile].installs.map((install) => [install.id, install.cwd, install.invocation.command, install.invocation.argv]), [
+    ["setup:phase3b-lifecycle-node20-deno2:01", "mingla-business", "npm", ["ci"]],
+    ["setup:phase3b-lifecycle-node20-deno2:02", "app-mobile", "npm", ["ci"]],
+  ]);
+  const compounds = value.suites.filter((item) => item.migrationWave === "phase3b-postgres-wave").flatMap((item) => item.steps.filter((step) => step.children));
+  assert.deepEqual(compounds.map((step) => step.children.length).sort(), [2,4]);
+  assert.equal(suite.conditionalExpectedFiles.filter((file) => fs.existsSync(path.join(ROOT,file))).length, 1);
+  assert.equal(suite.conditionalExpectedFiles.filter((file) => !fs.existsSync(path.join(ROOT,file))).length, 3);
+  const installs = value.setupProfiles[suite.setupProfile].installs;
+  const orderedInstalls = installs.map((install) => ({ id: install.id, cwd: install.cwd, command: install.invocation.command, argv: install.invocation.argv }));
+  const evidence = { class: suite.executionClass, setupProfile: suite.setupProfile, setupExecutions: 1, installExecutions: 2,
+    orderedInstalls, setupFingerprint: digest(orderedInstalls) };
+  assert.equal(validateSetupEvidence(value, suite.executionClass, evidence).name, suite.setupProfile);
+  assert.throws(() => validateSetupEvidence(value, suite.executionClass, { ...evidence, orderedInstalls: [...orderedInstalls].reverse() }), /ordered capability mismatch/);
+  assert.throws(() => minimalChildEnvironment({ NODE_PATH: "./node_modules" }, "/tmp/home"), /undeclared child environment capability/);
+  assert.equal(minimalChildEnvironment({ NODE_PATH: "./node_modules" }, "/tmp/home", { allowNodePath: true }).NODE_PATH, "./node_modules");
+  const compound = suite.steps.find((step) => step.children?.length === 4); const child = compound.children[0];
+  assert.deepEqual(resolveLeafCapability(value.phase3bLeafCapabilities, suite, compound, 6, child, 0).argv, child.invocation.argv);
+  assert.throws(() => resolveLeafCapability(value.phase3bLeafCapabilities, suite, compound, 6, { ...child, cwd: ".." }, 0), /drifted|mismatch/);
+});
+
+test("secondary reconciliation identities account for every selected outer and leaf in order", () => {
+  const value = manifest(); const selected = ["issue-1902-public-event-lifecycle-tests", "issue-948-w3-screens-copy-tests"];
+  const identities = expectedPhase3bIdentities(value, selected);
+  assert.equal(identities.outerIds.length, 14); assert.equal(identities.leafIds.length, 18);
+  assert.equal(new Set(identities.outerIds).size, identities.outerIds.length);
+  assert.equal(new Set(identities.leafIds).size, identities.leafIds.length);
+});
+
+test("suite deadline records every remaining outer and leaf instead of hiding work", async () => {
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),"phase3b-deadline-"));
+  try {
+    execFileSync("git",["init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
+    fs.writeFileSync(path.join(root,"proof.test"),"proof\n"); execFileSync("git",["add","."] ,{cwd:root}); execFileSync("git",["commit","-qm","fixture"],{cwd:root});
+    const invocation={kind:"reviewed-shell-v1",command:"bash",argv:["-c","true"]};
+    const steps=[1,2].map((ordinal)=>({name:`step ${ordinal}`,cwd:".",run:"true",invocation,commandId:`assert:fixture:${String(ordinal).padStart(2,"0")}`}));
+    const suite={id:"fixture",migrationWave:"phase3b-postgres-wave",setupProfile:"fixture",expectedFiles:["proof.test"],generatedPaths:[],timeoutSeconds:60,steps};
+    const leaves=steps.map((step,index)=>{const payload={cwd:".",executable:"bash",argv:["-c","true"],env:null,predicate:{kind:"always"}};return{id:`leaf:fixture:${String(index+1).padStart(2,"0")}:1`,suiteId:"fixture",outerCommandId:step.commandId,outerIndex:index,leafIndex:0,...payload,payloadSha256:digest(payload)}});
+    const leafCapabilities={schemaVersion:1,expectedLeaves:leaves.length,registrySha256:digest(leaves),leaves};
+    const result=await runSuiteV2(suite,{root,profile:{classes:["fixture"],runtime:{name:"node",version:"20"},installs:[]},workspaceFactory:()=>({root,cleanup(){}}),leafCapabilities,execute:async()=>({ok:false,code:124,timedOut:true,reason:"suite deadline exceeded"})});
+    assert.deepEqual(result.outerResults.map(({status})=>status),["timed-out","not-run-suite-deadline"]);
+    assert.deepEqual(result.leafResults.map(({status})=>status),["timed-out","not-run-suite-deadline"]);
+    assert.deepEqual([result.executed,result.expected,result.executedLeaves,result.expectedLeaves],[1,2,1,2]);
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test("material count, attribution, setup, env, marker, and sibling reversions are red", () => {
+  const base = manifest(); const attacks = [];
+  const omitted = structuredClone(base); omitted.suites.pop(); attacks.push(omitted);
+  const outer = structuredClone(base); outer.suites.at(-1).steps.pop(); attacks.push(outer);
+  const leaf = structuredClone(base); leaf.phase3bLeafCapabilities.leaves.pop(); attacks.push(leaf);
+  const setup = structuredClone(base); setup.setupProfiles["phase3b-lifecycle-node20-deno2"].installs.reverse(); attacks.push(setup);
+  const env = structuredClone(base); env.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests").steps[2].env.NODE_PATH="../node_modules"; attacks.push(env);
+  for (const attack of attacks) assert.throws(() => assertWave(attack));
+});

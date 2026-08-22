@@ -71,11 +71,12 @@ const validateStaticClassAJob = (source) => {
 };
 
 test("#2437 terminal registry is exactly 31 historical origins / 32 typed variants", () => {
+  // [TEST-MOD-APPROVED #2438] Phase 3A stays independently selected after the additive Phase 3B wave.
   const value = manifest();
-  const shadow = value.suites.filter((suite) => suite.lifecycle === "batched-historical");
+  const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
   const origins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical");
   assert.equal(value.legacyOrigins.length, 200);
-  assert.equal(value.suites.length, 55);
+  assert.equal(value.suites.length, 67);
   assert.equal(value.workflowProviders.length, 91);
   assert.equal(origins.length, 31);
   assert.equal(shadow.length, 32);
@@ -89,9 +90,9 @@ test("#2437 terminal registry is exactly 31 historical origins / 32 typed varian
 test("all original Phase 2 commands and all shadow commands have independent immutable locks", () => {
   const value = manifest();
   assert.equal(digest(value.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
-  assert.equal(digest(value.commandCapabilities.commands.slice(51)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
-  assert.equal(value.suites.slice(23).flatMap((suite) => suite.steps).length, 107);
-  assert.equal(value.commandCapabilities.commands.length, 158);
+  assert.equal(digest(value.commandCapabilities.commands.slice(51, 158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
+  assert.equal(value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave").flatMap((suite) => suite.steps).length, 107);
+  assert.equal(value.commandCapabilities.commands.length, 194);
 });
 
 test("#1593 reference proof pins one exact TAP reporter without changing its child target", () => {

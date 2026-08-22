@@ -18,7 +18,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, workflow, writerTest } = sources;
+  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, workflow, writerTest, ciManifest } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -52,6 +52,17 @@ export function check(sources) {
   const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
   if (workflow.split(writerTestPath).length - 1 !== 3) {
     failures.push("writer-registry tester must trigger on push/PR and run unconditionally");
+  }
+  // #2438 shadow adds a second, typed provider without retiring the live one.
+  // This guard-path edit is also #2013's exact same-SHA wake route (16/16 paths).
+  let shadowSuite;
+  try { shadowSuite = JSON.parse(ciManifest).suites.find((suite) => suite.id === "issue-2013-ari-tenant-containment"); } catch {}
+  if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave" || shadowSuite.lifecycle !== "shadow-active"
+      || shadowSuite.origin !== ".github/workflows/issue-2013-ari-tenant-containment.yml"
+      || shadowSuite.triggerContract?.push?.paths?.filter((item) => item === writerTestPath).length !== 1
+      || shadowSuite.triggerContract?.pullRequest?.paths?.filter((item) => item === writerTestPath).length !== 1
+      || !shadowSuite.steps?.[0]?.run?.includes(writerTestPath)) {
+    failures.push("#2438 typed shadow provider lost writer tester push/PR/command provenance");
   }
   // [TEST-MOD-APPROVED #1985] One chat assistant writer now lives inside the
   // service-only task-state CAS; #1972 remains the terminal tool-row owner.
@@ -125,6 +136,7 @@ const sources = {
   migrationWorkflow: read(".github/workflows/supabase-migrations-and-stripe-deno.yml"),
   workflow: read(".github/workflows/issue-2013-ari-tenant-containment.yml"),
   writerTest: read("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"),
+  ciManifest: read(".github/ci-batch/MANIFEST.json"),
 };
 
 if (process.argv.includes("--self-test")) {
@@ -137,12 +149,16 @@ if (process.argv.includes("--self-test")) {
   const confirmationRevertDetected = confirmationReverted.some((failure) => failure.includes("confirmation provenance registry incomplete"));
   const writerWorkflowReverted = check({ ...sources, workflow: sources.workflow.replace("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts", "") });
   const writerWorkflowRevertDetected = writerWorkflowReverted.some((failure) => failure.includes("writer-registry tester must trigger"));
+  const shadowManifest = JSON.parse(sources.ciManifest);
+  shadowManifest.suites.find((suite) => suite.id === "issue-2013-ari-tenant-containment").migrationWave = "phase3b-forged";
+  const shadowReverted = check({ ...sources, ciManifest: JSON.stringify(shadowManifest) });
+  const shadowRevertDetected = shadowReverted.some((failure) => failure.includes("typed shadow provider"));
   const scopeReverted = check({ ...sources, scopeMigration: sources.scopeMigration.replace("NEW.brand_id IS DISTINCT FROM OLD.brand_id", "false") });
   const scopeRevertDetected = scopeReverted.some((failure) => failure.includes("database scope immutability"));
   const composerReverted = check({ ...sources, screen: sources.screen.replace("disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}", "disabled={chat.isSending}") });
   const composerRevertDetected = composerReverted.some((failure) => failure.includes("persistent cooldown"));
-  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected || !scopeRevertDetected || !composerRevertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted, scopeReverted, composerReverted });
+  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected || !shadowRevertDetected || !scopeRevertDetected || !composerRevertDetected) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted, shadowReverted, scopeReverted, composerReverted });
     process.exit(1);
   }
   console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, tester-wiring, immutable-scope, and composer-gate reverts fail.");

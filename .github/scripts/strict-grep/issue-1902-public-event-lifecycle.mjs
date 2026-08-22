@@ -18,6 +18,7 @@ const files = {
   backendSql:
     "supabase/migrations/20270322001902_issue_1902_public_event_lifecycle.sql",
   backendEdge: "supabase/functions/public-submit-rsvp/index.ts",
+  ciManifest: ".github/ci-batch/MANIFEST.json",
 };
 const baseline = Object.fromEntries(
   Object.entries(files).map(([key, file]) => [
@@ -30,6 +31,20 @@ const requireText = (source, needle, label) => {
 };
 
 function enforce(s) {
+  let shadowSuite;
+  try { shadowSuite = JSON.parse(s.ciManifest).suites.find((suite) => suite.id === "issue-1902-public-event-lifecycle-tests"); } catch {}
+  const optionalProofs = [
+    "packages/offering-rendering/__tests__/issue_1902_event_acquisition_lifecycle.tester_adversarial.test.ts",
+    "packages/brand-rendering/__tests__/issue_1902_public_brand_events.tester_adversarial.test.tsx",
+    "mingla-business/src/components/event/__tests__/issue_1902_public_event_acquisition.tester_adversarial.test.tsx",
+    "app-mobile/src/hooks/__tests__/issue_1902_public_brand_events.tester_adversarial.test.ts",
+  ];
+  if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave" || shadowSuite.lifecycle !== "shadow-active"
+      || shadowSuite.steps?.length !== 11 || shadowSuite.steps?.[6]?.children?.length !== 4
+      || JSON.stringify(shadowSuite.conditionalExpectedFiles) !== JSON.stringify([...optionalProofs].sort())
+      || JSON.stringify(shadowSuite.steps?.[2]?.env) !== JSON.stringify({ NODE_PATH: "./node_modules" })) {
+    throw new Error("issue #1902 typed shadow provider contract drifted");
+  }
   requireText(
     s.lifecycle,
     "resolveEventAcquisitionState",
@@ -174,6 +189,7 @@ function enforce(s) {
 
 if (process.argv.includes("--self-test")) {
   const mutations = [
+    ["ciManifest", '"phase3b-postgres-wave"'],
     ["lifecycle", "resolveEventAcquisitionState"],
     ["lifecycle", "2_147_483_000"],
     ["brand", 'event.eventType === "rsvp"'],
