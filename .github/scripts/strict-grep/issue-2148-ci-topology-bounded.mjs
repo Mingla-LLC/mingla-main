@@ -4,8 +4,9 @@
  *
  * Ordinary work adds suites to a stable registry; it does not add another
  * issue/ORCH/META workflow wrapper. A genuinely new runtime or trust boundary
- * may add a capability-named workflow only when a commit touching that file
- * carries an explicit, issue-cited approval token.
+ * may add a capability-named workflow only after its exact exception contract
+ * has already landed in the base branch registry. The workflow commit must
+ * then carry a token that exactly matches that pre-approved contract.
  *
  * Exit 0: no new workflow, or every new workflow has a valid capability exception.
  * Exit 1: topology policy violation.
@@ -20,12 +21,30 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../..");
 const WORKFLOW_PREFIX = ".github/workflows/";
+const REGISTRY_PATH = ".github/ci-capability-workflows.json";
+const CANONICAL_REPOSITORY = "Mingla-LLC/mingla-main";
 const WORKFLOW_FILE = /\.ya?ml$/i;
 const HISTORICAL_WRAPPER = /^(?:issue|orch|meta)-.+\.ya?ml$/i;
+const CAPABILITY_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)+\.ya?ml$/;
 const APPROVAL = /(?:^|\n)CI-WORKFLOW-APPROVED #([1-9]\d*): ([^\r\n]{20,})(?=\r?$|\n)/g;
 const PLACEHOLDER_REASON = /^unique runtime or trust boundary reason\.?$/i;
 const ALLOWED_BOUNDARY =
   /(?:runner|operating system|\bOS\b|architecture|secret|environment authority|deploy|production operation|service container|required (?:status )?context)/i;
+const CONTRACT_APPROVAL =
+  /(?:^|\n)CI-WORKFLOW-APPROVED #([1-9]\d*) \[([a-z]+(?:-[a-z]+)*)\]: ([^\r\n]+)(?=\r?$|\n)/g;
+const BOUNDARY_CATEGORIES = new Set([
+  "runner",
+  "operating-system",
+  "architecture",
+  "secret",
+  "environment-authority",
+  "deploy",
+  "production-operation",
+  "service-container",
+  "required-context",
+]);
+const INVALID_RATIONALE =
+  /(?:\b(?:tbd|todo|placeholder|example|dummy|fake)\b|\bn\/?a\b|convenience only|secret word|does not require|no unique boundary)/i;
 
 function git(args, { cwd = REPO_ROOT, allowFailure = false } = {}) {
   const result = spawnSync("git", args, {
@@ -45,6 +64,100 @@ export function validApproval(body) {
     const reason = match[2].trim();
     return !PLACEHOLDER_REASON.test(reason) && ALLOWED_BOUNDARY.test(reason);
   });
+}
+
+function exactKeys(value, expected) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length && actual.every((key, index) => key === [...expected].sort()[index]);
+}
+
+export function validateRegistry(value, source = REGISTRY_PATH) {
+  if (!exactKeys(value, ["version", "workflows"]) || value.version !== 1 || !Array.isArray(value.workflows)) {
+    throw new Error(`${source}: expected exactly { version: 1, workflows: [] }`);
+  }
+
+  const paths = new Set();
+  for (const [index, entry] of value.workflows.entries()) {
+    const label = `${source}: workflows[${index}]`;
+    if (!exactKeys(entry, ["path", "issue", "category", "rationale"])) {
+      throw new Error(`${label}: expected exactly path, issue, category, and rationale`);
+    }
+    if (
+      typeof entry.path !== "string" ||
+      !entry.path.startsWith(WORKFLOW_PREFIX) ||
+      !WORKFLOW_FILE.test(entry.path) ||
+      path.posix.basename(entry.path) !== entry.path.slice(WORKFLOW_PREFIX.length)
+    ) {
+      throw new Error(`${label}: path must name one direct .github/workflows/*.yml or *.yaml file`);
+    }
+    if (HISTORICAL_WRAPPER.test(path.posix.basename(entry.path))) {
+      throw new Error(`${label}: issue/ORCH/META wrapper paths can never be registered`);
+    }
+    if (!CAPABILITY_NAME.test(path.posix.basename(entry.path))) {
+      throw new Error(`${label}: path is not a stable capability name`);
+    }
+    if (!Number.isSafeInteger(entry.issue) || entry.issue <= 0) {
+      throw new Error(`${label}: issue must be a positive integer`);
+    }
+    if (!BOUNDARY_CATEGORIES.has(entry.category)) {
+      throw new Error(`${label}: category is not one of the locked boundary categories`);
+    }
+    if (
+      typeof entry.rationale !== "string" ||
+      entry.rationale !== entry.rationale.trim() ||
+      entry.rationale.length < 20 ||
+      INVALID_RATIONALE.test(entry.rationale)
+    ) {
+      throw new Error(`${label}: rationale is missing, placeholder, contradictory, or convenience-only`);
+    }
+    if (paths.has(entry.path)) throw new Error(`${label}: duplicate workflow path ${entry.path}`);
+    paths.add(entry.path);
+  }
+  return value;
+}
+
+function exactContractApproval(body, entry) {
+  return [...String(body ?? "").matchAll(CONTRACT_APPROVAL)].some(
+    (match) =>
+      Number(match[1]) === entry.issue &&
+      match[2] === entry.category &&
+      match[3] === entry.rationale,
+  );
+}
+
+export function evaluateCanonicalWorkflowTopology({
+  addedWorkflows,
+  touchingCommitBodies = {},
+  baseRegistry,
+}) {
+  const failures = [];
+  const entries = new Map(baseRegistry.workflows.map((entry) => [entry.path, entry]));
+  for (const workflow of addedWorkflows) {
+    const filename = path.posix.basename(workflow);
+    if (HISTORICAL_WRAPPER.test(filename)) {
+      failures.push(
+        `${workflow}: issue/ORCH/META workflow wrappers are forbidden regardless of registry or token.`,
+      );
+      continue;
+    }
+    if (!CAPABILITY_NAME.test(filename)) {
+      failures.push(`${workflow}: workflow filename is not a stable capability name.`);
+      continue;
+    }
+    const entry = entries.get(workflow);
+    if (!entry) {
+      failures.push(`${workflow}: no exact pre-approved exception exists in the BASE registry.`);
+      continue;
+    }
+    const bodies = touchingCommitBodies[workflow] ?? [];
+    if (!bodies.some((body) => exactContractApproval(body, entry))) {
+      failures.push(
+        `${workflow}: no touching commit has an issue, category, and rationale exactly matching the BASE registry entry.`,
+      );
+    }
+  }
+  return failures;
 }
 
 export function evaluateWorkflowTopology({ addedWorkflows, touchingCommitBodies = {} }) {
@@ -130,6 +243,40 @@ export function resolveComparison({ argv = process.argv.slice(2), event = readEv
   return { base, head, event };
 }
 
+function canonicalRepositoryMode(repoRoot = REPO_ROOT) {
+  const environmentRepository = process.env.GITHUB_REPOSITORY || "";
+  const origin = git(["remote", "get-url", "origin"], { cwd: repoRoot, allowFailure: true });
+  const canonicalOrigin = /(?:github\.com[/:])Mingla-LLC\/mingla-main(?:\.git)?$/i.test(origin);
+  const environmentCanonical = environmentRepository.toLowerCase() === CANONICAL_REPOSITORY.toLowerCase();
+
+  if (environmentRepository && environmentCanonical !== canonicalOrigin && origin) {
+    throw new Error(
+      `ambiguous repository identity: GITHUB_REPOSITORY=${environmentRepository}, origin=${origin}`,
+    );
+  }
+  if (environmentCanonical || canonicalOrigin) return "canonical";
+  if (process.env.GITHUB_ACTIONS === "true" && !environmentRepository && !origin) {
+    throw new Error("ambiguous repository identity in CI; refusing the noncanonical fixture path");
+  }
+  return "noncanonical-fixture";
+}
+
+function registryAt(repoRoot, revision, required) {
+  const raw = git(["show", `${revision}:${REGISTRY_PATH}`], { cwd: repoRoot, allowFailure: true });
+  if (!raw) {
+    if (required) throw new Error(`${REGISTRY_PATH} is missing at ${revision}`);
+    return null;
+  }
+  try {
+    return validateRegistry(JSON.parse(raw), `${revision}:${REGISTRY_PATH}`);
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      throw new Error(`${revision}:${REGISTRY_PATH}: invalid JSON: ${error.message}`);
+    }
+    throw error;
+  }
+}
+
 export function inspectRepository({ repoRoot = REPO_ROOT, base, head, event = {} }) {
   ensureComparisonHistory(event, base, head, repoRoot);
   const raw = git(
@@ -149,7 +296,13 @@ export function inspectRepository({ repoRoot = REPO_ROOT, base, head, event = {}
     );
     touchingCommitBodies[workflow] = bodies.split("\0").filter(Boolean);
   }
-  return { addedWorkflows, touchingCommitBodies };
+  const repositoryMode = canonicalRepositoryMode(repoRoot);
+  if (repositoryMode === "canonical") {
+    const headRegistry = registryAt(repoRoot, head, true);
+    const baseRegistry = registryAt(repoRoot, base, addedWorkflows.length > 0);
+    return { addedWorkflows, touchingCommitBodies, repositoryMode, baseRegistry, headRegistry };
+  }
+  return { addedWorkflows, touchingCommitBodies, repositoryMode };
 }
 
 function selfTest() {
@@ -249,15 +402,119 @@ function selfTest() {
     console.error(`\nIssue #2148 CI topology self-test FAILED: ${failed}/${cases.length} cases.`);
     process.exit(1);
   }
-  console.log(`\nIssue #2148 CI topology self-test: ${cases.length}/${cases.length} PASS.`);
+
+  const approved = {
+    path: capability,
+    issue: 2431,
+    category: "required-context",
+    rationale: "required status context cannot be supplied by an existing stable workflow",
+  };
+  const registry = { version: 1, workflows: [approved] };
+  const exactToken =
+    "CI-WORKFLOW-APPROVED #2431 [required-context]: required status context cannot be supplied by an existing stable workflow";
+  const canonicalCases = [
+    {
+      name: "exact pre-merged contract and attributed token pass",
+      registry,
+      workflow: capability,
+      bodies: [exactToken],
+      failures: 0,
+    },
+    {
+      name: "fabricated issue without a base entry fails",
+      registry: { version: 1, workflows: [] },
+      workflow: capability,
+      bodies: ["CI-WORKFLOW-APPROVED #999999999 [secret]: secret word included only to fool the parser"],
+      failures: 1,
+    },
+    {
+      name: "keyword stuffing and convenience-only prose fail",
+      registry: { version: 1, workflows: [] },
+      workflow: capability,
+      bodies: ["CI-WORKFLOW-APPROVED #1 [runner]: ordinary test runner convenience only; no unique boundary exists"],
+      failures: 1,
+    },
+    {
+      name: "explicit negation fails",
+      registry: { version: 1, workflows: [] },
+      workflow: capability,
+      bodies: ["CI-WORKFLOW-APPROVED #2431 [required-context]: this does not require a required status context at all"],
+      failures: 1,
+    },
+    ...["path", "issue", "category", "rationale"].map((field) => {
+      const changed = { ...approved };
+      if (field === "path") changed.path = ".github/workflows/another-capability.yml";
+      if (field === "issue") changed.issue = 2432;
+      if (field === "category") changed.category = "runner";
+      if (field === "rationale") changed.rationale = "a different pre-approved rationale that is sufficiently detailed";
+      return {
+        name: `${field} mismatch fails`,
+        registry: { version: 1, workflows: [changed] },
+        workflow: capability,
+        bodies: [exactToken],
+        failures: 1,
+      };
+    }),
+    {
+      name: "issue wrapper remains forbidden with registry and token",
+      registry: { version: 1, workflows: [] },
+      workflow: issue,
+      bodies: [exactToken],
+      failures: 1,
+    },
+  ];
+
+  for (const testCase of canonicalCases) {
+    const failures = evaluateCanonicalWorkflowTopology({
+      addedWorkflows: [testCase.workflow],
+      touchingCommitBodies: { [testCase.workflow]: testCase.bodies },
+      baseRegistry: testCase.registry,
+    });
+    const ok = failures.length === testCase.failures;
+    console.log(`${ok ? "ok  " : "FAIL"}  ${testCase.name}`);
+    if (!ok) failed += 1;
+  }
+
+  const invalidRegistries = [
+    { name: "duplicate registry paths fail", value: { version: 1, workflows: [approved, approved] } },
+    { name: "malformed registry entries fail", value: { version: 1, workflows: [{ path: capability }] } },
+    {
+      name: "contradictory registry rationale fails",
+      value: { version: 1, workflows: [{ ...approved, rationale: "runner convenience only; no unique boundary exists" }] },
+    },
+  ];
+  for (const testCase of invalidRegistries) {
+    let rejected = false;
+    try {
+      validateRegistry(testCase.value, "self-test registry");
+    } catch {
+      rejected = true;
+    }
+    console.log(`${rejected ? "ok  " : "FAIL"}  ${testCase.name}`);
+    if (!rejected) failed += 1;
+  }
+
+  const total = cases.length + canonicalCases.length + invalidRegistries.length;
+  if (failed) {
+    console.error(`\nIssue #2148 CI topology self-test FAILED: ${failed}/${total} cases.`);
+    process.exit(1);
+  }
+  console.log(`\nIssue #2148 CI topology self-test: ${total}/${total} PASS.`);
 }
 
 function main() {
   try {
     const { base, head, event } = resolveComparison();
     const evidence = inspectRepository({ base, head, event });
-    const failures = evaluateWorkflowTopology(evidence);
+    const failures = evidence.repositoryMode === "canonical"
+      ? evaluateCanonicalWorkflowTopology({
+          addedWorkflows: evidence.addedWorkflows,
+          touchingCommitBodies: evidence.touchingCommitBodies,
+          baseRegistry: evidence.baseRegistry ?? { version: 1, workflows: [] },
+        })
+      : evaluateWorkflowTopology(evidence);
     console.log(`Issue #2148 CI topology: ${evidence.addedWorkflows.length} added workflow(s) in ${base}..${head}.`);
+    console.log(`Issue #2148 CI topology authority: ${evidence.repositoryMode}.`);
     if (failures.length) {
       console.error(`\nI-PROPOSED-2148-CI-TOPOLOGY-BOUNDED FAILED — ${failures.length} violation(s):`);
       for (const failure of failures) console.error(`  - ${failure}`);
