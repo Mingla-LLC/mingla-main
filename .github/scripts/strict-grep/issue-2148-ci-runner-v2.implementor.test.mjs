@@ -7,7 +7,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   buildShardReport, capabilityPayloadDigest, capabilityRegistryDigest, createIsolatedWorkspace, loadManifest,
-  minimalChildEnvironment, recordSetup, renderSummary, resolveCommandCapability, runInvocation,
+  minimalChildEnvironment, recordSetup, renderAnnotations, renderSummary, resolveCommandCapability, runInvocation,
   runSuiteV2, runSuitesV2, setupEvidencePath, validateSetupEvidence, verdict,
 } from "../ci-batch/run-suite-batch.mjs";
 import { forbiddenEmbeddedSetup } from "../ci-batch/validate-manifest-v2.mjs";
@@ -378,6 +378,34 @@ test("secret redaction cannot mutate manifest-owned suite identity before reconc
   } finally {
     if (prior === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = prior;
     fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("failure annotations redact identities without corrupting raw artifact accounting", () => {
+  const id = "issue-2399-multiday-picker-ticket-box";
+  const branch = "2399-multiday-picker-ticket-box";
+  const prior = process.env.GITHUB_HEAD_REF;
+  process.env.GITHUB_HEAD_REF = branch;
+  try {
+    const expected = [suite(id, "true"), suite("second", "true")];
+    const results = [
+      { id, ok: false, code: 2, status: "corrupt", reason: `missing setup for ${branch}`, executed: 0, expected: 1, seconds: 0 },
+      { id, ok: true, code: 0, status: "passed", reason: null, executed: 1, expected: 1, seconds: 1 },
+    ];
+    const report = buildShardReport("business-node20-3", expected, results, null, 1);
+    assert.deepEqual(report.failed, [id]);
+    assert.deepEqual(report.duplicateIds, [id]);
+    assert.deepEqual(report.malformedIds, [id]);
+    assert.equal(report.results[0].id, id);
+    assert.match(JSON.stringify(report), new RegExp(id), "raw artifact retains exact accounting identity");
+
+    const presentation = [...renderAnnotations(report), renderSummary(report)].join("\n");
+    assert.doesNotMatch(presentation, new RegExp(branch));
+    assert.doesNotMatch(presentation, new RegExp(id));
+    assert.match(presentation, /issue-\[REDACTED\]/);
+    assert.match(presentation, /missing setup for \[REDACTED\]/);
+  } finally {
+    if (prior === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = prior;
   }
 });
 

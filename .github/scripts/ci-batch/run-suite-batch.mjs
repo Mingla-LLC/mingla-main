@@ -506,17 +506,22 @@ export function renderSummary(report) {
     "| Suite | Status | Commands | Time | Reason |", "|---|---:|---:|---:|---|", ...rows, ""].join("\n");
 }
 
+export function renderAnnotations(report) {
+  const annotation = (title, message) => `::error title=${annotationEscape(redactText(title))}::${annotationEscape(redactText(message))}`;
+  const lines = report.results.filter((item) => !item.ok).map((result) =>
+    annotation(`CI suite ${result.id}`, `${result.status}: ${result.reason || "unknown failure"}`));
+  if (report.shortfall) lines.push(annotation("CI suite shortfall", `expected ${report.expected}, executed ${report.executed}`));
+  if (report.identityMismatch) lines.push(annotation("CI suite identity mismatch", "executed suite identities or order differ from the manifest"));
+  if (report.duplicateIds.length) lines.push(annotation("CI suite duplicate identities", report.duplicateIds.join(", ")));
+  if (report.malformedIds.length) lines.push(annotation("CI suite malformed results", report.malformedIds.join(", ")));
+  return lines;
+}
+
 function writeReport(manifest, report, root = REPO_ROOT) {
   fs.writeFileSync(path.join(root, manifest.runnerContract.resultsFile), `${JSON.stringify(report, null, 2)}\n`);
   const summary = renderSummary(report);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
-  for (const result of report.results.filter((item) => !item.ok)) {
-    console.error(`::error title=${annotationEscape(`CI suite ${result.id}`)}::${annotationEscape(`${result.status}: ${result.reason || "unknown failure"}`)}`);
-  }
-  if (report.shortfall) console.error(`::error title=CI suite shortfall::expected ${report.expected}, executed ${report.executed}`);
-  if (report.identityMismatch) console.error("::error title=CI suite identity mismatch::executed suite identities or order differ from the manifest");
-  if (report.duplicateIds.length) console.error(`::error title=CI suite duplicate identities::${annotationEscape(report.duplicateIds.join(", "))}`);
-  if (report.malformedIds.length) console.error(`::error title=CI suite malformed results::${annotationEscape(report.malformedIds.join(", "))}`);
+  for (const line of renderAnnotations(report)) console.error(line);
 }
 
 async function main() {
