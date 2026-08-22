@@ -28,16 +28,14 @@
     {
       "script": ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2399-multiday-picker-ticket-box.yml",
+      "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
         "self-test",
         "plain"
       ],
       "selfTest": "wired",
-      "jobKeys": [
-        "buyer-web-multiday-contract"
-      ]
+      "jobKeys": []
     },
     {
       "script": ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",

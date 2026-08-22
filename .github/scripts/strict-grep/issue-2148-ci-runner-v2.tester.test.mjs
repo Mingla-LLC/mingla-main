@@ -193,16 +193,16 @@ test("JSON and summary redact values present in runner environment", () => {
   }
 });
 
-test("workflow matrix retains the exact trust boundary and 22-suite registry", () => {
+test("workflow matrix retains the exact trust boundary and 23-suite registry", () => {
   const workflow = fs.readFileSync(batchWorkflow(), "utf8");
   const manifest = readManifest();
   assert.match(workflow, /permissions:\s*\n\s+contents:\s*read/);
   assert.doesNotMatch(workflow, /pull_request_target|id-token:\s*write|contents:\s*write|secrets\./);
   assert.doesNotMatch(workflow, /^\s*paths(?:-ignore)?:/m);
   assert.match(workflow, /fail-fast:\s*false/);
-  assert.equal(manifest.suites.length, 22);
-  assert.equal(manifest.suites.reduce((sum, item) => sum + item.steps.length, 0), 46);
-  assert.equal(new Set(manifest.suites.map((item) => item.id)).size, 22);
+  assert.equal(manifest.suites.length, 23);
+  assert.equal(manifest.suites.reduce((sum, item) => sum + item.steps.length, 0), 51);
+  assert.equal(new Set(manifest.suites.map((item) => item.id)).size, 23);
   for (const item of manifest.suites) {
     assert.equal(item.timeoutSeconds, 480);
     assert.equal(item.isolation, "clean-worktree");

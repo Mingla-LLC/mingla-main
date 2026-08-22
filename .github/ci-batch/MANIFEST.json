@@ -1,12 +1,12 @@
 {
   "$comment": [
     "#2436 / #2148 Phase 2 deterministic CI registry and runner v2.",
-    "Locked inventory: 199 legacy origins, 22 active suites, 90 external providers; 46 preserved assertion steps.",
+    "Locked inventory: 199 legacy origins, 23 active suites, 89 external providers; 51 preserved assertion steps.",
     "Setup executes once per shard from the typed profile. Suite commands contain no environment installation."
   ],
   "schemaVersion": 2,
-  "expectedExecutableSuites": 22,
-  "expectedSuites": 22,
+  "expectedExecutableSuites": 23,
+  "expectedSuites": 23,
   "setupProfiles": {
     "node20-noinstall": {
       "runtime": {
@@ -854,7 +854,6 @@
       "envNames": [],
       "isolation": "clean-worktree",
       "expectedFiles": [
-        "mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift",
         "mingla-business/package.json",
         "mingla-business/patches/expo-image-picker+17.0.11.patch"
       ],
@@ -1686,6 +1685,145 @@
         "suite-results.json"
       ],
       "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
+    },
+    {
+      "id": "issue-2399-multiday-picker-ticket-box",
+      "class": "business-node20-3",
+      "origin": ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+      "originPaths": [
+        "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+        "mingla-business/app/event/[id]/preview.tsx",
+        "mingla-business/src/components/event/PublicEventPage.tsx",
+        "mingla-business/src/components/ui/Toast.tsx",
+        "mingla-business/src/components/event/FoundationEventPreview.tsx",
+        "mingla-business/src/components/event/DraftEventFoundationPreview.tsx",
+        "mingla-business/src/components/event/MultiDateDayChooser.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx",
+        "mingla-business/src/utils/draftEventBuyerPreview.ts",
+        "mingla-business/src/utils/publicEventDayRecovery.ts",
+        "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts",
+        "mingla-business/playwright/issue2399/**",
+        "mingla-business/playwright.issue2399.config.ts",
+        "mingla-business/src/services/publicEventsService.ts",
+        "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
+        "packages/offering-rendering/EventOfferingBody.tsx",
+        "docs/INVARIANT_REGISTRY.md",
+        ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
+        ".github/scripts/strict-grep/MANIFEST.json",
+        ".github/workflows/issue-2399-multiday-picker-ticket-box.yml"
+      ],
+      "steps": [
+        {
+          "name": "Buyer web desktop, mobile, preview, totals, and single-day preservation",
+          "cwd": "mingla-business",
+          "run": "npx jest --runInBand src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx src/components/event/__tests__/PublicEventPage.issue2101.test.tsx src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx",
+          "invocation": {
+            "kind": "raw-shell",
+            "command": "bash",
+            "argv": [
+              "-c",
+              "npx jest --runInBand src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx src/components/event/__tests__/PublicEventPage.issue2101.test.tsx src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx"
+            ]
+          },
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2399-multiday-picker-ticket-box:01"
+        },
+        {
+          "name": "Install Chromium for the retained browser assertion",
+          "cwd": "mingla-business",
+          "run": "npx playwright install --with-deps chromium",
+          "invocation": {
+            "kind": "raw-shell",
+            "command": "bash",
+            "argv": [
+              "-c",
+              "npx playwright install --with-deps chromium"
+            ]
+          },
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2399-multiday-picker-ticket-box:02"
+        },
+        {
+          "name": "Real browser checkbox DOM, keyboard, and motion",
+          "cwd": "mingla-business",
+          "run": "npx playwright test -c playwright.issue2399.config.ts",
+          "invocation": {
+            "kind": "raw-shell",
+            "command": "bash",
+            "argv": [
+              "-c",
+              "npx playwright test -c playwright.issue2399.config.ts"
+            ]
+          },
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2399-multiday-picker-ticket-box:03"
+        },
+        {
+          "name": "Issue 2399 strict contract self-test",
+          "cwd": ".",
+          "run": "node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs --self-test",
+          "invocation": {
+            "kind": "raw-shell",
+            "command": "bash",
+            "argv": [
+              "-c",
+              "node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs --self-test"
+            ]
+          },
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2399-multiday-picker-ticket-box:04"
+        },
+        {
+          "name": "Issue 2399 strict contract",
+          "cwd": ".",
+          "run": "node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
+          "invocation": {
+            "kind": "raw-shell",
+            "command": "bash",
+            "argv": [
+              "-c",
+              "node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs"
+            ]
+          },
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2399-multiday-picker-ticket-box:05"
+        }
+      ],
+      "lifecycle": "batched-active",
+      "ownerIssue": "#2399",
+      "runtime": {
+        "name": "node",
+        "version": "20"
+      },
+      "setupProfile": "business-node20",
+      "cwd": ".",
+      "envNames": [],
+      "isolation": "clean-worktree",
+      "expectedFiles": [
+        ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
+        "mingla-business/playwright.issue2399.config.ts",
+        "mingla-business/src/components/event/__tests__/PublicEventPage.issue2101.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
+        "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
+        "mingla-business/src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx"
+      ],
+      "externalReferenceFiles": [],
+      "requiredContext": "CI batch: business-node20-3",
+      "timingSeconds": {
+        "p50": null,
+        "p95": null,
+        "evidence": "not-yet-measured"
+      },
+      "generatedPaths": [
+        "suite-results.json"
+      ],
+      "exceptionRationale": "Raw shell retained while #2399 assertions migrate from a forbidden wrapper into the approved batch.",
       "timeoutSeconds": 480
     }
   ],
@@ -9626,62 +9764,9 @@
       "stem": "issue-2399-multiday-picker-ticket-box",
       "extension": "yml",
       "ownerIssue": "#2399",
-      "disposition": "build-assertion-consumer",
-      "providerWorkflow": ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
-      "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
-      "workflowMetadata": {
-        "sourceSha256": "1d11623bc68dece5b7590fc57814e4f2cd24da07beebd7aa059b8a7ec49a9ef8",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/scripts/strict-grep/MANIFEST.json",
-          ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
-          ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
-          "docs/INVARIANT_REGISTRY.md",
-          "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
-          "mingla-business/app/event/[id]/preview.tsx",
-          "mingla-business/playwright.issue2399.config.ts",
-          "mingla-business/playwright/issue2399/**",
-          "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts",
-          "mingla-business/src/components/event/DraftEventFoundationPreview.tsx",
-          "mingla-business/src/components/event/FoundationEventPreview.tsx",
-          "mingla-business/src/components/event/MultiDateDayChooser.tsx",
-          "mingla-business/src/components/event/PublicEventPage.tsx",
-          "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx",
-          "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
-          "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
-          "mingla-business/src/components/ui/Toast.tsx",
-          "mingla-business/src/services/publicEventsService.ts",
-          "mingla-business/src/utils/draftEventBuyerPreview.ts",
-          "mingla-business/src/utils/publicEventDayRecovery.ts",
-          "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
-          "packages/offering-rendering/EventOfferingBody.tsx"
-        ],
-        "jobKeys": [
-          "buyer-web-multiday-contract"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "node:22"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "actions/setup-node@v4"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
-      }
+      "disposition": "batched-active",
+      "replacementSuite": "issue-2399-multiday-picker-ticket-box",
+      "rationale": "The forbidden standalone wrapper was removed; the named registry suite preserves all five assertion commands under the approved business batch."
     },
     {
       "stem": "issue-2418-bank-list-native-identity",
@@ -11665,17 +11750,6 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
-      "workflow": "issue-2399-multiday-picker-ticket-box.yml",
-      "ownerIssue": "#2399",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
-      "referenceFiles": [
-        ".github/scripts/strict-grep/MANIFEST.json",
-        ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs"
-      ],
-      "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
-    },
-    {
       "workflow": "issue-2418-bank-list-native-identity.yml",
       "ownerIssue": "#2418",
       "transition": "retained-live-provider",
@@ -11926,8 +12000,8 @@
   ],
   "commandCapabilities": {
     "schemaVersion": 1,
-    "expectedCommands": 46,
-    "registrySha256": "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399",
+    "expectedCommands": 51,
+    "registrySha256": "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f",
     "commands": [
       {
         "id": "assert:issue-1282-google-bespoke-copy-tests:01",
@@ -12480,6 +12554,66 @@
           "node --test src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs src/components/__tests__/issue_2322_ios_picker_theming.tester_adversarial.test.mjs"
         ],
         "payloadSha256": "7b2eebb4c7e4a42467969edfe765699a32a22d9cebd6bf9bbb072dded702c468"
+      },
+      {
+        "id": "assert:issue-2399-multiday-picker-ticket-box:01",
+        "suiteId": "issue-2399-multiday-picker-ticket-box",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest --runInBand src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx src/components/event/__tests__/PublicEventPage.issue2101.test.tsx src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx"
+        ],
+        "payloadSha256": "96f2507dc1e8cb0251b2ba8fa1f5cd70ed509dbd9ddd8b511beccd6060943e7b"
+      },
+      {
+        "id": "assert:issue-2399-multiday-picker-ticket-box:02",
+        "suiteId": "issue-2399-multiday-picker-ticket-box",
+        "stepIndex": 1,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx playwright install --with-deps chromium"
+        ],
+        "payloadSha256": "15fcfa56361586d4eafaf4e9ae140fecdc4202b7ca32fde533ccf8d21b2fcfa0"
+      },
+      {
+        "id": "assert:issue-2399-multiday-picker-ticket-box:03",
+        "suiteId": "issue-2399-multiday-picker-ticket-box",
+        "stepIndex": 2,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx playwright test -c playwright.issue2399.config.ts"
+        ],
+        "payloadSha256": "d6674b4da408927dcbd839f6b2dce664829d0ce5299e3fc60bfba3ebc4985289"
+      },
+      {
+        "id": "assert:issue-2399-multiday-picker-ticket-box:04",
+        "suiteId": "issue-2399-multiday-picker-ticket-box",
+        "stepIndex": 3,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs --self-test"
+        ],
+        "payloadSha256": "aa797f44fab49493bc5d1c62562cbc580c9d5aa6b0f55eda374500fc48832f8d"
+      },
+      {
+        "id": "assert:issue-2399-multiday-picker-ticket-box:05",
+        "suiteId": "issue-2399-multiday-picker-ticket-box",
+        "stepIndex": 4,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs"
+        ],
+        "payloadSha256": "b800ba502d8557b083a05ede71c6dc040d2e2787d359bb0c18e286a3c209c34f"
       }
     ]
   },

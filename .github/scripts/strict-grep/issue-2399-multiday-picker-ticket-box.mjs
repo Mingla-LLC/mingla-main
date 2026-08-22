@@ -22,7 +22,7 @@ const PATHS = {
   browserTest: "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts",
   test: "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
   tester: "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
-  workflow: ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+  registry: ".github/ci-batch/MANIFEST.json",
 };
 const readSources = () =>
   Object.fromEntries(
@@ -168,13 +168,20 @@ export function check(raw) {
       raw.page.includes("setOccurrencesStale(false);\n          onRetryOccurrences")) {
     failures.push("stale retry does not remain fenced until canonical success");
   }
-  if (!raw.workflow.includes(PATHS.test) || !raw.workflow.includes(PATHS.workflow) ||
-      !raw.workflow.includes(PATHS.shared) || !raw.workflow.includes(PATHS.page) ||
-      !raw.workflow.includes(PATHS.toast) ||
-      !raw.workflow.includes(PATHS.previewRoute) ||
-      !raw.workflow.includes(PATHS.previewFoundation) ||
-      !raw.workflow.includes(PATHS.browserTest)) {
-    failures.push("workflow does not cover the complete #2399 change surface");
+  for (const token of [
+    '"id": "issue-2399-multiday-picker-ticket-box"',
+    PATHS.test,
+    PATHS.shared,
+    PATHS.page,
+    PATHS.toast,
+    PATHS.previewRoute,
+    PATHS.previewFoundation,
+    PATHS.browserTest,
+    "npx playwright install --with-deps chromium",
+    "npx playwright test -c playwright.issue2399.config.ts",
+    "issue-2399-multiday-picker-ticket-box.mjs --self-test",
+  ]) {
+    if (!raw.registry.includes(token)) failures.push(`batch registry coverage missing: ${token}`);
   }
   if (!raw.test.includes("omitting #2399 context preserves the true single-day rendered tree") ||
       !raw.test.includes("zero selected days keeps Total unknown")) {
@@ -189,8 +196,8 @@ export function check(raw) {
   ]) {
     if (!raw.tester.includes(token)) failures.push(`tester recovery guard missing: ${token}`);
   }
-  if (!raw.workflow.includes(PATHS.tester)) {
-    failures.push("tester adversarial guard is not executed by #2399 CI");
+  if (!raw.registry.includes(PATHS.tester)) {
+    failures.push("tester adversarial guard is not executed by #2399 batch CI");
   }
 
   if (failures.length > 0) {
@@ -218,6 +225,7 @@ if (process.argv.includes("--self-test")) {
     ["toast", "if (preservePageFocusOnWeb) return surface;", "if (false) return surface;"],
     ["page", "preservePageFocusOnWeb={toast.preservePageFocus}", "preservePageFocusOnWeb={false}"],
     ["tester", 'mount("stale"', 'mount("ready"'],
+    ["registry", '"id": "issue-2399-multiday-picker-ticket-box"', '"id": "missing-issue-2399-suite"'],
   ];
   for (const [key, from, to] of mutations) {
     if (!sources[key].includes(from)) throw new Error(`self-test fixture missing: ${from}`);
