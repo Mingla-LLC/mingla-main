@@ -52,13 +52,19 @@ export function expectedSuites(manifest, klass) {
   return manifest.suites.filter((s) => !klass || s.class === klass);
 }
 
-/** R5: run one recorded step verbatim. Exported so the self-test can drive it. */
+/** R5: run one typed, recorded invocation verbatim. Exported for regression proof. */
 export function runStep(step, { cwd = REPO_ROOT, exec = spawnSync } = {}) {
   const dir = path.resolve(cwd, step.cwd || ".");
   if (!fs.existsSync(dir)) {
     return { ok: false, code: 2, reason: `working directory does not exist: ${step.cwd}` };
   }
-  const r = exec("bash", ["-c", step.run], {
+  // Compatibility fallback keeps the pre-v2 unit fixtures valid; the v2 registry
+  // validator requires every committed step to carry an exact typed invocation.
+  const invocation = step.invocation || { command: "bash", argv: ["-c", step.run] };
+  if (!invocation.command || !Array.isArray(invocation.argv) || invocation.argv.some((arg) => typeof arg !== "string")) {
+    return { ok: false, code: 2, reason: "invalid typed invocation" };
+  }
+  const r = exec(invocation.command, invocation.argv, {
     cwd: dir,
     stdio: "inherit",
     env: { ...process.env, ...(step.env || {}) },

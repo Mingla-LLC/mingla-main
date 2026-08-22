@@ -8,6 +8,20 @@
 - **Enforcement:** `.github/scripts/strict-grep/issue-2148-ci-topology-bounded.mjs` runs self-test then live in strict-grep class A, its committed issue #2431 happy-path proof executes in the same batch, and `.github/workflows/strict-grep-mingla-business.yml` triggers on every workflow-only diff.
 - **Status:** DRAFT until the full #2148 consolidation programme reaches its final topology, completeness, required-context, and performance budgets. Phase 0 prevents new wrappers without deleting any existing workflow or test.
 
+## DRAFT — issue #2148 / Phase 1 issue #2435 (CI execution registry is complete)
+
+### I-PROPOSED-2148-SUITE-EXECUTION-COMPLETE (DRAFT)
+
+- **Rule:** Every historical CI origin has exactly one recorded disposition, and every executable migrated suite has exactly one reachable class route, typed invocation, pinned runtime/setup profile, real working directory, and real expected files. An omitted, duplicated, stale, empty, unknown, or live-plus-batched origin fails closed; registry discovery may prove completeness but never decides what executes.
+- **Enforcement:** `.github/ci-batch/MANIFEST.json` schema v2, `.github/scripts/ci-batch/validate-manifest-v2.mjs`, and the issue #2435 strict-grep adversarial and implementor happy-path proofs in Class A. The amended Phase 1 locks are 198 origins, 22 executable suites, and 89 externally referenced live workflow providers.
+- **Status:** DRAFT. Phase 1 records and guards current truth without deleting a workflow or test, changing a suite command, or changing required-context/trust behavior.
+
+### I-PROPOSED-2148-SETUP-SINGLE-OWNER (DRAFT)
+
+- **Rule:** Each active registry suite names one setup profile, and that profile explicitly owns every class through which the suite can run. Unknown profiles, classes missing from the workflow matrix, matrix classes missing from the registry, and suites routed through a profile that does not own their class are hard failures.
+- **Enforcement:** the same schema-v2 validator cross-checks `setupProfiles`, `classes`, every suite record, and the unchanged `.github/workflows/ci-batch.yml` matrix; its self-test mutates each boundary red before the live check is trusted.
+- **Status:** DRAFT pending later #2148 phases that consolidate live wrappers and establish final required-check/performance budgets.
+
 ## ACTIVE — issue #2411 (free orders remain visible and countable without currency)
 
 ### I-PROPOSED-2411-ZERO-MONEY-ORDER-CURRENCY-NULL (ACTIVE)
