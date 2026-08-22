@@ -338,6 +338,11 @@ let mounted: Renderer[] = [];
 const mount = async (
   whenMode: "single" | "multi_date",
 ): Promise<Renderer> => {
+  // [TEST-MOD-APPROVED #2399] PublicEventPage deliberately lazy-loads the real
+  // chooser. Settle that production module boundary before fake-timer rendering
+  // so a clean Linux runner cannot inspect Suspense's null fallback while the
+  // import is still pending. Single-date tests still never load the chunk.
+  if (whenMode === "multi_date") await import("../MultiDateDayChooser");
   let tree!: Renderer;
   await act(async () => {
     tree = TestRenderer.create(

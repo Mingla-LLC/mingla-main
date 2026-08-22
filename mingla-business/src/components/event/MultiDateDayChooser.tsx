@@ -37,7 +37,14 @@
  */
 
 import React, { useEffect, useState } from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
 
@@ -93,6 +100,17 @@ const rowLabel = (
   fallbackTimezone: string,
 ): string =>
   formatOccurrenceLine(occurrence, fallbackTimezone) ?? "Date to be confirmed";
+
+type WebTransitionStyle = ViewStyle & {
+  transitionProperty: "background-color, border-color, color, opacity";
+  transitionDuration: "0ms" | "150ms";
+};
+
+const webTransitionStyle = (reducedMotion: boolean): WebTransitionStyle =>
+  ({
+    transitionProperty: "background-color, border-color, color, opacity",
+    transitionDuration: reducedMotion ? "0ms" : "150ms",
+  }) as WebTransitionStyle;
 
 const useReducedMotionOnWeb = (): boolean => {
   const [reduced, setReduced] = useState<boolean>(() =>
@@ -251,11 +269,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
                   styles.row,
                   { borderColor: palette.panelBorder },
                   Platform.OS === "web"
-                    ? {
-                        transitionProperty:
-                          "background-color, border-color, color, opacity",
-                        transitionDuration: reducedMotion ? "0ms" : "150ms",
-                      }
+                    ? webTransitionStyle(reducedMotion)
                     : null,
                   selected
                     ? {
