@@ -24,11 +24,20 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const STRICT_WORKFLOW_PATH = path.join(ROOT, ".github/workflows/strict-grep-mingla-business.yml");
+const ISSUE_1593_REFERENCE_PATH = path.join(ROOT, "app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs");
 const STATIC_CLASS_A_STEP_SHA256 = "d89bf9920ba031d7f4243f3d36772376af753427bcabe1a289b1b781b871b6eb";
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 const clone = (value) => structuredClone(value);
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
 const sourceDigest = (value) => crypto.createHash("sha256").update(value).digest("hex");
+
+const validateIssue1593Reporter = (source) => {
+  const exact = "spawnSync(process.execPath, ['--test', '--test-reporter=tap', path.join(dir, REL.adversarial)], {";
+  const errors = [];
+  if (source.split(exact).length - 1 !== 1) errors.push("#1593 child command must use exactly one deterministic TAP reporter flag");
+  if (source.split("path.join(dir, REL.adversarial)").length - 1 !== 1) errors.push("#1593 child command target must remain unique");
+  return errors;
+};
 
 const workflowSources = () => Object.fromEntries(fs
   .readdirSync(path.join(ROOT, ".github/workflows"), { withFileTypes: true })
@@ -83,6 +92,19 @@ test("all original Phase 2 commands and all shadow commands have independent imm
   assert.equal(digest(value.commandCapabilities.commands.slice(51)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   assert.equal(value.suites.slice(23).flatMap((suite) => suite.steps).length, 107);
   assert.equal(value.commandCapabilities.commands.length, 158);
+});
+
+test("#1593 reference proof pins one exact TAP reporter without changing its child target", () => {
+  const source = fs.readFileSync(ISSUE_1593_REFERENCE_PATH, "utf8");
+  assert.deepEqual(validateIssue1593Reporter(source), []);
+  const attacks = [
+    source.replace("'--test-reporter=tap', ", ""),
+    source.replace("--test-reporter=tap", "--test-reporter=spec"),
+    source.replace("'--test-reporter=tap', ", "'--test-reporter=tap', '--test-reporter=tap', "),
+  ];
+  for (const attack of attacks) {
+    assert.ok(validateIssue1593Reporter(attack).some((error) => /exactly one deterministic TAP reporter/.test(error)));
+  }
 });
 
 test("terminal source wave retains all 107 exact assertion commands with wrappers absent", () => {
