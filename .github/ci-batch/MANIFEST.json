@@ -15758,6 +15758,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/strict-grep-mingla-business.yml",
       "referenceFiles": [
+        ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs",
         ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",

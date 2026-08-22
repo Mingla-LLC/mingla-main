@@ -23,6 +23,8 @@ import { commandFingerprint } from "../run-suite-batch.mjs";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
+const STRICT_WORKFLOW_PATH = path.join(ROOT, ".github/workflows/strict-grep-mingla-business.yml");
+const STATIC_CLASS_A_STEP_SHA256 = "d89bf9920ba031d7f4243f3d36772376af753427bcabe1a289b1b781b871b6eb";
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 const clone = (value) => structuredClone(value);
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -32,6 +34,32 @@ const workflowSources = () => Object.fromEntries(fs
   .readdirSync(path.join(ROOT, ".github/workflows"), { withFileTypes: true })
   .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
   .map((entry) => [entry.name, fs.readFileSync(path.join(ROOT, ".github/workflows", entry.name), "utf8")]));
+
+const parseRealYaml = (source) => JSON.parse(execFileSync(
+  "ruby",
+  ["-rjson", "-ryaml", "-e", "source=STDIN.read; print JSON.generate(YAML.safe_load(source, aliases: true))"],
+  { input: source, encoding: "utf8" },
+));
+
+const validateStaticClassAJob = (source) => {
+  const errors = [];
+  let document;
+  try {
+    document = parseRealYaml(source);
+  } catch (error) {
+    return [`Strict Class A workflow must parse as real YAML: ${error.message}`];
+  }
+  const job = document?.jobs?.["static-gates"];
+  if (!job || typeof job !== "object" || Array.isArray(job)) return ["Strict Class A static-gates job must exist"];
+  if (job.name !== "Strict grep — static gates (class A)") errors.push("Strict Class A required-context name must remain exact");
+  if (!Number.isInteger(job["timeout-minutes"]) || job["timeout-minutes"] !== 15) {
+    errors.push("Strict Class A timeout-minutes must be the exact bounded integer 15");
+  }
+  if (!Array.isArray(job.steps) || digest(job.steps) !== STATIC_CLASS_A_STEP_SHA256) {
+    errors.push("Strict Class A protected step sequence must remain byte-semantically exact");
+  }
+  return errors;
+};
 
 test("#2437 shadow registry is exactly 31 live origins / 32 typed variants without cutover", () => {
   const value = manifest();
@@ -119,6 +147,28 @@ test("job startup uses supported pre-matrix contexts and dispatch is isolated to
   assert.ok(validateRegistry(value, { root: ROOT, matrixSource: unavailable }).some((error) => /supported pre-matrix event contexts/.test(error)));
   const unbounded = workflowSource.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true");
   assert.ok(validateRegistry(value, { root: ROOT, matrixSource: unbounded }).some((error) => /exact isolated #2300-only route/.test(error)));
+});
+
+test("Strict static Class A has the exact bounded 15-minute timeout and unchanged parsed steps", () => {
+  const source = fs.readFileSync(STRICT_WORKFLOW_PATH, "utf8");
+  assert.deepEqual(validateStaticClassAJob(source), []);
+
+  const mutations = [
+    source.replace("timeout-minutes: 15", "timeout-minutes: 10"),
+    source.replace("timeout-minutes: 15", "timeout-minutes: 16"),
+    source.replace("    timeout-minutes: 15\n", ""),
+    source.replace("timeout-minutes: 15", 'timeout-minutes: "15"'),
+    source.replace("timeout-minutes: 15", "timeout-minutes: ${{ vars.CLASS_A_TIMEOUT }}"),
+  ];
+  for (const mutation of mutations) {
+    assert.ok(validateStaticClassAJob(mutation).some((error) => /exact bounded integer 15/.test(error)));
+  }
+
+  const stepSubstitution = source.replace(
+    "node .github/scripts/strict-grep/run-batch.mjs --class A",
+    "node .github/scripts/strict-grep/run-batch.mjs --class B",
+  );
+  assert.ok(validateStaticClassAJob(stepSubstitution).some((error) => /protected step sequence/.test(error)));
 });
 
 test("#2062 repository audit cannot be contaminated by losslessly stored #994 provenance", () => {
