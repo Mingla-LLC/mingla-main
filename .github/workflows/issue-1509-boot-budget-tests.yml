@@ -1,3 +1,4 @@
+# #2437 SHADOW-PARITY-TRIGGER — remove before cutover
 name: "#1509: boot budget ratchet tests"
 
 # Issue #1509 — regression cover for the boot-budget mechanism itself.

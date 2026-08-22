@@ -1,3 +1,4 @@
+# #2437 SHADOW-PARITY-TRIGGER — remove before cutover
 name: ORCH-1386 Tester Adversarial
 
 # ORCH-1386 [expo-57 revert — native builds restored + framework-major guard]
