@@ -289,6 +289,24 @@
           }
         }
       ],
+      "toolExposures": [
+        {
+          "id": "tool:phase3b-lifecycle-node20-deno2:jest-29.7.0",
+          "providerCwd": "mingla-business",
+          "consumerCwd": "app-mobile",
+          "packageName": "jest",
+          "executableName": "jest",
+          "version": "29.7.0",
+          "providerPackage": "mingla-business/node_modules/jest/package.json",
+          "providerExecutable": "mingla-business/node_modules/jest/bin/jest.js",
+          "consumerPackageLink": "app-mobile/node_modules/jest",
+          "consumerPackageLinkTarget": "../../mingla-business/node_modules/jest",
+          "consumerBinLink": "app-mobile/node_modules/.bin/jest",
+          "consumerBinLinkTarget": "../jest/bin/jest.js",
+          "authorityLock": "mingla-business/package-lock.json",
+          "authorityKey": "node_modules/jest"
+        }
+      ],
       "classes": [
         "phase3b-lifecycle-node20-deno2"
       ]

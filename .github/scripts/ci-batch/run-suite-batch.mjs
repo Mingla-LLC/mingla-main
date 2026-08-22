@@ -23,6 +23,9 @@ export function loadManifest(p = MANIFEST_PATH) {
   return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
 }
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
+export function expectedPrimarySuites(manifest, klass) {
+  return manifest.suites.filter((suite) => (!klass || suite.class === klass) && suite.migrationWave !== "phase3b-postgres-wave");
+}
 
 // Compatibility API for the pre-Phase-2 committed regression. Production uses
 // runSuiteV2; this preserves the original no-shortfall/no-early-break proof.
@@ -98,6 +101,73 @@ export function profileInstalls(profile) {
   return Array.isArray(profile?.installs) ? profile.installs : [];
 }
 
+function isCanonicalRootInstall(profile, profileName, index) {
+  const installs = profileInstalls(profile); const install = installs[index];
+  return profileName === "root-node20-yaml-no-save" && index === 0 && installs.length === 1 && install?.cwd === "."
+    && install.invocation?.kind === "argv" && install.invocation.command === "npm"
+    && JSON.stringify(install.invocation.argv) === JSON.stringify(["install", "--no-save", "yaml"])
+    && JSON.stringify(profile.classes) === JSON.stringify(["root-node20-yaml-no-save"]);
+}
+
+export function dependencyMaterializations(profile, profileName = null) {
+  const seen = new Set(); const result = [];
+  for (const [index, { cwd }] of profileInstalls(profile).entries()) {
+    if (isCanonicalRootInstall(profile, profileName, index)) {
+      if (seen.has("<repo-root>")) throw new Error("duplicate canonical repository-root dependency tree");
+      seen.add("<repo-root>"); result.push({ canonicalCwd: "<repo-root>", storedCwd: "." }); continue;
+    }
+    if (typeof cwd !== "string" || !cwd || cwd.trim() !== cwd || cwd.startsWith("/") || /^[A-Za-z]:/.test(cwd) || cwd.includes("\\") || cwd.includes("\0") || cwd.endsWith("/")
+        || cwd === "<repo-root>" || cwd.split("/").some((part) => !part || part === "." || part === "..") || path.posix.normalize(cwd) !== cwd) {
+      throw new Error(`install cwd is not canonical repository-relative POSIX: ${JSON.stringify(cwd)}`);
+    }
+    if (!seen.has(cwd)) { seen.add(cwd); result.push({ canonicalCwd: cwd, storedCwd: cwd }); }
+  }
+  return result;
+}
+
+export function canonicalDependencyCwds(profile, profileName = null) {
+  return dependencyMaterializations(profile, profileName).map(({ canonicalCwd }) => canonicalCwd);
+}
+
+function exposurePayload(exposure) {
+  return { id: exposure.id, providerCwd: exposure.providerCwd, consumerCwd: exposure.consumerCwd,
+    packageName: exposure.packageName, executableName: exposure.executableName, version: exposure.version,
+    providerPackage: exposure.providerPackage, providerExecutable: exposure.providerExecutable,
+    consumerPackageLink: exposure.consumerPackageLink, consumerPackageLinkTarget: exposure.consumerPackageLinkTarget,
+    consumerBinLink: exposure.consumerBinLink, consumerBinLinkTarget: exposure.consumerBinLinkTarget,
+    authorityLock: exposure.authorityLock, authorityKey: exposure.authorityKey };
+}
+
+export function materializeToolExposures(profile, root = REPO_ROOT) {
+  const records = [];
+  for (const exposure of profile.toolExposures || []) {
+    const started = Date.now(); const payload = exposurePayload(exposure);
+    for (const cwd of [payload.providerCwd, payload.consumerCwd]) canonicalDependencyCwds({ installs: [{ cwd }] });
+    const providerPackage = path.join(root, payload.providerPackage);
+    const providerExecutable = path.join(root, payload.providerExecutable);
+    const consumerPackageLink = path.join(root, payload.consumerPackageLink);
+    const consumerBinLink = path.join(root, payload.consumerBinLink);
+    const lock = JSON.parse(fs.readFileSync(path.join(root, payload.authorityLock), "utf8"));
+    if (lock.packages?.[payload.authorityKey]?.version !== payload.version) throw new Error(`${payload.id}: lock authority mismatch`);
+    const packageJson = JSON.parse(fs.readFileSync(providerPackage, "utf8"));
+    const bin = typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin?.[payload.executableName];
+    if (packageJson.name !== payload.packageName || packageJson.version !== payload.version || bin?.replace(/^\.\//, "") !== path.posix.relative(path.posix.dirname(payload.providerPackage), payload.providerExecutable)) {
+      throw new Error(`${payload.id}: provider package name/version/bin mismatch`);
+    }
+    const canonicalRoot = fs.realpathSync(root); const canonicalProvider = fs.realpathSync(path.dirname(providerPackage));
+    if (!inside(canonicalRoot, canonicalProvider) || !fs.statSync(providerExecutable).isFile()) throw new Error(`${payload.id}: provider escapes repository or executable is missing`);
+    if (fs.existsSync(consumerPackageLink) || fs.existsSync(consumerBinLink)) throw new Error(`${payload.id}: consumer tool destination already exists`);
+    fs.mkdirSync(path.dirname(consumerPackageLink), { recursive: true }); fs.mkdirSync(path.dirname(consumerBinLink), { recursive: true });
+    fs.symlinkSync(payload.consumerPackageLinkTarget, consumerPackageLink); fs.symlinkSync(payload.consumerBinLinkTarget, consumerBinLink);
+    if (fs.realpathSync(consumerPackageLink) !== canonicalProvider || fs.realpathSync(consumerBinLink) !== fs.realpathSync(providerExecutable)
+        || !inside(canonicalRoot, fs.realpathSync(consumerPackageLink)) || !inside(canonicalRoot, fs.realpathSync(consumerBinLink))) {
+      throw new Error(`${payload.id}: consumer tool link containment mismatch`);
+    }
+    records.push({ ...payload, status: "passed", durationMs: Math.max(0, Date.now() - started) });
+  }
+  return records;
+}
+
 export function validateSetupEvidence(manifest, klass, evidence) {
   const owner = setupProfileForClass(manifest, klass);
   const installs = profileInstalls(owner.profile); const expectedInstalls = installs.length;
@@ -109,6 +179,15 @@ export function validateSetupEvidence(manifest, klass, evidence) {
     if (JSON.stringify(evidence.orderedInstalls?.map(({ id, cwd, command, argv }) => ({ id, cwd, command, argv }))) !== JSON.stringify(expected)
         || evidence.setupFingerprint !== crypto.createHash("sha256").update(JSON.stringify(expected)).digest("hex")) {
       throw new Error(`setup evidence ordered capability mismatch for ${klass}`);
+    }
+  }
+  const exposures = owner.profile.toolExposures || [];
+  if (exposures.length) {
+    const expected = exposures.map(exposurePayload);
+    if (evidence.toolExposureExecutions !== expected.length
+        || JSON.stringify(evidence.orderedToolExposures?.map(exposurePayload)) !== JSON.stringify(expected)
+        || evidence.toolExposureFingerprint !== crypto.createHash("sha256").update(JSON.stringify(expected)).digest("hex")) {
+      throw new Error(`setup evidence tool exposure mismatch for ${klass}`);
     }
   }
   return owner;
@@ -131,16 +210,22 @@ export function performSetup(manifest, klass, root = REPO_ROOT, tempRoot = proce
     orderedInstalls.push({ id: install.id, cwd: install.cwd, command: install.invocation.command, argv: install.invocation.argv,
       status: "passed", durationMs: Math.max(0, Date.now() - started) });
   }
-  return recordSetup(manifest, klass, installs.length, tempRoot, orderedInstalls);
+  const orderedToolExposures = materializeToolExposures(owner.profile, root);
+  return recordSetup(manifest, klass, installs.length, tempRoot, orderedInstalls, orderedToolExposures);
 }
 
-export function recordSetup(manifest, klass, installExecutions, tempRoot = process.env.RUNNER_TEMP || os.tmpdir(), orderedInstalls = null) {
+export function recordSetup(manifest, klass, installExecutions, tempRoot = process.env.RUNNER_TEMP || os.tmpdir(), orderedInstalls = null, orderedToolExposures = null) {
   const owner = setupProfileForClass(manifest, klass);
   const evidence = { class: klass, setupProfile: owner.name, setupExecutions: 1, installExecutions: Number(installExecutions) };
   if (orderedInstalls) {
     evidence.orderedInstalls = orderedInstalls;
     const payload = orderedInstalls.map(({ id, cwd, command, argv }) => ({ id, cwd, command, argv }));
     evidence.setupFingerprint = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  }
+  if (orderedToolExposures) {
+    evidence.toolExposureExecutions = orderedToolExposures.length;
+    evidence.orderedToolExposures = orderedToolExposures;
+    evidence.toolExposureFingerprint = crypto.createHash("sha256").update(JSON.stringify(orderedToolExposures.map(exposurePayload))).digest("hex");
   }
   validateSetupEvidence(manifest, klass, evidence);
   const evidencePath = setupEvidencePath(manifest, klass, tempRoot);
@@ -297,22 +382,26 @@ function cloneDependencyTree(source, destination, sourceWorkspace, destinationWo
   verifyIndependentTree(source, destination, sourceWorkspace, destinationWorkspace);
 }
 
-export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
+export function createIsolatedWorkspace({ root = REPO_ROOT, profile, suite }) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-suite-"));
   const workspaceRoot = path.join(temporaryRoot, "workspace");
   execFileSync("git", ["worktree", "add", "--detach", workspaceRoot, "HEAD"], { cwd: root, stdio: "ignore" });
-  for (const install of profileInstalls(profile)) {
-    const installedModules = path.join(root, install.cwd, "node_modules");
+  const materializations = dependencyMaterializations(profile, suite?.setupProfile);
+  const dependencyCwds = materializations.map(({ canonicalCwd }) => canonicalCwd);
+  for (const { canonicalCwd, storedCwd } of materializations) {
+    const installedModules = canonicalCwd === "<repo-root>" ? path.join(root, "node_modules") : path.join(root, storedCwd, "node_modules");
     if (!fs.statSync(installedModules, { throwIfNoEntry: false })?.isDirectory()) {
       removeWorktree(root, temporaryRoot, workspaceRoot);
-      throw new Error(`setup output missing: ${install.cwd}/node_modules`);
+      throw new Error(`setup output missing: ${canonicalCwd}/node_modules`);
     }
-    const isolatedModules = path.join(workspaceRoot, install.cwd, "node_modules");
+    const isolatedModules = canonicalCwd === "<repo-root>" ? path.join(workspaceRoot, "node_modules") : path.join(workspaceRoot, storedCwd, "node_modules");
+    if (fs.existsSync(isolatedModules)) { removeWorktree(root, temporaryRoot, workspaceRoot); throw new Error(`isolated dependency destination already exists: ${canonicalCwd}/node_modules`); }
     fs.mkdirSync(path.dirname(isolatedModules), { recursive: true });
     try { cloneDependencyTree(installedModules, isolatedModules, root, workspaceRoot); }
     catch (error) { removeWorktree(root, temporaryRoot, workspaceRoot); throw error; }
   }
-  return { root: workspaceRoot, cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };
+  return { root: workspaceRoot, dependencyCwds, dependencyCloneCount: dependencyCwds.length,
+    cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };
 }
 
 function signalProcessGroup(child, signal) {
@@ -475,7 +564,8 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   const leafResults = [];
   let allowedCleanup = [];
   let suiteHome;
-  const dependencyRoots = profileInstalls(profile).map((install) => path.join(root, install.cwd, "node_modules"));
+  const dependencyRoots = dependencyMaterializations(profile, suite.setupProfile).map(({ canonicalCwd, storedCwd }) =>
+    canonicalCwd === "<repo-root>" ? path.join(root, "node_modules") : path.join(root, storedCwd, "node_modules"));
   let immutableSnapshots = [];
   try {
     workspace = workspaceFactory({ root, profile, suite });
@@ -577,7 +667,9 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     presentLeaves: completeLeafResults.length ? completeLeafResults.filter((leaf) => leaf.status !== "skipped-absent").length : undefined,
     executedLeaves: completeLeafResults.length ? completeLeafResults.filter((leaf) => leaf.executed).length : undefined,
     absentLeaves: completeLeafResults.length ? completeLeafResults.filter((leaf) => leaf.status === "skipped-absent").length : undefined,
-    leafResults: completeLeafResults.length ? completeLeafResults : undefined, allowedCleanup });
+    leafResults: completeLeafResults.length ? completeLeafResults : undefined, allowedCleanup,
+    dependencyCwds: workspace?.dependencyCwds || canonicalDependencyCwds(profile, suite.setupProfile),
+    dependencyCloneCount: workspace?.dependencyCloneCount ?? canonicalDependencyCwds(profile, suite.setupProfile).length });
 }
 
 export async function runSuitesV2(suites, options = {}) {
@@ -595,6 +687,9 @@ export function buildShardReport(klass, suites, results, setupEvidence, duration
   const statuses = Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
   return { schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
     setupExecutions: setupEvidence?.setupExecutions || 0, installExecutions: setupEvidence?.installExecutions || 0,
+    toolExposureExecutions: setupEvidence?.toolExposureExecutions || 0,
+    orderedToolExposures: setupEvidence?.orderedToolExposures || [], toolExposureFingerprint: setupEvidence?.toolExposureFingerprint || null,
+    expectedSuiteIds: suites.map((suite) => suite.id), executedSuiteIds: results.map((result) => result.id),
     durationMs, ...base, statuses, results: results.map(redactResultText) };
 }
 
@@ -696,7 +791,7 @@ async function main() {
     return runPhase3bHost(manifest, process.argv[3], process.argv[4], flag);
   }
   const klass = process.argv[2] === "--run" ? process.argv[3] : process.argv[2];
-  const suites = expectedSuites(manifest, klass);
+  const suites = expectedPrimarySuites(manifest, klass);
   if (!klass || suites.length === 0) throw new Error(`no suites registered for class "${klass || "<empty>"}"`);
   const started = Date.now();
   let evidence;

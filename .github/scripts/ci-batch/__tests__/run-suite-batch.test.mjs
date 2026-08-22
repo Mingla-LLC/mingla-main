@@ -13,7 +13,10 @@ import assert from "node:assert/strict";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadManifest, expectedSuites, runSuites, verdict, runStep } from "../run-suite-batch.mjs";
+import { canonicalDependencyCwds, createIsolatedWorkspace, dependencyMaterializations, expectedPrimarySuites, loadManifest, expectedSuites, runSuites, verdict, runStep } from "../run-suite-batch.mjs";
+import { execFileSync } from "node:child_process";
+import os from "node:os";
+import { canonicalInstallIdentity } from "../validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "../../../..");
@@ -67,6 +70,75 @@ test("R1: the expected set is derived from the manifest, and the real manifest i
   assert.ok(all.length > 0, "an empty manifest must never be treated as success");
   const ids = all.map((s) => s.id);
   assert.equal(new Set(ids).size, ids.length, "suite ids must be unique");
+});
+
+test("#2438 primary routing freezes 55 established suites and excludes every Phase 3B suite", () => {
+  const manifest = loadManifest(); const phase3b = new Set(manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave").map((suite) => suite.id));
+  const vector = Object.fromEntries(manifest.classes.map((klass) => [klass, expectedPrimarySuites(manifest, klass).length]));
+  assert.deepEqual(vector, { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
+    "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
+    "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
+    "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 });
+  assert.equal(expectedPrimarySuites(manifest, null).length, 55);
+  assert.equal(expectedPrimarySuites(manifest, null).some((suite) => phase3b.has(suite.id)), false);
+});
+
+test("#2438 canonical dependency materialization deduplicates repeated cwd and preserves isolation", () => {
+  const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-clone-once-")));
+  try {
+    execFileSync("git", ["init", "-q"], { cwd: root }); execFileSync("git", ["config", "user.email", "ci@example.invalid"], { cwd: root }); execFileSync("git", ["config", "user.name", "CI"], { cwd: root });
+    fs.mkdirSync(path.join(root,"pkg"),{recursive:true}); fs.mkdirSync(path.join(root,"packages/local"),{recursive:true});
+    fs.writeFileSync(path.join(root,"pkg/proof.txt"),"proof\n"); fs.writeFileSync(path.join(root,"packages/local/package.json"),'{"name":"local"}\n');
+    execFileSync("git",["add","."],{cwd:root}); execFileSync("git",["commit","-qm","fixture"],{cwd:root});
+    fs.mkdirSync(path.join(root,"pkg/node_modules/renderer"),{recursive:true}); fs.writeFileSync(path.join(root,"pkg/node_modules/renderer/second-install.txt"),"present\n");
+    fs.symlinkSync("../../packages/local",path.join(root,"pkg/node_modules/local-link"));
+    const profile={classes:["fixture"],installs:[{cwd:"pkg"},{cwd:"pkg"}]}; const suite={setupProfile:"fixture"};
+    assert.deepEqual(canonicalDependencyCwds(profile,"fixture"),["pkg"]);
+    const workspace=createIsolatedWorkspace({root,profile,suite});
+    try {
+      assert.deepEqual(workspace.dependencyCwds,["pkg"]); assert.equal(workspace.dependencyCloneCount,1);
+      assert.equal(fs.existsSync(path.join(workspace.root,"pkg/node_modules/node_modules")),false);
+      assert.equal(fs.readFileSync(path.join(workspace.root,"pkg/node_modules/renderer/second-install.txt"),"utf8"),"present\n");
+      assert.equal(fs.realpathSync(path.join(workspace.root,"pkg/node_modules/local-link")),fs.realpathSync(path.join(workspace.root,"packages/local")));
+      const source=fs.statSync(path.join(root,"pkg/node_modules/renderer/second-install.txt"),{bigint:true}); const isolated=fs.statSync(path.join(workspace.root,"pkg/node_modules/renderer/second-install.txt"),{bigint:true});
+      assert.notDeepEqual([source.dev,source.ino],[isolated.dev,isolated.ino]); fs.writeFileSync(path.join(workspace.root,"pkg/node_modules/renderer/second-install.txt"),"mutated\n");
+      assert.equal(fs.readFileSync(path.join(root,"pkg/node_modules/renderer/second-install.txt"),"utf8"),"present\n");
+    } finally { workspace.cleanup(); }
+  } finally { fs.rmSync(root,{recursive:true,force:true}); }
+});
+
+test("#2438 repository-root sentinel is one exact tuple and never a joined manifest path", () => {
+  const manifest=loadManifest(); const profile=manifest.setupProfiles["root-node20-yaml-no-save"];
+  const rootInstall=profile.installs[0];
+  assert.deepEqual(dependencyMaterializations(profile,"root-node20-yaml-no-save"),[{canonicalCwd:"<repo-root>",storedCwd:"."}]);
+  assert.equal(canonicalInstallIdentity("root-node20-yaml-no-save",profile,0),"<repo-root>");
+  const mutants=[
+    [structuredClone(profile),"other"],
+    [{...structuredClone(profile),classes:["other"]},"root-node20-yaml-no-save"],
+    [{classes:[...profile.classes],installs:[structuredClone(rootInstall),structuredClone(rootInstall)]},"root-node20-yaml-no-save"],
+    [{...structuredClone(profile),installs:[{...rootInstall,cwd:"./"}]},"root-node20-yaml-no-save"],
+    [{...structuredClone(profile),installs:[{...rootInstall,cwd:""}]},"root-node20-yaml-no-save"],
+    [{...structuredClone(profile),installs:[{...rootInstall,invocation:{...rootInstall.invocation,argv:["ci"]}}]},"root-node20-yaml-no-save"],
+  ];
+  for(const [candidate,name] of mutants) {assert.throws(()=>dependencyMaterializations(candidate,name),/canonical/);assert.throws(()=>canonicalInstallIdentity(name,candidate,0),/noncanonical/);}
+  for(const cwd of ["./x","x/.","x/..","..","../x","/x","x/","x//y","x\\y","<repo-root>","C:/x"]) {
+    assert.throws(()=>canonicalDependencyCwds({installs:[{cwd}]},"fixture"),/canonical/);
+    assert.throws(()=>canonicalInstallIdentity("fixture",{classes:["fixture"],installs:[{cwd}]},0),/noncanonical/);
+  }
+  const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),"root-sentinel-clone-")));
+  try {
+    execFileSync("git",["init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
+    fs.writeFileSync(path.join(root,"proof.txt"),"proof\n"); execFileSync("git",["add","."],{cwd:root}); execFileSync("git",["commit","-qm","fixture"],{cwd:root});
+    fs.mkdirSync(path.join(root,"node_modules/pkg"),{recursive:true}); fs.writeFileSync(path.join(root,"node_modules/pkg/index.js"),"source\n");
+    const workspace=createIsolatedWorkspace({root,profile,suite:{setupProfile:"root-node20-yaml-no-save"}});
+    try {
+      assert.deepEqual(workspace.dependencyCwds,["<repo-root>"]); assert.equal(workspace.dependencyCloneCount,1);
+      assert.equal(fs.existsSync(path.join(workspace.root,"node_modules/pkg/index.js")),true);
+      assert.equal(fs.existsSync(path.join(workspace.root,"<repo-root>")),false); assert.equal(fs.existsSync(path.join(workspace.root,"node_modules/node_modules")),false);
+      const source=fs.statSync(path.join(root,"node_modules/pkg/index.js"),{bigint:true}); const isolated=fs.statSync(path.join(workspace.root,"node_modules/pkg/index.js"),{bigint:true});
+      assert.notDeepEqual([source.dev,source.ino],[isolated.dev,isolated.ino]);
+    } finally {workspace.cleanup();}
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
 });
 
 test("every registered suite names real files and a real working directory", () => {

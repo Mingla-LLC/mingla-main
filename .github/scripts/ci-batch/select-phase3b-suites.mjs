@@ -71,6 +71,63 @@ export function expectedPhase3bIdentities(manifest, suiteIds) {
   return { outerIds, leafIds };
 }
 
+export function reconcilePhase3bReports(manifest, host, rawDecision, primary, secondary = null) {
+  const errors = []; let decision = null;
+  try { decision = validateDecision(manifest, rawDecision, host); }
+  catch (error) { errors.push(`decision-invalid: ${error.message}`); }
+  const phase3bIds = new Set(phase3bSuites(manifest).map((suite) => suite.id));
+  const expectedPrimaryIds = manifest.suites.filter((suite) => suite.class === host && suite.migrationWave !== WAVE).map((suite) => suite.id);
+  const primaryIds = Array.isArray(primary?.executedSuiteIds) ? primary.executedSuiteIds : primary?.results?.map((result) => result.id) || [];
+  const primaryPhase3b = primaryIds.filter((id) => phase3bIds.has(id));
+  if (primaryPhase3b.length) errors.push(`wrong-lane-duplicate: ${primaryPhase3b.join(",")}`);
+  if (primary?.schemaVersion !== 2 || primary?.class !== host
+      || JSON.stringify(primary?.expectedSuiteIds) !== JSON.stringify(expectedPrimaryIds)
+      || JSON.stringify(primaryIds) !== JSON.stringify(expectedPrimaryIds)
+      || primary?.expected !== expectedPrimaryIds.length || primary?.executed !== expectedPrimaryIds.length) {
+    errors.push("primary-identity-mismatch");
+  }
+  if (!primary?.ok || primary?.results?.some((result) => !result.ok)) errors.push("primary-failed");
+
+  if (decision) {
+    const selected = decision.selectedSuiteIds;
+    if (!selected.length) {
+      const secondaryIds = secondary?.results?.map((result) => result.id) || [];
+      if (secondaryIds.some((id) => phase3bIds.has(id)) || secondary?.executed > 0) errors.push("no-selection-secondary-execution");
+    } else if (!secondary) {
+      errors.push(`missing-intended-secondary: ${selected.join(",")}`);
+    } else {
+      const identities = expectedPhase3bIdentities(manifest, selected);
+      const secondaryIds = secondary.results?.map((result) => result.id) || [];
+      const missing = selected.filter((id) => !secondaryIds.includes(id));
+      if (missing.length) errors.push(`missing-intended-secondary: ${missing.join(",")}`);
+      const foreign = secondaryIds.filter((id) => !selected.includes(id)
+        || !suitesForHost(manifest, host).some((suite) => suite.id === id));
+      if (foreign.length) errors.push(`wrong-host-or-unselected-secondary: ${foreign.join(",")}`);
+      if (new Set(secondaryIds).size !== secondaryIds.length) errors.push("duplicate-secondary");
+      if (JSON.stringify(secondaryIds) !== JSON.stringify(selected)) errors.push("secondary-order-mismatch");
+      if (secondary.schemaVersion !== 2 || secondary.class !== `phase3b:${host}` || secondary.selectionDigest !== decision.digest
+          || secondary.expected !== selected.length || secondary.executed !== selected.length
+          || JSON.stringify(secondary.expectedSuiteIds) !== JSON.stringify(selected)
+          || JSON.stringify(secondary.executedSuiteIds) !== JSON.stringify(selected)
+          || JSON.stringify(secondary.expectedOuterIds) !== JSON.stringify(identities.outerIds)
+          || JSON.stringify(secondary.executedOuterIds) !== JSON.stringify(identities.outerIds)
+          || JSON.stringify(secondary.expectedLeafIds) !== JSON.stringify(identities.leafIds)
+          || JSON.stringify(secondary.observedLeafIds) !== JSON.stringify(identities.leafIds)
+          || new Set([...(secondary.executedLeafIds || []), ...(secondary.absentLeafIds || [])]).size !== identities.leafIds.length) {
+        errors.push("secondary-evidence-mismatch");
+      }
+      if (!secondary.ok || secondary.results?.some((result) => result.executed !== result.expected || !result.ok)) errors.push("secondary-failed");
+    }
+    for (const id of selected) {
+      const primaryCount = primaryIds.filter((candidate) => candidate === id).length;
+      const secondaryCount = (secondary?.results || []).filter((result) => result.id === id).length;
+      if (primaryCount !== 0 || secondaryCount !== 1) errors.push(`lane-cardinality-mismatch: ${id}:primary=${primaryCount}:secondary=${secondaryCount}`);
+    }
+    if (decision.deferredError) errors.push(`deferred-selector-failure: ${decision.error}`);
+  }
+  return errors;
+}
+
 export function selectionDocument(manifest, hostClass, changedPaths, { failSafe = false, error = null, source = {} } = {}) {
   const owned = suitesForHost(manifest, hostClass);
   const matched = failSafe ? owned : owned.filter((suite) => changedPaths.some((file) => suite.originPaths.some((pattern) => pathMatches(pattern, file))));
@@ -195,23 +252,14 @@ async function main() {
     output({ document: destination, digest: document.digest, runSecondary: document.selectedSuiteIds.length > 0, deferredError: document.deferredError }); return;
   }
   if (options.reconcile) {
-    const decision = validateDecision(manifest, JSON.parse(fs.readFileSync(String(options.input), "utf8")), host);
-    const primary = JSON.parse(fs.readFileSync(String(options.primary), "utf8"));
-    if (primary.schemaVersion !== 2 || primary.class !== host || !primary.ok || primary.executed !== primary.expected) throw new Error("primary report missing, failed, or unreconciled");
-    if (decision.selectedSuiteIds.length) {
-      const secondary = JSON.parse(fs.readFileSync(String(options.secondary), "utf8"));
-      const identities = expectedPhase3bIdentities(manifest, decision.selectedSuiteIds);
-      if (secondary.schemaVersion !== 2 || secondary.class !== `phase3b:${host}` || secondary.selectionDigest !== decision.digest
-          || secondary.expected !== decision.selectedSuiteIds.length || secondary.executed !== secondary.expected
-          || JSON.stringify(secondary.results.map((result) => result.id)) !== JSON.stringify(decision.selectedSuiteIds)
-          || JSON.stringify(secondary.expectedOuterIds) !== JSON.stringify(identities.outerIds)
-          || JSON.stringify(secondary.executedOuterIds) !== JSON.stringify(identities.outerIds)
-          || JSON.stringify(secondary.expectedLeafIds) !== JSON.stringify(identities.leafIds)
-          || JSON.stringify(secondary.observedLeafIds) !== JSON.stringify(identities.leafIds)
-          || new Set([...secondary.executedLeafIds, ...secondary.absentLeafIds]).size !== identities.leafIds.length
-          || secondary.results.some((result) => result.executed !== result.expected) || !secondary.ok) throw new Error("secondary report missing, failed, or unreconciled");
+    let decision = null; let primary = null; let secondary = null; const readErrors = [];
+    try { decision = JSON.parse(fs.readFileSync(String(options.input), "utf8")); } catch (error) { readErrors.push(`decision-unreadable: ${error.message}`); }
+    try { primary = JSON.parse(fs.readFileSync(String(options.primary), "utf8")); } catch (error) { readErrors.push(`primary-unreadable: ${error.message}`); }
+    if (options.secondary && fs.existsSync(String(options.secondary))) {
+      try { secondary = JSON.parse(fs.readFileSync(String(options.secondary), "utf8")); } catch (error) { readErrors.push(`secondary-unreadable: ${error.message}`); }
     }
-    if (decision.deferredError) throw new Error(`deferred selector failure: ${decision.error}`);
+    const errors = [...readErrors, ...reconcilePhase3bReports(manifest, host, decision, primary, secondary)];
+    if (errors.length) throw new Error(`Phase 3B reconciliation failed:\n${errors.map((error) => `- ${error}`).join("\n")}`);
     return;
   }
   throw new Error("expected --select, --normalize, --reconcile, or --self-test");

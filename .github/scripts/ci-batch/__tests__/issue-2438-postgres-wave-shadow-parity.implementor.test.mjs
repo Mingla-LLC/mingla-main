@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 import { canonicalizeShadowWrapperSource, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, validateRegistry } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
-import { minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
-import { expectedPhase3bIdentities } from "../select-phase3b-suites.mjs";
+import { createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
+import { expectedPhase3bIdentities, reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const manifest = () => JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
@@ -138,9 +138,11 @@ test("#1902 setup, env, compounds, and conditional leaf accounting are separate 
   assert.equal(suite.conditionalExpectedFiles.filter((file) => fs.existsSync(path.join(ROOT,file))).length, 1);
   assert.equal(suite.conditionalExpectedFiles.filter((file) => !fs.existsSync(path.join(ROOT,file))).length, 3);
   const installs = value.setupProfiles[suite.setupProfile].installs;
+  const exposures = value.setupProfiles[suite.setupProfile].toolExposures;
   const orderedInstalls = installs.map((install) => ({ id: install.id, cwd: install.cwd, command: install.invocation.command, argv: install.invocation.argv }));
   const evidence = { class: suite.executionClass, setupProfile: suite.setupProfile, setupExecutions: 1, installExecutions: 2,
-    orderedInstalls, setupFingerprint: digest(orderedInstalls) };
+    orderedInstalls, setupFingerprint: digest(orderedInstalls), toolExposureExecutions: 1,
+    orderedToolExposures: exposures, toolExposureFingerprint: digest(exposures) };
   assert.equal(validateSetupEvidence(value, suite.executionClass, evidence).name, suite.setupProfile);
   assert.throws(() => validateSetupEvidence(value, suite.executionClass, { ...evidence, orderedInstalls: [...orderedInstalls].reverse() }), /ordered capability mismatch/);
   assert.throws(() => minimalChildEnvironment({ NODE_PATH: "./node_modules" }, "/tmp/home"), /undeclared child environment capability/);
@@ -156,6 +158,58 @@ test("secondary reconciliation identities account for every selected outer and l
   assert.equal(identities.outerIds.length, 14); assert.equal(identities.leafIds.length, 18);
   assert.equal(new Set(identities.outerIds).size, identities.outerIds.length);
   assert.equal(new Set(identities.leafIds).size, identities.leafIds.length);
+});
+
+test("primary and secondary reconciliation is lane-exact and non-masking", () => {
+  const value=manifest(); const host="ota-app-node20-19-install"; const decision=selectionDocument(value,host,[],{failSafe:true});
+  const primaryIds=expectedPrimarySuites(value,host).map((suite)=>suite.id);
+  const primaryResults=primaryIds.map((id)=>({id,ok:true,expected:1,executed:1}));
+  const primary={schemaVersion:2,class:host,ok:true,expected:primaryIds.length,executed:primaryIds.length,expectedSuiteIds:primaryIds,executedSuiteIds:primaryIds,results:primaryResults};
+  const selected=decision.selectedSuiteIds; const identities=expectedPhase3bIdentities(value,selected);
+  const secondaryResults=selected.map((id)=>{const suite=value.suites.find((item)=>item.id===id);return{id,ok:true,expected:suite.steps.length,executed:suite.steps.length};});
+  const secondary={schemaVersion:2,class:`phase3b:${host}`,ok:true,selectionDigest:decision.digest,expected:selected.length,executed:selected.length,
+    expectedSuiteIds:selected,executedSuiteIds:selected,results:secondaryResults,expectedOuterIds:identities.outerIds,executedOuterIds:identities.outerIds,
+    expectedLeafIds:identities.leafIds,observedLeafIds:identities.leafIds,executedLeafIds:identities.leafIds,absentLeafIds:[]};
+  assert.deepEqual(reconcilePhase3bReports(value,host,decision,primary,secondary),[]);
+  const wrongLane=structuredClone(primary); wrongLane.results.push({...secondaryResults[0]}); wrongLane.executedSuiteIds.push(selected[0]); wrongLane.executed++;
+  assert.match(reconcilePhase3bReports(value,host,decision,wrongLane,null).join("\n"),/wrong-lane-duplicate.*missing-intended-secondary/s);
+  const redPrimary=structuredClone(primary); redPrimary.ok=false; redPrimary.results[0].ok=false;
+  assert.match(reconcilePhase3bReports(value,host,decision,redPrimary,secondary).join("\n"),/primary-failed/);
+  const reordered=structuredClone(secondary); reordered.results.reverse(); reordered.executedSuiteIds.reverse(); assert.match(reconcilePhase3bReports(value,host,decision,primary,reordered).join("\n"),/secondary-order-mismatch|secondary-evidence-mismatch/);
+  const duplicate=structuredClone(secondary); duplicate.results.push(duplicate.results[0]); assert.match(reconcilePhase3bReports(value,host,decision,primary,duplicate).join("\n"),/duplicate-secondary/);
+  const foreign=structuredClone(secondary); foreign.results[0].id=value.suites.find((suite)=>suite.migrationWave==="phase3b-postgres-wave"&&suite.hostClass!==host).id;
+  assert.match(reconcilePhase3bReports(value,host,decision,primary,foreign).join("\n"),/wrong-host-or-unselected-secondary/);
+  const none=selectionDocument(value,host,["unrelated/file.ts"],{source:{eventName:"push",baseSha:"a".repeat(40),headSha:"b".repeat(40),mergeBaseSha:"a".repeat(40),pathSource:"local-git-two-dot-nul"}});
+  assert.match(reconcilePhase3bReports(value,host,none,primary,secondary).join("\n"),/no-selection-secondary-execution/);
+});
+
+test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offline npx", () => {
+  const value=manifest(); const profile=value.setupProfiles["phase3b-lifecycle-node20-deno2"]; const root=fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(),"phase3b-jest-exposure-")));
+  try {
+    const exposure=profile.toolExposures[0];
+    fs.mkdirSync(path.join(root,"mingla-business/node_modules/jest/bin"),{recursive:true}); fs.mkdirSync(path.join(root,"app-mobile/node_modules/.bin"),{recursive:true});
+    fs.writeFileSync(path.join(root,"mingla-business/package-lock.json"),JSON.stringify({packages:{"node_modules/jest":{version:"29.7.0"}}}));
+    fs.writeFileSync(path.join(root,"app-mobile/proof.js"),"proof\n");
+    execFileSync("git",["init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
+    execFileSync("git",["add","mingla-business/package-lock.json","app-mobile/proof.js"],{cwd:root}); execFileSync("git",["commit","-qm","fixture"],{cwd:root});
+    fs.writeFileSync(path.join(root,"mingla-business/node_modules/jest/package.json"),JSON.stringify({name:"jest",version:"29.7.0",bin:{jest:"./bin/jest.js"}}));
+    const bin=path.join(root,"mingla-business/node_modules/jest/bin/jest.js"); fs.writeFileSync(bin,"#!/usr/bin/env node\nif(!process.argv.includes('--runInBand'))process.exit(2);\n"); fs.chmodSync(bin,0o755);
+    const cache=path.join(root,"empty-cache"); fs.mkdirSync(cache);
+    assert.throws(()=>execFileSync("npx",["jest","--runInBand","proof.js"],{cwd:path.join(root,"app-mobile"),env:{PATH:process.env.PATH,HOME:root,npm_config_cache:cache,npm_config_offline:"true"},stdio:"pipe"}),/Command failed/);
+    const records=materializeToolExposures(profile,root); assert.equal(records.length,1); assert.equal(digest(records.map((record)=>{const copy={...record};delete copy.status;delete copy.durationMs;return copy;})),digest(profile.toolExposures));
+    execFileSync("npx",["jest","--runInBand","proof.js"],{cwd:path.join(root,"app-mobile"),env:{PATH:process.env.PATH,HOME:root,npm_config_cache:cache,npm_config_offline:"true"},stdio:"pipe"});
+    assert.equal(fs.realpathSync(path.join(root,exposure.consumerPackageLink)),fs.realpathSync(path.join(root,"mingla-business/node_modules/jest")));
+    assert.equal(fs.realpathSync(path.join(root,exposure.consumerBinLink)),fs.realpathSync(bin));
+    const workspace=createIsolatedWorkspace({root,profile,suite:{setupProfile:"phase3b-lifecycle-node20-deno2"}});
+    try {
+      assert.deepEqual(workspace.dependencyCwds,["mingla-business","app-mobile"]); assert.equal(workspace.dependencyCloneCount,2);
+      assert.equal(fs.realpathSync(path.join(workspace.root,exposure.consumerPackageLink)),fs.realpathSync(path.join(workspace.root,"mingla-business/node_modules/jest")));
+      execFileSync("npx",["jest","--runInBand","proof.js"],{cwd:path.join(workspace.root,"app-mobile"),env:{PATH:process.env.PATH,HOME:root,npm_config_cache:cache,npm_config_offline:"true"},stdio:"pipe"});
+    } finally {workspace.cleanup();}
+    for(const key of ["version","packageName","providerExecutable","consumerPackageLinkTarget","consumerBinLinkTarget","authorityKey"]){const attack=structuredClone(value);attack.setupProfiles["phase3b-lifecycle-node20-deno2"].toolExposures[0][key]+="-drift";assert.match(validateRegistry(attack,{root:ROOT}).join("\n"),/setupProfiles differ|exposure contract drifted/);}
+  } finally {fs.rmSync(root,{recursive:true,force:true});}
+  const hashes={"app-mobile/package.json":"2e167f8c716e80e9baf53dd2b2ba14833afd3a3da48f19718442672bbd0ce6a2","app-mobile/package-lock.json":"80d18eae58c8e0a81c7e858730caaaae7294e767a27b078ffae2c6d2a2786624","mingla-business/package.json":"61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601","mingla-business/package-lock.json":"6725babece1c8c2aab52d3d66dae35de0a45088e4a240560d7f4eb8317ee6513"};
+  for(const [relative,expected] of Object.entries(hashes)) assert.equal(digest(fs.readFileSync(path.join(ROOT,relative))),expected);
 });
 
 test("suite deadline records every remaining outer and leaf instead of hiding work", async () => {

@@ -28,7 +28,7 @@ const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d
 const LOCKED_SHADOW_CAPABILITY_SHA256 = "2acfb137cb60c03f88e85aaa941ef65971ce926983dde05ecfb8972f6798ebeb";
 const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
 const LOCKED_PHASE3B_CONTRACT_SHA256 = "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9";
-const LOCKED_SETUP_PROFILES_SHA256 = "5fc15c3865bf94ade463cb90c3b24b5f75933c7d6cc70e0a5ff6f90a607c6468";
+const LOCKED_SETUP_PROFILES_SHA256 = "7b6de9312326d102ed0330179443731ed154e1a83381c17eabde53f03838bc60";
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
 const PINNED_UPLOAD_ARTIFACT = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02";
@@ -663,6 +663,22 @@ function profileInstallList(profile) {
   return Array.isArray(profile?.installs) ? profile.installs : [];
 }
 
+function canonicalInstallCwd(cwd) {
+  return typeof cwd === "string" && cwd && cwd.trim() === cwd && !cwd.startsWith("/") && !/^[A-Za-z]:/.test(cwd) && !cwd.includes("\\") && !cwd.includes("\0") && !cwd.endsWith("/")
+    && !cwd.split("/").some((part) => !part || part === "." || part === "..") && path.posix.normalize(cwd) === cwd;
+}
+
+export function canonicalInstallIdentity(profileName, profile, installIndex) {
+  const installs = profileInstallList(profile); const install = installs[installIndex];
+  const rootTuple = profileName === "root-node20-yaml-no-save" && installIndex === 0 && installs.length === 1 && install?.cwd === "."
+    && install.invocation?.kind === "argv" && install.invocation.command === "npm"
+    && JSON.stringify(install.invocation.argv) === JSON.stringify(["install", "--no-save", "yaml"])
+    && JSON.stringify(profile.classes) === JSON.stringify(["root-node20-yaml-no-save"]);
+  if (rootTuple) return "<repo-root>";
+  if (!canonicalInstallCwd(install?.cwd) || install?.cwd === "<repo-root>") throw new Error(`noncanonical install cwd: ${JSON.stringify(install?.cwd)}`);
+  return install.cwd;
+}
+
 // #2436 Phase 2: setup belongs to the class profile and executes once per shard.
 // Suite commands are assertions only. Keep this deliberately broad and fail closed:
 // a newly embedded package/bootstrap/migration operation is a cost and isolation
@@ -975,7 +991,9 @@ export function validateRegistry(
       fail(errors, `setup profile ${name} must be an object`);
       continue;
     }
-    const expectedKeys = "installs" in profile ? ["runtime", "installs", "classes"] : ["runtime", "install", "classes"];
+    const expectedKeys = "installs" in profile
+      ? name === "phase3b-lifecycle-node20-deno2" ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
+      : ["runtime", "install", "classes"];
     if (!sameStrings(Object.keys(profile), expectedKeys)) fail(errors, `setup profile ${name} has a malformed or unknown field`);
     const nodeRuntime = profile.runtime?.name === "node" && ["20", "22", "20.19.4"].includes(profile.runtime?.version)
       && sameStrings(Object.keys(profile.runtime || {}), ["name", "version"]);
@@ -996,12 +1014,16 @@ export function validateRegistry(
     const installs = profileInstallList(profile);
     if (profile.install !== null || "installs" in profile) {
       if ("installs" in profile && (!Array.isArray(profile.installs) || profile.installs.length === 0)) fail(errors, `setup profile ${name} installs must be a non-empty ordered array`);
-      for (const install of installs) {
+      for (const [installIndex, install] of installs.entries()) {
       const phase3bInstall = typeof install?.id === "string" && install.id.startsWith("setup:phase3b-");
       if (!install || typeof install !== "object" || !sameStrings(Object.keys(install), phase3bInstall ? ["id", "cwd", "invocation"] : ["cwd", "invocation"])) {
         fail(errors, `setup profile ${name} install must use the exact typed schema`);
       }
-      if (!install?.cwd || !fs.existsSync(path.join(root, install.cwd))) fail(errors, `setup profile ${name} install cwd does not exist: ${install?.cwd}`);
+      try { canonicalInstallIdentity(name, profile, installIndex); }
+      catch { fail(errors, `setup profile ${name} install cwd is noncanonical: ${install?.cwd}`); }
+      if (!fs.existsSync(path.join(root, install.cwd))) {
+        fail(errors, `setup profile ${name} install cwd does not exist: ${install?.cwd}`);
+      }
       const invocation = install?.invocation;
       const approvedArgv = [["ci"], ["ci", "--ignore-scripts"], ["install", "--no-save", "yaml"],
         ["install", "--no-save", "--package-lock=false", "react-test-renderer@19.1.0"],
@@ -1205,6 +1227,37 @@ export function validateRegistry(
     { id: "setup:phase3b-lifecycle-node20-deno2:01", cwd: "mingla-business", command: "npm", argv: ["ci"] },
     { id: "setup:phase3b-lifecycle-node20-deno2:02", cwd: "app-mobile", command: "npm", argv: ["ci"] },
   ])) fail(errors, "#1902 setup must be one setup with two exact ordered installs");
+  const exposure = lifecycleSetup?.toolExposures;
+  const exactExposure = [{
+    id: "tool:phase3b-lifecycle-node20-deno2:jest-29.7.0", providerCwd: "mingla-business", consumerCwd: "app-mobile",
+    packageName: "jest", executableName: "jest", version: "29.7.0",
+    providerPackage: "mingla-business/node_modules/jest/package.json", providerExecutable: "mingla-business/node_modules/jest/bin/jest.js",
+    consumerPackageLink: "app-mobile/node_modules/jest", consumerPackageLinkTarget: "../../mingla-business/node_modules/jest",
+    consumerBinLink: "app-mobile/node_modules/.bin/jest", consumerBinLinkTarget: "../jest/bin/jest.js",
+    authorityLock: "mingla-business/package-lock.json", authorityKey: "node_modules/jest",
+  }];
+  if (JSON.stringify(exposure) !== JSON.stringify(exactExposure)
+      || crypto.createHash("sha256").update(JSON.stringify(exposure)).digest("hex") !== "08d4e3d37b2c5a45805b110cfb9e20fc100d05f065a34ce46ef5b56444bee1ef") {
+    fail(errors, "#1902 typed Jest 29.7.0 exposure contract drifted");
+  }
+  const packageAuthorities = {
+    "app-mobile/package.json": "2e167f8c716e80e9baf53dd2b2ba14833afd3a3da48f19718442672bbd0ce6a2",
+    "app-mobile/package-lock.json": "80d18eae58c8e0a81c7e858730caaaae7294e767a27b078ffae2c6d2a2786624",
+    "mingla-business/package.json": "61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601",
+    "mingla-business/package-lock.json": "6725babece1c8c2aab52d3d66dae35de0a45088e4a240560d7f4eb8317ee6513",
+  };
+  for (const [relative, expected] of Object.entries(packageAuthorities)) {
+    const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");
+    if (actual !== expected) fail(errors, `#1902 package authority drifted: ${relative}`);
+  }
+  const primaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
+    manifest.suites.filter((suite) => suite.class === klass && suite.migrationWave !== PHASE3B_WAVE).length]));
+  const expectedPrimaryVector = { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
+    "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
+    "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
+    "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 };
+  if (JSON.stringify(Object.entries(primaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
+      || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== 55) fail(errors, "primary lane must retain exactly the frozen 55-suite host vector");
   if (capabilityCommands.slice(158).some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) fail(errors, "setup/install leaked into Phase 3B assertion capabilities");
   if (manifest.executionClasses?.length !== 23 || manifest.classes?.length !== 14) fail(errors, "topology must remain 14 matrix hosts / 23 execution classes");
   const waveContract = manifest.migrationWaves?.[PHASE3B_WAVE];
