@@ -14,7 +14,7 @@ const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const PRESERVED_ASSERTION_SHA256 = "46b4392592c5d6cb56bc600adc98e083b14880b79dad29fe4e1438ac41923764";
 const ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
-const PROCESS_SUPERVISOR_SHA256 = "710c70df84e0d3c4773c75f18979dfffeb2aaa397d69356bb4beabd5340f39e8";
+const PROCESS_SUPERVISOR_SHA256 = "1c890b876833df9e6f9c8cf2b0dc8cec4ba1364b7b5519e68b0245b5077dfb20";
 
 function clone(value) { return structuredClone(value); }
 function manifest() { return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")); }

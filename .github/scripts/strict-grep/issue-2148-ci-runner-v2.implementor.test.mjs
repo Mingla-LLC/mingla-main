@@ -145,6 +145,28 @@ test("a successful command cannot leak a background descendant past its suite", 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("privilege-separated descendant cleanup tolerates only ESRCH and EPERM", () => {
+  const supervisor = path.resolve(".github/scripts/ci-batch/process-supervisor.py");
+  const probe = [
+    "import errno, importlib.util, signal, sys",
+    "from unittest import mock",
+    "sys.dont_write_bytecode = True",
+    "spec = importlib.util.spec_from_file_location('process_supervisor', sys.argv[1])",
+    "module = importlib.util.module_from_spec(spec)",
+    "spec.loader.exec_module(module)",
+    "with mock.patch.object(module.os, 'kill', side_effect=PermissionError(errno.EPERM, 'root-owned descendant')):",
+    "    module.signal_pid(4242, signal.SIGTERM)",
+    "with mock.patch.object(module.os, 'kill', side_effect=PermissionError(errno.EACCES, 'unexpected denial')):",
+    "    try:",
+    "        module.signal_pid(4242, signal.SIGTERM)",
+    "    except PermissionError as error:",
+    "        assert error.errno == errno.EACCES",
+    "    else:",
+    "        raise AssertionError('unrelated signal errors must remain fatal')",
+  ].join("\n");
+  assert.doesNotThrow(() => execFileSync("python3", ["-c", probe, supervisor], { stdio: "pipe" }));
+});
+
 test("Linux subreaper contains immediate double-fork setsid descendants on success and timeout", { skip: process.platform !== "linux" }, async () => {
   for (const mode of ["success", "timeout"]) {
     const root = temporaryDirectory(`runner-v2-double-fork-${mode}-`);
