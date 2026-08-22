@@ -6,6 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
+import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -38,6 +39,104 @@ function trackedFiles(root) {
   } catch {
     throw new Error("registry validation requires a git worktree");
   }
+}
+
+const requireFromValidator = createRequire(import.meta.url);
+
+function globToRegExp(glob) {
+  let source = "";
+  for (let index = 0; index < glob.length; index += 1) {
+    const character = glob[index];
+    if (character === "*") {
+      if (glob[index + 1] === "*") {
+        index += 1;
+        if (glob[index + 1] === "/") {
+          index += 1;
+          source += "(?:.*/)?";
+        } else {
+          source += ".*";
+        }
+      } else {
+        source += "[^/]*";
+      }
+    } else if (character === "?") {
+      source += "[^/]";
+    } else if (character === "[") {
+      const end = glob.indexOf("]", index + 1);
+      if (end === -1) source += "\\[";
+      else {
+        const contents = glob.slice(index + 1, end);
+        source += `[${contents.startsWith("!") ? `^${contents.slice(1)}` : contents}]`;
+        index = end;
+      }
+    } else if (character === "{") {
+      const end = glob.indexOf("}", index + 1);
+      if (end === -1) source += "\\{";
+      else {
+        source += `(?:${glob.slice(index + 1, end).split(",").map((part) => globToRegExp(part).source.slice(1, -1)).join("|")})`;
+        index = end;
+      }
+    } else {
+      source += character.replace(/[|\\{}()[\]^$+?.]/g, "\\$&");
+    }
+  }
+  return new RegExp(`^${source}$`);
+}
+
+function configPathsFromCommand(command) {
+  const configs = [];
+  const expression = /(?:^|\s)--config(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/g;
+  for (const match of command.matchAll(expression)) configs.push(match[1] || match[2] || match[3]);
+  return configs;
+}
+
+function filesSelectedByJestConfig(configRelative, cwd, root) {
+  const configAbsolute = path.resolve(root, cwd, configRelative);
+  const repositoryRelative = path.relative(root, configAbsolute);
+  if (repositoryRelative.startsWith("..") || path.isAbsolute(repositoryRelative) || !fs.statSync(configAbsolute).isFile()) {
+    throw new Error(`Jest config is outside the repository or missing: ${configRelative}`);
+  }
+
+  delete requireFromValidator.cache?.[configAbsolute];
+  const loaded = requireFromValidator(configAbsolute);
+  const config = loaded?.default ?? loaded;
+  if (!config || typeof config !== "object" || Array.isArray(config)) {
+    throw new Error(`Jest config must synchronously export an object: ${repositoryRelative}`);
+  }
+
+  const configDirectory = path.dirname(configAbsolute);
+  const rootDir = config.rootDir
+    ? path.resolve(configDirectory, String(config.rootDir).replaceAll("<rootDir>", configDirectory))
+    : configDirectory;
+  const rootRelative = path.relative(root, rootDir);
+  if (rootRelative.startsWith("..") || path.isAbsolute(rootRelative)) {
+    throw new Error(`Jest rootDir is outside the repository: ${repositoryRelative}`);
+  }
+
+  const testMatch = Array.isArray(config.testMatch) ? config.testMatch : [];
+  const testRegex = Array.isArray(config.testRegex)
+    ? config.testRegex
+    : typeof config.testRegex === "string" ? [config.testRegex] : [];
+  if (testMatch.length === 0 && testRegex.length === 0) {
+    throw new Error(`Jest config has no deterministic testMatch or testRegex: ${repositoryRelative}`);
+  }
+  const matchers = testMatch.map((pattern) => {
+    const expanded = String(pattern).replaceAll("<rootDir>", rootDir).replaceAll(path.sep, "/");
+    return globToRegExp(expanded);
+  });
+  const regexes = testRegex.map((pattern) => new RegExp(pattern));
+  const ignores = (Array.isArray(config.testPathIgnorePatterns) ? config.testPathIgnorePatterns : [])
+    .map((pattern) => new RegExp(String(pattern).replaceAll("<rootDir>", rootDir)));
+  const configuredRoots = (Array.isArray(config.roots) && config.roots.length ? config.roots : [rootDir])
+    .map((configuredRoot) => path.resolve(rootDir, String(configuredRoot).replaceAll("<rootDir>", rootDir)));
+
+  return trackedFiles(root).filter((relative) => {
+    const absolute = path.resolve(root, relative);
+    const normalized = absolute.replaceAll(path.sep, "/");
+    if (!configuredRoots.some((configuredRoot) => absolute === configuredRoot || absolute.startsWith(`${configuredRoot}${path.sep}`))) return false;
+    if (ignores.some((ignore) => ignore.test(normalized))) return false;
+    return matchers.some((matcher) => matcher.test(normalized)) || regexes.some((regex) => regex.test(normalized));
+  });
 }
 
 export function discoverLiveOrigins(root = DEFAULT_ROOT) {
@@ -193,6 +292,9 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
   for (const step of suite.steps || []) {
     const cwd = step.cwd || suite.cwd || ".";
     const command = step.invocation?.argv?.[1] ?? step.run ?? "";
+    for (const config of configPathsFromCommand(command)) {
+      for (const selected of filesSelectedByJestConfig(config, cwd, root)) found.add(selected);
+    }
     const tokens = command.match(/[A-Za-z0-9_@.()\/[\]+-]+/g) || [];
     for (let token of tokens) {
       token = token.replace(/[),;:]+$/, "");

@@ -26,6 +26,10 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 89);
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 198);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 89);
+  const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
+  const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");
+  assert.ok(suite1036.expectedFiles.includes("mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"));
+  assert.ok(suite1532.expectedFiles.includes("mingla-business/src/components/stay/__tests__/stayGuardReachability.issue1532.tester.render.test.tsx"));
 
   const live = discoverLiveOrigins(DEFAULT_ROOT);
   const yamlTruth = inspectWorkflows(DEFAULT_ROOT, live);

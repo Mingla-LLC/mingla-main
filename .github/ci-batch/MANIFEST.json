@@ -835,6 +835,7 @@
       "timeoutMinutes": 25,
       "expectedFiles": [
         "mingla-business/jest.issue1036.render.cjs",
+        "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx",
         "mingla-business/src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts"
       ],
       "externalReferenceFiles": [],
@@ -1005,7 +1006,8 @@
       "isolation": "sequential-within-class-job",
       "timeoutMinutes": 25,
       "expectedFiles": [
-        "mingla-business/jest.issue1532.tester.cjs"
+        "mingla-business/jest.issue1532.tester.cjs",
+        "mingla-business/src/components/stay/__tests__/stayGuardReachability.issue1532.tester.render.test.tsx"
       ],
       "externalReferenceFiles": [],
       "requiredContext": "CI batch: business-node20-4",

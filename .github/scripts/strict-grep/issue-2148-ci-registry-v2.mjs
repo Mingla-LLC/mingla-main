@@ -55,6 +55,15 @@ function selfTest(base) {
   assertRed("missing expected file", base, (m) => { m.suites[0].expectedFiles.push("definitely/missing.test.mjs"); }, /expected file is missing/, discovery);
   assertRed("expected file omission", base, (m) => { m.suites[0].expectedFiles.pop(); }, /must exactly equal files selected/, discovery);
   assertRed("expected file substitution", base, (m) => { m.suites[0].expectedFiles[0] = m.suites[1].expectedFiles[0]; }, /must exactly equal files selected/, discovery);
+  assertRed("config-selected issue-1036 expected file omission", base, (m) => {
+    const suite = m.suites.find((item) => item.id === "issue-1036-contrast-chip-removal-tests");
+    suite.expectedFiles = suite.expectedFiles.filter((file) => !file.endsWith("issue1036NoContrastNode.web.render.test.tsx"));
+  }, /must exactly equal files selected/, discovery);
+  assertRed("config-selected issue-1532 expected file substitution", base, (m) => {
+    const suite = m.suites.find((item) => item.id === "issue-1532-tester-adversarial");
+    const index = suite.expectedFiles.findIndex((file) => file.endsWith("stayGuardReachability.issue1532.tester.render.test.tsx"));
+    suite.expectedFiles[index] = "mingla-business/src/components/stay/__tests__/stayManagerUx.issue1532.render.test.tsx";
+  }, /must exactly equal files selected/, discovery);
   assertRed("empty command", base, (m) => { m.suites[0].steps[0].run = ""; }, /empty compatibility command/, discovery);
   assertRed("missing class route", base, (m) => { m.classes.push("unrouted-class"); }, /no ci-batch matrix route/, discovery);
   assertRed("unsupported setup runtime", base, (m) => { m.setupProfiles["business-node20"].runtime.version = "99"; }, /supported exact node 20 runtime schema/, discovery);
