@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import fs from "node:fs";
 import path from "node:path";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(
@@ -49,8 +50,6 @@ export function loadSources() {
     guardedRepositoryPaths: [...GUARDED_REPOSITORY_PATHS],
   };
 }
-
-const literal = (value) => ({ kind: "string", value });
 
 function scanTypeScript(source) {
   const tokens = [];
@@ -195,77 +194,53 @@ function namedFunctionRange(tokens, name) {
     while (bodyStart < tokens.length && tokens[bodyStart].value !== "{" && tokens[bodyStart].value !== ";") bodyStart += 1;
     if (tokens[bodyStart]?.value !== "{") continue;
     const bodyEnd = matchingToken(tokens, bodyStart, "{", "}");
-    if (bodyEnd >= 0) matches.push({ start: bodyStart + 1, end: bodyEnd });
+    if (bodyEnd >= 0) matches.push({
+      start: tokens[index - 1]?.value === "export" ? index - 1 : index,
+      end: bodyEnd + 1,
+    });
   }
   return matches.length === 1 ? matches[0] : null;
 }
 
-function staticallyFalse(tokens, start, end) {
-  const values = tokens.slice(start, end).map((token) => token.value);
-  return (values.length === 1 && ["false", "0", "null", "undefined"].includes(values[0])) ||
-    (values.length === 2 && values[0] === "!" && values[1] === "true");
-}
-
-function deadControlFlowRanges(tokens, start, end) {
-  const ranges = [];
-  for (let index = start; index < end; index += 1) {
-    if (tokens[index].value !== "if" || tokens[index + 1]?.value !== "(") continue;
-    const conditionEnd = matchingToken(tokens, index + 1, "(", ")", end);
-    if (conditionEnd < 0 || !staticallyFalse(tokens, index + 2, conditionEnd)) continue;
-    if (tokens[conditionEnd + 1]?.value === "{") {
-      const blockEnd = matchingToken(tokens, conditionEnd + 1, "{", "}", end);
-      if (blockEnd >= 0) ranges.push({ start: conditionEnd + 2, end: blockEnd });
-    } else {
-      let statementEnd = conditionEnd + 1;
-      while (statementEnd < end && tokens[statementEnd].value !== ";") statementEnd += 1;
-      ranges.push({ start: conditionEnd + 1, end: Math.min(statementEnd + 1, end) });
-    }
+function topLevelStatementRange(tokens, prefix) {
+  const matches = [];
+  let braceDepth = 0;
+  for (let index = 0; index < tokens.length; index += 1) {
+    if (tokens[index].value === "{") braceDepth += 1;
+    else if (tokens[index].value === "}") braceDepth -= 1;
+    if (braceDepth !== 0 || sequenceIndex(tokens, prefix, index) !== index) continue;
+    let end = index + prefix.length;
+    while (end < tokens.length && tokens[end].value !== ";") end += 1;
+    if (tokens[end]?.value === ";") matches.push({ start: index, end: end + 1 });
   }
-  return ranges;
+  return matches.length === 1 ? matches[0] : null;
 }
 
-function reachableSequenceIndex(tokens, sequence, range) {
-  if (!range) return -1;
-  const dead = deadControlFlowRanges(tokens, range.start, range.end);
-  let index = sequenceIndex(tokens, sequence, range.start);
-  while (index >= 0 && index + sequence.length <= range.end) {
-    if (!dead.some((candidate) => index >= candidate.start && index < candidate.end)) return index;
-    index = sequenceIndex(tokens, sequence, index + 1);
-  }
-  return -1;
-}
-
-function reachableReturnedObjectHas(tokens, owner, sequence) {
-  if (!owner) return false;
-  const dead = deadControlFlowRanges(tokens, owner.start, owner.end);
-  for (let index = owner.start; index < owner.end; index += 1) {
-    if (tokens[index].value !== "return" || tokens[index + 1]?.value !== "{") continue;
-    if (dead.some((candidate) => index >= candidate.start && index < candidate.end)) continue;
-    const objectEnd = matchingToken(tokens, index + 1, "{", "}", owner.end);
-    if (objectEnd < 0) continue;
-    const found = sequenceIndex(tokens, sequence, index + 2);
-    if (found >= 0 && found + sequence.length <= objectEnd) return true;
-  }
-  return false;
-}
-
-function createClientOptionsRange(tokens) {
+function createClientDeclarationRange(tokens) {
   const declaration = sequenceIndex(tokens, ["export", "const", "supabase", "=", "createClient", "("]);
   if (declaration < 0) return null;
   const open = declaration + 5;
   const close = matchingToken(tokens, open, "(", ")");
-  if (close < 0) return null;
-  const argumentStarts = [open + 1];
-  const stack = [];
-  for (let index = open + 1; index < close; index += 1) {
-    if (["(", "[", "{"].includes(tokens[index].value)) stack.push(tokens[index].value);
-    else if ([")", "]", "}"].includes(tokens[index].value)) stack.pop();
-    else if (tokens[index].value === "," && stack.length === 0) argumentStarts.push(index + 1);
-  }
-  if (argumentStarts.length !== 3 || tokens[argumentStarts[2]]?.value !== "{") return null;
-  const objectEnd = matchingToken(tokens, argumentStarts[2], "{", "}", close);
-  return objectEnd < 0 ? null : { start: argumentStarts[2] + 1, end: objectEnd };
+  if (close < 0 || tokens[close + 1]?.value !== ";") return null;
+  return { start: declaration, end: close + 2 };
 }
+
+function normalizedDigest(tokens, ranges) {
+  if (ranges.some((range) => !range)) return null;
+  const normalized = ranges.flatMap((range) =>
+    tokens.slice(range.start, range.end).map(({ kind, value }) => [kind, value]),
+  );
+  return createHash("sha256").update(JSON.stringify(normalized)).digest("hex");
+}
+
+// These are SHA-256 digests of comment/whitespace-normalized TypeScript tokens.
+// Updating one is an explicit protected-behavior contract change, not routine formatting.
+const CANONICAL_CONTRACT_DIGESTS = {
+  installedVersion: "6a8a704710e6468003dd90ea75f4da1e9126404306e345cb9ba5c63612622b17",
+  diagnostic: "56881d8f72242c2b77898ee7fccd31d81c5b8c709718c17f8b4d382fc78d396e",
+  nativeHeaders: "d60cea8d0f065b50c107c099f4e96bd02fd78ac2fb7a01e915d6fd111f620761",
+  supabaseClient: "2fc7eef69bc95989db9e92482f55d2548ca0cf820d4d4c578d124e58e321bec4",
+};
 
 function yamlScalar(raw) {
   let value = "";
@@ -293,11 +268,37 @@ function yamlScalar(raw) {
   return value;
 }
 
-function parseWorkflowSteps(source, intendedJob) {
+function readYamlValue(lines, lineIndex, keyIndent, raw) {
+  const scalar = yamlScalar(raw);
+  if (!["|", "|-", "|+", ">", ">-", ">+"].includes(scalar)) {
+    return { value: scalar, end: lineIndex };
+  }
+  const block = [];
+  let cursor = lineIndex + 1;
+  for (; cursor < lines.length; cursor += 1) {
+    const indent = lines[cursor].match(/^\s*/)[0].length;
+    if (lines[cursor].trim() && indent <= keyIndent) break;
+    if (indent > keyIndent) block.push(lines[cursor].slice(keyIndent + 2));
+  }
+  return {
+    value: scalar.startsWith(">") ? block.join(" ").trim() : block.join("\n").trimEnd(),
+    end: cursor - 1,
+  };
+}
+
+function parseWorkflow(source, intendedJob) {
   const lines = source.split(/\r?\n/);
   const steps = [];
+  const scalarValues = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const mapping = lines[index].match(/^(\s*)(?:-\s+)?[A-Za-z0-9_-]+:\s*(.*)$/);
+    if (!mapping) continue;
+    const parsed = readYamlValue(lines, index, mapping[1].length, mapping[2]);
+    scalarValues.push(parsed.value);
+    index = parsed.end;
+  }
   const jobsLine = lines.findIndex((line) => line === "jobs:");
-  if (jobsLine < 0) return steps;
+  if (jobsLine < 0) return { jobFound: false, jobIf: null, scalarValues, steps };
   let jobStart = -1;
   let jobEnd = lines.length;
   for (let index = jobsLine + 1; index < lines.length; index += 1) {
@@ -309,29 +310,26 @@ function parseWorkflowSteps(source, intendedJob) {
     }
     if (job[1] === intendedJob) jobStart = index;
   }
-  if (jobStart < 0) return steps;
+  if (jobStart < 0) return { jobFound: false, jobIf: null, scalarValues, steps };
+  let jobIf;
+  for (let index = jobStart + 1; index < jobEnd; index += 1) {
+    const field = lines[index].match(/^    if:\s*(.*)$/);
+    if (!field) continue;
+    const parsed = readYamlValue(lines, index, 4, field[1]);
+    jobIf = parsed.value;
+    index = parsed.end;
+  }
   const stepsLine = lines.findIndex((line, index) => index > jobStart && index < jobEnd && /^    steps:\s*(?:#.*)?$/.test(line));
-  if (stepsLine < 0) return steps;
+  if (stepsLine < 0) return { jobFound: true, jobIf, scalarValues, steps };
   for (let index = stepsLine + 1; index < jobEnd; index += 1) {
     const first = lines[index].match(/^(      )-\s+(name|uses|run|working-directory|if):\s*(.*)$/);
     if (!first) continue;
     const itemIndent = first[1].length;
     const step = {};
     const assign = (key, raw, lineIndex, keyIndent) => {
-      const scalar = yamlScalar(raw);
-      if (!["|", "|-", "|+", ">", ">-", ">+"].includes(scalar)) {
-        step[key] = scalar;
-        return lineIndex;
-      }
-      const block = [];
-      let cursor = lineIndex + 1;
-      for (; cursor < lines.length; cursor += 1) {
-        const indent = lines[cursor].match(/^\s*/)[0].length;
-        if (lines[cursor].trim() && indent <= keyIndent) break;
-        if (indent > keyIndent) block.push(lines[cursor].slice(keyIndent + 2));
-      }
-      step[key] = scalar.startsWith(">") ? block.join(" ").trim() : block.join("\n").trimEnd();
-      return cursor - 1;
+      const parsed = readYamlValue(lines, lineIndex, keyIndent, raw);
+      step[key] = parsed.value;
+      return parsed.end;
     };
     index = assign(first[2], first[3], index, itemIndent);
     for (let cursor = index + 1; cursor < lines.length; cursor += 1) {
@@ -345,7 +343,7 @@ function parseWorkflowSteps(source, intendedJob) {
     }
     steps.push(step);
   }
-  return steps;
+  return { jobFound: true, jobIf, scalarValues, steps };
 }
 
 export function validate(sources) {
@@ -359,11 +357,11 @@ export function validate(sources) {
   const installedVersionOwner = namedFunctionRange(identityTokens, "getInstalledNativeVersion");
   const headerOwner = namedFunctionRange(identityTokens, "getNativeAppVersionHeaders");
   const diagnosticOwner = namedFunctionRange(identityTokens, "reportIdentityOutcome");
-  const requireSequence = (tokens, sequence, label) => {
-    if (sequenceIndex(tokens, sequence) < 0) failures.push(label);
-  };
-  const requireOwnedSequence = (tokens, sequence, owner, label) => {
-    if (reachableSequenceIndex(tokens, sequence, owner) < 0) failures.push(label);
+  const fallbackState = topLevelStatementRange(identityTokens, ["let", "reportedFallback", "="]);
+  const unavailableState = topLevelStatementRange(identityTokens, ["let", "reportedUnavailable", "="]);
+  const supabaseClient = createClientDeclarationRange(supabaseTokens);
+  const requireContract = (actual, expected, label) => {
+    if (actual !== expected) failures.push(`${label} canonical contract drifted (${actual ?? "missing"})`);
   };
 
   let appJson;
@@ -383,95 +381,29 @@ export function validate(sources) {
     failures.push("Explorer runtimeVersion.policy must remain appVersion");
   }
 
-  const platformRead = reachableSequenceIndex(identityTokens, ["const", "platform", "=", "getNativeAppPlatform", "(", ")", ";"], installedVersionOwner);
-  const webReturn = reachableSequenceIndex(identityTokens, ["if", "(", "platform", "===", "null", ")", "return", "null", ";"], installedVersionOwner);
-  const primaryRead = reachableSequenceIndex(identityTokens, [
-    "if", "(", "isStrictSemver", "(", "Constants", ".", "nativeAppVersion", ")", ")", "{",
-    "return", "Constants", ".", "nativeAppVersion", ";", "}",
-  ], installedVersionOwner);
-  if (platformRead < 0 || webReturn < platformRead || primaryRead < webReturn) {
-    failures.push("web must exit before the executable primary native identity branch");
-  }
-  requireOwnedSequence(
-    identityTokens,
-    ["const", "expoConfigVersion", "=", "Constants", ".", "expoConfig", "?.", "version", ";"],
-    installedVersionOwner,
-    "Release identity must retain the executable Expo config source",
-  );
-  requireOwnedSequence(
-    identityTokens,
-    [
-      "if", "(", "isStrictSemver", "(", "expoConfigVersion", ")", ")", "{",
-      "reportIdentityOutcome", "(", "platform", ",", literal("expo_config_fallback"), ")", ";",
-      "return", "expoConfigVersion", ";", "}",
-    ],
-    installedVersionOwner,
-    "Release identity must retain the strict executable fallback and diagnostic",
-  );
-  requireOwnedSequence(
-    identityTokens,
-    ["reportIdentityOutcome", "(", "platform", ",", literal("unavailable"), ")", ";", "return", "null", ";"],
-    installedVersionOwner,
-    "unavailable identity must retain its executable diagnostic",
-  );
-  requireSequence(
-    identityTokens,
-    ["let", "reportedFallback", "=", "false", ";"],
-    "fallback diagnostic state must remain executable",
-  );
-  requireOwnedSequence(
-    identityTokens,
-    ["if", "(", "reportedFallback", ")", "return", ";", "reportedFallback", "=", "true", ";"],
-    diagnosticOwner,
-    "fallback diagnostic must retain its executable once-only guard",
-  );
-  requireSequence(
-    identityTokens,
-    ["let", "reportedUnavailable", "=", "false", ";"],
-    "unavailable diagnostic state must remain executable",
-  );
-  requireOwnedSequence(
-    identityTokens,
-    ["if", "(", "reportedUnavailable", ")", "return", ";", "reportedUnavailable", "=", "true", ";"],
-    diagnosticOwner,
-    "unavailable diagnostic must retain its executable once-only guard",
-  );
-  requireOwnedSequence(
-    identityTokens,
-    ["console", ".", "warn", "(", literal("[app-version-identity]"), ",", "{"],
-    diagnosticOwner,
-    "identity diagnostic must retain its executable console transport",
-  );
-  requireOwnedSequence(
-    identityTokens,
-    ["appId", ":", "APP_VERSION_APP_ID", ",", "platform", ",", "outcome", ",", "severity", ":", "outcome", "===", literal("unavailable"), "?", literal("error"), ":", literal("warning")],
-    diagnosticOwner,
-    "identity diagnostic must retain its fixed sanitized fields",
-  );
-  if (!reachableReturnedObjectHas(
-    identityTokens,
-    headerOwner,
-    [literal("X-Mingla-App-Version"), ":", "getInstalledNativeVersion", "(", ")", "??", literal("")],
-  )) failures.push("native header must use the executable installed-version resolver in the live returned header object");
-  const supabaseOptions = createClientOptionsRange(supabaseTokens);
-  if (reachableSequenceIndex(
-    supabaseTokens,
-    ["global", ":", "{", "fetch", ":", "fetchWithTimeout", ",", "headers", ":", "getNativeAppVersionHeaders", "(", ")"],
-    supabaseOptions,
-  ) < 0) failures.push("shared Explorer Supabase client must retain the executable global header owner in its actual createClient options");
-  requireSequence(
-    identityTokens,
-    ["outcome", ":", literal("expo_config_fallback"), "|", literal("unavailable")],
-    "identity diagnostic outcome contract must remain bounded",
-  );
-  requireSequence(
-    identityTokens,
-    ["if", "(", "isStrictSemver", "(", "Constants", ".", "nativeAppVersion", ")", ")"],
-    "nativeAppVersion must remain the primary strict identity",
+  requireContract(
+    normalizedDigest(identityTokens, [installedVersionOwner]),
+    CANONICAL_CONTRACT_DIGESTS.installedVersion,
+    "installed native-version owner",
   );
   if (sequenceIndex(identityTokens, ["if", "(", "__DEV__", "&&", "isStrictSemver", "(", "expoConfigVersion", ")"]) >= 0) {
     failures.push("Expo config fallback must not be development-only");
   }
+  requireContract(
+    normalizedDigest(identityTokens, [fallbackState, unavailableState, diagnosticOwner]),
+    CANONICAL_CONTRACT_DIGESTS.diagnostic,
+    "diagnostic state and owner",
+  );
+  requireContract(
+    normalizedDigest(identityTokens, [headerOwner]),
+    CANONICAL_CONTRACT_DIGESTS.nativeHeaders,
+    "native header owner",
+  );
+  requireContract(
+    normalizedDigest(supabaseTokens, [supabaseClient]),
+    CANONICAL_CONTRACT_DIGESTS.supabaseClient,
+    "exported Supabase client",
+  );
   const relativeImport = identityTokens.some((token, index) =>
     token.value === "import" && identityTokens.slice(index + 1, index + 12)
       .some((candidate) => candidate.kind === "string" && candidate.value.startsWith(".")),
@@ -480,18 +412,29 @@ export function validate(sources) {
     failures.push("identity resolver must not add a relative import");
   }
 
-  const workflowSteps = parseWorkflowSteps(sources.workflow, "jest-suites");
-  const exactStepCount = (name, command) => workflowSteps.filter(
+  const workflow = parseWorkflow(sources.workflow, "jest-suites");
+  if (!workflow.jobFound || workflow.jobIf !== undefined) {
+    failures.push("Class D jest-suites job must exist and remain unconditionally active");
+  }
+  const exactStepCount = (name, command) => workflow.steps.filter(
     (step) => step.name === name && step["working-directory"] === "app-mobile" &&
       step.run === command && step.uses === undefined && step.if === undefined,
   ).length;
-  if (exactStepCount("Issue #2443: Explorer release native identity", implementorCommand) !== 1) {
+  const globalCommandCount = (command) => workflow.scalarValues.filter((value) => value === command).length;
+  if (
+    globalCommandCount(implementorCommand) !== 1 ||
+    exactStepCount("Issue #2443: Explorer release native identity", implementorCommand) !== 1
+  ) {
     failures.push("Class D must invoke the implementor test once by exact active filename");
   }
-  if (workflowSteps.some((step) => typeof step.run === "string" && /issue_2443_explorer_native_identity[^\n]*\*/.test(step.run))) {
+  if (workflow.steps.some((step) => typeof step.run === "string" && /issue_2443_explorer_native_identity[^\n]*\*/.test(step.run))) {
     failures.push("#2443 Class D wiring must not rely on a wildcard");
   }
-  if (sources.testerExists && exactStepCount("Issue #2443: adversarial Explorer native identity", testerCommand) !== 1) {
+  if (
+    sources.testerExists &&
+    (globalCommandCount(testerCommand) !== 1 ||
+      exactStepCount("Issue #2443: adversarial Explorer native identity", testerCommand) !== 1)
+  ) {
     failures.push("Class D must invoke the tester test once by exact active filename");
   }
   if (sources.issueWorkflowExists) {
@@ -561,6 +504,25 @@ function main() {
   });
   if (downstreamFailures.length > 0) {
     throw new Error(`downstream-safe fixture failed: ${downstreamFailures.join("; ")}`);
+  }
+  const normalizedOnlyFailures = validate({
+    ...sources,
+    identity: sources.identity
+      .replace(
+        "export function getInstalledNativeVersion(): string | null {",
+        "// Canonical contracts intentionally ignore comments.\nexport function getInstalledNativeVersion(): string | null {",
+      )
+      .replace(
+        "  const platform = getNativeAppPlatform();",
+        "  const   platform=getNativeAppPlatform ( ) ;",
+      ),
+    supabase: sources.supabase.replace(
+      "export const supabase = createClient",
+      "// Formatting and comments are non-semantic.\nexport const supabase = createClient",
+    ),
+  });
+  if (normalizedOnlyFailures.length > 0) {
+    throw new Error(`comment/format normalization fixture failed: ${normalizedOnlyFailures.join("; ")}`);
   }
   const mutations = [
     [
@@ -899,13 +861,123 @@ function main() {
         ),
       },
     ],
+    [
+      "constant-expression dead primary owner",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "  if (isStrictSemver(Constants.nativeAppVersion)) {\n    return Constants.nativeAppVersion;\n  }",
+          "  if (1 === 2) {\n    if (isStrictSemver(Constants.nativeAppVersion)) {\n      return Constants.nativeAppVersion;\n    }\n  }",
+        ),
+      },
+    ],
+    [
+      "dead-loop primary owner",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "  if (isStrictSemver(Constants.nativeAppVersion)) {\n    return Constants.nativeAppVersion;\n  }",
+          "  while (false) {\n    if (isStrictSemver(Constants.nativeAppVersion)) {\n      return Constants.nativeAppVersion;\n    }\n  }",
+        ),
+      },
+    ],
+    [
+      "early return before installed-version contract",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "export function getInstalledNativeVersion(): string | null {\n",
+          "export function getInstalledNativeVersion(): string | null {\n  return null;\n",
+        ),
+      },
+    ],
+    [
+      "early throw before installed-version contract",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "export function getInstalledNativeVersion(): string | null {\n",
+          'export function getInstalledNativeVersion(): string | null {\n  throw new Error("disabled");\n',
+        ),
+      },
+    ],
+    [
+      "alternate early native-header return",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "  return {\n    \"X-Mingla-App-Id\": APP_VERSION_APP_ID,",
+          "  return {};\n  return {\n    \"X-Mingla-App-Id\": APP_VERSION_APP_ID,",
+        ),
+      },
+    ],
+    [
+      "early return before diagnostic contract",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '  if (outcome === "expo_config_fallback") {',
+          '  return;\n  if (outcome === "expo_config_fallback") {',
+        ),
+      },
+    ],
+    [
+      "disabled jest-suites job",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          "  jest-suites:\n",
+          "  jest-suites:\n    if: false\n",
+        ),
+      },
+    ],
+    [
+      "quoted-disabled jest-suites job",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          "  jest-suites:\n",
+          '  jest-suites:\n    if: "false"\n',
+        ),
+      },
+    ],
+    [
+      "expression-disabled jest-suites job",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          "  jest-suites:\n",
+          "  jest-suites:\n    if: ${{ false }}\n",
+        ),
+      },
+    ],
+    [
+      "differently named duplicate implementor command",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          `        run: ${implementorCommand}`,
+          `        run: ${implementorCommand}\n      - name: duplicate implementation proof\n        working-directory: app-mobile\n        run: ${implementorCommand}`,
+        ),
+      },
+    ],
+    [
+      "differently named duplicate tester command",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          `        run: ${testerCommand}`,
+          `        run: ${testerCommand}\n      - name: duplicate adversarial proof\n        working-directory: app-mobile\n        run: ${testerCommand}`,
+        ),
+      },
+    ],
   ];
   for (const [label, mutated] of mutations) {
     if (validate(mutated).length === 0) {
       throw new Error(`self-test failed: ${label} mutation passed`);
     }
   }
-  console.log("#2443 Explorer native-identity strict gate self-test: 32/32 + downstream fixture PASS");
+  console.log("#2443 Explorer native-identity strict gate self-test: 43/43 + normalization/downstream fixtures PASS");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();
