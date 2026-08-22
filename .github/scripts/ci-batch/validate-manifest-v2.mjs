@@ -255,6 +255,8 @@ batch = jobs["batch"].is_a?(Hash) ? jobs["batch"] : {}
 steps = Array(batch["steps"]).select { |step| step.is_a?(Hash) }
 setup_node = steps.find { |step| step["uses"].to_s.start_with?("actions/setup-node@") } || {}
 install = steps.find { |step| step["name"].to_s.start_with?("Install ") } || {}
+record_setup = steps.find { |step| step["name"].to_s == "Record one shard setup" } || {}
+run_suites = steps.find { |step| step["name"].to_s.start_with?("Run the ") } || {}
 strategy = batch["strategy"].is_a?(Hash) ? batch["strategy"] : {}
 matrix = strategy["matrix"].is_a?(Hash) ? strategy["matrix"] : {}
 output = {
@@ -264,13 +266,23 @@ output = {
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
-    "nodeVersion" => setup_node.dig("with", "node-version")&.to_s
+    "nodeVersion" => setup_node.dig("with", "node-version")&.to_s,
+    "count" => steps.count { |step| step["uses"].to_s.start_with?("actions/setup-node@") }
   },
   "installStep" => {
     "if" => install["if"]&.to_s,
     "cwd" => install["working-directory"]&.to_s,
     "run" => install["run"]&.to_s
-  }
+  },
+  "recordSetupStep" => {
+    "run" => record_setup["run"]&.to_s,
+    "count" => steps.count { |step| step["name"].to_s == "Record one shard setup" }
+  },
+  "runSuitesStep" => {
+    "run" => run_suites["run"]&.to_s,
+    "count" => steps.count { |step| step["name"].to_s.start_with?("Run the ") }
+  },
+  "installCommandCount" => steps.count { |step| step["run"].to_s.match?(/(?:^|[;&|\n]\s*)(?:npm\s+(?:ci|install)|npm\s+i)(?:\s|$)/i) }
 }
 STDOUT.write(JSON.generate(output))
 `;
@@ -283,8 +295,67 @@ export function inspectBatchWorkflow(source) {
   }));
 }
 
+export function validatePhase2Contract(manifest, matrixSource) {
+  const errors = [];
+  const requiredRunnerContract = {
+    workspaceIsolation: "detached-git-worktree",
+    processGroup: "detached",
+    timeoutGraceSeconds: 2,
+    resultsFile: "suite-results.json",
+    setupEvidencePrefix: "ci-batch-setup-",
+  };
+  if (JSON.stringify(manifest.runnerContract) !== JSON.stringify(requiredRunnerContract)) {
+    fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
+  }
+  for (const suite of manifest.suites || []) {
+    if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > 900) {
+      fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 900 and timeoutMinutes is forbidden`);
+    }
+    if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
+    for (const generated of suite.generatedPaths || []) {
+      if (!generated || path.isAbsolute(generated) || path.normalize(generated).startsWith("..")) {
+        fail(errors, `${suite.id}: generated path must remain repository-relative: ${generated}`);
+      }
+    }
+    for (const [index, step] of (suite.steps || []).entries()) {
+      if (forbiddenEmbeddedSetup(step.run)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
+    }
+  }
+  try {
+    const topology = inspectBatchWorkflow(matrixSource);
+    if (topology.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != \'\' && \'1\' || \'0\' }}"') {
+      fail(errors, "ci-batch must record exactly one typed setup execution for the selected class");
+    }
+    if (topology.setupNode?.count !== 1 || topology.installCommandCount !== 1 || topology.recordSetupStep?.count !== 1 || topology.runSuitesStep?.count !== 1) {
+      fail(errors, "ci-batch must contain exactly one runtime setup, one conditional install route, one setup evidence step, and one suite runner step");
+    }
+    if (topology.runSuitesStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"') {
+      fail(errors, "ci-batch must invoke the Phase 2 runner with the selected class");
+    }
+  } catch (error) {
+    fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);
+  }
+  return errors;
+}
+
 function sameStrings(actual, expected) {
   return strings(actual) && JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+}
+
+// #2436 Phase 2: setup belongs to the class profile and executes once per shard.
+// Suite commands are assertions only. Keep this deliberately broad and fail closed:
+// a newly embedded package/bootstrap/migration operation is a cost and isolation
+// regression even when it is hidden in a compound shell command.
+export function forbiddenEmbeddedSetup(command) {
+  const source = String(command || "");
+  return [
+    /(?:^|[;&|\n]\s*)(?:npm\s+(?:ci|install)|npm\s+i)(?:\s|$)/i,
+    /(?:^|[;&|\n]\s*)(?:yarn|pnpm)\s+(?:install|i)(?:\s|$)/i,
+    /(?:^|[;&|\n]\s*)(?:apt|apt-get|brew)\s+(?:update|install)(?:\s|$)/i,
+    /(?:^|[;&|\n]\s*)(?:docker|podman)(?:\s+compose)?\s+(?:up|run|start)(?:\s|$)/i,
+    /(?:^|[;&|\n]\s*)(?:supabase\s+(?:db\s+reset|migration\s+up)|[^\s]+\s+migrate)(?:\s|$)/i,
+    /(?:actions\/setup-(?:node|python)|denoland\/setup-deno)@/i,
+  ].some((pattern) => pattern.test(source));
 }
 
 export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
@@ -382,7 +453,8 @@ export function validateRegistry(
   if (!Array.isArray(manifest.suites) || manifest.suites.length !== 22) fail(errors, "suites must contain exactly 22 entries");
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
-  let batchTopology = { matrix: [], setupNode: {}, installStep: {} };
+  errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
+  let batchTopology = { matrix: [], setupNode: {}, installStep: {}, recordSetupStep: {}, runSuitesStep: {} };
   try {
     batchTopology = inspectBatchWorkflow(resolvedMatrixSource);
   } catch (error) {
@@ -480,8 +552,6 @@ export function validateRegistry(
     }
     if (!suite.ownerIssue || !/^#\d+$/.test(suite.ownerIssue)) fail(errors, `${suite.id}: ownerIssue must be an issue token`);
     if (!suite.cwd || !fs.existsSync(path.join(root, suite.cwd))) fail(errors, `${suite.id}: cwd does not exist: ${suite.cwd}`);
-    if (!Number.isInteger(suite.timeoutMinutes) || suite.timeoutMinutes < 1) fail(errors, `${suite.id}: invalid timeoutMinutes`);
-    if (!suite.isolation?.trim()) fail(errors, `${suite.id}: isolation contract is missing`);
     if (!suite.requiredContext?.trim()) fail(errors, `${suite.id}: requiredContext classification is missing`);
     if (!suite.exceptionRationale?.includes("Raw shell")) fail(errors, `${suite.id}: suite raw-shell exception is missing`);
     if (!suite.timingSeconds || !("p50" in suite.timingSeconds) || !("p95" in suite.timingSeconds)) fail(errors, `${suite.id}: p50/p95 timing classification is missing`);

@@ -1,8 +1,8 @@
 {
   "$comment": [
-    "#2435 / #2148 Phase 1 deterministic CI registry v2. Static inventory; never generated at runtime.",
-    "Amended locks: 198 legacy origins = 176 live wrappers + 22 batched origins; 89 externally referenced live providers.",
-    "Execution remains manifest-driven. Discovery exists only in the validator to make omissions, duplicates, stale references, and unrouteable suites fail closed."
+    "#2436 / #2148 Phase 2 deterministic CI registry and runner v2.",
+    "Locked inventory: 198 legacy origins, 22 active suites, 89 external providers; 46 preserved assertion steps.",
+    "Setup executes once per shard from the typed profile. Suite commands contain no environment installation."
   ],
   "schemaVersion": 2,
   "expectedExecutableSuites": 22,
@@ -82,8 +82,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue1002_multi_destination.test.js",
         "mingla-admin/src/__tests__/issue1002_multi_destination.tester_adversarial.test.js",
@@ -115,7 +114,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-903-open-external-admin-tests",
@@ -153,8 +153,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/lib/__tests__/openExternal.adversarial.tester.test.js",
         "mingla-admin/src/lib/__tests__/openExternal.test.js"
@@ -169,7 +168,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-979-campaign-builder-correctness-tests",
@@ -209,8 +209,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue1162_stock_first_ai_defaults.test.js",
         "mingla-admin/src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js",
@@ -230,7 +229,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-980-campaign-builder-clarity-tests",
@@ -265,8 +265,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue980_clarity.adversarial.test.js",
         "mingla-admin/src/__tests__/issue980_preflight_copy_translation.test.js",
@@ -283,7 +282,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-986-campaign-builder-platform-picker-tests",
@@ -318,8 +318,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue986_platform_picker.adversarial.test.js",
         "mingla-admin/src/__tests__/issue986_platform_picker.test.js"
@@ -334,7 +333,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-995-campaign-builder-creative-tests",
@@ -369,8 +369,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js",
         "mingla-admin/src/__tests__/issue995_creative_video_not_creatable.test.js",
@@ -386,7 +385,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "971-paystack-onboard-scroll-tests",
@@ -397,20 +397,6 @@
         ".github/workflows/971-paystack-onboard-scroll-tests.yml"
       ],
       "steps": [
-        {
-          "name": "paystack-onboard-scroll-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run",
           "cwd": "mingla-business",
@@ -435,8 +421,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts",
         "mingla-business/src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts"
@@ -451,7 +436,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1027-keyboard-and-datetime-tests",
@@ -482,34 +468,6 @@
         ".github/workflows/issue-1027-keyboard-and-datetime-tests.yml"
       ],
       "steps": [
-        {
-          "name": "thread-a-native-keyboard",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install test-only renderer (react-test-renderer, --no-save)",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Symptom 1 — implementor happy-path (cap formula + wiring)",
           "cwd": "mingla-business",
@@ -581,34 +539,6 @@
           "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
         },
         {
-          "name": "thread-b-web-datetime",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install test-only renderer (react-test-renderer, --no-save)",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Web date/time — implementor RENDER proof (main rows commit on web)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx --runInBand",
@@ -674,8 +604,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts",
         "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts",
@@ -697,7 +626,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1035-theme-sheet-hoist-tests",
@@ -711,20 +641,6 @@
         ".github/workflows/issue-1035-theme-sheet-hoist-tests.yml"
       ],
       "steps": [
-        {
-          "name": "issue-1035-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run issue-1035 jest suite",
           "cwd": "mingla-business",
@@ -749,8 +665,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts",
         "mingla-business/src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts"
@@ -765,7 +680,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1036-contrast-chip-removal-tests",
@@ -779,20 +695,6 @@
         ".github/workflows/issue-1036-contrast-chip-removal-tests.yml"
       ],
       "steps": [
-        {
-          "name": "issue-1036-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run issue-1036 jest suite (implementor source-gate)",
           "cwd": "mingla-business",
@@ -831,8 +733,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/jest.issue1036.render.cjs",
         "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx",
@@ -848,7 +749,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1348-icloud-video-patch-tests",
@@ -861,20 +763,6 @@
         ".github/workflows/issue-1348-icloud-video-patch-tests.yml"
       ],
       "steps": [
-        {
-          "name": "Install mingla-business deps (runs postinstall -> patch-package)",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Assert patch file present",
           "cwd": ".",
@@ -941,8 +829,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/package.json",
         "mingla-business/patches/expo-image-picker+17.0.11.patch"
@@ -957,7 +844,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1532-tester-adversarial",
@@ -965,20 +853,6 @@
       "origin": ".github/workflows/issue-1532-tester-adversarial.yml",
       "originPaths": [],
       "steps": [
-        {
-          "name": "Install Business dependencies",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Stay editor guard reachability (tester adversarial)",
           "cwd": "mingla-business",
@@ -1003,8 +877,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/jest.issue1532.tester.cjs",
         "mingla-business/src/components/stay/__tests__/stayGuardReachability.issue1532.tester.render.test.tsx"
@@ -1019,7 +892,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1881-business-signin-transient-failure-tests",
@@ -1035,20 +909,6 @@
         ".github/workflows/issue-1881-business-signin-transient-failure-tests.yml"
       ],
       "steps": [
-        {
-          "name": "issue-1881-business-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run",
           "cwd": "mingla-business",
@@ -1101,8 +961,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts",
         "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts",
@@ -1119,7 +978,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1996-business-desktop-sharing-tests",
@@ -1147,20 +1007,6 @@
         ".github/workflows/issue-1996-business-desktop-sharing-tests.yml"
       ],
       "steps": [
-        {
-          "name": "issue-1996-business-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run",
           "cwd": "mingla-business",
@@ -1199,8 +1045,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx",
         "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts",
@@ -1218,7 +1063,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-948-w2-bank-route-web-tests",
@@ -1238,34 +1084,6 @@
         ".github/workflows/issue-948-w2-bank-route-web-tests.yml"
       ],
       "steps": [
-        {
-          "name": "Install business dependencies",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install test-only renderer (react-test-renderer, --no-save)",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run W2 bank-route contracts",
           "cwd": "mingla-business",
@@ -1290,8 +1108,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts",
         "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts",
@@ -1307,7 +1124,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-948-web-skip-download-tests",
@@ -1329,34 +1147,6 @@
         ".github/workflows/issue-948-web-skip-download-tests.yml"
       ],
       "steps": [
-        {
-          "name": "Install business dependencies",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install route-render proof dependency",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save --package-lock=false react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save --package-lock=false react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run W4 web skip-download contracts",
           "cwd": "mingla-business",
@@ -1395,8 +1185,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs",
         "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx",
@@ -1414,7 +1203,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-959-scanner-invite-error-parse-tests",
@@ -1425,20 +1215,6 @@
         ".github/workflows/issue-959-scanner-invite-error-parse-tests.yml"
       ],
       "steps": [
-        {
-          "name": "issue-959-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Issue #959: scanner-invite error-parse jest suites (implementor + tester)",
           "cwd": "mingla-business",
@@ -1463,8 +1239,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/services/__tests__/issue_959_scanner_error_parse.tester.test.ts",
         "mingla-business/src/services/__tests__/issue_959_scanner_functions_error_parse.test.ts"
@@ -1479,7 +1254,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "orch-1403-onboard-scroll-tests",
@@ -1490,20 +1266,6 @@
         ".github/workflows/orch-1403-onboard-scroll-tests.yml"
       ],
       "steps": [
-        {
-          "name": "orch-1403-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run ORCH-1403 onboard-scroll jest suite",
           "cwd": "mingla-business",
@@ -1528,8 +1290,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/brand/__tests__/onboardBodyScrolls.orch1403.source.test.ts"
       ],
@@ -1543,7 +1304,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "orch-1404-invite-error-recovery-tests",
@@ -1555,20 +1317,6 @@
         ".github/workflows/orch-1404-invite-error-recovery-tests.yml"
       ],
       "steps": [
-        {
-          "name": "orch-1404-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run ORCH-1404 mingla-business jest suites",
           "cwd": "mingla-business",
@@ -1593,8 +1341,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx",
         "mingla-business/src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx",
@@ -1610,7 +1357,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "production-readiness-audit",
@@ -1739,20 +1487,6 @@
         {
           "name": "feature-flags",
           "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "feature-flags",
-          "cwd": "mingla-business",
           "run": "npx jest src/config/__tests__/featureFlags.test.ts --runInBand",
           "invocation": {
             "kind": "raw-shell",
@@ -1774,8 +1508,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/config/__tests__/featureFlags.test.ts",
         "scripts/audit/checkout-grade-a-contract.mjs",
@@ -1796,7 +1529,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-2343-host-forced-light-appearance-tests",
@@ -1835,8 +1569,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/__tests__/hostForcedLightAppearance.issue2343.implementor.happy.test.mjs",
         "mingla-business/__tests__/hostForcedLightAppearance.issue2343.tester.adversarial.test.mjs"
@@ -1851,7 +1584,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-2322-ios-picker-theming-tests",
@@ -1889,8 +1623,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs",
         "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming.tester_adversarial.test.mjs"
@@ -1905,7 +1638,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     }
   ],
   "legacyOrigins": [
@@ -11967,10 +11701,10 @@
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs",
-      ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
-      ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
-      ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
-      ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
+        ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
+        ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
+        ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
+        ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
         ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs",
         ".github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
         ".github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs",
@@ -12069,5 +11803,12 @@
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     }
-  ]
+  ],
+  "runnerContract": {
+    "workspaceIsolation": "detached-git-worktree",
+    "processGroup": "detached",
+    "timeoutGraceSeconds": 2,
+    "resultsFile": "suite-results.json",
+    "setupEvidencePrefix": "ci-batch-setup-"
+  }
 }

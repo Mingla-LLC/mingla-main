@@ -93,6 +93,12 @@ jobs:
         working-directory: ${{ matrix.install }}
         run: npm ci
 
+      # The runner refuses to start unless the class setup above is recorded once,
+      # and refuses duplicate or mismatched evidence. This turns "one install per
+      # shard" from an optimization claim into a checked execution contract.
+      - name: Record one shard setup
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != '' && '1' || '0' }}"
+
       # The runner's own guarantees are load-bearing: it is the only thing standing
       # between "one job for many suites" and "one green lie". Prove it still bites
       # BEFORE trusting it to report on anything.
@@ -100,7 +106,7 @@ jobs:
         run: node --test .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
 
       - name: Run the ${{ matrix.class }} suites
-        run: node .github/scripts/ci-batch/run-suite-batch.mjs ${{ matrix.class }}
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"
 
       - name: Upload suite results
         if: always()
@@ -108,4 +114,4 @@ jobs:
         with:
           name: suite-results-${{ matrix.class }}
           path: suite-results.json
-          if-no-files-found: warn
+          if-no-files-found: error

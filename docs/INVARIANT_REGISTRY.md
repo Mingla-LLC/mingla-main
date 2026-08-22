@@ -22,6 +22,26 @@
 - **Enforcement:** the same schema-v2 validator cross-checks `setupProfiles`, `classes`, every suite record, and the unchanged `.github/workflows/ci-batch.yml` matrix; its self-test mutates each boundary red before the live check is trusted.
 - **Status:** DRAFT pending later #2148 phases that consolidate live wrappers and establish final required-check/performance budgets.
 
+## DRAFT — issue #2148 / Phase 2 issue #2436 (CI execution is isolated and attributable)
+
+### I-PROPOSED-2148-ONE-SETUP-PER-SHARD (DRAFT)
+
+- **Rule:** A CI batch class performs its typed setup profile exactly once per shard. Ordinary suite commands contain assertions only and may not embed package installs, runtime/bootstrap actions, operating-system installs, container startup, or migration replay.
+- **Enforcement:** `.github/ci-batch/MANIFEST.json`, its fail-closed v2 validator, the exact workflow setup-evidence route, and the issue #2436 governance and implementor proofs registered in strict-grep Class A.
+- **Status:** DRAFT. Phase 2 removes 19 redundant setup operations from 14 suites without changing any of the 46 underlying commands/assertions.
+
+### I-PROPOSED-2148-SUITE-EXECUTION-ISOLATED (DRAFT)
+
+- **Rule:** Every registered suite runs in a clean detached worktree under its own enforced deadline and process group. Failure or timeout kills descendants, cleans declared generated output, rejects unexpected mutations, and never prevents later suites from executing.
+- **Enforcement:** `.github/scripts/ci-batch/run-suite-batch.mjs` plus the issue #2436 runtime regression covering continuation, missing inputs, mutation detection, generated-output cleanup, and descendant-process timeout.
+- **Status:** DRAFT pending independent verification and the later #2148 wrapper and required-check phases.
+
+### I-PROPOSED-2148-SUITE-RESULTS-HONEST (DRAFT)
+
+- **Rule:** Each shard emits machine-readable JSON and a GitHub summary naming setup/install executions and every expected suite's status, command fingerprint, duration, command counts, timeout, reason, and cleanup. Missing setup, files, directories, classes, result artifacts, or expected-versus-executed equality is red rather than skipped.
+- **Enforcement:** the Phase 2 runner, artifact upload with `if-no-files-found: error`, and the Class A reporting regression.
+- **Status:** DRAFT until the complete #2148 consolidation programme establishes final topology and performance budgets.
+
 ## ACTIVE — issue #2411 (free orders remain visible and countable without currency)
 
 ### I-PROPOSED-2411-ZERO-MONEY-ORDER-CURRENCY-NULL (ACTIVE)
