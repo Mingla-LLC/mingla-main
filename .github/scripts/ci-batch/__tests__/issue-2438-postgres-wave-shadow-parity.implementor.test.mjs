@@ -82,7 +82,10 @@ function greenResult(value, suite) {
   result.leafResults = suite.steps.flatMap((step, stepIndex) => (step.children || [{
     id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" },
   }]).map((leaf) => {
-    const absent = leaf.predicate?.kind === "exists" && !fs.existsSync(path.join(ROOT, leaf.predicate.path));
+    // Independent oracle: conditionalExpectedFiles owns which paths are optional;
+    // do not repeat the production predicate-kind branch in this fixture builder.
+    const conditional = suite.conditionalExpectedFiles?.includes(leaf.predicate?.path);
+    const absent = conditional && !fs.existsSync(path.join(ROOT, leaf.predicate.path));
     return { id: leaf.id, outerCommandId: step.commandId, status: absent ? "skipped-absent" : "passed", executed: !absent };
   }));
   result.outerResults = suite.steps.map((step) => {
@@ -256,11 +259,39 @@ test("primary and secondary reconciliation is lane-exact and non-masking", () =>
 
   const lifecycle=canonicalReconciliation(value,"admin-node20-install");
   assert.deepEqual(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,lifecycle.secondary),[]);
+  assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves,37);
+  assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves,3);
+  assert.equal(lifecycle.secondary.executedLeafIds.length,11);
+  assert.equal(lifecycle.secondary.absentLeafIds.length,3);
+  assert.deepEqual(lifecycle.secondary.absentLeafIds,[
+    "leaf:issue-1902-public-event-lifecycle-tests:07:brand",
+    "leaf:issue-1902-public-event-lifecycle-tests:07:business",
+    "leaf:issue-1902-public-event-lifecycle-tests:07:consumer",
+  ]);
+  const fabricatedAllPresent=structuredClone(lifecycle.secondary);
+  for(const leaf of fabricatedAllPresent.results[0].leafResults){leaf.status="passed";leaf.executed=true;}
+  fabricatedAllPresent.results[0].outerResults[6].executedLeaves=4;fabricatedAllPresent.results[0].outerResults[6].skippedAbsentLeaves=0;
+  fabricatedAllPresent.results[0].presentLeaves=14;fabricatedAllPresent.results[0].executedLeaves=14;fabricatedAllPresent.results[0].absentLeaves=0;
+  fabricatedAllPresent.executedLeafIds=[...fabricatedAllPresent.expectedLeafIds];fabricatedAllPresent.absentLeafIds=[];
+  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,fabricatedAllPresent).join("\n"),/secondary-evidence-mismatch/);
+  const presentClaimedAbsent=structuredClone(lifecycle.secondary);const presentId="leaf:issue-1902-public-event-lifecycle-tests:07:offering";
+  const presentLeaf=presentClaimedAbsent.results[0].leafResults.find((leaf)=>leaf.id===presentId);presentLeaf.status="skipped-absent";presentLeaf.executed=false;
+  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,presentClaimedAbsent).join("\n"),/secondary-evidence-mismatch/);
+  const absentClaimedPassed=structuredClone(lifecycle.secondary);const absentLeaf=absentClaimedPassed.results[0].leafResults.find((leaf)=>leaf.id===lifecycle.secondary.absentLeafIds[0]);
+  absentLeaf.status="passed";absentLeaf.executed=true;
+  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,absentClaimedPassed).join("\n"),/secondary-evidence-mismatch/);
   for(const mutate of [
     (report)=>{report.toolExposureExecutions=0;},
     (report)=>{report.orderedToolExposures[0].version="29.7.1";},
     (report)=>{report.toolExposureFingerprint="2".repeat(64);},
   ]) {const attack=structuredClone(lifecycle.secondary);mutate(attack);assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,attack).join("\n"),/secondary-evidence-mismatch/);}
+  for(const mutate of [
+    (suite)=>{suite.steps[6].children[0].predicate.kind="exists";},
+    (suite)=>{suite.steps[6].children[0].predicate.path="../escape";suite.conditionalExpectedFiles[0]="../escape";},
+    (suite)=>{suite.steps[6].children[1].predicate.path=suite.steps[6].children[0].predicate.path;suite.conditionalExpectedFiles[1]=suite.conditionalExpectedFiles[0];},
+  ]) {const attacked=structuredClone(value);mutate(attacked.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests"));
+    const fixture=canonicalReconciliation(attacked,"admin-node20-install");
+    assert.match(reconcilePhase3bReports(attacked,"admin-node20-install",fixture.decision,fixture.primary,fixture.secondary).join("\n"),/secondary-evidence-mismatch/);}
 });
 
 test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offline npx", () => {

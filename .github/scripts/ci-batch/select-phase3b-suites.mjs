@@ -127,13 +127,37 @@ function primaryResultIsExact(suite, result) {
 }
 
 function expectedLeafRows(suite) {
-  return suite.steps.flatMap((step, stepIndex) => (step.children || [{
+  const predicatePaths = []; const seenPaths = new Set();
+  const rows = suite.steps.flatMap((step, stepIndex) => (step.children || [{
     id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" },
-  }]).map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId, predicate: leaf.predicate || { kind: "always" } })));
+  }]).map((leaf) => {
+    const predicate = leaf.predicate || { kind: "always" };
+    if (predicate.kind === "always") {
+      if (!same(Object.keys(predicate).sort(byteSort), ["kind"])) throw new Error(`${leaf.id}: malformed always predicate`);
+      return { id: leaf.id, outerCommandId: step.commandId, expectedExecuted: true };
+    }
+    if (predicate.kind !== "file-exists" || !same(Object.keys(predicate).sort(byteSort), ["kind", "path"])) {
+      throw new Error(`${leaf.id}: unknown or malformed predicate`);
+    }
+    const relative = predicate.path;
+    if (typeof relative !== "string" || !relative || relative.trim() !== relative || relative.startsWith("/")
+        || /^[A-Za-z]:/.test(relative) || relative.includes("\\") || relative.includes("\0") || relative.endsWith("/")
+        || relative.split("/").some((part) => !part || part === "." || part === "..") || path.posix.normalize(relative) !== relative) {
+      throw new Error(`${leaf.id}: predicate path escapes canonical repository truth`);
+    }
+    if (seenPaths.has(relative)) throw new Error(`${leaf.id}: duplicate predicate path`);
+    seenPaths.add(relative); predicatePaths.push(relative);
+    return { id: leaf.id, outerCommandId: step.commandId, expectedExecuted: fs.existsSync(path.join(ROOT, relative)) };
+  }));
+  if (!same([...predicatePaths].sort(byteSort), [...(suite.conditionalExpectedFiles || [])].sort(byteSort))) {
+    throw new Error(`${suite.id}: conditional predicate paths drifted`);
+  }
+  return rows;
 }
 
 function secondaryResultIsExact(suite, result, authority) {
-  const expectedLeaves = expectedLeafRows(suite);
+  let expectedLeaves;
+  try { expectedLeaves = expectedLeafRows(suite); } catch { return false; }
   if (result?.id !== suite.id || result?.setupProfile !== suite.setupProfile
       || result?.commandFingerprint !== suiteCommandFingerprint(suite) || result?.expected !== suite.steps.length
       || result?.executed !== suite.steps.length || result?.status !== "passed" || result?.ok !== true || result?.code !== 0
@@ -141,9 +165,10 @@ function secondaryResultIsExact(suite, result, authority) {
       || !Array.isArray(result?.leafResults) || result.leafResults.length !== expectedLeaves.length
       || !Array.isArray(result?.outerResults) || result.outerResults.length !== suite.steps.length) return false;
   for (const [index, expected] of expectedLeaves.entries()) {
-    const leaf = result.leafResults[index]; const absent = leaf?.status === "skipped-absent";
+    const leaf = result.leafResults[index];
     if (leaf?.id !== expected.id || leaf?.outerCommandId !== expected.outerCommandId
-        || (absent ? expected.predicate.kind !== "exists" || leaf.executed !== false : leaf?.status !== "passed" || leaf.executed !== true)) return false;
+        || (expected.expectedExecuted ? leaf?.status !== "passed" || leaf.executed !== true
+          : leaf?.status !== "skipped-absent" || leaf.executed !== false)) return false;
   }
   for (const [index, step] of suite.steps.entries()) {
     const leaves = result.leafResults.filter((leaf) => leaf.outerCommandId === step.commandId);
