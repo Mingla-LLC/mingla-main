@@ -172,6 +172,32 @@ test("commands share one suite cache without leaking it into the next suite", as
   }
 });
 
+test("suite HOME cleanup completes before pass and a cleanup failure is red", async () => {
+  const root = gitFixture();
+  const cleanupSuite = suite("cleanup-order", "true");
+  try {
+    let successfulCleanup = false;
+    const passed = await runSuiteV2(cleanupSuite, {
+      root, profile: { install: null }, commandCapabilities: registryFor([cleanupSuite]),
+      workspaceFactory: () => fixtureWorkspace(root),
+      removeHome(home) { successfulCleanup = true; fs.rmSync(home, { recursive: true, force: true }); },
+    });
+    assert.equal(successfulCleanup, true);
+    assert.equal(passed.status, "passed");
+
+    const failed = await runSuiteV2(cleanupSuite, {
+      root, profile: { install: null }, commandCapabilities: registryFor([cleanupSuite]),
+      workspaceFactory: () => fixtureWorkspace(root),
+      removeHome(home) { fs.rmSync(home, { recursive: true, force: true }); throw new Error("root-owned cache"); },
+    });
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.ok, false);
+    assert.match(failed.reason, /suite HOME cleanup failed: root-owned cache/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("privilege-separated descendant cleanup tolerates only ESRCH and EPERM", () => {
   const supervisor = path.resolve(".github/scripts/ci-batch/process-supervisor.py");
   const probe = [
@@ -327,6 +353,31 @@ test("children receive no job secrets and derived encodings are redacted in defe
     assert.match(transcript, /\[REDACTED\]/);
   } finally {
     if (prior === undefined) delete process.env.UNRELATED_CONNECTION_VALUE; else process.env.UNRELATED_CONNECTION_VALUE = prior;
+  }
+});
+
+test("secret redaction cannot mutate manifest-owned suite identity before reconciliation", async () => {
+  const root = gitFixture();
+  const id = "issue-2399-multiday-picker-ticket-box";
+  const identitySuite = suite(id, "true");
+  const prior = process.env.GITHUB_HEAD_REF;
+  process.env.GITHUB_HEAD_REF = "2399-multiday-picker-ticket-box";
+  try {
+    const [result] = await runSuitesV2([identitySuite], {
+      root, profile: { install: null }, commandCapabilities: registryFor([identitySuite]),
+      workspaceFactory: () => fixtureWorkspace(root),
+    });
+    assert.equal(result.id, id, "trusted manifest identity must remain exact");
+    const report = buildShardReport("node20-noinstall", [identitySuite], [result], {
+      setupProfile: "node20-noinstall", setupExecutions: 1, installExecutions: 0,
+    }, 1);
+    assert.equal(report.identityMismatch, false);
+    assert.equal(report.ok, true);
+    assert.equal(report.results[0].id, id);
+    assert.match(renderSummary(report), /issue-\[REDACTED\]/, "presentation still redacts excluded environment values");
+  } finally {
+    if (prior === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = prior;
+    fs.rmSync(root, { recursive: true, force: true });
   }
 });
 

@@ -320,6 +320,17 @@ function redactValue(value) {
   return value;
 }
 
+// Suite identity and accounting fields come from the reviewed manifest and
+// must remain byte-stable until reconciliation is complete. Redact only the
+// free-text fields that can contain child output or environment-derived paths.
+function redactResultText(result) {
+  return {
+    ...result,
+    reason: result.reason === null || result.reason === undefined ? result.reason : redactText(result.reason),
+    allowedCleanup: Array.isArray(result.allowedCleanup) ? result.allowedCleanup.map((entry) => redactText(entry)) : result.allowedCleanup,
+  };
+}
+
 function pipeRedacted(stream, destination, env) {
   if (!stream) return;
   let buffer = "";
@@ -393,7 +404,8 @@ function generatedPathAllowed(relative, allowed) {
 }
 
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
-  execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities } = {}) {
+  execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities,
+  removeHome = (home) => fs.rmSync(home, { recursive: true, force: true }) } = {}) {
   const started = now();
   let workspace;
   let code = 0;
@@ -453,13 +465,13 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     }
   } catch (error) { status = /missing|does not exist/i.test(error.message) ? "missing" : "failed"; code = 2; reason = error.message; }
   finally {
-    try { if (suiteHome) fs.rmSync(suiteHome, { recursive: true, force: true }); }
+    try { if (suiteHome) removeHome(suiteHome); }
     catch (error) { status = "failed"; code = code || 2; reason = `suite HOME cleanup failed: ${error.message}`; }
     try { workspace?.cleanup(); }
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
   const durationMs = Math.max(0, now() - started);
-  return redactValue({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
+  return redactResultText({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
     ok: status === "passed", code, reason, durationMs, seconds: Math.round(durationMs / 1_000), timeoutSeconds: suite.timeoutSeconds,
     expected: suite.steps.length, executed, allowedCleanup });
 }
@@ -477,15 +489,15 @@ export async function runSuitesV2(suites, options = {}) {
 export function buildShardReport(klass, suites, results, setupEvidence, durationMs) {
   const base = verdict(suites, results);
   const statuses = Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
-  return redactValue({ schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
+  return { schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
     setupExecutions: setupEvidence?.setupExecutions || 0, installExecutions: setupEvidence?.installExecutions || 0,
-    durationMs, ...base, statuses, results });
+    durationMs, ...base, statuses, results: results.map(redactResultText) };
 }
 
 function annotationEscape(value) { return String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A"); }
 
 export function renderSummary(report) {
-  const safeReport = redactValue(report);
+  const safeReport = { ...report, results: report.results.map(redactResultText) };
   const cell = (value) => redactText(value).replaceAll("|", "\\|").replaceAll("\n", " ");
   const rows = safeReport.results.map((result) => `| ${cell(result.id)} | ${cell(result.status)} | ${result.executed}/${result.expected} | ${result.seconds}s | ${cell(result.reason || "")} |`);
   return [`## CI batch: ${cell(safeReport.class)}`, "",
@@ -502,6 +514,9 @@ function writeReport(manifest, report, root = REPO_ROOT) {
     console.error(`::error title=${annotationEscape(`CI suite ${result.id}`)}::${annotationEscape(`${result.status}: ${result.reason || "unknown failure"}`)}`);
   }
   if (report.shortfall) console.error(`::error title=CI suite shortfall::expected ${report.expected}, executed ${report.executed}`);
+  if (report.identityMismatch) console.error("::error title=CI suite identity mismatch::executed suite identities or order differ from the manifest");
+  if (report.duplicateIds.length) console.error(`::error title=CI suite duplicate identities::${annotationEscape(report.duplicateIds.join(", "))}`);
+  if (report.malformedIds.length) console.error(`::error title=CI suite malformed results::${annotationEscape(report.malformedIds.join(", "))}`);
 }
 
 async function main() {
