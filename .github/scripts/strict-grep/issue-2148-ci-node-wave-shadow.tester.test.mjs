@@ -8,6 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const BASE = "5e24d9dfed3559471b701a949cc3e2c76b6f5949";
+const PRE_AMENDMENT_6_TESTER_SHA256 = "d54eb1655eb4bc7ddd157785743954a1cbdbac6f6ae938c07a111f7256ae08a0";
+const MARKER = "# #2437 SHADOW-PARITY-TRIGGER — remove before cutover";
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const BATCH_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -165,6 +167,31 @@ function assertReconstructed(value, inspections) {
   assert.equal(digest(value.commandCapabilities.commands.slice(46)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
 }
 
+function assertWrapperLifecycle(value, readSource, markedWorkflowNames) {
+  const originsByName = new Map(value.legacyOrigins.map((origin) => [`${origin.stem}.${origin.extension}`, origin]));
+  const expectedMarked = [];
+  for (const name of ORIGINS) {
+    const record = originsByName.get(name);
+    assert.ok(record, `${name}: missing historical origin record`);
+    const source = readSource(name);
+    if (record.disposition === "shadow-active") {
+      assert.equal(typeof source, "string", `${name}: shadow wrapper missing`);
+      const exactMarkers = source.split("\n").filter((line) => line === MARKER);
+      assert.equal(exactMarkers.length, 1, `${name}: shadow marker cardinality`);
+      assert.equal(source.startsWith(`${MARKER}\n`), true, `${name}: marker is not the exact top-level line`);
+      const withoutMarker = source.replace(`${MARKER}\n`, "");
+      const base = execFileSync("git", ["show", `${BASE}:.github/workflows/${name}`], { cwd: ROOT, encoding: "utf8" });
+      assert.equal(withoutMarker, base, `${name}: wrapper changed beyond the exact shadow marker`);
+      expectedMarked.push(name);
+    } else if (record.disposition === "batched-historical") {
+      assert.equal(source, null, `${name}: terminal wrapper must be absent`);
+    } else {
+      assert.fail(`${name}: unsupported wave lifecycle ${record.disposition}`);
+    }
+  }
+  assert.deepEqual([...markedWorkflowNames].sort(), expectedMarked.sort(), "shadow marker exists outside its exact lifecycle set");
+}
+
 test("31 live wrappers reconstruct exactly 32 variants and 107 reviewed assertion capabilities", () => {
   assertReconstructed(manifest(), inspectOrigins());
 });
@@ -201,15 +228,24 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.match(source, /if: github\.event_name != 'workflow_dispatch' \|\| matrix\.class == 'node20-19-noinstall'/);
 });
 
-test("shadow leaves every wrapper, coupled reference, and excluded DB sibling byte-identical", () => {
+test("shadow markers are exact and inert while terminal wrappers must be absent", () => {
   assert.equal(ORIGINS.length, 31);
   assert.equal(REFERENCES.length, 33);
   const byteLockedReferences = REFERENCES.filter((relative) => relative !== ".github/scripts/strict-grep/MANIFEST.json");
-  const protectedPaths = [...ORIGINS.map((name) => `.github/workflows/${name}`), ...byteLockedReferences,
-    ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml"];
+  const workflowDirectory = path.join(ROOT, ".github/workflows");
+  const markedWorkflowNames = fs.readdirSync(workflowDirectory).filter((name) => {
+    const absolute = path.join(workflowDirectory, name);
+    return fs.statSync(absolute).isFile() && fs.readFileSync(absolute, "utf8").split("\n").includes(MARKER);
+  });
+  assertWrapperLifecycle(manifest(), (name) => {
+    const absolute = path.join(workflowDirectory, name);
+    return fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : null;
+  }, markedWorkflowNames);
+
+  const protectedPaths = [...byteLockedReferences, ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml"];
   protectedPaths.forEach((relative) => assert.equal(fs.existsSync(path.join(ROOT, relative)), true, relative));
   const diff = spawnSync("git", ["diff", "--quiet", BASE, "--", ...protectedPaths], { cwd: ROOT });
-  assert.equal(diff.status, 0, "shadow changed a wrapper/reference/excluded DB sibling");
+  assert.equal(diff.status, 0, "shadow changed a coupled reference or excluded DB sibling");
   const strictManifest = fs.readFileSync(path.join(ROOT, ".github/scripts/strict-grep/MANIFEST.json"), "utf8");
   const baseStrictManifest = execFileSync("git", ["show", `${BASE}:.github/scripts/strict-grep/MANIFEST.json`], { cwd: ROOT, encoding: "utf8" });
   for (const origin of ORIGINS) {
@@ -218,6 +254,13 @@ test("shadow leaves every wrapper, coupled reference, and excluded DB sibling by
   }
   const shadowOrigins = new Set(manifest().suites.filter((suite) => suite.lifecycle === "shadow-active").map((suite) => path.basename(suite.origin)));
   assert.equal(shadowOrigins.has("issue-2393-valid-marketing-test-fixtures.yml"), false);
+
+  const terminal = structuredClone(manifest());
+  for (const origin of terminal.legacyOrigins) {
+    if (ORIGINS.includes(`${origin.stem}.${origin.extension}`)) origin.disposition = "batched-historical";
+  }
+  assert.doesNotThrow(() => assertWrapperLifecycle(terminal, () => null, []));
+  assert.equal(PRE_AMENDMENT_6_TESTER_SHA256, "d54eb1655eb4bc7ddd157785743954a1cbdbac6f6ae938c07a111f7256ae08a0");
 });
 
 test("original Phase 2 execution and containment stay byte-for-byte protected", () => {
