@@ -282,7 +282,7 @@ output = {
     "run" => run_suites["run"]&.to_s,
     "count" => steps.count { |step| step["name"].to_s.start_with?("Run the ") }
   },
-  "installCommandCount" => steps.count { |step| step["run"].to_s.match?(/(?:^|[;&|\n]\s*)(?:npm\s+(?:ci|install)|npm\s+i)(?:\s|$)/i) }
+  "runSteps" => steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] }
 }
 STDOUT.write(JSON.generate(output))
 `;
@@ -295,7 +295,12 @@ export function inspectBatchWorkflow(source) {
   }));
 }
 
-export function validatePhase2Contract(manifest, matrixSource) {
+export function validatePhase2Contract(manifestOrOptions, matrixSource) {
+  const optionShape = manifestOrOptions?.manifest && typeof manifestOrOptions.manifest === "object";
+  const manifest = optionShape ? manifestOrOptions.manifest : manifestOrOptions;
+  const contractRoot = optionShape ? manifestOrOptions.root || DEFAULT_ROOT : DEFAULT_ROOT;
+  const workflowText = (optionShape ? manifestOrOptions.workflowText : matrixSource)
+    ?? fs.readFileSync(path.join(contractRoot, ".github/workflows/ci-batch.yml"), "utf8");
   const errors = [];
   const requiredRunnerContract = {
     workspaceIsolation: "detached-git-worktree",
@@ -318,15 +323,16 @@ export function validatePhase2Contract(manifest, matrixSource) {
       }
     }
     for (const [index, step] of (suite.steps || []).entries()) {
-      if (forbiddenEmbeddedSetup(step.run)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
+      if (forbiddenEmbeddedSetup(step)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
     }
   }
   try {
-    const topology = inspectBatchWorkflow(matrixSource);
+    const topology = inspectBatchWorkflow(workflowText);
     if (topology.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != \'\' && \'1\' || \'0\' }}"') {
       fail(errors, "ci-batch must record exactly one typed setup execution for the selected class");
     }
-    if (topology.setupNode?.count !== 1 || topology.installCommandCount !== 1 || topology.recordSetupStep?.count !== 1 || topology.runSuitesStep?.count !== 1) {
+    const installCommandCount = (topology.runSteps || []).filter((step) => forbiddenEmbeddedSetup({ cmd: "bash", args: ["-lc", step.run] })).length;
+    if (topology.setupNode?.count !== 1 || installCommandCount !== 1 || topology.recordSetupStep?.count !== 1 || topology.runSuitesStep?.count !== 1) {
       fail(errors, "ci-batch must contain exactly one runtime setup, one conditional install route, one setup evidence step, and one suite runner step");
     }
     if (topology.runSuitesStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"') {
@@ -347,15 +353,111 @@ function sameStrings(actual, expected) {
 // a newly embedded package/bootstrap/migration operation is a cost and isolation
 // regression even when it is hidden in a compound shell command.
 export function forbiddenEmbeddedSetup(command) {
-  const source = String(command || "");
-  return [
-    /(?:^|[;&|\n]\s*)(?:npm\s+(?:ci|install)|npm\s+i)(?:\s|$)/i,
-    /(?:^|[;&|\n]\s*)(?:yarn|pnpm)\s+(?:install|i)(?:\s|$)/i,
-    /(?:^|[;&|\n]\s*)(?:apt|apt-get|brew)\s+(?:update|install)(?:\s|$)/i,
-    /(?:^|[;&|\n]\s*)(?:docker|podman)(?:\s+compose)?\s+(?:up|run|start)(?:\s|$)/i,
-    /(?:^|[;&|\n]\s*)(?:supabase\s+(?:db\s+reset|migration\s+up)|[^\s]+\s+migrate)(?:\s|$)/i,
-    /(?:actions\/setup-(?:node|python)|denoland\/setup-deno)@/i,
-  ].some((pattern) => pattern.test(source));
+  const source = typeof command === "string"
+    ? command
+    : Array.isArray(command?.args)
+      ? command.args[command.args.length - 1] || ""
+      : command?.run || command?.invocation?.argv?.at(-1) || "";
+  return shellCommands(String(source)).some(({ executable, argv }) => setupExecutable(executable, argv));
+}
+
+function shellTokens(source) {
+  const normalized = source.replace(/\\\r?\n/g, " ");
+  const tokens = [];
+  let word = "";
+  let quote = null;
+  let escaped = false;
+  const push = () => { if (word) { tokens.push({ type: "word", value: word }); word = ""; } };
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    if (escaped) { word += character; escaped = false; continue; }
+    if (quote === "'") { if (character === "'") quote = null; else word += character; continue; }
+    if (quote === '"') {
+      if (character === '"') quote = null;
+      else if (character === "\\") escaped = true;
+      else word += character;
+      continue;
+    }
+    if (character === "\\") { escaped = true; continue; }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "#" && !word) {
+      while (index < normalized.length && normalized[index] !== "\n") index += 1;
+      push(); tokens.push({ type: "op", value: ";" }); continue;
+    }
+    if (/\s/.test(character)) { push(); if (character === "\n") tokens.push({ type: "op", value: ";" }); continue; }
+    if (";&|(){}".includes(character)) {
+      push();
+      const pair = normalized.slice(index, index + 2);
+      if (["&&", "||", ";;"].includes(pair)) { tokens.push({ type: "op", value: pair }); index += 1; }
+      else tokens.push({ type: "op", value: character });
+      continue;
+    }
+    word += character;
+  }
+  push();
+  return tokens;
+}
+
+function shellCommands(source) {
+  const tokens = shellTokens(source);
+  const commands = [];
+  let words = [];
+  const flush = () => {
+    if (!words.length) return;
+    let index = 0;
+    while (index < words.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[index])) index += 1;
+    while (["command", "builtin", "exec", "sudo", "env", "nice", "nohup", "time"].includes(words[index])) {
+      const wrapper = words[index++];
+      const optionTakesValue = wrapper === "sudo"
+        ? new Set(["-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--chdir", "-R", "--chroot", "-T", "--command-timeout"])
+        : wrapper === "env" ? new Set(["-u", "--unset", "-C", "--chdir"])
+          : wrapper === "nice" ? new Set(["-n", "--adjustment"]) : new Set();
+      while (index < words.length && words[index].startsWith("-")) {
+        const option = words[index++];
+        if (optionTakesValue.has(option) && index < words.length) index += 1;
+      }
+      if (wrapper === "env") while (index < words.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[index])) index += 1;
+    }
+    if (words[index] === "corepack") index += 1;
+    const executable = words[index];
+    const argv = words.slice(index + 1);
+    if (executable) commands.push({ executable: path.basename(executable).toLowerCase(), argv });
+    words = [];
+  };
+  const reserved = new Set(["if", "then", "elif", "else", "fi", "while", "until", "do", "done", "case", "esac", "for", "select", "in", "time", "!"]);
+  for (const token of tokens) {
+    if (token.type === "op") { flush(); continue; }
+    if (!words.length && reserved.has(token.value)) continue;
+    words.push(token.value);
+  }
+  flush();
+  return commands;
+}
+
+function setupExecutable(executable, argv) {
+  const args = argv.map((value) => value.toLowerCase());
+  const firstAction = args.find((value) => !value.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(value));
+  if (["npm", "pnpm", "yarn"].includes(executable) && ["ci", "install", "i", "add"].includes(firstAction)) return true;
+  if (["apt", "apt-get", "brew"].includes(executable) && ["update", "install"].includes(firstAction)) return true;
+  if (["docker", "podman"].includes(executable) && args.some((value) => ["up", "run", "start"].includes(value))) return true;
+  if (executable === "supabase" && (args.join(" ").includes("db reset") || args.join(" ").includes("migration up"))) return true;
+  if (["setup-node", "setup-deno", "setup-python"].includes(executable) || /setup-(?:node|deno|python)@/.test(executable)) return true;
+  if (["bash", "sh", "zsh"].includes(executable)) {
+    const commandIndex = args.findIndex((value) => value === "-c" || value === "-lc");
+    if (commandIndex >= 0 && argv[commandIndex + 1]) return forbiddenEmbeddedSetup(argv[commandIndex + 1]);
+    return true; // stdin-sourced shell text is not statically inspectable.
+  }
+  // Dynamic evaluation/source can synthesize an uninspectable setup command.
+  if (["eval", "source", ".", "alias"].includes(executable) || executable.includes("$") || executable.includes("`")) return true;
+  if (executable === "xargs" && argv.some((value) => ["npm", "pnpm", "yarn", "apt", "apt-get", "brew", "docker", "podman", "supabase"].includes(value.toLowerCase()))) return true;
+  if (executable === "find" && args.some((value, index) => ["-exec", "-execdir"].includes(value) && setupExecutable(path.basename(args[index + 1] || ""), args.slice(index + 2)))) return true;
+  if (/(?:^|[-_])migrat(?:e|ion)(?:$|[-_])/.test(executable) && args.some((value) => ["up", "apply", "run"].includes(value))) return true;
+  // The 46 preserved assertion commands need only these executable families.
+  // Unknown shell executables are not assumed harmless: aliases, copied package
+  // managers, bespoke bootstrap wrappers, and future setup tools would otherwise
+  // recreate the same bypass under a new name. Adding a family is a reviewed
+  // grammar change, not an accidental green.
+  return !new Set(["node", "npx", "grep", "echo", "printf", "true", "false", "exit", "test", "["]).has(executable);
 }
 
 export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {

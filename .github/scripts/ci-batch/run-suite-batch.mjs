@@ -51,12 +51,25 @@ export function runSuites(suites, opts = {}) {
 }
 
 export function verdict(expected, results) {
+  const expectedIds = Array.isArray(expected) ? expected.map((suite) => suite.id) : null;
+  const expectedCount = expectedIds ? expectedIds.length : expected;
   const executed = results.length;
+  const resultIds = results.map((result) => result.id);
+  const duplicateIds = resultIds.filter((id, index) => !id || resultIds.indexOf(id) !== index);
+  const identityMismatch = expectedIds ? JSON.stringify(resultIds) !== JSON.stringify(expectedIds) : false;
+  const malformed = results.filter((result) => {
+    const legacyStatus = result.status === undefined && typeof result.ok === "boolean";
+    const typedStatus = ["passed", "failed", "timed-out", "missing"].includes(result.status)
+      && result.ok === (result.status === "passed");
+    return !legacyStatus && !typedStatus;
+  });
   const failed = results.filter((result) => !result.ok);
-  const shortfall = expected - executed;
+  const shortfall = expectedCount - executed;
   const worstCode = failed.reduce((worst, result) => Math.max(worst, result.code), 0);
-  return { executed, expected, shortfall, failed: failed.map((result) => result.id), ok: failed.length === 0 && shortfall === 0,
-    code: failed.length ? worstCode || 1 : shortfall === 0 ? 0 : 1 };
+  const reconciliationOk = shortfall === 0 && duplicateIds.length === 0 && !identityMismatch && malformed.length === 0;
+  return { executed, expected: expectedCount, shortfall, failed: failed.map((result) => result.id), duplicateIds: [...new Set(duplicateIds)],
+    identityMismatch, malformedIds: malformed.map((result) => result.id || "<missing>"), ok: failed.length === 0 && reconciliationOk,
+    code: failed.length ? worstCode || 1 : reconciliationOk ? 0 : 1 };
 }
 
 function safeClass(klass) {
@@ -102,6 +115,17 @@ function removeWorktree(root, temporaryRoot, workspaceRoot) {
   finally { fs.rmSync(temporaryRoot, { recursive: true, force: true }); }
 }
 
+function cloneDependencyTree(source, destination) {
+  try {
+    if (process.platform === "darwin") execFileSync("cp", ["-cR", source, destination], { stdio: "ignore" });
+    else execFileSync("cp", ["-a", "--reflink=auto", source, destination], { stdio: "ignore" });
+  } catch {
+    // Safe fallback for filesystems without copy-on-write clone support. Never
+    // hardlink or symlink: either would let a suite mutate the shard installation.
+    fs.cpSync(source, destination, { recursive: true, dereference: false, preserveTimestamps: true });
+  }
+}
+
 export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-suite-"));
   const workspaceRoot = path.join(temporaryRoot, "workspace");
@@ -114,7 +138,7 @@ export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
     }
     const isolatedModules = path.join(workspaceRoot, profile.install.cwd, "node_modules");
     fs.mkdirSync(path.dirname(isolatedModules), { recursive: true });
-    fs.symlinkSync(installedModules, isolatedModules, "dir");
+    cloneDependencyTree(installedModules, isolatedModules);
   }
   return { root: workspaceRoot, cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };
 }
@@ -125,21 +149,95 @@ function signalProcessGroup(child, signal) {
   catch (error) { if (error.code !== "ESRCH") throw error; }
 }
 
-export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn } = {}) {
+function descendantPids(rootPid) {
+  if (!rootPid || process.platform === "win32") return [];
+  try {
+    const rows = execFileSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8" }).trim().split("\n");
+    const children = new Map();
+    for (const row of rows) {
+      const [pid, ppid] = row.trim().split(/\s+/).map(Number);
+      if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
+      if (!children.has(ppid)) children.set(ppid, []);
+      children.get(ppid).push(pid);
+    }
+    const found = [];
+    const pending = [rootPid];
+    while (pending.length) {
+      const parent = pending.pop();
+      for (const child of children.get(parent) || []) { found.push(child); pending.push(child); }
+    }
+    return found;
+  } catch { return []; }
+}
+
+function signalPids(pids, signal) {
+  for (const pid of pids) {
+    try { process.kill(pid, signal); }
+    catch (error) { if (error.code !== "ESRCH") throw error; }
+  }
+}
+
+const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
+
+function secretValues(extraEnv = {}) {
+  return Object.entries({ ...process.env, ...extraEnv })
+    .filter(([name, value]) => SECRET_NAME.test(name) && typeof value === "string" && value.length >= 6)
+    .map(([, value]) => value)
+    .sort((a, b) => b.length - a.length);
+}
+
+export function redactText(value, extraEnv = {}) {
+  let redacted = String(value ?? "");
+  for (const secret of secretValues(extraEnv)) redacted = redacted.split(secret).join("[REDACTED]");
+  return redacted
+    .replace(/\b(?:github_pat_[A-Za-z0-9_]+|gh[pousr]_[A-Za-z0-9_]{8,}|AKIA[0-9A-Z]{16})\b/g, "[REDACTED]")
+    .replace(/\bBearer\s+[A-Za-z0-9._~+\/-]+=*/gi, "Bearer [REDACTED]");
+}
+
+function redactValue(value) {
+  if (typeof value === "string") return redactText(value);
+  if (Array.isArray(value)) return value.map(redactValue);
+  if (value && typeof value === "object") return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, redactValue(item)]));
+  return value;
+}
+
+function pipeRedacted(stream, destination, env) {
+  if (!stream) return;
+  let buffer = "";
+  stream.on("data", (chunk) => {
+    buffer += chunk.toString("utf8");
+    let newline;
+    while ((newline = buffer.indexOf("\n")) >= 0) {
+      destination.write(`${redactText(buffer.slice(0, newline), env)}\n`);
+      buffer = buffer.slice(newline + 1);
+    }
+  });
+  stream.on("end", () => { if (buffer) destination.write(redactText(buffer, env)); });
+}
+
+export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn,
+  stdout = process.stdout, stderr = process.stderr } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
     let killTimer;
     let deadlineTimer;
-    const child = spawnImpl(invocation.command, invocation.argv, { cwd, env: { ...process.env, ...env }, stdio: "inherit", detached: process.platform !== "win32" });
+    const ownedPids = new Set();
+    const child = spawnImpl(invocation.command, invocation.argv, { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    pipeRedacted(child.stdout, stdout, env);
+    pipeRedacted(child.stderr, stderr, env);
+    const trackOwnership = () => { for (const pid of descendantPids(child.pid)) ownedPids.add(pid); };
+    const ownershipTimer = setInterval(trackOwnership, 50);
+    ownershipTimer.unref?.();
     const finish = (value) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadlineTimer);
       clearTimeout(killTimer);
-      resolve(value);
+      clearInterval(ownershipTimer);
+      resolve(redactValue(value));
     };
-    child.once("error", (error) => finish({ ok: false, code: 2, timedOut: false, reason: `could not execute: ${error.message}` }));
+    child.once("error", (error) => finish({ ok: false, code: 2, timedOut: false, reason: `could not execute: ${redactText(error.message, env)}` }));
     child.once("exit", (code, signal) => {
       // A timed-out group is not clean merely because its leader exited on TERM:
       // descendants may ignore TERM and retain the process-group id. Wait through
@@ -148,14 +246,20 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
       const actualCode = Number.isInteger(code) ? code : 2;
       // A command that exits successfully can still leave a background descendant.
       // No process may escape its suite boundary, so reap any remaining group now.
+      trackOwnership();
+      signalPids(ownedPids, "SIGKILL");
       signalProcessGroup(child, "SIGKILL");
       finish({ ok: actualCode === 0, code: actualCode, timedOut: false,
         reason: signal ? `process ended by signal ${signal}` : actualCode ? `process exited ${actualCode}` : null });
     });
     deadlineTimer = setTimeout(() => {
       timedOut = true;
+      trackOwnership();
+      signalPids(ownedPids, "SIGTERM");
       signalProcessGroup(child, "SIGTERM");
       killTimer = setTimeout(() => {
+        trackOwnership();
+        signalPids(ownedPids, "SIGKILL");
         signalProcessGroup(child, "SIGKILL");
         finish({ ok: false, code: 124, timedOut: true, reason: "suite deadline exceeded" });
       }, graceMs);
@@ -213,9 +317,9 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
   const durationMs = Math.max(0, now() - started);
-  return { id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
+  return redactValue({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
     ok: status === "passed", code, reason, durationMs, seconds: Math.round(durationMs / 1_000), timeoutSeconds: suite.timeoutSeconds,
-    expected: suite.steps.length, executed, allowedCleanup };
+    expected: suite.steps.length, executed, allowedCleanup });
 }
 
 export async function runSuitesV2(suites, options = {}) {
@@ -223,26 +327,28 @@ export async function runSuitesV2(suites, options = {}) {
   for (const suite of suites) {
     const result = await runSuiteV2(suite, options);
     results.push(result);
-    console.log(`${result.ok ? "PASS" : "FAIL"}  ${String(result.seconds).padStart(4)}s  ${suite.id}${result.reason ? `  (${result.reason})` : ""}`);
+    console.log(redactText(`${result.ok ? "PASS" : "FAIL"}  ${String(result.seconds).padStart(4)}s  ${suite.id}${result.reason ? `  (${result.reason})` : ""}`));
   }
   return results;
 }
 
 export function buildShardReport(klass, suites, results, setupEvidence, durationMs) {
-  const base = verdict(suites.length, results);
+  const base = verdict(suites, results);
   const statuses = Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
-  return { schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
+  return redactValue({ schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
     setupExecutions: setupEvidence?.setupExecutions || 0, installExecutions: setupEvidence?.installExecutions || 0,
-    durationMs, ...base, statuses, results };
+    durationMs, ...base, statuses, results });
 }
 
 function annotationEscape(value) { return String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A"); }
 
 export function renderSummary(report) {
-  const rows = report.results.map((result) => `| ${result.id} | ${result.status} | ${result.executed}/${result.expected} | ${result.seconds}s | ${result.reason || ""} |`);
-  return [`## CI batch: ${report.class}`, "",
-    `Setup profile **${report.setupProfile || "missing"}**: ${report.setupExecutions} setup / ${report.installExecutions} install execution(s).`,
-    `Executed **${report.executed}/${report.expected}** suites; passed ${report.statuses.passed}, failed ${report.statuses.failed}, timed out ${report.statuses["timed-out"]}, missing ${report.statuses.missing}.`, "",
+  const safeReport = redactValue(report);
+  const cell = (value) => redactText(value).replaceAll("|", "\\|").replaceAll("\n", " ");
+  const rows = safeReport.results.map((result) => `| ${cell(result.id)} | ${cell(result.status)} | ${result.executed}/${result.expected} | ${result.seconds}s | ${cell(result.reason || "")} |`);
+  return [`## CI batch: ${cell(safeReport.class)}`, "",
+    `Setup profile **${cell(safeReport.setupProfile || "missing")}**: ${safeReport.setupExecutions} setup / ${safeReport.installExecutions} install execution(s).`,
+    `Executed **${safeReport.executed}/${safeReport.expected}** suites; passed ${safeReport.statuses.passed}, failed ${safeReport.statuses.failed}, timed out ${safeReport.statuses["timed-out"]}, missing ${safeReport.statuses.missing}.`, "",
     "| Suite | Status | Commands | Time | Reason |", "|---|---:|---:|---:|---|", ...rows, ""].join("\n");
 }
 
@@ -286,5 +392,5 @@ async function main() {
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) {
-  main().catch((error) => { console.error(`::error title=CI batch runner::${annotationEscape(error.message)}`); process.exitCode = 2; });
+  main().catch((error) => { console.error(`::error title=CI batch runner::${annotationEscape(redactText(error.message))}`); process.exitCode = 2; });
 }

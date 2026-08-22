@@ -6,9 +6,10 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
-  buildShardReport, loadManifest, recordSetup, renderSummary, runInvocation,
-  runSuiteV2, runSuitesV2, setupEvidencePath, validateSetupEvidence,
+  buildShardReport, createIsolatedWorkspace, loadManifest, recordSetup, renderSummary, runInvocation,
+  runSuiteV2, runSuitesV2, setupEvidencePath, validateSetupEvidence, verdict,
 } from "../ci-batch/run-suite-batch.mjs";
+import { forbiddenEmbeddedSetup } from "../ci-batch/validate-manifest-v2.mjs";
 
 function temporaryDirectory(prefix) { return fs.mkdtempSync(path.join(os.tmpdir(), prefix)); }
 function gitFixture() {
@@ -39,6 +40,15 @@ test("setup is exactly once and missing, mismatch, or duplicate evidence is red"
   assert.throws(() => recordSetup(manifest, "node20-noinstall", 0, temp), /EEXIST/);
   assert.throws(() => recordSetup(manifest, "business-node20-1", 0, temp), /mismatch/);
   fs.rmSync(temp, { recursive: true, force: true });
+});
+
+test("structured shell inspection rejects wrappers and dynamic setup without flagging narration", () => {
+  for (const command of [
+    "builtin command npm ci", "sudo -u root npm install", "nice -n 5 corepack pnpm install",
+    "sh -c 'npm ci'", "printf 'npm ci' | bash", "find . -exec npm ci ;", "eval 'npm ci'", "$PACKAGE_MANAGER ci",
+  ]) assert.equal(forbiddenEmbeddedSetup({ cmd: "bash", args: ["-lc", command] }), true, command);
+  assert.equal(forbiddenEmbeddedSetup("echo 'npm ci is forbidden here'"), false);
+  assert.equal(forbiddenEmbeddedSetup("# npm ci is forbidden here\nnode --test proof.test.mjs"), false);
 });
 
 test("a failed suite does not hide a later passing suite", async () => {
@@ -102,6 +112,50 @@ test("a successful command cannot leak a background descendant past its suite", 
   await new Promise((resolve) => setTimeout(resolve, 650));
   assert.equal(fs.existsSync(marker), false, "background descendant escaped the completed suite command");
   fs.rmSync(root, { recursive: true, force: true });
+});
+
+test("copy-on-write dependency isolation never aliases the shard installation", () => {
+  const root = gitFixture();
+  const dependency = path.join(root, "app", "node_modules", "pkg", "index.js");
+  fs.mkdirSync(path.dirname(dependency), { recursive: true });
+  fs.writeFileSync(dependency, "base\n");
+  let workspace;
+  try {
+    workspace = createIsolatedWorkspace({ root, profile: { install: { cwd: "app" } } });
+    const copy = path.join(workspace.root, "app", "node_modules", "pkg", "index.js");
+    assert.equal(fs.lstatSync(path.join(workspace.root, "app", "node_modules")).isSymbolicLink(), false);
+    fs.writeFileSync(copy, "suite\n");
+    assert.equal(fs.readFileSync(dependency, "utf8"), "base\n");
+  } finally {
+    workspace?.cleanup();
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("ordered expected identities cannot be satisfied by duplicate, swapped, or unknown results", () => {
+  const expected = [suite("a", "true"), suite("b", "true")];
+  const passed = (id) => ({ id, ok: true, code: 0, status: "passed" });
+  assert.equal(verdict(expected, [passed("a"), passed("b")]).ok, true);
+  assert.equal(verdict(expected, [passed("a"), passed("a")]).ok, false);
+  assert.equal(verdict(expected, [passed("b"), passed("a")]).ok, false);
+  assert.equal(verdict(expected, [passed("a"), passed("unknown")]).ok, false);
+});
+
+test("child output and returned reasons redact secret-bearing environment values", async () => {
+  const secret = "ISSUE_2436_IMPLEMENTOR_SECRET_VALUE";
+  const prior = process.env.ISSUE_2436_IMPLEMENTOR_SECRET;
+  process.env.ISSUE_2436_IMPLEMENTOR_SECRET = secret;
+  let transcript = "";
+  const sink = { write(chunk) { transcript += String(chunk); return true; } };
+  try {
+    const result = await runInvocation({ command: process.execPath, argv: ["-e", `console.error(${JSON.stringify(secret)});process.exit(3)`] }, { cwd: process.cwd(), timeoutMs: 2_000, stdout: sink, stderr: sink });
+    assert.equal(result.code, 3);
+    assert.doesNotMatch(result.reason || "", new RegExp(secret));
+    assert.doesNotMatch(transcript, new RegExp(secret));
+    assert.match(transcript, /\[REDACTED\]/);
+  } finally {
+    if (prior === undefined) delete process.env.ISSUE_2436_IMPLEMENTOR_SECRET; else process.env.ISSUE_2436_IMPLEMENTOR_SECRET = prior;
+  }
 });
 
 test("JSON and GitHub summary counts stay honest", () => {

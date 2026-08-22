@@ -10814,7 +10814,8 @@
         ".github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs",
         ".github/scripts/ci-batch/validate-manifest-v2.mjs",
         ".github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs",
-        ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs"
+        ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs",
+        ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },

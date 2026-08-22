@@ -44,9 +44,13 @@ export function selfTest() {
   const patterns = [
     "npm ci", "npm install --no-save x", "yarn install", "pnpm i", "apt-get install jq",
     "brew update", "docker compose up", "supabase db reset", "actions/setup-node@v4",
+    "command npm ci", "env FOO=1 npm ci", "npm \\\n ci", "(npm ci)",
+    "if npm ci; then true; fi", "sudo -u root npm ci", "corepack pnpm install", "eval 'npm ci'",
   ];
   for (const command of patterns) assert.equal(forbiddenEmbeddedSetup(`true && ${command}`), true, `${command} must be rejected`);
   assert.equal(forbiddenEmbeddedSetup("node --test safe.test.mjs"), false);
+  assert.equal(forbiddenEmbeddedSetup("echo 'npm ci is forbidden'"), false, "narration is not executable setup");
+  assert.equal(forbiddenEmbeddedSetup("unknown-bootstrap-wrapper tests"), true, "unknown executable families fail closed");
 
   expectRed("embedded setup", (value) => { value.suites[0].steps[0].run += " && npm ci"; value.suites[0].steps[0].invocation.argv[1] = value.suites[0].steps[0].run; });
   expectRed("missing timeout", (value) => { delete value.suites[0].timeoutSeconds; });
