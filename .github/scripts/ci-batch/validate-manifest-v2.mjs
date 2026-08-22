@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,7 @@ const ALLOWED_DISPOSITIONS = new Set([
   "operational-excluded",
   "approved-retired",
 ]);
+const LOCKED_ASSERTION_CAPABILITY_SHA256 = "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399";
 
 function fail(errors, message) {
   errors.push(message);
@@ -260,6 +262,7 @@ run_suites = steps.find { |step| step["name"].to_s.start_with?("Run the ") } || 
 strategy = batch["strategy"].is_a?(Hash) ? batch["strategy"] : {}
 matrix = strategy["matrix"].is_a?(Hash) ? strategy["matrix"] : {}
 output = {
+  "runner" => batch["runs-on"]&.to_s,
   "matrix" => Array(matrix["include"]).map do |entry|
     next {} unless entry.is_a?(Hash)
     { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s, "install" => entry["install"]&.to_s }
@@ -308,6 +311,9 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
     timeoutGraceSeconds: 2,
     resultsFile: "suite-results.json",
     setupEvidencePrefix: "ci-batch-setup-",
+    processOwnership: "linux-subreaper-before-fork",
+    dependencyIsolation: "independent-tree-no-escaping-links-with-shard-snapshot",
+    childEnvironment: "minimal-allowlist-no-job-secrets",
   };
   if (JSON.stringify(manifest.runnerContract) !== JSON.stringify(requiredRunnerContract)) {
     fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
@@ -317,6 +323,9 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
       fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 900 and timeoutMinutes is forbidden`);
     }
     if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
+    if (JSON.stringify(suite.envNames) !== "[]" || (suite.steps || []).some((step) => step.env && Object.keys(step.env).length)) {
+      fail(errors, `${suite.id}: assertion children may not receive repository or job environment capabilities`);
+    }
     for (const generated of suite.generatedPaths || []) {
       if (!generated || path.isAbsolute(generated) || path.normalize(generated).startsWith("..")) {
         fail(errors, `${suite.id}: generated path must remain repository-relative: ${generated}`);
@@ -328,6 +337,7 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
   }
   try {
     const topology = inspectBatchWorkflow(workflowText);
+    if (topology.runner !== "ubuntu-latest") fail(errors, "ci-batch process containment requires the locked ubuntu-latest runner");
     if (topology.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != \'\' && \'1\' || \'0\' }}"') {
       fail(errors, "ci-batch must record exactly one typed setup execution for the selected class");
     }
@@ -632,6 +642,20 @@ export function validateRegistry(
   const suiteOrigins = new Set();
   const selectedProfiles = new Set();
   const suitesById = new Map();
+  const capabilityRegistry = manifest.commandCapabilities;
+  const capabilityCommands = capabilityRegistry?.commands || [];
+  const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 46
+      || capabilityCommands.length !== 46 || capabilityRegistry?.registrySha256 !== LOCKED_ASSERTION_CAPABILITY_SHA256
+      || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
+    fail(errors, "the 46 assertion command capabilities must equal the locked reviewed registry");
+  }
+  const capabilitiesById = new Map();
+  for (const capability of capabilityCommands) {
+    if (!capability.id || capabilitiesById.has(capability.id)) fail(errors, `duplicate or empty command capability: ${capability.id || "<empty>"}`);
+    else capabilitiesById.set(capability.id, capability);
+  }
+  const claimedCapabilities = new Set();
   for (const suite of manifest.suites || []) {
     if (!suite.id || suiteIds.has(suite.id)) fail(errors, `duplicate or empty suite id: ${suite.id || "<empty>"}`);
     suiteIds.add(suite.id);
@@ -672,11 +696,28 @@ export function validateRegistry(
         fail(errors, `${suite.id}: step ${index} typed invocation must be bash [-c, exact legacy command]`);
       }
       if (!step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
+      const expectedCommandId = `assert:${suite.id}:${String(index + 1).padStart(2, "0")}`;
+      const capability = capabilitiesById.get(step.commandId);
+      if (step.commandId !== expectedCommandId || !capability) {
+        fail(errors, `${suite.id}: step ${index} has no stable assertion command capability`);
+      } else {
+        claimedCapabilities.add(capability.id);
+        const payload = { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv };
+        const payloadSha256 = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+        if (capability.suiteId !== suite.id || capability.stepIndex !== index || capability.cwd !== payload.cwd
+            || capability.executable !== payload.executable || JSON.stringify(capability.argv) !== JSON.stringify(payload.argv)
+            || capability.payloadSha256 !== payloadSha256) {
+          fail(errors, `${suite.id}: step ${index} differs from its immutable executable/argv capability`);
+        }
+      }
     }
     const derivedExpectedFiles = discoverExpectedFilesForSuite(suite, root);
     if (JSON.stringify(suite.expectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
       fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
     }
+  }
+  for (const capability of capabilityCommands) {
+    if (!claimedCapabilities.has(capability.id)) fail(errors, `stale unclaimed command capability: ${capability.id}`);
   }
 
   for (const [name] of profileEntries) if (!selectedProfiles.has(name)) fail(errors, `stale setup profile is not selected by any suite: ${name}`);

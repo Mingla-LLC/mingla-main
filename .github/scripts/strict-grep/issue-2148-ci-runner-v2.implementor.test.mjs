@@ -6,7 +6,8 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
-  buildShardReport, createIsolatedWorkspace, loadManifest, recordSetup, renderSummary, runInvocation,
+  buildShardReport, capabilityPayloadDigest, capabilityRegistryDigest, createIsolatedWorkspace, loadManifest,
+  minimalChildEnvironment, recordSetup, renderSummary, resolveCommandCapability, runInvocation,
   runSuiteV2, runSuitesV2, setupEvidencePath, validateSetupEvidence, verdict,
 } from "../ci-batch/run-suite-batch.mjs";
 import { forbiddenEmbeddedSetup } from "../ci-batch/validate-manifest-v2.mjs";
@@ -25,7 +26,15 @@ function gitFixture() {
 function suite(id, command, timeoutSeconds = 5) {
   return { id, class: "node20-noinstall", setupProfile: "node20-noinstall", timeoutSeconds,
     expectedFiles: ["proof.test.mjs"], generatedPaths: [], steps: [{ name: id, cwd: ".", run: command,
-      invocation: { kind: "raw-shell", command: "bash", argv: ["-c", command] } }] };
+      commandId: `assert:${id}:01`, invocation: { kind: "raw-shell", command: "bash", argv: ["-c", command] } }] };
+}
+function registryFor(suites) {
+  const commands = suites.flatMap((item) => item.steps.map((step, stepIndex) => {
+    const capability = { id: step.commandId, suiteId: item.id, stepIndex, cwd: step.cwd || ".",
+      executable: step.invocation.command, argv: [...step.invocation.argv] };
+    return { ...capability, payloadSha256: capabilityPayloadDigest(capability) };
+  }));
+  return { schemaVersion: 1, expectedCommands: commands.length, registrySha256: capabilityRegistryDigest(commands), commands };
 }
 function fixtureWorkspace(root) { return { root, cleanup() {} }; }
 
@@ -51,10 +60,31 @@ test("structured shell inspection rejects wrappers and dynamic setup without fla
   assert.equal(forbiddenEmbeddedSetup("# npm ci is forbidden here\nnode --test proof.test.mjs"), false);
 });
 
+test("the reviewed command registry is the only assertion execution authority", async () => {
+  const manifest = loadManifest();
+  const registered = manifest.suites[0];
+  assert.deepEqual(resolveCommandCapability(manifest.commandCapabilities, registered, registered.steps[0], 0), {
+    command: registered.steps[0].invocation.command, argv: registered.steps[0].invocation.argv,
+  });
+  const substituted = structuredClone(registered);
+  substituted.steps[0].invocation.argv = ["-c", "npx --yes hidden-installer"];
+  assert.throws(() => resolveCommandCapability(manifest.commandCapabilities, substituted, substituted.steps[0], 0), /differs from its command capability/);
+  const home = temporaryDirectory("runner-v2-home-");
+  try { assert.throws(() => minimalChildEnvironment({ GITHUB_TOKEN: "must-not-enter-child" }, home), /undeclared child environment capability/); }
+  finally { fs.rmSync(home, { recursive: true, force: true }); }
+  const root = gitFixture();
+  const unregistered = suite("unregistered", "true");
+  const result = await runSuiteV2(unregistered, { root, profile: { install: null }, workspaceFactory: () => fixtureWorkspace(root) });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /production execution requires the assertion command capability registry/);
+  fs.rmSync(root, { recursive: true, force: true });
+});
+
 test("a failed suite does not hide a later passing suite", async () => {
   const root = gitFixture();
-  const results = await runSuitesV2([suite("first", "exit 7"), suite("second", "true")], {
-    root, profile: { install: null }, workspaceFactory: () => fixtureWorkspace(root),
+  const suites = [suite("first", "exit 7"), suite("second", "true")];
+  const results = await runSuitesV2(suites, {
+    root, profile: { install: null }, commandCapabilities: registryFor(suites), workspaceFactory: () => fixtureWorkspace(root),
   });
   assert.deepEqual(results.map(({ id, status, code }) => ({ id, status, code })), [
     { id: "first", status: "failed", code: 7 }, { id: "second", status: "passed", code: 0 },
@@ -66,8 +96,9 @@ test("a missing expected file and unexpected workspace mutation are red", async 
   const root = gitFixture();
   const missing = suite("missing", "true");
   missing.expectedFiles = ["vanished.test.mjs"];
-  assert.equal((await runSuiteV2(missing, { root, profile: { install: null }, workspaceFactory: () => fixtureWorkspace(root) })).status, "missing");
-  const mutated = await runSuiteV2(suite("mutated", "printf bad > product.txt"), { root, profile: { install: null }, workspaceFactory: () => fixtureWorkspace(root) });
+  assert.equal((await runSuiteV2(missing, { root, profile: { install: null }, commandCapabilities: registryFor([missing]), workspaceFactory: () => fixtureWorkspace(root) })).status, "missing");
+  const mutationSuite = suite("mutated", "printf bad > product.txt");
+  const mutated = await runSuiteV2(mutationSuite, { root, profile: { install: null }, commandCapabilities: registryFor([mutationSuite]), workspaceFactory: () => fixtureWorkspace(root) });
   assert.equal(mutated.status, "failed");
   assert.match(mutated.reason, /unexpected workspace mutation/);
   fs.rmSync(root, { recursive: true, force: true });
@@ -80,7 +111,7 @@ test("declared generated output is reported and cleaned with an isolated workspa
   const generated = suite("generated", "mkdir -p reports && printf ok > reports/result.json");
   generated.generatedPaths = ["reports"];
   let cleaned = false;
-  const result = await runSuiteV2(generated, { root, profile: { install: null }, workspaceFactory: () => ({ root: isolated,
+  const result = await runSuiteV2(generated, { root, profile: { install: null }, commandCapabilities: registryFor([generated]), workspaceFactory: () => ({ root: isolated,
     cleanup() { cleaned = true; fs.rmSync(isolated, { recursive: true, force: true }); } }) });
   assert.equal(result.status, "passed");
   assert.deepEqual(result.allowedCleanup, ["reports/result.json"]);
@@ -114,6 +145,23 @@ test("a successful command cannot leak a background descendant past its suite", 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("Linux subreaper contains immediate double-fork setsid descendants on success and timeout", { skip: process.platform !== "linux" }, async () => {
+  for (const mode of ["success", "timeout"]) {
+    const root = temporaryDirectory(`runner-v2-double-fork-${mode}-`);
+    const marker = path.join(root, "escaped");
+    const daemon = `process.on('SIGTERM',()=>{});setTimeout(()=>require('fs').writeFileSync(${JSON.stringify(marker)},'bad'),700);setInterval(()=>{},1000)`;
+    const middle = `require('child_process').spawn(process.execPath,['-e',${JSON.stringify(daemon)}],{detached:true,stdio:'ignore'}).unref()`;
+    const parent = mode === "success"
+      ? `require('child_process').spawn(process.execPath,['-e',${JSON.stringify(middle)}],{detached:true,stdio:'ignore'}).unref()`
+      : `require('child_process').spawn(process.execPath,['-e',${JSON.stringify(middle)}],{detached:true,stdio:'ignore'}).unref();setInterval(()=>{},1000)`;
+    const result = await runInvocation({ command: process.execPath, argv: ["-e", parent] }, { cwd: root, timeoutMs: 120, graceMs: 50 });
+    assert.equal(result.timedOut, mode === "timeout");
+    await new Promise((resolve) => setTimeout(resolve, 850));
+    assert.equal(fs.existsSync(marker), false, `${mode} descendant escaped atomic subreaper ownership`);
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("copy-on-write dependency isolation never aliases the shard installation", () => {
   const root = gitFixture();
   const dependency = path.join(root, "app", "node_modules", "pkg", "index.js");
@@ -130,6 +178,24 @@ test("copy-on-write dependency isolation never aliases the shard installation", 
     workspace?.cleanup();
     fs.rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("dependency isolation rejects escaping links and detects shard snapshot contamination", async () => {
+  const root = gitFixture();
+  const modules = path.join(root, "app", "node_modules");
+  const shared = path.join(root, "shared-target.js");
+  fs.mkdirSync(path.join(modules, "pkg"), { recursive: true });
+  fs.writeFileSync(shared, "base\n");
+  fs.symlinkSync(shared, path.join(modules, "pkg", "escape.js"));
+  assert.throws(() => createIsolatedWorkspace({ root, profile: { install: { cwd: "app" } } }), /dependency link escapes immutable tree/);
+  fs.unlinkSync(path.join(modules, "pkg", "escape.js"));
+  fs.writeFileSync(path.join(modules, "pkg", "index.js"), "base\n");
+  const contaminator = suite("contaminator", "printf changed > app/node_modules/pkg/index.js");
+  const [result] = await runSuitesV2([contaminator], { root, profile: { install: { cwd: "app" } },
+    commandCapabilities: registryFor([contaminator]), workspaceFactory: () => fixtureWorkspace(root) });
+  assert.equal(result.ok, false);
+  assert.match(result.reason, /shard dependency snapshot changed/);
+  fs.rmSync(root, { recursive: true, force: true });
 });
 
 test("ordered expected identities cannot be satisfied by duplicate, swapped, or unknown results", () => {
@@ -155,6 +221,29 @@ test("child output and returned reasons redact secret-bearing environment values
     assert.match(transcript, /\[REDACTED\]/);
   } finally {
     if (prior === undefined) delete process.env.ISSUE_2436_IMPLEMENTOR_SECRET; else process.env.ISSUE_2436_IMPLEMENTOR_SECRET = prior;
+  }
+});
+
+test("children receive no job secrets and derived encodings are redacted in defense", async () => {
+  const secret = "postgres://runner:password@example.invalid/db";
+  const encoded = encodeURIComponent(secret);
+  const base64 = Buffer.from(secret).toString("base64");
+  const prior = process.env.UNRELATED_CONNECTION_VALUE;
+  process.env.UNRELATED_CONNECTION_VALUE = secret;
+  let transcript = "";
+  const sink = { write(chunk) { transcript += String(chunk); return true; } };
+  try {
+    const source = `console.log(JSON.stringify({inherited:Boolean(process.env.UNRELATED_CONNECTION_VALUE),home:process.env.HOME}));console.log(${JSON.stringify(encoded)});console.log(${JSON.stringify(base64)})`;
+    const result = await runInvocation({ command: process.execPath, argv: ["-e", source] }, { cwd: process.cwd(), timeoutMs: 2_000, stdout: sink, stderr: sink });
+    assert.equal(result.ok, true);
+    assert.doesNotMatch(transcript, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(transcript, new RegExp(encoded.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(transcript, new RegExp(base64.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.doesNotMatch(transcript, /UNRELATED_CONNECTION_VALUE/);
+    assert.match(transcript, /"inherited":false/);
+    assert.match(transcript, /\[REDACTED\]/);
+  } finally {
+    if (prior === undefined) delete process.env.UNRELATED_CONNECTION_VALUE; else process.env.UNRELATED_CONNECTION_VALUE = prior;
   }
 });
 

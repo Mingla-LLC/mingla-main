@@ -14,6 +14,8 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
 const MANIFEST_PATH = path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json");
+const SUPERVISOR_PATH = path.join(HERE, "process-supervisor.py");
+const CHILD_ENV_NAMES = new Set(["CI", "NODE_ENV", "TZ", "LANG", "LC_ALL", "FORCE_COLOR"]);
 
 export function loadManifest(p = MANIFEST_PATH) { return JSON.parse(fs.readFileSync(p, "utf8")); }
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
@@ -107,7 +109,36 @@ export function recordSetup(manifest, klass, installExecutions, tempRoot = proce
 }
 
 export function commandFingerprint(suite) {
-  return crypto.createHash("sha256").update(JSON.stringify(suite.steps.map((step) => ({ cwd: step.cwd, invocation: step.invocation })))).digest("hex");
+  return crypto.createHash("sha256").update(JSON.stringify(suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation })))).digest("hex");
+}
+
+export function capabilityPayloadDigest({ cwd, executable, argv }) {
+  return crypto.createHash("sha256").update(JSON.stringify({ cwd, executable, argv })).digest("hex");
+}
+
+export function capabilityRegistryDigest(commands) {
+  return crypto.createHash("sha256").update(JSON.stringify(commands)).digest("hex");
+}
+
+export function resolveCommandCapability(registry, suite, step, stepIndex) {
+  if (!registry || registry.schemaVersion !== 1 || registry.expectedCommands !== registry.commands?.length
+      || capabilityRegistryDigest(registry.commands || []) !== registry.registrySha256) {
+    throw new Error("assertion command capability registry is missing or corrupt");
+  }
+  const matches = registry.commands.filter((entry) => entry.id === step.commandId);
+  if (matches.length !== 1) throw new Error(`${suite.id}: step ${stepIndex} must resolve exactly one command capability`);
+  const capability = matches[0];
+  if (capability.suiteId !== suite.id || capability.stepIndex !== stepIndex || capability.cwd !== (step.cwd || ".")) {
+    throw new Error(`${suite.id}: step ${stepIndex} command capability ownership drifted`);
+  }
+  if (capability.payloadSha256 !== capabilityPayloadDigest(capability)) {
+    throw new Error(`${suite.id}: step ${stepIndex} command capability digest drifted`);
+  }
+  if (capability.executable !== step.invocation?.command
+      || JSON.stringify(capability.argv) !== JSON.stringify(step.invocation?.argv)) {
+    throw new Error(`${suite.id}: step ${stepIndex} preserved payload differs from its command capability`);
+  }
+  return { command: capability.executable, argv: [...capability.argv] };
 }
 
 function removeWorktree(root, temporaryRoot, workspaceRoot) {
@@ -115,7 +146,59 @@ function removeWorktree(root, temporaryRoot, workspaceRoot) {
   finally { fs.rmSync(temporaryRoot, { recursive: true, force: true }); }
 }
 
+function inside(root, candidate) {
+  const relative = path.relative(root, candidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function dependencyEntries(root) {
+  const entries = [];
+  const pending = [root];
+  while (pending.length) {
+    const current = pending.pop();
+    for (const item of fs.readdirSync(current, { withFileTypes: true })) {
+      const absolute = path.join(current, item.name);
+      const relative = path.relative(root, absolute);
+      const stat = fs.lstatSync(absolute, { bigint: true });
+      entries.push({ absolute, relative, stat });
+      if (item.isDirectory() && !item.isSymbolicLink()) pending.push(absolute);
+    }
+  }
+  return entries.sort((left, right) => left.relative.localeCompare(right.relative));
+}
+
+export function dependencySnapshot(root) {
+  if (!root) return null;
+  const rows = dependencyEntries(root).map(({ absolute, relative, stat }) => {
+    const target = stat.isSymbolicLink() ? fs.readlinkSync(absolute) : "";
+    return [relative, stat.mode, stat.dev, stat.ino, stat.nlink, stat.size, stat.mtimeNs, stat.ctimeNs, target].join("\0");
+  });
+  return crypto.createHash("sha256").update(rows.join("\n")).digest("hex");
+}
+
+function rejectEscapingLinks(root) {
+  for (const { absolute, relative, stat } of dependencyEntries(root)) {
+    if (!stat.isSymbolicLink()) continue;
+    const resolved = fs.realpathSync(absolute);
+    if (!inside(root, resolved)) throw new Error(`dependency link escapes immutable tree: ${relative}`);
+  }
+}
+
+function verifyIndependentTree(source, destination) {
+  rejectEscapingLinks(destination);
+  const sourceEntries = new Map(dependencyEntries(source).map((entry) => [entry.relative, entry]));
+  for (const destinationEntry of dependencyEntries(destination)) {
+    const sourceEntry = sourceEntries.get(destinationEntry.relative);
+    if (!sourceEntry) throw new Error(`isolated dependency copy invented path: ${destinationEntry.relative}`);
+    if (destinationEntry.stat.isFile() && sourceEntry.stat.isFile()
+        && destinationEntry.stat.dev === sourceEntry.stat.dev && destinationEntry.stat.ino === sourceEntry.stat.ino) {
+      throw new Error(`isolated dependency copy shares writable inode: ${destinationEntry.relative}`);
+    }
+  }
+}
+
 function cloneDependencyTree(source, destination) {
+  rejectEscapingLinks(source);
   try {
     if (process.platform === "darwin") execFileSync("cp", ["-cR", source, destination], { stdio: "ignore" });
     else execFileSync("cp", ["-a", "--reflink=auto", source, destination], { stdio: "ignore" });
@@ -124,6 +207,7 @@ function cloneDependencyTree(source, destination) {
     // hardlink or symlink: either would let a suite mutate the shard installation.
     fs.cpSync(source, destination, { recursive: true, dereference: false, preserveTimestamps: true });
   }
+  verifyIndependentTree(source, destination);
 }
 
 export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
@@ -138,7 +222,8 @@ export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
     }
     const isolatedModules = path.join(workspaceRoot, profile.install.cwd, "node_modules");
     fs.mkdirSync(path.dirname(isolatedModules), { recursive: true });
-    cloneDependencyTree(installedModules, isolatedModules);
+    try { cloneDependencyTree(installedModules, isolatedModules); }
+    catch (error) { removeWorktree(root, temporaryRoot, workspaceRoot); throw error; }
   }
   return { root: workspaceRoot, cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };
 }
@@ -149,41 +234,47 @@ function signalProcessGroup(child, signal) {
   catch (error) { if (error.code !== "ESRCH") throw error; }
 }
 
-function descendantPids(rootPid) {
-  if (!rootPid || process.platform === "win32") return [];
-  try {
-    const rows = execFileSync("ps", ["-axo", "pid=,ppid="], { encoding: "utf8" }).trim().split("\n");
-    const children = new Map();
-    for (const row of rows) {
-      const [pid, ppid] = row.trim().split(/\s+/).map(Number);
-      if (!Number.isInteger(pid) || !Number.isInteger(ppid)) continue;
-      if (!children.has(ppid)) children.set(ppid, []);
-      children.get(ppid).push(pid);
-    }
-    const found = [];
-    const pending = [rootPid];
-    while (pending.length) {
-      const parent = pending.pop();
-      for (const child of children.get(parent) || []) { found.push(child); pending.push(child); }
-    }
-    return found;
-  } catch { return []; }
-}
-
-function signalPids(pids, signal) {
-  for (const pid of pids) {
-    try { process.kill(pid, signal); }
-    catch (error) { if (error.code !== "ESRCH") throw error; }
-  }
-}
-
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
+export function minimalChildEnvironment(requested = {}, home) {
+  for (const name of Object.keys(requested)) {
+    if (!CHILD_ENV_NAMES.has(name)) throw new Error(`undeclared child environment capability: ${name}`);
+  }
+  const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
+  const temporaryDirectory = path.join(temporaryHome, "tmp");
+  const cacheDirectory = path.join(temporaryHome, ".npm");
+  fs.mkdirSync(temporaryDirectory, { recursive: true });
+  fs.mkdirSync(cacheDirectory, { recursive: true });
+  return {
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    HOME: temporaryHome,
+    TMPDIR: temporaryDirectory,
+    XDG_CACHE_HOME: path.join(temporaryHome, ".cache"),
+    npm_config_cache: cacheDirectory,
+    npm_config_audit: "false",
+    npm_config_fund: "false",
+    npm_config_offline: "true",
+    npm_config_update_notifier: "false",
+    CI: "true",
+    NODE_ENV: "test",
+    TZ: "UTC",
+    LANG: "C.UTF-8",
+    LC_ALL: "C.UTF-8",
+    ...requested,
+  };
+}
+
 function secretValues(extraEnv = {}) {
-  return Object.entries({ ...process.env, ...extraEnv })
-    .filter(([name, value]) => SECRET_NAME.test(name) && typeof value === "string" && value.length >= 6)
-    .map(([, value]) => value)
-    .sort((a, b) => b.length - a.length);
+  const values = [];
+  for (const [name, value] of Object.entries({ ...process.env, ...extraEnv })) {
+    if (typeof value !== "string" || value.length < 6) continue;
+    // Values excluded from the explicit child environment are sensitive by
+    // boundary, regardless of whether their variable name looks secret-like.
+    if ((!CHILD_ENV_NAMES.has(name) && name !== "PATH") || SECRET_NAME.test(name)) {
+      values.push(value, encodeURIComponent(value), Buffer.from(value).toString("base64"), Buffer.from(value).toString("base64url"));
+    }
+  }
+  return [...new Set(values.filter((value) => value.length >= 6))].sort((a, b) => b.length - a.length);
 }
 
 export function redactText(value, extraEnv = {}) {
@@ -222,48 +313,43 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     let timedOut = false;
     let killTimer;
     let deadlineTimer;
-    const ownedPids = new Set();
-    const child = spawnImpl(invocation.command, invocation.argv, { cwd, env: { ...process.env, ...env }, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
+    const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
+    let childEnv;
+    try { childEnv = minimalChildEnvironment(env, temporaryHome); }
+    catch (error) { fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
+    const supervised = spawnImpl === spawn;
+    const actual = supervised
+      ? { command: "/usr/bin/python3", argv: [SUPERVISOR_PATH, "--timeout-ms", String(Math.max(1, timeoutMs)), "--grace-ms", String(Math.max(0, graceMs)), "--", invocation.command, ...invocation.argv] }
+      : invocation;
+    const child = spawnImpl(actual.command, actual.argv, { cwd, env: childEnv, stdio: ["ignore", "pipe", "pipe"], detached: process.platform !== "win32" });
     pipeRedacted(child.stdout, stdout, env);
     pipeRedacted(child.stderr, stderr, env);
-    const trackOwnership = () => { for (const pid of descendantPids(child.pid)) ownedPids.add(pid); };
-    const ownershipTimer = setInterval(trackOwnership, 50);
-    ownershipTimer.unref?.();
     const finish = (value) => {
       if (settled) return;
       settled = true;
       clearTimeout(deadlineTimer);
       clearTimeout(killTimer);
-      clearInterval(ownershipTimer);
+      fs.rmSync(temporaryHome, { recursive: true, force: true });
       resolve(redactValue(value));
     };
     child.once("error", (error) => finish({ ok: false, code: 2, timedOut: false, reason: `could not execute: ${redactText(error.message, env)}` }));
     child.once("exit", (code, signal) => {
-      // A timed-out group is not clean merely because its leader exited on TERM:
-      // descendants may ignore TERM and retain the process-group id. Wait through
-      // the grace window and send KILL to the group before resolving.
       if (timedOut) return;
       const actualCode = Number.isInteger(code) ? code : 2;
-      // A command that exits successfully can still leave a background descendant.
-      // No process may escape its suite boundary, so reap any remaining group now.
-      trackOwnership();
-      signalPids(ownedPids, "SIGKILL");
-      signalProcessGroup(child, "SIGKILL");
-      finish({ ok: actualCode === 0, code: actualCode, timedOut: false,
+      if (!supervised) signalProcessGroup(child, "SIGKILL");
+      finish({ ok: actualCode === 0, code: actualCode, timedOut: actualCode === 124,
         reason: signal ? `process ended by signal ${signal}` : actualCode ? `process exited ${actualCode}` : null });
     });
-    deadlineTimer = setTimeout(() => {
-      timedOut = true;
-      trackOwnership();
-      signalPids(ownedPids, "SIGTERM");
-      signalProcessGroup(child, "SIGTERM");
-      killTimer = setTimeout(() => {
-        trackOwnership();
-        signalPids(ownedPids, "SIGKILL");
-        signalProcessGroup(child, "SIGKILL");
-        finish({ ok: false, code: 124, timedOut: true, reason: "suite deadline exceeded" });
-      }, graceMs);
-    }, Math.max(1, timeoutMs));
+    if (!supervised) {
+      deadlineTimer = setTimeout(() => {
+        timedOut = true;
+        signalProcessGroup(child, "SIGTERM");
+        killTimer = setTimeout(() => {
+          signalProcessGroup(child, "SIGKILL");
+          finish({ ok: false, code: 124, timedOut: true, reason: "suite deadline exceeded" });
+        }, graceMs);
+      }, Math.max(1, timeoutMs));
+    }
   });
 }
 
@@ -278,7 +364,7 @@ function generatedPathAllowed(relative, allowed) {
 }
 
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
-  execute = runInvocation, now = Date.now, graceMs = 2_000 } = {}) {
+  execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities } = {}) {
   const started = now();
   let workspace;
   let code = 0;
@@ -293,7 +379,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         status = "missing"; code = 2; reason = `expected file missing: ${expectedFile}`; break;
       }
     }
-    for (const step of status === "passed" ? suite.steps : []) {
+    for (const [stepIndex, step] of (status === "passed" ? suite.steps : []).entries()) {
       const cwd = path.resolve(workspace.root, step.cwd || ".");
       const relative = path.relative(workspace.root, cwd);
       if (relative.startsWith("..") || path.isAbsolute(relative) || !fs.statSync(cwd, { throwIfNoEntry: false })?.isDirectory()) {
@@ -301,7 +387,14 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
       }
       const remaining = suite.timeoutSeconds * 1_000 - (now() - started);
       if (remaining <= 0) { status = "timed-out"; code = 124; reason = "suite deadline exceeded"; break; }
-      const result = await execute(step.invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs });
+      // Committed regressions inject a non-spawning executor to measure deadline
+      // propagation. Production always uses runInvocation and therefore has no
+      // compatibility path around the reviewed capability registry.
+      const invocation = commandCapabilities
+        ? resolveCommandCapability(commandCapabilities, suite, step, stepIndex)
+        : execute !== runInvocation ? step.invocation
+          : (() => { throw new Error(`${suite.id}: production execution requires the assertion command capability registry`); })();
+      const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs });
       executed += 1;
       if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
     }
@@ -324,8 +417,14 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
 
 export async function runSuitesV2(suites, options = {}) {
   const results = [];
+  const dependencyRoot = options.profile?.install ? path.join(options.root || REPO_ROOT, options.profile.install.cwd, "node_modules") : null;
+  const immutableSnapshot = dependencyRoot ? dependencySnapshot(dependencyRoot) : null;
   for (const suite of suites) {
     const result = await runSuiteV2(suite, options);
+    if (dependencyRoot && dependencySnapshot(dependencyRoot) !== immutableSnapshot) {
+      result.status = "failed"; result.ok = false; result.code = result.code || 2;
+      result.reason = "shard dependency snapshot changed during suite execution";
+    }
     results.push(result);
     console.log(redactText(`${result.ok ? "PASS" : "FAIL"}  ${String(result.seconds).padStart(4)}s  ${suite.id}${result.reason ? `  (${result.reason})` : ""}`));
   }
@@ -379,7 +478,8 @@ async function main() {
     if (!fs.statSync(evidencePath, { throwIfNoEntry: false })?.isFile()) throw new Error(`setup evidence missing for ${klass}`);
     evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
     const { profile } = validateSetupEvidence(manifest, klass, evidence);
-    results = await runSuitesV2(suites, { profile, graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
+    results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities,
+      graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
     fs.rmSync(evidencePath, { force: true });
   } catch (error) {
     results = suites.map((suite) => ({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite),
