@@ -731,7 +731,7 @@ export function validateRegistry(
   }
 
   const legacy = manifest.legacyOrigins || [];
-  if (!Array.isArray(legacy) || legacy.length !== 198) fail(errors, "legacyOrigins must contain exactly the amended 198 origins");
+  if (!Array.isArray(legacy) || legacy.length !== 199) fail(errors, "legacyOrigins must contain exactly the amended 199 origins");
   const legacyKeys = new Set();
   const suiteClaims = new Map();
   for (const item of legacy) {
@@ -769,7 +769,7 @@ export function validateRegistry(
 
   const discoveredProviders = workflowProviders ?? discoverWorkflowProviders(root);
   const registeredProviders = manifest.workflowProviders || [];
-  if (!Array.isArray(registeredProviders) || registeredProviders.length !== 89) fail(errors, "workflowProviders must contain exactly the amended 89 providers");
+  if (!Array.isArray(registeredProviders) || registeredProviders.length !== 90) fail(errors, "workflowProviders must contain exactly the amended 90 providers");
   const providerKeys = new Set();
   const registeredByName = new Map();
   for (const item of registeredProviders) {
@@ -807,7 +807,7 @@ function main() {
     console.error(`#2435 registry v2: FAIL (${errors.length} error(s))`);
     process.exit(1);
   }
-  console.log("#2435 registry v2: PASS — 198 origins, 22 executable suites, 89 external providers");
+  console.log("#2435 registry v2: PASS — 199 origins, 22 executable suites, 90 external providers");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();

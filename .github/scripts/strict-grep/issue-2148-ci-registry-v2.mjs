@@ -34,7 +34,7 @@ function selfTest(base) {
     workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT),
     matrixSource: fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows/ci-batch.yml"), "utf8"),
   };
-  assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /198 origins|origin omitted/, discovery);
+  assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
   assertRed("origin duplication", base, (m) => m.legacyOrigins.push(clone(m.legacyOrigins[0])), /duplicate legacy origin/, discovery);
   assertRed("legacy to suite attribution swap", base, (m) => {
     const migrated = m.legacyOrigins.filter((item) => item.disposition === "batched-active");
@@ -82,7 +82,7 @@ function selfTest(base) {
     ...discovery,
     matrixSource: discovery.matrixSource.replace("run: npm ci", "run: echo forged-install"),
   });
-  assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /89 providers|externally referenced workflow provider omitted/, discovery);
+  assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /90 providers|externally referenced workflow provider omitted/, discovery);
   assertRed("provider duplication", base, (m) => m.workflowProviders.push(clone(m.workflowProviders[0])), /duplicate or empty workflow provider/, discovery);
   assertRed("stale reference", base, (m) => { m.workflowProviders[0].referenceFiles[0] = "definitely/missing-reference.mjs"; }, /stale reference file|inventory drifted/, discovery);
   assertRed("live plus batched duplicate provider", base, (m) => { m.suites[0].origin = `.github/workflows/${discovery.liveOrigins[0]}`; }, /origin is live and batched/, discovery);

@@ -13,7 +13,7 @@
 ### I-PROPOSED-2148-SUITE-EXECUTION-COMPLETE (DRAFT)
 
 - **Rule:** Every historical CI origin has exactly one recorded disposition, and every executable migrated suite has exactly one reachable class route, typed invocation, pinned runtime/setup profile, real working directory, and real expected files. An omitted, duplicated, stale, empty, unknown, or live-plus-batched origin fails closed; registry discovery may prove completeness but never decides what executes.
-- **Enforcement:** `.github/ci-batch/MANIFEST.json` schema v2, `.github/scripts/ci-batch/validate-manifest-v2.mjs`, and the issue #2435 strict-grep adversarial and implementor happy-path proofs in Class A. The amended Phase 1 locks are 198 origins, 22 executable suites, and 89 externally referenced live workflow providers.
+- **Enforcement:** `.github/ci-batch/MANIFEST.json` schema v2, `.github/scripts/ci-batch/validate-manifest-v2.mjs`, and the issue #2435 strict-grep adversarial and implementor happy-path proofs in Class A. The amended Phase 1 locks are 199 origins, 22 executable suites, and 90 externally referenced live workflow providers.
 - **Status:** DRAFT. Phase 1 records and guards current truth without deleting a workflow or test, changing a suite command, or changing required-context/trust behavior.
 
 ### I-PROPOSED-2148-SETUP-SINGLE-OWNER (DRAFT)

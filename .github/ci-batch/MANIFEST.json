@@ -1,7 +1,7 @@
 {
   "$comment": [
     "#2436 / #2148 Phase 2 deterministic CI registry and runner v2.",
-    "Locked inventory: 198 legacy origins, 22 active suites, 89 external providers; 46 preserved assertion steps.",
+    "Locked inventory: 199 legacy origins, 22 active suites, 90 external providers; 46 preserved assertion steps.",
     "Setup executes once per shard from the typed profile. Suite commands contain no environment installation."
   ],
   "schemaVersion": 2,
@@ -854,6 +854,7 @@
       "envNames": [],
       "isolation": "clean-worktree",
       "expectedFiles": [
+        "mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift",
         "mingla-business/package.json",
         "mingla-business/patches/expo-image-picker+17.0.11.patch"
       ],
@@ -9622,6 +9623,67 @@
       }
     },
     {
+      "stem": "issue-2399-multiday-picker-ticket-box",
+      "extension": "yml",
+      "ownerIssue": "#2399",
+      "disposition": "build-assertion-consumer",
+      "providerWorkflow": ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+      "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
+      "workflowMetadata": {
+        "sourceSha256": "1d11623bc68dece5b7590fc57814e4f2cd24da07beebd7aa059b8a7ec49a9ef8",
+        "triggers": [
+          "pull_request",
+          "push"
+        ],
+        "pathScope": [
+          ".github/scripts/strict-grep/MANIFEST.json",
+          ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs",
+          ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+          "mingla-business/app/event/[id]/preview.tsx",
+          "mingla-business/playwright.issue2399.config.ts",
+          "mingla-business/playwright/issue2399/**",
+          "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts",
+          "mingla-business/src/components/event/DraftEventFoundationPreview.tsx",
+          "mingla-business/src/components/event/FoundationEventPreview.tsx",
+          "mingla-business/src/components/event/MultiDateDayChooser.tsx",
+          "mingla-business/src/components/event/PublicEventPage.tsx",
+          "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx",
+          "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
+          "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
+          "mingla-business/src/components/ui/Toast.tsx",
+          "mingla-business/src/services/publicEventsService.ts",
+          "mingla-business/src/utils/draftEventBuyerPreview.ts",
+          "mingla-business/src/utils/publicEventDayRecovery.ts",
+          "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
+          "packages/offering-rendering/EventOfferingBody.tsx"
+        ],
+        "jobKeys": [
+          "buyer-web-multiday-contract"
+        ],
+        "runners": [
+          "ubuntu-latest"
+        ],
+        "runtimeVersions": [
+          "node:22"
+        ],
+        "setupActions": [
+          "actions/checkout@v4",
+          "actions/setup-node@v4"
+        ],
+        "trustBoundary": {
+          "permissions": [
+            "contents: read"
+          ],
+          "environments": [],
+          "usesRepositorySecrets": false,
+          "usesOidc": false,
+          "pullRequestTarget": false
+        }
+      }
+    },
+    {
       "stem": "issue-2418-bank-list-native-identity",
       "extension": "yml",
       "ownerIssue": "#2418",
@@ -11599,6 +11661,17 @@
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-2395-manual-contact-groups.mjs",
         ".github/scripts/strict-grep/issue-2395-manual-contact-groups.self-test.mjs"
+      ],
+      "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
+    },
+    {
+      "workflow": "issue-2399-multiday-picker-ticket-box.yml",
+      "ownerIssue": "#2399",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
+      "referenceFiles": [
+        ".github/scripts/strict-grep/MANIFEST.json",
+        ".github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
