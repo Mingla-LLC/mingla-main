@@ -1,5 +1,13 @@
 # Invariant Registry
 
+## DRAFT — issue #2148 / Phase 0 issue #2431 (CI topology remains bounded)
+
+### I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED (DRAFT)
+
+- **Rule:** Ordinary issue work adds tests and gates to stable shared registries; it never adds a new `.github/workflows/issue-*`, `orch-*`, or `meta-*` pull-request wrapper. A new capability-named workflow requires an issue-cited approval in a commit touching that file and must prove a unique runner/runtime, trust, production-operation, service-container, or required-context boundary that existing profiles cannot supply. Existing workflow modification and deletion remain allowed; test deletion does not.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2148-ci-topology-bounded.mjs` runs self-test then live in strict-grep class A, its committed issue #2431 happy-path proof executes in the same batch, and `.github/workflows/strict-grep-mingla-business.yml` triggers on every workflow-only diff.
+- **Status:** DRAFT until the full #2148 consolidation programme reaches its final topology, completeness, required-context, and performance budgets. Phase 0 prevents new wrappers without deleting any existing workflow or test.
+
 ## ACTIVE — issue #2411 (free orders remain visible and countable without currency)
 
 ### I-PROPOSED-2411-ZERO-MONEY-ORDER-CURRENCY-NULL (ACTIVE)
