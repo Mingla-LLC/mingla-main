@@ -11,7 +11,7 @@
  * WHY THIS FILE REPLACED AN INLINE `node -e` SUBSTRING SCAN
  *
  * The previous form of this guard lived inline in
- * `.github/workflows/issue-1609-card-identity.yml` and did:
+ * `ci-batch:issue-1609-card-identity` and did:
  *
  *     for (const bad of ['react-native', 'expo-', ..., 'StyleSheet', 'jsx'])
  *       if (rawFileText.includes(bad)) fail();

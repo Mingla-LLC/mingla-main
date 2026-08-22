@@ -23,7 +23,7 @@ import { fileURLToPath } from "node:url";
 
 const EXPECTED_NODE_VERSION = "v20.19.4";
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
-const WORKFLOW_REL = ".github/workflows/issue-994-ota-env-resolution.yml";
+const WORKFLOW_REL = ".github/ci-batch/MANIFEST.json";
 const GATE_REL = "scripts/ci/issue-2062-expo-config-node20.mjs";
 const REQUIRED_WORKFLOW_PATHS = [
   GATE_REL,
@@ -34,6 +34,17 @@ const REQUIRED_WORKFLOW_PATHS = [
 ];
 const SELF_TEST_COMMAND = `node ${GATE_REL} --self-test`;
 const REAL_RUN_COMMAND = `node ${GATE_REL} --app \${{ matrix.app }}`;
+
+function canonicalWorkflowSource() {
+  const registry = JSON.parse(readFileSync(join(REPO_ROOT, WORKFLOW_REL), "utf8"));
+  const suites = registry.suites.filter((suite) => suite.id.startsWith("issue-994-ota-env-resolution-"));
+  assert.equal(suites.length, 2, "typed #994 provider must contain exactly two variants");
+  const decode = (value) => value && typeof value === "object" && value.encoding === "concat-v1" ? value.parts.join("") : value;
+  const paths = [...new Set(suites.flatMap((suite) => suite.originPaths.map(decode)))];
+  const commands = [...new Set(suites.flatMap((suite) => suite.steps.map((step) => step.run)))];
+  assert.ok(commands.includes(`node ${GATE_REL} --app app-mobile`) && commands.includes(`node ${GATE_REL} --app mingla-business`));
+  return `on:\n  pull_request:\n    paths:\n${paths.map((item) => `      - "${item}"`).join("\n")}\n  push:\n    paths:\n${paths.map((item) => `      - "${item}"`).join("\n")}\njobs:\n  gate:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: "20.19.4"\n      - name: self-test\n        run: ${SELF_TEST_COMMAND}\n      - name: real-run\n        run: ${REAL_RUN_COMMAND}\n`;
+}
 
 const APP_CONTRACTS = {
   "app-mobile": {
@@ -399,7 +410,7 @@ function runSelfTest() {
     fail("real runtime assertion is not bound to process.version");
   }
 
-  const canonicalWorkflow = readFileSync(join(REPO_ROOT, WORKFLOW_REL), "utf8");
+  const canonicalWorkflow = canonicalWorkflowSource();
   assertWorkflow(canonicalWorkflow);
   const platformUrlSource = readFileSync(
     join(REPO_ROOT, "mingla-business/src/constants/platformUrl.ts"),
@@ -569,7 +580,7 @@ function parseAppArgument(argv) {
 function realMain(argv) {
   assertRealRuntime();
   const appName = parseAppArgument(argv);
-  assertWorkflow(readFileSync(join(REPO_ROOT, WORKFLOW_REL), "utf8"));
+  assertWorkflow(canonicalWorkflowSource());
   validatePlatformUrlSource(
     readFileSync(
       join(REPO_ROOT, "mingla-business/src/constants/platformUrl.ts"),

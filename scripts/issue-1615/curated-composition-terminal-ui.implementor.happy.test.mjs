@@ -240,6 +240,6 @@ test('C6 preview terminal state is exclusive and the production UI has one creat
   assert.doesNotMatch(provider, /catch\(\(\) => undefined\)/);
   assert.match(bridge, /kind === 'curated'[\s\S]*curated \?\? \{ stopPlaceIds: \[\] \}/);
 
-  const workflow = read('.github/workflows/issue-1615-public-share-surfaces.yml');
-  assert.match(workflow, /curated-composition-terminal-ui\.implementor\.happy\.test\.mjs/);
+  const batchProvider = read('.github/ci-batch/MANIFEST.json');
+  assert.match(batchProvider, /curated-composition-terminal-ui\.implementor\.happy\.test\.mjs/);
 });

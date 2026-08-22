@@ -12,6 +12,10 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const workflows = Object.fromEntries(fs.readdirSync(path.join(ROOT, ".github/workflows"))
   .filter((name) => /\.ya?ml$/.test(name))
   .map((name) => [name, fs.readFileSync(path.join(ROOT, ".github/workflows", name), "utf8")]));
+const registry = JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+for (const suite of registry.suites.filter((item) => item.lifecycle === "batched-historical")) {
+  workflows[`ci-batch:${suite.id}`] = suite.steps.map((step) => `run: |\n  ${step.run.replaceAll("\n", "\n  ")}`).join("\n");
+}
 const diskFiles = fs.readdirSync(path.join(ROOT, "app-mobile/src/components/swipeDeck/__tests__"))
   .filter((name) => name.endsWith(".test.mjs"))
   .map((name) => `app-mobile/src/components/swipeDeck/__tests__/${name}`);
@@ -29,7 +33,7 @@ test("#1607 true wiring revert orphans a real guard and turns the checker red", 
     ...baseline,
     workflows: {
       ...workflows,
-      "issue-1609-card-identity.yml": workflows["issue-1609-card-identity.yml"].split(victim).join(""),
+      "ci-batch:issue-1609-card-identity": workflows["ci-batch:issue-1609-card-identity"].split(victim).join(""),
     },
   };
   assert.ok(checkExplorerGuardIntegrity(reverted).some((failure) => failure.includes(victim)));

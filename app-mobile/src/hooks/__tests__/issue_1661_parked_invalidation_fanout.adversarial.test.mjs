@@ -81,7 +81,7 @@
  * fires X-2, X-3, X-4, X-5 and X-6. X-0, X-0b, X-1 and X-7 stay green.
  *
  * Requires Node >= 22.13 for `module.stripTypeScriptTypes`. Registered in
- * .github/workflows/issue-1661-completed-write-unparks-invalidation.yml.
+ * ci-batch:issue-1661-completed-write-unparks-invalidation in .github/ci-batch/MANIFEST.json.
  */
 
 import { test, before, after } from 'node:test';

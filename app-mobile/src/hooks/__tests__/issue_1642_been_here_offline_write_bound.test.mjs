@@ -45,7 +45,7 @@
  * mocked clock cannot prove a wall-clock guarantee.
  *
  * Requires Node >= 22.13 for `module.stripTypeScriptTypes`. Registered in
- * .github/workflows/issue-1642-been-here-offline-bound.yml on node 22.
+ * ci-batch:issue-1642-been-here-offline-bound on node 22.
  */
 
 import { test, before, after } from 'node:test';

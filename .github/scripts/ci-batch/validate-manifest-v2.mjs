@@ -30,6 +30,7 @@ const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c89580489
 const LOCKED_SETUP_PROFILES_SHA256 = "5d445002c1c4b7a7f97faebf1d26162dbba24ba9c7ee0f448d3c289ee4ca7dec";
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
+const PHASE3_WAVE_LIFECYCLES = new Set(["shadow-active", "batched-historical"]);
 export const SHADOW_PARITY_MARKER = "# #2437 SHADOW-PARITY-TRIGGER — remove before cutover";
 const SHADOW_PARITY_TOKEN = "#2437 SHADOW-PARITY-TRIGGER";
 const SHADOW_PARITY_WRAPPER_STEMS = Object.freeze([
@@ -159,8 +160,10 @@ export function validateShadowParityMarkers(manifest, workflowSources) {
   }
   for (const name of SHADOW_PARITY_WRAPPER_NAMES) {
     const source = workflowSources[name];
+    const lifecycle = (manifest.legacyOrigins || []).find((origin) => `${origin.stem}.${origin.extension}` === name)?.disposition;
     if (!shadowNames.has(name)) {
       if (source?.includes(SHADOW_PARITY_TOKEN)) fail(errors, `${name}: shadow parity marker is forbidden outside shadow-active lifecycle`);
+      if (lifecycle === "batched-historical" && typeof source === "string") fail(errors, `${name}: terminal wrapper must be absent`);
       continue;
     }
     if (typeof source !== "string") {
@@ -531,7 +534,7 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
       }
     }
     for (const [index, step] of (suite.steps || []).entries()) {
-      if (suite.lifecycle !== "shadow-active" && forbiddenEmbeddedSetup(step)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
+      if (!PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle) && forbiddenEmbeddedSetup(step)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
     }
   }
   try {
@@ -713,7 +716,7 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
     for (const config of configPathsFromCommand(command)) {
       for (const selected of filesSelectedByJestConfig(config, cwd, root)) found.add(selected);
     }
-    const tokens = command.match(suite.lifecycle === "shadow-active"
+    const tokens = command.match(PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle)
       ? /[A-Za-z0-9_@.()\/\[\]+*\-]+/g
       : /[A-Za-z0-9_@.()\/[\]+-]+/g) || [];
     for (let token of tokens) {
@@ -723,7 +726,7 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
         // Phase 1 intentionally ignored wildcard tokens. Preserve that reviewed
         // baseline byte-for-byte; Phase 3 shadow variants opt into deterministic
         // wildcard expansion so newly migrated files cannot disappear.
-        if (suite.lifecycle !== "shadow-active") continue;
+        if (!PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle)) continue;
         const relativePattern = path.normalize(path.join(cwd, token)).replaceAll(path.sep, "/");
         const matcher = globToRegExp(relativePattern);
         for (const tracked of trackedFiles(root)) {
@@ -923,7 +926,7 @@ export function validateRegistry(
     if (!suite.id || suiteIds.has(suite.id)) fail(errors, `duplicate or empty suite id: ${suite.id || "<empty>"}`);
     suiteIds.add(suite.id);
     suitesById.set(suite.id, suite);
-    if (!["batched-active", "shadow-active"].includes(suite.lifecycle)) fail(errors, `${suite.id}: lifecycle must be batched-active or shadow-active`);
+    if (!["batched-active", "shadow-active", "batched-historical"].includes(suite.lifecycle)) fail(errors, `${suite.id}: lifecycle must be batched-active, shadow-active, or batched-historical`);
     if (!manifest.classes?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
     if (!suite.setupProfile || !manifest.setupProfiles?.[suite.setupProfile]) fail(errors, `${suite.id}: unknown setupProfile ${suite.setupProfile}`);
     else selectedProfiles.add(suite.setupProfile);
@@ -935,6 +938,7 @@ export function validateRegistry(
     const originIsLive = fs.existsSync(path.join(root, suite.origin || ""));
     if (suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
     if (suite.lifecycle === "shadow-active" && !originIsLive) fail(errors, `${suite.id}: shadow origin must remain live: ${suite.origin}`);
+    if (suite.lifecycle === "batched-historical" && originIsLive) fail(errors, `${suite.id}: terminal origin wrapper must be absent: ${suite.origin}`);
     if (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version)) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
     const profileRuntime = manifest.setupProfiles?.[suite.setupProfile]?.runtime;
     const matrixRuntime = matrixRoutes.get(suite.class)?.node;
@@ -981,24 +985,27 @@ export function validateRegistry(
       fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
     }
   }
-  const shadowSuites = (manifest.suites || []).filter((suite) => suite.lifecycle === "shadow-active");
-  if (shadowSuites.length !== 32) fail(errors, `shadow stage must contain exactly 32 shadow-active variants, got ${shadowSuites.length}`);
+  const waveSuites = (manifest.suites || []).filter((suite) => PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle));
+  const waveLifecycle = new Set(waveSuites.map((suite) => suite.lifecycle));
+  if (waveSuites.length !== 32 || waveLifecycle.size !== 1) {
+    fail(errors, `Phase 3 wave must contain exactly 32 variants in one atomic lifecycle, got ${waveSuites.length} across ${waveLifecycle.size} lifecycle(s)`);
+  }
   for (const [origin, owners] of suiteOrigins) {
     const expected = path.basename(origin) === "issue-994-ota-env-resolution.yml" ? 2 : 1;
     if (owners.length !== expected) fail(errors, `${origin}: expected exactly ${expected} executable variant(s), got ${owners.length}`);
-    const shadowOwners = owners.filter((suite) => suite.lifecycle === "shadow-active");
-    if (shadowOwners.length) {
-      const variants = shadowOwners.map((suite) => suite.originVariant).sort();
+    const waveOwners = owners.filter((suite) => PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle));
+    if (waveOwners.length) {
+      const variants = waveOwners.map((suite) => suite.originVariant).sort();
       const expectedVariants = expected === 2 ? ["app-mobile", "mingla-business"] : ["default"];
       if (JSON.stringify(variants) !== JSON.stringify(expectedVariants)) fail(errors, `${origin}: originVariant mapping drifted`);
     }
-    for (const suite of owners.filter((item) => item.lifecycle === "shadow-active")) {
-      const metadata = inspectWorkflow(root, path.basename(origin));
-      if (!suite.shadowContract || suite.shadowContract.workflowSha256 !== metadata?.sourceSha256
-          || suite.shadowContract.variant !== suite.originVariant) fail(errors, `${suite.id}: shadow contract no longer matches its live workflow`);
+    for (const suite of waveOwners) {
+      const metadata = suite.lifecycle === "shadow-active" ? inspectWorkflow(root, path.basename(origin)) : null;
+      if (!suite.shadowContract || (metadata && suite.shadowContract.workflowSha256 !== metadata.sourceSha256)
+          || suite.shadowContract.variant !== suite.originVariant) fail(errors, `${suite.id}: immutable wave contract no longer matches its reviewed variant`);
     }
   }
-  const calculatedShadowDigest = crypto.createHash("sha256").update(JSON.stringify(shadowSuites.map((suite) => ({
+  const calculatedShadowDigest = crypto.createHash("sha256").update(JSON.stringify(waveSuites.map((suite) => ({
     id: suite.id, origin: suite.origin, originVariant: suite.originVariant, shadowContract: suite.shadowContract,
   })))).digest("hex");
   if (manifest.shadowContractSha256 !== LOCKED_SHADOW_CONTRACT_SHA256 || calculatedShadowDigest !== LOCKED_SHADOW_CONTRACT_SHA256) {
@@ -1118,13 +1125,14 @@ export function loadAndValidate(manifestPath = DEFAULT_MANIFEST, options = {}) {
 
 function main() {
   const manifestPath = process.argv[2] ? path.resolve(process.argv[2]) : DEFAULT_MANIFEST;
-  const { errors } = loadAndValidate(manifestPath);
+  const { manifest, errors } = loadAndValidate(manifestPath);
   if (errors.length) {
     for (const error of errors) console.error(`::error::${error}`);
     console.error(`#2435 registry v2: FAIL (${errors.length} error(s))`);
     process.exit(1);
   }
-  console.log("#2437 shadow registry: PASS — 199 origins, 55 executable suites (32 shadow), 89 external providers");
+  const waveLifecycle = manifest.suites.slice(23)[0]?.lifecycle;
+  console.log(`#2437 ${waveLifecycle === "batched-historical" ? "terminal" : "shadow"} registry: PASS — 199 origins, 55 executable suites (32 wave), 89 external providers`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();

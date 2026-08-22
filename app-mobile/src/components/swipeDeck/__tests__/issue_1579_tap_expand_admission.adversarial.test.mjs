@@ -76,16 +76,23 @@ const controllerUrl = new URL('../useDeckSwipeController.ts', import.meta.url);
 const lifecycleUrl = new URL('../deckSwipeLifecycle.ts', import.meta.url);
 const implementorGuardUrl = new URL('./issue_1579_tap_expand_admission.test.mjs', import.meta.url);
 const workflowUrl = new URL(
-  '../../../../../.github/workflows/issue-1579-deck-tap-expand.yml',
+  '../../../../../.github/ci-batch/MANIFEST.json',
   import.meta.url,
 );
 const registryUrl = new URL('../../../../../docs/INVARIANT_REGISTRY.md', import.meta.url);
 
-const [controllerSource, workflowSource, registrySource] = await Promise.all([
+const [controllerSource, workflowRegistrySource, registrySource] = await Promise.all([
   readFile(controllerUrl, 'utf8'),
   readFile(workflowUrl, 'utf8'),
   readFile(registryUrl, 'utf8'),
 ]);
+const workflowSource = typedSuiteWorkflow(workflowRegistrySource, 'issue-1579-deck-tap-expand');
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return ['pull_request:', 'push:', `node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
+}
 
 // ---------------------------------------------------------------------------
 // Source masking. Independent implementation, and deliberately NOT the
@@ -990,11 +997,11 @@ test('A-8 deleting the release wiring turns the IMPLEMENTOR guard red', () => {
   try {
     const deckDir = path.join(dir, 'app-mobile/src/components/swipeDeck');
     const testDir = path.join(deckDir, '__tests__');
-    const wfDir = path.join(dir, '.github/workflows');
+    const wfDir = path.join(dir, '.github/ci-batch');
     mkdirSync(testDir, { recursive: true });
     mkdirSync(wfDir, { recursive: true });
     cpSync(fileURLToPath(lifecycleUrl), path.join(deckDir, 'deckSwipeLifecycle.ts'));
-    cpSync(fileURLToPath(workflowUrl), path.join(wfDir, 'issue-1579-deck-tap-expand.yml'));
+    cpSync(fileURLToPath(workflowUrl), path.join(wfDir, 'MANIFEST.json'));
     const guardPath = path.join(testDir, 'issue_1579_tap_expand_admission.test.mjs');
     cpSync(fileURLToPath(implementorGuardUrl), guardPath);
     const controllerPath = path.join(deckDir, 'useDeckSwipeController.ts');

@@ -10,7 +10,7 @@ const PATHS = {
   tests: "scripts/security/issue_2084_safe_credential_inventory.test.mjs",
   tester: "scripts/security/issue_2084_safe_credential_inventory.tester.adversarial.test.mjs",
   runbook: "docs/runbooks/B2_WEBHOOK_SECRET_ROTATION_RUNBOOK.md",
-  workflow: ".github/workflows/issue-2084-credential-output-safety.yml",
+  workflow: ".github/ci-batch/MANIFEST.json",
 };
 
 const REQUIRED = {
@@ -122,6 +122,15 @@ function main() {
     return;
   }
   const files = Object.fromEntries(Object.entries(PATHS).map(([name, path]) => [name, readFileSync(resolve(ROOT, path), "utf8")]));
+  const registry = JSON.parse(files.workflow);
+  const suite = registry.suites.find((item) => item.id === "issue-2084-credential-output-safety");
+  const profile = registry.setupProfiles[suite?.setupProfile];
+  files.workflow = [
+    "pull_request:", ...(suite?.originPaths || []),
+    "push:", ...(suite?.originPaths || []),
+    `node-version: ${profile?.runtime?.version}`,
+    ...(suite?.steps || []).map((step) => step.run),
+  ].join("\n");
   const found = violations(files);
   if (found.length > 0) {
     process.stderr.write(`issue-2084 credential-output safety failed (${found.length} static violations)\n`);

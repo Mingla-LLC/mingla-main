@@ -2,7 +2,7 @@
  * #1609 Direction C wave 1, REWORK — the IMPLEMENTOR'S happy-path guard for the
  * plate-anchor fix (tester P1-1) and the share anchor (tester P1-2).
  *
- * Registered in .github/workflows/issue-1609-card-identity.yml.
+ * Registered as ci-batch:issue-1609-card-identity in .github/ci-batch/MANIFEST.json.
  *
  * ---------------------------------------------------------------------------
  * HOW THIS DIFFERS FROM THE TESTER'S ADVERSARIAL GUARD

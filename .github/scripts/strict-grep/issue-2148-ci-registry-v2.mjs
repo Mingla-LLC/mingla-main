@@ -52,10 +52,7 @@ function selfTest(base) {
     console.log(`SELF-TEST PASS: ${name}`);
   };
   const markerTarget = SHADOW_PARITY_WRAPPER_NAMES[0];
-  assertMarkerRed("missing shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(`${SHADOW_PARITY_MARKER}\n`, ""); });
-  assertMarkerRed("duplicate shadow marker", (sources) => { sources[markerTarget] = `${SHADOW_PARITY_MARKER}\n${sources[markerTarget]}`; });
-  assertMarkerRed("altered shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(SHADOW_PARITY_MARKER, `${SHADOW_PARITY_MARKER}-altered`); });
-  assertMarkerRed("whitespace-variant shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(SHADOW_PARITY_MARKER, ` ${SHADOW_PARITY_MARKER}`); });
+  assertMarkerRed("restored terminal wrapper", (sources) => { sources[markerTarget] = "restored terminal wrapper\n"; }, /terminal wrapper must be absent/);
   assertMarkerRed("wrong-path shadow marker", (sources) => { sources["unapproved-workflow.yml"] = `${SHADOW_PARITY_MARKER}\nname: forbidden\n`; }, /stray.*unapproved workflow/);
   assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
   assertRed("split-text representation omission", base, (m) => {
@@ -120,24 +117,23 @@ function selfTest(base) {
     ...discovery,
     matrixSource: discovery.matrixSource.replace('run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"', "run: npm ci"),
   });
-  assertRed("shadow variant omission", base, (m) => {
-    m.suites.splice(m.suites.findIndex((suite) => suite.lifecycle === "shadow-active"), 1);
-  }, /54 executable suites|54 entries|32 shadow-active/, discovery);
-  assertRed("shadow command capability drift", base, (m) => {
-    const suite = m.suites.find((item) => item.lifecycle === "shadow-active");
+  assertRed("terminal variant omission", base, (m) => {
+    m.suites.splice(m.suites.findIndex((suite) => suite.lifecycle === "batched-historical"), 1);
+  }, /55 executable suites|55 entries|32 .*variants/, discovery);
+  assertRed("terminal command capability drift", base, (m) => {
+    const suite = m.suites.find((item) => item.lifecycle === "batched-historical");
     m.commandCapabilities.commands.find((item) => item.suiteId === suite.id).argv[1] += " # forged";
-  }, /153 assertion command capabilities|immutable executable/, discovery);
-  assertRed("shadow contract drift", base, (m) => {
-    m.suites.find((item) => item.lifecycle === "shadow-active").shadowContract.triggerSha256 = "0".repeat(64);
+  }, /158 assertion command capabilities|immutable executable/, discovery);
+  assertRed("terminal contract drift", base, (m) => {
+    m.suites.find((item) => item.lifecycle === "batched-historical").shadowContract.triggerSha256 = "0".repeat(64);
   }, /32-variant shadow.*drifted/, discovery);
   assertRed("994 second variant omission", base, (m) => {
-    m.legacyOrigins.find((item) => item.ownerIssue === "#994" && item.disposition === "shadow-active").replacementSuites.pop();
+    m.legacyOrigins.find((item) => item.ownerIssue === "#994" && item.disposition === "batched-historical").replacementSuites.pop();
   }, /expected exactly 2 unique replacement/, discovery);
-  assertRed("premature shadow cutover", base, (m) => {
-    const origin = m.legacyOrigins.find((item) => item.disposition === "shadow-active");
-    origin.disposition = "batched-historical";
-    origin.providerWorkflow = ".github/workflows/ci-batch.yml";
-  }, /cutover requires the historical wrapper absent/, discovery);
+  assertRed("terminal wrapper restoration metadata", base, (m) => {
+    const origin = m.legacyOrigins.find((item) => item.disposition === "batched-historical");
+    origin.providerWorkflow = `.github/workflows/${origin.stem}.${origin.extension}`;
+  }, /historical wrapper absent/, discovery);
   assertRed("shared action pin drift", base, () => {}, /exact pinned checkout\/setup-node/, {
     ...discovery,
     matrixSource: discovery.matrixSource.replace("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "actions/checkout@v4"),

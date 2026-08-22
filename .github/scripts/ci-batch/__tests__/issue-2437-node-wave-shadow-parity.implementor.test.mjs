@@ -61,70 +61,59 @@ const validateStaticClassAJob = (source) => {
   return errors;
 };
 
-test("#2437 shadow registry is exactly 31 live origins / 32 typed variants without cutover", () => {
+test("#2437 terminal registry is exactly 31 historical origins / 32 typed variants", () => {
   const value = manifest();
-  const shadow = value.suites.filter((suite) => suite.lifecycle === "shadow-active");
-  const origins = value.legacyOrigins.filter((origin) => origin.disposition === "shadow-active");
-  assert.equal(value.legacyOrigins.length, 198);
-  assert.equal(value.suites.length, 54);
+  const shadow = value.suites.filter((suite) => suite.lifecycle === "batched-historical");
+  const origins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical");
+  assert.equal(value.legacyOrigins.length, 199);
+  assert.equal(value.suites.length, 55);
   assert.equal(value.workflowProviders.length, 89);
   assert.equal(origins.length, 31);
   assert.equal(shadow.length, 32);
   assert.equal(new Set(shadow.map((suite) => suite.id)).size, 32);
   assert.equal(shadow.filter((suite) => path.basename(suite.origin) === "issue-994-ota-env-resolution.yml").length, 2);
   assert.equal(shadow.filter((suite) => path.basename(suite.origin) !== "issue-994-ota-env-resolution.yml").length, 30);
-  for (const suite of shadow) assert.equal(fs.existsSync(path.join(ROOT, suite.origin)), true, `${suite.origin} must remain live during shadow`);
+  for (const suite of shadow) assert.equal(fs.existsSync(path.join(ROOT, suite.origin)), false, `${suite.origin} must be absent after terminal cutover`);
   assert.equal(fs.existsSync(path.join(ROOT, ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml")), true);
 });
 
 test("all original Phase 2 commands and all shadow commands have independent immutable locks", () => {
   const value = manifest();
-  assert.equal(digest(value.commandCapabilities.commands.slice(0, 46)), "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399");
-  assert.equal(digest(value.commandCapabilities.commands.slice(46)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
-  assert.equal(value.suites.slice(22).flatMap((suite) => suite.steps).length, 107);
-  assert.equal(value.commandCapabilities.commands.length, 153);
+  assert.equal(digest(value.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
+  assert.equal(digest(value.commandCapabilities.commands.slice(51)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
+  assert.equal(value.suites.slice(23).flatMap((suite) => suite.steps).length, 107);
+  assert.equal(value.commandCapabilities.commands.length, 158);
 });
 
-test("the source wave still contains all 118 active run commands and 31 untouched wrappers", () => {
-  const names = manifest().legacyOrigins.filter((origin) => origin.disposition === "shadow-active").map((origin) => `${origin.stem}.${origin.extension}`);
-  const ruby = String.raw`require "yaml"; root=ARGV.shift; count=ARGV.sum{|name| d=YAML.safe_load(File.binread(File.join(root,".github/workflows",name)), aliases:true)||{}; (d["jobs"]||{}).values.sum{|job| Array(job["steps"]).count{|step| step.is_a?(Hash) && step["run"]}}}; print count`;
-  const count = Number(execFileSync("ruby", ["-e", ruby, ROOT, ...names], { encoding: "utf8" }));
-  assert.equal(count, 118);
-  assert.equal(names.filter((name) => fs.existsSync(path.join(ROOT, ".github/workflows", name))).length, 31);
+test("terminal source wave retains all 107 exact assertion commands with wrappers absent", () => {
+  const value = manifest();
+  const suites = value.suites.filter((suite) => suite.lifecycle === "batched-historical");
+  const names = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical").map((origin) => `${origin.stem}.${origin.extension}`);
+  assert.equal(suites.flatMap((suite) => suite.steps).length, 107);
+  assert.equal(names.filter((name) => fs.existsSync(path.join(ROOT, ".github/workflows", name))).length, 0);
 });
 
-test("temporary parity markers are exact, allowlisted, and invisible only to canonical wrapper contracts", () => {
+test("terminal lifecycle rejects restored wrappers and leaves no parity markers", () => {
   const value = manifest();
   const sources = workflowSources();
   assert.equal(SHADOW_PARITY_WRAPPER_NAMES.length, 31);
   assert.deepEqual(validateShadowParityMarkers(value, sources), []);
   for (const name of SHADOW_PARITY_WRAPPER_NAMES) {
-    assert.equal(sources[name].split("\n").filter((line) => line === SHADOW_PARITY_MARKER).length, 1);
-    const canonical = canonicalizeShadowWrapperSource(name, sources[name]);
-    assert.equal(canonical.includes(SHADOW_PARITY_MARKER), false);
-    assert.equal(sourceDigest(canonical), inspectWorkflow(ROOT, name).sourceSha256);
-    const registered = value.legacyOrigins.find((origin) => `${origin.stem}.${origin.extension}` === name);
-    assert.equal(sourceDigest(canonical), registered.workflowMetadata.sourceSha256);
-    const nonMarkerMutation = canonical.replace("name:", "name: mutated-");
-    assert.notEqual(sourceDigest(nonMarkerMutation), registered.workflowMetadata.sourceSha256);
+    assert.equal(sources[name], undefined);
   }
+  const restored = { ...sources, [SHADOW_PARITY_WRAPPER_NAMES[0]]: "restored\n" };
+  assert.ok(validateShadowParityMarkers(value, restored).some((error) => /terminal wrapper must be absent/.test(error)));
 });
 
-test("canonical validation rejects shadow omission, premature cutover, setup drift, and trust drift", () => {
+test("canonical validation rejects terminal omission, restored wrapper, setup drift, and trust drift", () => {
   const value = manifest();
   const workflowSource = fs.readFileSync(WORKFLOW_PATH, "utf8");
   const discovery = { root: ROOT, liveOrigins: discoverLiveOrigins(ROOT), workflowProviders: discoverWorkflowProviders(ROOT), matrixSource: workflowSource };
   assert.deepEqual(validateRegistry(value, discovery), []);
 
   const omitted = clone(value);
-  omitted.suites.splice(22, 1);
-  assert.ok(validateRegistry(omitted, discovery).some((error) => /54 executable suites|54 entries|32 shadow-active/.test(error)));
-
-  const cutover = clone(value);
-  const origin = cutover.legacyOrigins.find((item) => item.disposition === "shadow-active");
-  origin.disposition = "batched-historical";
-  origin.providerWorkflow = ".github/workflows/ci-batch.yml";
-  assert.ok(validateRegistry(cutover, discovery).some((error) => /historical wrapper absent/.test(error)));
+  omitted.suites.splice(23, 1);
+  assert.ok(validateRegistry(omitted, discovery).some((error) => /55 executable suites|55 entries|32 .*variants/.test(error)));
 
   const setup = clone(value);
   setup.setupProfiles["cross-root-node22-ignore-scripts"].installs.reverse();

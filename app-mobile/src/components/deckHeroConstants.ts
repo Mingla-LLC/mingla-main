@@ -34,7 +34,7 @@
 //
 // WHY THE SPECIFIER IS RELATIVE AND NOT THE BARE `@mingla/card-identity`:
 // those guards run under plain `node --test` with NO `npm install` step (see
-// .github/workflows/issue-1593-deck-layer-geometry.yml), so a bare specifier
+// ci-batch:issue-1593-deck-layer-geometry in .github/ci-batch/MANIFEST.json), so a bare specifier
 // would need a `node_modules/@mingla/card-identity` link that CI never creates,
 // and every one of their assertions would die at module load. The relative path
 // resolves identically under Node, under Metro (which watches `packages/`) and

@@ -378,6 +378,6 @@ test('TA8 production scope contains no hidden persistence route or private-ID pu
   assert.match(mapping, /const compositionId = `curated-composition:\$\{await sha256Hex\(canonicalIds\)\}`/);
   assert.match(mapping, /id: compositionId[\s\S]*sourceKey: compositionId/);
   assert.doesNotMatch(mapping, /facts:\s*\{[^}]*stopPlaceIds|publicDetails:\s*\{[^}]*stopPlaceIds/s);
-  const workflow = read('.github/workflows/issue-1615-public-share-surfaces.yml');
-  assert.match(workflow, /curated-composition-terminal-ui\.tester\.adversarial\.test\.mjs/);
+  const batchProvider = read('.github/ci-batch/MANIFEST.json');
+  assert.match(batchProvider, /curated-composition-terminal-ui\.tester\.adversarial\.test\.mjs/);
 });

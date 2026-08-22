@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 596,
+  "expectedStrictGrepMjsFiles": 597,
   "selfTestWiredFloor": 381,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -232,7 +232,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2084-credential-output-safety.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2084-credential-output-safety.yml",
+      "enforcement": "ci-batch:issue-2084-credential-output-safety",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -6192,7 +6192,7 @@
     {
       "script": ".github/scripts/strict-grep/orch-1386-framework-major-guard.adversarial.test.mjs",
       "kind": "file",
-      "enforcement": "external:orch-1386-tester-adversarial.yml",
+      "enforcement": "ci-batch:orch-1386-tester-adversarial",
       "invocation": "node --test",
       "modes": [
         "plain"
@@ -7899,7 +7899,7 @@
     {
       "script": "app-mobile/scripts/ci/issue-1481-parse-framestats.mjs",
       "kind": "file",
-      "enforcement": "external:issue-1481-explorer-deck-tests.yml",
+      "enforcement": "ci-batch:issue-1481-explorer-deck-tests",
       "invocation": "node",
       "modes": [
         "plain"
@@ -7912,7 +7912,7 @@
     {
       "script": "app-mobile/scripts/ci/issue-1639-orch1016-fixc-guard.mjs",
       "kind": "file",
-      "enforcement": "external:issue-1639-profile-cards-tests.yml",
+      "enforcement": "ci-batch:issue-1639-profile-cards-tests",
       "invocation": "node",
       "modes": [
         "plain"
@@ -8046,7 +8046,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs",
       "kind": "file",
-      "enforcement": "external:issue-994-ota-env-resolution.yml",
+      "enforcement": "ci-batch:issue-994-ota-env-resolution-app-mobile",
       "invocation": "node",
       "modes": [
         "self-test",
@@ -8912,7 +8912,7 @@
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-2207-manifest-merge-awareness.test.js",
       "kind": "file",
-      "enforcement": "external:issue-2207-manifest-merge-awareness.yml",
+      "enforcement": "ci-batch:issue-2207-manifest-merge-awareness",
       "invocation": "node --test",
       "modes": [
         "plain"
@@ -8925,7 +8925,7 @@
     {
       "script": ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2207-manifest-merge-awareness.yml",
+      "enforcement": "ci-batch:issue-2207-manifest-merge-awareness",
       "invocation": "node --test",
       "modes": [
         "plain"

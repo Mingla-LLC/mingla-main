@@ -55,7 +55,9 @@ export function verifyLive() {
   assert.match(supervisor, /PR_SET_CHILD_SUBREAPER/);
   assert.match(supervisor, /install_subreaper\(\).*\n[\s\S]*subprocess\.Popen/);
   assert.ok(baseline.every((suite) => suite.timeoutSeconds === 480 && suite.isolation === "clean-worktree"));
-  assert.ok(shadow.every((suite) => suite.lifecycle === "shadow-active" && suite.isolation === "clean-worktree"));
+  assert.equal(new Set(shadow.map((suite) => suite.lifecycle)).size, 1, "wave lifecycle must transition atomically");
+  assert.ok(shadow.every((suite) => ["shadow-active", "batched-historical"].includes(suite.lifecycle)
+    && suite.isolation === "clean-worktree"));
   assert.equal(orderedDigest(value.suites.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "exact baseline + shadow timeout contract drifted");
 }
 
@@ -94,15 +96,15 @@ export function selfTest() {
   const substituted = manifest();
   substituted.suites[0].steps[0].run += " ";
   substituted.suites[0].steps[0].invocation.argv[1] += " ";
-  assert.notEqual(assertionDigest(substituted.suites.slice(0, 22)), PRESERVED_ASSERTION_SHA256, "assertion substitution must change the locked digest");
+  assert.notEqual(assertionDigest(substituted.suites.slice(0, 23)), PRESERVED_ASSERTION_SHA256, "assertion substitution must change the locked digest");
   expectRed("setup evidence wiring removed", () => {}, (source) => source.replace('--setup "${{ matrix.class }}"', '--setup "missing"'));
   expectRed("runner route removed", () => {}, (source) => source.replace('--run "${{ matrix.class }}"', '--run "wrong"'));
   expectRed("atomic Linux containment removed", () => {}, (source) => source.replace("runs-on: ubuntu-latest", "runs-on: macos-latest"));
   expectRed("duplicate install route", () => {}, (source) => source.replace('run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"', 'run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"\n      - name: Hidden second install\n        run: npm install'));
-  expectRegistryRed("missing shadow variant", (value) => { value.suites.splice(22, 1); });
-  expectRegistryRed("swapped shadow variant", (value) => { [value.suites[22], value.suites[23]] = [value.suites[23], value.suites[22]]; });
-  expectRegistryRed("duplicated shadow variant", (value) => { value.suites[23] = clone(value.suites[22]); });
-  expectRegistryRed("shadow capability drift", (value) => { value.commandCapabilities.commands[46].argv[1] += " # drift"; });
+  expectRegistryRed("missing shadow variant", (value) => { value.suites.splice(23, 1); });
+  expectRegistryRed("swapped shadow variant", (value) => { [value.suites[23], value.suites[24]] = [value.suites[24], value.suites[23]]; });
+  expectRegistryRed("duplicated shadow variant", (value) => { value.suites[24] = clone(value.suites[23]); });
+  expectRegistryRed("shadow capability drift", (value) => { value.commandCapabilities.commands[51].argv[1] += " # drift"; });
   expectRegistryRed("shadow setup profile drift", (value) => { value.setupProfiles["app-node22-install"].installs[0].invocation.argv.push("--unsafe"); });
   expectRegistryRed("reviewed split-text representation removed", (value) => {
     const suite = value.suites.find((item) => item.id === "issue-994-ota-env-resolution-mingla-business");
@@ -110,14 +112,14 @@ export function selfTest() {
     suite.originPaths[index] = "forged-storage";
   });
   const timeoutDrift = manifest();
-  timeoutDrift.suites[22].timeoutSeconds += 1;
+  timeoutDrift.suites[23].timeoutSeconds += 1;
   assert.notEqual(orderedDigest(timeoutDrift.suites.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "shadow timeout drift must change the gate lock");
   expectRed("shared trust drift", () => {}, (source) => source.replace("persist-credentials: false", "persist-credentials: true"));
   expectRed("unavailable pre-matrix job context", () => {}, (source) => source.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"));
   expectRed("unbounded dispatch", () => {}, (source) => source.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true"));
   expectRed("dispatch route removed", () => {}, (source) => source.replace("  dispatch:\n", "  missing-dispatch:\n"));
-  console.log("#2437 shadow runner self-test: PASS — Phase 2 baseline and additive shadow attacks went RED");
+  console.log("#2437 wave runner self-test: PASS — Phase 2 baseline and additive wave attacks went RED");
 }
 
 if (process.argv[2] === "--self-test") selfTest();
-else { verifyLive(); console.log("#2437 shadow runner: PASS — current-main 23/51 immutable; additive 32/107 locked"); }
+else { verifyLive(); console.log("#2437 wave runner: PASS — current-main 23/51 immutable; additive 32/107 locked"); }

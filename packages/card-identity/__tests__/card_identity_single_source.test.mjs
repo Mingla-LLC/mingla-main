@@ -2,7 +2,7 @@
  * I-PROPOSED-C-CARD-IDENTITY-SINGLE-SOURCE — the executing gate.
  *
  * Issue #1609, Direction C. Registered in
- * .github/workflows/issue-1609-card-identity.yml.
+ * ci-batch:issue-1609-card-identity in .github/ci-batch/MANIFEST.json.
  *
  * ---------------------------------------------------------------------------
  * WHY THIS GUARD IS SHAPED THE WAY IT IS

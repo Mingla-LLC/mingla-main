@@ -15,7 +15,8 @@ import { fileURLToPath } from "node:url";
 import YAML from "yaml";
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
-const WORKFLOW_REL = ".github/workflows/issue-2207-manifest-merge-awareness.yml";
+const WORKFLOW_REL = ".github/workflows/ci-batch.yml";
+const REGISTRY_REL = ".github/ci-batch/MANIFEST.json";
 const TESTER_REL = ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs";
 const IMPLEMENTOR_REL = ".github/scripts/strict-grep/__tests__/issue-2207-manifest-merge-awareness.test.js";
 const META_REL = ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs";
@@ -32,10 +33,10 @@ function validateWorkflow(doc) {
   const requiredEvents = ["pull_request", "push"];
 
   for (const event of requiredEvents) {
-    if (!events[event]) failures.push(`${event} trigger is missing`);
-    if (!events[event]?.branches?.includes("main")) failures.push(`${event} does not target main`);
+    if (!Object.prototype.hasOwnProperty.call(events, event)) failures.push(`${event} trigger is missing`);
+    if (events[event]?.branches && !events[event].branches.includes("main")) failures.push(`${event} does not target main`);
     for (const requiredPath of requiredPaths) {
-      if (!events[event]?.paths?.includes(requiredPath)) failures.push(`${event} does not cover ${requiredPath}`);
+      if (events[event]?.paths && !events[event].paths.includes(requiredPath)) failures.push(`${event} does not cover ${requiredPath}`);
     }
   }
 
@@ -44,15 +45,14 @@ function validateWorkflow(doc) {
   }
 
   const jobs = Object.values(doc?.jobs ?? {});
-  if (jobs.length !== 1) failures.push("workflow must retain one auditable blocking job");
-  const job = jobs[0] ?? {};
+  const job = doc?.jobs?.batch ?? {};
   const steps = job.steps ?? [];
   const checkout = steps.find((step) => String(step?.uses ?? "").startsWith("actions/checkout@"));
   if (!checkout) {
     failures.push("checkout step is missing");
   } else {
     const fetchDepth = Number(checkout.with?.["fetch-depth"] ?? 1);
-    if (!Number.isInteger(fetchDepth) || fetchDepth < 4) {
+    if (!Number.isInteger(fetchDepth) || (fetchDepth !== 0 && fetchDepth < 4)) {
       failures.push("checkout history is too shallow for two first-parent registrations");
     }
     if (checkout.with?.ref != null) {
@@ -76,6 +76,9 @@ function clone(value) {
 }
 
 const workflow = YAML.parse(fs.readFileSync(path.join(REPO_ROOT, WORKFLOW_REL), "utf8"));
+const registry = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, REGISTRY_REL), "utf8"));
+const suite = registry.suites.find((item) => item.id === "issue-2207-manifest-merge-awareness");
+workflow.jobs.batch.steps.push(...suite.steps.map((step) => ({ run: step.run })));
 
 test("real #2207 workflow protects merged checkout and post-merge main", () => {
   assert.deepEqual(validateWorkflow(workflow), []);
@@ -89,20 +92,20 @@ test("guard rejects removal of the post-merge main trigger", () => {
 
 test("guard rejects trigger filters that leave the tester proof unwatched", () => {
   const fixture = clone(workflow);
-  fixture.on.pull_request.paths = fixture.on.pull_request.paths.filter((candidate) => candidate !== TESTER_REL);
+  fixture.on.pull_request = { paths: ["unrelated/**"] };
   assert.match(validateWorkflow(fixture).join("\n"), new RegExp(`pull_request does not cover .*${TESTER_REL.split("/").at(-1)}`));
 });
 
 test("guard rejects a PR-head ref that would skip the combined merge checkout", () => {
   const fixture = clone(workflow);
-  const checkout = Object.values(fixture.jobs)[0].steps.find((step) => String(step?.uses ?? "").startsWith("actions/checkout@"));
+  const checkout = fixture.jobs.batch.steps.find((step) => String(step?.uses ?? "").startsWith("actions/checkout@"));
   checkout.with.ref = "refs/pull/123/head";
   assert.match(validateWorkflow(fixture).join("\n"), /bypass GitHub's pull-request merge checkout/);
 });
 
 test("guard rejects shallow attribution and elevated token permissions", () => {
   const fixture = clone(workflow);
-  const checkout = Object.values(fixture.jobs)[0].steps.find((step) => String(step?.uses ?? "").startsWith("actions/checkout@"));
+  const checkout = fixture.jobs.batch.steps.find((step) => String(step?.uses ?? "").startsWith("actions/checkout@"));
   checkout.with["fetch-depth"] = 1;
   fixture.permissions = { contents: "write" };
   const failures = validateWorkflow(fixture).join("\n");
@@ -112,7 +115,7 @@ test("guard rejects shallow attribution and elevated token permissions", () => {
 
 test("guard rejects silently unwiring either tester or implementor proof", () => {
   const fixture = clone(workflow);
-  const job = Object.values(fixture.jobs)[0];
+  const job = fixture.jobs.batch;
   job.steps = job.steps.filter((step) => !String(step?.run ?? "").includes(TESTER_REL));
   assert.match(validateWorkflow(fixture).join("\n"), new RegExp(TESTER_REL.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
 });

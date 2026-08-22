@@ -27,14 +27,21 @@ import {
 
 const controllerUrl = new URL('../useDeckSwipeController.ts', import.meta.url);
 const workflowUrl = new URL(
-  '../../../../../.github/workflows/issue-1579-deck-tap-expand.yml',
+  '../../../../../.github/ci-batch/MANIFEST.json',
   import.meta.url,
 );
 
-const [controllerSource, workflowSource] = await Promise.all([
+const [controllerSource, workflowRegistrySource] = await Promise.all([
   readFile(controllerUrl, 'utf8'),
   readFile(workflowUrl, 'utf8'),
 ]);
+const workflowSource = typedSuiteWorkflow(workflowRegistrySource, 'issue-1579-deck-tap-expand');
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return [`node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
+}
 
 // ---------------------------------------------------------------------------
 // Measured provenance (SPEC #1579 section 6, prototype on iPhone 17 sim

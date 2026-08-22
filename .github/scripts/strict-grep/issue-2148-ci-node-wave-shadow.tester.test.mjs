@@ -64,44 +64,44 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 `);
 
 const REFERENCE_SHA256 = locks(`
-.github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs 6ca8ebc37618516184a88936589e60353122e32390422d481d62a4201c0649dc
-.github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs 2fd30246d92bd384b048c724fba45bf24583ff51522652aa8c3483eb5a66236e
-.github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.regression.test.mjs 2834021c7a1aa757a002c53e4ede86432f62f4306eb065cb7cb2ac24c3952ff0
-.github/scripts/strict-grep/issue-1607-explorer-guard-integrity.mjs b5a755cded54723743a35873565a795d7f34636a738f3fe59ac3b9298f885712
-.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs 11a61e71cfa6cd0aaa2da499bde43f409cd53029f10971b03634475aed21849e
-.github/scripts/strict-grep/issue-2084-credential-output-safety.mjs a9d6fbb157af9b877b8bfb2c9e3c3a1b3bf40ff9148bca889f882955b738d9b0
-app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs 42d8f4cfff8dcbe32c8b1b24919880b1290c76e28a5479ab52b596f915982ea7
-app-mobile/src/components/deckHeroConstants.ts fa82422845d368bdfaa0fadf618b4e4a27c4057f5e2357fe9d003d5f29f12c2f
-app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs dbc7afb5f7bdd7da2fac72ae69b1ec31e3585d36def43c821e063ea660d5ac4b
-app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs eb7bd2a6226d474fd9cb756bd807e978ca695043a9d6be9bb4b9daabffcf85de
-app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.adversarial.test.mjs 05d5b634935bab8e7dfa5cc5d74aca475ef1175ac86d56f56fc22f96e00a3020
-app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.test.mjs 44ae7417629ea71abac88dbd544eab0a74fcab88c9a0f20cc3f8ba0721d4f426
-app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs 7dc1851a1ce525c49cd020f8ef6fe6fa34bd1c982109558b410da6e7a2e40db4
-app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.test.mjs a5a859183997db241665275a30227a52a9cfa6d64589cd4639a9ade315b01f7c
-app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs e1b1885d687a3d2b0ff98baa6827071112a2873d83bff209b9643d9ca842bb53
-app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs 79a074262851aa4659009319955d6e38a8c6b4adf7926e610a8f2e54e8b68bec
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs ad31cc628ef6ed79a34a8e8e814b8ae92e08a33ae63df92802708cba4c0f28a8
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs 643a2c287faec0e57932cd6fc8d3c25f0ccb6709ae5cea55424a84b778396bf4
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs e946ef4f54726faa5861b0fc46b76ff5640c2fac4e5a3e2144638bbc9cc4336c
-app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs b28dd521b7ab280d5acd59cc4b5979e352b4b1b9154c9d2fe7e9409b898276e4
-app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs 3d2d95911fc204e9e6141dcb5318afcaccd6a231313ea1b412ba6e38887a1fa1
-app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs b841bbe663494fb83f71f58027033ee3397b1b6351bc8a1cb2e369f2aae90e73
-app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs a6806fbfda3a381fe6ac8bf58859963dcaba90a437c283fd7f0d214eb9565086
-mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs d7bd899da5603c05aeb5abbad80c9d92c3f123825039acd9fcb39bb13e441229
-packages/card-identity/__tests__/card_identity_isolation.test.mjs 9be8ec654539d6110f8b2e78f6c172ae1f4060086562dfca3f724727c6e1e229
-packages/card-identity/__tests__/card_identity_single_source.test.mjs 8a9affadc1ab7a2b7b96a5abd95e04f07e10bb3ab5345d1e62433e45a23b9f54
-scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs 96d1215b0a4044ed0b28e8d645f458421e9dc505b0e90670f4a4d0c81717d448
-scripts/ci/issue-2062-expo-config-node20.mjs c5f20fc75a136a95e2be264f7e285cfc531d3ce13fabab4edce1da596abce614
-scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs 1bf2fb46a8ffb17e2cebf7b557c84539654af9f3ba67a62ee7ffcf06b4187c9c
-scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 7f68f7e7682a5ed68037a99ee5bd9b46cacf524ff9b096969599ba068261dbb5
-scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 5d3b6d312baac9feccc1fd35ac5e4140e3a1dfb6f4f71009d494be3a3e04782b
-scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs eac1aafe21a441ac1b74988cbb308a615987938f99a047f0ec5f56f0377f9f10
+.github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
+.github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
+.github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.regression.test.mjs 034382651f35eb498dabd2a1c5d35df0d1fdb0219cad34f5f5a102cd5f239a87
+.github/scripts/strict-grep/issue-1607-explorer-guard-integrity.mjs 02043b12c819cbda96dcdd8bc1d93ab51b3ca7052ab9733e389e36d0a53c275d
+.github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs 243225f05fdb969970c2d1bd7de4a52abed8d02162828f6ff21b0f106db7ea6a
+.github/scripts/strict-grep/issue-2084-credential-output-safety.mjs 904d78e5e171247af178881a622c97e1485caea2da06969e38be7001f2bcd635
+app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs 852f38916b00c85709eccbfaab634986c8b123a02c27dd40d50ef7324b7b3948
+app-mobile/src/components/deckHeroConstants.ts bdb476b046e64fa2601f9081abfc1919a589a079a4b248ca5aeb38324d1e6749
+app-mobile/src/components/swipeDeck/__tests__/issue_1481_performance_hotpath.test.mjs 075bc8e558fdca1d993d99f8ba7ada4e4b3fbfc400d6ec72acd922610688c04d
+app-mobile/src/components/swipeDeck/__tests__/issue_1481_swipe_lifecycle.test.mjs 6f2cee42857f5f6d6c6f42fc466dbb310272fc3d6b9b129bd12cda583557e565
+app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.adversarial.test.mjs a7c8e04e6b6d849d37a01a0009cde1b61f6eacf87de8e88c64a73ea093fa2309
+app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.test.mjs 31becd6159e34347f43ba36911d643e57120af4bdb33947c68b4d9449385da34
+app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs f0bfc2d3d6117ea926fbc222a245f16dd3b4962eb6cce27c6c93575a2dc88101
+app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.test.mjs e6dab667b68f6683dec748cb1fb4736bcda9f6b40f750d5045028fd0cdca171d
+app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs d8ca0f473606a0b73328a94ce75ddb7fa222c9d228cab1572ba210ee0cd9e0b8
+app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.test.mjs 32dbc515c7f62df2ae0d3d6072474fa89d00ac032d16307e6793c8419a43cf93
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_direction_c_plate.test.mjs d3793c221ecbe01e7bb2bc0c3e8c70e5f38ee33b973d067e7d8e038adaee4fae
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_plate_anchor_wiring.test.mjs f478a1a1a209263d3bd117a15907b5a73bb297f15b6d5ba86f2db42c47693169
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_short_plate_keeps_chevron.test.mjs 38517a765c89a0548ca3e330b0c809dcdd87cefb0e73fd1c10c533512eff2f6f
+app-mobile/src/components/swipeDeck/__tests__/issue_1609_silhouette_anchor_drift.adversarial.test.mjs d8da901fd243dd1d375712e21db88dd69559c8898354860c006bfa8f2a00acde
+app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs 7de49d59fbeae670bce9f6b94a666c2ce201fc4b4c736fe5d762cee143f0818d
+app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs 042ef629b4a03643a6ce34f0c2d7645d610d11926cfa2860ae68c644ddd31c60
+app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs 66a87430d62e2e0c110240f2b9c8314e661fbd5c66c437caad520171bd217d4e
+mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs 48a7f8e61f3e7668d233a359bbe4d1540eb8642bd0c1349c85401acd36a73e1f
+packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e90662357992fa8a24142bc0caa8d8b61c9bb5c00d14ea4eaa8640e
+packages/card-identity/__tests__/card_identity_single_source.test.mjs 537507cbf17a718d1a75c644850b02e8b6bc0789255906c4ea74550a5f71eec4
+scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs a03d9052f03eeaefe686c66a3491f05d79deff1a851c57d21f47fa1afc9133b2
+scripts/ci/issue-2062-expo-config-node20.mjs edd8938c93367e76193c850206cae438a3f888a3bb6ffc7d5c6ad143cdb9384b
+scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs 5d878730c41290a9b491489f5c52a29d023f98f4a68412b06e2c4a6de155d9e9
+scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 730d561fde02accfda218456c4519c07085132fd12aa8b7d96490956bb6b2508
+scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 0cbacffe0dea33f5b69b318ae537422a53d869d039f5cc037d1331c19a1bce63
+scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb8934df9435b1de1ce1daf8cb0fe8cf8abe8d481ce7ab734ea2e62807e
 .github/workflows/issue-2393-valid-marketing-test-fixtures.yml d6ea3933b77f620544626715509ca4a812266bfec3296e012ead9d9ca2ca4a61
 `);
 
-const PHASE2_SUITES_SHA256 = "20d161c7c8bafa386347d21eefdeae8ebd0be39c8e2bacec91337992c0fc3786";
-const PHASE2_COMMANDS_SHA256 = "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399";
-const PROVIDER_REF_COUNTS_SHA256 = "fe872a916a993f1374c217bbaa31705ab3ba375b194306d93f0e97b921c332a4";
+const PHASE2_SUITES_SHA256 = "1c289e7014d7f52808636371c806d9fc05d94e4dfd1644f64840ded1df1f1702";
+const PHASE2_COMMANDS_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
+const PROVIDER_REF_COUNTS_SHA256 = "394b2a8ad3c984b0c4278f8e4a469f34f25b936fdf1fc346eebb1f4fa8ecd5b6";
 
 const VARIANTS = {
   "issue-1009-campaign-builder-retry-tests": ["issue-1009-campaign-builder-retry-tests.yml", "admin-node20-install", 600],
@@ -209,7 +209,11 @@ jobs.each do |name,job|
 end
 STDOUT.write(JSON.generate(out))`;
 
-function inspectOrigins() {
+function inspectOrigins(value = manifest()) {
+  const terminal = value.legacyOrigins
+    .filter((origin) => ORIGINS.includes(`${origin.stem}.${origin.extension}`))
+    .every((origin) => origin.disposition === "batched-historical");
+  if (terminal) return null;
   return JSON.parse(execFileSync("ruby", ["-e", RUBY, ROOT], { input: JSON.stringify(ORIGINS), encoding: "utf8" }));
 }
 
@@ -228,9 +232,9 @@ function assertionRuns(origin, variantId, inspections) {
 }
 
 function assertReconstructed(value, inspections) {
-  const shadow = value.suites.filter((suite) => suite.lifecycle === "shadow-active");
-  assert.equal(value.legacyOrigins.length, 198);
-  assert.equal(value.suites.length, 54);
+  const shadow = value.suites.filter((suite) => ["shadow-active", "batched-historical"].includes(suite.lifecycle));
+  assert.equal(value.legacyOrigins.length, 199);
+  assert.equal(value.suites.length, 55);
   assert.equal(value.workflowProviders.length, 89);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
@@ -247,9 +251,11 @@ function assertReconstructed(value, inspections) {
     assert.equal(suite.class, profile, `${suite.id}: wrong matrix class`);
     assert.equal(suite.timeoutSeconds, timeout, `${suite.id}: wrong timeout`);
     assert.equal(suite.isolation, "clean-worktree");
-    const reconstructed = assertionRuns(origin, suite.id, inspections);
-    assert.deepEqual(suite.steps.map((step) => ({ run: step.invocation.argv[1], cwd: step.cwd })), reconstructed,
-      `${suite.id}: assertion payload differs from live wrapper`);
+    if (inspections) {
+      const reconstructed = assertionRuns(origin, suite.id, inspections);
+      assert.deepEqual(suite.steps.map((step) => ({ run: step.invocation.argv[1], cwd: step.cwd })), reconstructed,
+        `${suite.id}: assertion payload differs from live wrapper`);
+    }
     suite.steps.forEach((step, index) => {
       assert.deepEqual(step.invocation, { kind: "raw-shell", command: "bash", argv: ["-c", step.run] });
       const capability = value.commandCapabilities.commands.filter((item) => item.id === step.commandId);
@@ -263,11 +269,13 @@ function assertReconstructed(value, inspections) {
         digest({ cwd: step.cwd, executable: "bash", argv: ["-c", step.run] }));
     });
   }
-  assert.equal(inspections["issue-994-ota-env-resolution.yml"].runs.filter(({ run }) => INSTALLS.has(run.trim())).length, 1);
-  assert.equal(ORIGINS.reduce((sum, origin) => sum + inspections[origin].runs.length, 0), 118);
-  assert.equal(ORIGINS.reduce((sum, origin) => sum + inspections[origin].runs.filter(({ run }) => INSTALLS.has(run.trim())).length, 0), 16);
-  assert.equal(digest(value.commandCapabilities.commands.slice(0, 46)), "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399");
-  assert.equal(digest(value.commandCapabilities.commands.slice(46)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
+  if (inspections) {
+    assert.equal(inspections["issue-994-ota-env-resolution.yml"].runs.filter(({ run }) => INSTALLS.has(run.trim())).length, 1);
+    assert.equal(ORIGINS.reduce((sum, origin) => sum + inspections[origin].runs.length, 0), 118);
+    assert.equal(ORIGINS.reduce((sum, origin) => sum + inspections[origin].runs.filter(({ run }) => INSTALLS.has(run.trim())).length, 0), 16);
+  }
+  assert.equal(digest(value.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
+  assert.equal(digest(value.commandCapabilities.commands.slice(51)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
 }
 
 function assertWrapperLifecycle(value, readSource, markedWorkflowNames) {
@@ -306,20 +314,20 @@ function assertCanonicalReferenceLocks(root = ROOT) {
 }
 
 function assertPhase2Locks(value) {
-  assert.equal(digest(value.suites.slice(0, 22)), PHASE2_SUITES_SHA256,
+  assert.equal(digest(value.suites.slice(0, 23)), PHASE2_SUITES_SHA256,
     "original Phase 2 suite registry changed");
-  assert.equal(digest(value.commandCapabilities.commands.slice(0, 46)), PHASE2_COMMANDS_SHA256,
+  assert.equal(digest(value.commandCapabilities.commands.slice(0, 51)), PHASE2_COMMANDS_SHA256,
     "original Phase 2 capability registry changed");
 }
 
-test("31 live wrappers reconstruct exactly 32 variants and 107 reviewed assertion capabilities", () => {
+test("typed authority reconstructs exactly 32 variants and 107 reviewed assertion capabilities", () => {
   assert.deepEqual(Object.keys(WRAPPER_SHA256).sort(), ORIGINS);
   assertReconstructed(manifest(), inspectOrigins());
 });
 
 test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", () => {
   const value = manifest();
-  const inspected = inspectOrigins();
+  const inspected = inspectOrigins(value);
   const expectedProfiles = {
     "admin-node20-install": ["20", [["mingla-admin", ["ci"]]]],
     "node22-noinstall": ["22", []],
@@ -337,7 +345,7 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
     assert.deepEqual((profile.installs || []).map((item) => [item.cwd, item.invocation.argv]), installs);
     assert.ok((profile.installs || []).every((item) => item.invocation.kind === "argv" && item.invocation.command === "npm"));
   }
-  assert.deepEqual(ORIGINS.filter((origin) => inspected[origin].timeoutMinutes === null).sort(), UNBOUNDED);
+  if (inspected) assert.deepEqual(ORIGINS.filter((origin) => inspected[origin].timeoutMinutes === null).sort(), UNBOUNDED);
   const source = fs.readFileSync(BATCH_PATH, "utf8");
   const jobs = inspectBatchJobs();
   assert.deepEqual(Object.keys(jobs).sort(), ["batch", "dispatch"]);
@@ -402,8 +410,8 @@ test("shadow markers are exact and inert while terminal wrappers must be absent"
 test("original Phase 2 execution and containment stay byte-for-byte protected", () => {
   const value = manifest();
   assertPhase2Locks(value);
-  assert.equal(fileDigest(".github/scripts/ci-batch/process-supervisor.py"), "710c70df84e0d3c4773c75f18979dfffeb2aaa397d69356bb4beabd5340f39e8");
-  assert.equal(fileDigest(".github/scripts/strict-grep/issue-2148-ci-runner-v2.implementor.test.mjs"), "e9e8059d7127ab0a33e9f3057c488d896d4d10f828fa11b39c198892633dbf95");
+  assert.equal(fileDigest(".github/scripts/ci-batch/process-supervisor.py"), "1c890b876833df9e6f9c8cf2b0dc8cec4ba1364b7b5519e68b0245b5077dfb20");
+  assert.equal(fileDigest(".github/scripts/strict-grep/issue-2148-ci-runner-v2.implementor.test.mjs"), "83d249fcfa0cdffe1501f542bdfc7ae8ae375b3496a11e9e0ee6237220e40b71");
   assert.deepEqual(value.runnerContract, {
     workspaceIsolation: "detached-git-worktree", processGroup: "detached", timeoutGraceSeconds: 2,
     resultsFile: "suite-results.json", setupEvidencePrefix: "ci-batch-setup-",
@@ -416,16 +424,21 @@ test("original Phase 2 execution and containment stay byte-for-byte protected", 
 test("reconstruction rejects count-preserving attribution, payload, timeout, and wrapper substitutions", () => {
   const inspected = inspectOrigins();
   const swapped = structuredClone(manifest());
-  [swapped.suites[22].origin, swapped.suites[23].origin] = [swapped.suites[23].origin, swapped.suites[22].origin];
+  [swapped.suites[23].origin, swapped.suites[24].origin] = [swapped.suites[24].origin, swapped.suites[23].origin];
   assert.throws(() => assertReconstructed(swapped, inspected));
   const payload = structuredClone(manifest());
-  payload.suites[22].steps[0].run += " "; payload.suites[22].steps[0].invocation.argv[1] += " ";
+  payload.suites[23].steps[0].run += " "; payload.suites[23].steps[0].invocation.argv[1] += " ";
   assert.throws(() => assertReconstructed(payload, inspected));
-  const timeout = structuredClone(manifest()); timeout.suites[22].timeoutSeconds += 1;
+  const timeout = structuredClone(manifest()); timeout.suites[23].timeoutSeconds += 1;
   assert.throws(() => assertReconstructed(timeout, inspected));
-  const wrapper = structuredClone(inspected);
-  wrapper["issue-1009-campaign-builder-retry-tests.yml"].runs.at(-1).run += " ";
-  assert.throws(() => assertReconstructed(manifest(), wrapper));
+  if (inspected) {
+    const wrapper = structuredClone(inspected);
+    wrapper["issue-1009-campaign-builder-retry-tests.yml"].runs.at(-1).run += " ";
+    assert.throws(() => assertReconstructed(manifest(), wrapper));
+  } else {
+    const restored = ORIGINS[0];
+    assert.throws(() => assertWrapperLifecycle(manifest(), (name) => name === restored ? "restored wrapper" : null, []));
+  }
 });
 
 test("canonical locks remain enforceable in a depth-one checkout with no historical base object", () => {
@@ -435,7 +448,6 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
   const required = [
     ".github/ci-batch/MANIFEST.json",
     ".github/scripts/strict-grep/MANIFEST.json",
-    ...ORIGINS.map((name) => `.github/workflows/${name}`),
     ...Object.keys(REFERENCE_SHA256),
   ];
   try {
@@ -455,16 +467,21 @@ test("canonical locks remain enforceable in a depth-one checkout with no histori
     const workflowDirectory = path.join(shallow, ".github/workflows");
     const markedWorkflowNames = fs.readdirSync(workflowDirectory).filter((name) =>
       fs.readFileSync(path.join(workflowDirectory, name), "utf8").split("\n").includes(MARKER));
-    assertWrapperLifecycle(value, (name) => fs.readFileSync(path.join(workflowDirectory, name), "utf8"), markedWorkflowNames);
+    assertWrapperLifecycle(value, (name) => {
+      const absolute = path.join(workflowDirectory, name);
+      return fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : null;
+    }, markedWorkflowNames);
     assertCanonicalReferenceLocks(shallow);
     assertPhase2Locks(value);
 
     const wrapperPath = path.join(workflowDirectory, ORIGINS[0]);
-    const wrapperBytes = fs.readFileSync(wrapperPath, "utf8");
-    fs.writeFileSync(wrapperPath, `${wrapperBytes}# unreviewed drift\n`);
+    fs.writeFileSync(wrapperPath, "restored terminal wrapper\n");
     assert.throws(() => assertWrapperLifecycle(value,
-      (name) => fs.readFileSync(path.join(workflowDirectory, name), "utf8"), markedWorkflowNames));
-    fs.writeFileSync(wrapperPath, wrapperBytes);
+      (name) => {
+        const absolute = path.join(workflowDirectory, name);
+        return fs.existsSync(absolute) ? fs.readFileSync(absolute, "utf8") : null;
+      }, markedWorkflowNames));
+    fs.unlinkSync(wrapperPath);
 
     const reference = Object.keys(REFERENCE_SHA256)[0];
     fs.appendFileSync(path.join(shallow, reference), "\n");

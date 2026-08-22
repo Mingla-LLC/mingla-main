@@ -1,7 +1,7 @@
 /**
  * #1609 Direction C, wave 1 — the HAPPY-PATH regression guard.
  *
- * Registered in .github/workflows/issue-1609-card-identity.yml.
+ * Registered as ci-batch:issue-1609-card-identity in .github/ci-batch/MANIFEST.json.
  *
  * The sibling guard `packages/card-identity/__tests__/card_identity_single_source.test.mjs`
  * proves the VALUES are single-sourced and measure correctly. This file proves the

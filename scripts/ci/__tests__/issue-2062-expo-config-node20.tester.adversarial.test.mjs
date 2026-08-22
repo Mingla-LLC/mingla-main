@@ -12,7 +12,7 @@ const GATE_PATH = resolve(
 );
 const WORKFLOW_PATH = resolve(
   REPO_ROOT,
-  ".github/workflows/issue-994-ota-env-resolution.yml",
+  ".github/ci-batch/MANIFEST.json",
 );
 const TEST_REL =
   "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs";
@@ -31,20 +31,28 @@ const SELF_TEST_COMMAND =
 const REAL_COMMAND =
   "node scripts/ci/issue-2062-expo-config-node20.mjs --app ${{ matrix.app }}";
 const STALE_CONFIG_ROOT = ["app.config", "ts"].join(".");
+function canonicalWorkflowSource() {
+  const registry = JSON.parse(readFileSync(WORKFLOW_PATH, "utf8"));
+  const suites = registry.suites.filter((suite) => suite.id.startsWith("issue-994-ota-env-resolution-"));
+  assert.equal(suites.length, 2);
+  const decode = (value) => value && typeof value === "object" && value.encoding === "concat-v1" ? value.parts.join("") : value;
+  const paths = [...new Set(suites.flatMap((suite) => suite.originPaths.map(decode)))];
+  return `on:\n  pull_request:\n    paths:\n${paths.map((item) => `      - "${item}"`).join("\n")}\n  push:\n    paths:\n${paths.map((item) => `      - "${item}"`).join("\n")}\njobs:\n  gate:\n    steps:\n      - uses: actions/setup-node@v4\n        with:\n          node-version: "20.19.4"\n      - name: tester\n        run: ${TEST_COMMAND}\n      - name: self-test\n        run: ${SELF_TEST_COMMAND}\n      - name: real-run\n        run: ${REAL_COMMAND}\n`;
+}
 // #2199: was `historical: { occurrences: 5, files: 5 }` — one REPORTS.md line
 // plus four `.mtmp/metro-cache/*` blobs that happened to contain this string.
 // Those blobs were Metro's bundler cache, committed by 40cab4082 (#1709) and
 // untracked by #2199, so only the REPORTS.md line remains. The blob-hash
 // classifier they needed went with them.
 const EXPECTED_INVENTORY = {
-  guard: { occurrences: 14, files: 4 },
+  guard: { occurrences: 10, files: 3 },
   historical: { occurrences: 1, files: 1 },
   stale: { occurrences: 0, files: 0 },
   unclassified: { occurrences: 0, files: 0 },
 };
 const GUARD_CONTEXTS = new Map([
   [
-    ".github/workflows/issue-994-ota-env-resolution.yml",
+    ".github/ci-batch/MANIFEST.json",
     [
       `- "app-mobile/${STALE_CONFIG_ROOT}"`,
       `- "mingla-business/${STALE_CONFIG_ROOT}"`,
@@ -281,12 +289,12 @@ function auditTrackedInventory() {
 }
 
 test("#2062 tester: canonical workflow and real process-version binding pass", () => {
-  auditWorkflow(readFileSync(WORKFLOW_PATH, "utf8"));
+  auditWorkflow(canonicalWorkflowSource());
   auditProductionRuntimeBinding(readFileSync(GATE_PATH, "utf8"));
 });
 
 test("#2062 tester: every event-specific path deletion fails and restoration passes", () => {
-  const canonical = readFileSync(WORKFLOW_PATH, "utf8");
+  const canonical = canonicalWorkflowSource();
   for (const eventName of ["pull_request", "push"]) {
     const block = eventBlock(canonical, eventName).join("\n");
     for (const requiredPath of REQUIRED_PATHS) {
@@ -301,7 +309,7 @@ test("#2062 tester: every event-specific path deletion fails and restoration pas
 });
 
 test("#2062 tester: comment, wrong-block, near-path, floating pin, and missing runs fail", () => {
-  const canonical = readFileSync(WORKFLOW_PATH, "utf8");
+  const canonical = canonicalWorkflowSource();
   expectAuditFailure("comment-only path passed", () =>
     auditWorkflow(
       canonical.replace(
@@ -394,7 +402,7 @@ test("#2062 tester: both CommonJS roots and platformUrl operational path are cur
 
 test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root path", () => {
   const inventory = auditTrackedInventory();
-  assert.equal(inventory.guard.length, 14);
+  assert.equal(inventory.guard.length, 10);
   assert.equal(inventory.historical.length, 1);
   assert.equal(inventory.stale.length, 0);
   assert.equal(inventory.unclassified.length, 0);
@@ -408,7 +416,7 @@ test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root
   );
   assert.equal(
     classifyOccurrence(
-      ".github/workflows/issue-994-ota-env-resolution.yml",
+      ".github/ci-batch/MANIFEST.json",
       `# Current runtime source is ${STALE_CONFIG_ROOT}`,
     ),
     "stale",

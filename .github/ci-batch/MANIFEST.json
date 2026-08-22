@@ -2058,7 +2058,7 @@
           "commandId": "assert:issue-1009-campaign-builder-retry-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1009",
       "runtime": {
         "name": "node",
@@ -2124,7 +2124,7 @@
           "commandId": "assert:issue-1322-admin-sentry-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1322",
       "runtime": {
         "name": "node",
@@ -2223,7 +2223,7 @@
           "commandId": "assert:issue-1481-explorer-deck-tests:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1481",
       "runtime": {
         "name": "node",
@@ -2336,7 +2336,7 @@
           "commandId": "assert:issue-1509-boot-budget-tests:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1509",
       "runtime": {
         "name": "node",
@@ -2436,7 +2436,7 @@
           "commandId": "assert:issue-1516-coach-mark-tests:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1516",
       "runtime": {
         "name": "node",
@@ -2520,7 +2520,7 @@
           "commandId": "assert:issue-1576-deck-promoted-card:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1576",
       "runtime": {
         "name": "node",
@@ -2601,7 +2601,7 @@
           "commandId": "assert:issue-1579-deck-tap-expand:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1579",
       "runtime": {
         "name": "node",
@@ -2683,7 +2683,7 @@
           "commandId": "assert:issue-1593-deck-layer-geometry:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1593",
       "runtime": {
         "name": "node",
@@ -2810,7 +2810,7 @@
           "commandId": "assert:issue-1605-expanded-card:04"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1605",
       "runtime": {
         "name": "node",
@@ -2915,7 +2915,7 @@
           "commandId": "assert:issue-1609-card-identity:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1609",
       "runtime": {
         "name": "node",
@@ -3329,7 +3329,7 @@
           "commandId": "assert:issue-1615-public-share-surfaces:21"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1615",
       "runtime": {
         "name": "node",
@@ -3476,7 +3476,7 @@
           "commandId": "assert:issue-1636-likes-load-tests:04"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1636",
       "runtime": {
         "name": "node",
@@ -3553,7 +3553,7 @@
           "commandId": "assert:issue-1638-tab-switch-quickwins-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1638",
       "runtime": {
         "name": "node",
@@ -3680,7 +3680,7 @@
           "commandId": "assert:issue-1638-tab-switch-scheduling-tests:04"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1638",
       "runtime": {
         "name": "node",
@@ -3765,7 +3765,7 @@
           "commandId": "assert:issue-1639-profile-cards-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1639",
       "runtime": {
         "name": "node",
@@ -3883,7 +3883,7 @@
           "commandId": "assert:issue-1642-been-here-offline-bound:04"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1642",
       "runtime": {
         "name": "node",
@@ -3985,7 +3985,7 @@
           "commandId": "assert:issue-1661-completed-write-unparks-invalidation:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1661",
       "runtime": {
         "name": "node",
@@ -4161,7 +4161,7 @@
           "commandId": "assert:issue-1687-been-here-rating-prompt:07"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1687",
       "runtime": {
         "name": "node",
@@ -4231,7 +4231,7 @@
           "commandId": "assert:issue-1860-rls-coverage-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1860",
       "runtime": {
         "name": "node",
@@ -4343,7 +4343,7 @@
           "commandId": "assert:issue-1880-expanded-share-handoff:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1880",
       "runtime": {
         "name": "node",
@@ -4439,7 +4439,7 @@
           "commandId": "assert:issue-1960-share-art-isolation:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1960",
       "runtime": {
         "name": "node",
@@ -4519,7 +4519,7 @@
           "commandId": "assert:issue-1962-unlisted-share-previews:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1962",
       "runtime": {
         "name": "node",
@@ -4611,7 +4611,7 @@
           "commandId": "assert:issue-1968-public-web-canonical-sharing:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1968",
       "runtime": {
         "name": "node",
@@ -4697,7 +4697,7 @@
           "commandId": "assert:issue-2004-share-click-canonical-destination:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#2004",
       "runtime": {
         "name": "node",
@@ -4765,7 +4765,7 @@
           "commandId": "assert:issue-2058-bundle-baseline-handoff-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#2058",
       "runtime": {
         "name": "node",
@@ -4866,7 +4866,7 @@
           "commandId": "assert:issue-2084-credential-output-safety:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#2084",
       "runtime": {
         "name": "node",
@@ -4978,7 +4978,7 @@
           "commandId": "assert:issue-2207-manifest-merge-awareness:04"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#2207",
       "runtime": {
         "name": "node",
@@ -5107,7 +5107,7 @@
           "commandId": "assert:issue-2300-orch-artifact-reap:05"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#2300",
       "runtime": {
         "name": "node",
@@ -5177,7 +5177,7 @@
           "commandId": "assert:issue-2393-tester-assertion-credential:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#2393",
       "runtime": {
         "name": "node",
@@ -5319,7 +5319,7 @@
           "commandId": "assert:issue-994-ota-env-resolution-app-mobile:05"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#994",
       "runtime": {
         "name": "node",
@@ -5467,7 +5467,7 @@
           "commandId": "assert:issue-994-ota-env-resolution-mingla-business:05"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#994",
       "runtime": {
         "name": "node",
@@ -5544,7 +5544,7 @@
           "commandId": "assert:orch-1386-tester-adversarial:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "ownerIssue": "#1386",
       "runtime": {
         "name": "node",
@@ -5640,8 +5640,8 @@
       "stem": "issue-1009-campaign-builder-retry-tests",
       "extension": "yml",
       "ownerIssue": "#1009",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1009-campaign-builder-retry-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "fec16e73aadcbbac7a9e77b007066cfee936c12a853a68ce0e3cdb953b5ec057",
@@ -6730,8 +6730,8 @@
       "stem": "issue-1322-admin-sentry-tests",
       "extension": "yml",
       "ownerIssue": "#1322",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1322-admin-sentry-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "25226b13212252c0ecca74e48299197d5267647024d06a628d5f93b072dcd56e",
@@ -7632,8 +7632,8 @@
       "stem": "issue-1481-explorer-deck-tests",
       "extension": "yml",
       "ownerIssue": "#1481",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1481-explorer-deck-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "fad75c98e1d3cd9c04e89562cb5c4ad19053751f6729283a26fb7603faf8e92a",
@@ -7899,8 +7899,8 @@
       "stem": "issue-1509-boot-budget-tests",
       "extension": "yml",
       "ownerIssue": "#1509",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1509-boot-budget-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "04078647e2c880502a2b881c4a0c2960ba88adf50a3d92eef0b636eeba8763a3",
@@ -7948,8 +7948,8 @@
       "stem": "issue-1516-coach-mark-tests",
       "extension": "yml",
       "ownerIssue": "#1516",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1516-coach-mark-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "b643b8ec4b0cd0cfe2f01bc80cd0640d5335f952c4978a0fea632ff24a811619",
@@ -8199,8 +8199,8 @@
       "stem": "issue-1576-deck-promoted-card",
       "extension": "yml",
       "ownerIssue": "#1576",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1576-deck-promoted-card.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "8162a4ac5d792e7f0d9cee754eab7c5be9a6ff012427d09fd12af9efc19ec57e",
@@ -8244,8 +8244,8 @@
       "stem": "issue-1579-deck-tap-expand",
       "extension": "yml",
       "ownerIssue": "#1579",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1579-deck-tap-expand.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "d8bc6e00e94e7c117ee7be228c066b887bae7315ad524303c597d0d8278ad761",
@@ -8287,8 +8287,8 @@
       "stem": "issue-1593-deck-layer-geometry",
       "extension": "yml",
       "ownerIssue": "#1593",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1593-deck-layer-geometry.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "bbe5193ab1271addea5d0d66d8310600794305d0b2762f61b7a27d31762708f2",
@@ -8331,8 +8331,8 @@
       "stem": "issue-1605-expanded-card",
       "extension": "yml",
       "ownerIssue": "#1605",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1605-expanded-card.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "6a9540d4572ed0d73f572de8e678efeef4f3eb7c7daf82b0f32ee8cf04bbf157",
@@ -8388,8 +8388,8 @@
       "stem": "issue-1609-card-identity",
       "extension": "yml",
       "ownerIssue": "#1609",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1609-card-identity.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "624c0082dfa4c8274e1f6f5fa9c8a3cdc57a8731cef10c156c6fdd19957be7ae",
@@ -8519,8 +8519,8 @@
       "stem": "issue-1615-public-share-surfaces",
       "extension": "yml",
       "ownerIssue": "#1615",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1615-public-share-surfaces.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "9792f6b344ecea4bef41ccd12cbe02545c409ce21661490a358af57aa732abc3",
@@ -8588,8 +8588,8 @@
       "stem": "issue-1636-likes-load-tests",
       "extension": "yml",
       "ownerIssue": "#1636",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1636-likes-load-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "6f339a444c780bb228b5f2e078e07a8b3e75165902f4f17dbabe86baf796b2c9",
@@ -8693,8 +8693,8 @@
       "stem": "issue-1638-tab-switch-quickwins-tests",
       "extension": "yml",
       "ownerIssue": "#1638",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1638-tab-switch-quickwins-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "d871b21d920774ae013ef9ff0cbe26ad35502117c0e22ec4af903ae939f9c2c1",
@@ -8746,8 +8746,8 @@
       "stem": "issue-1638-tab-switch-scheduling-tests",
       "extension": "yml",
       "ownerIssue": "#1638",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1638-tab-switch-scheduling-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "1e8885b6802c3cd8fdfb7489592510f537e954331367f58a337043db579e5cd5",
@@ -8806,8 +8806,8 @@
       "stem": "issue-1639-profile-cards-tests",
       "extension": "yml",
       "ownerIssue": "#1639",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1639-profile-cards-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "acae082d8a638aa1ad79a6a16829df47b35ce8b09cc4e8bb5ef42b556a8b2337",
@@ -8857,8 +8857,8 @@
       "stem": "issue-1642-been-here-offline-bound",
       "extension": "yml",
       "ownerIssue": "#1642",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1642-been-here-offline-bound.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "91fa2c046295a48a8bc0e1c75a2895b00a01498effe1505e2f085fe1e4c19dcd",
@@ -9016,8 +9016,8 @@
       "stem": "issue-1661-completed-write-unparks-invalidation",
       "extension": "yml",
       "ownerIssue": "#1661",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1661-completed-write-unparks-invalidation.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "b308d035b3dc9e1a4064affbebbfe1b76cdae74f15ac4d6a363bbb3203ce48e9",
@@ -9114,8 +9114,8 @@
       "stem": "issue-1687-been-here-rating-prompt",
       "extension": "yml",
       "ownerIssue": "#1687",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1687-been-here-rating-prompt.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "ba36ead2c5866e2869ff81357ca5eb20bf277b6a694fc2bcfbe16692ba875a2a",
@@ -9907,8 +9907,8 @@
       "stem": "issue-1860-rls-coverage-tests",
       "extension": "yml",
       "ownerIssue": "#1860",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1860-rls-coverage-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "baba4c985626037a5f9326b1c025f03686ee244acfb1df6e73baca219fe6d82f",
@@ -9997,8 +9997,8 @@
       "stem": "issue-1880-expanded-share-handoff",
       "extension": "yml",
       "ownerIssue": "#1880",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1880-expanded-share-handoff.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "c55d0fe5bc2940df9d19c1c984489a65b19b118661e5f76c07745856f9a50320",
@@ -10454,8 +10454,8 @@
       "stem": "issue-1960-share-art-isolation",
       "extension": "yml",
       "ownerIssue": "#1960",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1960-share-art-isolation.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "8669b8a10a82882da34f3468458f48e48912a690a8c7bec47031c4de83f646bf",
@@ -10507,8 +10507,8 @@
       "stem": "issue-1962-unlisted-share-previews",
       "extension": "yml",
       "ownerIssue": "#1962",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1962-unlisted-share-previews.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "b89de02eb91c88b22f8d2c448db53af7d1b45ffa3c837bf27226d5eef52419e1",
@@ -10552,8 +10552,8 @@
       "stem": "issue-1968-public-web-canonical-sharing",
       "extension": "yml",
       "ownerIssue": "#1968",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1968-public-web-canonical-sharing.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "cd7003d3e3634481edb23636e7e678715befa408b4a6102a92c819003d1f9aab",
@@ -10973,8 +10973,8 @@
       "stem": "issue-2004-share-click-canonical-destination",
       "extension": "yml",
       "ownerIssue": "#2004",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2004-share-click-canonical-destination.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "ad0c7527badcf0f6a1efe35512885b9058121237ecd8b5ca4ec72f3c6db1de73",
@@ -11242,8 +11242,8 @@
       "stem": "issue-2058-bundle-baseline-handoff-tests",
       "extension": "yml",
       "ownerIssue": "#2058",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2058-bundle-baseline-handoff-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "4e78ee4917fd1a1a4f096e793daa45deb5bf7ffca12a6c0022e2e7b222b4719c",
@@ -11550,8 +11550,8 @@
       "stem": "issue-2084-credential-output-safety",
       "extension": "yml",
       "ownerIssue": "#2084",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2084-credential-output-safety.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "006ea65057e237707ba579789455891aa41800faa62df6ad371fdeac97deb645",
@@ -12272,8 +12272,8 @@
       "stem": "issue-2207-manifest-merge-awareness",
       "extension": "yml",
       "ownerIssue": "#2207",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2207-manifest-merge-awareness.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "3aa4b3d362e195b38f681dabeac6b7ded6a95195779b9be7c6229f61f59fd904",
@@ -12888,8 +12888,8 @@
       "stem": "issue-2300-orch-artifact-reap",
       "extension": "yml",
       "ownerIssue": "#2300",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2300-orch-artifact-reap.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "41132bcd443bee17123fda8134fd0b55d1e7ed852bbd7d7033a91ac7077b9bf8",
@@ -13459,8 +13459,8 @@
       "stem": "issue-2393-tester-assertion-credential",
       "extension": "yml",
       "ownerIssue": "#2393",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2393-tester-assertion-credential.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "108dbe6ef3adcc78aa30d04487caa376a02836d2bec802c7734938fa06585401",
@@ -14377,8 +14377,8 @@
       "stem": "issue-994-ota-env-resolution",
       "extension": "yml",
       "ownerIssue": "#994",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-994-ota-env-resolution.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "976c1d47de4c1e712719f0f8b3928484bb75e04df460f5a778d3252ab055e6a1",
@@ -14760,8 +14760,8 @@
       "stem": "orch-1386-tester-adversarial",
       "extension": "yml",
       "ownerIssue": "#1386",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/orch-1386-tester-adversarial.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Approved #2437 shadow provider is additive; the historical workflow remains the sole live check until same-SHA parity is proven.",
       "workflowMetadata": {
         "sourceSha256": "f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90f5721553dfab69f9f",
@@ -14865,12 +14865,15 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
+        ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs",
         ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
         ".github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs",
         ".github/scripts/ci-batch/validate-manifest-v2.mjs",
         ".github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs",
+        ".github/scripts/strict-grep/issue-2148-ci-registry-v2.implementor.test.mjs",
         ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs",
-        ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs"
+        ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs",
+        "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
@@ -15002,8 +15005,8 @@
     {
       "workflow": "issue-1481-explorer-deck-tests.yml",
       "ownerIssue": "#1481",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1481-explorer-deck-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs",
@@ -15040,8 +15043,8 @@
     {
       "workflow": "issue-1516-coach-mark-tests.yml",
       "ownerIssue": "#1516",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1516-coach-mark-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs"
       ],
@@ -15061,8 +15064,8 @@
     {
       "workflow": "issue-1576-deck-promoted-card.yml",
       "ownerIssue": "#1576",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1576-deck-promoted-card.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.adversarial.test.mjs",
         "app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.test.mjs"
@@ -15072,8 +15075,8 @@
     {
       "workflow": "issue-1579-deck-tap-expand.yml",
       "ownerIssue": "#1579",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1579-deck-tap-expand.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.adversarial.test.mjs",
         "app-mobile/src/components/swipeDeck/__tests__/issue_1579_tap_expand_admission.test.mjs"
@@ -15083,8 +15086,8 @@
     {
       "workflow": "issue-1593-deck-layer-geometry.yml",
       "ownerIssue": "#1593",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1593-deck-layer-geometry.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/components/deckHeroConstants.ts",
         "app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs",
@@ -15095,8 +15098,8 @@
     {
       "workflow": "issue-1609-card-identity.yml",
       "ownerIssue": "#1609",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1609-card-identity.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs",
         ".github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.regression.test.mjs",
@@ -15122,8 +15125,8 @@
     {
       "workflow": "issue-1615-public-share-surfaces.yml",
       "ownerIssue": "#1615",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1615-public-share-surfaces.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs",
         "scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs"
@@ -15133,8 +15136,8 @@
     {
       "workflow": "issue-1638-tab-switch-quickwins-tests.yml",
       "ownerIssue": "#1638",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1638-tab-switch-quickwins-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/components/__tests__/issue-1638-tab-switch-quickwins.test.mjs"
       ],
@@ -15143,8 +15146,8 @@
     {
       "workflow": "issue-1639-profile-cards-tests.yml",
       "ownerIssue": "#1639",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1639-profile-cards-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json"
       ],
@@ -15153,8 +15156,8 @@
     {
       "workflow": "issue-1642-been-here-offline-bound.yml",
       "ownerIssue": "#1642",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1642-been-here-offline-bound.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/hooks/__tests__/issue_1642_been_here_offline_write_bound.test.mjs"
       ],
@@ -15163,8 +15166,8 @@
     {
       "workflow": "issue-1661-completed-write-unparks-invalidation.yml",
       "ownerIssue": "#1661",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1661-completed-write-unparks-invalidation.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "app-mobile/src/hooks/__tests__/issue_1661_completed_write_unparks_invalidation.test.mjs",
         "app-mobile/src/hooks/__tests__/issue_1661_parked_invalidation_fanout.adversarial.test.mjs"
@@ -15245,8 +15248,8 @@
     {
       "workflow": "issue-1860-rls-coverage-tests.yml",
       "ownerIssue": "#1860",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1860-rls-coverage-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs",
         "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs"
@@ -15267,8 +15270,8 @@
     {
       "workflow": "issue-1880-expanded-share-handoff.yml",
       "ownerIssue": "#1880",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1880-expanded-share-handoff.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs"
       ],
@@ -15412,8 +15415,8 @@
     {
       "workflow": "issue-2058-bundle-baseline-handoff-tests.yml",
       "ownerIssue": "#2058",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2058-bundle-baseline-handoff-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-business/scripts/ci/__tests__/issue2058_bundle_baseline_handoff.happy.test.mjs"
       ],
@@ -15463,8 +15466,8 @@
     {
       "workflow": "issue-2084-credential-output-safety.yml",
       "ownerIssue": "#2084",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2084-credential-output-safety.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-2084-credential-output-safety.mjs"
@@ -15517,8 +15520,8 @@
     {
       "workflow": "issue-2207-manifest-merge-awareness.yml",
       "ownerIssue": "#2207",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2207-manifest-merge-awareness.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs",
         ".github/scripts/strict-grep/MANIFEST.json"
@@ -15668,8 +15671,8 @@
     {
       "workflow": "issue-994-ota-env-resolution.yml",
       "ownerIssue": "#994",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-994-ota-env-resolution.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
         ".github/scripts/ci-batch/validate-manifest-v2.mjs",
@@ -15711,8 +15714,8 @@
     {
       "workflow": "orch-1386-tester-adversarial.yml",
       "ownerIssue": "#1386",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/orch-1386-tester-adversarial.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json"
       ],

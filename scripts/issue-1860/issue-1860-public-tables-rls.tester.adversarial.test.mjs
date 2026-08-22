@@ -369,7 +369,7 @@ import { stripYamlComments } from "../../.github/scripts/strict-grep/issue-1860-
 
 /** This file, as the gate and the workflow name it. */
 const SUITE_REL = "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs";
-const ADVERSARIAL_WORKFLOW_PATH = join(ROOT, ".github", "workflows", "issue-1860-rls-coverage-tests.yml");
+const ADVERSARIAL_WORKFLOW_PATH = join(ROOT, ".github", "ci-batch", "MANIFEST.json");
 
 test("#1860 adversarial E1 [R2]: prose inside a DO body cannot fake an enable or hide a table, in EITHER quoting form", () => {
   // The F-1 defect. Literals inside DO bodies were handed to the DDL regexes

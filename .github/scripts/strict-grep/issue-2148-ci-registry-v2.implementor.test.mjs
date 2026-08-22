@@ -4,7 +4,9 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
+import path from "node:path";
 import {
   DEFAULT_MANIFEST,
   DEFAULT_ROOT,
@@ -12,8 +14,47 @@ import {
   discoverLiveOrigins,
   discoverWorkflowProviders,
   inspectWorkflows,
+  SHADOW_PARITY_MARKER,
+  SHADOW_PARITY_WRAPPER_NAMES,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
+
+const WAVE_IDS_SHA256 = "54b55bc2c9986869c057f7e1de53712601f98338c630ab439fe515318ad230c0";
+const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+
+function assertWaveStage(manifest, exists = (name) => fs.existsSync(path.join(DEFAULT_ROOT, ".github/workflows", name))) {
+  const wave = manifest.suites.slice(23);
+  assert.equal(wave.length, 32);
+  assert.equal(new Set(wave.map((suite) => suite.id)).size, 32);
+  assert.equal(digest(wave.map((suite) => suite.id)), WAVE_IDS_SHA256, "exact wave identities drifted");
+  const lifecycles = new Set(wave.map((suite) => suite.lifecycle));
+  assert.equal(lifecycles.size, 1, "mixed wave lifecycle is forbidden");
+  const lifecycle = [...lifecycles][0];
+  assert.ok(["shadow-active", "batched-historical"].includes(lifecycle));
+  const waveIds = new Set(wave.map((suite) => suite.id));
+  const origins = manifest.legacyOrigins.filter((origin) =>
+    (origin.replacementSuites || []).some((id) => waveIds.has(id)));
+  assert.equal(origins.length, 31);
+  for (const origin of origins) {
+    const name = `${origin.stem}.${origin.extension}`;
+    if (lifecycle === "shadow-active") {
+      assert.equal(origin.disposition, "shadow-active");
+      assert.equal(exists(name), true, `${name}: shadow wrapper missing`);
+      assert.equal(fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows", name), "utf8").split("\n").filter((line) => line === SHADOW_PARITY_MARKER).length, 1);
+    } else {
+      assert.equal(origin.disposition, "batched-historical");
+      assert.equal(origin.providerWorkflow, ".github/workflows/ci-batch.yml");
+      assert.equal(exists(name), false, `${name}: terminal wrapper restored`);
+    }
+  }
+  if (lifecycle === "batched-historical") {
+    const waveNames = new Set(SHADOW_PARITY_WRAPPER_NAMES);
+    const providers = manifest.workflowProviders.filter((provider) => waveNames.has(provider.workflow));
+    assert.equal(providers.length, 18);
+    assert.ok(providers.every((provider) => provider.transition === "batched-provider"
+      && provider.providerWorkflow === ".github/workflows/ci-batch.yml"));
+  }
+}
 
 test("#2435 registry v2 proves the complete current topology", () => {
   const rawManifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
@@ -49,16 +90,14 @@ test("#2435 registry v2 proves the complete current topology", () => {
     ["issue-2322-ios-picker-theming-tests", "#2322", "batched-active"],
     ["issue-2399-multiday-picker-ticket-box", "#2399", "batched-active"],
   ]);
-  assert.equal(shadow.length, 32);
-  assert.equal(new Set(shadow.map((suite) => suite.id)).size, 32);
-  assert.ok(shadow.every((suite) => suite.lifecycle === "shadow-active"));
-  const approvedShadowIds = manifest.legacyOrigins.filter((origin) => origin.disposition === "shadow-active").flatMap((origin) => origin.replacementSuites).sort();
+  assertWaveStage(manifest);
+  const approvedShadowIds = manifest.legacyOrigins.filter((origin) => ["shadow-active", "batched-historical"].includes(origin.disposition)).flatMap((origin) => origin.replacementSuites).sort();
   assert.deepEqual(shadow.map((suite) => suite.id).sort(), approvedShadowIds);
   assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
   assert.equal(manifest.legacyOrigins.length, 199);
   assert.equal(manifest.workflowProviders.length, 89);
-  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 176);
-  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 89);
+  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 145);
+  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 71);
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 199);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 89);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
@@ -70,11 +109,22 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const yamlTruth = inspectWorkflows(DEFAULT_ROOT, live);
   const registered = new Map(
     manifest.legacyOrigins
-      .filter((item) => item.disposition !== "batched-active")
+      .filter((item) => !["batched-active", "batched-historical"].includes(item.disposition))
       .map((item) => [`${item.stem}.${item.extension}`, item.workflowMetadata]),
   );
   const metadata = (stem) => registered.get(`${stem}.${"yml"}`);
-  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 176);
+  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 145);
+
+  const mixed = structuredClone(manifest);
+  mixed.suites[23].lifecycle = "shadow-active";
+  assert.throws(() => assertWaveStage(mixed), /mixed wave lifecycle/);
+  const missing = structuredClone(manifest);
+  missing.suites.splice(23, 1);
+  assert.throws(() => assertWaveStage(missing));
+  const substituted = structuredClone(manifest);
+  substituted.suites[23].id = "forged-wave-suite";
+  assert.throws(() => assertWaveStage(substituted), /exact wave identities drifted/);
+  assert.throws(() => assertWaveStage(manifest, (name) => name === SHADOW_PARITY_WRAPPER_NAMES[0]), /terminal wrapper restored/);
 
   // Real repository shapes that defeated the original line parser.
   assert.equal(metadata("issue-1773-reservation-stay-ingest-tests").pathScope.length, 10, "YAML path aliases must resolve");

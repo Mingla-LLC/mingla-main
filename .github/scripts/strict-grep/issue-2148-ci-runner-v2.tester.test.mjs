@@ -204,6 +204,13 @@ test("workflow matrix retains the exact trust boundary and additive 55-suite reg
   assert.match(workflow, /fail-fast:\s*false/);
   const baseline = manifest.suites.slice(0, 23);
   const shadow = manifest.suites.slice(23);
+  const waveOriginPaths = [...new Set(shadow.map((item) => item.origin))];
+  const presentOriginPaths = waveOriginPaths.filter((originPath) => fs.existsSync(path.join(DEFAULT_ROOT, originPath)));
+  assert.equal(waveOriginPaths.length, 31);
+  assert.ok(presentOriginPaths.length === 0 || presentOriginPaths.length === waveOriginPaths.length);
+  const expectedWaveLifecycle = presentOriginPaths.length === waveOriginPaths.length
+    ? "shadow-active"
+    : "batched-historical";
   const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
   const assertionRows = (suites) => suites.map((item) => ({
     id: item.id,
@@ -223,7 +230,7 @@ test("workflow matrix retains the exact trust boundary and additive 55-suite reg
     assert.equal(item.isolation, "clean-worktree");
   }
   for (const item of shadow) {
-    assert.equal(item.lifecycle, "shadow-active");
+    assert.equal(item.lifecycle, expectedWaveLifecycle);
     assert.equal(item.isolation, "clean-worktree");
   }
 });
