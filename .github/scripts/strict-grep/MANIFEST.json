@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 585,
+  "expectedStrictGrepMjsFiles": 586,
   "selfTestWiredFloor": 377,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -8853,6 +8853,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.tester.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
