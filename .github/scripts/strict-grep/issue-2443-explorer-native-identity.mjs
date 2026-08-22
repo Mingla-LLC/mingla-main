@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -20,36 +19,13 @@ const FILES = {
   manifest: ".github/scripts/strict-grep/MANIFEST.json",
 };
 
-const ISSUE_SCOPE = [
-  FILES.identity,
-  FILES.implementorTest,
+const GUARDED_REPOSITORY_PATHS = [
+  ...Object.values(FILES),
   "app-mobile/src/services/__tests__/issue_2443_explorer_native_identity.tester_adversarial.test.ts",
   ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
-  FILES.manifest,
-  FILES.workflow,
 ];
 
-function changedFiles() {
-  try {
-    const base = execFileSync("git", ["merge-base", "origin/main", "HEAD"], {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    }).trim();
-    return execFileSync("git", ["diff", "--name-only", `${base}...HEAD`], {
-      cwd: ROOT,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "ignore"],
-    })
-      .trim()
-      .split("\n")
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-function loadSources() {
+export function loadSources() {
   return {
     ...Object.fromEntries(
       Object.entries(FILES).map(([key, relative]) => [key, read(relative)]),
@@ -66,11 +42,11 @@ function loadSources() {
         ".github/workflows/issue-2443-explorer-native-identity.yml",
       ),
     ),
-    changedFiles: changedFiles(),
+    guardedRepositoryPaths: [...GUARDED_REPOSITORY_PATHS],
   };
 }
 
-function validate(sources) {
+export function validate(sources) {
   const failures = [];
   const requireText = (key, needle, label) => {
     if (!sources[key].includes(needle)) failures.push(label);
@@ -208,33 +184,71 @@ function validate(sources) {
   ) {
     failures.push("#2443 guard must run self-test then plain in Class A");
   }
-  if (manifest?.expectedStrictGrepMjsFiles !== 587) {
-    failures.push("strict-grep file ratchet must advance 586 to 587");
-  }
-  if (manifest?.selfTestWiredFloor !== 378) {
-    failures.push("self-test wired floor must advance 377 to 378");
-  }
-
-  if (ISSUE_SCOPE.some((file) => file.startsWith("mingla-business/"))) {
-    failures.push("the declared #2443 scope must exclude every Host file");
-  }
-  const outOfScope = sources.changedFiles.filter(
-    (file) => !ISSUE_SCOPE.includes(file),
-  );
-  if (outOfScope.length > 0) {
-    failures.push(`changed-file scope widened: ${outOfScope.join(",")}`);
+  if (
+    !Array.isArray(sources.guardedRepositoryPaths) ||
+    sources.guardedRepositoryPaths.some((file) => file.startsWith("mingla-business/"))
+  ) {
+    failures.push("the #2443 guard ownership must exclude every Host file");
   }
   return failures;
 }
 
-const sources = loadSources();
-
-if (process.argv.includes("--self-test")) {
+function main() {
+  const sources = loadSources();
+  if (!process.argv.includes("--self-test")) {
+    const failures = validate(sources);
+    if (failures.length > 0) {
+      for (const failure of failures) console.error(`#2443: ${failure}`);
+      process.exit(1);
+    }
+    console.log("#2443 Explorer native-identity structural contract: PASS");
+    return;
+  }
   const baseline = validate(sources);
   if (baseline.length > 0) {
     throw new Error(`baseline invalid: ${baseline.join("; ")}`);
   }
+  const downstreamManifest = JSON.parse(sources.manifest);
+  downstreamManifest.expectedStrictGrepMjsFiles += 1;
+  downstreamManifest.selfTestWiredFloor += 1;
+  downstreamManifest.gates.push({
+    script: ".github/scripts/strict-grep/issue-9999-unrelated-downstream-fixture.mjs",
+    kind: "file",
+    enforcement: "batch:A",
+    invocation: "node",
+    modes: ["self-test", "plain"],
+    selfTest: "wired",
+    jobKeys: [],
+  });
+  const downstreamFailures = validate({
+    ...sources,
+    manifest: JSON.stringify(downstreamManifest),
+  });
+  if (downstreamFailures.length > 0) {
+    throw new Error(`downstream-safe fixture failed: ${downstreamFailures.join("; ")}`);
+  }
   const mutations = [
+    [
+      "strict Explorer version",
+      {
+        ...sources,
+        appJson: (() => {
+          const appJson = JSON.parse(sources.appJson);
+          appJson.expo.version = "v1.1.6";
+          return JSON.stringify(appJson);
+        })(),
+      },
+    ],
+    [
+      "primary native identity",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "isStrictSemver(Constants.nativeAppVersion)",
+          "false",
+        ),
+      },
+    ],
     [
       "release fallback removal",
       {
@@ -296,6 +310,16 @@ if (process.argv.includes("--self-test")) {
       },
     ],
     [
+      "unavailable identity reporting",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          'reportIdentityOutcome(platform, "unavailable")',
+          "void platform",
+        ),
+      },
+    ],
+    [
       "exact Class D invocation",
       {
         ...sources,
@@ -303,6 +327,23 @@ if (process.argv.includes("--self-test")) {
           "issue_2443_explorer_native_identity.implementor.test.ts",
           "issue_2443_explorer_native_identity*.test.ts",
         ),
+      },
+    ],
+    [
+      "exact tester Class D invocation",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          "issue_2443_explorer_native_identity.tester_adversarial.test.ts",
+          "issue_2443_explorer_native_identity*.test.ts",
+        ),
+      },
+    ],
+    [
+      "no issue-specific workflow",
+      {
+        ...sources,
+        issueWorkflowExists: true,
       },
     ],
     [
@@ -322,10 +363,45 @@ if (process.argv.includes("--self-test")) {
       },
     ],
     [
-      "Host scope exclusion",
+      "Class A enforcement identity",
       {
         ...sources,
-        changedFiles: [...sources.changedFiles, "mingla-business/src/services/appVersionIdentity.ts"],
+        manifest: (() => {
+          const manifest = JSON.parse(sources.manifest);
+          const entry = manifest.gates.find(
+            (candidate) =>
+              candidate.script ===
+              ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
+          );
+          entry.enforcement = "batch:B";
+          return JSON.stringify(manifest);
+        })(),
+      },
+    ],
+    [
+      "Class A self-test identity",
+      {
+        ...sources,
+        manifest: (() => {
+          const manifest = JSON.parse(sources.manifest);
+          const entry = manifest.gates.find(
+            (candidate) =>
+              candidate.script ===
+              ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
+          );
+          entry.selfTest = "none";
+          return JSON.stringify(manifest);
+        })(),
+      },
+    ],
+    [
+      "Host ownership exclusion",
+      {
+        ...sources,
+        guardedRepositoryPaths: [
+          ...sources.guardedRepositoryPaths,
+          "mingla-business/src/services/appVersionIdentity.ts",
+        ],
       },
     ],
   ];
@@ -334,13 +410,7 @@ if (process.argv.includes("--self-test")) {
       throw new Error(`self-test failed: ${label} mutation passed`);
     }
   }
-  console.log("#2443 Explorer native-identity strict gate self-test: 9/9 PASS");
-  process.exit(0);
+  console.log("#2443 Explorer native-identity strict gate self-test: 16/16 + downstream fixture PASS");
 }
 
-const failures = validate(sources);
-if (failures.length > 0) {
-  for (const failure of failures) console.error(`#2443: ${failure}`);
-  process.exit(1);
-}
-console.log("#2443 Explorer native-identity structural contract: PASS");
+if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();
