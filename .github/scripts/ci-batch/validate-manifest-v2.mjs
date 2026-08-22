@@ -6,7 +6,6 @@
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
-import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -49,76 +48,183 @@ export function discoverLiveOrigins(root = DEFAULT_ROOT) {
     .sort();
 }
 
-function indentedBlock(lines, key, indent = 0) {
-  const start = lines.findIndex((line) => line.match(new RegExp(`^ {${indent}}${key}:\\s*(?:#.*)?$`)));
-  if (start < 0) return [];
-  const out = [];
-  for (let index = start + 1; index < lines.length; index += 1) {
-    const line = lines[index];
-    if (line.trim() && (line.match(/^ */)?.[0].length || 0) <= indent) break;
-    out.push(line);
+const RUBY_WORKFLOW_INSPECTOR = String.raw`
+require "yaml"
+require "json"
+require "digest"
+
+root = ARGV.fetch(0)
+names = JSON.parse(STDIN.read)
+result = {}
+
+names.each do |name|
+  source = File.binread(File.join(root, ".github/workflows", name))
+  document = YAML.safe_load(source, aliases: true) || {}
+  on_value = document["on"] || document[true] || {}
+  events = case on_value
+           when Hash then on_value.keys.map(&:to_s)
+           when Array then on_value.map(&:to_s)
+           when String then [on_value]
+           else []
+           end
+  path_scope = []
+  if on_value.is_a?(Hash)
+    on_value.each_value do |config|
+      next unless config.is_a?(Hash)
+      path_scope.concat(Array(config["paths"]).map(&:to_s))
+      path_scope.concat(Array(config["paths-ignore"]).map(&:to_s))
+    end
+  end
+
+  jobs = document["jobs"].is_a?(Hash) ? document["jobs"] : {}
+  steps = jobs.values.flat_map { |job| job.is_a?(Hash) ? Array(job["steps"]) : [] }
+  steps.select! { |step| step.is_a?(Hash) }
+  actions = steps.map { |step| step["uses"]&.to_s }.compact.uniq.sort
+  runners = jobs.values.map { |job| job.is_a?(Hash) ? job["runs-on"] : nil }.compact
+                .flat_map { |runner| Array(runner).map(&:to_s) }.uniq.sort
+  runtimes = steps.map do |step|
+    action = step["uses"]&.to_s
+    with = step["with"].is_a?(Hash) ? step["with"] : {}
+    case action
+    when %r{^actions/setup-node@}
+      "node:#{with.fetch("node-version", "unspecified")}"
+    when %r{^actions/setup-python@}
+      "python:#{with.fetch("python-version", "unspecified")}"
+    when %r{^denoland/setup-deno@}
+      "deno:#{with.fetch("deno-version", "unspecified")}"
+    end
+  end.compact.uniq.sort
+  permissions = document["permissions"]
+  permission_rows = case permissions
+                    when Hash then permissions.map { |key, value| "#{key}: #{value}" }.sort
+                    when nil then []
+                    else [permissions.to_s]
+                    end
+  environments = jobs.values.map do |job|
+    next unless job.is_a?(Hash)
+    value = job["environment"]
+    value.is_a?(Hash) ? value["name"]&.to_s : value&.to_s
+  end.compact.uniq.sort
+
+  result[name] = {
+    "sourceSha256" => Digest::SHA256.hexdigest(source),
+    "triggers" => events.uniq.sort,
+    "pathScope" => path_scope.uniq.sort,
+    "jobKeys" => jobs.keys.map(&:to_s).uniq.sort,
+    "runners" => runners,
+    "runtimeVersions" => runtimes,
+    "setupActions" => actions,
+    "trustBoundary" => {
+      "permissions" => permission_rows,
+      "environments" => environments,
+      "usesRepositorySecrets" => source.include?("secrets."),
+      "usesOidc" => source.match?(/id-token:\s*write/),
+      "pullRequestTarget" => events.include?("pull_request_target")
+    }
   }
-  return out;
+end
+
+STDOUT.write(JSON.generate(result))
+`;
+
+const workflowInspectionCache = new Map();
+
+export function inspectWorkflows(root = DEFAULT_ROOT, workflowNames = discoverLiveOrigins(root)) {
+  const names = [...new Set(workflowNames)].sort();
+  const key = `${path.resolve(root)}\0${names.join("\0")}`;
+  if (!workflowInspectionCache.has(key)) {
+    const output = execFileSync("ruby", ["-e", RUBY_WORKFLOW_INSPECTOR, path.resolve(root)], {
+      input: JSON.stringify(names),
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    });
+    workflowInspectionCache.set(key, JSON.parse(output));
+  }
+  return workflowInspectionCache.get(key);
 }
 
 export function inspectWorkflow(root, workflowName) {
-  const source = fs.readFileSync(path.join(root, ".github/workflows", workflowName), "utf8");
-  const lines = source.split(/\r?\n/);
-  const onLine = lines.find((line) => /^on:\s*/.test(line)) || "";
-  const onBlock = indentedBlock(lines, "on");
-  const inlineEvents = onLine.match(/^on:\s*\[([^\]]+)\]/)?.[1]
-    ?.split(",").map((item) => item.trim()).filter(Boolean) || [];
-  const events = new Set(inlineEvents);
-  for (const line of onBlock) {
-    const match = line.match(/^ {2}([A-Za-z_]+):/);
-    if (match) events.add(match[1]);
+  return inspectWorkflows(root, discoverLiveOrigins(root))[workflowName];
+}
+
+const RUBY_BATCH_INSPECTOR = String.raw`
+require "yaml"
+require "json"
+document = YAML.safe_load(STDIN.read, aliases: true) || {}
+jobs = document["jobs"].is_a?(Hash) ? document["jobs"] : {}
+batch = jobs["batch"].is_a?(Hash) ? jobs["batch"] : {}
+steps = Array(batch["steps"]).select { |step| step.is_a?(Hash) }
+setup_node = steps.find { |step| step["uses"].to_s.start_with?("actions/setup-node@") } || {}
+install = steps.find { |step| step["name"].to_s.start_with?("Install ") } || {}
+strategy = batch["strategy"].is_a?(Hash) ? batch["strategy"] : {}
+matrix = strategy["matrix"].is_a?(Hash) ? strategy["matrix"] : {}
+output = {
+  "matrix" => Array(matrix["include"]).map do |entry|
+    next {} unless entry.is_a?(Hash)
+    { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s, "install" => entry["install"]&.to_s }
+  end,
+  "setupNode" => {
+    "action" => setup_node["uses"]&.to_s,
+    "nodeVersion" => setup_node.dig("with", "node-version")&.to_s
+  },
+  "installStep" => {
+    "if" => install["if"]&.to_s,
+    "cwd" => install["working-directory"]&.to_s,
+    "run" => install["run"]&.to_s
   }
-  const pathScope = [];
-  let pathIndent = -1;
-  for (const line of onBlock) {
-    const indent = line.match(/^ */)?.[0].length || 0;
-    if (/^\s+paths(?:-ignore)?:\s*$/.test(line)) { pathIndent = indent; continue; }
-    if (pathIndent >= 0 && line.trim() && indent <= pathIndent) pathIndent = -1;
-    const item = pathIndent >= 0 ? line.match(/^\s+-\s+["']?([^"'#]+?)["']?\s*(?:#.*)?$/) : null;
-    if (item) pathScope.push(item[1].trim());
-  }
-  const actions = [...new Set(lines.map((line) => line.match(/^\s*-\s+uses:\s*([^\s#]+)/)?.[1]).filter(Boolean))].sort();
-  const runners = [...new Set(lines.map((line) => line.match(/^\s*runs-on:\s*["']?([^"'#]+?)["']?\s*(?:#.*)?$/)?.[1]?.trim()).filter(Boolean))].sort();
-  const runtimeVersions = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const action = lines[index].match(/^\s*-\s+uses:\s*actions\/setup-(node|python)@([^\s#]+)/);
-    const deno = lines[index].match(/^\s*-\s+uses:\s*denoland\/setup-deno@([^\s#]+)/);
-    if (!action && !deno) continue;
-    const window = lines.slice(index + 1, index + 8).join("\n");
-    if (action) {
-      const version = window.match(new RegExp(`${action[1]}-version:\\s*["']?([^"'\\s#]+)`))?.[1] || "unspecified";
-      runtimeVersions.push(`${action[1]}:${version}`);
-    } else {
-      const version = window.match(/deno-version:\s*["']?([^"'\s#]+)/)?.[1] || "unspecified";
-      runtimeVersions.push(`deno:${version}`);
+}
+STDOUT.write(JSON.generate(output))
+`;
+
+export function inspectBatchWorkflow(source) {
+  return JSON.parse(execFileSync("ruby", ["-e", RUBY_BATCH_INSPECTOR], {
+    input: source,
+    encoding: "utf8",
+    maxBuffer: 16 * 1024 * 1024,
+  }));
+}
+
+function sameStrings(actual, expected) {
+  return strings(actual) && JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+}
+
+export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
+  const found = new Set();
+  for (const step of suite.steps || []) {
+    const cwd = step.cwd || suite.cwd || ".";
+    const command = step.invocation?.argv?.[1] ?? step.run ?? "";
+    const tokens = command.match(/[A-Za-z0-9_@.()\/[\]+-]+/g) || [];
+    for (let token of tokens) {
+      token = token.replace(/[),;:]+$/, "");
+      if (!token || token.includes("*")) continue;
+      for (const relative of [path.normalize(path.join(cwd, token)), path.normalize(token)]) {
+        try {
+          if (fs.statSync(path.join(root, relative)).isFile()) found.add(relative);
+        } catch {
+          // A command token is often a flag, package, shell variable, or output.
+        }
+      }
+      // Jest also accepts a path/name pattern instead of an explicit filename.
+      // Resolve that pattern against the real suite cwd so the registry cannot
+      // silently omit a file that the preserved command actually selects.
+      if (/^(?:issue|orch|meta)[_-]\d+/i.test(token) && !token.includes("/")) {
+        const base = path.join(root, cwd);
+        const pending = [base];
+        while (pending.length) {
+          const directory = pending.pop();
+          for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+            if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
+            const absolute = path.join(directory, entry.name);
+            if (entry.isDirectory()) pending.push(absolute);
+            else if (entry.isFile() && entry.name.toLowerCase().includes(token.toLowerCase())) {
+              found.add(path.relative(root, absolute));
+            }
+          }
+        }
+      }
     }
   }
-  const jobsBlock = indentedBlock(lines, "jobs");
-  const jobKeys = jobsBlock.map((line) => line.match(/^ {2}([A-Za-z0-9_-]+):\s*(?:#.*)?$/)?.[1]).filter(Boolean);
-  const permissionBlock = indentedBlock(lines, "permissions").map((line) => line.trim()).filter(Boolean);
-  const topPermission = lines.find((line) => /^permissions:\s*\S+/.test(line))?.replace(/^permissions:\s*/, "") || null;
-  const environments = [...new Set(lines.map((line) => line.match(/^\s+environment:\s*["']?([^"'#]+?)["']?\s*(?:#.*)?$/)?.[1]?.trim()).filter(Boolean))].sort();
-  return {
-    sourceSha256: createHash("sha256").update(source).digest("hex"),
-    triggers: [...events].sort(),
-    pathScope: [...new Set(pathScope)].sort(),
-    jobKeys: [...new Set(jobKeys)].sort(),
-    runners,
-    runtimeVersions: [...new Set(runtimeVersions)].sort(),
-    setupActions: actions,
-    trustBoundary: {
-      permissions: topPermission ? [topPermission] : permissionBlock,
-      environments,
-      usesRepositorySecrets: source.includes("secrets."),
-      usesOidc: /id-token:\s*write/.test(source),
-      pullRequestTarget: events.has("pull_request_target"),
-    },
-  };
+  return [...found].sort();
 }
 
 export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
@@ -173,14 +279,91 @@ export function validateRegistry(
   }
   if (!Array.isArray(manifest.suites) || manifest.suites.length !== 22) fail(errors, "suites must contain exactly 22 entries");
 
+  const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
+  let batchTopology = { matrix: [], setupNode: {}, installStep: {} };
+  try {
+    batchTopology = inspectBatchWorkflow(resolvedMatrixSource);
+  } catch (error) {
+    fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);
+  }
+  const matrixRoutes = new Map();
+  for (const route of batchTopology.matrix || []) {
+    if (!route.class || matrixRoutes.has(route.class)) fail(errors, `duplicate or empty ci-batch matrix class: ${route.class || "<empty>"}`);
+    else matrixRoutes.set(route.class, route);
+  }
+  if (batchTopology.setupNode?.action !== "actions/setup-node@v4" || batchTopology.setupNode?.nodeVersion !== "${{ matrix.node }}") {
+    fail(errors, "ci-batch setup-node route must remain actions/setup-node@v4 with node-version from matrix.node");
+  }
+  if (
+    batchTopology.installStep?.if !== "matrix.install != ''" ||
+    batchTopology.installStep?.cwd !== "${{ matrix.install }}" ||
+    batchTopology.installStep?.run !== "npm ci"
+  ) fail(errors, "ci-batch install route must remain the exact conditional matrix.install npm ci contract");
+
+  const profileOwners = new Map();
+  const profileEntries = Object.entries(manifest.setupProfiles || {});
+  for (const [name, profile] of profileEntries) {
+    if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+      fail(errors, `setup profile ${name} must be an object`);
+      continue;
+    }
+    if (!sameStrings(Object.keys(profile), ["runtime", "install", "classes"])) fail(errors, `setup profile ${name} has a malformed or unknown field`);
+    if (profile.runtime?.name !== "node" || profile.runtime?.version !== "20" || !sameStrings(Object.keys(profile.runtime || {}), ["name", "version"])) {
+      fail(errors, `setup profile ${name} must use the supported exact node 20 runtime schema`);
+    }
+    const profileClasses = strings(profile.classes) ? profile.classes : [];
+    if (profileClasses.length === 0 || new Set(profileClasses).size !== profileClasses.length) {
+      fail(errors, `setup profile ${name} must own a non-empty unique class list`);
+    }
+    for (const klass of profileClasses) {
+      if (!profileOwners.has(klass)) profileOwners.set(klass, []);
+      profileOwners.get(klass).push(name);
+    }
+    if (profile.install !== null) {
+      const install = profile.install;
+      if (!install || typeof install !== "object" || !sameStrings(Object.keys(install), ["cwd", "invocation"])) {
+        fail(errors, `setup profile ${name} install must use the exact typed schema`);
+      }
+      if (!install?.cwd || !fs.existsSync(path.join(root, install.cwd))) fail(errors, `setup profile ${name} install cwd does not exist: ${install?.cwd}`);
+      const invocation = install?.invocation;
+      if (
+        invocation?.kind !== "argv" || invocation.command !== "npm" ||
+        !sameStrings(Object.keys(invocation || {}), ["kind", "command", "argv"]) ||
+        JSON.stringify(invocation.argv) !== JSON.stringify(["ci"])
+      ) fail(errors, `setup profile ${name} install must be the exact typed npm [ci] invocation`);
+    }
+  }
+  for (const klass of manifest.classes || []) {
+    const owners = profileOwners.get(klass) || [];
+    if (owners.length !== 1) fail(errors, `class ${klass} must have exactly one setup profile owner, got ${owners.length}`);
+  }
+  for (const klass of profileOwners.keys()) {
+    if (!manifest.classes?.includes(klass)) fail(errors, `setup profile owns stale or unknown class ${klass}`);
+  }
+  for (const [klass, route] of matrixRoutes) {
+    const ownerName = profileOwners.get(klass)?.[0];
+    const profile = manifest.setupProfiles?.[ownerName];
+    if (!profile) continue;
+    if (route.node !== profile.runtime?.version) fail(errors, `class ${klass}: matrix runtime ${route.node} disagrees with setup profile runtime ${profile.runtime?.version}`);
+    if (route.install === "") {
+      if (profile.install !== null) fail(errors, `class ${klass}: matrix has no install but setup profile ${ownerName} does`);
+    } else if (!profile.install || profile.install.cwd !== route.install || profile.install.invocation?.command !== "npm" || JSON.stringify(profile.install.invocation?.argv) !== JSON.stringify(["ci"])) {
+      fail(errors, `class ${klass}: setup profile install does not match unchanged matrix install route ${route.install}`);
+    }
+  }
+
   const suiteIds = new Set();
   const suiteOrigins = new Set();
+  const selectedProfiles = new Set();
+  const suitesById = new Map();
   for (const suite of manifest.suites || []) {
     if (!suite.id || suiteIds.has(suite.id)) fail(errors, `duplicate or empty suite id: ${suite.id || "<empty>"}`);
     suiteIds.add(suite.id);
+    suitesById.set(suite.id, suite);
     if (suite.lifecycle !== "batched-active") fail(errors, `${suite.id}: lifecycle must be batched-active`);
     if (!manifest.classes?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
     if (!suite.setupProfile || !manifest.setupProfiles?.[suite.setupProfile]) fail(errors, `${suite.id}: unknown setupProfile ${suite.setupProfile}`);
+    else selectedProfiles.add(suite.setupProfile);
     if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(suite.class) !== true) {
       fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route class ${suite.class}`);
     }
@@ -188,6 +371,11 @@ export function validateRegistry(
     suiteOrigins.add(suite.origin);
     if (fs.existsSync(path.join(root, suite.origin || ""))) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
     if (suite.runtime?.name !== "node" || suite.runtime?.version !== "20") fail(errors, `${suite.id}: runtime must pin node 20`);
+    const profileRuntime = manifest.setupProfiles?.[suite.setupProfile]?.runtime;
+    const matrixRuntime = matrixRoutes.get(suite.class)?.node;
+    if (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime) {
+      fail(errors, `${suite.id}: suite, setup profile, and matrix runtime must agree exactly`);
+    }
     if (!suite.ownerIssue || !/^#\d+$/.test(suite.ownerIssue)) fail(errors, `${suite.id}: ownerIssue must be an issue token`);
     if (!suite.cwd || !fs.existsSync(path.join(root, suite.cwd))) fail(errors, `${suite.id}: cwd does not exist: ${suite.cwd}`);
     if (!Number.isInteger(suite.timeoutMinutes) || suite.timeoutMinutes < 1) fail(errors, `${suite.id}: invalid timeoutMinutes`);
@@ -211,10 +399,15 @@ export function validateRegistry(
       }
       if (!step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
     }
+    const derivedExpectedFiles = discoverExpectedFilesForSuite(suite, root);
+    if (JSON.stringify(suite.expectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
+      fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
+    }
   }
 
-  const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
-  const matrixClasses = new Set([...resolvedMatrixSource.matchAll(/- class:\s*(\S+)/g)].map((match) => match[1]));
+  for (const [name] of profileEntries) if (!selectedProfiles.has(name)) fail(errors, `stale setup profile is not selected by any suite: ${name}`);
+
+  const matrixClasses = new Set(matrixRoutes.keys());
   for (const klass of manifest.classes || []) {
     if (!matrixClasses.has(klass)) fail(errors, `class ${klass} has no ci-batch matrix route`);
   }
@@ -225,6 +418,7 @@ export function validateRegistry(
   const legacy = manifest.legacyOrigins || [];
   if (!Array.isArray(legacy) || legacy.length !== 198) fail(errors, "legacyOrigins must contain exactly the amended 198 origins");
   const legacyKeys = new Set();
+  const suiteClaims = new Map();
   for (const item of legacy) {
     const key = `${item.stem}.${item.extension}`;
     if (!item.stem || !["yml", "yaml"].includes(item.extension)) fail(errors, `invalid legacy origin identity: ${key}`);
@@ -233,13 +427,25 @@ export function validateRegistry(
     if (!ALLOWED_DISPOSITIONS.has(item.disposition)) fail(errors, `${key}: unknown disposition ${item.disposition}`);
     if (!item.ownerIssue || !/^#\d+$/.test(item.ownerIssue)) fail(errors, `${key}: missing ownerIssue`);
     if (!item.rationale?.trim()) fail(errors, `${key}: missing disposition rationale`);
-    if (item.disposition === "batched-active" && !suiteIds.has(item.replacementSuite)) fail(errors, `${key}: missing active replacement suite`);
+    if (item.disposition === "batched-active") {
+      const suite = suitesById.get(item.replacementSuite);
+      if (!suite) fail(errors, `${key}: missing active replacement suite`);
+      else {
+        suiteClaims.set(suite.id, (suiteClaims.get(suite.id) || 0) + 1);
+        if (path.basename(suite.origin || "") !== key) fail(errors, `${key}: replacement suite ${suite.id} owns ${path.basename(suite.origin || "<empty>")}, not this origin`);
+        if (suite.ownerIssue !== item.ownerIssue) fail(errors, `${key}: replacement suite ${suite.id} ownerIssue does not match legacy ownerIssue`);
+      }
+    }
     if (item.disposition !== "batched-active") {
       if (item.providerWorkflow !== `.github/workflows/${key}`) fail(errors, `${key}: live origin must name its sole provider workflow`);
       if (!fs.existsSync(path.join(root, item.providerWorkflow || ""))) fail(errors, `${key}: live provider workflow is missing`);
       const expectedMetadata = inspectWorkflow(root, key);
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: runtime/setup/trust/trigger inventory drifted`);
     }
+  }
+  for (const suite of manifest.suites || []) {
+    const claims = suiteClaims.get(suite.id) || 0;
+    if (claims !== 1) fail(errors, `${suite.id}: executable suite must be claimed by exactly one batched legacy origin, got ${claims}`);
   }
   const expectedOriginKeys = new Set(liveOrigins ?? discoverLiveOrigins(root));
   for (const suite of manifest.suites || []) expectedOriginKeys.add(path.basename(suite.origin));

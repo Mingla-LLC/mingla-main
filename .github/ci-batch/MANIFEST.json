@@ -2085,6 +2085,7 @@
           "deno:1.46.x"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "denoland/setup-deno@v2"
         ],
@@ -2408,6 +2409,7 @@
           "deno:1.46.x"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "denoland/setup-deno@v1"
         ],
@@ -2602,6 +2604,7 @@
           "deno:v2.x"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "denoland/setup-deno@v2"
         ],
@@ -2781,6 +2784,7 @@
           "deno:v2.x"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "denoland/setup-deno@v2"
         ],
@@ -3210,8 +3214,10 @@
           "node:20"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
-          "actions/setup-node@v4"
+          "actions/setup-node@v4",
+          "actions/upload-artifact@v4"
         ],
         "trustBoundary": {
           "permissions": [],
@@ -3290,6 +3296,7 @@
           "node:20"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4",
           "denoland/setup-deno@v2"
@@ -3789,6 +3796,7 @@
           "node:22"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4",
           "denoland/setup-deno@v2"
@@ -3923,6 +3931,7 @@
           "node:22"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4"
         ],
@@ -4784,6 +4793,7 @@
           "node:22"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4",
           "denoland/setup-deno@v2"
@@ -5534,7 +5544,18 @@
           "pull_request",
           "push"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/MANIFEST.json",
+          ".github/scripts/strict-grep/issue-1773-reservation-stay-ingest.mjs",
+          ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "packages/card-identity/phone.d.mts",
+          "packages/card-identity/phone.mjs",
+          "supabase/functions/brand-person-ingest-worker/**",
+          "supabase/migrations/20270327001773_issue_1773_reservation_stay_ingest.sql",
+          "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1773_reservation_stay_ingest.test.sql"
+        ],
         "jobKeys": [
           "issue-1773-reservation-stay-ingest"
         ],
@@ -5573,7 +5594,34 @@
           "pull_request",
           "push"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/.orch-0891-bundle-baseline.json",
+          ".github/scripts/strict-grep/__tests__/issue-1774-people-page.tester.test.mjs",
+          ".github/scripts/strict-grep/issue-1774-people-page.mjs",
+          ".github/scripts/strict-grep/issue-2024-people-page-layout.mjs",
+          ".github/scripts/strict-grep/orch-0891-marketing-performance-budget.mjs",
+          ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",
+          ".github/workflows/issue-1774-people-page-tests.yml",
+          "mingla-business/app/(tabs)/marketing/_layout.tsx",
+          "mingla-business/app/(tabs)/marketing/audiences/**",
+          "mingla-business/app/(tabs)/marketing/people/**",
+          "mingla-business/app/(tabs)/people/**",
+          "mingla-business/src/components/marketing/MarketingSubNav.tsx",
+          "mingla-business/src/components/people/**",
+          "mingla-business/src/components/ui/CommandPalette.web.tsx",
+          "mingla-business/src/features/people/**",
+          "mingla-business/src/hooks/marketing/**",
+          "mingla-business/src/hooks/useContactImport.ts",
+          "mingla-business/src/lib/search/registry.ts",
+          "mingla-business/src/services/peopleService.ts",
+          "mingla-business/src/types/people.ts",
+          "scripts/audit/marketing-grade-a-contract.mjs",
+          "supabase/migrations/20270329001774_issue_1774_people_page.sql",
+          "supabase/migrations/20270330001774_issue_1774_qualify_people_digest.sql",
+          "supabase/migrations/__tests__/issue_1774_people_digest_qualification.test.sql",
+          "supabase/migrations/__tests__/issue_1774_people_page.test.sql",
+          "supabase/migrations/__tests__/issue_1774_people_page.tester.adversarial.test.sql"
+        ],
         "jobKeys": [
           "issue-1774-people-page"
         ],
@@ -5611,7 +5659,23 @@
           "pull_request",
           "push"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/MANIFEST.json",
+          ".github/scripts/strict-grep/issue-1775-csv-contact-import*.mjs",
+          ".github/workflows/issue-1775-csv-contact-import-tests.yml",
+          "mingla-business/app/(tabs)/people/import.tsx",
+          "mingla-business/src/features/contact-import/**",
+          "mingla-business/src/hooks/useContactImport.ts",
+          "mingla-business/src/services/contactImportService.ts",
+          "supabase/functions/_shared/contactImportContract.ts",
+          "supabase/functions/contact-import/**",
+          "supabase/migrations/20270328001775_issue_1775_csv_contact_import.sql",
+          "supabase/migrations/20270331001993_issue_1993_contact_import_extension_qualification.sql",
+          "supabase/migrations/__tests__/issue_1775_csv_contact_import.happy.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1775_csv_contact_import.tester.adversarial.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1993_contact_import_extension_qualification.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_1993_contact_import_extension_shadowing.tester.adversarial.pg17.test.sql"
+        ],
         "jobKeys": [
           "issue-1775-csv-contact-import"
         ],
@@ -5899,6 +5963,7 @@
         ],
         "runtimeVersions": [],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4"
         ],
         "trustBoundary": {
@@ -5939,6 +6004,7 @@
         ],
         "runtimeVersions": [],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4"
         ],
         "trustBoundary": {
@@ -7087,7 +7153,7 @@
         ],
         "runtimeVersions": [
           "deno:v2.x",
-          "node:20,"
+          "node:20"
         ],
         "setupActions": [
           "actions/checkout@v4",
@@ -7850,7 +7916,35 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
+          "mingla-admin/src/__tests__/issue2099_pending_identity_correction.test.js",
+          "mingla-admin/src/components/claims/PendingVenueIdentityCorrectionPanel.jsx",
+          "mingla-admin/src/components/entity/HighRiskActionModal.jsx",
+          "mingla-admin/src/pages/ClaimsPage.jsx",
+          "mingla-admin/src/services/adminClaimsService.js",
+          "mingla-business/app/venue/[venueId]/index.tsx",
+          "mingla-business/jest.issue2099.web.render.cjs",
+          "mingla-business/playwright.issue2099.config.ts",
+          "mingla-business/playwright/issue2099/**",
+          "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx",
+          "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.d.ts",
+          "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx",
+          "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx",
+          "mingla-business/src/components/venue/VenueListingContent.tsx",
+          "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.behavior.render.test.tsx",
+          "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.native-absence.test.ts",
+          "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx",
+          "mingla-business/src/components/venue/__tests__/venuePublicActionsAdversarial.issue1483.test.tsx",
+          "mingla-business/src/components/venue/__tests__/venuePublicPageActions.issue1483.test.tsx",
+          "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts",
+          "mingla-business/src/services/venueListingsService.ts",
+          "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql",
+          "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh",
+          "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql",
+          "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts",
+          "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+        ],
         "jobKeys": [
           "issue-2099-boot-payload-ceiling",
           "issue-2099-browser-geometry",
@@ -7893,7 +7987,43 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/actions/migrated-postgres/**",
+          ".github/workflows/issue-2101-named-buyer-checkout-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "docs/QUERY_KEY_REGISTRY.md",
+          "mingla-business/app/accept-brand-invitation.tsx",
+          "mingla-business/app/auth/**",
+          "mingla-business/app/e/**",
+          "mingla-business/app/exp/**",
+          "mingla-business/app/experience/[id]/edit.tsx",
+          "mingla-business/app/t/**",
+          "mingla-business/src/components/event/EditPublishedScreen.tsx",
+          "mingla-business/src/components/event/EventTicketCheckoutAccessCard.native.tsx",
+          "mingla-business/src/components/event/EventTicketCheckoutAccessCard.tsx",
+          "mingla-business/src/components/event/PublicEventPage.tsx",
+          "mingla-business/src/components/event/TicketCheckoutAccessNotice.native.tsx",
+          "mingla-business/src/components/event/TicketCheckoutAccessNotice.tsx",
+          "mingla-business/src/components/event/__tests__/*issue2101*",
+          "mingla-business/src/components/experience/ExperienceCheckoutFlow.tsx",
+          "mingla-business/src/components/trip/EditPublishedTripScreen.tsx",
+          "mingla-business/src/components/trip/TripCheckoutFlow.tsx",
+          "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.native.test.tsx",
+          "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.tester_adversarial.test.tsx",
+          "mingla-business/src/hooks/__tests__/usePublicTicketCheckoutRouteAccess.issue2101.web.test.tsx",
+          "mingla-business/src/hooks/useEventTicketCheckoutAccess.ts",
+          "mingla-business/src/hooks/usePublicTicketCheckoutRouteAccess.native.ts",
+          "mingla-business/src/hooks/usePublicTicketCheckoutRouteAccess.ts",
+          "mingla-business/src/services/eventTicketCheckoutAccessService.ts",
+          "mingla-business/src/services/ticketCheckoutService.ts",
+          "mingla-business/src/utils/__tests__/nextRoute*.ts",
+          "mingla-business/src/utils/nextRoute.ts",
+          "scripts/ci/issue-2101-named-buyer-checkout.mjs",
+          "supabase/functions/_shared/ticketCheckoutAccess.ts",
+          "supabase/functions/ticket-checkout-create/**",
+          "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql",
+          "supabase/migrations/__tests__/issue_2101_named_buyer_checkout_access.test.sql"
+        ],
         "jobKeys": [
           "issue-2101-business-suites",
           "issue-2101-contract-guard",
@@ -7909,6 +8039,7 @@
           "node:22"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4",
           "denoland/setup-deno@v2"
@@ -8049,7 +8180,24 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/actions/migrated-postgres/**",
+          ".github/workflows/issue-2136-free-checkout-contract-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/app/checkout/**",
+          "mingla-business/src/services/__tests__/issue_2136_free_checkout_client_guard.test.ts",
+          "mingla-business/src/services/ticketCheckoutService.ts",
+          "supabase/functions/_shared/paystackWebhookRouter.ts",
+          "supabase/functions/_shared/stripeWebhookRouter.ts",
+          "supabase/functions/reconcile-stuck-checkouts/index.ts",
+          "supabase/functions/ticket-checkout-confirm/index.ts",
+          "supabase/functions/ticket-checkout-create/**",
+          "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql",
+          "supabase/migrations/20270411002079_issue_2079_paystack_late_refund_identity.sql",
+          "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql",
+          "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql",
+          "supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql"
+        ],
         "jobKeys": [
           "issue-2136-client-guard",
           "issue-2136-edge-contract",
@@ -8063,6 +8211,7 @@
           "node:20"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4",
           "denoland/setup-deno@v2"
@@ -8090,7 +8239,26 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs",
+          ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs",
+          ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/app/checkout/**",
+          "mingla-business/src/components/checkout/checkoutPersistence.ts",
+          "mingla-business/src/services/__tests__/issue_2150_free_resubmit_client_guard.test.ts",
+          "mingla-business/src/services/ticketCheckoutService.ts",
+          "supabase/functions/_shared/ticketCheckout.ts",
+          "supabase/functions/ticket-checkout-create/**",
+          "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql",
+          "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql",
+          "supabase/migrations/20270413001931_issue_1931_private_event_access.sql",
+          "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql",
+          "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql",
+          "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql",
+          "supabase/migrations/__tests__/issue_2136_free_checkout_no_value_arm.tester.adversarial.test.sql",
+          "supabase/migrations/__tests__/issue_2150_free_resubmit_idempotent.test.sql"
+        ],
         "jobKeys": [
           "issue-2150-client-guard",
           "issue-2150-edge-contract",
@@ -8132,7 +8300,48 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/issue-2150-free-completed-session-returned-not-tombstoned.mjs",
+          ".github/scripts/strict-grep/issue-2160-*.mjs",
+          ".github/scripts/strict-grep/orch-0791-checkout-session-never-reused-post-terminal.mjs",
+          ".github/workflows/issue-2160-multiday-multiselect-tests.yml",
+          "app-mobile/src/services/calendarService.ts",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/app/checkout/**",
+          "mingla-business/app/event/[id]/guests/**",
+          "mingla-business/src/components/checkout/CartContext.tsx",
+          "mingla-business/src/components/event/CreatorStep2When.tsx",
+          "mingla-business/src/components/event/EventCreatorWizard.tsx",
+          "mingla-business/src/components/event/FoundationEventPreview.tsx",
+          "mingla-business/src/components/event/MultiDateDayChooser.tsx",
+          "mingla-business/src/components/event/PublicEventPage.tsx",
+          "mingla-business/src/constants/publicUrls.ts",
+          "mingla-business/src/hooks/usePublicEvents.ts",
+          "mingla-business/src/services/businessEvents.ts",
+          "mingla-business/src/services/eventOrdersService.ts",
+          "mingla-business/src/services/publicEventOccurrencesService.ts",
+          "mingla-business/src/services/publicEventsService.ts",
+          "mingla-business/src/services/ticketCheckoutService.ts",
+          "mingla-business/src/store/draftEventStore.ts",
+          "mingla-business/src/store/orderStore.ts",
+          "mingla-business/src/utils/guestCsvExport.ts",
+          "packages/offering-rendering/EventOfferingBody.tsx",
+          "supabase/functions/_shared/ticketCheckout.ts",
+          "supabase/functions/ticket-checkout-create/**",
+          "supabase/functions/ticket-confirmation-dispatch/**",
+          "supabase/migrations/20260528000000_orch_0793_scan_time_window.sql",
+          "supabase/migrations/20260821000000_orch_1051_scanner_invite_flow.sql",
+          "supabase/migrations/20261117000001_orch_1188_finalize_persist_event_date_id.sql",
+          "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql",
+          "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql",
+          "supabase/migrations/20270413001931_issue_1931_private_event_access.sql",
+          "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql",
+          "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql",
+          "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql",
+          "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql",
+          "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql",
+          "supabase/migrations/__tests__/issue_2160_*.test.sql"
+        ],
         "jobKeys": [
           "issue-2160-client",
           "issue-2160-edge-contract",
@@ -8174,7 +8383,21 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2160-tester-adversarial-tests.yml",
+          "supabase/migrations/20260528000000_orch_0793_scan_time_window.sql",
+          "supabase/migrations/20260821000000_orch_1051_scanner_invite_flow.sql",
+          "supabase/migrations/20261117000001_orch_1188_finalize_persist_event_date_id.sql",
+          "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql",
+          "supabase/migrations/20270403001930_issue_1930_checkout_current_truth.sql",
+          "supabase/migrations/20270413001931_issue_1931_private_event_access.sql",
+          "supabase/migrations/20270414002101_issue_2101_named_buyer_checkout_access.sql",
+          "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql",
+          "supabase/migrations/20270417002136_issue_2136_free_checkout_finalize_contract.sql",
+          "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql",
+          "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql",
+          "supabase/migrations/__tests__/issue_2160_money_admission_lock.tester.adversarial.test.sql"
+        ],
         "jobKeys": [
           "issue-2160-tester-adversarial-postgres"
         ],
@@ -8347,7 +8570,26 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/i-2216-ticket-qr-server-rendered.mjs",
+          ".github/workflows/issue-2216-ticket-qr-image-tests.yml",
+          "mingla-business/app/checkout-experience/**",
+          "mingla-business/app/checkout-trip/**",
+          "mingla-business/app/checkout/**",
+          "mingla-business/src/components/checkout/CartContext.tsx",
+          "mingla-business/src/components/checkout/TicketQrCarousel.tsx",
+          "mingla-business/src/components/checkout/__tests__/issue_2216_*",
+          "mingla-business/src/hooks/useOrderRealtimeSubscription.ts",
+          "mingla-business/src/services/ticketCheckoutService.ts",
+          "supabase/functions/_shared/__tests__/issue_2216_*",
+          "supabase/functions/_shared/__tests__/ticketQrImage.test.ts",
+          "supabase/functions/_shared/qrcodeModule.d.ts",
+          "supabase/functions/_shared/ticketPdf.ts",
+          "supabase/functions/_shared/ticketQrImage.ts",
+          "supabase/functions/ticket-checkout-confirm/**",
+          "supabase/functions/ticket-checkout-create/**",
+          "supabase/functions/ticket-checkout-status/**"
+        ],
         "jobKeys": [
           "issue-2216-carousel",
           "issue-2216-edge-qr",
@@ -8388,7 +8630,29 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2217-confirmation-app-cta-tests.yml",
+          "app-mobile/app/index.tsx",
+          "app-mobile/src/services/attendanceClaimService.ts",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/app/checkout-experience/**",
+          "mingla-business/app/checkout-trip/**",
+          "mingla-business/app/checkout/**",
+          "mingla-business/src/components/checkout/DownloadMinglaCta.tsx",
+          "mingla-business/src/constants/storeLinks.ts",
+          "mingla-business/src/services/__tests__/issue_2217_confirmation_app_cta.test.ts",
+          "mingla-business/src/services/guestFunnelLink.ts",
+          "mingla-business/src/utils/attendanceClaimDeepLink.ts",
+          "supabase/config.toml",
+          "supabase/functions/_shared/attendanceClaim.ts",
+          "supabase/functions/attendance-claim-identity/**",
+          "supabase/functions/attendance-claim-link/**",
+          "supabase/functions/claim-attendance/**",
+          "supabase/migrations/20260710000000_orch_0897_trip_event_group_chat.sql",
+          "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
+          "supabase/migrations/20270421002217_issue_2217_identity_attendance_claim.sql",
+          "supabase/migrations/__tests__/issue_2217_identity_attendance_claim.test.sql"
+        ],
         "jobKeys": [
           "issue-2217-client-cta",
           "issue-2217-edge-contract",
@@ -8535,7 +8799,26 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/i-2240-email-app-link-sole-owner.mjs",
+          ".github/workflows/issue-2240-email-app-link-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/src/constants/storeLinks.ts",
+          "mingla-business/src/services/guestFunnelLink.ts",
+          "mingla-marketing/app/download/**",
+          "mingla-marketing/lib/device-platform.ts",
+          "mingla-marketing/lib/store-links.ts",
+          "mingla-marketing/middleware.ts",
+          "mingla-marketing/next.config.ts",
+          "mingla-marketing/vercel.json",
+          "scripts/apex-route-model/**",
+          "supabase/functions/_shared/email/__tests__/issue_2240_email_app_link.test.ts",
+          "supabase/functions/_shared/email/appLink.ts",
+          "supabase/functions/_shared/email/experienceConfirmationEmail.ts",
+          "supabase/functions/_shared/email/shell.ts",
+          "supabase/functions/_shared/email/ticketBody.ts",
+          "supabase/functions/_shared/email/tripConfirmationEmail.ts"
+        ],
         "jobKeys": [
           "issue-2240-live-destination",
           "issue-2240-offline"
@@ -8573,7 +8856,20 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2245-declared-app-links-resolve.yml",
+          "app-mobile/app.json",
+          "app-mobile/app/**",
+          "app-mobile/app/+native-intent.tsx",
+          "app-mobile/app/index.tsx",
+          "app-mobile/src/services/__tests__/deepLinkRouting.orch1030.adversarial.test.ts",
+          "app-mobile/src/services/__tests__/orch-1080-sibling-routes-regression.test.ts",
+          "app-mobile/src/services/boardInviteService.ts",
+          "app-mobile/src/services/deepLinkService.ts",
+          "mingla-business/public/.well-known/**",
+          "mingla-marketing/public/.well-known/**",
+          "scripts/issue-2245/**"
+        ],
         "jobKeys": [
           "resolve"
         ],
@@ -8612,7 +8908,38 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/i-2262-composer-measured-not-computed-layout.mjs",
+          ".github/scripts/strict-grep/orch-0815-b-composer-and-send.mjs",
+          ".github/scripts/strict-grep/orch-0892-no-bespoke-keyboard-plumbing.mjs",
+          ".github/workflows/issue-2262-composer-responsive-layout.yml",
+          "mingla-business/app/(tabs)/marketing/_layout.tsx",
+          "mingla-business/app/(tabs)/marketing/campaigns/compose.tsx",
+          "mingla-business/jest.issue2262.render.cjs",
+          "mingla-business/jest.issue2262.web.render.cjs",
+          "mingla-business/playwright.issue2262.config.ts",
+          "mingla-business/playwright/issue2262/**",
+          "mingla-business/src/components/marketing/ComposerCommitBar.tsx",
+          "mingla-business/src/components/marketing/ComposerHeader.tsx",
+          "mingla-business/src/components/marketing/ComposerStepWho.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/ComposerCanvas.web.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/InsertionBar.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/SchedulePickerSheet.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/SubjectTokenRail.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/__tests__/composerBandContract.issue2262.render.test.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/__tests__/composerEditableFillsBox.issue2262.test.ts",
+          "mingla-business/src/components/marketing/ComposerV2/__tests__/composerViewportFit.issue2262.web.render.test.tsx",
+          "mingla-business/src/components/marketing/ComposerV2/composerChipHtml.ts",
+          "mingla-business/src/components/marketing/ComposerV2/richEditor.tsx",
+          "mingla-business/src/components/marketing/SmsComposeCard.tsx",
+          "mingla-business/src/components/marketing/__tests__/orch1100ComposerInteraction.test.ts",
+          "mingla-business/src/components/ui/Sheet.web.tsx",
+          "mingla-business/src/constants/designSystem.ts",
+          "mingla-business/src/hooks/useResponsiveLayout.ts",
+          "mingla-business/src/wrappers/SmartScrollView.tsx",
+          "mingla-business/src/wrappers/keyboardClearance.ts"
+        ],
         "jobKeys": [
           "issue-2262-composer-layout"
         ],
@@ -8649,7 +8976,17 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/i-2267-composer-editorstyle-literal-only.mjs",
+          ".github/workflows/issue-2267-marketing-tenancy.yml",
+          "mingla-business/src/components/marketing/ComposerV2/ComposerV2Editor.tsx",
+          "mingla-business/src/services/marketing/__tests__/issue2267LinkHrefEmission.happy.test.ts",
+          "mingla-business/src/services/marketing/marketingTemplateService.ts",
+          "mingla-business/src/services/marketing/tenTapTokenBridge.ts",
+          "supabase/migrations/20260602000003_orch_0815_marketing_hub_phase_a.sql",
+          "supabase/migrations/20270424002267_issue_2267_marketing_brand_tenancy_update_check.sql",
+          "supabase/migrations/__tests__/issue_2267_marketing_brand_tenancy_update.happy.pg17.test.sql"
+        ],
         "jobKeys": [
           "issue-2267-emission",
           "issue-2267-policies"
@@ -8689,7 +9026,21 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2269-verified-phone-claim-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "supabase/config.toml",
+          "supabase/functions/_shared/seedReviewerAccount.ts",
+          "supabase/functions/attendance-claim-identity/**",
+          "supabase/functions/attendance-claim-link/**",
+          "supabase/functions/send-otp/**",
+          "supabase/functions/verify-otp/**",
+          "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
+          "supabase/migrations/20270421002217_issue_2217_identity_attendance_claim.sql",
+          "supabase/migrations/20270422002269_issue_2269_verified_phone_possession.sql",
+          "supabase/migrations/__tests__/issue_2217_identity_attendance_claim.test.sql",
+          "supabase/migrations/__tests__/issue_2269_verified_phone_possession.test.sql"
+        ],
         "jobKeys": [
           "issue-2269-edge-contract",
           "issue-2269-postgres-contract"
@@ -8727,7 +9078,29 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2272-web-app-link-landings.yml",
+          "app-mobile/app.json",
+          "app-mobile/app/+native-intent.tsx",
+          "app-mobile/src/services/boardInviteService.ts",
+          "mingla-marketing/app/board/**",
+          "mingla-marketing/app/chat/**",
+          "mingla-marketing/app/download/**",
+          "mingla-marketing/app/invite/**",
+          "mingla-marketing/app/orders/**",
+          "mingla-marketing/components/marketing/app-link-landing.tsx",
+          "mingla-marketing/lib/app-link-landing.ts",
+          "mingla-marketing/lib/device-platform.ts",
+          "mingla-marketing/lib/store-links.ts",
+          "mingla-marketing/middleware.ts",
+          "mingla-marketing/next.config.ts",
+          "mingla-marketing/package-lock.json",
+          "mingla-marketing/package.json",
+          "mingla-marketing/public/.well-known/**",
+          "mingla-marketing/vercel.json",
+          "scripts/apex-route-model/**",
+          "scripts/issue-2272/**"
+        ],
         "jobKeys": [
           "live",
           "model",
@@ -8768,7 +9141,13 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2300-orch-artifact-reap.yml",
+          "scripts/issue-2300/**",
+          "scripts/orch-worktree/lib/artifact-liveness.sh",
+          "scripts/orch-worktree/reap.sh",
+          "scripts/orch-worktree/sweep.sh"
+        ],
         "jobKeys": [
           "issue-2300-reap-gate"
         ],
@@ -8966,7 +9345,31 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2323-free-order-claim-and-cta-tests.yml",
+          "mingla-business/app/checkout-experience/**",
+          "mingla-business/app/checkout-trip/**",
+          "mingla-business/app/checkout/**",
+          "mingla-business/jest.issue2323.babel.cjs",
+          "mingla-business/jest.issue2323.dynamic-import.cjs",
+          "mingla-business/jest.issue2323.render.cjs",
+          "mingla-business/src/components/checkout/CartContext.tsx",
+          "mingla-business/src/components/checkout/DownloadMinglaCta.tsx",
+          "mingla-business/src/components/checkout/__tests__/issue2326CtaGesture.render.test.tsx",
+          "mingla-business/src/components/checkout/checkoutPersistence.ts",
+          "mingla-business/src/constants/storeLinks.ts",
+          "mingla-business/src/hooks/__tests__/issue2323FreeOrderArm.render.test.tsx",
+          "mingla-business/src/hooks/useAttendanceClaimArm.ts",
+          "mingla-business/src/services/attendanceClaimLinkService.ts",
+          "mingla-business/src/services/guestFunnelLink.ts",
+          "mingla-business/src/utils/attendanceClaimDeepLink.ts",
+          "supabase/functions/_shared/attendanceClaim.ts",
+          "supabase/functions/attendance-claim-identity/**",
+          "supabase/functions/attendance-claim-link/**",
+          "supabase/migrations/20270421002217_issue_2217_identity_attendance_claim.sql",
+          "supabase/migrations/20270422002269_issue_2269_verified_phone_possession.sql",
+          "supabase/migrations/__tests__/issue_2323_free_order_identity_claim.test.sql"
+        ],
         "jobKeys": [
           "issue-2323-client",
           "issue-2323-postgres-contract"
@@ -9004,7 +9407,25 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/scripts/strict-grep/issue-2333-online-event-publish.mjs",
+          ".github/workflows/issue-2333-online-event-publish.yml",
+          "app-mobile/src/components/discover/BusinessEventCard.tsx",
+          "app-mobile/src/components/discover/__tests__/issue2333OnlineBadge.test.mjs",
+          "mingla-business/src/components/event/EditPublishedScreen.tsx",
+          "mingla-business/src/components/event/EventCreatorWizard.tsx",
+          "mingla-business/src/components/event/__tests__/issue2333UnmappedPublishGuard.test.tsx",
+          "mingla-business/src/utils/__tests__/issue2333OnlineGuards.tester.adversarial.test.ts",
+          "mingla-business/src/utils/__tests__/issue2333OnlinePublishGuards.happy.test.ts",
+          "mingla-business/src/utils/draftEventValidation.ts",
+          "mingla-business/src/utils/paidPublishGuards.ts",
+          "supabase/migrations/20270427002333_issue_2333_publish_online_city_optional.sql",
+          "supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql",
+          "supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql",
+          "supabase/migrations/__tests__/issue_2333_discover_online_carveout.implementor.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2333_online_publish_city_optional.implementor.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2333_online_publish_hybrid_boundary.tester.pg17.test.sql"
+        ],
         "jobKeys": [
           "issue-2333-client-contract",
           "issue-2333-postgres-contract"
@@ -9042,7 +9463,27 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2337-free-409-honest-copy-tests.yml",
+          "docs/INVARIANT_REGISTRY.md",
+          "mingla-business/app/checkout-trip/**",
+          "mingla-business/app/checkout/**",
+          "mingla-business/src/components/checkout/checkoutPersistence.ts",
+          "mingla-business/src/services/__tests__/issue_2136_free_checkout_client_guard.test.ts",
+          "mingla-business/src/services/__tests__/issue_2150_free_resubmit_client_guard.test.ts",
+          "mingla-business/src/services/__tests__/issue_2337_free_409_token_mapper.test.ts",
+          "mingla-business/src/services/checkoutErrorCopy.ts",
+          "mingla-business/src/services/ticketCheckoutService.ts",
+          "supabase/functions/_shared/checkoutSaleTruth.ts",
+          "supabase/functions/_shared/ticketCheckout.ts",
+          "supabase/functions/ticket-checkout-create/**",
+          "supabase/migrations/20260915000000_meta_orch_1076_p1_payment_provider.sql",
+          "supabase/migrations/20261101000000_meta_orch_1174_b1_multiline_installments.sql",
+          "supabase/migrations/20270108001014_issue_1014_free_only_publish_currency_relax.sql",
+          "supabase/migrations/20270324001929_issue_1929_hidden_direct_checkout.sql",
+          "supabase/migrations/20270419002150_issue_2150_free_resubmit_idempotent.sql",
+          "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
+        ],
         "jobKeys": [
           "issue-2337-client-copy",
           "issue-2337-edge-to-copy"
@@ -9090,7 +9531,23 @@
           "push",
           "workflow_dispatch"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-2347-wrong-day-pass.yml",
+          "app-mobile/src/components/activity/BusinessEventCalendarRow.tsx",
+          "app-mobile/src/components/activity/TicketPdfSheet.tsx",
+          "app-mobile/src/services/__tests__/issue_2160_calendar_per_day_entries.test.ts",
+          "app-mobile/src/services/__tests__/issue_2347_day_bound_passes.test.ts",
+          "app-mobile/src/services/__tests__/orch_1188_calendar_url_and_date.test.ts",
+          "app-mobile/src/services/calendarOrderDays.ts",
+          "app-mobile/src/services/calendarService.ts",
+          "supabase/functions/_shared/chosenOccurrence.ts",
+          "supabase/functions/_shared/email/dateLine.ts",
+          "supabase/functions/_shared/ticketPdf.ts",
+          "supabase/functions/_shared/ticketPdfPath.ts",
+          "supabase/functions/ticket-confirmation-dispatch/**",
+          "supabase/functions/ticket-pdf-fetch/**",
+          "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
+        ],
         "jobKeys": [
           "issue-2347-download-endpoint",
           "issue-2347-scan-level"
@@ -9310,6 +9767,7 @@
         ],
         "runtimeVersions": [],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4"
         ],
         "trustBoundary": {
@@ -9665,6 +10123,7 @@
           "node:20"
         ],
         "setupActions": [
+          "./.github/actions/migrated-postgres",
           "actions/checkout@v4",
           "actions/setup-node@v4",
           "denoland/setup-deno@v2"
@@ -9705,7 +10164,8 @@
         ],
         "setupActions": [
           "actions/checkout@v4",
-          "actions/setup-node@v4"
+          "actions/setup-node@v4",
+          "actions/upload-artifact@v4"
         ],
         "trustBoundary": {
           "permissions": [],
@@ -9858,7 +10318,24 @@
           "pull_request",
           "push"
         ],
-        "pathScope": [],
+        "pathScope": [
+          ".github/workflows/issue-922-business-web-actionable.yml",
+          "mingla-business/__tests__/issue922BusinessWebActionable.adversarial.test.ts",
+          "mingla-business/__tests__/issue922BusinessWebActionable.happy.test.ts",
+          "mingla-business/app/accept-brand-invitation.tsx",
+          "mingla-business/playwright.issue922.config.ts",
+          "mingla-business/playwright/issue922-business-web-actionable.adversarial.spec.ts",
+          "mingla-business/playwright/issue922-business-web-actionable.spec.ts",
+          "mingla-business/playwright/issue922-static-server.mjs",
+          "mingla-business/scripts/build-invite-critical-entry.mjs",
+          "mingla-business/scripts/ci/issue-922-business-web-actionable.mjs",
+          "mingla-business/scripts/inject-mobile-blur-css.mjs",
+          "mingla-business/src/analytics/ConsentBanner.web.tsx",
+          "mingla-business/src/analytics/webAnalytics.web.ts",
+          "mingla-business/src/components/ui/Button.tsx",
+          "mingla-business/src/constants/designSystem.ts",
+          "mingla-business/vercel.json"
+        ],
         "jobKeys": [
           "issue-922-business-web-actionable"
         ],
