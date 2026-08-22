@@ -5,7 +5,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-import path from "node:path";
 import {
   DEFAULT_MANIFEST,
   DEFAULT_ROOT,
@@ -20,7 +19,6 @@ test("#2435 rejects a count-preserving legacy-to-suite attribution swap", () => 
     root: DEFAULT_ROOT,
     liveOrigins: discoverLiveOrigins(DEFAULT_ROOT),
     workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT),
-    matrixSource: fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows/ci-batch.yml"), "utf8"),
   };
   assert.deepEqual(validateRegistry(manifest, discovery), [], "committed registry must start valid");
 
