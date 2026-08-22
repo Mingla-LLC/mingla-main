@@ -8,6 +8,37 @@ export type NativeAppPlatform = "ios" | "android";
 
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/;
 
+let reportedFallback = false;
+let reportedUnavailable = false;
+
+function isStrictSemver(value: unknown): value is string {
+  return typeof value === "string" && SEMVER_PATTERN.test(value);
+}
+
+function reportIdentityOutcome(
+  platform: NativeAppPlatform,
+  outcome: "expo_config_fallback" | "unavailable",
+): void {
+  if (outcome === "expo_config_fallback") {
+    if (reportedFallback) return;
+    reportedFallback = true;
+  } else {
+    if (reportedUnavailable) return;
+    reportedUnavailable = true;
+  }
+
+  try {
+    console.warn("[app-version-identity]", {
+      appId: APP_VERSION_APP_ID,
+      platform,
+      outcome,
+      severity: outcome === "unavailable" ? "error" : "warning",
+    });
+  } catch {
+    // Identity resolution must survive a diagnostic transport failure.
+  }
+}
+
 export function getNativeAppPlatform(): NativeAppPlatform | null {
   return Platform.OS === "ios" || Platform.OS === "android"
     ? Platform.OS
@@ -15,19 +46,21 @@ export function getNativeAppPlatform(): NativeAppPlatform | null {
 }
 
 export function getInstalledNativeVersion(): string | null {
-  if (
-    typeof Constants.nativeAppVersion === "string" &&
-    SEMVER_PATTERN.test(Constants.nativeAppVersion)
-  ) {
+  const platform = getNativeAppPlatform();
+  if (platform === null) return null;
+
+  if (isStrictSemver(Constants.nativeAppVersion)) {
     return Constants.nativeAppVersion;
   }
 
-  const developmentVersion = Constants.expoConfig?.version;
-  return __DEV__ &&
-    typeof developmentVersion === "string" &&
-    SEMVER_PATTERN.test(developmentVersion)
-    ? developmentVersion
-    : null;
+  const expoConfigVersion = Constants.expoConfig?.version;
+  if (isStrictSemver(expoConfigVersion)) {
+    reportIdentityOutcome(platform, "expo_config_fallback");
+    return expoConfigVersion;
+  }
+
+  reportIdentityOutcome(platform, "unavailable");
+  return null;
 }
 
 export function getNativeAppVersionHeaders(): Record<string, string> {
