@@ -112,8 +112,22 @@ names.each do |name|
 end
 STDOUT.write(JSON.generate(out))`;
 
+const BATCH_RUBY = String.raw`
+require "yaml"; require "json"
+doc=YAML.safe_load(File.binread(ARGV.fetch(0)),aliases:true)||{}
+jobs=doc.fetch("jobs"); out={}
+jobs.each do |name,job|
+  out[name]={"if"=>job["if"],"timeout"=>job["timeout-minutes"],"strategy"=>job.key?("strategy"),
+    "matrix"=>job.dig("strategy","matrix","include"),"steps"=>Array(job["steps"])}
+end
+STDOUT.write(JSON.generate(out))`;
+
 function inspectOrigins() {
   return JSON.parse(execFileSync("ruby", ["-e", RUBY, ROOT], { input: JSON.stringify(ORIGINS), encoding: "utf8" }));
+}
+
+function inspectBatchJobs() {
+  return JSON.parse(execFileSync("ruby", ["-e", BATCH_RUBY, BATCH_PATH], { encoding: "utf8" }));
 }
 
 const INSTALLS = new Set(["npm ci", "npm ci --ignore-scripts", "npm install --no-save yaml"]);
@@ -218,14 +232,36 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   }
   assert.deepEqual(ORIGINS.filter((origin) => inspected[origin].timeoutMinutes === null).sort(), UNBOUNDED);
   const source = fs.readFileSync(BATCH_PATH, "utf8");
-  assert.equal((source.match(/actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/g) || []).length, 1);
-  assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 1);
-  assert.match(source, /fetch-depth: 0/);
-  assert.match(source, /persist-credentials: false/);
+  const jobs = inspectBatchJobs();
+  assert.deepEqual(Object.keys(jobs).sort(), ["batch", "dispatch"]);
+  assert.equal(jobs.batch.if, "github.event_name != 'workflow_dispatch'");
+  assert.equal(jobs.batch.strategy, true);
+  assert.equal(jobs.batch.matrix.length, 14);
+  assert.equal(jobs.dispatch.if, "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'");
+  assert.equal(jobs.dispatch.strategy, false);
+  assert.equal(jobs.dispatch.timeout, 25);
+  assert.deepEqual(value.suites.filter((suite) => suite.class === "node20-19-noinstall").map((suite) => suite.id),
+    ["issue-2300-orch-artifact-reap"]);
+  for (const name of ["batch", "dispatch"]) {
+    const checkout = jobs[name].steps.filter((step) => step.uses === "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683");
+    const setup = jobs[name].steps.filter((step) => step.uses === "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
+    assert.equal(checkout.length, 1, `${name}: checkout pin cardinality`);
+    assert.deepEqual(checkout[0].with, { "fetch-depth": 0, "persist-credentials": false });
+    assert.equal(setup.length, 1, `${name}: setup-node pin cardinality`);
+  }
+  assert.deepEqual(jobs.batch.steps.find((step) => step.uses?.startsWith("actions/setup-node@")).with,
+    { "node-version": "${{ matrix.node }}", cache: "${{ matrix.cache }}", "cache-dependency-path": "${{ matrix.cache-lock }}" });
+  assert.deepEqual(jobs.dispatch.steps.find((step) => step.uses?.startsWith("actions/setup-node@")).with,
+    { "node-version": "20.19.4" });
+  assert.equal(jobs.dispatch.steps.filter((step) => step.run === 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "node20-19-noinstall"').length, 1);
+  assert.equal(jobs.dispatch.steps.filter((step) => step.run === 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "node20-19-noinstall"').length, 1);
+  assert.equal((source.match(/actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/g) || []).length, 2);
+  assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 2);
   assert.match(source, /permissions:\n  contents: read/);
   assert.doesNotMatch(source, /secrets\.|id-token:\s*write|pull_request_target|environment:/);
   assert.match(source, /workflow_dispatch:[\s\S]*type: choice[\s\S]*- issue-2300-orch-artifact-reap/);
-  assert.match(source, /if: github\.event_name != 'workflow_dispatch' \|\| matrix\.class == 'node20-19-noinstall'/);
+  assert.doesNotMatch(jobs.batch.if, /matrix|strategy|steps|runner|job/);
+  assert.doesNotMatch(jobs.dispatch.if, /matrix|strategy|steps|runner|job/);
 });
 
 test("shadow markers are exact and inert while terminal wrappers must be absent", () => {
