@@ -145,6 +145,33 @@ test("a successful command cannot leak a background descendant past its suite", 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("commands share one suite cache without leaking it into the next suite", async () => {
+  const root = gitFixture();
+  const installer = suite("cache-installer", "mkdir -p \"$XDG_CACHE_HOME/browser\" && printf ready > \"$XDG_CACHE_HOME/browser/executable\"");
+  installer.steps.push({
+    name: "browser consumer",
+    cwd: ".",
+    run: "test -f \"$XDG_CACHE_HOME/browser/executable\"",
+    commandId: "assert:cache-installer:02",
+    invocation: { kind: "raw-shell", command: "bash", argv: ["-c", "test -f \"$XDG_CACHE_HOME/browser/executable\""] },
+  });
+  const isolated = suite("cache-isolated", "test ! -e \"$XDG_CACHE_HOME/browser/executable\"");
+  try {
+    const results = await runSuitesV2([installer, isolated], {
+      root,
+      profile: { install: null },
+      commandCapabilities: registryFor([installer, isolated]),
+      workspaceFactory: () => fixtureWorkspace(root),
+    });
+    assert.deepEqual(results.map(({ status, executed }) => ({ status, executed })), [
+      { status: "passed", executed: 2 },
+      { status: "passed", executed: 1 },
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("privilege-separated descendant cleanup tolerates only ESRCH and EPERM", () => {
   const supervisor = path.resolve(".github/scripts/ci-batch/process-supervisor.py");
   const probe = [

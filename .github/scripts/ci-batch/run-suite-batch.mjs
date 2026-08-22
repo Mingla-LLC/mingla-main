@@ -335,16 +335,17 @@ function pipeRedacted(stream, destination, env) {
 }
 
 export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn,
-  stdout = process.stdout, stderr = process.stderr } = {}) {
+  stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
     let killTimer;
     let deadlineTimer;
-    const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
+    const ownsHome = !home;
+    const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
     try { childEnv = minimalChildEnvironment(env, temporaryHome); }
-    catch (error) { fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
+    catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
       ? { command: "/usr/bin/python3", argv: [SUPERVISOR_PATH, "--timeout-ms", String(Math.max(1, timeoutMs)), "--grace-ms", String(Math.max(0, graceMs)), "--", invocation.command, ...invocation.argv] }
@@ -357,7 +358,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
       settled = true;
       clearTimeout(deadlineTimer);
       clearTimeout(killTimer);
-      fs.rmSync(temporaryHome, { recursive: true, force: true });
+      if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true });
       resolve(redactValue(value));
     };
     child.once("error", (error) => finish({ ok: false, code: 2, timedOut: false, reason: `could not execute: ${redactText(error.message, env)}` }));
@@ -400,10 +401,12 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   let status = "passed";
   let executed = 0;
   let allowedCleanup = [];
+  let suiteHome;
   const dependencyRoot = profile?.install ? path.join(root, profile.install.cwd, "node_modules") : null;
   let immutableSnapshot = null;
   try {
     workspace = workspaceFactory({ root, profile, suite });
+    suiteHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     for (const expectedFile of suite.expectedFiles || []) {
       if (!fs.statSync(path.join(workspace.root, expectedFile), { throwIfNoEntry: false })?.isFile()) {
         status = "missing"; code = 2; reason = `expected file missing: ${expectedFile}`; break;
@@ -428,7 +431,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         ? resolveCommandCapability(commandCapabilities, suite, step, stepIndex)
         : execute !== runInvocation ? step.invocation
           : (() => { throw new Error(`${suite.id}: production execution requires the assertion command capability registry`); })();
-      const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs });
+      const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome });
       executed += 1;
       if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
     }
@@ -450,6 +453,8 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     }
   } catch (error) { status = /missing|does not exist/i.test(error.message) ? "missing" : "failed"; code = 2; reason = error.message; }
   finally {
+    try { if (suiteHome) fs.rmSync(suiteHome, { recursive: true, force: true }); }
+    catch (error) { status = "failed"; code = code || 2; reason = `suite HOME cleanup failed: ${error.message}`; }
     try { workspace?.cleanup(); }
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
