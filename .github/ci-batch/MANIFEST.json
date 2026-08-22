@@ -11967,9 +11967,10 @@
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs",
-        ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
-        ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
-        ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
+      ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
+      ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
+      ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
+      ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
         ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs",
         ".github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
         ".github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs",
