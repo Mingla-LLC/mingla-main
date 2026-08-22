@@ -400,6 +400,8 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   let status = "passed";
   let executed = 0;
   let allowedCleanup = [];
+  const dependencyRoot = profile?.install ? path.join(root, profile.install.cwd, "node_modules") : null;
+  let immutableSnapshot = null;
   try {
     workspace = workspaceFactory({ root, profile, suite });
     for (const expectedFile of suite.expectedFiles || []) {
@@ -407,6 +409,10 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         status = "missing"; code = 2; reason = `expected file missing: ${expectedFile}`; break;
       }
     }
+    // Workspace/dependency cloning is trusted preparation and may update source
+    // filesystem metadata (APFS clonefile does this for some xattrs). Establish
+    // ownership only after preparation, immediately before untrusted suite code.
+    immutableSnapshot = dependencyRoot ? dependencySnapshot(dependencyRoot) : null;
     for (const [stepIndex, step] of (status === "passed" ? suite.steps : []).entries()) {
       const cwd = path.resolve(workspace.root, step.cwd || ".");
       const relative = path.relative(workspace.root, cwd);
@@ -426,11 +432,21 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
       executed += 1;
       if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
     }
+    if (dependencyRoot) {
+      let changed = false;
+      try { changed = dependencySnapshot(dependencyRoot) !== immutableSnapshot; }
+      catch { changed = true; }
+      if (changed) {
+        status = "failed"; code = code || 2; reason = "shard dependency snapshot changed during suite execution";
+      }
+    }
     if (workspace) {
       const changed = repositoryStatus(workspace.root);
       const unexpected = changed.filter((relative) => !generatedPathAllowed(relative, suite.generatedPaths || []));
       allowedCleanup = changed.filter((relative) => generatedPathAllowed(relative, suite.generatedPaths || []));
-      if (unexpected.length) { status = "failed"; code = code || 2; reason = `unexpected workspace mutation: ${unexpected.join(", ")}`; }
+      if (unexpected.length && reason !== "shard dependency snapshot changed during suite execution") {
+        status = "failed"; code = code || 2; reason = `unexpected workspace mutation: ${unexpected.join(", ")}`;
+      }
     }
   } catch (error) { status = /missing|does not exist/i.test(error.message) ? "missing" : "failed"; code = 2; reason = error.message; }
   finally {
@@ -445,14 +461,8 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
 
 export async function runSuitesV2(suites, options = {}) {
   const results = [];
-  const dependencyRoot = options.profile?.install ? path.join(options.root || REPO_ROOT, options.profile.install.cwd, "node_modules") : null;
-  const immutableSnapshot = dependencyRoot ? dependencySnapshot(dependencyRoot) : null;
   for (const suite of suites) {
     const result = await runSuiteV2(suite, options);
-    if (dependencyRoot && dependencySnapshot(dependencyRoot) !== immutableSnapshot) {
-      result.status = "failed"; result.ok = false; result.code = result.code || 2;
-      result.reason = "shard dependency snapshot changed during suite execution";
-    }
     results.push(result);
     console.log(redactText(`${result.ok ? "PASS" : "FAIL"}  ${String(result.seconds).padStart(4)}s  ${suite.id}${result.reason ? `  (${result.reason})` : ""}`));
   }

@@ -214,7 +214,16 @@ test("dependency isolation rebases local file links, rejects external links, and
   assert.throws(() => createIsolatedWorkspace({ root, profile: { install: { cwd: "app" } } }), /dependency link escapes isolated workspace/);
   fs.unlinkSync(dependencyLink);
   fs.mkdirSync(path.join(modules, "pkg"), { recursive: true });
-  fs.writeFileSync(path.join(modules, "pkg", "index.js"), "base\n");
+  const shardDependency = path.join(modules, "pkg", "index.js");
+  fs.writeFileSync(shardDependency, "base\n");
+  const cloneMetadata = suite("clone-metadata", "true");
+  cloneMetadata.generatedPaths = ["app/node_modules"];
+  const [cloneResult] = await runSuitesV2([cloneMetadata], { root, profile: { install: { cwd: "app" } },
+    commandCapabilities: registryFor([cloneMetadata]), workspaceFactory: () => {
+      fs.chmodSync(shardDependency, 0o640);
+      return fixtureWorkspace(root);
+    } });
+  assert.equal(cloneResult.ok, true, "trusted clone-time metadata changes precede the immutable suite baseline");
   const contaminator = suite("contaminator", "printf changed > app/node_modules/pkg/index.js");
   const [result] = await runSuitesV2([contaminator], { root, profile: { install: { cwd: "app" } },
     commandCapabilities: registryFor([contaminator]), workspaceFactory: () => fixtureWorkspace(root) });
