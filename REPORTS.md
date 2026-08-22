@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-22 — Explorer’s native-version CI guard still protects its real identity and exact test wiring, but no longer freezes every later CI manifest or unrelated file change; executable ownership, active workflow steps, dead-code moves, comments, and string escapes now fail closed. (#2446, PR #2447)
 - 2026-08-21 — CI now blocks new one-off Mingla workflow files unless their genuinely distinct capability was approved before the pull request, while preserving every existing test and recording a measured baseline for safe consolidation. (#2431, PR #2434)
 - 2026-08-21 — Hosts can now create named contact groups from existing Book people or uploaded contacts, manage membership without duplicating Book records, and target those groups safely in campaigns with audited role, conflict, suppression, and sealed-send protections. (#2395, PR #2404)
 - 2026-08-21 — Mingla Host now counts free orders and tickets even when they correctly carry no currency, keeps the last truthful sales count during refresh failures, and distinguishes loading or errors from a genuine zero across Home, Hub, event editing, orders, guests, reconciliation, experiences, and trips. (#2411, PR #2420)
