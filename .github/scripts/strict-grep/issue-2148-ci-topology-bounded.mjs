@@ -243,19 +243,34 @@ export function resolveComparison({ argv = process.argv.slice(2), event = readEv
   return { base, head, event };
 }
 
-function canonicalRepositoryMode(repoRoot = REPO_ROOT) {
-  const environmentRepository = process.env.GITHUB_REPOSITORY || "";
+export function canonicalRepositoryMode(repoRoot = REPO_ROOT, environment = process.env) {
+  const environmentRepository = environment.GITHUB_REPOSITORY || "";
+  const workspace = environment.GITHUB_WORKSPACE || "";
   const origin = git(["remote", "get-url", "origin"], { cwd: repoRoot, allowFailure: true });
   const canonicalOrigin = /(?:github\.com[/:])Mingla-LLC\/mingla-main(?:\.git)?$/i.test(origin);
   const environmentCanonical = environmentRepository.toLowerCase() === CANONICAL_REPOSITORY.toLowerCase();
 
-  if (environmentRepository && environmentCanonical !== canonicalOrigin && origin) {
+  if (workspace) {
+    let realWorkspace;
+    let realRepoRoot;
+    try {
+      realWorkspace = fs.realpathSync(workspace);
+      realRepoRoot = fs.realpathSync(repoRoot);
+    } catch (error) {
+      throw new Error(`cannot establish real GitHub workspace identity: ${error.message}`);
+    }
+    if (realWorkspace !== realRepoRoot) return "noncanonical-fixture";
+  } else if (environment.GITHUB_ACTIONS === "true") {
+    throw new Error("GITHUB_WORKSPACE is missing in CI; refusing ambiguous repository identity");
+  }
+
+  if (workspace && environmentRepository && environmentCanonical !== canonicalOrigin && origin) {
     throw new Error(
       `ambiguous repository identity: GITHUB_REPOSITORY=${environmentRepository}, origin=${origin}`,
     );
   }
-  if (environmentCanonical || canonicalOrigin) return "canonical";
-  if (process.env.GITHUB_ACTIONS === "true" && !environmentRepository && !origin) {
+  if ((workspace && environmentCanonical) || canonicalOrigin) return "canonical";
+  if (environment.GITHUB_ACTIONS === "true" && !environmentRepository && !origin) {
     throw new Error("ambiguous repository identity in CI; refusing the noncanonical fixture path");
   }
   return "noncanonical-fixture";
@@ -494,7 +509,63 @@ function selfTest() {
     if (!rejected) failed += 1;
   }
 
-  const total = cases.length + canonicalCases.length + invalidRegistries.length;
+  const identityRoot = fs.mkdtempSync(path.join(process.cwd(), ".issue-2431-identity-"));
+  const nestedFixture = path.join(identityRoot, "nested-fixture");
+  const workspaceAlias = `${identityRoot}-alias`;
+  fs.mkdirSync(nestedFixture);
+  fs.symlinkSync(identityRoot, workspaceAlias);
+  const canonicalEnvironment = {
+    GITHUB_ACTIONS: "true",
+    GITHUB_REPOSITORY: CANONICAL_REPOSITORY,
+    GITHUB_WORKSPACE: workspaceAlias,
+  };
+  const identityCases = [];
+  try {
+    identityCases.push({
+      name: "the realpath GitHub workspace is canonical",
+      passed: canonicalRepositoryMode(identityRoot, canonicalEnvironment) === "canonical",
+    });
+    identityCases.push({
+      name: "a nested fixture inheriting canonical CI variables remains noncanonical",
+      passed: canonicalRepositoryMode(nestedFixture, canonicalEnvironment) === "noncanonical-fixture",
+    });
+
+    git(["init", "-q"], { cwd: identityRoot });
+    git(["remote", "add", "origin", "https://github.com/not-mingla/not-mingla.git"], { cwd: identityRoot });
+    let conflictRejected = false;
+    try {
+      canonicalRepositoryMode(identityRoot, canonicalEnvironment);
+    } catch (error) {
+      conflictRejected = /ambiguous repository identity/.test(error.message);
+    }
+    identityCases.push({
+      name: "canonical workspace environment conflicting with origin is inconclusive",
+      passed: conflictRejected,
+    });
+
+    let missingWorkspaceRejected = false;
+    try {
+      canonicalRepositoryMode(nestedFixture, {
+        GITHUB_ACTIONS: "true",
+        GITHUB_REPOSITORY: CANONICAL_REPOSITORY,
+      });
+    } catch (error) {
+      missingWorkspaceRejected = /GITHUB_WORKSPACE is missing in CI/.test(error.message);
+    }
+    identityCases.push({
+      name: "canonical CI environment without a workspace fails closed",
+      passed: missingWorkspaceRejected,
+    });
+  } finally {
+    fs.rmSync(workspaceAlias, { force: true });
+    fs.rmSync(identityRoot, { recursive: true, force: true });
+  }
+  for (const testCase of identityCases) {
+    console.log(`${testCase.passed ? "ok  " : "FAIL"}  ${testCase.name}`);
+    if (!testCase.passed) failed += 1;
+  }
+
+  const total = cases.length + canonicalCases.length + invalidRegistries.length + identityCases.length;
   if (failed) {
     console.error(`\nIssue #2148 CI topology self-test FAILED: ${failed}/${total} cases.`);
     process.exit(1);
