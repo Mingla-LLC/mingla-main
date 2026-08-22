@@ -175,6 +175,98 @@ function sequenceIndex(tokens, sequence, from = 0) {
   return -1;
 }
 
+function matchingToken(tokens, start, open, close, limit = tokens.length) {
+  if (tokens[start]?.value !== open) return -1;
+  let depth = 0;
+  for (let index = start; index < limit; index += 1) {
+    if (tokens[index].value === open) depth += 1;
+    else if (tokens[index].value === close && --depth === 0) return index;
+  }
+  return -1;
+}
+
+function namedFunctionRange(tokens, name) {
+  const matches = [];
+  for (let index = 0; index < tokens.length - 3; index += 1) {
+    if (tokens[index].value !== "function" || tokens[index + 1].value !== name || tokens[index + 2].value !== "(") continue;
+    const parametersEnd = matchingToken(tokens, index + 2, "(", ")");
+    if (parametersEnd < 0) continue;
+    let bodyStart = parametersEnd + 1;
+    while (bodyStart < tokens.length && tokens[bodyStart].value !== "{" && tokens[bodyStart].value !== ";") bodyStart += 1;
+    if (tokens[bodyStart]?.value !== "{") continue;
+    const bodyEnd = matchingToken(tokens, bodyStart, "{", "}");
+    if (bodyEnd >= 0) matches.push({ start: bodyStart + 1, end: bodyEnd });
+  }
+  return matches.length === 1 ? matches[0] : null;
+}
+
+function staticallyFalse(tokens, start, end) {
+  const values = tokens.slice(start, end).map((token) => token.value);
+  return (values.length === 1 && ["false", "0", "null", "undefined"].includes(values[0])) ||
+    (values.length === 2 && values[0] === "!" && values[1] === "true");
+}
+
+function deadControlFlowRanges(tokens, start, end) {
+  const ranges = [];
+  for (let index = start; index < end; index += 1) {
+    if (tokens[index].value !== "if" || tokens[index + 1]?.value !== "(") continue;
+    const conditionEnd = matchingToken(tokens, index + 1, "(", ")", end);
+    if (conditionEnd < 0 || !staticallyFalse(tokens, index + 2, conditionEnd)) continue;
+    if (tokens[conditionEnd + 1]?.value === "{") {
+      const blockEnd = matchingToken(tokens, conditionEnd + 1, "{", "}", end);
+      if (blockEnd >= 0) ranges.push({ start: conditionEnd + 2, end: blockEnd });
+    } else {
+      let statementEnd = conditionEnd + 1;
+      while (statementEnd < end && tokens[statementEnd].value !== ";") statementEnd += 1;
+      ranges.push({ start: conditionEnd + 1, end: Math.min(statementEnd + 1, end) });
+    }
+  }
+  return ranges;
+}
+
+function reachableSequenceIndex(tokens, sequence, range) {
+  if (!range) return -1;
+  const dead = deadControlFlowRanges(tokens, range.start, range.end);
+  let index = sequenceIndex(tokens, sequence, range.start);
+  while (index >= 0 && index + sequence.length <= range.end) {
+    if (!dead.some((candidate) => index >= candidate.start && index < candidate.end)) return index;
+    index = sequenceIndex(tokens, sequence, index + 1);
+  }
+  return -1;
+}
+
+function reachableReturnedObjectHas(tokens, owner, sequence) {
+  if (!owner) return false;
+  const dead = deadControlFlowRanges(tokens, owner.start, owner.end);
+  for (let index = owner.start; index < owner.end; index += 1) {
+    if (tokens[index].value !== "return" || tokens[index + 1]?.value !== "{") continue;
+    if (dead.some((candidate) => index >= candidate.start && index < candidate.end)) continue;
+    const objectEnd = matchingToken(tokens, index + 1, "{", "}", owner.end);
+    if (objectEnd < 0) continue;
+    const found = sequenceIndex(tokens, sequence, index + 2);
+    if (found >= 0 && found + sequence.length <= objectEnd) return true;
+  }
+  return false;
+}
+
+function createClientOptionsRange(tokens) {
+  const declaration = sequenceIndex(tokens, ["export", "const", "supabase", "=", "createClient", "("]);
+  if (declaration < 0) return null;
+  const open = declaration + 5;
+  const close = matchingToken(tokens, open, "(", ")");
+  if (close < 0) return null;
+  const argumentStarts = [open + 1];
+  const stack = [];
+  for (let index = open + 1; index < close; index += 1) {
+    if (["(", "[", "{"].includes(tokens[index].value)) stack.push(tokens[index].value);
+    else if ([")", "]", "}"].includes(tokens[index].value)) stack.pop();
+    else if (tokens[index].value === "," && stack.length === 0) argumentStarts.push(index + 1);
+  }
+  if (argumentStarts.length !== 3 || tokens[argumentStarts[2]]?.value !== "{") return null;
+  const objectEnd = matchingToken(tokens, argumentStarts[2], "{", "}", close);
+  return objectEnd < 0 ? null : { start: argumentStarts[2] + 1, end: objectEnd };
+}
+
 function yamlScalar(raw) {
   let value = "";
   let quote = null;
@@ -201,12 +293,28 @@ function yamlScalar(raw) {
   return value;
 }
 
-function parseWorkflowSteps(source) {
+function parseWorkflowSteps(source, intendedJob) {
   const lines = source.split(/\r?\n/);
   const steps = [];
-  for (let index = 0; index < lines.length; index += 1) {
-    const first = lines[index].match(/^(\s*)-\s+(name|uses|run|working-directory):\s*(.*)$/);
-    if (!first || first[1].length < 4) continue;
+  const jobsLine = lines.findIndex((line) => line === "jobs:");
+  if (jobsLine < 0) return steps;
+  let jobStart = -1;
+  let jobEnd = lines.length;
+  for (let index = jobsLine + 1; index < lines.length; index += 1) {
+    const job = lines[index].match(/^  ([A-Za-z0-9_-]+):\s*(?:#.*)?$/);
+    if (!job) continue;
+    if (jobStart >= 0) {
+      jobEnd = index;
+      break;
+    }
+    if (job[1] === intendedJob) jobStart = index;
+  }
+  if (jobStart < 0) return steps;
+  const stepsLine = lines.findIndex((line, index) => index > jobStart && index < jobEnd && /^    steps:\s*(?:#.*)?$/.test(line));
+  if (stepsLine < 0) return steps;
+  for (let index = stepsLine + 1; index < jobEnd; index += 1) {
+    const first = lines[index].match(/^(      )-\s+(name|uses|run|working-directory|if):\s*(.*)$/);
+    if (!first) continue;
     const itemIndent = first[1].length;
     const step = {};
     const assign = (key, raw, lineIndex, keyIndent) => {
@@ -231,7 +339,7 @@ function parseWorkflowSteps(source) {
       if (!trimmed || trimmed.startsWith("#")) continue;
       const indent = lines[cursor].match(/^\s*/)[0].length;
       if (indent <= itemIndent) break;
-      const field = lines[cursor].match(/^\s+(name|uses|run|working-directory):\s*(.*)$/);
+      const field = lines[cursor].match(/^        (name|uses|run|working-directory|if):\s*(.*)$/);
       if (field) cursor = assign(field[1], field[2], cursor, indent);
       index = cursor;
     }
@@ -248,8 +356,14 @@ export function validate(sources) {
   if (supabaseScan.errors.length > 0) failures.push(`Explorer Supabase TypeScript scan failed: ${supabaseScan.errors.join(", ")}`);
   const identityTokens = identityScan.tokens;
   const supabaseTokens = supabaseScan.tokens;
+  const installedVersionOwner = namedFunctionRange(identityTokens, "getInstalledNativeVersion");
+  const headerOwner = namedFunctionRange(identityTokens, "getNativeAppVersionHeaders");
+  const diagnosticOwner = namedFunctionRange(identityTokens, "reportIdentityOutcome");
   const requireSequence = (tokens, sequence, label) => {
     if (sequenceIndex(tokens, sequence) < 0) failures.push(label);
+  };
+  const requireOwnedSequence = (tokens, sequence, owner, label) => {
+    if (reachableSequenceIndex(tokens, sequence, owner) < 0) failures.push(label);
   };
 
   let appJson;
@@ -269,32 +383,35 @@ export function validate(sources) {
     failures.push("Explorer runtimeVersion.policy must remain appVersion");
   }
 
-  const platformRead = sequenceIndex(identityTokens, ["const", "platform", "=", "getNativeAppPlatform", "(", ")", ";"]);
-  const webReturn = sequenceIndex(identityTokens, ["if", "(", "platform", "===", "null", ")", "return", "null", ";"], platformRead + 1);
-  const primaryRead = sequenceIndex(identityTokens, [
+  const platformRead = reachableSequenceIndex(identityTokens, ["const", "platform", "=", "getNativeAppPlatform", "(", ")", ";"], installedVersionOwner);
+  const webReturn = reachableSequenceIndex(identityTokens, ["if", "(", "platform", "===", "null", ")", "return", "null", ";"], installedVersionOwner);
+  const primaryRead = reachableSequenceIndex(identityTokens, [
     "if", "(", "isStrictSemver", "(", "Constants", ".", "nativeAppVersion", ")", ")", "{",
     "return", "Constants", ".", "nativeAppVersion", ";", "}",
-  ], webReturn + 1);
-  if (platformRead < 0 || webReturn < 0 || primaryRead < 0) {
+  ], installedVersionOwner);
+  if (platformRead < 0 || webReturn < platformRead || primaryRead < webReturn) {
     failures.push("web must exit before the executable primary native identity branch");
   }
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     ["const", "expoConfigVersion", "=", "Constants", ".", "expoConfig", "?.", "version", ";"],
+    installedVersionOwner,
     "Release identity must retain the executable Expo config source",
   );
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     [
       "if", "(", "isStrictSemver", "(", "expoConfigVersion", ")", ")", "{",
       "reportIdentityOutcome", "(", "platform", ",", literal("expo_config_fallback"), ")", ";",
       "return", "expoConfigVersion", ";", "}",
     ],
+    installedVersionOwner,
     "Release identity must retain the strict executable fallback and diagnostic",
   );
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     ["reportIdentityOutcome", "(", "platform", ",", literal("unavailable"), ")", ";", "return", "null", ";"],
+    installedVersionOwner,
     "unavailable identity must retain its executable diagnostic",
   );
   requireSequence(
@@ -302,9 +419,10 @@ export function validate(sources) {
     ["let", "reportedFallback", "=", "false", ";"],
     "fallback diagnostic state must remain executable",
   );
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     ["if", "(", "reportedFallback", ")", "return", ";", "reportedFallback", "=", "true", ";"],
+    diagnosticOwner,
     "fallback diagnostic must retain its executable once-only guard",
   );
   requireSequence(
@@ -312,31 +430,35 @@ export function validate(sources) {
     ["let", "reportedUnavailable", "=", "false", ";"],
     "unavailable diagnostic state must remain executable",
   );
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     ["if", "(", "reportedUnavailable", ")", "return", ";", "reportedUnavailable", "=", "true", ";"],
+    diagnosticOwner,
     "unavailable diagnostic must retain its executable once-only guard",
   );
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     ["console", ".", "warn", "(", literal("[app-version-identity]"), ",", "{"],
+    diagnosticOwner,
     "identity diagnostic must retain its executable console transport",
   );
-  requireSequence(
+  requireOwnedSequence(
     identityTokens,
     ["appId", ":", "APP_VERSION_APP_ID", ",", "platform", ",", "outcome", ",", "severity", ":", "outcome", "===", literal("unavailable"), "?", literal("error"), ":", literal("warning")],
+    diagnosticOwner,
     "identity diagnostic must retain its fixed sanitized fields",
   );
-  requireSequence(
+  if (!reachableReturnedObjectHas(
     identityTokens,
+    headerOwner,
     [literal("X-Mingla-App-Version"), ":", "getInstalledNativeVersion", "(", ")", "??", literal("")],
-    "native header must use the executable installed-version resolver",
-  );
-  requireSequence(
+  )) failures.push("native header must use the executable installed-version resolver in the live returned header object");
+  const supabaseOptions = createClientOptionsRange(supabaseTokens);
+  if (reachableSequenceIndex(
     supabaseTokens,
     ["global", ":", "{", "fetch", ":", "fetchWithTimeout", ",", "headers", ":", "getNativeAppVersionHeaders", "(", ")"],
-    "shared Explorer Supabase client must retain the executable global header owner",
-  );
+    supabaseOptions,
+  ) < 0) failures.push("shared Explorer Supabase client must retain the executable global header owner in its actual createClient options");
   requireSequence(
     identityTokens,
     ["outcome", ":", literal("expo_config_fallback"), "|", literal("unavailable")],
@@ -358,17 +480,18 @@ export function validate(sources) {
     failures.push("identity resolver must not add a relative import");
   }
 
-  const workflowSteps = parseWorkflowSteps(sources.workflow);
-  const exactStepCount = (command) => workflowSteps.filter(
-    (step) => step["working-directory"] === "app-mobile" && step.run === command,
+  const workflowSteps = parseWorkflowSteps(sources.workflow, "jest-suites");
+  const exactStepCount = (name, command) => workflowSteps.filter(
+    (step) => step.name === name && step["working-directory"] === "app-mobile" &&
+      step.run === command && step.uses === undefined && step.if === undefined,
   ).length;
-  if (exactStepCount(implementorCommand) !== 1) {
+  if (exactStepCount("Issue #2443: Explorer release native identity", implementorCommand) !== 1) {
     failures.push("Class D must invoke the implementor test once by exact active filename");
   }
   if (workflowSteps.some((step) => typeof step.run === "string" && /issue_2443_explorer_native_identity[^\n]*\*/.test(step.run))) {
     failures.push("#2443 Class D wiring must not rely on a wildcard");
   }
-  if (sources.testerExists && exactStepCount(testerCommand) !== 1) {
+  if (sources.testerExists && exactStepCount("Issue #2443: adversarial Explorer native identity", testerCommand) !== 1) {
     failures.push("Class D must invoke the tester test once by exact active filename");
   }
   if (sources.issueWorkflowExists) {
@@ -726,13 +849,63 @@ function main() {
         ),
       },
     ],
+    [
+      "dead primary branch ownership",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          "  if (isStrictSemver(Constants.nativeAppVersion)) {\n    return Constants.nativeAppVersion;\n  }",
+          "  if (false) {\n    if (isStrictSemver(Constants.nativeAppVersion)) {\n      return Constants.nativeAppVersion;\n    }\n  }",
+        ),
+      },
+    ],
+    [
+      "unused forged native header owner",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '    "X-Mingla-App-Version": getInstalledNativeVersion() ?? "",\n',
+          "",
+        ) + '\nfunction unusedForgedHeader() { return { "X-Mingla-App-Version": getInstalledNativeVersion() ?? "" }; }\n',
+      },
+    ],
+    [
+      "unused forged Supabase options owner",
+      {
+        ...sources,
+        supabase: sources.supabase.replace(
+          "    headers: getNativeAppVersionHeaders(),",
+          "    headers: {},",
+        ) + "\nfunction unusedForgedOptions() { return { global: { fetch: fetchWithTimeout, headers: getNativeAppVersionHeaders() } }; }\n",
+      },
+    ],
+    [
+      "Class D command nested under uses input",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          `      - name: "Issue #2443: Explorer release native identity"\n        working-directory: app-mobile\n        run: ${implementorCommand}`,
+          `      - name: "Issue #2443: Explorer release native identity"\n        uses: actions/github-script@v7\n        with:\n          working-directory: app-mobile\n          run: ${implementorCommand}`,
+        ),
+      },
+    ],
+    [
+      "disabled Class D command",
+      {
+        ...sources,
+        workflow: sources.workflow.replace(
+          `      - name: "Issue #2443: Explorer release native identity"\n        working-directory: app-mobile`,
+          `      - name: "Issue #2443: Explorer release native identity"\n        if: false\n        working-directory: app-mobile`,
+        ),
+      },
+    ],
   ];
   for (const [label, mutated] of mutations) {
     if (validate(mutated).length === 0) {
       throw new Error(`self-test failed: ${label} mutation passed`);
     }
   }
-  console.log("#2443 Explorer native-identity strict gate self-test: 27/27 + downstream fixture PASS");
+  console.log("#2443 Explorer native-identity strict gate self-test: 32/32 + downstream fixture PASS");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();
