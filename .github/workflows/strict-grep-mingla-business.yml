@@ -896,6 +896,9 @@ jobs:
       - name: "Issue #2443: Explorer release native identity"
         working-directory: app-mobile
         run: npx jest --runInBand src/services/__tests__/issue_2443_explorer_native_identity.implementor.test.ts
+      - name: "Issue #2443: adversarial Explorer native identity"
+        working-directory: app-mobile
+        run: npx jest --runInBand src/services/__tests__/issue_2443_explorer_native_identity.tester_adversarial.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results
