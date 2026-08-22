@@ -12,9 +12,9 @@ const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../..");
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
-const PRESERVED_ASSERTION_SHA256 = "cd0fcc5a903e0c4e20ffd4e5d57c4462990e237f99873cad845c9f41f443dc5b";
-const ASSERTION_CAPABILITY_SHA256 = "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399";
-const PROCESS_SUPERVISOR_SHA256 = "710c70df84e0d3c4773c75f18979dfffeb2aaa397d69356bb4beabd5340f39e8";
+const PRESERVED_ASSERTION_SHA256 = "46b4392592c5d6cb56bc600adc98e083b14880b79dad29fe4e1438ac41923764";
+const ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
+const PROCESS_SUPERVISOR_SHA256 = "1c890b876833df9e6f9c8cf2b0dc8cec4ba1364b7b5519e68b0245b5077dfb20";
 
 function clone(value) { return structuredClone(value); }
 function manifest() { return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")); }
@@ -29,12 +29,12 @@ export function verifyLive() {
   const value = manifest();
   const failures = errors(value);
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(value.suites.length, 22);
-  assert.equal(value.suites.flatMap((suite) => suite.steps).length, 46);
+  assert.equal(value.suites.length, 23);
+  assert.equal(value.suites.flatMap((suite) => suite.steps).length, 51);
   assert.equal(value.suites.flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
-  assert.equal(assertionDigest(value), PRESERVED_ASSERTION_SHA256, "the 46 preserved underlying commands/assertions drifted");
+  assert.equal(assertionDigest(value), PRESERVED_ASSERTION_SHA256, "the 51 preserved underlying commands/assertions drifted");
   assert.equal(value.commandCapabilities.registrySha256, ASSERTION_CAPABILITY_SHA256, "reviewed assertion command capabilities drifted");
-  assert.equal(value.commandCapabilities.commands.length, 46);
+  assert.equal(value.commandCapabilities.commands.length, 51);
   const supervisor = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/process-supervisor.py"), "utf8");
   assert.equal(crypto.createHash("sha256").update(supervisor).digest("hex"), PROCESS_SUPERVISOR_SHA256, "atomic process supervisor drifted");
   assert.match(supervisor, /PR_SET_CHILD_SUBREAPER/);
@@ -86,4 +86,4 @@ export function selfTest() {
 }
 
 if (process.argv[2] === "--self-test") selfTest();
-else { verifyLive(); console.log("#2436 runner v2: PASS — 22 suites, 46 assertions, zero embedded setup, isolated deadline runner wired"); }
+else { verifyLive(); console.log("#2436 runner v2: PASS — 23 suites, 51 assertions, zero embedded setup, isolated deadline runner wired"); }

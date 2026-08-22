@@ -73,7 +73,12 @@ def signal_pid(pid: int, sig: signal.Signals) -> None:
     try:
         os.kill(pid, sig)
     except OSError as error:
-        if error.errno != errno.ESRCH:
+        # Approved assertions can cross a privilege boundary (for example,
+        # Playwright's --with-deps apt helper). Linux may briefly reparent that
+        # root-owned process to this subreaper after the assertion exits, but an
+        # unprivileged runner cannot signal it. Keep observing/retrying the owned
+        # boundary and process group; EPERM itself is not a supervisor failure.
+        if error.errno not in (errno.ESRCH, errno.EPERM):
             raise
 
 

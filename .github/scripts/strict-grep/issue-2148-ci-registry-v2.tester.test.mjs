@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// #2435 independent tester proof: a complete 22/22 inventory must not go green
+// #2435 independent tester proof: a complete 23/23 inventory must not go green
 // when two removed legacy workflows are attributed to each other's suites.
 
 import test from "node:test";

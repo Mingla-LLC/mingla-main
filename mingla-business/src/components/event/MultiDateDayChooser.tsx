@@ -36,8 +36,15 @@
  * Anon-tolerant: no useAuth anywhere in the chain.
  */
 
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from "react-native";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
 
@@ -71,6 +78,9 @@ export interface MultiDateDayChooserProps {
    * block into an explicit, accessible prompt instead of a silent no-op.
    */
   highlightUnchosen: boolean;
+  /** issue #2399 — explicit fail-closed occurrence truth state. */
+  state?: "ready" | "error" | "offline" | "stale";
+  onRetry?: () => void;
   onToggle: (eventDateId: string) => void;
 }
 
@@ -91,6 +101,36 @@ const rowLabel = (
 ): string =>
   formatOccurrenceLine(occurrence, fallbackTimezone) ?? "Date to be confirmed";
 
+type WebTransitionStyle = ViewStyle & {
+  transitionProperty: "background-color, border-color, color, opacity";
+  transitionDuration: "0ms" | "150ms";
+};
+
+const webTransitionStyle = (reducedMotion: boolean): WebTransitionStyle =>
+  ({
+    transitionProperty: "background-color, border-color, color, opacity",
+    transitionDuration: reducedMotion ? "0ms" : "150ms",
+  }) as WebTransitionStyle;
+
+const useReducedMotionOnWeb = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(() =>
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (query === undefined) return undefined;
+    const update = (): void => setReduced(query.matches);
+    query.addEventListener?.("change", update);
+    return (): void => query.removeEventListener?.("change", update);
+  }, []);
+
+  return reduced;
+};
+
 export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   timezone,
   palette,
@@ -100,12 +140,15 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   pricingMode,
   isPaid,
   highlightUnchosen,
+  state = "ready",
+  onRetry,
   onToggle,
 }) => {
+  const reducedMotion = useReducedMotionOnWeb();
   // Nothing to choose between → render nothing. A multi-date event that
   // materialised a single row shows no dead affordance, and the host's CTA
   // behaves exactly as it does for single dates.
-  if (occurrences.length <= 1) return null;
+  if (state === "ready" && occurrences.length <= 1) return null;
 
   const fontStyle = fontFamily !== undefined ? { fontFamily } : null;
   const chosen = selectedOccurrenceIds.length;
@@ -121,19 +164,32 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
         ? `One price for all days · ${chosen} of ${occurrences.length} selected`
         : `${chosen} of ${occurrences.length} selected`;
 
+  const recovery =
+    state === "error"
+      ? { message: "We couldn’t load the event days.", action: "Try again" }
+      : state === "offline"
+        ? { message: "You’re offline. Reconnect to continue.", action: null }
+        : state === "stale"
+          ? {
+              message: "Those dates just changed. Refresh and choose again.",
+              action: "Refresh days",
+            }
+          : null;
+
   return (
     <View
       style={[
         styles.host,
-        { backgroundColor: palette.card, borderColor: palette.panelBorder },
-        highlightUnchosen ? { borderColor: palette.accent } : null,
+        { borderBottomColor: palette.panelBorder },
+        highlightUnchosen ? { borderBottomColor: palette.accent } : null,
       ]}
       testID="issue-2135-day-chooser"
+      nativeID="issue-2399-day-section"
+      tabIndex={-1}
     >
       <View style={styles.headerRow}>
         <Text
           style={[styles.heading, { color: palette.primaryText }, fontStyle]}
-          numberOfLines={1}
         >
           Pick your days
         </Text>
@@ -148,8 +204,34 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
           testID="issue-2135-day-chooser-prompt"
           accessibilityRole="alert"
         >
-          Choose at least one day you're attending to continue.
+          Choose at least one day {"you're"} attending to continue.
         </Text>
+      ) : null}
+
+      {recovery !== null ? (
+        <View style={styles.recovery}>
+          <Text
+            style={[styles.prompt, { color: palette.accent }, fontStyle]}
+            accessibilityRole="alert"
+            testID="issue-2399-day-recovery"
+          >
+            {recovery.message}
+          </Text>
+          {recovery.action !== null && onRetry !== undefined ? (
+            <Pressable
+              onPress={onRetry}
+              accessibilityRole="button"
+              accessibilityLabel={recovery.action}
+              style={[styles.retry, { borderColor: palette.accent }]}
+            >
+              <Text
+                style={[styles.retryText, { color: palette.accent }, fontStyle]}
+              >
+                {recovery.action}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
       ) : null}
 
       {/* Rows are SIBLINGS — never nested Pressables, which would flatten the
@@ -158,58 +240,83 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
           checkbox-group role, and leaving "radiogroup" on a set of checkboxes
           would announce "pick exactly one", which is the opposite of what this
           control now does. A plain labelled group is the honest shape. */}
-      <View accessibilityLabel="Days you're attending" style={styles.rows}>
-        {occurrences.map((occurrence) => {
-          const selected = selectedOccurrenceIds.includes(occurrence.id);
-          const label = rowLabel(occurrence, timezone);
-          return (
-            <Pressable
-              key={occurrence.id}
-              onPress={() => onToggle(occurrence.id)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: selected }}
-              accessibilityLabel={label}
-              style={[
-                styles.row,
-                { borderColor: palette.panelBorder },
-                selected
-                  ? {
-                      borderColor: palette.accent,
-                      backgroundColor: palette.accentWash,
+      {state === "ready" ? (
+        <View accessibilityLabel="Days you're attending" style={styles.rows}>
+          {occurrences.map((occurrence) => {
+            const selected = selectedOccurrenceIds.includes(occurrence.id);
+            const label = rowLabel(occurrence, timezone);
+            const webCheckboxProps = Platform.OS === "web"
+              ? {
+                  "aria-checked": selected,
+                  tabIndex: 0 as const,
+                  onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
+                    if ((event.key === " " || event.key === "Spacebar") && !event.repeat) {
+                      event.preventDefault();
+                      onToggle(occurrence.id);
                     }
-                  : null,
-              ]}
-              testID={`issue-2135-day-row-${occurrence.id}`}
-              /* issue #2160 — a second, mode-neutral hook so a test can target
+                  },
+                }
+              : {};
+            return (
+              <Pressable
+                key={occurrence.id}
+                {...webCheckboxProps}
+                onPress={() => onToggle(occurrence.id)}
+                accessibilityRole="checkbox"
+                accessibilityState={{ checked: selected }}
+                accessibilityLabel={label}
+                style={[
+                  styles.row,
+                  { borderColor: palette.panelBorder },
+                  Platform.OS === "web"
+                    ? webTransitionStyle(reducedMotion)
+                    : null,
+                  selected
+                    ? {
+                        borderColor: palette.accent,
+                        backgroundColor: palette.accentWash,
+                      }
+                    : null,
+                ]}
+                testID={`issue-2135-day-row-${occurrence.id}`}
+                /* issue #2160 — a second, mode-neutral hook so a test can target
                  the multi-select rows without depending on the #2135 id. */
-              nativeID={`issue-2160-day-row-${occurrence.id}`}
-            >
-              <View
-                style={[
-                  styles.radio,
-                  { borderColor: selected ? palette.accent : palette.panelBorder },
-                ]}
+                nativeID={`issue-2160-day-row-${occurrence.id}`}
               >
-                {selected ? (
-                  <View
-                    style={[styles.radioDot, { backgroundColor: palette.accent }]}
-                  />
-                ) : null}
-              </View>
-              <Text
-                style={[
-                  styles.rowLabel,
-                  { color: selected ? palette.primaryText : palette.secondaryText },
-                  fontStyle,
-                ]}
-                numberOfLines={1}
-              >
-                {label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </View>
+                <View
+                  style={[
+                    styles.radio,
+                    {
+                      borderColor: selected
+                        ? palette.accent
+                        : palette.panelBorder,
+                    },
+                  ]}
+                >
+                  {selected ? (
+                    <Text style={[styles.check, { color: palette.accentText }]}>
+                      ✓
+                    </Text>
+                  ) : null}
+                </View>
+                <Text
+                  style={[
+                    styles.rowLabel,
+                    {
+                      color: selected
+                        ? palette.primaryText
+                        : palette.secondaryText,
+                    },
+                    fontStyle,
+                  ]}
+                >
+                  {label}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 };
@@ -218,11 +325,9 @@ const styles = StyleSheet.create({
   // Palette-themed with the OPAQUE card fill + panel border the page's other
   // cards use, so Android never renders translucent glass here.
   host: {
-    borderRadius: 16,
-    borderWidth: 1,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    marginTop: 8,
+    borderBottomWidth: 1,
+    paddingBottom: 14,
+    marginBottom: 8,
     gap: 10,
   },
   headerRow: {
@@ -243,20 +348,32 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
     borderRadius: 12,
     borderWidth: 1,
+    minHeight: 48,
   },
   // issue #2160 — a SQUARE check box, same 18pt box / 2pt border / accent fill
   // as #2135's radio circle. The affordance now means "any number", so it must
   // not look like "exactly one".
   radio: {
-    width: 18,
-    height: 18,
+    width: 20,
+    height: 20,
     borderRadius: 5,
     borderWidth: 2,
     alignItems: "center",
     justifyContent: "center",
   },
-  radioDot: { width: 8, height: 8, borderRadius: 2 },
+  check: { fontSize: 14, lineHeight: 16, fontWeight: "900" },
   rowLabel: { flex: 1, fontSize: 14, fontWeight: "700" },
+  recovery: { gap: 8 },
+  retry: {
+    minHeight: 44,
+    alignSelf: "flex-start",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+  },
+  retryText: { fontSize: 13, fontWeight: "800" },
 });
 
 export default MultiDateDayChooser;

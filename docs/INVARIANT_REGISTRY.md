@@ -13,7 +13,7 @@
 ### I-PROPOSED-2148-SUITE-EXECUTION-COMPLETE (DRAFT)
 
 - **Rule:** Every historical CI origin has exactly one recorded disposition, and every executable migrated suite has exactly one reachable class route, typed invocation, pinned runtime/setup profile, real working directory, and real expected files. An omitted, duplicated, stale, empty, unknown, or live-plus-batched origin fails closed; registry discovery may prove completeness but never decides what executes.
-- **Enforcement:** `.github/ci-batch/MANIFEST.json` schema v2, `.github/scripts/ci-batch/validate-manifest-v2.mjs`, and the issue #2435 strict-grep adversarial and implementor happy-path proofs in Class A. The amended Phase 1 locks are 198 origins, 22 executable suites, and 89 externally referenced live workflow providers.
+- **Enforcement:** `.github/ci-batch/MANIFEST.json` schema v2, `.github/scripts/ci-batch/validate-manifest-v2.mjs`, and the issue #2435 strict-grep adversarial and implementor happy-path proofs in Class A. The amended Phase 1 locks are 199 origins, 23 executable suites, and 89 externally referenced live workflow providers; #2399's five checks moved from a standalone wrapper into the approved batch without losing assertion coverage.
 - **Status:** DRAFT. Phase 1 records and guards current truth without deleting a workflow or test, changing a suite command, or changing required-context/trust behavior.
 
 ### I-PROPOSED-2148-SETUP-SINGLE-OWNER (DRAFT)
@@ -28,7 +28,7 @@
 
 - **Rule:** A CI batch class performs its typed setup profile exactly once per shard. Ordinary suite commands contain assertions only and may not embed package installs, runtime/bootstrap actions, operating-system installs, container startup, or migration replay.
 - **Enforcement:** `.github/ci-batch/MANIFEST.json`, its fail-closed v2 validator, the exact workflow setup-evidence route, and the issue #2436 governance and implementor proofs registered in strict-grep Class A.
-- **Status:** DRAFT. Phase 2 removes 19 redundant setup operations from 14 suites without changing any of the 46 underlying commands/assertions.
+- **Status:** DRAFT. Phase 2 removes 19 redundant setup operations from 14 suites without changing any underlying command/assertion; the current registry preserves 51 after #2399's five-command migration.
 
 ### I-PROPOSED-2148-SUITE-EXECUTION-ISOLATED (DRAFT)
 
@@ -9421,6 +9421,12 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Rule:** Mingla Host iOS and Android must build with a fixed Light native appearance regardless of the device setting. Each platform has one final native appearance owner, while the #2050 Host splash remains explicitly orange `#eb7825` in both device themes. Intentionally dark Host compositions remain locally owned; in particular, `PaymentPlanEditor`'s iOS inline picker declares `themeVariant="dark"` and the established light-on-dark `text.primary` token.
 - **Enforcement:** the append-only #2343 implementor and tester suites inspect the real Host config and picker source, execute the pure Info.plist owner, pin plugin order and #2050 splash bytes, and are explicitly registered in `.github/ci-batch/MANIFEST.json`. Release proof must inspect generated/built `UIUserInterfaceStyle=Light` and Android `expo_system_ui_user_interface_style=light`, then compare settled Light/Dark-device runtime pixels on the exact replacement artifacts.
 - **Established:** DRAFT at #2343, 2026-08-21; flip to ACTIVE only after independent tester PASS, all-green merge, exact replacement Host artifact inspection, and Light/Dark runtime verification.
+
+### I-PROPOSED-2399-MULTIDAY-CHOICE-LIVES-WITH-PURCHASE (DRAFT)
+
+- **Rule:** A buyable multi-day event must place its day chooser first inside the Tickets purchase container, keep the displayed box and floating-bar totals synchronized with the selected-day pricing mode, and fail closed while no valid day truth is selected. Single-day callers that omit the optional purchase context preserve their rendered tree and checkout request.
+- **Enforcement:** `issue_2399_multiday_picker_ticket_box.happy.test.tsx`, `.github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs`, and `.github/workflows/issue-2399-multiday-picker-ticket-box.yml` cover buyer-web desktop/mobile and the Business web preview tree.
+- **Established:** DRAFT at #2399, 2026-08-21; flip to ACTIVE only after independent tester PASS, all-green merge, and merged-main verification.
 
 ---
 

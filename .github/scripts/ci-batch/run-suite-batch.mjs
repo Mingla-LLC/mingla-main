@@ -320,6 +320,17 @@ function redactValue(value) {
   return value;
 }
 
+// Suite identity and accounting fields come from the reviewed manifest and
+// must remain byte-stable until reconciliation is complete. Redact only the
+// free-text fields that can contain child output or environment-derived paths.
+function redactResultText(result) {
+  return {
+    ...result,
+    reason: result.reason === null || result.reason === undefined ? result.reason : redactText(result.reason),
+    allowedCleanup: Array.isArray(result.allowedCleanup) ? result.allowedCleanup.map((entry) => redactText(entry)) : result.allowedCleanup,
+  };
+}
+
 function pipeRedacted(stream, destination, env) {
   if (!stream) return;
   let buffer = "";
@@ -335,16 +346,17 @@ function pipeRedacted(stream, destination, env) {
 }
 
 export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn,
-  stdout = process.stdout, stderr = process.stderr } = {}) {
+  stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
     let timedOut = false;
     let killTimer;
     let deadlineTimer;
-    const temporaryHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
+    const ownsHome = !home;
+    const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
     try { childEnv = minimalChildEnvironment(env, temporaryHome); }
-    catch (error) { fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
+    catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
       ? { command: "/usr/bin/python3", argv: [SUPERVISOR_PATH, "--timeout-ms", String(Math.max(1, timeoutMs)), "--grace-ms", String(Math.max(0, graceMs)), "--", invocation.command, ...invocation.argv] }
@@ -357,7 +369,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
       settled = true;
       clearTimeout(deadlineTimer);
       clearTimeout(killTimer);
-      fs.rmSync(temporaryHome, { recursive: true, force: true });
+      if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true });
       resolve(redactValue(value));
     };
     child.once("error", (error) => finish({ ok: false, code: 2, timedOut: false, reason: `could not execute: ${redactText(error.message, env)}` }));
@@ -392,7 +404,8 @@ function generatedPathAllowed(relative, allowed) {
 }
 
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
-  execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities } = {}) {
+  execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities,
+  removeHome = (home) => fs.rmSync(home, { recursive: true, force: true }) } = {}) {
   const started = now();
   let workspace;
   let code = 0;
@@ -400,10 +413,12 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   let status = "passed";
   let executed = 0;
   let allowedCleanup = [];
+  let suiteHome;
   const dependencyRoot = profile?.install ? path.join(root, profile.install.cwd, "node_modules") : null;
   let immutableSnapshot = null;
   try {
     workspace = workspaceFactory({ root, profile, suite });
+    suiteHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     for (const expectedFile of suite.expectedFiles || []) {
       if (!fs.statSync(path.join(workspace.root, expectedFile), { throwIfNoEntry: false })?.isFile()) {
         status = "missing"; code = 2; reason = `expected file missing: ${expectedFile}`; break;
@@ -428,7 +443,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         ? resolveCommandCapability(commandCapabilities, suite, step, stepIndex)
         : execute !== runInvocation ? step.invocation
           : (() => { throw new Error(`${suite.id}: production execution requires the assertion command capability registry`); })();
-      const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs });
+      const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome });
       executed += 1;
       if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
     }
@@ -450,11 +465,13 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     }
   } catch (error) { status = /missing|does not exist/i.test(error.message) ? "missing" : "failed"; code = 2; reason = error.message; }
   finally {
+    try { if (suiteHome) removeHome(suiteHome); }
+    catch (error) { status = "failed"; code = code || 2; reason = `suite HOME cleanup failed: ${error.message}`; }
     try { workspace?.cleanup(); }
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
   const durationMs = Math.max(0, now() - started);
-  return redactValue({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
+  return redactResultText({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
     ok: status === "passed", code, reason, durationMs, seconds: Math.round(durationMs / 1_000), timeoutSeconds: suite.timeoutSeconds,
     expected: suite.steps.length, executed, allowedCleanup });
 }
@@ -472,15 +489,15 @@ export async function runSuitesV2(suites, options = {}) {
 export function buildShardReport(klass, suites, results, setupEvidence, durationMs) {
   const base = verdict(suites, results);
   const statuses = Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
-  return redactValue({ schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
+  return { schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
     setupExecutions: setupEvidence?.setupExecutions || 0, installExecutions: setupEvidence?.installExecutions || 0,
-    durationMs, ...base, statuses, results });
+    durationMs, ...base, statuses, results: results.map(redactResultText) };
 }
 
 function annotationEscape(value) { return String(value).replaceAll("%", "%25").replaceAll("\r", "%0D").replaceAll("\n", "%0A"); }
 
 export function renderSummary(report) {
-  const safeReport = redactValue(report);
+  const safeReport = { ...report, results: report.results.map(redactResultText) };
   const cell = (value) => redactText(value).replaceAll("|", "\\|").replaceAll("\n", " ");
   const rows = safeReport.results.map((result) => `| ${cell(result.id)} | ${cell(result.status)} | ${result.executed}/${result.expected} | ${result.seconds}s | ${cell(result.reason || "")} |`);
   return [`## CI batch: ${cell(safeReport.class)}`, "",
@@ -489,14 +506,22 @@ export function renderSummary(report) {
     "| Suite | Status | Commands | Time | Reason |", "|---|---:|---:|---:|---|", ...rows, ""].join("\n");
 }
 
+export function renderAnnotations(report) {
+  const annotation = (title, message) => `::error title=${annotationEscape(redactText(title))}::${annotationEscape(redactText(message))}`;
+  const lines = report.results.filter((item) => !item.ok).map((result) =>
+    annotation(`CI suite ${result.id}`, `${result.status}: ${result.reason || "unknown failure"}`));
+  if (report.shortfall) lines.push(annotation("CI suite shortfall", `expected ${report.expected}, executed ${report.executed}`));
+  if (report.identityMismatch) lines.push(annotation("CI suite identity mismatch", "executed suite identities or order differ from the manifest"));
+  if (report.duplicateIds.length) lines.push(annotation("CI suite duplicate identities", report.duplicateIds.join(", ")));
+  if (report.malformedIds.length) lines.push(annotation("CI suite malformed results", report.malformedIds.join(", ")));
+  return lines;
+}
+
 function writeReport(manifest, report, root = REPO_ROOT) {
   fs.writeFileSync(path.join(root, manifest.runnerContract.resultsFile), `${JSON.stringify(report, null, 2)}\n`);
   const summary = renderSummary(report);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
-  for (const result of report.results.filter((item) => !item.ok)) {
-    console.error(`::error title=${annotationEscape(`CI suite ${result.id}`)}::${annotationEscape(`${result.status}: ${result.reason || "unknown failure"}`)}`);
-  }
-  if (report.shortfall) console.error(`::error title=CI suite shortfall::expected ${report.expected}, executed ${report.executed}`);
+  for (const line of renderAnnotations(report)) console.error(line);
 }
 
 async function main() {

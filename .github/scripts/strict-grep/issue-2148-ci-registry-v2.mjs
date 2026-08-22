@@ -34,7 +34,7 @@ function selfTest(base) {
     workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT),
     matrixSource: fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows/ci-batch.yml"), "utf8"),
   };
-  assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /198 origins|origin omitted/, discovery);
+  assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
   assertRed("origin duplication", base, (m) => m.legacyOrigins.push(clone(m.legacyOrigins[0])), /duplicate legacy origin/, discovery);
   assertRed("legacy to suite attribution swap", base, (m) => {
     const migrated = m.legacyOrigins.filter((item) => item.disposition === "batched-active");

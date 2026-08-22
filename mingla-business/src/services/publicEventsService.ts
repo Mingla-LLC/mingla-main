@@ -6,6 +6,7 @@ import { supabase } from "./supabase";
 // that module is deleted; only the TYPE survives, because it is the contract
 // the day chooser renders.
 import type { PublicEventOccurrence } from "./publicEventOccurrencesService";
+import { normalizePublicEventOccurrences } from "../utils/publicEventOccurrenceTruth";
 import type {
   DraftEventFormat,
   DraftEventVisibility,
@@ -421,31 +422,9 @@ const asPricingMode = (value: unknown): MultiDatePricingMode =>
  * Stamping the event-level number onto each day would claim per-day
  * availability that does not exist (Constitution #9).
  */
-const occurrencesFromBundle = (
-  value: unknown,
-  fallbackTimezone: string | null,
-): PublicEventOccurrence[] => {
-  if (!Array.isArray(value)) return [];
-  const out: PublicEventOccurrence[] = [];
-  for (const raw of value) {
-    if (typeof raw !== "object" || raw === null) continue;
-    const row = raw as Record<string, unknown>;
-    const id = asStringOrNull(row.id);
-    const startAt = asStringOrNull(row.startAt);
-    const endAt = asStringOrNull(row.endAt);
-    if (id === null || startAt === null || endAt === null) continue;
-    const tz = asStringOrNull(row.timezone);
-    out.push({
-      id,
-      startAt,
-      endAt,
-      timezone: tz !== null && tz.length > 0 ? tz : (fallbackTimezone ?? "UTC"),
-      isMaster: row.isMaster === true,
-      ticketsRemaining: null,
-    });
-  }
-  return out;
-};
+// The normalizer preserves the existing honest capacity sentinel:
+// `ticketsRemaining: null` — event_dates has no per-occurrence capacity truth.
+const occurrencesFromBundle = normalizePublicEventOccurrences;
 export type PublicTicketTypeRecord = TicketStub;
 
 export interface PublicEventDetail {

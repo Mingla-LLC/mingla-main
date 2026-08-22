@@ -357,6 +357,15 @@ const renderPublicEventPage = (
         return {
           shareCanonicalPublicPageOnWeb: () => Promise.resolve("shared"),
         };
+      // [TEST-MOD-APPROVED #2399] Dependency registration only. Day recovery
+      // is outside this close-only harness; fail loudly if a close path ever
+      // starts invoking it instead of silently simulating recovery behavior.
+      case "../../utils/publicEventDayRecovery":
+        return {
+          retryCanonicalDayTruth: () => {
+            throw new Error("day recovery is outside the close-button harness");
+          },
+        };
       case "../../types/eventCoverProvider":
         return { eventCoverProviderCreditLabel: () => null };
       case "../ui/ShareModal":

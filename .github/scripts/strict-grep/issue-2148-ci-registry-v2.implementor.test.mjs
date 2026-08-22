@@ -19,12 +19,12 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const errors = validateRegistry(manifest, { root: DEFAULT_ROOT });
   assert.deepEqual(errors, []);
   assert.equal(manifest.schemaVersion, 2);
-  assert.equal(manifest.suites.length, 22);
-  assert.equal(manifest.legacyOrigins.length, 198);
+  assert.equal(manifest.suites.length, 23);
+  assert.equal(manifest.legacyOrigins.length, 199);
   assert.equal(manifest.workflowProviders.length, 89);
   assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 176);
   assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 89);
-  assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 198);
+  assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 199);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 89);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");

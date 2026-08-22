@@ -199,10 +199,12 @@ jest.mock("../SeeWhosGoingGate", () => ({
 jest.mock("../FoundationEventPreview", () => ({
   FoundationEventPreview: (props: {
     stateBanner: React.ReactNode;
+    leadingPurchaseSection: React.ReactNode;
     onProceedToCart: () => void;
   }) => (
     <View testID="issue-2135-foundation">
       {props.stateBanner}
+      {props.leadingPurchaseSection}
       <Pressable
         testID="issue-2135-proceed"
         accessibilityLabel="Get tickets"
@@ -336,6 +338,11 @@ let mounted: Renderer[] = [];
 const mount = async (
   whenMode: "single" | "multi_date",
 ): Promise<Renderer> => {
+  // [TEST-MOD-APPROVED #2399] PublicEventPage deliberately lazy-loads the real
+  // chooser. Settle that production module boundary before fake-timer rendering
+  // so a clean Linux runner cannot inspect Suspense's null fallback while the
+  // import is still pending. Single-date tests still never load the chunk.
+  if (whenMode === "multi_date") await import("../MultiDateDayChooser");
   let tree!: Renderer;
   await act(async () => {
     tree = TestRenderer.create(
@@ -473,15 +480,19 @@ describe("issue #2135 — a multi-date event exposes every occurrence", () => {
     );
   });
 
-  test("a multi-date event that materialised only ONE occurrence offers no choice", async () => {
+  test("a malformed multi-date event with only ONE occurrence fails closed", async () => {
     occurrenceData = [TWO_DAY_OCCURRENCES[0]];
     const tree = await mount("multi_date");
 
     expect(
       tree.root.findAllByProps({ testID: "issue-2135-day-chooser" }),
-    ).toHaveLength(0);
+    ).not.toHaveLength(0);
+    expect(
+      tree.root.findAllByProps({ testID: "issue-2399-day-recovery" })[0]?.props
+        .children,
+    ).toBe("We couldn’t load the event days.");
     await act(async () => press(tree, "issue-2135-proceed"));
-    expect(router.push).toHaveBeenCalledWith("/checkout/evt-2135");
+    expect(router.push).not.toHaveBeenCalled();
   });
 });
 

@@ -22,7 +22,7 @@ const ALLOWED_DISPOSITIONS = new Set([
   "operational-excluded",
   "approved-retired",
 ]);
-const LOCKED_ASSERTION_CAPABILITY_SHA256 = "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399";
+const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
 
 function fail(errors, message) {
   errors.push(message);
@@ -462,7 +462,8 @@ function setupExecutable(executable, argv) {
   if (executable === "xargs" && argv.some((value) => ["npm", "pnpm", "yarn", "apt", "apt-get", "brew", "docker", "podman", "supabase"].includes(value.toLowerCase()))) return true;
   if (executable === "find" && args.some((value, index) => ["-exec", "-execdir"].includes(value) && setupExecutable(path.basename(args[index + 1] || ""), args.slice(index + 2)))) return true;
   if (/(?:^|[-_])migrat(?:e|ion)(?:$|[-_])/.test(executable) && args.some((value) => ["up", "apply", "run"].includes(value))) return true;
-  // The 46 preserved assertion commands need only these executable families.
+  // The 46 original commands plus #2399's 5 migrated assertions need only
+  // these executable families.
   // Unknown shell executables are not assumed harmless: aliases, copied package
   // managers, bespoke bootstrap wrappers, and future setup tools would otherwise
   // recreate the same bypass under a new name. Adding a family is a reviewed
@@ -483,6 +484,10 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
       token = token.replace(/[),;:]+$/, "");
       if (!token || token.includes("*")) continue;
       for (const relative of [path.normalize(path.join(cwd, token)), path.normalize(token)]) {
+        // node_modules is setup output, never source ownership. Installed-lane
+        // assertions may inspect patched dependency bytes, but their presence
+        // must not make the static expectedFiles inventory environment-dependent.
+        if (relative.split(path.sep).includes("node_modules")) continue;
         try {
           if (fs.statSync(path.join(root, relative)).isFile()) found.add(relative);
         } catch {
@@ -553,8 +558,8 @@ export function validateRegistry(
   const errors = [];
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
-  if (manifest.expectedExecutableSuites !== 22 || manifest.expectedSuites !== 22) {
-    fail(errors, "expectedExecutableSuites and compatibility expectedSuites must both equal the amended lock 22");
+  if (manifest.expectedExecutableSuites !== 23 || manifest.expectedSuites !== 23) {
+    fail(errors, "expectedExecutableSuites and compatibility expectedSuites must both equal the amended lock 23");
   }
   if (!Array.isArray(manifest.classes) || manifest.classes.length === 0 || new Set(manifest.classes).size !== manifest.classes.length) {
     fail(errors, "classes must be a non-empty unique array");
@@ -562,7 +567,7 @@ export function validateRegistry(
   if (!manifest.setupProfiles || typeof manifest.setupProfiles !== "object" || Array.isArray(manifest.setupProfiles)) {
     fail(errors, "setupProfiles must be an object");
   }
-  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 22) fail(errors, "suites must contain exactly 22 entries");
+  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 23) fail(errors, "suites must contain exactly 23 entries");
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
   errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
@@ -645,10 +650,10 @@ export function validateRegistry(
   const capabilityRegistry = manifest.commandCapabilities;
   const capabilityCommands = capabilityRegistry?.commands || [];
   const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
-  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 46
-      || capabilityCommands.length !== 46 || capabilityRegistry?.registrySha256 !== LOCKED_ASSERTION_CAPABILITY_SHA256
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 51
+      || capabilityCommands.length !== 51 || capabilityRegistry?.registrySha256 !== LOCKED_ASSERTION_CAPABILITY_SHA256
       || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
-    fail(errors, "the 46 assertion command capabilities must equal the locked reviewed registry");
+    fail(errors, "the 51 assertion command capabilities must equal the locked reviewed registry");
   }
   const capabilitiesById = new Map();
   for (const capability of capabilityCommands) {
@@ -731,7 +736,7 @@ export function validateRegistry(
   }
 
   const legacy = manifest.legacyOrigins || [];
-  if (!Array.isArray(legacy) || legacy.length !== 198) fail(errors, "legacyOrigins must contain exactly the amended 198 origins");
+  if (!Array.isArray(legacy) || legacy.length !== 199) fail(errors, "legacyOrigins must contain exactly the amended 199 origins");
   const legacyKeys = new Set();
   const suiteClaims = new Map();
   for (const item of legacy) {
@@ -807,7 +812,7 @@ function main() {
     console.error(`#2435 registry v2: FAIL (${errors.length} error(s))`);
     process.exit(1);
   }
-  console.log("#2435 registry v2: PASS — 198 origins, 22 executable suites, 89 external providers");
+  console.log("#2435 registry v2: PASS — 199 origins, 23 executable suites, 89 external providers");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();

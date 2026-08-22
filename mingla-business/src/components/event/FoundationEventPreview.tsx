@@ -93,6 +93,11 @@ export interface FoundationEventPreviewProps {
    * omitted prop renders the identical tree.
    */
   pricingNote?: string | null;
+  /** issue #2399 — app-owned first section inside the shared purchase card. */
+  leadingPurchaseSection?: React.ReactNode | null;
+  priceMultiplier?: number;
+  purchaseReady?: boolean;
+  purchaseBlockedLabel?: string | null;
   // ORCH-1167 — the inline ticket box state (LIFTED to the adapter for the cart).
   ticketQuantities: Record<string, number>;
   onChangeTicketQuantity: (ticketTypeId: string, qty: number) => void;
@@ -136,6 +141,10 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   contentBottomInset = 0,
   hideTicketBox = false,
   pricingNote = null,
+  leadingPurchaseSection = null,
+  priceMultiplier = 1,
+  purchaseReady = true,
+  purchaseBlockedLabel = null,
   ticketQuantities,
   onChangeTicketQuantity,
   onProceedToCart,
@@ -187,6 +196,10 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       onTicketBoxLayout={onDockLayout}
       hideTicketBox={hideTicketBox}
       pricingNote={pricingNote}
+      leadingPurchaseSection={leadingPurchaseSection}
+      priceMultiplier={priceMultiplier}
+      purchaseReady={purchaseReady}
+      purchaseBlockedLabel={purchaseBlockedLabel}
       // ORCH-1339 — cross-entity social proof (adapter-fetched, props-only).
       socialProof={socialProof}
       // ORCH-1342 — web-only "See who's going" → install gate (adapter-wired).

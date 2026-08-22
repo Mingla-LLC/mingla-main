@@ -7,7 +7,7 @@ import path from "node:path";
 import { execFileSync } from "node:child_process";
 import {
   buildShardReport, capabilityPayloadDigest, capabilityRegistryDigest, createIsolatedWorkspace, loadManifest,
-  minimalChildEnvironment, recordSetup, renderSummary, resolveCommandCapability, runInvocation,
+  minimalChildEnvironment, recordSetup, renderAnnotations, renderSummary, resolveCommandCapability, runInvocation,
   runSuiteV2, runSuitesV2, setupEvidencePath, validateSetupEvidence, verdict,
 } from "../ci-batch/run-suite-batch.mjs";
 import { forbiddenEmbeddedSetup } from "../ci-batch/validate-manifest-v2.mjs";
@@ -145,6 +145,81 @@ test("a successful command cannot leak a background descendant past its suite", 
   fs.rmSync(root, { recursive: true, force: true });
 });
 
+test("commands share one suite cache without leaking it into the next suite", async () => {
+  const root = gitFixture();
+  const installer = suite("cache-installer", "mkdir -p \"$XDG_CACHE_HOME/browser\" && printf ready > \"$XDG_CACHE_HOME/browser/executable\"");
+  installer.steps.push({
+    name: "browser consumer",
+    cwd: ".",
+    run: "test -f \"$XDG_CACHE_HOME/browser/executable\"",
+    commandId: "assert:cache-installer:02",
+    invocation: { kind: "raw-shell", command: "bash", argv: ["-c", "test -f \"$XDG_CACHE_HOME/browser/executable\""] },
+  });
+  const isolated = suite("cache-isolated", "test ! -e \"$XDG_CACHE_HOME/browser/executable\"");
+  try {
+    const results = await runSuitesV2([installer, isolated], {
+      root,
+      profile: { install: null },
+      commandCapabilities: registryFor([installer, isolated]),
+      workspaceFactory: () => fixtureWorkspace(root),
+    });
+    assert.deepEqual(results.map(({ status, executed }) => ({ status, executed })), [
+      { status: "passed", executed: 2 },
+      { status: "passed", executed: 1 },
+    ]);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("suite HOME cleanup completes before pass and a cleanup failure is red", async () => {
+  const root = gitFixture();
+  const cleanupSuite = suite("cleanup-order", "true");
+  try {
+    let successfulCleanup = false;
+    const passed = await runSuiteV2(cleanupSuite, {
+      root, profile: { install: null }, commandCapabilities: registryFor([cleanupSuite]),
+      workspaceFactory: () => fixtureWorkspace(root),
+      removeHome(home) { successfulCleanup = true; fs.rmSync(home, { recursive: true, force: true }); },
+    });
+    assert.equal(successfulCleanup, true);
+    assert.equal(passed.status, "passed");
+
+    const failed = await runSuiteV2(cleanupSuite, {
+      root, profile: { install: null }, commandCapabilities: registryFor([cleanupSuite]),
+      workspaceFactory: () => fixtureWorkspace(root),
+      removeHome(home) { fs.rmSync(home, { recursive: true, force: true }); throw new Error("root-owned cache"); },
+    });
+    assert.equal(failed.status, "failed");
+    assert.equal(failed.ok, false);
+    assert.match(failed.reason, /suite HOME cleanup failed: root-owned cache/);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("privilege-separated descendant cleanup tolerates only ESRCH and EPERM", () => {
+  const supervisor = path.resolve(".github/scripts/ci-batch/process-supervisor.py");
+  const probe = [
+    "import errno, importlib.util, signal, sys",
+    "from unittest import mock",
+    "sys.dont_write_bytecode = True",
+    "spec = importlib.util.spec_from_file_location('process_supervisor', sys.argv[1])",
+    "module = importlib.util.module_from_spec(spec)",
+    "spec.loader.exec_module(module)",
+    "with mock.patch.object(module.os, 'kill', side_effect=PermissionError(errno.EPERM, 'root-owned descendant')):",
+    "    module.signal_pid(4242, signal.SIGTERM)",
+    "with mock.patch.object(module.os, 'kill', side_effect=PermissionError(errno.EACCES, 'unexpected denial')):",
+    "    try:",
+    "        module.signal_pid(4242, signal.SIGTERM)",
+    "    except PermissionError as error:",
+    "        assert error.errno == errno.EACCES",
+    "    else:",
+    "        raise AssertionError('unrelated signal errors must remain fatal')",
+  ].join("\n");
+  assert.doesNotThrow(() => execFileSync("python3", ["-c", probe, supervisor], { stdio: "pipe" }));
+});
+
 test("Linux subreaper contains immediate double-fork setsid descendants on success and timeout", { skip: process.platform !== "linux" }, async () => {
   for (const mode of ["success", "timeout"]) {
     const root = temporaryDirectory(`runner-v2-double-fork-${mode}-`);
@@ -278,6 +353,59 @@ test("children receive no job secrets and derived encodings are redacted in defe
     assert.match(transcript, /\[REDACTED\]/);
   } finally {
     if (prior === undefined) delete process.env.UNRELATED_CONNECTION_VALUE; else process.env.UNRELATED_CONNECTION_VALUE = prior;
+  }
+});
+
+test("secret redaction cannot mutate manifest-owned suite identity before reconciliation", async () => {
+  const root = gitFixture();
+  const id = "issue-2399-multiday-picker-ticket-box";
+  const identitySuite = suite(id, "true");
+  const prior = process.env.GITHUB_HEAD_REF;
+  process.env.GITHUB_HEAD_REF = "2399-multiday-picker-ticket-box";
+  try {
+    const [result] = await runSuitesV2([identitySuite], {
+      root, profile: { install: null }, commandCapabilities: registryFor([identitySuite]),
+      workspaceFactory: () => fixtureWorkspace(root),
+    });
+    assert.equal(result.id, id, "trusted manifest identity must remain exact");
+    const report = buildShardReport("node20-noinstall", [identitySuite], [result], {
+      setupProfile: "node20-noinstall", setupExecutions: 1, installExecutions: 0,
+    }, 1);
+    assert.equal(report.identityMismatch, false);
+    assert.equal(report.ok, true);
+    assert.equal(report.results[0].id, id);
+    assert.match(renderSummary(report), /issue-\[REDACTED\]/, "presentation still redacts excluded environment values");
+  } finally {
+    if (prior === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = prior;
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test("failure annotations redact identities without corrupting raw artifact accounting", () => {
+  const id = "issue-2399-multiday-picker-ticket-box";
+  const branch = "2399-multiday-picker-ticket-box";
+  const prior = process.env.GITHUB_HEAD_REF;
+  process.env.GITHUB_HEAD_REF = branch;
+  try {
+    const expected = [suite(id, "true"), suite("second", "true")];
+    const results = [
+      { id, ok: false, code: 2, status: "corrupt", reason: `missing setup for ${branch}`, executed: 0, expected: 1, seconds: 0 },
+      { id, ok: true, code: 0, status: "passed", reason: null, executed: 1, expected: 1, seconds: 1 },
+    ];
+    const report = buildShardReport("business-node20-3", expected, results, null, 1);
+    assert.deepEqual(report.failed, [id]);
+    assert.deepEqual(report.duplicateIds, [id]);
+    assert.deepEqual(report.malformedIds, [id]);
+    assert.equal(report.results[0].id, id);
+    assert.match(JSON.stringify(report), new RegExp(id), "raw artifact retains exact accounting identity");
+
+    const presentation = [...renderAnnotations(report), renderSummary(report)].join("\n");
+    assert.doesNotMatch(presentation, new RegExp(branch));
+    assert.doesNotMatch(presentation, new RegExp(id));
+    assert.match(presentation, /issue-\[REDACTED\]/);
+    assert.match(presentation, /missing setup for \[REDACTED\]/);
+  } finally {
+    if (prior === undefined) delete process.env.GITHUB_HEAD_REF; else process.env.GITHUB_HEAD_REF = prior;
   }
 });
 
