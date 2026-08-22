@@ -8,9 +8,12 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_MANIFEST,
   DEFAULT_ROOT,
+  SHADOW_PARITY_MARKER,
+  SHADOW_PARITY_WRAPPER_NAMES,
   discoverLiveOrigins,
   discoverWorkflowProviders,
   validateRegistry,
+  validateShadowParityMarkers,
 } from "../ci-batch/validate-manifest-v2.mjs";
 
 const clone = (value) => structuredClone(value);
@@ -34,6 +37,26 @@ function selfTest(base) {
     workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT),
     matrixSource: fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows/ci-batch.yml"), "utf8"),
   };
+  const workflowSources = Object.fromEntries(fs
+    .readdirSync(path.join(DEFAULT_ROOT, ".github/workflows"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
+    .map((entry) => [entry.name, fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows", entry.name), "utf8")]));
+  const assertMarkerRed = (name, mutate, pattern = /shadow parity marker/) => {
+    const sources = { ...workflowSources };
+    mutate(sources);
+    const errors = validateShadowParityMarkers(base, sources);
+    if (!errors.some((error) => pattern.test(error))) {
+      console.error(`SELF-TEST FAIL: ${name} did not produce ${pattern}`);
+      process.exit(1);
+    }
+    console.log(`SELF-TEST PASS: ${name}`);
+  };
+  const markerTarget = SHADOW_PARITY_WRAPPER_NAMES[0];
+  assertMarkerRed("missing shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(`${SHADOW_PARITY_MARKER}\n`, ""); });
+  assertMarkerRed("duplicate shadow marker", (sources) => { sources[markerTarget] = `${SHADOW_PARITY_MARKER}\n${sources[markerTarget]}`; });
+  assertMarkerRed("altered shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(SHADOW_PARITY_MARKER, `${SHADOW_PARITY_MARKER}-altered`); });
+  assertMarkerRed("whitespace-variant shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(SHADOW_PARITY_MARKER, ` ${SHADOW_PARITY_MARKER}`); });
+  assertMarkerRed("wrong-path shadow marker", (sources) => { sources["unapproved-workflow.yml"] = `${SHADOW_PARITY_MARKER}\nname: forbidden\n`; }, /stray.*unapproved workflow/);
   assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
   assertRed("origin duplication", base, (m) => m.legacyOrigins.push(clone(m.legacyOrigins[0])), /duplicate legacy origin/, discovery);
   assertRed("legacy to suite attribution swap", base, (m) => {

@@ -30,6 +30,43 @@ const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c89580489
 const LOCKED_SETUP_PROFILES_SHA256 = "5d445002c1c4b7a7f97faebf1d26162dbba24ba9c7ee0f448d3c289ee4ca7dec";
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
+export const SHADOW_PARITY_MARKER = "# #2437 SHADOW-PARITY-TRIGGER — remove before cutover";
+const SHADOW_PARITY_TOKEN = "#2437 SHADOW-PARITY-TRIGGER";
+const SHADOW_PARITY_WRAPPER_STEMS = Object.freeze([
+  "issue-1009-campaign-builder-retry-tests",
+  "issue-1322-admin-sentry-tests",
+  "issue-1481-explorer-deck-tests",
+  "issue-1509-boot-budget-tests",
+  "issue-1516-coach-mark-tests",
+  "issue-1576-deck-promoted-card",
+  "issue-1579-deck-tap-expand",
+  "issue-1593-deck-layer-geometry",
+  "issue-1605-expanded-card",
+  "issue-1609-card-identity",
+  "issue-1615-public-share-surfaces",
+  "issue-1636-likes-load-tests",
+  "issue-1638-tab-switch-quickwins-tests",
+  "issue-1638-tab-switch-scheduling-tests",
+  "issue-1639-profile-cards-tests",
+  "issue-1642-been-here-offline-bound",
+  "issue-1661-completed-write-unparks-invalidation",
+  "issue-1687-been-here-rating-prompt",
+  "issue-1860-rls-coverage-tests",
+  "issue-1880-expanded-share-handoff",
+  "issue-1960-share-art-isolation",
+  "issue-1962-unlisted-share-previews",
+  "issue-1968-public-web-canonical-sharing",
+  "issue-2004-share-click-canonical-destination",
+  "issue-2058-bundle-baseline-handoff-tests",
+  "issue-2084-credential-output-safety",
+  "issue-2207-manifest-merge-awareness",
+  "issue-2300-orch-artifact-reap",
+  "issue-2393-tester-assertion-credential",
+  "issue-994-ota-env-resolution",
+  "orch-1386-tester-adversarial",
+]);
+export const SHADOW_PARITY_WRAPPER_NAMES = Object.freeze(SHADOW_PARITY_WRAPPER_STEMS.map((stem) => `${stem}.yml`));
+const SHADOW_PARITY_WRAPPER_SET = new Set(SHADOW_PARITY_WRAPPER_NAMES);
 
 function fail(errors, message) {
   errors.push(message);
@@ -37,6 +74,47 @@ function fail(errors, message) {
 
 function strings(value) {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+export function canonicalizeShadowWrapperSource(workflowName, source) {
+  if (!SHADOW_PARITY_WRAPPER_SET.has(workflowName)) return source;
+  const lines = source.split("\n");
+  const index = lines.indexOf(SHADOW_PARITY_MARKER);
+  if (index !== -1) lines.splice(index, 1);
+  return lines.join("\n");
+}
+
+export function validateShadowParityMarkers(manifest, workflowSources) {
+  const errors = [];
+  const shadowNames = new Set((manifest.legacyOrigins || [])
+    .filter((origin) => origin.disposition === "shadow-active")
+    .map((origin) => `${origin.stem}.${origin.extension}`));
+
+  for (const name of shadowNames) {
+    if (!SHADOW_PARITY_WRAPPER_SET.has(name)) fail(errors, `${name}: shadow parity marker path is outside the exact #2437 allowlist`);
+  }
+  for (const name of SHADOW_PARITY_WRAPPER_NAMES) {
+    const source = workflowSources[name];
+    if (!shadowNames.has(name)) {
+      if (source?.includes(SHADOW_PARITY_TOKEN)) fail(errors, `${name}: shadow parity marker is forbidden outside shadow-active lifecycle`);
+      continue;
+    }
+    if (typeof source !== "string") {
+      fail(errors, `${name}: shadow-active wrapper and exact parity marker are required`);
+      continue;
+    }
+    const exactLines = source.split("\n").filter((line) => line === SHADOW_PARITY_MARKER).length;
+    const tokenCount = source.split(SHADOW_PARITY_TOKEN).length - 1;
+    if (exactLines !== 1 || tokenCount !== 1) {
+      fail(errors, `${name}: requires exactly one exact #2437 shadow parity marker line`);
+    }
+  }
+  for (const [name, source] of Object.entries(workflowSources)) {
+    if (!SHADOW_PARITY_WRAPPER_SET.has(name) && source.includes(SHADOW_PARITY_TOKEN)) {
+      fail(errors, `${name}: stray #2437 shadow parity marker on an unapproved workflow`);
+    }
+  }
+  return errors;
 }
 
 function trackedFiles(root) {
@@ -161,12 +239,13 @@ require "yaml"
 require "json"
 require "digest"
 
-root = ARGV.fetch(0)
-names = JSON.parse(STDIN.read)
+payload = JSON.parse(STDIN.read)
+names = payload.fetch("names")
+sources = payload.fetch("sources")
 result = {}
 
 names.each do |name|
-  source = File.binread(File.join(root, ".github/workflows", name))
+  source = sources.fetch(name)
   document = YAML.safe_load(source, aliases: true) || {}
   on_value = document["on"] || document[true] || {}
   events = case on_value
@@ -239,10 +318,15 @@ const workflowInspectionCache = new Map();
 
 export function inspectWorkflows(root = DEFAULT_ROOT, workflowNames = discoverLiveOrigins(root)) {
   const names = [...new Set(workflowNames)].sort();
-  const key = `${path.resolve(root)}\0${names.join("\0")}`;
+  const sources = Object.fromEntries(names.map((name) => {
+    const source = fs.readFileSync(path.join(root, ".github/workflows", name), "utf8");
+    return [name, canonicalizeShadowWrapperSource(name, source)];
+  }));
+  const sourceDigest = crypto.createHash("sha256").update(JSON.stringify(sources)).digest("hex");
+  const key = `${path.resolve(root)}\0${names.join("\0")}\0${sourceDigest}`;
   if (!workflowInspectionCache.has(key)) {
-    const output = execFileSync("ruby", ["-e", RUBY_WORKFLOW_INSPECTOR, path.resolve(root)], {
-      input: JSON.stringify(names),
+    const output = execFileSync("ruby", ["-e", RUBY_WORKFLOW_INSPECTOR], {
+      input: JSON.stringify({ names, sources }),
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
     });
@@ -568,7 +652,10 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       relative.startsWith(".github/workflows/") ||
       relative.startsWith("docs/") ||
       relative.endsWith(".md") ||
-      relative === ".github/ci-batch/MANIFEST.json"
+      relative === ".github/ci-batch/MANIFEST.json" ||
+      // This governance proof reconstructs the provider set by name; it is not
+      // an external consumer of those workflows and must not self-register them.
+      relative === ".github/scripts/strict-grep/issue-2148-ci-node-wave-shadow.tester.test.mjs"
     ) continue;
     const absolute = path.join(root, relative);
     let source;
@@ -594,6 +681,11 @@ export function validateRegistry(
   { root = DEFAULT_ROOT, liveOrigins = null, workflowProviders = null, matrixSource = null } = {},
 ) {
   const errors = [];
+  const workflowSources = Object.fromEntries(fs
+    .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
+    .map((entry) => [entry.name, fs.readFileSync(path.join(root, ".github/workflows", entry.name), "utf8")]));
+  errors.push(...validateShadowParityMarkers(manifest, workflowSources));
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
   if (manifest.expectedExecutableSuites !== 55 || manifest.expectedSuites !== 55 || manifest.shadowExpectedVariants !== 32) {

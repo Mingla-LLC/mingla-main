@@ -5,7 +5,16 @@ import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { discoverLiveOrigins, discoverWorkflowProviders, validateRegistry } from "../validate-manifest-v2.mjs";
+import {
+  SHADOW_PARITY_MARKER,
+  SHADOW_PARITY_WRAPPER_NAMES,
+  canonicalizeShadowWrapperSource,
+  discoverLiveOrigins,
+  discoverWorkflowProviders,
+  inspectWorkflow,
+  validateRegistry,
+  validateShadowParityMarkers,
+} from "../validate-manifest-v2.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
@@ -13,6 +22,12 @@ const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 const clone = (value) => structuredClone(value);
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const sourceDigest = (value) => crypto.createHash("sha256").update(value).digest("hex");
+
+const workflowSources = () => Object.fromEntries(fs
+  .readdirSync(path.join(ROOT, ".github/workflows"), { withFileTypes: true })
+  .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
+  .map((entry) => [entry.name, fs.readFileSync(path.join(ROOT, ".github/workflows", entry.name), "utf8")]));
 
 test("#2437 shadow registry is exactly 31 live origins / 32 typed variants without cutover", () => {
   const value = manifest();
@@ -44,6 +59,23 @@ test("the source wave still contains all 118 active run commands and 31 untouche
   const count = Number(execFileSync("ruby", ["-e", ruby, ROOT, ...names], { encoding: "utf8" }));
   assert.equal(count, 118);
   assert.equal(names.filter((name) => fs.existsSync(path.join(ROOT, ".github/workflows", name))).length, 31);
+});
+
+test("temporary parity markers are exact, allowlisted, and invisible only to canonical wrapper contracts", () => {
+  const value = manifest();
+  const sources = workflowSources();
+  assert.equal(SHADOW_PARITY_WRAPPER_NAMES.length, 31);
+  assert.deepEqual(validateShadowParityMarkers(value, sources), []);
+  for (const name of SHADOW_PARITY_WRAPPER_NAMES) {
+    assert.equal(sources[name].split("\n").filter((line) => line === SHADOW_PARITY_MARKER).length, 1);
+    const canonical = canonicalizeShadowWrapperSource(name, sources[name]);
+    assert.equal(canonical.includes(SHADOW_PARITY_MARKER), false);
+    assert.equal(sourceDigest(canonical), inspectWorkflow(ROOT, name).sourceSha256);
+    const registered = value.legacyOrigins.find((origin) => `${origin.stem}.${origin.extension}` === name);
+    assert.equal(sourceDigest(canonical), registered.workflowMetadata.sourceSha256);
+    const nonMarkerMutation = canonical.replace("name:", "name: mutated-");
+    assert.notEqual(sourceDigest(nonMarkerMutation), registered.workflowMetadata.sourceSha256);
+  }
 });
 
 test("canonical validation rejects shadow omission, premature cutover, setup drift, and trust drift", () => {
