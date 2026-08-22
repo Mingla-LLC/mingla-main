@@ -16,6 +16,8 @@ export const DEFAULT_MANIFEST = path.join(DEFAULT_ROOT, ".github/ci-batch/MANIFE
 const LIVE_ORIGIN = /^(?:issue-|orch-|meta-).*\.ya?ml$/;
 const ALLOWED_DISPOSITIONS = new Set([
   "batched-active",
+  "shadow-active",
+  "batched-historical",
   "full-suite-superset",
   "build-assertion-consumer",
   "database-special",
@@ -23,6 +25,11 @@ const ALLOWED_DISPOSITIONS = new Set([
   "approved-retired",
 ]);
 const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
+const LOCKED_SHADOW_CAPABILITY_SHA256 = "6d4340d8d8bd70540e1229011fcd719c8782af46a608f84ee0b777dd405f3673";
+const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
+const LOCKED_SETUP_PROFILES_SHA256 = "5d445002c1c4b7a7f97faebf1d26162dbba24ba9c7ee0f448d3c289ee4ca7dec";
+const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
+const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
 
 function fail(errors, message) {
   errors.push(message);
@@ -256,8 +263,8 @@ jobs = document["jobs"].is_a?(Hash) ? document["jobs"] : {}
 batch = jobs["batch"].is_a?(Hash) ? jobs["batch"] : {}
 steps = Array(batch["steps"]).select { |step| step.is_a?(Hash) }
 setup_node = steps.find { |step| step["uses"].to_s.start_with?("actions/setup-node@") } || {}
-install = steps.find { |step| step["name"].to_s.start_with?("Install ") } || {}
-record_setup = steps.find { |step| step["name"].to_s == "Record one shard setup" } || {}
+checkout = steps.find { |step| step["uses"].to_s.start_with?("actions/checkout@") } || {}
+record_setup = steps.find { |step| step["name"].to_s == "Execute and record one typed shard setup" } || {}
 run_suites = steps.find { |step| step["name"].to_s.start_with?("Run the ") } || {}
 strategy = batch["strategy"].is_a?(Hash) ? batch["strategy"] : {}
 matrix = strategy["matrix"].is_a?(Hash) ? strategy["matrix"] : {}
@@ -265,27 +272,30 @@ output = {
   "runner" => batch["runs-on"]&.to_s,
   "matrix" => Array(matrix["include"]).map do |entry|
     next {} unless entry.is_a?(Hash)
-    { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s, "install" => entry["install"]&.to_s }
+    { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s,
+      "cache" => entry["cache"]&.to_s, "cacheLock" => entry["cache-lock"]&.to_s }
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
     "nodeVersion" => setup_node.dig("with", "node-version")&.to_s,
     "count" => steps.count { |step| step["uses"].to_s.start_with?("actions/setup-node@") }
   },
-  "installStep" => {
-    "if" => install["if"]&.to_s,
-    "cwd" => install["working-directory"]&.to_s,
-    "run" => install["run"]&.to_s
+  "checkout" => {
+    "action" => checkout["uses"]&.to_s,
+    "fetchDepth" => checkout.dig("with", "fetch-depth"),
+    "persistCredentials" => checkout.dig("with", "persist-credentials")
   },
   "recordSetupStep" => {
     "run" => record_setup["run"]&.to_s,
-    "count" => steps.count { |step| step["name"].to_s == "Record one shard setup" }
+    "count" => steps.count { |step| step["name"].to_s == "Execute and record one typed shard setup" }
   },
   "runSuitesStep" => {
     "run" => run_suites["run"]&.to_s,
     "count" => steps.count { |step| step["name"].to_s.start_with?("Run the ") }
   },
-  "runSteps" => steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] }
+  "runSteps" => steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] },
+  "jobIf" => batch["if"]&.to_s,
+  "workflowDispatch" => document.dig("on", "workflow_dispatch") || document.dig(true, "workflow_dispatch")
 }
 STDOUT.write(JSON.generate(output))
 `;
@@ -319,8 +329,8 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
     fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
   }
   for (const suite of manifest.suites || []) {
-    if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > 900) {
-      fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 900 and timeoutMinutes is forbidden`);
+    if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > 1500) {
+      fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 1500 and timeoutMinutes is forbidden`);
     }
     if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
     if (JSON.stringify(suite.envNames) !== "[]" || (suite.steps || []).some((step) => step.env && Object.keys(step.env).length)) {
@@ -332,21 +342,29 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
       }
     }
     for (const [index, step] of (suite.steps || []).entries()) {
-      if (forbiddenEmbeddedSetup(step)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
+      if (suite.lifecycle !== "shadow-active" && forbiddenEmbeddedSetup(step)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
     }
   }
   try {
     const topology = inspectBatchWorkflow(workflowText);
     if (topology.runner !== "ubuntu-latest") fail(errors, "ci-batch process containment requires the locked ubuntu-latest runner");
-    if (topology.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != \'\' && \'1\' || \'0\' }}"') {
+    if (topology.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"') {
       fail(errors, "ci-batch must record exactly one typed setup execution for the selected class");
     }
     const installCommandCount = (topology.runSteps || []).filter((step) => forbiddenEmbeddedSetup({ cmd: "bash", args: ["-lc", step.run] })).length;
-    if (topology.setupNode?.count !== 1 || installCommandCount !== 1 || topology.recordSetupStep?.count !== 1 || topology.runSuitesStep?.count !== 1) {
-      fail(errors, "ci-batch must contain exactly one runtime setup, one conditional install route, one setup evidence step, and one suite runner step");
+    if (topology.setupNode?.count !== 1 || installCommandCount !== 0 || topology.recordSetupStep?.count !== 1 || topology.runSuitesStep?.count !== 1) {
+      fail(errors, "ci-batch must contain one runtime setup, no free-form install route, one typed setup executor, and one suite runner step");
     }
     if (topology.runSuitesStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"') {
       fail(errors, "ci-batch must invoke the Phase 2 runner with the selected class");
+    }
+    if (topology.checkout?.action !== PINNED_CHECKOUT || topology.checkout?.fetchDepth !== 0 || topology.checkout?.persistCredentials !== false
+        || topology.setupNode?.action !== PINNED_SETUP_NODE || topology.setupNode?.nodeVersion !== "${{ matrix.node }}") {
+      fail(errors, "ci-batch must preserve the exact pinned checkout/setup-node, fetch-depth 0, persist-credentials false trust contract");
+    }
+    if (topology.jobIf !== "github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"
+        || JSON.stringify(topology.workflowDispatch) !== JSON.stringify({ inputs: { suite: { description: "Bounded operational suite", required: true, type: "choice", options: ["issue-2300-orch-artifact-reap"] } } })) {
+      fail(errors, "ci-batch workflow_dispatch must be bounded to only the #2300 semantic suite");
     }
   } catch (error) {
     fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);
@@ -356,6 +374,11 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
 
 function sameStrings(actual, expected) {
   return strings(actual) && JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+}
+
+function profileInstallList(profile) {
+  if (profile?.install) return [profile.install];
+  return Array.isArray(profile?.installs) ? profile.installs : [];
 }
 
 // #2436 Phase 2: setup belongs to the class profile and executes once per shard.
@@ -473,23 +496,38 @@ function setupExecutable(executable, argv) {
 
 export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
   const found = new Set();
+  const repositoryFiles = new Set(trackedFiles(root));
   for (const step of suite.steps || []) {
     const cwd = step.cwd || suite.cwd || ".";
     const command = step.invocation?.argv?.[1] ?? step.run ?? "";
     for (const config of configPathsFromCommand(command)) {
       for (const selected of filesSelectedByJestConfig(config, cwd, root)) found.add(selected);
     }
-    const tokens = command.match(/[A-Za-z0-9_@.()\/[\]+-]+/g) || [];
+    const tokens = command.match(suite.lifecycle === "shadow-active"
+      ? /[A-Za-z0-9_@.()\/\[\]+*\-]+/g
+      : /[A-Za-z0-9_@.()\/[\]+-]+/g) || [];
     for (let token of tokens) {
       token = token.replace(/[),;:]+$/, "");
-      if (!token || token.includes("*")) continue;
+      if (!token) continue;
+      if (token.includes("*")) {
+        // Phase 1 intentionally ignored wildcard tokens. Preserve that reviewed
+        // baseline byte-for-byte; Phase 3 shadow variants opt into deterministic
+        // wildcard expansion so newly migrated files cannot disappear.
+        if (suite.lifecycle !== "shadow-active") continue;
+        const relativePattern = path.normalize(path.join(cwd, token)).replaceAll(path.sep, "/");
+        const matcher = globToRegExp(relativePattern);
+        for (const tracked of trackedFiles(root)) {
+          if (matcher.test(tracked.replaceAll(path.sep, "/"))) found.add(tracked);
+        }
+        continue;
+      }
       for (const relative of [path.normalize(path.join(cwd, token)), path.normalize(token)]) {
         // node_modules is setup output, never source ownership. Installed-lane
         // assertions may inspect patched dependency bytes, but their presence
         // must not make the static expectedFiles inventory environment-dependent.
         if (relative.split(path.sep).includes("node_modules")) continue;
         try {
-          if (fs.statSync(path.join(root, relative)).isFile()) found.add(relative);
+          if (repositoryFiles.has(relative) && fs.statSync(path.join(root, relative)).isFile()) found.add(relative);
         } catch {
           // A command token is often a flag, package, shell variable, or output.
         }
@@ -558,20 +596,22 @@ export function validateRegistry(
   const errors = [];
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
-  if (manifest.expectedExecutableSuites !== 23 || manifest.expectedSuites !== 23) {
-    fail(errors, "expectedExecutableSuites and compatibility expectedSuites must both equal the amended lock 23");
+  if (manifest.expectedExecutableSuites !== 55 || manifest.expectedSuites !== 55 || manifest.shadowExpectedVariants !== 32) {
+    fail(errors, "shadow lock requires exactly 55 executable suites, including 32 shadow variants");
   }
   if (!Array.isArray(manifest.classes) || manifest.classes.length === 0 || new Set(manifest.classes).size !== manifest.classes.length) {
     fail(errors, "classes must be a non-empty unique array");
   }
   if (!manifest.setupProfiles || typeof manifest.setupProfiles !== "object" || Array.isArray(manifest.setupProfiles)) {
     fail(errors, "setupProfiles must be an object");
+  } else if (crypto.createHash("sha256").update(JSON.stringify(manifest.setupProfiles)).digest("hex") !== LOCKED_SETUP_PROFILES_SHA256) {
+    fail(errors, "setupProfiles differ from the exact reviewed Phase 2 + #2437 shadow setup contract");
   }
-  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 23) fail(errors, "suites must contain exactly 23 entries");
+  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 55) fail(errors, "suites must contain exactly 55 entries");
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
   errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
-  let batchTopology = { matrix: [], setupNode: {}, installStep: {}, recordSetupStep: {}, runSuitesStep: {} };
+  let batchTopology = { matrix: [], setupNode: {}, checkout: {}, recordSetupStep: {}, runSuitesStep: {} };
   try {
     batchTopology = inspectBatchWorkflow(resolvedMatrixSource);
   } catch (error) {
@@ -582,14 +622,9 @@ export function validateRegistry(
     if (!route.class || matrixRoutes.has(route.class)) fail(errors, `duplicate or empty ci-batch matrix class: ${route.class || "<empty>"}`);
     else matrixRoutes.set(route.class, route);
   }
-  if (batchTopology.setupNode?.action !== "actions/setup-node@v4" || batchTopology.setupNode?.nodeVersion !== "${{ matrix.node }}") {
-    fail(errors, "ci-batch setup-node route must remain actions/setup-node@v4 with node-version from matrix.node");
+  if (batchTopology.setupNode?.action !== PINNED_SETUP_NODE || batchTopology.setupNode?.nodeVersion !== "${{ matrix.node }}") {
+    fail(errors, "ci-batch setup-node route must use the reviewed pinned action with node-version from matrix.node");
   }
-  if (
-    batchTopology.installStep?.if !== "matrix.install != ''" ||
-    batchTopology.installStep?.cwd !== "${{ matrix.install }}" ||
-    batchTopology.installStep?.run !== "npm ci"
-  ) fail(errors, "ci-batch install route must remain the exact conditional matrix.install npm ci contract");
 
   const profileOwners = new Map();
   const profileEntries = Object.entries(manifest.setupProfiles || {});
@@ -598,9 +633,10 @@ export function validateRegistry(
       fail(errors, `setup profile ${name} must be an object`);
       continue;
     }
-    if (!sameStrings(Object.keys(profile), ["runtime", "install", "classes"])) fail(errors, `setup profile ${name} has a malformed or unknown field`);
-    if (profile.runtime?.name !== "node" || profile.runtime?.version !== "20" || !sameStrings(Object.keys(profile.runtime || {}), ["name", "version"])) {
-      fail(errors, `setup profile ${name} must use the supported exact node 20 runtime schema`);
+    const expectedKeys = "installs" in profile ? ["runtime", "installs", "classes"] : ["runtime", "install", "classes"];
+    if (!sameStrings(Object.keys(profile), expectedKeys)) fail(errors, `setup profile ${name} has a malformed or unknown field`);
+    if (profile.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(profile.runtime?.version) || !sameStrings(Object.keys(profile.runtime || {}), ["name", "version"])) {
+      fail(errors, `setup profile ${name} must use an approved exact Node runtime schema`);
     }
     const profileClasses = strings(profile.classes) ? profile.classes : [];
     if (profileClasses.length === 0 || new Set(profileClasses).size !== profileClasses.length) {
@@ -610,18 +646,21 @@ export function validateRegistry(
       if (!profileOwners.has(klass)) profileOwners.set(klass, []);
       profileOwners.get(klass).push(name);
     }
-    if (profile.install !== null) {
-      const install = profile.install;
+    const installs = profileInstallList(profile);
+    if (profile.install !== null || "installs" in profile) {
+      if ("installs" in profile && (!Array.isArray(profile.installs) || profile.installs.length === 0)) fail(errors, `setup profile ${name} installs must be a non-empty ordered array`);
+      for (const install of installs) {
       if (!install || typeof install !== "object" || !sameStrings(Object.keys(install), ["cwd", "invocation"])) {
         fail(errors, `setup profile ${name} install must use the exact typed schema`);
       }
       if (!install?.cwd || !fs.existsSync(path.join(root, install.cwd))) fail(errors, `setup profile ${name} install cwd does not exist: ${install?.cwd}`);
       const invocation = install?.invocation;
-      if (
-        invocation?.kind !== "argv" || invocation.command !== "npm" ||
-        !sameStrings(Object.keys(invocation || {}), ["kind", "command", "argv"]) ||
-        JSON.stringify(invocation.argv) !== JSON.stringify(["ci"])
-      ) fail(errors, `setup profile ${name} install must be the exact typed npm [ci] invocation`);
+      const approvedArgv = [["ci"], ["ci", "--ignore-scripts"], ["install", "--no-save", "yaml"]];
+      if (invocation?.kind !== "argv" || invocation.command !== "npm" || !sameStrings(Object.keys(invocation || {}), ["kind", "command", "argv"])
+          || !approvedArgv.some((argv) => JSON.stringify(argv) === JSON.stringify(invocation.argv))) {
+        fail(errors, `setup profile ${name} install is not one of the exact approved typed npm invocations`);
+      }
+      }
     }
   }
   for (const klass of manifest.classes || []) {
@@ -636,25 +675,24 @@ export function validateRegistry(
     const profile = manifest.setupProfiles?.[ownerName];
     if (!profile) continue;
     if (route.node !== profile.runtime?.version) fail(errors, `class ${klass}: matrix runtime ${route.node} disagrees with setup profile runtime ${profile.runtime?.version}`);
-    if (route.install === "") {
-      if (profile.install !== null) fail(errors, `class ${klass}: matrix has no install but setup profile ${ownerName} does`);
-    } else if (!profile.install || profile.install.cwd !== route.install || profile.install.invocation?.command !== "npm" || JSON.stringify(profile.install.invocation?.argv) !== JSON.stringify(["ci"])) {
-      fail(errors, `class ${klass}: setup profile install does not match unchanged matrix install route ${route.install}`);
-    }
+    const expectsCache = profileInstallList(profile).some((install) => install.invocation.argv[0] === "ci") && profileInstallList(profile).length === 1;
+    if ((expectsCache ? "npm" : "") !== route.cache) fail(errors, `class ${klass}: matrix cache route disagrees with exact setup profile`);
   }
 
   const suiteIds = new Set();
-  const suiteOrigins = new Set();
+  const suiteOrigins = new Map();
   const selectedProfiles = new Set();
   const suitesById = new Map();
   const capabilityRegistry = manifest.commandCapabilities;
   const capabilityCommands = capabilityRegistry?.commands || [];
   const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
-  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 51
-      || capabilityCommands.length !== 51 || capabilityRegistry?.registrySha256 !== LOCKED_ASSERTION_CAPABILITY_SHA256
+  const preservedPhase2Digest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(0, 51))).digest("hex");
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 158
+      || capabilityCommands.length !== 158 || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
       || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
-    fail(errors, "the 51 assertion command capabilities must equal the locked reviewed registry");
+    fail(errors, "the 158 assertion command capabilities must equal the locked Phase 2 + #2437 shadow registry");
   }
+  if (preservedPhase2Digest !== LOCKED_ASSERTION_CAPABILITY_SHA256) fail(errors, "the current-main 51 Phase 2 assertion capabilities changed");
   const capabilitiesById = new Map();
   for (const capability of capabilityCommands) {
     if (!capability.id || capabilitiesById.has(capability.id)) fail(errors, `duplicate or empty command capability: ${capability.id || "<empty>"}`);
@@ -665,17 +703,19 @@ export function validateRegistry(
     if (!suite.id || suiteIds.has(suite.id)) fail(errors, `duplicate or empty suite id: ${suite.id || "<empty>"}`);
     suiteIds.add(suite.id);
     suitesById.set(suite.id, suite);
-    if (suite.lifecycle !== "batched-active") fail(errors, `${suite.id}: lifecycle must be batched-active`);
+    if (!["batched-active", "shadow-active"].includes(suite.lifecycle)) fail(errors, `${suite.id}: lifecycle must be batched-active or shadow-active`);
     if (!manifest.classes?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
     if (!suite.setupProfile || !manifest.setupProfiles?.[suite.setupProfile]) fail(errors, `${suite.id}: unknown setupProfile ${suite.setupProfile}`);
     else selectedProfiles.add(suite.setupProfile);
     if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(suite.class) !== true) {
       fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route class ${suite.class}`);
     }
-    if (suiteOrigins.has(suite.origin)) fail(errors, `${suite.id}: duplicate executable origin ${suite.origin}`);
-    suiteOrigins.add(suite.origin);
-    if (fs.existsSync(path.join(root, suite.origin || ""))) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
-    if (suite.runtime?.name !== "node" || suite.runtime?.version !== "20") fail(errors, `${suite.id}: runtime must pin node 20`);
+    if (!suiteOrigins.has(suite.origin)) suiteOrigins.set(suite.origin, []);
+    suiteOrigins.get(suite.origin).push(suite);
+    const originIsLive = fs.existsSync(path.join(root, suite.origin || ""));
+    if (suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
+    if (suite.lifecycle === "shadow-active" && !originIsLive) fail(errors, `${suite.id}: shadow origin must remain live: ${suite.origin}`);
+    if (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version)) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
     const profileRuntime = manifest.setupProfiles?.[suite.setupProfile]?.runtime;
     const matrixRuntime = matrixRoutes.get(suite.class)?.node;
     if (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime) {
@@ -721,6 +761,29 @@ export function validateRegistry(
       fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
     }
   }
+  const shadowSuites = (manifest.suites || []).filter((suite) => suite.lifecycle === "shadow-active");
+  if (shadowSuites.length !== 32) fail(errors, `shadow stage must contain exactly 32 shadow-active variants, got ${shadowSuites.length}`);
+  for (const [origin, owners] of suiteOrigins) {
+    const expected = path.basename(origin) === "issue-994-ota-env-resolution.yml" ? 2 : 1;
+    if (owners.length !== expected) fail(errors, `${origin}: expected exactly ${expected} executable variant(s), got ${owners.length}`);
+    const shadowOwners = owners.filter((suite) => suite.lifecycle === "shadow-active");
+    if (shadowOwners.length) {
+      const variants = shadowOwners.map((suite) => suite.originVariant).sort();
+      const expectedVariants = expected === 2 ? ["app-mobile", "mingla-business"] : ["default"];
+      if (JSON.stringify(variants) !== JSON.stringify(expectedVariants)) fail(errors, `${origin}: originVariant mapping drifted`);
+    }
+    for (const suite of owners.filter((item) => item.lifecycle === "shadow-active")) {
+      const metadata = inspectWorkflow(root, path.basename(origin));
+      if (!suite.shadowContract || suite.shadowContract.workflowSha256 !== metadata?.sourceSha256
+          || suite.shadowContract.variant !== suite.originVariant) fail(errors, `${suite.id}: shadow contract no longer matches its live workflow`);
+    }
+  }
+  const calculatedShadowDigest = crypto.createHash("sha256").update(JSON.stringify(shadowSuites.map((suite) => ({
+    id: suite.id, origin: suite.origin, originVariant: suite.originVariant, shadowContract: suite.shadowContract,
+  })))).digest("hex");
+  if (manifest.shadowContractSha256 !== LOCKED_SHADOW_CONTRACT_SHA256 || calculatedShadowDigest !== LOCKED_SHADOW_CONTRACT_SHA256) {
+    fail(errors, "the exact 32-variant shadow command/setup/options/trigger contract drifted");
+  }
   for (const capability of capabilityCommands) {
     if (!claimedCapabilities.has(capability.id)) fail(errors, `stale unclaimed command capability: ${capability.id}`);
   }
@@ -747,16 +810,33 @@ export function validateRegistry(
     if (!ALLOWED_DISPOSITIONS.has(item.disposition)) fail(errors, `${key}: unknown disposition ${item.disposition}`);
     if (!item.ownerIssue || !/^#\d+$/.test(item.ownerIssue)) fail(errors, `${key}: missing ownerIssue`);
     if (!item.rationale?.trim()) fail(errors, `${key}: missing disposition rationale`);
-    if (item.disposition === "batched-active") {
-      const suite = suitesById.get(item.replacementSuite);
-      if (!suite) fail(errors, `${key}: missing active replacement suite`);
-      else {
-        suiteClaims.set(suite.id, (suiteClaims.get(suite.id) || 0) + 1);
-        if (path.basename(suite.origin || "") !== key) fail(errors, `${key}: replacement suite ${suite.id} owns ${path.basename(suite.origin || "<empty>")}, not this origin`);
-        if (suite.ownerIssue !== item.ownerIssue) fail(errors, `${key}: replacement suite ${suite.id} ownerIssue does not match legacy ownerIssue`);
+    const replacements = item.disposition === "batched-active" ? [item.replacementSuite] : item.replacementSuites;
+    if (["batched-active", "shadow-active", "batched-historical"].includes(item.disposition)) {
+      const expectedClaims = key === "issue-994-ota-env-resolution.yml" ? 2 : 1;
+      if (!strings(replacements) || replacements.length !== expectedClaims || new Set(replacements).size !== replacements.length) {
+        fail(errors, `${key}: expected exactly ${expectedClaims} unique replacement suite claim(s)`);
+      }
+      for (const replacement of replacements || []) {
+        const suite = suitesById.get(replacement);
+        if (!suite) fail(errors, `${key}: missing active replacement suite ${replacement}`);
+        else {
+          suiteClaims.set(suite.id, (suiteClaims.get(suite.id) || 0) + 1);
+          if (path.basename(suite.origin || "") !== key) fail(errors, `${key}: replacement suite ${suite.id} owns ${path.basename(suite.origin || "<empty>")}, not this origin`);
+          if (suite.ownerIssue !== item.ownerIssue) fail(errors, `${key}: replacement suite ${suite.id} ownerIssue does not match legacy ownerIssue`);
+        }
       }
     }
-    if (item.disposition !== "batched-active") {
+    if (item.disposition === "shadow-active") {
+      if (item.providerWorkflow !== `.github/workflows/${key}` || !fs.existsSync(path.join(root, item.providerWorkflow || ""))) {
+        fail(errors, `${key}: shadow stage must keep the exact historical workflow live`);
+      }
+      const expectedMetadata = inspectWorkflow(root, key);
+      if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: shadow runtime/setup/trust/trigger inventory drifted`);
+    } else if (item.disposition === "batched-historical") {
+      if (item.providerWorkflow !== ".github/workflows/ci-batch.yml" || fs.existsSync(path.join(root, `.github/workflows/${key}`))) {
+        fail(errors, `${key}: cutover requires the historical wrapper absent and the batch provider exact`);
+      }
+    } else if (item.disposition !== "batched-active") {
       if (item.providerWorkflow !== `.github/workflows/${key}`) fail(errors, `${key}: live origin must name its sole provider workflow`);
       if (!fs.existsSync(path.join(root, item.providerWorkflow || ""))) fail(errors, `${key}: live provider workflow is missing`);
       const expectedMetadata = inspectWorkflow(root, key);
@@ -781,9 +861,18 @@ export function validateRegistry(
     if (!item.workflow || providerKeys.has(item.workflow)) fail(errors, `duplicate or empty workflow provider: ${item.workflow || "<empty>"}`);
     providerKeys.add(item.workflow);
     registeredByName.set(item.workflow, item);
-    if (item.transition !== "retained-live-provider") fail(errors, `${item.workflow}: transition must preserve the live provider in Phase 1`);
+    if (!["retained-live-provider", "batched-provider"].includes(item.transition)) fail(errors, `${item.workflow}: unknown provider transition`);
     if (!strings(item.referenceFiles) || item.referenceFiles.length === 0) fail(errors, `${item.workflow}: referenceFiles must be non-empty`);
     for (const ref of item.referenceFiles || []) if (!fs.existsSync(path.join(root, ref))) fail(errors, `${item.workflow}: stale reference file ${ref}`);
+    if (item.transition === "retained-live-provider") {
+      if (item.providerWorkflow !== `.github/workflows/${item.workflow}` || !fs.existsSync(path.join(root, item.providerWorkflow))) {
+        fail(errors, `${item.workflow}: retained provider must remain the exact live historical wrapper`);
+      }
+    } else {
+      if (item.providerWorkflow !== ".github/workflows/ci-batch.yml" || fs.existsSync(path.join(root, `.github/workflows/${item.workflow}`))) {
+        fail(errors, `${item.workflow}: batched provider requires exact batch provider and absent historical wrapper`);
+      }
+    }
   }
   for (const discovered of discoveredProviders) {
     const registered = registeredByName.get(discovered.workflow);
@@ -793,7 +882,10 @@ export function validateRegistry(
     }
   }
   for (const name of providerKeys) {
-    if (!discoveredProviders.some((item) => item.workflow === name)) fail(errors, `stale external provider registration: ${name}`);
+    const registration = registeredByName.get(name);
+    if (registration.transition === "retained-live-provider" && !discoveredProviders.some((item) => item.workflow === name)) {
+      fail(errors, `stale external provider registration: ${name}`);
+    }
   }
 
   return errors;
@@ -812,7 +904,7 @@ function main() {
     console.error(`#2435 registry v2: FAIL (${errors.length} error(s))`);
     process.exit(1);
   }
-  console.log("#2435 registry v2: PASS — 199 origins, 23 executable suites, 89 external providers");
+  console.log("#2437 shadow registry: PASS — 199 origins, 55 executable suites (32 shadow), 89 external providers");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();

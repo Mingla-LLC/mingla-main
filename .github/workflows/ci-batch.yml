@@ -25,6 +25,14 @@ on:
   pull_request:
   push:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: "Bounded operational suite"
+        required: true
+        type: choice
+        options:
+          - issue-2300-orch-artifact-reap
 
 permissions:
   contents: read
@@ -36,6 +44,7 @@ concurrency:
 jobs:
   batch:
     name: "CI batch: ${{ matrix.class }}"
+    if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -51,7 +60,8 @@ jobs:
           # running 14 of them.
           - class: node20-noinstall
             node: "20"
-            install: ""
+            cache: ""
+            cache-lock: ""
           # The business suites are split 4 ways: MEASURED locally they take ~730s
           # end to end, so as ONE job they would become the new critical path — a
           # regression, since today they run in parallel. The split is round-robin
@@ -59,16 +69,56 @@ jobs:
           # can be rebalanced from evidence after the first run.
           - class: business-node20-1
             node: "20"
-            install: mingla-business
+            cache: npm
+            cache-lock: mingla-business/package-lock.json
           - class: business-node20-2
             node: "20"
-            install: mingla-business
+            cache: npm
+            cache-lock: mingla-business/package-lock.json
           - class: business-node20-3
             node: "20"
-            install: mingla-business
+            cache: npm
+            cache-lock: mingla-business/package-lock.json
           - class: business-node20-4
             node: "20"
-            install: mingla-business
+            cache: npm
+            cache-lock: mingla-business/package-lock.json
+          - class: admin-node20-install
+            node: "20"
+            cache: npm
+            cache-lock: mingla-admin/package-lock.json
+          - class: node22-noinstall
+            node: "22"
+            cache: ""
+            cache-lock: ""
+          - class: app-node22-install
+            node: "22"
+            cache: npm
+            cache-lock: app-mobile/package-lock.json
+          - class: business-node22-ignore-scripts
+            node: "22"
+            cache: npm
+            cache-lock: mingla-business/package-lock.json
+          - class: cross-root-node22-ignore-scripts
+            node: "22"
+            cache: ""
+            cache-lock: ""
+          - class: root-node20-yaml-no-save
+            node: "20"
+            cache: ""
+            cache-lock: ""
+          - class: node20-19-noinstall
+            node: "20.19.4"
+            cache: ""
+            cache-lock: ""
+          - class: ota-app-node20-19-install
+            node: "20.19.4"
+            cache: npm
+            cache-lock: app-mobile/package-lock.json
+          - class: ota-business-node20-19-install
+            node: "20.19.4"
+            cache: npm
+            cache-lock: mingla-business/package-lock.json
     steps:
       # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
       # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
@@ -79,25 +129,21 @@ jobs:
       # reproduce, but said nothing about the OPTIONS on the actions it kept — this
       # is that gap, closed. Any future suite needing deeper checkout config must be
       # checked here before being folded in.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
         with:
           fetch-depth: 0
-      - uses: actions/setup-node@v4
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.node }}
-          cache: ${{ matrix.install && 'npm' || '' }}
-          cache-dependency-path: ${{ matrix.install && format('{0}/package-lock.json', matrix.install) || '' }}
+          cache: ${{ matrix.cache }}
+          cache-dependency-path: ${{ matrix.cache-lock }}
 
-      - name: Install ${{ matrix.install }} dependencies
-        if: matrix.install != ''
-        working-directory: ${{ matrix.install }}
-        run: npm ci
-
-      # The runner refuses to start unless the class setup above is recorded once,
-      # and refuses duplicate or mismatched evidence. This turns "one install per
-      # shard" from an optimization claim into a checked execution contract.
-      - name: Record one shard setup
-        run: node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != '' && '1' || '0' }}"
+      # Setup is selected only from the reviewed typed profile registry. The runner
+      # executes each exact argv capability once, then writes non-forgeable evidence
+      # before any assertion suite is admitted.
+      - name: Execute and record one typed shard setup
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"
 
       # The runner's own guarantees are load-bearing: it is the only thing standing
       # between "one job for many suites" and "one green lie". Prove it still bites

@@ -66,9 +66,9 @@ function selfTest(base) {
   }, /must exactly equal files selected/, discovery);
   assertRed("empty command", base, (m) => { m.suites[0].steps[0].run = ""; }, /empty compatibility command/, discovery);
   assertRed("missing class route", base, (m) => { m.classes.push("unrouted-class"); }, /no ci-batch matrix route/, discovery);
-  assertRed("unsupported setup runtime", base, (m) => { m.setupProfiles["business-node20"].runtime.version = "99"; }, /supported exact node 20 runtime schema/, discovery);
-  assertRed("missing setup install", base, (m) => { m.setupProfiles["business-node20"].install = null; }, /does not match unchanged matrix install route/, discovery);
-  assertRed("forged setup install", base, (m) => { m.setupProfiles["business-node20"].install.invocation = { kind: "argv", command: "echo", argv: ["not npm ci"] }; }, /exact typed npm \[ci\] invocation/, discovery);
+  assertRed("unsupported setup runtime", base, (m) => { m.setupProfiles["business-node20"].runtime.version = "99"; }, /approved exact Node runtime|setupProfiles differ/, discovery);
+  assertRed("missing setup install", base, (m) => { m.setupProfiles["business-node20"].install = null; }, /matrix cache route|setupProfiles differ/, discovery);
+  assertRed("forged setup install", base, (m) => { m.setupProfiles["business-node20"].install.invocation = { kind: "argv", command: "echo", argv: ["not npm ci"] }; }, /approved typed npm|setupProfiles differ/, discovery);
   assertRed("missing setup cwd", base, (m) => { m.setupProfiles["business-node20"].install.cwd = "definitely/missing"; }, /install cwd does not exist/, discovery);
   assertRed("duplicate setup class ownership", base, (m) => { m.setupProfiles["node20-noinstall"].classes.push("business-node20-1"); }, /exactly one setup profile owner/, discovery);
   assertRed("stale unused setup profile", base, (m) => { m.setupProfiles.stale = { runtime: { name: "node", version: "20" }, install: null, classes: ["stale-class"] }; }, /stale or unknown class|not selected by any suite/, discovery);
@@ -78,9 +78,35 @@ function selfTest(base) {
     ...discovery,
     matrixSource: discovery.matrixSource.replace('node: "20"', 'node: "18"'),
   });
-  assertRed("workflow install semantic drift", base, () => {}, /exact conditional matrix.install npm ci contract/, {
+  assertRed("workflow install semantic drift", base, () => {}, /no free-form install route/, {
     ...discovery,
-    matrixSource: discovery.matrixSource.replace("run: npm ci", "run: echo forged-install"),
+    matrixSource: discovery.matrixSource.replace('run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"', "run: npm ci"),
+  });
+  assertRed("shadow variant omission", base, (m) => {
+    m.suites.splice(m.suites.findIndex((suite) => suite.lifecycle === "shadow-active"), 1);
+  }, /54 executable suites|54 entries|32 shadow-active/, discovery);
+  assertRed("shadow command capability drift", base, (m) => {
+    const suite = m.suites.find((item) => item.lifecycle === "shadow-active");
+    m.commandCapabilities.commands.find((item) => item.suiteId === suite.id).argv[1] += " # forged";
+  }, /153 assertion command capabilities|immutable executable/, discovery);
+  assertRed("shadow contract drift", base, (m) => {
+    m.suites.find((item) => item.lifecycle === "shadow-active").shadowContract.triggerSha256 = "0".repeat(64);
+  }, /32-variant shadow.*drifted/, discovery);
+  assertRed("994 second variant omission", base, (m) => {
+    m.legacyOrigins.find((item) => item.ownerIssue === "#994" && item.disposition === "shadow-active").replacementSuites.pop();
+  }, /expected exactly 2 unique replacement/, discovery);
+  assertRed("premature shadow cutover", base, (m) => {
+    const origin = m.legacyOrigins.find((item) => item.disposition === "shadow-active");
+    origin.disposition = "batched-historical";
+    origin.providerWorkflow = ".github/workflows/ci-batch.yml";
+  }, /cutover requires the historical wrapper absent/, discovery);
+  assertRed("shared action pin drift", base, () => {}, /exact pinned checkout\/setup-node/, {
+    ...discovery,
+    matrixSource: discovery.matrixSource.replace("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "actions/checkout@v4"),
+  });
+  assertRed("manual dispatch fanout", base, () => {}, /workflow_dispatch must be bounded/, {
+    ...discovery,
+    matrixSource: discovery.matrixSource.replace("matrix.class == 'node20-19-noinstall'", "true"),
   });
   assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /89 providers|externally referenced workflow provider omitted/, discovery);
   assertRed("provider duplication", base, (m) => m.workflowProviders.push(clone(m.workflowProviders[0])), /duplicate or empty workflow provider/, discovery);

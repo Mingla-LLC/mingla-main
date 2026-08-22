@@ -14,32 +14,44 @@ const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const PRESERVED_ASSERTION_SHA256 = "46b4392592c5d6cb56bc600adc98e083b14880b79dad29fe4e1438ac41923764";
 const ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
+const SHADOW_ASSERTION_SHA256 = "9dea11e17920bd597c737fd1a9afa096ae740aab28eabb82d93029fbb0be7b3e";
+const SHADOW_CAPABILITY_SHA256 = "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709";
+const TIMEOUT_CONTRACT_SHA256 = "8a166a8eb146763528659c9f8306bd2e7ce068dc9d922cdac90ad0c71c90bdbe";
 const PROCESS_SUPERVISOR_SHA256 = "1c890b876833df9e6f9c8cf2b0dc8cec4ba1364b7b5519e68b0245b5077dfb20";
 
 function clone(value) { return structuredClone(value); }
 function manifest() { return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")); }
 function workflow() { return fs.readFileSync(WORKFLOW_PATH, "utf8"); }
-function assertionDigest(value) {
-  const assertions = value.suites.map((suite) => ({ id: suite.id, steps: suite.steps.map(({ name, cwd, run, invocation }) => ({ name, cwd, run, invocation })) }));
+function assertionDigest(suites) {
+  const assertions = suites.map((suite) => ({ id: suite.id, steps: suite.steps.map(({ name, cwd, run, invocation }) => ({ name, cwd, run, invocation })) }));
   return crypto.createHash("sha256").update(JSON.stringify(assertions)).digest("hex");
 }
+function orderedDigest(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
 function errors(value, matrixSource = workflow()) { return validateRegistry(value, { root: DEFAULT_ROOT, matrixSource }); }
 
 export function verifyLive() {
   const value = manifest();
   const failures = errors(value);
   assert.deepEqual(failures, [], failures.join("\n"));
-  assert.equal(value.suites.length, 23);
-  assert.equal(value.suites.flatMap((suite) => suite.steps).length, 51);
-  assert.equal(value.suites.flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
-  assert.equal(assertionDigest(value), PRESERVED_ASSERTION_SHA256, "the 51 preserved underlying commands/assertions drifted");
-  assert.equal(value.commandCapabilities.registrySha256, ASSERTION_CAPABILITY_SHA256, "reviewed assertion command capabilities drifted");
-  assert.equal(value.commandCapabilities.commands.length, 51);
+  const baseline = value.suites.slice(0, 23);
+  const shadow = value.suites.slice(23);
+  assert.equal(value.suites.length, 55);
+  assert.equal(baseline.flatMap((suite) => suite.steps).length, 51);
+  assert.equal(shadow.length, 32);
+  assert.equal(shadow.flatMap((suite) => suite.steps).length, 107);
+  assert.equal(baseline.flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
+  assert.equal(assertionDigest(baseline), PRESERVED_ASSERTION_SHA256, "the original 22 suites / 46 commands drifted");
+  assert.equal(assertionDigest(shadow), SHADOW_ASSERTION_SHA256, "the ordered 32 shadow variants / 107 commands drifted");
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(0, 51)), ASSERTION_CAPABILITY_SHA256, "current-main 51 assertion capabilities drifted");
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(51)), SHADOW_CAPABILITY_SHA256, "shadow assertion capabilities drifted");
+  assert.equal(value.commandCapabilities.commands.length, 158);
   const supervisor = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/process-supervisor.py"), "utf8");
   assert.equal(crypto.createHash("sha256").update(supervisor).digest("hex"), PROCESS_SUPERVISOR_SHA256, "atomic process supervisor drifted");
   assert.match(supervisor, /PR_SET_CHILD_SUBREAPER/);
   assert.match(supervisor, /install_subreaper\(\).*\n[\s\S]*subprocess\.Popen/);
-  assert.ok(value.suites.every((suite) => suite.timeoutSeconds === 480 && suite.isolation === "clean-worktree"));
+  assert.ok(baseline.every((suite) => suite.timeoutSeconds === 480 && suite.isolation === "clean-worktree"));
+  assert.ok(shadow.every((suite) => suite.lifecycle === "shadow-active" && suite.isolation === "clean-worktree"));
+  assert.equal(orderedDigest(value.suites.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "exact baseline + shadow timeout contract drifted");
 }
 
 function expectRed(label, mutateManifest, mutateWorkflow = (source) => source) {
@@ -77,13 +89,23 @@ export function selfTest() {
   const substituted = manifest();
   substituted.suites[0].steps[0].run += " ";
   substituted.suites[0].steps[0].invocation.argv[1] += " ";
-  assert.notEqual(assertionDigest(substituted), PRESERVED_ASSERTION_SHA256, "assertion substitution must change the locked digest");
-  expectRed("setup evidence wiring removed", () => {}, (source) => source.replace("--record-setup", "--record-setup-missing"));
+  assert.notEqual(assertionDigest(substituted.suites.slice(0, 22)), PRESERVED_ASSERTION_SHA256, "assertion substitution must change the locked digest");
+  expectRed("setup evidence wiring removed", () => {}, (source) => source.replace('--setup "${{ matrix.class }}"', '--setup "missing"'));
   expectRed("runner route removed", () => {}, (source) => source.replace('--run "${{ matrix.class }}"', '--run "wrong"'));
   expectRed("atomic Linux containment removed", () => {}, (source) => source.replace("runs-on: ubuntu-latest", "runs-on: macos-latest"));
-  expectRed("duplicate install route", () => {}, (source) => source.replace("        run: npm ci", "        run: npm ci\n      - name: Hidden second install\n        run: npm install"));
-  console.log("#2436 runner v2 self-test: PASS — setup, timeout, isolation, preservation, and wiring mutations went RED");
+  expectRed("duplicate install route", () => {}, (source) => source.replace('run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"', 'run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"\n      - name: Hidden second install\n        run: npm install'));
+  expectRegistryRed("missing shadow variant", (value) => { value.suites.splice(22, 1); });
+  expectRegistryRed("swapped shadow variant", (value) => { [value.suites[22], value.suites[23]] = [value.suites[23], value.suites[22]]; });
+  expectRegistryRed("duplicated shadow variant", (value) => { value.suites[23] = clone(value.suites[22]); });
+  expectRegistryRed("shadow capability drift", (value) => { value.commandCapabilities.commands[46].argv[1] += " # drift"; });
+  expectRegistryRed("shadow setup profile drift", (value) => { value.setupProfiles["app-node22-install"].installs[0].invocation.argv.push("--unsafe"); });
+  const timeoutDrift = manifest();
+  timeoutDrift.suites[22].timeoutSeconds += 1;
+  assert.notEqual(orderedDigest(timeoutDrift.suites.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "shadow timeout drift must change the gate lock");
+  expectRed("shared trust drift", () => {}, (source) => source.replace("persist-credentials: false", "persist-credentials: true"));
+  expectRed("unbounded dispatch", () => {}, (source) => source.replace("matrix.class == 'node20-19-noinstall'", "true"));
+  console.log("#2437 shadow runner self-test: PASS — Phase 2 baseline and additive shadow attacks went RED");
 }
 
 if (process.argv[2] === "--self-test") selfTest();
-else { verifyLive(); console.log("#2436 runner v2: PASS — 23 suites, 51 assertions, zero embedded setup, isolated deadline runner wired"); }
+else { verifyLive(); console.log("#2437 shadow runner: PASS — current-main 23/51 immutable; additive 32/107 locked"); }

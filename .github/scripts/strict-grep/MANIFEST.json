@@ -118,6 +118,17 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-2148-ci-runner-v2.implementor.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",

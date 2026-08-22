@@ -19,7 +19,40 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const errors = validateRegistry(manifest, { root: DEFAULT_ROOT });
   assert.deepEqual(errors, []);
   assert.equal(manifest.schemaVersion, 2);
-  assert.equal(manifest.suites.length, 23);
+  const baseline = manifest.suites.slice(0, 23);
+  const shadow = manifest.suites.slice(23);
+  assert.equal(manifest.suites.length, 55);
+  assert.deepEqual(baseline.map(({ id, ownerIssue, lifecycle }) => [id, ownerIssue, lifecycle]), [
+    ["issue-1282-google-bespoke-copy-tests", "#1282", "batched-active"],
+    ["issue-903-open-external-admin-tests", "#903", "batched-active"],
+    ["issue-979-campaign-builder-correctness-tests", "#979", "batched-active"],
+    ["issue-980-campaign-builder-clarity-tests", "#980", "batched-active"],
+    ["issue-986-campaign-builder-platform-picker-tests", "#986", "batched-active"],
+    ["issue-995-campaign-builder-creative-tests", "#995", "batched-active"],
+    ["971-paystack-onboard-scroll-tests", "#971", "batched-active"],
+    ["issue-1027-keyboard-and-datetime-tests", "#1027", "batched-active"],
+    ["issue-1035-theme-sheet-hoist-tests", "#1035", "batched-active"],
+    ["issue-1036-contrast-chip-removal-tests", "#1036", "batched-active"],
+    ["issue-1348-icloud-video-patch-tests", "#1348", "batched-active"],
+    ["issue-1532-tester-adversarial", "#1532", "batched-active"],
+    ["issue-1881-business-signin-transient-failure-tests", "#1881", "batched-active"],
+    ["issue-1996-business-desktop-sharing-tests", "#1996", "batched-active"],
+    ["issue-948-w2-bank-route-web-tests", "#948", "batched-active"],
+    ["issue-948-web-skip-download-tests", "#948", "batched-active"],
+    ["issue-959-scanner-invite-error-parse-tests", "#959", "batched-active"],
+    ["orch-1403-onboard-scroll-tests", "#1403", "batched-active"],
+    ["orch-1404-invite-error-recovery-tests", "#1404", "batched-active"],
+    ["production-readiness-audit", "#2148", "batched-active"],
+    ["issue-2343-host-forced-light-appearance-tests", "#2343", "batched-active"],
+    ["issue-2322-ios-picker-theming-tests", "#2322", "batched-active"],
+    ["issue-2399-multiday-picker-ticket-box", "#2399", "batched-active"],
+  ]);
+  assert.equal(shadow.length, 32);
+  assert.equal(new Set(shadow.map((suite) => suite.id)).size, 32);
+  assert.ok(shadow.every((suite) => suite.lifecycle === "shadow-active"));
+  const approvedShadowIds = manifest.legacyOrigins.filter((origin) => origin.disposition === "shadow-active").flatMap((origin) => origin.replacementSuites).sort();
+  assert.deepEqual(shadow.map((suite) => suite.id).sort(), approvedShadowIds);
+  assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
   assert.equal(manifest.legacyOrigins.length, 199);
   assert.equal(manifest.workflowProviders.length, 89);
   assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 176);
