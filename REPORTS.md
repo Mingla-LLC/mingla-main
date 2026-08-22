@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-22 — Multi-day event buyers now choose their dates inside the ticket box with the total, quantity and checkout state updating together across buyer web and the Mingla Consumer app. (#2455, PR #2456)
 - 2026-08-22 — CI now runs 32 Node test variants and all 107 preserved commands through the governed shared batch instead of 31 separate workflow wrappers, removing duplicated setup while keeping every test and fail-closed ownership, lifecycle, and command contract intact. (#2437, PR #2452)
 - 2026-08-22 — Shared CI shards now install dependencies once, execute all 22 registered suites through 46 locked test capabilities, contain timeouts and descendants, isolate dependency state, exclude job secrets, and report every pass, failure, timeout, missing suite, duration, and setup count honestly. (#2436, PR #2450)
 - 2026-08-22 — CI now has one fail-closed typed registry for all 198 historical origins, 22 batched suites, and 89 externally referenced workflow providers, with exact ownership, setup, runtime, command, test-file, YAML, and cutover truth recorded before consolidation begins. (#2435, PR #2442)
