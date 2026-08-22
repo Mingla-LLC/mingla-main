@@ -14,6 +14,13 @@ config.resolver.platforms = [...(config.resolver.platforms ?? []), "web"];
 config.resolver.resolverMainFields = ["browser", "module", "main"];
 const previous = config.resolver.resolveRequest;
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (platform === "web" && moduleName === "react-native-safe-area-context") {
+    return context.resolveRequest(
+      context,
+      path.join(here, "safeAreaContextShim.ts"),
+      platform,
+    );
+  }
   if (platform === "web" && (moduleName === "react-native" || moduleName.startsWith("react-native/"))) {
     const suffix = moduleName === "react-native" ? "" : moduleName.slice("react-native".length);
     return context.resolveRequest(context, `react-native-web${suffix}`, platform);

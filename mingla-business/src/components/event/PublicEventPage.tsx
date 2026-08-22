@@ -155,10 +155,7 @@ import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
-import {
-  retryCanonicalDayTruth,
-  scheduleDayChooserFocusAfterNotice,
-} from "../../utils/publicEventDayRecovery";
+import { retryCanonicalDayTruth } from "../../utils/publicEventDayRecovery";
 import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
@@ -444,9 +441,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const chipInIdempotencyRef = useRef<string | null>(null);
 
   const [shareModalVisible, setShareModalVisible] = useState<boolean>(false);
-  const [toast, setToast] = useState<{ visible: boolean; message: string }>({
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    preservePageFocus: boolean;
+  }>({
     visible: false,
     message: "",
+    preservePageFocus: false,
   });
   const [waitlistTicketId, setWaitlistTicketId] = useState<string | null>(null);
   // ORCH-1138 — cover-video sound state (default muted). The chrome Mute button
@@ -743,7 +745,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   );
 
   const showToast = useCallback((message: string): void => {
-    setToast({ visible: true, message });
+    setToast({ visible: true, message, preservePageFocus: false });
   }, []);
 
   const dismissToast = useCallback((): void => {
@@ -844,25 +846,20 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const blockForDayTruth = useCallback((): boolean => {
     if (multiDatePurchaseReady) return false;
     if (dayChooserState === "ready") setDayChoiceMissing(true);
-    showToast(
-      dayChooserState === "offline"
+    setToast({
+      visible: true,
+      message: dayChooserState === "offline"
         ? "You’re offline. Reconnect to continue."
         : dayChooserState === "stale"
           ? "Those dates just changed. Refresh and choose again."
           : dayChooserState === "error"
             ? "We couldn’t load the event days."
             : "Choose at least one day you're attending.",
-    );
-    // The Toast exposes a dismiss button and focuses it when mounted. Queue the
-    // recovery target after that mount so the buyer lands on the first day (or
-    // recovery section) and focus remains there.
-    if (Platform.OS === "web") {
-      scheduleDayChooserFocusAfterNotice(revealDayChooser);
-    } else {
-      revealDayChooser();
-    }
+      preservePageFocus: Platform.OS === "web",
+    });
+    if (Platform.OS !== "web") revealDayChooser();
     return true;
-  }, [dayChooserState, multiDatePurchaseReady, revealDayChooser, showToast]);
+  }, [dayChooserState, multiDatePurchaseReady, revealDayChooser]);
 
   // The canonical post-sign-in return target, built ONLY with the canonical
   // path helper — never `eventPublicUrl`, `canonicalUrl(event)`,
@@ -1337,7 +1334,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
     setWaitlistTicketId(null);
     setTicketQuantities({});
     setReturnBanner(null);
-    setToast({ visible: false, message: "" });
+    setToast({ visible: false, message: "", preservePageFocus: false });
     // issue #2135 — an event that ended / was cancelled mid-session must not
     // leave an occurrence picker open over a dead page (mirrors the waitlist +
     // gate teardown above). No-op on every single-date page.
@@ -1514,6 +1511,10 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             kind="info"
             message={toast.message}
             onDismiss={dismissToast}
+            preservePageFocusOnWeb={toast.preservePageFocus}
+            onPresented={
+              toast.preservePageFocus ? revealDayChooser : undefined
+            }
           />
         </View>
 
@@ -1789,6 +1790,8 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           kind="info"
           message={toast.message}
           onDismiss={dismissToast}
+          preservePageFocusOnWeb={toast.preservePageFocus}
+          onPresented={toast.preservePageFocus ? revealDayChooser : undefined}
         />
       </View>
 

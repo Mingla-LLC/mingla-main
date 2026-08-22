@@ -103,6 +103,14 @@ export interface ToastProps {
    * user-dismissible (close icon + tap-to-dismiss are always rendered).
    */
   autoDismissMs?: number | null;
+  /** Called once after the visible Toast surface has mounted. */
+  onPresented?: () => void;
+  /**
+   * Web-only recovery mode: present as a viewport-fixed alert without RN Web's
+   * modal focus trap, so a caller may intentionally move focus back to the
+   * invalid control. Default false preserves the canonical modal Toast.
+   */
+  preservePageFocusOnWeb?: boolean;
 }
 
 const ENTRY_DURATION = 220;
@@ -201,6 +209,7 @@ const ToastNative: React.FC<ToastProps> = ({
   testID,
   style,
   autoDismissMs,
+  onPresented,
 }) => {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -355,6 +364,7 @@ const ToastNative: React.FC<ToastProps> = ({
       animationType="none"
       onRequestClose={onDismiss}
       statusBarTranslucent
+      onShow={onPresented}
     >
       {/* Portal root — full screen but pointerEvents box-none so taps
           pass through to underlying UI when Toast doesn't intercept.
@@ -520,6 +530,8 @@ const ToastWeb: React.FC<ToastProps> = ({
   testID,
   style,
   autoDismissMs,
+  onPresented,
+  preservePageFocusOnWeb = false,
 }) => {
   const insets = useSafeAreaInsets();
   const { width: windowWidth } = useWindowDimensions();
@@ -531,6 +543,7 @@ const ToastWeb: React.FC<ToastProps> = ({
 
   const [animateOpen, setAnimateOpen] = useState<boolean>(false);
   const rafRef = useRef<number | null>(null);
+  const presentedRef = useRef(false);
 
   useEffect(() => {
     if (visible) {
@@ -589,6 +602,21 @@ const ToastWeb: React.FC<ToastProps> = ({
     return (): void => clearTimeout(timer);
   }, [autoDismissMs, kind, onDismiss, visible]);
 
+  useEffect(() => {
+    if (!visible) {
+      presentedRef.current = false;
+      return;
+    }
+    if (
+      preservePageFocusOnWeb &&
+      mounted &&
+      !presentedRef.current
+    ) {
+      presentedRef.current = true;
+      onPresented?.();
+    }
+  }, [mounted, onPresented, preservePageFocusOnWeb, visible]);
+
   if (!mounted) return null;
 
   const topInset = insets.top > 0 ? insets.top : spacing.md;
@@ -607,6 +635,36 @@ const ToastWeb: React.FC<ToastProps> = ({
     willChange: "transform",
   } as unknown as ViewStyle;
 
+  const surface = (
+    <View
+      style={[
+        styles.portalRoot,
+        preservePageFocusOnWeb ? styles.webStatusRoot : null,
+      ]}
+      pointerEvents="box-none"
+      accessibilityRole={preservePageFocusOnWeb ? "alert" : undefined}
+      accessibilityLiveRegion={
+        preservePageFocusOnWeb ? "assertive" : undefined
+      }
+    >
+      <View
+        pointerEvents={visible ? "auto" : "none"}
+        style={[styles.wrap, { top: topInset + spacing.sm }, wrapWebStyle, style]}
+        testID={testID}
+        accessibilityHint="Tap to dismiss"
+      >
+        <ToastCard
+          kind={kind}
+          message={message}
+          onDismiss={onDismiss}
+          blurOk={blurOk}
+        />
+      </View>
+    </View>
+  );
+
+  if (preservePageFocusOnWeb) return surface;
+
   return (
     <Modal
       transparent
@@ -614,22 +672,13 @@ const ToastWeb: React.FC<ToastProps> = ({
       animationType="none"
       onRequestClose={onDismiss}
       statusBarTranslucent
+      onShow={() => {
+        if (presentedRef.current) return;
+        presentedRef.current = true;
+        onPresented?.();
+      }}
     >
-      <View style={styles.portalRoot} pointerEvents="box-none">
-        <View
-          pointerEvents={visible ? "auto" : "none"}
-          style={[styles.wrap, { top: topInset + spacing.sm }, wrapWebStyle, style]}
-          testID={testID}
-          accessibilityHint="Tap to dismiss"
-        >
-          <ToastCard
-            kind={kind}
-            message={message}
-            onDismiss={onDismiss}
-            blurOk={blurOk}
-          />
-        </View>
-      </View>
+      {surface}
     </Modal>
   );
 };
@@ -637,6 +686,13 @@ const ToastWeb: React.FC<ToastProps> = ({
 const styles = StyleSheet.create({
   portalRoot: {
     flex: 1,
+  },
+  webStatusRoot: {
+    position: "fixed" as unknown as "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 2147483647,
   },
   wrap: {
     position: "absolute",

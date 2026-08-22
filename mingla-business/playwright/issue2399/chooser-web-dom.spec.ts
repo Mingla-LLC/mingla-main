@@ -15,7 +15,15 @@ test("production chooser exposes checked truth, chronological Space toggling, an
   await expect(boxes.nth(0)).toHaveAttribute("aria-checked", "false");
 
   await page.locator("#blocked-checkout").click();
-  await expect(page.locator("#notice-dismiss")).toBeVisible();
+  await expect(page.getByRole("alert").filter({
+    hasText: "Choose at least one day you're attending.",
+  })).toContainText(
+    "Choose at least one day you're attending.",
+  );
+  await expect(page.getByRole("button", { name: "Dismiss notification" }).first()).toBeVisible();
+  await page.waitForTimeout(100);
+  await expect(boxes.nth(0)).toBeFocused();
+  await page.waitForTimeout(650);
   await expect(boxes.nth(0)).toBeFocused();
   await boxes.nth(0).focus();
   await page.keyboard.press("Space");

@@ -4,7 +4,7 @@ import React from "react";
 // @ts-expect-error -- react-dom/client has no declaration in this workspace.
 import { createRoot } from "react-dom/client";
 import { MultiDateDayChooser } from "../../src/components/event/MultiDateDayChooser";
-import { scheduleDayChooserFocusAfterNotice } from "../../src/utils/publicEventDayRecovery";
+import { Toast } from "../../src/components/ui/Toast";
 
 const palette = {
   page: "#101010", card: "#181818", panel: "#181818", panelStrong: "#202020",
@@ -38,17 +38,25 @@ function Harness(): React.ReactElement {
       />
       <button
         id="blocked-checkout"
-        onClick={() => {
-          setNotice(true);
-          scheduleDayChooserFocusAfterNotice(revealFirstDay);
-        }}
+        onClick={() => setNotice(true)}
       >
         Continue
       </button>
-      {notice ? <button id="notice-dismiss" autoFocus>Dismiss notification</button> : null}
+      <Toast
+        visible={notice}
+        kind="info"
+        message="Choose at least one day you're attending."
+        onDismiss={() => setNotice(false)}
+        autoDismissMs={null}
+        preservePageFocusOnWeb
+        onPresented={revealFirstDay}
+        testID="issue-2399-focus-toast"
+      />
     </>
   );
 }
 
 const root = document.getElementById("root");
-if (root !== null) createRoot(root).render(<Harness />);
+if (root !== null) {
+  createRoot(root).render(<Harness />);
+}

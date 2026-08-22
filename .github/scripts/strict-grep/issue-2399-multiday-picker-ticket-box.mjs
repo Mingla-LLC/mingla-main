@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PATHS = {
   page: "mingla-business/src/components/event/PublicEventPage.tsx",
+  toast: "mingla-business/src/components/ui/Toast.tsx",
   foundation: "mingla-business/src/components/event/FoundationEventPreview.tsx",
   chooser: "mingla-business/src/components/event/MultiDateDayChooser.tsx",
   truth: "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
@@ -147,9 +148,20 @@ export function check(raw) {
   ]) {
     if (!raw.chooser.includes(token)) failures.push(`real web checkbox contract missing: ${token}`);
   }
-  if (!raw.page.includes("scheduleDayChooserFocusAfterNotice(revealDayChooser)") ||
-      !raw.recovery.includes("globalThis.setTimeout(revealDayChooser, 0)")) {
-    failures.push("Toast-settled day chooser focus restoration missing");
+  for (const token of [
+    "preservePageFocusOnWeb={toast.preservePageFocus}",
+    "toast.preservePageFocus ? revealDayChooser : undefined",
+  ]) {
+    if ((raw.page.match(new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) ?? []).length !== 2) {
+      failures.push(`both public-page Toasts must settle chooser focus: ${token}`);
+    }
+  }
+  for (const token of [
+    "if (preservePageFocusOnWeb) return surface;",
+    'accessibilityRole={preservePageFocusOnWeb ? "alert" : undefined}',
+    "styles.webStatusRoot",
+  ]) {
+    if (!raw.toast.includes(token)) failures.push(`non-modal recovery Toast missing: ${token}`);
   }
   if (!raw.page.includes("retryCanonicalDayTruth(") ||
       !raw.recovery.includes("if (!refreshed) {") ||
@@ -158,6 +170,7 @@ export function check(raw) {
   }
   if (!raw.workflow.includes(PATHS.test) || !raw.workflow.includes(PATHS.workflow) ||
       !raw.workflow.includes(PATHS.shared) || !raw.workflow.includes(PATHS.page) ||
+      !raw.workflow.includes(PATHS.toast) ||
       !raw.workflow.includes(PATHS.previewRoute) ||
       !raw.workflow.includes(PATHS.previewFoundation) ||
       !raw.workflow.includes(PATHS.browserTest)) {
@@ -202,7 +215,8 @@ if (process.argv.includes("--self-test")) {
     ["previewFoundation", "<FoundationEventPreview", "<View"],
     ["chooser", '"aria-checked": selected', '"aria-checked": false'],
     ["chooser", 'transitionDuration: reducedMotion ? "0ms" : "150ms"', 'transitionDuration: "0ms"'],
-    ["recovery", "globalThis.setTimeout(revealDayChooser, 0)", "revealDayChooser()"],
+    ["toast", "if (preservePageFocusOnWeb) return surface;", "if (false) return surface;"],
+    ["page", "preservePageFocusOnWeb={toast.preservePageFocus}", "preservePageFocusOnWeb={false}"],
     ["tester", 'mount("stale"', 'mount("ready"'],
   ];
   for (const [key, from, to] of mutations) {
