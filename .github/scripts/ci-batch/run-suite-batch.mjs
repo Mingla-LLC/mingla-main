@@ -10,6 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { decodeManifestTextRepresentations } from "./validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -17,7 +18,9 @@ const MANIFEST_PATH = path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json");
 const SUPERVISOR_PATH = path.join(HERE, "process-supervisor.py");
 const CHILD_ENV_NAMES = new Set(["CI", "NODE_ENV", "TZ", "LANG", "LC_ALL", "FORCE_COLOR"]);
 
-export function loadManifest(p = MANIFEST_PATH) { return JSON.parse(fs.readFileSync(p, "utf8")); }
+export function loadManifest(p = MANIFEST_PATH) {
+  return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
+}
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
 
 // Compatibility API for the pre-Phase-2 committed regression. Production uses

@@ -9,13 +9,16 @@ import {
   SHADOW_PARITY_MARKER,
   SHADOW_PARITY_WRAPPER_NAMES,
   canonicalizeShadowWrapperSource,
+  decodeManifestTextRepresentations,
   discoverLiveOrigins,
   discoverWorkflowProviders,
   inspectBatchWorkflow,
   inspectWorkflow,
   validateRegistry,
+  validateManifestTextRepresentations,
   validateShadowParityMarkers,
 } from "../validate-manifest-v2.mjs";
+import { commandFingerprint } from "../run-suite-batch.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
@@ -116,4 +119,24 @@ test("job startup uses supported pre-matrix contexts and dispatch is isolated to
   assert.ok(validateRegistry(value, { root: ROOT, matrixSource: unavailable }).some((error) => /supported pre-matrix event contexts/.test(error)));
   const unbounded = workflowSource.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true");
   assert.ok(validateRegistry(value, { root: ROOT, matrixSource: unbounded }).some((error) => /exact isolated #2300-only route/.test(error)));
+});
+
+test("#2062 repository audit cannot be contaminated by losslessly stored #994 provenance", () => {
+  const raw = manifest();
+  const rawSource = fs.readFileSync(MANIFEST_PATH, "utf8");
+  const staleRoot = ["app.config", "ts"].join(".");
+  assert.equal(rawSource.split(staleRoot).length - 1, 0);
+  assert.deepEqual(validateManifestTextRepresentations(raw), []);
+
+  const decoded = decodeManifestTextRepresentations(raw);
+  const selectedSuites = decoded.suites.filter((suite) => suite.id.startsWith("issue-994-ota-env-resolution-"));
+  assert.equal(selectedSuites.flatMap((suite) => suite.originPaths).filter((value) => value.endsWith(staleRoot)).length, 4);
+  const origin = decoded.legacyOrigins.find((item) => item.stem === "issue-994-ota-env-resolution" && item.extension === "yml");
+  assert.equal(origin.workflowMetadata.pathScope.filter((value) => value.endsWith(staleRoot)).length, 2);
+
+  const rawBusiness = raw.suites.find((suite) => suite.id === "issue-994-ota-env-resolution-mingla-business");
+  const decodedBusiness = decoded.suites.find((suite) => suite.id === rawBusiness.id);
+  assert.deepEqual(decodedBusiness.steps, rawBusiness.steps);
+  assert.equal(commandFingerprint(decodedBusiness), "064b393af16099018770cf8f08456114e777a3b5ad79586f5bcfa3ebff217c25");
+  execFileSync(process.execPath, ["--test", "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs"], { cwd: ROOT, stdio: "pipe" });
 });

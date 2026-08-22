@@ -58,6 +58,21 @@ function selfTest(base) {
   assertMarkerRed("whitespace-variant shadow marker", (sources) => { sources[markerTarget] = sources[markerTarget].replace(SHADOW_PARITY_MARKER, ` ${SHADOW_PARITY_MARKER}`); });
   assertMarkerRed("wrong-path shadow marker", (sources) => { sources["unapproved-workflow.yml"] = `${SHADOW_PARITY_MARKER}\nname: forbidden\n`; }, /stray.*unapproved workflow/);
   assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
+  assertRed("split-text representation omission", base, (m) => {
+    const suite = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-app-mobile");
+    const index = suite.originPaths.findIndex((item) => item?.encoding === "concat-v1");
+    suite.originPaths[index] = `${suite.originPaths[index].parts[0]}${suite.originPaths[index].parts[1]}`;
+  }, /exactly six reviewed split-text path representations/, discovery);
+  assertRed("split-text representation forgery", base, (m) => {
+    const suite = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-mingla-business");
+    suite.originPaths.find((item) => item?.encoding === "concat-v1").parts[1] = ".tsx";
+  }, /malformed or unreviewed split-text representation|lost reviewed provenance/, discovery);
+  assertRed("split-text representation relocation", base, (m) => {
+    const owner = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-app-mobile");
+    const index = owner.originPaths.findIndex((item) => item?.encoding === "concat-v1");
+    m.suites[0].originPaths.push(owner.originPaths[index]);
+    owner.originPaths[index] = "removed-reviewed-provenance";
+  }, /outside the exact #994 provenance fields|lost reviewed provenance/, discovery);
   assertRed("origin duplication", base, (m) => m.legacyOrigins.push(clone(m.legacyOrigins[0])), /duplicate legacy origin/, discovery);
   assertRed("legacy to suite attribution swap", base, (m) => {
     const migrated = m.legacyOrigins.filter((item) => item.disposition === "batched-active");

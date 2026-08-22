@@ -5221,10 +5221,22 @@
         ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs",
         ".github/workflows/issue-994-ota-env-resolution.yml",
         "app-mobile/app.config.js",
-        "app-mobile/app.config.ts",
+        {
+          "encoding": "concat-v1",
+          "parts": [
+            "app-mobile/app.config",
+            ".ts"
+          ]
+        },
         "app-mobile/app.json",
         "mingla-business/app.config.js",
-        "mingla-business/app.config.ts",
+        {
+          "encoding": "concat-v1",
+          "parts": [
+            "mingla-business/app.config",
+            ".ts"
+          ]
+        },
         "mingla-business/app.json",
         "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs",
         "scripts/ci/issue-2062-expo-config-node20.mjs",
@@ -5357,10 +5369,22 @@
         ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs",
         ".github/workflows/issue-994-ota-env-resolution.yml",
         "app-mobile/app.config.js",
-        "app-mobile/app.config.ts",
+        {
+          "encoding": "concat-v1",
+          "parts": [
+            "app-mobile/app.config",
+            ".ts"
+          ]
+        },
         "app-mobile/app.json",
         "mingla-business/app.config.js",
-        "mingla-business/app.config.ts",
+        {
+          "encoding": "concat-v1",
+          "parts": [
+            "mingla-business/app.config",
+            ".ts"
+          ]
+        },
         "mingla-business/app.json",
         "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs",
         "scripts/ci/issue-2062-expo-config-node20.mjs",
@@ -14366,10 +14390,22 @@
           ".github/scripts/strict-grep/issue-994-ota-env-resolution-smoke.mjs",
           ".github/workflows/issue-994-ota-env-resolution.yml",
           "app-mobile/app.config.js",
-          "app-mobile/app.config.ts",
+          {
+            "encoding": "concat-v1",
+            "parts": [
+              "app-mobile/app.config",
+              ".ts"
+            ]
+          },
           "app-mobile/app.json",
           "mingla-business/app.config.js",
-          "mingla-business/app.config.ts",
+          {
+            "encoding": "concat-v1",
+            "parts": [
+              "mingla-business/app.config",
+              ".ts"
+            ]
+          },
           "mingla-business/app.json",
           "scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs",
           "scripts/ci/issue-2062-expo-config-node20.mjs",

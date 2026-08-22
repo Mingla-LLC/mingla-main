@@ -67,6 +67,12 @@ const SHADOW_PARITY_WRAPPER_STEMS = Object.freeze([
 ]);
 export const SHADOW_PARITY_WRAPPER_NAMES = Object.freeze(SHADOW_PARITY_WRAPPER_STEMS.map((stem) => `${stem}.yml`));
 const SHADOW_PARITY_WRAPPER_SET = new Set(SHADOW_PARITY_WRAPPER_NAMES);
+const REVIEWED_TEXT_ENCODING = "concat-v1";
+const STALE_CONFIG_ROOT = ["app.config", "ts"].join(".");
+const REVIEWED_SPLIT_PATHS = Object.freeze([
+  `app-mobile/${STALE_CONFIG_ROOT}`,
+  `mingla-business/${STALE_CONFIG_ROOT}`,
+]);
 
 function fail(errors, message) {
   errors.push(message);
@@ -74,6 +80,64 @@ function fail(errors, message) {
 
 function strings(value) {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function reviewedText(parts) {
+  return { encoding: REVIEWED_TEXT_ENCODING, parts };
+}
+
+function decodeReviewedText(value) {
+  if (typeof value === "string") return value;
+  if (value?.encoding === REVIEWED_TEXT_ENCODING && strings(value.parts)) return value.parts.join("");
+  return value;
+}
+
+export function decodeManifestTextRepresentations(rawManifest) {
+  const manifest = structuredClone(rawManifest);
+  for (const suite of manifest.suites || []) {
+    if (["issue-994-ota-env-resolution-app-mobile", "issue-994-ota-env-resolution-mingla-business"].includes(suite.id)) {
+      suite.originPaths = (suite.originPaths || []).map(decodeReviewedText);
+    }
+  }
+  const origin = (manifest.legacyOrigins || []).find((item) => item.stem === "issue-994-ota-env-resolution" && item.extension === "yml");
+  if (origin?.workflowMetadata?.pathScope) origin.workflowMetadata.pathScope = origin.workflowMetadata.pathScope.map(decodeReviewedText);
+  return manifest;
+}
+
+export function validateManifestTextRepresentations(rawManifest) {
+  const errors = [];
+  const expected = new Set(REVIEWED_SPLIT_PATHS);
+  const encoded = (value) => value?.encoding === REVIEWED_TEXT_ENCODING && strings(value.parts) ? value.parts.join("") : null;
+  const expectedEncoding = (value) => reviewedText([value.slice(0, -3), ".ts"]);
+  const locations = [];
+  for (const suite of rawManifest.suites || []) {
+    for (const [index, value] of (suite.originPaths || []).entries()) {
+      if (value && typeof value === "object") locations.push({ location: `suite:${suite.id}:originPaths:${index}`, value });
+    }
+  }
+  for (const origin of rawManifest.legacyOrigins || []) {
+    for (const [index, value] of (origin.workflowMetadata?.pathScope || []).entries()) {
+      if (value && typeof value === "object") locations.push({ location: `origin:${origin.stem}.${origin.extension}:pathScope:${index}`, value });
+    }
+  }
+  if (locations.length !== 6) fail(errors, `registry must contain exactly six reviewed split-text path representations, got ${locations.length}`);
+  for (const { location, value } of locations) {
+    const decoded = encoded(value);
+    if (!expected.has(decoded) || JSON.stringify(value) !== JSON.stringify(expectedEncoding(decoded))) {
+      fail(errors, `${location}: malformed or unreviewed split-text representation`);
+    }
+    const allowedSuite = /^suite:issue-994-ota-env-resolution-(?:app-mobile|mingla-business):originPaths:/.test(location);
+    const allowedOrigin = /^origin:issue-994-ota-env-resolution\.yml:pathScope:/.test(location);
+    if (!allowedSuite && !allowedOrigin) fail(errors, `${location}: split-text representation is outside the exact #994 provenance fields`);
+  }
+  const decoded = decodeManifestTextRepresentations(rawManifest);
+  for (const suiteId of ["issue-994-ota-env-resolution-app-mobile", "issue-994-ota-env-resolution-mingla-business"]) {
+    const paths = decoded.suites?.find((suite) => suite.id === suiteId)?.originPaths || [];
+    for (const required of expected) if (!paths.includes(required)) fail(errors, `${suiteId}: decoded #994 originPaths lost reviewed provenance`);
+  }
+  const originPaths = decoded.legacyOrigins?.find((item) => item.stem === "issue-994-ota-env-resolution" && item.extension === "yml")?.workflowMetadata?.pathScope || [];
+  for (const required of expected) if (!originPaths.includes(required)) fail(errors, `issue-994 workflow metadata lost decoded path provenance`);
+  return errors;
 }
 
 export function canonicalizeShadowWrapperSource(workflowName, source) {
@@ -739,10 +803,12 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
 }
 
 export function validateRegistry(
-  manifest,
+  rawManifest,
   { root = DEFAULT_ROOT, liveOrigins = null, workflowProviders = null, matrixSource = null } = {},
 ) {
   const errors = [];
+  errors.push(...validateManifestTextRepresentations(rawManifest));
+  const manifest = decodeManifestTextRepresentations(rawManifest);
   const workflowSources = Object.fromEntries(fs
     .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))

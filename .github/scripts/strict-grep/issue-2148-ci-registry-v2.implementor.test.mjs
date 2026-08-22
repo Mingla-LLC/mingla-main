@@ -8,6 +8,7 @@ import fs from "node:fs";
 import {
   DEFAULT_MANIFEST,
   DEFAULT_ROOT,
+  decodeManifestTextRepresentations,
   discoverLiveOrigins,
   discoverWorkflowProviders,
   inspectWorkflows,
@@ -15,9 +16,10 @@ import {
 } from "../ci-batch/validate-manifest-v2.mjs";
 
 test("#2435 registry v2 proves the complete current topology", () => {
-  const manifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
-  const errors = validateRegistry(manifest, { root: DEFAULT_ROOT });
+  const rawManifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
+  const errors = validateRegistry(rawManifest, { root: DEFAULT_ROOT });
   assert.deepEqual(errors, []);
+  const manifest = decodeManifestTextRepresentations(rawManifest);
   assert.equal(manifest.schemaVersion, 2);
   const baseline = manifest.suites.slice(0, 23);
   const shadow = manifest.suites.slice(23);

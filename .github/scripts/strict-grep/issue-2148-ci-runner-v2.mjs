@@ -6,7 +6,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
+import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
+import { commandFingerprint } from "../ci-batch/run-suite-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../..");
@@ -30,9 +31,11 @@ function orderedDigest(value) { return crypto.createHash("sha256").update(JSON.s
 function errors(value, matrixSource = workflow()) { return validateRegistry(value, { root: DEFAULT_ROOT, matrixSource }); }
 
 export function verifyLive() {
-  const value = manifest();
-  const failures = errors(value);
+  const raw = manifest();
+  const failures = errors(raw);
   assert.deepEqual(failures, [], failures.join("\n"));
+  assert.deepEqual(validateManifestTextRepresentations(raw), []);
+  const value = decodeManifestTextRepresentations(raw);
   const baseline = value.suites.slice(0, 23);
   const shadow = value.suites.slice(23);
   assert.equal(value.suites.length, 55);
@@ -40,11 +43,13 @@ export function verifyLive() {
   assert.equal(shadow.length, 32);
   assert.equal(shadow.flatMap((suite) => suite.steps).length, 107);
   assert.equal(baseline.flatMap((suite) => suite.steps).filter((step) => forbiddenEmbeddedSetup(step.run)).length, 0);
-  assert.equal(assertionDigest(baseline), PRESERVED_ASSERTION_SHA256, "the original 22 suites / 46 commands drifted");
+  assert.equal(assertionDigest(baseline), PRESERVED_ASSERTION_SHA256, "the current-main 23 suites / 51 commands drifted");
   assert.equal(assertionDigest(shadow), SHADOW_ASSERTION_SHA256, "the ordered 32 shadow variants / 107 commands drifted");
   assert.equal(orderedDigest(value.commandCapabilities.commands.slice(0, 51)), ASSERTION_CAPABILITY_SHA256, "current-main 51 assertion capabilities drifted");
   assert.equal(orderedDigest(value.commandCapabilities.commands.slice(51)), SHADOW_CAPABILITY_SHA256, "shadow assertion capabilities drifted");
   assert.equal(value.commandCapabilities.commands.length, 158);
+  const business994 = value.suites.find((suite) => suite.id === "issue-994-ota-env-resolution-mingla-business");
+  assert.equal(commandFingerprint(business994), "064b393af16099018770cf8f08456114e777a3b5ad79586f5bcfa3ebff217c25", "#994 business execution bytes drifted");
   const supervisor = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/process-supervisor.py"), "utf8");
   assert.equal(crypto.createHash("sha256").update(supervisor).digest("hex"), PROCESS_SUPERVISOR_SHA256, "atomic process supervisor drifted");
   assert.match(supervisor, /PR_SET_CHILD_SUBREAPER/);
@@ -99,6 +104,11 @@ export function selfTest() {
   expectRegistryRed("duplicated shadow variant", (value) => { value.suites[23] = clone(value.suites[22]); });
   expectRegistryRed("shadow capability drift", (value) => { value.commandCapabilities.commands[46].argv[1] += " # drift"; });
   expectRegistryRed("shadow setup profile drift", (value) => { value.setupProfiles["app-node22-install"].installs[0].invocation.argv.push("--unsafe"); });
+  expectRegistryRed("reviewed split-text representation removed", (value) => {
+    const suite = value.suites.find((item) => item.id === "issue-994-ota-env-resolution-mingla-business");
+    const index = suite.originPaths.findIndex((item) => item?.encoding === "concat-v1");
+    suite.originPaths[index] = "forged-storage";
+  });
   const timeoutDrift = manifest();
   timeoutDrift.suites[22].timeoutSeconds += 1;
   assert.notEqual(orderedDigest(timeoutDrift.suites.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "shadow timeout drift must change the gate lock");
