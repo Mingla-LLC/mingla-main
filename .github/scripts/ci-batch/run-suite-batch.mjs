@@ -176,16 +176,34 @@ export function dependencySnapshot(root) {
   return crypto.createHash("sha256").update(rows.join("\n")).digest("hex");
 }
 
-function rejectEscapingLinks(root) {
-  for (const { absolute, relative, stat } of dependencyEntries(root)) {
+function rejectEscapingLinks(treeRoot, allowedWorkspace) {
+  const canonicalWorkspace = fs.realpathSync(allowedWorkspace);
+  for (const { absolute, relative, stat } of dependencyEntries(treeRoot)) {
     if (!stat.isSymbolicLink()) continue;
     const resolved = fs.realpathSync(absolute);
-    if (!inside(root, resolved)) throw new Error(`dependency link escapes immutable tree: ${relative}`);
+    if (!inside(canonicalWorkspace, resolved)) throw new Error(`dependency link escapes isolated workspace: ${relative}`);
   }
 }
 
-function verifyIndependentTree(source, destination) {
-  rejectEscapingLinks(destination);
+function verifyNoSharedInodes(source, destination, label) {
+  const sourceStat = fs.statSync(source, { bigint: true });
+  const destinationStat = fs.statSync(destination, { bigint: true });
+  if (sourceStat.dev === destinationStat.dev && sourceStat.ino === destinationStat.ino) {
+    throw new Error(`isolated dependency target shares writable inode: ${label}`);
+  }
+  if (!sourceStat.isDirectory() || !destinationStat.isDirectory()) return;
+  const sourceEntries = new Map(dependencyEntries(source).map((entry) => [entry.relative, entry]));
+  for (const destinationEntry of dependencyEntries(destination)) {
+    const sourceEntry = sourceEntries.get(destinationEntry.relative);
+    if (!sourceEntry || !sourceEntry.stat.isFile() || !destinationEntry.stat.isFile()) continue;
+    if (destinationEntry.stat.dev === sourceEntry.stat.dev && destinationEntry.stat.ino === sourceEntry.stat.ino) {
+      throw new Error(`isolated dependency target shares writable inode: ${label}/${destinationEntry.relative}`);
+    }
+  }
+}
+
+function verifyIndependentTree(source, destination, sourceWorkspace, destinationWorkspace) {
+  rejectEscapingLinks(destination, destinationWorkspace);
   const sourceEntries = new Map(dependencyEntries(source).map((entry) => [entry.relative, entry]));
   for (const destinationEntry of dependencyEntries(destination)) {
     const sourceEntry = sourceEntries.get(destinationEntry.relative);
@@ -194,11 +212,21 @@ function verifyIndependentTree(source, destination) {
         && destinationEntry.stat.dev === sourceEntry.stat.dev && destinationEntry.stat.ino === sourceEntry.stat.ino) {
       throw new Error(`isolated dependency copy shares writable inode: ${destinationEntry.relative}`);
     }
+    if (destinationEntry.stat.isSymbolicLink() && sourceEntry.stat.isSymbolicLink()) {
+      const sourceTarget = fs.realpathSync(sourceEntry.absolute);
+      const destinationTarget = fs.realpathSync(destinationEntry.absolute);
+      const sourceRelative = path.relative(fs.realpathSync(sourceWorkspace), sourceTarget);
+      const destinationRelative = path.relative(fs.realpathSync(destinationWorkspace), destinationTarget);
+      if (sourceRelative !== destinationRelative) {
+        throw new Error(`local dependency link did not rebase into isolated workspace: ${destinationEntry.relative}`);
+      }
+      verifyNoSharedInodes(sourceTarget, destinationTarget, destinationEntry.relative);
+    }
   }
 }
 
-function cloneDependencyTree(source, destination) {
-  rejectEscapingLinks(source);
+function cloneDependencyTree(source, destination, sourceWorkspace, destinationWorkspace) {
+  rejectEscapingLinks(source, sourceWorkspace);
   try {
     if (process.platform === "darwin") execFileSync("cp", ["-cR", source, destination], { stdio: "ignore" });
     else execFileSync("cp", ["-a", "--reflink=auto", source, destination], { stdio: "ignore" });
@@ -207,7 +235,7 @@ function cloneDependencyTree(source, destination) {
     // hardlink or symlink: either would let a suite mutate the shard installation.
     fs.cpSync(source, destination, { recursive: true, dereference: false, preserveTimestamps: true });
   }
-  verifyIndependentTree(source, destination);
+  verifyIndependentTree(source, destination, sourceWorkspace, destinationWorkspace);
 }
 
 export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
@@ -222,7 +250,7 @@ export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
     }
     const isolatedModules = path.join(workspaceRoot, profile.install.cwd, "node_modules");
     fs.mkdirSync(path.dirname(isolatedModules), { recursive: true });
-    try { cloneDependencyTree(installedModules, isolatedModules); }
+    try { cloneDependencyTree(installedModules, isolatedModules, root, workspaceRoot); }
     catch (error) { removeWorktree(root, temporaryRoot, workspaceRoot); throw error; }
   }
   return { root: workspaceRoot, cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };

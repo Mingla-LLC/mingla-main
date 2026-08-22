@@ -180,15 +180,40 @@ test("copy-on-write dependency isolation never aliases the shard installation", 
   }
 });
 
-test("dependency isolation rejects escaping links and detects shard snapshot contamination", async () => {
+test("dependency isolation rebases local file links, rejects external links, and detects shard contamination", async () => {
   const root = gitFixture();
   const modules = path.join(root, "app", "node_modules");
+  const localPackage = path.join(root, "packages", "brand-assets");
+  const localPackageFile = path.join(localPackage, "index.js");
   const shared = path.join(root, "shared-target.js");
-  fs.mkdirSync(path.join(modules, "pkg"), { recursive: true });
+  const dependencyLink = path.join(modules, "@mingla", "brand-assets");
+  fs.mkdirSync(path.dirname(dependencyLink), { recursive: true });
+  fs.mkdirSync(localPackage, { recursive: true });
+  fs.writeFileSync(localPackageFile, "base\n");
   fs.writeFileSync(shared, "base\n");
-  fs.symlinkSync(shared, path.join(modules, "pkg", "escape.js"));
-  assert.throws(() => createIsolatedWorkspace({ root, profile: { install: { cwd: "app" } } }), /dependency link escapes immutable tree/);
-  fs.unlinkSync(path.join(modules, "pkg", "escape.js"));
+  execFileSync("git", ["add", "packages/brand-assets", "shared-target.js"], { cwd: root });
+  execFileSync("git", ["commit", "-qm", "local dependency fixture"], { cwd: root });
+  fs.symlinkSync(path.relative(path.dirname(dependencyLink), localPackage), dependencyLink);
+  let workspace;
+  try {
+    workspace = createIsolatedWorkspace({ root, profile: { install: { cwd: "app" } } });
+    const isolatedLink = path.join(workspace.root, "app", "node_modules", "@mingla", "brand-assets");
+    const isolatedTarget = fs.realpathSync(isolatedLink);
+    assert.equal(isolatedTarget, fs.realpathSync(path.join(workspace.root, "packages", "brand-assets")));
+    assert.equal(fs.lstatSync(isolatedLink).isSymbolicLink(), true);
+    const sourceStat = fs.statSync(localPackageFile);
+    const isolatedStat = fs.statSync(path.join(isolatedTarget, "index.js"));
+    assert.notDeepEqual([isolatedStat.dev, isolatedStat.ino], [sourceStat.dev, sourceStat.ino]);
+    fs.writeFileSync(path.join(isolatedLink, "index.js"), "isolated\n");
+    assert.equal(fs.readFileSync(localPackageFile, "utf8"), "base\n");
+    assert.match(execFileSync("git", ["status", "--porcelain=v1"], { cwd: workspace.root, encoding: "utf8" }), /packages\/brand-assets\/index\.js/);
+  } finally { workspace?.cleanup(); }
+
+  fs.unlinkSync(dependencyLink);
+  fs.symlinkSync(shared, dependencyLink);
+  assert.throws(() => createIsolatedWorkspace({ root, profile: { install: { cwd: "app" } } }), /dependency link escapes isolated workspace/);
+  fs.unlinkSync(dependencyLink);
+  fs.mkdirSync(path.join(modules, "pkg"), { recursive: true });
   fs.writeFileSync(path.join(modules, "pkg", "index.js"), "base\n");
   const contaminator = suite("contaminator", "printf changed > app/node_modules/pkg/index.js");
   const [result] = await runSuitesV2([contaminator], { root, profile: { install: { cwd: "app" } },
