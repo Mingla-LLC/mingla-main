@@ -685,8 +685,9 @@ export async function runSuitesV2(suites, options = {}) {
 export function buildShardReport(klass, suites, results, setupEvidence, durationMs) {
   const base = verdict(suites, results);
   const statuses = Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
-  return { schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
+  return { schemaVersion: 2, class: klass, setupClass: setupEvidence?.class || null, setupProfile: setupEvidence?.setupProfile || null,
     setupExecutions: setupEvidence?.setupExecutions || 0, installExecutions: setupEvidence?.installExecutions || 0,
+    orderedInstalls: setupEvidence?.orderedInstalls || [], setupFingerprint: setupEvidence?.setupFingerprint || null,
     toolExposureExecutions: setupEvidence?.toolExposureExecutions || 0,
     orderedToolExposures: setupEvidence?.orderedToolExposures || [], toolExposureFingerprint: setupEvidence?.toolExposureFingerprint || null,
     expectedSuiteIds: suites.map((suite) => suite.id), executedSuiteIds: results.map((result) => result.id),

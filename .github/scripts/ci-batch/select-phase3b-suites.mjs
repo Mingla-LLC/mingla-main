@@ -71,19 +71,118 @@ export function expectedPhase3bIdentities(manifest, suiteIds) {
   return { outerIds, leafIds };
 }
 
+const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+function suiteCommandFingerprint(suite) {
+  const rows = suite.migrationWave === WAVE
+    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null }))
+    : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
+  return sha256(JSON.stringify(rows));
+}
+
+function profileInstalls(profile) {
+  return profile?.install ? [profile.install] : Array.isArray(profile?.installs) ? profile.installs : [];
+}
+
+function exposurePayload(exposure) {
+  return { id: exposure.id, providerCwd: exposure.providerCwd, consumerCwd: exposure.consumerCwd,
+    packageName: exposure.packageName, executableName: exposure.executableName, version: exposure.version,
+    providerPackage: exposure.providerPackage, providerExecutable: exposure.providerExecutable,
+    consumerPackageLink: exposure.consumerPackageLink, consumerPackageLinkTarget: exposure.consumerPackageLinkTarget,
+    consumerBinLink: exposure.consumerBinLink, consumerBinLinkTarget: exposure.consumerBinLinkTarget,
+    authorityLock: exposure.authorityLock, authorityKey: exposure.authorityKey };
+}
+
+function setupAuthority(manifest, executionClass) {
+  const owners = Object.entries(manifest.setupProfiles || {}).filter(([, profile]) => profile.classes?.includes(executionClass));
+  if (owners.length !== 1) throw new Error(`secondary class ${executionClass} must have one setup owner`);
+  const [name, profile] = owners[0];
+  const installs = profileInstalls(profile);
+  const orderedInstalls = installs.map((install) => ({ id: install.id, cwd: install.cwd,
+    command: install.invocation.command, argv: install.invocation.argv }));
+  const orderedToolExposures = (profile.toolExposures || []).map(exposurePayload);
+  const dependencyCwds = [];
+  for (const install of installs) if (!dependencyCwds.includes(install.cwd)) dependencyCwds.push(install.cwd);
+  return { name, orderedInstalls, setupFingerprint: sha256(JSON.stringify(orderedInstalls)),
+    orderedToolExposures, toolExposureFingerprint: sha256(JSON.stringify(orderedToolExposures)), dependencyCwds };
+}
+
+function statusSummary(results) {
+  return Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
+}
+
+function topLevelVerdictIsExact(report, expectedIds) {
+  const results = Array.isArray(report?.results) ? report.results : [];
+  return same(report?.expectedSuiteIds, expectedIds) && same(report?.executedSuiteIds, expectedIds)
+    && same(results.map((result) => result.id), expectedIds) && report?.expected === expectedIds.length
+    && report?.executed === expectedIds.length && report?.shortfall === 0 && same(report?.failed, [])
+    && same(report?.duplicateIds, []) && report?.identityMismatch === false && same(report?.malformedIds, [])
+    && report?.ok === true && report?.code === 0 && same(report?.statuses, statusSummary(results));
+}
+
+function primaryResultIsExact(suite, result) {
+  return result?.id === suite.id && result?.setupProfile === suite.setupProfile
+    && result?.commandFingerprint === suiteCommandFingerprint(suite) && result?.expected === suite.steps.length
+    && result?.executed === suite.steps.length && result?.status === "passed" && result?.ok === true && result?.code === 0;
+}
+
+function expectedLeafRows(suite) {
+  return suite.steps.flatMap((step, stepIndex) => (step.children || [{
+    id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" },
+  }]).map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId, predicate: leaf.predicate || { kind: "always" } })));
+}
+
+function secondaryResultIsExact(suite, result, authority) {
+  const expectedLeaves = expectedLeafRows(suite);
+  if (result?.id !== suite.id || result?.setupProfile !== suite.setupProfile
+      || result?.commandFingerprint !== suiteCommandFingerprint(suite) || result?.expected !== suite.steps.length
+      || result?.executed !== suite.steps.length || result?.status !== "passed" || result?.ok !== true || result?.code !== 0
+      || !same(result?.dependencyCwds, authority.dependencyCwds) || result?.dependencyCloneCount !== authority.dependencyCwds.length
+      || !Array.isArray(result?.leafResults) || result.leafResults.length !== expectedLeaves.length
+      || !Array.isArray(result?.outerResults) || result.outerResults.length !== suite.steps.length) return false;
+  for (const [index, expected] of expectedLeaves.entries()) {
+    const leaf = result.leafResults[index]; const absent = leaf?.status === "skipped-absent";
+    if (leaf?.id !== expected.id || leaf?.outerCommandId !== expected.outerCommandId
+        || (absent ? expected.predicate.kind !== "exists" || leaf.executed !== false : leaf?.status !== "passed" || leaf.executed !== true)) return false;
+  }
+  for (const [index, step] of suite.steps.entries()) {
+    const leaves = result.leafResults.filter((leaf) => leaf.outerCommandId === step.commandId);
+    const outer = result.outerResults[index];
+    if (outer?.id !== step.commandId || outer?.status !== "passed" || outer?.executed !== true
+        || outer?.expectedLeaves !== leaves.length || outer?.executedLeaves !== leaves.filter((leaf) => leaf.executed).length
+        || outer?.skippedAbsentLeaves !== leaves.filter((leaf) => leaf.status === "skipped-absent").length) return false;
+  }
+  const absent = result.leafResults.filter((leaf) => leaf.status === "skipped-absent").length;
+  return result.expectedLeaves === expectedLeaves.length && result.presentLeaves === expectedLeaves.length - absent
+    && result.executedLeaves === expectedLeaves.length - absent && result.absentLeaves === absent;
+}
+
+function setupEvidenceIsExact(report, authority, executionClass) {
+  const installs = Array.isArray(report?.orderedInstalls) ? report.orderedInstalls : [];
+  const installPayload = installs.map(({ id, cwd, command, argv }) => ({ id, cwd, command, argv }));
+  const installRecordsValid = installs.every((record) => record.status === "passed" && Number.isFinite(record.durationMs) && record.durationMs >= 0);
+  const exposures = Array.isArray(report?.orderedToolExposures) ? report.orderedToolExposures : [];
+  const exposureRecordsValid = exposures.every((record) => record.status === "passed" && Number.isFinite(record.durationMs) && record.durationMs >= 0);
+  return report?.setupClass === executionClass && report?.setupProfile === authority.name && report?.setupExecutions === 1
+    && report?.installExecutions === authority.orderedInstalls.length && same(installPayload, authority.orderedInstalls)
+    && report?.setupFingerprint === authority.setupFingerprint && installRecordsValid
+    && report?.toolExposureExecutions === authority.orderedToolExposures.length
+    && same(exposures.map(exposurePayload), authority.orderedToolExposures)
+    && report?.toolExposureFingerprint === authority.toolExposureFingerprint && exposureRecordsValid;
+}
+
 export function reconcilePhase3bReports(manifest, host, rawDecision, primary, secondary = null) {
   const errors = []; let decision = null;
   try { decision = validateDecision(manifest, rawDecision, host); }
   catch (error) { errors.push(`decision-invalid: ${error.message}`); }
   const phase3bIds = new Set(phase3bSuites(manifest).map((suite) => suite.id));
   const expectedPrimaryIds = manifest.suites.filter((suite) => suite.class === host && suite.migrationWave !== WAVE).map((suite) => suite.id);
-  const primaryIds = Array.isArray(primary?.executedSuiteIds) ? primary.executedSuiteIds : primary?.results?.map((result) => result.id) || [];
+  const primaryIds = Array.isArray(primary?.results) ? primary.results.map((result) => result.id) : [];
   const primaryPhase3b = primaryIds.filter((id) => phase3bIds.has(id));
   if (primaryPhase3b.length) errors.push(`wrong-lane-duplicate: ${primaryPhase3b.join(",")}`);
-  if (primary?.schemaVersion !== 2 || primary?.class !== host
-      || JSON.stringify(primary?.expectedSuiteIds) !== JSON.stringify(expectedPrimaryIds)
-      || JSON.stringify(primaryIds) !== JSON.stringify(expectedPrimaryIds)
-      || primary?.expected !== expectedPrimaryIds.length || primary?.executed !== expectedPrimaryIds.length) {
+  const expectedPrimarySuites = expectedPrimaryIds.map((id) => manifest.suites.find((suite) => suite.id === id));
+  if (primary?.schemaVersion !== 2 || primary?.class !== host || !topLevelVerdictIsExact(primary, expectedPrimaryIds)
+      || expectedPrimarySuites.some((suite, index) => !primaryResultIsExact(suite, primary?.results?.[index]))) {
     errors.push("primary-identity-mismatch");
   }
   if (!primary?.ok || primary?.results?.some((result) => !result.ok)) errors.push("primary-failed");
@@ -91,13 +190,17 @@ export function reconcilePhase3bReports(manifest, host, rawDecision, primary, se
   if (decision) {
     const selected = decision.selectedSuiteIds;
     if (!selected.length) {
-      const secondaryIds = secondary?.results?.map((result) => result.id) || [];
-      if (secondaryIds.some((id) => phase3bIds.has(id)) || secondary?.executed > 0) errors.push("no-selection-secondary-execution");
+      if (secondary !== null && secondary !== undefined) errors.push("no-selection-secondary-execution");
     } else if (!secondary) {
       errors.push(`missing-intended-secondary: ${selected.join(",")}`);
     } else {
       const identities = expectedPhase3bIdentities(manifest, selected);
-      const secondaryIds = secondary.results?.map((result) => result.id) || [];
+      const selectedSuites = selected.map((id) => phase3bSuites(manifest).find((suite) => suite.id === id));
+      const executionClasses = [...new Set(selectedSuites.map((suite) => suite.executionClass))];
+      let authority = null;
+      try { if (executionClasses.length !== 1) throw new Error("selected suites span setup owners"); authority = setupAuthority(manifest, executionClasses[0]); }
+      catch (error) { errors.push(`secondary-setup-authority-invalid: ${error.message}`); }
+      const secondaryIds = Array.isArray(secondary.results) ? secondary.results.map((result) => result.id) : [];
       const missing = selected.filter((id) => !secondaryIds.includes(id));
       if (missing.length) errors.push(`missing-intended-secondary: ${missing.join(",")}`);
       const foreign = secondaryIds.filter((id) => !selected.includes(id)
@@ -105,15 +208,22 @@ export function reconcilePhase3bReports(manifest, host, rawDecision, primary, se
       if (foreign.length) errors.push(`wrong-host-or-unselected-secondary: ${foreign.join(",")}`);
       if (new Set(secondaryIds).size !== secondaryIds.length) errors.push("duplicate-secondary");
       if (JSON.stringify(secondaryIds) !== JSON.stringify(selected)) errors.push("secondary-order-mismatch");
+      const rawLeaves = selectedSuites.flatMap((suite, index) => secondary.results?.[index]?.leafResults || []);
+      const derivedExecutedLeafIds = rawLeaves.filter((leaf) => leaf.executed).map((leaf) => leaf.id);
+      const derivedAbsentLeafIds = rawLeaves.filter((leaf) => leaf.status === "skipped-absent").map((leaf) => leaf.id);
+      const leafUnion = [...derivedExecutedLeafIds, ...derivedAbsentLeafIds];
       if (secondary.schemaVersion !== 2 || secondary.class !== `phase3b:${host}` || secondary.selectionDigest !== decision.digest
-          || secondary.expected !== selected.length || secondary.executed !== selected.length
-          || JSON.stringify(secondary.expectedSuiteIds) !== JSON.stringify(selected)
-          || JSON.stringify(secondary.executedSuiteIds) !== JSON.stringify(selected)
-          || JSON.stringify(secondary.expectedOuterIds) !== JSON.stringify(identities.outerIds)
-          || JSON.stringify(secondary.executedOuterIds) !== JSON.stringify(identities.outerIds)
-          || JSON.stringify(secondary.expectedLeafIds) !== JSON.stringify(identities.leafIds)
-          || JSON.stringify(secondary.observedLeafIds) !== JSON.stringify(identities.leafIds)
-          || new Set([...(secondary.executedLeafIds || []), ...(secondary.absentLeafIds || [])]).size !== identities.leafIds.length) {
+          || secondary.selectionMode !== decision.mode || secondary.deferredError !== decision.deferredError
+          || !topLevelVerdictIsExact(secondary, selected) || !authority || !setupEvidenceIsExact(secondary, authority, executionClasses[0])
+          || selectedSuites.some((suite, index) => !secondaryResultIsExact(suite, secondary.results?.[index], authority))
+          || !same(secondary.expectedOuterIds, identities.outerIds) || !same(secondary.executedOuterIds, identities.outerIds)
+          || !same(secondary.expectedLeafIds, identities.leafIds) || !same(secondary.observedLeafIds, identities.leafIds)
+          || !same(rawLeaves.map((leaf) => leaf.id), identities.leafIds)
+          || !same(secondary.executedLeafIds, derivedExecutedLeafIds) || !same(secondary.absentLeafIds, derivedAbsentLeafIds)
+          || new Set(derivedExecutedLeafIds).size !== derivedExecutedLeafIds.length
+          || new Set(derivedAbsentLeafIds).size !== derivedAbsentLeafIds.length
+          || derivedExecutedLeafIds.some((id) => derivedAbsentLeafIds.includes(id))
+          || !same([...leafUnion].sort(byteSort), [...identities.leafIds].sort(byteSort))) {
         errors.push("secondary-evidence-mismatch");
       }
       if (!secondary.ok || secondary.results?.some((result) => result.executed !== result.expected || !result.ok)) errors.push("secondary-failed");

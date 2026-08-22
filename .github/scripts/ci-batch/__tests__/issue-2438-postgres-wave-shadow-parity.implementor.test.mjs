@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { canonicalizeShadowWrapperSource, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, validateRegistry } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
-import { createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
+import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
 import { expectedPhase3bIdentities, reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
@@ -56,6 +56,64 @@ function assertWave(value) {
   const lifecycle=value.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests");
   assert.deepEqual(lifecycle.steps.map((step)=>step.env||null).filter(Boolean),[{NODE_PATH:"./node_modules"}]);
   assert.deepEqual(value.setupProfiles["phase3b-lifecycle-node20-deno2"].installs.map((install)=>[install.cwd,install.invocation.argv]),[["mingla-business",["ci"]],["app-mobile",["ci"]]]);
+}
+
+function setupForClass(value, klass) {
+  const [name, profile] = Object.entries(value.setupProfiles).find(([, candidate]) => candidate.classes.includes(klass));
+  const installs = profile.install ? [profile.install] : profile.installs || [];
+  const orderedInstalls = installs.map((install) => ({ id: install.id, cwd: install.cwd, command: install.invocation.command,
+    argv: install.invocation.argv, status: "passed", durationMs: 0 }));
+  const orderedToolExposures = (profile.toolExposures || []).map((exposure) => ({ ...exposure, status: "passed", durationMs: 0 }));
+  const installPayload = orderedInstalls.map(({ id, cwd, command, argv }) => ({ id, cwd, command, argv }));
+  const exposurePayload = orderedToolExposures.map(({ status, durationMs, ...payload }) => payload);
+  return { profile, evidence: { class: klass, setupProfile: name, setupExecutions: 1, installExecutions: installs.length,
+    orderedInstalls, setupFingerprint: digest(installPayload), toolExposureExecutions: orderedToolExposures.length,
+    orderedToolExposures, toolExposureFingerprint: digest(exposurePayload) } };
+}
+
+function greenResult(value, suite) {
+  const { profile } = setupForClass(value, suite.executionClass || suite.class);
+  const installs = profile.install ? [profile.install] : profile.installs || [];
+  const dependencyCwds = [...new Set(installs.map((install) => install.cwd))];
+  const result = { id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status: "passed",
+    ok: true, code: 0, reason: null, durationMs: 0, seconds: 0, timeoutSeconds: suite.timeoutSeconds,
+    expected: suite.steps.length, executed: suite.steps.length, allowedCleanup: [], dependencyCwds, dependencyCloneCount: dependencyCwds.length };
+  if (suite.migrationWave !== "phase3b-postgres-wave") return result;
+  result.leafResults = suite.steps.flatMap((step, stepIndex) => (step.children || [{
+    id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" },
+  }]).map((leaf) => {
+    const absent = leaf.predicate?.kind === "exists" && !fs.existsSync(path.join(ROOT, leaf.predicate.path));
+    return { id: leaf.id, outerCommandId: step.commandId, status: absent ? "skipped-absent" : "passed", executed: !absent };
+  }));
+  result.outerResults = suite.steps.map((step) => {
+    const leaves = result.leafResults.filter((leaf) => leaf.outerCommandId === step.commandId);
+    return { id: step.commandId, status: "passed", executed: true, expectedLeaves: leaves.length,
+      executedLeaves: leaves.filter((leaf) => leaf.executed).length,
+      skippedAbsentLeaves: leaves.filter((leaf) => leaf.status === "skipped-absent").length };
+  });
+  result.expectedLeaves = result.leafResults.length;
+  result.absentLeaves = result.leafResults.filter((leaf) => leaf.status === "skipped-absent").length;
+  result.presentLeaves = result.expectedLeaves - result.absentLeaves;
+  result.executedLeaves = result.presentLeaves;
+  return result;
+}
+
+function canonicalReconciliation(value, host) {
+  const decision = selectionDocument(value, host, [], { failSafe: true });
+  const primarySuites = expectedPrimarySuites(value, host); const primaryResults = primarySuites.map((suite) => greenResult(value, suite));
+  const primary = buildShardReport(host, primarySuites, primaryResults, setupForClass(value, host).evidence, 0);
+  const selectedSuites = decision.selectedSuiteIds.map((id) => value.suites.find((suite) => suite.id === id));
+  const secondaryClass = selectedSuites[0].executionClass; const secondaryResults = selectedSuites.map((suite) => greenResult(value, suite));
+  const secondary = buildShardReport(`phase3b:${host}`, selectedSuites, secondaryResults, setupForClass(value, secondaryClass).evidence, 0);
+  const identities = expectedPhase3bIdentities(value, decision.selectedSuiteIds);
+  secondary.expectedOuterIds = identities.outerIds; secondary.executedOuterIds = identities.outerIds;
+  secondary.expectedLeafIds = identities.leafIds;
+  const leaves = secondaryResults.flatMap((result) => result.leafResults);
+  secondary.observedLeafIds = leaves.map((leaf) => leaf.id);
+  secondary.executedLeafIds = leaves.filter((leaf) => leaf.executed).map((leaf) => leaf.id);
+  secondary.absentLeafIds = leaves.filter((leaf) => leaf.status === "skipped-absent").map((leaf) => leaf.id);
+  secondary.selectionDigest = decision.digest; secondary.selectionMode = decision.mode; secondary.deferredError = decision.deferredError;
+  return { decision, primary, secondary };
 }
 
 test("shadow registry has exact identities, counts, digests, and marker-stripped bytes", () => {
@@ -161,15 +219,8 @@ test("secondary reconciliation identities account for every selected outer and l
 });
 
 test("primary and secondary reconciliation is lane-exact and non-masking", () => {
-  const value=manifest(); const host="ota-app-node20-19-install"; const decision=selectionDocument(value,host,[],{failSafe:true});
-  const primaryIds=expectedPrimarySuites(value,host).map((suite)=>suite.id);
-  const primaryResults=primaryIds.map((id)=>({id,ok:true,expected:1,executed:1}));
-  const primary={schemaVersion:2,class:host,ok:true,expected:primaryIds.length,executed:primaryIds.length,expectedSuiteIds:primaryIds,executedSuiteIds:primaryIds,results:primaryResults};
-  const selected=decision.selectedSuiteIds; const identities=expectedPhase3bIdentities(value,selected);
-  const secondaryResults=selected.map((id)=>{const suite=value.suites.find((item)=>item.id===id);return{id,ok:true,expected:suite.steps.length,executed:suite.steps.length};});
-  const secondary={schemaVersion:2,class:`phase3b:${host}`,ok:true,selectionDigest:decision.digest,expected:selected.length,executed:selected.length,
-    expectedSuiteIds:selected,executedSuiteIds:selected,results:secondaryResults,expectedOuterIds:identities.outerIds,executedOuterIds:identities.outerIds,
-    expectedLeafIds:identities.leafIds,observedLeafIds:identities.leafIds,executedLeafIds:identities.leafIds,absentLeafIds:[]};
+  const value=manifest(); const host="ota-app-node20-19-install"; const {decision,primary,secondary}=canonicalReconciliation(value,host);
+  const selected=decision.selectedSuiteIds; const secondaryResults=secondary.results;
   assert.deepEqual(reconcilePhase3bReports(value,host,decision,primary,secondary),[]);
   const wrongLane=structuredClone(primary); wrongLane.results.push({...secondaryResults[0]}); wrongLane.executedSuiteIds.push(selected[0]); wrongLane.executed++;
   assert.match(reconcilePhase3bReports(value,host,decision,wrongLane,null).join("\n"),/wrong-lane-duplicate.*missing-intended-secondary/s);
@@ -180,7 +231,36 @@ test("primary and secondary reconciliation is lane-exact and non-masking", () =>
   const foreign=structuredClone(secondary); foreign.results[0].id=value.suites.find((suite)=>suite.migrationWave==="phase3b-postgres-wave"&&suite.hostClass!==host).id;
   assert.match(reconcilePhase3bReports(value,host,decision,primary,foreign).join("\n"),/wrong-host-or-unselected-secondary/);
   const none=selectionDocument(value,host,["unrelated/file.ts"],{source:{eventName:"push",baseSha:"a".repeat(40),headSha:"b".repeat(40),mergeBaseSha:"a".repeat(40),pathSource:"local-git-two-dot-nul"}});
-  assert.match(reconcilePhase3bReports(value,host,none,primary,secondary).join("\n"),/no-selection-secondary-execution/);
+  const emptySecondary={schemaVersion:2,class:`phase3b:${host}`,results:[],executed:0};
+  assert.match(reconcilePhase3bReports(value,host,none,primary,emptySecondary).join("\n"),/no-selection-secondary-execution/);
+
+  const missingPrimaryRows=structuredClone(primary); missingPrimaryRows.results=[];
+  assert.match(reconcilePhase3bReports(value,host,decision,missingPrimaryRows,secondary).join("\n"),/primary-identity-mismatch/);
+  const foreignLeaves=structuredClone(secondary); foreignLeaves.executedLeafIds=foreignLeaves.executedLeafIds.map((_,index)=>`foreign:${index}`);
+  assert.match(reconcilePhase3bReports(value,host,decision,primary,foreignLeaves).join("\n"),/secondary-evidence-mismatch/);
+  const forgedSetup=structuredClone(secondary); forgedSetup.setupProfile="forged"; forgedSetup.setupExecutions=9;
+  forgedSetup.installExecutions=0; forgedSetup.orderedInstalls=[]; forgedSetup.setupFingerprint="0".repeat(64);
+  forgedSetup.results[0].setupProfile="forged"; forgedSetup.results[0].commandFingerprint="1".repeat(64);
+  forgedSetup.results[0].dependencyCwds=["foreign"]; forgedSetup.results[0].dependencyCloneCount=99;
+  assert.match(reconcilePhase3bReports(value,host,decision,primary,forgedSetup).join("\n"),/secondary-evidence-mismatch/);
+
+  for (const mutate of [
+    (report)=>report.results.push(structuredClone(report.results[0])),
+    (report)=>report.expectedSuiteIds.pop(),
+    (report)=>{report.setupClass="foreign-class";},
+    (report)=>{report.results[0].status="failed";},
+    (report)=>{report.results[0].outerResults[0].executedLeaves=99;},
+    (report)=>{report.results[0].leafResults[0].status="skipped-absent";report.results[0].leafResults[0].executed=false;},
+    (report)=>{report.absentLeafIds=[report.executedLeafIds[0]];},
+  ]) { const attack=structuredClone(secondary); mutate(attack); assert.notDeepEqual(reconcilePhase3bReports(value,host,decision,primary,attack),[]); }
+
+  const lifecycle=canonicalReconciliation(value,"admin-node20-install");
+  assert.deepEqual(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,lifecycle.secondary),[]);
+  for(const mutate of [
+    (report)=>{report.toolExposureExecutions=0;},
+    (report)=>{report.orderedToolExposures[0].version="29.7.1";},
+    (report)=>{report.toolExposureFingerprint="2".repeat(64);},
+  ]) {const attack=structuredClone(lifecycle.secondary);mutate(attack);assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,attack).join("\n"),/secondary-evidence-mismatch/);}
 });
 
 test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offline npx", () => {
