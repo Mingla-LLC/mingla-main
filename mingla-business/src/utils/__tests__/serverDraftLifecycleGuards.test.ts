@@ -145,9 +145,12 @@ describe("server-backed draft lifecycle guards", () => {
     expect(previewSource).toContain("staleServerDraft");
     expect(previewSource).toContain("serverDraftQuery.data === null");
     expect(previewSource).toContain('!draft.id.startsWith("d_")');
-    expect(previewSource).toContain(
-      '!draft.id.startsWith("d_") && !staleServerDraft',
-    );
+    // #2399 replaced the editable preview clone with the read-only Foundation
+    // buyer tree. With no preview mutation path, stale or local draft truth
+    // cannot reach server autosave at all; this is stronger than the removed
+    // per-date override handler's conditional autosave guard.
+    expect(previewSource).not.toContain("useServerDraftAutosave");
+    expect(previewSource).not.toContain("autosave.saveDraft");
   });
 
   test("stale draft route recovery cannot be canceled by cleanup-cleared timeout", () => {
