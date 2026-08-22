@@ -84,7 +84,9 @@ function scanTypeScript(source) {
       while (index < source.length) {
         if (source[index] === "\\") {
           if (index + 1 >= source.length) break;
-          value += source[index + 1];
+          // Preserve the escape lexeme. Dropping the backslash makes runtime-
+          // different strings such as "n" and "\\n" share a canonical token.
+          value += source.slice(index, index + 2);
           index += 2;
         } else if (source[index] === quote) {
           index += 1;
@@ -100,6 +102,7 @@ function scanTypeScript(source) {
       continue;
     }
     if (character === "`") {
+      const start = index;
       index += 1;
       let closed = false;
       while (index < source.length) {
@@ -111,7 +114,8 @@ function scanTypeScript(source) {
         } else index += 1;
       }
       if (!closed) errors.push("unterminated template literal");
-      push("template", "<template>");
+      // Template escape/content changes must also remain distinguishable.
+      push("template", source.slice(start, index));
       continue;
     }
     if (/[A-Za-z_$]/.test(character)) {
@@ -515,6 +519,10 @@ function main() {
       .replace(
         "  const platform = getNativeAppPlatform();",
         "  const   platform=getNativeAppPlatform ( ) ;",
+      )
+      .replace(
+        '"X-Mingla-App-Version"',
+        "'X-Mingla-App-Version'",
       ),
     supabase: sources.supabase.replace(
       "export const supabase = createClient",
@@ -971,13 +979,83 @@ function main() {
         ),
       },
     ],
+    [
+      "escaped-newline native header key",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"X-Mingla-App-Version"',
+          String.raw`"X-Mingla-App-Versio\n"`,
+        ),
+      },
+    ],
+    [
+      "escaped-newline diagnostic severity",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"warning"',
+          String.raw`"warni\ng"`,
+        ),
+      },
+    ],
+    [
+      "escaped-tab native header key",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"X-Mingla-App-Version"',
+          String.raw`"X-Mingla-App-Versio\t"`,
+        ),
+      },
+    ],
+    [
+      "escaped-Unicode native header key",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"X-Mingla-App-Version"',
+          String.raw`"X-Mingla-App-Versio\u006e"`,
+        ),
+      },
+    ],
+    [
+      "escaped-quote diagnostic severity",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"warning"',
+          String.raw`"warni\"ng"`,
+        ),
+      },
+    ],
+    [
+      "escaped-backslash diagnostic severity",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"warning"',
+          String.raw`"warni\\ng"`,
+        ),
+      },
+    ],
+    [
+      "escaped template diagnostic severity",
+      {
+        ...sources,
+        identity: sources.identity.replace(
+          '"warning"',
+          "`" + String.raw`warni\ng` + "`",
+        ),
+      },
+    ],
   ];
   for (const [label, mutated] of mutations) {
     if (validate(mutated).length === 0) {
       throw new Error(`self-test failed: ${label} mutation passed`);
     }
   }
-  console.log("#2443 Explorer native-identity strict gate self-test: 43/43 + normalization/downstream fixtures PASS");
+  console.log("#2443 Explorer native-identity strict gate self-test: 50/50 + normalization/downstream fixtures PASS");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();
