@@ -1,8 +1,8 @@
 {
   "$comment": [
-    "#2435 / #2148 Phase 1 deterministic CI registry v2. Static inventory; never generated at runtime.",
-    "Amended locks: 198 legacy origins = 176 live wrappers + 22 batched origins; 89 externally referenced live providers.",
-    "Execution remains manifest-driven. Discovery exists only in the validator to make omissions, duplicates, stale references, and unrouteable suites fail closed."
+    "#2436 / #2148 Phase 2 deterministic CI registry and runner v2.",
+    "Locked inventory: 198 legacy origins, 22 active suites, 89 external providers; 46 preserved assertion steps.",
+    "Setup executes once per shard from the typed profile. Suite commands contain no environment installation."
   ],
   "schemaVersion": 2,
   "expectedExecutableSuites": 22,
@@ -70,7 +70,8 @@
               "node --test \\\n  src/__tests__/issue1282_google_bespoke_copy.test.js \\\n  src/__tests__/issue864_campaign_builder_happy.test.js \\\n  src/__tests__/issue864_campaign_builder_tester_adversarial.test.js \\\n  src/__tests__/issue927_create_wired_widened.test.js \\\n  src/__tests__/issue927_tester_adversarial.test.js \\\n  src/__tests__/issue997_google_video_create.test.js \\\n  src/__tests__/issue997_google_video_create.adversarial.tester.test.js \\\n  src/__tests__/issue992_google_snap_targeting.test.js \\\n  src/__tests__/issue992_google_snap_targeting_adversarial.test.js \\\n  src/__tests__/issue995_creative_video_not_creatable.test.js \\\n  src/__tests__/issue995_creative_video_variants.test.js \\\n  src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js \\\n  src/__tests__/issue989_targeting.test.js \\\n  src/__tests__/issue989_targeting_adversarial.test.js \\\n  src/__tests__/issue986_platform_picker.test.js \\\n  src/__tests__/issue986_platform_picker.adversarial.test.js \\\n  src/__tests__/issue1002_multi_destination.test.js \\\n  src/__tests__/issue1002_multi_destination.tester_adversarial.test.js \\\n  src/__tests__/issue979_correctness.adversarial.test.js"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1282-google-bespoke-copy-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -82,8 +83,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue1002_multi_destination.test.js",
         "mingla-admin/src/__tests__/issue1002_multi_destination.tester_adversarial.test.js",
@@ -115,7 +115,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-903-open-external-admin-tests",
@@ -141,7 +142,8 @@
               "node --test \\\n  src/lib/__tests__/openExternal.test.js \\\n  src/lib/__tests__/openExternal.adversarial.tester.test.js"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-903-open-external-admin-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -153,8 +155,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/lib/__tests__/openExternal.adversarial.tester.test.js",
         "mingla-admin/src/lib/__tests__/openExternal.test.js"
@@ -169,7 +170,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-979-campaign-builder-correctness-tests",
@@ -197,7 +199,8 @@
               "node --test src/__tests__/issue979_goal_combination_valid_pairs.test.js src/__tests__/issue979_honest_create_toast.test.js src/__tests__/issue979_compliance_flags_all_platforms.test.js src/__tests__/issue979_unfunded_eligible_channels.test.js src/__tests__/issue979_correctness.adversarial.test.js src/__tests__/issue1162_stock_first_ai_defaults.test.js src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-979-campaign-builder-correctness-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -209,8 +212,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue1162_stock_first_ai_defaults.test.js",
         "mingla-admin/src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js",
@@ -230,7 +232,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-980-campaign-builder-clarity-tests",
@@ -253,7 +256,8 @@
               "node --test src/__tests__/issue980_stepper_responsive.test.js src/__tests__/issue980_preflight_copy_translation.test.js src/__tests__/issue980_review_real_objectives.test.js src/__tests__/issue980_clarity.adversarial.test.js"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-980-campaign-builder-clarity-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -265,8 +269,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue980_clarity.adversarial.test.js",
         "mingla-admin/src/__tests__/issue980_preflight_copy_translation.test.js",
@@ -283,7 +286,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-986-campaign-builder-platform-picker-tests",
@@ -306,7 +310,8 @@
               "node --test src/__tests__/issue986_platform_picker.test.js src/__tests__/issue986_platform_picker.adversarial.test.js"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-986-campaign-builder-platform-picker-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -318,8 +323,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue986_platform_picker.adversarial.test.js",
         "mingla-admin/src/__tests__/issue986_platform_picker.test.js"
@@ -334,7 +338,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-995-campaign-builder-creative-tests",
@@ -357,7 +362,8 @@
               "node --test src/__tests__/issue995_creative_video_variants.test.js src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js src/__tests__/issue995_creative_video_not_creatable.test.js"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-995-campaign-builder-creative-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -369,8 +375,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-admin/src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js",
         "mingla-admin/src/__tests__/issue995_creative_video_not_creatable.test.js",
@@ -386,7 +391,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "971-paystack-onboard-scroll-tests",
@@ -397,20 +403,6 @@
         ".github/workflows/971-paystack-onboard-scroll-tests.yml"
       ],
       "steps": [
-        {
-          "name": "paystack-onboard-scroll-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run",
           "cwd": "mingla-business",
@@ -423,7 +415,8 @@
               "npx jest src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:971-paystack-onboard-scroll-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -435,8 +428,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts",
         "mingla-business/src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts"
@@ -451,7 +443,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1027-keyboard-and-datetime-tests",
@@ -483,34 +476,6 @@
       ],
       "steps": [
         {
-          "name": "thread-a-native-keyboard",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install test-only renderer (react-test-renderer, --no-save)",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Symptom 1 — implementor happy-path (cap formula + wiring)",
           "cwd": "mingla-business",
           "run": "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand",
@@ -522,7 +487,8 @@
               "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:01"
         },
         {
           "name": "Symptom 1 — tester ADVERSARIAL (over-constrain / no-keyboard, cap EXECUTED)",
@@ -536,7 +502,8 @@
               "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:02"
         },
         {
           "name": "Symptom 2 — implementor happy-path (onFocus wired to scrollToBottom)",
@@ -550,7 +517,8 @@
               "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:03"
         },
         {
           "name": "Symptom 2 — tester ADVERSARIAL (scrollToBottom undefined → no throw, EXECUTED)",
@@ -564,7 +532,8 @@
               "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:04"
         },
         {
           "name": "Symptom 2b — iOS regression (deferred reveal via keyboard library, fails-on-revert)",
@@ -578,35 +547,8 @@
               "npx jest src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "thread-b-web-datetime",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install test-only renderer (react-test-renderer, --no-save)",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:05"
         },
         {
           "name": "Web date/time — implementor RENDER proof (main rows commit on web)",
@@ -620,7 +562,8 @@
               "npx jest src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:06"
         },
         {
           "name": "Web date/time — structural guard (all 7 surfaces + native parity)",
@@ -634,7 +577,8 @@
               "npx jest src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:07"
         },
         {
           "name": "Web date/time — tester ADVERSARIAL (empty/error/visible + NO web input leaks onto native)",
@@ -648,7 +592,8 @@
               "npx jest src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:08"
         },
         {
           "name": "ORCH-1089 wizard parity (migrated marker showPicker → WebDateTimeInput stays green)",
@@ -662,7 +607,8 @@
               "npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1027-keyboard-and-datetime-tests:09"
         }
       ],
       "lifecycle": "batched-active",
@@ -674,8 +620,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts",
         "mingla-business/src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts",
@@ -697,7 +642,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1035-theme-sheet-hoist-tests",
@@ -712,20 +658,6 @@
       ],
       "steps": [
         {
-          "name": "issue-1035-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run issue-1035 jest suite",
           "cwd": "mingla-business",
           "run": "npx jest src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts --runInBand",
@@ -737,7 +669,8 @@
               "npx jest src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1035-theme-sheet-hoist-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -749,8 +682,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts",
         "mingla-business/src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts"
@@ -765,7 +697,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1036-contrast-chip-removal-tests",
@@ -780,20 +713,6 @@
       ],
       "steps": [
         {
-          "name": "issue-1036-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run issue-1036 jest suite (implementor source-gate)",
           "cwd": "mingla-business",
           "run": "npx jest src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts --runInBand",
@@ -805,7 +724,8 @@
               "npx jest src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1036-contrast-chip-removal-tests:01"
         },
         {
           "name": "Run issue-1036 tester render-proof (react-native-web)",
@@ -819,7 +739,8 @@
               "npx jest --config jest.issue1036.render.cjs --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1036-contrast-chip-removal-tests:02"
         }
       ],
       "lifecycle": "batched-active",
@@ -831,8 +752,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/jest.issue1036.render.cjs",
         "mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx",
@@ -848,7 +768,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1348-icloud-video-patch-tests",
@@ -862,20 +783,6 @@
       ],
       "steps": [
         {
-          "name": "Install mingla-business deps (runs postinstall -> patch-package)",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Assert patch file present",
           "cwd": ".",
           "run": "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE — the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\"",
@@ -887,7 +794,8 @@
               "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE — the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1348-icloud-video-patch-tests:01"
         },
         {
           "name": "Assert package.json postinstall + patch-package devDependency",
@@ -901,7 +809,8 @@
               "node -e \"\n  const p = require('./mingla-business/package.json');\n  if (p.scripts?.postinstall !== 'patch-package') {\n    console.error('FAIL: mingla-business/package.json scripts.postinstall must equal \\\"patch-package\\\", got:', p.scripts?.postinstall);\n    process.exit(1);\n  }\n  if (!p.devDependencies?.['patch-package']) {\n    console.error('FAIL: mingla-business/package.json devDependencies must include patch-package');\n    process.exit(1);\n  }\n  console.log('OK: postinstall=\\\"patch-package\\\" and patch-package devDependency present (' + p.devDependencies['patch-package'] + ')');\n\""
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1348-icloud-video-patch-tests:02"
         },
         {
           "name": "Assert patch applies cleanly (--error-on-fail)",
@@ -915,7 +824,8 @@
               "npx patch-package --error-on-fail"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1348-icloud-video-patch-tests:03"
         },
         {
           "name": "Assert installed MediaHandler.swift is patched at both video sites",
@@ -929,7 +839,8 @@
               "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' — iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1348-icloud-video-patch-tests:04"
         }
       ],
       "lifecycle": "batched-active",
@@ -941,8 +852,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/package.json",
         "mingla-business/patches/expo-image-picker+17.0.11.patch"
@@ -957,7 +867,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1532-tester-adversarial",
@@ -965,20 +876,6 @@
       "origin": ".github/workflows/issue-1532-tester-adversarial.yml",
       "originPaths": [],
       "steps": [
-        {
-          "name": "Install Business dependencies",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Stay editor guard reachability (tester adversarial)",
           "cwd": "mingla-business",
@@ -991,7 +888,8 @@
               "npx jest --config jest.issue1532.tester.cjs --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1532-tester-adversarial:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1003,8 +901,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/jest.issue1532.tester.cjs",
         "mingla-business/src/components/stay/__tests__/stayGuardReachability.issue1532.tester.render.test.tsx"
@@ -1019,7 +916,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1881-business-signin-transient-failure-tests",
@@ -1036,20 +934,6 @@
       ],
       "steps": [
         {
-          "name": "issue-1881-business-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run",
           "cwd": "mingla-business",
           "run": "npx jest src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts --runInBand",
@@ -1061,7 +945,8 @@
               "npx jest src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1881-business-signin-transient-failure-tests:01"
         },
         {
           "name": "Run",
@@ -1075,7 +960,8 @@
               "npx jest src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1881-business-signin-transient-failure-tests:02"
         },
         {
           "name": "Preserve",
@@ -1089,7 +975,8 @@
               "npx jest src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1881-business-signin-transient-failure-tests:03"
         }
       ],
       "lifecycle": "batched-active",
@@ -1101,8 +988,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts",
         "mingla-business/src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts",
@@ -1119,7 +1005,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-1996-business-desktop-sharing-tests",
@@ -1148,20 +1035,6 @@
       ],
       "steps": [
         {
-          "name": "issue-1996-business-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run",
           "cwd": "mingla-business",
           "run": "npx jest src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts --runInBand",
@@ -1173,7 +1046,8 @@
               "npx jest src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1996-business-desktop-sharing-tests:01"
         },
         {
           "name": "Preserve unified sharing behavior",
@@ -1187,7 +1061,8 @@
               "npx jest src/utils/__tests__/sharePublicUrl.test.ts src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-1996-business-desktop-sharing-tests:02"
         }
       ],
       "lifecycle": "batched-active",
@@ -1199,8 +1074,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx",
         "mingla-business/src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts",
@@ -1218,7 +1092,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-948-w2-bank-route-web-tests",
@@ -1239,34 +1114,6 @@
       ],
       "steps": [
         {
-          "name": "Install business dependencies",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install test-only renderer (react-test-renderer, --no-save)",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run W2 bank-route contracts",
           "cwd": "mingla-business",
           "run": "npx jest src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts --runInBand",
@@ -1278,7 +1125,8 @@
               "npx jest src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-948-w2-bank-route-web-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1290,8 +1138,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts",
         "mingla-business/src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts",
@@ -1307,7 +1154,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-948-web-skip-download-tests",
@@ -1330,34 +1178,6 @@
       ],
       "steps": [
         {
-          "name": "Install business dependencies",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "Install route-render proof dependency",
-          "cwd": "mingla-business",
-          "run": "npm install --no-save --package-lock=false react-test-renderer@19.1.0",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm install --no-save --package-lock=false react-test-renderer@19.1.0"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run W4 web skip-download contracts",
           "cwd": "mingla-business",
           "run": "npx jest src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts --runInBand",
@@ -1369,7 +1189,8 @@
               "npx jest src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-948-web-skip-download-tests:01"
         },
         {
           "name": "Run",
@@ -1383,7 +1204,8 @@
               "node .github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs --self-test\nnode .github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-948-web-skip-download-tests:02"
         }
       ],
       "lifecycle": "batched-active",
@@ -1395,8 +1217,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         ".github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs",
         "mingla-business/src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx",
@@ -1414,7 +1235,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-959-scanner-invite-error-parse-tests",
@@ -1425,20 +1247,6 @@
         ".github/workflows/issue-959-scanner-invite-error-parse-tests.yml"
       ],
       "steps": [
-        {
-          "name": "issue-959-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Issue #959: scanner-invite error-parse jest suites (implementor + tester)",
           "cwd": "mingla-business",
@@ -1451,7 +1259,8 @@
               "npx jest issue_959 --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-959-scanner-invite-error-parse-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1463,8 +1272,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/services/__tests__/issue_959_scanner_error_parse.tester.test.ts",
         "mingla-business/src/services/__tests__/issue_959_scanner_functions_error_parse.test.ts"
@@ -1479,7 +1287,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "orch-1403-onboard-scroll-tests",
@@ -1490,20 +1299,6 @@
         ".github/workflows/orch-1403-onboard-scroll-tests.yml"
       ],
       "steps": [
-        {
-          "name": "orch-1403-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
         {
           "name": "Run ORCH-1403 onboard-scroll jest suite",
           "cwd": "mingla-business",
@@ -1516,7 +1311,8 @@
               "npx jest src/components/brand/__tests__/onboardBodyScrolls.orch1403.source.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:orch-1403-onboard-scroll-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1528,8 +1324,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/brand/__tests__/onboardBodyScrolls.orch1403.source.test.ts"
       ],
@@ -1543,7 +1338,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "orch-1404-invite-error-recovery-tests",
@@ -1556,20 +1352,6 @@
       ],
       "steps": [
         {
-          "name": "orch-1404-jest",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
           "name": "Run ORCH-1404 mingla-business jest suites",
           "cwd": "mingla-business",
           "run": "npx jest src/services/__tests__/orch_1404_functions_error_parse.tester.test.ts src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx --runInBand",
@@ -1581,7 +1363,8 @@
               "npx jest src/services/__tests__/orch_1404_functions_error_parse.tester.test.ts src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:orch-1404-invite-error-recovery-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1593,8 +1376,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx",
         "mingla-business/src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx",
@@ -1610,7 +1392,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "production-readiness-audit",
@@ -1636,7 +1419,8 @@
               "node scripts/audit/run-all.mjs --self-test"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:01"
         },
         {
           "name": "Run production readiness audits",
@@ -1650,7 +1434,8 @@
               "node scripts/audit/run-all.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:02"
         },
         {
           "name": "DB perf contract (#426 PR4)",
@@ -1664,7 +1449,8 @@
               "node scripts/audit/orch-429-db-perf-contract.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:03"
         },
         {
           "name": "Checkout Grade A contract (#426 PR5)",
@@ -1678,7 +1464,8 @@
               "node scripts/audit/checkout-grade-a-contract.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:04"
         },
         {
           "name": "Hub Grade A contract (#426 PR6)",
@@ -1692,7 +1479,8 @@
               "node scripts/audit/hub-grade-a-contract.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:05"
         },
         {
           "name": "Marketing Grade A contract (#426 PR7)",
@@ -1706,7 +1494,8 @@
               "node scripts/audit/marketing-grade-a-contract.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:06"
         },
         {
           "name": "Trip checkout Grade A contract (#426 PR7 bundle)",
@@ -1720,7 +1509,8 @@
               "node scripts/audit/trip-checkout-grade-a-contract.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:07"
         },
         {
           "name": "Validate k6 script structure",
@@ -1734,21 +1524,8 @@
               "node scripts/load/validate-k6-scripts.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
-        },
-        {
-          "name": "feature-flags",
-          "cwd": "mingla-business",
-          "run": "npm ci",
-          "invocation": {
-            "kind": "raw-shell",
-            "command": "bash",
-            "argv": [
-              "-c",
-              "npm ci"
-            ]
-          },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:08"
         },
         {
           "name": "feature-flags",
@@ -1762,7 +1539,8 @@
               "npx jest src/config/__tests__/featureFlags.test.ts --runInBand"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:production-readiness-audit:09"
         }
       ],
       "lifecycle": "batched-active",
@@ -1774,8 +1552,7 @@
       "setupProfile": "business-node20",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/src/config/__tests__/featureFlags.test.ts",
         "scripts/audit/checkout-grade-a-contract.mjs",
@@ -1796,7 +1573,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-2343-host-forced-light-appearance-tests",
@@ -1823,7 +1601,8 @@
               "node --test __tests__/hostForcedLightAppearance.issue2343.implementor.happy.test.mjs __tests__/hostForcedLightAppearance.issue2343.tester.adversarial.test.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2343-host-forced-light-appearance-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1835,8 +1614,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "mingla-business/__tests__/hostForcedLightAppearance.issue2343.implementor.happy.test.mjs",
         "mingla-business/__tests__/hostForcedLightAppearance.issue2343.tester.adversarial.test.mjs"
@@ -1851,7 +1629,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     },
     {
       "id": "issue-2322-ios-picker-theming-tests",
@@ -1877,7 +1656,8 @@
               "node --test src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs src/components/__tests__/issue_2322_ios_picker_theming.tester_adversarial.test.mjs"
             ]
           },
-          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte."
+          "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command byte-for-byte.",
+          "commandId": "assert:issue-2322-ios-picker-theming-tests:01"
         }
       ],
       "lifecycle": "batched-active",
@@ -1889,8 +1669,7 @@
       "setupProfile": "node20-noinstall",
       "cwd": ".",
       "envNames": [],
-      "isolation": "sequential-within-class-job",
-      "timeoutMinutes": 25,
+      "isolation": "clean-worktree",
       "expectedFiles": [
         "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs",
         "app-mobile/src/components/__tests__/issue_2322_ios_picker_theming.tester_adversarial.test.mjs"
@@ -1905,7 +1684,8 @@
       "generatedPaths": [
         "suite-results.json"
       ],
-      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1."
+      "exceptionRationale": "Raw shell retained to preserve the exact legacy workflow command during Phase 1.",
+      "timeoutSeconds": 480
     }
   ],
   "legacyOrigins": [
@@ -11080,7 +10860,8 @@
         ".github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs",
         ".github/scripts/ci-batch/validate-manifest-v2.mjs",
         ".github/scripts/strict-grep/issue-1486-jest-config-invoked-by-workflow.mjs",
-        ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs"
+        ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs",
+        ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
@@ -11967,10 +11748,10 @@
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/__tests__/orch-967-p11-external-totality.tester.test.mjs",
-      ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
-      ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
-      ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
-      ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
+        ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
+        ".github/scripts/strict-grep/issue-2148-ci-topology-bounded.adversarial.test.mjs",
+        ".github/scripts/strict-grep/issue-2443-explorer-native-identity.mjs",
+        ".github/scripts/strict-grep/issue-890-web-sentry-lazy-only.mjs",
         ".github/scripts/strict-grep/meta-1383-manifest-parity.mjs",
         ".github/scripts/strict-grep/orch-0778-web-stripe-native-import-gate.mjs",
         ".github/scripts/strict-grep/orch-0784-event-list-sales-summary-visibility.mjs",
@@ -12069,5 +11850,574 @@
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     }
-  ]
+  ],
+  "commandCapabilities": {
+    "schemaVersion": 1,
+    "expectedCommands": 46,
+    "registrySha256": "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399",
+    "commands": [
+      {
+        "id": "assert:issue-1282-google-bespoke-copy-tests:01",
+        "suiteId": "issue-1282-google-bespoke-copy-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-admin",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test \\\n  src/__tests__/issue1282_google_bespoke_copy.test.js \\\n  src/__tests__/issue864_campaign_builder_happy.test.js \\\n  src/__tests__/issue864_campaign_builder_tester_adversarial.test.js \\\n  src/__tests__/issue927_create_wired_widened.test.js \\\n  src/__tests__/issue927_tester_adversarial.test.js \\\n  src/__tests__/issue997_google_video_create.test.js \\\n  src/__tests__/issue997_google_video_create.adversarial.tester.test.js \\\n  src/__tests__/issue992_google_snap_targeting.test.js \\\n  src/__tests__/issue992_google_snap_targeting_adversarial.test.js \\\n  src/__tests__/issue995_creative_video_not_creatable.test.js \\\n  src/__tests__/issue995_creative_video_variants.test.js \\\n  src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js \\\n  src/__tests__/issue989_targeting.test.js \\\n  src/__tests__/issue989_targeting_adversarial.test.js \\\n  src/__tests__/issue986_platform_picker.test.js \\\n  src/__tests__/issue986_platform_picker.adversarial.test.js \\\n  src/__tests__/issue1002_multi_destination.test.js \\\n  src/__tests__/issue1002_multi_destination.tester_adversarial.test.js \\\n  src/__tests__/issue979_correctness.adversarial.test.js"
+        ],
+        "payloadSha256": "bf539168cedbfac4fc7e4f53ae372f61df5887dda60eb42487549d556391f240"
+      },
+      {
+        "id": "assert:issue-903-open-external-admin-tests:01",
+        "suiteId": "issue-903-open-external-admin-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-admin",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test \\\n  src/lib/__tests__/openExternal.test.js \\\n  src/lib/__tests__/openExternal.adversarial.tester.test.js"
+        ],
+        "payloadSha256": "5bd70d6539060de9ce96c0069ec2221725d5e271bb40e93e9ee5f44bb5e03652"
+      },
+      {
+        "id": "assert:issue-979-campaign-builder-correctness-tests:01",
+        "suiteId": "issue-979-campaign-builder-correctness-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-admin",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test src/__tests__/issue979_goal_combination_valid_pairs.test.js src/__tests__/issue979_honest_create_toast.test.js src/__tests__/issue979_compliance_flags_all_platforms.test.js src/__tests__/issue979_unfunded_eligible_channels.test.js src/__tests__/issue979_correctness.adversarial.test.js src/__tests__/issue1162_stock_first_ai_defaults.test.js src/__tests__/issue1162_stock_first_ai_defaults.tester_adversarial.test.js"
+        ],
+        "payloadSha256": "03763e80036830c36e10f81197602f4afbde045cc973a28c00e7c1bb3347fb6b"
+      },
+      {
+        "id": "assert:issue-980-campaign-builder-clarity-tests:01",
+        "suiteId": "issue-980-campaign-builder-clarity-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-admin",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test src/__tests__/issue980_stepper_responsive.test.js src/__tests__/issue980_preflight_copy_translation.test.js src/__tests__/issue980_review_real_objectives.test.js src/__tests__/issue980_clarity.adversarial.test.js"
+        ],
+        "payloadSha256": "6ed0614a87a52fc451d6e70cd95c67e0a1c3b34ce7e54325127d12c3a1b2d686"
+      },
+      {
+        "id": "assert:issue-986-campaign-builder-platform-picker-tests:01",
+        "suiteId": "issue-986-campaign-builder-platform-picker-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-admin",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test src/__tests__/issue986_platform_picker.test.js src/__tests__/issue986_platform_picker.adversarial.test.js"
+        ],
+        "payloadSha256": "b08f185ccb6ce3392badf101da54bf914bb34a40ffbe3108ab3ccd53f96d8678"
+      },
+      {
+        "id": "assert:issue-995-campaign-builder-creative-tests:01",
+        "suiteId": "issue-995-campaign-builder-creative-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-admin",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test src/__tests__/issue995_creative_video_variants.test.js src/__tests__/issue995_creative_video_honesty.tester_adversarial.test.js src/__tests__/issue995_creative_video_not_creatable.test.js"
+        ],
+        "payloadSha256": "3878fb442b7f98a9035785f9cd23c3677553730b33391164f9b40aca92467446"
+      },
+      {
+        "id": "assert:971-paystack-onboard-scroll-tests:01",
+        "suiteId": "971-paystack-onboard-scroll-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/brand/__tests__/paystackOnboardBodyScrolls.971.source.test.ts src/components/brand/__tests__/paystackOnboardBodyScrolls.971.tester.test.ts --runInBand"
+        ],
+        "payloadSha256": "41e74f462dcbe5ad23a9ab6601b71cbd1775b3b5044d800497e3ba7b1150329e"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:01",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.1027.test.ts --runInBand"
+        ],
+        "payloadSha256": "6ead3c8ddf4ef856ccf2aef29c3476801d4dd44eac0d2d24dafbd34c378c75f5"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:02",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 1,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/location/__tests__/mapboxAddressInputKeyboardCap.adversarial.1027.test.ts --runInBand"
+        ],
+        "payloadSha256": "a872d10110c65626964b065fbf38be6ec0ecacdad637f3ef866e741026c902e1"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:03",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 2,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.1027.test.ts --runInBand"
+        ],
+        "payloadSha256": "76596405bde6a0093ba3bf9f10151ffccf7cd18f39fa248767a15fe4daeeb021"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:04",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 3,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/event/__tests__/creatorStep1DescriptionOnFocusReveal.adversarial.1027.test.tsx --runInBand"
+        ],
+        "payloadSha256": "6c26c48730a1fe381daee2acca342fc2398d54f2b6d8ddd99375e4c5a683cb48"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:05",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 4,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/event/__tests__/creatorDescriptionRevealDeferred.1027.regression.test.ts --runInBand"
+        ],
+        "payloadSha256": "af804a695acc17f6ad779c15e46c26f802b79858621f79b112b67eafee6fc7c2"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:06",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 5,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/event/__tests__/orch_1027_web_datetime_native_input.test.tsx --runInBand"
+        ],
+        "payloadSha256": "415af2498b072a25edc816e69a63661b382315acf8bcb275dd8397231dd3f5ed"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:07",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 6,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/event/__tests__/orch_1027_web_datetime_structural.test.ts --runInBand"
+        ],
+        "payloadSha256": "7db94e3d18b7cf89448896543c414d051cd87742617fed2744daaecb417cd3be"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:08",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 7,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/ui/__tests__/webDateTimeInput.adversarial.1027.test.tsx --runInBand"
+        ],
+        "payloadSha256": "6ed61451ef5fd30ebb306c33acdc53f502189b8b094fdd6058e8eff50295c41a"
+      },
+      {
+        "id": "assert:issue-1027-keyboard-and-datetime-tests:09",
+        "suiteId": "issue-1027-keyboard-and-datetime-tests",
+        "stepIndex": 8,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/utils/__tests__/orch_1089_signedin_event_creator_wizard.test.ts --runInBand"
+        ],
+        "payloadSha256": "2ad91c75b1a3c140576b50ccad9a9ea3cce0a10af5a622527868fda601690505"
+      },
+      {
+        "id": "assert:issue-1035-theme-sheet-hoist-tests:01",
+        "suiteId": "issue-1035-theme-sheet-hoist-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/event/__tests__/issue1035ThemeSheetHoisted.test.ts src/components/event/__tests__/issue_1035_stale_closure_dep_tester.test.ts --runInBand"
+        ],
+        "payloadSha256": "b72ab0dc6fc2bf36e46d615442f34b9e85516e212c3ba49f68aa0804fa87460a"
+      },
+      {
+        "id": "assert:issue-1036-contrast-chip-removal-tests:01",
+        "suiteId": "issue-1036-contrast-chip-removal-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/utils/__tests__/issue_1036_contrast_apparatus_removed.test.ts --runInBand"
+        ],
+        "payloadSha256": "03d4055e979345b6902703cb60a8d10ed7a4d269e98bcdf26140796675bbf8ec"
+      },
+      {
+        "id": "assert:issue-1036-contrast-chip-removal-tests:02",
+        "suiteId": "issue-1036-contrast-chip-removal-tests",
+        "stepIndex": 1,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest --config jest.issue1036.render.cjs --runInBand"
+        ],
+        "payloadSha256": "9e1671fef4f1148d9c948c0e4fd11a8cb1081792708059740cafc5d37527371c"
+      },
+      {
+        "id": "assert:issue-1348-icloud-video-patch-tests:01",
+        "suiteId": "issue-1348-icloud-video-patch-tests",
+        "stepIndex": 0,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "FILE=mingla-business/patches/expo-image-picker+17.0.11.patch\nif [ ! -f \"$FILE\" ]; then\n  echo \"MISSING: $FILE — the #1348 iCloud video patch is not committed.\"\n  exit 1\nfi\necho \"OK: $FILE present\""
+        ],
+        "payloadSha256": "17be35313810092b98e3f0a556bbdfc79ea5f164726f801cabe2ee73c945cf59"
+      },
+      {
+        "id": "assert:issue-1348-icloud-video-patch-tests:02",
+        "suiteId": "issue-1348-icloud-video-patch-tests",
+        "stepIndex": 1,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node -e \"\n  const p = require('./mingla-business/package.json');\n  if (p.scripts?.postinstall !== 'patch-package') {\n    console.error('FAIL: mingla-business/package.json scripts.postinstall must equal \\\"patch-package\\\", got:', p.scripts?.postinstall);\n    process.exit(1);\n  }\n  if (!p.devDependencies?.['patch-package']) {\n    console.error('FAIL: mingla-business/package.json devDependencies must include patch-package');\n    process.exit(1);\n  }\n  console.log('OK: postinstall=\\\"patch-package\\\" and patch-package devDependency present (' + p.devDependencies['patch-package'] + ')');\n\""
+        ],
+        "payloadSha256": "e7ef7fe21b1c2a4df051c4c69a003bf0f34921f548947cd26afe8dbd80b4459d"
+      },
+      {
+        "id": "assert:issue-1348-icloud-video-patch-tests:03",
+        "suiteId": "issue-1348-icloud-video-patch-tests",
+        "stepIndex": 2,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx patch-package --error-on-fail"
+        ],
+        "payloadSha256": "eae7e62f825ada9cb6c7faa229d5fad31b877ba2fc422d12f6dc25fae5a31422"
+      },
+      {
+        "id": "assert:issue-1348-icloud-video-patch-tests:04",
+        "suiteId": "issue-1348-icloud-video-patch-tests",
+        "stepIndex": 3,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "FILE=mingla-business/node_modules/expo-image-picker/ios/MediaHandler.swift\nif [ ! -f \"$FILE\" ]; then\n  echo \"FAIL: $FILE missing after install\"\n  exit 1\nfi\nnet_count=$(grep -c 'isNetworkAccessAllowed = true' \"$FILE\" || true)\nif [ \"$net_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'isNetworkAccessAllowed = true' (one per video writeData site), got $net_count\"\n  exit 1\nfi\nopt_count=$(grep -c 'options: resourceOptions' \"$FILE\" || true)\nif [ \"$opt_count\" != \"2\" ]; then\n  echo \"FAIL: expected 2 'options: resourceOptions' (both video writeData sites patched), got $opt_count\"\n  exit 1\nfi\nif grep -q 'writeData(for: resource, toFile: destinationUrl, options: nil)' \"$FILE\"; then\n  echo \"FAIL: a video writeData site still reads 'options: nil' — iCloud videos will fail PHPhotosErrorDomain 3164\"\n  exit 1\nfi\necho \"OK: both video writeData sites set isNetworkAccessAllowed=true (options: resourceOptions); no video site reads options: nil\""
+        ],
+        "payloadSha256": "c54286819c5b08abda0fd7abc0c13222fbd62ff22fe2894f5a47b2877a430bfd"
+      },
+      {
+        "id": "assert:issue-1532-tester-adversarial:01",
+        "suiteId": "issue-1532-tester-adversarial",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest --config jest.issue1532.tester.cjs --runInBand"
+        ],
+        "payloadSha256": "2a45fb3ec815c8b4f603c2cfc6239842a60c0c752f294362e70fe0179c3e673b"
+      },
+      {
+        "id": "assert:issue-1881-business-signin-transient-failure-tests:01",
+        "suiteId": "issue-1881-business-signin-transient-failure-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/context/__tests__/AuthContext.transientSignInFailure.issue1881.test.ts --runInBand"
+        ],
+        "payloadSha256": "1ed6987615d932d9cf14fcf0ebacc431ba8046f93876c29aae6d5d1eaa432815"
+      },
+      {
+        "id": "assert:issue-1881-business-signin-transient-failure-tests:02",
+        "suiteId": "issue-1881-business-signin-transient-failure-tests",
+        "stepIndex": 1,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/context/__tests__/AuthContext.transientSignInFailure.adversarial.issue1881.test.ts --runInBand"
+        ],
+        "payloadSha256": "7f23f7536eee77838bec786e548d0ca8ffe08bb0a68ad92c13e5e759f0f43b63"
+      },
+      {
+        "id": "assert:issue-1881-business-signin-transient-failure-tests:03",
+        "suiteId": "issue-1881-business-signin-transient-failure-tests",
+        "stepIndex": 2,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/context/__tests__/AuthContext.authFailureCapture.issue1044.test.ts src/context/__tests__/AuthContext.authFailureCapture.adversarial.issue1044.test.ts --runInBand"
+        ],
+        "payloadSha256": "e5718b715242ac2babf8f8dc155e18fe41b9d3677b94c6202e751f2144b03984"
+      },
+      {
+        "id": "assert:issue-1996-business-desktop-sharing-tests:01",
+        "suiteId": "issue-1996-business-desktop-sharing-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/utils/__tests__/issue1996BusinessWebShare.implementor.test.ts src/utils/__tests__/issue1996BusinessWebShare.tester.adversarial.test.ts src/utils/__tests__/issue1996BusinessWebShare.publicIsolation.tester.test.ts --runInBand"
+        ],
+        "payloadSha256": "f22b6074effcbecc5a3050149ae775c0126502ab4f0b134b42c9766580cb6f31"
+      },
+      {
+        "id": "assert:issue-1996-business-desktop-sharing-tests:02",
+        "suiteId": "issue-1996-business-desktop-sharing-tests",
+        "stepIndex": 1,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/utils/__tests__/sharePublicUrl.test.ts src/components/ui/__tests__/issue_1719_share_same_turn.happy.test.tsx --runInBand"
+        ],
+        "payloadSha256": "06891c43b8c6a80c0165b46738a5cf8815d61c04256fadeec74ffc1a28c05363"
+      },
+      {
+        "id": "assert:issue-948-w2-bank-route-web-tests:01",
+        "suiteId": "issue-948-w2-bank-route-web-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/utils/__tests__/issue_948_w2_bank_route.implementor.test.ts src/utils/__tests__/issue_948_w2_bank_route_route.implementor.test.tsx src/utils/__tests__/issue_948_w2_bank_route.tester.test.ts --runInBand"
+        ],
+        "payloadSha256": "d01563e167a23d34e2d599e5e4f575ef012fef5698712c8378e525ebb231e29a"
+      },
+      {
+        "id": "assert:issue-948-web-skip-download-tests:01",
+        "suiteId": "issue-948-web-skip-download-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/utils/__tests__/issue_948_web_skip_download.implementor.test.ts src/components/brand/__tests__/issue_948_web_skip_download.render.tester.test.tsx src/components/brand/__tests__/issue_948_web_skip_download.adversarial.tester.test.tsx src/utils/__tests__/issue_948_w3_bank_first_invite.tester.test.ts --runInBand"
+        ],
+        "payloadSha256": "d83adaa25708bd7af52f668f81643edc81d978105ea0894fcb0be2c7fc8a4b3b"
+      },
+      {
+        "id": "assert:issue-948-web-skip-download-tests:02",
+        "suiteId": "issue-948-web-skip-download-tests",
+        "stepIndex": 1,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node .github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs --self-test\nnode .github/scripts/strict-grep/issue-949-invite-onboarding-offering-agnostic.mjs"
+        ],
+        "payloadSha256": "99f43fee55bbf5bfb0932b5c1ecc138f8ad4d675cf5d2c68e25e0798166db6e7"
+      },
+      {
+        "id": "assert:issue-959-scanner-invite-error-parse-tests:01",
+        "suiteId": "issue-959-scanner-invite-error-parse-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest issue_959 --runInBand"
+        ],
+        "payloadSha256": "80e0f70d3f97411fdc85d2cd77b36d598583a6776f154d14a3b64549b76d4238"
+      },
+      {
+        "id": "assert:orch-1403-onboard-scroll-tests:01",
+        "suiteId": "orch-1403-onboard-scroll-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/components/brand/__tests__/onboardBodyScrolls.orch1403.source.test.ts --runInBand"
+        ],
+        "payloadSha256": "63e4e5015d17c138e31e2523b995d0fda1476bf23cfc4383a885a5d8367a6f66"
+      },
+      {
+        "id": "assert:orch-1404-invite-error-recovery-tests:01",
+        "suiteId": "orch-1404-invite-error-recovery-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/services/__tests__/orch_1404_functions_error_parse.tester.test.ts src/components/invite/__tests__/orch_1404_wrong_account_recovery.tester.test.tsx src/components/invite/__tests__/orch_1404_adversarial_resume_and_parse.tester.test.tsx --runInBand"
+        ],
+        "payloadSha256": "e4265e3224697e3eedaceff26c683f6170f11c3af05338d6869b39df4bd44db1"
+      },
+      {
+        "id": "assert:production-readiness-audit:01",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 0,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/run-all.mjs --self-test"
+        ],
+        "payloadSha256": "52b00eab3c1db72777485230e064398e7308755da68bdf633910d4136d1a9534"
+      },
+      {
+        "id": "assert:production-readiness-audit:02",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 1,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/run-all.mjs"
+        ],
+        "payloadSha256": "b669a1e598ecaa07351abba7ad4397a33f8fa578099b5b33c4d203c5649d945b"
+      },
+      {
+        "id": "assert:production-readiness-audit:03",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 2,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/orch-429-db-perf-contract.mjs"
+        ],
+        "payloadSha256": "2b03eeb73815accf59574545db012df70d792152b7757376589168f1dd404190"
+      },
+      {
+        "id": "assert:production-readiness-audit:04",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 3,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/checkout-grade-a-contract.mjs"
+        ],
+        "payloadSha256": "55f2faf0ac5d8dbccec92470a7748b1e2b6b9dba9372cc4f85861f537a2d27dd"
+      },
+      {
+        "id": "assert:production-readiness-audit:05",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 4,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/hub-grade-a-contract.mjs"
+        ],
+        "payloadSha256": "43d63e28e5fe9612618d7f9a7a5c06e0ae53254d758f91303d25a43c7277e974"
+      },
+      {
+        "id": "assert:production-readiness-audit:06",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 5,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/marketing-grade-a-contract.mjs"
+        ],
+        "payloadSha256": "fbe26d876d86bbe1e5a1e2f60015d49f1c0a22dd69d50be38ca7bb916118a0e7"
+      },
+      {
+        "id": "assert:production-readiness-audit:07",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 6,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/audit/trip-checkout-grade-a-contract.mjs"
+        ],
+        "payloadSha256": "4e0dd43d8075722429089cd7fa935c55f0610750f431e8401fa7ee55ba67f9fc"
+      },
+      {
+        "id": "assert:production-readiness-audit:08",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 7,
+        "cwd": ".",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node scripts/load/validate-k6-scripts.mjs"
+        ],
+        "payloadSha256": "a31b8de1bf1d7580e0859338abb33fd90f3f91bb015818f9ffd87101e6e69fa9"
+      },
+      {
+        "id": "assert:production-readiness-audit:09",
+        "suiteId": "production-readiness-audit",
+        "stepIndex": 8,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "npx jest src/config/__tests__/featureFlags.test.ts --runInBand"
+        ],
+        "payloadSha256": "e8fa7b47851c6a4c86369159229eaf900f353bce641f3439341f606259f7675a"
+      },
+      {
+        "id": "assert:issue-2343-host-forced-light-appearance-tests:01",
+        "suiteId": "issue-2343-host-forced-light-appearance-tests",
+        "stepIndex": 0,
+        "cwd": "mingla-business",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test __tests__/hostForcedLightAppearance.issue2343.implementor.happy.test.mjs __tests__/hostForcedLightAppearance.issue2343.tester.adversarial.test.mjs"
+        ],
+        "payloadSha256": "3a4e64bb5f449b65732419cd5f98c017c07e139b00b205575cf57d629df920f7"
+      },
+      {
+        "id": "assert:issue-2322-ios-picker-theming-tests:01",
+        "suiteId": "issue-2322-ios-picker-theming-tests",
+        "stepIndex": 0,
+        "cwd": "app-mobile",
+        "executable": "bash",
+        "argv": [
+          "-c",
+          "node --test src/components/__tests__/issue_2322_ios_picker_theming.implementor.happy.test.mjs src/components/__tests__/issue_2322_ios_picker_theming.tester_adversarial.test.mjs"
+        ],
+        "payloadSha256": "7b2eebb4c7e4a42467969edfe765699a32a22d9cebd6bf9bbb072dded702c468"
+      }
+    ]
+  },
+  "runnerContract": {
+    "workspaceIsolation": "detached-git-worktree",
+    "processGroup": "detached",
+    "timeoutGraceSeconds": 2,
+    "resultsFile": "suite-results.json",
+    "setupEvidencePrefix": "ci-batch-setup-",
+    "processOwnership": "linux-subreaper-before-fork",
+    "dependencyIsolation": "independent-tree-no-escaping-links-with-shard-snapshot",
+    "childEnvironment": "minimal-allowlist-no-job-secrets"
+  }
 }

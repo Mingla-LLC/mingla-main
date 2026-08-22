@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 592,
-  "selfTestWiredFloor": 379,
+  "expectedStrictGrepMjsFiles": 595,
+  "selfTestWiredFloor": 380,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -87,6 +87,40 @@
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2148-ci-runner-v2.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2148-ci-runner-v2.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
       "modes": [
         "plain"
       ],

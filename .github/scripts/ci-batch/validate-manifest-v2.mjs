@@ -5,6 +5,7 @@
 
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { fileURLToPath } from "node:url";
@@ -21,6 +22,7 @@ const ALLOWED_DISPOSITIONS = new Set([
   "operational-excluded",
   "approved-retired",
 ]);
+const LOCKED_ASSERTION_CAPABILITY_SHA256 = "92540e31ef9fb7433f6f40a94071b27023786d15c644110e3a43a2929dbe2399";
 
 function fail(errors, message) {
   errors.push(message);
@@ -255,22 +257,35 @@ batch = jobs["batch"].is_a?(Hash) ? jobs["batch"] : {}
 steps = Array(batch["steps"]).select { |step| step.is_a?(Hash) }
 setup_node = steps.find { |step| step["uses"].to_s.start_with?("actions/setup-node@") } || {}
 install = steps.find { |step| step["name"].to_s.start_with?("Install ") } || {}
+record_setup = steps.find { |step| step["name"].to_s == "Record one shard setup" } || {}
+run_suites = steps.find { |step| step["name"].to_s.start_with?("Run the ") } || {}
 strategy = batch["strategy"].is_a?(Hash) ? batch["strategy"] : {}
 matrix = strategy["matrix"].is_a?(Hash) ? strategy["matrix"] : {}
 output = {
+  "runner" => batch["runs-on"]&.to_s,
   "matrix" => Array(matrix["include"]).map do |entry|
     next {} unless entry.is_a?(Hash)
     { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s, "install" => entry["install"]&.to_s }
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
-    "nodeVersion" => setup_node.dig("with", "node-version")&.to_s
+    "nodeVersion" => setup_node.dig("with", "node-version")&.to_s,
+    "count" => steps.count { |step| step["uses"].to_s.start_with?("actions/setup-node@") }
   },
   "installStep" => {
     "if" => install["if"]&.to_s,
     "cwd" => install["working-directory"]&.to_s,
     "run" => install["run"]&.to_s
-  }
+  },
+  "recordSetupStep" => {
+    "run" => record_setup["run"]&.to_s,
+    "count" => steps.count { |step| step["name"].to_s == "Record one shard setup" }
+  },
+  "runSuitesStep" => {
+    "run" => run_suites["run"]&.to_s,
+    "count" => steps.count { |step| step["name"].to_s.start_with?("Run the ") }
+  },
+  "runSteps" => steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] }
 }
 STDOUT.write(JSON.generate(output))
 `;
@@ -283,8 +298,176 @@ export function inspectBatchWorkflow(source) {
   }));
 }
 
+export function validatePhase2Contract(manifestOrOptions, matrixSource) {
+  const optionShape = manifestOrOptions?.manifest && typeof manifestOrOptions.manifest === "object";
+  const manifest = optionShape ? manifestOrOptions.manifest : manifestOrOptions;
+  const contractRoot = optionShape ? manifestOrOptions.root || DEFAULT_ROOT : DEFAULT_ROOT;
+  const workflowText = (optionShape ? manifestOrOptions.workflowText : matrixSource)
+    ?? fs.readFileSync(path.join(contractRoot, ".github/workflows/ci-batch.yml"), "utf8");
+  const errors = [];
+  const requiredRunnerContract = {
+    workspaceIsolation: "detached-git-worktree",
+    processGroup: "detached",
+    timeoutGraceSeconds: 2,
+    resultsFile: "suite-results.json",
+    setupEvidencePrefix: "ci-batch-setup-",
+    processOwnership: "linux-subreaper-before-fork",
+    dependencyIsolation: "independent-tree-no-escaping-links-with-shard-snapshot",
+    childEnvironment: "minimal-allowlist-no-job-secrets",
+  };
+  if (JSON.stringify(manifest.runnerContract) !== JSON.stringify(requiredRunnerContract)) {
+    fail(errors, "runnerContract must equal the exact Phase 2 isolation, process-group, timeout, result, and setup-evidence contract");
+  }
+  for (const suite of manifest.suites || []) {
+    if ("timeoutMinutes" in suite || !Number.isInteger(suite.timeoutSeconds) || suite.timeoutSeconds < 1 || suite.timeoutSeconds > 900) {
+      fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 900 and timeoutMinutes is forbidden`);
+    }
+    if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
+    if (JSON.stringify(suite.envNames) !== "[]" || (suite.steps || []).some((step) => step.env && Object.keys(step.env).length)) {
+      fail(errors, `${suite.id}: assertion children may not receive repository or job environment capabilities`);
+    }
+    for (const generated of suite.generatedPaths || []) {
+      if (!generated || path.isAbsolute(generated) || path.normalize(generated).startsWith("..")) {
+        fail(errors, `${suite.id}: generated path must remain repository-relative: ${generated}`);
+      }
+    }
+    for (const [index, step] of (suite.steps || []).entries()) {
+      if (forbiddenEmbeddedSetup(step)) fail(errors, `${suite.id}: step ${index} embeds forbidden setup/bootstrap work`);
+    }
+  }
+  try {
+    const topology = inspectBatchWorkflow(workflowText);
+    if (topology.runner !== "ubuntu-latest") fail(errors, "ci-batch process containment requires the locked ubuntu-latest runner");
+    if (topology.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --record-setup "${{ matrix.class }}" "${{ matrix.install != \'\' && \'1\' || \'0\' }}"') {
+      fail(errors, "ci-batch must record exactly one typed setup execution for the selected class");
+    }
+    const installCommandCount = (topology.runSteps || []).filter((step) => forbiddenEmbeddedSetup({ cmd: "bash", args: ["-lc", step.run] })).length;
+    if (topology.setupNode?.count !== 1 || installCommandCount !== 1 || topology.recordSetupStep?.count !== 1 || topology.runSuitesStep?.count !== 1) {
+      fail(errors, "ci-batch must contain exactly one runtime setup, one conditional install route, one setup evidence step, and one suite runner step");
+    }
+    if (topology.runSuitesStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "${{ matrix.class }}"') {
+      fail(errors, "ci-batch must invoke the Phase 2 runner with the selected class");
+    }
+  } catch (error) {
+    fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);
+  }
+  return errors;
+}
+
 function sameStrings(actual, expected) {
   return strings(actual) && JSON.stringify([...actual].sort()) === JSON.stringify([...expected].sort());
+}
+
+// #2436 Phase 2: setup belongs to the class profile and executes once per shard.
+// Suite commands are assertions only. Keep this deliberately broad and fail closed:
+// a newly embedded package/bootstrap/migration operation is a cost and isolation
+// regression even when it is hidden in a compound shell command.
+export function forbiddenEmbeddedSetup(command) {
+  const source = typeof command === "string"
+    ? command
+    : Array.isArray(command?.args)
+      ? command.args[command.args.length - 1] || ""
+      : command?.run || command?.invocation?.argv?.at(-1) || "";
+  return shellCommands(String(source)).some(({ executable, argv }) => setupExecutable(executable, argv));
+}
+
+function shellTokens(source) {
+  const normalized = source.replace(/\\\r?\n/g, " ");
+  const tokens = [];
+  let word = "";
+  let quote = null;
+  let escaped = false;
+  const push = () => { if (word) { tokens.push({ type: "word", value: word }); word = ""; } };
+  for (let index = 0; index < normalized.length; index += 1) {
+    const character = normalized[index];
+    if (escaped) { word += character; escaped = false; continue; }
+    if (quote === "'") { if (character === "'") quote = null; else word += character; continue; }
+    if (quote === '"') {
+      if (character === '"') quote = null;
+      else if (character === "\\") escaped = true;
+      else word += character;
+      continue;
+    }
+    if (character === "\\") { escaped = true; continue; }
+    if (character === "'" || character === '"') { quote = character; continue; }
+    if (character === "#" && !word) {
+      while (index < normalized.length && normalized[index] !== "\n") index += 1;
+      push(); tokens.push({ type: "op", value: ";" }); continue;
+    }
+    if (/\s/.test(character)) { push(); if (character === "\n") tokens.push({ type: "op", value: ";" }); continue; }
+    if (";&|(){}".includes(character)) {
+      push();
+      const pair = normalized.slice(index, index + 2);
+      if (["&&", "||", ";;"].includes(pair)) { tokens.push({ type: "op", value: pair }); index += 1; }
+      else tokens.push({ type: "op", value: character });
+      continue;
+    }
+    word += character;
+  }
+  push();
+  return tokens;
+}
+
+function shellCommands(source) {
+  const tokens = shellTokens(source);
+  const commands = [];
+  let words = [];
+  const flush = () => {
+    if (!words.length) return;
+    let index = 0;
+    while (index < words.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[index])) index += 1;
+    while (["command", "builtin", "exec", "sudo", "env", "nice", "nohup", "time"].includes(words[index])) {
+      const wrapper = words[index++];
+      const optionTakesValue = wrapper === "sudo"
+        ? new Set(["-u", "--user", "-g", "--group", "-h", "--host", "-p", "--prompt", "-C", "--chdir", "-R", "--chroot", "-T", "--command-timeout"])
+        : wrapper === "env" ? new Set(["-u", "--unset", "-C", "--chdir"])
+          : wrapper === "nice" ? new Set(["-n", "--adjustment"]) : new Set();
+      while (index < words.length && words[index].startsWith("-")) {
+        const option = words[index++];
+        if (optionTakesValue.has(option) && index < words.length) index += 1;
+      }
+      if (wrapper === "env") while (index < words.length && /^[A-Za-z_][A-Za-z0-9_]*=.*/.test(words[index])) index += 1;
+    }
+    if (words[index] === "corepack") index += 1;
+    const executable = words[index];
+    const argv = words.slice(index + 1);
+    if (executable) commands.push({ executable: path.basename(executable).toLowerCase(), argv });
+    words = [];
+  };
+  const reserved = new Set(["if", "then", "elif", "else", "fi", "while", "until", "do", "done", "case", "esac", "for", "select", "in", "time", "!"]);
+  for (const token of tokens) {
+    if (token.type === "op") { flush(); continue; }
+    if (!words.length && reserved.has(token.value)) continue;
+    words.push(token.value);
+  }
+  flush();
+  return commands;
+}
+
+function setupExecutable(executable, argv) {
+  const args = argv.map((value) => value.toLowerCase());
+  const firstAction = args.find((value) => !value.startsWith("-") && !/^[A-Za-z_][A-Za-z0-9_]*=/.test(value));
+  if (["npm", "pnpm", "yarn"].includes(executable) && ["ci", "install", "i", "add"].includes(firstAction)) return true;
+  if (["apt", "apt-get", "brew"].includes(executable) && ["update", "install"].includes(firstAction)) return true;
+  if (["docker", "podman"].includes(executable) && args.some((value) => ["up", "run", "start"].includes(value))) return true;
+  if (executable === "supabase" && (args.join(" ").includes("db reset") || args.join(" ").includes("migration up"))) return true;
+  if (["setup-node", "setup-deno", "setup-python"].includes(executable) || /setup-(?:node|deno|python)@/.test(executable)) return true;
+  if (["bash", "sh", "zsh"].includes(executable)) {
+    const commandIndex = args.findIndex((value) => value === "-c" || value === "-lc");
+    if (commandIndex >= 0 && argv[commandIndex + 1]) return forbiddenEmbeddedSetup(argv[commandIndex + 1]);
+    return true; // stdin-sourced shell text is not statically inspectable.
+  }
+  // Dynamic evaluation/source can synthesize an uninspectable setup command.
+  if (["eval", "source", ".", "alias"].includes(executable) || executable.includes("$") || executable.includes("`")) return true;
+  if (executable === "xargs" && argv.some((value) => ["npm", "pnpm", "yarn", "apt", "apt-get", "brew", "docker", "podman", "supabase"].includes(value.toLowerCase()))) return true;
+  if (executable === "find" && args.some((value, index) => ["-exec", "-execdir"].includes(value) && setupExecutable(path.basename(args[index + 1] || ""), args.slice(index + 2)))) return true;
+  if (/(?:^|[-_])migrat(?:e|ion)(?:$|[-_])/.test(executable) && args.some((value) => ["up", "apply", "run"].includes(value))) return true;
+  // The 46 preserved assertion commands need only these executable families.
+  // Unknown shell executables are not assumed harmless: aliases, copied package
+  // managers, bespoke bootstrap wrappers, and future setup tools would otherwise
+  // recreate the same bypass under a new name. Adding a family is a reviewed
+  // grammar change, not an accidental green.
+  return !new Set(["node", "npx", "grep", "echo", "printf", "true", "false", "exit", "test", "["]).has(executable);
 }
 
 export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
@@ -382,7 +565,8 @@ export function validateRegistry(
   if (!Array.isArray(manifest.suites) || manifest.suites.length !== 22) fail(errors, "suites must contain exactly 22 entries");
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
-  let batchTopology = { matrix: [], setupNode: {}, installStep: {} };
+  errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
+  let batchTopology = { matrix: [], setupNode: {}, installStep: {}, recordSetupStep: {}, runSuitesStep: {} };
   try {
     batchTopology = inspectBatchWorkflow(resolvedMatrixSource);
   } catch (error) {
@@ -458,6 +642,20 @@ export function validateRegistry(
   const suiteOrigins = new Set();
   const selectedProfiles = new Set();
   const suitesById = new Map();
+  const capabilityRegistry = manifest.commandCapabilities;
+  const capabilityCommands = capabilityRegistry?.commands || [];
+  const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 46
+      || capabilityCommands.length !== 46 || capabilityRegistry?.registrySha256 !== LOCKED_ASSERTION_CAPABILITY_SHA256
+      || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
+    fail(errors, "the 46 assertion command capabilities must equal the locked reviewed registry");
+  }
+  const capabilitiesById = new Map();
+  for (const capability of capabilityCommands) {
+    if (!capability.id || capabilitiesById.has(capability.id)) fail(errors, `duplicate or empty command capability: ${capability.id || "<empty>"}`);
+    else capabilitiesById.set(capability.id, capability);
+  }
+  const claimedCapabilities = new Set();
   for (const suite of manifest.suites || []) {
     if (!suite.id || suiteIds.has(suite.id)) fail(errors, `duplicate or empty suite id: ${suite.id || "<empty>"}`);
     suiteIds.add(suite.id);
@@ -480,8 +678,6 @@ export function validateRegistry(
     }
     if (!suite.ownerIssue || !/^#\d+$/.test(suite.ownerIssue)) fail(errors, `${suite.id}: ownerIssue must be an issue token`);
     if (!suite.cwd || !fs.existsSync(path.join(root, suite.cwd))) fail(errors, `${suite.id}: cwd does not exist: ${suite.cwd}`);
-    if (!Number.isInteger(suite.timeoutMinutes) || suite.timeoutMinutes < 1) fail(errors, `${suite.id}: invalid timeoutMinutes`);
-    if (!suite.isolation?.trim()) fail(errors, `${suite.id}: isolation contract is missing`);
     if (!suite.requiredContext?.trim()) fail(errors, `${suite.id}: requiredContext classification is missing`);
     if (!suite.exceptionRationale?.includes("Raw shell")) fail(errors, `${suite.id}: suite raw-shell exception is missing`);
     if (!suite.timingSeconds || !("p50" in suite.timingSeconds) || !("p95" in suite.timingSeconds)) fail(errors, `${suite.id}: p50/p95 timing classification is missing`);
@@ -500,11 +696,28 @@ export function validateRegistry(
         fail(errors, `${suite.id}: step ${index} typed invocation must be bash [-c, exact legacy command]`);
       }
       if (!step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
+      const expectedCommandId = `assert:${suite.id}:${String(index + 1).padStart(2, "0")}`;
+      const capability = capabilitiesById.get(step.commandId);
+      if (step.commandId !== expectedCommandId || !capability) {
+        fail(errors, `${suite.id}: step ${index} has no stable assertion command capability`);
+      } else {
+        claimedCapabilities.add(capability.id);
+        const payload = { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv };
+        const payloadSha256 = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+        if (capability.suiteId !== suite.id || capability.stepIndex !== index || capability.cwd !== payload.cwd
+            || capability.executable !== payload.executable || JSON.stringify(capability.argv) !== JSON.stringify(payload.argv)
+            || capability.payloadSha256 !== payloadSha256) {
+          fail(errors, `${suite.id}: step ${index} differs from its immutable executable/argv capability`);
+        }
+      }
     }
     const derivedExpectedFiles = discoverExpectedFilesForSuite(suite, root);
     if (JSON.stringify(suite.expectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
       fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
     }
+  }
+  for (const capability of capabilityCommands) {
+    if (!claimedCapabilities.has(capability.id)) fail(errors, `stale unclaimed command capability: ${capability.id}`);
   }
 
   for (const [name] of profileEntries) if (!selectedProfiles.has(name)) fail(errors, `stale setup profile is not selected by any suite: ${name}`);
