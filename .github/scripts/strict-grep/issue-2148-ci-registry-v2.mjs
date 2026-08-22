@@ -127,9 +127,13 @@ function selfTest(base) {
     ...discovery,
     matrixSource: discovery.matrixSource.replace("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "actions/checkout@v4"),
   });
-  assertRed("manual dispatch fanout", base, () => {}, /workflow_dispatch must be bounded/, {
+  assertRed("manual dispatch fanout", base, () => {}, /exact isolated #2300-only route/, {
     ...discovery,
-    matrixSource: discovery.matrixSource.replace("matrix.class == 'node20-19-noinstall'", "true"),
+    matrixSource: discovery.matrixSource.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true"),
+  });
+  assertRed("unavailable pre-matrix job context", base, () => {}, /supported pre-matrix event contexts/, {
+    ...discovery,
+    matrixSource: discovery.matrixSource.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"),
   });
   assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /89 providers|externally referenced workflow provider omitted/, discovery);
   assertRed("provider duplication", base, (m) => m.workflowProviders.push(clone(m.workflowProviders[0])), /duplicate or empty workflow provider/, discovery);

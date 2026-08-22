@@ -352,7 +352,15 @@ record_setup = steps.find { |step| step["name"].to_s == "Execute and record one 
 run_suites = steps.find { |step| step["name"].to_s.start_with?("Run the ") } || {}
 strategy = batch["strategy"].is_a?(Hash) ? batch["strategy"] : {}
 matrix = strategy["matrix"].is_a?(Hash) ? strategy["matrix"] : {}
+dispatch = jobs["dispatch"].is_a?(Hash) ? jobs["dispatch"] : {}
+dispatch_steps = Array(dispatch["steps"]).select { |step| step.is_a?(Hash) }
+dispatch_setup_node = dispatch_steps.find { |step| step["uses"].to_s.start_with?("actions/setup-node@") } || {}
+dispatch_checkout = dispatch_steps.find { |step| step["uses"].to_s.start_with?("actions/checkout@") } || {}
+dispatch_record_setup = dispatch_steps.find { |step| step["name"].to_s == "Execute and record one typed shard setup" } || {}
+dispatch_run_suites = dispatch_steps.find { |step| step["name"].to_s.start_with?("Run the ") } || {}
+dispatch_upload = dispatch_steps.find { |step| step["uses"].to_s.start_with?("actions/upload-artifact@") } || {}
 output = {
+  "jobKeys" => jobs.keys.map(&:to_s).sort,
   "runner" => batch["runs-on"]&.to_s,
   "matrix" => Array(matrix["include"]).map do |entry|
     next {} unless entry.is_a?(Hash)
@@ -379,6 +387,39 @@ output = {
   },
   "runSteps" => steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] },
   "jobIf" => batch["if"]&.to_s,
+  "dispatch" => {
+    "runner" => dispatch["runs-on"]&.to_s,
+    "timeoutMinutes" => dispatch["timeout-minutes"],
+    "jobIf" => dispatch["if"]&.to_s,
+    "hasStrategy" => dispatch.key?("strategy"),
+    "setupNode" => {
+      "action" => dispatch_setup_node["uses"]&.to_s,
+      "nodeVersion" => dispatch_setup_node.dig("with", "node-version")&.to_s,
+      "count" => dispatch_steps.count { |step| step["uses"].to_s.start_with?("actions/setup-node@") }
+    },
+    "checkout" => {
+      "action" => dispatch_checkout["uses"]&.to_s,
+      "fetchDepth" => dispatch_checkout.dig("with", "fetch-depth"),
+      "persistCredentials" => dispatch_checkout.dig("with", "persist-credentials")
+    },
+    "recordSetupStep" => {
+      "run" => dispatch_record_setup["run"]&.to_s,
+      "count" => dispatch_steps.count { |step| step["name"].to_s == "Execute and record one typed shard setup" }
+    },
+    "runSuitesStep" => {
+      "run" => dispatch_run_suites["run"]&.to_s,
+      "count" => dispatch_steps.count { |step| step["name"].to_s.start_with?("Run the ") }
+    },
+    "runSteps" => dispatch_steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] },
+    "upload" => {
+      "action" => dispatch_upload["uses"]&.to_s,
+      "if" => dispatch_upload["if"]&.to_s,
+      "name" => dispatch_upload.dig("with", "name")&.to_s,
+      "path" => dispatch_upload.dig("with", "path")&.to_s,
+      "ifNoFilesFound" => dispatch_upload.dig("with", "if-no-files-found")&.to_s,
+      "count" => dispatch_steps.count { |step| step["uses"].to_s.start_with?("actions/upload-artifact@") }
+    }
+  },
   "workflowDispatch" => document.dig("on", "workflow_dispatch") || document.dig(true, "workflow_dispatch")
 }
 STDOUT.write(JSON.generate(output))
@@ -446,9 +487,30 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
         || topology.setupNode?.action !== PINNED_SETUP_NODE || topology.setupNode?.nodeVersion !== "${{ matrix.node }}") {
       fail(errors, "ci-batch must preserve the exact pinned checkout/setup-node, fetch-depth 0, persist-credentials false trust contract");
     }
-    if (topology.jobIf !== "github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"
+    const dispatch = topology.dispatch || {};
+    const unsupportedPreMatrixContext = [topology.jobIf, dispatch.jobIf].some((condition) => /\b(?:matrix|strategy|steps|runner|job)\b/.test(condition || ""));
+    if (unsupportedPreMatrixContext || topology.jobIf !== "github.event_name != 'workflow_dispatch'") {
+      fail(errors, "ci-batch job-level if must use only supported pre-matrix event contexts");
+    }
+    const dispatchInstallCommandCount = (dispatch.runSteps || []).filter((step) => forbiddenEmbeddedSetup({ cmd: "bash", args: ["-lc", step.run] })).length;
+    const expectedDispatchUpload = {
+      action: "actions/upload-artifact@v4",
+      if: "always()",
+      name: "suite-results-node20-19-noinstall",
+      path: "suite-results.json",
+      ifNoFilesFound: "error",
+      count: 1,
+    };
+    if (JSON.stringify(topology.jobKeys) !== JSON.stringify(["batch", "dispatch"])
+        || dispatch.runner !== "ubuntu-latest" || dispatch.timeoutMinutes !== 25 || dispatch.hasStrategy
+        || dispatch.jobIf !== "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'"
+        || dispatch.setupNode?.action !== PINNED_SETUP_NODE || dispatch.setupNode?.nodeVersion !== "20.19.4" || dispatch.setupNode?.count !== 1
+        || dispatch.checkout?.action !== PINNED_CHECKOUT || dispatch.checkout?.fetchDepth !== 0 || dispatch.checkout?.persistCredentials !== false
+        || dispatch.recordSetupStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "node20-19-noinstall"' || dispatch.recordSetupStep?.count !== 1
+        || dispatch.runSuitesStep?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "node20-19-noinstall"' || dispatch.runSuitesStep?.count !== 1
+        || dispatchInstallCommandCount !== 0 || JSON.stringify(dispatch.upload) !== JSON.stringify(expectedDispatchUpload)
         || JSON.stringify(topology.workflowDispatch) !== JSON.stringify({ inputs: { suite: { description: "Bounded operational suite", required: true, type: "choice", options: ["issue-2300-orch-artifact-reap"] } } })) {
-      fail(errors, "ci-batch workflow_dispatch must be bounded to only the #2300 semantic suite");
+      fail(errors, "ci-batch workflow_dispatch must use the exact isolated #2300-only route and pinned trust contract");
     }
   } catch (error) {
     fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);

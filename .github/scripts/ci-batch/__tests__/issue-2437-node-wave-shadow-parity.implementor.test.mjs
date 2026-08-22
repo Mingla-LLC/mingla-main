@@ -11,6 +11,7 @@ import {
   canonicalizeShadowWrapperSource,
   discoverLiveOrigins,
   discoverWorkflowProviders,
+  inspectBatchWorkflow,
   inspectWorkflow,
   validateRegistry,
   validateShadowParityMarkers,
@@ -100,4 +101,19 @@ test("canonical validation rejects shadow omission, premature cutover, setup dri
 
   const workflow = workflowSource.replace("persist-credentials: false", "persist-credentials: true");
   assert.ok(validateRegistry(value, { ...discovery, matrixSource: workflow }).some((error) => /pinned checkout\/setup-node/.test(error)));
+});
+
+test("job startup uses supported pre-matrix contexts and dispatch is isolated to #2300", () => {
+  const value = manifest();
+  const workflowSource = fs.readFileSync(WORKFLOW_PATH, "utf8");
+  const topology = inspectBatchWorkflow(workflowSource);
+  assert.equal(topology.jobIf, "github.event_name != 'workflow_dispatch'");
+  assert.equal(topology.dispatch.jobIf, "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'");
+  assert.equal(topology.dispatch.hasStrategy, false);
+  assert.equal(topology.dispatch.runSuitesStep.run, 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "node20-19-noinstall"');
+
+  const unavailable = workflowSource.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'");
+  assert.ok(validateRegistry(value, { root: ROOT, matrixSource: unavailable }).some((error) => /supported pre-matrix event contexts/.test(error)));
+  const unbounded = workflowSource.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true");
+  assert.ok(validateRegistry(value, { root: ROOT, matrixSource: unbounded }).some((error) => /exact isolated #2300-only route/.test(error)));
 });

@@ -103,7 +103,9 @@ export function selfTest() {
   timeoutDrift.suites[22].timeoutSeconds += 1;
   assert.notEqual(orderedDigest(timeoutDrift.suites.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "shadow timeout drift must change the gate lock");
   expectRed("shared trust drift", () => {}, (source) => source.replace("persist-credentials: false", "persist-credentials: true"));
-  expectRed("unbounded dispatch", () => {}, (source) => source.replace("matrix.class == 'node20-19-noinstall'", "true"));
+  expectRed("unavailable pre-matrix job context", () => {}, (source) => source.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"));
+  expectRed("unbounded dispatch", () => {}, (source) => source.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true"));
+  expectRed("dispatch route removed", () => {}, (source) => source.replace("  dispatch:\n", "  missing-dispatch:\n"));
   console.log("#2437 shadow runner self-test: PASS — Phase 2 baseline and additive shadow attacks went RED");
 }
 

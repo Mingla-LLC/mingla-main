@@ -44,7 +44,9 @@ concurrency:
 jobs:
   batch:
     name: "CI batch: ${{ matrix.class }}"
-    if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'
+    # jobs.<job_id>.if is evaluated before matrix expansion, so this condition
+    # deliberately uses only the event context available at that point.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 25
     strategy:
@@ -159,5 +161,32 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: suite-results-${{ matrix.class }}
+          path: suite-results.json
+          if-no-files-found: error
+
+  dispatch:
+    name: "CI batch: issue-2300-orch-artifact-reap (bounded dispatch)"
+    if: github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: "20.19.4"
+      - name: Execute and record one typed shard setup
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "node20-19-noinstall"
+      - name: Batch runner self-test (proves a vanished suite fails the run)
+        run: node --test .github/scripts/ci-batch/__tests__/run-suite-batch.test.mjs
+      - name: Run the node20-19-noinstall suites
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --run "node20-19-noinstall"
+      - name: Upload suite results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-results-node20-19-noinstall
           path: suite-results.json
           if-no-files-found: error
