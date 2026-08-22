@@ -893,6 +893,9 @@ jobs:
         run: >-
           node --experimental-strip-types --test
           src/screens/Experience/__tests__/orch_1187_consumer_experience_purchase_bugs.test.tsx
+      - name: "Issue #2443: Explorer release native identity"
+        working-directory: app-mobile
+        run: npx jest --runInBand src/services/__tests__/issue_2443_explorer_native_identity.implementor.test.ts
       - name: Run class D suites (batched)
         run: node .github/scripts/strict-grep/run-batch.mjs --class D
       - name: Upload class D gate results
