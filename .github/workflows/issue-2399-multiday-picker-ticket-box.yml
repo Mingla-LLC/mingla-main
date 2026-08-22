@@ -4,11 +4,19 @@ on:
   pull_request:
     paths:
       - "mingla-business/app/e/[brandSlug]/[eventSlug].tsx"
+      - "mingla-business/app/event/[id]/preview.tsx"
       - "mingla-business/src/components/event/PublicEventPage.tsx"
       - "mingla-business/src/components/event/FoundationEventPreview.tsx"
+      - "mingla-business/src/components/event/DraftEventFoundationPreview.tsx"
       - "mingla-business/src/components/event/MultiDateDayChooser.tsx"
       - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx"
       - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx"
+      - "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx"
+      - "mingla-business/src/utils/draftEventBuyerPreview.ts"
+      - "mingla-business/src/utils/publicEventDayRecovery.ts"
+      - "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts"
+      - "mingla-business/playwright/issue2399/**"
+      - "mingla-business/playwright.issue2399.config.ts"
       - "mingla-business/src/services/publicEventsService.ts"
       - "mingla-business/src/utils/publicEventOccurrenceTruth.ts"
       - "packages/offering-rendering/EventOfferingBody.tsx"
@@ -20,11 +28,19 @@ on:
     branches: [main]
     paths:
       - "mingla-business/app/e/[brandSlug]/[eventSlug].tsx"
+      - "mingla-business/app/event/[id]/preview.tsx"
       - "mingla-business/src/components/event/PublicEventPage.tsx"
       - "mingla-business/src/components/event/FoundationEventPreview.tsx"
+      - "mingla-business/src/components/event/DraftEventFoundationPreview.tsx"
       - "mingla-business/src/components/event/MultiDateDayChooser.tsx"
       - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx"
       - "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx"
+      - "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx"
+      - "mingla-business/src/utils/draftEventBuyerPreview.ts"
+      - "mingla-business/src/utils/publicEventDayRecovery.ts"
+      - "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts"
+      - "mingla-business/playwright/issue2399/**"
+      - "mingla-business/playwright.issue2399.config.ts"
       - "mingla-business/src/services/publicEventsService.ts"
       - "mingla-business/src/utils/publicEventOccurrenceTruth.ts"
       - "packages/offering-rendering/EventOfferingBody.tsx"
@@ -52,9 +68,15 @@ jobs:
           npx jest --runInBand
           src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx
           src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx
+          src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx
           src/components/event/__tests__/issue_2209_public_page_shows_the_days.test.tsx
           src/components/event/__tests__/issue_2135_multidate_public_day_picker.test.tsx
           src/components/event/__tests__/PublicEventPage.issue2101.test.tsx
           src/utils/__tests__/issue_2160_roster_and_wizard.test.tsx
+      - run: npx playwright install --with-deps chromium
+        working-directory: mingla-business
+      - name: Real browser checkbox DOM, keyboard, and motion
+        working-directory: mingla-business
+        run: npx playwright test -c playwright.issue2399.config.ts
       - run: node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs --self-test
       - run: node .github/scripts/strict-grep/issue-2399-multiday-picker-ticket-box.mjs

@@ -113,8 +113,9 @@ export default function PublicEventRoute(): React.ReactElement {
       // in every way that reaches the render — that page is unchanged.
       occurrences={publicEventQuery.data.occurrences}
       multiDatePricingMode={publicEventQuery.data.multiDatePricingMode}
-      onRetryOccurrences={() => {
-        void publicEventQuery.refetch();
+      onRetryOccurrences={async () => {
+        const result = await publicEventQuery.refetch();
+        return result.isSuccess;
       }}
     />
   );

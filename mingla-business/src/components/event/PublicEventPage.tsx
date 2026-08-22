@@ -155,6 +155,10 @@ import type { MultiDatePricingMode } from "../../services/publicEventsService";
 import { isLegacyUnsafeEventCoverVideoUrl } from "../../utils/eventCoverMediaRules";
 import { eventCoverProviderCreditLabel } from "../../types/eventCoverProvider";
 import { shareCanonicalPublicPageOnWeb } from "../../utils/shareCanonicalPublicPageOnWeb";
+import {
+  retryCanonicalDayTruth,
+  scheduleDayChooserFocusAfterNotice,
+} from "../../utils/publicEventDayRecovery";
 import { useThemeFont } from "../../theme/useThemeFont";
 
 import { ShareModal } from "../ui/ShareModal";
@@ -175,7 +179,7 @@ interface PublicEventPageAdapterProps {
   /** issue #2160 — the organiser's multi-day pricing choice. */
   multiDatePricingMode?: MultiDatePricingMode;
   /** issue #2399 — route-owned refresh for malformed/stale day recovery. */
-  onRetryOccurrences?: () => void;
+  onRetryOccurrences?: () => Promise<boolean>;
   /**
    * ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — when false, this is a
    * PAID event whose brand cannot charge yet; the CTA is the non-tappable
@@ -840,7 +844,6 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   const blockForDayTruth = useCallback((): boolean => {
     if (multiDatePurchaseReady) return false;
     if (dayChooserState === "ready") setDayChoiceMissing(true);
-    revealDayChooser();
     showToast(
       dayChooserState === "offline"
         ? "You’re offline. Reconnect to continue."
@@ -850,6 +853,14 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
             ? "We couldn’t load the event days."
             : "Choose at least one day you're attending.",
     );
+    // The Toast exposes a dismiss button and focuses it when mounted. Queue the
+    // recovery target after that mount so the buyer lands on the first day (or
+    // recovery section) and focus remains there.
+    if (Platform.OS === "web") {
+      scheduleDayChooserFocusAfterNotice(revealDayChooser);
+    } else {
+      revealDayChooser();
+    }
     return true;
   }, [dayChooserState, multiDatePurchaseReady, revealDayChooser, showToast]);
 
@@ -1080,6 +1091,23 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       </View>
     ) : null;
 
+  const handleRetryOccurrences = useCallback((): void => {
+    if (onRetryOccurrences === undefined) return;
+    void retryCanonicalDayTruth(
+      onRetryOccurrences,
+      () => {
+        // A successful canonical refresh is the only event that may lower the
+        // stale fence. Require an explicit fresh choice afterward.
+        setSelectedOccurrenceIds(NO_SELECTION);
+        setDayChoiceMissing(false);
+        setOccurrencesStale(false);
+      },
+      () => {
+        showToast("We couldn’t refresh the event days. Try again.");
+      },
+    );
+  }, [onRetryOccurrences, showToast]);
+
   // issue #2399 — app-local, lazy chooser injected as the shared purchase
   // card's first child. Non-purchase states do not ask the buyer for a day.
   const multiDateDayChooser = requiresMultiDatePurchase ? (
@@ -1094,10 +1122,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         isPaid={eventHasPaidTicket}
         highlightUnchosen={dayChoiceMissing}
         state={dayChooserState}
-        onRetry={() => {
-          setOccurrencesStale(false);
-          onRetryOccurrences?.();
-        }}
+        onRetry={
+          onRetryOccurrences === undefined ? undefined : handleRetryOccurrences
+        }
         onToggle={handleOccurrenceToggle}
       />
     </React.Suspense>

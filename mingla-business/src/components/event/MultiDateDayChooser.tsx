@@ -36,8 +36,8 @@
  * Anon-tolerant: no useAuth anywhere in the chain.
  */
 
-import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import React, { useEffect, useState } from "react";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import type { ThemePalette } from "@mingla/offering-rendering";
 
@@ -94,6 +94,25 @@ const rowLabel = (
 ): string =>
   formatOccurrenceLine(occurrence, fallbackTimezone) ?? "Date to be confirmed";
 
+const useReducedMotionOnWeb = (): boolean => {
+  const [reduced, setReduced] = useState<boolean>(() =>
+    Platform.OS === "web" &&
+    typeof window !== "undefined" &&
+    window.matchMedia?.("(prefers-reduced-motion: reduce)").matches === true,
+  );
+
+  useEffect(() => {
+    if (Platform.OS !== "web" || typeof window === "undefined") return undefined;
+    const query = window.matchMedia?.("(prefers-reduced-motion: reduce)");
+    if (query === undefined) return undefined;
+    const update = (): void => setReduced(query.matches);
+    query.addEventListener?.("change", update);
+    return (): void => query.removeEventListener?.("change", update);
+  }, []);
+
+  return reduced;
+};
+
 export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   timezone,
   palette,
@@ -107,6 +126,7 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
   onRetry,
   onToggle,
 }) => {
+  const reducedMotion = useReducedMotionOnWeb();
   // Nothing to choose between → render nothing. A multi-date event that
   // materialised a single row shows no dead affordance, and the host's CTA
   // behaves exactly as it does for single dates.
@@ -207,9 +227,22 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
           {occurrences.map((occurrence) => {
             const selected = selectedOccurrenceIds.includes(occurrence.id);
             const label = rowLabel(occurrence, timezone);
+            const webCheckboxProps = Platform.OS === "web"
+              ? {
+                  "aria-checked": selected,
+                  tabIndex: 0 as const,
+                  onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
+                    if ((event.key === " " || event.key === "Spacebar") && !event.repeat) {
+                      event.preventDefault();
+                      onToggle(occurrence.id);
+                    }
+                  },
+                }
+              : {};
             return (
               <Pressable
                 key={occurrence.id}
+                {...webCheckboxProps}
                 onPress={() => onToggle(occurrence.id)}
                 accessibilityRole="checkbox"
                 accessibilityState={{ checked: selected }}
@@ -217,6 +250,13 @@ export const MultiDateDayChooser: React.FC<MultiDateDayChooserProps> = ({
                 style={[
                   styles.row,
                   { borderColor: palette.panelBorder },
+                  Platform.OS === "web"
+                    ? {
+                        transitionProperty:
+                          "background-color, border-color, color, opacity",
+                        transitionDuration: reducedMotion ? "0ms" : "150ms",
+                      }
+                    : null,
                   selected
                     ? {
                         borderColor: palette.accent,

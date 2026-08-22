@@ -13,6 +13,12 @@ const PATHS = {
   truth: "mingla-business/src/utils/publicEventOccurrenceTruth.ts",
   shared: "packages/offering-rendering/EventOfferingBody.tsx",
   route: "mingla-business/app/e/[brandSlug]/[eventSlug].tsx",
+  previewRoute: "mingla-business/app/event/[id]/preview.tsx",
+  previewFoundation: "mingla-business/src/components/event/DraftEventFoundationPreview.tsx",
+  previewAdapter: "mingla-business/src/utils/draftEventBuyerPreview.ts",
+  recovery: "mingla-business/src/utils/publicEventDayRecovery.ts",
+  previewTest: "mingla-business/src/components/event/__tests__/issue_2399_business_preview_shared_route.happy.test.tsx",
+  browserTest: "mingla-business/playwright/issue2399/chooser-web-dom.spec.ts",
   test: "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.happy.test.tsx",
   tester: "mingla-business/src/components/event/__tests__/issue_2399_multiday_picker_ticket_box.tester.adversarial.test.tsx",
   workflow: ".github/workflows/issue-2399-multiday-picker-ticket-box.yml",
@@ -119,8 +125,42 @@ export function check(raw) {
   if (!raw.route.includes("onRetryOccurrences") || !raw.route.includes("publicEventQuery.refetch")) {
     failures.push("route does not own occurrence recovery");
   }
+  for (const token of ["<DraftEventFoundationPreview", "buyerPreview.occurrences", "draftEventBuyerPreview", "onCheckout={() => setToast("]) {
+    if (!raw.previewRoute.includes(token)) failures.push(`Business preview shared route missing: ${token}`);
+  }
+  if (raw.previewRoute.includes("PreviewEventView")) {
+    failures.push("Business preview regressed to the legacy preview-only clone");
+  }
+  for (const token of [
+    "<FoundationEventPreview",
+    "<EventTicketBox",
+    "leadingPurchaseSection={dayChooser}",
+    "onProceedToCart={handleProceed}",
+  ]) {
+    if (!raw.previewFoundation.includes(token)) failures.push(`Business preview buyer-tree safety missing: ${token}`);
+  }
+  for (const token of [
+    '"aria-checked": selected',
+    'event.key === " "',
+    'transitionDuration: reducedMotion ? "0ms" : "150ms"',
+    '"background-color, border-color, color, opacity"',
+  ]) {
+    if (!raw.chooser.includes(token)) failures.push(`real web checkbox contract missing: ${token}`);
+  }
+  if (!raw.page.includes("scheduleDayChooserFocusAfterNotice(revealDayChooser)") ||
+      !raw.recovery.includes("globalThis.setTimeout(revealDayChooser, 0)")) {
+    failures.push("Toast-settled day chooser focus restoration missing");
+  }
+  if (!raw.page.includes("retryCanonicalDayTruth(") ||
+      !raw.recovery.includes("if (!refreshed) {") ||
+      raw.page.includes("setOccurrencesStale(false);\n          onRetryOccurrences")) {
+    failures.push("stale retry does not remain fenced until canonical success");
+  }
   if (!raw.workflow.includes(PATHS.test) || !raw.workflow.includes(PATHS.workflow) ||
-      !raw.workflow.includes(PATHS.shared) || !raw.workflow.includes(PATHS.page)) {
+      !raw.workflow.includes(PATHS.shared) || !raw.workflow.includes(PATHS.page) ||
+      !raw.workflow.includes(PATHS.previewRoute) ||
+      !raw.workflow.includes(PATHS.previewFoundation) ||
+      !raw.workflow.includes(PATHS.browserTest)) {
     failures.push("workflow does not cover the complete #2399 change surface");
   }
   if (!raw.test.includes("omitting #2399 context preserves the true single-day rendered tree") ||
@@ -158,6 +198,11 @@ if (process.argv.includes("--self-test")) {
     ["chooser", 'accessibilityRole="checkbox"', 'accessibilityRole="radio"'],
     ["truth", "new Map<string, PublicEventOccurrence>()", "new Map()"],
     ["route", "publicEventQuery.refetch", "Promise.resolve"],
+    ["previewRoute", "<DraftEventFoundationPreview", "<PreviewEventView"],
+    ["previewFoundation", "<FoundationEventPreview", "<View"],
+    ["chooser", '"aria-checked": selected', '"aria-checked": false'],
+    ["chooser", 'transitionDuration: reducedMotion ? "0ms" : "150ms"', 'transitionDuration: "0ms"'],
+    ["recovery", "globalThis.setTimeout(revealDayChooser, 0)", "revealDayChooser()"],
     ["tester", 'mount("stale"', 'mount("ready"'],
   ];
   for (const [key, from, to] of mutations) {

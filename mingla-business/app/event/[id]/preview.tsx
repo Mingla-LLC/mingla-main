@@ -1,15 +1,12 @@
 /**
  * /event/[id]/preview — in-app preview of a draft event.
  *
- * Reads dynamic `id` segment, resolves draft via useDraftById. Renders
- * PreviewEventView (MID-fidelity port of designer PublicEventScreen)
- * with PREVIEW ribbon and back button. Share button fires
- * TRANSITIONAL Toast pointing at Cycle 7.
+ * Reads dynamic `id` segment, resolves draft via useDraftById, and renders the
+ * same FoundationEventPreview/EventTicketBox buyer tree used by
+ * /e/[brandSlug]/[eventSlug], with draft-only actions kept in this route.
  *
  * Format-agnostic ID resolver per Cycle 2 invariant I-11.
- * Host-bg cascade per Cycle 2 invariant I-12 (PreviewEventView sets
- * its own dark background per designer; canvas.discover not used here
- * to match designer #0c0e12 hero treatment).
+ * The shared buyer renderer owns its normal theme/background cascade.
  *
  * Per Cycle 3 spec §3.5 route 3.
  */
@@ -28,11 +25,6 @@ import {
 } from "../../../src/constants/designSystem";
 import { Spinner } from "../../../src/components/ui/Spinner";
 import { Toast } from "../../../src/components/ui/Toast";
-import {
-  MultiDateOverrideSheet,
-  type MultiDateOverrideSavePatch,
-} from "../../../src/components/event/MultiDateOverrideSheet";
-import { PreviewEventView } from "../../../src/components/event/PreviewEventView";
 import { useBrandList } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -41,7 +33,6 @@ import {
 } from "../../../src/store/draftEventStore";
 import {
   eventDraftKeys,
-  useServerDraftAutosave,
   useServerDraftById,
 } from "../../../src/hooks/useServerDraftEvents";
 // Issue #976 [event-name-focus] — the eager d_*→server preview migration
@@ -51,6 +42,8 @@ import {
 import { promoteLegacyDraftOnce } from "../../../src/utils/draftPromotion";
 import { useAuth } from "../../../src/context/AuthContext";
 import { isBusinessAuthNotReadyError } from "../../../src/utils/authReadiness";
+import { draftEventBuyerPreview } from "../../../src/utils/draftEventBuyerPreview";
+import { DraftEventFoundationPreview } from "../../../src/components/event/DraftEventFoundationPreview";
 
 export default function EventPreviewRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -77,13 +70,11 @@ export default function EventPreviewRoute(): React.ReactElement {
     !draft.id.startsWith("d_") &&
     serverDraftSettled &&
     serverDraftQuery.data === null;
-  const autosave = useServerDraftAutosave();
   const brands = useBrandList();
   const brand = useMemo(() => {
     if (draft === null) return null;
     return brands.find((b) => b.id === draft.brandId) ?? null;
   }, [draft, brands]);
-  const updateDraft = useDraftEventStore((s) => s.updateDraft);
   const deleteDraft = useDraftEventStore((s) => s.deleteDraft);
   const migratingLegacyIdRef = React.useRef<string | null>(null);
   const staleRecoveryDraftIdRef = React.useRef<string | null>(null);
@@ -93,54 +84,9 @@ export default function EventPreviewRoute(): React.ReactElement {
     message: "",
   });
 
-  // Per-date override sheet state — owned at the route handler so the
-  // sheet portals correctly per I-13 (overlay-portal contract).
-  // Cycle 4 Q-5 — same MultiDateOverrideSheet used from Step 2 row pencil.
-  const [overrideEntryId, setOverrideEntryId] = useState<string | null>(null);
-  const overrideEntry =
-    overrideEntryId === null || draft === null || draft.multiDates === null
-      ? null
-      : draft.multiDates.find((e) => e.id === overrideEntryId) ?? null;
-  const overrideEntryIndex =
-    overrideEntryId === null || draft === null || draft.multiDates === null
-      ? 0
-      : draft.multiDates.findIndex((e) => e.id === overrideEntryId);
-
-  const handleEditMultiDateOverride = React.useCallback(
-    (entryId: string): void => {
-      setOverrideEntryId(entryId);
-    },
-    [],
-  );
-
-  const handleSaveOverride = React.useCallback(
-    (patch: MultiDateOverrideSavePatch): void => {
-      if (draft === null || overrideEntryId === null || staleServerDraft) return;
-      const existing = draft.multiDates ?? [];
-      // Auto-sort: startTime change can re-order rows chronologically.
-      const next = existing
-        .map((e) =>
-          e.id === overrideEntryId
-            ? {
-                ...e,
-                startTime: patch.startTime,
-                endTime: patch.endTime,
-                overrides: patch.overrides,
-              }
-            : e,
-        )
-        .sort((a, b) => `${a.date}T${a.startTime}`.localeCompare(`${b.date}T${b.startTime}`));
-      updateDraft(draft.id, { multiDates: next });
-      if (!draft.id.startsWith("d_") && !staleServerDraft) {
-        autosave.saveDraft({
-          ...draft,
-          multiDates: next,
-          updatedAt: new Date().toISOString(),
-        });
-      }
-      setOverrideEntryId(null);
-    },
-    [autosave, draft, overrideEntryId, staleServerDraft, updateDraft],
+  const buyerPreview = useMemo(
+    () => (draft === null ? null : draftEventBuyerPreview(draft, brand)),
+    [brand, draft],
   );
 
   useEffect(() => {
@@ -226,24 +172,7 @@ export default function EventPreviewRoute(): React.ReactElement {
     staleServerDraft,
   ]);
 
-  const handleBack = (): void => {
-    if (router.canGoBack()) {
-      router.back();
-    } else {
-      router.replace("/(tabs)/home" as never);
-    }
-  };
-
-  const handleShareTap = (): void => {
-    setToast({ visible: true, message: "Share modal lands Cycle 7." });
-  };
-
-  const handleEditStep = (step: number): void => {
-    if (draft === null) return;
-    router.push(`/event/${draft.id}/edit?step=${step}` as never);
-  };
-
-  if (draft === null) {
+  if (draft === null || buyerPreview === null) {
     return (
       <View
         style={[
@@ -281,25 +210,32 @@ export default function EventPreviewRoute(): React.ReactElement {
     );
   }
 
+  const handleClose = (): void => {
+    if (router.canGoBack()) {
+      router.back();
+    } else {
+      router.replace("/(tabs)/home" as never);
+    }
+  };
+
   return (
     <View style={styles.host}>
-      <PreviewEventView
-        draft={draft}
-        brand={brand}
-        onBack={handleBack}
-        onShareTap={handleShareTap}
-        onEditStep={handleEditStep}
-        onEditMultiDateOverride={handleEditMultiDateOverride}
-      />
-      {/* Per-date override sheet — Cycle 4 Q-5 entry from Preview accordion.
-          Sheet state lives here (route handler) so it portals correctly. */}
-      <MultiDateOverrideSheet
-        visible={overrideEntryId !== null}
-        onClose={() => setOverrideEntryId(null)}
-        onSave={handleSaveOverride}
-        entry={overrideEntry}
-        entryIndex={overrideEntryIndex >= 0 ? overrideEntryIndex : 0}
-        parentDraft={draft}
+      <DraftEventFoundationPreview
+        event={buyerPreview.event}
+        brand={buyerPreview.brand}
+        occurrences={buyerPreview.occurrences}
+        isMultiDate={draft.whenMode === "multi_date"}
+        multiDatePricingMode={draft.multiDatePricingMode ?? "per_day"}
+        onClose={handleClose}
+        onShare={() => setToast({
+          visible: true,
+          message: "Preview links are available after publishing.",
+        })}
+        onCheckout={() => setToast({
+          visible: true,
+          message: "Checkout is available after publishing.",
+        })}
+        onBlocked={(message) => setToast({ visible: true, message })}
       />
       <View style={styles.toastWrap} pointerEvents="box-none">
         <Toast
