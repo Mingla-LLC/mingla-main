@@ -686,6 +686,8 @@ export const PaymentPlanEditor: React.FC<PaymentPlanEditorProps> = ({
                 }
                 mode="date"
                 display={Platform.OS === "ios" ? "inline" : "default"}
+                themeVariant="dark"
+                textColor={textTokens.primary}
                 minimumDate={new Date(`${todayPlusDays(1)}T00:00:00Z`)}
                 onChange={onDateChange(inst.ordinal)}
               />

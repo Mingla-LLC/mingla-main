@@ -9374,6 +9374,12 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Enforcement:** T-2 in `issue_2322_ios_picker_theming.implementor.happy.test.mjs` retains #2050's exact dark launch block, requires the Mingla owner before splash (reverse execution order), and executes its pure mutation helper against an `Automatic` plist while proving unrelated keys survive. Release proof reads `UIUserInterfaceStyle` from a freshly generated or built `Info.plist`; `expo config` alone is not accepted. A general warning gate remains tracked as #2342.
 - **Established:** DRAFT at #2322, 2026-08-19; flip to ACTIVE only after independent tester PASS, all-green merge, and merged-main verification.
 
+### I-PROPOSED-2343-HOST-NATIVE-APPEARANCE-IS-FIXED-LIGHT (DRAFT)
+
+- **Rule:** Mingla Host iOS and Android must build with a fixed Light native appearance regardless of the device setting. Each platform has one final native appearance owner, while the #2050 Host splash remains explicitly orange `#eb7825` in both device themes. Intentionally dark Host compositions remain locally owned; in particular, `PaymentPlanEditor`'s iOS inline picker declares `themeVariant="dark"` and the established light-on-dark `text.primary` token.
+- **Enforcement:** the append-only #2343 implementor and tester suites inspect the real Host config and picker source, execute the pure Info.plist owner, pin plugin order and #2050 splash bytes, and are explicitly registered in `.github/ci-batch/MANIFEST.json`. Release proof must inspect generated/built `UIUserInterfaceStyle=Light` and Android `expo_system_ui_user_interface_style=light`, then compare settled Light/Dark-device runtime pixels on the exact replacement artifacts.
+- **Established:** DRAFT at #2343, 2026-08-21; flip to ACTIVE only after independent tester PASS, all-green merge, exact replacement Host artifact inspection, and Light/Dark runtime verification.
+
 ---
 
 ## DRAFT — issue #2060 (Ari reliability and exact-release certification)
