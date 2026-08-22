@@ -51,7 +51,7 @@
  * the strict-grep directory, so MANIFEST.json does not sweep it and
  * run-batch.mjs does not run it — C8 asserts it exists and is invoked by
  * executable (comment-stripped) yaml in
- * `.github/workflows/issue-1860-rls-coverage-tests.yml`.
+ * `ci-batch:issue-1860-rls-coverage-tests` in `.github/ci-batch/MANIFEST.json`.
  *
  * There is deliberately NO second, weaker audit of this ground.
  * `scripts/audit/rls-coverage.mjs` was retired and deleted at #1860 — it matched
@@ -169,7 +169,7 @@ const RETIRED_AUDIT_PATH = "scripts/audit/rls-coverage.mjs";
 const LIVE_TEST_PATH = "supabase/migrations/__tests__/issue_1860_public_rls_coverage.test.sql";
 const LIVE_TEST_WORKFLOW = ".github/workflows/supabase-migrations-and-stripe-deno.yml";
 const ADVERSARIAL_SUITE_PATH = "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs";
-const ADVERSARIAL_WORKFLOW = ".github/workflows/issue-1860-rls-coverage-tests.yml";
+const ADVERSARIAL_WORKFLOW = ".github/ci-batch/MANIFEST.json";
 const FIX_MIGRATION_MARKER = "_issue_1860_enable_rls_on_unprotected_public_tables.sql";
 
 /**

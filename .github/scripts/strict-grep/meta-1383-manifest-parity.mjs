@@ -58,7 +58,7 @@ const SG_REL = ".github/scripts/strict-grep";
 //   fixture             a .test.mjs on disk that no CI workflow invokes
 //   unenforced          a REAL gate with an exit contract that no CI workflow runs (the 21)
 //   infrastructure      not a gate — the batching machinery itself (run-batch.mjs)
-const VALID_ENFORCEMENT = /^(batch:[A-E]|job:[A-Za-z0-9._-]+|external:.+|fixture|unenforced|infrastructure)$/;
+const VALID_ENFORCEMENT = /^(batch:[A-E]|job:[A-Za-z0-9._-]+|external:.+|ci-batch:[A-Za-z0-9._-]+|fixture|unenforced|infrastructure)$/;
 const SG_WORKFLOW = "strict-grep-mingla-business.yml";
 
 export function walkMjsUnder(dir, relPrefix, base = "") {
@@ -92,7 +92,7 @@ export function walkMjs(dir, base = "") {
  *        if the dir does not exist on disk (for P11, the external-totality check)
  * @returns {string[]} failures
  */
-export function runChecks({ manifest, diskFiles, readSource, fileExists, workflowInvocations, jobInvocations, externalDiskFiles = {} }) {
+export function runChecks({ manifest, diskFiles, readSource, fileExists, workflowInvocations, jobInvocations, ciBatchManifest = null, externalDiskFiles = {} }) {
   const failures = [];
   const gates = manifest.gates ?? [];
 
@@ -165,6 +165,49 @@ export function runChecks({ manifest, diskFiles, readSource, fileExists, workflo
         `P4: "${g.script}" is declared external:${wf} but ${wf} does not invoke it. ` +
         `It is now enforced by nothing — wire it or change its enforcement state.`
       );
+    }
+  }
+
+  // P4b — terminal Phase 3 providers are typed suites, not deleted wrapper files.
+  // A gate may claim ci-batch:<suite-id> only when that exact terminal suite and
+  // its immutable command capability execute every declared mode.
+  const batchSuites = ciBatchManifest?.suites ?? [];
+  const batchCapabilities = ciBatchManifest?.commandCapabilities?.commands ?? [];
+  for (const g of gates) {
+    if (!g.enforcement?.startsWith("ci-batch:")) continue;
+    const suiteId = g.enforcement.slice("ci-batch:".length);
+    const matches = batchSuites.filter((suite) => suite.id === suiteId);
+    if (matches.length !== 1) {
+      failures.push(`P4b: "${g.script}" names ci-batch:${suiteId}, but that suite exists ${matches.length} times.`);
+      continue;
+    }
+    const suite = matches[0];
+    if (suite.lifecycle !== "batched-historical") {
+      failures.push(`P4b: "${g.script}" names ${suiteId}, but its lifecycle is not terminal batched-historical.`);
+      continue;
+    }
+    const observedModes = new Set();
+    for (const [index, step] of (suite.steps ?? []).entries()) {
+      const capability = batchCapabilities.filter((item) => item.id === step.commandId);
+      const invocation = step.invocation;
+      const capabilityExact = capability.length === 1 && capability[0].suiteId === suite.id
+        && capability[0].stepIndex === index && capability[0].cwd === (step.cwd || ".")
+        && capability[0].executable === invocation?.command
+        && JSON.stringify(capability[0].argv) === JSON.stringify(invocation?.argv);
+      if (!capabilityExact) {
+        failures.push(`P4b: ${suiteId} step ${index} lacks its exact registered command capability.`);
+        continue;
+      }
+      const source = stripComments(invocation?.argv?.[1] ?? step.run ?? "").replace(/\\\s*\n/g, " ");
+      for (const command of source.split(/\n|&&|\|\||;/)) {
+        const tokens = command.trim().split(/\s+/).filter(Boolean);
+        const position = tokens.indexOf(g.script);
+        if (position === -1) continue;
+        observedModes.add(tokens.includes("--self-test") ? "self-test" : "plain");
+      }
+    }
+    for (const mode of g.modes ?? []) {
+      if (!observedModes.has(mode)) failures.push(`P4b: ${suiteId} does not execute "${g.script}" in declared ${mode} mode.`);
     }
   }
 
@@ -504,6 +547,7 @@ export function formatMergeCounterCollision({
 
 async function realRun() {
   const manifest = JSON.parse(fs.readFileSync(path.join(HERE, "MANIFEST.json"), "utf8"));
+  const ciBatchManifest = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
   const diskFiles = walkMjs(path.join(REPO_ROOT, SG_REL));
   const { workflowInvocations, jobInvocations } = await collectWorkflowInvocations();
   // P11 — enumerate each externalGateDirs dir from disk (null = dir missing).
@@ -521,6 +565,7 @@ async function realRun() {
     fileExists: (p) => fs.existsSync(path.join(REPO_ROOT, p)),
     workflowInvocations,
     jobInvocations,
+    ciBatchManifest,
     externalDiskFiles,
   });
 
@@ -562,8 +607,34 @@ function baseFixture() {
     fileExists: () => true,
     workflowInvocations: {},
     jobInvocations: {},
+    ciBatchManifest: { suites: [], commandCapabilities: { commands: [] } },
     externalDiskFiles: {},
   };
+}
+
+function terminalBatchFixture() {
+  const f = baseFixture();
+  const script = `${SG_REL}/beta.mjs`;
+  const run = `node ${script} --self-test && node ${script}`;
+  f.manifest.gates[1] = {
+    script, kind: "file", enforcement: "ci-batch:suite-beta", invocation: "node",
+    modes: ["self-test", "plain"], selfTest: "wired", jobKeys: [],
+  };
+  f.manifest.selfTestWiredFloor = 2;
+  f.manifest.unenforcedCap = 0;
+  f.readSource = () => "if (process.argv.includes('--self-test')) {}";
+  f.ciBatchManifest = {
+    suites: [{
+      id: "suite-beta", lifecycle: "batched-historical",
+      steps: [{ commandId: "assert:suite-beta:01", cwd: ".", run,
+        invocation: { kind: "raw-shell", command: "bash", argv: ["-c", run] } }],
+    }],
+    commandCapabilities: { commands: [{
+      id: "assert:suite-beta:01", suiteId: "suite-beta", stepIndex: 0, cwd: ".",
+      executable: "bash", argv: ["-c", run],
+    }] },
+  };
+  return f;
 }
 
 function selfTest() {
@@ -612,6 +683,38 @@ function selfTest() {
     f.manifest.unenforcedCap = 0;
     f.workflowInvocations = { "some-wf.yml": new Set() };
     check("P4: external gate dropped from its workflow fails", f, true, "P4:");
+  }
+  // P4b — terminal typed batch providers are exact and fail closed.
+  check("P4b: exact terminal typed provider passes", terminalBatchFixture(), false);
+  {
+    const f = terminalBatchFixture();
+    f.ciBatchManifest.suites = [];
+    check("P4b: missing typed suite fails", f, true, "exists 0 times");
+  }
+  {
+    const f = terminalBatchFixture();
+    f.ciBatchManifest.suites.push(structuredClone(f.ciBatchManifest.suites[0]));
+    check("P4b: duplicate typed suite fails", f, true, "exists 2 times");
+  }
+  {
+    const f = terminalBatchFixture();
+    f.ciBatchManifest.suites[0].lifecycle = "shadow-active";
+    check("P4b: non-terminal typed suite fails", f, true, "lifecycle is not terminal");
+  }
+  {
+    const f = terminalBatchFixture();
+    f.manifest.gates[1].modes.push("unsupported-mode");
+    check("P4b: missing declared mode fails", f, true, "declared unsupported-mode mode");
+  }
+  {
+    const f = terminalBatchFixture();
+    f.ciBatchManifest.commandCapabilities.commands[0].argv = ["-c", "true"];
+    check("P4b: mismatched command capability fails", f, true, "exact registered command capability");
+  }
+  {
+    const f = terminalBatchFixture();
+    f.manifest.gates[1].enforcement = "ci-batch:";
+    check("P4b: malformed typed-provider prefix fails", f, true, "invalid enforcement");
   }
   // P5 runner/manifest divergence — batch class the runner would not run
   {

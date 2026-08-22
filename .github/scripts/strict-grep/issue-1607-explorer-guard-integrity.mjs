@@ -105,12 +105,6 @@ function referencedSets(workflows) {
           if (token.endsWith(".test.mjs")) { tested.add(token); workflowTested.add(token); }
         }
       }
-      // Folded YAML turns the entire scalar into one shell command.
-      if (/(?:^|\s)node\s+--test(?:\s|$)/.test(shell)) {
-        for (const token of shell.trim().split(/\s+/)) {
-          if (token.endsWith(".test.mjs")) { tested.add(token); workflowTested.add(token); }
-        }
-      }
     }
     byWorkflow[name] = { required: workflowRequired, tested: workflowTested };
   }
@@ -140,7 +134,7 @@ export function checkExplorerGuardIntegrity({ diskFiles, catalog = DECK_GUARD_CA
   }
 
   const exact = new Set(declared.filter((file) => /\/issue_1481_/.test(file)));
-  const workflow1481 = refs.byWorkflow["issue-1481-explorer-deck-tests.yml"] ?? { required: new Set(), tested: new Set() };
+  const workflow1481 = refs.byWorkflow["ci-batch:issue-1481-explorer-deck-tests"] ?? { required: new Set(), tested: new Set() };
   const only1481 = (set) => new Set([...set].filter((file) => /\/issue_1481_/.test(file)));
   for (const [label, actual] of [["require", only1481(workflow1481.required)], ["run", only1481(workflow1481.tested)]]) {
     if (actual.size !== 8 || [...actual].some((file) => !exact.has(file)) || [...exact].some((file) => !actual.has(file))) {
@@ -170,7 +164,7 @@ function fixture() {
     diskFiles: catalog.map(({ file }) => file),
     catalog,
     workflows: {
-      "issue-1481-explorer-deck-tests.yml": workflow(first),
+      "ci-batch:issue-1481-explorer-deck-tests": workflow(first),
       "deck-others.yml": workflow(rest),
     },
     releaseHotpathSource: `
@@ -206,7 +200,7 @@ function selfTest() {
   inventory.diskFiles.push(`${DECK_DIR}/inventory-drift.test.mjs`);
   expect("inventory drift", inventory, /disk\/catalog mismatch/);
   const exactEight = fixture();
-  exactEight.workflows["issue-1481-explorer-deck-tests.yml"] += `\n      - name: ninth\n        run: |\n          test -f ${DECK_DIR}/issue_1481_ninth.test.mjs\n          node --test ${DECK_DIR}/issue_1481_ninth.test.mjs\n`;
+  exactEight.workflows["ci-batch:issue-1481-explorer-deck-tests"] += `\n      - name: ninth\n        run: |\n          test -f ${DECK_DIR}/issue_1481_ninth.test.mjs\n          node --test ${DECK_DIR}/issue_1481_ninth.test.mjs\n`;
   expect("exact-eight drift", exactEight, /exact-eight/);
   const structural = fixture();
   structural.releaseHotpathSource = structural.releaseHotpathSource.replace("'<GestureDetector key={currentRec.id} gesture={deckSwipe.gesture}>'", "'{/* Current Card */}'");
@@ -221,6 +215,10 @@ function realInputs() {
   const workflows = Object.fromEntries(fs.readdirSync(path.join(ROOT, ".github/workflows"))
     .filter((name) => /\.ya?ml$/.test(name))
     .map((name) => [name, fs.readFileSync(path.join(ROOT, ".github/workflows", name), "utf8")]));
+  const registry = JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+  for (const suite of registry.suites.filter((item) => item.lifecycle === "batched-historical")) {
+    workflows[`ci-batch:${suite.id}`] = suite.steps.map((step) => `run: |\n  ${step.run.replaceAll("\n", "\n  ")}`).join("\n");
+  }
   return { diskFiles, workflows, releaseHotpathSource: fs.readFileSync(path.join(ROOT, RELEASE_GUARD), "utf8") };
 }
 

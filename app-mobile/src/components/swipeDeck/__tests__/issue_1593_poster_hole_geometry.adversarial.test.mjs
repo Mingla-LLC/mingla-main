@@ -105,7 +105,7 @@ const REL = {
   adversarial:
     'app-mobile/src/components/swipeDeck/__tests__/'
     + 'issue_1593_poster_hole_geometry.adversarial.test.mjs',
-  workflow: '.github/workflows/issue-1593-deck-layer-geometry.yml',
+  workflow: '.github/ci-batch/MANIFEST.json',
 };
 
 // #1609 deleted this module outright. Its RESURRECTION is itself a regression signal: it
@@ -124,7 +124,15 @@ function loadSources(root) {
   for (const key of Object.keys(REL)) {
     out[key] = readFileSync(path.join(root, REL[key]), 'utf8');
   }
+  out.workflow = typedSuiteWorkflow(out.workflow, 'issue-1593-deck-layer-geometry');
   return out;
+}
+
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return [`node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
 }
 
 const source = loadSources(REPO_ROOT);
@@ -1206,7 +1214,7 @@ const MUTANTS = [
   },
   {
     id: 'n_workflow_stops_executing_this_guard',
-    edits: [['workflow', '\n          ' + REL.adversarial, '']],
+    edits: [['workflow', 'test -f ' + REL.adversarial + '\\n', '']],
   },
   {
     id: 'o_implementor_guard_stubbed_out',
@@ -1262,7 +1270,7 @@ function runGuardInMirror(dir) {
   // strip it, or this whole battery becomes a rubber stamp.
   const env = { ...process.env, ISSUE_1609_ADVERSARIAL_MIRROR: '1' };
   delete env.NODE_TEST_CONTEXT;
-  const r = spawnSync(process.execPath, ['--test', path.join(dir, REL.adversarial)], {
+  const r = spawnSync(process.execPath, ['--test', '--test-reporter=tap', path.join(dir, REL.adversarial)], {
     encoding: 'utf8',
     env,
     timeout: 120000,

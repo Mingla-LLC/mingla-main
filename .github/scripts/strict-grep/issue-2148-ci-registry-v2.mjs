@@ -8,9 +8,12 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_MANIFEST,
   DEFAULT_ROOT,
+  SHADOW_PARITY_MARKER,
+  SHADOW_PARITY_WRAPPER_NAMES,
   discoverLiveOrigins,
   discoverWorkflowProviders,
   validateRegistry,
+  validateShadowParityMarkers,
 } from "../ci-batch/validate-manifest-v2.mjs";
 
 const clone = (value) => structuredClone(value);
@@ -34,7 +37,39 @@ function selfTest(base) {
     workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT),
     matrixSource: fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows/ci-batch.yml"), "utf8"),
   };
+  const workflowSources = Object.fromEntries(fs
+    .readdirSync(path.join(DEFAULT_ROOT, ".github/workflows"), { withFileTypes: true })
+    .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
+    .map((entry) => [entry.name, fs.readFileSync(path.join(DEFAULT_ROOT, ".github/workflows", entry.name), "utf8")]));
+  const assertMarkerRed = (name, mutate, pattern = /shadow parity marker/) => {
+    const sources = { ...workflowSources };
+    mutate(sources);
+    const errors = validateShadowParityMarkers(base, sources);
+    if (!errors.some((error) => pattern.test(error))) {
+      console.error(`SELF-TEST FAIL: ${name} did not produce ${pattern}`);
+      process.exit(1);
+    }
+    console.log(`SELF-TEST PASS: ${name}`);
+  };
+  const markerTarget = SHADOW_PARITY_WRAPPER_NAMES[0];
+  assertMarkerRed("restored terminal wrapper", (sources) => { sources[markerTarget] = "restored terminal wrapper\n"; }, /terminal wrapper must be absent/);
+  assertMarkerRed("wrong-path shadow marker", (sources) => { sources["unapproved-workflow.yml"] = `${SHADOW_PARITY_MARKER}\nname: forbidden\n`; }, /stray.*unapproved workflow/);
   assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
+  assertRed("split-text representation omission", base, (m) => {
+    const suite = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-app-mobile");
+    const index = suite.originPaths.findIndex((item) => item?.encoding === "concat-v1");
+    suite.originPaths[index] = `${suite.originPaths[index].parts[0]}${suite.originPaths[index].parts[1]}`;
+  }, /exactly six reviewed split-text path representations/, discovery);
+  assertRed("split-text representation forgery", base, (m) => {
+    const suite = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-mingla-business");
+    suite.originPaths.find((item) => item?.encoding === "concat-v1").parts[1] = ".tsx";
+  }, /malformed or unreviewed split-text representation|lost reviewed provenance/, discovery);
+  assertRed("split-text representation relocation", base, (m) => {
+    const owner = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-app-mobile");
+    const index = owner.originPaths.findIndex((item) => item?.encoding === "concat-v1");
+    m.suites[0].originPaths.push(owner.originPaths[index]);
+    owner.originPaths[index] = "removed-reviewed-provenance";
+  }, /outside the exact #994 provenance fields|lost reviewed provenance/, discovery);
   assertRed("origin duplication", base, (m) => m.legacyOrigins.push(clone(m.legacyOrigins[0])), /duplicate legacy origin/, discovery);
   assertRed("legacy to suite attribution swap", base, (m) => {
     const migrated = m.legacyOrigins.filter((item) => item.disposition === "batched-active");
@@ -66,9 +101,9 @@ function selfTest(base) {
   }, /must exactly equal files selected/, discovery);
   assertRed("empty command", base, (m) => { m.suites[0].steps[0].run = ""; }, /empty compatibility command/, discovery);
   assertRed("missing class route", base, (m) => { m.classes.push("unrouted-class"); }, /no ci-batch matrix route/, discovery);
-  assertRed("unsupported setup runtime", base, (m) => { m.setupProfiles["business-node20"].runtime.version = "99"; }, /supported exact node 20 runtime schema/, discovery);
-  assertRed("missing setup install", base, (m) => { m.setupProfiles["business-node20"].install = null; }, /does not match unchanged matrix install route/, discovery);
-  assertRed("forged setup install", base, (m) => { m.setupProfiles["business-node20"].install.invocation = { kind: "argv", command: "echo", argv: ["not npm ci"] }; }, /exact typed npm \[ci\] invocation/, discovery);
+  assertRed("unsupported setup runtime", base, (m) => { m.setupProfiles["business-node20"].runtime.version = "99"; }, /approved exact Node runtime|setupProfiles differ/, discovery);
+  assertRed("missing setup install", base, (m) => { m.setupProfiles["business-node20"].install = null; }, /matrix cache route|setupProfiles differ/, discovery);
+  assertRed("forged setup install", base, (m) => { m.setupProfiles["business-node20"].install.invocation = { kind: "argv", command: "echo", argv: ["not npm ci"] }; }, /approved typed npm|setupProfiles differ/, discovery);
   assertRed("missing setup cwd", base, (m) => { m.setupProfiles["business-node20"].install.cwd = "definitely/missing"; }, /install cwd does not exist/, discovery);
   assertRed("duplicate setup class ownership", base, (m) => { m.setupProfiles["node20-noinstall"].classes.push("business-node20-1"); }, /exactly one setup profile owner/, discovery);
   assertRed("stale unused setup profile", base, (m) => { m.setupProfiles.stale = { runtime: { name: "node", version: "20" }, install: null, classes: ["stale-class"] }; }, /stale or unknown class|not selected by any suite/, discovery);
@@ -78,9 +113,38 @@ function selfTest(base) {
     ...discovery,
     matrixSource: discovery.matrixSource.replace('node: "20"', 'node: "18"'),
   });
-  assertRed("workflow install semantic drift", base, () => {}, /exact conditional matrix.install npm ci contract/, {
+  assertRed("workflow install semantic drift", base, () => {}, /no free-form install route/, {
     ...discovery,
-    matrixSource: discovery.matrixSource.replace("run: npm ci", "run: echo forged-install"),
+    matrixSource: discovery.matrixSource.replace('run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.class }}"', "run: npm ci"),
+  });
+  assertRed("terminal variant omission", base, (m) => {
+    m.suites.splice(m.suites.findIndex((suite) => suite.lifecycle === "batched-historical"), 1);
+  }, /55 executable suites|55 entries|32 .*variants/, discovery);
+  assertRed("terminal command capability drift", base, (m) => {
+    const suite = m.suites.find((item) => item.lifecycle === "batched-historical");
+    m.commandCapabilities.commands.find((item) => item.suiteId === suite.id).argv[1] += " # forged";
+  }, /158 assertion command capabilities|immutable executable/, discovery);
+  assertRed("terminal contract drift", base, (m) => {
+    m.suites.find((item) => item.lifecycle === "batched-historical").shadowContract.triggerSha256 = "0".repeat(64);
+  }, /32-variant shadow.*drifted/, discovery);
+  assertRed("994 second variant omission", base, (m) => {
+    m.legacyOrigins.find((item) => item.ownerIssue === "#994" && item.disposition === "batched-historical").replacementSuites.pop();
+  }, /expected exactly 2 unique replacement/, discovery);
+  assertRed("terminal wrapper restoration metadata", base, (m) => {
+    const origin = m.legacyOrigins.find((item) => item.disposition === "batched-historical");
+    origin.providerWorkflow = `.github/workflows/${origin.stem}.${origin.extension}`;
+  }, /historical wrapper absent/, discovery);
+  assertRed("shared action pin drift", base, () => {}, /exact pinned checkout\/setup-node/, {
+    ...discovery,
+    matrixSource: discovery.matrixSource.replace("actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683", "actions/checkout@v4"),
+  });
+  assertRed("manual dispatch fanout", base, () => {}, /exact isolated #2300-only route/, {
+    ...discovery,
+    matrixSource: discovery.matrixSource.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true"),
+  });
+  assertRed("unavailable pre-matrix job context", base, () => {}, /supported pre-matrix event contexts/, {
+    ...discovery,
+    matrixSource: discovery.matrixSource.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"),
   });
   assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /89 providers|externally referenced workflow provider omitted/, discovery);
   assertRed("provider duplication", base, (m) => m.workflowProviders.push(clone(m.workflowProviders[0])), /duplicate or empty workflow provider/, discovery);

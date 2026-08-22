@@ -1,7 +1,7 @@
 /**
  * #1609 — the short plate keeps the chevron. IMPLEMENTOR happy-path guard.
  *
- * Registered in .github/workflows/issue-1609-card-identity.yml.
+ * Registered as ci-batch:issue-1609-card-identity in .github/ci-batch/MANIFEST.json.
  *
  * ---------------------------------------------------------------------------
  * WHAT THIS DEFENDS

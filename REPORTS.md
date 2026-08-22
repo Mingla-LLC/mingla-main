@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-22 — CI now runs 32 Node test variants and all 107 preserved commands through the governed shared batch instead of 31 separate workflow wrappers, removing duplicated setup while keeping every test and fail-closed ownership, lifecycle, and command contract intact. (#2437, PR #2452)
 - 2026-08-22 — Shared CI shards now install dependencies once, execute all 22 registered suites through 46 locked test capabilities, contain timeouts and descendants, isolate dependency state, exclude job secrets, and report every pass, failure, timeout, missing suite, duration, and setup count honestly. (#2436, PR #2450)
 - 2026-08-22 — CI now has one fail-closed typed registry for all 198 historical origins, 22 batched suites, and 89 externally referenced workflow providers, with exact ownership, setup, runtime, command, test-file, YAML, and cutover truth recorded before consolidation begins. (#2435, PR #2442)
 - 2026-08-22 — Explorer’s native-version CI guard still protects its real identity and exact test wiring, but no longer freezes every later CI manifest or unrelated file change; executable ownership, active workflow steps, dead-code moves, comments, and string escapes now fail closed. (#2446, PR #2447)

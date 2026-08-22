@@ -19,14 +19,21 @@ import {
 const swipeableUrl = new URL('../../SwipeableCards.tsx', import.meta.url);
 const controllerUrl = new URL('../useDeckSwipeController.ts', import.meta.url);
 const stageUrl = new URL('../DeckSwipeStage.tsx', import.meta.url);
-const workflowUrl = new URL('../../../../../.github/workflows/issue-1481-explorer-deck-tests.yml', import.meta.url);
+const workflowUrl = new URL('../../../../../.github/ci-batch/MANIFEST.json', import.meta.url);
 
-const [swipeableSource, controllerSource, stageSource, workflowSource] = await Promise.all([
+const [swipeableSource, controllerSource, stageSource, workflowRegistrySource] = await Promise.all([
   readFile(swipeableUrl, 'utf8'),
   readFile(controllerUrl, 'utf8'),
   readFile(stageUrl, 'utf8'),
   readFile(workflowUrl, 'utf8'),
 ]);
+const workflowSource = typedSuiteWorkflow(workflowRegistrySource, 'issue-1481-explorer-deck-tests');
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return [`node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
+}
 
 const FORBIDDEN_CONTROLLER_PATTERNS = [
   'PanResponder',

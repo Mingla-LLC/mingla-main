@@ -1,7 +1,7 @@
 /**
  * #1609 Direction C, wave 1 — the TESTER'S ADVERSARIAL guard.
  *
- * Registered in .github/workflows/issue-1609-card-identity.yml.
+ * Registered as ci-batch:issue-1609-card-identity in .github/ci-batch/MANIFEST.json.
  *
  * ---------------------------------------------------------------------------
  * WHY THIS FILE EXISTS, AND HOW IT DIFFERS FROM THE HAPPY-PATH GUARDS

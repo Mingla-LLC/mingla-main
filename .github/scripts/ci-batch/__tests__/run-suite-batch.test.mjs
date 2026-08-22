@@ -118,13 +118,28 @@ test("no batched suite provides a REQUIRED status check", () => {
   }
 });
 
-test("the batched suites' original workflows are GONE, so nothing runs twice", () => {
-  for (const suite of expectedSuites(loadManifest(), null)) {
+test("executable suite origins obey the lifecycle-specific duplicate-provider contract", () => {
+  // [TEST-MOD-APPROVED #2437] Shadow is the one reviewed state where both
+  // providers intentionally exist. Cutover lifecycles still require the wrapper
+  // absent, and shadow requires the exact registered historical provider live.
+  const manifest = loadManifest();
+  for (const suite of expectedSuites(manifest, null)) {
     const origin = path.resolve(REPO_ROOT, suite.origin);
-    assert.equal(
-      fs.existsSync(origin),
-      false,
-      `${suite.id} is registered in the batch AND still has its own workflow at ${suite.origin} — it would run twice, and deleting the batch entry would leave no trace`,
+    assert.ok(
+      ["batched-active", "batched-historical", "shadow-active"].includes(suite.lifecycle),
+      `${suite.id} has an unreviewed executable lifecycle ${suite.lifecycle}`,
     );
+    if (suite.lifecycle === "shadow-active") {
+      const legacy = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === path.basename(suite.origin));
+      assert.ok(fs.existsSync(origin), `${suite.id} removed its historical wrapper before shadow parity`);
+      assert.equal(legacy?.disposition, "shadow-active", `${suite.id} is not claimed by the shadow origin registry`);
+      assert.equal(legacy?.providerWorkflow, suite.origin, `${suite.id} does not name the exact registered live provider`);
+    } else {
+      assert.equal(
+        fs.existsSync(origin),
+        false,
+        `${suite.id} restored a historical wrapper after batch cutover at ${suite.origin}`,
+      );
+    }
   }
 });

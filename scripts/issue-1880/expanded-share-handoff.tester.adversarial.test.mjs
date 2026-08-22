@@ -448,8 +448,8 @@ test('T11 expanded admission freezes message context with the historical default
     'message context must be captured with the admitted identity, not reread after dismissal');
 });
 
-test('T12 all nine expanded-card mount owners remain in the guarded workflow', () => {
-  const workflow = read('.github/workflows/issue-1880-expanded-share-handoff.yml');
+test('T12 all nine expanded-card mount owners remain in the typed batch provider', () => {
+  const workflow = read('.github/ci-batch/MANIFEST.json');
   for (const owner of [
     'DiscoverScreen.tsx',
     'MessageInterface.tsx',
@@ -462,6 +462,6 @@ test('T12 all nine expanded-card mount owners remain in the guarded workflow', (
     'ViewFriendProfileScreen.tsx',
   ]) {
     assert.match(workflow, new RegExp(owner.replace('.', '\\.')),
-      `${owner} must remain under the #1880 regression workflow`);
+      `${owner} must remain under the #1880 regression provider`);
   }
 });

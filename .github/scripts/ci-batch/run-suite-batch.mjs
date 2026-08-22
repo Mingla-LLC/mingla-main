@@ -10,6 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { decodeManifestTextRepresentations } from "./validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -17,7 +18,9 @@ const MANIFEST_PATH = path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json");
 const SUPERVISOR_PATH = path.join(HERE, "process-supervisor.py");
 const CHILD_ENV_NAMES = new Set(["CI", "NODE_ENV", "TZ", "LANG", "LC_ALL", "FORCE_COLOR"]);
 
-export function loadManifest(p = MANIFEST_PATH) { return JSON.parse(fs.readFileSync(p, "utf8")); }
+export function loadManifest(p = MANIFEST_PATH) {
+  return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
+}
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
 
 // Compatibility API for the pre-Phase-2 committed regression. Production uses
@@ -89,13 +92,34 @@ export function setupProfileForClass(manifest, klass) {
   return { name: owners[0][0], profile: owners[0][1] };
 }
 
+export function profileInstalls(profile) {
+  if (profile?.install) return [profile.install];
+  return Array.isArray(profile?.installs) ? profile.installs : [];
+}
+
 export function validateSetupEvidence(manifest, klass, evidence) {
   const owner = setupProfileForClass(manifest, klass);
-  const expectedInstalls = owner.profile.install === null ? 0 : 1;
+  const expectedInstalls = profileInstalls(owner.profile).length;
   if (!evidence || evidence.class !== klass || evidence.setupProfile !== owner.name || evidence.setupExecutions !== 1 || evidence.installExecutions !== expectedInstalls) {
     throw new Error(`setup evidence mismatch for ${klass}: expected profile=${owner.name}, setup=1, installs=${expectedInstalls}`);
   }
   return owner;
+}
+
+export function performSetup(manifest, klass, root = REPO_ROOT, tempRoot = process.env.RUNNER_TEMP || os.tmpdir()) {
+  const owner = setupProfileForClass(manifest, klass);
+  const installs = profileInstalls(owner.profile);
+  for (const install of installs) {
+    const result = spawnSync(install.invocation.command, install.invocation.argv, {
+      cwd: path.join(root, install.cwd),
+      env: process.env,
+      stdio: "inherit",
+    });
+    if (result.error || result.status !== 0) {
+      throw new Error(`typed setup failed for ${klass} at ${install.cwd}: ${result.error?.message || `exit ${result.status}`}`);
+    }
+  }
+  return recordSetup(manifest, klass, installs.length, tempRoot);
 }
 
 export function recordSetup(manifest, klass, installExecutions, tempRoot = process.env.RUNNER_TEMP || os.tmpdir()) {
@@ -242,13 +266,13 @@ export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-suite-"));
   const workspaceRoot = path.join(temporaryRoot, "workspace");
   execFileSync("git", ["worktree", "add", "--detach", workspaceRoot, "HEAD"], { cwd: root, stdio: "ignore" });
-  if (profile.install) {
-    const installedModules = path.join(root, profile.install.cwd, "node_modules");
+  for (const install of profileInstalls(profile)) {
+    const installedModules = path.join(root, install.cwd, "node_modules");
     if (!fs.statSync(installedModules, { throwIfNoEntry: false })?.isDirectory()) {
       removeWorktree(root, temporaryRoot, workspaceRoot);
-      throw new Error(`setup output missing: ${profile.install.cwd}/node_modules`);
+      throw new Error(`setup output missing: ${install.cwd}/node_modules`);
     }
-    const isolatedModules = path.join(workspaceRoot, profile.install.cwd, "node_modules");
+    const isolatedModules = path.join(workspaceRoot, install.cwd, "node_modules");
     fs.mkdirSync(path.dirname(isolatedModules), { recursive: true });
     try { cloneDependencyTree(installedModules, isolatedModules, root, workspaceRoot); }
     catch (error) { removeWorktree(root, temporaryRoot, workspaceRoot); throw error; }
@@ -414,8 +438,8 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   let executed = 0;
   let allowedCleanup = [];
   let suiteHome;
-  const dependencyRoot = profile?.install ? path.join(root, profile.install.cwd, "node_modules") : null;
-  let immutableSnapshot = null;
+  const dependencyRoots = profileInstalls(profile).map((install) => path.join(root, install.cwd, "node_modules"));
+  let immutableSnapshots = [];
   try {
     workspace = workspaceFactory({ root, profile, suite });
     suiteHome = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
@@ -427,7 +451,7 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     // Workspace/dependency cloning is trusted preparation and may update source
     // filesystem metadata (APFS clonefile does this for some xattrs). Establish
     // ownership only after preparation, immediately before untrusted suite code.
-    immutableSnapshot = dependencyRoot ? dependencySnapshot(dependencyRoot) : null;
+    immutableSnapshots = dependencyRoots.map((dependencyRoot) => dependencySnapshot(dependencyRoot));
     for (const [stepIndex, step] of (status === "passed" ? suite.steps : []).entries()) {
       const cwd = path.resolve(workspace.root, step.cwd || ".");
       const relative = path.relative(workspace.root, cwd);
@@ -447,9 +471,9 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
       executed += 1;
       if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
     }
-    if (dependencyRoot) {
+    if (dependencyRoots.length) {
       let changed = false;
-      try { changed = dependencySnapshot(dependencyRoot) !== immutableSnapshot; }
+      try { changed = dependencyRoots.some((dependencyRoot, index) => dependencySnapshot(dependencyRoot) !== immutableSnapshots[index]); }
       catch { changed = true; }
       if (changed) {
         status = "failed"; code = code || 2; reason = "shard dependency snapshot changed during suite execution";
@@ -526,6 +550,10 @@ function writeReport(manifest, report, root = REPO_ROOT) {
 
 async function main() {
   const manifest = loadManifest();
+  if (process.argv[2] === "--setup") {
+    console.log(`executed and recorded one typed setup at ${performSetup(manifest, process.argv[3])}`);
+    return;
+  }
   if (process.argv[2] === "--record-setup") {
     console.log(`recorded one setup execution at ${recordSetup(manifest, process.argv[3], process.argv[4])}`);
     return;

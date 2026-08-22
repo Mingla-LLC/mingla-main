@@ -14,6 +14,10 @@ const VICTIM = `${DECK_DIR}/issue_1701_dark_card_edges.test.mjs`;
 const workflows = Object.fromEntries(fs.readdirSync(path.join(ROOT, ".github/workflows"))
   .filter((name) => /\.ya?ml$/.test(name))
   .map((name) => [name, fs.readFileSync(path.join(ROOT, ".github/workflows", name), "utf8")]));
+const registry = JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+for (const suite of registry.suites.filter((item) => item.lifecycle === "batched-historical")) {
+  workflows[`ci-batch:${suite.id}`] = suite.steps.map((step) => `run: |\n  ${step.run.replaceAll("\n", "\n  ")}`).join("\n");
+}
 const baseline = {
   diskFiles: fs.readdirSync(path.join(ROOT, DECK_DIR))
     .filter((name) => name.endsWith(".test.mjs"))
@@ -23,13 +27,11 @@ const baseline = {
 };
 
 function withoutVictimReferences(source) {
-  return source
-    .replace(`          test -f ${VICTIM}`, "          # executable existence reference removed")
-    .replace(`          ${VICTIM}`, "          # executable node reference removed");
+  return source.replaceAll(VICTIM, `${DECK_DIR}/unrelated.test.mjs`);
 }
 
 test("#1607 YAML prose cannot impersonate executable wiring, including quoted-hash shell text", () => {
-  const deceptiveWorkflow = `${withoutVictimReferences(workflows["issue-1609-card-identity.yml"])}
+  const deceptiveWorkflow = `${withoutVictimReferences(workflows["ci-batch:issue-1609-card-identity"])}
       - name: prose is not protection
         run: |
           echo "# ${VICTIM} is discussed here" # a quoted hash is shell data
@@ -38,14 +40,14 @@ test("#1607 YAML prose cannot impersonate executable wiring, including quoted-ha
 `;
   const failures = checkExplorerGuardIntegrity({
     ...baseline,
-    workflows: { ...workflows, "issue-1609-card-identity.yml": deceptiveWorkflow },
+    workflows: { ...workflows, "ci-batch:issue-1609-card-identity": deceptiveWorkflow },
   });
   assert.ok(failures.includes(`wiring: ${VICTIM} lacks executable test -f`));
   assert.ok(failures.includes(`wiring: ${VICTIM} is not passed to node --test`));
 });
 
 test("#1607 a quoted hash does not hide later real shell commands in the same run block", () => {
-  const executableWorkflow = `${withoutVictimReferences(workflows["issue-1609-card-identity.yml"])}
+  const executableWorkflow = `${withoutVictimReferences(workflows["ci-batch:issue-1609-card-identity"])}
       - name: real commands survive quoted hash text
         run: |
           echo "# this hash is quoted data" # this suffix is a shell comment
@@ -54,16 +56,18 @@ test("#1607 a quoted hash does not hide later real shell commands in the same ru
 `;
   assert.deepEqual(checkExplorerGuardIntegrity({
     ...baseline,
-    workflows: { ...workflows, "issue-1609-card-identity.yml": executableWorkflow },
+    workflows: { ...workflows, "ci-batch:issue-1609-card-identity": executableWorkflow },
   }), []);
 });
 
 test("#1607 existence-only wiring remains red until the guard reaches node --test", () => {
-  const existenceOnly = workflows["issue-1609-card-identity.yml"]
-    .replace(`          ${VICTIM}`, "          unrelated.test.mjs");
+  const existenceOnly = workflows["ci-batch:issue-1609-card-identity"]
+    .split("\n")
+    .map((line) => line.includes("node --test") ? line.replaceAll(VICTIM, `${DECK_DIR}/unrelated.test.mjs`) : line)
+    .join("\n");
   const failures = checkExplorerGuardIntegrity({
     ...baseline,
-    workflows: { ...workflows, "issue-1609-card-identity.yml": existenceOnly },
+    workflows: { ...workflows, "ci-batch:issue-1609-card-identity": existenceOnly },
   });
   assert.ok(!failures.some((failure) => failure === `wiring: ${VICTIM} lacks executable test -f`));
   assert.ok(failures.includes(`wiring: ${VICTIM} is not passed to node --test`));
@@ -78,13 +82,13 @@ test("#1607 duplicate catalog rows cannot masquerade as a complete disk inventor
 
 test("#1607 #1481 require/run parity rejects one-sided ninth-guard drift", () => {
   const ninth = `${DECK_DIR}/issue_1481_ninth.test.mjs`;
-  const requireOnlyDrift = `${workflows["issue-1481-explorer-deck-tests.yml"]}
-      - name: ninth existence-only guard
-        run: test -f ${ninth}
+  const requireOnlyDrift = `${workflows["ci-batch:issue-1481-explorer-deck-tests"]}
+run: |
+  test -f ${ninth}
 `;
   const failures = checkExplorerGuardIntegrity({
     ...baseline,
-    workflows: { ...workflows, "issue-1481-explorer-deck-tests.yml": requireOnlyDrift },
+    workflows: { ...workflows, "ci-batch:issue-1481-explorer-deck-tests": requireOnlyDrift },
   });
   assert.ok(failures.includes("#1481 exact-eight require set drifted"));
   assert.ok(!failures.includes("#1481 exact-eight run set drifted"));

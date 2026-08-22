@@ -11,13 +11,21 @@ const urls = {
   historyStore: new URL('../../../store/deckSessionHistoryStore.ts', import.meta.url),
   appHandlers: new URL('../../AppHandlers.tsx', import.meta.url),
   heroPolicy: new URL('../deckHeroPolicy.ts', import.meta.url),
-  workflow: new URL('../../../../../.github/workflows/issue-1481-explorer-deck-tests.yml', import.meta.url),
+  workflow: new URL('../../../../../.github/ci-batch/MANIFEST.json', import.meta.url),
 };
 
 const sourceEntries = await Promise.all(
   Object.entries(urls).map(async ([key, url]) => [key, await readFile(url, 'utf8')]),
 );
 const source = Object.fromEntries(sourceEntries);
+source.workflow = typedSuiteWorkflow(source.workflow, 'issue-1481-explorer-deck-tests');
+
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return [`node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
+}
 
 class HistoryHarness {
   cards = [];

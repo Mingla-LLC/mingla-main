@@ -43,7 +43,7 @@ const urls = {
   stage: new URL('../DeckSwipeStage.tsx', import.meta.url),
   commit: new URL('../../../utils/swipeCommit.ts', import.meta.url),
   workflow: new URL(
-    '../../../../../.github/workflows/issue-1576-deck-promoted-card.yml',
+    '../../../../../.github/ci-batch/MANIFEST.json',
     import.meta.url,
   ),
 };
@@ -52,6 +52,13 @@ const sourceEntries = await Promise.all(
   Object.entries(urls).map(async ([key, url]) => [key, await readFile(url, 'utf8')]),
 );
 const source = Object.fromEntries(sourceEntries);
+source.workflow = typedSuiteWorkflow(source.workflow, 'issue-1576-deck-promoted-card');
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return [`node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
+}
 
 const GUARD_FILES = [
   'app-mobile/src/components/swipeDeck/__tests__/issue_1576_promoted_card_opacity.test.mjs',
@@ -664,7 +671,7 @@ test('A-5b a workflow that only MENTIONS a guard in a comment is rejected', () =
   const unwired = source.workflow
     .split('\n')
     .filter((line) => /^\s*#/.test(line) || !line.includes(adversarial))
-    .join('\n');
+    .join('\n') + `\n# ${adversarial}`;
 
   assert.ok(
     unwired.includes('issue_1576_promoted_card_opacity.adversarial.test.mjs'),

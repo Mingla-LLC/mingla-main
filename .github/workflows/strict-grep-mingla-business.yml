@@ -473,7 +473,7 @@ jobs:
   static-gates:
     name: "Strict grep — static gates (class A)"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

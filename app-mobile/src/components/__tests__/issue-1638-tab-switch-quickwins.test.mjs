@@ -1,9 +1,9 @@
 // Issue #1638 [tab switch quick wins] — IMPLEMENTOR happy-path regression suite.
 //
 // Runs under plain `node --test` (app-mobile has NO jest — see
-// .github/workflows/issue-1516-coach-mark-tests.yml for the convention). Wired as
+// the ci-batch:issue-1516-coach-mark-tests suite for the convention). Wired as
 // `npm run test:issue-1638` from app-mobile/ and executed by
-// .github/workflows/issue-1638-tab-switch-quickwins-tests.yml.
+// ci-batch:issue-1638-tab-switch-quickwins-tests in .github/ci-batch/MANIFEST.json.
 //
 // #1638 is "switching tabs acknowledges the tap before the screen is ready". This suite
 // covers the three quick wins that were in scope FOR PR #1660, which explicitly did not fix

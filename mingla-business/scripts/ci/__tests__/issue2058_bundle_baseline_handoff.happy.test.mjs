@@ -596,7 +596,9 @@ describe("#2058 read-only provenance verifier", () => {
 describe("#2058 workflow trust boundary", () => {
   const ratchet = readFileSync(join(ROOT, ".github/workflows/bundle-baseline-ratchet.yml"), "utf8");
   const guard = readFileSync(join(ROOT, ".github/workflows/bundle-baseline-provenance-guard.yml"), "utf8");
-  const tests = readFileSync(join(ROOT, ".github/workflows/issue-2058-bundle-baseline-handoff-tests.yml"), "utf8");
+  const batchWorkflow = readFileSync(join(ROOT, ".github/workflows/ci-batch.yml"), "utf8");
+  const batchRegistry = JSON.parse(readFileSync(join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+  const tests = `${batchWorkflow.split("\n").filter((line) => /uses: actions\/(?:checkout|setup-node)@/.test(line)).join("\n")}\n${JSON.stringify(batchRegistry.suites.find((suite) => suite.id === "issue-2058-bundle-baseline-handoff-tests"))}`;
   const helper = readFileSync(join(ROOT, "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs"), "utf8");
 
   test("all main pushes run the ratchet and the built-in token is read-only", () => {

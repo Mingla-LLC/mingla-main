@@ -71,7 +71,7 @@ const urls = {
   swipeable: new URL('../../SwipeableCards.tsx', import.meta.url),
   stage: new URL('../DeckSwipeStage.tsx', import.meta.url),
   workflow: new URL(
-    '../../../../../.github/workflows/issue-1593-deck-layer-geometry.yml',
+    '../../../../../.github/ci-batch/MANIFEST.json',
     import.meta.url,
   ),
   self: new URL('./issue_1593_poster_hole_geometry.test.mjs', import.meta.url),
@@ -81,6 +81,13 @@ const sourceEntries = await Promise.all(
   Object.entries(urls).map(async ([key, url]) => [key, await readFile(url, 'utf8')]),
 );
 const source = Object.fromEntries(sourceEntries);
+source.workflow = typedSuiteWorkflow(source.workflow, 'issue-1593-deck-layer-geometry');
+function typedSuiteWorkflow(raw, id) {
+  const registry = JSON.parse(raw); const suite = registry.suites.find((item) => item.id === id);
+  const profile = registry.setupProfiles[suite.setupProfile];
+  return [`node-version: "${profile.runtime.version}"`, `timeout-minutes: ${suite.timeoutSeconds / 60}`,
+    'paths:', ...suite.originPaths, ...suite.steps.map((step) => `run: |\n  ${step.run.replaceAll('\n', '\n  ')}`)].join('\n');
+}
 
 // ---------------------------------------------------------------------------
 // Comment / string stripping and delimiter matching.
