@@ -12,6 +12,49 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
 const fixture = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/__tests__/fixtures/issue-2438-cost-baseline-v1.jsonl"));
 const digest = (value) => crypto.createHash("sha256").update(value).digest("hex");
+// [#2438 A7-SC6] Region-scoped offline guard. It asserts ONLY on the bytes
+// between the two sentinels, so retained subtest 5 — which legitimately shells
+// to git against a synthetic repository it creates itself — stays green. A
+// guard that reds on subtest 5 is itself a defect, so the paired negative is
+// asserted too. It lives at module scope so it can run BEFORE the region and
+// again as its own test: a guard placed after the code it guards cannot fail.
+// Assembled at runtime so the only literal occurrence of each sentinel in this
+// file is the sentinel itself. The exactly-one assertions below then pin that.
+const OFFLINE_REGION_MARK = "// [#2438 A7-SC6 OFFLINE-REGION ";
+const OFFLINE_REGION_BEGIN = `${OFFLINE_REGION_MARK}BEG${"IN]"}`;
+const OFFLINE_REGION_END = `${OFFLINE_REGION_MARK}E${"ND]"}`;
+const OFFLINE_REGION_FORBIDDEN = [
+  "test.skip", "it.skip", "describe.skip", ".only", "t.skip(",
+  "execFileSync", "spawnSync", "execSync", "exec(",
+  "return", "try {", "catch", "fetch(", "refs/pull", "https:", "http:",
+];
+function assertOfflineRegionIsSealed() {
+  const self = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const begin = self.indexOf(OFFLINE_REGION_BEGIN);
+  const end = self.indexOf(OFFLINE_REGION_END);
+  assert.ok(begin > 0 && end > begin, "the A7-SC6 offline region sentinels must both be present and ordered");
+  assert.equal(self.split(OFFLINE_REGION_BEGIN).length - 1, 1, "exactly one BEGIN sentinel must exist in this file");
+  assert.equal(self.split(OFFLINE_REGION_END).length - 1, 1, "exactly one END sentinel must exist in this file");
+  const region = self.slice(begin + OFFLINE_REGION_BEGIN.length, end);
+  const outside = self.slice(0, begin) + self.slice(end + OFFLINE_REGION_END.length);
+  for (const token of OFFLINE_REGION_FORBIDDEN) {
+    assert.equal(region.includes(token), false, `the A7-SC6 offline region must never contain ${token}`);
+  }
+  for (const invocation of ['"git",', "'git',", "child_process"]) {
+    assert.equal(region.includes(invocation), false, `the A7-SC6 offline region must never invoke a subprocess (${invocation})`);
+  }
+  // The region must still carry its weight: gutting it is as much a false green
+  // as skipping it.
+  assert.ok((region.match(/\bassert\./g) || []).length >= 30,
+    "the A7-SC6 offline region must retain its full assertion body");
+  // Paired negative: subtest 5's synthetic-repo shell-out is OUTSIDE the region
+  // and must remain untouched and unguarded.
+  assert.equal(outside.includes('execFileSync("git",args,{cwd:repo,encoding:"utf8"})'), true,
+    "retained subtest 5's legitimate synthetic-repo git invocation must stay outside the guarded region");
+  assert.equal(OFFLINE_REGION_FORBIDDEN.filter((token) => outside.includes(token)).length >= 4, true,
+    "the guard must be region-scoped, not file-scoped: forbidden tokens legitimately exist outside the region");
+}
+
 const SOURCE = { eventName: "pull_request", baseSha: "1".repeat(40), headSha: "2".repeat(40), mergeBaseSha: "1".repeat(40), pathSource: "local-git-three-dot-nul" };
 
 test("canonical cost fixture is complete and byte-locked", () => {
@@ -37,6 +80,12 @@ test("canonical cost fixture is complete and byte-locked", () => {
 // both divergent records by identity. It does NOT re-derive merge-base; that
 // proof lives in the ledger.
 test("all 100 frozen records are offline-locked: identity, key order, distribution, and merge-base split", () => {
+  // The guard runs BEFORE the region it guards. Ordered the other way it is
+  // itself unfalsifiable: an early return between the sentinels skips the
+  // region's assertions AND the guard, and the subtest reports ok with nothing
+  // executed. It is additionally re-run as its own test below, so no control
+  // flow inside this body can suppress it.
+  assertOfflineRegionIsSealed();
   // [#2438 A7-SC6 OFFLINE-REGION BEGIN]
   const lines = fixture.toString("utf8").trimEnd().split("\n");
   const records = lines.map(JSON.parse);
@@ -125,38 +174,6 @@ test("all 100 frozen records are offline-locked: identity, key order, distributi
     assert.equal(pathMatches("mingla-business/app/event/[id]/edit.tsx", impostor), false);
   }
   // [#2438 A7-SC6 OFFLINE-REGION END]
-
-  // Region-scoped guard. It asserts ONLY on the bytes between the two sentinels
-  // above, so retained subtest 5 — which legitimately shells to git against a
-  // synthetic repository it creates itself — stays green. A guard that reds on
-  // subtest 5 is itself a defect, so the paired negative is asserted too.
-  const self = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
-  const BEGIN = "// [#2438 A7-SC6 OFFLINE-REGION BEGIN]";
-  const END = "// [#2438 A7-SC6 OFFLINE-REGION END]";
-  const begin = self.indexOf(BEGIN);
-  const end = self.indexOf(END);
-  assert.ok(begin > 0 && end > begin, "the A7-SC6 offline region sentinels must both be present and ordered");
-  assert.equal(self.split(BEGIN).length - 1, 2, "exactly one BEGIN sentinel plus its one literal in this guard");
-  assert.equal(self.split(END).length - 1, 2, "exactly one END sentinel plus its one literal in this guard");
-  const region = self.slice(begin + BEGIN.length, end);
-  const outside = self.slice(0, begin) + self.slice(end + END.length);
-  const FORBIDDEN = [
-    "test.skip", "it.skip", "describe.skip", ".only", "t.skip(",
-    "execFileSync", "spawnSync", "execSync", "exec(",
-    "return", "try {", "catch", "fetch(", "refs/pull", "https:", "http:",
-  ];
-  for (const token of FORBIDDEN) {
-    assert.equal(region.includes(token), false, `the A7-SC6 offline region must never contain ${token}`);
-  }
-  // Paired negative: subtest 5's synthetic-repo shell-out is OUTSIDE the region
-  // and must remain untouched and unguarded.
-  assert.equal(outside.includes('execFileSync("git",args,{cwd:repo,encoding:"utf8"})'), true,
-    "retained subtest 5's legitimate synthetic-repo git invocation must stay outside the guarded region");
-  assert.equal(FORBIDDEN.filter((token) => outside.includes(token)).length >= 4, true,
-    "the guard must be region-scoped, not file-scoped: forbidden tokens legitimately exist outside the region");
-  for (const invocation of ['"git",', "'git',", "child_process"]) {
-    assert.equal(region.includes(invocation), false, `the A7-SC6 offline region must never invoke a subprocess (${invocation})`);
-  }
 });
 
 test("reviewed grammar treats brackets literally and rejects unsafe glob dialects", () => {
@@ -199,4 +216,13 @@ test("#2013 wakes from its exact guard path and every other wrapper wakes from i
   assert.equal(tenant.originPaths.length, 16); assert.equal(tenant.originPaths.at(-1), ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs");
   assert.equal(selectionDocument(manifest, tenant.hostClass, [tenant.originPaths.at(-1)]).selectedSuiteIds.includes(tenant.id), true);
   for (const suite of suites.filter((item) => item !== tenant)) assert.equal(selectionDocument(manifest, suite.hostClass, [suite.origin]).selectedSuiteIds.includes(suite.id), true);
+});
+
+// [#2438 A7-SC6] The guard again, as a test of its own. Nothing inside the
+// offline subtest's body — an early return, a thrown bail-out, any control flow
+// at all — can suppress a separate test() call. This is the assertion that makes
+// "insert an early return between the sentinels" turn the gate RED even if the
+// in-body call were ever removed.
+test("the A7-SC6 offline region is sealed against skips, bail-outs, and subprocesses", () => {
+  assertOfflineRegionIsSealed();
 });

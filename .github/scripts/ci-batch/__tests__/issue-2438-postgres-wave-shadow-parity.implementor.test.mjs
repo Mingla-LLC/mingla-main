@@ -34,7 +34,13 @@ const PROVIDER_DIGEST = "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c
 const PHASE3B_PROVIDER_NAMES = new Set(["issue-1022-theme-control-tests.yml","issue-1902-public-event-lifecycle-tests.yml","issue-2013-ari-tenant-containment.yml","issue-885-scanner-invite-loader-tests.yml","issue-948-w1-enablers-tests.yml","orch-0976-draft-promotion-tests.yml"]);
 const PHASE3B_PROVIDER_DIGEST = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
 
-function git(root, args) { return execFileSync("git", args, { cwd: root, encoding: "utf8" }).trim(); }
+// [#2438] CI runners carry NO global git identity. Every invocation supplies its
+// own via -c, so no callsite here can depend on ambient config: relying on it is
+// green on a developer machine and `fatal: empty ident name` on a runner, which
+// is the same local-only-green shape this rework exists to remove. Never make a
+// commit conditional on identity being present — a skip is worse than the red.
+const GIT_IDENTITY = ["-c", "user.email=ci@example.invalid", "-c", "user.name=CI"];
+function git(root, args) { return execFileSync("git", [...GIT_IDENTITY, ...args], { cwd: root, encoding: "utf8" }).trim(); }
 function providerSnapshot(root) {
   const value = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
   const providers = discoverWorkflowProviders(root);
@@ -310,8 +316,8 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
     fs.mkdirSync(path.join(root,"mingla-business/node_modules/jest/bin"),{recursive:true}); fs.mkdirSync(path.join(root,"app-mobile/node_modules/.bin"),{recursive:true});
     fs.writeFileSync(path.join(root,"mingla-business/package-lock.json"),JSON.stringify({packages:{"node_modules/jest":{version:"29.7.0"}}}));
     fs.writeFileSync(path.join(root,"app-mobile/proof.js"),"proof\n");
-    execFileSync("git",["init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
-    execFileSync("git",["add","mingla-business/package-lock.json","app-mobile/proof.js"],{cwd:root}); execFileSync("git",["commit","-qm","fixture"],{cwd:root});
+    execFileSync("git",[...GIT_IDENTITY,"init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
+    execFileSync("git",[...GIT_IDENTITY,"add","mingla-business/package-lock.json","app-mobile/proof.js"],{cwd:root}); execFileSync("git",[...GIT_IDENTITY,"commit","-qm","fixture"],{cwd:root});
     fs.writeFileSync(path.join(root,"mingla-business/node_modules/jest/package.json"),JSON.stringify({name:"jest",version:"29.7.0",bin:{jest:"./bin/jest.js"}}));
     const bin=path.join(root,"mingla-business/node_modules/jest/bin/jest.js"); fs.writeFileSync(bin,"#!/usr/bin/env node\nif(!process.argv.includes('--runInBand'))process.exit(2);\n"); fs.chmodSync(bin,0o755);
     const cache=path.join(root,"empty-cache"); fs.mkdirSync(cache);
@@ -335,8 +341,8 @@ test("#1902 typed Business Jest exposure is lock-pinned and resolves exact offli
 test("suite deadline records every remaining outer and leaf instead of hiding work", async () => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),"phase3b-deadline-"));
   try {
-    execFileSync("git",["init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
-    fs.writeFileSync(path.join(root,"proof.test"),"proof\n"); execFileSync("git",["add","."] ,{cwd:root}); execFileSync("git",["commit","-qm","fixture"],{cwd:root});
+    execFileSync("git",[...GIT_IDENTITY,"init","-q"],{cwd:root}); execFileSync("git",["config","user.email","ci@example.invalid"],{cwd:root}); execFileSync("git",["config","user.name","CI"],{cwd:root});
+    fs.writeFileSync(path.join(root,"proof.test"),"proof\n"); execFileSync("git",["add","."] ,{cwd:root}); execFileSync("git",[...GIT_IDENTITY,"commit","-qm","fixture"],{cwd:root});
     const invocation={kind:"reviewed-shell-v1",command:"bash",argv:["-c","true"]};
     const steps=[1,2].map((ordinal)=>({name:`step ${ordinal}`,cwd:".",run:"true",invocation,commandId:`assert:fixture:${String(ordinal).padStart(2,"0")}`}));
     const suite={id:"fixture",migrationWave:"phase3b-postgres-wave",setupProfile:"fixture",expectedFiles:["proof.test"],generatedPaths:[],timeoutSeconds:60,steps};
@@ -501,6 +507,9 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
   const siblingIsIntact = () => assert.equal(digest(fs.readFileSync(path.join(temp, SIBLING))), SIBLING_SHA);
   try {
     execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
+    // [#2438] This clone commits a drift probe below, so it needs its own identity.
+    // A clone inherits none, and a CI runner has no global one to fall back to.
+    git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
     // The clone carries the last commit. Overlay the working-tree gate sources so
     // this contract is proven against the code under review, not against HEAD.
     fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
