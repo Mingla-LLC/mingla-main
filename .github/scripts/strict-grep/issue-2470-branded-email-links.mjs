@@ -56,6 +56,12 @@ const REPO_ROOT = path.resolve(HERE, "../../..");
 
 const TRACKING_BUILDER = "supabase/functions/_shared/marketingEmailRender.ts";
 const UNSUBSCRIBE_BUILDER = "supabase/functions/marketing-send/index.ts";
+// #2470 follow-up — the SMS tracking-origin builder. This gate originally
+// covered only the two EMAIL builders and shipped green while marketing SMS
+// kept emitting raw supabase.co links for another day. A guard that checks the
+// instances you already knew about is a guard that has not been tested. Any new
+// tracking-origin builder belongs in this list.
+const SMS_TRACKING_BUILDER = "supabase/functions/_shared/marketingBookQuote.ts";
 const MARKETING_CONFIG = "mingla-marketing/next.config.ts";
 const OPT_OUT_PAGE = "mingla-marketing/app/unsubscribe/page.tsx";
 
@@ -95,7 +101,7 @@ export function analyze(files) {
   const violations = [];
   const get = (p) => (files[p] === undefined ? "" : stripComments(files[p]));
 
-  for (const builder of [TRACKING_BUILDER, UNSUBSCRIBE_BUILDER]) {
+  for (const builder of [TRACKING_BUILDER, UNSUBSCRIBE_BUILDER, SMS_TRACKING_BUILDER]) {
     const src = get(builder);
     if (!src) {
       violations.push(`${builder}: builder is missing — cannot verify its link origin.`);
@@ -143,7 +149,7 @@ export function analyze(files) {
 
 function readRepo() {
   const files = {};
-  for (const p of [TRACKING_BUILDER, UNSUBSCRIBE_BUILDER, MARKETING_CONFIG, OPT_OUT_PAGE]) {
+  for (const p of [TRACKING_BUILDER, UNSUBSCRIBE_BUILDER, SMS_TRACKING_BUILDER, MARKETING_CONFIG, OPT_OUT_PAGE]) {
     const abs = path.join(REPO_ROOT, p);
     if (fs.existsSync(abs)) files[p] = fs.readFileSync(abs, "utf8");
   }
@@ -157,6 +163,8 @@ function selfTest() {
       'Deno.env.get("MINGLA_TRACKING_LINK_ORIGIN");',
     [UNSUBSCRIBE_BUILDER]:
       'const BRANDED_UNSUBSCRIBE_LINK_ORIGIN = "https://usemingla.com/unsubscribe";',
+    [SMS_TRACKING_BUILDER]:
+      'const BRANDED_TRACKING_LINK_ORIGIN = "https://usemingla.com/m";',
     [MARKETING_CONFIG]:
       "{ source: '/m/:trackingId', destination: `${f}/marketing-track-click/:trackingId` },\n" +
       "{ source: '/unsubscribe/:token', destination: `${f}/marketing-unsubscribe/:token` },",
@@ -208,7 +216,7 @@ function liveRun() {
     process.exit(1);
   }
   console.log(
-    "#2470 OK — both marketing link builders default to a Mingla-owned origin, " +
+    "#2470 OK — all three marketing link builders default to a Mingla-owned origin, " +
       "both branded routes are served by a rewrite, and the manual opt-out page " +
       "still renders.",
   );
