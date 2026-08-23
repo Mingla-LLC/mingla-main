@@ -80,9 +80,20 @@ Deno.test("ORCH-1342 T-8: RSVP row maps the §4.7 field table exactly", () => {
     doorsOpenLocal: null,
     endsAtLocal: null,
     timezone: "Europe/London",
-    venueName: null,
+    // [TEST-MOD-APPROVED #2469] explorer-venue-name-duplicated. These two lines
+    // WERE the bug. `venueName: null` + `address: <combined location_text>` is
+    // exactly what #2469 names: the combined "<venueName>  · <address>" string
+    // landed on `address` while the card rendered `venueName` separately (name
+    // printed twice, and the doubled string sent to Apple Maps), and the
+    // hard-coded null suppressed the whole "Where you'll be" card, which every
+    // shared renderer gates on `venueName !== null`. The mapper now reads the
+    // PARSED halves from public_theme->business_event->location; this fixture
+    // carries NO parsed location, so the combined text falls back to ONE half
+    // — venueName — and address is honestly null. See
+    // issue_2469_explorer_parsed_location.test.ts E-3/E-5.
+    venueName: "12 High St, London",
     city: "London",
-    address: "12 High St, London",
+    address: null,
     hideAddressUntilTicket: false,
     format: "in-person",
     locationGeo: { lat: 51.5072, lng: -0.1276 },

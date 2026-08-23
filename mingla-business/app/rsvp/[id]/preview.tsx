@@ -16,7 +16,7 @@
  */
 
 import React, { useEffect, useMemo, useState } from "react";
-import { Linking, Platform, StyleSheet, Text, View } from "react-native";
+import { StyleSheet, Text, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -38,9 +38,12 @@ import {
 import {
   resolveTheme,
   createThemePalette,
+  type MapsOpenTarget,
   type PublicEventProps,
   type PublicBrandProps,
 } from "@mingla/offering-rendering";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../../../src/utils/openMapsTarget";
 import { useBrandList, type Brand } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -143,19 +146,11 @@ const mapBrandToPublicBrand = (
   };
 };
 
-const openMapsForQuery = (query: string): void => {
-  const encoded = encodeURIComponent(query);
-  const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
-  const platformUrl =
-    Platform.OS === "ios"
-      ? `maps://?q=${encoded}`
-      : Platform.OS === "android"
-        ? `geo:0,0?q=${encoded}`
-        : googleUrl;
-
-  void Linking.openURL(platformUrl).catch(() => {
-    void Linking.openURL(googleUrl).catch(() => undefined);
-  });
+// issue #2468 — see mingla-business/src/utils/openMapsTarget.ts. The preview
+// route no longer composes a maps URL; it forwards the renderer's target, which
+// carries the coordinate we already store.
+const openMapsForTarget = (target: MapsOpenTarget): void => {
+  openMapsTarget(target);
 };
 
 export default function RsvpPreviewRoute(): React.ReactElement {
@@ -398,7 +393,7 @@ export default function RsvpPreviewRoute(): React.ReactElement {
         onClose={handleBack}
         onShare={handleShareTap}
         onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
-        onOpenMaps={openMapsForQuery}
+        onOpenMaps={openMapsForTarget}
         onSubmit={handlePreviewSubmit}
         renderPhoneField={(args) => (
           <BusinessRsvpPhoneField

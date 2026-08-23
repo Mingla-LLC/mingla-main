@@ -78,6 +78,10 @@ import type {
 import { VenueReserveSheet } from "../../../../src/components/expandedCard/VenueReserveSheet";
 import { ConsumerStayGuestExperience } from "../../../../src/components/stay/ConsumerStayGuestExperience";
 import { usePublicVenue } from "../../../../src/hooks/usePublicVenue";
+// issue #2468 — DEEP specifier (this route never imports a package barrel);
+// `import type` is erased, so it adds nothing to the bundle.
+import type { MapsOpenTarget } from "@mingla/offering-rendering/mapsDeepLink";
+import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
 import { usePublicStayDetail } from "../../../../src/hooks/useStayGuest";
 import { postHogService } from "../../../../src/services/postHogService";
 import { captureVenueOrganicEvent } from "../../../../src/services/venueOrganicCaptureService";
@@ -287,10 +291,12 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     [captureVenueFunnel],
   );
 
-  const handleOpenMaps = useCallback((mapsQuery: string): void => {
-    void Linking.openURL(
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapsQuery)}`,
-    ).catch(() => undefined);
+  // issue #2468 — was a google TEXT search on the venue's address string, which
+  // the provider re-geocoded. The shared screen now hands us the venue's stored
+  // lat/lng (the same pair its static map is drawn from) and the link is
+  // anchored on it.
+  const handleOpenMaps = useCallback((target: MapsOpenTarget): void => {
+    openMapsTarget(target);
   }, []);
 
   const handleClose = useCallback((): void => {

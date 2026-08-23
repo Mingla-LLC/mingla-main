@@ -111,6 +111,103 @@ const parseLocationGeoPoint = (
   return null;
 };
 
+// ===========================================================================
+// issue #2469 [explorer-venue-name-duplicated] — the ONE place the explorer
+// splits a public event's location into its two display halves.
+//
+// IT LIVES HERE, not in src/utils/, for a hard reason: this module is loaded
+// DIRECTLY by `deno test` (publicEventSeedService.orch1342.test.ts, wired into
+// meta-orch-1337-social-proof-tests.yml). Deno cannot resolve an extensionless
+// relative specifier, and app-mobile's tsconfig has no
+// `allowImportingTsExtensions`, so there is no import form that satisfies both
+// Metro/tsc and Deno. Keeping the function in this already-Deno-loadable pure
+// module is what lets ONE owner serve both explorer mappers.
+// `ConnectionsPage.tsx` imports it from here.
+//
+// THE BUG THIS CLOSES
+// -------------------
+// `events.location_text` is a COMBINED string:
+//
+//   "Didi Museum  · Akin Adesola Street 175, Lagos 10, Lagos, Nigeria"
+//
+// The business/web read path (`publicEventsService`) has always taken the
+// PARSED halves from `public_theme -> business_event -> location`
+// (`{ venueName, address }`) and shown the name once. Two explorer mappers
+// instead assigned the WHOLE combined string to the card's `address` while
+// separately rendering `venueName`, so the explorer printed the venue name
+// twice — and then fed that doubled string to the maps deep link
+// ("Didi Museum, Didi Museum  · Akin Adesola Street 175, …"), which is why
+// #2468 reproduced most reliably on the explorer.
+// ===========================================================================
+
+export interface PublicEventLocationParts {
+  /** The venue's own name, e.g. "Didi Museum". Never the combined string. */
+  venueName: string | null;
+  /**
+   * The STREET address only, e.g. "Akin Adesola Street 175, Lagos 10, Lagos,
+   * Nigeria". Never carries the venue name when `venueName` is non-null.
+   */
+  address: string | null;
+}
+
+const asTrimmedString = (value: unknown): string | null => {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+};
+
+/**
+ * Split a public-event row's location into `{ venueName, address }`, reading
+ * the SAME source the business/web path reads:
+ * `public_theme -> business_event -> location`.
+ *
+ * `locationText` (the combined `events.location_text`) is used ONLY as the
+ * fallback when the parsed object is absent — and then it is assigned to
+ * exactly ONE of the two halves, never both:
+ *
+ *   parsed venueName + parsed address → both, as stored (the normal case)
+ *   parsed venueName only             → venueName; address null
+ *   parsed address only               → address; venueName null
+ *   neither                           → the whole locationText lands on
+ *                                       `venueName` ALONE and `address` stays
+ *                                       null, so nothing can render it twice
+ *
+ * That last rule is the invariant: the combined string is NEVER returned in
+ * BOTH halves, and never in `address` while `venueName` is also non-null.
+ *
+ * It lands on `venueName` rather than `address` for a concrete reason: every
+ * shared renderer gates the whole "Where you'll be" card on
+ * `event.venueName !== null` (EventOfferingBody:740, PublicEventPage:753,
+ * RsvpOfferingBody:1713). Putting the fallback on `address` would hide the
+ * card outright — which is exactly the second half of #2469 (this mapper
+ * hard-coded `venueName: null`, so the cold /e/ route showed no location card
+ * at all until the canonical read landed).
+ *
+ * Never fabricates: a half the row cannot supply comes back null
+ * (Constitution #9).
+ */
+export function extractPublicEventLocation(
+  publicTheme: unknown,
+  locationText: string | null | undefined,
+): PublicEventLocationParts {
+  const businessEvent = asRecord(asRecord(publicTheme).business_event);
+  const location = asRecord(businessEvent.location);
+
+  const parsedVenueName =
+    asTrimmedString(location.venueName) ??
+    asTrimmedString(businessEvent.venueName);
+  const parsedAddress = asTrimmedString(location.address);
+  const combined = asTrimmedString(locationText);
+
+  if (parsedVenueName !== null || parsedAddress !== null) {
+    return { venueName: parsedVenueName, address: parsedAddress };
+  }
+
+  // No parsed halves at all. The combined string is the only honest thing we
+  // hold, and it goes to ONE slot — assigning it to both is the #2469 defect.
+  return { venueName: combined, address: null };
+}
+
 const asCoverMediaType = (
   value: string | null,
 ): BusinessEventCard["coverMediaType"] =>
@@ -128,6 +225,12 @@ export function mapPublicEventSeedRow(
 
   const publicTheme = asRecord(row.public_theme);
   const businessEvent = asRecord(publicTheme.business_event);
+  // issue #2469 — the parsed venueName/address halves (never the combined
+  // `location_text` in both slots). One owner, shared with ConnectionsPage.
+  const seedLocation = extractPublicEventLocation(
+    row.public_theme,
+    row.location_text,
+  );
 
   return {
     eventId: row.id,
@@ -154,11 +257,23 @@ export function mapPublicEventSeedRow(
     doorsOpenLocal: null,
     endsAtLocal: null,
     timezone: row.master_timezone ?? row.timezone ?? "UTC",
-    // The view has no venueName column — location_text is the ADDRESS line
-    // (matching the deck mapper's address source); venueName stays null.
-    venueName: null,
+    /*
+      issue #2469 — was `venueName: null` + `address: row.location_text`.
+
+      TWO defects in three lines. `location_text` is the COMBINED
+      "<venueName>  · <address>" string, so assigning it to `address` printed
+      the venue name a second time under the name line AND sent the doubled
+      string to the maps deep link. And the hard-coded `venueName: null`
+      suppressed the entire "Where you'll be" card on the cold /e/ route,
+      because every shared renderer gates that section on `venueName !== null`.
+
+      Both are closed by reading the PARSED halves out of
+      `public_theme -> business_event -> location` — the same source the
+      business/web mapper (`publicEventsService`) has always used.
+    */
+    venueName: seedLocation.venueName,
     city: row.city ?? null,
-    address: row.location_text ?? null,
+    address: seedLocation.address,
     // MIRRORS the authoritative parses (publicEventsService:1034 AND the deck
     // seed producer extractHideAddressUntilTicket): fail-CLOSED to true — an
     // absent theme value must HIDE the street, never leak it (the 1157

@@ -90,6 +90,8 @@ import VenueReserveSheet from "./expandedCard/VenueReserveSheet";
 import { useVenueReservable } from "../hooks/useVenueReservable";
 import { ImageLightbox } from "./ImageLightbox";
 import { normalizeWebsiteUrl } from "../utils/normalizeWebsiteUrl";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../utils/openMapsTarget";
 // #1605 P2-2 — the body strip renders plain <Image>, and ImageLightbox is
 // images-only, so a video entry past the hero was a broken tile.
 import { isVideoUrl } from "../utils/videoUrl";
@@ -1677,23 +1679,37 @@ export default function ExpandedCardModal({
     return rows.filter((row) => row.name.trim().length > 0);
   })();
 
-  // Helper to open directions in maps app
-  const openDirections = () => {
-    const address = card.address;
+  /**
+   * Directions for the card's own venue. #2468.
+   *
+   * It ALREADY had the coordinate and threw it away: the iOS arm built
+   * `maps:0,0?q=<lat>,<lng>`, which is a free-TEXT search for the string
+   * "6.43,3.42" — Apple re-geocodes it exactly like an address and can land
+   * anywhere. Both arms were also `Platform.select({ios, android})`, which
+   * returns undefined on web, so `if (url)` silently no-opped there (the #1605
+   * dead-tap class), and neither arm had a `canOpenURL` pre-flight or any
+   * user-visible failure. `openMapsTarget` fixes all three at once.
+   */
+  const openDirections = (): void => {
     const coords = nightOut?.coordinates;
-    if (coords) {
-      const url = Platform.select({
-        ios: `maps:0,0?q=${coords.lat},${coords.lng}`,
-        android: `geo:${coords.lat},${coords.lng}?q=${coords.lat},${coords.lng}(${encodeURIComponent(nightOut?.venueName || "")})`,
-      });
-      if (url) Linking.openURL(url);
-    } else if (address) {
-      const url = Platform.select({
-        ios: `maps:0,0?q=${encodeURIComponent(address)}`,
-        android: `geo:0,0?q=${encodeURIComponent(address)}`,
-      });
-      if (url) Linking.openURL(url);
-    }
+    const label = nightOut?.venueName || card.address || null;
+    openMapsTarget(
+      {
+        label,
+        geo: coords ? { lat: coords.lat, lng: coords.lng } : null,
+      },
+      {
+        // This arm never had a pre-flight; the https fallback + toast are new
+        // and are the whole point (it used to no-op silently on web).
+        onUnavailable: () =>
+          toastManager.show(
+            t('cards:expanded.directions_unavailable', {
+              defaultValue: "Couldn't open directions",
+            }),
+            'error',
+          ),
+      },
+    );
   };
 
   /**
@@ -1708,29 +1724,28 @@ export default function ExpandedCardModal({
    */
   const openDirectionsForAddress = (address: string | null): void => {
     if (address === null || address.trim().length === 0) return;
-    const q = encodeURIComponent(address);
-    const url =
-      Platform.OS === 'ios'
-        ? `maps:0,0?q=${q}`
-        : Platform.OS === 'android'
-          ? `geo:0,0?q=${q}`
-          : `https://www.google.com/maps/search/?api=1&query=${q}`;
-    void (async () => {
-      try {
-        const can = await Linking.canOpenURL(url);
-        if (!can) {
-          toastManager.show(t('cards:expanded.directions_unavailable', {
+    /*
+      #2468 — a plan STOP carries no lat/lng (`StopListStop` has `address` and
+      no coordinate; the curated/companion producers never emit one), so this
+      surface keeps the HONEST text path. It now goes through the one builder so
+      the day a stop gains a coordinate, this call site gets the fix for free.
+      The canOpenURL pre-flight, the https fallback and the failure toast all
+      live inside `openMapsTarget`.
+    */
+    openMapsTarget(
+      { label: address, geo: null },
+      {
+        // #1605 added the pre-flight on THIS site; it is preserved.
+        preflight: true,
+        onUnavailable: () =>
+          toastManager.show(
+            t('cards:expanded.directions_unavailable', {
               defaultValue: "Couldn't open directions",
-            }), 'error');
-          return;
-        }
-        await Linking.openURL(url);
-      } catch {
-        toastManager.show(t('cards:expanded.directions_unavailable', {
-            defaultValue: "Couldn't open directions",
-          }), 'error');
-      }
-    })();
+            }),
+            'error',
+          ),
+      },
+    );
   };
 
   /**

@@ -93,6 +93,13 @@ import {
 } from "./eventAcquisitionLifecycle";
 
 import { normalizeCityCountry } from "./normalizeCityCountry";
+// issue #2468 — the ONE privacy gate + label composer for this card. The maps
+// URL itself is built by the HOST from the target this returns.
+import {
+  canOpenMapsTarget,
+  selectVenueMapsTarget,
+  type MapsOpenTarget,
+} from "./mapsDeepLink";
 import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -259,7 +266,8 @@ export interface EventOfferingBodyProps {
 
   // Links / maps.
   onOpenBrand?: (brandSlug: string) => void;
-  onOpenMaps?: (query: string) => void;
+  /** issue #2468 — carries the stored coordinate, not just the text label. */
+  onOpenMaps?: (target: MapsOpenTarget) => void;
   /**
    * Server-proxied static map URL (the host computes it via buildProxyStaticMapUrl
    * with the city-OR-exact geo the privacy gate selected). null → no map (the
@@ -409,14 +417,24 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   const addressUnlockCaption: string | null = event.hideAddressUntilTicket
     ? "Full address shared after you get tickets"
     : null;
-  const venueMapsQuery =
-    event.hideAddressUntilTicket || event.venueName === null
-      ? null
-      : [event.venueName, event.address].filter(Boolean).join(", ");
+  /*
+    issue #2468 — ONE owner for the privacy gate, the label, AND the pin.
+
+    `selectVenueMapsTarget` returns null (control disabled) whenever the street
+    is hidden or there is no venue name, and it refuses to read `locationGeo` at
+    all in the hidden case — so a hidden-address event cannot leak an exact pin
+    through the deep link even if a host over-supplies the prop. `cityGeo` is
+    deliberately NOT passed: it is honest as a zoomed-out thumbnail centre and
+    dishonest as a labelled pin.
+  */
+  const venueMapsTarget = selectVenueMapsTarget({
+    venueName: event.venueName,
+    address: event.address,
+    addressHidden: event.hideAddressUntilTicket,
+    locationGeo: event.locationGeo,
+  });
   const canOpenVenueMaps =
-    venueMapsQuery !== null &&
-    venueMapsQuery.trim().length > 0 &&
-    onOpenMaps !== undefined;
+    canOpenMapsTarget(venueMapsTarget) && onOpenMaps !== undefined;
 
   const aboutText = event.description.trim();
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
@@ -741,7 +759,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
           ) : null}
           <Pressable
             onPress={() => {
-              if (venueMapsQuery !== null) onOpenMaps?.(venueMapsQuery);
+              if (venueMapsTarget !== null) onOpenMaps?.(venueMapsTarget);
             }}
             disabled={!canOpenVenueMaps}
             accessibilityRole={canOpenVenueMaps ? "button" : undefined}

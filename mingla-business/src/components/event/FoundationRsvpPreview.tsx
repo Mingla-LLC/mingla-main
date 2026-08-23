@@ -56,7 +56,10 @@ export interface FoundationRsvpPreviewProps {
   onClose: () => void;
   onShare: () => void;
   onOpenBrand?: (brandSlug: string) => void;
-  onOpenMaps?: (query: string) => void;
+  /** issue #2468 — carries the stored coordinate, not just the text label. */
+  onOpenMaps?: (
+    target: import("@mingla/offering-rendering").MapsOpenTarget,
+  ) => void;
   staticMapUrl?: string | null;
   onSubmit: (input: {
     rsvpStatus: "going" | "not_going" | "maybe";
