@@ -74,7 +74,11 @@ import { usePublicEventById } from "../../../src/hooks/usePublicEvents";
 // ORCH-1162 Bug 3 — brand-accent for the checkout CTA, matching the public page.
 import { resolveCheckoutBrandAccent } from "../../../src/utils/checkoutBrandAccent";
 import { formatCurrency } from "../../../src/utils/currency";
-import { isValidE164, composeE164 } from "../../../src/utils/phone";
+import {
+  composeE164,
+  isValidE164,
+  phoneEntryHint,
+} from "../../../src/utils/phone";
 import {
   createTicketCheckout,
   FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
@@ -361,10 +365,23 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     phone: string | null;
   }>(() => {
     const v = validate(buyer.name, buyer.email, buyer.phone, true);
+    // issue #2462 — when the phone field IS failing, say why. `validate` only
+    // sees the composed E.164, which is "" for every failure and so cannot tell
+    // a wrong country from a wrong length. The raw dial code and digits are in
+    // scope here, so the specific sentence is resolved at the point of display.
+    // This is the other half of the composeE164 fix: refusing a Nigerian number
+    // typed under the wrong flag is only an improvement if the guest is told it
+    // is the FLAG that is wrong, not the digits they keep correctly retyping.
+    const phoneHint = v.phoneError === null
+      ? null
+      : phoneEntryHint(
+        getCountryByCode(phoneCountry)?.dialCode ?? "+44",
+        phoneLocal,
+      );
     return {
       name: showErrorsForName ? v.nameError : null,
       email: showErrorsForEmail ? v.emailError : null,
-      phone: showErrorsForPhone ? v.phoneError : null,
+      phone: showErrorsForPhone ? phoneHint : null,
     };
   }, [
     buyer.name,
@@ -373,6 +390,13 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
     showErrorsForName,
     showErrorsForEmail,
     showErrorsForPhone,
+    // issue #2462 — the hint reads the RAW dial code and digits, so it must
+    // recompute when either changes. `buyer.phone` alone is not enough: it is
+    // "" for every failing input, so switching the country flag on a rejected
+    // number would leave the old sentence on screen — on the one field whose
+    // message is telling them to switch the country flag.
+    phoneCountry,
+    phoneLocal,
   ]);
 
   // ----- Defensive guard: cart empty / event missing ----------------

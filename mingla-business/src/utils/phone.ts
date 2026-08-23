@@ -38,14 +38,199 @@ export const isValidE164 = (value: string): boolean =>
  * @example composeE164("+44", "")          → null  (empty local digits)
  * @example composeE164("+44", "abc")       → null  (no digits)
  */
+/**
+ * issue #2462 — COUNTRIES WHOSE SUBSCRIBER NUMBER KEEPS ITS LEADING ZERO.
+ *
+ * Almost every country uses `0` as a national trunk prefix that is DROPPED in
+ * E.164 (`0803…` -> `+234803…`). Italy is the famous exception: the leading zero
+ * is part of the subscriber number and must be KEPT (`+39 06 …` is correct).
+ * San Marino and Vatican City share Italy's numbering plan.
+ *
+ * Stripping is therefore the default and this set is the carve-out — the
+ * opposite of a blocklist, so a country we have not thought about is handled
+ * correctly rather than silently corrupted.
+ */
+const KEEPS_LEADING_ZERO = new Set(["+39", "+378", "+379"]);
+
+/**
+ * issue #2462 — DIAL CODES WITH NO NATIONAL TRUNK PREFIX AT ALL.
+ *
+ * The NANP (+1) has no trunk `0` — a leading zero there reaches the operator,
+ * never a subscriber. So a leading zero on a +1 number is not a prefix to strip,
+ * it is PROOF THE NUMBER IS NOT A NANP NUMBER, and the honest answer is to
+ * refuse rather than to normalise.
+ *
+ * This distinction is load-bearing, and my first attempt got it wrong. Stripping
+ * the zero from the real production row `+109069902335` (a Nigerian number typed
+ * while the picker still showed the US default) yields `9069902335` — ten digits,
+ * a structurally valid NANP number in Michigan's 906. The corruption would have
+ * survived validation looking perfectly healthy. Refusing is what surfaces the
+ * wrong-country mistake to the guest while they can still fix it.
+ */
+const NO_TRUNK_PREFIX = new Set(["+1"]);
+
+/**
+ * issue #2462 — LENGTH OF THE NATIONAL SIGNIFICANT NUMBER, per dial code.
+ *
+ * WHY THIS EXISTS. `isValidE164` only asks "1–15 digits, first one non-zero".
+ * That accepted `+23409076649069` (a Nigerian number typed the way every
+ * Nigerian writes it, `09076649069`, with the trunk zero left on) and
+ * `+109069902335` (a Nigerian number sent with the US dial code because the
+ * picker default was never changed). Both are undeliverable. Measured on
+ * production: 17 of 71 We Go Again buyers, 19 of 114 platform-wide.
+ *
+ * ONLY COUNTRIES WE CAN STATE CONFIDENTLY ARE LISTED. An unlisted dial code
+ * falls through to the generic E.164 check, which is exactly today's behaviour —
+ * this table can only ever make validation stricter for numbers we understand,
+ * never reject a country we have not characterised.
+ */
+const NSN_LENGTHS: Readonly<Record<string, readonly number[]>> = {
+  "+234": [10], // Nigeria    — 7/8/9 + 9 digits
+  "+1": [10], // NANP       — area code + 7
+  "+44": [9, 10], // UK         — 9 (most) or 10 (some mobile/geographic)
+  "+233": [9], // Ghana
+  "+254": [9], // Kenya
+  "+27": [9], // South Africa
+  "+353": [9], // Ireland
+};
+
+/**
+ * Composes an E.164 string from a country dial code + local digits.
+ *
+ * issue #2462 — this used to be `dialCode + digits.replace(/\D/g,"")` with no
+ * normalisation at all, so it happily produced numbers that passed both the
+ * client regex and the server regex and could never receive a message. Three
+ * things now happen before validation, in this order:
+ *
+ *   1. THE NATIONAL TRUNK ZERO IS DROPPED (except for Italy & co, above). This
+ *      is the one that mattered: Nigerians type `09076649069`.
+ *   2. A DUPLICATED COUNTRY CODE IS DROPPED. Guests routinely paste their full
+ *      international number into a field that already shows `+234`, producing
+ *      `+2342348012345678`. Only stripped when the remainder is a LENGTH WE
+ *      RECOGNISE for that country, so a legitimate US number in area code 234
+ *      (Ohio) is never mangled.
+ *   3. THE RESULT IS LENGTH-CHECKED against the country's plan when we know it.
+ *      This is what catches a Nigerian number sent on the US dial code.
+ *
+ * Returns `null` when the result is not a number we believe can be delivered —
+ * the caller then shows the field as invalid rather than reserving a ticket
+ * against an address that will never receive the pass.
+ *
+ * @example composeE164("+234", "09076649069")  → "+2349076649069"  (trunk zero dropped)
+ * @example composeE164("+234", "9071364247")   → "+2349071364247"
+ * @example composeE164("+234", "2348012345678")→ "+2348012345678"  (pasted country code)
+ * @example composeE164("+1",   "09069902335")  → null  (NANP has no trunk 0)
+ * @example composeE164("+39",  "0612345678")   → "+390612345678"   (Italy keeps its zero)
+ * @example composeE164("+44",  "")             → null  (empty local digits)
+ */
 export const composeE164 = (
   countryDialCode: string,
   localDigits: string,
 ): string | null => {
-  const digits = localDigits.replace(/\D/g, "");
+  let digits = localDigits.replace(/\D/g, "");
   if (digits.length === 0) return null;
+
+  // (1) national trunk prefix
+  if (NO_TRUNK_PREFIX.has(countryDialCode)) {
+    // Not a prefix here — it is evidence of the wrong country. Refuse.
+    if (digits.startsWith("0")) return null;
+  } else if (!KEEPS_LEADING_ZERO.has(countryDialCode)) {
+    digits = digits.replace(/^0+/, "");
+    if (digits.length === 0) return null;
+  }
+
+  const expected = NSN_LENGTHS[countryDialCode];
+  const ccDigits = countryDialCode.replace(/\D/g, "");
+
+  // (2) the guest pasted the country code as well. Only trusted when the
+  // remainder is a length we recognise for this country — otherwise a real
+  // +1 234-xxx-xxxx would lose its area code.
+  if (
+    expected !== undefined &&
+    digits.length > ccDigits.length &&
+    digits.startsWith(ccDigits) &&
+    expected.includes(digits.length - ccDigits.length) &&
+    !expected.includes(digits.length)
+  ) {
+    digits = digits.slice(ccDigits.length);
+  }
+
+  // (3) the country's own plan, when we know it
+  if (expected !== undefined && !expected.includes(digits.length)) return null;
+
   const composed = `${countryDialCode}${digits}`;
   return isValidE164(composed) ? composed : null;
+};
+
+/**
+ * issue #2462 — SAY WHAT IS ACTUALLY WRONG WITH THE NUMBER.
+ *
+ * Every checkout screen showed one sentence for every phone failure: "Enter a
+ * valid mobile number". That is fine when the guest fat-fingered a digit, and
+ * useless in the case this issue is actually about — a Nigerian guest whose
+ * country picker still shows the default flag. Their digits are perfectly
+ * correct; the COUNTRY is wrong, and the message never says so, so they retype
+ * the same right number and get the same refusal.
+ *
+ * That case used to "succeed": it stored an undeliverable number and issued a
+ * pass no message could ever reach (production rows `+109069902335`,
+ * `+442348158037496`). Now that `composeE164` refuses it, refusing WITHOUT
+ * explaining would just move the dead end one screen earlier. So this is the
+ * other half of that fix, not a nicety.
+ *
+ * Returns a sentence for any input. The caller shows it only when the field is
+ * already failing, so the "looks fine" arm is unreachable in practice and exists
+ * to keep the function total.
+ */
+export const phoneEntryHint = (
+  countryDialCode: string,
+  localDigits: string,
+): string => {
+  const digits = localDigits.replace(/\D/g, "");
+  if (digits.length === 0) return "Enter your mobile number";
+
+  // The one this issue is about: the digits are a real number for SOME country,
+  // just not the one selected. Name the picker, because that is what they have
+  // to change — retyping the digits will never help.
+  //
+  // TWO SHAPES, and the second is the one that reached production. A guest
+  // either types their LOCAL number under the wrong flag (`09069902335` under
+  // +1 — row +109069902335), or pastes their FULL international number under
+  // the wrong flag (`2348158037496` under +44 — row +442348158037496). The
+  // second is not a length mistake in the selected country; it is a complete
+  // number for a different one, and saying "a +44 number has 9 or 10 digits"
+  // is true but sends them to trim digits off a number that was already right.
+  const stripped = digits.replace(/^0+/, "");
+  const plausibleElsewhere = Object.entries(NSN_LENGTHS).some(
+    ([dial, lengths]) => {
+      if (dial === countryDialCode) return false;
+      if (lengths.includes(stripped.length)) return true;
+      const dialDigits = dial.replace(/\D/g, "");
+      return (
+        digits.startsWith(dialDigits) &&
+        lengths.includes(digits.length - dialDigits.length)
+      );
+    },
+  );
+  if (composeE164(countryDialCode, localDigits) === null && plausibleElsewhere) {
+    return `That doesn't look like a ${countryDialCode} number — check the country code next to the field.`;
+  }
+
+  const expected = NSN_LENGTHS[countryDialCode];
+  if (expected !== undefined) {
+    const stripped = NO_TRUNK_PREFIX.has(countryDialCode)
+      ? digits
+      : digits.replace(/^0+/, "");
+    if (!expected.includes(stripped.length)) {
+      const wanted = expected.join(" or ");
+      return `A ${countryDialCode} mobile number has ${wanted} digits — you entered ${stripped.length}.`;
+    }
+  }
+
+  if (composeE164(countryDialCode, localDigits) === null) {
+    return "Enter a valid mobile number";
+  }
+  return "Enter a valid mobile number";
 };
 
 /**

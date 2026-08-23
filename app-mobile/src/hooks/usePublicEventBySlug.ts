@@ -229,6 +229,17 @@ const mapRpcTicket = (raw: unknown, fallbackCurrency: string): PublicTicketProps
           ? "online"
           : "door",
     displayOrder: typeof t.displayOrder === "number" ? t.displayOrder : 0,
+    // issue #2462 — carry the organiser's purchase rules onto the consumer
+    // cart. Before this, `app-mobile` never populated them anywhere, so
+    // `QuantityRow`'s clamp resolved to Infinity and the consumer iOS/Android
+    // steppers offered quantities the server refuses with
+    // `ticket_quantity_above_max`. Same defect as buyer web, different surface.
+    // `null` is the real "no cap" answer and must survive the mapping.
+    minPurchaseQty:
+      typeof t.minPurchaseQty === "number" ? t.minPurchaseQty : 1,
+    maxPurchaseQty:
+      typeof t.maxPurchaseQty === "number" ? t.maxPurchaseQty : null,
+    allowTransfers: t.allowTransfers !== false,
   };
 };
 
