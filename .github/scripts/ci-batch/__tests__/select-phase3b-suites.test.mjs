@@ -27,7 +27,47 @@ const OFFLINE_REGION_FORBIDDEN = [
   "test.skip", "it.skip", "describe.skip", ".only", "t.skip(",
   "execFileSync", "spawnSync", "execSync", "exec(",
   "return", "try {", "catch", "fetch(", "refs/pull", "https:", "http:",
+  // [#2438] process.exit is the remaining silent bypass: it ends the worker
+  // before the runner can record a failure, so a region that calls it reports
+  // nothing rather than reporting red.
+  "process.exit",
 ];
+// [#2438] Generic sealed-region guard. Subtest 1 is the ONLY reader of the
+// e31b286a... baseline seal — a fixture byte flip fires that subtest and nothing
+// else — so gutting it with a three-line pure addition while corrupting the
+// fixture would leave the whole file green with the cost claim unverified. It
+// gets the same treatment as the offline region: a guard that runs BEFORE the
+// body it guards, and again as its own test.
+function assertSealedRegion(mark, label, minimumAssertions) {
+  const begin = `${mark}BEG${"IN]"}`;
+  const end = `${mark}E${"ND]"}`;
+  const self = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
+  const at = self.indexOf(begin);
+  const to = self.indexOf(end);
+  assert.ok(at > 0 && to > at, `the ${label} sentinels must both be present and ordered`);
+  assert.equal(self.split(begin).length - 1, 1, `exactly one ${label} BEGIN sentinel must exist in this file`);
+  assert.equal(self.split(end).length - 1, 1, `exactly one ${label} END sentinel must exist in this file`);
+  const region = self.slice(at + begin.length, to);
+  const outside = self.slice(0, at) + self.slice(to + end.length);
+  for (const token of OFFLINE_REGION_FORBIDDEN) {
+    assert.equal(region.includes(token), false, `the ${label} must never contain ${token}`);
+  }
+  for (const invocation of ['"git",', "'git',", "child_process"]) {
+    assert.equal(region.includes(invocation), false, `the ${label} must never invoke a subprocess (${invocation})`);
+  }
+  assert.ok((region.match(/\bassert\./g) || []).length >= minimumAssertions,
+    `the ${label} must retain its full assertion body`);
+  assert.equal(outside.includes('execFileSync("git",args,{cwd:repo,encoding:"utf8"})'), true,
+    `${label}: retained subtest 5's synthetic-repo git invocation must stay outside the guarded region`);
+  assert.equal(OFFLINE_REGION_FORBIDDEN.filter((token) => outside.includes(token)).length >= 4, true,
+    `${label} must be region-scoped, not file-scoped: forbidden tokens legitimately exist outside it`);
+}
+
+const BASELINE_SEAL_MARK = "// [#2438 A7-SC6 BASELINE-SEAL-REGION ";
+function assertBaselineSealRegionIsSealed() {
+  assertSealedRegion(BASELINE_SEAL_MARK, "A7-SC6 baseline-seal region", 6);
+}
+
 function assertOfflineRegionIsSealed() {
   const self = fs.readFileSync(fileURLToPath(import.meta.url), "utf8");
   const begin = self.indexOf(OFFLINE_REGION_BEGIN);
@@ -58,11 +98,14 @@ function assertOfflineRegionIsSealed() {
 const SOURCE = { eventName: "pull_request", baseSha: "1".repeat(40), headSha: "2".repeat(40), mergeBaseSha: "1".repeat(40), pathSource: "local-git-three-dot-nul" };
 
 test("canonical cost fixture is complete and byte-locked", () => {
+  assertBaselineSealRegionIsSealed();
+  // [#2438 A7-SC6 BASELINE-SEAL-REGION BEGIN]
   assert.equal(digest(fixture), "e31b286ac8d29fbb5749a1fd21025559aab6ce7df62af9f1562e6a8c52bd8d55");
   const lines = fixture.toString("utf8").trimEnd().split("\n"); assert.equal(lines.length, 100); assert.equal(fixture.at(-1), 10);
   const records = lines.map(JSON.parse); const distribution = [0,1,2,3,4,5].map((count) => records.filter((row) => row.matchedOrigins.length === count).length);
   assert.deepEqual(distribution, [25,41,20,9,4,1]);
   const large = records.find((row) => row.pr === 2201); assert.equal(large.pathCount, 11362); assert.equal(large.pathSha256, "51764c43bad76f056f343f9bb851597e378e23b005680d10b7e4b5fc1a7c135b");
+  // [#2438 A7-SC6 BASELINE-SEAL-REGION END]
 });
 
 // [#2438 A7-SC6] Replacement for `all 100 frozen records reproduce from complete
@@ -225,4 +268,12 @@ test("#2013 wakes from its exact guard path and every other wrapper wakes from i
 // in-body call were ever removed.
 test("the A7-SC6 offline region is sealed against skips, bail-outs, and subprocesses", () => {
   assertOfflineRegionIsSealed();
+});
+
+// [#2438] The baseline-seal guard as a test of its own, for the same reason the
+// offline one has one: nothing inside subtest 1's body can suppress a separate
+// test() call, so an early return there turns the gate RED even though the
+// gutted subtest itself would still report ok.
+test("the A7-SC6 baseline-seal region is sealed against skips, bail-outs, and subprocesses", () => {
+  assertBaselineSealRegionIsSealed();
 });
