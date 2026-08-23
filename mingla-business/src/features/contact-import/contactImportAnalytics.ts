@@ -11,6 +11,10 @@ export type ContactImportAnalyticsEvent =
   | "execute_started"
   | "execute_completed"
   | "execute_failed"
+  // #2465 — the confirm request never landed and the recovery poll gave up.
+  // Distinct from `execute_failed` (the request itself errored): this one
+  // means we could not establish what happened, so we told the person to retry.
+  | "execute_unconfirmed"
   | "result_viewed";
 export function captureContactImport(
   event: ContactImportAnalyticsEvent,

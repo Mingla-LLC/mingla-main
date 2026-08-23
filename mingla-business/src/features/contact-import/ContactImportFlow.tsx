@@ -61,6 +61,12 @@ const errorCopy = (e: unknown): string =>
   e instanceof ContactImportError
     ? `${e.message}${e.requestId ? ` Request ID: ${e.requestId}` : ""}`
     : "We couldn't finish the import. Try again.";
+// #2465 — the recovery poll is bounded. A server-side import of the maximum
+// 10,000 rows completes in about a second (212 rows measured at 0.99 s against
+// production), so 60 s of polling is far beyond any honest run time. Past that
+// we stop and say so rather than spinning silently.
+const POLL_INTERVAL_MS = 3000;
+const POLL_MAX_ATTEMPTS = 20;
 const hydrateCompletionRows = async (
   brandId: string,
   result: ContactImportResult,
@@ -106,6 +112,12 @@ export function ContactImportFlow({
     [idempotencyKey, setIdempotencyKey] = useState<string | null>(null),
     [accepted, setAccepted] = useState(false),
     [error, setError] = useState<string | null>(null),
+    // #2465 — the status poll is armed ONLY after an execute attempt has
+    // resolved without a terminal answer. Arming it off `step === "importing"`
+    // alone raced a duplicate status request against the execute itself (two
+    // preflights 1 ms apart in production) and, worse, kept running forever on
+    // a batch that never left `previewed`.
+    [pollArmed, setPollArmed] = useState(false),
     [, setClock] = useState(0);
   const online = useShareNetworkState();
   useEffect(() => captureContactImport("contact_import_opened"), []);
@@ -128,9 +140,21 @@ export function ContactImportFlow({
     return () => clearTimeout(timer);
   }, [preview]);
   useEffect(() => {
-    if (step !== "importing" || !preview || !online) return;
+    if (step !== "importing" || !pollArmed || !preview || !online) return;
     let stopped = false;
+    let attempts = 0;
+    // #2465 — the poll MUST terminate. Previously only `completed` and
+    // `failed` ended it, so a batch stuck at `previewed` (execute never
+    // reached the server) span forever with no error and no way out.
+    const giveUp = (message: string) => {
+      if (stopped) return;
+      setPollArmed(false);
+      setStep("permission");
+      setError(message);
+      captureContactImport("execute_unconfirmed", { pollAttempts: attempts });
+    };
     const poll = async () => {
+      attempts += 1;
       try {
         const recovered = await getContactImportStatus(
           brandId,
@@ -138,25 +162,44 @@ export function ContactImportFlow({
         );
         if (stopped) return;
         if (recovered.state === "completed") {
+          setPollArmed(false);
           setResult(recovered);
           setStep("result");
           setError(null);
           onCompleted?.(context === "manual_group" ? await hydrateCompletionRows(brandId, recovered) : recovered);
-        } else if (recovered.state === "failed") {
-          setStep("permission");
-          setError("We couldn't confirm the result yet. Try again.");
+          return;
+        }
+        if (recovered.state === "failed") {
+          giveUp("That import didn't finish. Nothing was changed — confirm again to retry.");
+          return;
+        }
+        // `previewed` means the server never started this import, so the
+        // confirm request never landed. That is terminal, not in-progress:
+        // waiting longer can never change it. Retrying is safe — the batch
+        // and its preview token are still valid.
+        if (recovered.state === "previewed") {
+          giveUp("We couldn't start that import. Nothing was changed — confirm again to retry.");
+          return;
+        }
+        if (attempts >= POLL_MAX_ATTEMPTS) {
+          giveUp("We couldn't confirm this import. Open Your Book to check before retrying.");
         }
       } catch {
-        if (!stopped) setError("Checking import status…");
+        if (stopped) return;
+        if (attempts >= POLL_MAX_ATTEMPTS) {
+          giveUp("We couldn't reach Mingla to confirm this import. Check Your Book before retrying.");
+          return;
+        }
+        setError("Checking import status…");
       }
     };
     void poll();
-    const timer = setInterval(poll, 3000);
+    const timer = setInterval(poll, POLL_INTERVAL_MS);
     return () => {
       stopped = true;
       clearInterval(timer);
     };
-  }, [brandId, context, online, onCompleted, preview, step]);
+  }, [brandId, context, online, onCompleted, pollArmed, preview, step]);
   useEffect(() => {
     if (Platform.OS !== "web" || step !== "importing") return;
     const guard = (event: BeforeUnloadEvent) => {
@@ -282,6 +325,10 @@ export function ContactImportFlow({
   const execute = async () => {
     if (!preview || !accepted) return;
     setStep("importing");
+    // #2465 — keep the poll disarmed while the execute request is in flight so
+    // it cannot fire a second, racing status request against it.
+    setPollArmed(false);
+    setError(null);
     captureContactImport("execute_started");
     const key = idempotencyKey ?? randomId();
     setIdempotencyKey(key);
@@ -315,11 +362,19 @@ export function ContactImportFlow({
           if (recovered.state === "completed") {
             setResult(recovered);
             setStep("result");
+            setError(null);
             onCompleted?.(context === "manual_group" ? await hydrateCompletionRows(brandId, recovered) : recovered);
           } else if (recovered.state === "failed") {
-            setError("We couldn't confirm the result yet. Try again.");
+            setError("That import didn't finish. Nothing was changed — confirm again to retry.");
+            setStep("permission");
+          } else if (recovered.state === "previewed") {
+            // #2465 — the confirm request never reached the server. Say so and
+            // let her retry, instead of parking on a spinner that can never end.
+            setError("We couldn't start that import. Nothing was changed — confirm again to retry.");
             setStep("permission");
           } else {
+            // Genuinely mid-flight (`executing`) — now, and only now, watch it.
+            setPollArmed(true);
             setStep("importing");
           }
         } catch {
@@ -340,6 +395,7 @@ export function ContactImportFlow({
     setResult(null);
     setAccepted(false);
     setIdempotencyKey(null);
+    setPollArmed(false);
     setError(null);
   };
   const loadMoreResults = async () => {
@@ -523,6 +579,13 @@ export function ContactImportFlow({
         </Text>
         <Text style={s.body}>You can leave and check its status later.</Text>
         <Text style={s.sample}>Your import is still running.</Text>
+        {/* #2465 — never spin silently. If the poll is reporting trouble, the
+            person watching this screen must be able to read it. */}
+        {error ? (
+          <Text accessibilityLiveRegion="polite" style={s.body}>
+            {error}
+          </Text>
+        ) : null}
         <Button label="Importing…" loading disabled onPress={() => undefined} />
       </View>
     );
