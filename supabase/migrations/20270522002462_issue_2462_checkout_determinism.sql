@@ -142,7 +142,14 @@ AS $function$
       -- behaviour-identical and proved so. It is withdrawn anyway, because it
       -- is STRUCTURALLY UNAVAILABLE to any migration that lands after #2117:
       --
-      --   `.github/workflows/issue-2117-offering-visibility-gate-tests.yml`
+      --   The #2117 offering-visibility-gate workflow under `.github/workflows/`
+      --   (filename ends `issue-2117-offering-visibility-gate-tests`; the
+      --   extension is omitted ON PURPOSE — `validate-manifest-v2.mjs:796`
+      --   discovers CI dependencies by scanning EVERY non-workflow file for
+      --   `/[A-Za-z0-9_.-]+\.ya?ml/`, comments included, so spelling it in full
+      --   here registers this migration as a consumer of that workflow and
+      --   drifts the reference inventory. It failed exactly that way in CI.
+      --   This file is not a consumer of it; it only explains a decision.)
       --   applies THE WHOLE CHAIN EXCEPT #2117, captures the A-SC-9 baseline,
       --   then applies #2117. Calling the gate makes this file fail phase 1
       --   with "function public.pg_offering_visibility_gate(...) does not
