@@ -248,6 +248,33 @@ function canonicalMapping(raw: unknown, headers: readonly string[]): Mapping {
     Object.entries(out).sort(([a], [b]) => a.localeCompare(b)),
   );
 }
+/**
+ * #2475 — the mapping digest MUST NOT depend on key order.
+ *
+ * Preview digested `JSON.stringify(normalizeMapping(...))`, whose key order is
+ * whatever normalisation produced. Execute digested
+ * `JSON.stringify(body.normalizedMapping)` — the client's own object, in the
+ * order the CSV's headers happened to be in. `JSON.stringify` preserves
+ * insertion order, so the same column mapping hashed to two different values
+ * and the RPC rejected the import as tampered.
+ *
+ * It was not intermittent. A CSV headed `Name,Email` produced client
+ * `{Name, Email}` against server `{Email, Name}` and failed 100% of the time,
+ * for every brand, every attempt — and each failure also expired the batch, so
+ * the person had to re-upload only to hit it again. We Go Again Exhibition lost
+ * three uploads of 212 contacts to it on 2026-08-23 before this was found.
+ *
+ * Canonicalising by sorting the entries makes the two sides agree by
+ * construction. Both call sites use this; neither may stringify a mapping
+ * directly again.
+ */
+function canonicalMappingJson(mapping: unknown): string {
+  if (mapping === null || typeof mapping !== "object") return "{}";
+  const entries = Object.entries(mapping as Record<string, unknown>)
+    .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+  return JSON.stringify(Object.fromEntries(entries));
+}
+
 function parseMapping(mappingJson: string): unknown {
   try {
     return JSON.parse(mappingJson);
@@ -496,7 +523,8 @@ export async function handler(req: Request): Promise<Response> {
         parseMapping(String(form?.get("normalizedMapping") ?? "{}")),
         parsed.headers,
       );
-      const mappingJson = JSON.stringify(mapping),
+      // #2475 — canonical, so preview and execute cannot disagree on key order.
+      const mappingJson = canonicalMappingJson(mapping),
         mappingDigest = await sha256Hex(mappingJson);
       const { data: brand } = await service.from("brands").select("name").eq(
         "id",
@@ -669,8 +697,11 @@ export async function handler(req: Request): Promise<Response> {
         attestationVersion: body.attestationVersion,
         attestationText: body.attestationText,
       }));
+      // #2475 — MUST use the same canonical form preview used. Digesting the
+      // client's object as-received made an identical mapping hash differently
+      // whenever the CSV's header order differed from normalisation's order.
       const mappingDigest = await sha256Hex(
-        JSON.stringify(body.normalizedMapping),
+        canonicalMappingJson(body.normalizedMapping),
       );
       const { data, error } = await service.rpc("issue_1775_execute_import", {
         p_batch: body.batchId,

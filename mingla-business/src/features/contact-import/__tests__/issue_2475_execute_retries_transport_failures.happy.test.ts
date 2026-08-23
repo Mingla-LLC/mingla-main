@@ -18,6 +18,29 @@ const read = (p: string) => fs.readFileSync(path.join(root, p), "utf8");
 
 const client = read("mingla-business/src/services/supabase.ts");
 const service = read("mingla-business/src/services/contactImportService.ts");
+const edge = read("supabase/functions/contact-import/index.ts");
+
+describe("#2475 the mapping digest cannot depend on key order", () => {
+  // THE root cause, proven against production: preview digested the mapping
+  // after normalising it, execute digested the client's object as-received, and
+  // JSON.stringify preserves insertion order. Identical column mappings hashed
+  // differently, so the RPC rejected the import as tampered — 100% of the time,
+  // for any CSV whose header order differed from normalisation's order.
+  // Reproduced exactly: same pairs, reversed key order -> 409.
+  it("digests the mapping canonically on BOTH sides", () => {
+    expect(edge).toContain("function canonicalMappingJson");
+    // Sorted entries are what makes the two sides agree by construction.
+    expect(edge).toMatch(/\.sort\(\(\[a\], \[b\]\)/);
+    const digestSites = edge.match(/sha256Hex\(\s*canonicalMappingJson\(|canonicalMappingJson\(mapping\)/g) ?? [];
+    expect(digestSites.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("never stringifies a mapping straight into a digest again", () => {
+    // The exact shape of the bug: JSON.stringify on a mapping feeding sha256.
+    expect(edge).not.toMatch(/sha256Hex\(\s*JSON\.stringify\(body\.normalizedMapping\)/);
+    expect(edge).not.toMatch(/JSON\.stringify\(mapping\),\s*\n?\s*mappingDigest/);
+  });
+});
 
 describe("#2475 a lost request does not cost the upload", () => {
   it("survives a STOLEN auth lock, not just a timed-out acquire", () => {
