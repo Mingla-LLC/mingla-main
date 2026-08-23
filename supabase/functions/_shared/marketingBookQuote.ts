@@ -10,6 +10,25 @@ export interface MarketingSmsLink {
   destination_url: string;
 }
 
+/**
+ * #2470 — the SMS half of the branded-link fix.
+ *
+ * This is the THIRD tracking-origin builder in the codebase and it was missed
+ * when the two email builders were fixed, so marketing SMS kept sending raw
+ * `…supabase.co/functions/v1/marketing-track-click/…` links. In a text message
+ * that is worse than in email: there is no anchor text to hide behind, so the
+ * recipient reads the bare cloud hostname and it looks like a scam.
+ *
+ * Same rule as the email builders: the branded origin is the DEFAULT, never an
+ * env var somebody has to remember to set. A fallback nobody configures away IS
+ * the production path — that is the entire lesson of #2470, and this file is
+ * the proof it needed enforcing rather than merely writing down.
+ *
+ * `usemingla.com/m/<id>` is served by the marketing app's rewrite
+ * (mingla-marketing/next.config.ts). Keep the two in step.
+ */
+const BRANDED_TRACKING_LINK_ORIGIN = "https://usemingla.com/m";
+
 export function resolveMarketingTrackingOrigin(
   getEnv: (name: string) => string | undefined = (name) => Deno.env.get(name),
 ): string {
@@ -17,9 +36,7 @@ export function resolveMarketingTrackingOrigin(
   if (override !== undefined && override.trim().length > 0) {
     return override.replace(/\/+$/, "");
   }
-  const supabaseUrl = getEnv("SUPABASE_URL")?.replace(/\/+$/, "") ??
-    "https://gqnoajqerqhnvulmnyvv.supabase.co";
-  return `${supabaseUrl}/functions/v1/marketing-track-click`;
+  return BRANDED_TRACKING_LINK_ORIGIN;
 }
 
 /** One owner for the exact SMS body shape used by both Book quotes and send. */
