@@ -569,6 +569,55 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     assert.match(validateRegistry(headerDrift, { root: temp }).join("\n"), /Phase 3B wave count contract drifted/);
     siblingIsIntact();
 
+    // 6b. [#2438 SC-13] The TERMINAL provider authority is a runtime DERIVATION
+    //     from the one frozen shadow seal, never a second hard-coded digest.
+    //     All five properties the derivation must satisfy are attacked here.
+    writeManifest(terminal); removeWrappers(wrapperNames);
+    const validator = fs.readFileSync(path.join(temp, ".github/scripts/ci-batch/validate-manifest-v2.mjs"), "utf8");
+    // (i) computed at runtime — exactly one frozen provider seal exists in the
+    //     validator, and no second 64-hex constant stands in for the terminal one.
+    assert.equal(validator.split(PROVIDER_DIGEST).length - 1, 1, "the shadow authority must be the single frozen provider seal");
+    assert.equal(validator.includes("8d318cbe4007b33c447286fb41fa18a87310ee693df52a25e0d83f121a52c453"), false,
+      "a hard-coded terminal provider digest is forbidden: the terminal value must be derived");
+    assert.match(validator, /reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256/,
+      "the terminal branch must check its reconstruction against the frozen shadow seal");
+    // (ii) a fabricated substitute for any carried record ⇒ RED.
+    const fabricated = structuredClone(terminal);
+    fabricated.workflowProviders.find((item) => WRAPPERS[item.workflow]).referenceFiles = ["README.md"];
+    assert.match(validateRegistry(fabricated, { root: temp }).join("\n"), /workflow provider authority drifted/);
+    // (iii) dropping one of the six subtracted records ⇒ RED.
+    const dropped = structuredClone(terminal);
+    const victim = dropped.workflowProviders.findIndex((item) => WRAPPERS[item.workflow]);
+    dropped.workflowProviders.splice(victim, 1);
+    assert.match(validateRegistry(dropped, { root: temp }).join("\n"), /workflow provider authority drifted/);
+    // (iii-b) subtracting a SEVENTH record ⇒ RED. Re-label a non-Phase-3B
+    //         provider as one of the twelve wrapper names.
+    const seventh = structuredClone(terminal);
+    const outsider = seventh.workflowProviders.find((item) => !WRAPPERS[item.workflow]);
+    outsider.workflow = wrapperNames[3];
+    assert.notDeepEqual(validateRegistry(seventh, { root: temp }), []);
+    // (iv) shadow behaviour byte-identical — still exactly 71 / the frozen seal.
+    writeManifest(shadow); restoreWrappers();
+    const shadowProviders = discoverWorkflowProviders(temp);
+    assert.equal(shadowProviders.length, 71); assert.equal(digest(shadowProviders), PROVIDER_DIGEST);
+    assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
+    // (v) fails CLOSED when the shadow authority itself drifts: with a genuine
+    //     corpus change at terminal, the reconstruction cannot hash back to the
+    //     seal, so it reds rather than silently accepting the new reality.
+    writeManifest(terminal); removeWrappers(wrapperNames);
+    //     The probe must name a workflow that is still LIVE at terminal, so the
+    //     drift is real: naming a deleted Phase 3B wrapper would be filtered out
+    //     by workflowNames and change nothing, which is correct behaviour.
+    const probe = "mingla-business/src/utils/__tests__/issue2438TerminalAuthorityProbe.probe.ts";
+    const liveProvider = discoverWorkflowProviders(temp).find((item) => !WRAPPERS[item.workflow]).workflow;
+    fs.writeFileSync(path.join(temp, probe), `export const provider = "${liveProvider}";\n`);
+    git(temp, ["add", probe]); git(temp, ["commit", "-qm", "terminal authority probe"]);
+    assert.match(validateRegistry(terminal, { root: temp }).join("\n"), /workflow provider authority drifted/,
+      "the terminal derivation must fail closed when the shadow authority drifts");
+    git(temp, ["rm", "-q", probe]); git(temp, ["commit", "-qm", "terminal authority probe removed"]);
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "removing the drift must restore the terminal PASS");
+    siblingIsIntact();
+
     // 7. Restore shadow and prove the tree is exactly where it started.
     writeManifest(shadow); restoreWrappers();
     assert.deepEqual(validateRegistry(shadow, { root: temp }), []);

@@ -42,14 +42,6 @@ const PHASE3B_TERMINAL_LIFECYCLE = "batched-historical";
 const PHASE3B_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
 const LOCKED_PROVIDER_DISCOVERY_SHA256 = "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c90d3ab86d";
 const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
-// [#2438 SC-13] Terminal provider authority. This is NOT an independent seal: it
-// is exactly the locked 71-record shadow set with the six Phase 3B records
-// removed, which is the only way deleting the twelve wrappers can change
-// discovery — .github/workflows/** is excluded from the scan, so no other
-// record's referenceFiles can move. Verified equal to
-// digest(shadow71.filter(record => !PHASE3B_PROVIDER_NAMES.has(record.workflow))).
-const LOCKED_TERMINAL_PROVIDER_DISCOVERY_SHA256 = "8d318cbe4007b33c447286fb41fa18a87310ee693df52a25e0d83f121a52c453";
-const TERMINAL_PROVIDER_DISCOVERY_COUNT = 65;
 const PHASE3B_PROVIDER_NAMES = new Set([
   "issue-1022-theme-control-tests.yml",
   "issue-1902-public-event-lifecycle-tests.yml",
@@ -1491,21 +1483,47 @@ export function validateRegistry(
     const phase3bProviders = discoveredProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
     const phase3bDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bProviders)).digest("hex");
     // [#2438 SC-13] The authority expectation follows the wave's own atomic
-    // lifecycle. At shadow the twelve wrappers are live and contribute exactly
-    // six provider records; at terminal they are deleted, so they must
-    // contribute NONE and the remainder must be the locked shadow set minus
-    // exactly those six. Neither side can be satisfied by the other's numbers.
-    const expectedProviderCount = phase3bTerminal ? TERMINAL_PROVIDER_DISCOVERY_COUNT : 71;
-    const expectedProviderDigest = phase3bTerminal ? LOCKED_TERMINAL_PROVIDER_DISCOVERY_SHA256 : LOCKED_PROVIDER_DISCOVERY_SHA256;
-    const expectedPhase3bCount = phase3bTerminal ? 0 : 6;
-    const expectedPhase3bDigest = phase3bTerminal
-      ? crypto.createHash("sha256").update("[]").digest("hex")
-      : LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256;
-    if (discoveredProviders.length !== expectedProviderCount || discoveryDigest !== expectedProviderDigest) {
-      fail(errors, `workflow provider authority drifted: expected ${expectedProviderCount}/${expectedProviderDigest}, got ${discoveredProviders.length}/${discoveryDigest}`);
-    }
-    if (phase3bProviders.length !== expectedPhase3bCount || phase3bDigest !== expectedPhase3bDigest) {
-      fail(errors, `Phase 3B provider authority drifted: expected ${expectedPhase3bCount}/${expectedPhase3bDigest}, got ${phase3bProviders.length}/${phase3bDigest}`);
+    // lifecycle, and there is exactly ONE frozen seal on both sides of it:
+    // LOCKED_PROVIDER_DISCOVERY_SHA256, the 71-record shadow authority.
+    //
+    // At SHADOW the twelve wrappers are live, so discovery must reproduce that
+    // seal directly and its Phase 3B subset must be the frozen six.
+    //
+    // At TERMINAL the twelve wrappers are deleted, so discovery can no longer
+    // see the six Phase 3B records at all. There is deliberately NO frozen
+    // terminal digest: a second literal would be a constant nobody can
+    // re-derive, and locking one is the fragility this contract already
+    // rejected elsewhere. Instead the shadow authority is RECONSTRUCTED at
+    // runtime — what terminal discovery still sees, plus the six records the
+    // registry carries for the deleted wrappers, re-sorted exactly as discovery
+    // sorts — and that reconstruction is checked against the one frozen seal.
+    // Deleting the twelve wrappers is the only way discovery can change here,
+    // because .github/workflows/** is excluded from the scan, so no other
+    // record's referenceFiles can move; if anything else drifted, the
+    // reconstruction cannot hash back to the seal and this fails closed.
+    if (phase3bTerminal) {
+      if (phase3bProviders.length !== 0) {
+        fail(errors, `Phase 3B provider authority drifted: terminal wrappers are deleted and must contribute no provider record, got ${phase3bProviders.length}`);
+      }
+      const carriedPhase3bProviders = (manifest.workflowProviders || [])
+        .filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))
+        .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
+      const reconstructedShadow = [...discoveredProviders, ...carriedPhase3bProviders]
+        .sort((a, b) => a.workflow.localeCompare(b.workflow));
+      const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
+      if (carriedPhase3bProviders.length !== PHASE3B_PROVIDER_NAMES.size
+          || discoveredProviders.length !== 71 - PHASE3B_PROVIDER_NAMES.size
+          || reconstructedShadow.length !== 71
+          || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried Phase 3B records must reconstruct the frozen 71/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
+      }
+    } else {
+      if (discoveredProviders.length !== 71 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `workflow provider authority drifted: expected 71/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${discoveredProviders.length}/${discoveryDigest}`);
+      }
+      if (phase3bProviders.length !== 6 || phase3bDigest !== LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `Phase 3B provider authority drifted: expected 6/${LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256}, got ${phase3bProviders.length}/${phase3bDigest}`);
+      }
     }
   }
   const registeredProviders = manifest.workflowProviders || [];
