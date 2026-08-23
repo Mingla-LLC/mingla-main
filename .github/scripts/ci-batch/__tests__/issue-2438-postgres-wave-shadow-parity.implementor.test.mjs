@@ -152,10 +152,19 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
       [...allWrapperNames, ...[...allWrapperNames].reverse()].join("\n"),
     ];
     for (const [index, source] of variants.entries()) {
+      // [#2438 A7-SC3] This region MUTATES the Git index, so it must never run
+      // inside a tracked-files scope and must never be served by an ambient memo.
+      // Either would make the six add/commit mutations invisible and turn the
+      // A4-SC4 byte-invariance proof below into a tautology that proves nothing.
+      const spawnsBeforeMutation = trackedFilesProcessInvocations();
       fs.writeFileSync(testerPath, source); git(temp, ["add", RESERVED_TESTER]); git(temp, ["commit", "-qm", `tester variant ${index}`]);
+      assert.equal(git(temp, ["ls-files", "--error-unmatch", RESERVED_TESTER]), RESERVED_TESTER, "the mutation must really be in the index");
       assert.equal(providerSnapshot(temp), absent);
+      assert.ok(trackedFilesProcessInvocations() - spawnsBeforeMutation >= 1,
+        "a mutating region must re-derive the tracked-file listing: no scope, no ambient memo");
     }
     git(temp, ["rm", "-q", RESERVED_TESTER]); git(temp, ["commit", "-qm", "tester absent again"]); assert.equal(providerSnapshot(temp), absent);
+    assert.equal(git(temp, ["ls-files", RESERVED_TESTER]), "", "the removal must really leave the index");
 
     const eligible = "mingla-business/src/utils/__tests__/serverDraftEventMapper.storeEcho.tester.test.ts";
     const eligiblePath = path.join(temp, eligible); const original = fs.readFileSync(eligiblePath, "utf8");
