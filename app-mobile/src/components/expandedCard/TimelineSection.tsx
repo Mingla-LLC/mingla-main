@@ -4,11 +4,12 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  Linking,
 } from "react-native";
 import { Icon } from "../ui/Icon";
 import { TimelineData } from "../../types/expandedCardTypes";
 import { generateTimeline } from "../../utils/timelineGenerator";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../../utils/openMapsTarget";
 import { useTranslation } from "react-i18next";
 
 interface TimelineSectionProps {
@@ -137,30 +138,25 @@ export default function TimelineSection({
     });
   }
 
+  /*
+    #2468 — this surface was ALREADY coordinate-first (one of only two that
+    were), but it composed the google URL inline and its failure path was a
+    console.error the user never sees. It now goes through the ONE builder,
+    which also buys it the native iOS/Android schemes, the canOpenURL
+    pre-flight, and the https fallback.
+  */
   const openInMaps = (location: {
     lat?: number;
     lng?: number;
     address?: string;
     name?: string;
-  }) => {
-    const address = location.address || location.name || "";
+  }): void => {
     const lat = location.lat;
     const lng = location.lng;
-
-    if (lat != null && lng != null) {
-      // Open in maps with coordinates
-      const url = `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`;
-      Linking.openURL(url).catch((err) =>
-        console.error("Error opening maps:", err)
-      );
-    } else if (address) {
-      // Open in maps with address
-      const encodedAddress = encodeURIComponent(address);
-      const url = `https://www.google.com/maps/search/?api=1&query=${encodedAddress}`;
-      Linking.openURL(url).catch((err) =>
-        console.error("Error opening maps:", err)
-      );
-    }
+    openMapsTarget({
+      label: location.address || location.name || null,
+      geo: lat != null && lng != null ? { lat, lng } : null,
+    });
   };
 
   return (

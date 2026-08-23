@@ -74,6 +74,8 @@ import { createThemePalette, type ThemePalette } from "./themePalette";
 // for the "Where you'll be" map. Returns null when coords/token are absent →
 // the renderer falls back to the honest text venue card (rule-9).
 import { buildStaticMapUrl } from "./mapboxStaticImage";
+// issue #2468 — the ONE privacy gate + label composer for the venue card.
+import { canOpenMapsTarget, selectVenueMapsTarget } from "./mapsDeepLink";
 import type {
   PublicEventPageProps,
   PublicEventProps,
@@ -357,14 +359,20 @@ const PublishedBody = ({
     : event.format === "hybrid" && event.address !== null
       ? `${event.address} · also online`
       : (event.address ?? "Address shared after ticket purchase");
-  const venueMapsQuery =
-    event.hideAddressUntilTicket || event.venueName === null
-      ? null
-      : [event.venueName, event.address].filter(Boolean).join(", ");
+  /*
+    issue #2468 — ONE owner for the privacy gate, the label AND the pin.
+    `selectVenueMapsTarget` returns null (control disabled) when the street is
+    hidden, WITHOUT reading `locationGeo` — so a hidden-address event can never
+    hand out an exact pin through the deep link.
+  */
+  const venueMapsTarget = selectVenueMapsTarget({
+    venueName: event.venueName,
+    address: event.address,
+    addressHidden: event.hideAddressUntilTicket,
+    locationGeo: event.locationGeo,
+  });
   const canOpenVenueMaps =
-    venueMapsQuery !== null &&
-    venueMapsQuery.trim().length > 0 &&
-    callbacks.onOpenMaps !== undefined;
+    canOpenMapsTarget(venueMapsTarget) && callbacks.onOpenMaps !== undefined;
 
   const visibleTickets = useMemo(
     () =>
@@ -745,8 +753,8 @@ const PublishedBody = ({
           {event.format !== "online" && event.venueName !== null ? (
             <Pressable
               onPress={() => {
-                if (venueMapsQuery !== null)
-                  callbacks.onOpenMaps?.(venueMapsQuery);
+                if (venueMapsTarget !== null)
+                  callbacks.onOpenMaps?.(venueMapsTarget);
               }}
               disabled={!canOpenVenueMaps}
               accessibilityRole={canOpenVenueMaps ? "button" : undefined}

@@ -56,3 +56,7 @@ web-build-fixed/
 playwright/orch1197/bundle.js
 playwright/orch1207/bundle.js
 test-results/
+
+# issue #2468 — bundle-attribution exports use a second output dir alongside
+# web-build/; ignore it too so a measurement run can never be committed.
+web-build-base/

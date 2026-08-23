@@ -12,6 +12,7 @@ import type { ScrollViewProps } from "react-native";
 
 import type { ResolvedTheme, ThemeInput } from "./designTokens";
 import type { EventAcquisitionState } from "./eventAcquisitionLifecycle";
+import type { MapsOpenTarget } from "./mapsDeepLink";
 
 export type EventCoverMediaType = "image" | "video" | "gif";
 export type EventFormat = "in-person" | "online" | "hybrid";
@@ -205,7 +206,15 @@ export interface PublicEventCallbacks {
   onJoinWaitlist: (ticketId: string) => void;
   onRequestApproval: (ticketId: string) => void;
   onOpenBrand?: (brandSlug: string) => void;
-  onOpenMaps?: (query: string) => void;
+  /**
+   * issue #2468 — carries the COORDINATE alongside the label. The old
+   * `(query: string) => void` shape forced every host to hand Apple/Google a
+   * free-text query that they then re-geocoded, so the same link landed on
+   * different places on different phones. Hosts MUST build the URL with
+   * `buildMapsDeepLink` from this target and MUST NOT re-derive one from the
+   * label alone. `target.geo === null` is the honest "we hold no pin" state.
+   */
+  onOpenMaps?: (target: MapsOpenTarget) => void;
   onUnlockPassword?: (password: string) => boolean;
 }
 

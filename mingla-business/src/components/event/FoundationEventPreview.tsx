@@ -60,7 +60,10 @@ export interface FoundationEventPreviewProps {
   onClose: () => void;
   onShare: () => void;
   onOpenBrand?: (brandSlug: string) => void;
-  onOpenMaps?: (query: string) => void;
+  /** issue #2468 — carries the stored coordinate, not just the text label. */
+  onOpenMaps?: (
+    target: import("@mingla/offering-rendering").MapsOpenTarget,
+  ) => void;
   /** Server-proxied static map URL (privacy-gated upstream). null → text card. */
   staticMapUrl?: string | null;
   stateBanner?: React.ReactNode | null;

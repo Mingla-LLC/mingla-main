@@ -22,6 +22,15 @@
 
 import type { BusinessEventCard } from "../types/mergedDiscover";
 import type { OfferingGalleryImage } from "@mingla/offering-rendering";
+// issue #2469 — the ONE owner of the venueName/address split, shared with the
+// buyer-web read path and the explorer deck mapper.
+//
+// RELATIVE, not "@mingla/offering-rendering": this module is loaded DIRECTLY by
+// `deno test` (the ORCH-1342 suite), and Deno rejects a subpath of a `file:`
+// dependency ("not a dependency"). A relative path it does resolve, under
+// `--unstable-sloppy-imports` — which the two workflows that run this suite
+// pass. Metro and tsc resolve it unchanged.
+import { extractPublicEventLocation } from "../../../packages/offering-rendering/publicEventLocation";
 
 /** The explicit column set selected off business_public_events_view. */
 export const PUBLIC_EVENT_SEED_COLUMNS =
@@ -128,6 +137,12 @@ export function mapPublicEventSeedRow(
 
   const publicTheme = asRecord(row.public_theme);
   const businessEvent = asRecord(publicTheme.business_event);
+  // issue #2469 — the parsed venueName/address halves (never the combined
+  // `location_text` in both slots). One owner, shared with ConnectionsPage.
+  const seedLocation = extractPublicEventLocation(
+    row.public_theme,
+    row.location_text,
+  );
 
   return {
     eventId: row.id,
@@ -154,11 +169,23 @@ export function mapPublicEventSeedRow(
     doorsOpenLocal: null,
     endsAtLocal: null,
     timezone: row.master_timezone ?? row.timezone ?? "UTC",
-    // The view has no venueName column — location_text is the ADDRESS line
-    // (matching the deck mapper's address source); venueName stays null.
-    venueName: null,
+    /*
+      issue #2469 — was `venueName: null` + `address: row.location_text`.
+
+      TWO defects in three lines. `location_text` is the COMBINED
+      "<venueName>  · <address>" string, so assigning it to `address` printed
+      the venue name a second time under the name line AND sent the doubled
+      string to the maps deep link. And the hard-coded `venueName: null`
+      suppressed the entire "Where you'll be" card on the cold /e/ route,
+      because every shared renderer gates that section on `venueName !== null`.
+
+      Both are closed by reading the PARSED halves out of
+      `public_theme -> business_event -> location` — the same source the
+      business/web mapper (`publicEventsService`) has always used.
+    */
+    venueName: seedLocation.venueName,
     city: row.city ?? null,
-    address: row.location_text ?? null,
+    address: seedLocation.address,
     // MIRRORS the authoritative parses (publicEventsService:1034 AND the deck
     // seed producer extractHideAddressUntilTicket): fail-CLOSED to true — an
     // absent theme value must HIDE the street, never leak it (the 1157

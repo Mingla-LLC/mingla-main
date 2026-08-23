@@ -35,7 +35,7 @@
  * with it, because a rule with nothing under it is a rule to nowhere.
  */
 import React from "react";
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text, View } from "react-native";
 import { useTranslation } from "react-i18next";
 import { Icon } from "../ui/Icon";
 import { extractWeekdayText } from "../../utils/openingHoursUtils";
@@ -47,6 +47,8 @@ import { useIsPlaceOpen } from "../../hooks/useIsPlaceOpen";
 import { dialablePhone } from "../../../../packages/card-identity/phone.mjs";
 import { FactRow, LinkRow, Section, present } from "./SpineParts";
 import { SPINE } from "./spineTokens";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../../utils/openMapsTarget";
 
 export type PracticalOpeningHours =
   | string
@@ -315,27 +317,33 @@ function openMaps(
   onUnavailable: (what: string) => void,
   t: (key: string, opts?: Record<string, unknown>) => string,
 ): void {
-  // ORCH-1148 / #1605 bug ledger item 3: `Platform.select` with only ios/android
-  // keys returns UNDEFINED on web, and the `if (url)` then silently no-ops — a
-  // dead tap nobody could see. The web arm is a real https maps URL.
-  const url =
-    Platform.OS === "ios"
-      ? `maps:0,0?q=${encodeURIComponent(address)}`
-      : Platform.OS === "android"
-        ? `geo:0,0?q=${encodeURIComponent(address)}`
-        : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
-  void (async () => {
-    try {
-      const can = await Linking.canOpenURL(url);
-      if (!can) {
-        onUnavailable(t("expanded_details:action_buttons.address", { defaultValue: "Address" }));
-        return;
-      }
-      await Linking.openURL(url);
-    } catch {
-      onUnavailable(t("expanded_details:action_buttons.address", { defaultValue: "Address" }));
-    }
-  })();
+  /*
+    #2468 — routed through the ONE builder (`@mingla/offering-rendering`
+    buildMapsDeepLink, via openMapsTarget). Two things are preserved verbatim
+    because they were already right: the ORCH-1148 / #1605 WEB ARM (a
+    `Platform.select` with only ios/android keys returns undefined on web and
+    the `if (url)` then silently no-ops — a dead tap nobody could see), and the
+    canOpenURL pre-flight + `onUnavailable` toast. Both now live inside
+    `openMapsTarget`.
+
+    This surface holds NO coordinate — the rows are place/plan address STRINGS
+    (`plan.startsAt`, `plan.endsNear`, `address`) with no lat/lng anywhere in
+    the props — so it keeps the honest text path. The day these gain a
+    coordinate, passing it here is the whole change.
+  */
+  openMapsTarget(
+    { label: address, geo: null },
+    {
+      // ORCH-1148 / #1605 added the pre-flight on THIS site; it is preserved.
+      preflight: true,
+      onUnavailable: () =>
+        onUnavailable(
+          t("expanded_details:action_buttons.address", {
+            defaultValue: "Address",
+          }),
+        ),
+    },
+  );
 }
 
 const styles = StyleSheet.create({

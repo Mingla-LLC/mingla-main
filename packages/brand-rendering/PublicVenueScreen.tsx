@@ -73,6 +73,12 @@ import {
   offeringSurfaceStyles,
   resolveTheme,
   useResponsiveLayout,
+  // issue #2468 — the venue page holds real lat/lng (its static map is drawn
+  // from them); the deep link must be anchored on that pin instead of letting a
+  // provider re-geocode the address text.
+  canOpenMapsTarget,
+  normalizeMapsGeo,
+  type MapsOpenTarget,
   type OfferingGalleryImage,
   type ResolvedTheme,
   type ThemePalette,
@@ -378,7 +384,12 @@ export interface PublicVenueScreenProps {
   onShare: () => void;
   onClose: () => void;
   onOpenBrand: () => void;
-  onOpenMaps: (query: string) => void;
+  /**
+   * issue #2468 — carries the venue's stored coordinate, not just the address
+   * text. The host builds the URL with `buildMapsDeepLink`; it must never
+   * re-derive one from `target.label` alone.
+   */
+  onOpenMaps: (target: MapsOpenTarget) => void;
 }
 
 // #1562 — the week's labels have ONE owner now (`venueOpenState.ts`), because
@@ -518,7 +529,8 @@ export interface VenueSectionProps {
   openState: VenueOpenState;
   /** #1562 — the Stay nightly rate, or null when there is no honest one. */
   stayRate: VenueStayRate | null;
-  mapsQuery: string | null;
+  /** issue #2468 — null ⇔ nothing openable ⇔ the address card is not rendered. */
+  mapsTarget: MapsOpenTarget | null;
   onOpenMaps: () => void;
 }
 
@@ -619,7 +631,7 @@ const VenueLocationSection: VenueSectionRenderer = ({
   venue,
   palette,
   isDesktop,
-  mapsQuery,
+  mapsTarget,
   onOpenMaps,
 }) => {
   // §6.4 static map — server proxy ONLY; null → map hidden (fail-safe).
@@ -656,7 +668,7 @@ const VenueLocationSection: VenueSectionRenderer = ({
     ) : null;
 
   const addressCard =
-    mapsQuery !== null ? (
+    mapsTarget !== null ? (
       <Pressable
         onPress={onOpenMaps}
         accessibilityRole="button"
@@ -981,18 +993,27 @@ export const PublicVenueScreen = ({
   // §6.4 — the static map itself lives in VenueLocationSection (it is that
   // section's data, not the page's). The page keeps only the maps QUERY, which
   // the section receives, because the "Open in maps" handler is a host effect.
-  const hasCoords = Number.isFinite(venue.lat) && Number.isFinite(venue.lng);
-  const mapsQuery =
-    venue.address !== null && venue.address.trim().length > 0
-      ? venue.address
-      : hasCoords
-        ? `${venue.lat},${venue.lng}`
-        : null;
+  /*
+    issue #2468 — the venue page ALWAYS had real coordinates (the static map
+    above is drawn from them) and still sent Apple/Google the address STRING,
+    which they re-geocoded. The target now carries the coordinate; the address
+    survives only as the pin's label and as the fallback for the rare venue
+    whose lat/lng is missing or sentinel.
+  */
+  const mapsTarget = React.useMemo<MapsOpenTarget | null>(() => {
+    const geo = normalizeMapsGeo({ lat: venue.lat, lng: venue.lng });
+    const label =
+      venue.address !== null && venue.address.trim().length > 0
+        ? venue.address
+        : venue.name;
+    const candidate: MapsOpenTarget = { label, geo };
+    return canOpenMapsTarget(candidate) ? candidate : null;
+  }, [venue.address, venue.lat, venue.lng, venue.name]);
 
   const handleOpenMaps = React.useCallback((): void => {
-    if (mapsQuery === null) return;
-    onOpenMaps(mapsQuery);
-  }, [mapsQuery, onOpenMaps]);
+    if (mapsTarget === null) return;
+    onOpenMaps(mapsTarget);
+  }, [mapsTarget, onOpenMaps]);
 
   const handleReserve = React.useCallback((): void => {
     if (
@@ -1303,14 +1324,14 @@ export const PublicVenueScreen = ({
       todayWeekday: today,
       openState,
       stayRate,
-      mapsQuery,
+      mapsTarget,
       onOpenMaps: handleOpenMaps,
     }),
     [
       discoveryPrice,
       handleOpenMaps,
       isDesktop,
-      mapsQuery,
+      mapsTarget,
       openState,
       palette,
       profile,

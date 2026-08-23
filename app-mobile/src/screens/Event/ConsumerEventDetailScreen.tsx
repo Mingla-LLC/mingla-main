@@ -48,8 +48,6 @@ import {
   AccessibilityInfo,
   ActivityIndicator,
   InteractionManager,
-  Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -93,9 +91,12 @@ import {
   type RsvpOfferingConfig,
   type RsvpGuestContact,
   type RsvpPhoneFieldRenderer,
+  type MapsOpenTarget,
   type RsvpSubmitResult,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../../utils/openMapsTarget";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
@@ -304,18 +305,12 @@ const canonicalToTransientCard = (
   };
 };
 
-const openMapsForQuery = (query: string): void => {
-  const encoded = encodeURIComponent(query);
-  const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
-  const platformUrl =
-    Platform.OS === "ios"
-      ? `maps://?q=${encoded}`
-      : Platform.OS === "android"
-        ? `geo:0,0?q=${encoded}`
-        : googleUrl;
-  void Linking.openURL(platformUrl).catch(() => {
-    void Linking.openURL(googleUrl).catch(() => undefined);
-  });
+// issue #2468 — was a FREE-TEXT `maps://?q=<venue, address>` that Apple
+// re-geocoded against the device's location and last Maps search; the same link
+// resolved to a different place on a different phone. The renderer now supplies
+// the stored coordinate and `openMapsTarget` anchors the link on it.
+const openMapsForTarget = (target: MapsOpenTarget): void => {
+  openMapsTarget(target);
 };
 
 export default function ConsumerEventDetailScreen({
@@ -1235,7 +1230,7 @@ export default function ConsumerEventDetailScreen({
     onSubmit: rsvpOnSubmit,
     onChipIn: handleChipIn,
     onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
-    onOpenMaps: openMapsForQuery,
+    onOpenMaps: openMapsForTarget,
     staticMapUrl: rsvpBodyStaticMapUrl,
   });
 
@@ -1584,7 +1579,7 @@ export default function ConsumerEventDetailScreen({
                 onChangeTicketQuantity={handleChangeTicketQuantity}
                 onProceedToCart={handleProceedToCart}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
-                onOpenMaps={openMapsForQuery}
+                onOpenMaps={openMapsForTarget}
                 staticMapUrl={bodyStaticMapUrl}
                 submitting={checkoutInFlight}
                 pricingNote={
@@ -1621,7 +1616,7 @@ export default function ConsumerEventDetailScreen({
                 isLoggedIn={user !== null}
                 onSubmit={rsvpOnSubmit}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
-                onOpenMaps={openMapsForQuery}
+                onOpenMaps={openMapsForTarget}
                 staticMapUrl={rsvpBodyStaticMapUrl}
                 state={rsvpState}
                 testID="orch-1163-consumer-rsvp-body"

@@ -423,6 +423,28 @@ export type {
 export { buildStaticMapUrl, getSupabaseFunctionsBaseUrl } from "./mapboxStaticImage";
 export { getPublicMapboxToken } from "./mapboxToken";
 export type { StaticMapParams } from "./mapboxStaticImage";
+// issue #2468 — THE ONE "open in maps" deep-link builder. Sibling of the static
+// map builder above ON PURPOSE: the thumbnail and the link now read the SAME
+// stored coordinate, so they can no longer point at two different places.
+export {
+  buildMapsDeepLink,
+  buildMapsUrl,
+  canOpenMapsTarget,
+  normalizeMapsGeo,
+  selectVenueMapsTarget,
+} from "./mapsDeepLink";
+export type {
+  BuildMapsUrlParams,
+  MapsDeepLink,
+  MapsGeoPoint,
+  MapsOpenTarget,
+  MapsPlatform,
+  VenueMapsTargetParams,
+} from "./mapsDeepLink";
+// issue #2469 — the ONE owner of the venueName/address split. Beside the maps
+// builder because the label it produces is what goes on the pin.
+export { extractPublicEventLocation } from "./publicEventLocation";
+export type { PublicEventLocationParts } from "./publicEventLocation";
 // ORCH-1117 — the single buy/unavailable state machine consumed by BOTH the
 // inline ticket row AND the per-host floating Buy bar (no forked gate logic).
 export {

@@ -29,7 +29,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AppState,
-  Linking,
   Platform,
   Pressable,
   StyleSheet,
@@ -62,8 +61,11 @@ import {
   type ChipInResult,
   type EventAcquisitionInput,
   type EventAcquisitionState,
+  type MapsOpenTarget,
   nextEventAcquisitionBoundaryDelayMs,
 } from "@mingla/offering-rendering";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../../utils/openMapsTarget";
 import {
   useResponsiveLayout,
   EventOfferingFloatingBar,
@@ -345,19 +347,14 @@ const mapBrandToPublicBrand = (
   };
 };
 
-const openMapsForQuery = (query: string): void => {
-  const encoded = encodeURIComponent(query);
-  const googleUrl = `https://www.google.com/maps/search/?api=1&query=${encoded}`;
-  const platformUrl =
-    Platform.OS === "ios"
-      ? `maps://?q=${encoded}`
-      : Platform.OS === "android"
-        ? `geo:0,0?q=${encoded}`
-        : googleUrl;
-
-  void Linking.openURL(platformUrl).catch(() => {
-    void Linking.openURL(googleUrl).catch(() => undefined);
-  });
+// issue #2468 — this used to BUILD the URL: it percent-encoded the venue text
+// into the Apple / Android / Google search forms, i.e. a FREE-TEXT query the
+// provider re-geocoded, which landed a Lagos event on a London street. The
+// renderer now hands us the coordinate it already holds and `openMapsTarget`
+// anchors the link on it. The text forms survive only inside the one builder,
+// as the fallback for an event we hold no pin for.
+const openMapsForTarget = (target: MapsOpenTarget): void => {
+  openMapsTarget(target);
 };
 
 // issue #2101 A7.3 item 21 — the empty-slug case must never THROW out of a
@@ -1041,7 +1038,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       onOpenBrand: (brandSlug: string) => {
         router.push(`/b/${brandSlug}` as never);
       },
-      onOpenMaps: openMapsForQuery,
+      onOpenMaps: openMapsForTarget,
       onUnlockPassword: (password: string): boolean => {
         // [TRANSITIONAL] Frontend stub validation against ticket.password —
         // B4 wires real backend verification (hashed comparison).
@@ -1477,7 +1474,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onClose={handleClose}
           onShare={handleShare}
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
-          onOpenMaps={openMapsForQuery}
+          onOpenMaps={openMapsForTarget}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
           onDownloadPass={handleDownloadRsvpPass}
@@ -1672,7 +1669,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onClose={handleClose}
           onShare={handleShare}
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
-          onOpenMaps={openMapsForQuery}
+          onOpenMaps={openMapsForTarget}
           staticMapUrl={staticMapUrl}
           stateBanner={stateBanner}
           stickyPanel={stickyPanel}

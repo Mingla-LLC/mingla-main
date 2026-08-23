@@ -31,7 +31,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — anon public route; PublicVenueScreen/PublicVenueNotFound apply insets.top; state views center-anchored
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import { ActivityIndicator, Linking, Platform, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -53,6 +53,10 @@ import {
 // TYPE-ONLY off the barrel — a value import here re-hoists PublicBrandPage and
 // the eager lucide shim into __common (i-1047-biz-bundle-budget-deferral).
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
+// issue #2468 — DEEP specifier (this route never imports a package barrel);
+// `import type` is erased, so it adds nothing to the bundle.
+import type { MapsOpenTarget } from "@mingla/offering-rendering/mapsDeepLink";
+import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
 
 import {
   spacing,
@@ -314,10 +318,12 @@ export default function PublicVenueRoute(): React.ReactElement {
     [settleBrandId, settleVenueId],
   );
 
-  const handleOpenMaps = useCallback((query: string): void => {
-    void Linking.openURL(
-      `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`,
-    ).catch(() => undefined);
+  // issue #2468 — was a google TEXT search on the venue's address string, which
+  // the provider re-geocoded. The shared screen now hands us the venue's stored
+  // lat/lng (the same pair its static map is drawn from) and the link is
+  // anchored on it.
+  const handleOpenMaps = useCallback((target: MapsOpenTarget): void => {
+    openMapsTarget(target);
   }, []);
 
   const handleOpenBrand = useCallback((): void => {

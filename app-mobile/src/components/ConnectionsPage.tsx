@@ -35,6 +35,9 @@ import { reportService, ReportReason } from "../services/reportService";
 import { supabase } from "../services/supabase";
 import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
+// issue #2469 — the ONE owner of the venueName/address split, shared with the
+// cold /e/ seed mapper and the buyer-web read path.
+import { extractPublicEventLocation } from "@mingla/offering-rendering";
 import { Conversation, Message as ConvMessage } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";
@@ -140,10 +143,13 @@ function extractBusinessEventFormat(theme: unknown, isOnline: boolean): Business
   return isOnline ? 'online' : 'in-person';
 }
 
-function extractVenueName(theme: unknown, locationText: string | null): string | null {
-  const raw = getThemeObject(getThemeObject(theme).business_event).venueName;
-  return typeof raw === 'string' && raw.trim().length > 0 ? raw.trim() : locationText;
-}
+// issue #2469 — `extractVenueName` DELETED. It read only
+// `business_event.venueName` and fell back to the COMBINED `location_text`,
+// while the caller separately assigned that same combined string to `address` —
+// so the explorer printed the venue name twice and sent the doubled string to
+// Maps. `extractPublicEventLocation` reads BOTH parsed halves from
+// `business_event.location`, the same source the business/web path uses, and
+// guarantees the combined string never lands in both slots.
 
 function extractHideAddressUntilTicket(theme: unknown): boolean {
   return getThemeObject(getThemeObject(theme).business_event).hideAddressUntilTicket === true;
@@ -186,6 +192,11 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
   return new Map(
     (events || []).map((event: any) => {
       const brand = event.brand_id ? brandsById.get(event.brand_id) : null;
+      // issue #2469 — resolved ONCE; the two halves must come from the same read.
+      const location = extractPublicEventLocation(
+        event.public_theme,
+        event.location_text ?? null,
+      );
       return [
         event.id,
         {
@@ -214,9 +225,10 @@ async function fetchGroupEventMetaByIds(eventIds: string[]): Promise<Map<string,
             doorsOpenLocal: null,
             endsAtLocal: null,
             timezone: event.master_timezone ?? event.timezone ?? 'UTC',
-            venueName: extractVenueName(event.public_theme, event.location_text ?? null),
+            // issue #2469 — the PARSED halves, never the combined string twice.
+            venueName: location.venueName,
             city: event.city ?? null,
-            address: event.location_text ?? null,
+            address: location.address,
             hideAddressUntilTicket: extractHideAddressUntilTicket(event.public_theme),
             format: extractBusinessEventFormat(event.public_theme, Boolean(event.is_online)),
             locationGeo: parseLocationGeo(event.location_geo),

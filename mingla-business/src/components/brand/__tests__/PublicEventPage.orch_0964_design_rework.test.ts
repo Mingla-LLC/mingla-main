@@ -16,6 +16,11 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
   // sharedSource). [TEST-MOD-APPROVED ORCH-1138]
   const paletteSource = repoFile("packages/offering-rendering/themePalette.ts");
   const typesSource = repoFile("packages/offering-rendering/types.ts");
+  // [TEST-MOD-APPROVED #2468] the maps deep-link builder is the new single
+  // owner of every "open in maps" URL; the venue-card assertions below read it.
+  const mapsDeepLinkSource = repoFile(
+    "packages/offering-rendering/mapsDeepLink.ts",
+  );
   const packageSource = repoFile("packages/offering-rendering/package.json");
   const businessAdapterSource = readFileSync(
     path.join(process.cwd(), "src/components/event/PublicEventPage.tsx"),
@@ -121,23 +126,59 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(businessAdapterSource).toContain("photo: brand.photo");
   });
 
+  // [TEST-MOD-APPROVED #2468] maps-deep-link-coordinates.
+  //
+  // WHAT THIS TEST USED TO PIN, AND WHY IT HAD TO CHANGE. It asserted that the
+  // BUSINESS ADAPTER itself contained `Platform.OS === "ios"`, `maps://?q=`,
+  // `geo:0,0?q=` and the google text-search URL — i.e. it pinned the adapter as
+  // a maps-URL BUILDER, and it pinned the `?q=<free text>` form specifically.
+  // That form IS the #2468 defect: it discards the coordinate we already store
+  // and lets Apple/Google re-geocode, so the same link resolved to Alverton
+  // Street, London SE8 for a Lagos event on a London-located device
+  // (reproduced twice on a real simulator against production data). It also
+  // pinned `onOpenMaps?: (query: string) => void`, the signature that made it
+  // impossible to pass the coordinate at all.
+  //
+  // The URL now has ONE owner, `@mingla/offering-rendering/mapsDeepLink`, and
+  // the adapter only forwards a target. The text forms still exist — inside
+  // that builder, as the honest fallback for an event with no stored pin — and
+  // are pinned by issue_2468_maps_deep_link.test.ts T-2.
+  //
+  // The test's INTENT ("without leaking hidden addresses") is not weakened: it
+  // is strengthened below, because the privacy gate now refuses to read
+  // `locationGeo` at all when the address is hidden.
   test("location card opens platform maps without leaking hidden addresses", () => {
-    expect(typesSource).toContain("onOpenMaps?: (query: string) => void");
-    expect(sharedSource).toContain("const venueMapsQuery =");
-    expect(sharedSource).toContain(
-      "event.hideAddressUntilTicket || event.venueName === null",
-    );
-    expect(sharedSource).toContain("callbacks.onOpenMaps?.(venueMapsQuery)");
+    expect(typesSource).toContain("onOpenMaps?: (target: MapsOpenTarget) => void");
+    expect(sharedSource).toContain("const venueMapsTarget = selectVenueMapsTarget({");
+    // The privacy gate moved into the shared builder, one owner for all three
+    // renderers — and it is fed the SAME predicate this test always pinned.
+    expect(sharedSource).toContain("addressHidden: event.hideAddressUntilTicket");
+    expect(mapsDeepLinkSource).toContain("if (params.addressHidden) return null;");
+    // ...and it is null-checked BEFORE locationGeo is read, so a hidden-address
+    // event cannot hand out an exact pin even if a host over-supplies the prop.
+    expect(
+      mapsDeepLinkSource.indexOf("if (params.addressHidden) return null;"),
+    ).toBeLessThan(mapsDeepLinkSource.indexOf("normalizeMapsGeo(params.locationGeo)"));
+    expect(sharedSource).toContain("callbacks.onOpenMaps?.(venueMapsTarget)");
     expect(sharedSource).toContain("Open maps");
     expect(sharedSource).toContain("styles.venueMapsPill");
     expect(sharedSource).toContain("borderColor: palette.accentText");
-    expect(businessAdapterSource).toContain("const openMapsForQuery =");
-    expect(businessAdapterSource).toContain('Platform.OS === "ios"');
-    expect(businessAdapterSource).toContain("maps://?q=");
-    expect(businessAdapterSource).toContain("geo:0,0?q=");
-    expect(businessAdapterSource).toContain(
-      "https://www.google.com/maps/search/?api=1&query=",
+    // The adapter is a FORWARDER now, not a URL builder.
+    expect(businessAdapterSource).toContain("const openMapsForTarget =");
+    expect(businessAdapterSource).toContain("openMapsTarget(target)");
+    expect(businessAdapterSource).toContain("onOpenMaps: openMapsForTarget");
+    expect(businessAdapterSource).not.toContain('"maps://?q=');
+    expect(businessAdapterSource).not.toContain('`maps://?q=');
+    expect(businessAdapterSource).not.toContain('`geo:0,0?q=');
+    // The coordinate-anchored shapes #2468 proved correct, at their one owner.
+    expect(mapsDeepLinkSource).toContain("`maps://?ll=${pair}&q=${encodedLabel}`");
+    // [TEST-MOD-APPROVED #2468] tester P3-2: the android label is now run
+    // through `encodeGeoLabel`, which percent-escapes the parens that would
+    // otherwise close the `(<label>)` wrapper early. The coordinate authority
+    // asserted on the same line is unchanged.
+    expect(mapsDeepLinkSource).toContain(
+      "`geo:${pair}?q=${pair}(${encodeGeoLabel(label)})`",
     );
-    expect(businessAdapterSource).toContain("onOpenMaps: openMapsForQuery");
+    expect(mapsDeepLinkSource).toContain('.replace(/\\(/g, "%28")');
   });
 });

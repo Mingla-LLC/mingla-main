@@ -76,6 +76,12 @@ import { type SocialProofSampleEntry } from "./socialProofTypes";
 import { type PublicBrandProps, type PublicEventProps } from "./types";
 import { type ResolvedTheme } from "./designTokens";
 import { normalizeCityCountry } from "./normalizeCityCountry";
+// issue #2468 — the ONE privacy gate + label composer for the venue card.
+import {
+  canOpenMapsTarget,
+  selectVenueMapsTarget,
+  type MapsOpenTarget,
+} from "./mapsDeepLink";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
 import { markRsvpPhoneTouchedById } from "./rsvpPhoneValidation";
 import type {
@@ -253,7 +259,8 @@ export interface RsvpOfferingBodyProps {
     guests: RsvpGuestContact[];
   }) => Promise<RsvpSubmitResult>;
   onOpenBrand?: (brandSlug: string) => void;
-  onOpenMaps?: (query: string) => void;
+  /** issue #2468 — carries the stored coordinate, not just the text label. */
+  onOpenMaps?: (target: MapsOpenTarget) => void;
   /** Server-proxied static map URL (city-level when address hidden); null → no map. */
   staticMapUrl?: string | null;
   contentBottomInset?: number;
@@ -1430,14 +1437,21 @@ export const RsvpOfferingBody: React.FC<
     event.format === "online" || addressRevealed
       ? null
       : "Full address shared once you're going";
-  const venueMapsQuery =
-    !addressRevealed || event.venueName === null
-      ? null
-      : [event.venueName, event.address].filter(Boolean).join(", ");
+  /*
+    issue #2468 — ONE owner for the privacy gate, the label AND the pin. The
+    gate here is `!addressRevealed` (the RSVP page reveals the street once the
+    viewer is going/maybe), so a viewer who has NOT revealed it can never get an
+    exact-pin deep link. When the street IS hidden the anon RPC has already
+    nulled `locationGeo` server-side; this is the second lock, client-side.
+  */
+  const venueMapsTarget = selectVenueMapsTarget({
+    venueName: event.venueName,
+    address: event.address,
+    addressHidden: !addressRevealed,
+    locationGeo: event.locationGeo,
+  });
   const canOpenVenueMaps =
-    venueMapsQuery !== null &&
-    venueMapsQuery.trim().length > 0 &&
-    onOpenMaps !== undefined;
+    canOpenMapsTarget(venueMapsTarget) && onOpenMaps !== undefined;
 
   const aboutText = event.description.trim();
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
@@ -1717,8 +1731,8 @@ export const RsvpOfferingBody: React.FC<
           ) : null}
           <Pressable
             onPress={() => {
-              if (canOpenVenueMaps && venueMapsQuery !== null)
-                onOpenMaps?.(venueMapsQuery);
+              if (canOpenVenueMaps && venueMapsTarget !== null)
+                onOpenMaps?.(venueMapsTarget);
             }}
             disabled={!canOpenVenueMaps}
             accessibilityRole={canOpenVenueMaps ? "button" : undefined}

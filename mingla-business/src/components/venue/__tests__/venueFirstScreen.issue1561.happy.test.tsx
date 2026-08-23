@@ -159,6 +159,12 @@ jest.mock("@mingla/offering-rendering", () => {
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
   const themePalette = require("../../../../../packages/offering-rendering/themePalette");
   const mapboxStaticImage = require("../../../../../packages/offering-rendering/mapboxStaticImage");
+  // [TEST-MOD-APPROVED #2468] Harness registration only — ADDITION, no
+  // assertion changed. maps-deep-link-coordinates gave every "open in maps"
+  // URL one owner (packages/offering-rendering/mapsDeepLink), and the shared
+  // venue screen now reads its maps target from it. Registering the REAL module
+  // matches this factory's rule of spreading the real pure helpers.
+  const mapsDeepLink = require("../../../../../packages/offering-rendering/mapsDeepLink");
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
@@ -182,6 +188,7 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...mapboxStaticImage,
+    ...mapsDeepLink,
     useResponsiveLayout: () => ({
       width: viewport.width,
       isDesktop: viewport.isDesktop,

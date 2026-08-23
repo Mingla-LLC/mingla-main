@@ -32,6 +32,11 @@ on:
     branches: [Seth, main]
     paths:
       - "packages/offering-rendering/**"
+      # issue #2468 — PublicVenueScreen (the venue page's maps target) lives in
+      # brand-rendering, and the maps regression suites registered below guard
+      # it. Path filters err BROAD here by house rule; a filter that misses a
+      # future edit silently skips the guard.
+      - "packages/brand-rendering/**"
       - "app-mobile/app/**"
       - "app-mobile/src/**"
       - "mingla-business/app/**"
@@ -42,6 +47,11 @@ on:
   pull_request:
     paths:
       - "packages/offering-rendering/**"
+      # issue #2468 — PublicVenueScreen (the venue page's maps target) lives in
+      # brand-rendering, and the maps regression suites registered below guard
+      # it. Path filters err BROAD here by house rule; a filter that misses a
+      # future edit silently skips the guard.
+      - "packages/brand-rendering/**"
       - "app-mobile/app/**"
       - "app-mobile/src/**"
       - "mingla-business/app/**"
@@ -128,9 +138,37 @@ jobs:
             app-mobile/src/screens/Event/__tests__/orch_1342_cold_seed_landing.test.ts
             app-mobile/src/services/__tests__/oneLinkResolver.orch1342.test.ts
             app-mobile/src/services/__tests__/publicEventSeedService.orch1342.test.ts
+            # issue #2468 [maps-deep-link-coordinates] + #2469
+            # [explorer-venue-name-duplicated] — the maps deep-link regression
+            # suites. Registered HERE, and not in a workflow of their own,
+            # because #2148's CI registry pins `legacyOrigins` at exactly 199
+            # and discovers origins from the filesystem: a new workflow file is
+            # rejected as an unregistered origin, and registering it is rejected
+            # as a 200th. Bumping that count means editing the governance
+            # constant AND its append-only self-test, which is #2148's call, not
+            # this issue's. This workflow already path-scopes every tree these
+            # suites guard (offering-rendering, brand-rendering, app-mobile
+            # src/+app/, mingla-business src/+app/) and already runs the
+            # ORCH-1342 seed suite they build on.
+            #
+            # Named in FULL, one path per line — never a jest -t pattern or a
+            # glob. A pattern containing a bracketed route segment matches ZERO
+            # files and exits 0, which is the same unfalsifiable-gate class
+            # these suites exist to close.
+            packages/offering-rendering/__tests__/issue_2468_maps_deep_link.test.ts
+            packages/offering-rendering/__tests__/issue_2468_maps_deep_link.tester_adversarial.test.ts
+            app-mobile/src/services/__tests__/issue_2469_explorer_parsed_location.test.ts
           )
           for attempt in 1 2 3; do
-            if deno test --allow-env --allow-net --allow-read --no-check "${DENO_TEST_FILES[@]}"; then
+            # issue #2469 — `publicEventSeedService.ts` (in DENO_TEST_FILES below)
+            # now imports the SHARED venueName/address extractor from
+            # packages/offering-rendering by relative path. Deno rejects a
+            # subpath of a `file:` dependency and app-mobile's tsconfig forbids
+            # `.ts` import extensions, so a relative extensionless specifier is
+            # the only form all three of Deno, Metro and tsc accept — and Deno
+            # needs this flag for it. The flag only RELAXES resolution; it
+            # cannot break an import that already resolves.
+            if deno test --allow-env --allow-net --allow-read --no-check --unstable-sloppy-imports "${DENO_TEST_FILES[@]}"; then
               exit 0
             fi
             if [ "$attempt" -eq 3 ]; then
@@ -140,6 +178,30 @@ jobs:
             echo "META-ORCH-1337 Deno suites failed (attempt ${attempt}), retrying in 10s..."
             sleep 10
           done
+
+      # issue #2468 — the privacy guard is the highest-severity line in the maps
+      # change and the one a future edit is most likely to "simplify" away. This
+      # asserts it independently of the suites above: present, AND still ahead of
+      # the coordinate read, so a hidden-address event can never publish its
+      # exact pin through a deep link.
+      - name: "issue #2468: maps privacy guard is present and precedes the coordinate read"
+        run: |
+          set -euo pipefail
+          src="packages/offering-rendering/mapsDeepLink.ts"
+          test -f "$src" || { echo "issue-2468: $src is gone"; exit 1; }
+          grep -q "if (params.addressHidden) return null;" "$src" || {
+            echo "issue-2468 PRIVACY: the addressHidden guard is gone from $src."
+            echo "A hidden-address event would publish its exact coordinate."
+            exit 1
+          }
+          guard=$(grep -n "if (params.addressHidden) return null;" "$src" | head -1 | cut -d: -f1)
+          geo=$(grep -n "normalizeMapsGeo(params.locationGeo)" "$src" | head -1 | cut -d: -f1)
+          if [ -z "$geo" ] || [ "$guard" -ge "$geo" ]; then
+            echo "issue-2468 PRIVACY: the guard (line ${guard}) must precede the"
+            echo "locationGeo read (line ${geo:-<missing>}) in $src."
+            exit 1
+          fi
+          echo "privacy guard line ${guard} precedes locationGeo read line ${geo}"
 
   meta-1337-business-jest-suites:
     name: "META-ORCH-1337: mingla-business jest suites — 1339 trip/experience guest privacy + 1342 see-who's-going gate, guest funnel link, download-CTA store-links SSOT"

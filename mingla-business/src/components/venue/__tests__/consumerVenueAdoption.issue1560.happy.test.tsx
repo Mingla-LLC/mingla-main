@@ -119,6 +119,11 @@ jest.mock("@mingla/offering-rendering", () => {
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
   const themePalette = require("../../../../../packages/offering-rendering/themePalette");
   const mapboxStaticImage = require("../../../../../packages/offering-rendering/mapboxStaticImage");
+  // [TEST-MOD-APPROVED #2468] maps-deep-link-coordinates — the REAL deep-link
+  // builder, in keeping with this factory's stated rule ("the REAL pure
+  // helpers ... so every value asserted below is genuinely computed"). The
+  // shared venue screen now reads its maps target from it.
+  const mapsDeepLink = require("../../../../../packages/offering-rendering/mapsDeepLink");
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
@@ -139,6 +144,7 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themeResolver,
     ...themePalette,
     ...mapboxStaticImage,
+    ...mapsDeepLink,
     // The consumer app is phone-only for this route (its `useResponsiveLayout`
     // returns isDesktop:false unconditionally on native), so the phone branch
     // is the one a consumer guest actually gets.
@@ -519,8 +525,21 @@ describe("#1560 the consumer app adopts the shared venue page", () => {
     });
     // The dead card in the deleted screen had no handler at all, so this is
     // the assertion that separates "an address is printed" from "it works".
+    //
+    // [TEST-MOD-APPROVED #2468] maps-deep-link-coordinates. This line pinned the
+    // ADDRESS TEXT as the maps query — `query=12%20Academy%20Street%2C%20London%20N1%204AB`
+    // — which is exactly the defect #2468 proved on a real simulator: the
+    // provider re-geocodes that text against the device's location and last
+    // Maps search, so the same link resolved to a different place on a
+    // different phone (a Lagos venue landed on Alverton Street, London SE8).
+    // The venue page has ALWAYS held real coordinates — G-1 above asserts the
+    // static map is drawn from lat 51.5361 — and now the LINK is anchored on
+    // the same pair, so the two can no longer point at two different places
+    // (Constitution #2). The address survives as the pin's label and as the
+    // fallback for a venue whose lat/lng is missing; that fallback is pinned by
+    // issue_2468_maps_deep_link.test.ts T-2.
     expect(openedUrls).toEqual([
-      "https://www.google.com/maps/search/?api=1&query=12%20Academy%20Street%2C%20London%20N1%204AB",
+      "https://www.google.com/maps/search/?api=1&query=51.5361,-0.1035",
     ]);
     mounted.unmount();
   });

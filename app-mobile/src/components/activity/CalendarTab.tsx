@@ -1997,11 +1997,13 @@ const CalendarTab = ({
     }));
   };
 
-  const handleOpenMaps = (address: string) => {
-    const query = encodeURIComponent(address);
-    const url = `https://maps.google.com/maps?q=${query}`;
-    Linking.openURL(url);
-  };
+  // #2468 — `handleOpenMaps` DELETED, not migrated. It built a free-text
+  // `https://maps.google.com/maps?q=<address>` link and had ZERO callers
+  // anywhere in the app: no JSX referenced it, no prop was bound to it. Keeping
+  // it would have meant maintaining a second, wrong maps-URL owner for a
+  // control that does not exist (Constitution #8 — subtract before adding).
+  // The Calendar tab's real maps entry points are TicketPdfSheet and
+  // RsvpPassSheet, both of which route through the shared builder.
 
   const handleRemoveFromCalendar = async (entry: CalendarEntry) => {
     if (removingEntryId) return; // Prevent multiple simultaneous removals

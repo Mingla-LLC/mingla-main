@@ -15,7 +15,6 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -39,6 +38,8 @@ import {
 import type { RsvpPassCredential } from "@mingla/offering-rendering";
 import { useAppStore } from "../../store/appStore";
 import { toastManager } from "../ui/Toast";
+// issue #2468 — the ONE host effect that opens a maps deep link.
+import { openMapsTarget } from "../../utils/openMapsTarget";
 // ORCH-0877 — centralized consumer-side date formatter.
 import { formatEventDateLine } from "../../utils/eventDateDisplay";
 import { postHogService } from "../../services/postHogService";
@@ -63,15 +64,6 @@ const RSVP_PASS_BACKGROUND_STYLE: ViewStyle = {
   borderTopLeftRadius: 28,
   borderTopRightRadius: 28,
 };
-
-function buildMapsQueryUrl(label: string): string {
-  const q = encodeURIComponent(label);
-  return Platform.OS === "ios"
-    ? `maps://?q=${q}`
-    : Platform.OS === "android"
-      ? `geo:0,0?q=${q}`
-      : `https://www.google.com/maps/search/?api=1&query=${q}`;
-}
 
 export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
   visible,
@@ -145,10 +137,23 @@ export const RsvpPassSheet: React.FC<RsvpPassSheetProps> = ({
     timezone: row.timezone,
   });
 
+  /*
+    #2468 — the local `buildMapsQueryUrl` is DELETED; this now goes through the
+    ONE builder, which also adds the canOpenURL pre-flight and the https
+    fallback this sheet never had.
+
+    NO COORDINATE IS AVAILABLE HERE, honestly: `ConsumerRsvpRow.venue` carries
+    only `{ locationText, isOnline, onlineUrl }` because the
+    `fetch_user_going_rsvps` RPC does not select `location_geo`. So this surface
+    keeps the text path rather than fabricating a pin (Constitution #9).
+    Threading the geo through that RPC is a backend change — filed as a
+    discovery on #2468, not smuggled in here.
+  */
   const handleOpenMaps = useCallback((): void => {
-    const label = row.venue.locationText;
-    if (!label || label.length === 0) return;
-    void Linking.openURL(buildMapsQueryUrl(label)).catch(() => undefined);
+    openMapsTarget(
+      { label: row.venue.locationText, geo: null },
+      { onUnavailable: () => toastManager.show("Couldn't open maps", "error") },
+    );
   }, [row.venue.locationText]);
 
   const handleOpenOnlineLink = useCallback((): void => {
