@@ -89,32 +89,71 @@ const cases: ReadonlyArray<[string, () => void]> = [
     },
   ],
   [
-    'registers both origin secrets so the raw-endpoint fallback is never production',
+    'the branded origin is the DEFAULT, not a setting somebody has to remember',
     () => {
+      // This is the whole lesson of #2470. The branded origin already existed,
+      // gated behind an env var nobody ever provisioned — so the fallback WAS
+      // production. A default that depends on configuration is not a default.
+      const render = read('supabase/functions/_shared/marketingEmailRender.ts')
+      const send = read('supabase/functions/marketing-send/index.ts')
       assert(
-        manifest.includes('MINGLA_TRACKING_LINK_ORIGIN'),
-        'MINGLA_TRACKING_LINK_ORIGIN is not in the secrets manifest',
+        render.includes("BRANDED_TRACKING_LINK_ORIGIN = \"https://usemingla.com/m\""),
+        'the tracking origin no longer defaults to the branded Mingla URL',
       )
       assert(
-        manifest.includes('MINGLA_UNSUBSCRIBE_LINK_ORIGIN'),
-        'MINGLA_UNSUBSCRIBE_LINK_ORIGIN is not in the secrets manifest',
+        send.includes(
+          "BRANDED_UNSUBSCRIBE_LINK_ORIGIN = \"https://usemingla.com/unsubscribe\"",
+        ),
+        'the unsubscribe origin no longer defaults to the branded Mingla URL',
       )
     },
   ],
   [
-    'keeps the builders reading the branded origin',
+    'no builder can fall back to a raw supabase.co link',
+    () => {
+      // The exact regression: a bare cloud hostname in a marketing email.
+      const render = read('supabase/functions/_shared/marketingEmailRender.ts')
+      const send = read('supabase/functions/marketing-send/index.ts')
+      assert(
+        !/functions\/v1\/marketing-track-click`/.test(render),
+        'marketingEmailRender still builds a raw functions/v1 tracking link',
+      )
+      assert(
+        !/functions\/v1\/marketing-unsubscribe`/.test(send),
+        'marketing-send still builds a raw functions/v1 unsubscribe link',
+      )
+    },
+  ],
+  [
+    'spends no Supabase secret slots to do it',
+    () => {
+      // Supabase caps user-managed secrets, and the budget audit is a required
+      // gate. Fixing a "config was never set" bug by adding more config would
+      // have cost two of the remaining slots AND kept the bug class alive.
+      assert(
+        !manifest.includes('MINGLA_TRACKING_LINK_ORIGIN'),
+        'the branded origin should be a code default, not a provisioned secret',
+      )
+      assert(
+        !manifest.includes('MINGLA_UNSUBSCRIBE_LINK_ORIGIN'),
+        'the branded origin should be a code default, not a provisioned secret',
+      )
+    },
+  ],
+  [
+    'keeps the env override available for non-production projects',
     () => {
       assert(
         read('supabase/functions/_shared/marketingEmailRender.ts').includes(
           'MINGLA_TRACKING_LINK_ORIGIN',
         ),
-        'marketingEmailRender no longer reads MINGLA_TRACKING_LINK_ORIGIN',
+        'marketingEmailRender dropped the env override',
       )
       assert(
         read('supabase/functions/marketing-send/index.ts').includes(
           'MINGLA_UNSUBSCRIBE_LINK_ORIGIN',
         ),
-        'marketing-send no longer reads MINGLA_UNSUBSCRIBE_LINK_ORIGIN',
+        'marketing-send dropped the env override',
       )
     },
   ],

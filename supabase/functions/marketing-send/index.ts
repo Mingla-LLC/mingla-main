@@ -2331,20 +2331,26 @@ function slugifyBrandForEmail(input: string | null | undefined): string {
 }
 
 /**
- * Resolves the origin used to build per-recipient unsubscribe URLs. Same
- * pattern as marketingEmailRender.getTrackingLinkOrigin — defaults to the
- * Supabase function endpoint so the link works without DNS rewrite.
- * Operators can override to `https://usemingla.com/unsubscribe` etc. via
- * the MINGLA_UNSUBSCRIBE_LINK_ORIGIN env var.
+ * Resolves the origin used to build per-recipient unsubscribe URLs.
+ *
+ * #2470 — same change, and same reasoning, as
+ * marketingEmailRender.getTrackingLinkOrigin: the branded origin is the
+ * DEFAULT rather than an env var nobody set. An unsubscribe link is the one
+ * link in a marketing email a recipient must trust on sight, so pointing it at
+ * a bare `…supabase.co` hostname was the worst instance of the problem.
+ *
+ * `usemingla.com/unsubscribe/<token>` is served by the marketing app, which
+ * rewrites it to `marketing-unsubscribe` (mingla-marketing/next.config.ts).
+ * The bare `/unsubscribe` path is a separate human-facing opt-out form and is
+ * untouched by that rewrite. Keep origin and rewrite in step.
  */
+const BRANDED_UNSUBSCRIBE_LINK_ORIGIN = "https://usemingla.com/unsubscribe";
 function getUnsubscribeOrigin(): string {
   const override = Deno.env.get("MINGLA_UNSUBSCRIBE_LINK_ORIGIN");
   if (override !== undefined && override.trim().length > 0) {
     return override.replace(/\/+$/, "");
   }
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "") ??
-    "https://gqnoajqerqhnvulmnyvv.supabase.co";
-  return `${supabaseUrl}/functions/v1/marketing-unsubscribe`;
+  return BRANDED_UNSUBSCRIBE_LINK_ORIGIN;
 }
 
 function getPublicAppOrigin(): string {

@@ -403,21 +403,32 @@ function renderEventCardFull(
 }
 
 /**
- * Resolves the origin used to build per-link tracking URLs. Defaults to the
- * Supabase function endpoint so emails work without DNS rewrite. Operators
- * who want clean tracking links (e.g., `m.usemingla.com/<id>`) can set
- * `MINGLA_TRACKING_LINK_ORIGIN` to their preferred prefix (no trailing slash).
+ * Resolves the origin used to build per-link tracking URLs.
  *
- * The default uses the SUPABASE_URL env so it stays correct across projects.
+ * #2470 — this DEFAULTS to the branded Mingla origin, and deliberately does not
+ * depend on configuration to do so. It previously defaulted to the raw Supabase
+ * function endpoint, on the reasoning that a link which resolves beats a link
+ * that does not. But the branded origin was gated behind an env var that was
+ * never provisioned, so for the whole life of the marketing hub every brand's
+ * email went out carrying `…supabase.co/functions/v1/marketing-track-click/…`
+ * — a bare cloud hostname sharing nothing with the `<slug>@usemingla.com` From
+ * address. That reads as spam to mailbox providers and as phishing to a person.
+ *
+ * The lesson is the bug class, not the URL: a fallback nobody configures away
+ * IS the production path. So the good value is the default, and the env var is
+ * now only an override for non-production projects.
+ *
+ * `usemingla.com/m/<id>` is served by the marketing app, which rewrites it to
+ * `marketing-track-click` (mingla-marketing/next.config.ts). Keep the two in
+ * step: changing this origin without the matching rewrite breaks every link.
  */
+const BRANDED_TRACKING_LINK_ORIGIN = "https://usemingla.com/m";
 function getTrackingLinkOrigin(): string {
   const override = Deno.env.get("MINGLA_TRACKING_LINK_ORIGIN");
   if (override !== undefined && override.trim().length > 0) {
     return override.replace(/\/+$/, "");
   }
-  const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/+$/, "") ??
-    "https://gqnoajqerqhnvulmnyvv.supabase.co";
-  return `${supabaseUrl}/functions/v1/marketing-track-click`;
+  return BRANDED_TRACKING_LINK_ORIGIN;
 }
 
 function renderUnsubscribeFooter(
