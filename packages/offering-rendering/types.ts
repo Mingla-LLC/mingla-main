@@ -63,6 +63,29 @@ export interface PublicTicketProps {
   waitlistEnabled: boolean;
   availableAt: TicketAvailableAt;
   displayOrder: number;
+  /**
+   * issue #2462 — THE ORGANISER'S PURCHASE RULES.
+   *
+   * `QuantityRow` (this package) has ALWAYS clamped to
+   * `min(remainingCapacity, maxPurchaseQty ?? Number.POSITIVE_INFINITY)`, but
+   * until now no field on this interface could carry the cap, so every consumer
+   * surface passed `undefined` and the clamp resolved to Infinity. Measured:
+   * `grep -rln maxPurchaseQty app-mobile packages` matched exactly ONE file —
+   * QuantityRow itself, the CONSUMER of the value. Nothing produced it.
+   *
+   * The result was a stepper that offered up to the full remaining capacity on
+   * a ticket type the organiser had capped, and a server that then refused with
+   * `ticket_quantity_above_max` — surfaced to the guest as "Nothing was reserved
+   * — please try again", a refusal no retry could clear.
+   *
+   * OPTIONAL ON PURPOSE. Every existing caller compiles unchanged and keeps
+   * today's behaviour (`undefined` -> no cap, min 1, transfers allowed), so this
+   * lands without a flag day; callers are migrated to supply real values
+   * surface by surface.
+   */
+  minPurchaseQty?: number | null;
+  maxPurchaseQty?: number | null;
+  allowTransfers?: boolean | null;
 }
 
 export interface PublicEventProps {

@@ -1609,9 +1609,36 @@ const directBundleTicketToStub = (
     password: null,
     passwordConfigured: ticket.passwordProtected === true,
     waitlistEnabled: ticket.waitlistEnabled === true,
-    minPurchaseQty: 1,
-    maxPurchaseQty: null,
-    allowTransfers: true,
+    // issue #2462 [free checkout dead-ends on "Nothing was reserved"] — THE
+    // ORGANISER'S PURCHASE RULES, READ INSTEAD OF INVENTED.
+    //
+    // These three were hardcoded `1 / null / true` because
+    // `pg_direct_event_checkout_bundle` did not return them. That reader is the
+    // FIRST one consulted by both getPublicEventBySlug and getPublicEventById,
+    // so `/checkout/[eventId]` never saw a cap. `QuantityRow` clamps to
+    // `min(remaining, maxPurchaseQty ?? Infinity)` — a null cap is NO cap, so on
+    // We Go Again Exhibition the stepper offered up to 229 on a ticket type the
+    // organiser capped at 1, and `biz_ticket_checkout_create_session` then
+    // refused with `ticket_quantity_above_max`, which the free-rail mapper
+    // renders as "Nothing was reserved — please try again". Retrying could never
+    // succeed, because nothing about the request was retryable.
+    //
+    // NULL IS A REAL ANSWER HERE and must survive: `maxPurchaseQty: null` means
+    // "no cap", which is what most ticket types carry. So the guard is
+    // `typeof === "number"`, NOT `?? null` on a falsy check — `0` is not a
+    // legitimate cap but it is also not something the schema permits, and
+    // coercing it would silently reintroduce "no cap".
+    //
+    // `minPurchaseQty` falls back to 1 (the schema default) and `allowTransfers`
+    // to true ONLY when the key is absent — i.e. when a client runs against a
+    // pre-#2462 bundle. That is a real transitional window between this deploy
+    // and the migration, and it fails to today's behaviour rather than to a
+    // crash.
+    minPurchaseQty:
+      typeof ticket.minPurchaseQty === "number" ? ticket.minPurchaseQty : 1,
+    maxPurchaseQty:
+      typeof ticket.maxPurchaseQty === "number" ? ticket.maxPurchaseQty : null,
+    allowTransfers: ticket.allowTransfers !== false,
     saleStartAt: asStringOrNull(ticket.saleStartAt),
     saleEndAt: asStringOrNull(ticket.saleEndAt),
     availableAt:
