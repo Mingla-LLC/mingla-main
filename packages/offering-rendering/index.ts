@@ -441,6 +441,10 @@ export type {
   MapsPlatform,
   VenueMapsTargetParams,
 } from "./mapsDeepLink";
+// issue #2469 — the ONE owner of the venueName/address split. Beside the maps
+// builder because the label it produces is what goes on the pin.
+export { extractPublicEventLocation } from "./publicEventLocation";
+export type { PublicEventLocationParts } from "./publicEventLocation";
 // ORCH-1117 — the single buy/unavailable state machine consumed by BOTH the
 // inline ticket row AND the per-host floating Buy bar (no forked gate logic).
 export {

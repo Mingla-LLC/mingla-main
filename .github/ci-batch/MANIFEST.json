@@ -14635,7 +14635,7 @@
       "providerWorkflow": ".github/workflows/meta-orch-1337-social-proof-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9ce90f690f0fd694670b34f68a40810e576f9d9bb6dd8285b1388978617f1d82",
+        "sourceSha256": "c0268397422a1cc664973c1b9837d6e0851167d3c2dfdbc0add6d211cdd732de",
         "triggers": [
           "pull_request",
           "push"
@@ -14647,6 +14647,7 @@
           "mingla-business/app/**",
           "mingla-business/src/**",
           "mingla-marketing/lib/**",
+          "packages/brand-rendering/**",
           "packages/offering-rendering/**",
           "supabase/migrations/**"
         ],

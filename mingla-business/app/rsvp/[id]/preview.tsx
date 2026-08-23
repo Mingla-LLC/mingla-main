@@ -111,6 +111,16 @@ const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
           : "in-person",
     venueName: draft.venueName ?? null,
     address: draft.address ?? null,
+    /*
+      issue #2468 (tester P2-2 on PR #2479) — this mapper never carried
+      `locationGeo`, and `PublicEventProps.locationGeo` is OPTIONAL, so the
+      omission compiled silently: `selectVenueMapsTarget` returned
+      `{ label, geo: null }` and the link fell all the way back to the free-text
+      form this issue exists to kill. The draft has held the coordinate the
+      whole time (`draftEventStore.ts:328`). Host-facing surface only, but it is
+      the same defect and it is one line.
+    */
+    locationGeo: draft.locationGeo ?? null,
     hideAddressUntilTicket: Boolean(draft.hideAddressUntilTicket),
     coverHue: draft.coverHue,
     coverMediaUrl: safeCoverMediaUrl,

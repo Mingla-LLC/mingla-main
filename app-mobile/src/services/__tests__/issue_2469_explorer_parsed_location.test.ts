@@ -32,10 +32,8 @@ import {
   assertEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
-import {
-  extractPublicEventLocation,
-  mapPublicEventSeedRow,
-} from "../publicEventSeedService.ts";
+import { mapPublicEventSeedRow } from "../publicEventSeedService.ts";
+import { extractPublicEventLocation } from "../../../../packages/offering-rendering/publicEventLocation.ts";
 import { selectVenueMapsTarget } from "../../../../packages/offering-rendering/mapsDeepLink.ts";
 
 // Production truth for `we-go-again-exhibition` (business_public_events_view).
@@ -161,6 +159,63 @@ Deno.test("#2469 E-4: the label handed to the maps deep link is UN-doubled", () 
   const nameCount = target.label.split("Didi Museum").length - 1;
   assertEquals(nameCount, 1, `venue name appears ${nameCount}x in the label`);
   assertEquals(target.geo, { lng: 3.423375, lat: 6.43273 });
+});
+
+Deno.test("#2469 E-6: the buyer-web read path no longer doubles the combined string", async () => {
+  // Tester P2-1 on PR #2479. `publicEventsService.publicEventViewRowToEvent`
+  // used to read:
+  //     venueName: asStringOrNull(location.venueName) ?? row.location_text,
+  //     address:   asStringOrNull(location.address)   ?? row.location_text,
+  // so an event with NO parsed halves put the COMBINED string in BOTH slots —
+  // #2469's defect on the path the issue called correct, and #2468's failure
+  // mode returning for any such event with no stored pin. Source-asserted
+  // because the service pulls the whole RN/supabase graph and cannot be
+  // imported headless; the BEHAVIOUR is pinned by E-2 and E-5 on the shared
+  // extractor that now owns both halves.
+  const raw = await Deno.readTextFile(
+    new URL("../../../../mingla-business/src/services/publicEventsService.ts", import.meta.url),
+  );
+  // COMMENTS ARE NOT CODE. The fix quotes the two lines it replaced so the next
+  // reader knows what was wrong; a scan that flagged that quotation would be a
+  // gate nobody could keep green.
+  const src = raw
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("//"))
+    .join("\n");
+  assert(src.length > 5000, "publicEventsService stripped to nothing — bad harness");
+  assertEquals(
+    src.includes("asStringOrNull(location.venueName) ?? row.location_text"),
+    false,
+    "publicEventsService still falls back to the combined location_text for venueName",
+  );
+  assertEquals(
+    src.includes("asStringOrNull(location.address) ?? row.location_text"),
+    false,
+    "publicEventsService still falls back to the combined location_text for address",
+  );
+  assert(
+    src.includes("extractPublicEventLocation"),
+    "publicEventsService must route both halves through the shared extractor",
+  );
+  assert(
+    src.includes("venueName: seedLocation.venueName") &&
+      src.includes("address: seedLocation.address"),
+    "publicEventsService must assign the extractor's resolved halves",
+  );
+});
+
+Deno.test("#2468 E-7: the RSVP draft preview carries the coordinate it holds", async () => {
+  // Tester P2-2 on PR #2479. `PublicEventProps.locationGeo` is OPTIONAL, so the
+  // preview mapper omitting it compiled silently and every link from that
+  // surface took the free-text fallback.
+  const src = await Deno.readTextFile(
+    new URL("../../../../mingla-business/app/rsvp/[id]/preview.tsx", import.meta.url),
+  );
+  assert(
+    src.includes("locationGeo: draft.locationGeo ?? null"),
+    "the rsvp preview mapper must forward the draft's stored coordinate",
+  );
 });
 
 Deno.test("#2469 E-5: fallbacks stay honest — a missing half is null, never invented", () => {

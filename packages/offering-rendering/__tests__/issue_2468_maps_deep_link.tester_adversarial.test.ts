@@ -49,10 +49,14 @@ import {
   normalizeMapsGeo,
   selectVenueMapsTarget,
 } from "../mapsDeepLink.ts";
-import {
-  extractPublicEventLocation,
-  mapPublicEventSeedRow,
-} from "../../../app-mobile/src/services/publicEventSeedService.ts";
+// [TEST-MOD-APPROVED #2468] Import path only — no assertion changed here.
+// A-12 asked for the shared extractor to become the fix for the un-migrated
+// buyer-web read path. It could not, while it lived inside app-mobile's seed
+// service: `mingla-business` cannot import from another app's `src/`. It now
+// lives in THIS package, beside the builder whose label it produces, and
+// `publicEventsService.ts` consumes it (tester P2-1, closed).
+import { extractPublicEventLocation } from "../publicEventLocation.ts";
+import { mapPublicEventSeedRow } from "../../../app-mobile/src/services/publicEventSeedService.ts";
 
 // Production truth for `We Go Again Exhibition`
 // (3014ea7e-f3e0-40d0-b112-a51f4e37e964): location_geo (3.423375, 6.43273),
@@ -558,19 +562,30 @@ Deno.test("#2468 A-9: a hostile label can never move the pin", () => {
   }
 });
 
-// `encodeURIComponent` leaves `!'()*-._~` unescaped, so a label containing a
-// closing paren lands INSIDE android's `(<label>)` wrapper unescaped. The
-// coordinate authority is untouched (A-9 proves that), so the pin is still
-// right and this is a label-rendering nit, not a mis-pin. Pinned so the
-// behaviour is visible if it is ever tightened.
-Deno.test("#2468 A-9b: an unescaped paren in an android label is a known, contained gap", () => {
+// [TEST-MOD-APPROVED #2468] THIS ASSERTION INVERTED, exactly as it was written
+// to. The original pinned the gap — `encodeURIComponent` leaves `!'()*-._~`
+// unescaped, so a closing paren in the label closed android's `(<label>)`
+// wrapper early — and said "pinned so the behaviour is visible if it is ever
+// tightened". It has been tightened: `encodeGeoLabel` percent-escapes the two
+// structural characters in the one place that builds the wrapper (P3-2).
+// The contract that always mattered is unchanged and still asserted: the
+// coordinate authority sits before the `?`, so the pin was never at risk.
+Deno.test("#2468 A-9b: parens in an android label are escaped, not structural", () => {
   const android = buildMapsDeepLink({
     geo: DIDI,
     label: "The Shed (Brixton)",
     platform: "android",
   });
   assert(android !== null);
-  assertStringIncludes(android.url, "(The%20Shed%20(Brixton))");
+  // The wrapper's own parens are the ONLY literal ones left in the URL.
+  assertStringIncludes(android.url, "(The%20Shed%20%28Brixton%29)");
+  const wrapped = android.url.slice(android.url.indexOf("(") + 1, -1);
+  assertEquals(
+    wrapped.includes("(") || wrapped.includes(")"),
+    false,
+    `label must not carry a literal paren inside the wrapper: ${wrapped}`,
+  );
+  assertEquals(decodeURIComponent(wrapped), "The Shed (Brixton)");
   // The contract that actually matters: the pin is still the stored pin.
   assert(android.url.startsWith(`geo:${LAT},${LNG}?q=${LAT},${LNG}(`));
   assertEquals(android.coordinateAnchored, true);
@@ -678,15 +693,20 @@ Deno.test("#2469 A-10: the un-doubling invariant holds for every malformed theme
 // carries it today, so it is not a release blocker. It is pinned here so the
 // behaviour is visible: a one-line dedupe in the extractor would close it, and
 // this assertion inverts the moment it does.
-Deno.test("#2469 A-10b: identical STORED halves are passed through undeduplicated (known gap)", () => {
+// [TEST-MOD-APPROVED #2468] THIS ASSERTION INVERTED, exactly as it was written
+// to: "a one-line dedupe in the extractor would close it, and this assertion
+// inverts the moment it does" (P3-1). The extractor now drops the address half
+// when the two STORED halves are byte-identical — the same fact stored twice is
+// still one fact. The containment claim below is unchanged and still asserted.
+Deno.test("#2469 A-10b: identical STORED halves are de-duplicated, not doubled", () => {
   const parts = extractPublicEventLocation(
     { business_event: { location: { venueName: COMBINED, address: COMBINED } } },
     COMBINED,
   );
-  // Current behaviour: both halves come back identical.
+  // The duplicate is dropped from the half the card's render gate does NOT read.
   assertEquals(parts.venueName, COMBINED);
-  assertEquals(parts.address, COMBINED);
-  // Which means the maps label doubles — the #2469 symptom, from stored data.
+  assertEquals(parts.address, null);
+  // Which means the maps label carries the fact ONCE.
   const target = selectVenueMapsTarget({
     venueName: parts.venueName,
     address: parts.address,
@@ -694,7 +714,7 @@ Deno.test("#2469 A-10b: identical STORED halves are passed through undeduplicate
     locationGeo: DIDI,
   });
   assert(target !== null);
-  assertEquals(target.label, `${COMBINED}, ${COMBINED}`);
+  assertEquals(target.label, COMBINED);
   // CONTAINED: the pin is still the stored coordinate, so #2468's fix holds and
   // the tap still lands on the venue. The damage is cosmetic, not a mis-pin.
   assertEquals(target.geo, DIDI);

@@ -172,6 +172,13 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(businessAdapterSource).not.toContain('`geo:0,0?q=');
     // The coordinate-anchored shapes #2468 proved correct, at their one owner.
     expect(mapsDeepLinkSource).toContain("`maps://?ll=${pair}&q=${encodedLabel}`");
-    expect(mapsDeepLinkSource).toContain("`geo:${pair}?q=${pair}(${encodedLabel})`");
+    // [TEST-MOD-APPROVED #2468] tester P3-2: the android label is now run
+    // through `encodeGeoLabel`, which percent-escapes the parens that would
+    // otherwise close the `(<label>)` wrapper early. The coordinate authority
+    // asserted on the same line is unchanged.
+    expect(mapsDeepLinkSource).toContain(
+      "`geo:${pair}?q=${pair}(${encodeGeoLabel(label)})`",
+    );
+    expect(mapsDeepLinkSource).toContain('.replace(/\\(/g, "%28")');
   });
 });

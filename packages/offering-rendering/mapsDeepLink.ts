@@ -116,6 +116,19 @@ const googleSearchUrl = (query: string): string =>
   `https://www.google.com/maps/search/?api=1&query=${query}`;
 
 /**
+ * Android's `geo:` label is wrapped in LITERAL parentheses — `?q=<lat>,<lng>(<label>)`
+ * — and `encodeURIComponent` deliberately leaves `!'()*-._~` unescaped. So a
+ * venue called "The Shed (Brixton)" closed the wrapper early and the tail landed
+ * outside it. Percent-escape the two characters that are structural HERE, in the
+ * one place that builds that wrapper (tester P3-2 on PR #2479).
+ *
+ * The pin is unaffected either way — the coordinate authority sits before the
+ * `?` — so this is label fidelity, not a mis-pin fix.
+ */
+const encodeGeoLabel = (label: string): string =>
+  encodeURIComponent(label).replace(/\(/g, "%28").replace(/\)/g, "%29");
+
+/**
  * Build the deep link, or `null` when we hold NEITHER a coordinate NOR a label.
  *
  * `null` is a real answer: the caller must DISABLE the control rather than
@@ -158,9 +171,9 @@ export function buildMapsDeepLink(
     }
     if (platform === "android") {
       const url =
-        encodedLabel === null
+        label === null
           ? `geo:${pair}?q=${pair}`
-          : `geo:${pair}?q=${pair}(${encodedLabel})`;
+          : `geo:${pair}?q=${pair}(${encodeGeoLabel(label)})`;
       return { url, fallbackUrl, coordinateAnchored: true };
     }
     return { url: fallbackUrl, fallbackUrl, coordinateAnchored: true };

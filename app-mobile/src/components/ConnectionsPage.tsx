@@ -35,10 +35,9 @@ import { reportService, ReportReason } from "../services/reportService";
 import { supabase } from "../services/supabase";
 import { mixpanelService } from "../services/mixpanelService";
 import { HapticFeedback } from "../utils/hapticFeedback";
-// issue #2469 — the ONE owner of the venueName/address split. It lives in the
-// seed service because that module must stay loadable by `deno test` (see the
-// note beside the function); this is the same parse the cold /e/ route uses.
-import { extractPublicEventLocation } from "../services/publicEventSeedService";
+// issue #2469 — the ONE owner of the venueName/address split, shared with the
+// cold /e/ seed mapper and the buyer-web read path.
+import { extractPublicEventLocation } from "@mingla/offering-rendering";
 import { Conversation, Message as ConvMessage } from "../hooks/useMessages";
 import { Friend, Message } from "../services/connectionsService";
 import { useScreenLogger } from "../hooks/useScreenLogger";

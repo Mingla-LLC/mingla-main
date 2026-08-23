@@ -1,5 +1,13 @@
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 import * as OfferingRendering from "@mingla/offering-rendering";
+// issue #2469 — the ONE owner of the venueName/address split.
+//
+// DEEP specifier, not the barrel: `publicEventLocation` is a pure, import-free
+// module, and reaching it directly keeps it out of the barrel's react-native
+// dependency graph. It also means the ten service suites that partially mock
+// the barrel keep working untouched — a mock is not a reason to change a
+// module's public API, and it is certainly not a reason to edit ten tests.
+import { extractPublicEventLocation } from "@mingla/offering-rendering/publicEventLocation";
 
 import { supabase } from "./supabase";
 // issue #2160 — the shared occurrence shape. The direct `event_dates` READ in
@@ -1161,6 +1169,13 @@ export const publicEventViewRowToEvent = (
   const theme = asRecord(row.public_theme);
   const businessEvent = asRecord(theme.business_event);
   const location = asRecord(businessEvent.location);
+  // issue #2469 — the shared extractor owns the venueName/address split for
+  // every surface. It reads the same `businessEvent.location` object as
+  // `location` above; `location` is still read for `location.city` etc.
+  const seedLocation = extractPublicEventLocation(
+    row.public_theme,
+    row.location_text,
+  );
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
   // ORCH-0792: dates sourced from event_dates via master_* columns on the
@@ -1204,8 +1219,18 @@ export const publicEventViewRowToEvent = (
     multiDates: Array.isArray(businessEvent.multiDates)
       ? (businessEvent.multiDates as MultiDateEntry[])
       : null,
-    venueName: asStringOrNull(location.venueName) ?? row.location_text,
-    address: asStringOrNull(location.address) ?? row.location_text,
+    // issue #2469 (tester P2-1 on PR #2479) — was:
+    //   venueName: asStringOrNull(location.venueName) ?? row.location_text,
+    //   address:   asStringOrNull(location.address)   ?? row.location_text,
+    // When BOTH parsed halves were absent the COMBINED
+    // "<venueName>  · <address>" string landed in BOTH slots — verbatim the
+    // #2469 defect, on the very path that issue described as already correct.
+    // The venue name then rendered twice AND the maps label became
+    // "<combined>, <combined>", which for an event with no stored pin is
+    // exactly #2468's failure mode returning. Zero production events reach the
+    // fallback today, so this was latent, not live.
+    venueName: seedLocation.venueName,
+    address: seedLocation.address,
     // ORCH-1162 Bug 2 — parse the view's `location_geo` point ("(lng,lat)"
     // string, or {x,y}) into {lat,lng} so the public/buyer-web event page draws
     // the "Where you'll be" map. Mirrors the proven parser at businessEvents.ts.
