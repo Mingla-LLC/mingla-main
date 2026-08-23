@@ -48,6 +48,29 @@ const config: NextConfig = {
       { source: '/tools/book', destination: '/schedule', permanent: true },
     ]
   },
+  // #2470 — brand the links that go out in marketing email.
+  //
+  // Both edge functions already accept a branded origin and fall back to the
+  // raw `…supabase.co/functions/v1/…` endpoint when none is configured, which
+  // is what every Mingla marketing email carried until now. A bare cloud
+  // hostname that shares nothing with the From domain reads as spam to every
+  // mailbox provider, and reads as phishing to a human.
+  //
+  // These land on the apex because brand senders are `<slug>@usemingla.com`,
+  // so the link domain and the sender domain become the same registered
+  // domain. `/m` is not an existing route, and the middleware passes both
+  // paths through untouched (middleware.ts — neither is a careers host nor a
+  // public-share path).
+  //
+  // `/unsubscribe` itself stays exactly as it is: a human-facing opt-out form.
+  // Only the tokenised sub-path is proxied, which previously 404'd.
+  async rewrites() {
+    const functions = 'https://gqnoajqerqhnvulmnyvv.supabase.co/functions/v1'
+    return [
+      { source: '/m/:trackingId', destination: `${functions}/marketing-track-click/:trackingId` },
+      { source: '/unsubscribe/:token', destination: `${functions}/marketing-unsubscribe/:token` },
+    ]
+  },
 }
 
 export default config

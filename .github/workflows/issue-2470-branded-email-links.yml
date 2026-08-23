@@ -1,0 +1,59 @@
+name: issue-2470-branded-email-links
+# issue #2470 [marketing emails carry raw supabase.co links] — dedicated lane.
+#
+# WHY THIS FILE EXISTS. The defect was not a broken line of code; it was a
+# MISSING CONFIGURATION that no test could see. Both link builders read a
+# branded origin and fall back to the raw
+# `…supabase.co/functions/v1/marketing-track-click/<id>` endpoint when none is
+# set — and neither variable had ever been provisioned, so for the entire life
+# of the marketing hub the fallback WAS production. Every brand's email went
+# out with a bare cloud hostname that shares nothing with its From domain.
+#
+# A fallback that silently becomes the norm is only catchable by pinning the
+# configuration itself, which is what this lane does: the rewrites that make
+# `/m/:id` resolve, and the manifest entries that make the builders emit it.
+#
+# NO JEST HERE, SO NO BRACKET TRAP. The suite is compiled with tsc and run
+# directly by node, naming its file in full.
+#
+# Path filters err BROAD over every layer that decides whether a branded link
+# resolves — not only the test — so reverting the product re-triggers the lane.
+
+on:
+  pull_request:
+    paths: &issue_2470_paths
+      - "mingla-marketing/next.config.ts"
+      - "mingla-marketing/middleware.ts"
+      - "mingla-marketing/vercel.json"
+      - "mingla-marketing/app/unsubscribe/**"
+      - "mingla-marketing/lib/branded-email-links.tester.test.ts"
+      - "supabase/secrets.manifest.json"
+      - "supabase/functions/_shared/marketingEmailRender.ts"
+      - "supabase/functions/marketing-send/index.ts"
+      - "supabase/functions/marketing-track-click/**"
+      - "supabase/functions/marketing-unsubscribe/**"
+      - ".github/workflows/issue-2470-branded-email-links.yml"
+  push:
+    branches: [main]
+    paths: *issue_2470_paths
+  workflow_dispatch:
+
+jobs:
+  issue-2470-offline:
+    name: "#2470 Branded email links — config is pinned, fallback is not production"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Compile the suite
+        run: |
+          npm install --no-save --no-audit --no-fund typescript@5 @types/node@22
+          npx tsc mingla-marketing/lib/branded-email-links.tester.test.ts \
+            --outDir "$RUNNER_TEMP/issue-2470" \
+            --module commonjs --target es2020 --moduleResolution node \
+            --skipLibCheck --esModuleInterop --types node
+      - name: Run the suite
+        run: node "$RUNNER_TEMP/issue-2470/branded-email-links.tester.test.js"
