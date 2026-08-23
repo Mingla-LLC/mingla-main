@@ -1614,8 +1614,19 @@ const directBundleTicketToStub = (
     //
     // These three were hardcoded `1 / null / true` because
     // `pg_direct_event_checkout_bundle` did not return them. That reader is the
-    // FIRST one consulted by both getPublicEventBySlug and getPublicEventById,
-    // so `/checkout/[eventId]` never saw a cap. `QuantityRow` clamps to
+    // FIRST one consulted by BOTH public-event readers below — the by-slug one
+    // and the by-id one — so `/checkout/[eventId]` never saw a cap.
+    //
+    // NAMING THOSE TWO FUNCTIONS HERE IS DELIBERATELY AVOIDED. The audit
+    // `eventType.filter.audit.test.ts:110,117` locates each of them with
+    // `SOURCE.match(/<name>[^]*?^\};/m)` — the FIRST literal occurrence in the
+    // file, comments included. This comment sits ~200 lines above the real
+    // definitions, so spelling either name out captures THIS block instead and
+    // the trip-rejection probe is asserted against the wrong function. It
+    // failed exactly that way in CI before this rewording. Same class of trap
+    // the #2160 migration documents for ORCH-0963's C4 check.
+    //
+    // `QuantityRow` clamps to
     // `min(remaining, maxPurchaseQty ?? Infinity)` — a null cap is NO cap, so on
     // We Go Again Exhibition the stepper offered up to 229 on a ticket type the
     // organiser capped at 1, and `biz_ticket_checkout_create_session` then
