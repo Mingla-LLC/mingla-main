@@ -116,8 +116,8 @@ const parseLocationGeoPoint = (
 // splits a public event's location into its two display halves.
 //
 // IT LIVES HERE, not in src/utils/, for a hard reason: this module is loaded
-// DIRECTLY by `deno test` (publicEventSeedService.orch1342.test.ts, wired into
-// meta-orch-1337-social-proof-tests.yml). Deno cannot resolve an extensionless
+// DIRECTLY by `deno test` (publicEventSeedService.orch1342.test.ts, run by the
+// META-ORCH-1337 CI batch). Deno cannot resolve an extensionless
 // relative specifier, and app-mobile's tsconfig has no
 // `allowImportingTsExtensions`, so there is no import form that satisfies both
 // Metro/tsc and Deno. Keeping the function in this already-Deno-loadable pure

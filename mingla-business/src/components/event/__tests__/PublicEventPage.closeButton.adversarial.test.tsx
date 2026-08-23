@@ -399,6 +399,13 @@ const renderPublicEventPage = (
         };
       case "./TicketCheckoutAccessNotice":
         return { TicketCheckoutAccessNotice: () => null };
+      // [TEST-MOD-APPROVED #2468] Harness registration only — ADDITION, no
+      // assertion changed. maps-deep-link-coordinates moved the "open in maps"
+      // URL out of this adapter and into the one shared builder, so the adapter
+      // now imports the host effect. The close-callback contract is unrelated;
+      // every close assertion below is untouched.
+      case "../../utils/openMapsTarget":
+        return { openMapsTarget: () => undefined };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }
