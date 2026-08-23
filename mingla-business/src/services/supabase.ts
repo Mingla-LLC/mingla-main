@@ -78,6 +78,30 @@ const isAcquireTimeoutError = (error: unknown): boolean =>
   typeof error === "object" &&
   (error as { isAcquireTimeout?: unknown }).isAcquireTimeout === true;
 
+/**
+ * #2475 — a lock we HELD was stolen out from under us.
+ *
+ * `navigatorLock` rejects two different ways and only one of them carries
+ * `isAcquireTimeout`. When another tab's recovery steals a held lock, the Web
+ * Locks API aborts the holder with a plain `AbortError` ("Lock broken … steal")
+ * that has no such flag — so the old code re-threw it, and the rejection
+ * travelled all the way out through `getSession()` → `_getAccessToken()` →
+ * whatever call was in flight, killing it before a request was ever sent.
+ *
+ * That is a cross-tab bookkeeping event destroying an unrelated user action.
+ * The lock coordinates refreshes between tabs; it is not a correctness
+ * requirement for reading the session we already hold. Losing it must degrade
+ * to running lock-free, exactly as an acquire timeout already does.
+ */
+const isLockBrokenError = (error: unknown): boolean => {
+  if (error === null || typeof error !== "object") return false;
+  const { name, message } = error as { name?: unknown; message?: unknown };
+  if (name !== "AbortError") return false;
+  // Guard on the abort REASON as well as the name: an AbortError raised by a
+  // caller's own AbortSignal is a real cancellation and must still propagate.
+  return typeof message === "string" && /lock/i.test(message);
+};
+
 async function webResilientLock<R>(
   name: string,
   _acquireTimeout: number,
@@ -103,7 +127,7 @@ async function webResilientLock<R>(
     // OR our held lock was stolen by another tab's recovery. Either way the auth
     // operation is safe to run without the cross-tab lock rather than crash the
     // surface with a raw AbortError. Re-throw anything that is NOT a lock-timeout.
-    if (isAcquireTimeoutError(error)) {
+    if (isAcquireTimeoutError(error) || isLockBrokenError(error)) {
       return fn();
     }
     throw error;

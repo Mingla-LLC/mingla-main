@@ -197,13 +197,35 @@ export async function previewContactImport(input: {
   f.append("file", filePart(input.file) as Blob);
   return invokeForm(f, "preview", input.brandId);
 }
-export const executeContactImport = (input: {
+/**
+ * #2475 — how many times to re-send an execute that never reached the server.
+ *
+ * Retrying an import sounds alarming and is in fact the safest thing here: the
+ * server guards replay on `idempotency_key` + `execute_request_hash` and returns
+ * the already-completed result rather than importing anything twice. It was
+ * built to be retried; the client simply never did.
+ *
+ * We only re-send failures that are transport-class — the request did not land,
+ * so there is nothing on the server to double. A server that answered (stale
+ * preview, forbidden, invalid) is a real answer and is never retried.
+ */
+const EXECUTE_RETRIES = 2;
+const EXECUTE_RETRY_DELAY_MS = 400;
+
+const isTransportFailure = (error: unknown): boolean =>
+  error instanceof ContactImportError &&
+  (error.code === "TEMPORARILY_UNAVAILABLE" || error.code === "IMPORT_FAILED");
+
+const wait = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+export const executeContactImport = async (input: {
   brandId: string;
   preview: ContactImportPreview;
   mapping: ContactImportMapping;
   idempotencyKey: string;
-}): Promise<ContactImportResult> =>
-  invokeJson({
+}): Promise<ContactImportResult> => {
+  const body = {
     action: "execute",
     brandId: input.brandId,
     batchId: input.preview.batchId,
@@ -214,8 +236,21 @@ export const executeContactImport = (input: {
     attestationVersion: input.preview.attestation.version,
     attestationText: input.preview.attestation.text,
     accepted: true,
+    // The SAME key on every attempt — that is what makes the replay safe.
     idempotencyKey: input.idempotencyKey,
-  });
+  };
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= EXECUTE_RETRIES; attempt += 1) {
+    try {
+      return await invokeJson<ContactImportResult>(body);
+    } catch (error) {
+      lastError = error;
+      if (!isTransportFailure(error) || attempt === EXECUTE_RETRIES) throw error;
+      await wait(EXECUTE_RETRY_DELAY_MS * (attempt + 1));
+    }
+  }
+  throw lastError;
+};
 export const getContactImportStatus = (
   brandId: string,
   batchId: string,
