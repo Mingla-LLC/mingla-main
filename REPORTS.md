@@ -18,6 +18,10 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-23 — Mingla 1.1.6 is publicly available for both Explorer and Host on the Apple App Store and Google Play, with the corrected signed builds, mandatory-version checks, deep links, Host sales truth, fixed-light appearance, attribution bridge, and approved store copy verified end to end. (#2425, PR #2427)
+- 2026-08-23 — Explorer release builds now read their installed app version from Expo's supported release metadata, so mandatory-update policy evaluates the real version instead of failing open on iOS or Android. (#2443, PR #2444)
+- 2026-08-23 — Mingla Host Android now includes the AppsFlyer native bridge in public release builds, restoring native attribution initialization and production device registration without changing the SDK or provider contract. (#2054, PR #2056)
+- 2026-08-23 — Mingla Host now safely replays authenticated AppsFlyer identity and device registration when sign-in finishes before the SDK is ready, with public iOS and Android runtime evidence confirming attribution remains active. (#2049, PR #2051)
 - 2026-08-22 — Multi-day event buyers now choose their dates inside the ticket box with the total, quantity and checkout state updating together across buyer web and the Mingla Consumer app. (#2455, PR #2456)
 - 2026-08-22 — CI now runs 32 Node test variants and all 107 preserved commands through the governed shared batch instead of 31 separate workflow wrappers, removing duplicated setup while keeping every test and fail-closed ownership, lifecycle, and command contract intact. (#2437, PR #2452)
 - 2026-08-22 — Shared CI shards now install dependencies once, execute all 22 registered suites through 46 locked test capabilities, contain timeouts and descendants, isolate dependency state, exclude job secrets, and report every pass, failure, timeout, missing suite, duration, and setup count honestly. (#2436, PR #2450)
