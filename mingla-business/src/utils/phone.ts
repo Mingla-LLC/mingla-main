@@ -163,6 +163,77 @@ export const composeE164 = (
 };
 
 /**
+ * issue #2462 — SAY WHAT IS ACTUALLY WRONG WITH THE NUMBER.
+ *
+ * Every checkout screen showed one sentence for every phone failure: "Enter a
+ * valid mobile number". That is fine when the guest fat-fingered a digit, and
+ * useless in the case this issue is actually about — a Nigerian guest whose
+ * country picker still shows the default flag. Their digits are perfectly
+ * correct; the COUNTRY is wrong, and the message never says so, so they retype
+ * the same right number and get the same refusal.
+ *
+ * That case used to "succeed": it stored an undeliverable number and issued a
+ * pass no message could ever reach (production rows `+109069902335`,
+ * `+442348158037496`). Now that `composeE164` refuses it, refusing WITHOUT
+ * explaining would just move the dead end one screen earlier. So this is the
+ * other half of that fix, not a nicety.
+ *
+ * Returns a sentence for any input. The caller shows it only when the field is
+ * already failing, so the "looks fine" arm is unreachable in practice and exists
+ * to keep the function total.
+ */
+export const phoneEntryHint = (
+  countryDialCode: string,
+  localDigits: string,
+): string => {
+  const digits = localDigits.replace(/\D/g, "");
+  if (digits.length === 0) return "Enter your mobile number";
+
+  // The one this issue is about: the digits are a real number for SOME country,
+  // just not the one selected. Name the picker, because that is what they have
+  // to change — retyping the digits will never help.
+  //
+  // TWO SHAPES, and the second is the one that reached production. A guest
+  // either types their LOCAL number under the wrong flag (`09069902335` under
+  // +1 — row +109069902335), or pastes their FULL international number under
+  // the wrong flag (`2348158037496` under +44 — row +442348158037496). The
+  // second is not a length mistake in the selected country; it is a complete
+  // number for a different one, and saying "a +44 number has 9 or 10 digits"
+  // is true but sends them to trim digits off a number that was already right.
+  const stripped = digits.replace(/^0+/, "");
+  const plausibleElsewhere = Object.entries(NSN_LENGTHS).some(
+    ([dial, lengths]) => {
+      if (dial === countryDialCode) return false;
+      if (lengths.includes(stripped.length)) return true;
+      const dialDigits = dial.replace(/\D/g, "");
+      return (
+        digits.startsWith(dialDigits) &&
+        lengths.includes(digits.length - dialDigits.length)
+      );
+    },
+  );
+  if (composeE164(countryDialCode, localDigits) === null && plausibleElsewhere) {
+    return `That doesn't look like a ${countryDialCode} number — check the country code next to the field.`;
+  }
+
+  const expected = NSN_LENGTHS[countryDialCode];
+  if (expected !== undefined) {
+    const stripped = NO_TRUNK_PREFIX.has(countryDialCode)
+      ? digits
+      : digits.replace(/^0+/, "");
+    if (!expected.includes(stripped.length)) {
+      const wanted = expected.join(" or ");
+      return `A ${countryDialCode} mobile number has ${wanted} digits — you entered ${stripped.length}.`;
+    }
+  }
+
+  if (composeE164(countryDialCode, localDigits) === null) {
+    return "Enter a valid mobile number";
+  }
+  return "Enter a valid mobile number";
+};
+
+/**
  * Back-compat alias for `isValidE164`. Kept so any non-buyer.tsx caller that
  * still imports `isRequiredPhoneValid` keeps working through ORCH-0847.
  *

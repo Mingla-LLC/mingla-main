@@ -18,7 +18,7 @@
  */
 import { describe, expect, test } from "@jest/globals";
 
-import { composeE164, isValidE164 } from "../phone";
+import { composeE164, isValidE164, phoneEntryHint } from "../phone";
 
 describe("issue #2462 — composeE164 drops the national trunk prefix", () => {
   test("a Nigerian number typed the way Nigerians write it", () => {
@@ -89,5 +89,36 @@ describe("issue #2462 — composeE164 refuses numbers it cannot believe", () => 
   test("the trunk zero is dropped for an uncharacterised country too", () => {
     // Stripping is the DEFAULT; the carve-out is Italy, not the other way round.
     expect(composeE164("+61", "0412345678")).toBe("+61412345678");
+  });
+});
+
+describe("issue #2462 — the error message names the real problem", () => {
+  test("a Nigerian number under the US flag blames the COUNTRY, not the digits", () => {
+    // The whole point. Their digits are right; the picker is wrong. A message
+    // that says "enter a valid mobile number" sends them to retype a correct
+    // number forever.
+    const hint = phoneEntryHint("+1", "09069902335");
+    expect(hint).toMatch(/country code/i);
+    expect(hint).toContain("+1");
+  });
+
+  test("a Nigerian number under the UK flag blames the country too", () => {
+    expect(phoneEntryHint("+44", "2348158037496")).toMatch(/country code/i);
+  });
+
+  test("a wrong-length number blames the LENGTH and says what was expected", () => {
+    const hint = phoneEntryHint("+234", "80312345");
+    expect(hint).toMatch(/10 digits/);
+    expect(hint).toMatch(/you entered 8/);
+  });
+
+  test("an empty field asks for the number rather than calling it invalid", () => {
+    expect(phoneEntryHint("+234", "")).toBe("Enter your mobile number");
+  });
+
+  test("the trunk zero is not counted as a digit in the length message", () => {
+    // "09076649069" is 11 characters but a CORRECT Nigerian number, so it must
+    // not be reported as one digit too many.
+    expect(phoneEntryHint("+234", "09076649069")).not.toMatch(/you entered 11/);
   });
 });
