@@ -9523,3 +9523,21 @@ independent tester returns PASS.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs` (manifest `batch:A`, self-test then live), checks C-1, C-2, C-3, C-4(a) and C-4(b) with lane-discovery rules R-1…R-4, its eight mutants M-1…M-8, and the paired `…implementor.test.mjs` and `…tester.test.mjs` suites in the same class. `.github/workflows/strict-grep-mingla-business.yml` triggers on `supabase/migrations/**`, `.github/workflows/**` and `.github/scripts/strict-grep/**`, which are the only three routes by which a skip-closure violation can be created.
 - **Declared limits:** the guard keys on object names, so signature/overload drift is not detected; and it does not cover the removal direction (#2499).
 - **Established:** DRAFT at #2492; activate at CLOSE once the `#1931` `postgres-replay` lane is green from a clean replay on the merged branch and the tester's adversarial cases pass.
+
+## DRAFT — issue #2489 (address privacy is enforced at the server boundary)
+
+### I-PROPOSED-2489-WITHHELD-PRECISION-NEVER-LEAVES-THE-SERVER (DRAFT)
+
+- **Rule:** When an offering's `hideAddressUntilTicket` is set — or ABSENT — no server read path reachable by `anon` may return its exact coordinate, its combined address string, or the structured street address nested in its theme JSON.
+- **Scope:** every anon-readable object, not just the one that was found leaking — `business_public_events_view`, `events_public_view`, `pg_discover_business_events`, and every `pg_public_*` reader. The privacy-safe city centroid is exempt and may always be returned.
+- **The predicate is defined ONCE** (`public.issue_2489_address_withheld`) and FAILS CLOSED: an absent key, a NULL theme, or a non-boolean value all withhold, and none of them raises. A client-side check is never sufficient evidence of compliance — the assertion must be made against an UNAUTHENTICATED read of the server object.
+- **Enforcement:** `supabase/migrations/__tests__/issue_2489_address_privacy_server_gate.test.sql`, whose fifteen scenarios all read as `anon` and three of which are reveal-case twins so an unconditional NULL cannot pass.
+- **Fails on revert:** restoring the ungated projection makes the anon read return a non-NULL coordinate and the fixture raises at SC-1, naming the leaked column.
+- **Established:** DRAFT at #2489; flip to ACTIVE only after independent tester PASS, the reviewed migration apply, an all-green merge, and merged-main verification.
+
+### I-PROPOSED-2489-A-COMMENT-IS-NOT-A-GATE (DRAFT)
+
+- **Rule:** A client comment asserting that a server enforces a privacy guarantee is not evidence that it does. Any renderer relying on a server-side gate must point at the specific object that implements it, and that object must carry a test proving the withheld value is absent from an unauthenticated read.
+- **Why:** introduced because a buyer-web renderer asserted, in a comment, a server-side gate that the read path it actually used had never implemented. The comment was true of the sibling RPC and false of the fallback view, and nothing in the codebase could tell the two apart.
+- **Enforcement:** the same fixture; every assertion in it executes as `anon` rather than inspecting source text.
+- **Established:** DRAFT at #2489; flip to ACTIVE on the same conditions as the invariant above.
