@@ -978,7 +978,8 @@ async function sendEmail(
 
   const { data: brandRow, error: brandErr } = await supabase
     .from("brands")
-    .select("id, name, slug, cover_media_url, cover_media_type")
+    // #2485 — contact_email becomes the blast's Reply-To when the brand has one.
+    .select("id, name, slug, contact_email, cover_media_url, cover_media_type")
     .eq("id", campaign.brand_id)
     .maybeSingle();
   if (brandErr) throw new Error(`brand_load:${brandErr.message}`);
@@ -987,10 +988,18 @@ async function sendEmail(
   const brandRowTyped = brandRow as {
     name?: string;
     slug?: string | null;
+    contact_email?: string | null;
     cover_media_url?: string | null;
     cover_media_type?: string | null;
   } | null;
   const brandName: string = brandRowTyped?.name ?? "Mingla brand";
+  // #2485 — a reply must reach a human. The brand's own address when it has
+  // one, otherwise Mingla support; never the unmonitored <slug>@usemingla.com
+  // From alias, which has no mailbox and bounces.
+  const brandContactEmail = (brandRowTyped?.contact_email ?? "").trim();
+  const brandReplyTo = brandContactEmail.includes("@")
+    ? brandContactEmail
+    : FALLBACK_REPLY_TO;
   const brandSlug: string | null = brandRowTyped?.slug ?? null;
   // Brand cover for the email header — only when it's a still image
   // (same video-skip rule as event cards; `.mov` URLs render broken in
@@ -1189,6 +1198,8 @@ async function sendEmail(
       subject: rendered.subject,
       html: providerHtml,
       text: providerText,
+      replyTo: brandReplyTo,
+      unsubscribeUrl,
       idempotencyKey: offeringProviderKey,
       beforeProviderIo: inviteContext === null || offeringTokenId === null
         ? undefined
@@ -2421,6 +2432,21 @@ export async function persistEmailSentTerminal(
   );
 }
 
+/**
+ * #2485 — where a reply goes when the From address has no mailbox.
+ *
+ * Brand blasts are sent From `<brandSlug>@usemingla.com`, which is a display
+ * identity, not a mailbox: the domain's MX is Google Workspace and these
+ * aliases do not exist there. Until now nothing set Reply-To, so every reply to
+ * every brand blast bounced. That is bad for the brand, and a From nobody can
+ * answer is its own negative signal to mailbox providers.
+ *
+ * A brand's own `contact_email` is the right destination when it has one. Only
+ * a small minority do, so this fallback is the common path and has to reach a
+ * real human rather than another alias into the void.
+ */
+const FALLBACK_REPLY_TO = "support@usemingla.com";
+
 export async function postToResend(input: {
   apiKey: string;
   from: string;
@@ -2428,6 +2454,16 @@ export async function postToResend(input: {
   subject: string;
   html: string;
   text: string;
+  /** #2485 — brand `contact_email` when set, else FALLBACK_REPLY_TO. */
+  replyTo?: string | null;
+  /**
+   * #2485 — the one-click unsubscribe URL (RFC 8058). Mailbox providers read
+   * the HEADER, not the link in the body, and render a native Unsubscribe
+   * button beside the sender from it. Without it the only way a recipient can
+   * stop mail is the spam button, which damages the sending domain far more
+   * than an opt-out does.
+   */
+  unsubscribeUrl?: string | null;
   idempotencyKey?: string | null;
   beforeProviderIo?: () => Promise<void>;
 }): Promise<ResendOutcome> {
@@ -2455,6 +2491,21 @@ export async function postToResend(input: {
           subject: input.subject,
           html: input.html,
           text: input.text,
+          reply_to: input.replyTo ?? FALLBACK_REPLY_TO,
+          // #2485 — RFC 8058 one-click. Both headers are required together:
+          // List-Unsubscribe alone gets a confirmation round-trip, and
+          // List-Unsubscribe-Post is what makes the provider POST straight to
+          // the URL and treat the opt-out as honoured. `marketing-unsubscribe`
+          // already accepts POST. Omitted entirely when there is no URL —
+          // an unsubscribe header pointing nowhere is worse than none.
+          ...(input.unsubscribeUrl
+            ? {
+              headers: {
+                "List-Unsubscribe": `<${input.unsubscribeUrl}>`,
+                "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+              },
+            }
+            : {}),
         }),
       });
     } catch {
