@@ -10,6 +10,15 @@ const NAMES = [
   "list_brands", "list_events", "quote_stay", "get_payout_status", "get_partner_status",
   "get_tax_status", "get_brand_analytics", "list_brand_audit_log", "list_guest_roster", "get_operator_snapshot",
 ];
+// [#2438 SC-13] The two reviewed Phase 3B lifecycles. This guard tracks whichever
+// one the registry declares instead of pinning shadow, so the SC-21 cutover does
+// not red it; a third value is still rejected.
+const PHASE3B_LIFECYCLES = ["shadow-active", "batched-historical"];
+const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
+// [#2438 SC-13] The historical CI wrapper this guard is DECOUPLED from. SC-21
+// deletes it; the guard no longer reads it, and the self-test asserts it is not
+// among the read sources. It is still the reviewed suite origin identity below.
+const DECOUPLED_CI_WRAPPER = ".github/workflows/issue-2013-ari-tenant-containment.yml";
 
 export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
   const memberIds = new Set(memberRows.filter((m) => m.user_id === ownerId && m.removed_at === null).map((m) => m.brand_id));
@@ -18,7 +27,7 @@ export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
 
 export function check(sources) {
   const failures = [];
-  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, workflow, writerTest, ciManifest } = sources;
+  const { helper, chat, confirm, tools, domain, prompt, hook, screen, list, publicMigration, scopeMigration, scopeTest, migrationWorkflow, writerTest, ciManifest } = sources;
   for (const token of [
     '.eq("account_id", userId)', '.eq("user_id", userId)', '.not("accepted_at", "is", null)', '.is("removed_at", null)',
     '.is("brand.deleted_at", null)', 'role: "owner"', 'effective_rank: 60',
@@ -49,16 +58,19 @@ export function check(sources) {
   if (!confirm.includes('import { TENANT_CONTEXT_VERSION }') || confirmationWrites !== 5 || confirm.includes("PROMPT_VERSION")) {
     failures.push(`confirmation provenance registry incomplete: expected 5 tenant-v1 attestations/writes, found ${confirmationWrites}`);
   }
-  const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
-  if (workflow.split(writerTestPath).length - 1 !== 3) {
-    failures.push("writer-registry tester must trigger on push/PR and run unconditionally");
-  }
+  // [#2438 SC-13] The old three-point count was taken against the historical YAML
+  // wrapper that SC-21 deletes; a guard that hard-requires the file the cutover
+  // removes cannot authorise that cutover. The identical three-point push / PR /
+  // command provenance is re-derived below from the typed registry, which
+  // survives the deletion and additionally pins the origin identity.
+  //
   // #2438 shadow adds a second, typed provider without retiring the live one.
   // This guard-path edit is also #2013's exact same-SHA wake route (16/16 paths).
   let shadowSuite;
   try { shadowSuite = JSON.parse(ciManifest).suites.find((suite) => suite.id === "issue-2013-ari-tenant-containment"); } catch {}
-  if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave" || shadowSuite.lifecycle !== "shadow-active"
-      || shadowSuite.origin !== ".github/workflows/issue-2013-ari-tenant-containment.yml"
+  if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave"
+      || !PHASE3B_LIFECYCLES.includes(shadowSuite.lifecycle)
+      || shadowSuite.origin !== DECOUPLED_CI_WRAPPER
       || shadowSuite.triggerContract?.push?.paths?.filter((item) => item === writerTestPath).length !== 1
       || shadowSuite.triggerContract?.pullRequest?.paths?.filter((item) => item === writerTestPath).length !== 1
       || !shadowSuite.steps?.[0]?.run?.includes(writerTestPath)) {
@@ -120,24 +132,26 @@ export function check(sources) {
   return failures;
 }
 
-const sources = {
-  helper: read("supabase/functions/_shared/agentTenantScope.ts"),
-  chat: read("supabase/functions/agent-chat/index.ts"),
-  confirm: read("supabase/functions/agent-confirm-action/index.ts"),
-  tools: read("supabase/functions/_shared/agentTools.ts"),
-  domain: read("supabase/functions/_shared/agentDomainTools.ts"),
-  prompt: read("supabase/functions/_shared/agentSystemPrompt.ts"),
-  hook: read("mingla-business/src/hooks/useAgentChat.ts"),
-  screen: read("mingla-business/src/screens/ari/AriChatScreen.tsx"),
-  list: read("mingla-business/src/hooks/useConversationList.ts"),
-  publicMigration: read("supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql"),
-  scopeMigration: read("supabase/migrations/20270402002013_issue_2013_agent_conversation_brand_immutable.sql"),
-  scopeTest: read("supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql"),
-  migrationWorkflow: read(".github/workflows/supabase-migrations-and-stripe-deno.yml"),
-  workflow: read(".github/workflows/issue-2013-ari-tenant-containment.yml"),
-  writerTest: read("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts"),
-  ciManifest: read(".github/ci-batch/MANIFEST.json"),
+// [#2438 SC-13] Every file this guard reads, by key. The historical Phase 3B
+// wrapper is deliberately absent from this map; the self-test asserts that.
+const SOURCE_FILES = {
+  helper: "supabase/functions/_shared/agentTenantScope.ts",
+  chat: "supabase/functions/agent-chat/index.ts",
+  confirm: "supabase/functions/agent-confirm-action/index.ts",
+  tools: "supabase/functions/_shared/agentTools.ts",
+  domain: "supabase/functions/_shared/agentDomainTools.ts",
+  prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
+  hook: "mingla-business/src/hooks/useAgentChat.ts",
+  screen: "mingla-business/src/screens/ari/AriChatScreen.tsx",
+  list: "mingla-business/src/hooks/useConversationList.ts",
+  publicMigration: "supabase/migrations/20260729000000_meta_orch_0972_universal_authoring.sql",
+  scopeMigration: "supabase/migrations/20270402002013_issue_2013_agent_conversation_brand_immutable.sql",
+  scopeTest: "supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql",
+  migrationWorkflow: ".github/workflows/supabase-migrations-and-stripe-deno.yml",
+  writerTest: writerTestPath,
+  ciManifest: ".github/ci-batch/MANIFEST.json",
 };
+const sources = Object.fromEntries(Object.entries(SOURCE_FILES).map(([key, file]) => [key, read(file)]));
 
 if (process.argv.includes("--self-test")) {
   const good = check(sources);
@@ -147,8 +161,24 @@ if (process.argv.includes("--self-test")) {
   const historyRevertDetected = historyReverted.some((failure) => failure.includes("persisted-context provenance boundary"));
   const confirmationReverted = check({ ...sources, confirm: sources.confirm.replace("prompt_version: TENANT_CONTEXT_VERSION", "prompt_version: PROMPT_VERSION") });
   const confirmationRevertDetected = confirmationReverted.some((failure) => failure.includes("confirmation provenance registry incomplete"));
-  const writerWorkflowReverted = check({ ...sources, workflow: sources.workflow.replace("supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts", "") });
-  const writerWorkflowRevertDetected = writerWorkflowReverted.some((failure) => failure.includes("writer-registry tester must trigger"));
+  // [#2438 SC-13] The single old-YAML three-point count is replaced by three
+  // INDEPENDENT reverts against the typed registry — push trigger, pull_request
+  // trigger, and the executed command — each proven RED on its own. That is
+  // strictly stronger than the one string-count it replaces, and it survives the
+  // SC-21 deletion of the historical wrapper.
+  const withRegistry = (mutate) => {
+    const document = JSON.parse(sources.ciManifest);
+    mutate(document.suites.find((suite) => suite.id === "issue-2013-ari-tenant-containment"));
+    return check({ ...sources, ciManifest: JSON.stringify(document) });
+  };
+  const writerProvenanceReverts = [
+    (suite) => { suite.triggerContract.push.paths = suite.triggerContract.push.paths.filter((item) => item !== writerTestPath); },
+    (suite) => { suite.triggerContract.pullRequest.paths = suite.triggerContract.pullRequest.paths.filter((item) => item !== writerTestPath); },
+    (suite) => { suite.steps[0].run = suite.steps[0].run.replaceAll(writerTestPath, ""); },
+    (suite) => { suite.origin = ".github/workflows/forged.yml"; },
+  ].map((mutate) => withRegistry(mutate));
+  const writerProvenanceRevertDetected = writerProvenanceReverts.every((failures) =>
+    failures.some((failure) => failure.includes("typed shadow provider lost writer tester push/PR/command provenance")));
   const shadowManifest = JSON.parse(sources.ciManifest);
   shadowManifest.suites.find((suite) => suite.id === "issue-2013-ari-tenant-containment").migrationWave = "phase3b-forged";
   const shadowReverted = check({ ...sources, ciManifest: JSON.stringify(shadowManifest) });
@@ -157,11 +187,25 @@ if (process.argv.includes("--self-test")) {
   const scopeRevertDetected = scopeReverted.some((failure) => failure.includes("database scope immutability"));
   const composerReverted = check({ ...sources, screen: sources.screen.replace("disabled={chat.isSending || brands.isLoading || rateLimited || !conversationSelectionReady}", "disabled={chat.isSending}") });
   const composerRevertDetected = composerReverted.some((failure) => failure.includes("persistent cooldown"));
-  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerWorkflowRevertDetected || !shadowRevertDetected || !scopeRevertDetected || !composerRevertDetected) {
-    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerWorkflowReverted, shadowReverted, scopeReverted, composerReverted });
+
+  // [#2438 SC-13/SC-17] Execute the terminal branch instead of merely writing it.
+  const withLifecycle = (value) => withRegistry((suite) => { suite.lifecycle = value; });
+  const acceptedLifecycles = PHASE3B_LIFECYCLES.map((value) => withLifecycle(value));
+  const terminalLifecycleAccepted = acceptedLifecycles.every((failures) => failures.length === 0);
+  const forgedLifecycles = ["shadow-inactive", "batched-active", "phase3b-forged", "SHADOW-ACTIVE", "", null].map((value) => withLifecycle(value));
+  const forgedLifecycleDetected = forgedLifecycles.every((failures) => failures.some((failure) => failure.includes("typed shadow provider")));
+  // The historical wrapper must no longer be a source of this guard at all, or
+  // SC-21's deletion reds it again.
+  const wrapperDecoupled = !Object.values(SOURCE_FILES).includes(DECOUPLED_CI_WRAPPER)
+    && !Object.keys(SOURCE_FILES).includes("workflow");
+
+  if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerProvenanceRevertDetected
+      || !shadowRevertDetected || !scopeRevertDetected || !composerRevertDetected
+      || !terminalLifecycleAccepted || !forgedLifecycleDetected || !wrapperDecoupled) {
+    console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerProvenanceReverts, shadowReverted, scopeReverted, composerReverted, acceptedLifecycles, forgedLifecycles, wrapperDecoupled });
     process.exit(1);
   }
-  console.log("issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, tester-wiring, immutable-scope, and composer-gate reverts fail.");
+  console.log(`issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, ${writerProvenanceReverts.length} typed writer-provenance, immutable-scope, composer-gate and ${forgedLifecycles.length} forged-lifecycle reverts fail; ${acceptedLifecycles.length} reviewed lifecycles pass and the deletable CI wrapper is decoupled.`);
   process.exit(0);
 }
 

@@ -13,6 +13,7 @@ import {
   discoverLiveOrigins,
   discoverWorkflowProviders,
   validateRegistry,
+  withTrackedFilesScope,
   validateShadowParityMarkers,
 } from "../ci-batch/validate-manifest-v2.mjs";
 
@@ -158,11 +159,18 @@ function selfTest(base) {
 }
 
 const manifest = JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
+// [#2438 A7-SC3] Explicitly entered, explicitly exited tracked-file scope. Every
+// attack below mutates in-memory manifest clones only: this module performs no
+// fs write, mkdir, rm or subprocess, so the working tree and the Git index are
+// provably immutable for the whole scope and the per-assertion `git ls-files -z`
+// storm collapses to one listing. Ambient / process-lifetime / module-global
+// memoisation is forbidden by name — it is proven to manufacture a false green —
+// and no callsite that mutates the tree or the index may enter a scope.
 if (process.argv.includes("--self-test")) {
-  selfTest(manifest);
+  withTrackedFilesScope(DEFAULT_ROOT, () => selfTest(manifest));
   console.log("#2435 registry v2 adversarial self-test: PASS");
 } else {
-  const errors = validateRegistry(manifest, { root: DEFAULT_ROOT });
+  const errors = withTrackedFilesScope(DEFAULT_ROOT, () => validateRegistry(manifest, { root: DEFAULT_ROOT }));
   if (errors.length) {
     for (const error of errors) console.error(`::error::${error}`);
     process.exit(1);

@@ -35,8 +35,21 @@ const PINNED_UPLOAD_ARTIFACT = "actions/upload-artifact@ea165f8d65b6e75b540449e9
 const PHASE3_WAVE_LIFECYCLES = new Set(["shadow-active", "batched-historical"]);
 const PHASE3A_WAVE = "phase3a-node-wave";
 const PHASE3B_WAVE = "phase3b-postgres-wave";
+// [#2438 SC-13] The two reviewed Phase 3B lifecycles. The wave is atomic in one
+// of them; there is no third form and a mixed wave is red.
+const PHASE3B_SHADOW_LIFECYCLE = "shadow-active";
+const PHASE3B_TERMINAL_LIFECYCLE = "batched-historical";
+const PHASE3B_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
 const LOCKED_PROVIDER_DISCOVERY_SHA256 = "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c90d3ab86d";
 const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
+// [#2438 SC-13] Terminal provider authority. This is NOT an independent seal: it
+// is exactly the locked 71-record shadow set with the six Phase 3B records
+// removed, which is the only way deleting the twelve wrappers can change
+// discovery — .github/workflows/** is excluded from the scan, so no other
+// record's referenceFiles can move. Verified equal to
+// digest(shadow71.filter(record => !PHASE3B_PROVIDER_NAMES.has(record.workflow))).
+const LOCKED_TERMINAL_PROVIDER_DISCOVERY_SHA256 = "8d318cbe4007b33c447286fb41fa18a87310ee693df52a25e0d83f121a52c453";
+const TERMINAL_PROVIDER_DISCOVERY_COUNT = 65;
 const PHASE3B_PROVIDER_NAMES = new Set([
   "issue-1022-theme-control-tests.yml",
   "issue-1902-public-event-lifecycle-tests.yml",
@@ -235,15 +248,75 @@ export function validatePhase3bMarkers(manifest, workflowSources) {
   return errors;
 }
 
-function trackedFiles(root) {
+// [#2438 A7-SC3] Explicitly entered, explicitly exited tracked-file scope.
+//
+// Ambient, process-lifetime or module-global memoisation of trackedFiles() (or
+// of discoverWorkflowProviders()), and any cache keyed only on `root`, are
+// FORBIDDEN BY NAME. A blind memo is proven to manufacture a false green:
+// honest discovery moves 71 -> 72 with a different digest the moment a new
+// eligible source naming a real workflow is committed, while a blind memo keeps
+// reporting 71 / 2f43d33d... and the reviewed byte-invariance proof silently
+// stops being performed. A caller may opt into caching only where the working
+// tree and the Git index are provably immutable for the whole duration of the
+// scope. Outside a scope the uncached path runs and every call spawns
+// `git ls-files -z`; no callsite that mutates the tree or the index inside the
+// measured window may enter a scope.
+const trackedFilesScopeStack = [];
+let trackedFilesCallTotal = 0;
+let trackedFilesProcessInvocationTotal = 0;
+
+// [#2438 A7-SC4] Monotonic counters. Counts only — a wall-clock, high-resolution
+// timer or elapsed-millisecond threshold inside a gate is forbidden: it flakes on
+// shared runners and this repository already carries one nondeterministic
+// required gate (#2178). The cost contract is counts; elapsed time is verified
+// out of band from Actions timestamps.
+export function trackedFilesProcessInvocations() {
+  return trackedFilesProcessInvocationTotal;
+}
+
+export function trackedFilesCalls() {
+  return trackedFilesCallTotal;
+}
+
+export function withTrackedFilesScope(root, fn) {
+  const scope = { root: path.resolve(root), cache: new Map() };
+  trackedFilesScopeStack.push(scope);
   try {
-    return execFileSync("git", ["ls-files", "-z"], { cwd: root })
+    return fn();
+  } finally {
+    const exited = trackedFilesScopeStack.pop();
+    if (exited !== scope) throw new Error("tracked-files scope was not exited in order");
+  }
+}
+
+function trackedFilesScopeFor(key) {
+  for (let index = trackedFilesScopeStack.length - 1; index >= 0; index -= 1) {
+    if (trackedFilesScopeStack[index].cache.has(key)) return trackedFilesScopeStack[index];
+  }
+  return trackedFilesScopeStack.length ? trackedFilesScopeStack[trackedFilesScopeStack.length - 1] : null;
+}
+
+function trackedFiles(root) {
+  trackedFilesCallTotal += 1;
+  const key = path.resolve(root);
+  const scope = trackedFilesScopeFor(key);
+  const cached = scope?.cache.get(key);
+  // Hand back a fresh array on every call so an entered scope is observationally
+  // identical to the uncached path apart from the process spawn it removes.
+  if (cached) return cached.slice();
+  trackedFilesProcessInvocationTotal += 1;
+  let listed;
+  try {
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
   } catch {
     throw new Error("registry validation requires a git worktree");
   }
+  if (!scope) return listed;
+  scope.cache.set(key, listed);
+  return listed.slice();
 }
 
 const requireFromValidator = createRequire(import.meta.url);
@@ -865,7 +938,32 @@ export function isNonAuthoritativeProviderEvidence(relative) {
   return relative.startsWith(CI_BATCH_EVIDENCE_PREFIX) || WAVE_SHADOW_TESTER_ROLE.test(relative);
 }
 
+/**
+ * [#2438 A7-SC4] Reviewed, typed work-accounting record for one
+ * discoverWorkflowProviders() call. Counts only — never timings.
+ *
+ * @typedef {object} ProviderDiscoveryAccounting
+ * @property {number} trackedListInvocations trackedFiles() calls this discovery made. Exactly 1.
+ * @property {number} eligible               tracked paths surviving the exclusion list.
+ * @property {number} filesRead              eligible paths read without throwing.
+ * @property {number} skippedUnreadable      eligible paths whose read threw. Reviewed fact: 0 today,
+ *                                           because `git ls-files -s` shows only modes 100644/100755 —
+ *                                           no symlinks (120000) and no gitlinks (160000) — so nothing
+ *                                           in the tree can currently make readFileSync throw.
+ * @property {number} filesPatternScanned    sources the workflow-filename pattern was evaluated against.
+ */
+
+/** @type {Readonly<ProviderDiscoveryAccounting> | null} */
+let lastProviderDiscoveryAccountingRecord = null;
+
+/** @returns {Readonly<ProviderDiscoveryAccounting> | null} */
+export function providerDiscoveryAccounting() {
+  return lastProviderDiscoveryAccountingRecord;
+}
+
 export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
+  const accounting = { trackedListInvocations: 0, eligible: 0, filesRead: 0, skippedUnreadable: 0, filesPatternScanned: 0 };
+  const callsBefore = trackedFilesCallTotal;
   const workflowNames = new Set(
     fs
       .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
@@ -883,13 +981,28 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       relative === ".github/scripts/ci-batch/__tests__/select-phase3b-suites.test.mjs" ||
       isNonAuthoritativeProviderEvidence(relative)
     ) continue;
+    accounting.eligible += 1;
     const absolute = path.join(root, relative);
     let source;
     try {
       source = fs.readFileSync(absolute, "utf8");
     } catch {
+      accounting.skippedUnreadable += 1;
       continue;
     }
+    accounting.filesRead += 1;
+    // [#2438 A7-SC2] Correctness-preserving pre-filter. /[A-Za-z0-9_.-]+\.ya?ml/
+    // is composed only of literal characters after the class, so a match's final
+    // code units are exactly `.yml` or `.yaml`, both pure ASCII; String.includes
+    // over the same string cannot miss what the regex would find. Skipping the
+    // pattern for a source that can hold neither literal is therefore provably
+    // output-preserving, and it removes the catastrophic backtracking the greedy
+    // dot-bearing class suffers on the multi-megabyte SVG payloads in the corpus.
+    // Both literals are load-bearing: `.yaml` is forward defence for a future
+    // `.yaml` workflow and has no falsifiable guard today (there are 165 `.yml`
+    // and 0 `.yaml` files in .github/workflows), so no mutant asserts it RED.
+    if (!source.includes(".yml") && !source.includes(".yaml")) continue;
+    accounting.filesPatternScanned += 1;
     const mentioned = new Set(source.match(/[A-Za-z0-9_.-]+\.ya?ml/g) || []);
     for (const name of mentioned) {
       if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs" && PHASE3B_WRAPPER_SET.has(name)) continue;
@@ -898,6 +1011,8 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       references.get(name).push(relative);
     }
   }
+  accounting.trackedListInvocations = trackedFilesCallTotal - callsBefore;
+  lastProviderDiscoveryAccountingRecord = Object.freeze(accounting);
   return [...references]
     .map(([workflow, referenceFiles]) => ({ workflow, referenceFiles: [...new Set(referenceFiles)].sort() }))
     .sort((a, b) => a.workflow.localeCompare(b.workflow));
@@ -1170,15 +1285,48 @@ export function validateRegistry(
   }
   const phase3bSuites = (manifest.suites || []).filter((suite) => suite.migrationWave === PHASE3B_WAVE);
   const phase3bLifecycles = new Set(phase3bSuites.map((suite) => suite.lifecycle));
-  if (phase3bSuites.length !== 12 || phase3bLifecycles.size !== 1 || !phase3bLifecycles.has("shadow-active")) {
-    fail(errors, `Phase 3B shadow must contain exactly 12 suites in one shadow-active lifecycle`);
+  // [#2438 SC-13] Phase 3B is atomic in EITHER reviewed lifecycle. A mixed wave
+  // stays red, and no third form is accepted.
+  const phase3bLifecycle = phase3bLifecycles.size === 1 ? [...phase3bLifecycles][0] : null;
+  const phase3bTerminal = phase3bLifecycle === PHASE3B_TERMINAL_LIFECYCLE;
+  if (phase3bSuites.length !== 12 || !PHASE3B_ATOMIC_LIFECYCLES.has(phase3bLifecycle)) {
+    fail(errors, `Phase 3B must contain exactly 12 suites in one atomic ${[...PHASE3B_ATOMIC_LIFECYCLES].join(" or ")} lifecycle`);
   }
   if (phase3bSuites.reduce((sum, suite) => sum + suite.steps.length, 0) !== 36) fail(errors, "Phase 3B must own exactly 36 outer assertions");
   for (const suite of phase3bSuites) {
-    const metadata = inspectWorkflow(root, path.basename(suite.origin));
+    // [#2438 SC-13/SC-17] Follow the reviewed Phase 3A pattern above: never read a
+    // wrapper the lifecycle says is gone, and never dereference a missing one.
+    // At shadow the wrapper must be LIVE and match the frozen shadowContract; at
+    // terminal it must be ABSENT (a restored wrapper is the error) and the
+    // trigger/concurrency/source digests are validated from the frozen registry
+    // shadowContract, which the locked Phase 3B contract digest below seals.
+    const wrapperName = path.basename(suite.origin);
+    const wrapperPresent = fs.existsSync(path.join(root, ".github/workflows", wrapperName));
     const triggerPaths = [...new Set([...(suite.triggerContract?.push?.paths || []), ...(suite.triggerContract?.pullRequest?.paths || [])])].sort();
     const triggerEvents = [suite.triggerContract?.push && "push", suite.triggerContract?.pullRequest && "pull_request"].filter(Boolean).sort();
     const triggerDigest = crypto.createHash("sha256").update(JSON.stringify(suite.triggerContract)).digest("hex");
+    if (phase3bTerminal) {
+      if (wrapperPresent) {
+        fail(errors, `${suite.id}: terminal wrapper ${wrapperName} must be absent`);
+        continue;
+      }
+      if (triggerPaths.length === 0 || triggerEvents.length === 0
+          || suite.triggerContract?.concurrency == null
+          || suite.shadowContract?.triggerSha256 !== triggerDigest
+          || !/^[0-9a-f]{64}$/.test(String(suite.shadowContract?.workflowSha256))) {
+        fail(errors, `${suite.id}: exact trigger/concurrency/wrapper terminal contract drifted`);
+      }
+      continue;
+    }
+    if (!wrapperPresent) {
+      fail(errors, `${suite.id}: shadow wrapper ${wrapperName} must remain live until cutover`);
+      continue;
+    }
+    const metadata = inspectWorkflow(root, wrapperName);
+    if (!metadata) {
+      fail(errors, `${suite.id}: shadow wrapper ${wrapperName} could not be inspected`);
+      continue;
+    }
     if (JSON.stringify(triggerPaths) !== JSON.stringify(metadata.pathScope)
         || JSON.stringify(triggerEvents) !== JSON.stringify(metadata.triggers)
         || JSON.stringify(suite.triggerContract?.concurrency) !== JSON.stringify(metadata.phase3bConcurrency)
@@ -1261,7 +1409,12 @@ export function validateRegistry(
   if (capabilityCommands.slice(158).some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) fail(errors, "setup/install leaked into Phase 3B assertion capabilities");
   if (manifest.executionClasses?.length !== 23 || manifest.classes?.length !== 14) fail(errors, "topology must remain 14 matrix hosts / 23 execution classes");
   const waveContract = manifest.migrationWaves?.[PHASE3B_WAVE];
-  if (JSON.stringify(waveContract) !== JSON.stringify({ suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 37, currentAbsentLeaves: 3, lifecycle: "shadow-active" })) {
+  // [#2438 SC-13] Exactly two accepted forms — the shadow contract and the
+  // terminal contract — and the wave header must agree with the suites' own
+  // atomic lifecycle, so a terminal wave header over shadow suites stays red.
+  const expectedWaveContract = { suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 37,
+    currentAbsentLeaves: 3, lifecycle: phase3bTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };
+  if (JSON.stringify(waveContract) !== JSON.stringify(expectedWaveContract)) {
     fail(errors, "Phase 3B wave count contract drifted");
   }
   for (const capability of capabilityCommands) {
@@ -1337,11 +1490,22 @@ export function validateRegistry(
     const discoveryDigest = crypto.createHash("sha256").update(JSON.stringify(discoveredProviders)).digest("hex");
     const phase3bProviders = discoveredProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
     const phase3bDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bProviders)).digest("hex");
-    if (discoveredProviders.length !== 71 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-      fail(errors, `workflow provider authority drifted: expected 71/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${discoveredProviders.length}/${discoveryDigest}`);
+    // [#2438 SC-13] The authority expectation follows the wave's own atomic
+    // lifecycle. At shadow the twelve wrappers are live and contribute exactly
+    // six provider records; at terminal they are deleted, so they must
+    // contribute NONE and the remainder must be the locked shadow set minus
+    // exactly those six. Neither side can be satisfied by the other's numbers.
+    const expectedProviderCount = phase3bTerminal ? TERMINAL_PROVIDER_DISCOVERY_COUNT : 71;
+    const expectedProviderDigest = phase3bTerminal ? LOCKED_TERMINAL_PROVIDER_DISCOVERY_SHA256 : LOCKED_PROVIDER_DISCOVERY_SHA256;
+    const expectedPhase3bCount = phase3bTerminal ? 0 : 6;
+    const expectedPhase3bDigest = phase3bTerminal
+      ? crypto.createHash("sha256").update("[]").digest("hex")
+      : LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256;
+    if (discoveredProviders.length !== expectedProviderCount || discoveryDigest !== expectedProviderDigest) {
+      fail(errors, `workflow provider authority drifted: expected ${expectedProviderCount}/${expectedProviderDigest}, got ${discoveredProviders.length}/${discoveryDigest}`);
     }
-    if (phase3bProviders.length !== 6 || phase3bDigest !== LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256) {
-      fail(errors, `Phase 3B provider authority drifted: expected 6/${LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256}, got ${phase3bProviders.length}/${phase3bDigest}`);
+    if (phase3bProviders.length !== expectedPhase3bCount || phase3bDigest !== expectedPhase3bDigest) {
+      fail(errors, `Phase 3B provider authority drifted: expected ${expectedPhase3bCount}/${expectedPhase3bDigest}, got ${phase3bProviders.length}/${phase3bDigest}`);
     }
   }
   const registeredProviders = manifest.workflowProviders || [];

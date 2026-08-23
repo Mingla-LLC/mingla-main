@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { canonicalizeShadowWrapperSource, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, validateRegistry } from "../validate-manifest-v2.mjs";
+import { canonicalizeShadowWrapperSource, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, providerDiscoveryAccounting, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
@@ -348,4 +348,224 @@ test("material count, attribution, setup, env, marker, and sibling reversions ar
   const setup = structuredClone(base); setup.setupProfiles["phase3b-lifecycle-node20-deno2"].installs.reverse(); attacks.push(setup);
   const env = structuredClone(base); env.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests").steps[2].env.NODE_PATH="../node_modules"; attacks.push(env);
   for (const attack of attacks) assert.throws(() => assertWave(attack));
+});
+
+// [#2438 A7-SC4] The cost contract is COUNTS. A wall-clock, high-resolution
+// timer or elapsed-millisecond threshold is forbidden in any gate — it flakes on
+// shared runners and this repository already carries one nondeterministic
+// required gate (#2178). Elapsed time is verified out of band from Actions
+// timestamps, never asserted here.
+test("provider discovery work accounting stays inside its reviewed count bounds", () => {
+  const value = manifest();
+  const providers = discoverWorkflowProviders(ROOT);
+  const accounting = providerDiscoveryAccounting();
+  // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.
+  assert.equal(providers.length, 71); assert.equal(digest(providers), PROVIDER_DIGEST);
+  assert.equal(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 6);
+  assert.equal(digest(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))), PHASE3B_PROVIDER_DIGEST);
+  // (a) exactly one tracked-file listing per discovery call.
+  assert.equal(accounting.trackedListInvocations, 1, "discovery must list tracked files exactly once");
+  // (b) every eligible path is accounted for, and the reviewed fact that nothing
+  //     in this tree is unreadable is bound separately so an added symlink or
+  //     submodule fails informatively instead of looking like a cost regression.
+  assert.equal(accounting.filesRead + accounting.skippedUnreadable, accounting.eligible, "read accounting must cover every eligible path");
+  assert.equal(accounting.skippedUnreadable, 0, "git ls-files -s shows only modes 100644/100755: nothing can be unreadable");
+  // (c) two-sided window. Upper bound catches reverting the pre-filter (8,000);
+  //     lower bound catches dropping the `.yml` literal (14). Neither catches
+  //     dropping `.yaml` (175) — there are 0 `.yaml` workflows today, so that
+  //     half is deliberately, documentedly non-falsifiable and no mutant claims
+  //     otherwise. Adding a `.yaml` workflow makes it falsifiable and it must
+  //     then be guarded.
+  assert.ok(accounting.filesPatternScanned >= 120, `filesPatternScanned ${accounting.filesPatternScanned} below the 120 floor`);
+  assert.ok(accounting.filesPatternScanned <= 400, `filesPatternScanned ${accounting.filesPatternScanned} above the 400 ceiling`);
+  assert.equal(Object.isFrozen(accounting), true);
+  // (d) structural, suite-scaled bound outside any scope. A fixed number here is
+  //     a cannot-pass check waiting to be inherited: the dominant term is one
+  //     listing per suite, so Phase 3C raises it by construction.
+  const suiteCount = value.suites.length;
+  const unscopedBefore = trackedFilesProcessInvocations();
+  assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  const unscoped = trackedFilesProcessInvocations() - unscopedBefore;
+  assert.ok(unscoped >= suiteCount, `unscoped validateRegistry listed ${unscoped} times, below the per-suite floor ${suiteCount}`);
+  assert.ok(unscoped <= suiteCount + 25, `unscoped validateRegistry listed ${unscoped} times, above the bound ${suiteCount + 25}`);
+  // (e) one listing for the whole validation inside an entered scope, with
+  //     identical results — the scope removes spawns, never observations.
+  const scopedBefore = trackedFilesProcessInvocations();
+  const scopedErrors = withTrackedFilesScope(ROOT, () => validateRegistry(value, { root: ROOT }));
+  const scoped = trackedFilesProcessInvocations() - scopedBefore;
+  assert.deepEqual(scopedErrors, []);
+  assert.ok(scoped <= 1, `scoped validateRegistry listed ${scoped} times, above the in-scope bound of 1`);
+  // The scope must be EXITED, not ambient: the next call outside it spawns again.
+  const exitedBefore = trackedFilesProcessInvocations();
+  discoverWorkflowProviders(ROOT);
+  assert.equal(trackedFilesProcessInvocations() - exitedBefore, 1, "leaving the scope must restore uncached listing");
+  // No wall-clock threshold anywhere in the modules this contract governs. The
+  // needles are assembled at runtime so this assertion cannot match itself.
+  const timerNeedles = [["performance", "now("].join("."), ["process", "hrtime"].join("."), ["Date", "now()"].join(".")];
+  for (const relative of [
+    ".github/scripts/ci-batch/validate-manifest-v2.mjs",
+    ".github/scripts/strict-grep/issue-2148-ci-registry-v2.mjs",
+    ".github/scripts/strict-grep/issue-2148-ci-runner-v2.mjs",
+  ]) {
+    const source = fs.readFileSync(path.join(ROOT, relative), "utf8");
+    for (const needle of timerNeedles) assert.equal(source.includes(needle), false, `${relative} uses a forbidden wall-clock source ${needle}`);
+  }
+});
+
+// [#2438 A7-SC3] Ambient, process-lifetime or module-global memoisation of
+// trackedFiles() — and any cache keyed only on `root` — is forbidden by name,
+// because it is proven to manufacture a false green. This subtest executes both
+// directions of that proof against a real mutating tree.
+test("tracked-file scoping is explicit, exited, and provably wrong around a mutation", () => {
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-tracked-scope-")));
+  try {
+    execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
+    git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
+    const before = discoverWorkflowProviders(temp);
+    assert.equal(before.length, 71); assert.equal(digest(before), PROVIDER_DIGEST);
+
+    // Commit a brand-new eligible source that names a real live workflow.
+    const probe = "mingla-business/src/utils/__tests__/issue2438ScopeProbe.probe.ts";
+    fs.writeFileSync(path.join(temp, probe), `export const provider = "issue-948-w3-screens-copy-tests.yml";\n`);
+    git(temp, ["add", probe]); git(temp, ["commit", "-qm", "scope probe"]);
+
+    // 1. HONEST, UNSCOPED discovery observes the commit. This is the assertion a
+    //    scope around a mutating region breaks, and it is why entering one here
+    //    is forbidden (mutant 13).
+    const honest = discoverWorkflowProviders(temp);
+    assert.equal(honest.length, 72, "unscoped discovery must observe a newly tracked provider source");
+    assert.notEqual(digest(honest), PROVIDER_DIGEST, "unscoped discovery digest must move when the corpus moves");
+    assert.equal(honest.some((item) => item.referenceFiles.includes(probe)), true);
+
+    // 2. The scope genuinely hides it, so assertion 1 is not vacuous. A blind
+    //    ambient memo behaves exactly like this everywhere, permanently.
+    git(temp, ["rm", "-q", probe]); git(temp, ["commit", "-qm", "scope probe removed"]);
+    const blind = withTrackedFilesScope(temp, () => {
+      const first = discoverWorkflowProviders(temp);
+      fs.writeFileSync(path.join(temp, probe), `export const provider = "issue-948-w3-screens-copy-tests.yml";\n`);
+      git(temp, ["add", probe]); git(temp, ["commit", "-qm", "scope probe again"]);
+      return { first, second: discoverWorkflowProviders(temp) };
+    });
+    assert.equal(blind.first.length, 71);
+    assert.equal(blind.second.length, 71, "an entered scope must be shown to hide index mutations");
+    assert.equal(digest(blind.second), PROVIDER_DIGEST);
+
+    // 3. Exiting restores truth. Cached-forever would keep reporting 71.
+    const afterExit = discoverWorkflowProviders(temp);
+    assert.equal(afterExit.length, 72, "exiting the scope must restore uncached truth");
+    assert.equal(digest(afterExit), digest(honest));
+
+    // 4. Inside a scope over an immutable tree the results are identical to the
+    //    uncached path and cost exactly one listing.
+    git(temp, ["rm", "-q", probe]); git(temp, ["commit", "-qm", "scope probe gone"]);
+    const spawnsBefore = trackedFilesProcessInvocations();
+    const scoped = withTrackedFilesScope(temp, () => [discoverWorkflowProviders(temp), discoverWorkflowProviders(temp), discoverWorkflowProviders(temp)]);
+    assert.equal(trackedFilesProcessInvocations() - spawnsBefore, 1);
+    for (const snapshot of scoped) { assert.equal(snapshot.length, 71); assert.equal(digest(snapshot), PROVIDER_DIGEST); }
+
+    // 5. The scope stack unwinds even when the body throws.
+    assert.throws(() => withTrackedFilesScope(temp, () => { throw new Error("boom"); }), /boom/);
+    const unwound = trackedFilesProcessInvocations();
+    discoverWorkflowProviders(temp);
+    assert.equal(trackedFilesProcessInvocations() - unwound, 1, "a thrown scope body must still exit the scope");
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
+
+// [#2438 SC-13/SC-17] The SC-21 terminal branch must be EXECUTED by a test, not
+// merely written. Before this rework the validator threw an unhandled
+// TypeError reading `pathScope` of undefined the moment a wrapper was gone.
+// Nothing here mutates the repository: every state is built in a temp clone.
+test("SC-21 terminal state is executable and fail-closed in both directions", () => {
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-terminal-state-")));
+  const SIBLING = ".github/workflows/issue-679-brand-follows-rls-proof.yml";
+  const SIBLING_SHA = "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad";
+  const wrapperNames = Object.keys(WRAPPERS);
+  const wrapperPath = (name) => path.join(temp, ".github/workflows", name);
+  const guard = (relative) => {
+    try { execFileSync("node", [relative], { cwd: temp, stdio: "pipe" }); return 0; }
+    catch (error) { return error.status ?? 1; }
+  };
+  const GUARDS = [
+    ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs",
+    ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
+  ];
+  const siblingIsIntact = () => assert.equal(digest(fs.readFileSync(path.join(temp, SIBLING))), SIBLING_SHA);
+  try {
+    execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
+    // The clone carries the last commit. Overlay the working-tree gate sources so
+    // this contract is proven against the code under review, not against HEAD.
+    fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
+    fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
+    const shadow = JSON.parse(fs.readFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), "utf8"));
+    const terminal = structuredClone(shadow);
+    for (const suite of terminal.suites) if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = "batched-historical";
+    for (const origin of terminal.legacyOrigins) if (origin.migrationWave === "phase3b-postgres-wave") {
+      origin.disposition = "batched-historical"; origin.providerWorkflow = ".github/workflows/ci-batch.yml"; delete origin.workflowMetadata;
+    }
+    terminal.migrationWaves["phase3b-postgres-wave"].lifecycle = "batched-historical";
+    for (const provider of terminal.workflowProviders) if (WRAPPERS[provider.workflow]) {
+      provider.transition = "batched-provider"; provider.providerWorkflow = ".github/workflows/ci-batch.yml";
+    }
+    const stash = new Map(wrapperNames.map((name) => [name, fs.readFileSync(wrapperPath(name))]));
+    const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
+    const removeWrappers = (names) => { for (const name of names) fs.rmSync(wrapperPath(name), { force: true }); };
+    const restoreWrappers = () => { for (const [name, bytes] of stash) fs.writeFileSync(wrapperPath(name), bytes); };
+
+    // 1. SHADOW — 12 wrappers live, 12 shadow-active. Unchanged behaviour.
+    assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
+    for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at shadow`);
+    siblingIsIntact();
+
+    // 2. TERMINAL — 12 batched-historical, all 12 wrappers absent. Must PASS,
+    //    and must reach a clean verdict rather than throwing.
+    writeManifest(terminal); removeWrappers(wrapperNames);
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "terminal state must validate clean");
+    for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);
+    siblingIsIntact();
+
+    // 3. RESTORED TERMINAL WRAPPER — a wrapper put back at terminal is the error.
+    const restored = wrapperNames[0];
+    fs.writeFileSync(wrapperPath(restored), stash.get(restored));
+    const restoredErrors = validateRegistry(terminal, { root: temp });
+    assert.notDeepEqual(restoredErrors, []);
+    assert.match(restoredErrors.join("\n"), new RegExp(`terminal wrapper ${restored.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} must be absent`));
+    fs.rmSync(wrapperPath(restored));
+    siblingIsIntact();
+
+    // 4. MIXED LIFECYCLE — 11 terminal + 1 shadow is never a valid wave.
+    const mixed = structuredClone(terminal);
+    mixed.suites.find((suite) => suite.migrationWave === "phase3b-postgres-wave").lifecycle = "shadow-active";
+    writeManifest(mixed);
+    assert.notDeepEqual(validateRegistry(mixed, { root: temp }), []);
+
+    // 5. PREMATURE DELETION — a wrapper deleted while the wave is still shadow.
+    writeManifest(shadow); restoreWrappers();
+    const premature = wrapperNames[11];
+    fs.rmSync(wrapperPath(premature));
+    const prematureErrors = validateRegistry(shadow, { root: temp });
+    assert.notDeepEqual(prematureErrors, []);
+    assert.match(prematureErrors.join("\n"), /shadow wrapper .* (must remain live until cutover|missing)/);
+    fs.writeFileSync(wrapperPath(premature), stash.get(premature));
+    siblingIsIntact();
+
+    // 6. A third lifecycle form is rejected outright, and a terminal wave header
+    //    over shadow suites is rejected too — the header must agree with them.
+    const forged = structuredClone(shadow);
+    for (const suite of forged.suites) if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = "batched-active";
+    writeManifest(forged);
+    assert.match(validateRegistry(forged, { root: temp }).join("\n"), /one atomic shadow-active or batched-historical lifecycle/);
+    const headerDrift = structuredClone(shadow);
+    headerDrift.migrationWaves["phase3b-postgres-wave"].lifecycle = "batched-historical";
+    writeManifest(headerDrift);
+    assert.match(validateRegistry(headerDrift, { root: temp }).join("\n"), /Phase 3B wave count contract drifted/);
+    siblingIsIntact();
+
+    // 7. Restore shadow and prove the tree is exactly where it started.
+    writeManifest(shadow); restoreWrappers();
+    assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
+    for (const [name, expected] of Object.entries(WRAPPERS)) {
+      assert.equal(digest(canonicalizeShadowWrapperSource(name, fs.readFileSync(wrapperPath(name), "utf8"))), expected);
+    }
+    siblingIsIntact();
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });

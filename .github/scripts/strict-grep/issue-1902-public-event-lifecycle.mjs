@@ -30,6 +30,33 @@ const requireText = (source, needle, label) => {
   if (!source.includes(needle)) throw new Error(`issue #1902 missing ${label}`);
 };
 
+// [#2438 SC-13] The two reviewed Phase 3B lifecycles. This guard tracks whichever
+// one the registry declares instead of pinning shadow, so the SC-21 cutover does
+// not red it; a third value is still rejected.
+const PHASE3B_LIFECYCLES = ["shadow-active", "batched-historical"];
+
+// [#2438 SC-13] The historical CI wrapper this guard is DECOUPLED from. SC-21
+// deletes it, and a guard that hard-requires the file the cutover deletes cannot
+// authorise that cutover. Named rather than commented so the decoupling is a
+// executed self-test assertion below, and so this module keeps its reviewed
+// workflow-provider reference (registry record
+// issue-1902-public-event-lifecycle-tests.yml -> this file).
+const DECOUPLED_CI_WRAPPER = ".github/workflows/issue-1902-public-event-lifecycle-tests.yml";
+
+// Seven PRODUCT proof files. The typed registry contract above replaces the
+// wrapper's file-existence check and is stricter: it proves the suite's
+// migration wave, lifecycle, 11 outer steps, 4-leaf compound, conditional-file
+// registry and typed NODE_PATH env, none of which file existence proved.
+const PROOF_FILES = [
+  "packages/offering-rendering/__tests__/issue_1902_event_acquisition_lifecycle.test.ts",
+  "packages/brand-rendering/__tests__/issue_1902_public_brand_events.test.tsx",
+  "mingla-business/src/services/__tests__/issue_1902_public_brand_events.test.ts",
+  "mingla-business/src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx",
+  "mingla-business/src/components/event/__tests__/issue_1902_public_event_transition_overlays.test.tsx",
+  "app-mobile/src/hooks/__tests__/issue_1902_public_brand_events.test.ts",
+  "app-mobile/src/screens/__tests__/issue_1902_brand_event_routing.test.tsx",
+];
+
 function enforce(s) {
   let shadowSuite;
   try { shadowSuite = JSON.parse(s.ciManifest).suites.find((suite) => suite.id === "issue-1902-public-event-lifecycle-tests"); } catch {}
@@ -39,7 +66,11 @@ function enforce(s) {
     "mingla-business/src/components/event/__tests__/issue_1902_public_event_acquisition.tester_adversarial.test.tsx",
     "app-mobile/src/hooks/__tests__/issue_1902_public_brand_events.tester_adversarial.test.ts",
   ];
-  if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave" || shadowSuite.lifecycle !== "shadow-active"
+  // [#2438 SC-13] Accept the registry's own reviewed lifecycle — shadow-active
+  // today, batched-historical after the SC-21 cutover — so flipping the wave does
+  // not red this guard. Any third value still fails closed.
+  if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave"
+      || !PHASE3B_LIFECYCLES.includes(shadowSuite.lifecycle)
       || shadowSuite.steps?.length !== 11 || shadowSuite.steps?.[6]?.children?.length !== 4
       || JSON.stringify(shadowSuite.conditionalExpectedFiles) !== JSON.stringify([...optionalProofs].sort())
       || JSON.stringify(shadowSuite.steps?.[2]?.env) !== JSON.stringify({ NODE_PATH: "./node_modules" })) {
@@ -173,16 +204,7 @@ function enforce(s) {
     "computeMasterEndAtUtc",
     "sealed historical helper",
   );
-  for (const file of [
-    "packages/offering-rendering/__tests__/issue_1902_event_acquisition_lifecycle.test.ts",
-    "packages/brand-rendering/__tests__/issue_1902_public_brand_events.test.tsx",
-    "mingla-business/src/services/__tests__/issue_1902_public_brand_events.test.ts",
-    "mingla-business/src/components/event/__tests__/issue_1902_public_event_acquisition.test.tsx",
-    "mingla-business/src/components/event/__tests__/issue_1902_public_event_transition_overlays.test.tsx",
-    "app-mobile/src/hooks/__tests__/issue_1902_public_brand_events.test.ts",
-    "app-mobile/src/screens/__tests__/issue_1902_brand_event_routing.test.tsx",
-    ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
-  ])
+  for (const file of PROOF_FILES)
     if (!fs.existsSync(file))
       throw new Error(`issue #1902 missing proof file ${file}`);
 }
@@ -231,8 +253,42 @@ if (process.argv.includes("--self-test")) {
     }
     if (!failed) throw new Error(`self-test survived ${key}:${needle}`);
   }
+
+  // [#2438 SC-13/SC-17] Execute the terminal branch instead of merely writing it.
+  const withPhase3bLifecycle = (value) => {
+    const document = JSON.parse(baseline.ciManifest);
+    for (const suite of document.suites) {
+      if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = value;
+    }
+    return { ...baseline, ciManifest: JSON.stringify(document) };
+  };
+  // 1. The SC-21 terminal lifecycle must PASS. Before #2438 this threw.
+  for (const accepted of PHASE3B_LIFECYCLES) {
+    try {
+      enforce(withPhase3bLifecycle(accepted));
+    } catch (error) {
+      throw new Error(`self-test rejected reviewed lifecycle ${accepted}: ${error.message}`);
+    }
+  }
+  // 2. Widening to the terminal value must not widen to anything else.
+  for (const forged of ["shadow-inactive", "batched-active", "phase3b-forged", "SHADOW-ACTIVE", "", null]) {
+    let failed = false;
+    try { enforce(withPhase3bLifecycle(forged)); } catch { failed = true; }
+    if (!failed) throw new Error(`self-test survived forged lifecycle ${JSON.stringify(forged)}`);
+  }
+  // 3. Restored-terminal-wrapper decoupling: no mandatory proof file may be the
+  //    historical CI wrapper, or SC-21's deletion reds this gate again.
+  if (PROOF_FILES.includes(DECOUPLED_CI_WRAPPER)) {
+    throw new Error(`issue #1902 mandatory proof list re-coupled to the deletable CI wrapper ${DECOUPLED_CI_WRAPPER}`);
+  }
+  for (const file of PROOF_FILES) {
+    if (file.startsWith(".github/workflows/")) {
+      throw new Error(`issue #1902 mandatory proof list re-coupled to a deletable CI wrapper: ${file}`);
+    }
+  }
+  if (PROOF_FILES.length !== 7) throw new Error(`issue #1902 expects exactly 7 product proof files, found ${PROOF_FILES.length}`);
   console.log(
-    `issue #1902 gate self-test: PASS (${mutations.length} mutations)`,
+    `issue #1902 gate self-test: PASS (${mutations.length} mutations, ${PHASE3B_LIFECYCLES.length} accepted lifecycles, 6 forged lifecycles, ${PROOF_FILES.length} decoupled product proofs)`,
   );
 } else {
   enforce(baseline);

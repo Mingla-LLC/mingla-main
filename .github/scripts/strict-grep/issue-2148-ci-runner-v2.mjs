@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
+import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, withTrackedFilesScope, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
 import { commandFingerprint } from "../ci-batch/run-suite-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -134,5 +134,8 @@ export function selfTest() {
   console.log("#2438 wave runner self-test: PASS — Phase 2/3A locks and additive Phase 3B attacks went RED");
 }
 
-if (process.argv[2] === "--self-test") selfTest();
-else { verifyLive(); console.log("#2438 wave runner: PASS — 23/51 and 32/107 immutable; additive 12/36 locked"); }
+// [#2438 A7-SC3] Explicitly entered, explicitly exited tracked-file scope. This
+// module performs no fs write, mkdir, rm or subprocess, so the tree and index are
+// provably immutable for the duration. Ambient memoisation stays forbidden.
+if (process.argv[2] === "--self-test") withTrackedFilesScope(ROOT, () => selfTest());
+else { withTrackedFilesScope(ROOT, () => verifyLive()); console.log("#2438 wave runner: PASS — 23/51 and 32/107 immutable; additive 12/36 locked"); }
