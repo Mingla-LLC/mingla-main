@@ -74,7 +74,7 @@ test("#2437 terminal registry is exactly 31 historical origins / 32 typed varian
   const value = manifest();
   const shadow = value.suites.filter((suite) => suite.lifecycle === "batched-historical");
   const origins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical");
-  assert.equal(value.legacyOrigins.length, 199);
+  assert.equal(value.legacyOrigins.length, 200);
   assert.equal(value.suites.length, 55);
   assert.equal(value.workflowProviders.length, 91);
   assert.equal(origins.length, 31);

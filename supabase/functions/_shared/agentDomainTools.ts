@@ -2605,9 +2605,15 @@ const sendCampaignNow = writeTool(
     if (!isUuid(args.campaign_id)) {
       throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
     }
+    // #1980 — EXACT composer "Send now" contract. `marketing-send` self-detects
+    // the direct path from `campaign_id` + a non-service-role JWT and verifies
+    // ownership; it reads NO `sendNow` flag (the pre-repair extra key was dead).
+    // Idempotency is owned inside the function per-recipient
+    // (marketing_messages upsert on (campaign_id, recipient_*)), so no
+    // Idempotency-Key header is sent — matching sendNow() in
+    // mingla-business/src/services/marketing/marketingCampaignService.ts.
     return await invokeFn(client, "marketing-send", {
       campaign_id: args.campaign_id,
-      sendNow: true,
     });
   },
   "SEND",
@@ -2640,16 +2646,46 @@ const cancelCampaign = writeTool(
   },
 );
 
+// #1743 / #1980 — the four intelligence engines are FOUR separate app-lane edge
+// functions, not one. `tool_key` selects the engine; the body is the exact
+// app-lane contract from runGrowthTool() in
+// mingla-business/src/services/growthToolsService.ts: {action:"run",
+// lane:"app", brand_id, input}. The pre-repair tool sent {brand_id, tool_key}
+// to growth-tools-run only — no action, no lane, wrong function for 3 of 4
+// tools — so the WEB-lane validation rejected every call.
+const GROWTH_TOOL_FUNCTION: Readonly<Record<string, string>> = Object.freeze({
+  site_check: "growth-tools-run",
+  turnout_forecast: "growth-tools-events",
+  trip_quote: "growth-tools-trips",
+  pricing_audit: "growth-tools-pricing",
+});
+
 const runGrowthTool = writeTool(
   "run_growth_tool",
-  "Run a Growth Tool via growth-tools-run. Read report afterwards with get_brand_analytics.",
-  { brand_id: UUID, tool_key: STR },
+  "Run one of the four Growth Tools (site_check, turnout_forecast, trip_quote, pricing_audit) via its app-lane engine. `input` is the tool's intake object. Read the report afterwards with get_brand_analytics.",
+  {
+    brand_id: UUID,
+    tool_key: {
+      type: "string",
+      enum: ["site_check", "turnout_forecast", "trip_quote", "pricing_audit"],
+    },
+    input: { type: "object" },
+  },
   ["brand_id", "tool_key"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await invokeFn(client, "growth-tools-run", {
+    const fn = GROWTH_TOOL_FUNCTION[String(args.tool_key)];
+    if (fn === undefined) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "tool_key must be one of site_check, turnout_forecast, trip_quote, pricing_audit",
+      );
+    }
+    return await invokeFn(client, fn, {
+      action: "run",
+      lane: "app",
       brand_id: args.brand_id,
-      tool_key: args.tool_key,
+      input: (args.input ?? {}) as Record<string, unknown>,
     });
   },
 );
@@ -2666,52 +2702,114 @@ const getPayoutStatus = writeTool(
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
+    // #1982 — canonical readiness gate. pg_brand_can_collect returns a scalar
+    // boolean (charges_enabled AND payouts_enabled for the brand's connected
+    // account). Ari NEVER completes hosted KYC in chat — it only reads the gate
+    // and hands the owner off to the native Payouts flow.
     const can = await callRpc(client, "pg_brand_can_collect", {
       p_brand_id: args.brand_id,
     });
+    const canCollect = can === true;
     return {
       brand_id: args.brand_id,
-      can_collect: can === true || (can as any)?.can_collect === true,
-      guide:
-        "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
+      can_collect: canCollect,
+      guide: canCollect
+        ? "Payouts are enabled — this brand can collect money."
+        : "Open Brand → Payouts to finish Stripe or Paystack KYC. Ari cannot complete hosted KYC in chat.",
     };
   },
 );
 
+// #1976 — canonical partner-split status. The link lives in
+// `partner_brand_links` (ORCH-1081/-1384), NOT the non-existent `brand_partners`
+// table the pre-repair tool queried (every call threw
+// "relation brand_partners does not exist"). Status is derived from the raw
+// timestamp columns, mirroring `deriveLinkStatus` in
+// mingla-business/src/services/partnerBrandLinksService.ts — the SAME four-value
+// union the Team screen renders. The owner-side RLS policy
+// (`partner_brand_links_owner_select`) admits the brand owner's read.
+function derivePartnerLinkStatus(row: {
+  cancelled_at: string | null;
+  first_split_at: string | null;
+  owner_stripe_connected_at: string | null;
+  accepted_at: string | null;
+}): "awaiting_owner" | "awaiting_stripe" | "active" | "cancelled" {
+  if (row.cancelled_at !== null) return "cancelled";
+  if (row.first_split_at !== null) return "active";
+  if (row.owner_stripe_connected_at !== null) return "active";
+  if (row.accepted_at !== null) return "awaiting_stripe";
+  return "awaiting_owner";
+}
+
 const getPartnerStatus = writeTool(
   "get_partner_status",
-  "Read partner-split link status for a brand.",
+  "Read partner-split link status for a brand (partner_brand_links). Never exposes the partner's account id.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
     const { data, error } = await client
-      .from("brand_partners")
-      .select("id, status, partner_brand_id")
+      .from("partner_brand_links")
+      .select(
+        "id, invited_owner_email, invited_at, accepted_at, owner_stripe_connected_at, first_split_at, cancelled_at, cancelled_reason",
+      )
       .eq("brand_id", args.brand_id)
+      .order("invited_at", { ascending: false })
       .limit(20);
     if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data ?? [];
+    // PII minimization: return the derived status + the invited email/reason
+    // only. The partner's account id is never surfaced to the model.
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+      id: row.id,
+      invited_owner_email: row.invited_owner_email,
+      status: derivePartnerLinkStatus(
+        row as unknown as Parameters<typeof derivePartnerLinkStatus>[0],
+      ),
+      cancelled_reason: row.cancelled_reason ?? null,
+    }));
   },
 );
 
 const disconnectPartner = writeTool(
   "disconnect_partner",
-  "Disconnect a partner split. Destructive confirm.",
+  "Disconnect an active partner split via partner_disconnect_link. Destructive confirm.",
   { brand_id: UUID, partner_id: UUID },
   ["brand_id", "partner_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const { error } = await client
-      .from("brand_partners")
-      .update({
-        status: "disconnected",
-        disconnected_at: new Date().toISOString(),
-      })
-      .eq("id", args.partner_id)
-      .eq("brand_id", args.brand_id);
-    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (!isUuid(args.partner_id)) {
+      throw new ToolError("INVALID_ARGS", "partner_id must be a uuid");
+    }
+    // #1976 — the canonical dual-stamp verb (link cancelled_at + partner team
+    // removed_at in ONE transaction, I-PROPOSED-1384-DISCONNECT-STAMPS-BOTH).
+    // partner_id is the partner_brand_links row id, already bound to this brand
+    // by the authorization seam. Never a direct table UPDATE.
+    const { error } = await client.rpc("partner_disconnect_link", {
+      p_link_id: args.partner_id,
+    });
+    if (error) {
+      const message = error.message ?? "";
+      if (message.includes("forbidden")) {
+        throw new ToolError(
+          "BRAND_ACCESS_DENIED",
+          "You do not have permission to disconnect this partner.",
+        );
+      }
+      if (message.includes("link_not_found")) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "That partner link no longer exists.",
+        );
+      }
+      if (message.includes("link_not_active")) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Only an active partner link can be disconnected.",
+        );
+      }
+      throw new ToolError("RPC_FAILED", message);
+    }
     return { partner_id: args.partner_id, disconnected: true };
   },
   "DISCONNECT",
@@ -2737,24 +2835,55 @@ const getTaxStatus = writeTool(
 // K. Refunds / cancels / installments
 // ----------------------------------------------------------------------------
 
+// #1981 — `refund-order` requires a NON-EMPTY `lines` array (each
+// {order_line_item_id, quantity, amount_cents}) plus a 10–200 char `reason`,
+// and an Idempotency-Key header. The pre-repair tool sent {order_id,
+// amount_cents} — no lines, no reason — so the function 400'd
+// `refund_lines_required` on every call. Ari supplies the lines it read back
+// from the order; the RPC re-validates line ownership + over-refund.
+const REFUND_LINE = {
+  type: "object",
+  additionalProperties: false,
+  required: ["order_line_item_id", "quantity", "amount_cents"],
+  properties: {
+    order_line_item_id: UUID,
+    quantity: { type: "integer", minimum: 1 },
+    amount_cents: { type: "integer", minimum: 1 },
+  },
+};
+
 const refundOrder = writeTool(
   "refund_order",
-  "Refund an order via refund-order. Finance-role gated. Idempotency-Key required.",
+  "Refund specific order line items via refund-order. Finance-role gated. Requires the line items to refund and a reason. Idempotency-Key required.",
   {
     brand_id: UUID,
     order_id: UUID,
-    amount_cents: { type: "integer", minimum: 1 },
+    lines: { type: "array", minItems: 1, items: REFUND_LINE },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
   },
-  ["brand_id", "order_id"],
+  ["brand_id", "order_id", "lines", "reason"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     if (!isUuid(args.order_id)) {
       throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
     }
+    if (!Array.isArray(args.lines) || args.lines.length === 0) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "At least one refund line is required.",
+      );
+    }
+    const reason = typeof args.reason === "string" ? args.reason.trim() : "";
+    if (reason.length < 10 || reason.length > 200) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "A refund reason of 10–200 characters is required.",
+      );
+    }
     return await invokeFn(
       client,
       "refund-order",
-      { order_id: args.order_id, amount_cents: args.amount_cents ?? null },
+      { order_id: args.order_id, lines: args.lines, reason },
       { "Idempotency-Key": newIdempotencyKey() },
     );
   },
@@ -2763,15 +2892,32 @@ const refundOrder = writeTool(
 
 const cancelOrder = writeTool(
   "cancel_order",
-  "Cancel an order via cancel-order. Finance-role gated.",
-  { brand_id: UUID, order_id: UUID },
-  ["brand_id", "order_id"],
+  "Cancel a FREE order via cancel-order (paid orders must be refunded, not cancelled). Finance-role gated. Requires a reason. Idempotency-Key required.",
+  {
+    brand_id: UUID,
+    order_id: UUID,
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["brand_id", "order_id", "reason"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    if (!isUuid(args.order_id)) {
+      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    }
+    // #1981 — cancel-order requires reason (10–200) + Idempotency-Key header.
+    // The pre-repair tool sent {order_id} only, so the function 400'd
+    // `reason_invalid_length` on every call.
+    const reason = typeof args.reason === "string" ? args.reason.trim() : "";
+    if (reason.length < 10 || reason.length > 200) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "A cancellation reason of 10–200 characters is required.",
+      );
+    }
     return await invokeFn(
       client,
       "cancel-order",
-      { order_id: args.order_id },
+      { order_id: args.order_id, reason },
       { "Idempotency-Key": newIdempotencyKey() },
     );
   },
@@ -2780,15 +2926,48 @@ const cancelOrder = writeTool(
 
 const cancelTripBooking = writeTool(
   "cancel_trip_booking",
-  "Cancel a trip booking via cancel-trip-booking.",
-  { brand_id: UUID, booking_id: UUID },
-  ["brand_id", "booking_id"],
+  "Cancel a trip booking (operator) via cancel-trip-booking. Previews the refund, then commits at that exact amount. Finance-role gated. Requires a reason.",
+  {
+    brand_id: UUID,
+    booking_id: UUID,
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["brand_id", "booking_id", "reason"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    if (!isUuid(args.booking_id)) {
+      throw new ToolError("INVALID_ARGS", "booking_id must be a uuid");
+    }
+    const reason = typeof args.reason === "string" ? args.reason.trim() : "";
+    if (reason.length < 10 || reason.length > 200) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "A cancellation reason of 10–200 characters is required.",
+      );
+    }
+    // #1981 — cancel-trip-booking is a preview→commit engine (ORCH-0875 Tr4).
+    // Commit MUST carry `expectedRefundTotalCents` (SC-22 freshness); the
+    // pre-repair tool sent {booking_id} and 400'd `order_id_required`. We
+    // preview under the caller JWT to pin the amount, then commit that exact
+    // value in operator mode. Both take camelCase `orderId` (= booking_id).
+    const preview = await invokeFn<{ refundTotalCents?: number }>(
+      client,
+      "cancel-trip-booking",
+      { mode: "preview", orderId: args.booking_id },
+    );
+    const expectedRefundTotalCents =
+      typeof preview?.refundTotalCents === "number"
+        ? preview.refundTotalCents
+        : 0;
     return await invokeFn(
       client,
       "cancel-trip-booking",
-      { booking_id: args.booking_id },
+      {
+        mode: "operator",
+        orderId: args.booking_id,
+        reason,
+        expectedRefundTotalCents,
+      },
       { "Idempotency-Key": newIdempotencyKey() },
     );
   },
@@ -2842,10 +3021,11 @@ const getBrandAnalytics = writeTool(
 
 const inviteBrandMember = writeTool(
   "invite_brand_member",
-  "Invite a brand member via existing invitations table / service.",
+  "Invite a brand team member via invite-brand-member. Requires the invitee's name (the invite email + accept flow reject an empty name).",
   {
     brand_id: UUID,
     email: STR,
+    name: { type: "string", minLength: 1, maxLength: 100 },
     role: {
       type: "string",
       enum: [
@@ -2856,13 +3036,20 @@ const inviteBrandMember = writeTool(
       ],
     },
   },
-  ["brand_id", "email", "role"],
+  ["brand_id", "email", "name", "role"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    // #1983 — invite-brand-member validates invitee_name (1–100 chars) and
+    // 400s `validation:["invitee_name"]` on empty. The pre-repair tool hard-
+    // coded "" so every invite failed. Ari must collect the real name.
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    if (name.length < 1 || name.length > 100) {
+      throw new ToolError("INVALID_ARGS", "The invitee's name is required.");
+    }
     return await invokeFn(client, "invite-brand-member", {
       brand_id: args.brand_id,
       invitee_email: args.email,
-      invitee_name: "",
+      invitee_name: name,
       role: args.role,
     });
   },
@@ -2870,75 +3057,186 @@ const inviteBrandMember = writeTool(
 
 const inviteScanner = writeTool(
   "invite_scanner",
-  "Invite a scanner for a brand.",
-  { brand_id: UUID, email: STR },
-  ["brand_id", "email"],
+  "Invite a scanner via the dedicated invite-scanner endpoint. Brand-scope grants scan access to every event; event-scope is limited to one event. Optionally grant at-door payment acceptance.",
+  {
+    brand_id: UUID,
+    email: STR,
+    name: { type: "string", minLength: 1, maxLength: 100 },
+    scope: { type: "string", enum: ["brand", "event"] },
+    event_id: UUID,
+    can_accept_payments: { type: "boolean" },
+  },
+  ["brand_id", "email", "name", "scope"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await invokeFn(client, "invite-brand-member", {
+    // #1983 — scanners have their OWN endpoint + table (scanner_invitations)
+    // and permission model (canScan/canAcceptPayments). The pre-repair tool
+    // POSTed invite-brand-member with role="scanner" — wrong table, no
+    // scan/payment scopes. Route to invite-scanner with the exact contract.
+    const name = typeof args.name === "string" ? args.name.trim() : "";
+    if (name.length < 1 || name.length > 100) {
+      throw new ToolError("INVALID_ARGS", "The scanner's name is required.");
+    }
+    const scope = args.scope === "event" ? "event" : "brand";
+    if (scope === "event" && !isUuid(args.event_id)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "event_id is required (and must be a uuid) for an event-scoped scanner.",
+      );
+    }
+    return await invokeFn(client, "invite-scanner", {
       brand_id: args.brand_id,
+      event_id: scope === "event" ? args.event_id : null,
+      scope,
       invitee_email: args.email,
-      invitee_name: "",
-      role: "scanner",
+      invitee_name: name,
+      can_accept_payments: args.can_accept_payments === true,
     });
   },
 );
 
 const revokeBrandMember = writeTool(
   "revoke_brand_member",
-  "Revoke a brand member or scanner.",
+  "Revoke a brand team member by soft-deleting their brand_team_members row (sets removed_at). Admin-gated by RLS.",
   { brand_id: UUID, member_id: UUID },
   ["brand_id", "member_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    const { error } = await client
-      .from("brand_members")
-      .delete()
+    if (!isUuid(args.member_id)) {
+      throw new ToolError("INVALID_ARGS", "member_id must be a uuid");
+    }
+    // #1983 — membership lives in brand_team_members (soft-delete via
+    // removed_at), NOT the non-existent brand_members table the pre-repair
+    // tool hard-DELETEd. The brand_team_members UPDATE RLS policy already
+    // gates this on biz_is_brand_admin_plus_for_caller, so a plain scoped
+    // UPDATE is the safe verb — a hard DELETE would orphan audit history.
+    const { data, error } = await client
+      .from("brand_team_members")
+      .update({ removed_at: new Date().toISOString() })
       .eq("id", args.member_id)
-      .eq("brand_id", args.brand_id);
+      .eq("brand_id", args.brand_id)
+      .is("removed_at", null)
+      .select("id")
+      .maybeSingle();
     if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (data === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "That team member was not found, is already removed, or you lack permission.",
+      );
+    }
     return { member_id: args.member_id, revoked: true };
   },
 );
 
+// #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
+// about status + next action. Drops contactLabel (partial email/phone),
+// avatarUrl, delivery attempts, and order ids so raw PII never enters the
+// model context. The DB already gates the read on event_manager+ rank.
+function slimRosterRow(row: Record<string, unknown>): Record<string, unknown> {
+  const party = (row.party ?? {}) as Record<string, unknown>;
+  return {
+    rosterKey: row.rosterKey,
+    displayName: row.displayName,
+    primaryStatus: row.primaryStatus,
+    invitationStatus: row.invitationStatus,
+    rsvpId: row.rsvpId ?? null,
+    approvalStatus: row.approvalStatus ?? null,
+    checkedIn: row.checkedIn ?? false,
+    partySize: party.rsvpPartySize ?? row.rsvpPartySize ?? null,
+    canApprove: row.canApprove ?? false,
+    canDeny: row.canDeny ?? false,
+    canRemind: row.canRemind ?? false,
+    canRetry: row.canRetry ?? false,
+  };
+}
+
 const listGuestRoster = writeTool(
   "list_guest_roster",
-  "List guest roster for an owned event via biz_guest_roster_list. No PII dump into the model beyond names/status.",
-  { event_id: UUID },
+  "List an owned event's guest roster (biz_guest_roster_list) with names/status only — never raw emails/phones. Supports filter, search and pagination.",
+  {
+    event_id: UUID,
+    filter: { type: "string" },
+    search: { type: "string", maxLength: 200 },
+    sort: {
+      type: "string",
+      enum: ["action_priority", "name_asc", "name_desc", "recent_first"],
+    },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
   ["event_id"],
   async (args, client, userId) => {
     await assertAgentReadEvent(client, userId, args.event_id);
     await requireEvent(args, client, userId);
-    return await callRpc(client, "biz_guest_roster_list", {
-      p_event_id: args.event_id,
-    });
+    // #1984 — pass the FULL contract (filter/search/sort/limit) and cap the
+    // page so a single call never dumps the whole roster into the model. The
+    // pre-repair tool passed only p_event_id (valid via defaults) but returned
+    // every field, including contactLabel PII. We slim rows below.
+    const limit = typeof args.limit === "number"
+      ? Math.min(Math.max(Math.trunc(args.limit), 1), 100)
+      : 25;
+    const result = await callRpc<Record<string, unknown>>(
+      client,
+      "biz_guest_roster_list",
+      {
+        p_event_id: args.event_id,
+        p_filter: typeof args.filter === "string" ? args.filter : "all",
+        p_search: typeof args.search === "string" ? args.search : null,
+        p_sort: typeof args.sort === "string" ? args.sort : "action_priority",
+        p_cursor: null,
+        p_limit: limit,
+      },
+    );
+    const rows = Array.isArray(result?.rows)
+      ? (result.rows as Array<Record<string, unknown>>).map(slimRosterRow)
+      : [];
+    return {
+      rows,
+      summary: result?.summary ?? null,
+      hasMore: result?.nextCursor != null,
+    };
   },
 );
 
 const setGuestApproval = writeTool(
   "set_guest_approval",
-  "Approve or decline a guest on the brand people roster.",
-  { event_id: UUID, guest_id: UUID, approved: { type: "boolean" } },
-  ["event_id", "guest_id", "approved"],
+  "Approve or deny a single pending RSVP guest via host_set_rsvp_status. Approving an under-capacity waitlisted guest promotes them and issues their pass.",
+  { event_id: UUID, rsvp_id: UUID, approved: { type: "boolean" } },
+  ["event_id", "rsvp_id", "approved"],
   async (args, client, userId) => {
     await requireEvent(args, client, userId);
-    return await callRpc(client, "biz_guest_roster_access", {
-      p_event_id: args.event_id,
-      p_guest_id: args.guest_id,
-      p_approved: args.approved,
+    if (!isUuid(args.rsvp_id)) {
+      throw new ToolError("INVALID_ARGS", "rsvp_id must be a uuid");
+    }
+    // #1984 — the single-guest approval verb is host_set_rsvp_status(p_rsvp_id,
+    // p_status) where p_status ∈ {approved,denied}; it self-gates on
+    // event_manager+ rank and enforces capacity. The pre-repair tool called
+    // biz_guest_roster_access — a READ-only rollout gate that never mutates
+    // approval — so no guest was ever approved. rsvp_id is the roster row's
+    // rsvpId.
+    return await callRpc(client, "host_set_rsvp_status", {
+      p_rsvp_id: args.rsvp_id,
+      p_status: args.approved === true ? "approved" : "denied",
     });
   },
 );
 
 const exportBrandPeople = writeTool(
   "export_brand_people",
-  "Export Brand People CSV via brand-people-export. PII — extra confirm.",
+  "Kick off a Brand People (brand book) CSV export via brand-people-export. Returns a job to poll. PII — extra confirm.",
   { brand_id: UUID },
   ["brand_id"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
+    // #1743 — brand-people-export reads a camelCase body and branches on
+    // `scope`. Brand-book export needs {scope:"brand_book", brandId,
+    // clientRequestId}; the RPC requires a non-null p_client_request_id for
+    // idempotency. The pre-repair tool sent {brand_id} (snake_case, no scope,
+    // no request id) and 400'd `invalid_request` every time.
     return await invokeFn(client, "brand-people-export", {
-      brand_id: args.brand_id,
+      scope: "brand_book",
+      brandId: args.brand_id,
+      clientRequestId: crypto.randomUUID(),
     });
   },
   "EXPORT",

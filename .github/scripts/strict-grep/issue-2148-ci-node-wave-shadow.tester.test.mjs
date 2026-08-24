@@ -233,7 +233,7 @@ function assertionRuns(origin, variantId, inspections) {
 
 function assertReconstructed(value, inspections) {
   const shadow = value.suites.filter((suite) => ["shadow-active", "batched-historical"].includes(suite.lifecycle));
-  assert.equal(value.legacyOrigins.length, 199);
+  assert.equal(value.legacyOrigins.length, 200);
   assert.equal(value.suites.length, 55);
   assert.equal(value.workflowProviders.length, 91);
   assert.equal(shadow.length, 32);

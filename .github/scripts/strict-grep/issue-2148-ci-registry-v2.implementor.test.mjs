@@ -94,11 +94,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const approvedShadowIds = manifest.legacyOrigins.filter((origin) => ["shadow-active", "batched-historical"].includes(origin.disposition)).flatMap((origin) => origin.replacementSuites).sort();
   assert.deepEqual(shadow.map((suite) => suite.id).sort(), approvedShadowIds);
   assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
-  assert.equal(manifest.legacyOrigins.length, 199);
+  assert.equal(manifest.legacyOrigins.length, 200);
   assert.equal(manifest.workflowProviders.length, 91);
-  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 145);
+  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146);
   assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73);
-  assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 199);
+  assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");
@@ -113,7 +113,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
       .map((item) => [`${item.stem}.${item.extension}`, item.workflowMetadata]),
   );
   const metadata = (stem) => registered.get(`${stem}.${"yml"}`);
-  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 145);
+  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146);
 
   const mixed = structuredClone(manifest);
   mixed.suites[23].lifecycle = "shadow-active";
