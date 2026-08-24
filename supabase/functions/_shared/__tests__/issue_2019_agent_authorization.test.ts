@@ -83,7 +83,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   const rows = ledger.capabilities.filter((row: any) =>
     AGENT_TOOL_AUTHORIZATION[row.ari_tool]
   );
-  assert(rows.length === 77, `expected 77 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #1979] Mapped ledger rows track the 80-tool registry.
+  assert(rows.length === 80, `expected 80 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
