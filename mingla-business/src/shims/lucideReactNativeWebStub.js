@@ -20,9 +20,10 @@
  * (~1.8MB) in the eager boot `__common` chunk, blowing the ORCH-1083 initial-
  * bundle budget (4.03MB, ~1.8MB over the 2.25MB cap).
  *
- * NOW (tree-shakeable): we require EXACTLY the icon modules mingla-business
+ * NOW (tree-shakeable): we require EXACTLY the icon modules the web bundle
  * actually uses (the authoritative used-set, enumerated from every
- * `lucide-react-native` import under mingla-business/src + app/) from their
+ * `lucide-react-native` import under mingla-business/src + app/ AND under the
+ * shared `packages/` workspaces the business web build pulls in) from their
  * INDIVIDUAL deep module paths (`lucide-react/dist/esm/icons/<kebab>.js`). Each
  * deep require pulls ONLY that one icon module — NOT the barrel — so the bundler
  * ships ~12 tiny icon modules instead of the whole library. We build a
@@ -40,12 +41,21 @@
  * `__esModule`, so `.default` is the component under both node (jest) and Metro.
  *
  * Drift guard: the used-set below MUST stay in sync with the real imports. If a
- * mingla-business component starts importing a NEW `lucide-react-native` icon not
- * in the map, that icon renders the HelpCircle fallback on web (still safe, never
- * crashes) — and the gate `i-proposed-1137-biz-web-lucide-real.mjs` INV-4 FAILS
- * CI, telling the dev to add the new name here. The same gate's INV-3 FORBIDS a
+ * component starts importing a NEW `lucide-react-native` icon not in the map,
+ * that icon renders the HelpCircle fallback on web (still safe, never crashes)
+ * — and the gate `i-proposed-1137-biz-web-lucide-real.mjs` INV-4 FAILS CI,
+ * telling the dev to add the new name here. The same gate's INV-3 FORBIDS a
  * barrel / namespace / `import * as` import from `lucide-react` (the bloat
  * regression).
+ *
+ * Issue #2534 — that drift guard used to scan ONLY mingla-business/{src,app},
+ * so `packages/brand-rendering/PublicBrandPage.tsx` (a SHARED workspace the
+ * business web build renders at `/b/{brandSlug}`) drifted unseen: nine of the
+ * ten icons it imports were absent from this map and shipped as the HelpCircle
+ * placeholder on the live public brand page while INV-4 reported PASS. The gate
+ * now walks `packages/` too, and the nine names are mapped below. The lesson is
+ * the perimeter, not the icons: a used-set gate that does not cover every source
+ * root in the web bundle is green by construction.
  *
  * lucide renders DOM <svg>; under react-native-web a raw <svg> inside a
  * <View>/<Text> (which compile to <div>/<span>) renders correctly. It has NO
@@ -68,10 +78,11 @@ const React = require("react");
 const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 
 // Authoritative used-set — every icon imported from `lucide-react-native`
-// anywhere under mingla-business/src + app/ (live audit). Each is deep-required
-// from its OWN module path so the bundler tree-shakes the rest of lucide away.
-// Keep this map in lockstep with the real imports; the INV-4 drift gate fails CI
-// if a `lucide-react-native` import names an icon missing from this map.
+// anywhere under mingla-business/src + app/ AND under the shared `packages/`
+// workspaces (live audit). Each is deep-required from its OWN module path so the
+// bundler tree-shakes the rest of lucide away. Keep this map in lockstep with the
+// real imports; the INV-4 drift gate fails CI if a `lucide-react-native` import
+// names an icon missing from this map.
 //
 //   AlertTriangle    src/components/ari/ToolProposalCard.tsx
 //   ArrowLeft        src/components/venue/* (ORCH-1196)
@@ -103,6 +114,24 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   Utensils         src/components/stay/StaySuiteShell.tsx
 //   UtensilsCrossed  src/components/venue/* (ORCH-1196)
 //   X                src/components/ari/ToolProposalCard.tsx
+//
+// Shared workspaces under `packages/` — rendered by the business WEB build and
+// therefore resolved through THIS shim, exactly like mingla-business/src. Issue
+// #2534: these nine were missing, so the live public brand page
+// `host.usemingla.com/b/{brandSlug}` drew a circled question mark for its ticket
+// badge and every social chip except X.
+//
+//   AtSign           packages/brand-rendering/PublicBrandPage.tsx (#2534 — Threads chip)
+//   CalendarCheck    packages/brand-rendering/PublicBrandPage.tsx (#2534 — RSVP badge)
+//   Facebook         packages/brand-rendering/PublicBrandPage.tsx (#2534 — social chip)
+//   Globe2           packages/brand-rendering/PublicBrandPage.tsx (#2534 — website chip)
+//   Instagram        packages/brand-rendering/PublicBrandPage.tsx (#2534 — social chip)
+//   Linkedin         packages/brand-rendering/PublicBrandPage.tsx (#2534 — social chip)
+//   Music2           packages/brand-rendering/PublicBrandPage.tsx (#2534 — TikTok chip)
+//   Ticket           packages/brand-rendering/PublicBrandPage.tsx (#2534 — TICKETS badge)
+//   Youtube          packages/brand-rendering/PublicBrandPage.tsx (#2534 — social chip)
+//   (X above is shared: PublicBrandPage's X/Twitter chip resolves the same entry.)
+//
 //   HelpCircle       (fallback only — the always-real "unknown icon" affordance)
 const USED_ICONS = {
   AlertTriangle: iconOf(
@@ -110,8 +139,14 @@ const USED_ICONS = {
   ),
   ArrowLeft: iconOf(require("lucide-react/dist/esm/icons/arrow-left.js")),
   ArrowUp: iconOf(require("lucide-react/dist/esm/icons/arrow-up.js")),
+  // Issue #2534 — packages/brand-rendering/PublicBrandPage.tsx (Threads chip).
+  AtSign: iconOf(require("lucide-react/dist/esm/icons/at-sign.js")),
   BedDouble: iconOf(require("lucide-react/dist/esm/icons/bed-double.js")),
   Calendar: iconOf(require("lucide-react/dist/esm/icons/calendar.js")),
+  // Issue #2534 — PublicBrandPage RSVP kind badge.
+  CalendarCheck: iconOf(
+    require("lucide-react/dist/esm/icons/calendar-check.js"),
+  ),
   CalendarDays: iconOf(require("lucide-react/dist/esm/icons/calendar-days.js")),
   Check: iconOf(require("lucide-react/dist/esm/icons/check.js")),
   CheckSquare: iconOf(require("lucide-react/dist/esm/icons/check-square.js")),
@@ -121,23 +156,36 @@ const USED_ICONS = {
   // Issue #1791 — the Orders queue's empty state (VenueOrdersModule).
   ClipboardList: iconOf(require("lucide-react/dist/esm/icons/clipboard-list.js")),
   Clock: iconOf(require("lucide-react/dist/esm/icons/clock.js")),
+  // Issue #2534 — PublicBrandPage social chips.
+  Facebook: iconOf(require("lucide-react/dist/esm/icons/facebook.js")),
   Flag: iconOf(require("lucide-react/dist/esm/icons/flag.js")),
+  // Issue #2534 — PublicBrandPage website + Instagram chips.
+  Globe2: iconOf(require("lucide-react/dist/esm/icons/globe-2.js")),
+  Instagram: iconOf(require("lucide-react/dist/esm/icons/instagram.js")),
   LayoutGrid: iconOf(require("lucide-react/dist/esm/icons/layout-grid.js")),
+  // Issue #2534 — PublicBrandPage social chip.
+  Linkedin: iconOf(require("lucide-react/dist/esm/icons/linkedin.js")),
   List: iconOf(require("lucide-react/dist/esm/icons/list.js")),
   Menu: iconOf(require("lucide-react/dist/esm/icons/menu.js")),
   MessageSquare: iconOf(
     require("lucide-react/dist/esm/icons/message-square.js"),
   ),
+  // Issue #2534 — PublicBrandPage TikTok chip.
+  Music2: iconOf(require("lucide-react/dist/esm/icons/music-2.js")),
   Pencil: iconOf(require("lucide-react/dist/esm/icons/pencil.js")),
   Play: iconOf(require("lucide-react/dist/esm/icons/play.js")),
   Plus: iconOf(require("lucide-react/dist/esm/icons/plus.js")),
   Settings: iconOf(require("lucide-react/dist/esm/icons/settings.js")),
   Sparkles: iconOf(require("lucide-react/dist/esm/icons/sparkles.js")),
   Square: iconOf(require("lucide-react/dist/esm/icons/square.js")),
+  // Issue #2534 — PublicBrandPage TICKETS kind badge.
+  Ticket: iconOf(require("lucide-react/dist/esm/icons/ticket.js")),
   UtensilsCrossed: iconOf(
     require("lucide-react/dist/esm/icons/utensils-crossed.js"),
   ),
   X: iconOf(require("lucide-react/dist/esm/icons/x.js")),
+  // Issue #2534 — PublicBrandPage social chip.
+  Youtube: iconOf(require("lucide-react/dist/esm/icons/youtube.js")),
   HelpCircle: iconOf(require("lucide-react/dist/esm/icons/help-circle.js")),
 };
 

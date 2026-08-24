@@ -34,10 +34,20 @@
  *       regression this rework fixes).
  *   INV-4 (used-set drift guard):
  *     - EVERY icon name imported from `lucide-react-native` anywhere under
- *       mingla-business/{src,app} MUST be present in the shim's USED_ICONS map.
- *       If a component starts importing a new icon, this fails CI and tells the
- *       dev to add the name to the shim (so it ships a REAL glyph on web instead
- *       of silently falling back to the HelpCircle placeholder).
+ *       mingla-business/{src,app} OR under the shared `packages/` workspaces
+ *       MUST be present in the shim's USED_ICONS map. If a component starts
+ *       importing a new icon, this fails CI and tells the dev to add the name to
+ *       the shim (so it ships a REAL glyph on web instead of silently falling
+ *       back to the HelpCircle placeholder).
+ *
+ *       Issue #2534 widened that perimeter. It used to scan ONLY the two
+ *       mingla-business roots, so `packages/brand-rendering/PublicBrandPage.tsx`
+ *       — a SHARED workspace the business web build renders at `/b/{brandSlug}`
+ *       — was never walked. Nine of the ten icons it imports were missing from
+ *       the shim, the live public brand page drew a circled question mark for
+ *       its ticket badge and every social chip except X, and this gate reported
+ *       `PASS · violations=0` throughout. The gate was not wrong about what it
+ *       checked; it checked the wrong perimeter.
  *
  * Comments are stripped before scanning so the protective header references to
  * `() => null` / `import *` do not self-trip the gate.
@@ -337,12 +347,34 @@ if (fs.existsSync(SHIM)) {
     shimNames.add(entryMatch[1]);
   }
 
-  // Collect every icon name imported from lucide-react-native across the app.
-  const BIZ_ROOTS = [
+  // Collect every icon name imported from lucide-react-native across every
+  // source root that the business WEB bundle resolves through the metro shim.
+  //
+  // Issue #2534 — `packages/` is load-bearing here, not a nice-to-have. Keep this
+  // list equal to every root the web bundle draws from; a used-set gate is only
+  // ever as good as its perimeter, and the one root missing from it is exactly
+  // where the next silent placeholder will ship.
+  //
+  // Deliberately NOT scanned: `app-mobile/**`. The consumer app has no lucide
+  // alias in its own metro.config.js, so it resolves the REAL
+  // `lucide-react-native` on native and never passes through this web shim. Its
+  // imports are therefore not shim-relevant and adding them here would demand
+  // map entries that buy the web bundle nothing.
+  const SCAN_ROOTS = [
     path.join(REPO_ROOT, "mingla-business", "src"),
     path.join(REPO_ROOT, "mingla-business", "app"),
+    path.join(REPO_ROOT, "packages"),
   ];
   const importedNames = new Set();
+  // Matches a real named ESM import ONLY: `import { A, B as C } from
+  // "lucide-react-native"`. The `[^}]*` class cannot cross a `}`, so the brace
+  // must be the import's own closing brace — which is why the many
+  // `jest.mock("lucide-react-native", () => { ... })` factories under
+  // `**/__tests__/` do NOT match, and why walking test directories needs no
+  // exclusion (issue #2534, verified empirically against every such file under
+  // both mingla-business/ and packages/). `import type { LucideIcon } from
+  // "lucide-react-native"` also does not match — `type ` breaks `import\s*\{` —
+  // which is correct: a type is not an icon and needs no USED_ICONS entry.
   const IMPORT_RE =
     /import\s*\{([^}]*)\}\s*from\s*["']lucide-react-native["']/g;
   function walk(dir) {
@@ -370,7 +402,7 @@ if (fs.existsSync(SHIM)) {
       }
     }
   }
-  for (const root of BIZ_ROOTS) walk(root);
+  for (const root of SCAN_ROOTS) walk(root);
 
   const missing = [...importedNames].filter((n) => !shimNames.has(n)).sort();
   if (shimNames.size === 0) {
@@ -381,12 +413,12 @@ if (fs.existsSync(SHIM)) {
   } else if (missing.length === 0) {
     ok(
       "INV-4: used-set-drift-guard",
-      `all ${importedNames.size} lucide-react-native icon name(s) used across mingla-business are present in the shim used-set (${shimNames.size} names)`,
+      `all ${importedNames.size} lucide-react-native icon name(s) used across mingla-business/{src,app} + packages/ are present in the shim used-set (${shimNames.size} names)`,
     );
   } else {
     fail(
       "INV-4: used-set-drift-guard",
-      `these icon name(s) are imported from lucide-react-native in mingla-business but are MISSING from the web shim's named-import used-set:\n  ${missing.join(
+      `these icon name(s) are imported from lucide-react-native under mingla-business/{src,app} or packages/ but are MISSING from the web shim's named-import used-set:\n  ${missing.join(
         "\n  ",
       )}\nAdd each to the USED_ICONS map in mingla-business/src/shims/lucideReactNativeWebStub.js as <IconName>: iconOf(require("lucide-react/dist/esm/icons/<kebab>.js")) so it renders a REAL glyph on web (otherwise it silently falls back to the HelpCircle placeholder).`,
     );
