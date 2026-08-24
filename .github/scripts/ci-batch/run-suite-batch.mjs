@@ -33,6 +33,11 @@ export function executesLeaves(suite) { return LEAF_EXECUTION_WAVES.has(suite?.m
 // phase3c-deno-wave the origins assert the opposite - `test -f "$f" || exit 1` -
 // so an absent target FAILS the outer and the suite, naming the missing path.
 export function absentFileIsFailure(suite) { return suite?.migrationWave === PHASE3C_WAVE; }
+// [#2439 SC-4] The typed bounded retry is honoured for phase3c-deno-wave only.
+// Phase 1, Phase 3A and phase3b-postgres-wave carry no `retry` field, and this
+// keeps that true by construction rather than by their data happening to omit it.
+export function retryIsHonoured(suite) { return suite?.migrationWave === PHASE3C_WAVE; }
+export const sleepBounded = (ms) => new Promise((resolve) => { const timer = setTimeout(resolve, ms); timer.unref?.(); });
 
 export function loadManifest(p = MANIFEST_PATH) {
   return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
@@ -672,24 +677,48 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
             leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "skipped-absent", executed: false }); continue;
           }
           const leafCwd = path.resolve(workspace.root, child.cwd || ".");
+          // Resolve the sealed capability FIRST, for every leaf including typed
+          // predicates. It proves ownership and the payload digest, and it
+          // returns null for a leaf that carries no shell. Evaluating the
+          // predicate before this ran would let a tampered `predicate` in the
+          // suite execute without ever meeting its own sealed registry entry.
+          const leafInvocation = resolveLeafCapability(leafCapabilities, suite, step, stepIndex, child, childIndex);
           // [#2439 SC-5.1 / SC-5.2] Typed predicates are evaluated here, by the
           // runner, and they FAIL LOUDLY naming the exact target. The origins say
           // `test -f "$f" || { echo "MISSING: $f"; exit 1; }` and
           // `grep -q <needle> <file>`; representing those as skip-silently leaves
           // would be a fresh instance of the #1584 dark-suite class.
-          const verdict = absentFileIsFailure(suite) ? evaluateTypedPredicate(child, workspace.root, leafCwd) : null;
-          if (verdict) {
+          if (leafInvocation === null) {
+            const verdict = evaluateTypedPredicate(child, workspace.root, leafCwd);
             leafResults.push({ id: child.id, outerCommandId: step.commandId, status: verdict.ok ? "passed" : "failed", executed: true });
             if (!verdict.ok) {
               outerFailed = true; status = "failed"; code = Math.max(code, 2); reason ||= verdict.reason;
             }
             continue;
           }
-          const leafInvocation = resolveLeafCapability(leafCapabilities, suite, step, stepIndex, child, childIndex);
-          const leafRemaining = suite.timeoutSeconds * 1_000 - (now() - started);
-          if (leafRemaining <= 0) { leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "timed-out", executed: true }); status = "timed-out"; code = 124; reason = "suite deadline exceeded"; outerFailed = true; break; }
-          const leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
-            allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03") });
+          // [#2439 SC-4.1 / SC-4.2] The bounded retry is a typed field the runner
+          // HONOURS. #1326's origin wrapped this exact invocation in a
+          // three-attempt loop with a 10s back-off; that loop is deliberately
+          // absent from the command string, so without this the retry would be
+          // silently DROPPED — a weakening SC-4.3 forbids outright. Attempts are
+          // bounded by the schema and every wait is bounded by the suite deadline.
+          const retry = step.retry && retryIsHonoured(suite) ? step.retry : null;
+          const maxAttempts = retry ? retry.attempts : 1;
+          let leafResult = null;
+          let deadlineHit = false;
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            const leafRemaining = suite.timeoutSeconds * 1_000 - (now() - started);
+            if (leafRemaining <= 0) { deadlineHit = true; break; }
+            leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
+              allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03") });
+            if (leafResult.ok || leafResult.timedOut || attempt === maxAttempts) break;
+            const backoffMs = retry.backoffSeconds * 1_000;
+            const remainingAfter = suite.timeoutSeconds * 1_000 - (now() - started);
+            if (remainingAfter <= backoffMs) { deadlineHit = true; break; }
+            console.log(`RETRY ${child.id} attempt ${attempt}/${maxAttempts} failed; waiting ${retry.backoffSeconds}s`);
+            await sleepBounded(backoffMs);
+          }
+          if (deadlineHit) { leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "timed-out", executed: true }); status = "timed-out"; code = 124; reason = "suite deadline exceeded"; outerFailed = true; break; }
           leafResults.push({ id: child.id, outerCommandId: step.commandId, status: leafResult.ok ? "passed" : leafResult.timedOut ? "timed-out" : "failed", executed: true });
           if (!leafResult.ok) { outerFailed = true; status = leafResult.timedOut ? "timed-out" : "failed"; code = Math.max(code, leafResult.code || 1); reason ||= leafResult.reason || `leaf failed: ${child.id}`; if (leafResult.timedOut) break; }
         }

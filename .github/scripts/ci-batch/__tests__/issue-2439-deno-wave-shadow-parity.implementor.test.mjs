@@ -25,7 +25,7 @@ import {
   discoverWorkflowProviders, trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
 } from "../validate-manifest-v2.mjs";
-import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites } from "../run-suite-batch.mjs";
+import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, runSuiteV2 } from "../run-suite-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../../..");
@@ -393,6 +393,16 @@ test("#2439 SC-4 / SC-6 / SC-7 / SC-10: retry, env, setup profile and timeout pr
     ["assert:issue-1326-ng-reservation-finalize-tests:01", { attempts: 3, backoffSeconds: 10 }],
     ["assert:issue-1326-ng-reservation-finalize-tests:02", { attempts: 3, backoffSeconds: 10 }],
   ]);
+  // SC-4.2: the runner must HONOUR the field, not merely carry it. Without this
+  // the shell loop is gone from the command string and the retry is silently
+  // dropped, which SC-4.3 calls a weakening.
+  assert.ok(suites.every((suite) => retryIsHonoured(suite)), "phase3c-deno-wave retries must be honoured by the runner");
+  const phase3bWave = manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
+  assert.ok(phase3bWave.every((suite) => !retryIsHonoured(suite)), "no sibling wave carries or honours a retry");
+  const runnerSource = read(".github/scripts/ci-batch/run-suite-batch.mjs");
+  assert.match(runnerSource, /attempt <= maxAttempts/, "the runner must contain a bounded attempt loop");
+  assert.match(runnerSource, /sleepBounded\(backoffMs\)/, "the runner must wait the reviewed back-off between attempts");
+  assert.doesNotMatch(runnerSource, /while \(true\)/, "an unbounded retry loop is forbidden");
   // SC-4.4: the reviewed cap covers 3 attempts plus 2 x 10 s of back-off.
   const finalize = suites.find((suite) => suite.id === "issue-1326-ng-reservation-finalize-tests");
   assert.ok(finalize.timeoutSeconds >= 3 * 120 + 2 * 10, `#1326 cap ${finalize.timeoutSeconds}s must cover 3 attempts + 2x10s back-off`);

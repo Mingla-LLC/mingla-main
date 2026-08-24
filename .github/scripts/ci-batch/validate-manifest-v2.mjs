@@ -1146,6 +1146,16 @@ export function validateRegistry(
     .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
     .map((entry) => [entry.name, fs.readFileSync(path.join(root, ".github/workflows", entry.name), "utf8")]));
+  // [#2439 SC-16.7] ONE workflow inspection per validateRegistry call.
+  // inspectWorkflow() re-derives its cache key by reading and hashing all 165
+  // workflow sources, so calling it once per shadow suite paid that 29 times per
+  // validation. Hoisting it is not memoisation - nothing is cached across calls
+  // and every observation is identical - it simply stops recomputing one
+  // deterministic map inside a loop. This makes the shared path cheaper for
+  // Phase 3A, Phase 3B and Phase 3C alike, which is SC-16.7's structural remedy
+  // rather than a Phase 3C-only shortcut.
+  const inspections = inspectWorkflows(root, liveOrigins ?? discoverLiveOrigins(root));
+  const inspect = (name) => inspections[name];
   errors.push(...validateShadowParityMarkers(manifest, workflowSources));
   errors.push(...validatePhase3bMarkers(manifest, workflowSources));
   errors.push(...validatePhase3cMarkers(manifest, workflowSources));
@@ -1463,7 +1473,7 @@ export function validateRegistry(
       if (JSON.stringify(variants) !== JSON.stringify(expectedVariants)) fail(errors, `${origin}: originVariant mapping drifted`);
     }
     for (const suite of waveOwners) {
-      const metadata = suite.lifecycle === "shadow-active" ? inspectWorkflow(root, path.basename(origin)) : null;
+      const metadata = suite.lifecycle === "shadow-active" ? inspect(path.basename(origin)) : null;
       if (!suite.shadowContract || (metadata && suite.shadowContract.workflowSha256 !== metadata.sourceSha256)
           || suite.shadowContract.variant !== suite.originVariant) fail(errors, `${suite.id}: immutable wave contract no longer matches its reviewed variant`);
     }
@@ -1513,7 +1523,7 @@ export function validateRegistry(
       fail(errors, `${suite.id}: shadow wrapper ${wrapperName} must remain live until cutover`);
       continue;
     }
-    const metadata = inspectWorkflow(root, wrapperName);
+    const metadata = inspect(wrapperName);
     if (!metadata) {
       fail(errors, `${suite.id}: shadow wrapper ${wrapperName} could not be inspected`);
       continue;
@@ -1570,7 +1580,7 @@ export function validateRegistry(
       continue;
     }
     if (!wrapperPresent) { fail(errors, `${suite.id}: shadow wrapper ${wrapperName} must remain live until cutover`); continue; }
-    const metadata = inspectWorkflow(root, wrapperName);
+    const metadata = inspect(wrapperName);
     if (!metadata) { fail(errors, `${suite.id}: shadow wrapper ${wrapperName} could not be inspected`); continue; }
     // [#2439 SC-9] Provenance is preserved exactly as audited: the union of the
     // push and pull_request path lists must equal the wrapper's own path scope,
@@ -1843,7 +1853,7 @@ export function validateRegistry(
       if (item.providerWorkflow !== `.github/workflows/${key}` || !fs.existsSync(path.join(root, item.providerWorkflow || ""))) {
         fail(errors, `${key}: shadow stage must keep the exact historical workflow live`);
       }
-      const expectedMetadata = inspectWorkflow(root, key);
+      const expectedMetadata = inspect(key);
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: shadow runtime/setup/trust/trigger inventory drifted`);
     } else if (item.disposition === "batched-historical") {
       if (item.providerWorkflow !== ".github/workflows/ci-batch.yml" || fs.existsSync(path.join(root, `.github/workflows/${key}`))) {
@@ -1852,7 +1862,7 @@ export function validateRegistry(
     } else if (item.disposition !== "batched-active") {
       if (item.providerWorkflow !== `.github/workflows/${key}`) fail(errors, `${key}: live origin must name its sole provider workflow`);
       if (!fs.existsSync(path.join(root, item.providerWorkflow || ""))) fail(errors, `${key}: live provider workflow is missing`);
-      const expectedMetadata = inspectWorkflow(root, key);
+      const expectedMetadata = inspect(key);
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: runtime/setup/trust/trigger inventory drifted`);
     }
   }
