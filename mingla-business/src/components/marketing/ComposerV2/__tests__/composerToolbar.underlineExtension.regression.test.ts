@@ -210,10 +210,34 @@ describe("ORCH-0895 — Composer toolbar Bold / Italic / Underline (happy-path)"
   });
 
   describe("(T-0895-06) Link prompt submit uses insertLink imperative (works on both platforms)", () => {
-    it("handleLinkPromptSubmit calls richEditorRef.current?.insertLink(url, url)", () => {
+    /**
+     * [TEST-MOD-APPROVED #2518]
+     *
+     * SUPERSEDED ASSERTION, named explicitly: the original pinned
+     * `insertLink(url, url)`. That form is exactly the defect #2518 fixes —
+     * `RichEditorHandle.insertLink` is `(text, url)`, so passing the URL twice
+     * made the anchor text the raw URL on every campaign link. Organisers had
+     * no way to write the words that earn the click.
+     *
+     * What T-0895-06 actually exists to protect is UNCHANGED and still
+     * asserted below: that submit routes through the `insertLink` IMPERATIVE
+     * (works on pell AND Tiptap) rather than the `commandDOM` path, which is a
+     * documented no-op on web. Only the argument expectation moves.
+     */
+    it("handleLinkPromptSubmit routes through the insertLink imperative", () => {
       expect(composerEditorSource).toMatch(
-        /handleLinkPromptSubmit[\s\S]{0,600}insertLink\(\s*url\s*,\s*url\s*\)/,
+        /handleLinkPromptSubmit[\s\S]{0,900}insertLink\(/,
       );
+    });
+
+    it("passes the operator's display text, falling back to the URL (#2518)", () => {
+      expect(composerEditorSource).toMatch(
+        /insertLink\(\s*label\.length > 0 \? label : url\s*,\s*url\s*\)/,
+      );
+    });
+
+    it("still never routes the link through commandDOM (original T-0895-06 intent)", () => {
+      expect(composerEditorSource).not.toMatch(/commandDOM\([\s\S]{0,80}insertLink/);
     });
   });
 });
