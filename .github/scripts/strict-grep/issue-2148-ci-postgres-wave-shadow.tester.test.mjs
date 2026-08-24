@@ -7,10 +7,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   PHASE3B_SHADOW_MARKER,
-  canonicalizeShadowWrapperSource,
   discoverLiveOrigins,
   discoverWorkflowProviders,
-  inspectWorkflow,
   isNonAuthoritativeProviderEvidence,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
@@ -32,7 +30,17 @@ const independentErrors = (value) => {
   const errors = validateRegistry(value, { root: ROOT });
   for (const suite of value.suites.filter((item) => item.migrationWave === WAVE)) {
     const name = path.basename(suite.origin);
-    if (JSON.stringify([...suite.originPaths].sort()) !== JSON.stringify([...inspectWorkflow(ROOT, name).pathScope].sort())) errors.push(`${name}: originPaths drift`);
+    // [#2438 SC-21] The wrapper source is deleted, so originPaths can no longer be
+    // re-derived from YAML. Two terminal facts replace it, both RECOMPUTED here rather
+    // than read: the wrapper must be ABSENT, and the registry's own triggerContract must
+    // still hash to the frozen shadowContract seal it was sealed with at shadow.
+    if (fs.existsSync(path.join(ROOT, ".github/workflows", name))) errors.push(`${name}: terminal wrapper must be absent`);
+    if (sha(suite.triggerContract) !== suite.shadowContract?.triggerSha256) errors.push(`${name}: frozen trigger seal drift`);
+    // originPaths is what the wave wakes on, and it is NOT inside triggerContract's hash
+    // input, so the seal alone cannot see an edit to it. Close the chain: originPaths must
+    // still equal the union of the sealed trigger paths, which the seal above pins.
+    const sealedPaths = [...new Set([...(suite.triggerContract?.push?.paths || []), ...(suite.triggerContract?.pullRequest?.paths || [])])].sort();
+    if (JSON.stringify([...suite.originPaths].sort()) !== JSON.stringify(sealedPaths)) errors.push(`${name}: originPaths drift`);
   }
   return errors;
 };
@@ -57,18 +65,26 @@ test("reconstructs source truth before trusting generated registry", () => {
   assert.equal(suites.length, 12);
   let installs = 0, outers = 0;
   for (const [name, sourceHash, installCount, outerCount, pathCount, timeout] of WRAPPERS) {
-    const source = read(`.github/workflows/${name}`);
-    assert.equal(source.split("\n").filter((line) => line === PHASE3B_SHADOW_MARKER).length, 1, name);
-    assert.equal(sha(canonicalizeShadowWrapperSource(name, source)), sourceHash, name);
-    const inspected = inspectWorkflow(ROOT, name);
-    assert.equal(inspected.pathScope.length, pathCount, `${name} trigger paths`);
+    // [#2438 SC-21] The wrapper is deleted, so its bytes cannot be read and the marker
+    // count cannot be taken. Absence is now the assertion the marker count used to make.
+    // This WRAPPERS table is tester-owned evidence of what those bytes WERE at shadow;
+    // binding it to the registry's own frozen seal is what stops the cutover quietly
+    // rewriting history that can no longer be checked against a file.
+    assert.equal(fs.existsSync(path.join(ROOT, ".github/workflows", name)), false, `${name} must be absent at terminal`);
     const suite = suites.find((item) => item.origin === `.github/workflows/${name}`);
     assert.ok(suite, name); assert.equal(suite.steps.length, outerCount); assert.equal(suite.timeoutSeconds, timeout);
-    assert.deepEqual([...suite.originPaths].sort(), [...inspected.pathScope].sort(), `${name} source path attribution`);
+    assert.equal(suite.shadowContract.workflowSha256, sourceHash, `${name} frozen source seal`);
+    assert.equal(sha(suite.triggerContract), suite.shadowContract.triggerSha256, `${name} frozen trigger seal`);
+    assert.equal(suite.originPaths.length, pathCount, `${name} trigger paths`);
     const profile = value.setupProfiles[suite.setupProfile]; assert.equal((profile.installs || (profile.install ? [profile.install] : [])).length, installCount);
     installs += installCount; outers += outerCount;
   }
   assert.deepEqual([installs, outers], [16, 36]);
+  // [#2438 SC-21] SC-10's terminal counterpart: the markers left with the wrappers.
+  const workflowDir = path.join(ROOT, ".github/workflows");
+  const liveWorkflows = fs.readdirSync(workflowDir).filter((file) => /\.ya?ml$/.test(file));
+  assert.equal(liveWorkflows.filter((file) => fs.readFileSync(path.join(workflowDir, file), "utf8").includes(PHASE3B_SHADOW_MARKER)).length, 0);
+  assert.equal(liveWorkflows.some((file) => WRAPPERS.some(([name]) => name === file)), false);
   assert.equal(sha(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad");
   assert.equal(suites.find((suite) => suite.origin.endsWith("issue-2013-ari-tenant-containment.yml")).originPaths.includes(".github/workflows/issue-2013-ari-tenant-containment.yml"), false);
   assert.match(read(".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"), /ci-batch|phase3b/i);
@@ -82,23 +98,43 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   assert.equal(sha(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
   assert.equal(sha(value.commandCapabilities.commands.slice(158)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
   assert.equal(sha(value.phase3bLeafCapabilities.leaves), "76d627f1f117923c41dc2a4b928d606a134c2a3a0d948010e565828fa91be89d");
-  assert.equal(new Set(suites.map((suite) => suite.lifecycle)).size, 1); assert.equal(suites[0].lifecycle, "shadow-active");
+  assert.equal(new Set(suites.map((suite) => suite.lifecycle)).size, 1); assert.equal(suites[0].lifecycle, "batched-historical");
+  // The flip is only atomic if the wave header moved with the suites, and the legacy
+  // origins with both. A per-suite check alone cannot see a half-applied cutover.
+  assert.equal(value.migrationWaves[WAVE].lifecycle, "batched-historical");
+  assert.equal(value.legacyOrigins.filter((origin) => origin.migrationWave === WAVE && origin.disposition === "batched-historical").length, 12);
   const lifecycle = suites.find((suite) => suite.origin.endsWith("issue-1902-public-event-lifecycle-tests.yml"));
   assert.deepEqual(lifecycle.steps.map((step) => step.env || null).filter(Boolean), [{ NODE_PATH: "./node_modules" }]);
   assert.deepEqual(value.setupProfiles[lifecycle.setupProfile].installs.map((item) => [item.cwd,item.invocation.command,item.invocation.argv]), [["mingla-business","npm",["ci"]],["app-mobile","npm",["ci"]]]);
-  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 73); assert.equal(sha(providers), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
+  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 67); assert.equal(sha(providers), "af756cd7e72c0c4ed208408d23eec621349b8eb7aaefb197214af8794efee305");
   assert.equal(providers.some((item) => item.workflow === "issue-948-w3-screens-copy-tests.yml"), false);
+  // [#2438 SC-21] The line above is VACUOUS at terminal — that file is deleted, so it
+  // cannot be discovered whatever the carve-out does. Reported as such; not amended,
+  // because this dispatch authorises five lines and this is not one of them. The
+  // non-vacuous terminal form is asserted here instead: NONE of the twelve may appear.
+  assert.equal(providers.filter((item) => WRAPPERS.some(([name]) => name === item.workflow)).length, 0);
+  // The terminal authority is a RECONSTRUCTION, not a second frozen digest. Re-derive it
+  // independently: what discovery still sees, plus the six records the registry carries
+  // for the deleted wrappers, re-sorted as discovery sorts, must hash back to the one
+  // locked shadow seal. A fabricated terminal digest cannot satisfy this.
+  const carried = value.workflowProviders
+    .filter((item) => WRAPPERS.some(([name]) => name === item.workflow))
+    .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
+  assert.equal(carried.length, 6); assert.equal(sha(carried), "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1");
+  const reconstructed = [...providers, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
+  assert.equal(reconstructed.length, 73);
+  assert.equal(sha(reconstructed), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.
-  assert.equal(discoverLiveOrigins(ROOT).length, 146);
+  assert.equal(discoverLiveOrigins(ROOT).length, 134);
   // The invariant #2492 actually violated: two workflows were externally REFERENCED but
   // never REGISTERED. A pair of totals cannot catch that — they both just move. Bind the
   // derived discovery set to the declared live-provider set by identity, so a referenced
   // but unregistered workflow reds here even when every count still agrees.
   const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
   const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
-  assert.deepEqual([retained.length, batched.length], [73, 18]);
+  assert.deepEqual([retained.length, batched.length], [67, 24]);
   assert.equal(retained.length + batched.length, value.workflowProviders.length);
   assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
   assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
@@ -145,6 +181,10 @@ test("independent manifest mutants reject omission, swap, widening and false ter
   mutate((m)=>m.suites.find((s)=>s.origin.endsWith("issue-2013-ari-tenant-containment.yml")).originPaths.push(".github/workflows/issue-2013-ari-tenant-containment.yml"));
   mutate((m)=>m.suites.find((s)=>s.ownerIssue==="#1685").timeoutSeconds=900);
   mutate((m)=>m.workflowProviders.push({workflow:"issue-948-w3-screens-copy-tests.yml",ownerIssue:"#948",transition:"retained-live-provider",providerWorkflow:".github/workflows/issue-948-w3-screens-copy-tests.yml",referenceFiles:[],rationale:"forged"}));
-  mutate((m)=>m.suites.filter((s)=>s.migrationWave===WAVE)[0].lifecycle="batched-historical");
+  // [#2438 SC-21] At shadow this flipped one suite forward to prove a premature partial
+  // cutover reds. Post-cutover that value is what all twelve already carry, so the mutation
+  // became a NO-OP and the assertion could no longer fail. Inverted to the terminal-correct
+  // form: dragging one suite back to shadow-active is now the mixed lifecycle to catch.
+  mutate((m)=>m.suites.filter((s)=>s.migrationWave===WAVE)[0].lifecycle="shadow-active");
   for (const [index, attack] of attacks.entries()) assert.ok(independentErrors(attack).length>0,`mutant ${index} false-green`);
 });
