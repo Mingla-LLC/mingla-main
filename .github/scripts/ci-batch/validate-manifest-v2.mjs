@@ -40,7 +40,7 @@ const PHASE3B_WAVE = "phase3b-postgres-wave";
 const PHASE3B_SHADOW_LIFECYCLE = "shadow-active";
 const PHASE3B_TERMINAL_LIFECYCLE = "batched-historical";
 const PHASE3B_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
-const LOCKED_PROVIDER_DISCOVERY_SHA256 = "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c90d3ab86d";
+const LOCKED_PROVIDER_DISCOVERY_SHA256 = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158";
 const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
 const PHASE3B_PROVIDER_NAMES = new Set([
   "issue-1022-theme-control-tests.yml",
@@ -245,9 +245,9 @@ export function validatePhase3bMarkers(manifest, workflowSources) {
 // Ambient, process-lifetime or module-global memoisation of trackedFiles() (or
 // of discoverWorkflowProviders()), and any cache keyed only on `root`, are
 // FORBIDDEN BY NAME. A blind memo is proven to manufacture a false green:
-// honest discovery moves 71 -> 72 with a different digest the moment a new
+// honest discovery moves 73 -> 74 with a different digest the moment a new
 // eligible source naming a real workflow is committed, while a blind memo keeps
-// reporting 71 / 2f43d33d... and the reviewed byte-invariance proof silently
+// reporting 73 / aac3d8cf... and the reviewed byte-invariance proof silently
 // stops being performed. A caller may opt into caching only where the working
 // tree and the Git index are provably immutable for the whole duration of the
 // scope. Outside a scope the uncached path runs and every call spawns
@@ -1484,7 +1484,7 @@ export function validateRegistry(
     const phase3bDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bProviders)).digest("hex");
     // [#2438 SC-13] The authority expectation follows the wave's own atomic
     // lifecycle, and there is exactly ONE frozen seal on both sides of it:
-    // LOCKED_PROVIDER_DISCOVERY_SHA256, the 71-record shadow authority.
+    // LOCKED_PROVIDER_DISCOVERY_SHA256, the 73-record shadow authority.
     //
     // At SHADOW the twelve wrappers are live, so discovery must reproduce that
     // seal directly and its Phase 3B subset must be the frozen six.
@@ -1512,14 +1512,14 @@ export function validateRegistry(
         .sort((a, b) => a.workflow.localeCompare(b.workflow));
       const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
       if (carriedPhase3bProviders.length !== PHASE3B_PROVIDER_NAMES.size
-          || discoveredProviders.length !== 71 - PHASE3B_PROVIDER_NAMES.size
-          || reconstructedShadow.length !== 71
+          || discoveredProviders.length !== 73 - PHASE3B_PROVIDER_NAMES.size
+          || reconstructedShadow.length !== 73
           || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried Phase 3B records must reconstruct the frozen 71/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
+        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried Phase 3B records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
       }
     } else {
-      if (discoveredProviders.length !== 71 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: expected 71/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${discoveredProviders.length}/${discoveryDigest}`);
+      if (discoveredProviders.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `workflow provider authority drifted: expected 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${discoveredProviders.length}/${discoveryDigest}`);
       }
       if (phase3bProviders.length !== 6 || phase3bDigest !== LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256) {
         fail(errors, `Phase 3B provider authority drifted: expected 6/${LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256}, got ${phase3bProviders.length}/${phase3bDigest}`);

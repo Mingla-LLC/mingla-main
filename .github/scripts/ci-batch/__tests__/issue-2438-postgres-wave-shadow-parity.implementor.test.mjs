@@ -30,7 +30,7 @@ const WRAPPERS = {
 };
 const MARKER = "# #2438 SHADOW-PARITY-TRIGGER — remove before cutover";
 const RESERVED_TESTER = ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs";
-const PROVIDER_DIGEST = "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c90d3ab86d";
+const PROVIDER_DIGEST = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158";
 const PHASE3B_PROVIDER_NAMES = new Set(["issue-1022-theme-control-tests.yml","issue-1902-public-event-lifecycle-tests.yml","issue-2013-ari-tenant-containment.yml","issue-885-scanner-invite-loader-tests.yml","issue-948-w1-enablers-tests.yml","orch-0976-draft-promotion-tests.yml"]);
 const PHASE3B_PROVIDER_DIGEST = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
 
@@ -49,7 +49,7 @@ function providerSnapshot(root) {
 
 function assertWave(value) {
   const suites = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
-  assert.equal(value.legacyOrigins.length, 199); assert.equal(value.suites.length, 67); assert.equal(value.commandCapabilities.commands.length, 194); assert.equal(value.workflowProviders.length, 89);
+  assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 67); assert.equal(value.commandCapabilities.commands.length, 194); assert.equal(value.workflowProviders.length, 91);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
   assert.deepEqual([...new Set(suites.map((suite) => suite.lifecycle))], ["shadow-active"]);
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
@@ -143,7 +143,7 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
     fs.rmSync(path.join(temp, RESERVED_TESTER), { force: true }); git(temp, ["add", "-A"]);
     if (git(temp, ["status", "--porcelain"])) git(temp, ["commit", "-qm", "tester absent"]);
     const absent = providerSnapshot(temp); const absentValue = JSON.parse(absent);
-    assert.equal(absentValue.providers.length, 71); assert.equal(digest(absentValue.providers), PROVIDER_DIGEST); assert.deepEqual(absentValue.errors, []);
+    assert.equal(absentValue.providers.length, 73); assert.equal(digest(absentValue.providers), PROVIDER_DIGEST); assert.deepEqual(absentValue.errors, []);
     const phase3bProviders = absentValue.providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
     assert.equal(phase3bProviders.length, 6); assert.equal(digest(phase3bProviders), PHASE3B_PROVIDER_DIGEST);
 
@@ -375,7 +375,7 @@ test("provider discovery work accounting stays inside its reviewed count bounds"
   const providers = discoverWorkflowProviders(ROOT);
   const accounting = providerDiscoveryAccounting();
   // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.
-  assert.equal(providers.length, 71); assert.equal(digest(providers), PROVIDER_DIGEST);
+  assert.equal(providers.length, 73); assert.equal(digest(providers), PROVIDER_DIGEST);
   assert.equal(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 6);
   assert.equal(digest(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))), PHASE3B_PROVIDER_DIGEST);
   // (a) exactly one tracked-file listing per discovery call.
@@ -437,7 +437,7 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
     git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
     const before = discoverWorkflowProviders(temp);
-    assert.equal(before.length, 71); assert.equal(digest(before), PROVIDER_DIGEST);
+    assert.equal(before.length, 73); assert.equal(digest(before), PROVIDER_DIGEST);
 
     // Commit a brand-new eligible source that names a real live workflow.
     const probe = "mingla-business/src/utils/__tests__/issue2438ScopeProbe.probe.ts";
@@ -448,7 +448,7 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     //    scope around a mutating region breaks, and it is why entering one here
     //    is forbidden (mutant 13).
     const honest = discoverWorkflowProviders(temp);
-    assert.equal(honest.length, 72, "unscoped discovery must observe a newly tracked provider source");
+    assert.equal(honest.length, 74, "unscoped discovery must observe a newly tracked provider source");
     assert.notEqual(digest(honest), PROVIDER_DIGEST, "unscoped discovery digest must move when the corpus moves");
     assert.equal(honest.some((item) => item.referenceFiles.includes(probe)), true);
 
@@ -461,13 +461,13 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
       git(temp, ["add", probe]); git(temp, ["commit", "-qm", "scope probe again"]);
       return { first, second: discoverWorkflowProviders(temp) };
     });
-    assert.equal(blind.first.length, 71);
-    assert.equal(blind.second.length, 71, "an entered scope must be shown to hide index mutations");
+    assert.equal(blind.first.length, 73);
+    assert.equal(blind.second.length, 73, "an entered scope must be shown to hide index mutations");
     assert.equal(digest(blind.second), PROVIDER_DIGEST);
 
-    // 3. Exiting restores truth. Cached-forever would keep reporting 71.
+    // 3. Exiting restores truth. Cached-forever would keep reporting 73.
     const afterExit = discoverWorkflowProviders(temp);
-    assert.equal(afterExit.length, 72, "exiting the scope must restore uncached truth");
+    assert.equal(afterExit.length, 74, "exiting the scope must restore uncached truth");
     assert.equal(digest(afterExit), digest(honest));
 
     // 4. Inside a scope over an immutable tree the results are identical to the
@@ -476,7 +476,7 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     const spawnsBefore = trackedFilesProcessInvocations();
     const scoped = withTrackedFilesScope(temp, () => [discoverWorkflowProviders(temp), discoverWorkflowProviders(temp), discoverWorkflowProviders(temp)]);
     assert.equal(trackedFilesProcessInvocations() - spawnsBefore, 1);
-    for (const snapshot of scoped) { assert.equal(snapshot.length, 71); assert.equal(digest(snapshot), PROVIDER_DIGEST); }
+    for (const snapshot of scoped) { assert.equal(snapshot.length, 73); assert.equal(digest(snapshot), PROVIDER_DIGEST); }
 
     // 5. The scope stack unwinds even when the body throws.
     assert.throws(() => withTrackedFilesScope(temp, () => { throw new Error("boom"); }), /boom/);
@@ -605,10 +605,10 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     const outsider = seventh.workflowProviders.find((item) => !WRAPPERS[item.workflow]);
     outsider.workflow = wrapperNames[3];
     assert.notDeepEqual(validateRegistry(seventh, { root: temp }), []);
-    // (iv) shadow behaviour byte-identical — still exactly 71 / the frozen seal.
+    // (iv) shadow behaviour byte-identical — still exactly 73 / the frozen seal.
     writeManifest(shadow); restoreWrappers();
     const shadowProviders = discoverWorkflowProviders(temp);
-    assert.equal(shadowProviders.length, 71); assert.equal(digest(shadowProviders), PROVIDER_DIGEST);
+    assert.equal(shadowProviders.length, 73); assert.equal(digest(shadowProviders), PROVIDER_DIGEST);
     assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
     // (v) fails CLOSED when the shadow authority itself drifts: with a genuine
     //     corpus change at terminal, the reconstruction cannot hash back to the
