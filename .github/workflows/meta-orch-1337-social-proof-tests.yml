@@ -246,4 +246,5 @@ jobs:
           src/components/event/__tests__/orch_1342_see_whos_going_gate.test.tsx
           src/services/__tests__/orch_1342_guest_funnel_link.test.ts
           src/utils/__tests__/issue_2508_copy_address.test.ts
+          src/components/event/__tests__/issue_2508_ended_offering_address.test.tsx
           --runInBand

@@ -44,19 +44,14 @@ import {
   View,
 } from "react-native";
 
-// React comes from the PACKAGE BRIDGE, not from "react" directly — see the
-// bridge's own docs in LucideIcons.tsx. A direct import here raises TS2307 (the
-// app typecheck roots' `paths` maps pin react-native but not react, and a file
-// under packages/ cannot reach the app's node_modules), and an unresolved React
-// drags every `React.FC` component and its destructured props down into an
-// implicit-any cascade that the #1403 typecheck ratchet blocks.
-import {
-  Check,
-  Copy,
-  MapPin,
-  OfferingRenderingReact as React,
-  type OfferingRenderingReactElement,
-} from "./LucideIcons";
+import { Check, Copy, MapPin } from "./LucideIcons";
+// React comes from the PACKAGE BRIDGE, never from "react" directly — see that
+// module's own docs. A direct import here raises TS2307 (the app typecheck
+// roots' `paths` maps pin react-native but not react, and a file under
+// packages/ cannot reach the app's node_modules), and an unresolved React drags
+// every `React.FC` component and its destructured props into an implicit-any
+// cascade that the #1403 typecheck ratchet blocks.
+import { OfferingRenderingReact as React } from "./offeringRenderingReact";
 import {
   listMapsAppChoices,
   selectAddressCopyText,
@@ -276,7 +271,7 @@ export const VenueCopyAddressButton = ({
   palette,
   font,
   testID = "issue-2508-copy-address",
-}: VenueCopyAddressButtonProps): OfferingRenderingReactElement | null => {
+}: VenueCopyAddressButtonProps) => {
   if (!actions.canCopy) return null;
   const state = actions.copyState;
   const label = COPY_LABEL[state];
@@ -357,7 +352,7 @@ export const MapsAppChooserDialog = ({
   placeLabel,
   font,
   testID = "issue-2508-maps-app-chooser",
-}: MapsAppChooserDialogProps): OfferingRenderingReactElement | null => {
+}: MapsAppChooserDialogProps) => {
   // Never mount a chooser that has nothing to choose between.
   if (!actions.offersChoice) return null;
   const boldStyle = font === undefined ? null : { fontFamily: font };

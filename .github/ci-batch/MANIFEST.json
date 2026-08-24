@@ -16979,7 +16979,7 @@
       "providerWorkflow": ".github/workflows/meta-orch-1337-social-proof-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f3cd62114c37b6fa72e85dc315bc2a9cdb3a9503bc9275104de7fc18c6238299",
+        "sourceSha256": "1c3ddbc0bef6e506db882d807415ae60752436077e53eb39d880c5423b67835e",
         "triggers": [
           "pull_request",
           "push"
