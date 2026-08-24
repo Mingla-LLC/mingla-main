@@ -21,6 +21,12 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
   const mapsDeepLinkSource = repoFile(
     "packages/offering-rendering/mapsDeepLink.ts",
   );
+  // [TEST-MOD-APPROVED #2508] the venue card's maps tap now runs through the
+  // shared "which map app?" controller, so the forwarding assertion below
+  // reads that module instead of an inline arrow in the renderer.
+  const mapsActionsSource = repoFile(
+    "packages/offering-rendering/VenueMapsActions.tsx",
+  );
   const packageSource = repoFile("packages/offering-rendering/package.json");
   const businessAdapterSource = readFileSync(
     path.join(process.cwd(), "src/components/event/PublicEventPage.tsx"),
@@ -147,8 +153,34 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
   // The test's INTENT ("without leaking hidden addresses") is not weakened: it
   // is strengthened below, because the privacy gate now refuses to read
   // `locationGeo` at all when the address is hidden.
+  //
+  // [TEST-MOD-APPROVED #2508] maps-app-chooser.
+  //
+  // ONE assertion in this test changed: the `onOpenMaps` SIGNATURE.
+  //
+  // It pinned `onOpenMaps?: (target: MapsOpenTarget) => void` — the shape that
+  // can carry a destination but NOT which app should open it. #2508 asks the
+  // guest whether to use Apple Maps or Google Maps, so the callback has to
+  // carry that answer: `(target: MapsOpenTarget, app?: MapsAppId) => void`.
+  // This is the same class of amendment #2468 made directly above, where the
+  // pinned shape was `(query: string) => void` and could not carry the
+  // coordinate.
+  //
+  // `app` is OPTIONAL and `undefined` means "nothing was asked", which takes
+  // the byte-identical #2468 path — so Android, where only one map app can
+  // honestly open the pin, is completely unchanged.
+  //
+  // NOTHING ELSE IN THIS TEST MOVED. Every privacy assertion below is intact
+  // and untouched: the gate is still `selectVenueMapsTarget`, still fed
+  // `addressHidden: event.hideAddressUntilTicket`, still returning null before
+  // `locationGeo` is read, and the adapter is still a forwarder rather than a
+  // URL builder. #2508 strengthens the same promise — the chooser and the copy
+  // button hang off that one null, so a hidden address exposes neither
+  // (pinned by issue_2508_maps_app_chooser.test.ts T-6).
   test("location card opens platform maps without leaking hidden addresses", () => {
-    expect(typesSource).toContain("onOpenMaps?: (target: MapsOpenTarget) => void");
+    expect(typesSource).toContain(
+      "onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void",
+    );
     expect(sharedSource).toContain("const venueMapsTarget = selectVenueMapsTarget({");
     // The privacy gate moved into the shared builder, one owner for all three
     // renderers — and it is fed the SAME predicate this test always pinned.
@@ -159,14 +191,37 @@ describe("ORCH-0964 design rework — public event page premium renderer", () =>
     expect(
       mapsDeepLinkSource.indexOf("if (params.addressHidden) return null;"),
     ).toBeLessThan(mapsDeepLinkSource.indexOf("normalizeMapsGeo(params.locationGeo)"));
-    expect(sharedSource).toContain("callbacks.onOpenMaps?.(venueMapsTarget)");
+    // [TEST-MOD-APPROVED #2508] — SAME intent, one indirection later. This
+    // pinned the renderer's inline `onPress` arrow calling the host callback
+    // with the gated target. #2508 needs the tap to ASK which map app first,
+    // so the arrow became `mapsActions.requestOpenMaps` and the forwarding
+    // moved into the shared controller. The property being pinned is unchanged
+    // and is now asserted end to end: the renderer feeds the controller the
+    // GATED target and the host callback, and the controller forwards exactly
+    // that target — nothing re-derives a destination in between.
+    expect(sharedSource).toContain("target: venueMapsTarget,");
+    expect(sharedSource).toContain("onOpenMaps: callbacks.onOpenMaps,");
+    expect(sharedSource).toContain("onPress={mapsActions.requestOpenMaps}");
+    expect(mapsActionsSource).toContain("onOpenMaps(target, app);");
+    expect(mapsActionsSource).toContain("onOpenMaps(target);");
     expect(sharedSource).toContain("Open maps");
     expect(sharedSource).toContain("styles.venueMapsPill");
     expect(sharedSource).toContain("borderColor: palette.accentText");
     // The adapter is a FORWARDER now, not a URL builder.
     expect(businessAdapterSource).toContain("const openMapsForTarget =");
-    expect(businessAdapterSource).toContain("openMapsTarget(target)");
+    // [TEST-MOD-APPROVED #2508] — the call gained the chosen-app option
+    // (`openMapsTarget(target, { app })`). It is still a pure forward: the
+    // adapter passes on the target and the guest's app choice and composes
+    // nothing, which is exactly what this line has always pinned. The
+    // negative assertions below — no inline `maps://?q=` / `geo:0,0?q=` in the
+    // adapter — are untouched and still prove it builds no URL.
+    expect(businessAdapterSource).toContain("openMapsTarget(target, { app })");
     expect(businessAdapterSource).toContain("onOpenMaps: openMapsForTarget");
+    // issue #2508 — and the copy affordance is wired on the same card, so the
+    // buyer web ships both halves of the feature, not one.
+    expect(businessAdapterSource).toContain(
+      "onCopyAddress: copyAddressForTarget",
+    );
     expect(businessAdapterSource).not.toContain('"maps://?q=');
     expect(businessAdapterSource).not.toContain('`maps://?q=');
     expect(businessAdapterSource).not.toContain('`geo:0,0?q=');

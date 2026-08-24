@@ -84,6 +84,35 @@
  * baseline therefore described the old UI rather than a valid invariant. It is
  * regenerated with the same seven cases, size floor, anchors, and exact-tree
  * comparison; only the approved overlay and metadata URL change.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #2508] — WHAT THIS FILE MEANS AFTER #2508
+ * ---------------------------------------------------------------------------
+ * #2508 [maps-app-chooser] deliberately adds TWO controls to the venue card:
+ * a "Copy address" button beside it, and a chooser that asks Apple Maps or
+ * Google Maps instead of silently picking one. A baseline that kept passing
+ * would mean the feature did not arrive.
+ *
+ * Regenerated with `MINGLA_1559_WRITE_BASELINE=1 npx jest
+ * publicVenueRenderParity.issue1559`. The decoded diff is **+1215 lines, -0**,
+ * evenly +243 on each of the five cases that render an address card
+ * (restaurant-phone-full, restaurant-desktop-full, stay-phone-full,
+ * play-phone-reservability-error, uncategorised-phone-sparse); the two cases
+ * that render no address card (stay-desktop-reservations-tab,
+ * restaurant-phone-menu-tab) are BYTE-IDENTICAL, which is itself the proof
+ * that nothing outside the venue card moved.
+ *
+ * NOTHING WAS REMOVED — no case, no anchor, no size floor, no
+ * `expect.assertions` pin, and no pre-existing subtree. The only new content is
+ * the copy button (`issue-2508-copy-address`) and the chooser
+ * (`issue-2508-maps-app-chooser` with its apple / google / cancel rows). This
+ * file's guard is re-recorded here, never re-aimed or weakened.
+ *
+ * PRIVACY NOTE: the venue page has no hide-address concept, so all five
+ * address-card cases legitimately gain both controls. The hidden-address
+ * behaviour — a withheld street exposing NEITHER control — lives on the
+ * event/RSVP pages and is pinned by
+ * packages/offering-rendering/__tests__/issue_2508_maps_app_chooser.test.ts T-6.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -175,6 +204,33 @@ jest.mock("react-native-safe-area-context", () => ({
 // The offering-rendering barrel: REAL pure helpers (theme, palette, surface,
 // static map) so every colour and style value below is genuinely computed; the
 // shell becomes a transparent passthrough so the body it wraps is observable.
+// [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no assertion
+// changed. The shared copy-address button and map-app chooser draw lucide
+// glyphs through `react-native-svg` (a REAL dependency of both apps —
+// react-native-svg 15.12.1 — and an existing peer of @mingla/offering-rendering).
+// This render config simply cannot resolve it from `packages/`, so it is mocked
+// to plain react-native Views, the same idiom
+// issue_1890_ari_composer_clearance uses. Nothing this suite asserts is a glyph.
+jest.mock(
+  "react-native-svg",
+  () => {
+    const Glyph = (): null => null;
+    return {
+      __esModule: true,
+      default: Glyph,
+      Svg: Glyph,
+      Path: Glyph,
+      Circle: Glyph,
+      Rect: Glyph,
+      G: Glyph,
+      Defs: Glyph,
+      Stop: Glyph,
+      LinearGradient: Glyph,
+    };
+  },
+  { virtual: true },
+);
+
 jest.mock("@mingla/offering-rendering", () => {
   const ReactLocal = require("react") as typeof React;
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
@@ -186,6 +242,13 @@ jest.mock("@mingla/offering-rendering", () => {
   // venue screen now reads its maps target from it. Registering the REAL module
   // matches this factory's rule of spreading the real pure helpers.
   const mapsDeepLink = require("../../../../../packages/offering-rendering/mapsDeepLink");
+  // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
+  // assertion changed. maps-app-chooser added the shared "which map app?"
+  // chooser + copy-address button, and PublicVenueScreen reaches them through
+  // THIS barrel (its only barrel-sourced UI). Registering the REAL module
+  // matches this factory's rule of spreading the real helpers, and keeps the
+  // venue card's rendered output genuine rather than stubbed away.
+  const venueMapsActions = require("../../../../../packages/offering-rendering/VenueMapsActions");
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
@@ -212,6 +275,7 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themePalette,
     ...mapboxStaticImage,
     ...mapsDeepLink,
+    ...venueMapsActions,
     useResponsiveLayout: () => ({
       width: viewport.width,
       isDesktop: viewport.isDesktop,

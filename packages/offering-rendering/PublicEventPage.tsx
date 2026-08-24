@@ -76,6 +76,13 @@ import { createThemePalette, type ThemePalette } from "./themePalette";
 import { buildStaticMapUrl } from "./mapboxStaticImage";
 // issue #2468 — the ONE privacy gate + label composer for the venue card.
 import { canOpenMapsTarget, selectVenueMapsTarget } from "./mapsDeepLink";
+// issue #2508 — the shared "which map app?" chooser + copy-address button. Fed
+// the ALREADY-gated target below, so a hidden-address event exposes neither.
+import {
+  MapsAppChooserDialog,
+  useVenueMapsActions,
+  VenueCopyAddressButton,
+} from "./VenueMapsActions";
 import type {
   PublicEventPageProps,
   PublicEventProps,
@@ -373,6 +380,16 @@ const PublishedBody = ({
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && callbacks.onOpenMaps !== undefined;
+  /*
+    issue #2508 — the chooser and the copy button hang off the SAME gated
+    target. `hideAddressUntilTicket` ⇒ target null ⇒ no choices, no copy text,
+    so a buyer who has not bought yet sees neither control.
+  */
+  const mapsActions = useVenueMapsActions({
+    target: venueMapsTarget,
+    onOpenMaps: callbacks.onOpenMaps,
+    onCopyAddress: callbacks.onCopyAddress,
+  });
 
   const visibleTickets = useMemo(
     () =>
@@ -751,11 +768,9 @@ const PublishedBody = ({
 
           {/* Venue card — honors hideAddressUntilTicket */}
           {event.format !== "online" && event.venueName !== null ? (
+            <>
             <Pressable
-              onPress={() => {
-                if (venueMapsTarget !== null)
-                  callbacks.onOpenMaps?.(venueMapsTarget);
-              }}
+              onPress={mapsActions.requestOpenMaps}
               disabled={!canOpenVenueMaps}
               accessibilityRole={canOpenVenueMaps ? "button" : undefined}
               accessibilityLabel={
@@ -829,6 +844,20 @@ const PublishedBody = ({
                 ) : null}
               </View>
             </Pressable>
+            {/* issue #2508 — SIBLINGS of the card, never children: a Pressable
+                inside a Pressable flattens the a11y subtree into one control. */}
+            <VenueCopyAddressButton
+              actions={mapsActions}
+              palette={palette}
+              font={theme.fontFamilyValue}
+            />
+            <MapsAppChooserDialog
+              actions={mapsActions}
+              palette={palette}
+              placeLabel={event.venueName}
+              font={theme.fontFamilyValue}
+            />
+            </>
           ) : event.format === "online" ? (
             <View
               style={[

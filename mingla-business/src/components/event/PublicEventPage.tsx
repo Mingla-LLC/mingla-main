@@ -61,11 +61,13 @@ import {
   type ChipInResult,
   type EventAcquisitionInput,
   type EventAcquisitionState,
+  type MapsAppId,
   type MapsOpenTarget,
   nextEventAcquisitionBoundaryDelayMs,
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
+import { copyAddressText } from "../../utils/copyAddressText";
 import {
   useResponsiveLayout,
   EventOfferingFloatingBar,
@@ -353,9 +355,22 @@ const mapBrandToPublicBrand = (
 // renderer now hands us the coordinate it already holds and `openMapsTarget`
 // anchors the link on it. The text forms survive only inside the one builder,
 // as the fallback for an event we hold no pin for.
-const openMapsForTarget = (target: MapsOpenTarget): void => {
-  openMapsTarget(target);
+const openMapsForTarget = (
+  target: MapsOpenTarget,
+  app?: MapsAppId,
+): void => {
+  // issue #2508 — `app` is the map app the buyer picked in the shared chooser;
+  // undefined means nothing was asked and this is the exact #2468 path.
+  openMapsTarget(target, { app });
 };
+
+// issue #2508 — the copy-address host effect, beside the maps one. The shared
+// renderer owns the BUTTON; writing the clipboard is the app's job. The text it
+// receives has already cleared the SAME privacy gate as the maps link
+// (`selectVenueMapsTarget`), so a hide-address-until-ticket offering never
+// reaches here — it renders no copy button at all.
+const copyAddressForTarget = (text: string): Promise<void> =>
+  copyAddressText(text);
 
 // issue #2101 A7.3 item 21 — the empty-slug case must never THROW out of a
 // handler or a render. `eventPublicUrl` -> `requireSegment` raises
@@ -1039,6 +1054,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
         router.push(`/b/${brandSlug}` as never);
       },
       onOpenMaps: openMapsForTarget,
+      onCopyAddress: copyAddressForTarget,
       onUnlockPassword: (password: string): boolean => {
         // [TRANSITIONAL] Frontend stub validation against ticket.password —
         // B4 wires real backend verification (hashed comparison).
@@ -1475,6 +1491,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForTarget}
+          onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
           onSubmit={rsvpSubmit}
           onDownloadPass={handleDownloadRsvpPass}
@@ -1670,6 +1687,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
           onShare={handleShare}
           onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
           onOpenMaps={openMapsForTarget}
+          onCopyAddress={copyAddressForTarget}
           staticMapUrl={staticMapUrl}
           stateBanner={stateBanner}
           stickyPanel={stickyPanel}

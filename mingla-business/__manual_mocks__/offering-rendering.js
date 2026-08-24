@@ -55,6 +55,12 @@ module.exports = {
   ...real("galleryLayout"),
   ...real("closeButtonVisibility"),
   ...real("coverMediaPresentation"),
+  // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
+  // assertion changed. `mapsDeepLink` is RN-free and is the ONE owner of every
+  // maps URL plus the address-copy selector, so it is re-exported REAL like
+  // every other pure helper above (#2468 registered it in the per-suite
+  // factories; it belongs here too).
+  ...real("mapsDeepLink"),
 
   // ---- Stubbed RN visual components (never rendered under node/ts-jest) -----
   ParallaxCoverShell: Stub,
@@ -89,4 +95,28 @@ module.exports = {
   TripOfferingPaymentChoice: Stub,
   TripRefundLadder: Stub,
   TripReserveBar: Stub,
+  // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
+  // assertion changed. The shared "which map app?" chooser + copy-address
+  // button (packages/offering-rendering/VenueMapsActions.tsx) import
+  // react-native, so like every component above they are stubbed here and
+  // never rendered under node. Suites that genuinely render them run under a
+  // render config and register the REAL module in their own factory.
+  VenueCopyAddressButton: Stub,
+  MapsAppChooserDialog: Stub,
+  // The controller is a HOOK, not a component, so its stub returns the inert
+  // shape rather than null: nothing under node renders a venue card, but a
+  // module that merely imports the barrel must not explode on shape access.
+  useVenueMapsActions: () => ({
+    choices: [],
+    canOpenMaps: false,
+    offersChoice: false,
+    chooserVisible: false,
+    copyText: null,
+    canCopy: false,
+    copyState: "idle",
+    requestOpenMaps: () => undefined,
+    chooseApp: () => undefined,
+    dismissChooser: () => undefined,
+    copyAddress: () => undefined,
+  }),
 };

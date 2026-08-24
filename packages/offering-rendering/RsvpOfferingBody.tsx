@@ -80,8 +80,16 @@ import { normalizeCityCountry } from "./normalizeCityCountry";
 import {
   canOpenMapsTarget,
   selectVenueMapsTarget,
+  type MapsAppId,
   type MapsOpenTarget,
 } from "./mapsDeepLink";
+// issue #2508 — the shared "which map app?" chooser + copy-address button, fed
+// the ALREADY-gated target so an unrevealed RSVP address exposes neither.
+import {
+  MapsAppChooserDialog,
+  useVenueMapsActions,
+  VenueCopyAddressButton,
+} from "./VenueMapsActions";
 import { RsvpMomentumDecision } from "./RsvpMomentumDecision";
 import { markRsvpPhoneTouchedById } from "./rsvpPhoneValidation";
 import type {
@@ -259,8 +267,11 @@ export interface RsvpOfferingBodyProps {
     guests: RsvpGuestContact[];
   }) => Promise<RsvpSubmitResult>;
   onOpenBrand?: (brandSlug: string) => void;
-  /** issue #2468 — carries the stored coordinate, not just the text label. */
-  onOpenMaps?: (target: MapsOpenTarget) => void;
+  /** issue #2468 — carries the stored coordinate, not just the text label.
+   *  issue #2508 — plus the app the guest picked (undefined ⇒ nothing asked). */
+  onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void;
+  /** issue #2508 — copies the gated address text. Absent ⇒ no copy button. */
+  onCopyAddress?: (text: string) => void | Promise<void>;
   /** Server-proxied static map URL (city-level when address hidden); null → no map. */
   staticMapUrl?: string | null;
   contentBottomInset?: number;
@@ -1372,6 +1383,7 @@ export const RsvpOfferingBody: React.FC<
     config,
     onOpenBrand,
     onOpenMaps,
+    onCopyAddress,
     staticMapUrl = null,
     hideDecisionBox = false,
     testID,
@@ -1452,6 +1464,16 @@ export const RsvpOfferingBody: React.FC<
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && onOpenMaps !== undefined;
+  /*
+    issue #2508 — chooser + copy button on the SAME already-gated target. On the
+    RSVP page the gate is `!addressRevealed`, so a guest who has not RSVP'd yet
+    gets no copy button and no chooser, exactly as they get no maps link.
+  */
+  const mapsActions = useVenueMapsActions({
+    target: venueMapsTarget,
+    onOpenMaps,
+    onCopyAddress,
+  });
 
   const aboutText = event.description.trim();
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
@@ -1730,10 +1752,7 @@ export const RsvpOfferingBody: React.FC<
             />
           ) : null}
           <Pressable
-            onPress={() => {
-              if (canOpenVenueMaps && venueMapsTarget !== null)
-                onOpenMaps?.(venueMapsTarget);
-            }}
+            onPress={mapsActions.requestOpenMaps}
             disabled={!canOpenVenueMaps}
             accessibilityRole={canOpenVenueMaps ? "button" : undefined}
             style={[styles.venueCard, surface.card]}
@@ -1781,6 +1800,19 @@ export const RsvpOfferingBody: React.FC<
               </View>
             ) : null}
           </Pressable>
+          {/* issue #2508 — SIBLINGS of the card (nesting Pressables flattens
+              the a11y subtree). Both self-hide when the target is null. */}
+          <VenueCopyAddressButton
+            actions={mapsActions}
+            palette={palette}
+            font={boldFamily}
+          />
+          <MapsAppChooserDialog
+            actions={mapsActions}
+            palette={palette}
+            placeLabel={event.venueName}
+            font={boldFamily}
+          />
         </View>
       ) : null}
     </View>

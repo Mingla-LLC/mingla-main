@@ -154,6 +154,33 @@ jest.mock("react-native-safe-area-context", () => ({
   useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }),
 }));
 
+// [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no assertion
+// changed. The shared copy-address button and map-app chooser draw lucide
+// glyphs through `react-native-svg` (a REAL dependency of both apps —
+// react-native-svg 15.12.1 — and an existing peer of @mingla/offering-rendering).
+// This render config simply cannot resolve it from `packages/`, so it is mocked
+// to plain react-native Views, the same idiom
+// issue_1890_ari_composer_clearance uses. Nothing this suite asserts is a glyph.
+jest.mock(
+  "react-native-svg",
+  () => {
+    const Glyph = (): null => null;
+    return {
+      __esModule: true,
+      default: Glyph,
+      Svg: Glyph,
+      Path: Glyph,
+      Circle: Glyph,
+      Rect: Glyph,
+      G: Glyph,
+      Defs: Glyph,
+      Stop: Glyph,
+      LinearGradient: Glyph,
+    };
+  },
+  { virtual: true },
+);
+
 jest.mock("@mingla/offering-rendering", () => {
   const ReactLocal = require("react") as typeof React;
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
@@ -165,6 +192,13 @@ jest.mock("@mingla/offering-rendering", () => {
   // venue screen now reads its maps target from it. Registering the REAL module
   // matches this factory's rule of spreading the real pure helpers.
   const mapsDeepLink = require("../../../../../packages/offering-rendering/mapsDeepLink");
+  // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
+  // assertion changed. maps-app-chooser added the shared "which map app?"
+  // chooser + copy-address button, and PublicVenueScreen reaches them through
+  // THIS barrel (its only barrel-sourced UI). Registering the REAL module
+  // matches this factory's rule of spreading the real helpers, and keeps the
+  // venue card's rendered output genuine rather than stubbed away.
+  const venueMapsActions = require("../../../../../packages/offering-rendering/VenueMapsActions");
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
@@ -189,6 +223,7 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themePalette,
     ...mapboxStaticImage,
     ...mapsDeepLink,
+    ...venueMapsActions,
     useResponsiveLayout: () => ({
       width: viewport.width,
       isDesktop: viewport.isDesktop,

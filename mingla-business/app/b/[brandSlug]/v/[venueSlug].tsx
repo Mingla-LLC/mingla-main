@@ -55,8 +55,12 @@ import {
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
 // issue #2468 — DEEP specifier (this route never imports a package barrel);
 // `import type` is erased, so it adds nothing to the bundle.
-import type { MapsOpenTarget } from "@mingla/offering-rendering/mapsDeepLink";
+import type {
+  MapsAppId,
+  MapsOpenTarget,
+} from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
+import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
 import {
   spacing,
@@ -322,9 +326,22 @@ export default function PublicVenueRoute(): React.ReactElement {
   // the provider re-geocoded. The shared screen now hands us the venue's stored
   // lat/lng (the same pair its static map is drawn from) and the link is
   // anchored on it.
-  const handleOpenMaps = useCallback((target: MapsOpenTarget): void => {
-    openMapsTarget(target);
-  }, []);
+  const handleOpenMaps = useCallback(
+    (target: MapsOpenTarget, app?: MapsAppId): void => {
+      // issue #2508 — `app` is the guest's choice from the shared chooser;
+      // undefined means nothing was asked (the exact #2468 path).
+      openMapsTarget(target, { app });
+    },
+    [],
+  );
+
+  // issue #2508 — the copy-address host effect. The text has already cleared
+  // the SAME gate as the maps link, so this is never reachable with a withheld
+  // address.
+  const handleCopyAddress = useCallback(
+    (text: string): Promise<void> => copyAddressText(text),
+    [],
+  );
 
   const handleOpenBrand = useCallback((): void => {
     if (typeof brandSlug !== "string") return;
@@ -564,6 +581,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
       onOpenMaps={handleOpenMaps}
+      onCopyAddress={handleCopyAddress}
     />
   );
 }

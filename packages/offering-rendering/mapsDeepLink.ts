@@ -259,3 +259,186 @@ export function selectVenueMapsTarget(
   const label = address === null ? venueName : `${venueName}, ${address}`;
   return { label, geo: normalizeMapsGeo(params.locationGeo) };
 }
+
+// ===========================================================================
+// issue #2508 [maps-app-chooser] — the SAME single owner now also owns the
+// PER-APP link, so "which app" can be asked without any call site composing a
+// URL. Everything above is untouched: `buildMapsDeepLink` remains the default
+// one-shot link and keeps its exact #2468 output.
+//
+// THE ACCURACY IS NOT NEGOTIABLE. Every branch below anchors on the stored
+// coordinate whenever one exists, exactly like `buildMapsDeepLink` — the
+// chooser selects the APP, never the accuracy. The free-text forms survive
+// only where they already did: as the honest fallback for an offering we hold
+// no pin for.
+// ===========================================================================
+
+/** The map apps the product can honestly offer. */
+export type MapsAppId = "apple" | "google";
+
+export interface MapsAppChoice extends MapsDeepLink {
+  id: MapsAppId;
+  /** The app's real name, as the user knows it. */
+  label: string;
+}
+
+export interface BuildMapsAppLinkParams extends BuildMapsUrlParams {
+  app: MapsAppId;
+}
+
+/** User-facing app names. One owner, so the sheet and the a11y label agree. */
+export const MAPS_APP_LABELS: Readonly<Record<MapsAppId, string>> = {
+  apple: "Apple Maps",
+  google: "Google Maps",
+};
+
+/**
+ * Apple's documented https form. It is used as the fallback on iOS and as the
+ * PRIMARY url on web.
+ *
+ * WEB DECISION (#2508). `maps://` is unreliable from a browser — a scheme the
+ * page cannot verify, which on a desktop browser silently does nothing. That
+ * is a dead tap (Constitution #1), so web NEVER emits `maps://`. It emits
+ * `https://maps.apple.com/?…`, Apple's own universal link: it opens the Maps
+ * app on iOS/macOS and Apple's browser map everywhere else, so the tap always
+ * lands somewhere real. Same coordinate, same label, no scheme gamble.
+ */
+const appleMapsWebUrl = (query: string): string =>
+  `https://maps.apple.com/?${query}`;
+
+const appleMapsSchemeUrl = (query: string): string => `maps://?${query}`;
+
+/**
+ * Build the link for ONE named app, or `null` when that app cannot honestly
+ * open this target on this platform.
+ *
+ * `null` is a real answer and it is how the Android/Apple case is handled:
+ * Apple Maps does not exist on Android, so asking for it there returns null
+ * and the caller renders no option (Constitution #1 — never a dead tap, and
+ * never a choice that cannot open).
+ */
+export function buildMapsAppLink(
+  params: BuildMapsAppLinkParams,
+): MapsAppChoice | null {
+  const platform = normalizePlatform(params.platform);
+  const geo = normalizeMapsGeo(params.geo);
+  const label = normalizeLabel(params.label);
+  if (geo === null && label === null) return null;
+
+  const name = MAPS_APP_LABELS[params.app];
+
+  if (params.app === "apple") {
+    // Apple Maps is an Apple-platform app. There is no Android build of it and
+    // there never has been, so Android gets NO Apple option at all.
+    if (platform === "android") return null;
+
+    // No cast: the `geo === null && label === null` case already returned, but
+    // the compiler cannot see that across two locals, so both arms are written
+    // out and the impossible third arm returns null rather than lying.
+    let query: string;
+    if (geo !== null) {
+      query =
+        label === null
+          ? `ll=${geo.lat},${geo.lng}`
+          : `ll=${geo.lat},${geo.lng}&q=${encodeURIComponent(label)}`;
+    } else if (label !== null) {
+      query = `q=${encodeURIComponent(label)}`;
+    } else {
+      return null;
+    }
+    const fallbackUrl = appleMapsWebUrl(query);
+    return {
+      id: "apple",
+      label: name,
+      url: platform === "ios" ? appleMapsSchemeUrl(query) : fallbackUrl,
+      fallbackUrl,
+      coordinateAnchored: geo !== null,
+    };
+  }
+
+  // Google. The https form is a universal/app link on BOTH mobile platforms —
+  // it opens the Google Maps app when it is installed and the browser when it
+  // is not, so it can never dead-tap and it needs no scheme whitelisting.
+  if (geo !== null) {
+    const pair = `${geo.lat},${geo.lng}`;
+    const fallbackUrl = googleSearchUrl(pair);
+    return {
+      id: "google",
+      label: name,
+      // Android keeps the `geo:` intent it already shipped in #2468 — byte for
+      // byte — because the OS itself disambiguates it across every installed
+      // map app, which is strictly better than anything we could draw.
+      url:
+        platform === "android"
+          ? label === null
+            ? `geo:${pair}?q=${pair}`
+            : `geo:${pair}?q=${pair}(${encodeGeoLabel(label)})`
+          : fallbackUrl,
+      fallbackUrl,
+      coordinateAnchored: true,
+    };
+  }
+
+  if (label === null) return null;
+  const encoded = encodeURIComponent(label);
+  const fallbackUrl = googleSearchUrl(encoded);
+  return {
+    id: "google",
+    label: name,
+    url: platform === "android" ? `geo:0,0?q=${encoded}` : fallbackUrl,
+    fallbackUrl,
+    coordinateAnchored: false,
+  };
+}
+
+/**
+ * Every map app that can ACTUALLY open this target on this platform, in the
+ * order the user should see them.
+ *
+ * The list is the whole "no dead taps" contract in one place:
+ *   ios      [Apple Maps, Google Maps]  — Apple first, it is the system default
+ *   android  [Google Maps]              — Apple Maps does not exist here
+ *   web      [Google Maps, Apple Maps]  — both on https, never `maps://`
+ *
+ * A caller renders a chooser only when this returns MORE THAN ONE entry. One
+ * entry means there is nothing to ask: on Android the `geo:` intent already
+ * makes the OS offer Google Maps / Waze / anything else installed, and a
+ * one-row sheet in front of that would be pure ceremony.
+ */
+export function listMapsAppChoices(
+  params: BuildMapsUrlParams,
+): MapsAppChoice[] {
+  const platform = normalizePlatform(params.platform);
+  const order: MapsAppId[] =
+    platform === "ios"
+      ? ["apple", "google"]
+      : platform === "android"
+        ? ["google"]
+        : ["google", "apple"];
+  const choices: MapsAppChoice[] = [];
+  for (const app of order) {
+    const choice = buildMapsAppLink({ ...params, app });
+    if (choice !== null) choices.push(choice);
+  }
+  return choices;
+}
+
+/**
+ * The address text the copy button places on the clipboard, or `null` when
+ * there is nothing to copy.
+ *
+ * IT TAKES THE GATED TARGET, NOT THE RAW ADDRESS. That is the entire privacy
+ * design: `selectVenueMapsTarget` already returned `null` for a withheld
+ * address, so a hidden-address offering has no target, therefore no copy text,
+ * therefore no copy button. The copy affordance cannot be wired to anything
+ * the maps link is not already allowed to show (#2489, #2508).
+ *
+ * It deliberately copies the HUMAN address, not a coordinate or a URL — the
+ * whole point is pasting it into Waze, Citymapper, Uber or a message.
+ */
+export function selectAddressCopyText(
+  target: MapsOpenTarget | null | undefined,
+): string | null {
+  if (target === null || target === undefined) return null;
+  return normalizeLabel(target.label);
+}
