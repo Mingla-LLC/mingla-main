@@ -26,6 +26,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
+import { previewSpans } from "../../services/marketing/previewInline";
 import {
   previewBlocks,
   type PreviewVariables,
@@ -150,9 +151,25 @@ export const EmailPreviewPane: React.FC<EmailPreviewPaneProps> = ({
           ) : (
             blocks.map((block, idx) => {
               if (block.kind === "paragraph") {
+                // #2521 — draw inline markup instead of printing it. A bare
+                // <Text> renders its children LITERALLY, so an anchor showed
+                // up as `<a href="…">…</a>` and the organiser believed that
+                // was what the recipient would receive. It never was.
                 return (
                   <Text key={idx} style={styles.paragraph}>
-                    {block.content}
+                    {previewSpans(block.content).map((span, spanIdx) => (
+                      <Text
+                        key={spanIdx}
+                        style={[
+                          span.bold ? styles.spanBold : null,
+                          span.italic ? styles.spanItalic : null,
+                          span.href !== null ? styles.spanLink : null,
+                        ]}
+                        accessibilityRole={span.href !== null ? "link" : undefined}
+                      >
+                        {span.text}
+                      </Text>
+                    ))}
                   </Text>
                 );
               }
@@ -315,6 +332,11 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 23,
   },
+  // #2521 — inline marks. Colours match the sent email's own anchor styling
+  // so the preview reads the way the inbox will.
+  spanBold: { fontWeight: "700" },
+  spanItalic: { fontStyle: "italic" },
+  spanLink: { color: "#FF6B2C", textDecorationLine: "underline" },
   placeholder: {
     ...typography.body,
     color: MUTED,
