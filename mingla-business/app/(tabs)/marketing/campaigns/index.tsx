@@ -36,7 +36,7 @@ import {
   text as textTokens,
   typography,
 } from "../../../../src/constants/designSystem";
-import { useAuth } from "../../../../src/context/AuthContext";
+import { useCurrentBrand } from "../../../../src/hooks/useCurrentBrand";
 import { useCampaigns } from "../../../../src/hooks/marketing/useCampaigns";
 import { useStickyFooterOffset } from "../../../../src/hooks/useStickyFooterOffset";
 import {
@@ -48,8 +48,10 @@ import type { CampaignStatus } from "../../../../src/types/marketing";
 export default function MarketingCampaignsRoute(): React.ReactElement {
   const router = useRouter();
   const fabOffset = useStickyFooterOffset();
-  const { user } = useAuth();
-  const accountId = user?.id ?? null;
+  // #2514 — the list is scoped to the brand you are standing in, not to your
+  // account. Keyed by account it mixed brands together and hid teammates.
+  const currentBrand = useCurrentBrand();
+  const brandId = currentBrand?.id ?? null;
   const [filter, setFilter] = useState<CampaignFilter>("all");
 
   const statusFilter = useMemo<CampaignStatus | undefined>(() => {
@@ -58,7 +60,7 @@ export default function MarketingCampaignsRoute(): React.ReactElement {
   }, [filter]);
 
   const campaignsQuery = useCampaigns({
-    account_id: accountId,
+    brand_id: brandId,
     status: statusFilter,
   });
 

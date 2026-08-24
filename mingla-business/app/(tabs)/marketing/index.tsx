@@ -33,16 +33,17 @@ import {
   text as textTokens,
   typography,
 } from "../../../src/constants/designSystem";
-import { useAuth } from "../../../src/context/AuthContext";
+import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
 import { useMarketingOverview } from "../../../src/hooks/marketing/useMarketingOverview";
 import { useStickyFooterOffset } from "../../../src/hooks/useStickyFooterOffset";
 
 export default function MarketingOverviewRoute(): React.ReactElement {
   const router = useRouter();
   const fabOffset = useStickyFooterOffset();
-  const { user } = useAuth();
-  const accountId = user?.id ?? null;
-  const overviewQuery = useMarketingOverview(accountId);
+  // #2514 — the funnel belongs to the brand you are standing in. Scoped to
+  // the account it summed across every brand the operator belongs to.
+  const currentBrand = useCurrentBrand();
+  const overviewQuery = useMarketingOverview(currentBrand?.id ?? null);
 
   const handleNewCampaign = useCallback(() => {
     router.push("/marketing/campaigns/compose" as never);
