@@ -396,19 +396,165 @@ export interface TicketCheckoutInvokeError extends Error {
   detail: string | null;
 }
 
+/**
+ * issue #2511 item 7 — HOW LONG WE WAIT, AND HOW LONG BEFORE WE TRY AGAIN.
+ *
+ * There was no timeout at all. A request that never answered left the guest on
+ * a spinner indefinitely, on exactly the connections where that is most likely:
+ * Nigerian mobile data inside the Instagram in-app browser.
+ */
+const CHECKOUT_TIMEOUT_MS = 20_000;
+const CHECKOUT_RETRY_DELAY_MS = 700;
+
+/**
+ * issue #2511 item 7 — IS THIS WORTH TRYING AGAIN?
+ *
+ * A handled server refusal always carries an HTTP status: `invokeOrThrow` reads
+ * it off the `FunctionsHttpError`'s `Response`. A transport failure — DNS, a
+ * dropped connection, CORS, our own timeout below — never does. So a NULL status
+ * is the discriminator for "we never got an answer".
+ *
+ * 4xx is a DECISION and is never retried: sold out is still sold out, and
+ * hammering it would only produce the same refusal twice. 5xx is retried because
+ * it is usually transient and the retry is idempotent anyway.
+ */
+const isWorthRetrying = (error: unknown): boolean => {
+  const status = httpStatusOf(error);
+  if (status === null) return true;
+  return status >= 500;
+};
+
+const sleep = (ms: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, ms));
+
+/**
+ * issue #2511 item 7 — a timeout that LOOKS like a transport failure.
+ *
+ * Deliberately carries no `status`, so it flows through `isWorthRetrying` above
+ * and through the copy mappers exactly as a dropped connection does. A guest
+ * whose request timed out is in precisely the same position as one whose reply
+ * was lost: the reservation may or may not exist, and the honest sentence is the
+ * same one.
+ *
+ * The underlying request is NOT aborted. It may still be completing on the
+ * server, and that is fine — the retry below reuses the same idempotency key, so
+ * a first attempt that lands is RETURNED by the second, never duplicated.
+ */
+const withTimeout = async <T>(work: Promise<T>): Promise<T> => {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(
+      () => reject(new Error("checkout_request_timed_out")),
+      CHECKOUT_TIMEOUT_MS,
+    );
+  });
+  try {
+    return await Promise.race([work, timeout]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+};
+
+/**
+ * issue #2511 item 7 — RETRY ONCE, SAFELY.
+ *
+ * WHY THIS CANNOT DUPLICATE A RESERVATION. The server derives the idempotency
+ * key from the request body alone — `checkoutIdempotencyKey({eventId,
+ * buyerEmail, buyerPhoneE164, lines, paymentPlanChoice, eventDateIds})`. Sending
+ * the SAME body therefore produces the SAME key, and #2150's exemption returns
+ * the already-completed free session rather than minting a second one. So the
+ * retry is safe BY CONSTRUCTION, not by hoping the first attempt failed.
+ *
+ * That is the whole point: before this, a lost reply was a lost sale, and the
+ * guest's only recourse was to change a field and submit again — which produced
+ * a NEW key and a genuine duplicate. Three guests did exactly that on We Go
+ * Again (#2462). Item 6 stopped us lying about it; this stops the loss.
+ *
+ * ONE retry, not a loop: if the second attempt also cannot reach the server the
+ * problem is the connection, and a third request helps nobody while making a
+ * thundering herd worse.
+ */
+const invokeWithRetry = async (
+  functionName: string,
+  body: Record<string, unknown>,
+): Promise<{ data: unknown; error: unknown }> => {
+  try {
+    return await withTimeout(
+      supabase.functions.invoke(functionName, { body }) as Promise<
+        { data: unknown; error: unknown }
+      >,
+    );
+  } catch (transportError) {
+    if (!isWorthRetrying(transportError)) throw transportError;
+    await sleep(CHECKOUT_RETRY_DELAY_MS);
+    return await withTimeout(
+      supabase.functions.invoke(functionName, { body }) as Promise<
+        { data: unknown; error: unknown }
+      >,
+    );
+  }
+};
+
+/**
+ * issue #2511 item 7 — RETRY IS OPT-IN, PER CALL SITE, ON PURPOSE.
+ *
+ * The first cut of this change put the retry inside the shared helper, which
+ * silently changed `ticket-checkout-confirm` too — the PAID finalize path, which
+ * carries its own ORCH-0852 contracts about how a 502 must propagate. CI caught
+ * it (`T-0852-ADV-2`, `T-0852-4`). That was an over-reach: the reasoning about
+ * idempotency was done for CREATE and applied to everything.
+ *
+ * So retry is now requested explicitly, and only `ticket-checkout-create` asks
+ * for it — the one call whose idempotency key is derived from the request body
+ * and is therefore provably safe to repeat. Status, confirm and dispatch keep
+ * byte-identical behaviour.
+ */
+interface InvokeOptions {
+  /** Repeat ONCE on a transport failure or 5xx. Safe only where the server
+   *  derives an idempotency key from the body. */
+  readonly retryOnTransportFailure?: boolean;
+}
+
 const invokeOrThrow = async <T>(
   functionName: string,
   body: Record<string, unknown>,
+  options: InvokeOptions = {},
 ): Promise<T> => {
-  const { data, error } = await supabase.functions.invoke(functionName, {
-    body,
-  });
+  const retrying = options.retryOnTransportFailure === true;
+  let data: unknown;
+  let error: unknown;
+  try {
+    ({ data, error } = retrying
+      ? await invokeWithRetry(functionName, body)
+      : ((await supabase.functions.invoke(functionName, { body })) as {
+        data: unknown;
+        error: unknown;
+      }));
+  } catch (transportError) {
+    // Both attempts failed to reach the server. Surface it in the shape the
+    // mappers already understand: no status, no token — "we do not know".
+    throw transportError;
+  }
+  // issue #2511 — a 5xx comes back as a HANDLED error, not a throw, so the
+  // retry decision has to be made here too, not only in the catch above.
+  if (retrying && error !== null && error !== undefined && isWorthRetrying(error)) {
+    await sleep(CHECKOUT_RETRY_DELAY_MS);
+    ({ data, error } = await invokeWithRetry(functionName, body));
+  }
   if (error) {
     // issue #2188 — carry the status + bounded token forward. `.message` is
     // deliberately UNCHANGED so no existing caller's behaviour shifts; the new
     // fields are additive and are what the copy mappers read.
     const refusal = await readEdgeRefusal(error);
-    const failure = new Error(error.message) as TicketCheckoutInvokeError;
+    // issue #2511 — `error` is now `unknown` (the retry path widened it), so the
+    // framework message is read defensively. The STRING IS UNCHANGED for every
+    // shape supabase-js actually produces; #2188's contract that `.message` keeps
+    // its original value is preserved exactly.
+    const frameworkMessage =
+      typeof (error as { message?: unknown }).message === "string"
+        ? (error as { message: string }).message
+        : String(error);
+    const failure = new Error(frameworkMessage) as TicketCheckoutInvokeError;
     failure.status = refusal.status;
     failure.code = refusal.code;
     // issue #2337 — the detail rides along too. Without it the free mapper
@@ -578,6 +724,15 @@ export const createTicketCheckout = async (
     ...(input.buyerStatusToken !== undefined && input.buyerStatusToken.length > 0
       ? { buyerStatusToken: input.buyerStatusToken }
       : {}),
+  }, {
+    // issue #2511 item 7 — THE ONLY CALL THAT OPTS IN.
+    //
+    // Safe here and ONLY here: the edge function derives the idempotency key
+    // from this body alone, so an identical repeat returns the same reservation
+    // instead of minting a second. Status, confirm and dispatch deliberately do
+    // NOT opt in — confirm in particular carries ORCH-0852 contracts about how a
+    // 502 must propagate, and retrying it would change the paid finalize path.
+    retryOnTransportFailure: true,
   });
 
 export const getTicketCheckoutStatus = async (
