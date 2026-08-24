@@ -95,11 +95,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.deepEqual(shadow.map((suite) => suite.id).sort(), approvedShadowIds);
   assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
   assert.equal(manifest.legacyOrigins.length, 199);
-  assert.equal(manifest.workflowProviders.length, 89);
+  assert.equal(manifest.workflowProviders.length, 91);
   assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 145);
-  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 71);
+  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73);
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 199);
-  assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 89);
+  assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");
   assert.ok(suite1036.expectedFiles.includes("mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"));

@@ -10346,7 +10346,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8ca2c03f9ce1eb8b5786ce29a6ab5c16978ef3a4bb8239ecd0b45db498a3ee95",
+        "sourceSha256": "80ed3d6d18af2e93b8557d07183d23600dc14ebfca660da22fd403c47f8bb8db",
         "triggers": [
           "pull_request",
           "push"
@@ -15165,6 +15165,30 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
+      "workflow": "issue-1644-storage-guardrail-collage-fill-tests.yml",
+      "ownerIssue": "#1644",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml",
+      "referenceFiles": [
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs"
+      ],
+      "rationale": "Issue #2492 records this external coupling and preserves the existing live provider unchanged."
+    },
+    {
+      "workflow": "issue-1647-admin-mv-and-db-reclaim-tests.yml",
+      "ownerIssue": "#1647",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/issue-1647-admin-mv-and-db-reclaim-tests.yml",
+      "referenceFiles": [
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs"
+      ],
+      "rationale": "Issue #2492 records this external coupling and preserves the existing live provider unchanged."
+    },
+    {
       "workflow": "issue-1661-completed-write-unparks-invalidation.yml",
       "ownerIssue": "#1661",
       "transition": "batched-provider",
@@ -15317,7 +15341,10 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "referenceFiles": [
-        ".github/scripts/strict-grep/MANIFEST.json"
+        ".github/scripts/strict-grep/MANIFEST.json",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.tester.test.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
@@ -15503,6 +15530,8 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "referenceFiles": [
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.implementor.test.mjs",
+        ".github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs",
         "supabase/migrations/20270420002160_issue_2160_multiday_multiselect.sql"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."

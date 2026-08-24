@@ -9505,3 +9505,13 @@ independent tester returns PASS.
 - **Rule:** Successful group-context import rows are canonical Book people before membership. Open identity conflicts remain pending and outside member/reach counts; they complete at most once only after authorized resolution while the Manual group remains active.
 - **Enforcement:** the unchanged #1775 import flow plus `marketing_manual_group_pending_memberships`, import/conflict projection triggers, active uniqueness, audit rows, and #2395 PostgreSQL/strict-grep guards.
 - **Established:** DRAFT at #2395; activate only after tester mixed-import and conflict-after-group-delete proofs and normal CLOSE gates.
+
+## DRAFT — issue #2492 (a migration on main fails the #1931 clean replay, blocking unrelated PRs)
+
+### I-PROPOSED-2492-FILTERED-REPLAY-SKIP-CLOSURE (DRAFT)
+
+- **Rule:** A CI lane that replays a filtered subset of the migration chain is closed under its own skip list. No non-skipped migration may reference an object — function, view, table or column — defined only by a skipped migration, in any context PostgreSQL validates at `CREATE` time. A migration that re-emits an object defined by a skipped migration belongs on that lane's skip list, by **exact filename**, never by an issue-number infix. A skip entry is never removed to green a lane. **Lane discovery is itself fail-closed: a lane whose apply loop contains a `continue` but yields zero parsed skip globs is an error, never an unfiltered lane.**
+- **Scope boundary:** governs the *addition* direction only — a reference added to an object a skipped migration supplies. The *removal* direction, where a re-emission drops a control an earlier migration installed, is **#2499** and must stay separate.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs` (manifest `batch:A`, self-test then live), checks C-1, C-2, C-3, C-4(a) and C-4(b) with lane-discovery rules R-1…R-4, its eight mutants M-1…M-8, and the paired `…implementor.test.mjs` and `…tester.test.mjs` suites in the same class. `.github/workflows/strict-grep-mingla-business.yml` triggers on `supabase/migrations/**`, `.github/workflows/**` and `.github/scripts/strict-grep/**`, which are the only three routes by which a skip-closure violation can be created.
+- **Declared limits:** the guard keys on object names, so signature/overload drift is not detected; and it does not cover the removal direction (#2499).
+- **Established:** DRAFT at #2492; activate at CLOSE once the `#1931` `postgres-replay` lane is green from a clean replay on the merged branch and the tester's adversarial cases pass.

@@ -98,6 +98,39 @@ jobs:
               # Only ...002335 is listed: ...002333 and ...002334 re-emit plpgsql
               # bodies, which are NOT validated at CREATE time, so they replay clean.
               *_issue_2333_discover_online_carveout*) continue ;;
+              # issue #2462 — SKIPPED under the standing instruction above.
+              #
+              # 20270522002462 re-emits `pg_direct_event_checkout_bundle`, the
+              # function #1931 itself defines (...001931...:974). That body is
+              # `LANGUAGE sql`, validated at CREATE time, and it carries
+              # `AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)`.
+              # The call is CORRECT — it is the private-event deny on a public
+              # reader — and removing it to green this lane would delete a
+              # security control.
+              #
+              # It ALSO reads `e.multi_date_pricing_mode`, a column added only
+              # by the skipped #2160. PostgreSQL resolves column names before
+              # function signatures, so the column error is reported FIRST and
+              # masks the guard error; fixing the column alone still aborts on
+              # the missing function. Both faults are real and the re-emission
+              # governs.
+              #
+              # #2462 has NO dedicated lane. It is proven end-to-end by the 10
+              # unfiltered full-chain lanes that trigger on
+              # `supabase/migrations/**` — #1172, #1173, #1174, #1177, #1217,
+              # #1217-tester-adversarial, #1612, #1840, the SECURITY DEFINER
+              # anon-grant gate and Supabase Migrations + Stripe Deno — all of
+              # which ran `success` on #2462's own PR head, plus #2462's own
+              # in-migration `DO $probe$` and two mingla-business jest suites.
+              #
+              # Matched by EXACT filename, never `*_issue_2462_*`: that glob
+              # would also drop ...002463_issue_2462_phone_backfill.sql, which
+              # is healthy, replays clean and is deliberately NOT skipped
+              # (515 files apply here; the glob would leave 514).
+              #
+              # `.github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs`
+              # now enforces this list instead of trusting the comment.
+              *20270522002462_issue_2462_checkout_determinism.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done
