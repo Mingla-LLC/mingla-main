@@ -10923,7 +10923,7 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5f57f8bca3095a1ed78c694219d11f684222ea226e70330603f973e73ed29ab8",
+        "sourceSha256": "e95c87d12b2b60c1a2084b935c88a40d1424e1e5b20060d82eedb9aee48d5888",
         "triggers": [
           "pull_request"
         ],
@@ -10931,8 +10931,12 @@
           ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs",
           ".github/workflows/issue-1995-contact-book-blast.yml",
           "mingla-business/**",
+          "supabase/functions/_shared/email/shell.ts",
+          "supabase/functions/_shared/issue_2520_email_paragraphs.test.ts",
+          "supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts",
           "supabase/functions/_shared/marketingAudience.ts",
           "supabase/functions/_shared/marketingBookQuote.ts",
+          "supabase/functions/_shared/marketingEmailRender.ts",
           "supabase/functions/_shared/offeringInviteQuote.ts",
           "supabase/functions/_shared/smsPriceBook.ts",
           "supabase/functions/marketing-send/**",
