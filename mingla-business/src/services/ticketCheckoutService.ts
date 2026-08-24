@@ -264,6 +264,8 @@ export {
   FREE_CHECKOUT_MESSAGES,
   FREE_CHECKOUT_SOLD_OUT_MESSAGE,
   FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
+  // issue #2511 — the honest "we do not know" terminal arm.
+  FREE_CHECKOUT_UNKNOWN_MESSAGE,
   FREE_RESERVATION_ALREADY_EXISTS_TOKEN,
   freeCheckoutErrorMessage,
   isFreeReservationAlreadyExists,

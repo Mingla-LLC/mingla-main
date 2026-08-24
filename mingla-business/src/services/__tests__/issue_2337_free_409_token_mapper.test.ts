@@ -45,6 +45,7 @@ import {
   FREE_CHECKOUT_ALREADY_RESERVED_MESSAGE,
   FREE_CHECKOUT_CONFLICT_MESSAGE,
   FREE_CHECKOUT_FAILED_MESSAGE,
+  FREE_CHECKOUT_UNKNOWN_MESSAGE,
   FREE_CHECKOUT_INTAKE_STALE_MESSAGE,
   FREE_CHECKOUT_MESSAGES,
   FREE_CHECKOUT_SOLD_OUT_MESSAGE,
@@ -238,7 +239,13 @@ describe("#2337 the mapper is TOTAL and owns every string it can return", () => 
 
   test("the opaque transport string is never shown verbatim", () => {
     const opaque = new Error("Edge Function returned a non-2xx status code");
-    expect(freeCheckoutErrorMessage(opaque)).toBe(FREE_CHECKOUT_FAILED_MESSAGE);
+    // [TEST-MOD-APPROVED #2511] The terminal arm no longer claims
+    // "nothing was reserved" for an OPAQUE failure. A dropped reply may mean
+    // the reservation SUCCEEDED, so that claim was unprovable - and it caused
+    // real duplicate orders (#2462). The invariant this test exists to protect
+    // is unchanged and still asserted: never a raw runtime string, always a
+    // string this module owns. Only WHICH honest sentence changed.
+    expect(freeCheckoutErrorMessage(opaque)).toBe(FREE_CHECKOUT_UNKNOWN_MESSAGE);
     for (const message of FREE_CHECKOUT_MESSAGES) {
       expect(message).not.toMatch(/non-2xx/);
       expect(message).not.toMatch(/undefined/);

@@ -127,6 +127,82 @@ export const FREE_CHECKOUT_INTAKE_STALE_MESSAGE =
   "The organizer updated this event's questions, so the answers you gave are out of date. Reopen the tickets and answer them again — nothing was reserved.";
 
 /**
+ * issue #2511 item 6 — THE HONEST ANSWER WHEN WE DO NOT KNOW.
+ *
+ * This replaces FREE_CHECKOUT_FAILED_MESSAGE on the terminal arm. That arm is
+ * reached by a network drop, a timeout, a 5xx, a CORS failure — anything with no
+ * status and no token. In every one of those cases the request may well have
+ * REACHED the server and created the reservation; the reply is simply lost.
+ *
+ * Saying "Nothing was reserved" there is a claim we cannot support, and it is
+ * measurably harmful: three guests on We Go Again were told exactly that, changed
+ * their email, submitted again, and ended up with TWO orders each (#2462). The
+ * lie caused the duplicate.
+ *
+ * Nigerian mobile data and the Instagram in-app browser make lost replies common,
+ * which is why this arm mattered so much more than its "last resort" position
+ * suggests.
+ */
+export const FREE_CHECKOUT_UNKNOWN_MESSAGE =
+  "We lost connection before we could confirm this. Your ticket may already be reserved \u2014 check your email before trying again, so you do not end up with two.";
+
+/**
+ * issue #2511 item 5 — ONE HONEST SENTENCE PER SERVER REFUSAL.
+ *
+ * The create-session RPC raises 20+ distinct bounded tokens. The edge function
+ * puts every one of them in `detail` under a single `checkout_session_failed`
+ * code, and before this change the mapper matched only `ticket_capacity_exceeded`
+ * \u2014 so nineteen different, permanent, actionable refusals all rendered as
+ * "Nothing was reserved \u2014 please try again", telling the guest to repeat an
+ * action that could never succeed.
+ *
+ * VERIFIED, NOT ASSUMED: each token below was forced against the production RPC
+ * and the raised MESSAGE_TEXT captured. They arrive as bare tokens
+ * ("ticket_lines_required", "buyer_phone_required", "ticket_quantity_invalid",
+ * "ticket_type_not_found", "event_not_found"), which is why substring matching on
+ * `detail` is sound \u2014 the same mechanism the capacity arm has always used.
+ *
+ * EVERY SENTENCE OBEYS THE MODULE RULE: it says what happened to the reservation.
+ * Each of these raises fires BEFORE any row is inserted, so "nothing was
+ * reserved" is provably true for all of them \u2014 unlike the terminal arm above.
+ */
+const FREE_CHECKOUT_MESSAGE_BY_RAISE: Readonly<Record<string, string>> = Object
+  .assign(Object.create(null) as Record<string, string>, {
+    ticket_lines_required:
+      "Your basket is empty. Pick at least one ticket, then try again \u2014 nothing was reserved.",
+    ticket_quantity_invalid:
+      "Choose at least one ticket before continuing \u2014 nothing was reserved.",
+    buyer_phone_required:
+      "That mobile number is not valid. Check the country code next to the field and the digits, then try again \u2014 nothing was reserved.",
+    event_not_found:
+      "This event is no longer available. Nothing was reserved.",
+    event_not_selling:
+      "This event is not selling tickets right now. Nothing was reserved.",
+    occurrence_not_found:
+      "The day you picked is no longer part of this event. Choose another day \u2014 nothing was reserved.",
+    occurrence_not_available:
+      "That day has already finished, so it can no longer be booked. Pick another day \u2014 nothing was reserved.",
+    ticket_type_not_found:
+      "That ticket no longer exists \u2014 the organiser may have removed it. Reload the page to see what is on sale. Nothing was reserved.",
+    ticket_type_unavailable:
+      "That ticket is not on sale. Reload the page to see what is available \u2014 nothing was reserved.",
+    ticket_sales_not_started:
+      "Sales for this ticket have not opened yet. Come back when they do \u2014 nothing was reserved.",
+    ticket_sales_ended:
+      "Sales have closed for this ticket. Nothing was reserved.",
+    ticket_quantity_below_min:
+      "This ticket has a minimum number per booking. Increase the quantity and try again \u2014 nothing was reserved.",
+    ticket_quantity_above_max:
+      "The organiser limits how many of this ticket one person can take. Lower the quantity and try again \u2014 nothing was reserved.",
+    mixed_currency_cart:
+      "These tickets are priced in different currencies and cannot be booked together. Book them separately \u2014 nothing was reserved.",
+    event_currency_required:
+      "This event is not set up to take payment yet. Nothing was reserved.",
+    stripe_account_not_ready:
+      "This organiser has not finished setting up payments, so paid tickets cannot be sold yet. Nothing was reserved.",
+  });
+
+/**
  * Every string this module can return, in one place, so a test can walk the
  * whole codomain instead of the arms someone remembered to list.
  */
@@ -137,6 +213,9 @@ export const FREE_CHECKOUT_MESSAGES: readonly string[] = [
   FREE_CHECKOUT_SOLD_OUT_MESSAGE,
   FREE_CHECKOUT_CONFLICT_MESSAGE,
   FREE_CHECKOUT_INTAKE_STALE_MESSAGE,
+  // issue #2511
+  FREE_CHECKOUT_UNKNOWN_MESSAGE,
+  ...Object.values(FREE_CHECKOUT_MESSAGE_BY_RAISE),
 ];
 
 // ---------------------------------------------------------------------------
@@ -315,15 +394,45 @@ export const isFreeReservationAlreadyExists = (error: unknown): boolean =>
  *   5. a 409 we could not identify — NOT sold out, NOT "nothing was reserved";
  *   6. everything else.
  */
+/**
+ * issue #2511 — find the RPC raise token inside a raw database message.
+ *
+ * Longest-first so a token that is a prefix of another cannot shadow it. The
+ * message arrives as the bare token today, but substring matching is kept
+ * because that is what the capacity arm has always relied on and a future
+ * Postgres/PostgREST version may add a prefix.
+ */
+const RAISE_TOKENS_LONGEST_FIRST = Object
+  .keys(FREE_CHECKOUT_MESSAGE_BY_RAISE)
+  .sort((a, b) => b.length - a.length);
+
+const raiseMessageIn = (haystack: string): string | undefined => {
+  if (haystack.length === 0) return undefined;
+  for (const token of RAISE_TOKENS_LONGEST_FIRST) {
+    if (haystack.includes(token)) return FREE_CHECKOUT_MESSAGE_BY_RAISE[token];
+  }
+  return undefined;
+};
+
 export const freeCheckoutErrorMessage = (error: unknown): string => {
   const code = codeOf(error);
+  const detail = detailOf(error) ?? "";
 
   // (2) before (1): a create-session refusal carries `checkout_session_failed`
   // for every RPC raise, and only the detail distinguishes a genuinely sold-out
   // sale from a plumbing failure. Both are honest; this one is more useful.
-  if ((detailOf(error) ?? "").includes(TICKET_CAPACITY_EXCEEDED_TOKEN)) {
+  if (detail.includes(TICKET_CAPACITY_EXCEEDED_TOKEN)) {
     return FREE_CHECKOUT_SOLD_OUT_MESSAGE;
   }
+
+  // issue #2511 item 5 — the OTHER nineteen refusals hiding in the same detail.
+  // Before this, every one of them rendered as "Nothing was reserved - please
+  // try again", which sent guests to repeat an action that could never work:
+  // sales closed, a per-person limit, a removed ticket type. Each now says what
+  // happened and what to change. Checked after capacity so the sold-out
+  // sentence keeps its precedence.
+  const byRaiseDetail = raiseMessageIn(detail);
+  if (byRaiseDetail !== undefined) return byRaiseDetail;
 
   const byToken = lookup(code);
   if (byToken !== undefined) return byToken;
@@ -337,6 +446,10 @@ export const freeCheckoutErrorMessage = (error: unknown): string => {
   for (const token of Object.keys(FREE_CHECKOUT_MESSAGE_BY_CODE)) {
     if (message.includes(token)) return FREE_CHECKOUT_MESSAGE_BY_CODE[token];
   }
+  // issue #2511 — same raise tokens, for a caller that never went through
+  // `invokeOrThrow` and so has no `detail` to read.
+  const byRaiseMessage = raiseMessageIn(message);
+  if (byRaiseMessage !== undefined) return byRaiseMessage;
 
   // #2337 — the arm the whole issue is about. An unidentified 409 still means
   // "the server refused because of the state of this sale", which is a real
@@ -344,5 +457,17 @@ export const freeCheckoutErrorMessage = (error: unknown): string => {
   // guest an unlimited event was full.
   if (httpStatusOf(error) === 409) return FREE_CHECKOUT_CONFLICT_MESSAGE;
 
-  return FREE_CHECKOUT_FAILED_MESSAGE;
+  // issue #2511 item 6 — THE ARM THAT USED TO LIE.
+  //
+  // No status, no token, no recognised message: a dropped connection, a
+  // timeout, a 5xx, a CORS failure. The request may have reached the server and
+  // created the reservation; only the REPLY is missing. Claiming "Nothing was
+  // reserved" here is unprovable, and it demonstrably caused harm - three
+  // guests were told it, changed their email, resubmitted and ended up holding
+  // two orders each (#2462).
+  //
+  // FREE_CHECKOUT_FAILED_MESSAGE keeps its "nothing was reserved" wording and
+  // stays reachable ONLY from refusals raised before any row can exist. It is
+  // no longer the catch-all.
+  return FREE_CHECKOUT_UNKNOWN_MESSAGE;
 };
