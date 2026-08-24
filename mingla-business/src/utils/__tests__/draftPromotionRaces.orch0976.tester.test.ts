@@ -35,7 +35,7 @@
  *
  * Append-only: NEW file; no existing test file modified. Runs under the stock
  * mingla-business/jest.config.cjs; wired into CI by
- * .github/workflows/orch-0976-draft-promotion-tests.yml.
+ * ci-batch:orch-0976-draft-promotion-tests.
  */
 
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";

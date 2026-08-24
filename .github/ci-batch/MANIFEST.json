@@ -6033,7 +6033,7 @@
           "commandId": "assert:issue-1022-theme-control-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#1022",
       "runtime": {
@@ -6156,7 +6156,7 @@
           "commandId": "assert:issue-1461-venue-current-brand-race-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#1461",
       "runtime": {
@@ -6275,7 +6275,7 @@
           "commandId": "assert:issue-1467-venue-submit-idempotency-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#1467",
       "runtime": {
@@ -6418,7 +6418,7 @@
           "commandId": "assert:issue-1485-web-missing-chunk-404-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#1485",
       "runtime": {
@@ -6568,7 +6568,7 @@
           "commandId": "assert:issue-1685-venue-draft-multi-tests:03"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#1685",
       "runtime": {
@@ -6891,7 +6891,7 @@
           "commandId": "assert:issue-1902-public-event-lifecycle-tests:11"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#1902",
       "runtime": {
@@ -7091,7 +7091,7 @@
           "commandId": "assert:issue-2013-ari-tenant-containment:05"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#2013",
       "runtime": {
@@ -7234,7 +7234,7 @@
           "commandId": "assert:issue-679-brand-follow-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#679",
       "runtime": {
@@ -7347,7 +7347,7 @@
           "commandId": "assert:issue-885-scanner-invite-loader-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#885",
       "runtime": {
@@ -7464,7 +7464,7 @@
           "commandId": "assert:issue-948-w1-enablers-tests:02"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#948",
       "runtime": {
@@ -7667,7 +7667,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#948",
       "runtime": {
@@ -7762,7 +7762,7 @@
           "commandId": "assert:orch-0976-draft-promotion-tests:01"
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3b-postgres-wave",
       "ownerIssue": "#976",
       "runtime": {
@@ -8004,8 +8004,8 @@
       "stem": "issue-1022-theme-control-tests",
       "extension": "yml",
       "ownerIssue": "#1022",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1022-theme-control-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
         "sourceSha256": "f4d461a534e2d0a0273e9ea60957605a4f6e9f832229f74cf9f695445ff655df",
@@ -9630,8 +9630,8 @@
       "stem": "issue-1461-venue-current-brand-race-tests",
       "extension": "yml",
       "ownerIssue": "#1461",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1461-venue-current-brand-race-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
         "sourceSha256": "30bff6582d3d775133eb9c1ffc997b8985f24fc6985fec7585a2ba0f1ce88785",
@@ -9769,8 +9769,8 @@
       "stem": "issue-1467-venue-submit-idempotency-tests",
       "extension": "yml",
       "ownerIssue": "#1467",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1467-venue-submit-idempotency-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
         "sourceSha256": "39c84667a17817587b4c1b66813b7a5d028e7ef33ec2bda47e04f1cc19763597",
@@ -9954,8 +9954,8 @@
       "stem": "issue-1485-web-missing-chunk-404-tests",
       "extension": "yml",
       "ownerIssue": "#1485",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1485-web-missing-chunk-404-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
         "sourceSha256": "056e93d8b5e3f24a51c0ca874192607da05a90b43565293ee9318efb004d749b",
@@ -11320,8 +11320,8 @@
       "stem": "issue-1685-venue-draft-multi-tests",
       "extension": "yml",
       "ownerIssue": "#1685",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1685-venue-draft-multi-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
         "sourceSha256": "b738a1749da6d5a22a440bf2c12c6d0a62bb97c7f9fc93b9a5f7bb5ea0056ab8",
@@ -12327,8 +12327,8 @@
       "stem": "issue-1902-public-event-lifecycle-tests",
       "extension": "yml",
       "ownerIssue": "#1902",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
         "sourceSha256": "ee303de029f2ff1abe129f42c8fbbcefca17287bfa8536cc60ee7c1f10c8b900",
@@ -13410,8 +13410,8 @@
       "stem": "issue-2013-ari-tenant-containment",
       "extension": "yml",
       "ownerIssue": "#2013",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2013-ari-tenant-containment.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
         "sourceSha256": "ac59c3d6b732d34db7a5ddb4b03d407330d9916619812da7b49a339e9911601c",
@@ -16000,8 +16000,8 @@
       "stem": "issue-679-brand-follow-tests",
       "extension": "yml",
       "ownerIssue": "#679",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-679-brand-follow-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
         "sourceSha256": "613f672bb1da1644a0de30695ea0dd5a4d24086c01dd0e9540e6e75dfb200e90",
@@ -16321,8 +16321,8 @@
       "stem": "issue-885-scanner-invite-loader-tests",
       "extension": "yml",
       "ownerIssue": "#885",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-885-scanner-invite-loader-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
         "sourceSha256": "931afbb3ca488138de1ed0b2c2f669f7d3359f66edf46cbaaa9651a1e6426a8b",
@@ -16468,8 +16468,8 @@
       "stem": "issue-948-w1-enablers-tests",
       "extension": "yml",
       "ownerIssue": "#948",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-948-w1-enablers-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
         "sourceSha256": "6cc978c1adb0635dfe2ed669745a2889d8e70a043c4ad88c581489753684bd66",
@@ -16526,8 +16526,8 @@
       "stem": "issue-948-w3-screens-copy-tests",
       "extension": "yml",
       "ownerIssue": "#948",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-948-w3-screens-copy-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
         "sourceSha256": "55a53aeece48e2c07a2915190c1a1c4861d24295518b537e1b07346000ca5e9f",
@@ -17024,8 +17024,8 @@
       "stem": "orch-0976-draft-promotion-tests",
       "extension": "yml",
       "ownerIssue": "#976",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/orch-0976-draft-promotion-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
         "sourceSha256": "74d7bc9877095f150b423373072bd7f4172428b1f0ed1df43f667c1600278ba1",
@@ -17195,7 +17195,7 @@
       "maximumLeafCount": 40,
       "currentExecutedLeaves": 37,
       "currentAbsentLeaves": 3,
-      "lifecycle": "shadow-active"
+      "lifecycle": "batched-historical"
     }
   },
   "executionClasses": [
@@ -18063,8 +18063,8 @@
     {
       "workflow": "issue-1022-theme-control-tests.yml",
       "ownerIssue": "#1022",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1022-theme-control-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-business/src/utils/__tests__/serverDraftEventMapper.storeEcho.tester.test.ts"
       ],
@@ -18444,8 +18444,8 @@
     {
       "workflow": "issue-1902-public-event-lifecycle-tests.yml",
       "ownerIssue": "#1902",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1902-public-event-lifecycle-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs"
@@ -18562,8 +18562,8 @@
     {
       "workflow": "issue-2013-ari-tenant-containment.yml",
       "ownerIssue": "#2013",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2013-ari-tenant-containment.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"
       ],
@@ -18808,8 +18808,8 @@
     {
       "workflow": "issue-885-scanner-invite-loader-tests.yml",
       "ownerIssue": "#885",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-885-scanner-invite-loader-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-business/src/utils/__tests__/issue_885_scanner_invite_actionable.adversarial.test.ts",
         "mingla-business/src/utils/__tests__/issue_885_scanner_invite_signed_out_actionable.implementor.test.ts"
@@ -18829,8 +18829,8 @@
     {
       "workflow": "issue-948-w1-enablers-tests.yml",
       "ownerIssue": "#948",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-948-w1-enablers-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-business/src/services/__tests__/issue_948_w1_enablers.implementor.test.ts",
         "mingla-business/src/services/__tests__/issue_948_w1_enablers.tester.test.ts"
@@ -18867,8 +18867,8 @@
     {
       "workflow": "orch-0976-draft-promotion-tests.yml",
       "ownerIssue": "#976",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/orch-0976-draft-promotion-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-business/jest.config.cjs",
         "mingla-business/scripts/ci/select-source-text-pins.mjs",

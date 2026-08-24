@@ -3817,7 +3817,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs",
       "kind": "file",
-      "enforcement": "external:issue-1902-public-event-lifecycle-tests.yml",
+      "enforcement": "ci-batch:issue-1902-public-event-lifecycle-tests",
       "invocation": "node",
       "modes": [
         "self-test",

@@ -22,7 +22,7 @@
  * Bare react-test-renderer harness (NO RTL / overlay — #976 SPEC §8 CI-truth
  * preamble), modeled on the investigation's runtime-proven probe. Runs under
  * the stock mingla-business/jest.config.cjs; wired into CI by
- * .github/workflows/orch-0976-draft-promotion-tests.yml.
+ * ci-batch:orch-0976-draft-promotion-tests.
  */
 
 import React from "react";

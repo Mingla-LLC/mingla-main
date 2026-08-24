@@ -97,8 +97,20 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
   assert.equal(manifest.legacyOrigins.length, 200);
   assert.equal(manifest.workflowProviders.length, 91);
-  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146);
-  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73);
+  // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] The cutover deletes exactly the twelve
+  // Phase 3B wrappers, so live-origin discovery and provider discovery each fall by
+  // exactly that wave's own size. Neither figure is re-chosen: the A9-SC1 146 and the
+  // A8-SC1 73 stay pinned, and the subtrahend is READ from the registry rather than
+  // typed, so a wave that grows or shrinks moves this assertion instead of silently
+  // agreeing with it.
+  const phase3bWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3b-postgres-wave");
+  const phase3bProviders = manifest.workflowProviders.filter((item) =>
+    phase3bWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
+  assert.equal(phase3bWrappers.length, 12);
+  assert.equal(phase3bProviders.length, 6);
+  assert.equal(phase3bWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
+  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146 - phase3bWrappers.length);
+  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73 - phase3bProviders.length);
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
@@ -114,7 +126,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
       .map((item) => [`${item.stem}.${item.extension}`, item.workflowMetadata]),
   );
   const metadata = (stem) => registered.get(`${stem}.${"yml"}`);
-  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146);
+  // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] Same subtraction, same reason: the twelve
+  // Phase 3B origins are batched-historical now, so they leave this non-batched
+  // inventory with their wrappers. The ratified 146 stays pinned; the wave's own
+  // size is read from the registry, never typed.
+  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146 - phase3bWrappers.length);
 
   const mixed = structuredClone(manifest);
   mixed.suites[23].lifecycle = "shadow-active";

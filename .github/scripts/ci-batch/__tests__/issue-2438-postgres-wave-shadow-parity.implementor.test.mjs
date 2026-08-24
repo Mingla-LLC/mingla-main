@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { canonicalizeShadowWrapperSource, discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, providerDiscoveryAccounting, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
+import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, providerDiscoveryAccounting, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
@@ -34,6 +34,22 @@ const PROVIDER_DIGEST = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21
 const PHASE3B_PROVIDER_NAMES = new Set(["issue-1022-theme-control-tests.yml","issue-1902-public-event-lifecycle-tests.yml","issue-2013-ari-tenant-containment.yml","issue-885-scanner-invite-loader-tests.yml","issue-948-w1-enablers-tests.yml","orch-0976-draft-promotion-tests.yml"]);
 const PHASE3B_PROVIDER_DIGEST = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
 
+// [TEST-MOD-APPROVED #2438 · SC-21] SC-21 deleted the twelve wrappers, so provider
+// discovery can no longer see the six Phase 3B records at all. There is deliberately
+// NO second frozen digest for the terminal state: a literal nobody can re-derive is
+// exactly the fragility this contract already rejected (Amendment 7 D-B, and the
+// orchestrator ruling on mutant 10). The single frozen seal above is RECONSTRUCTED
+// at runtime — what terminal discovery still sees, plus the six records the registry
+// carries for the deleted wrappers, re-sorted exactly as discovery sorts — which is
+// the same derivation the production validator performs.
+const carriedPhase3bProviders = (root) =>
+  JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"))
+    .workflowProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))
+    .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }))
+    .sort((a, b) => a.workflow.localeCompare(b.workflow));
+const reconstructShadowAuthority = (root, discovered) =>
+  [...discovered, ...carriedPhase3bProviders(root)].sort((a, b) => a.workflow.localeCompare(b.workflow));
+
 // [#2438] CI runners carry NO global git identity. Every invocation supplies its
 // own via -c, so no callsite here can depend on ambient config: relying on it is
 // green on a developer machine and `fatal: empty ident name` on a runner, which
@@ -51,7 +67,21 @@ function assertWave(value) {
   const suites = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
   assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 67); assert.equal(value.commandCapabilities.commands.length, 194); assert.equal(value.workflowProviders.length, 91);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
-  assert.deepEqual([...new Set(suites.map((suite) => suite.lifecycle))], ["shadow-active"]);
+  // [TEST-MOD-APPROVED #2438 · SC-21] Terminal, and atomic on all three carriers of
+  // the lifecycle: the suites, the wave header, and the legacy-origin dispositions.
+  assert.deepEqual([...new Set(suites.map((suite) => suite.lifecycle))], ["batched-historical"]);
+  assert.equal(value.migrationWaves["phase3b-postgres-wave"].lifecycle, "batched-historical");
+  assert.deepEqual([...new Set(value.legacyOrigins
+    .filter((origin) => origin.migrationWave === "phase3b-postgres-wave")
+    .map((origin) => origin.disposition))], ["batched-historical"]);
+  // Exactly the frozen six providers transitioned, the record total did not move,
+  // and each now names the batch provider rather than a deleted wrapper.
+  const phase3bRecords = value.workflowProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
+  assert.equal(phase3bRecords.length, PHASE3B_PROVIDER_NAMES.size);
+  assert.deepEqual([...new Set(phase3bRecords.map((item) => item.transition))], ["batched-provider"]);
+  assert.deepEqual([...new Set(phase3bRecords.map((item) => item.providerWorkflow))], [".github/workflows/ci-batch.yml"]);
+  const transitions = value.workflowProviders.reduce((acc, item) => ({ ...acc, [item.transition]: (acc[item.transition] || 0) + 1 }), {});
+  assert.deepEqual(transitions, { "retained-live-provider": 67, "batched-provider": 24 });
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
   assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 23);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
@@ -125,13 +155,25 @@ function canonicalReconciliation(value, host) {
   return { decision, primary, secondary };
 }
 
-test("shadow registry has exact identities, counts, digests, and marker-stripped bytes", () => {
+test("terminal registry has exact identities, counts, digests, and the twelve wrappers absent", () => {
   const value = manifest(); assertWave(value); assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
+  // [TEST-MOD-APPROVED #2438 · SC-21] The twelve wrappers are DELETED, so their bytes
+  // can no longer be read from disk. The twelve frozen pre-shadow source seals are
+  // NOT abandoned with them: the registry carries each one as its suite's immutable
+  // `shadowContract.workflowSha256`, so the same twelve literals stay pinned against
+  // the provenance the deletion left behind, and each file's absence is asserted.
+  const workflowDir = path.join(ROOT, ".github/workflows");
   for (const [name, expected] of Object.entries(WRAPPERS)) {
-    const source = fs.readFileSync(path.join(ROOT, ".github/workflows", name), "utf8");
-    assert.equal(source.split("\n").filter((line) => line === MARKER).length, 1); assert.equal(source.startsWith(`${MARKER}\n`), true);
-    assert.equal(digest(canonicalizeShadowWrapperSource(name, source)), expected);
+    assert.equal(fs.existsSync(path.join(workflowDir, name)), false, `${name} must be absent at terminal`);
+    const suite = value.suites.find((item) => path.basename(item.origin) === name);
+    assert.ok(suite, name);
+    assert.equal(suite.shadowContract.workflowSha256, expected, `${name} frozen pre-shadow source seal`);
   }
+  // SC-10: the marker disappeared with the wrappers and survives in no workflow.
+  for (const entry of fs.readdirSync(workflowDir)) {
+    assert.equal(fs.readFileSync(path.join(workflowDir, entry), "utf8").includes(MARKER), false, `${entry} still carries the #2438 marker`);
+  }
+  // SC-1: the sibling that merely shares a filename stem is untouched.
   assert.equal(digest(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad");
 });
 
@@ -143,9 +185,11 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
     fs.rmSync(path.join(temp, RESERVED_TESTER), { force: true }); git(temp, ["add", "-A"]);
     if (git(temp, ["status", "--porcelain"])) git(temp, ["commit", "-qm", "tester absent"]);
     const absent = providerSnapshot(temp); const absentValue = JSON.parse(absent);
-    assert.equal(absentValue.providers.length, 73); assert.equal(digest(absentValue.providers), PROVIDER_DIGEST); assert.deepEqual(absentValue.errors, []);
-    const phase3bProviders = absentValue.providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
-    assert.equal(phase3bProviders.length, 6); assert.equal(digest(phase3bProviders), PHASE3B_PROVIDER_DIGEST);
+    // [TEST-MOD-APPROVED #2438 · SC-21] Terminal authority, DERIVED not re-pinned.
+    assert.equal(absentValue.providers.length, 73 - PHASE3B_PROVIDER_NAMES.size); assert.deepEqual(absentValue.errors, []);
+    assert.equal(absentValue.providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 0);
+    assert.equal(digest(reconstructShadowAuthority(temp, absentValue.providers)), PROVIDER_DIGEST);
+    assert.equal(digest(carriedPhase3bProviders(temp)), PHASE3B_PROVIDER_DIGEST);
 
     const testerPath = path.join(temp, RESERVED_TESTER); fs.mkdirSync(path.dirname(testerPath), { recursive: true });
     const allWrapperNames = Object.keys(WRAPPERS);
@@ -172,16 +216,49 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
     git(temp, ["rm", "-q", RESERVED_TESTER]); git(temp, ["commit", "-qm", "tester absent again"]); assert.equal(providerSnapshot(temp), absent);
     assert.equal(git(temp, ["ls-files", RESERVED_TESTER]), "", "the removal must really leave the index");
 
+    // [TEST-MOD-APPROVED #2438 · SC-21] The old drift probes mutated the exact literal
+    // `issue-1022-theme-control-tests.yml`, which SC-12 has now repointed out of every
+    // eligible source. Both directions are preserved and re-derived from whatever the
+    // terminal tree actually references, so neither can rot into a literal again.
     const eligible = "mingla-business/src/utils/__tests__/serverDraftEventMapper.storeEcho.tester.test.ts";
     const eligiblePath = path.join(temp, eligible); const original = fs.readFileSync(eligiblePath, "utf8");
-    fs.writeFileSync(eligiblePath, original.replaceAll("issue-1022-theme-control-tests.yml", "issue-1022-theme-control-test.yml"));
-    let changed = providerSnapshot(temp); assert.notEqual(changed, absent); assert.match(changed, /authority drifted|inventory drifted|stale external provider/);
-    fs.writeFileSync(eligiblePath, `${original}\nissue-948-w3-screens-copy-tests.yml\n`);
-    changed = providerSnapshot(temp); assert.notEqual(changed, absent); assert.match(changed, /authority drifted|externally referenced workflow provider omitted/);
+    // (a) LOSING a genuine reference ⇒ RED. Pick a live single-source provider and
+    //     mangle the workflow stem so discovery can no longer resolve it.
+    const soleReference = absentValue.providers.find((item) => item.referenceFiles.length === 1
+      && !isNonAuthoritativeProviderEvidence(item.referenceFiles[0]));
+    assert.ok(soleReference, "a single-source live provider is needed to attack the lost-reference direction");
+    const solePath = path.join(temp, soleReference.referenceFiles[0]);
+    const soleOriginal = fs.readFileSync(solePath, "utf8");
+    fs.writeFileSync(solePath, soleOriginal.replaceAll(soleReference.workflow, soleReference.workflow.replace(/\.ya?ml$/, "-retired.yml")));
+    let changed = providerSnapshot(temp); assert.notEqual(changed, absent);
+    assert.match(changed, /authority drifted|inventory drifted|stale external provider/);
+    fs.writeFileSync(solePath, soleOriginal); assert.equal(providerSnapshot(temp), absent);
+    // (b) GAINING an unregistered reference ⇒ RED. Derived: a live workflow that no
+    //     registered provider record claims.
+    const registeredNames = new Set(absentValue.providers.map((item) => item.workflow));
+    const unreferenced = fs.readdirSync(path.join(temp, ".github/workflows"))
+      .find((name) => /\.ya?ml$/.test(name) && !registeredNames.has(name));
+    assert.ok(unreferenced, "an unreferenced live workflow is needed to attack the omitted-provider direction");
+    fs.writeFileSync(eligiblePath, `${original}\n// ${unreferenced}\n`);
+    changed = providerSnapshot(temp); assert.notEqual(changed, absent);
+    assert.match(changed, /authority drifted|externally referenced workflow provider omitted/);
     fs.writeFileSync(eligiblePath, original); assert.equal(providerSnapshot(temp), absent);
-
-    const fixtureSource = fs.readFileSync(path.join(temp, ".github/scripts/ci-batch/__tests__/fixtures/issue-2438-cost-baseline-v1.jsonl"), "utf8");
-    fs.writeFileSync(eligiblePath, `${original}\n${fixtureSource}`); changed = providerSnapshot(temp); assert.notEqual(changed, absent); assert.match(changed, /authority drifted/);
+    // (c) A retired wrapper name re-added to an eligible source is INERT at terminal:
+    //     the file is gone, so discovery filters it before it can become a record.
+    //     That is precisely why the retired-reference inventory is a separate,
+    //     EXECUTED guard below rather than something this subtest could ever catch.
+    fs.writeFileSync(eligiblePath, `${original}\n// issue-1022-theme-control-tests.yml\n`);
+    assert.equal(providerSnapshot(temp), absent);
+    fs.writeFileSync(eligiblePath, original); assert.equal(providerSnapshot(temp), absent);
+    // (d) The fixture role exclusion still does real work, proven with ONE literal in
+    //     both directions: red from an eligible source, inert from a fixture path.
+    const fixtureProbe = ".github/scripts/ci-batch/__tests__/fixtures/issue-2438-role-probe.jsonl";
+    assert.equal(isNonAuthoritativeProviderEvidence(fixtureProbe), true);
+    fs.writeFileSync(path.join(temp, fixtureProbe), `${unreferenced}\n`);
+    git(temp, ["add", fixtureProbe]); git(temp, ["commit", "-qm", "fixture role probe"]);
+    assert.equal(providerSnapshot(temp), absent, "a fixture must never move provider authority");
+    git(temp, ["rm", "-q", fixtureProbe]); git(temp, ["commit", "-qm", "fixture role probe removed"]);
+    assert.equal(providerSnapshot(temp), absent);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
@@ -375,9 +452,11 @@ test("provider discovery work accounting stays inside its reviewed count bounds"
   const providers = discoverWorkflowProviders(ROOT);
   const accounting = providerDiscoveryAccounting();
   // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.
-  assert.equal(providers.length, 73); assert.equal(digest(providers), PROVIDER_DIGEST);
-  assert.equal(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 6);
-  assert.equal(digest(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))), PHASE3B_PROVIDER_DIGEST);
+  // [TEST-MOD-APPROVED #2438 · SC-21] Terminal authority, derived from the one seal.
+  assert.equal(providers.length, 73 - PHASE3B_PROVIDER_NAMES.size);
+  assert.equal(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 0);
+  assert.equal(digest(reconstructShadowAuthority(ROOT, providers)), PROVIDER_DIGEST);
+  assert.equal(digest(carriedPhase3bProviders(ROOT)), PHASE3B_PROVIDER_DIGEST);
   // (a) exactly one tracked-file listing per discovery call.
   assert.equal(accounting.trackedListInvocations, 1, "discovery must list tracked files exactly once");
   // (b) every eligible path is accounted for, and the reviewed fact that nothing
@@ -437,19 +516,33 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
     git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
     const before = discoverWorkflowProviders(temp);
-    assert.equal(before.length, 73); assert.equal(digest(before), PROVIDER_DIGEST);
+    // [TEST-MOD-APPROVED #2438 · SC-21] The terminal baseline is MEASURED, then bound
+    // back to the one frozen seal by reconstruction — never re-pinned as a second
+    // literal. Everything below is expressed relative to that measured baseline.
+    const BASE = before.length; const BASE_DIGEST = digest(before);
+    assert.equal(BASE, 73 - PHASE3B_PROVIDER_NAMES.size);
+    assert.equal(digest(reconstructShadowAuthority(temp, before)), PROVIDER_DIGEST);
 
     // Commit a brand-new eligible source that names a real live workflow.
+    // [TEST-MOD-APPROVED #2438 · SC-21] The probe MUST name a workflow that is still
+    // live. It used to name issue-948-w3-screens-copy-tests.yml, which the cutover
+    // deleted: discovery filters an absent workflow, so that probe would now move
+    // nothing and every assertion in this subtest would pass vacuously. Derived at
+    // runtime from a live workflow no provider record claims.
+    const registeredNames = new Set(before.map((item) => item.workflow));
+    const probeWorkflow = fs.readdirSync(path.join(temp, ".github/workflows"))
+      .find((name) => /\.ya?ml$/.test(name) && !registeredNames.has(name));
+    assert.ok(probeWorkflow, "an unreferenced live workflow is required for a non-vacuous scope probe");
     const probe = "mingla-business/src/utils/__tests__/issue2438ScopeProbe.probe.ts";
-    fs.writeFileSync(path.join(temp, probe), `export const provider = "issue-948-w3-screens-copy-tests.yml";\n`);
+    fs.writeFileSync(path.join(temp, probe), `export const provider = "${probeWorkflow}";\n`);
     git(temp, ["add", probe]); git(temp, ["commit", "-qm", "scope probe"]);
 
     // 1. HONEST, UNSCOPED discovery observes the commit. This is the assertion a
     //    scope around a mutating region breaks, and it is why entering one here
     //    is forbidden (mutant 13).
     const honest = discoverWorkflowProviders(temp);
-    assert.equal(honest.length, 74, "unscoped discovery must observe a newly tracked provider source");
-    assert.notEqual(digest(honest), PROVIDER_DIGEST, "unscoped discovery digest must move when the corpus moves");
+    assert.equal(honest.length, BASE + 1, "unscoped discovery must observe a newly tracked provider source");
+    assert.notEqual(digest(honest), BASE_DIGEST, "unscoped discovery digest must move when the corpus moves");
     assert.equal(honest.some((item) => item.referenceFiles.includes(probe)), true);
 
     // 2. The scope genuinely hides it, so assertion 1 is not vacuous. A blind
@@ -457,17 +550,17 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     git(temp, ["rm", "-q", probe]); git(temp, ["commit", "-qm", "scope probe removed"]);
     const blind = withTrackedFilesScope(temp, () => {
       const first = discoverWorkflowProviders(temp);
-      fs.writeFileSync(path.join(temp, probe), `export const provider = "issue-948-w3-screens-copy-tests.yml";\n`);
+      fs.writeFileSync(path.join(temp, probe), `export const provider = "${probeWorkflow}";\n`);
       git(temp, ["add", probe]); git(temp, ["commit", "-qm", "scope probe again"]);
       return { first, second: discoverWorkflowProviders(temp) };
     });
-    assert.equal(blind.first.length, 73);
-    assert.equal(blind.second.length, 73, "an entered scope must be shown to hide index mutations");
-    assert.equal(digest(blind.second), PROVIDER_DIGEST);
+    assert.equal(blind.first.length, BASE);
+    assert.equal(blind.second.length, BASE, "an entered scope must be shown to hide index mutations");
+    assert.equal(digest(blind.second), BASE_DIGEST);
 
     // 3. Exiting restores truth. Cached-forever would keep reporting 73.
     const afterExit = discoverWorkflowProviders(temp);
-    assert.equal(afterExit.length, 74, "exiting the scope must restore uncached truth");
+    assert.equal(afterExit.length, BASE + 1, "exiting the scope must restore uncached truth");
     assert.equal(digest(afterExit), digest(honest));
 
     // 4. Inside a scope over an immutable tree the results are identical to the
@@ -476,7 +569,7 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     const spawnsBefore = trackedFilesProcessInvocations();
     const scoped = withTrackedFilesScope(temp, () => [discoverWorkflowProviders(temp), discoverWorkflowProviders(temp), discoverWorkflowProviders(temp)]);
     assert.equal(trackedFilesProcessInvocations() - spawnsBefore, 1);
-    for (const snapshot of scoped) { assert.equal(snapshot.length, 73); assert.equal(digest(snapshot), PROVIDER_DIGEST); }
+    for (const snapshot of scoped) { assert.equal(snapshot.length, BASE); assert.equal(digest(snapshot), BASE_DIGEST); }
 
     // 5. The scope stack unwinds even when the body throws.
     assert.throws(() => withTrackedFilesScope(temp, () => { throw new Error("boom"); }), /boom/);
@@ -486,10 +579,21 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });
 
-// [#2438 SC-13/SC-17] The SC-21 terminal branch must be EXECUTED by a test, not
-// merely written. Before this rework the validator threw an unhandled
-// TypeError reading `pathScope` of undefined the moment a wrapper was gone.
+// [#2438 SC-13/SC-17/SC-21] The terminal branch is the LIVE state now, so this
+// contract is executed against the real cutover rather than a synthesised fixture.
 // Nothing here mutates the repository: every state is built in a temp clone.
+//
+// [TEST-MOD-APPROVED #2438] What changed at cutover and why. Before SC-21 this
+// subtest read the twelve wrapper files, stashed their bytes, and drove the tree
+// shadow -> terminal -> shadow. Those bytes no longer exist on any tree, so the
+// direction is inverted: the clone IS terminal, and the shadow side is proven by
+// the assertion that actually protects it — a registry that still DECLARES
+// shadow-active while the wrappers are gone must be red. Every attack the old
+// version executed is preserved: restored terminal wrapper, mixed lifecycle,
+// third lifecycle form, wave header disagreeing with its suites, and all five
+// properties of the terminal provider derivation. One attack is ADDED, because
+// only the cutover can express it: a provider record left at
+// retained-live-provider after its wrapper is deleted.
 test("SC-21 terminal state is executable and fail-closed in both directions", () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-terminal-state-")));
   const SIBLING = ".github/workflows/issue-679-brand-follows-rls-proof.yml";
@@ -514,111 +618,118 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     // this contract is proven against the code under review, not against HEAD.
     fs.cpSync(path.join(ROOT, ".github/scripts"), path.join(temp, ".github/scripts"), { recursive: true });
     fs.cpSync(path.join(ROOT, ".github/ci-batch"), path.join(temp, ".github/ci-batch"), { recursive: true });
-    const shadow = JSON.parse(fs.readFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), "utf8"));
-    const terminal = structuredClone(shadow);
-    for (const suite of terminal.suites) if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = "batched-historical";
-    for (const origin of terminal.legacyOrigins) if (origin.migrationWave === "phase3b-postgres-wave") {
-      origin.disposition = "batched-historical"; origin.providerWorkflow = ".github/workflows/ci-batch.yml"; delete origin.workflowMetadata;
-    }
-    terminal.migrationWaves["phase3b-postgres-wave"].lifecycle = "batched-historical";
-    for (const provider of terminal.workflowProviders) if (WRAPPERS[provider.workflow]) {
-      provider.transition = "batched-provider"; provider.providerWorkflow = ".github/workflows/ci-batch.yml";
-    }
-    const stash = new Map(wrapperNames.map((name) => [name, fs.readFileSync(wrapperPath(name))]));
+    const terminal = JSON.parse(fs.readFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), "utf8"));
     const writeManifest = (value) => fs.writeFileSync(path.join(temp, ".github/ci-batch/MANIFEST.json"), `${JSON.stringify(value, null, 2)}\n`);
-    const removeWrappers = (names) => { for (const name of names) fs.rmSync(wrapperPath(name), { force: true }); };
-    const restoreWrappers = () => { for (const [name, bytes] of stash) fs.writeFileSync(wrapperPath(name), bytes); };
+    const withPhase3b = (mutate) => { const copy = structuredClone(terminal); mutate(copy); writeManifest(copy); return validateRegistry(copy, { root: temp }); };
+    const restoreTerminal = () => { writeManifest(terminal); assert.deepEqual(validateRegistry(terminal, { root: temp }), []); };
 
-    // 1. SHADOW — 12 wrappers live, 12 shadow-active. Unchanged behaviour.
-    assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
-    for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at shadow`);
-    siblingIsIntact();
-
-    // 2. TERMINAL — 12 batched-historical, all 12 wrappers absent. Must PASS,
-    //    and must reach a clean verdict rather than throwing.
-    writeManifest(terminal); removeWrappers(wrapperNames);
+    // 1. TERMINAL — 12 batched-historical, all 12 wrappers absent. This is the live
+    //    state; it must PASS and must reach a clean verdict rather than throwing.
+    for (const name of wrapperNames) assert.equal(fs.existsSync(wrapperPath(name)), false, `${name} must be absent`);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "terminal state must validate clean");
     for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must pass at terminal`);
     siblingIsIntact();
 
-    // 3. RESTORED TERMINAL WRAPPER — a wrapper put back at terminal is the error.
+    // 2. RESTORED TERMINAL WRAPPER — a wrapper put back is the error, whatever its
+    //    bytes: the validator owns this, and neither guard is coupled to the file.
     const restored = wrapperNames[0];
-    fs.writeFileSync(wrapperPath(restored), stash.get(restored));
+    fs.writeFileSync(wrapperPath(restored), "name: restored\non: workflow_dispatch\njobs: {}\n");
     const restoredErrors = validateRegistry(terminal, { root: temp });
     assert.notDeepEqual(restoredErrors, []);
     assert.match(restoredErrors.join("\n"), new RegExp(`terminal wrapper ${restored.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} must be absent`));
+    for (const relative of GUARDS) assert.equal(guard(relative), 0, `${relative} must NOT re-couple to ${restored}`);
     fs.rmSync(wrapperPath(restored));
+    assert.deepEqual(validateRegistry(terminal, { root: temp }), []);
     siblingIsIntact();
 
-    // 4. MIXED LIFECYCLE — 11 terminal + 1 shadow is never a valid wave.
-    const mixed = structuredClone(terminal);
-    mixed.suites.find((suite) => suite.migrationWave === "phase3b-postgres-wave").lifecycle = "shadow-active";
-    writeManifest(mixed);
-    assert.notDeepEqual(validateRegistry(mixed, { root: temp }), []);
+    // 3. MIXED LIFECYCLE — 11 terminal + 1 shadow is never a valid wave.
+    assert.notDeepEqual(withPhase3b((copy) => {
+      copy.suites.find((suite) => suite.migrationWave === "phase3b-postgres-wave").lifecycle = "shadow-active";
+    }), []);
+    restoreTerminal();
 
-    // 5. PREMATURE DELETION — a wrapper deleted while the wave is still shadow.
-    writeManifest(shadow); restoreWrappers();
-    const premature = wrapperNames[11];
-    fs.rmSync(wrapperPath(premature));
-    const prematureErrors = validateRegistry(shadow, { root: temp });
-    assert.notDeepEqual(prematureErrors, []);
-    assert.match(prematureErrors.join("\n"), /shadow wrapper .* (must remain live until cutover|missing)/);
-    fs.writeFileSync(wrapperPath(premature), stash.get(premature));
-    siblingIsIntact();
+    // 4. DECLARED SHADOW WITH THE WRAPPERS GONE — the shadow-side guard, and the
+    //    only form of it the terminal tree can still express. A registry that
+    //    claims the wrappers are live when they are deleted must be red.
+    const declaredShadow = withPhase3b((copy) => {
+      for (const suite of copy.suites) if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = "shadow-active";
+      for (const origin of copy.legacyOrigins) if (origin.migrationWave === "phase3b-postgres-wave") origin.disposition = "shadow-active";
+      copy.migrationWaves["phase3b-postgres-wave"].lifecycle = "shadow-active";
+    });
+    assert.notDeepEqual(declaredShadow, []);
+    assert.match(declaredShadow.join("\n"), /shadow wrapper .* (must remain live until cutover|missing)/);
+    restoreTerminal();
 
-    // 6. A third lifecycle form is rejected outright, and a terminal wave header
-    //    over shadow suites is rejected too — the header must agree with them.
-    const forged = structuredClone(shadow);
-    for (const suite of forged.suites) if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = "batched-active";
-    writeManifest(forged);
-    assert.match(validateRegistry(forged, { root: temp }).join("\n"), /one atomic shadow-active or batched-historical lifecycle/);
-    const headerDrift = structuredClone(shadow);
-    headerDrift.migrationWaves["phase3b-postgres-wave"].lifecycle = "batched-historical";
-    writeManifest(headerDrift);
-    assert.match(validateRegistry(headerDrift, { root: temp }).join("\n"), /Phase 3B wave count contract drifted/);
+    // 5. WRONG PROVIDER TRANSITION — a Phase 3B record left retained-live after its
+    //    wrapper is deleted, and the same record pointed at a deleted wrapper.
+    const wrongTransition = withPhase3b((copy) => {
+      copy.workflowProviders.find((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).transition = "retained-live-provider";
+    });
+    assert.notDeepEqual(wrongTransition, []);
+    assert.match(wrongTransition.join("\n"), /retained provider must remain the exact live historical wrapper|stale external provider registration/);
+    const wrongProviderWorkflow = withPhase3b((copy) => {
+      const record = copy.workflowProviders.find((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
+      record.providerWorkflow = `.github/workflows/${record.workflow}`;
+    });
+    assert.notDeepEqual(wrongProviderWorkflow, []);
+    assert.match(wrongProviderWorkflow.join("\n"), /batched provider requires exact batch provider and absent historical wrapper/);
+    // The same drift on the legacy-origin disposition is red too.
+    assert.match(withPhase3b((copy) => {
+      const origin = copy.legacyOrigins.find((item) => item.migrationWave === "phase3b-postgres-wave");
+      origin.providerWorkflow = `.github/workflows/${origin.stem}.${origin.extension}`;
+    }).join("\n"), /cutover requires the historical wrapper absent and the batch provider exact/);
+    restoreTerminal();
+
+    // 6. A third lifecycle form is rejected outright, and a shadow wave header over
+    //    terminal suites is rejected too — the header must agree with them.
+    assert.match(withPhase3b((copy) => {
+      for (const suite of copy.suites) if (suite.migrationWave === "phase3b-postgres-wave") suite.lifecycle = "batched-active";
+    }).join("\n"), /one atomic shadow-active or batched-historical lifecycle/);
+    assert.match(withPhase3b((copy) => {
+      copy.migrationWaves["phase3b-postgres-wave"].lifecycle = "shadow-active";
+    }).join("\n"), /Phase 3B wave count contract drifted/);
+    restoreTerminal();
     siblingIsIntact();
 
     // 6b. [#2438 SC-13] The TERMINAL provider authority is a runtime DERIVATION
     //     from the one frozen shadow seal, never a second hard-coded digest.
     //     All five properties the derivation must satisfy are attacked here.
-    writeManifest(terminal); removeWrappers(wrapperNames);
     const validator = fs.readFileSync(path.join(temp, ".github/scripts/ci-batch/validate-manifest-v2.mjs"), "utf8");
     // (i) computed at runtime — exactly one frozen provider seal exists in the
     //     validator, and no second 64-hex constant stands in for the terminal one.
     assert.equal(validator.split(PROVIDER_DIGEST).length - 1, 1, "the shadow authority must be the single frozen provider seal");
-    assert.equal(validator.includes("8d318cbe4007b33c447286fb41fa18a87310ee693df52a25e0d83f121a52c453"), false,
+    const terminalDiscovery = discoverWorkflowProviders(temp);
+    const terminalDigest = digest(terminalDiscovery);
+    assert.equal(terminalDiscovery.length, 73 - PHASE3B_PROVIDER_NAMES.size);
+    assert.notEqual(terminalDigest, PROVIDER_DIGEST);
+    assert.equal(validator.includes(terminalDigest), false,
       "a hard-coded terminal provider digest is forbidden: the terminal value must be derived");
     assert.match(validator, /reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256/,
       "the terminal branch must check its reconstruction against the frozen shadow seal");
-    // (ii) a fabricated substitute for any carried record ⇒ RED.
-    const fabricated = structuredClone(terminal);
-    fabricated.workflowProviders.find((item) => WRAPPERS[item.workflow]).referenceFiles = ["README.md"];
-    assert.match(validateRegistry(fabricated, { root: temp }).join("\n"), /workflow provider authority drifted/);
-    // (iii) dropping one of the six subtracted records ⇒ RED.
-    const dropped = structuredClone(terminal);
-    const victim = dropped.workflowProviders.findIndex((item) => WRAPPERS[item.workflow]);
-    dropped.workflowProviders.splice(victim, 1);
-    assert.match(validateRegistry(dropped, { root: temp }).join("\n"), /workflow provider authority drifted/);
-    // (iii-b) subtracting a SEVENTH record ⇒ RED. Re-label a non-Phase-3B
-    //         provider as one of the twelve wrapper names.
-    const seventh = structuredClone(terminal);
-    const outsider = seventh.workflowProviders.find((item) => !WRAPPERS[item.workflow]);
-    outsider.workflow = wrapperNames[3];
-    assert.notDeepEqual(validateRegistry(seventh, { root: temp }), []);
-    // (iv) shadow behaviour byte-identical — still exactly 73 / the frozen seal.
-    writeManifest(shadow); restoreWrappers();
-    const shadowProviders = discoverWorkflowProviders(temp);
-    assert.equal(shadowProviders.length, 73); assert.equal(digest(shadowProviders), PROVIDER_DIGEST);
-    assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
+    // (ii) the derivation actually reproduces the one frozen seal.
+    assert.equal(digest(reconstructShadowAuthority(temp, terminalDiscovery)), PROVIDER_DIGEST);
+    // (iii) a fabricated substitute for any carried record ⇒ RED.
+    assert.match(withPhase3b((copy) => {
+      copy.workflowProviders.find((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).referenceFiles = ["README.md"];
+    }).join("\n"), /workflow provider authority drifted/);
+    // (iv) dropping one of the six subtracted records ⇒ RED.
+    assert.match(withPhase3b((copy) => {
+      copy.workflowProviders.splice(copy.workflowProviders.findIndex((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)), 1);
+    }).join("\n"), /workflow provider authority drifted|workflowProviders must contain exactly/);
+    // (iv-b) subtracting a SEVENTH record ⇒ RED. Re-label a non-Phase-3B provider
+    //        as one of the twelve wrapper names.
+    assert.notDeepEqual(withPhase3b((copy) => {
+      copy.workflowProviders.find((item) => !PHASE3B_PROVIDER_NAMES.has(item.workflow)).workflow = wrapperNames[3];
+    }), []);
+    restoreTerminal();
     // (v) fails CLOSED when the shadow authority itself drifts: with a genuine
     //     corpus change at terminal, the reconstruction cannot hash back to the
     //     seal, so it reds rather than silently accepting the new reality.
-    writeManifest(terminal); removeWrappers(wrapperNames);
     //     The probe must name a workflow that is still LIVE at terminal, so the
     //     drift is real: naming a deleted Phase 3B wrapper would be filtered out
     //     by workflowNames and change nothing, which is correct behaviour.
     const probe = "mingla-business/src/utils/__tests__/issue2438TerminalAuthorityProbe.probe.ts";
-    const liveProvider = discoverWorkflowProviders(temp).find((item) => !WRAPPERS[item.workflow]).workflow;
+    const liveProvider = terminalDiscovery.find((item) => !PHASE3B_PROVIDER_NAMES.has(item.workflow)).workflow;
     fs.writeFileSync(path.join(temp, probe), `export const provider = "${liveProvider}";\n`);
     git(temp, ["add", probe]); git(temp, ["commit", "-qm", "terminal authority probe"]);
     assert.match(validateRegistry(terminal, { root: temp }).join("\n"), /workflow provider authority drifted/,
@@ -626,13 +737,66 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     git(temp, ["rm", "-q", probe]); git(temp, ["commit", "-qm", "terminal authority probe removed"]);
     assert.deepEqual(validateRegistry(terminal, { root: temp }), [], "removing the drift must restore the terminal PASS");
     siblingIsIntact();
+  } finally { fs.rmSync(temp, { recursive: true, force: true }); }
+});
 
-    // 7. Restore shadow and prove the tree is exactly where it started.
-    writeManifest(shadow); restoreWrappers();
-    assert.deepEqual(validateRegistry(shadow, { root: temp }), []);
-    for (const [name, expected] of Object.entries(WRAPPERS)) {
-      assert.equal(digest(canonicalizeShadowWrapperSource(name, fs.readFileSync(wrapperPath(name), "utf8"))), expected);
+// [#2438 SC-12/SC-21] The retired-reference inventory. Deleting the twelve wrappers
+// silently turns every surviving mention of their filenames into a pointer at
+// nothing: provider discovery filters them (the file is gone), so NOTHING else in
+// this repository reds on one. This is the guard that does, and it is exact in both
+// directions — a new stale reference reds, and so does removing a carrier that is
+// still doing real work.
+test("no retired wrapper filename survives outside its authorised historical carriers", () => {
+  // Exactly the roles allowed to carry a retired filename after SC-21:
+  //   - the registry itself, whose `origin` provenance IS the historical filename;
+  //   - the validator's frozen deletion allowlist, which names the twelve to keep
+  //     them absent;
+  //   - this file's frozen pre-shadow source seals;
+  //   - the #2013 guard's registry `origin` identity;
+  //   - non-authoritative evidence (frozen cost baseline, wave-shadow tester
+  //     reconstructions), recognised BY ROLE via the production classifier rather
+  //     than by naming a tester-owned path, which A4-SC1 forbids.
+  const SELF = ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs";
+  const CARRIERS = new Set([
+    ".github/ci-batch/MANIFEST.json",
+    ".github/scripts/ci-batch/validate-manifest-v2.mjs",
+    ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
+    SELF,
+  ]);
+  const names = Object.keys(WRAPPERS);
+  const scan = (root) => {
+    const tracked = execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8" }).split("\0").filter(Boolean);
+    const offenders = [];
+    for (const relative of tracked) {
+      if (CARRIERS.has(relative) || isNonAuthoritativeProviderEvidence(relative)) continue;
+      let source;
+      try { source = fs.readFileSync(path.join(root, relative), "utf8"); } catch { continue; }
+      if (!source.includes(".yml")) continue;
+      if (names.some((name) => source.includes(name))) offenders.push(relative);
     }
-    siblingIsIntact();
+    return offenders.sort();
+  };
+  assert.deepEqual(scan(ROOT), [], "a retired wrapper filename survives outside its authorised carriers");
+
+  // Fails-on-revert, executed: one stale reference planted in an ordinary tracked
+  // file is red, and removing it is green again.
+  const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-stale-reference-")));
+  try {
+    execFileSync("git", ["clone", "-q", "--no-hardlinks", ROOT, temp]);
+    git(temp, ["config", "user.email", "ci@example.invalid"]); git(temp, ["config", "user.name", "CI"]);
+    assert.deepEqual(scan(temp), []);
+    const victim = "mingla-business/src/utils/__tests__/serverDraftEventMapper.storeEcho.tester.test.ts";
+    const victimPath = path.join(temp, victim); const original = fs.readFileSync(victimPath, "utf8");
+    fs.writeFileSync(victimPath, `${original}\n// wired into CI by ${names[0]}\n`);
+    assert.deepEqual(scan(temp), [victim], "a stale retired-filename reference must be detected");
+    fs.writeFileSync(victimPath, original);
+    assert.deepEqual(scan(temp), []);
+    // The classifier is doing the exclusion, not a hard-coded tester path: the same
+    // literal inside a fixture is authorised evidence, not a stale reference.
+    const fixture = ".github/scripts/ci-batch/__tests__/fixtures/issue-2438-stale-reference-probe.jsonl";
+    assert.equal(isNonAuthoritativeProviderEvidence(fixture), true);
+    fs.writeFileSync(path.join(temp, fixture), `${names[0]}\n`);
+    git(temp, ["add", fixture]); git(temp, ["commit", "-qm", "stale reference fixture probe"]);
+    assert.deepEqual(scan(temp), []);
   } finally { fs.rmSync(temp, { recursive: true, force: true }); }
 });

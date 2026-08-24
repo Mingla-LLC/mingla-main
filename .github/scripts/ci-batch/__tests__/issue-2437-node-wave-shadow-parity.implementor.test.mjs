@@ -74,7 +74,18 @@ test("#2437 terminal registry is exactly 31 historical origins / 32 typed varian
   // [TEST-MOD-APPROVED #2438] Phase 3A stays independently selected after the additive Phase 3B wave.
   const value = manifest();
   const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
-  const origins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical");
+  // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] Select Phase 3A by its explicit WAVE, not
+  // by the lifecycle value alone. #2438's cutover flips twelve more origins to
+  // batched-historical, so a lifecycle-only filter silently absorbs another wave's
+  // work into Phase 3A's count — the exact class of drift A9-SC2 names. Both waves
+  // are now counted separately and the combined total is asserted, so nothing hides.
+  const origins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical"
+    && origin.migrationWave === "phase3a-node-wave");
+  const phase3bOrigins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical"
+    && origin.migrationWave === "phase3b-postgres-wave");
+  assert.equal(phase3bOrigins.length, 12);
+  assert.equal(value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical").length,
+    origins.length + phase3bOrigins.length);
   assert.equal(value.legacyOrigins.length, 200);
   assert.equal(value.suites.length, 67);
   assert.equal(value.workflowProviders.length, 91);
@@ -110,9 +121,21 @@ test("#1593 reference proof pins one exact TAP reporter without changing its chi
 
 test("terminal source wave retains all 107 exact assertion commands with wrappers absent", () => {
   const value = manifest();
-  const suites = value.suites.filter((suite) => suite.lifecycle === "batched-historical");
+  // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] Wave-scoped for the same reason as above:
+  // after #2438's cutover, `lifecycle === "batched-historical"` also matches twelve
+  // Phase 3B suites carrying 36 more assertions, which would inflate Phase 3A's
+  // frozen 107 to 143 without a single marker pointing at it. Phase 3B's own count
+  // is asserted separately and the sum is checked, so the wider total stays honest.
+  const suites = value.suites.filter((suite) => suite.lifecycle === "batched-historical"
+    && suite.migrationWave === "phase3a-node-wave");
+  const phase3bSuites = value.suites.filter((suite) => suite.lifecycle === "batched-historical"
+    && suite.migrationWave === "phase3b-postgres-wave");
   const names = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical").map((origin) => `${origin.stem}.${origin.extension}`);
   assert.equal(suites.flatMap((suite) => suite.steps).length, 107);
+  assert.equal(phase3bSuites.length, 12);
+  assert.equal(phase3bSuites.flatMap((suite) => suite.steps).length, 36);
+  assert.equal(value.suites.filter((suite) => suite.lifecycle === "batched-historical").flatMap((suite) => suite.steps).length, 143);
+  assert.equal(names.length, 43);
   assert.equal(names.filter((name) => fs.existsSync(path.join(ROOT, ".github/workflows", name))).length, 0);
 });
 

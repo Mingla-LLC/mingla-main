@@ -24,7 +24,7 @@
  * Runs under the stock mingla-business/jest.config.cjs (node env, no RN
  * renderer): the registry is a pure TS module driven against the REAL
  * draftEventStore (zustand) and a REAL @tanstack/react-query QueryClient.
- * Wired into CI by .github/workflows/orch-0976-draft-promotion-tests.yml.
+ * Wired into CI by ci-batch:orch-0976-draft-promotion-tests.
  */
 
 import { afterEach, beforeEach, describe, expect, jest, test } from "@jest/globals";

@@ -117,7 +117,7 @@ const INVARIANT_CONVERT = [
 //                              (they only run via `--config jest.<orch>.render.cjs`).
 //   `configExcluded: false` -> the 3 bare react-test-renderer orch0976 suites that
 //                              run under the STOCK default config inside
-//                              orch-0976-draft-promotion-tests.yml (which installs
+//                              ci-batch:orch-0976-draft-promotion-tests (which installs
 //                              react-test-renderer --no-save). Excluding them from
 //                              the default config would BREAK that per-issue
 //                              workflow (DO-NOT-TOUCH), so they are NOT excluded;

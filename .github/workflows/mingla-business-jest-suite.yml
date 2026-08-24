@@ -64,7 +64,7 @@ jobs:
         run: npm ci
 
       # react-test-renderer is a TEST-ONLY renderer, deliberately NOT an app
-      # dependency (mirrors orch-0976-draft-promotion-tests.yml). The 3
+      # dependency (mirrors ci-batch:orch-0976-draft-promotion-tests). The 3
       # *.orch0976.* bare-react-test-renderer suites run under the STOCK jest
       # config and need it installed; --no-save keeps it out of the lockfile.
       - name: Install test-only renderer (react-test-renderer, --no-save)

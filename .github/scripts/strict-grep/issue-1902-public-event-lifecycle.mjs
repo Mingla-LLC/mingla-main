@@ -35,13 +35,15 @@ const requireText = (source, needle, label) => {
 // not red it; a third value is still rejected.
 const PHASE3B_LIFECYCLES = ["shadow-active", "batched-historical"];
 
-// [#2438 SC-13] The historical CI wrapper this guard is DECOUPLED from. SC-21
-// deletes it, and a guard that hard-requires the file the cutover deletes cannot
-// authorise that cutover. Named rather than commented so the decoupling is a
-// executed self-test assertion below, and so this module keeps its reviewed
-// workflow-provider reference (registry record
-// issue-1902-public-event-lifecycle-tests.yml -> this file).
-const DECOUPLED_CI_WRAPPER = ".github/workflows/issue-1902-public-event-lifecycle-tests.yml";
+// [#2438 SC-12/SC-21] This guard's enforcement provider, in semantic identity
+// form. SC-21 deleted the historical wrapper, so naming a workflow filename here
+// would be a reference to a file that no longer exists. The typed batch suite is
+// the provider, and `.github/scripts/strict-grep/MANIFEST.json` names the same
+// identity (`ci-batch:<suite-id>`), which meta-1383 P4b binds to that exact
+// terminal suite. Named rather than commented so the decoupling stays an
+// EXECUTED self-test assertion below.
+const CI_BATCH_PROVIDER = "ci-batch:issue-1902-public-event-lifecycle-tests";
+const SELF_SOURCE_PATH = ".github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs";
 
 // Seven PRODUCT proof files. The typed registry contract above replaces the
 // wrapper's file-existence check and is stricter: it proves the suite's
@@ -276,19 +278,28 @@ if (process.argv.includes("--self-test")) {
     try { enforce(withPhase3bLifecycle(forged)); } catch { failed = true; }
     if (!failed) throw new Error(`self-test survived forged lifecycle ${JSON.stringify(forged)}`);
   }
-  // 3. Restored-terminal-wrapper decoupling: no mandatory proof file may be the
-  //    historical CI wrapper, or SC-21's deletion reds this gate again.
-  if (PROOF_FILES.includes(DECOUPLED_CI_WRAPPER)) {
-    throw new Error(`issue #1902 mandatory proof list re-coupled to the deletable CI wrapper ${DECOUPLED_CI_WRAPPER}`);
+  // 3. Restored-terminal-wrapper decoupling: no mandatory proof file may be a CI
+  //    provider of any kind, or SC-21's deletion reds this gate again.
+  if (PROOF_FILES.includes(CI_BATCH_PROVIDER)) {
+    throw new Error(`issue #1902 mandatory proof list re-coupled to its CI provider ${CI_BATCH_PROVIDER}`);
   }
   for (const file of PROOF_FILES) {
     if (file.startsWith(".github/workflows/")) {
       throw new Error(`issue #1902 mandatory proof list re-coupled to a deletable CI wrapper: ${file}`);
     }
   }
+  // 3b. [#2438 SC-12] Falsifiable, whole-module decoupling: this gate must name
+  //     NO workflow file at all. Re-introducing any `.github/workflows/*.yml`
+  //     literal anywhere in this module — the exact re-coupling SC-21 forbids —
+  //     reds the self-test here rather than at the next cutover.
+  const selfSource = fs.readFileSync(SELF_SOURCE_PATH, "utf8");
+  const workflowLiterals = [...new Set(selfSource.match(/\.github\/workflows\/[A-Za-z0-9_.-]+\.ya?ml/g) || [])];
+  if (workflowLiterals.length !== 0) {
+    throw new Error(`issue #1902 gate re-coupled to deletable workflow file(s): ${workflowLiterals.join(", ")}`);
+  }
   if (PROOF_FILES.length !== 7) throw new Error(`issue #1902 expects exactly 7 product proof files, found ${PROOF_FILES.length}`);
   console.log(
-    `issue #1902 gate self-test: PASS (${mutations.length} mutations, ${PHASE3B_LIFECYCLES.length} accepted lifecycles, 6 forged lifecycles, ${PROOF_FILES.length} decoupled product proofs)`,
+    `issue #1902 gate self-test: PASS (${mutations.length} mutations, ${PHASE3B_LIFECYCLES.length} accepted lifecycles, 6 forged lifecycles, ${PROOF_FILES.length} decoupled product proofs, 0 workflow-file literals, provider ${CI_BATCH_PROVIDER})`,
   );
 } else {
   enforce(baseline);

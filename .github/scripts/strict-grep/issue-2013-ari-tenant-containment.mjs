@@ -15,10 +15,19 @@ const NAMES = [
 // not red it; a third value is still rejected.
 const PHASE3B_LIFECYCLES = ["shadow-active", "batched-historical"];
 const writerTestPath = "supabase/functions/_shared/__tests__/issue_2013_ari_tenant_writer_registry.tester_adversarial.test.ts";
-// [#2438 SC-13] The historical CI wrapper this guard is DECOUPLED from. SC-21
-// deletes it; the guard no longer reads it, and the self-test asserts it is not
-// among the read sources. It is still the reviewed suite origin identity below.
-const DECOUPLED_CI_WRAPPER = ".github/workflows/issue-2013-ari-tenant-containment.yml";
+// [#2438 SC-12/SC-21] Two distinct identities, deliberately not conflated.
+//
+// SUITE_ORIGIN_IDENTITY is the registry's immutable `origin` for this suite — the
+// historical filename the wave migrated FROM. It survives SC-21 unchanged because
+// the registry keeps origin provenance for a deleted wrapper; it is a stored
+// value this guard compares against, never a file it reads. The self-test asserts
+// it is absent from the read sources.
+//
+// CI_BATCH_PROVIDER is the terminal enforcement identity — what actually runs this
+// guard now that the wrapper is deleted. SC-12's repoint is from a filename that
+// no longer resolves to this semantic provider identity.
+const SUITE_ORIGIN_IDENTITY = ".github/workflows/issue-2013-ari-tenant-containment.yml";
+const CI_BATCH_PROVIDER = "ci-batch:issue-2013-ari-tenant-containment";
 
 export function twoAccountPublicRlsProof(ownerId, memberRows, publicBrands) {
   const memberIds = new Set(memberRows.filter((m) => m.user_id === ownerId && m.removed_at === null).map((m) => m.brand_id));
@@ -70,7 +79,8 @@ export function check(sources) {
   try { shadowSuite = JSON.parse(ciManifest).suites.find((suite) => suite.id === "issue-2013-ari-tenant-containment"); } catch {}
   if (!shadowSuite || shadowSuite.migrationWave !== "phase3b-postgres-wave"
       || !PHASE3B_LIFECYCLES.includes(shadowSuite.lifecycle)
-      || shadowSuite.origin !== DECOUPLED_CI_WRAPPER
+      || shadowSuite.origin !== SUITE_ORIGIN_IDENTITY
+      || `ci-batch:${shadowSuite.id}` !== CI_BATCH_PROVIDER
       || shadowSuite.triggerContract?.push?.paths?.filter((item) => item === writerTestPath).length !== 1
       || shadowSuite.triggerContract?.pullRequest?.paths?.filter((item) => item === writerTestPath).length !== 1
       || !shadowSuite.steps?.[0]?.run?.includes(writerTestPath)) {
@@ -196,7 +206,12 @@ if (process.argv.includes("--self-test")) {
   const forgedLifecycleDetected = forgedLifecycles.every((failures) => failures.some((failure) => failure.includes("typed shadow provider")));
   // The historical wrapper must no longer be a source of this guard at all, or
   // SC-21's deletion reds it again.
-  const wrapperDecoupled = !Object.values(SOURCE_FILES).includes(DECOUPLED_CI_WRAPPER)
+  // [#2438 SC-12] The retired origin must never be a source this guard READS.
+  // `migrationWorkflow` deliberately stays: it is a live, non-Phase-3B workflow
+  // and nothing in SC-21 deletes it, so a blanket "no workflow file" rule here
+  // would be false rather than strict.
+  const wrapperDecoupled = !Object.values(SOURCE_FILES).includes(SUITE_ORIGIN_IDENTITY)
+    && !Object.values(SOURCE_FILES).some((file) => !fs.existsSync(path.join(root, file)))
     && !Object.keys(SOURCE_FILES).includes("workflow");
 
   if (good.length > 0 || !revertDetected || !historyRevertDetected || !confirmationRevertDetected || !writerProvenanceRevertDetected
@@ -205,7 +220,7 @@ if (process.argv.includes("--self-test")) {
     console.error("issue-2013 self-test FAIL", { good, reverted, historyReverted, confirmationReverted, writerProvenanceReverts, shadowReverted, scopeReverted, composerReverted, acceptedLifecycles, forgedLifecycles, wrapperDecoupled });
     process.exit(1);
   }
-  console.log(`issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, ${writerProvenanceReverts.length} typed writer-provenance, immutable-scope, composer-gate and ${forgedLifecycles.length} forged-lifecycle reverts fail; ${acceptedLifecycles.length} reviewed lifecycles pass and the deletable CI wrapper is decoupled.`);
+  console.log(`issue-2013 self-test PASS: clean source passes; owner, history, confirmation-writer, ${writerProvenanceReverts.length} typed writer-provenance, immutable-scope, composer-gate and ${forgedLifecycles.length} forged-lifecycle reverts fail; ${acceptedLifecycles.length} reviewed lifecycles pass and the deletable CI wrapper is decoupled from provider ${CI_BATCH_PROVIDER}.`);
   process.exit(0);
 }
 
