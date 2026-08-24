@@ -217,11 +217,11 @@ test("workflow matrix retains the exact trust boundary and independently locked 
     id: item.id,
     steps: item.steps.map(({ name, cwd, run, invocation }) => ({ name, cwd, run, invocation })),
   }));
-  assert.equal(manifest.suites.length, 67);
+  assert.equal(manifest.suites.length, 84);
   assert.equal(baseline.reduce((sum, item) => sum + item.steps.length, 0), 51);
   assert.equal(shadow.length, 32);
   assert.equal(shadow.reduce((sum, item) => sum + item.steps.length, 0), 107);
-  assert.equal(new Set(manifest.suites.map((item) => item.id)).size, 67);
+  assert.equal(new Set(manifest.suites.map((item) => item.id)).size, 84);
   assert.equal(digest(assertionRows(baseline)), "46b4392592c5d6cb56bc600adc98e083b14880b79dad29fe4e1438ac41923764");
   assert.equal(digest(manifest.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(assertionRows(shadow)), "9dea11e17920bd597c737fd1a9afa096ae740aab28eabb82d93029fbb0be7b3e");

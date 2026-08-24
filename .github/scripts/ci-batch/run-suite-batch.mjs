@@ -18,13 +18,28 @@ export const REPO_ROOT = path.resolve(HERE, "../../..");
 const MANIFEST_PATH = path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json");
 const SUPERVISOR_PATH = path.join(HERE, "process-supervisor.py");
 const CHILD_ENV_NAMES = new Set(["CI", "NODE_ENV", "TZ", "LANG", "LC_ALL", "FORCE_COLOR"]);
+const PHASE3B_WAVE = "phase3b-postgres-wave";
+const PHASE3C_WAVE = "phase3c-deno-wave";
+// [#2439 SC-2.3] The waves whose suites execute through the LEAF path. Left
+// unextended, a phase3c-deno-wave suite would take the else branch at the bottom
+// of the step loop, run each outer as one command, and ignore `children`
+// entirely: 46 outers reported executed while all 54 leaves silently never ran.
+// That is a green check carrying no information, on seventeen migrations.
+const LEAF_EXECUTION_WAVES = new Set([PHASE3B_WAVE, PHASE3C_WAVE]);
+export function executesLeaves(suite) { return LEAF_EXECUTION_WAVES.has(suite?.migrationWave); }
+// [#2439 SC-5.1] Wave-scoped predicate semantics. Phase 1, Phase 3A and
+// phase3b-postgres-wave are UNCHANGED: an absent `file-exists` target there is a
+// deliberate conditional proof and stays `skipped-absent`. For
+// phase3c-deno-wave the origins assert the opposite - `test -f "$f" || exit 1` -
+// so an absent target FAILS the outer and the suite, naming the missing path.
+export function absentFileIsFailure(suite) { return suite?.migrationWave === PHASE3C_WAVE; }
 
 export function loadManifest(p = MANIFEST_PATH) {
   return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
 }
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
 export function expectedPrimarySuites(manifest, klass) {
-  return manifest.suites.filter((suite) => (!klass || suite.class === klass) && suite.migrationWave !== "phase3b-postgres-wave");
+  return manifest.suites.filter((suite) => (!klass || suite.class === klass) && !LEAF_EXECUTION_WAVES.has(suite.migrationWave));
 }
 
 // Compatibility API for the pre-Phase-2 committed regression. Production uses
@@ -235,8 +250,8 @@ export function recordSetup(manifest, klass, installExecutions, tempRoot = proce
 }
 
 export function commandFingerprint(suite) {
-  const rows = suite.migrationWave === "phase3b-postgres-wave"
-    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null }))
+  const rows = executesLeaves(suite)
+    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null, retry: step.retry || null }))
     : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
   return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 }
@@ -272,16 +287,25 @@ export function resolveCommandCapability(registry, suite, step, stepIndex) {
 }
 
 export function resolveLeafCapability(registry, suite, step, stepIndex, child, childIndex) {
+  // A typed predicate leaf carries no shell at all; the runner evaluates it.
+  // WAVE-SCOPED: Phase 3B's `file-exists` leaves are conditional guards on a
+  // real command and keep their invocation. Only Phase 3C introduces predicates
+  // that ARE the assertion.
+  const typedPredicate = suite?.migrationWave === PHASE3C_WAVE && child.predicate?.kind && child.predicate.kind !== "always";
   if (registry?.schemaVersion !== 1 || registry?.expectedLeaves !== registry?.leaves?.length
       || capabilityRegistryDigest(registry.leaves || []) !== registry.registrySha256) throw new Error("leaf capability registry is missing or corrupt");
   const matches = registry.leaves.filter((entry) => entry.id === child.id);
   if (matches.length !== 1) throw new Error(`${suite.id}: leaf ${child.id} must resolve exactly once`);
   const leaf = matches[0];
   if (leaf.suiteId !== suite.id || leaf.outerCommandId !== step.commandId || leaf.outerIndex !== stepIndex || leaf.leafIndex !== childIndex
-      || leaf.cwd !== child.cwd || leaf.executable !== child.invocation?.command || JSON.stringify(leaf.argv) !== JSON.stringify(child.invocation?.argv)
+      || leaf.cwd !== child.cwd || leaf.executable !== (child.invocation?.command ?? null) || JSON.stringify(leaf.argv) !== JSON.stringify(child.invocation?.argv ?? null)
       || JSON.stringify(leaf.env) !== JSON.stringify(child.env || null) || JSON.stringify(leaf.predicate) !== JSON.stringify(child.predicate)) throw new Error(`${child.id}: leaf ownership drifted`);
   const payload = { cwd: leaf.cwd, executable: leaf.executable, argv: leaf.argv, env: leaf.env, predicate: leaf.predicate };
   if (leaf.payloadSha256 !== crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex")) throw new Error(`${child.id}: leaf payload digest drifted`);
+  if (typedPredicate) {
+    if (leaf.executable !== null || leaf.argv !== null) throw new Error(`${child.id}: typed predicate leaf must carry no shell invocation`);
+    return null;
+  }
   return { command: leaf.executable, argv: [...leaf.argv] };
 }
 
@@ -551,6 +575,44 @@ function generatedPathAllowed(relative, allowed) {
   return allowed.some((candidate) => { const clean = candidate.replace(/^\.\//, "").replace(/\/$/, ""); return normalized === clean || normalized.startsWith(`${clean}/`); });
 }
 
+/**
+ * [#2439 SC-5.1 / SC-5.2] Evaluate a typed leaf predicate.
+ *
+ * Returns null for `always` (the leaf runs its command), or a verdict for a
+ * typed predicate the runner owns. A failing verdict names the exact target, so
+ * the reason is attributable rather than "a leaf failed somewhere".
+ *
+ * @param {object} child        the declared leaf
+ * @param {string} workspaceRoot isolated worktree root
+ * @param {string} leafCwd      resolved leaf working directory
+ * @returns {{ok: boolean, reason: string|null}|null}
+ */
+export function evaluateTypedPredicate(child, workspaceRoot, leafCwd) {
+  const kind = child.predicate?.kind;
+  if (!kind || kind === "always") return null;
+  if (kind === "file-exists") {
+    const targets = child.predicate.paths || (child.predicate.path ? [child.predicate.path] : []);
+    if (!targets.length) return { ok: false, reason: `${child.id}: required-file predicate names no target` };
+    for (const target of targets) {
+      if (!fs.statSync(path.resolve(leafCwd, target), { throwIfNoEntry: false })?.isFile()) {
+        return { ok: false, reason: `MISSING: ${target} (required by ${child.id})` };
+      }
+    }
+    return { ok: true, reason: null };
+  }
+  if (kind === "source-contract") {
+    const { path: target, needle, sense } = child.predicate;
+    if (!["must-contain", "must-not-contain"].includes(sense)) return { ok: false, reason: `${child.id}: unknown source-contract sense` };
+    const absolute = path.resolve(leafCwd, target);
+    if (!fs.statSync(absolute, { throwIfNoEntry: false })?.isFile()) return { ok: false, reason: `MISSING: ${target} (source contract ${child.id})` };
+    const contains = fs.readFileSync(absolute, "utf8").includes(needle);
+    if (sense === "must-contain" && !contains) return { ok: false, reason: `${target} no longer contains ${JSON.stringify(needle)} (${child.id})` };
+    if (sense === "must-not-contain" && contains) return { ok: false, reason: `${target} contains forbidden ${JSON.stringify(needle)} (${child.id})` };
+    return { ok: true, reason: null };
+  }
+  return { ok: false, reason: `${child.id}: unsupported leaf predicate ${kind}` };
+}
+
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
   execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities,
   leafCapabilities,
@@ -594,14 +656,30 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         ? resolveCommandCapability(commandCapabilities, suite, step, stepIndex)
         : execute !== runInvocation ? step.invocation
           : (() => { throw new Error(`${suite.id}: production execution requires the assertion command capability registry`); })();
-      if (suite.migrationWave === "phase3b-postgres-wave") {
+      if (executesLeaves(suite)) {
         const children = step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" }, cwd: step.cwd, invocation: step.invocation, env: step.env || null }];
         let outerFailed = false;
         for (const [childIndex, child] of children.entries()) {
-          if (child.predicate?.kind === "file-exists" && !fs.existsSync(path.join(workspace.root, child.predicate.path))) {
+          // Phase 1 / 3A / 3B semantics are untouched: an absent conditional
+          // proof is skipped silently, because that is what those origins meant.
+          if (child.predicate?.kind === "file-exists" && !absentFileIsFailure(suite)
+              && !fs.existsSync(path.join(workspace.root, child.predicate.path))) {
             leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "skipped-absent", executed: false }); continue;
           }
           const leafCwd = path.resolve(workspace.root, child.cwd || ".");
+          // [#2439 SC-5.1 / SC-5.2] Typed predicates are evaluated here, by the
+          // runner, and they FAIL LOUDLY naming the exact target. The origins say
+          // `test -f "$f" || { echo "MISSING: $f"; exit 1; }` and
+          // `grep -q <needle> <file>`; representing those as skip-silently leaves
+          // would be a fresh instance of the #1584 dark-suite class.
+          const verdict = absentFileIsFailure(suite) ? evaluateTypedPredicate(child, workspace.root, leafCwd) : null;
+          if (verdict) {
+            leafResults.push({ id: child.id, outerCommandId: step.commandId, status: verdict.ok ? "passed" : "failed", executed: true });
+            if (!verdict.ok) {
+              outerFailed = true; status = "failed"; code = Math.max(code, 2); reason ||= verdict.reason;
+            }
+            continue;
+          }
           const leafInvocation = resolveLeafCapability(leafCapabilities, suite, step, stepIndex, child, childIndex);
           const leafRemaining = suite.timeoutSeconds * 1_000 - (now() - started);
           if (leafRemaining <= 0) { leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "timed-out", executed: true }); status = "timed-out"; code = 124; reason = "suite deadline exceeded"; outerFailed = true; break; }
@@ -643,13 +721,13 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
   const durationMs = Math.max(0, now() - started);
-  const expectedLeafRows = suite.migrationWave === "phase3b-postgres-wave"
+  const expectedLeafRows = executesLeaves(suite)
     ? suite.steps.flatMap((step, stepIndex) => (step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1` }])
       .map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId }))) : [];
   const observedLeaves = new Map(leafResults.map((leaf) => [leaf.id, leaf]));
   const completeLeafResults = expectedLeafRows.map((leaf) => observedLeaves.get(leaf.id) || { ...leaf,
     status: status === "timed-out" ? "not-run-suite-deadline" : "missing", executed: false });
-  const outerResults = suite.migrationWave === "phase3b-postgres-wave" ? suite.steps.map((step, index) => {
+  const outerResults = executesLeaves(suite) ? suite.steps.map((step, index) => {
     const leaves = completeLeafResults.filter((leaf) => leaf.outerCommandId === step.commandId);
     const initiated = index < executed;
     const outerStatus = !initiated ? (status === "timed-out" ? "not-run-suite-deadline" : "missing")
@@ -737,6 +815,51 @@ function selectedPhase3bSuites(manifest, hostClass, documentPath, failSafeClass)
   }
 }
 
+/**
+ * [#2439] Phase 3C host execution. There is no selection protocol here: a
+ * Phase 3C host runs every suite the registry assigns to it, so there is no
+ * decision document to forge, defer, or fail safe over.
+ */
+export function phase3cSuitesForHost(manifest, hostClass) {
+  const owned = manifest.suites.filter((suite) => suite.migrationWave === PHASE3C_WAVE && suite.hostClass === hostClass);
+  if (!manifest.classes.includes(hostClass) || !owned.length) throw new Error(`unreviewed Phase 3C host ${hostClass}`);
+  return owned;
+}
+
+async function runPhase3cHost(manifest, hostClass) {
+  const suites = phase3cSuitesForHost(manifest, hostClass);
+  const started = Date.now(); let evidence = null; let results = [];
+  try {
+    const classes = [...new Set(suites.map((suite) => suite.executionClass))];
+    if (classes.length !== 1) throw new Error(`${hostClass}: assigned suites span unreviewed Phase 3C classes`);
+    const evidencePath = setupEvidencePath(manifest, classes[0]); evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+    const { profile } = validateSetupEvidence(manifest, classes[0], evidence);
+    results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities,
+      leafCapabilities: manifest.phase3cLeafCapabilities, graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
+    fs.rmSync(evidencePath, { force: true });
+  } catch (error) {
+    results = suites.map((suite) => missingPhase3bResult(suite, error.message));
+  }
+  const report = buildShardReport(`phase3c:${hostClass}`, suites, results, evidence, Date.now() - started);
+  report.expectedOuterIds = suites.flatMap((suite) => suite.steps.map((step) => step.commandId));
+  report.executedOuterIds = results.flatMap((result) => {
+    const suite = suites.find((candidate) => candidate.id === result.id);
+    return suite ? suite.steps.slice(0, result.executed).map((step) => step.commandId) : [];
+  });
+  report.expectedLeafIds = suites.flatMap((suite) => suite.steps.flatMap((step, stepIndex) =>
+    step.children?.map((child) => child.id) || [`leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`]));
+  const leafResults = results.flatMap((result) => result.leafResults || []);
+  report.observedLeafIds = leafResults.map((leaf) => leaf.id);
+  report.executedLeafIds = leafResults.filter((leaf) => leaf.executed).map((leaf) => leaf.id);
+  // [#2439 SC-5.1] Phase 3C has no conditional proofs at all: every required
+  // file is required. An empty absent set is an assertion, not a description -
+  // a non-empty one here means a leaf was skipped where the origin would have
+  // failed the job.
+  report.absentLeafIds = leafResults.filter((leaf) => leaf.status === "skipped-absent").map((leaf) => leaf.id);
+  if (report.absentLeafIds.length) { report.ok = false; report.code = report.code || 1; }
+  writeReport(manifest, report, REPO_ROOT, "suite-results-phase3c.json"); process.exitCode = report.code;
+}
+
 function missingPhase3bResult(suite, reason) {
   const leafResults = suite.steps.flatMap((step, stepIndex) => (step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1` }])
     .map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId, status: "missing", executed: false })));
@@ -790,6 +913,9 @@ async function main() {
   if (process.argv[2] === "--run-phase3b-host") {
     const flag = process.argv[5] === "--fail-safe-host" ? process.argv[6] : null;
     return runPhase3bHost(manifest, process.argv[3], process.argv[4], flag);
+  }
+  if (process.argv[2] === "--run-phase3c-host") {
+    return runPhase3cHost(manifest, process.argv[3]);
   }
   const klass = process.argv[2] === "--run" ? process.argv[3] : process.argv[2];
   const suites = expectedPrimarySuites(manifest, klass);

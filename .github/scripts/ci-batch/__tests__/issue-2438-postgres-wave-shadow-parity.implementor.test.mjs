@@ -65,7 +65,7 @@ function providerSnapshot(root) {
 
 function assertWave(value) {
   const suites = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
-  assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 67); assert.equal(value.commandCapabilities.commands.length, 194); assert.equal(value.workflowProviders.length, 91);
+  assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 84); assert.equal(value.commandCapabilities.commands.length, 240); assert.equal(value.workflowProviders.length, 91);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal, and atomic on all three carriers of
   // the lifecycle: the suites, the wave header, and the legacy-origin dispositions.
@@ -83,10 +83,10 @@ function assertWave(value) {
   const transitions = value.workflowProviders.reduce((acc, item) => ({ ...acc, [item.transition]: (acc[item.transition] || 0) + 1 }), {});
   assert.deepEqual(transitions, { "retained-live-provider": 67, "batched-provider": 24 });
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
-  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 23);
+  assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 29);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
-  assert.equal(digest(value.commandCapabilities.commands.slice(158)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
+  assert.equal(digest(value.commandCapabilities.commands.slice(158, 194)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
   assert.equal(digest(value.phase3bLeafCapabilities.leaves), "76d627f1f117923c41dc2a4b928d606a134c2a3a0d948010e565828fa91be89d");
   assert.equal(value.phase3bContractSha256, "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9");
   const lifecycle=value.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests");

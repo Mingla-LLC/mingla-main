@@ -1,3 +1,4 @@
+# #2439 SHADOW-PARITY-TRIGGER — remove before cutover
 name: "#1237 Paystack transfer-cost parse — falsy-amount fallback"
 
 # Pre-flip fast-follow of #1013 / fold-in of #1218. Guards the #1237 fix in

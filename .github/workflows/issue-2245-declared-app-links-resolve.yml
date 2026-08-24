@@ -1,3 +1,4 @@
+# #2439 SHADOW-PARITY-TRIGGER — remove before cutover
 name: issue-2245-declared-app-links-resolve
 # issue #2245 [the app claims deep links it has no routes for].
 #

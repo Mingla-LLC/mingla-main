@@ -235,7 +235,7 @@ function assertReconstructed(value, inspections) {
   // [TEST-MOD-APPROVED #2438] Select Phase 3A explicitly after the additive Phase 3B wave.
   const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
   assert.equal(value.legacyOrigins.length, 200);
-  assert.equal(value.suites.length, 67);
+  assert.equal(value.suites.length, 84);
   assert.equal(value.workflowProviders.length, 91);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
@@ -363,7 +363,7 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
     const setup = jobs[name].steps.filter((step) => step.uses === "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
     assert.equal(checkout.length, 1, `${name}: checkout pin cardinality`);
     assert.deepEqual(checkout[0].with, { "fetch-depth": 0, "persist-credentials": false });
-    assert.equal(setup.length, name === "batch" ? 2 : 1, `${name}: setup-node pin cardinality`);
+    assert.equal(setup.length, name === "batch" ? 3 : 1, `${name}: setup-node pin cardinality`);
   }
   assert.deepEqual(jobs.batch.steps.find((step) => !step.name && step.uses?.startsWith("actions/setup-node@")).with,
     { "node-version": "${{ matrix.node }}", cache: "${{ matrix.cache }}", "cache-dependency-path": "${{ matrix.cache-lock }}" });
@@ -372,7 +372,7 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.equal(jobs.dispatch.steps.filter((step) => step.run === 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "node20-19-noinstall"').length, 1);
   assert.equal(jobs.dispatch.steps.filter((step) => step.run === 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "node20-19-noinstall"').length, 1);
   assert.equal((source.match(/actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/g) || []).length, 2);
-  assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 3);
+  assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 4);
   assert.match(source, /permissions:\n  contents: read/);
   assert.doesNotMatch(source, /secrets\.|id-token:\s*write|pull_request_target|environment:/);
   assert.match(source, /workflow_dispatch:[\s\S]*type: choice[\s\S]*- issue-2300-orch-artifact-reap/);

@@ -65,7 +65,7 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(manifest.schemaVersion, 2);
   const baseline = manifest.suites.slice(0, 23);
   const shadow = manifest.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
-  assert.equal(manifest.suites.length, 67);
+  assert.equal(manifest.suites.length, 84);
   assert.deepEqual(baseline.map(({ id, ownerIssue, lifecycle }) => [id, ownerIssue, lifecycle]), [
     ["issue-1282-google-bespoke-copy-tests", "#1282", "batched-active"],
     ["issue-903-open-external-admin-tests", "#903", "batched-active"],

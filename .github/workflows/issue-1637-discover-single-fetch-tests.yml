@@ -1,3 +1,4 @@
+# #2439 SHADOW-PARITY-TRIGGER — remove before cutover
 # QUOTED name: an unquoted leading '#' would truncate the workflow name to "Issue".
 name: "Issue 1637 Discover single fetch"
 

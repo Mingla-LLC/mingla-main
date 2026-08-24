@@ -68,6 +68,9 @@ jobs:
             secondaryClass: phase3b-tenant-node20-deno146
             secondaryNode: "20"
             secondaryDeno: "1.46.x"
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           # The business suites are split 4 ways: MEASURED locally they take ~730s
           # end to end, so as ONE job they would become the new critical path — a
           # regression, since today they run in parallel. The split is round-robin
@@ -77,34 +80,46 @@ jobs:
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
-            hostTimeoutMinutes: 25
+            hostTimeoutMinutes: 45
             secondaryClass: ""
             secondaryNode: ""
             secondaryDeno: ""
+            tertiaryClass: phase3c-deno146-node20
+            tertiaryNode: "20"
+            tertiaryDeno: "1.46.x"
           - class: business-node20-2
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
-            hostTimeoutMinutes: 25
+            hostTimeoutMinutes: 40
             secondaryClass: ""
             secondaryNode: ""
             secondaryDeno: ""
+            tertiaryClass: phase3c-deno2x-node20
+            tertiaryNode: "20"
+            tertiaryDeno: "v2.x"
           - class: business-node20-3
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
-            hostTimeoutMinutes: 25
+            hostTimeoutMinutes: 45
             secondaryClass: ""
             secondaryNode: ""
             secondaryDeno: ""
+            tertiaryClass: phase3c-deno2714-admin-node20
+            tertiaryNode: "20"
+            tertiaryDeno: "v2.7.14"
           - class: business-node20-4
             node: "20"
             cache: npm
             cache-lock: mingla-business/package-lock.json
-            hostTimeoutMinutes: 25
+            hostTimeoutMinutes: 45
             secondaryClass: ""
             secondaryNode: ""
             secondaryDeno: ""
+            tertiaryClass: phase3c-deno2x-admin-node20
+            tertiaryNode: "20"
+            tertiaryDeno: "v2.x"
           - class: admin-node20-install
             node: "20"
             cache: npm
@@ -113,6 +128,9 @@ jobs:
             secondaryClass: phase3b-lifecycle-node20-deno2
             secondaryNode: "20"
             secondaryDeno: "v2.x"
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           - class: node22-noinstall
             node: "22"
             cache: ""
@@ -121,14 +139,20 @@ jobs:
             secondaryClass: phase3b-theme-node20
             secondaryNode: "20"
             secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           - class: app-node22-install
             node: "22"
             cache: npm
             cache-lock: app-mobile/package-lock.json
-            hostTimeoutMinutes: 25
+            hostTimeoutMinutes: 50
             secondaryClass: ""
             secondaryNode: ""
             secondaryDeno: ""
+            tertiaryClass: phase3c-deno2x-app-node22
+            tertiaryNode: "22"
+            tertiaryDeno: "v2.x"
           - class: business-node22-ignore-scripts
             node: "22"
             cache: npm
@@ -137,14 +161,20 @@ jobs:
             secondaryClass: phase3b-brand-follow-node20-deno146
             secondaryNode: "20"
             secondaryDeno: "1.46.x"
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           - class: cross-root-node22-ignore-scripts
             node: "22"
             cache: ""
             cache-lock: ""
-            hostTimeoutMinutes: 52
+            hostTimeoutMinutes: 62
             secondaryClass: phase3b-draft-node20-renderer
             secondaryNode: "20"
             secondaryDeno: ""
+            tertiaryClass: phase3c-deno2714-node20
+            tertiaryNode: "20"
+            tertiaryDeno: "v2.7.14"
           - class: root-node20-yaml-no-save
             node: "20"
             cache: ""
@@ -153,6 +183,9 @@ jobs:
             secondaryClass: phase3b-scanner-node20-renderer
             secondaryNode: "20"
             secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           - class: node20-19-noinstall
             node: "20.19.4"
             cache: ""
@@ -161,6 +194,9 @@ jobs:
             secondaryClass: phase3b-screens-node20-deno2-renderer
             secondaryNode: "20"
             secondaryDeno: "v2.x"
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           - class: ota-app-node20-19-install
             node: "20.19.4"
             cache: npm
@@ -169,6 +205,9 @@ jobs:
             secondaryClass: phase3b-business-node22
             secondaryNode: "22"
             secondaryDeno: ""
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
           - class: ota-business-node20-19-install
             node: "20.19.4"
             cache: npm
@@ -177,6 +216,9 @@ jobs:
             secondaryClass: phase3b-enablers-node20-deno2
             secondaryNode: "20"
             secondaryDeno: "v2.x"
+            tertiaryClass: ""
+            tertiaryNode: ""
+            tertiaryDeno: ""
     steps:
       # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
       # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
@@ -291,6 +333,49 @@ jobs:
           --input "$RUNNER_TEMP/phase3b-decision-${{ matrix.class }}.json"
           --primary "suite-results.json"
           --secondary "suite-results-phase3b.json"
+
+      # ---------------------------------------------------------------------
+      # #2439 Phase 3C. Six secondary Deno classes hosted inside the SAME
+      # fourteen primary matrix jobs - no new GitHub Actions job. Each host runs
+      # every Phase 3C suite the registry assigns it; there is no selection
+      # protocol here, so there is no decision document to defer or fail safe
+      # over. The three Deno runtime selectors are mutually exclusive by matrix
+      # value and every action SHA is immutable.
+      # ---------------------------------------------------------------------
+      - name: Select tertiary Node runtime
+        if: always() && matrix.tertiaryClass != ''
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.tertiaryNode }}
+      - name: Select immutable Phase 3C Deno 1.46 runtime
+        if: always() && matrix.tertiaryDeno == '1.46.x'
+        uses: denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d
+        with:
+          deno-version: 1.46.x
+      - name: Select immutable Phase 3C Deno v2 runtime
+        if: always() && matrix.tertiaryDeno == 'v2.x'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.x
+      - name: Select immutable Phase 3C Deno v2.7.14 runtime
+        if: always() && matrix.tertiaryDeno == 'v2.7.14'
+        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
+        with:
+          deno-version: v2.7.14
+      - name: Execute one typed Phase 3C setup
+        if: always() && matrix.tertiaryClass != ''
+        timeout-minutes: 5
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.tertiaryClass }}"
+      - name: Run assigned Phase 3C suites with exact attribution
+        if: always() && matrix.tertiaryClass != ''
+        run: node .github/scripts/ci-batch/run-suite-batch.mjs --run-phase3c-host "${{ matrix.class }}"
+      - name: Upload Phase 3C suite results
+        if: always() && matrix.tertiaryClass != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: suite-results-phase3c-${{ matrix.class }}
+          path: suite-results-phase3c.json
+          if-no-files-found: error
 
   dispatch:
     name: "CI batch: issue-2300-orch-artifact-reap (bounded dispatch)"
