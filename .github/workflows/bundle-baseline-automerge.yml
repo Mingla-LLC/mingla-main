@@ -1,0 +1,141 @@
+name: Bundle Baseline Auto-Merge
+
+# Issue #2524 — the missing half of #1509's ratchet.
+#
+# THE PROBLEM THIS EXISTS FOR: the boot-payload gate charges every pull request
+# for `measured - baseline`, and that is only a PER-PR allowance if
+# bundle-baseline.json tracks main. It does not track main on its own. The
+# ratchet only ever LOWERS the baseline (to bank savings); growth is recorded by
+# a machine-authored one-file PR that nobody merged. Eight were opened and
+# abandoned on 2026-08-23, each superseding the last. So the baseline went stale
+# by construction and the bill landed on whoever opened the next branch — #2479
+# was charged 9,660 B it did not write, #2515 3,718 B, on consecutive days. Both
+# cost a full CI cycle and both were "fixed" by a human doing this job by hand.
+#
+# WHAT THIS DOES: merges that recording PR, and only that PR, and only when it
+# is provably safe and green. Five locks, all in
+# mingla-business/scripts/ci/bundle-baseline-automerge.mjs, all fail-closed:
+# author, single-file, all-green (PENDING AND EMPTY ARE NOT GREEN), ceiling
+# runway, and a permanent trace in the merge commit.
+#
+# WHAT THIS DELIBERATELY DOES NOT DO: approve. #2058 forbade the review and
+# approval endpoints and that still stands — an automation that approves its own
+# artifact has no independent verifier left. If main's ruleset requires a human
+# review, the run refuses with `MERGE_BLOCKED` and says so. It also cannot move
+# HARD_CEILING or PR_DELTA_ALLOWANCE; those live in
+# orch-1083-initial-bundle-budget.mjs and remain Seth's.
+#
+# OPERATOR PREREQUISITE — READ THIS BEFORE ASSUMING IT IS BROKEN: main carries a
+# `general security` ruleset requiring one approving code-owner review, and the
+# `mingla-bundle-baseline` App is not a bypass actor on it. Until it is added as
+# one, GitHub reports the recording PR as `mergeable_state: blocked` even with
+# every check green, and this job will refuse with MERGE_BLOCKED on every run —
+# correctly, and by design, because the alternative is an automation that
+# approves its own artifact. The refusal names the ruleset and the fix in one
+# line of the job summary so this is diagnosable at a glance rather than looking
+# like "there was nothing to merge".
+#
+# WHY A POLL RATHER THAN AN EVENT: the merge can only happen in the window where
+# the recording PR's checks have finished AND main has not moved. Nothing emits
+# an event at that moment — check completion does not know about main, and the
+# ratchet fires long before the checks exist. A poll re-reads live state each
+# time, so there is no "decided earlier, acted later" gap. Missing a window
+# costs nothing: the baseline is an ABSOLUTE measurement of main, not a delta,
+# so the next merge's recording PR carries the cumulative number anyway. On a
+# busy day only the last one needs to land.
+#
+# WHY NOT GITHUB'S NATIVE AUTO-MERGE: it fires on the ruleset's REQUIRED checks
+# only, which cannot express "every check completed and none failed", and it has
+# no way at all to express the ceiling-runway refusal. It would also leave PRs
+# armed after they go stale.
+
+on:
+  schedule:
+    # Every 15 minutes. A recording PR's checks land roughly 15 minutes after
+    # its merge, so the baseline is current within about half an hour of the
+    # last merge in a burst.
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+  pull_request:
+    paths: &issue2524_paths
+      - ".github/workflows/bundle-baseline-automerge.yml"
+      - "mingla-business/scripts/ci/bundle-baseline-automerge.mjs"
+      - "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs"
+      - "mingla-business/scripts/ci/bundle-baseline-update.mjs"
+      - "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"
+      - "mingla-business/scripts/ci/bundle-baseline.json"
+      - "mingla-business/scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs"
+  push:
+    branches: [main]
+    paths: *issue2524_paths
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  # Runs on pull requests and on main. Never sees a credential — the App key is
+  # referenced only inside the scheduled job below, which cannot run on a PR
+  # event. This repository is public; that separation is not cosmetic.
+  guard-tests:
+    name: "issue #2524: the five auto-merge guards"
+    if: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      # House rule (per meta-orch-1337 and #2468): EXPLICIT file names, never a
+      # glob and never a `-t` pattern. A pattern that matches zero files exits 0
+      # and reports success, which is the unfalsifiable-gate class these guards
+      # exist to close. The existence check makes a renamed or deleted suite a
+      # RED, not a silent skip.
+      - name: The guard suite exists
+        run: test -f scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs
+
+      - name: Run the #2524 guard suite
+        run: node --test scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs
+
+  automerge:
+    name: "Merge the current baseline recording PR, if it is safe and green"
+    if: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "20"
+
+      # The same repository-only App that authors the recording PR is the only
+      # identity allowed to merge it. The built-in token stays read-only and can
+      # neither push a ref nor merge a pull request.
+      - name: Mint the one-job bundle-baseline App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.BUNDLE_BASELINE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.BUNDLE_BASELINE_APP_PRIVATE_KEY }}
+          owner: Mingla-LLC
+          repositories: mingla-main
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Merge the recording PR if every guard passes
+        env:
+          BUNDLE_BASELINE_APP_TOKEN: ${{ steps.app-token.outputs.token }}
+          BUNDLE_BASELINE_APP_SLUG: ${{ vars.BUNDLE_BASELINE_APP_SLUG }}
+        run: node mingla-business/scripts/ci/bundle-baseline-automerge.mjs --automerge
