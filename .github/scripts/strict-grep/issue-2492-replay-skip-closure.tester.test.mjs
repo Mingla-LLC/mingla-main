@@ -476,36 +476,147 @@ test("T-21 — branch census: every terminator in every real lane maps to a bran
   }
 });
 
-test("T-22 — the census is not vacuous: it catches the branch form analyseLanes misses", (t) => {
-  // A second skip entry, written across two physical lines. Legal sh; the real
-  // lane skips it; the parser does not see it. Nothing else about the lane
-  // changes, so the readable branches still yield globs and C-4(b) stays quiet.
+test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form only the census catches", (t) => {
+  // AMENDED under [TEST-MOD-APPROVED #2492], on the dispatch that named this
+  // assertion. The original T-22 asserted `branchCount === 4` for a two-line
+  // branch — that was a statement of the DEFECT I reported, not a contract, and
+  // R-5 has now deliberately invalidated it. Keeping it would pin the bug.
+  //
+  // It is not relaxed to pass. T-22's purpose was "the census is not vacuous",
+  // and that purpose survives intact because R-5 is scoped to ONE form on
+  // purpose: `<pattern>)` followed by `continue ;;`. So the test moves to the
+  // new boundary and now pins BOTH sides of it, which is strictly more than it
+  // pinned before:
+  //
+  //   in scope  — the two-line form is read AND its skip actually takes effect
+  //   out of scope — a three-line branch is still unread, and C-4(c) is what
+  //                  catches it, with the census strictly exceeding the parser
+  //
+  // Both halves glob a REAL migration, so C-2 cannot fire for an unrelated
+  // reason and the violation set is exact rather than merely non-empty.
+  const REAL_UNSKIPPED = "20270522002463_issue_2462_phone_backfill.sql";
+
+  // ---- in scope: R-5 reads it, and the skip is real -----------------------
+  {
+    const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+      editWorkflow: [
+        LANE,
+        (src) => src.replace("            esac", `              *${REAL_UNSKIPPED})\n                continue ;;\n            esac`),
+      ],
+    });
+    const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+    const lane = lanes.find((l) => l.workflow === LANE);
+    assert.equal(lane.branchCount, 5, "R-5 must read the two-line branch form");
+    assert.equal(lane.globs.length, 5, "and extract its glob");
+    assert.ok(
+      lane.skipped.includes(REAL_UNSKIPPED),
+      "reading the branch is not enough — the skip must actually take effect on the file it names",
+    );
+    assert.deepEqual(checksIn(violations), [], "a readable two-line branch must not flag anything");
+    const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
+    assert.equal(census.terminators, lane.branchCount, "and the census must now AGREE — that agreement is the fix");
+    assert.equal(census.continues, lane.branchCount);
+  }
+
+  // ---- out of scope: three lines, unread, and only the census sees it ------
+  {
+    const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+      editWorkflow: [
+        LANE,
+        (src) =>
+          src.replace("            esac", `              *${REAL_UNSKIPPED})\n                continue\n                ;;\n            esac`),
+      ],
+    });
+    const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+    const lane = lanes.find((l) => l.workflow === LANE);
+    assert.equal(lane.branchCount, 4, "R-5 is scoped to the two-line form; a three-line branch stays unread");
+    assert.equal(
+      lane.skipped.includes(REAL_UNSKIPPED),
+      false,
+      "so the guard's model of the skip list really is short an entry — this is the dangerous state",
+    );
+    assert.deepEqual(
+      checksIn(violations),
+      ["C-4c"],
+      "and C-4(c) alone must catch it — C-4(b) cannot, because the other branches still yield globs",
+    );
+    const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
+    assert.equal(census.terminators, 5);
+    assert.equal(census.continues, 5);
+    assert.ok(
+      census.terminators > lane.branchCount && census.continues > lane.branchCount,
+      "the census must STRICTLY EXCEED the parser here, or C-4(c) would be a check that cannot fail",
+    );
+  }
+});
+
+// ---------------------------------------------------------------------------
+// T-26 / T-27 — appended by the independent tester after re-attacking the
+// fixed guard. I built 22 adversarial lane shapes against R-5 + C-4(c) and
+// could not produce a silent under-read; these two pin the properties that
+// made that true, so a future parser change cannot quietly lose them.
+// ---------------------------------------------------------------------------
+
+/**
+ * Branch forms the parser deliberately does NOT read. Each names a REAL,
+ * currently-unskipped migration, so C-2 cannot fire for an unrelated reason and
+ * a silent pass cannot be mistaken for a correct read.
+ */
+const UNREADABLE_BRANCH_FORMS = [
+  ["three-line: pattern / continue / ;;", (g) => `              *${g})\n                continue\n                ;;`],
+  ["one-line ';&' fall-through terminator", (g) => `              *${g}) continue ;&`],
+  ["two-line with ';&' on the second line", (g) => `              *${g})\n                continue ;&`],
+  ["final branch omitting ';;' entirely", (g) => `              *${g}) continue`],
+  ["backslash line-continuation", (g) => `              *${g}) continue \\\n                ;;`],
+  ["'continue 1' with an explicit loop level", (g) => `              *${g}) continue 1 ;;`],
+];
+
+test("T-26 — every branch form the parser cannot read fails CLOSED, and the census can never be balanced", (t) => {
+  const REAL_UNSKIPPED = "20270522002463_issue_2462_phone_backfill.sql";
+  for (const [label, render] of UNREADABLE_BRANCH_FORMS) {
+    const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+      editWorkflow: [LANE, (src) => src.replace("            esac", `${render(REAL_UNSKIPPED)}\n            esac`)],
+    });
+    const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+    const lane = lanes.find((l) => l.workflow === LANE);
+    const checks = checksIn(violations);
+
+    // 1. Never silent. An unread skip that raises nothing is the exact defect
+    //    #2492 exists to eliminate, and it is what I measured before the fix.
+    assert.notDeepEqual(checks, [], `${label}: the lane carries a skip the parser did not read and NOTHING fired`);
+    assert.ok(checks.includes("C-4c"), `${label}: C-4(c) must be the clause that catches it, got ${checks.join(",")}`);
+
+    // 2. The census can never be balanced against an unread branch. Every legal
+    //    skip construct must spend a `continue`, and every branch the parser
+    //    reads must spend a terminator, so the counts can only ever run AHEAD
+    //    of the parser — never level with it while an entry is missing.
+    const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
+    assert.ok(
+      census.terminators > lane.branchCount || census.continues > lane.branchCount,
+      `${label}: census ${census.terminators}/${census.continues} did not exceed branchCount ${lane.branchCount} — ` +
+        "if a shape can balance the census while hiding a skip, C-4(c) is defeated",
+    );
+  }
+});
+
+test("T-27 — a SECOND filtered apply loop in the same workflow is discovered, not ignored", (t) => {
+  // Lane discovery iterates every apply loop in a file. A parser that stops at
+  // the first would leave later lanes completely unanalysed — silently, because
+  // the first lane is clean and the guard would exit 0.
+  const SECOND_LOOP =
+    "          for g in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do\n" +
+    "            case \"$g\" in\n" +
+    "              *_issue_0006_never_existed_*) continue ;;\n" +
+    "            esac\n" +
+    "          done\n";
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
-    editWorkflow: [
-      LANE,
-      (src) =>
-        src.replace(
-          "            esac",
-          `              *${FIXTURE_MIGRATION})\n                continue ;;\n            esac`,
-        ),
-    ],
+    editWorkflow: [LANE, (src) => src.replace("          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\", `${SECOND_LOOP}          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \\`)],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
-  const lane = lanes.find((l) => l.workflow === LANE);
 
-  // The gap, stated as a fact rather than asserted as correct: the parser reads
-  // four branches where the lane now has five, and raises nothing.
-  assert.equal(lane.branchCount, 4, "the multi-line branch is invisible to the branch regex");
-  assert.deepEqual(checksIn(violations), [], "and no check fires — this is the fail-open T-21 exists to contain");
-
-  // The census sees it. That is the whole point: T-21 runs this same comparison
-  // against the real lanes on every CI run, so the gap cannot become reachable
-  // without a red.
-  const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
-  assert.equal(census.terminators, 5, "the case region really does carry five terminators");
-  assert.notEqual(
-    census.terminators,
-    lane.branchCount,
-    "the census MUST disagree with the parser here, or T-21 would be a check that cannot fail",
+  assert.equal(lanes.length, 5, "the second apply loop must appear in the inventory as its own lane");
+  assert.ok(
+    violations.some((v) => v.check === "C-2" && v.message.includes("_issue_0006_never_existed_")),
+    "and its dead glob must red C-2 — a lane the parser never visits is a lane that protects nothing",
   );
 });
