@@ -32,6 +32,7 @@
 // internal mutation mode — this suite is registered selfTest:"none".
 
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -50,6 +51,23 @@ const LANE_1644 = "issue-1644-storage-guardrail-collage-fill-tests.yml";
 const SKIPPED_MIGRATION = "20270522002462_issue_2462_checkout_determinism.sql";
 /** A table created ONLY by 20270413001931, which the #1931 lane skips. */
 const SKIPPED_TABLE = "private_event_access_grants";
+/**
+ * Digest of the real `.github/workflows` and `supabase/migrations` directories:
+ * every filename plus the content of the four lanes this suite mutates. Used as
+ * a teardown post-condition so a fixture that escapes its temp directory is
+ * caught by the very test that did it, not discovered later in `git status`.
+ */
+function realTreeDigest() {
+  const hash = crypto.createHash("sha256");
+  for (const [dir, pattern] of [[REAL_WORKFLOWS, /\.ya?ml$/], [REAL_MIGRATIONS, /\.sql$/]]) {
+    for (const name of fs.readdirSync(dir).filter((n) => pattern.test(n)).sort()) hash.update(`${dir}/${name}\n`);
+  }
+  for (const name of fs.readdirSync(REAL_WORKFLOWS).filter((n) => /^issue-(1644|1647|1931|2117)-/.test(n)).sort()) {
+    hash.update(fs.readFileSync(path.join(REAL_WORKFLOWS, name)));
+  }
+  return hash.digest("hex");
+}
+
 /** A column added ONLY by 20270420002160, which the #1931 lane skips. */
 const SKIPPED_COLUMN = "multi_date_pricing_mode";
 const FIXTURE_MIGRATION = "29990101000002_issue_2492_adversarial.sql";
@@ -62,6 +80,21 @@ function fullCopyFixture(t, { editWorkflow, addMigration } = {}) {
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(REAL_WORKFLOWS, workflowsDir, { recursive: true });
   fs.cpSync(REAL_MIGRATIONS, migrationsDir, { recursive: true });
+
+  // Belt-and-braces containment. A fixture must never be able to reach a real
+  // repository directory: assert the resolved fixture paths sit outside the
+  // repo BEFORE anything is written, and assert on teardown that the real
+  // directories were not touched. A test harness that can write to the tree it
+  // inspects is a test harness that can manufacture its own green.
+  assert.ok(
+    !path.resolve(workflowsDir).startsWith(REPO_ROOT + path.sep) &&
+      !path.resolve(migrationsDir).startsWith(REPO_ROOT + path.sep),
+    `fixture directories resolved INSIDE the repository (${workflowsDir}, ${migrationsDir}) — refusing to write`,
+  );
+  const realBefore = realTreeDigest();
+  t.after(() => {
+    assert.equal(realTreeDigest(), realBefore, "a fixture mutated the real repository directories");
+  });
 
   if (editWorkflow) {
     const [name, edit] = editWorkflow;
@@ -300,5 +333,179 @@ test("T-12 — independent fails-on-revert, built differently from the implement
   assert.ok(
     violations.every((v) => !v.message.includes("20270522002463_issue_2462_phone_backfill.sql")),
     "...002463 must never be implicated — it is healthy and deliberately not skipped",
+  );
+});
+
+// ---------------------------------------------------------------------------
+// APPENDED BY THE INDEPENDENT TESTER — #2492 gatekeeping pass.
+//
+// The suite above proves the enumerated blind spots (R-2/R-3/C-4b) are closed.
+// These cases attack the branch grammar itself, which R-1…R-4 never specified:
+// R-1 fixes the LOOP spelling, R-2 the CASE SUBJECT, R-3 alternation and R-4
+// the matching subject — but nothing pins how a single `case` BRANCH may be
+// written. POSIX sh allows several forms, and the parser reads only one of
+// them (`<pattern>) continue ;;` on one physical line).
+//
+// T-16…T-20 lock in the branch forms the parser DOES handle, so a future
+// "simplification" of the regex cannot quietly drop them.
+//
+// T-21/T-22 close the one form it does not. A branch written as
+//
+//     *_issue_9999_*)
+//       continue ;;
+//
+// is legal, is skipped by the real lane, and is invisible to the parser. When
+// the lane also carries readable branches, `globs.length > 0`, so C-4(b) — the
+// zero-glob cross-check — cannot fire, and the guard reports OK while its model
+// of the skip list is missing an entry. That is fail-OPEN in the one direction
+// this guard exists to close: the unseen skip's definitions are credited to the
+// filtered chain, so a later migration referencing them is never flagged.
+//
+// T-21 is the containment: a BRANCH CENSUS over the real lanes. Every `;;`
+// terminator and every `continue` inside a lane's case region must correspond
+// to a branch the parser actually read. It reds the moment any real lane
+// acquires a branch form the parser cannot read — which is the only way the
+// fail-open becomes reachable. T-22 proves the census is not vacuous by
+// building the exact fixture the parser mishandles and showing the census
+// catches what `analyseLanes` alone does not.
+// ---------------------------------------------------------------------------
+
+/**
+ * Count the branch terminators inside one lane's `case` region.
+ * Whole-line `#` comments are not code, matching the guard's own lexer.
+ */
+function branchCensus(yamlText, lane) {
+  const lines = yamlText.split("\n").map((l) => (/^\s*#/.test(l) ? "" : l));
+  let end = lines.findIndex((l, i) => i >= lane.line && /^\s*done\b/.test(l));
+  if (end === -1) end = lines.length - 1;
+  const body = lines.slice(lane.line - 1, end + 1);
+  const caseIdx = body.findIndex((l) => /^\s*case\s+.+\s+in\s*$/.test(l));
+  const esacIdx = body.findIndex((l, i) => i > caseIdx && /^\s*esac\s*$/.test(l));
+  if (caseIdx === -1 || esacIdx === -1) return null;
+  const region = body.slice(caseIdx + 1, esacIdx);
+  return {
+    terminators: region.join("\n").split(/;;&?/).length - 1,
+    continues: region.filter((l) => /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l)).length,
+  };
+}
+
+test("T-16 — a `;;&` fall-through terminator does not hide a branch", (t) => {
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [LANE, (src) => src.replace("*_issue_2160_*) continue ;;", "*_issue_2160_*) continue ;;&")],
+  });
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+  assert.equal(lane.globs.length, 4, "a `;;&` terminator must not drop the branch it terminates");
+  assert.deepEqual(checksIn(violations), [], "a semantics-preserving terminator change must not flag");
+});
+
+test("T-17 — the leading-paren branch form `(glob)` is still read", (t) => {
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [LANE, (src) => src.replace("              *_issue_2160_*) continue ;;", "              (*_issue_2160_*) continue ;;")],
+  });
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 4);
+  assert.deepEqual(checksIn(violations), [], "`(pattern)` is the same branch, written the other legal way");
+});
+
+test("T-18 — a braced `${f}` case subject still resolves to a full path (R-4)", (t) => {
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [LANE, (src) => src.replace('case "$f" in', 'case "${f}" in')],
+  });
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+  assert.equal(lane.subjectKind, "path", "`${f}` is the same loop variable and must resolve, not fail closed to null");
+  assert.equal(lane.globs.length, 4);
+  assert.deepEqual(checksIn(violations), [], "brace syntax must not fire C-2 on a clean repo");
+});
+
+test("T-19 — `esac` carrying a trailing comment fails CLOSED, never silently", (t) => {
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [LANE, (src) => src.replace("            esac\n", "            esac  # end of the skip list\n")],
+  });
+  const { violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const checks = checksIn(violations);
+  assert.ok(checks.includes("C-4a"), `an unclosable case must raise C-4a; got ${checks.join(",")}`);
+  assert.ok(
+    checks.includes("C-4b"),
+    "and C-4b must fire too — a lane the parser cannot close is NOT an unfiltered lane",
+  );
+});
+
+test("T-20 — a decoy `case` before the skip case cannot make the lane read as unfiltered", (t) => {
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          '            case "$f" in',
+          '            case "$MODE" in\n              slow) continue ;;\n            esac\n            case "$f" in',
+        ),
+    ],
+  });
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+  assert.equal(lane.globs.length, 0, "the decoy is what the parser locks onto — that much is expected");
+  assert.ok(
+    checksIn(violations).includes("C-4b"),
+    "but it MUST be reported, never analysed with an empty skip set as though the lane filtered nothing",
+  );
+});
+
+test("T-21 — branch census: every terminator in every real lane maps to a branch the parser read", () => {
+  const { lanes, violations } = analyseLanes();
+  assert.deepEqual(checksIn(violations), [], "precondition: the real tree is clean");
+  assert.equal(lanes.length, 4);
+  for (const lane of lanes) {
+    const yamlText = fs.readFileSync(path.join(REAL_WORKFLOWS, lane.workflow), "utf8");
+    const census = branchCensus(yamlText, lane);
+    assert.notEqual(census, null, `${lane.workflow}: the case region could not be bounded`);
+    assert.equal(
+      census.terminators,
+      lane.branchCount,
+      `${lane.workflow}: ${census.terminators} branch terminator(s) in the case region but the parser read ` +
+        `${lane.branchCount} branch(es). A branch it cannot read is a skip entry it does not know about, and ` +
+        `C-4(b) cannot catch it while the other branches still yield globs. Write the branch as ` +
+        "`<pattern>) continue ;;` on one line, or teach the parser the form.",
+    );
+    assert.equal(
+      census.continues,
+      lane.branchCount,
+      `${lane.workflow}: ${census.continues} \`continue\` statement(s) but ${lane.branchCount} parsed branch(es)`,
+    );
+  }
+});
+
+test("T-22 — the census is not vacuous: it catches the branch form analyseLanes misses", (t) => {
+  // A second skip entry, written across two physical lines. Legal sh; the real
+  // lane skips it; the parser does not see it. Nothing else about the lane
+  // changes, so the readable branches still yield globs and C-4(b) stays quiet.
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "            esac",
+          `              *${FIXTURE_MIGRATION})\n                continue ;;\n            esac`,
+        ),
+    ],
+  });
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+
+  // The gap, stated as a fact rather than asserted as correct: the parser reads
+  // four branches where the lane now has five, and raises nothing.
+  assert.equal(lane.branchCount, 4, "the multi-line branch is invisible to the branch regex");
+  assert.deepEqual(checksIn(violations), [], "and no check fires — this is the fail-open T-21 exists to contain");
+
+  // The census sees it. That is the whole point: T-21 runs this same comparison
+  // against the real lanes on every CI run, so the gap cannot become reachable
+  // without a red.
+  const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
+  assert.equal(census.terminators, 5, "the case region really does carry five terminators");
+  assert.notEqual(
+    census.terminators,
+    lane.branchCount,
+    "the census MUST disagree with the parser here, or T-21 would be a check that cannot fail",
   );
 });

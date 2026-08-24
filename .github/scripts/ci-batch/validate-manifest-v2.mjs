@@ -1081,7 +1081,7 @@ export function validateRegistry(
 
   const discoveredProviders = workflowProviders ?? discoverWorkflowProviders(root);
   const registeredProviders = manifest.workflowProviders || [];
-  if (!Array.isArray(registeredProviders) || registeredProviders.length !== 89) fail(errors, "workflowProviders must contain exactly the amended 89 providers");
+  if (!Array.isArray(registeredProviders) || registeredProviders.length !== 91) fail(errors, "workflowProviders must contain exactly the amended 91 providers");
   const providerKeys = new Set();
   const registeredByName = new Map();
   for (const item of registeredProviders) {
@@ -1132,7 +1132,7 @@ function main() {
     process.exit(1);
   }
   const waveLifecycle = manifest.suites.slice(23)[0]?.lifecycle;
-  console.log(`#2437 ${waveLifecycle === "batched-historical" ? "terminal" : "shadow"} registry: PASS — 199 origins, 55 executable suites (32 wave), 89 external providers`);
+  console.log(`#2437 ${waveLifecycle === "batched-historical" ? "terminal" : "shadow"} registry: PASS — 199 origins, 55 executable suites (32 wave), 91 external providers`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();

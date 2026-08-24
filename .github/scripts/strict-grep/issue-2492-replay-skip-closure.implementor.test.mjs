@@ -28,6 +28,7 @@
 // a clean result. Measured cost of a full copy: 14 MB + 1.4 MB.
 
 import assert from "node:assert/strict";
+import crypto from "node:crypto";
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -51,6 +52,23 @@ const SKIPPED_COLUMN = "multi_date_pricing_mode";
 const FIXTURE_MIGRATION = "29990101000001_issue_2492_fixture.sql";
 
 /**
+ * Digest of the real `.github/workflows` and `supabase/migrations` directories:
+ * every filename plus the content of the four lanes this suite mutates. Used as
+ * a teardown post-condition so a fixture that escapes its temp directory is
+ * caught by the very test that did it, not discovered later in `git status`.
+ */
+function realTreeDigest() {
+  const hash = crypto.createHash("sha256");
+  for (const [dir, pattern] of [[REAL_WORKFLOWS, /\.ya?ml$/], [REAL_MIGRATIONS, /\.sql$/]]) {
+    for (const name of fs.readdirSync(dir).filter((n) => pattern.test(n)).sort()) hash.update(`${dir}/${name}\n`);
+  }
+  for (const name of fs.readdirSync(REAL_WORKFLOWS).filter((n) => /^issue-(1644|1647|1931|2117)-/.test(n)).sort()) {
+    hash.update(fs.readFileSync(path.join(REAL_WORKFLOWS, name)));
+  }
+  return hash.digest("hex");
+}
+
+/**
  * Full copy of both real directories, then exactly one mutation.
  * `editWorkflow` is `[filename, fn(text) -> text]`; `addMigration` is
  * `[filename, sql]`. Pass one, never both.
@@ -63,6 +81,21 @@ function fullCopyFixture(t, { editWorkflow, addMigration } = {}) {
   const migrationsDir = path.join(root, "migrations");
   fs.cpSync(REAL_WORKFLOWS, workflowsDir, { recursive: true });
   fs.cpSync(REAL_MIGRATIONS, migrationsDir, { recursive: true });
+
+  // Belt-and-braces containment. A fixture must never be able to reach a real
+  // repository directory: assert the resolved fixture paths sit outside the
+  // repo BEFORE anything is written, and assert on teardown that the real
+  // directories were not touched. A test harness that can write to the tree it
+  // inspects is a test harness that can manufacture its own green.
+  assert.ok(
+    !path.resolve(workflowsDir).startsWith(REPO_ROOT + path.sep) &&
+      !path.resolve(migrationsDir).startsWith(REPO_ROOT + path.sep),
+    `fixture directories resolved INSIDE the repository (${workflowsDir}, ${migrationsDir}) — refusing to write`,
+  );
+  const realBefore = realTreeDigest();
+  t.after(() => {
+    assert.equal(realTreeDigest(), realBefore, "a fixture mutated the real repository directories");
+  });
 
   if (editWorkflow) {
     const [name, edit] = editWorkflow;

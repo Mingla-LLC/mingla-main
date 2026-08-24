@@ -146,7 +146,7 @@ function selfTest(base) {
     ...discovery,
     matrixSource: discovery.matrixSource.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"),
   });
-  assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /89 providers|externally referenced workflow provider omitted/, discovery);
+  assertRed("provider omission", base, (m) => m.workflowProviders.pop(), /91 providers|externally referenced workflow provider omitted/, discovery);
   assertRed("provider duplication", base, (m) => m.workflowProviders.push(clone(m.workflowProviders[0])), /duplicate or empty workflow provider/, discovery);
   assertRed("stale reference", base, (m) => { m.workflowProviders[0].referenceFiles[0] = "definitely/missing-reference.mjs"; }, /stale reference file|inventory drifted/, discovery);
   assertRed("live plus batched duplicate provider", base, (m) => { m.suites[0].origin = `.github/workflows/${discovery.liveOrigins[0]}`; }, /origin is live and batched/, discovery);
