@@ -46,6 +46,7 @@ import { Command } from "cmdk";
 import { useRouter } from "expo-router";
 
 import { useAuth } from "../../context/AuthContext";
+import { useCurrentBrand } from "../../hooks/useCurrentBrand";
 import { useAudienceList } from "../../hooks/marketing/useAudienceList";
 import { useCampaigns } from "../../hooks/marketing/useCampaigns";
 import { useUserTemplates } from "../../hooks/marketing/useUserTemplates";
@@ -70,7 +71,11 @@ export const CommandPalette: React.FC = () => {
 
   // Fetch recent items. React Query handles caching + auto-refetch on
   // window focus, so the palette always reflects current state.
-  const campaignsQuery = useCampaigns({ account_id: accountId });
+  // #2514 — campaigns are brand-scoped. Audiences and templates keep their
+  // account scope: they are not part of this issue and changing them here
+  // would be scope creep into surfaces with no reported defect.
+  const currentBrand = useCurrentBrand();
+  const campaignsQuery = useCampaigns({ brand_id: currentBrand?.id ?? null });
   const audiencesQuery = useAudienceList(accountId);
   const templatesQuery = useUserTemplates(accountId);
 

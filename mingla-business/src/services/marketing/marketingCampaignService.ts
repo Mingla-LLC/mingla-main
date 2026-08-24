@@ -197,18 +197,33 @@ export async function deleteDraft(campaignId: string): Promise<void> {
   }
 }
 
+/**
+ * #2514 — BRAND is the scope, not account.
+ *
+ * This used to filter on `account_id` alone and never mention `brand_id`,
+ * which broke in both directions at once: standing inside Brand A you saw
+ * your OWN campaigns from Brand B, and you could not see campaigns created
+ * by anyone else on the brand you were actually in. During the 2026-08-24
+ * blast incident that meant the person with authority to re-send could not
+ * find the campaign at all.
+ *
+ * `account_id` is deliberately GONE as a filter. RLS on
+ * `marketing_campaigns_select` already admits the owner OR a brand team
+ * member, so brand + RLS returns exactly the rows this caller may see —
+ * and keeping the account filter is precisely what hid teammates' work.
+ */
 export async function listCampaigns(input: {
-  account_id: string;
+  brand_id: string;
   status?: CampaignStatus;
   limit?: number;
 }): Promise<MarketingCampaignRow[]> {
-  assertUuid(input.account_id, "listCampaigns.account_id");
+  assertUuid(input.brand_id, "listCampaigns.brand_id");
   let query = supabase
     .from("marketing_campaigns")
     .select(
       "id, account_id, brand_id, audience_id, template_id, name, channel, channel_payload, status, scheduled_for, sent_at, recipient_count, created_at, updated_at",
     )
-    .eq("account_id", input.account_id)
+    .eq("brand_id", input.brand_id)
     .order("created_at", { ascending: false })
     .limit(input.limit ?? 100);
   if (input.status !== undefined) query = query.eq("status", input.status);

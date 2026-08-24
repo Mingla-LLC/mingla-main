@@ -30,17 +30,17 @@ export interface UseMarketingOverviewState {
 }
 
 export function useMarketingOverview(
-  accountId: string | null | undefined,
+  brandId: string | null | undefined,
 ): UseMarketingOverviewState {
   // ORCH-1004 — overview funnel counters are auth.uid()-scoped; gate on auth.
   const { isAuthReady } = useAuth();
   const enabled =
-    isAuthReady && typeof accountId === "string" && accountId.length > 0;
+    isAuthReady && typeof brandId === "string" && brandId.length > 0;
   const query = useQuery<MarketingOverviewSnapshot>({
     queryKey: enabled
-      ? marketingKeys.overview.byAccount(accountId as string)
+      ? marketingKeys.overview.byBrand(brandId as string)
       : marketingKeys.overview.all,
-    queryFn: async () => getMarketingOverview({ account_id: accountId as string }),
+    queryFn: async () => getMarketingOverview({ brand_id: brandId as string }),
     enabled,
     staleTime: STALE_TIME_MS,
   });

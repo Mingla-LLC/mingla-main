@@ -27,21 +27,21 @@ export interface UseCampaignsState {
 }
 
 export function useCampaigns(input: {
-  account_id: string | null | undefined;
+  brand_id: string | null | undefined;
   status?: CampaignStatus;
 }): UseCampaignsState {
   const { isAuthReady } = useAuth();
   const enabled =
     isAuthReady &&
-    typeof input.account_id === "string" &&
-    input.account_id.length > 0;
+    typeof input.brand_id === "string" &&
+    input.brand_id.length > 0;
   const query = useQuery<MarketingCampaignRow[]>({
     queryKey: enabled
-      ? marketingKeys.campaigns.list(input.account_id as string, input.status)
+      ? marketingKeys.campaigns.list(input.brand_id as string, input.status)
       : marketingKeys.campaigns.all,
     queryFn: async () =>
       listCampaigns({
-        account_id: input.account_id as string,
+        brand_id: input.brand_id as string,
         status: input.status,
       }),
     enabled,

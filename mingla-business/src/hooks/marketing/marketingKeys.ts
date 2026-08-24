@@ -12,15 +12,17 @@ export const marketingKeys = {
   all: ["marketing"] as const,
   campaigns: {
     all: ["marketing", "campaigns"] as const,
-    list: (accountId: string, status?: CampaignStatus): readonly unknown[] =>
-      ["marketing", "campaigns", "list", accountId, status ?? "all"] as const,
+    // #2514 — keyed by BRAND. Keying by account made two brands share one
+    // cache entry, so switching brand served the previous brand's list.
+    list: (brandId: string, status?: CampaignStatus): readonly unknown[] =>
+      ["marketing", "campaigns", "list", brandId, status ?? "all"] as const,
     byId: (campaignId: string): readonly unknown[] =>
       ["marketing", "campaigns", "byId", campaignId] as const,
   },
   overview: {
     all: ["marketing", "overview"] as const,
-    byAccount: (accountId: string): readonly unknown[] =>
-      ["marketing", "overview", accountId] as const,
+    byBrand: (brandId: string): readonly unknown[] =>
+      ["marketing", "overview", brandId] as const,
   },
   audiences: {
     all: ["marketing", "audiences"] as const,

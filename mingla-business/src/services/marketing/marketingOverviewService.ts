@@ -68,13 +68,16 @@ export function rollupFunnel(
 }
 
 export interface GetMarketingOverviewInput {
-  account_id: string;
+  brand_id: string;
 }
 
 export async function getMarketingOverview(
   input: GetMarketingOverviewInput,
 ): Promise<MarketingOverviewSnapshot> {
-  assertUuid(input.account_id, "getMarketingOverview.account_id");
+  // #2514 — brand is the scope. Keyed by account, this 30-day funnel summed
+  // ACROSS every brand the operator belongs to, so a multi-brand operator's
+  // "DELIVERED 3 (1.5%)" was not even a figure about one brand.
+  assertUuid(input.brand_id, "getMarketingOverview.brand_id");
 
   const windowStartIso = new Date(Date.now() - WINDOW_DAYS * MS_PER_DAY).toISOString();
 
@@ -87,7 +90,7 @@ export async function getMarketingOverview(
     supabase
       .from("marketing_campaigns")
       .select("id, status, sent_at, created_at")
-      .eq("account_id", input.account_id)
+      .eq("brand_id", input.brand_id)
       .gte("created_at", windowStartIso),
     DATA_FETCH_TIMEOUT_MS,
     "getMarketingOverview:campaigns",
@@ -113,7 +116,7 @@ export async function getMarketingOverview(
       .select(
         "id, name, status, sent_at, scheduled_for, recipient_count, created_at",
       )
-      .eq("account_id", input.account_id)
+      .eq("brand_id", input.brand_id)
       .order("sent_at", { ascending: false, nullsFirst: false })
       .order("created_at", { ascending: false })
       .limit(RECENT_CAMPAIGN_LIMIT),
