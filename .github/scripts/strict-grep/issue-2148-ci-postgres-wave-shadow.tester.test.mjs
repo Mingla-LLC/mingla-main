@@ -107,11 +107,13 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   assert.deepEqual(lifecycle.steps.map((step) => step.env || null).filter(Boolean), [{ NODE_PATH: "./node_modules" }]);
   assert.deepEqual(value.setupProfiles[lifecycle.setupProfile].installs.map((item) => [item.cwd,item.invocation.command,item.invocation.argv]), [["mingla-business","npm",["ci"]],["app-mobile","npm",["ci"]]]);
   const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 67); assert.equal(sha(providers), "af756cd7e72c0c4ed208408d23eec621349b8eb7aaefb197214af8794efee305");
-  assert.equal(providers.some((item) => item.workflow === "issue-948-w3-screens-copy-tests.yml"), false);
-  // [#2438 SC-21] The line above is VACUOUS at terminal — that file is deleted, so it
-  // cannot be discovered whatever the carve-out does. Reported as such; not amended,
-  // because this dispatch authorises five lines and this is not one of them. The
-  // non-vacuous terminal form is asserted here instead: NONE of the twelve may appear.
+  // [#2438 SC-21] The single-wrapper W3 assertion that stood here was removed under the
+  // ruling at issue #2438 comment 5398524723. At shadow it was real: W3 was live and kept
+  // out of discovery only by the A4-SC2 carve-out. At terminal it interrogates a deleted
+  // file, so in the shipped state it has nothing to fail against, and the only way to make
+  // it fail — restoring W3 — is caught identically and more broadly by the line below,
+  // which subsumes it across all twelve. A check that reads as coverage without adding any
+  // is noise, so it is gone rather than left in the guard written to catch that class.
   assert.equal(providers.filter((item) => WRAPPERS.some(([name]) => name === item.workflow)).length, 0);
   // The terminal authority is a RECONSTRUCTION, not a second frozen digest. Re-derive it
   // independently: what discovery still sees, plus the six records the registry carries
