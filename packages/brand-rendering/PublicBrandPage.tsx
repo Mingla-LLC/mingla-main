@@ -37,6 +37,7 @@ import {
   Text,
   View,
   type LayoutChangeEvent,
+  type ViewStyle,
 } from "react-native";
 import type { LucideIcon } from "lucide-react-native";
 import {
@@ -55,6 +56,7 @@ import {
   EventCoverMedia,
   MINGLA_DEFAULT_THEME,
   createThemePalette,
+  hexToRgba,
   offeringSurfaceStyles,
   nextEventAcquisitionBoundaryDelayMs,
   resolveEventAcquisitionState,
@@ -782,6 +784,9 @@ const Avatar: React.FC<{
   palette: ThemePalette;
   size?: number;
 }> = ({ brand, palette, size = 84 }) => {
+  // #2539 — NO shadowColor here either. It is a shadow* prop like the other
+  // three, and on web it reaches the SAME react-native-web <Image> that turns
+  // the set into `filter: drop-shadow()` on the clipped inner layer.
   const avatarStyle = [
     styles.avatar,
     {
@@ -790,29 +795,62 @@ const Avatar: React.FC<{
       borderRadius: size / 2,
       backgroundColor: palette.panelStrong,
       borderColor: palette.accent,
-      shadowColor: palette.accent,
     },
   ];
-  if (brand.photo !== undefined && brand.photo.length > 0) {
-    return (
-      <Image
-        source={{ uri: brand.photo }}
-        style={avatarStyle}
-        resizeMode="cover"
-        accessibilityLabel={`${brand.displayName} avatar`}
-      />
-    );
-  }
+  // #2539 — the accent glow lives HERE, on a plain layout box wrapping the
+  // avatar, and never on the avatar itself. One wrapper, both branches, so a
+  // brand with a photo and a brand without one look the same. Two defects, one
+  // cause — the shadow was on the wrong element:
+  //   (1) on web a shadow on the <Image> becomes a CSS filter on the inner
+  //       picture layer, and WebKit gives that layer its own composited layer
+  //       and clips it to a RECTANGLE — the round crop silently disappears;
+  //   (2) a shadow on the CLIPPING element cannot render anywhere: RNW erases
+  //       it from the Image root, CoreAnimation will not draw a masksToBounds
+  //       layer's shadow, and Android's legacy shadow* needs the `elevation`
+  //       ORCH-1155 removed. On a wrapper outside the clip, all three surfaces
+  //       draw it.
+  // boxShadow (RN 0.81 array form) rather than shadow*: it is the form
+  // react-native-web maps to a real CSS box-shadow, and the one iOS Fabric
+  // honours through a clipping ancestor (RCTViewComponentView.mm L787-791).
+  // The wrapper stays a PLAIN box on purpose — no `overflow` (it would re-clip
+  // the glow), no `backgroundColor` (it would paint over it), and no
+  // accessibility props (the <Image> already carries the label; a second
+  // accessible node would be read out twice).
+  const glowStyle: ViewStyle = {
+    width: size,
+    height: size,
+    borderRadius: size / 2,
+    boxShadow: [
+      {
+        offsetX: 0,
+        offsetY: 10,
+        blurRadius: 18,
+        spreadDistance: 0,
+        color: hexToRgba(palette.accent, 0.26),
+      },
+    ],
+  };
   return (
-    <View style={avatarStyle}>
-      <Text
-        style={[
-          styles.avatarInitial,
-          { fontSize: size * 0.42, color: palette.primaryText },
-        ]}
-      >
-        {(brand.displayName.charAt(0) || "?").toUpperCase()}
-      </Text>
+    <View style={glowStyle}>
+      {brand.photo !== undefined && brand.photo.length > 0 ? (
+        <Image
+          source={{ uri: brand.photo }}
+          style={avatarStyle}
+          resizeMode="cover"
+          accessibilityLabel={`${brand.displayName} avatar`}
+        />
+      ) : (
+        <View style={avatarStyle}>
+          <Text
+            style={[
+              styles.avatarInitial,
+              { fontSize: size * 0.42, color: palette.primaryText },
+            ]}
+          >
+            {(brand.displayName.charAt(0) || "?").toUpperCase()}
+          </Text>
+        </View>
+      )}
     </View>
   );
 };
@@ -1838,14 +1876,19 @@ const styles = StyleSheet.create({
     flex: 1,
     minWidth: 0,
   },
+  // #2539 — NO shadow* here. react-native-web turns shadow* on an <Image> into
+  // `filter: drop-shadow()` on the inner picture layer (Image/index.js L75-79);
+  // WebKit then gives that layer its own composited layer and clips it to a
+  // RECTANGLE, dropping this element's border-radius. The glow lives on the
+  // avatarGlow wrapper instead.
+  // `overflow: "hidden"` STAYS — it is what clips the photo to the circle on
+  // native (on web RNW's own Image root already sets it, so it is redundant
+  // there but harmless).
   avatar: {
     alignItems: "center",
     justifyContent: "center",
     borderWidth: 3,
     overflow: "hidden",
-    shadowOpacity: 0.26,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
   },
   avatarInitial: {
     fontWeight: "900",

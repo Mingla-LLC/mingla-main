@@ -75,7 +75,11 @@ const mixHexColors = (from: string, to: string, amount: number): string => {
   });
 };
 
-const hexToRgba = (hex: string, alpha: number): string => {
+// #2539 — exported (body unchanged) so a caller can build a translucent accent
+// from `palette.accent` for a `boxShadow` colour without inventing a second
+// colour helper. `createThemePalette` builds `accent` through `rgbToHex`, so the
+// input is always `#RRGGBB`.
+export const hexToRgba = (hex: string, alpha: number): string => {
   const { r, g, b } = parseHexColor(hex);
   return `rgba(${r},${g},${b},${alpha})`;
 };

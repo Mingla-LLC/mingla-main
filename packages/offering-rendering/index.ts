@@ -335,6 +335,9 @@ export {
   // fontFamily at the 700-weight loaded family. boldFontFamily(theme) returns it.
   FONT_FAMILY_BOLD_MAP,
   boldFontFamily,
+  // #2539 — translucent-accent helper, so a shadow colour can be derived from
+  // palette.accent at the call site instead of hard-coding an rgba() string.
+  hexToRgba,
 } from "./themePalette";
 export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";
