@@ -41,7 +41,11 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-import { createTicketCheckout } from "../ticketCheckoutService";
+import {
+  confirmTicketCheckout,
+  createTicketCheckout,
+  getTicketCheckoutStatus,
+} from "../ticketCheckoutService";
 
 const BODY = {
   eventId: "25110000-0000-4000-8000-000000000001",
@@ -130,6 +134,30 @@ describe("issue #2511 item 7 — a dropped reply is retried, safely", () => {
     await expect(createTicketCheckout(BODY as never)).rejects.toMatchObject({
       message: expect.stringContaining("Failed to fetch"),
     });
+  });
+
+  test("SCOPING: confirm and status do NOT retry — only create opts in", async () => {
+    // The first cut of this change put the retry in the shared helper, which
+    // silently changed `ticket-checkout-confirm` — the PAID finalize path, which
+    // carries ORCH-0852 contracts about how a 502 must propagate. CI caught it.
+    // This pins the scope so the same over-reach cannot return.
+    invokeMock.mockResolvedValue(httpError(502, "upstream"));
+
+    await expect(
+      confirmTicketCheckout("cs_1", "tok"),
+    ).rejects.toBeTruthy();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    invokeMock.mockClear();
+    await expect(
+      getTicketCheckoutStatus("cs_1", "tok"),
+    ).rejects.toBeTruthy();
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+
+    // …while create, on the same 502, retries exactly once.
+    invokeMock.mockClear();
+    await expect(createTicketCheckout(BODY as never)).rejects.toBeTruthy();
+    expect(invokeMock).toHaveBeenCalledTimes(2);
   });
 
   test("a hung request times out instead of hanging forever", async () => {

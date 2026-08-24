@@ -495,14 +495,41 @@ const invokeWithRetry = async (
   }
 };
 
+/**
+ * issue #2511 item 7 — RETRY IS OPT-IN, PER CALL SITE, ON PURPOSE.
+ *
+ * The first cut of this change put the retry inside the shared helper, which
+ * silently changed `ticket-checkout-confirm` too — the PAID finalize path, which
+ * carries its own ORCH-0852 contracts about how a 502 must propagate. CI caught
+ * it (`T-0852-ADV-2`, `T-0852-4`). That was an over-reach: the reasoning about
+ * idempotency was done for CREATE and applied to everything.
+ *
+ * So retry is now requested explicitly, and only `ticket-checkout-create` asks
+ * for it — the one call whose idempotency key is derived from the request body
+ * and is therefore provably safe to repeat. Status, confirm and dispatch keep
+ * byte-identical behaviour.
+ */
+interface InvokeOptions {
+  /** Repeat ONCE on a transport failure or 5xx. Safe only where the server
+   *  derives an idempotency key from the body. */
+  readonly retryOnTransportFailure?: boolean;
+}
+
 const invokeOrThrow = async <T>(
   functionName: string,
   body: Record<string, unknown>,
+  options: InvokeOptions = {},
 ): Promise<T> => {
+  const retrying = options.retryOnTransportFailure === true;
   let data: unknown;
   let error: unknown;
   try {
-    ({ data, error } = await invokeWithRetry(functionName, body));
+    ({ data, error } = retrying
+      ? await invokeWithRetry(functionName, body)
+      : ((await supabase.functions.invoke(functionName, { body })) as {
+        data: unknown;
+        error: unknown;
+      }));
   } catch (transportError) {
     // Both attempts failed to reach the server. Surface it in the shape the
     // mappers already understand: no status, no token — "we do not know".
@@ -510,7 +537,7 @@ const invokeOrThrow = async <T>(
   }
   // issue #2511 — a 5xx comes back as a HANDLED error, not a throw, so the
   // retry decision has to be made here too, not only in the catch above.
-  if (error !== null && error !== undefined && isWorthRetrying(error)) {
+  if (retrying && error !== null && error !== undefined && isWorthRetrying(error)) {
     await sleep(CHECKOUT_RETRY_DELAY_MS);
     ({ data, error } = await invokeWithRetry(functionName, body));
   }
@@ -697,6 +724,15 @@ export const createTicketCheckout = async (
     ...(input.buyerStatusToken !== undefined && input.buyerStatusToken.length > 0
       ? { buyerStatusToken: input.buyerStatusToken }
       : {}),
+  }, {
+    // issue #2511 item 7 — THE ONLY CALL THAT OPTS IN.
+    //
+    // Safe here and ONLY here: the edge function derives the idempotency key
+    // from this body alone, so an identical repeat returns the same reservation
+    // instead of minting a second. Status, confirm and dispatch deliberately do
+    // NOT opt in — confirm in particular carries ORCH-0852 contracts about how a
+    // 502 must propagate, and retrying it would change the paid finalize path.
+    retryOnTransportFailure: true,
   });
 
 export const getTicketCheckoutStatus = async (
