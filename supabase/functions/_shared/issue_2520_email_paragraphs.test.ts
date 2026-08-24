@@ -82,10 +82,15 @@ Deno.test("#2520 links survive the reflow and are still tracked", () => {
   const out = renderMarketingEmail({
     ...base,
     body_html:
-      'Come along.\n\n<a href="https://usemingla.com/s/abc">Get your free ticket</a>',
+      // Deliberately NOT a branded short-content link: the
+      // issue-1615-public-share-surfaces gate treats constructing one outside
+      // its authorised call sites as an unauthorized content-share, and a
+      // fixture is not a reason to weaken that gate. Any absolute http(s) URL
+      // exercises the same HREF_RE rewrite path.
+      'Come along.\n\n<a href="https://example.test/tickets">Get your free ticket</a>',
   });
   assertEquals(out.links.length, 1);
-  assertEquals(out.links[0]?.destination_url, "https://usemingla.com/s/abc");
+  assertEquals(out.links[0]?.destination_url, "https://example.test/tickets");
   assertStringIncludes(bodyCell(out.html), ">Get your free ticket</a>");
 });
 
