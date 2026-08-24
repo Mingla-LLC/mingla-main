@@ -154,13 +154,36 @@ export function renderMarketingEmail(
     return escapeHtml(value);
   });
 
+  // Step 1.5 — paragraph reflow (#2520).
+  //
+  // The composer stores body copy as a TOKEN STRING whose paragraph
+  // separator is `\n\n` (see `tenTapTokenBridge.bodyHtmlToTenTapDoc`, which
+  // splits on `\n` to rebuild editor paragraphs). Nothing downstream ever
+  // converted that to HTML: the shell drops the body straight into
+  // `<td style="padding:28px;">`, HTML collapses runs of whitespace to a
+  // single space, and every campaign shipped as ONE UNBROKEN WALL OF TEXT.
+  // Verified against the 189 emails sent for `We Go Again` on 2026-08-24.
+  //
+  // The conversion belongs HERE and not in storage: writing `<p>` into
+  // `body_html` would break the editor bridge, which treats `<p>` as
+  // unrecognised HTML and renders the tags as literal text.
+  //
+  // ORDER IS CONTRACTUAL — this runs BEFORE event-token replacement.
+  // A medium/large event card is a `<table>`, which is INVALID inside `<p>`
+  // and is dropped or unwrapped by real mail clients. By reflowing while the
+  // cards are still `{{event:…}}` tokens we can leave a block-level card
+  // unwrapped and still wrap ordinary prose. Compact chips are inline `<a>`
+  // pills and stay inside their paragraph, which is what makes
+  // "don't miss {{event:x|compact}} on Friday" read as one sentence.
+  const reflowed = reflowParagraphs(substituted, eventBlockIsStandalone);
+
   // Step 2 — event-card token replacement.
   // ORCH-0891 M2: extract optional `|size` suffix and dispatch to size-specific
   // renderer. Legacy size-less tokens default to `medium` (current layout) per
   // I-EVENT-CHIP-SIZE-BACKWARDS-COMPAT.
   const eventLookup = new Map<string, EmbeddedEvent>();
   for (const e of input.embedded_events) eventLookup.set(e.id, e);
-  const withEventCards = substituted.replace(
+  const withEventCards = reflowed.replace(
     EVENT_TOKEN_RE,
     (_match, eventId: string, sizeRaw: string | undefined) => {
       const event = eventLookup.get(eventId);
@@ -211,8 +234,14 @@ export function renderMarketingEmail(
 
   // Flat-text fallback (strip tags, collapse whitespace). Good-enough
   // baseline; Resend supports plain-text alternative for deliverability.
+  // #2520 — the body is now real block markup, so the old "strip every tag"
+  // pass would run all 17 paragraphs together in the plain-text alternative
+  // exactly the way the HTML used to. Turn block boundaries back into
+  // newlines BEFORE stripping, so the text part keeps the author's shape.
   let text = withEventCards
     .replace(/<style[\s\S]*?<\/style>/gi, "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|h[1-6]|li|blockquote)>/gi, "\n\n")
     .replace(/<[^>]+>/g, "")
     .replace(/\n{3,}/g, "\n\n")
     .trim() + `\n\nUnsubscribe: ${input.unsubscribe_url}`;
@@ -442,4 +471,64 @@ function renderUnsubscribeFooter(
     <a href="${safeUrl}" style="color:${BRAND_MUTED};text-decoration:underline;">Unsubscribe</a>
     — Mingla honours this across all your purchases from ${safeBrand}.
   </p>`;
+}
+
+/**
+ * #2520 — paragraph reflow for token-string bodies.
+ *
+ * `\n\n` (or more) separates paragraphs; a single `\n` inside a paragraph is
+ * a soft line break. Blocks for which `isStandaloneBlock` returns true are
+ * emitted bare so block-level HTML (event card tables) is never illegally
+ * nested inside a `<p>`.
+ *
+ * Inline styles only — Gmail strips `<head>` CSS, so a `<style>` block would
+ * silently do nothing in the client that matters most.
+ */
+export function reflowParagraphs(
+  body: string,
+  isStandaloneBlock: (block: string) => boolean,
+): string {
+  // Normalise CRLF so a Windows-authored draft splits identically.
+  const normalised = body.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // Already-structured bodies pass through untouched. A body that contains
+  // block markup was not authored as a token string, and re-wrapping it would
+  // nest blocks illegally.
+  if (/<(p|div|table|ul|ol|blockquote|h[1-6])\b/i.test(normalised)) {
+    return normalised;
+  }
+  const blocks = normalised.split(/\n{2,}/);
+  const out: string[] = [];
+  for (const raw of blocks) {
+    const block = raw.trim();
+    if (block.length === 0) continue;
+    if (isStandaloneBlock(block)) {
+      out.push(block);
+      continue;
+    }
+    const withBreaks = block.split("\n").map((line) => line.trim()).join(
+      "<br />",
+    );
+    // Style is written INLINE, not interpolated from a constant. The
+    // ORCH-0785-C buyer-string-escape gate requires every `${…}` in an HTML
+    // template to be escapeHtml()-wrapped, and escaping a CSS declaration
+    // would mangle its quotes. Inlining removes the interpolation entirely
+    // rather than claiming an exemption for it. Inline styles are also the
+    // only kind that survive Gmail, which strips <head> CSS.
+    out.push(
+      `<p style="margin:0 0 16px 0;font-size:16px;line-height:1.6;color:#16110D;">${withBreaks}</p>`,
+    );
+  }
+  return out.join("");
+}
+
+/**
+ * A block that is nothing but a medium/large event token renders as a
+ * `<table>` and must not be wrapped in `<p>`. Compact tokens are inline and
+ * deliberately return false so they keep flowing with their sentence.
+ */
+export function eventBlockIsStandalone(block: string): boolean {
+  const match = /^\{\{event:([0-9a-fA-F-]{36})(?:\|(compact|medium|large))?\}\}$/
+    .exec(block.trim());
+  if (match === null) return false;
+  return match[2] !== "compact";
 }

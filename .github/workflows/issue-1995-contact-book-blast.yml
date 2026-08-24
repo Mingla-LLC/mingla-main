@@ -8,6 +8,14 @@ on:
       - "supabase/functions/_shared/marketingBookQuote.ts"
       - "supabase/functions/_shared/smsPriceBook.ts"
       - "supabase/functions/_shared/offeringInviteQuote.ts"
+      # #2520 — the renderer that turns a campaign body into the email a buyer
+      # actually receives. It belongs to this blast pipeline, and the registry
+      # is locked at 200 origins, so its gates live here rather than in a new
+      # workflow of their own.
+      - "supabase/functions/_shared/marketingEmailRender.ts"
+      - "supabase/functions/_shared/email/shell.ts"
+      - "supabase/functions/_shared/issue_2520_email_paragraphs.test.ts"
+      - "supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts"
       - "mingla-business/**"
       - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
       - ".github/workflows/issue-1995-contact-book-blast.yml"
@@ -39,6 +47,24 @@ jobs:
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.happy.test.ts
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.adversarial.test.ts
       - run: deno check supabase/functions/marketing-send/index.ts
+      # #2520 — paragraph reflow. Without it every campaign shipped as one
+      # unbroken wall of text; proven against the 189 We Go Again emails.
+      - name: Format-check the new #2520 Deno test files (NARROW gate — #1184 precedent)
+        run: |
+          deno fmt --check \
+            supabase/functions/_shared/issue_2520_email_paragraphs.test.ts \
+            supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts
+      - run: deno check supabase/functions/_shared/marketingEmailRender.ts
+      - name: "#2520 paragraph reflow (implementor happy-path + tester adversarial)"
+        run: |
+          deno test --allow-env --allow-read \
+            supabase/functions/_shared/issue_2520_email_paragraphs.test.ts \
+            supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts
+      - name: "#2520 neighbouring email-pipeline suites must stay green"
+        run: |
+          deno test --allow-env --allow-read --no-check \
+            supabase/functions/_shared/__tests__/orch_1195_experience_email.test.ts \
+            supabase/functions/_shared/__tests__/orch_1200_email_pipeline_adversarial.test.ts
       - name: Apply full migration chain and prove PG17 contract
         env:
           PGPASSWORD: ${{ github.run_id }}
