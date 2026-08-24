@@ -508,14 +508,18 @@ export function reflowParagraphs(
     const withBreaks = block.split("\n").map((line) => line.trim()).join(
       "<br />",
     );
-    out.push(`<p style="${PARAGRAPH_STYLE}">${withBreaks}</p>`);
+    // Style is written INLINE, not interpolated from a constant. The
+    // ORCH-0785-C buyer-string-escape gate requires every `${…}` in an HTML
+    // template to be escapeHtml()-wrapped, and escaping a CSS declaration
+    // would mangle its quotes. Inlining removes the interpolation entirely
+    // rather than claiming an exemption for it. Inline styles are also the
+    // only kind that survive Gmail, which strips <head> CSS.
+    out.push(
+      `<p style="margin:0 0 16px 0;font-size:16px;line-height:1.6;color:#16110D;">${withBreaks}</p>`,
+    );
   }
   return out.join("");
 }
-
-/** Inline paragraph styling. Matches the shell's 16px/1.6 body rhythm. */
-const PARAGRAPH_STYLE =
-  "margin:0 0 16px 0;font-size:16px;line-height:1.6;color:#16110D;";
 
 /**
  * A block that is nothing but a medium/large event token renders as a
