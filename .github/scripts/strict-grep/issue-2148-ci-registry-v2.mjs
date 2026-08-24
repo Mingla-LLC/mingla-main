@@ -54,7 +54,7 @@ function selfTest(base) {
   const markerTarget = SHADOW_PARITY_WRAPPER_NAMES[0];
   assertMarkerRed("restored terminal wrapper", (sources) => { sources[markerTarget] = "restored terminal wrapper\n"; }, /terminal wrapper must be absent/);
   assertMarkerRed("wrong-path shadow marker", (sources) => { sources["unapproved-workflow.yml"] = `${SHADOW_PARITY_MARKER}\nname: forbidden\n`; }, /stray.*unapproved workflow/);
-  assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /199 origins|origin omitted/, discovery);
+  assertRed("origin omission", base, (m) => m.legacyOrigins.pop(), /200 origins|origin omitted/, discovery);
   assertRed("split-text representation omission", base, (m) => {
     const suite = m.suites.find((item) => item.id === "issue-994-ota-env-resolution-app-mobile");
     const index = suite.originPaths.findIndex((item) => item?.encoding === "concat-v1");

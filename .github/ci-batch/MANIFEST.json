@@ -10791,6 +10791,54 @@
       }
     },
     {
+      "stem": "issue-1979-ari-venue-ops",
+      "extension": "yml",
+      "ownerIssue": "#1979",
+      "disposition": "database-special",
+      "providerWorkflow": ".github/workflows/issue-1979-ari-venue-ops.yml",
+      "rationale": "Retained as the sole live provider because it requires database-special execution.",
+      "workflowMetadata": {
+        "sourceSha256": "ffdcf58df2b10967bd9c4d895372182b2593e37d0c1fa097b42932e0519cd68d",
+        "triggers": [
+          "pull_request",
+          "push"
+        ],
+        "pathScope": [
+          ".github/scripts/strict-grep/issue-1970-ari-capabilities-sync.mjs",
+          ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs",
+          ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs",
+          "docs/contracts/ari-capability-ledger.json",
+          "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts",
+          "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts",
+          "supabase/functions/_shared/agentDomainTools.ts",
+          "supabase/functions/_shared/agentSystemPrompt.ts",
+          "supabase/functions/_shared/agentToolAuthorization.ts"
+        ],
+        "jobKeys": [
+          "venue-ops-contract"
+        ],
+        "runners": [
+          "ubuntu-latest"
+        ],
+        "runtimeVersions": [
+          "deno:1.46.x"
+        ],
+        "setupActions": [
+          "actions/checkout@v4",
+          "denoland/setup-deno@v1"
+        ],
+        "trustBoundary": {
+          "permissions": [
+            "contents: read"
+          ],
+          "environments": [],
+          "usesRepositorySecrets": false,
+          "usesOidc": false,
+          "pullRequestTarget": false
+        }
+      }
+    },
+    {
       "stem": "issue-1985-ari-task-state",
       "extension": "yml",
       "ownerIssue": "#1985",

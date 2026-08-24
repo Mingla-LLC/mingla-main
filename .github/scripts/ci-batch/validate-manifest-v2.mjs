@@ -1026,7 +1026,7 @@ export function validateRegistry(
   }
 
   const legacy = manifest.legacyOrigins || [];
-  if (!Array.isArray(legacy) || legacy.length !== 199) fail(errors, "legacyOrigins must contain exactly the amended 199 origins");
+  if (!Array.isArray(legacy) || legacy.length !== 200) fail(errors, "legacyOrigins must contain exactly the amended 200 origins");
   const legacyKeys = new Set();
   const suiteClaims = new Map();
   for (const item of legacy) {
@@ -1132,7 +1132,7 @@ function main() {
     process.exit(1);
   }
   const waveLifecycle = manifest.suites.slice(23)[0]?.lifecycle;
-  console.log(`#2437 ${waveLifecycle === "batched-historical" ? "terminal" : "shadow"} registry: PASS — 199 origins, 55 executable suites (32 wave), 91 external providers`);
+  console.log(`#2437 ${waveLifecycle === "batched-historical" ? "terminal" : "shadow"} registry: PASS — 200 origins, 55 executable suites (32 wave), 91 external providers`);
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();
