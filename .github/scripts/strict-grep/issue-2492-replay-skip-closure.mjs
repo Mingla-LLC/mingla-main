@@ -53,6 +53,11 @@
 //   C-3    the #1931 lane retains its *_issue_1931_*, *_issue_2160_* and
 //          *_issue_2333_discover_online_carveout* branches
 //   C-4(a) a lane whose skip construct cannot be parsed
+//   C-4(c) BRANCH CENSUS. An independent count of the case region's branch
+//          terminators and `continue` statements must equal the number of
+//          branches the parser read. C-4(b) only catches a lane that yields
+//          ZERO globs; this catches a lane that yields FEWER than it should,
+//          which is the form that hides a real closure break behind it.
 //   C-4(b) POSITIVE CROSS-CHECK. `continue` inside a migration apply loop is
 //          detected INDEPENDENTLY of the case parse. A lane whose loop
 //          contains a `continue` but from which ZERO globs were extracted is
@@ -83,6 +88,15 @@
 //        This parser anchors on the line-terminal ` in`, so nesting is moot.
 //   R-3  ALTERNATION. One branch may carry several globs as `A|B|C)`. Read
 //        one-glob-per-branch and #1647 silently under-skips two files.
+//   R-5  BOTH BRANCH FORMS: `<pattern>) continue ;;` on one line, and the
+//        two-line form `<pattern>)` followed by `continue ;;`. MEASURED by the
+//        independent tester: an identical closure break written on one line
+//        fires C-1; written across two lines it produced ZERO violations while
+//        the break hid behind it. C-4(b) cannot rescue that — its trigger is
+//        ZERO globs, not FEWER — so the form is parsed here and cross-checked
+//        by C-4(c). Other legal sh branch spellings are #2503's systematic
+//        survey; this guard owns the two-line form and the census that reds if
+//        any real lane acquires a form it cannot read.
 //   R-4  SUBJECT-CORRECT glob matching. Evaluate each glob against whichever
 //        subject that lane uses. MEASURED: `20270221001644_*` matches 1 file
 //        as a basename and 0 as a full path — matching it against full paths
@@ -395,6 +409,27 @@ export function globToRegExp(glob) {
 }
 
 /**
+ * C-4(c) — the branch census. Counts a `case` region's branch terminators and
+ * its `continue` statements WITHOUT consulting the branch parser, so the parser
+ * can be checked against them.
+ *
+ * C-4(b) only catches a lane that yields ZERO globs. A lane with four readable
+ * branches and one the parser cannot read still yields globs, so C-4(b) stays
+ * quiet while the guard's model of the skip list is short an entry — and the
+ * unseen skip's definitions are then credited to the filtered chain, so a real
+ * closure break behind it is never flagged. Measured by the independent tester:
+ * the identical break written on one line fires C-1; written across two lines
+ * it produced ZERO violations. Under-counting must be detectable, not just
+ * zero-counting.
+ */
+function branchCensus(regionLines) {
+  return {
+    terminators: regionLines.join("\n").split(/;;&?/).length - 1,
+    continues: regionLines.filter((l) => /(?:^|[\s;&|(])continue(?:[\s;&|)]|$)/.test(l)).length,
+  };
+}
+
+/**
  * Find every migration apply loop in a workflow, and for each one extract the
  * skip globs plus the two fail-closed signals C-4(a) and C-4(b).
  */
@@ -420,6 +455,7 @@ export function discoverLanes(workflowName, rawYaml) {
       globs: [],
       branchCount: 0,
       hasContinue: false,
+      census: null,
       parseErrors: [],
     };
 
@@ -457,14 +493,41 @@ export function discoverLanes(workflowName, rawYaml) {
           `${workflowName}:${i + 1 + caseIdx}: \`case\` is never closed by \`esac\` inside the apply loop — ` +
             `the skip construct cannot be parsed.`,
         );
-      } else if (lane.subjectKind) {
-        for (const branch of body.slice(caseIdx + 1, esacIdx)) {
-          const hit = /^\s*\(?\s*([^)]*?)\s*\)\s*continue\s*;;/.exec(branch);
-          if (!hit) continue;
-          lane.branchCount += 1;
-          // R-3 — one branch may carry several globs.
-          for (const glob of hit[1].split("|").map((g) => g.trim()).filter(Boolean)) {
-            lane.globs.push(glob);
+      } else {
+        const region = body.slice(caseIdx + 1, esacIdx);
+        // C-4(c) — counted from the raw region, INDEPENDENTLY of the branch
+        // parse below, exactly as C-4(b) counts `continue` independently of the
+        // case parse. This is what makes UNDER-counting detectable.
+        lane.census = branchCensus(region);
+        if (lane.subjectKind) {
+          for (let b = 0; b < region.length; b++) {
+            let patterns = null;
+            const inline = /^\s*\(?\s*([^)]*?)\s*\)\s*continue\s*;;/.exec(region[b]);
+            if (inline) {
+              patterns = inline[1];
+            } else {
+              // R-5 — the two-line branch form. `<pattern>)` alone on its line,
+              // `continue ;;` on the next. Legal sh, skipped by the real lane,
+              // and invisible to a one-line branch regex. A lane carrying one
+              // of these alongside readable branches still yields globs, so
+              // C-4(b) cannot catch it — which is why it is parsed here AND
+              // cross-checked by C-4(c).
+              const header = /^\s*\(?\s*([^)]*?)\s*\)\s*$/.exec(region[b]);
+              if (header) {
+                let next = b + 1;
+                while (next < region.length && region[next].trim() === "") next++;
+                if (next < region.length && /^\s*continue\s*;;&?\s*$/.test(region[next])) {
+                  patterns = header[1];
+                  b = next;
+                }
+              }
+            }
+            if (patterns === null) continue;
+            lane.branchCount += 1;
+            // R-3 — one branch may carry several globs.
+            for (const glob of patterns.split("|").map((g) => g.trim()).filter(Boolean)) {
+              lane.globs.push(glob);
+            }
           }
         }
       }
@@ -530,6 +593,25 @@ export function analyseTrees({ workflows, migrations }) {
           `${label}: this migration apply loop contains a \`continue\`, so it filters the chain, but ZERO skip globs ` +
           `were extracted from it. A lane the parser cannot read is NOT an unfiltered lane — analysing it with an ` +
           `empty skip set would silently protect nothing. Fix the parser or the lane; do not leave it unread.`,
+      });
+    }
+
+    // C-4(c) — the branch census. An independent count of the case region's
+    // terminators and `continue` statements must agree with the number of
+    // branches the parser actually read. Disagreement means a skip entry exists
+    // that the guard cannot see, which silently credits that entry's
+    // definitions to the filtered chain and hides any closure break behind it.
+    if (lane.census && (lane.census.terminators !== lane.branchCount || lane.census.continues !== lane.branchCount)) {
+      violations.push({
+        check: "C-4c",
+        lane: label,
+        message:
+          `${label}: branch census disagrees with the parser — the case region holds ` +
+          `${lane.census.terminators} branch terminator(s) and ${lane.census.continues} \`continue\` statement(s), ` +
+          `but ${lane.branchCount} branch(es) were read. A branch the parser cannot read is a skip entry it does not ` +
+          `know about, and C-4(b) cannot catch it while the other branches still yield globs. Write the branch as ` +
+          `\`<pattern>) continue ;;\` on one line, or as \`<pattern>)\` followed by \`continue ;;\`, or teach the ` +
+          `parser the form.`,
       });
     }
 
@@ -775,11 +857,42 @@ function selfTest() {
     }
   }
 
+  // M-9 (C-4c) — a branch the parser CANNOT read, alongside branches it can.
+  // Three physical lines, so R-5's two-line matcher does not cover it. The
+  // readable branches still yield globs, so C-4(b) stays quiet by construction;
+  // only the census catches it. This is the mutant that makes C-4(c) real.
+  {
+    const tree = copy(real);
+    if (mutate("M-9", tree, PINNED_LANE, "            esac", "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac")) {
+      const out = analyseTrees(tree);
+      const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
+      if (lane.branchCount !== 4) record("M-9", `expected the 3-line branch to stay unread (branchCount 4), got ${lane.branchCount}`);
+      else if (!fired(out, "C-4c")) {
+        record("M-9", "C-4c did NOT fire on a lane whose case region holds a branch the parser cannot read — under-counting is invisible");
+      } else if (fired(out, "C-4b")) {
+        record("M-9", "C-4b fired, which would mean this mutant is not exercising the gap C-4c exists for");
+      }
+    }
+  }
+
+  // M-10 (R-5) — the two-line branch form IS read, and does not red anything.
+  // The glob names a real migration so C-2 cannot fire for an unrelated reason.
+  {
+    const tree = copy(real);
+    if (mutate("M-10", tree, PINNED_LANE, "            esac", "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac")) {
+      const out = analyseTrees(tree);
+      const lane = out.lanes.find((l) => l.workflow === PINNED_LANE);
+      if (lane.branchCount !== 5) record("M-10", `two-line branch form not read: branchCount ${lane.branchCount}, expected 5 (R-5)`);
+      else if (lane.globs.length !== 5) record("M-10", `${lane.globs.length} globs, expected 5`);
+      else if (out.violations.length) record("M-10", `a readable two-line branch flagged: ${out.violations.map((v) => v.check).join(",")}`);
+    }
+  }
+
   if (failures.length) {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 4/1/3/1 lane inventory, 8 mutants M-1…M-8 all red).");
+  console.log("#2492 self-test PASS (1 good tree with the 4/1/3/1 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------

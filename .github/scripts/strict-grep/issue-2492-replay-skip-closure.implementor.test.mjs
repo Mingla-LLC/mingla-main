@@ -235,3 +235,113 @@ test("T-5 — the identical reference inside a plpgsql body does NOT flag", (t) 
       "and it is exactly why ...002333 replays clean today",
   );
 });
+
+// ---------------------------------------------------------------------------
+// R-5 / C-4(c) — added after the independent tester proved the two-line branch
+// form is a LIVE fail-open, not a dormant spelling. Its evidence: an identical
+// closure break written on one line fires C-1; written across two lines it
+// produced ZERO violations while the break hid behind it. C-4(b) cannot rescue
+// that — its trigger is ZERO globs, not FEWER — so a lane with four readable
+// branches and one invisible one still yields globs and still reports clean.
+// ---------------------------------------------------------------------------
+
+test("T-23 — the two-line branch form is read, and its skip actually takes effect (R-5)", (t) => {
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "            esac",
+          "              *20270522002463_issue_2462_phone_backfill.sql)\n                continue ;;\n            esac",
+        ),
+    ],
+  });
+
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+  assert.equal(lane.branchCount, 5, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
+  assert.equal(lane.globs.length, 5);
+  assert.ok(
+    lane.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
+    "reading the branch is not enough — the glob must actually resolve and skip the file",
+  );
+  assert.deepEqual(
+    violations.map((v) => v.check),
+    [],
+    "a readable branch in a legal spelling must not flag",
+  );
+});
+
+test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cannot", (t) => {
+  // Three physical lines, so R-5's two-line matcher does not cover it either.
+  // The four readable branches still yield globs, so C-4(b) stays quiet by
+  // construction — this is exactly the shape the census exists for.
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [
+      LANE,
+      (src) =>
+        src.replace(
+          "            esac",
+          "              *_issue_0001_unreadable_*)\n                continue\n                ;;\n            esac",
+        ),
+    ],
+  });
+
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+  assert.equal(lane.branchCount, 4, "precondition: the 3-line branch really is unread");
+  assert.ok(lane.globs.length > 0, "precondition: sibling branches still yield globs, so C-4(b) cannot fire");
+  assert.equal(
+    violations.some((v) => v.check === "C-4b"),
+    false,
+    "C-4(b) must NOT fire here — if it did, this test would not be exercising the gap C-4(c) closes",
+  );
+  assert.ok(
+    violations.some((v) => v.check === "C-4c"),
+    "under-counting must be detectable, not just zero-counting",
+  );
+});
+
+test("T-25 — a real closure break hidden behind a two-line branch is now named", (t) => {
+  // The tester's demonstration, reproduced end to end. X defines an object
+  // nothing else defines; Y reads it from a `LANGUAGE sql` body; the lane skips
+  // X through a two-line branch. X is not one of C-3's pinned branches, so C-3
+  // cannot rescue it. Before R-5 this tree produced ZERO violations.
+  const X = "29990101000003_issue_2492_demo_x.sql";
+  const Y = "29990101000004_issue_2492_demo_y.sql";
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), "issue-2492-implementor-r5-"));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const workflowsDir = path.join(root, "workflows");
+  const migrationsDir = path.join(root, "migrations");
+  fs.cpSync(REAL_WORKFLOWS, workflowsDir, { recursive: true });
+  fs.cpSync(REAL_MIGRATIONS, migrationsDir, { recursive: true });
+  assert.ok(
+    !path.resolve(workflowsDir).startsWith(REPO_ROOT + path.sep) &&
+      !path.resolve(migrationsDir).startsWith(REPO_ROOT + path.sep),
+    "fixture directories resolved INSIDE the repository — refusing to write",
+  );
+  const realBefore = realTreeDigest();
+  t.after(() => assert.equal(realTreeDigest(), realBefore, "a fixture mutated the real repository directories"));
+
+  fs.writeFileSync(
+    path.join(migrationsDir, X),
+    "CREATE OR REPLACE FUNCTION public.issue_2492_demo_only_here() RETURNS integer\nLANGUAGE sql IMMUTABLE AS $fn$ SELECT 1 $fn$;\n",
+  );
+  fs.writeFileSync(
+    path.join(migrationsDir, Y),
+    "CREATE OR REPLACE FUNCTION public.issue_2492_demo_reader() RETURNS integer\nLANGUAGE sql STABLE AS $fn$ SELECT public.issue_2492_demo_only_here() $fn$;\n",
+  );
+  const laneFile = path.join(workflowsDir, LANE);
+  fs.writeFileSync(
+    laneFile,
+    fs.readFileSync(laneFile, "utf8").replace("            esac", `              *${X})\n                continue ;;\n            esac`),
+  );
+
+  const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
+  const lane = lanes.find((l) => l.workflow === LANE);
+  assert.ok(lane.skipped.includes(X), "the two-line skip must resolve, or the break cannot be seen at all");
+  assert.ok(
+    violations.some((v) => v.check === "C-1" && v.message.includes(Y) && v.message.includes("issue_2492_demo_only_here")),
+    "C-1 must name the migration and the object the filtered chain cannot supply",
+  );
+});
