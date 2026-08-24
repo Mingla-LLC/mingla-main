@@ -235,7 +235,7 @@ function assertReconstructed(value, inspections) {
   const shadow = value.suites.filter((suite) => ["shadow-active", "batched-historical"].includes(suite.lifecycle));
   assert.equal(value.legacyOrigins.length, 199);
   assert.equal(value.suites.length, 55);
-  assert.equal(value.workflowProviders.length, 89);
+  assert.equal(value.workflowProviders.length, 91);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
   assert.deepEqual([...new Set(shadow.map((suite) => path.basename(suite.origin)))].sort(), ORIGINS);
