@@ -56,10 +56,14 @@ export interface FoundationRsvpPreviewProps {
   onClose: () => void;
   onShare: () => void;
   onOpenBrand?: (brandSlug: string) => void;
-  /** issue #2468 — carries the stored coordinate, not just the text label. */
+  /** issue #2468 — carries the stored coordinate, not just the text label.
+   *  issue #2508 — plus the map app the guest picked in the shared chooser. */
   onOpenMaps?: (
     target: import("@mingla/offering-rendering").MapsOpenTarget,
+    app?: import("@mingla/offering-rendering").MapsAppId,
   ) => void;
+  /** issue #2508 — copies the gated address text. Absent ⇒ no copy button. */
+  onCopyAddress?: (text: string) => void | Promise<void>;
   staticMapUrl?: string | null;
   onSubmit: (input: {
     rsvpStatus: "going" | "not_going" | "maybe";
@@ -105,6 +109,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onShare,
     onOpenBrand,
     onOpenMaps,
+    onCopyAddress,
     staticMapUrl = null,
     onSubmit,
     onChipIn,
@@ -163,6 +168,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
     onDownloadPass,
     onOpenBrand,
     onOpenMaps,
+    onCopyAddress,
     staticMapUrl,
     onAcquisitionClosed,
   });
@@ -231,6 +237,7 @@ export const FoundationRsvpPreview: React.FC<FoundationRsvpPreviewProps> = (prop
           onSubmit={onSubmit}
           onOpenBrand={onOpenBrand}
           onOpenMaps={onOpenMaps}
+          onCopyAddress={onCopyAddress}
           staticMapUrl={staticMapUrl}
           state={state}
           renderPhoneField={renderPhoneField}

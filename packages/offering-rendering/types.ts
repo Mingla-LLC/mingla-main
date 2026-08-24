@@ -12,7 +12,7 @@ import type { ScrollViewProps } from "react-native";
 
 import type { ResolvedTheme, ThemeInput } from "./designTokens";
 import type { EventAcquisitionState } from "./eventAcquisitionLifecycle";
-import type { MapsOpenTarget } from "./mapsDeepLink";
+import type { MapsAppId, MapsOpenTarget } from "./mapsDeepLink";
 
 export type EventCoverMediaType = "image" | "video" | "gif";
 export type EventFormat = "in-person" | "online" | "hybrid";
@@ -214,7 +214,23 @@ export interface PublicEventCallbacks {
    * `buildMapsDeepLink` from this target and MUST NOT re-derive one from the
    * label alone. `target.geo === null` is the honest "we hold no pin" state.
    */
-  onOpenMaps?: (target: MapsOpenTarget) => void;
+  /*
+    issue #2508 — WIDENED with the chosen app. The renderer asks the user which
+    map app they want before calling this (iOS and web offer two; Android has
+    only one openable app, so nothing is asked there). `app === undefined` means
+    "nothing was asked" and the host takes the exact #2468 default path, so the
+    single-app platforms are byte-identical to before. Hosts still MUST NOT
+    re-derive a URL from the label — `mapsDeepLink.ts` owns every maps URL.
+  */
+  onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void;
+  /**
+   * issue #2508 — writes the human address text to the clipboard, so a guest
+   * can paste it into Waze / Citymapper / Uber / a message. The renderer passes
+   * `MapsOpenTarget.label`, i.e. text that has ALREADY cleared the same privacy
+   * gate as the maps link: a hide-address-until-ticket offering has no target,
+   * so no copy text and no copy button exist. Absent ⇒ no copy button renders.
+   */
+  onCopyAddress?: (text: string) => void | Promise<void>;
   onUnlockPassword?: (password: string) => boolean;
 }
 

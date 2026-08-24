@@ -38,12 +38,14 @@ import {
 import {
   resolveTheme,
   createThemePalette,
+  type MapsAppId,
   type MapsOpenTarget,
   type PublicEventProps,
   type PublicBrandProps,
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../../src/utils/openMapsTarget";
+import { copyAddressText } from "../../../src/utils/copyAddressText";
 import { useBrandList, type Brand } from "../../../src/store/currentBrandStore";
 import {
   useDraftById,
@@ -159,9 +161,22 @@ const mapBrandToPublicBrand = (
 // issue #2468 — see mingla-business/src/utils/openMapsTarget.ts. The preview
 // route no longer composes a maps URL; it forwards the renderer's target, which
 // carries the coordinate we already store.
-const openMapsForTarget = (target: MapsOpenTarget): void => {
-  openMapsTarget(target);
+const openMapsForTarget = (
+  target: MapsOpenTarget,
+  app?: MapsAppId,
+): void => {
+  // issue #2508 — `app` is the guest's choice from the shared chooser;
+  // undefined means nothing was asked (the exact #2468 path).
+  openMapsTarget(target, { app });
 };
+
+// issue #2508 — the copy-address host effect, beside the maps one. The shared
+// renderer owns the BUTTON; writing the clipboard is the app's job. The text it
+// receives has already cleared the SAME privacy gate as the maps link
+// (`selectVenueMapsTarget`), so a hide-address-until-ticket offering never
+// reaches here — it renders no copy button at all.
+const copyAddressForTarget = (text: string): Promise<void> =>
+  copyAddressText(text);
 
 export default function RsvpPreviewRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -404,6 +419,7 @@ export default function RsvpPreviewRoute(): React.ReactElement {
         onShare={handleShareTap}
         onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
         onOpenMaps={openMapsForTarget}
+        onCopyAddress={copyAddressForTarget}
         onSubmit={handlePreviewSubmit}
         renderPhoneField={(args) => (
           <BusinessRsvpPhoneField

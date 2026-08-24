@@ -98,8 +98,16 @@ import { normalizeCityCountry } from "./normalizeCityCountry";
 import {
   canOpenMapsTarget,
   selectVenueMapsTarget,
+  type MapsAppId,
   type MapsOpenTarget,
 } from "./mapsDeepLink";
+// issue #2508 — the shared "which map app?" chooser + copy-address button. Both
+// take the ALREADY-gated target below, so neither can outlive the privacy gate.
+import {
+  MapsAppChooserDialog,
+  useVenueMapsActions,
+  VenueCopyAddressButton,
+} from "./VenueMapsActions";
 import { computeRunningTotal, totalSelectedQuantity } from "./eventBoxTotals";
 
 // Re-export the pure totals so a single import surface stays one place.
@@ -266,8 +274,11 @@ export interface EventOfferingBodyProps {
 
   // Links / maps.
   onOpenBrand?: (brandSlug: string) => void;
-  /** issue #2468 — carries the stored coordinate, not just the text label. */
-  onOpenMaps?: (target: MapsOpenTarget) => void;
+  /** issue #2468 — carries the stored coordinate, not just the text label.
+   *  issue #2508 — plus the app the guest picked (undefined ⇒ nothing asked). */
+  onOpenMaps?: (target: MapsOpenTarget, app?: MapsAppId) => void;
+  /** issue #2508 — copies the gated address text. Absent ⇒ no copy button. */
+  onCopyAddress?: (text: string) => void | Promise<void>;
   /**
    * Server-proxied static map URL (the host computes it via buildProxyStaticMapUrl
    * with the city-OR-exact geo the privacy gate selected). null → no map (the
@@ -337,6 +348,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   onProceedToCart,
   onOpenBrand,
   onOpenMaps,
+  onCopyAddress,
   staticMapUrl = null,
   submitting = false,
   onTicketBoxLayout,
@@ -435,6 +447,16 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
   });
   const canOpenVenueMaps =
     canOpenMapsTarget(venueMapsTarget) && onOpenMaps !== undefined;
+  /*
+    issue #2508 — the chooser + the copy button, both fed the SAME already-gated
+    target. `venueMapsTarget === null` (address withheld) ⇒ no choices, no copy
+    text, so neither control can render.
+  */
+  const mapsActions = useVenueMapsActions({
+    target: venueMapsTarget,
+    onOpenMaps,
+    onCopyAddress,
+  });
 
   const aboutText = event.description.trim();
   const canCollapseAbout = aboutText.length > ABOUT_COLLAPSE_THRESHOLD;
@@ -758,9 +780,7 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
             />
           ) : null}
           <Pressable
-            onPress={() => {
-              if (venueMapsTarget !== null) onOpenMaps?.(venueMapsTarget);
-            }}
+            onPress={mapsActions.requestOpenMaps}
             disabled={!canOpenVenueMaps}
             accessibilityRole={canOpenVenueMaps ? "button" : undefined}
             accessibilityLabel={
@@ -809,6 +829,19 @@ export const EventOfferingBody: React.FC<EventOfferingBodyProps> = ({
               </View>
             ) : null}
           </Pressable>
+          {/* issue #2508 — SIBLING of the card, never a child: nesting a
+              Pressable inside a Pressable flattens the a11y subtree. */}
+          <VenueCopyAddressButton
+            actions={mapsActions}
+            palette={palette}
+            font={boldFamily}
+          />
+          <MapsAppChooserDialog
+            actions={mapsActions}
+            palette={palette}
+            placeLabel={event.venueName}
+            font={boldFamily}
+          />
         </View>
       ) : null}
     </View>

@@ -78,7 +78,15 @@ import {
   // provider re-geocode the address text.
   canOpenMapsTarget,
   normalizeMapsGeo,
+  // issue #2508 — the shared "which map app?" chooser + copy-address button.
+  // The venue page uses the SAME controls as the event/RSVP pages so the
+  // public offering surfaces cannot drift.
+  MapsAppChooserDialog,
+  useVenueMapsActions,
+  VenueCopyAddressButton,
+  type MapsAppId,
   type MapsOpenTarget,
+  type VenueMapsActionsState,
   type OfferingGalleryImage,
   type ResolvedTheme,
   type ThemePalette,
@@ -389,7 +397,12 @@ export interface PublicVenueScreenProps {
    * text. The host builds the URL with `buildMapsDeepLink`; it must never
    * re-derive one from `target.label` alone.
    */
-  onOpenMaps: (target: MapsOpenTarget) => void;
+  onOpenMaps: (target: MapsOpenTarget, app?: MapsAppId) => void;
+  /**
+   * issue #2508 — writes the venue's address text to the clipboard so a guest
+   * can paste it into Waze / Uber / a message. Absent ⇒ no copy button.
+   */
+  onCopyAddress?: (text: string) => void | Promise<void>;
 }
 
 // #1562 — the week's labels have ONE owner now (`venueOpenState.ts`), because
@@ -532,6 +545,13 @@ export interface VenueSectionProps {
   /** issue #2468 — null ⇔ nothing openable ⇔ the address card is not rendered. */
   mapsTarget: MapsOpenTarget | null;
   onOpenMaps: () => void;
+  /**
+   * issue #2508 — the chooser + copy controller, built from the SAME
+   * `mapsTarget` above. Null target ⇒ no choices and no copy text, so both
+   * controls disappear with the address card rather than needing their own
+   * gate.
+   */
+  mapsActions: VenueMapsActionsState;
 }
 
 /** §6.1a the price lede — gated by the profile's PRICING MODEL, not by
@@ -633,6 +653,8 @@ const VenueLocationSection: VenueSectionRenderer = ({
   isDesktop,
   mapsTarget,
   onOpenMaps,
+  mapsActions,
+  themedFont,
 }) => {
   // §6.4 static map — server proxy ONLY; null → map hidden (fail-safe).
   const staticMapUrl = useMemo<string | null>(
@@ -701,6 +723,21 @@ const VenueLocationSection: VenueSectionRenderer = ({
     <>
       {mapBlock}
       {addressCard}
+      {/* issue #2508 — SIBLINGS of the address card, never children: the card
+          is itself a Pressable and nesting one inside it would flatten the
+          accessibility subtree into a single announced control. Both self-hide
+          when `mapsTarget` is null, i.e. under the same gate as the card. */}
+      <VenueCopyAddressButton
+        actions={mapsActions}
+        palette={palette}
+        font={themedFont.fontFamily}
+      />
+      <MapsAppChooserDialog
+        actions={mapsActions}
+        palette={palette}
+        placeLabel={venue.name}
+        font={themedFont.fontFamily}
+      />
     </>
   );
 };
@@ -920,6 +957,7 @@ export const PublicVenueScreen = ({
   onClose,
   onOpenBrand,
   onOpenMaps,
+  onCopyAddress,
 }: PublicVenueScreenProps): BrandRenderingReactElement => {
   const insets = safeAreaInsets;
   const { isDesktop, width: viewportWidth } = useResponsiveLayout();
@@ -1010,10 +1048,18 @@ export const PublicVenueScreen = ({
     return canOpenMapsTarget(candidate) ? candidate : null;
   }, [venue.address, venue.lat, venue.lng, venue.name]);
 
-  const handleOpenMaps = React.useCallback((): void => {
-    if (mapsTarget === null) return;
-    onOpenMaps(mapsTarget);
-  }, [mapsTarget, onOpenMaps]);
+  /*
+    issue #2508 — one controller owns "ask which app, then open" and "copy the
+    address, then confirm". `requestOpenMaps` replaces the old direct call: it
+    opens the chooser when more than one map app can honestly open the pin, and
+    falls straight through to the #2468 path when only one can (Android).
+  */
+  const mapsActions = useVenueMapsActions({
+    target: mapsTarget,
+    onOpenMaps,
+    onCopyAddress,
+  });
+  const handleOpenMaps = mapsActions.requestOpenMaps;
 
   const handleReserve = React.useCallback((): void => {
     if (
@@ -1326,11 +1372,13 @@ export const PublicVenueScreen = ({
       stayRate,
       mapsTarget,
       onOpenMaps: handleOpenMaps,
+      mapsActions,
     }),
     [
       discoveryPrice,
       handleOpenMaps,
       isDesktop,
+      mapsActions,
       mapsTarget,
       openState,
       palette,

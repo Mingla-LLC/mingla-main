@@ -91,12 +91,14 @@ import {
   type RsvpOfferingConfig,
   type RsvpGuestContact,
   type RsvpPhoneFieldRenderer,
+  type MapsAppId,
   type MapsOpenTarget,
   type RsvpSubmitResult,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
 // issue #2468 — the ONE host effect that opens a maps deep link.
 import { openMapsTarget } from "../../utils/openMapsTarget";
+import { copyAddressText } from "../../utils/copyAddressText";
 import { getCountryByCode, type PhoneInputTheme } from "@mingla/phone-input";
 import { resolveUserPhoneE164 } from "@mingla/card-identity/phone.mjs";
 
@@ -309,9 +311,22 @@ const canonicalToTransientCard = (
 // re-geocoded against the device's location and last Maps search; the same link
 // resolved to a different place on a different phone. The renderer now supplies
 // the stored coordinate and `openMapsTarget` anchors the link on it.
-const openMapsForTarget = (target: MapsOpenTarget): void => {
-  openMapsTarget(target);
+const openMapsForTarget = (
+  target: MapsOpenTarget,
+  app?: MapsAppId,
+): void => {
+  // issue #2508 — `app` is the map app the guest picked in the shared chooser;
+  // undefined means nothing was asked and this is the exact #2468 path.
+  openMapsTarget(target, { app });
 };
+
+// issue #2508 — the copy-address host effect, beside the maps one. The shared
+// renderer owns the BUTTON; writing the clipboard is the app's job. The text it
+// receives has already cleared the SAME privacy gate as the maps link
+// (`selectVenueMapsTarget`), so a hide-address-until-ticket offering never
+// reaches here — it renders no copy button at all.
+const copyAddressForTarget = (text: string): Promise<void> =>
+  copyAddressText(text);
 
 export default function ConsumerEventDetailScreen({
   seed: seedProp = null,
@@ -1231,6 +1246,7 @@ export default function ConsumerEventDetailScreen({
     onChipIn: handleChipIn,
     onOpenBrand: (slug: string) => router.push(`/b/${slug}` as never),
     onOpenMaps: openMapsForTarget,
+    onCopyAddress: copyAddressForTarget,
     staticMapUrl: rsvpBodyStaticMapUrl,
   });
 
@@ -1580,6 +1596,7 @@ export default function ConsumerEventDetailScreen({
                 onProceedToCart={handleProceedToCart}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
                 onOpenMaps={openMapsForTarget}
+                onCopyAddress={copyAddressForTarget}
                 staticMapUrl={bodyStaticMapUrl}
                 submitting={checkoutInFlight}
                 pricingNote={
@@ -1617,6 +1634,7 @@ export default function ConsumerEventDetailScreen({
                 onSubmit={rsvpOnSubmit}
                 onOpenBrand={(slug: string) => router.push(`/b/${slug}` as never)}
                 onOpenMaps={openMapsForTarget}
+                onCopyAddress={copyAddressForTarget}
                 staticMapUrl={rsvpBodyStaticMapUrl}
                 state={rsvpState}
                 testID="orch-1163-consumer-rsvp-body"

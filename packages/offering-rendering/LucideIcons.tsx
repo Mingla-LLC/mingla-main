@@ -23,7 +23,7 @@
  */
 
 import React from "react";
-import Svg, { Circle, Path } from "react-native-svg";
+import Svg, { Circle, Path, Rect } from "react-native-svg";
 
 export interface LucideIconProps {
   /** Rendered width = height in px (the 24×24 art scales to fit). */
@@ -132,6 +132,21 @@ export const BadgeCheck: React.FC<LucideIconProps> = (props) => (
   <LucideFrame {...props}>
     <Path d="M3.85 8.62a4 4 0 0 1 4.78-4.77 4 4 0 0 1 6.74 0 4 4 0 0 1 4.78 4.78 4 4 0 0 1 0 6.74 4 4 0 0 1-4.77 4.78 4 4 0 0 1-6.75 0 4 4 0 0 1-4.78-4.77 4 4 0 0 1 0-6.76Z" />
     <Path d="m9 12 2 2 4-4" />
+  </LucideFrame>
+);
+
+/** lucide `copy` — the two offset sheets. issue #2508 [maps-app-chooser]. */
+export const Copy: React.FC<LucideIconProps> = (props) => (
+  <LucideFrame {...props}>
+    <Rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+    <Path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+  </LucideFrame>
+);
+
+/** lucide `check` — the bare tick, for the "Copied" confirm (issue #2508). */
+export const Check: React.FC<LucideIconProps> = (props) => (
+  <LucideFrame {...props}>
+    <Path d="M20 6 9 17l-5-5" />
   </LucideFrame>
 );
 

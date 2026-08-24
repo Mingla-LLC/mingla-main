@@ -196,6 +196,9 @@ export {
   // ExperienceOfferingBody.
   Clock,
   Sparkles,
+  // issue #2508 [maps-app-chooser] — the copy-address control and its confirm.
+  Copy,
+  Check,
 } from "./LucideIcons";
 export type { LucideIconProps } from "./LucideIcons";
 
@@ -432,6 +435,12 @@ export {
   canOpenMapsTarget,
   normalizeMapsGeo,
   selectVenueMapsTarget,
+  // issue #2508 — the same owner, now also per-app, so the chooser never
+  // composes a URL of its own.
+  buildMapsAppLink,
+  listMapsAppChoices,
+  selectAddressCopyText,
+  MAPS_APP_LABELS,
 } from "./mapsDeepLink";
 export type {
   BuildMapsUrlParams,
@@ -440,7 +449,25 @@ export type {
   MapsOpenTarget,
   MapsPlatform,
   VenueMapsTargetParams,
+  BuildMapsAppLinkParams,
+  MapsAppChoice,
+  MapsAppId,
 } from "./mapsDeepLink";
+// issue #2508 [maps-app-chooser] — the shared "which map app?" chooser and the
+// copy-address button. ONE implementation for every public offering surface, so
+// the explorer, the buyer web and the business app cannot drift.
+export {
+  useVenueMapsActions,
+  VenueCopyAddressButton,
+  MapsAppChooserDialog,
+} from "./VenueMapsActions";
+export type {
+  UseVenueMapsActionsParams,
+  VenueMapsActionsState,
+  VenueCopyAddressButtonProps,
+  MapsAppChooserDialogProps,
+  VenueCopyState,
+} from "./VenueMapsActions";
 // issue #2469 — the ONE owner of the venueName/address split. Beside the maps
 // builder because the label it produces is what goes on the pin.
 export { extractPublicEventLocation } from "./publicEventLocation";

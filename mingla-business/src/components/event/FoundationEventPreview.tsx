@@ -60,10 +60,14 @@ export interface FoundationEventPreviewProps {
   onClose: () => void;
   onShare: () => void;
   onOpenBrand?: (brandSlug: string) => void;
-  /** issue #2468 — carries the stored coordinate, not just the text label. */
+  /** issue #2468 — carries the stored coordinate, not just the text label.
+   *  issue #2508 — plus the map app the guest picked in the shared chooser. */
   onOpenMaps?: (
     target: import("@mingla/offering-rendering").MapsOpenTarget,
+    app?: import("@mingla/offering-rendering").MapsAppId,
   ) => void;
+  /** issue #2508 — copies the gated address text. Absent ⇒ no copy button. */
+  onCopyAddress?: (text: string) => void | Promise<void>;
   /** Server-proxied static map URL (privacy-gated upstream). null → text card. */
   staticMapUrl?: string | null;
   stateBanner?: React.ReactNode | null;
@@ -134,6 +138,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
   onShare,
   onOpenBrand,
   onOpenMaps,
+  onCopyAddress,
   staticMapUrl = null,
   stateBanner = null,
   stickyPanel = null,
@@ -194,6 +199,7 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       onProceedToCart={onProceedToCart}
       onOpenBrand={onOpenBrand}
       onOpenMaps={onOpenMaps}
+      onCopyAddress={onCopyAddress}
       staticMapUrl={staticMapUrl}
       submitting={submitting}
       onTicketBoxLayout={onDockLayout}

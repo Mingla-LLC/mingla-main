@@ -80,8 +80,12 @@ import { ConsumerStayGuestExperience } from "../../../../src/components/stay/Con
 import { usePublicVenue } from "../../../../src/hooks/usePublicVenue";
 // issue #2468 — DEEP specifier (this route never imports a package barrel);
 // `import type` is erased, so it adds nothing to the bundle.
-import type { MapsOpenTarget } from "@mingla/offering-rendering/mapsDeepLink";
+import type {
+  MapsAppId,
+  MapsOpenTarget,
+} from "@mingla/offering-rendering/mapsDeepLink";
 import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
+import { copyAddressText } from "../../../../src/utils/copyAddressText";
 import { usePublicStayDetail } from "../../../../src/hooks/useStayGuest";
 import { postHogService } from "../../../../src/services/postHogService";
 import { captureVenueOrganicEvent } from "../../../../src/services/venueOrganicCaptureService";
@@ -295,9 +299,24 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   // the provider re-geocoded. The shared screen now hands us the venue's stored
   // lat/lng (the same pair its static map is drawn from) and the link is
   // anchored on it.
-  const handleOpenMaps = useCallback((target: MapsOpenTarget): void => {
-    openMapsTarget(target);
-  }, []);
+  const handleOpenMaps = useCallback(
+    (target: MapsOpenTarget, app?: MapsAppId): void => {
+      // issue #2508 — `app` is the guest's choice from the shared chooser;
+      // undefined means nothing was asked (the exact #2468 path).
+      openMapsTarget(target, { app });
+    },
+    [],
+  );
+
+  // issue #2508 — the copy-address host effect, beside the maps one. The shared
+  // renderer owns the BUTTON; writing the clipboard is the app's job. The text it
+  // receives has already cleared the SAME privacy gate as the maps link
+  // (`selectVenueMapsTarget`), so a hide-address-until-ticket offering never
+  // reaches here — it renders no copy button at all.
+  const handleCopyAddress = useCallback(
+    (text: string): Promise<void> => copyAddressText(text),
+    [],
+  );
 
   const handleClose = useCallback((): void => {
     if (router.canGoBack()) {
@@ -530,6 +549,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       onClose={handleClose}
       onOpenBrand={handleOpenBrand}
       onOpenMaps={handleOpenMaps}
+      onCopyAddress={handleCopyAddress}
     />
   );
 }

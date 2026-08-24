@@ -7,7 +7,10 @@
 import { Linking, Platform } from "react-native";
 
 import {
+  buildMapsAppLink,
   buildMapsDeepLink,
+  type MapsAppId,
+  type MapsDeepLink,
   type MapsOpenTarget,
 } from "@mingla/offering-rendering";
 
@@ -25,6 +28,19 @@ export interface OpenMapsOptions {
   preflight?: boolean;
   /** Surfaces the failure to the user (Constitution #3). */
   onUnavailable?: (() => void) | null;
+  /**
+   * issue #2508 — the map app the guest chose in the shared chooser.
+   *
+   * UNDEFINED means nothing was asked (only one app could honestly open this
+   * target on this platform), and it takes the EXACT #2468 path — same builder,
+   * same URL, byte for byte. That is why Android, which offers a single choice
+   * because the `geo:` intent already lets the OS disambiguate, is completely
+   * unchanged by #2508.
+   *
+   * The URL for a chosen app is still built by the ONE owner
+   * (`buildMapsAppLink`); nothing is composed here.
+   */
+  app?: MapsAppId;
 }
 
 /**
@@ -43,11 +59,24 @@ export function openMapsTarget(
   options?: OpenMapsOptions,
 ): void {
   const onUnavailable = options?.onUnavailable;
-  const link = buildMapsDeepLink({
-    geo: target?.geo ?? null,
-    label: target?.label ?? null,
-    platform: Platform.OS,
-  });
+  const app = options?.app;
+  // Both branches end at the same owner. The chosen-app branch keeps the
+  // coordinate anchoring of #2468 intact: `buildMapsAppLink` anchors on the
+  // stored pin whenever one exists, for EVERY app. The chooser picks the app,
+  // never the accuracy.
+  const link: MapsDeepLink | null =
+    app === undefined
+      ? buildMapsDeepLink({
+          geo: target?.geo ?? null,
+          label: target?.label ?? null,
+          platform: Platform.OS,
+        })
+      : buildMapsAppLink({
+          app,
+          geo: target?.geo ?? null,
+          label: target?.label ?? null,
+          platform: Platform.OS,
+        });
   if (link === null) {
     onUnavailable?.();
     return;
