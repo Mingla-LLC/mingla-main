@@ -42,13 +42,13 @@
 - **Enforcement:** the Phase 2 runner, artifact upload with `if-no-files-found: error`, and the Class A reporting regression.
 - **Status:** DRAFT until the complete #2148 consolidation programme establishes final topology and performance budgets.
 
-## DRAFT — issue #2148 / Phase 3B issue #2438 (Postgres/static Host checks are shadow-batched)
+## ACTIVE — issue #2148 / Phase 3B issue #2438 (Postgres/static Host checks are batched)
 
-### I-PROPOSED-2148-PHASE3B-SHADOW-PARITY (DRAFT)
+### I-PROPOSED-2148-PHASE3B-SHADOW-PARITY (ACTIVE)
 
-- **Rule:** The exact 12 Phase 3B historical wrappers remain live during shadow while one typed registry suite per origin runs conditionally inside the existing 14 public batch contexts. Selection comes only from complete NUL-delimited local Git history; missing or corrupt selection evidence runs every suite owned by that host and ends red after evidence upload.
+- **Rule:** The exact 12 Phase 3B historical wrappers are deleted, and one typed registry suite per origin runs conditionally inside the existing 14 public batch contexts. Restoring any of those 12 wrappers is a duplicate-provider failure; the excluded sibling `.github/workflows/issue-679-brand-follows-rls-proof.yml` stays live and byte-identical. Selection comes only from complete NUL-delimited local Git history; missing or corrupt selection evidence runs every suite owned by that host and ends red after evidence upload.
 - **Enforcement:** `.github/ci-batch/MANIFEST.json`, the deterministic Phase 3B selector, the isolated batch runner, and the issue #2438 implementor/adversarial Class A proofs. Frozen truth is 12 suites, 36 outer assertions, 40 maximum leaves, current 37 executed plus 3 predicate-absent, under 9 secondary classes hosted by 14 unchanged matrix jobs.
-- **Status:** DRAFT shadow stage. All 12 old wrappers remain live with the exact same-SHA marker; no terminal deletion or external-reference cutover is represented yet.
+- **Status:** ACTIVE terminal stage. All 12 wrappers are deleted and every same-SHA marker is gone with them; all 12 suites are `batched-historical` and the 6 named provider records are `batched-provider` (67 retained / 24 batched, 91 total); the 17 external references carry `ci-batch:<suite-id>` semantic provider identity. Same-SHA shadow parity was accepted before deletion at issue #2438 comment 5397616052: 12/12 legacy jobs `success`, 12/12 suites `passed`, 36 assertions attributed 1:1, 37 executed plus 3 predicate-absent leaves.
 
 ## ACTIVE — issue #2411 (free orders remain visible and countable without currency)
 
