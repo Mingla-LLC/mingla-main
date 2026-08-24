@@ -1,4 +1,11 @@
 {
   "version": 1,
-  "workflows": []
+  "workflows": [
+    {
+      "path": ".github/workflows/bundle-baseline-automerge.yml",
+      "issue": 2524,
+      "category": "environment-authority",
+      "rationale": "the merge job acts as the mingla-bundle-baseline GitHub App, minting an installation token with contents and pull-requests write that no other lane holds; this environment authority is confined to that one job and is never minted in the pull-request-triggered guard job sharing the file"
+    }
+  ]
 }

@@ -969,6 +969,18 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       relative.startsWith("docs/") ||
       relative.endsWith(".md") ||
       relative === ".github/ci-batch/MANIFEST.json" ||
+      // [#2524] Same disposition as the registry one line above, for the same
+      // reason. .github/ci-capability-workflows.json is #2431's pre-approval
+      // contract: it must name a capability workflow by its exact
+      // .github/workflows/<name>.yml path, or the topology gate cannot match a
+      // commit token against it. That literal is a POLICY DECLARATION about the
+      // workflow, not a consumer of the checks it provides, so counting it as an
+      // external provider reference would invent a record for every workflow the
+      // exception mechanism is ever used for -- breaking the frozen provider seal
+      // on the FIRST use, and permanently. Excluding it preserves the seal rather
+      // than moving it: with the registry empty this file holds no .yml literal at
+      // all, so discovery is byte-identical either way today.
+      relative === ".github/ci-capability-workflows.json" ||
       relative === ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs" ||
       relative === ".github/scripts/ci-batch/__tests__/select-phase3b-suites.test.mjs" ||
       isNonAuthoritativeProviderEvidence(relative)
