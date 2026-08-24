@@ -11,7 +11,7 @@
  *   unsupported reminder promise.
  *
  * CI: the required full mingla-business Jest workflow auto-discovers this file;
- * issue-948-w1-enablers-tests.yml also executes it explicitly.
+ * ci-batch:issue-948-w1-enablers-tests also executes it explicitly.
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 import fs from "node:fs";

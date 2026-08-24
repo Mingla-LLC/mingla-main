@@ -25,12 +25,33 @@ const ALLOWED_DISPOSITIONS = new Set([
   "approved-retired",
 ]);
 const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
-const LOCKED_SHADOW_CAPABILITY_SHA256 = "6d4340d8d8bd70540e1229011fcd719c8782af46a608f84ee0b777dd405f3673";
+const LOCKED_SHADOW_CAPABILITY_SHA256 = "2acfb137cb60c03f88e85aaa941ef65971ce926983dde05ecfb8972f6798ebeb";
 const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
-const LOCKED_SETUP_PROFILES_SHA256 = "5d445002c1c4b7a7f97faebf1d26162dbba24ba9c7ee0f448d3c289ee4ca7dec";
+const LOCKED_PHASE3B_CONTRACT_SHA256 = "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9";
+const LOCKED_SETUP_PROFILES_SHA256 = "7b6de9312326d102ed0330179443731ed154e1a83381c17eabde53f03838bc60";
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
+const PINNED_UPLOAD_ARTIFACT = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02";
 const PHASE3_WAVE_LIFECYCLES = new Set(["shadow-active", "batched-historical"]);
+const PHASE3A_WAVE = "phase3a-node-wave";
+const PHASE3B_WAVE = "phase3b-postgres-wave";
+// [#2438 SC-13] The two reviewed Phase 3B lifecycles. The wave is atomic in one
+// of them; there is no third form and a mixed wave is red.
+const PHASE3B_SHADOW_LIFECYCLE = "shadow-active";
+const PHASE3B_TERMINAL_LIFECYCLE = "batched-historical";
+const PHASE3B_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
+const LOCKED_PROVIDER_DISCOVERY_SHA256 = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158";
+const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
+const PHASE3B_PROVIDER_NAMES = new Set([
+  "issue-1022-theme-control-tests.yml",
+  "issue-1902-public-event-lifecycle-tests.yml",
+  "issue-2013-ari-tenant-containment.yml",
+  "issue-885-scanner-invite-loader-tests.yml",
+  "issue-948-w1-enablers-tests.yml",
+  "orch-0976-draft-promotion-tests.yml",
+]);
+const CI_BATCH_EVIDENCE_PREFIX = ".github/scripts/ci-batch/__tests__/fixtures/";
+const WAVE_SHADOW_TESTER_ROLE = /^\.github\/scripts\/strict-grep\/issue-[1-9][0-9]*-ci-[a-z0-9]+(?:-[a-z0-9]+)*-wave-shadow\.tester\.test\.mjs$/;
 export const SHADOW_PARITY_MARKER = "# #2437 SHADOW-PARITY-TRIGGER — remove before cutover";
 const SHADOW_PARITY_TOKEN = "#2437 SHADOW-PARITY-TRIGGER";
 const SHADOW_PARITY_WRAPPER_STEMS = Object.freeze([
@@ -68,6 +89,17 @@ const SHADOW_PARITY_WRAPPER_STEMS = Object.freeze([
 ]);
 export const SHADOW_PARITY_WRAPPER_NAMES = Object.freeze(SHADOW_PARITY_WRAPPER_STEMS.map((stem) => `${stem}.yml`));
 const SHADOW_PARITY_WRAPPER_SET = new Set(SHADOW_PARITY_WRAPPER_NAMES);
+export const PHASE3B_SHADOW_MARKER = "# #2438 SHADOW-PARITY-TRIGGER — remove before cutover";
+const PHASE3B_SHADOW_TOKEN = "#2438 SHADOW-PARITY-TRIGGER";
+export const PHASE3B_WRAPPER_NAMES = Object.freeze([
+  "issue-1022-theme-control-tests.yml", "issue-1461-venue-current-brand-race-tests.yml",
+  "issue-1467-venue-submit-idempotency-tests.yml", "issue-1485-web-missing-chunk-404-tests.yml",
+  "issue-1685-venue-draft-multi-tests.yml", "issue-1902-public-event-lifecycle-tests.yml",
+  "issue-2013-ari-tenant-containment.yml", "issue-679-brand-follow-tests.yml",
+  "issue-885-scanner-invite-loader-tests.yml", "issue-948-w1-enablers-tests.yml",
+  "issue-948-w3-screens-copy-tests.yml", "orch-0976-draft-promotion-tests.yml",
+]);
+const PHASE3B_WRAPPER_SET = new Set(PHASE3B_WRAPPER_NAMES);
 const REVIEWED_TEXT_ENCODING = "concat-v1";
 const STALE_CONFIG_ROOT = ["app.config", "ts"].join(".");
 const REVIEWED_SPLIT_PATHS = Object.freeze([
@@ -142,9 +174,11 @@ export function validateManifestTextRepresentations(rawManifest) {
 }
 
 export function canonicalizeShadowWrapperSource(workflowName, source) {
-  if (!SHADOW_PARITY_WRAPPER_SET.has(workflowName)) return source;
+  const marker = SHADOW_PARITY_WRAPPER_SET.has(workflowName) ? SHADOW_PARITY_MARKER
+    : PHASE3B_WRAPPER_SET.has(workflowName) ? PHASE3B_SHADOW_MARKER : null;
+  if (!marker) return source;
   const lines = source.split("\n");
-  const index = lines.indexOf(SHADOW_PARITY_MARKER);
+  const index = lines.indexOf(marker);
   if (index !== -1) lines.splice(index, 1);
   return lines.join("\n");
 }
@@ -152,7 +186,7 @@ export function canonicalizeShadowWrapperSource(workflowName, source) {
 export function validateShadowParityMarkers(manifest, workflowSources) {
   const errors = [];
   const shadowNames = new Set((manifest.legacyOrigins || [])
-    .filter((origin) => origin.disposition === "shadow-active")
+    .filter((origin) => origin.disposition === "shadow-active" && origin.migrationWave === PHASE3A_WAVE)
     .map((origin) => `${origin.stem}.${origin.extension}`));
 
   for (const name of shadowNames) {
@@ -184,15 +218,97 @@ export function validateShadowParityMarkers(manifest, workflowSources) {
   return errors;
 }
 
-function trackedFiles(root) {
+export function validatePhase3bMarkers(manifest, workflowSources) {
+  const errors = [];
+  const records = (manifest.legacyOrigins || []).filter((origin) => origin.migrationWave === PHASE3B_WAVE);
+  const names = records.map((origin) => `${origin.stem}.${origin.extension}`);
+  if (names.length !== 12 || new Set(names).size !== 12 || names.some((name) => !PHASE3B_WRAPPER_SET.has(name))) {
+    fail(errors, "Phase 3B must own the exact 12 reviewed wrapper identities");
+  }
+  const lifecycles = new Set(records.map((origin) => origin.disposition));
+  if (lifecycles.size !== 1 || !["shadow-active", "batched-historical"].includes([...lifecycles][0])) fail(errors, "Phase 3B lifecycle must be atomic");
+  for (const name of PHASE3B_WRAPPER_NAMES) {
+    const source = workflowSources[name]; const shadow = lifecycles.has("shadow-active");
+    if (shadow && typeof source !== "string") { fail(errors, `${name}: shadow wrapper missing`); continue; }
+    if (!shadow && typeof source === "string") { fail(errors, `${name}: terminal wrapper must be absent`); continue; }
+    if (!shadow) continue;
+    const exact = source.split("\n").filter((line) => line === PHASE3B_SHADOW_MARKER).length;
+    const tokens = source.split(PHASE3B_SHADOW_TOKEN).length - 1;
+    if (exact !== 1 || tokens !== 1 || !source.startsWith(`${PHASE3B_SHADOW_MARKER}\n`)) fail(errors, `${name}: requires one exact top-level #2438 marker`);
+  }
+  for (const [name, source] of Object.entries(workflowSources)) if (!PHASE3B_WRAPPER_SET.has(name) && source.includes(PHASE3B_SHADOW_TOKEN)) fail(errors, `${name}: stray #2438 marker`);
+  return errors;
+}
+
+// [#2438 A7-SC3] Explicitly entered, explicitly exited tracked-file scope.
+//
+// Ambient, process-lifetime or module-global memoisation of trackedFiles() (or
+// of discoverWorkflowProviders()), and any cache keyed only on `root`, are
+// FORBIDDEN BY NAME. A blind memo is proven to manufacture a false green:
+// honest discovery moves 73 -> 74 with a different digest the moment a new
+// eligible source naming a real workflow is committed, while a blind memo keeps
+// reporting 73 / aac3d8cf... and the reviewed byte-invariance proof silently
+// stops being performed. A caller may opt into caching only where the working
+// tree and the Git index are provably immutable for the whole duration of the
+// scope. Outside a scope the uncached path runs and every call spawns
+// `git ls-files -z`; no callsite that mutates the tree or the index inside the
+// measured window may enter a scope.
+const trackedFilesScopeStack = [];
+let trackedFilesCallTotal = 0;
+let trackedFilesProcessInvocationTotal = 0;
+
+// [#2438 A7-SC4] Monotonic counters. Counts only — a wall-clock, high-resolution
+// timer or elapsed-millisecond threshold inside a gate is forbidden: it flakes on
+// shared runners and this repository already carries one nondeterministic
+// required gate (#2178). The cost contract is counts; elapsed time is verified
+// out of band from Actions timestamps.
+export function trackedFilesProcessInvocations() {
+  return trackedFilesProcessInvocationTotal;
+}
+
+export function trackedFilesCalls() {
+  return trackedFilesCallTotal;
+}
+
+export function withTrackedFilesScope(root, fn) {
+  const scope = { root: path.resolve(root), cache: new Map() };
+  trackedFilesScopeStack.push(scope);
   try {
-    return execFileSync("git", ["ls-files", "-z"], { cwd: root })
+    return fn();
+  } finally {
+    const exited = trackedFilesScopeStack.pop();
+    if (exited !== scope) throw new Error("tracked-files scope was not exited in order");
+  }
+}
+
+function trackedFilesScopeFor(key) {
+  for (let index = trackedFilesScopeStack.length - 1; index >= 0; index -= 1) {
+    if (trackedFilesScopeStack[index].cache.has(key)) return trackedFilesScopeStack[index];
+  }
+  return trackedFilesScopeStack.length ? trackedFilesScopeStack[trackedFilesScopeStack.length - 1] : null;
+}
+
+function trackedFiles(root) {
+  trackedFilesCallTotal += 1;
+  const key = path.resolve(root);
+  const scope = trackedFilesScopeFor(key);
+  const cached = scope?.cache.get(key);
+  // Hand back a fresh array on every call so an entered scope is observationally
+  // identical to the uncached path apart from the process spawn it removes.
+  if (cached) return cached.slice();
+  trackedFilesProcessInvocationTotal += 1;
+  let listed;
+  try {
+    listed = execFileSync("git", ["ls-files", "-z"], { cwd: root })
       .toString("utf8")
       .split("\0")
       .filter(Boolean);
   } catch {
     throw new Error("registry validation requires a git worktree");
   }
+  if (!scope) return listed;
+  scope.cache.set(key, listed);
+  return listed.slice();
 }
 
 const requireFromValidator = createRequire(import.meta.url);
@@ -244,7 +360,7 @@ function configPathsFromCommand(command) {
   return configs;
 }
 
-function filesSelectedByJestConfig(configRelative, cwd, root) {
+function filesSelectedByJestConfig(configRelative, cwd, root, commandTestMatch = []) {
   const configAbsolute = path.resolve(root, cwd, configRelative);
   const repositoryRelative = path.relative(root, configAbsolute);
   if (repositoryRelative.startsWith("..") || path.isAbsolute(repositoryRelative) || !fs.statSync(configAbsolute).isFile()) {
@@ -267,7 +383,7 @@ function filesSelectedByJestConfig(configRelative, cwd, root) {
     throw new Error(`Jest rootDir is outside the repository: ${repositoryRelative}`);
   }
 
-  const testMatch = Array.isArray(config.testMatch) ? config.testMatch : [];
+  const testMatch = commandTestMatch.length ? commandTestMatch : Array.isArray(config.testMatch) ? config.testMatch : [];
   const testRegex = Array.isArray(config.testRegex)
     ? config.testRegex
     : typeof config.testRegex === "string" ? [config.testRegex] : [];
@@ -359,6 +475,7 @@ names.each do |name|
     value = job["environment"]
     value.is_a?(Hash) ? value["name"]&.to_s : value&.to_s
   end.compact.uniq.sort
+  concurrency = document["concurrency"].is_a?(Hash) ? document["concurrency"] : {}
 
   result[name] = {
     "sourceSha256" => Digest::SHA256.hexdigest(source),
@@ -368,6 +485,10 @@ names.each do |name|
     "runners" => runners,
     "runtimeVersions" => runtimes,
     "setupActions" => actions,
+    "concurrency" => {
+      "group" => concurrency["group"]&.to_s,
+      "cancelOnPullRequest" => concurrency["cancel-in-progress"] == "$" + "{{ github.event_name == 'pull_request' }}"
+    },
     "trustBoundary" => {
       "permissions" => permission_rows,
       "environments" => environments,
@@ -397,7 +518,12 @@ export function inspectWorkflows(root = DEFAULT_ROOT, workflowNames = discoverLi
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
     });
-    workflowInspectionCache.set(key, JSON.parse(output));
+    const parsed = JSON.parse(output);
+    for (const metadata of Object.values(parsed)) {
+      Object.defineProperty(metadata, "phase3bConcurrency", { value: metadata.concurrency, enumerable: false });
+      delete metadata.concurrency;
+    }
+    workflowInspectionCache.set(key, parsed);
   }
   return workflowInspectionCache.get(key);
 }
@@ -429,15 +555,18 @@ dispatch_upload = dispatch_steps.find { |step| step["uses"].to_s.start_with?("ac
 output = {
   "jobKeys" => jobs.keys.map(&:to_s).sort,
   "runner" => batch["runs-on"]&.to_s,
+  "timeoutMinutes" => batch["timeout-minutes"]&.to_s,
   "matrix" => Array(matrix["include"]).map do |entry|
     next {} unless entry.is_a?(Hash)
     { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s,
-      "cache" => entry["cache"]&.to_s, "cacheLock" => entry["cache-lock"]&.to_s }
+      "cache" => entry["cache"]&.to_s, "cacheLock" => entry["cache-lock"]&.to_s,
+      "hostTimeoutMinutes" => entry["hostTimeoutMinutes"], "secondaryClass" => entry["secondaryClass"]&.to_s,
+      "secondaryNode" => entry["secondaryNode"]&.to_s, "secondaryDeno" => entry["secondaryDeno"]&.to_s }
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
     "nodeVersion" => setup_node.dig("with", "node-version")&.to_s,
-    "count" => steps.count { |step| step["uses"].to_s.start_with?("actions/setup-node@") }
+    "count" => steps.count { |step| step["uses"].to_s.start_with?("actions/setup-node@") && step["name"].to_s.empty? }
   },
   "checkout" => {
     "action" => checkout["uses"]&.to_s,
@@ -453,6 +582,9 @@ output = {
     "count" => steps.count { |step| step["name"].to_s.start_with?("Run the ") }
   },
   "runSteps" => steps.map { |step| { "run" => step["run"]&.to_s, "if" => step["if"]&.to_s } }.select { |step| step["run"] },
+  "steps" => steps.map { |step| { "name" => step["name"]&.to_s, "id" => step["id"]&.to_s,
+    "uses" => step["uses"]&.to_s, "run" => step["run"]&.to_s, "if" => step["if"]&.to_s,
+    "timeoutMinutes" => step["timeout-minutes"], "continueOnError" => step["continue-on-error"] } },
   "jobIf" => batch["if"]&.to_s,
   "dispatch" => {
     "runner" => dispatch["runs-on"]&.to_s,
@@ -525,7 +657,9 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
       fail(errors, `${suite.id}: timeoutSeconds must be an integer from 1 through 1500 and timeoutMinutes is forbidden`);
     }
     if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
-    if (JSON.stringify(suite.envNames) !== "[]" || (suite.steps || []).some((step) => step.env && Object.keys(step.env).length)) {
+    const exactPhase3bEnv = suite.id === "issue-1902-public-event-lifecycle-tests"
+      && JSON.stringify((suite.steps || []).map((step) => step.env || null).filter(Boolean)) === JSON.stringify([{ NODE_PATH: "./node_modules" }]);
+    if (JSON.stringify(suite.envNames) !== "[]" || ((suite.steps || []).some((step) => step.env && Object.keys(step.env).length) && !exactPhase3bEnv)) {
       fail(errors, `${suite.id}: assertion children may not receive repository or job environment capabilities`);
     }
     for (const generated of suite.generatedPaths || []) {
@@ -592,6 +726,22 @@ function sameStrings(actual, expected) {
 function profileInstallList(profile) {
   if (profile?.install) return [profile.install];
   return Array.isArray(profile?.installs) ? profile.installs : [];
+}
+
+function canonicalInstallCwd(cwd) {
+  return typeof cwd === "string" && cwd && cwd.trim() === cwd && !cwd.startsWith("/") && !/^[A-Za-z]:/.test(cwd) && !cwd.includes("\\") && !cwd.includes("\0") && !cwd.endsWith("/")
+    && !cwd.split("/").some((part) => !part || part === "." || part === "..") && path.posix.normalize(cwd) === cwd;
+}
+
+export function canonicalInstallIdentity(profileName, profile, installIndex) {
+  const installs = profileInstallList(profile); const install = installs[installIndex];
+  const rootTuple = profileName === "root-node20-yaml-no-save" && installIndex === 0 && installs.length === 1 && install?.cwd === "."
+    && install.invocation?.kind === "argv" && install.invocation.command === "npm"
+    && JSON.stringify(install.invocation.argv) === JSON.stringify(["install", "--no-save", "yaml"])
+    && JSON.stringify(profile.classes) === JSON.stringify(["root-node20-yaml-no-save"]);
+  if (rootTuple) return "<repo-root>";
+  if (!canonicalInstallCwd(install?.cwd) || install?.cwd === "<repo-root>") throw new Error(`noncanonical install cwd: ${JSON.stringify(install?.cwd)}`);
+  return install.cwd;
 }
 
 // #2436 Phase 2: setup belongs to the class profile and executes once per shard.
@@ -711,10 +861,17 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
   const found = new Set();
   const repositoryFiles = new Set(trackedFiles(root));
   for (const step of suite.steps || []) {
-    const cwd = step.cwd || suite.cwd || ".";
-    const command = step.invocation?.argv?.[1] ?? step.run ?? "";
+    // Compound shell blocks are executed through their typed leaves. Derive
+    // provenance from those real leaf cwd/invocations, never from the inert
+    // outer narration that merely preserves the historical YAML bytes.
+    const units = step.children?.length ? step.children : [step];
+    for (const unit of units) {
+    const cwd = unit.cwd || step.cwd || suite.cwd || ".";
+    const command = unit.invocation?.argv?.[1] ?? unit.run ?? step.invocation?.argv?.[1] ?? step.run ?? "";
+    const commandTestMatch = [...command.matchAll(/(?:^|\s)--testMatch(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/g)]
+      .map((match) => match[1] || match[2] || match[3]);
     for (const config of configPathsFromCommand(command)) {
-      for (const selected of filesSelectedByJestConfig(config, cwd, root)) found.add(selected);
+      for (const selected of filesSelectedByJestConfig(config, cwd, root, commandTestMatch)) found.add(selected);
     }
     const tokens = command.match(PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle)
       ? /[A-Za-z0-9_@.()\/\[\]+*\-]+/g
@@ -764,11 +921,41 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
         }
       }
     }
+    }
   }
   return [...found].sort();
 }
 
+export function isNonAuthoritativeProviderEvidence(relative) {
+  return relative.startsWith(CI_BATCH_EVIDENCE_PREFIX) || WAVE_SHADOW_TESTER_ROLE.test(relative);
+}
+
+/**
+ * [#2438 A7-SC4] Reviewed, typed work-accounting record for one
+ * discoverWorkflowProviders() call. Counts only — never timings.
+ *
+ * @typedef {object} ProviderDiscoveryAccounting
+ * @property {number} trackedListInvocations trackedFiles() calls this discovery made. Exactly 1.
+ * @property {number} eligible               tracked paths surviving the exclusion list.
+ * @property {number} filesRead              eligible paths read without throwing.
+ * @property {number} skippedUnreadable      eligible paths whose read threw. Reviewed fact: 0 today,
+ *                                           because `git ls-files -s` shows only modes 100644/100755 —
+ *                                           no symlinks (120000) and no gitlinks (160000) — so nothing
+ *                                           in the tree can currently make readFileSync throw.
+ * @property {number} filesPatternScanned    sources the workflow-filename pattern was evaluated against.
+ */
+
+/** @type {Readonly<ProviderDiscoveryAccounting> | null} */
+let lastProviderDiscoveryAccountingRecord = null;
+
+/** @returns {Readonly<ProviderDiscoveryAccounting> | null} */
+export function providerDiscoveryAccounting() {
+  return lastProviderDiscoveryAccountingRecord;
+}
+
 export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
+  const accounting = { trackedListInvocations: 0, eligible: 0, filesRead: 0, skippedUnreadable: 0, filesPatternScanned: 0 };
+  const callsBefore = trackedFilesCallTotal;
   const workflowNames = new Set(
     fs
       .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
@@ -782,24 +969,42 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       relative.startsWith("docs/") ||
       relative.endsWith(".md") ||
       relative === ".github/ci-batch/MANIFEST.json" ||
-      // This governance proof reconstructs the provider set by name; it is not
-      // an external consumer of those workflows and must not self-register them.
-      relative === ".github/scripts/strict-grep/issue-2148-ci-node-wave-shadow.tester.test.mjs"
+      relative === ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs" ||
+      relative === ".github/scripts/ci-batch/__tests__/select-phase3b-suites.test.mjs" ||
+      isNonAuthoritativeProviderEvidence(relative)
     ) continue;
+    accounting.eligible += 1;
     const absolute = path.join(root, relative);
     let source;
     try {
       source = fs.readFileSync(absolute, "utf8");
     } catch {
+      accounting.skippedUnreadable += 1;
       continue;
     }
+    accounting.filesRead += 1;
+    // [#2438 A7-SC2] Correctness-preserving pre-filter. /[A-Za-z0-9_.-]+\.ya?ml/
+    // is composed only of literal characters after the class, so a match's final
+    // code units are exactly `.yml` or `.yaml`, both pure ASCII; String.includes
+    // over the same string cannot miss what the regex would find. Skipping the
+    // pattern for a source that can hold neither literal is therefore provably
+    // output-preserving, and it removes the catastrophic backtracking the greedy
+    // dot-bearing class suffers on the multi-megabyte SVG payloads in the corpus.
+    // Both literals are load-bearing: `.yaml` is forward defence for a future
+    // `.yaml` workflow and has no falsifiable guard today (there are 165 `.yml`
+    // and 0 `.yaml` files in .github/workflows), so no mutant asserts it RED.
+    if (!source.includes(".yml") && !source.includes(".yaml")) continue;
+    accounting.filesPatternScanned += 1;
     const mentioned = new Set(source.match(/[A-Za-z0-9_.-]+\.ya?ml/g) || []);
     for (const name of mentioned) {
+      if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs" && PHASE3B_WRAPPER_SET.has(name)) continue;
       if (!workflowNames.has(name)) continue;
       if (!references.has(name)) references.set(name, []);
       references.get(name).push(relative);
     }
   }
+  accounting.trackedListInvocations = trackedFilesCallTotal - callsBefore;
+  lastProviderDiscoveryAccountingRecord = Object.freeze(accounting);
   return [...references]
     .map(([workflow, referenceFiles]) => ({ workflow, referenceFiles: [...new Set(referenceFiles)].sort() }))
     .sort((a, b) => a.workflow.localeCompare(b.workflow));
@@ -817,10 +1022,11 @@ export function validateRegistry(
     .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
     .map((entry) => [entry.name, fs.readFileSync(path.join(root, ".github/workflows", entry.name), "utf8")]));
   errors.push(...validateShadowParityMarkers(manifest, workflowSources));
+  errors.push(...validatePhase3bMarkers(manifest, workflowSources));
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
-  if (manifest.expectedExecutableSuites !== 55 || manifest.expectedSuites !== 55 || manifest.shadowExpectedVariants !== 32) {
-    fail(errors, "shadow lock requires exactly 55 executable suites, including 32 shadow variants");
+  if (manifest.expectedExecutableSuites !== 67 || manifest.expectedSuites !== 67 || manifest.shadowExpectedVariants !== 44) {
+    fail(errors, "wave lock requires exactly 67 executable suites, including 32 Phase 3A and 12 Phase 3B variants");
   }
   if (!Array.isArray(manifest.classes) || manifest.classes.length === 0 || new Set(manifest.classes).size !== manifest.classes.length) {
     fail(errors, "classes must be a non-empty unique array");
@@ -830,7 +1036,7 @@ export function validateRegistry(
   } else if (crypto.createHash("sha256").update(JSON.stringify(manifest.setupProfiles)).digest("hex") !== LOCKED_SETUP_PROFILES_SHA256) {
     fail(errors, "setupProfiles differ from the exact reviewed Phase 2 + #2437 shadow setup contract");
   }
-  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 55) fail(errors, "suites must contain exactly 55 entries");
+  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 67) fail(errors, "suites must contain exactly 67 entries");
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
   errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
@@ -840,6 +1046,42 @@ export function validateRegistry(
   } catch (error) {
     fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);
   }
+  const expectedPhase3bRows = {
+    "node20-noinstall": [50, "phase3b-tenant-node20-deno146", "20", "1.46.x"],
+    "business-node20-1": [25, "", "", ""], "business-node20-2": [25, "", "", ""],
+    "business-node20-3": [25, "", "", ""], "business-node20-4": [25, "", "", ""],
+    "admin-node20-install": [55, "phase3b-lifecycle-node20-deno2", "20", "v2.x"],
+    "node22-noinstall": [55, "phase3b-theme-node20", "20", ""], "app-node22-install": [25, "", "", ""],
+    "business-node22-ignore-scripts": [60, "phase3b-brand-follow-node20-deno146", "20", "1.46.x"],
+    "cross-root-node22-ignore-scripts": [52, "phase3b-draft-node20-renderer", "20", ""],
+    "root-node20-yaml-no-save": [55, "phase3b-scanner-node20-renderer", "20", ""],
+    "node20-19-noinstall": [55, "phase3b-screens-node20-deno2-renderer", "20", "v2.x"],
+    "ota-app-node20-19-install": [105, "phase3b-business-node22", "22", ""],
+    "ota-business-node20-19-install": [55, "phase3b-enablers-node20-deno2", "20", "v2.x"],
+  };
+  if (batchTopology.timeoutMinutes !== "${{ matrix.hostTimeoutMinutes }}") fail(errors, "batch timeout must be sourced from the exact integer matrix ceiling");
+  for (const route of batchTopology.matrix || []) {
+    const expected = expectedPhase3bRows[route.class];
+    if (!expected || JSON.stringify([route.hostTimeoutMinutes, route.secondaryClass, route.secondaryNode, route.secondaryDeno]) !== JSON.stringify(expected)) {
+      fail(errors, `${route.class}: Phase 3B host timeout/secondary route drifted`);
+    }
+  }
+  const named = Object.fromEntries((batchTopology.steps || []).filter((step) => step.name).map((step) => [step.name, step]));
+  const rawSelect = named["Select Phase 3B suites from complete local Git history"];
+  const decision = named["Normalize Phase 3B decision fail-safe"];
+  const selectionUpload = named["Upload Phase 3B selection evidence"];
+  const reconcile = named["Reconcile Phase 3B host and surface deferred selector errors"];
+  if (rawSelect?.id !== "phase3b-select" || rawSelect?.timeoutMinutes !== 2 || rawSelect?.continueOnError !== true
+      || decision?.id !== "phase3b-decision" || decision?.if !== "always()" || decision?.timeoutMinutes !== 1 || decision?.continueOnError !== true
+      || selectionUpload?.if !== "always()" || selectionUpload?.uses !== PINNED_UPLOAD_ARTIFACT
+      || reconcile?.if !== "always()" || reconcile?.timeoutMinutes !== 2) fail(errors, "Phase 3B selector/normalizer/reconciliation protocol drifted");
+  if (!resolvedMatrixSource.includes("name: phase3b-selection-${{ matrix.class }}")
+      || !resolvedMatrixSource.includes("path: ${{ runner.temp }}/phase3b-decision-${{ matrix.class }}.json")
+      || !resolvedMatrixSource.includes("if-no-files-found: error")) fail(errors, "Phase 3B selection artifact identity/path/fail-closed contract drifted");
+  const deno1 = named["Select immutable Deno 1.46 runtime"];
+  const deno2 = named["Select immutable Deno v2 runtime"];
+  if (deno1?.uses !== "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"
+      || deno2?.uses !== "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed") fail(errors, "Phase 3B Deno actions must remain immutable");
   const matrixRoutes = new Map();
   for (const route of batchTopology.matrix || []) {
     if (!route.class || matrixRoutes.has(route.class)) fail(errors, `duplicate or empty ci-batch matrix class: ${route.class || "<empty>"}`);
@@ -856,9 +1098,16 @@ export function validateRegistry(
       fail(errors, `setup profile ${name} must be an object`);
       continue;
     }
-    const expectedKeys = "installs" in profile ? ["runtime", "installs", "classes"] : ["runtime", "install", "classes"];
+    const expectedKeys = "installs" in profile
+      ? name === "phase3b-lifecycle-node20-deno2" ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
+      : ["runtime", "install", "classes"];
     if (!sameStrings(Object.keys(profile), expectedKeys)) fail(errors, `setup profile ${name} has a malformed or unknown field`);
-    if (profile.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(profile.runtime?.version) || !sameStrings(Object.keys(profile.runtime || {}), ["name", "version"])) {
+    const nodeRuntime = profile.runtime?.name === "node" && ["20", "22", "20.19.4"].includes(profile.runtime?.version)
+      && sameStrings(Object.keys(profile.runtime || {}), ["name", "version"]);
+    const denoRuntime = profile.runtime?.name === "node+deno" && profile.runtime?.nodeVersion === "20"
+      && [["1.46.x", "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"], ["v2.x", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]]
+        .some(([version, action]) => profile.runtime?.deno?.version === version && profile.runtime?.deno?.action === action);
+    if (!nodeRuntime && !denoRuntime) {
       fail(errors, `setup profile ${name} must use an approved exact Node runtime schema`);
     }
     const profileClasses = strings(profile.classes) ? profile.classes : [];
@@ -872,13 +1121,20 @@ export function validateRegistry(
     const installs = profileInstallList(profile);
     if (profile.install !== null || "installs" in profile) {
       if ("installs" in profile && (!Array.isArray(profile.installs) || profile.installs.length === 0)) fail(errors, `setup profile ${name} installs must be a non-empty ordered array`);
-      for (const install of installs) {
-      if (!install || typeof install !== "object" || !sameStrings(Object.keys(install), ["cwd", "invocation"])) {
+      for (const [installIndex, install] of installs.entries()) {
+      const phase3bInstall = typeof install?.id === "string" && install.id.startsWith("setup:phase3b-");
+      if (!install || typeof install !== "object" || !sameStrings(Object.keys(install), phase3bInstall ? ["id", "cwd", "invocation"] : ["cwd", "invocation"])) {
         fail(errors, `setup profile ${name} install must use the exact typed schema`);
       }
-      if (!install?.cwd || !fs.existsSync(path.join(root, install.cwd))) fail(errors, `setup profile ${name} install cwd does not exist: ${install?.cwd}`);
+      try { canonicalInstallIdentity(name, profile, installIndex); }
+      catch { fail(errors, `setup profile ${name} install cwd is noncanonical: ${install?.cwd}`); }
+      if (!fs.existsSync(path.join(root, install.cwd))) {
+        fail(errors, `setup profile ${name} install cwd does not exist: ${install?.cwd}`);
+      }
       const invocation = install?.invocation;
-      const approvedArgv = [["ci"], ["ci", "--ignore-scripts"], ["install", "--no-save", "yaml"]];
+      const approvedArgv = [["ci"], ["ci", "--ignore-scripts"], ["install", "--no-save", "yaml"],
+        ["install", "--no-save", "--package-lock=false", "react-test-renderer@19.1.0"],
+        ["install", "--no-save", "react-test-renderer@19.1.0"]];
       if (invocation?.kind !== "argv" || invocation.command !== "npm" || !sameStrings(Object.keys(invocation || {}), ["kind", "command", "argv"])
           || !approvedArgv.some((argv) => JSON.stringify(argv) === JSON.stringify(invocation.argv))) {
         fail(errors, `setup profile ${name} install is not one of the exact approved typed npm invocations`);
@@ -886,12 +1142,12 @@ export function validateRegistry(
       }
     }
   }
-  for (const klass of manifest.classes || []) {
+  for (const klass of manifest.executionClasses || []) {
     const owners = profileOwners.get(klass) || [];
     if (owners.length !== 1) fail(errors, `class ${klass} must have exactly one setup profile owner, got ${owners.length}`);
   }
   for (const klass of profileOwners.keys()) {
-    if (!manifest.classes?.includes(klass)) fail(errors, `setup profile owns stale or unknown class ${klass}`);
+    if (!manifest.executionClasses?.includes(klass)) fail(errors, `setup profile owns stale or unknown class ${klass}`);
   }
   for (const [klass, route] of matrixRoutes) {
     const ownerName = profileOwners.get(klass)?.[0];
@@ -910,10 +1166,10 @@ export function validateRegistry(
   const capabilityCommands = capabilityRegistry?.commands || [];
   const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
   const preservedPhase2Digest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(0, 51))).digest("hex");
-  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 158
-      || capabilityCommands.length !== 158 || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 194
+      || capabilityCommands.length !== 194 || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
       || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
-    fail(errors, "the 158 assertion command capabilities must equal the locked Phase 2 + #2437 shadow registry");
+    fail(errors, "the 194 assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B registry");
   }
   if (preservedPhase2Digest !== LOCKED_ASSERTION_CAPABILITY_SHA256) fail(errors, "the current-main 51 Phase 2 assertion capabilities changed");
   const capabilitiesById = new Map();
@@ -927,11 +1183,12 @@ export function validateRegistry(
     suiteIds.add(suite.id);
     suitesById.set(suite.id, suite);
     if (!["batched-active", "shadow-active", "batched-historical"].includes(suite.lifecycle)) fail(errors, `${suite.id}: lifecycle must be batched-active, shadow-active, or batched-historical`);
-    if (!manifest.classes?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
+    if (!manifest.executionClasses?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
     if (!suite.setupProfile || !manifest.setupProfiles?.[suite.setupProfile]) fail(errors, `${suite.id}: unknown setupProfile ${suite.setupProfile}`);
     else selectedProfiles.add(suite.setupProfile);
-    if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(suite.class) !== true) {
-      fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route class ${suite.class}`);
+    const ownedClass = suite.migrationWave === PHASE3B_WAVE ? suite.executionClass : suite.class;
+    if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(ownedClass) !== true) {
+      fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route execution class ${ownedClass}`);
     }
     if (!suiteOrigins.has(suite.origin)) suiteOrigins.set(suite.origin, []);
     suiteOrigins.get(suite.origin).push(suite);
@@ -939,16 +1196,18 @@ export function validateRegistry(
     if (suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
     if (suite.lifecycle === "shadow-active" && !originIsLive) fail(errors, `${suite.id}: shadow origin must remain live: ${suite.origin}`);
     if (suite.lifecycle === "batched-historical" && originIsLive) fail(errors, `${suite.id}: terminal origin wrapper must be absent: ${suite.origin}`);
-    if (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version)) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
+    const phase3b = suite.migrationWave === PHASE3B_WAVE;
+    if (!phase3b && (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version))) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
     const profileRuntime = manifest.setupProfiles?.[suite.setupProfile]?.runtime;
     const matrixRuntime = matrixRoutes.get(suite.class)?.node;
-    if (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime) {
+    if ((!phase3b && (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime))
+        || (phase3b && (JSON.stringify(suite.runtime) !== JSON.stringify(profileRuntime) || suite.class !== suite.hostClass || !matrixRoutes.has(suite.hostClass)))) {
       fail(errors, `${suite.id}: suite, setup profile, and matrix runtime must agree exactly`);
     }
     if (!suite.ownerIssue || !/^#\d+$/.test(suite.ownerIssue)) fail(errors, `${suite.id}: ownerIssue must be an issue token`);
     if (!suite.cwd || !fs.existsSync(path.join(root, suite.cwd))) fail(errors, `${suite.id}: cwd does not exist: ${suite.cwd}`);
     if (!suite.requiredContext?.trim()) fail(errors, `${suite.id}: requiredContext classification is missing`);
-    if (!suite.exceptionRationale?.includes("Raw shell")) fail(errors, `${suite.id}: suite raw-shell exception is missing`);
+    if (!phase3b && !suite.exceptionRationale?.includes("Raw shell")) fail(errors, `${suite.id}: suite raw-shell exception is missing`);
     if (!suite.timingSeconds || !("p50" in suite.timingSeconds) || !("p95" in suite.timingSeconds)) fail(errors, `${suite.id}: p50/p95 timing classification is missing`);
     for (const key of ["envNames", "expectedFiles", "originPaths", "externalReferenceFiles", "generatedPaths"]) {
       if (!strings(suite[key])) fail(errors, `${suite.id}: ${key} must be a string array`);
@@ -961,17 +1220,19 @@ export function validateRegistry(
     for (const [index, step] of (suite.steps || []).entries()) {
       if (!step.run?.trim()) fail(errors, `${suite.id}: step ${index} has an empty compatibility command`);
       const invocation = step.invocation;
-      if (invocation?.kind !== "raw-shell" || invocation.command !== "bash" || !strings(invocation.argv) || invocation.argv.length !== 2 || invocation.argv[0] !== "-c" || invocation.argv[1] !== step.run) {
+      const expectedKind = phase3b ? "reviewed-shell-v1" : "raw-shell";
+      if (invocation?.kind !== expectedKind || invocation.command !== "bash" || !strings(invocation.argv) || invocation.argv.length !== 2 || invocation.argv[0] !== "-c" || invocation.argv[1] !== step.run) {
         fail(errors, `${suite.id}: step ${index} typed invocation must be bash [-c, exact legacy command]`);
       }
-      if (!step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
+      if (!phase3b && !step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
       const expectedCommandId = `assert:${suite.id}:${String(index + 1).padStart(2, "0")}`;
       const capability = capabilitiesById.get(step.commandId);
       if (step.commandId !== expectedCommandId || !capability) {
         fail(errors, `${suite.id}: step ${index} has no stable assertion command capability`);
       } else {
         claimedCapabilities.add(capability.id);
-        const payload = { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv };
+        const payload = phase3b ? { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv, env: step.env || null, compound: Boolean(step.children) }
+          : { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv };
         const payloadSha256 = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
         if (capability.suiteId !== suite.id || capability.stepIndex !== index || capability.cwd !== payload.cwd
             || capability.executable !== payload.executable || JSON.stringify(capability.argv) !== JSON.stringify(payload.argv)
@@ -981,11 +1242,14 @@ export function validateRegistry(
       }
     }
     const derivedExpectedFiles = discoverExpectedFilesForSuite(suite, root);
-    if (JSON.stringify(suite.expectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
+    const registeredExpectedFiles = phase3b
+      ? [...new Set([...(suite.expectedFiles || []), ...(suite.conditionalExpectedFiles || []).filter((file) => fs.existsSync(path.join(root, file)))])].sort()
+      : suite.expectedFiles;
+    if (JSON.stringify(registeredExpectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
       fail(errors, `${suite.id}: expectedFiles must exactly equal files selected by the preserved typed command`);
     }
   }
-  const waveSuites = (manifest.suites || []).filter((suite) => PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle));
+  const waveSuites = (manifest.suites || []).filter((suite) => suite.migrationWave === PHASE3A_WAVE);
   const waveLifecycle = new Set(waveSuites.map((suite) => suite.lifecycle));
   if (waveSuites.length !== 32 || waveLifecycle.size !== 1) {
     fail(errors, `Phase 3 wave must contain exactly 32 variants in one atomic lifecycle, got ${waveSuites.length} across ${waveLifecycle.size} lifecycle(s)`);
@@ -993,7 +1257,7 @@ export function validateRegistry(
   for (const [origin, owners] of suiteOrigins) {
     const expected = path.basename(origin) === "issue-994-ota-env-resolution.yml" ? 2 : 1;
     if (owners.length !== expected) fail(errors, `${origin}: expected exactly ${expected} executable variant(s), got ${owners.length}`);
-    const waveOwners = owners.filter((suite) => PHASE3_WAVE_LIFECYCLES.has(suite.lifecycle));
+    const waveOwners = owners.filter((suite) => suite.migrationWave === PHASE3A_WAVE);
     if (waveOwners.length) {
       const variants = waveOwners.map((suite) => suite.originVariant).sort();
       const expectedVariants = expected === 2 ? ["app-mobile", "mingla-business"] : ["default"];
@@ -1010,6 +1274,140 @@ export function validateRegistry(
   })))).digest("hex");
   if (manifest.shadowContractSha256 !== LOCKED_SHADOW_CONTRACT_SHA256 || calculatedShadowDigest !== LOCKED_SHADOW_CONTRACT_SHA256) {
     fail(errors, "the exact 32-variant shadow command/setup/options/trigger contract drifted");
+  }
+  const phase3bSuites = (manifest.suites || []).filter((suite) => suite.migrationWave === PHASE3B_WAVE);
+  const phase3bLifecycles = new Set(phase3bSuites.map((suite) => suite.lifecycle));
+  // [#2438 SC-13] Phase 3B is atomic in EITHER reviewed lifecycle. A mixed wave
+  // stays red, and no third form is accepted.
+  const phase3bLifecycle = phase3bLifecycles.size === 1 ? [...phase3bLifecycles][0] : null;
+  const phase3bTerminal = phase3bLifecycle === PHASE3B_TERMINAL_LIFECYCLE;
+  if (phase3bSuites.length !== 12 || !PHASE3B_ATOMIC_LIFECYCLES.has(phase3bLifecycle)) {
+    fail(errors, `Phase 3B must contain exactly 12 suites in one atomic ${[...PHASE3B_ATOMIC_LIFECYCLES].join(" or ")} lifecycle`);
+  }
+  if (phase3bSuites.reduce((sum, suite) => sum + suite.steps.length, 0) !== 36) fail(errors, "Phase 3B must own exactly 36 outer assertions");
+  for (const suite of phase3bSuites) {
+    // [#2438 SC-13/SC-17] Follow the reviewed Phase 3A pattern above: never read a
+    // wrapper the lifecycle says is gone, and never dereference a missing one.
+    // At shadow the wrapper must be LIVE and match the frozen shadowContract; at
+    // terminal it must be ABSENT (a restored wrapper is the error) and the
+    // trigger/concurrency/source digests are validated from the frozen registry
+    // shadowContract, which the locked Phase 3B contract digest below seals.
+    const wrapperName = path.basename(suite.origin);
+    const wrapperPresent = fs.existsSync(path.join(root, ".github/workflows", wrapperName));
+    const triggerPaths = [...new Set([...(suite.triggerContract?.push?.paths || []), ...(suite.triggerContract?.pullRequest?.paths || [])])].sort();
+    const triggerEvents = [suite.triggerContract?.push && "push", suite.triggerContract?.pullRequest && "pull_request"].filter(Boolean).sort();
+    const triggerDigest = crypto.createHash("sha256").update(JSON.stringify(suite.triggerContract)).digest("hex");
+    if (phase3bTerminal) {
+      if (wrapperPresent) {
+        fail(errors, `${suite.id}: terminal wrapper ${wrapperName} must be absent`);
+        continue;
+      }
+      if (triggerPaths.length === 0 || triggerEvents.length === 0
+          || suite.triggerContract?.concurrency == null
+          || suite.shadowContract?.triggerSha256 !== triggerDigest
+          || !/^[0-9a-f]{64}$/.test(String(suite.shadowContract?.workflowSha256))) {
+        fail(errors, `${suite.id}: exact trigger/concurrency/wrapper terminal contract drifted`);
+      }
+      continue;
+    }
+    if (!wrapperPresent) {
+      fail(errors, `${suite.id}: shadow wrapper ${wrapperName} must remain live until cutover`);
+      continue;
+    }
+    const metadata = inspectWorkflow(root, wrapperName);
+    if (!metadata) {
+      fail(errors, `${suite.id}: shadow wrapper ${wrapperName} could not be inspected`);
+      continue;
+    }
+    if (JSON.stringify(triggerPaths) !== JSON.stringify(metadata.pathScope)
+        || JSON.stringify(triggerEvents) !== JSON.stringify(metadata.triggers)
+        || JSON.stringify(suite.triggerContract?.concurrency) !== JSON.stringify(metadata.phase3bConcurrency)
+        || suite.shadowContract?.triggerSha256 !== triggerDigest
+        || suite.shadowContract?.workflowSha256 !== metadata.sourceSha256) {
+      fail(errors, `${suite.id}: exact trigger/concurrency/wrapper shadow contract drifted`);
+    }
+  }
+  const phase3bContractDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bSuites.map((suite) => ({
+    id: suite.id, origin: suite.origin, hostClass: suite.hostClass, executionClass: suite.executionClass,
+    runtime: suite.runtime, setupProfile: suite.setupProfile, timeoutSeconds: suite.timeoutSeconds,
+    triggerContract: suite.triggerContract, shadowContract: suite.shadowContract,
+  })))).digest("hex");
+  if (manifest.phase3bContractSha256 !== LOCKED_PHASE3B_CONTRACT_SHA256 || phase3bContractDigest !== LOCKED_PHASE3B_CONTRACT_SHA256) {
+    fail(errors, "Phase 3B exact host/runtime/setup/timeout/trigger shadow contract drifted");
+  }
+  if (crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(51, 158))).digest("hex") !== "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709") {
+    fail(errors, "Phase 3A 107-command capability digest changed");
+  }
+  const leafRegistry = manifest.phase3bLeafCapabilities;
+  const leaves = leafRegistry?.leaves || [];
+  if (leafRegistry?.schemaVersion !== 1 || leafRegistry?.expectedLeaves !== 40 || leaves.length !== 40
+      || leafRegistry?.currentExecutedLeaves !== 37 || leafRegistry?.currentAbsentLeaves !== 3
+      || crypto.createHash("sha256").update(JSON.stringify(leaves)).digest("hex") !== leafRegistry?.registrySha256) {
+    fail(errors, "Phase 3B leaf registry must equal 40 maximum / current 37 executed + 3 absent");
+  }
+  const leafIds = new Set();
+  for (const leaf of leaves) {
+    if (!leaf.id || leafIds.has(leaf.id)) fail(errors, `duplicate or empty leaf capability: ${leaf.id || "<empty>"}`);
+    leafIds.add(leaf.id);
+    if (!capabilitiesById.has(leaf.outerCommandId) || !phase3bSuites.some((suite) => suite.id === leaf.suiteId)) fail(errors, `${leaf.id}: leaf ownership is stale`);
+    if (!["always", "file-exists"].includes(leaf.predicate?.kind)) fail(errors, `${leaf.id}: unsupported leaf predicate`);
+    if (leaf.predicate?.kind === "file-exists" && !phase3bSuites.find((suite) => suite.id === leaf.suiteId)?.conditionalExpectedFiles?.includes(leaf.predicate.path)) fail(errors, `${leaf.id}: conditional proof is not registered`);
+    const payload = { cwd: leaf.cwd, executable: leaf.executable, argv: leaf.argv, env: leaf.env, predicate: leaf.predicate };
+    if (crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex") !== leaf.payloadSha256) fail(errors, `${leaf.id}: immutable leaf payload drifted`);
+  }
+  const compound = phase3bSuites.flatMap((suite) => suite.steps.filter((step) => step.children));
+  if (compound.length !== 2 || compound.map((step) => step.children.length).sort().join(",") !== "2,4") fail(errors, "Phase 3B must retain the exact two compound outers with 2 and 4 leaves");
+  const envOwners = phase3bSuites.flatMap((suite) => suite.steps.filter((step) => step.env).map((step) => `${suite.id}:${step.commandId}:${JSON.stringify(step.env)}`));
+  if (JSON.stringify(envOwners) !== JSON.stringify(["issue-1902-public-event-lifecycle-tests:assert:issue-1902-public-event-lifecycle-tests:03:{\"NODE_PATH\":\"./node_modules\"}"])) {
+    fail(errors, "Phase 3B typed env must have the sole exact #1902 Business Jest owner");
+  }
+  const lifecycleSetup = manifest.setupProfiles?.["phase3b-lifecycle-node20-deno2"];
+  const setupShape = (lifecycleSetup?.installs || []).map((install) => ({ id: install.id, cwd: install.cwd, command: install.invocation?.command, argv: install.invocation?.argv }));
+  if (JSON.stringify(setupShape) !== JSON.stringify([
+    { id: "setup:phase3b-lifecycle-node20-deno2:01", cwd: "mingla-business", command: "npm", argv: ["ci"] },
+    { id: "setup:phase3b-lifecycle-node20-deno2:02", cwd: "app-mobile", command: "npm", argv: ["ci"] },
+  ])) fail(errors, "#1902 setup must be one setup with two exact ordered installs");
+  const exposure = lifecycleSetup?.toolExposures;
+  const exactExposure = [{
+    id: "tool:phase3b-lifecycle-node20-deno2:jest-29.7.0", providerCwd: "mingla-business", consumerCwd: "app-mobile",
+    packageName: "jest", executableName: "jest", version: "29.7.0",
+    providerPackage: "mingla-business/node_modules/jest/package.json", providerExecutable: "mingla-business/node_modules/jest/bin/jest.js",
+    consumerPackageLink: "app-mobile/node_modules/jest", consumerPackageLinkTarget: "../../mingla-business/node_modules/jest",
+    consumerBinLink: "app-mobile/node_modules/.bin/jest", consumerBinLinkTarget: "../jest/bin/jest.js",
+    authorityLock: "mingla-business/package-lock.json", authorityKey: "node_modules/jest",
+  }];
+  if (JSON.stringify(exposure) !== JSON.stringify(exactExposure)
+      || crypto.createHash("sha256").update(JSON.stringify(exposure)).digest("hex") !== "08d4e3d37b2c5a45805b110cfb9e20fc100d05f065a34ce46ef5b56444bee1ef") {
+    fail(errors, "#1902 typed Jest 29.7.0 exposure contract drifted");
+  }
+  const packageAuthorities = {
+    "app-mobile/package.json": "2e167f8c716e80e9baf53dd2b2ba14833afd3a3da48f19718442672bbd0ce6a2",
+    "app-mobile/package-lock.json": "80d18eae58c8e0a81c7e858730caaaae7294e767a27b078ffae2c6d2a2786624",
+    "mingla-business/package.json": "61ddd3137b3cc5542f9d58b28edd0a4f1cd6479a9212d99b8067025a03547601",
+    "mingla-business/package-lock.json": "6725babece1c8c2aab52d3d66dae35de0a45088e4a240560d7f4eb8317ee6513",
+  };
+  for (const [relative, expected] of Object.entries(packageAuthorities)) {
+    const actual = crypto.createHash("sha256").update(fs.readFileSync(path.join(root, relative))).digest("hex");
+    if (actual !== expected) fail(errors, `#1902 package authority drifted: ${relative}`);
+  }
+  const primaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
+    manifest.suites.filter((suite) => suite.class === klass && suite.migrationWave !== PHASE3B_WAVE).length]));
+  const expectedPrimaryVector = { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
+    "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
+    "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
+    "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 };
+  if (JSON.stringify(Object.entries(primaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
+      || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== 55) fail(errors, "primary lane must retain exactly the frozen 55-suite host vector");
+  if (capabilityCommands.slice(158).some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) fail(errors, "setup/install leaked into Phase 3B assertion capabilities");
+  if (manifest.executionClasses?.length !== 23 || manifest.classes?.length !== 14) fail(errors, "topology must remain 14 matrix hosts / 23 execution classes");
+  const waveContract = manifest.migrationWaves?.[PHASE3B_WAVE];
+  // [#2438 SC-13] Exactly two accepted forms — the shadow contract and the
+  // terminal contract — and the wave header must agree with the suites' own
+  // atomic lifecycle, so a terminal wave header over shadow suites stays red.
+  const expectedWaveContract = { suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 37,
+    currentAbsentLeaves: 3, lifecycle: phase3bTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };
+  if (JSON.stringify(waveContract) !== JSON.stringify(expectedWaveContract)) {
+    fail(errors, "Phase 3B wave count contract drifted");
   }
   for (const capability of capabilityCommands) {
     if (!claimedCapabilities.has(capability.id)) fail(errors, `stale unclaimed command capability: ${capability.id}`);
@@ -1080,6 +1478,54 @@ export function validateRegistry(
   for (const key of legacyKeys) if (!expectedOriginKeys.has(key)) fail(errors, `stale or invented origin in registry: ${key}`);
 
   const discoveredProviders = workflowProviders ?? discoverWorkflowProviders(root);
+  if (workflowProviders == null) {
+    const discoveryDigest = crypto.createHash("sha256").update(JSON.stringify(discoveredProviders)).digest("hex");
+    const phase3bProviders = discoveredProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
+    const phase3bDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bProviders)).digest("hex");
+    // [#2438 SC-13] The authority expectation follows the wave's own atomic
+    // lifecycle, and there is exactly ONE frozen seal on both sides of it:
+    // LOCKED_PROVIDER_DISCOVERY_SHA256, the 73-record shadow authority.
+    //
+    // At SHADOW the twelve wrappers are live, so discovery must reproduce that
+    // seal directly and its Phase 3B subset must be the frozen six.
+    //
+    // At TERMINAL the twelve wrappers are deleted, so discovery can no longer
+    // see the six Phase 3B records at all. There is deliberately NO frozen
+    // terminal digest: a second literal would be a constant nobody can
+    // re-derive, and locking one is the fragility this contract already
+    // rejected elsewhere. Instead the shadow authority is RECONSTRUCTED at
+    // runtime — what terminal discovery still sees, plus the six records the
+    // registry carries for the deleted wrappers, re-sorted exactly as discovery
+    // sorts — and that reconstruction is checked against the one frozen seal.
+    // Deleting the twelve wrappers is the only way discovery can change here,
+    // because .github/workflows/** is excluded from the scan, so no other
+    // record's referenceFiles can move; if anything else drifted, the
+    // reconstruction cannot hash back to the seal and this fails closed.
+    if (phase3bTerminal) {
+      if (phase3bProviders.length !== 0) {
+        fail(errors, `Phase 3B provider authority drifted: terminal wrappers are deleted and must contribute no provider record, got ${phase3bProviders.length}`);
+      }
+      const carriedPhase3bProviders = (manifest.workflowProviders || [])
+        .filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))
+        .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
+      const reconstructedShadow = [...discoveredProviders, ...carriedPhase3bProviders]
+        .sort((a, b) => a.workflow.localeCompare(b.workflow));
+      const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
+      if (carriedPhase3bProviders.length !== PHASE3B_PROVIDER_NAMES.size
+          || discoveredProviders.length !== 73 - PHASE3B_PROVIDER_NAMES.size
+          || reconstructedShadow.length !== 73
+          || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried Phase 3B records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
+      }
+    } else {
+      if (discoveredProviders.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `workflow provider authority drifted: expected 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${discoveredProviders.length}/${discoveryDigest}`);
+      }
+      if (phase3bProviders.length !== 6 || phase3bDigest !== LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `Phase 3B provider authority drifted: expected 6/${LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256}, got ${phase3bProviders.length}/${phase3bDigest}`);
+      }
+    }
+  }
   const registeredProviders = manifest.workflowProviders || [];
   if (!Array.isArray(registeredProviders) || registeredProviders.length !== 91) fail(errors, "workflowProviders must contain exactly the amended 91 providers");
   const providerKeys = new Set();
@@ -1131,8 +1577,11 @@ function main() {
     console.error(`#2435 registry v2: FAIL (${errors.length} error(s))`);
     process.exit(1);
   }
-  const waveLifecycle = manifest.suites.slice(23)[0]?.lifecycle;
-  console.log(`#2437 ${waveLifecycle === "batched-historical" ? "terminal" : "shadow"} registry: PASS — 200 origins, 55 executable suites (32 wave), 91 external providers`);
+  console.log("Phase 1: 23 suites / 51 outer assertions");
+  console.log("Phase 3A: 32 suites / 107 outer assertions");
+  console.log("Phase 3B: 12 suites / 36 outer assertions / 40 maximum leaves / current 37 executed + 3 absent");
+  console.log("Terminal: 200 origins / 67 suites / 194 outer assertions / 91 providers");
+  console.log("#1902 setup: 1 setup execution / 2 ordered install executions");
 }
 
 if (process.argv[1] && fileURLToPath(import.meta.url) === path.resolve(process.argv[1])) main();

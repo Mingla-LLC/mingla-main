@@ -129,7 +129,7 @@ module.exports = {
     // 17 and are drift-resistant — any *.render.test.tsx is a render-proof by
     // construction (verified: 0 currently-green suites match either pattern).
     // The 3 *.orch0976.* react-test-renderer suites are DELIBERATELY NOT excluded:
-    // they run under THIS stock config inside orch-0976-draft-promotion-tests.yml
+    // they run under THIS stock config inside ci-batch:orch-0976-draft-promotion-tests
     // (which installs react-test-renderer --no-save), and the nightly suite
     // installs it too — excluding them would break that per-issue workflow.
     "\\.render\\.test\\.tsx$", // every web + RN render-proof (subsumes the explicit render entries above)
@@ -149,7 +149,7 @@ module.exports = {
     // asserting anything. Reviving them needs edits INSIDE the test files, which
     // `tests-append-only.yml` blocks, and would only duplicate coverage that
     // already gates: the SAME commit shipped
-    // `.github/workflows/orch-0976-draft-promotion-tests.yml`, which proves the
+    // `ci-batch:orch-0976-draft-promotion-tests`, which proves the
     // identical no-remount invariant (1 wizard mount, 0 router.replace) on both
     // wizards and is green at 19/19 in CI today. `jest.orch1355.render.cjs`
     // (wired by issue-1486-dormant-render-suites.yml) carries the rest.

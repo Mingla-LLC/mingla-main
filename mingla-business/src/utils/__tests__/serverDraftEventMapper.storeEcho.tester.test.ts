@@ -34,7 +34,8 @@
  * Runtime code is byte-identical to the fix — this suite imports the REAL
  * store and the REAL mapper and only asserts. Append-only NEW file. Runs under
  * the stock mingla-business/jest.config.cjs. Wired into
- * .github/workflows/issue-1022-theme-control-tests.yml.
+ * ci-batch:issue-1022-theme-control-tests (#2438 SC-12: the historical
+ * .github/workflows wrapper was retired; the typed batch suite is the provider).
  */
 
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";

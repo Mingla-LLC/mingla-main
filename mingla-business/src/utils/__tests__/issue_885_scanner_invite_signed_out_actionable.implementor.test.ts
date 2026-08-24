@@ -32,7 +32,7 @@
  * DEFAULT node/ts-jest config — the config the required full suite
  * (`mingla-business-jest-suite.yml`) runs on every PR — which installs
  * `react-test-renderer@19.1.0 --no-save`. Its dedicated per-issue workflow
- * (`.github/workflows/issue-885-scanner-invite-loader-tests.yml`) installs the same
+ * (`ci-batch:issue-885-scanner-invite-loader-tests`) installs the same
  * renderer and runs it path-gated on the source file + this test + the workflow.
  */
 

@@ -232,9 +232,10 @@ function assertionRuns(origin, variantId, inspections) {
 }
 
 function assertReconstructed(value, inspections) {
-  const shadow = value.suites.filter((suite) => ["shadow-active", "batched-historical"].includes(suite.lifecycle));
+  // [TEST-MOD-APPROVED #2438] Select Phase 3A explicitly after the additive Phase 3B wave.
+  const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
   assert.equal(value.legacyOrigins.length, 200);
-  assert.equal(value.suites.length, 55);
+  assert.equal(value.suites.length, 67);
   assert.equal(value.workflowProviders.length, 91);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
@@ -275,7 +276,7 @@ function assertReconstructed(value, inspections) {
     assert.equal(ORIGINS.reduce((sum, origin) => sum + inspections[origin].runs.filter(({ run }) => INSTALLS.has(run.trim())).length, 0), 16);
   }
   assert.equal(digest(value.commandCapabilities.commands.slice(0, 51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
-  assert.equal(digest(value.commandCapabilities.commands.slice(51)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
+  assert.equal(digest(value.commandCapabilities.commands.slice(51, 158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
 }
 
 function assertWrapperLifecycle(value, readSource, markedWorkflowNames) {
@@ -355,23 +356,23 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.equal(jobs.dispatch.if, "github.event_name == 'workflow_dispatch' && inputs.suite == 'issue-2300-orch-artifact-reap'");
   assert.equal(jobs.dispatch.strategy, false);
   assert.equal(jobs.dispatch.timeout, 25);
-  assert.deepEqual(value.suites.filter((suite) => suite.class === "node20-19-noinstall").map((suite) => suite.id),
+  assert.deepEqual(value.suites.filter((suite) => suite.class === "node20-19-noinstall" && suite.migrationWave !== "phase3b-postgres-wave").map((suite) => suite.id),
     ["issue-2300-orch-artifact-reap"]);
   for (const name of ["batch", "dispatch"]) {
     const checkout = jobs[name].steps.filter((step) => step.uses === "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683");
     const setup = jobs[name].steps.filter((step) => step.uses === "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020");
     assert.equal(checkout.length, 1, `${name}: checkout pin cardinality`);
     assert.deepEqual(checkout[0].with, { "fetch-depth": 0, "persist-credentials": false });
-    assert.equal(setup.length, 1, `${name}: setup-node pin cardinality`);
+    assert.equal(setup.length, name === "batch" ? 2 : 1, `${name}: setup-node pin cardinality`);
   }
-  assert.deepEqual(jobs.batch.steps.find((step) => step.uses?.startsWith("actions/setup-node@")).with,
+  assert.deepEqual(jobs.batch.steps.find((step) => !step.name && step.uses?.startsWith("actions/setup-node@")).with,
     { "node-version": "${{ matrix.node }}", cache: "${{ matrix.cache }}", "cache-dependency-path": "${{ matrix.cache-lock }}" });
   assert.deepEqual(jobs.dispatch.steps.find((step) => step.uses?.startsWith("actions/setup-node@")).with,
     { "node-version": "20.19.4" });
   assert.equal(jobs.dispatch.steps.filter((step) => step.run === 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "node20-19-noinstall"').length, 1);
   assert.equal(jobs.dispatch.steps.filter((step) => step.run === 'node .github/scripts/ci-batch/run-suite-batch.mjs --run "node20-19-noinstall"').length, 1);
   assert.equal((source.match(/actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/g) || []).length, 2);
-  assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 2);
+  assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 3);
   assert.match(source, /permissions:\n  contents: read/);
   assert.doesNotMatch(source, /secrets\.|id-token:\s*write|pull_request_target|environment:/);
   assert.match(source, /workflow_dispatch:[\s\S]*type: choice[\s\S]*- issue-2300-orch-artifact-reap/);

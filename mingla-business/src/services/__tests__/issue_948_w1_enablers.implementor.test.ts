@@ -8,7 +8,7 @@
  *   contains no unsupported reminder promise.
  *
  * CI: the required full mingla-business Jest workflow runs this file on every
- * PR; issue-948-w1-enablers-tests.yml also runs it explicitly with the Deno
+ * PR; ci-batch:issue-948-w1-enablers-tests also runs it explicitly with the Deno
  * edge-contract suite.
  */
 import { beforeEach, describe, expect, jest, test } from "@jest/globals";

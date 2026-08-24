@@ -34,7 +34,7 @@
  * Plain `*.adversarial.test.ts` (NOT `*.render.test.tsx`), so it is NOT swept into
  * jest.config.cjs's render-exclusion `testPathIgnorePatterns`; it runs under the DEFAULT
  * node/ts-jest config. Registered path-gated in
- * .github/workflows/issue-885-scanner-invite-loader-tests.yml alongside the implementor
+ * ci-batch:issue-885-scanner-invite-loader-tests alongside the implementor
  * proof (react-test-renderer installed --no-save there, same as the implementor step).
  */
 

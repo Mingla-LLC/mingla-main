@@ -11,6 +11,7 @@ import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { decodeManifestTextRepresentations } from "./validate-manifest-v2.mjs";
+import { validateDecision } from "./select-phase3b-suites.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(HERE, "../../..");
@@ -22,6 +23,9 @@ export function loadManifest(p = MANIFEST_PATH) {
   return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
 }
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
+export function expectedPrimarySuites(manifest, klass) {
+  return manifest.suites.filter((suite) => (!klass || suite.class === klass) && suite.migrationWave !== "phase3b-postgres-wave");
+}
 
 // Compatibility API for the pre-Phase-2 committed regression. Production uses
 // runSuiteV2; this preserves the original no-shortfall/no-early-break proof.
@@ -97,11 +101,94 @@ export function profileInstalls(profile) {
   return Array.isArray(profile?.installs) ? profile.installs : [];
 }
 
+function isCanonicalRootInstall(profile, profileName, index) {
+  const installs = profileInstalls(profile); const install = installs[index];
+  return profileName === "root-node20-yaml-no-save" && index === 0 && installs.length === 1 && install?.cwd === "."
+    && install.invocation?.kind === "argv" && install.invocation.command === "npm"
+    && JSON.stringify(install.invocation.argv) === JSON.stringify(["install", "--no-save", "yaml"])
+    && JSON.stringify(profile.classes) === JSON.stringify(["root-node20-yaml-no-save"]);
+}
+
+export function dependencyMaterializations(profile, profileName = null) {
+  const seen = new Set(); const result = [];
+  for (const [index, { cwd }] of profileInstalls(profile).entries()) {
+    if (isCanonicalRootInstall(profile, profileName, index)) {
+      if (seen.has("<repo-root>")) throw new Error("duplicate canonical repository-root dependency tree");
+      seen.add("<repo-root>"); result.push({ canonicalCwd: "<repo-root>", storedCwd: "." }); continue;
+    }
+    if (typeof cwd !== "string" || !cwd || cwd.trim() !== cwd || cwd.startsWith("/") || /^[A-Za-z]:/.test(cwd) || cwd.includes("\\") || cwd.includes("\0") || cwd.endsWith("/")
+        || cwd === "<repo-root>" || cwd.split("/").some((part) => !part || part === "." || part === "..") || path.posix.normalize(cwd) !== cwd) {
+      throw new Error(`install cwd is not canonical repository-relative POSIX: ${JSON.stringify(cwd)}`);
+    }
+    if (!seen.has(cwd)) { seen.add(cwd); result.push({ canonicalCwd: cwd, storedCwd: cwd }); }
+  }
+  return result;
+}
+
+export function canonicalDependencyCwds(profile, profileName = null) {
+  return dependencyMaterializations(profile, profileName).map(({ canonicalCwd }) => canonicalCwd);
+}
+
+function exposurePayload(exposure) {
+  return { id: exposure.id, providerCwd: exposure.providerCwd, consumerCwd: exposure.consumerCwd,
+    packageName: exposure.packageName, executableName: exposure.executableName, version: exposure.version,
+    providerPackage: exposure.providerPackage, providerExecutable: exposure.providerExecutable,
+    consumerPackageLink: exposure.consumerPackageLink, consumerPackageLinkTarget: exposure.consumerPackageLinkTarget,
+    consumerBinLink: exposure.consumerBinLink, consumerBinLinkTarget: exposure.consumerBinLinkTarget,
+    authorityLock: exposure.authorityLock, authorityKey: exposure.authorityKey };
+}
+
+export function materializeToolExposures(profile, root = REPO_ROOT) {
+  const records = [];
+  for (const exposure of profile.toolExposures || []) {
+    const started = Date.now(); const payload = exposurePayload(exposure);
+    for (const cwd of [payload.providerCwd, payload.consumerCwd]) canonicalDependencyCwds({ installs: [{ cwd }] });
+    const providerPackage = path.join(root, payload.providerPackage);
+    const providerExecutable = path.join(root, payload.providerExecutable);
+    const consumerPackageLink = path.join(root, payload.consumerPackageLink);
+    const consumerBinLink = path.join(root, payload.consumerBinLink);
+    const lock = JSON.parse(fs.readFileSync(path.join(root, payload.authorityLock), "utf8"));
+    if (lock.packages?.[payload.authorityKey]?.version !== payload.version) throw new Error(`${payload.id}: lock authority mismatch`);
+    const packageJson = JSON.parse(fs.readFileSync(providerPackage, "utf8"));
+    const bin = typeof packageJson.bin === "string" ? packageJson.bin : packageJson.bin?.[payload.executableName];
+    if (packageJson.name !== payload.packageName || packageJson.version !== payload.version || bin?.replace(/^\.\//, "") !== path.posix.relative(path.posix.dirname(payload.providerPackage), payload.providerExecutable)) {
+      throw new Error(`${payload.id}: provider package name/version/bin mismatch`);
+    }
+    const canonicalRoot = fs.realpathSync(root); const canonicalProvider = fs.realpathSync(path.dirname(providerPackage));
+    if (!inside(canonicalRoot, canonicalProvider) || !fs.statSync(providerExecutable).isFile()) throw new Error(`${payload.id}: provider escapes repository or executable is missing`);
+    if (fs.existsSync(consumerPackageLink) || fs.existsSync(consumerBinLink)) throw new Error(`${payload.id}: consumer tool destination already exists`);
+    fs.mkdirSync(path.dirname(consumerPackageLink), { recursive: true }); fs.mkdirSync(path.dirname(consumerBinLink), { recursive: true });
+    fs.symlinkSync(payload.consumerPackageLinkTarget, consumerPackageLink); fs.symlinkSync(payload.consumerBinLinkTarget, consumerBinLink);
+    if (fs.realpathSync(consumerPackageLink) !== canonicalProvider || fs.realpathSync(consumerBinLink) !== fs.realpathSync(providerExecutable)
+        || !inside(canonicalRoot, fs.realpathSync(consumerPackageLink)) || !inside(canonicalRoot, fs.realpathSync(consumerBinLink))) {
+      throw new Error(`${payload.id}: consumer tool link containment mismatch`);
+    }
+    records.push({ ...payload, status: "passed", durationMs: Math.max(0, Date.now() - started) });
+  }
+  return records;
+}
+
 export function validateSetupEvidence(manifest, klass, evidence) {
   const owner = setupProfileForClass(manifest, klass);
-  const expectedInstalls = profileInstalls(owner.profile).length;
+  const installs = profileInstalls(owner.profile); const expectedInstalls = installs.length;
   if (!evidence || evidence.class !== klass || evidence.setupProfile !== owner.name || evidence.setupExecutions !== 1 || evidence.installExecutions !== expectedInstalls) {
     throw new Error(`setup evidence mismatch for ${klass}: expected profile=${owner.name}, setup=1, installs=${expectedInstalls}`);
+  }
+  if (installs.some((install) => install.id)) {
+    const expected = installs.map((install) => ({ id: install.id, cwd: install.cwd, command: install.invocation.command, argv: install.invocation.argv }));
+    if (JSON.stringify(evidence.orderedInstalls?.map(({ id, cwd, command, argv }) => ({ id, cwd, command, argv }))) !== JSON.stringify(expected)
+        || evidence.setupFingerprint !== crypto.createHash("sha256").update(JSON.stringify(expected)).digest("hex")) {
+      throw new Error(`setup evidence ordered capability mismatch for ${klass}`);
+    }
+  }
+  const exposures = owner.profile.toolExposures || [];
+  if (exposures.length) {
+    const expected = exposures.map(exposurePayload);
+    if (evidence.toolExposureExecutions !== expected.length
+        || JSON.stringify(evidence.orderedToolExposures?.map(exposurePayload)) !== JSON.stringify(expected)
+        || evidence.toolExposureFingerprint !== crypto.createHash("sha256").update(JSON.stringify(expected)).digest("hex")) {
+      throw new Error(`setup evidence tool exposure mismatch for ${klass}`);
+    }
   }
   return owner;
 }
@@ -109,7 +196,9 @@ export function validateSetupEvidence(manifest, klass, evidence) {
 export function performSetup(manifest, klass, root = REPO_ROOT, tempRoot = process.env.RUNNER_TEMP || os.tmpdir()) {
   const owner = setupProfileForClass(manifest, klass);
   const installs = profileInstalls(owner.profile);
+  const orderedInstalls = [];
   for (const install of installs) {
+    const started = Date.now();
     const result = spawnSync(install.invocation.command, install.invocation.argv, {
       cwd: path.join(root, install.cwd),
       env: process.env,
@@ -118,13 +207,26 @@ export function performSetup(manifest, klass, root = REPO_ROOT, tempRoot = proce
     if (result.error || result.status !== 0) {
       throw new Error(`typed setup failed for ${klass} at ${install.cwd}: ${result.error?.message || `exit ${result.status}`}`);
     }
+    orderedInstalls.push({ id: install.id, cwd: install.cwd, command: install.invocation.command, argv: install.invocation.argv,
+      status: "passed", durationMs: Math.max(0, Date.now() - started) });
   }
-  return recordSetup(manifest, klass, installs.length, tempRoot);
+  const orderedToolExposures = materializeToolExposures(owner.profile, root);
+  return recordSetup(manifest, klass, installs.length, tempRoot, orderedInstalls, orderedToolExposures);
 }
 
-export function recordSetup(manifest, klass, installExecutions, tempRoot = process.env.RUNNER_TEMP || os.tmpdir()) {
+export function recordSetup(manifest, klass, installExecutions, tempRoot = process.env.RUNNER_TEMP || os.tmpdir(), orderedInstalls = null, orderedToolExposures = null) {
   const owner = setupProfileForClass(manifest, klass);
   const evidence = { class: klass, setupProfile: owner.name, setupExecutions: 1, installExecutions: Number(installExecutions) };
+  if (orderedInstalls) {
+    evidence.orderedInstalls = orderedInstalls;
+    const payload = orderedInstalls.map(({ id, cwd, command, argv }) => ({ id, cwd, command, argv }));
+    evidence.setupFingerprint = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
+  }
+  if (orderedToolExposures) {
+    evidence.toolExposureExecutions = orderedToolExposures.length;
+    evidence.orderedToolExposures = orderedToolExposures;
+    evidence.toolExposureFingerprint = crypto.createHash("sha256").update(JSON.stringify(orderedToolExposures.map(exposurePayload))).digest("hex");
+  }
   validateSetupEvidence(manifest, klass, evidence);
   const evidencePath = setupEvidencePath(manifest, klass, tempRoot);
   fs.mkdirSync(path.dirname(evidencePath), { recursive: true });
@@ -133,11 +235,15 @@ export function recordSetup(manifest, klass, installExecutions, tempRoot = proce
 }
 
 export function commandFingerprint(suite) {
-  return crypto.createHash("sha256").update(JSON.stringify(suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation })))).digest("hex");
+  const rows = suite.migrationWave === "phase3b-postgres-wave"
+    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null }))
+    : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
+  return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 }
 
-export function capabilityPayloadDigest({ cwd, executable, argv }) {
-  return crypto.createHash("sha256").update(JSON.stringify({ cwd, executable, argv })).digest("hex");
+export function capabilityPayloadDigest({ cwd, executable, argv, env, compound }) {
+  const payload = env !== undefined || compound !== undefined ? { cwd, executable, argv, env: env || null, compound: Boolean(compound) } : { cwd, executable, argv };
+  return crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
 }
 
 export function capabilityRegistryDigest(commands) {
@@ -163,6 +269,20 @@ export function resolveCommandCapability(registry, suite, step, stepIndex) {
     throw new Error(`${suite.id}: step ${stepIndex} preserved payload differs from its command capability`);
   }
   return { command: capability.executable, argv: [...capability.argv] };
+}
+
+export function resolveLeafCapability(registry, suite, step, stepIndex, child, childIndex) {
+  if (registry?.schemaVersion !== 1 || registry?.expectedLeaves !== registry?.leaves?.length
+      || capabilityRegistryDigest(registry.leaves || []) !== registry.registrySha256) throw new Error("leaf capability registry is missing or corrupt");
+  const matches = registry.leaves.filter((entry) => entry.id === child.id);
+  if (matches.length !== 1) throw new Error(`${suite.id}: leaf ${child.id} must resolve exactly once`);
+  const leaf = matches[0];
+  if (leaf.suiteId !== suite.id || leaf.outerCommandId !== step.commandId || leaf.outerIndex !== stepIndex || leaf.leafIndex !== childIndex
+      || leaf.cwd !== child.cwd || leaf.executable !== child.invocation?.command || JSON.stringify(leaf.argv) !== JSON.stringify(child.invocation?.argv)
+      || JSON.stringify(leaf.env) !== JSON.stringify(child.env || null) || JSON.stringify(leaf.predicate) !== JSON.stringify(child.predicate)) throw new Error(`${child.id}: leaf ownership drifted`);
+  const payload = { cwd: leaf.cwd, executable: leaf.executable, argv: leaf.argv, env: leaf.env, predicate: leaf.predicate };
+  if (leaf.payloadSha256 !== crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex")) throw new Error(`${child.id}: leaf payload digest drifted`);
+  return { command: leaf.executable, argv: [...leaf.argv] };
 }
 
 function removeWorktree(root, temporaryRoot, workspaceRoot) {
@@ -262,22 +382,26 @@ function cloneDependencyTree(source, destination, sourceWorkspace, destinationWo
   verifyIndependentTree(source, destination, sourceWorkspace, destinationWorkspace);
 }
 
-export function createIsolatedWorkspace({ root = REPO_ROOT, profile }) {
+export function createIsolatedWorkspace({ root = REPO_ROOT, profile, suite }) {
   const temporaryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-suite-"));
   const workspaceRoot = path.join(temporaryRoot, "workspace");
   execFileSync("git", ["worktree", "add", "--detach", workspaceRoot, "HEAD"], { cwd: root, stdio: "ignore" });
-  for (const install of profileInstalls(profile)) {
-    const installedModules = path.join(root, install.cwd, "node_modules");
+  const materializations = dependencyMaterializations(profile, suite?.setupProfile);
+  const dependencyCwds = materializations.map(({ canonicalCwd }) => canonicalCwd);
+  for (const { canonicalCwd, storedCwd } of materializations) {
+    const installedModules = canonicalCwd === "<repo-root>" ? path.join(root, "node_modules") : path.join(root, storedCwd, "node_modules");
     if (!fs.statSync(installedModules, { throwIfNoEntry: false })?.isDirectory()) {
       removeWorktree(root, temporaryRoot, workspaceRoot);
-      throw new Error(`setup output missing: ${install.cwd}/node_modules`);
+      throw new Error(`setup output missing: ${canonicalCwd}/node_modules`);
     }
-    const isolatedModules = path.join(workspaceRoot, install.cwd, "node_modules");
+    const isolatedModules = canonicalCwd === "<repo-root>" ? path.join(workspaceRoot, "node_modules") : path.join(workspaceRoot, storedCwd, "node_modules");
+    if (fs.existsSync(isolatedModules)) { removeWorktree(root, temporaryRoot, workspaceRoot); throw new Error(`isolated dependency destination already exists: ${canonicalCwd}/node_modules`); }
     fs.mkdirSync(path.dirname(isolatedModules), { recursive: true });
     try { cloneDependencyTree(installedModules, isolatedModules, root, workspaceRoot); }
     catch (error) { removeWorktree(root, temporaryRoot, workspaceRoot); throw error; }
   }
-  return { root: workspaceRoot, cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };
+  return { root: workspaceRoot, dependencyCwds, dependencyCloneCount: dependencyCwds.length,
+    cleanup: () => removeWorktree(root, temporaryRoot, workspaceRoot) };
 }
 
 function signalProcessGroup(child, signal) {
@@ -288,9 +412,9 @@ function signalProcessGroup(child, signal) {
 
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
-export function minimalChildEnvironment(requested = {}, home) {
+export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false } = {}) {
   for (const name of Object.keys(requested)) {
-    if (!CHILD_ENV_NAMES.has(name)) throw new Error(`undeclared child environment capability: ${name}`);
+    if (!CHILD_ENV_NAMES.has(name) && !(allowNodePath && name === "NODE_PATH" && requested[name] === "./node_modules")) throw new Error(`undeclared child environment capability: ${name}`);
   }
   const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
   const temporaryDirectory = path.join(temporaryHome, "tmp");
@@ -369,7 +493,7 @@ function pipeRedacted(stream, destination, env) {
   stream.on("end", () => { if (buffer) destination.write(redactText(buffer, env)); });
 }
 
-export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn,
+export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false,
   stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
@@ -379,7 +503,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     const ownsHome = !home;
     const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
-    try { childEnv = minimalChildEnvironment(env, temporaryHome); }
+    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath }); }
     catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
@@ -429,6 +553,7 @@ function generatedPathAllowed(relative, allowed) {
 
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
   execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities,
+  leafCapabilities,
   removeHome = (home) => fs.rmSync(home, { recursive: true, force: true }) } = {}) {
   const started = now();
   let workspace;
@@ -436,9 +561,11 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
   let reason = null;
   let status = "passed";
   let executed = 0;
+  const leafResults = [];
   let allowedCleanup = [];
   let suiteHome;
-  const dependencyRoots = profileInstalls(profile).map((install) => path.join(root, install.cwd, "node_modules"));
+  const dependencyRoots = dependencyMaterializations(profile, suite.setupProfile).map(({ canonicalCwd, storedCwd }) =>
+    canonicalCwd === "<repo-root>" ? path.join(root, "node_modules") : path.join(root, storedCwd, "node_modules"));
   let immutableSnapshots = [];
   try {
     workspace = workspaceFactory({ root, profile, suite });
@@ -467,9 +594,30 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         ? resolveCommandCapability(commandCapabilities, suite, step, stepIndex)
         : execute !== runInvocation ? step.invocation
           : (() => { throw new Error(`${suite.id}: production execution requires the assertion command capability registry`); })();
-      const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome });
-      executed += 1;
-      if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
+      if (suite.migrationWave === "phase3b-postgres-wave") {
+        const children = step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" }, cwd: step.cwd, invocation: step.invocation, env: step.env || null }];
+        let outerFailed = false;
+        for (const [childIndex, child] of children.entries()) {
+          if (child.predicate?.kind === "file-exists" && !fs.existsSync(path.join(workspace.root, child.predicate.path))) {
+            leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "skipped-absent", executed: false }); continue;
+          }
+          const leafCwd = path.resolve(workspace.root, child.cwd || ".");
+          const leafInvocation = resolveLeafCapability(leafCapabilities, suite, step, stepIndex, child, childIndex);
+          const leafRemaining = suite.timeoutSeconds * 1_000 - (now() - started);
+          if (leafRemaining <= 0) { leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "timed-out", executed: true }); status = "timed-out"; code = 124; reason = "suite deadline exceeded"; outerFailed = true; break; }
+          const leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
+            allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03") });
+          leafResults.push({ id: child.id, outerCommandId: step.commandId, status: leafResult.ok ? "passed" : leafResult.timedOut ? "timed-out" : "failed", executed: true });
+          if (!leafResult.ok) { outerFailed = true; status = leafResult.timedOut ? "timed-out" : "failed"; code = Math.max(code, leafResult.code || 1); reason ||= leafResult.reason || `leaf failed: ${child.id}`; if (leafResult.timedOut) break; }
+        }
+        executed += 1;
+        if (status === "timed-out") break;
+        if (outerFailed) continue;
+      } else {
+        const result = await execute(invocation, { cwd, env: step.env, timeoutMs: remaining, graceMs, home: suiteHome });
+        executed += 1;
+        if (!result.ok) { status = result.timedOut ? "timed-out" : "failed"; code = result.code; reason = result.reason || `step failed: ${step.name}`; break; }
+      }
     }
     if (dependencyRoots.length) {
       let changed = false;
@@ -495,9 +643,33 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
   const durationMs = Math.max(0, now() - started);
+  const expectedLeafRows = suite.migrationWave === "phase3b-postgres-wave"
+    ? suite.steps.flatMap((step, stepIndex) => (step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1` }])
+      .map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId }))) : [];
+  const observedLeaves = new Map(leafResults.map((leaf) => [leaf.id, leaf]));
+  const completeLeafResults = expectedLeafRows.map((leaf) => observedLeaves.get(leaf.id) || { ...leaf,
+    status: status === "timed-out" ? "not-run-suite-deadline" : "missing", executed: false });
+  const outerResults = suite.migrationWave === "phase3b-postgres-wave" ? suite.steps.map((step, index) => {
+    const leaves = completeLeafResults.filter((leaf) => leaf.outerCommandId === step.commandId);
+    const initiated = index < executed;
+    const outerStatus = !initiated ? (status === "timed-out" ? "not-run-suite-deadline" : "missing")
+      : leaves.some((leaf) => ["timed-out", "not-run-suite-deadline"].includes(leaf.status)) ? "timed-out"
+        : leaves.some((leaf) => leaf.status === "failed") ? "failed"
+          : leaves.some((leaf) => leaf.status === "missing") ? "missing" : "passed";
+    return { id: step.commandId, status: outerStatus, executed: initiated,
+      expectedLeaves: leaves.length, executedLeaves: leaves.filter((leaf) => leaf.executed).length,
+      skippedAbsentLeaves: leaves.filter((leaf) => leaf.status === "skipped-absent").length };
+  }) : undefined;
   return redactResultText({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
     ok: status === "passed", code, reason, durationMs, seconds: Math.round(durationMs / 1_000), timeoutSeconds: suite.timeoutSeconds,
-    expected: suite.steps.length, executed, allowedCleanup });
+    expected: suite.steps.length, executed, outerResults,
+    expectedLeaves: completeLeafResults.length || undefined,
+    presentLeaves: completeLeafResults.length ? completeLeafResults.filter((leaf) => leaf.status !== "skipped-absent").length : undefined,
+    executedLeaves: completeLeafResults.length ? completeLeafResults.filter((leaf) => leaf.executed).length : undefined,
+    absentLeaves: completeLeafResults.length ? completeLeafResults.filter((leaf) => leaf.status === "skipped-absent").length : undefined,
+    leafResults: completeLeafResults.length ? completeLeafResults : undefined, allowedCleanup,
+    dependencyCwds: workspace?.dependencyCwds || canonicalDependencyCwds(profile, suite.setupProfile),
+    dependencyCloneCount: workspace?.dependencyCloneCount ?? canonicalDependencyCwds(profile, suite.setupProfile).length });
 }
 
 export async function runSuitesV2(suites, options = {}) {
@@ -513,8 +685,12 @@ export async function runSuitesV2(suites, options = {}) {
 export function buildShardReport(klass, suites, results, setupEvidence, durationMs) {
   const base = verdict(suites, results);
   const statuses = Object.fromEntries(["passed", "failed", "timed-out", "missing"].map((status) => [status, results.filter((result) => result.status === status).length]));
-  return { schemaVersion: 2, class: klass, setupProfile: setupEvidence?.setupProfile || null,
+  return { schemaVersion: 2, class: klass, setupClass: setupEvidence?.class || null, setupProfile: setupEvidence?.setupProfile || null,
     setupExecutions: setupEvidence?.setupExecutions || 0, installExecutions: setupEvidence?.installExecutions || 0,
+    orderedInstalls: setupEvidence?.orderedInstalls || [], setupFingerprint: setupEvidence?.setupFingerprint || null,
+    toolExposureExecutions: setupEvidence?.toolExposureExecutions || 0,
+    orderedToolExposures: setupEvidence?.orderedToolExposures || [], toolExposureFingerprint: setupEvidence?.toolExposureFingerprint || null,
+    expectedSuiteIds: suites.map((suite) => suite.id), executedSuiteIds: results.map((result) => result.id),
     durationMs, ...base, statuses, results: results.map(redactResultText) };
 }
 
@@ -541,11 +717,64 @@ export function renderAnnotations(report) {
   return lines;
 }
 
-function writeReport(manifest, report, root = REPO_ROOT) {
-  fs.writeFileSync(path.join(root, manifest.runnerContract.resultsFile), `${JSON.stringify(report, null, 2)}\n`);
+function writeReport(manifest, report, root = REPO_ROOT, resultsFile = manifest.runnerContract.resultsFile) {
+  fs.writeFileSync(path.join(root, resultsFile), `${JSON.stringify(report, null, 2)}\n`);
   const summary = renderSummary(report);
   if (process.env.GITHUB_STEP_SUMMARY) fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
   for (const line of renderAnnotations(report)) console.error(line);
+}
+
+function selectedPhase3bSuites(manifest, hostClass, documentPath, failSafeClass) {
+  const owned = manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave" && suite.hostClass === hostClass);
+  if (!manifest.classes.includes(hostClass) || !owned.length) throw new Error(`unreviewed Phase 3B host ${hostClass}`);
+  try {
+    const document = validateDecision(manifest, JSON.parse(fs.readFileSync(documentPath, "utf8")), hostClass);
+    return { document, suites: document.selectedSuiteIds.map((id) => owned.find((suite) => suite.id === id)) };
+  } catch (error) {
+    const executionClasses = [...new Set(owned.map((suite) => suite.executionClass))];
+    if (!failSafeClass || executionClasses.length !== 1 || executionClasses[0] !== failSafeClass) throw new Error("Phase 3B selection evidence is missing, corrupt, or cross-host");
+    return { document: { digest: "fail-safe-host", mode: "fail-safe-host", deferredError: true, error: error.message }, suites: owned };
+  }
+}
+
+function missingPhase3bResult(suite, reason) {
+  const leafResults = suite.steps.flatMap((step, stepIndex) => (step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1` }])
+    .map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId, status: "missing", executed: false })));
+  return { id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status: "missing", ok: false,
+    code: 2, reason, durationMs: 0, seconds: 0, timeoutSeconds: suite.timeoutSeconds, expected: suite.steps.length, executed: 0,
+    outerResults: suite.steps.map((step) => ({ id: step.commandId, status: "missing", executed: false,
+      expectedLeaves: leafResults.filter((leaf) => leaf.outerCommandId === step.commandId).length, executedLeaves: 0, skippedAbsentLeaves: 0 })),
+    expectedLeaves: leafResults.length, presentLeaves: leafResults.length, executedLeaves: 0, absentLeaves: 0, leafResults, allowedCleanup: [] };
+}
+
+async function runPhase3bHost(manifest, hostClass, documentPath, failSafeClass) {
+  const { document, suites } = selectedPhase3bSuites(manifest, hostClass, documentPath, failSafeClass); const started = Date.now(); let evidence = null; let results = [];
+  try {
+    if (suites.length) {
+      const classes = [...new Set(suites.map((suite) => suite.executionClass))]; if (classes.length !== 1) throw new Error(`${hostClass}: selected suites span unreviewed secondary classes`);
+      const evidencePath = setupEvidencePath(manifest, classes[0]); evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+      const { profile } = validateSetupEvidence(manifest, classes[0], evidence);
+      results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities, leafCapabilities: manifest.phase3bLeafCapabilities,
+        graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 }); fs.rmSync(evidencePath, { force: true });
+    }
+  } catch (error) {
+    results = suites.map((suite) => missingPhase3bResult(suite, error.message));
+  }
+  const report = buildShardReport(`phase3b:${hostClass}`, suites, results, evidence, Date.now() - started);
+  report.expectedOuterIds = suites.flatMap((suite) => suite.steps.map((step) => step.commandId));
+  report.executedOuterIds = results.flatMap((result) => {
+    const suite = suites.find((candidate) => candidate.id === result.id);
+    return suite ? suite.steps.slice(0, result.executed).map((step) => step.commandId) : [];
+  });
+  report.expectedLeafIds = suites.flatMap((suite) => suite.steps.flatMap((step, stepIndex) =>
+    step.children?.map((child) => child.id) || [`leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`]));
+  const leafResults = results.flatMap((result) => result.leafResults || []);
+  report.observedLeafIds = leafResults.map((leaf) => leaf.id);
+  report.executedLeafIds = leafResults.filter((leaf) => leaf.executed).map((leaf) => leaf.id);
+  report.absentLeafIds = leafResults.filter((leaf) => leaf.status === "skipped-absent").map((leaf) => leaf.id);
+  report.selectionDigest = document.digest; report.selectionMode = document.mode; report.deferredError = document.deferredError;
+  if (document.deferredError) { report.ok = false; report.code = report.code || 1; }
+  writeReport(manifest, report, REPO_ROOT, "suite-results-phase3b.json"); process.exitCode = report.code;
 }
 
 async function main() {
@@ -558,8 +787,12 @@ async function main() {
     console.log(`recorded one setup execution at ${recordSetup(manifest, process.argv[3], process.argv[4])}`);
     return;
   }
+  if (process.argv[2] === "--run-phase3b-host") {
+    const flag = process.argv[5] === "--fail-safe-host" ? process.argv[6] : null;
+    return runPhase3bHost(manifest, process.argv[3], process.argv[4], flag);
+  }
   const klass = process.argv[2] === "--run" ? process.argv[3] : process.argv[2];
-  const suites = expectedSuites(manifest, klass);
+  const suites = expectedPrimarySuites(manifest, klass);
   if (!klass || suites.length === 0) throw new Error(`no suites registered for class "${klass || "<empty>"}"`);
   const started = Date.now();
   let evidence;
@@ -569,7 +802,7 @@ async function main() {
     if (!fs.statSync(evidencePath, { throwIfNoEntry: false })?.isFile()) throw new Error(`setup evidence missing for ${klass}`);
     evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
     const { profile } = validateSetupEvidence(manifest, klass, evidence);
-    results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities,
+    results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities, leafCapabilities: manifest.phase3bLeafCapabilities,
       graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
     fs.rmSync(evidencePath, { force: true });
   } catch (error) {
