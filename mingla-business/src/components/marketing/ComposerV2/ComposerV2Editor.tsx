@@ -23,9 +23,11 @@
  *   - applyTemplateAtCursor(template): inserts template body at cursor
  */
 
+import { shouldAdoptDraftBody } from "./composerHydration";
 import React, {
   forwardRef,
   useCallback,
+  useEffect,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -244,14 +246,58 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     // Initial HTML rendered into the editor once at mount. Subsequent body_html
     // changes from the parent are NOT pushed back into the editor (would
     // clobber in-progress edits) — only template-apply via the imperative
-    // handle's setContentHTML changes content after init.
+    // handle's setContentHTML, and the #2517 one-shot hydration below, change
+    // content after init.
     const initialContentHtml = useMemo(
       () => docToHtml(bodyHtmlToTenTapDoc(initialBodyHtml)),
       // eslint-disable-next-line react-hooks/exhaustive-deps
       [],
     );
 
+    /**
+     * #2517 — one-shot hydration for an ASYNC-LOADED draft.
+     *
+     * `initialContentHtml` is frozen at mount, and `compose.tsx` hydrates a
+     * draft in an effect that awaits `getCampaign(draftId)`. So on Resume the
+     * order was: editor mounts with `body === ""` and snapshots an EMPTY
+     * document → the fetch resolves → `setBody(html)` → the parent re-renders
+     * and the PREVIEW fills in, while the editor keeps the empty snapshot
+     * forever. Every saved draft opened with an uneditable blank editor.
+     *
+     * We do NOT fix this by adding `initialBodyHtml` to the memo deps or by
+     * keying the editor: this file already documents that a pell remount
+     * CLOBBERS THE OPERATOR'S IN-PROGRESS DRAFT, and that hazard is real.
+     * Instead we adopt the first non-empty body exactly once, through the same
+     * imperative `setContentHTML` seam template-apply already uses safely.
+     *
+     * Two guards keep it from ever eating live typing:
+     *   - `hydratedRef` — fires at most once per mount.
+     *   - `lastEmittedRef` — only adopt while the editor is still EMPTY. If
+     *     the operator started typing before the fetch landed, their words
+     *     win and the stored draft is left alone.
+     */
+    const hydratedRef = useRef(false);
+    const lastEmittedRef = useRef("");
+    const [editorReady, setEditorReady] = useState(false);
+
+    useEffect(() => {
+      if (
+        !shouldAdoptDraftBody({
+          alreadyHydrated: hydratedRef.current,
+          editorReady,
+          incomingBodyHtml: initialBodyHtml,
+          lastEmittedBodyHtml: lastEmittedRef.current,
+        })
+      ) return;
+      hydratedRef.current = true;
+      richEditorRef.current?.setContentHTML(
+        docToHtml(bodyHtmlToTenTapDoc(initialBodyHtml)),
+      );
+    }, [editorReady, initialBodyHtml]);
+
     const handleEditorInitialized = useCallback((): void => {
+      // #2517 — the editor cannot accept `setContentHTML` before this fires.
+      setEditorReady(true);
       const css = COMPOSER_CHIP_CSS.replace(/`/g, "\\`");
       richEditorRef.current?.commandDOM(
         `var s=document.createElement('style');s.innerHTML=\`${css}\`;document.head.appendChild(s);`,
@@ -266,7 +312,11 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
 
     const handleBodyHtmlChange = useCallback(
       (html: string): void => {
-        onBodyChange(htmlToTokenString(html));
+        const tokenString = htmlToTokenString(html);
+        // #2517 — remember what the editor last emitted so the one-shot
+        // hydration above can tell "still empty" from "operator has typed".
+        lastEmittedRef.current = tokenString;
+        onBodyChange(tokenString);
       },
       [onBodyChange],
     );
@@ -394,6 +444,14 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
     // the Android "coming soon" alert). Same UX on both platforms.
     const [linkPromptVisible, setLinkPromptVisible] = useState(false);
     const [linkPromptValue, setLinkPromptValue] = useState("");
+    /**
+     * #2518 — the words the recipient actually sees. Before this, the prompt
+     * captured a URL only and `insertLink(url, url)` used the URL as its own
+     * anchor text, so every campaign shipped a bare 40-character tracking link
+     * where a call to action belonged. Empty means "fall back to the URL",
+     * which preserves the old behaviour for anyone who leaves it blank.
+     */
+    const [linkPromptText, setLinkPromptText] = useState("");
 
     const handleToggleBoldLocal = useCallback((): void => {
       richEditorRef.current?.sendAction(actions.setBold, "result");
@@ -409,6 +467,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
 
     const handleToggleLinkLocal = useCallback((): void => {
       setLinkPromptValue("");
+      setLinkPromptText("");
       setLinkPromptVisible(true);
     }, []);
 
@@ -420,12 +479,18 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
       const url = normalizeUrl(linkPromptValue);
       setLinkPromptVisible(false);
       if (url.length === 0) return;
-      // insertLink is implemented on BOTH platforms:
-      //   - pell (iOS/Android): wraps current selection in <a href>
-      //   - Tiptap (web): inserts <a> at cursor with URL text if no
-      //     selection, else wraps selection (richEditor.tsx insertLink).
-      richEditorRef.current?.insertLink(url, url);
-    }, [linkPromptValue]);
+      // #2518 — the display text is what the recipient reads. Blank falls back
+      // to the URL, which is exactly the pre-#2518 behaviour, so nobody who
+      // ignores the new field gets a surprise.
+      const label = linkPromptText.trim();
+      // ARGUMENT ORDER IS (text, url) ON BOTH PLATFORMS — see the
+      // `RichEditorHandle` declarations in richEditor.tsx:194 and
+      // richEditor.native.ts:41. The pre-#2518 call was `insertLink(url, url)`,
+      // which is why the anchor text was always the raw URL: there was simply
+      // no text to pass. Both shims already fall back to the URL when text is
+      // empty, so a blank display field behaves exactly as before.
+      richEditorRef.current?.insertLink(label.length > 0 ? label : url, url);
+    }, [linkPromptValue, linkPromptText]);
 
     const handleInsertDividerLocal = useCallback((): void => {
       richEditorRef.current?.insertHTML(DIVIDER_HTML);
@@ -639,7 +704,7 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
             <Pressable style={styles.linkPromptCard} onPress={() => undefined}>
               <Text style={styles.linkPromptTitle}>Insert link</Text>
               <Text style={styles.linkPromptBody}>
-                Paste the URL the selected text should link to.
+                Paste the URL, then write the words your reader will see.
               </Text>
               <TextInput
                 value={linkPromptValue}
@@ -655,6 +720,20 @@ export const ComposerV2Editor = forwardRef<ComposerV2EditorHandle, ComposerV2Edi
                 style={styles.linkPromptInput}
                 accessibilityLabel="Link URL"
                 testID="composer-v2-link-prompt-input"
+              />
+              {/* #2518 — display text. Optional: blank falls back to the URL. */}
+              <TextInput
+                value={linkPromptText}
+                onChangeText={setLinkPromptText}
+                placeholder="Get your free ticket"
+                placeholderTextColor="rgba(255, 255, 255, 0.42)"
+                autoCapitalize="sentences"
+                autoCorrect
+                returnKeyType="done"
+                onSubmitEditing={handleLinkPromptSubmit}
+                style={styles.linkPromptInput}
+                accessibilityLabel="Link text shown to the reader"
+                testID="composer-v2-link-prompt-text-input"
               />
               <View style={styles.linkPromptActions}>
                 <Pressable
