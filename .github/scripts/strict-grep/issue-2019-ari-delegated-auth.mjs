@@ -16,10 +16,10 @@ function check(s) {
   const declarationCount = (s.auth.match(/:\s*role\("/g) ?? []).length;
   // [TEST-MOD-APPROVED #2063] Three certified brand tools extend the current
   // #1973/#1985 authorization denominator without changing inherited roles.
-  // [TEST-MOD-APPROVED #1975+#1978] Stay authoring (+3) and venue read tools
-  // (+3 list/status/feedback) extend the event_manager/brand denominator
-  // (71 + 3 stay + 3 venue reads = 77).
-  if (declarationCount !== 77) failures.push(`expected 77 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay (+3), venue listing reads (+3),
+  // and venue manage tools (+3 availability/menu/waitlist) extend the
+  // denominator (71 + 9 = 80).
+  if (declarationCount !== 80) failures.push(`expected 80 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

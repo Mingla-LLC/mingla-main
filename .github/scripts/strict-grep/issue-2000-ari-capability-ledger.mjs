@@ -151,11 +151,13 @@ ari.partner.splits
 // reconciliation at this immutable revision, minus rows whose concrete defects
 // are repaired by issue #1972, minus the four Stay/venue reservation rows
 // whose envelope/role defects are repaired by issue #1975 (quote/create/
-// transition stay + create_venue_reservation), and minus the three venue
-// write rows whose canonical-arity/role defects are repaired by issue #1978.
-// Ledger prose may explain a remaining defect, but it cannot remove one from
-// this set or create a new proven-broken claim.
-// [TEST-MOD-APPROVED #1975+#1978] Proven-broken authority shrinks only for
+// transition stay + create_venue_reservation), minus the three venue write
+// rows whose canonical-arity/role defects are repaired by issue #1978, and
+// minus ari.venue.ops / ari.venue.send_sms repaired by issue #1979
+// (venue_ops_action forwards exact venue-order-staff actions; send_venue_sms
+// sends { waitlistId } only). Ledger prose may explain a remaining defect, but
+// it cannot remove one from this set or create a new proven-broken claim.
+// [TEST-MOD-APPROVED #1975+#1978+#1979] Proven-broken authority shrinks only for
 // rows whose concrete defects these issues repair; no behavioral coverage removed.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
@@ -167,8 +169,6 @@ ari.rsvp.create
 ari.rsvp.publish
 ari.rsvp.bulk_status
 ari.rsvp.refund_contribution
-ari.venue.ops
-ari.venue.send_sms
 ari.marketing.send_now
 ari.growth.run_tool
 ari.payout.status
@@ -327,9 +327,9 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 27) {
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 25) {
     failures.push(
-      `proven-broken authority must contain 27 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 25 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(

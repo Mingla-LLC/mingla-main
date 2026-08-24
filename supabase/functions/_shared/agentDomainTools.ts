@@ -1521,49 +1521,889 @@ const listVenueClaimFeedback = writeTool(
 // H. Venue ops
 // ----------------------------------------------------------------------------
 
+// #1979 — venue_ops_action is a THIN, EXACT proxy over venue-order-staff. Its
+// advertised vocabulary and its wire envelope match the endpoint's real actions
+// 1:1 (index.ts switch): create | settle | tab_open | tab_close | transition |
+// refund_decision | item_availability | pause | set_ordering_enabled. The
+// pre-#1979 tool advertised list_tables/open_tab/close_tab/add_item/
+// send_to_kitchen/seat_waitlist/list_waitlist and wrapped everything in a
+// generic {action, payload} — an empty intersection with the endpoint, so every
+// call returned `unknown_action` before any domain mutation. The fields are
+// forwarded per-action in the endpoint's own camelCase shape; brand_id/venue_id
+// stay snake_case because the #2019 authorization seam resolves the venue by
+// venue_id and proves it belongs to the caller's brand before the executor runs.
 const venueOpsAction = writeTool(
   "venue_ops_action",
-  "Staff-only venue order-pad / tables / tabs / waitlist action via venue-order-staff. Role-gated.",
+  "Staff venue order-pad / tabs / kitchen queue / ordering controls via venue-order-staff. " +
+    "action is one of create | settle | tab_open | tab_close | transition | refund_decision | " +
+    "item_availability | pause | set_ordering_enabled. Role-gated (event_manager+). " +
+    "Menu 86, waitlist, and availability live in their own tools, not here.",
   {
     brand_id: UUID,
     venue_id: UUID,
     action: {
       type: "string",
       enum: [
-        "list_tables",
-        "open_tab",
-        "close_tab",
-        "add_item",
-        "send_to_kitchen",
-        "seat_waitlist",
-        "list_waitlist",
+        "create",
+        "settle",
+        "tab_open",
+        "tab_close",
+        "transition",
+        "refund_decision",
+        "item_availability",
+        "pause",
+        "set_ordering_enabled",
       ],
     },
-    payload: { type: "object" },
+    session_id: UUID,
+    order_id: UUID,
+    menu_item_id: UUID,
+    spot_code: STR,
+    mode: { type: "string", enum: ["preview"] },
+    method: { type: "string", enum: ["venue_collected", "bill_to_phone"] },
+    settlement_method: {
+      type: "string",
+      enum: ["venue_collected", "bill_to_phone"],
+    },
+    to: {
+      type: "string",
+      enum: [
+        "acknowledged",
+        "in_progress",
+        "ready",
+        "delivered",
+        "cancelled",
+      ],
+    },
+    decision: { type: "string", enum: ["approved", "declined"] },
+    reason: { type: "string", maxLength: 280 },
+    note: { type: "string", maxLength: 280 },
+    is_available: { type: "boolean" },
+    paused: { type: "boolean" },
+    enabled: { type: "boolean" },
+    idempotency_key: { type: "string", minLength: 1, maxLength: 200 },
+    buyer: { type: "object" },
+    lines: { type: "array", items: { type: "object" } },
   },
   ["brand_id", "venue_id", "action"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
-    return await invokeFn(client, "venue-order-staff", {
-      venue_id: args.venue_id,
-      action: args.action,
-      payload: args.payload ?? {},
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    const action = String(args.action);
+    const requireUuid = (value: unknown, field: string): string => {
+      if (!isUuid(value)) {
+        throw new ToolError("INVALID_ARGS", `${field} must be a uuid`);
+      }
+      return value;
+    };
+    const requireBool = (value: unknown, field: string): boolean => {
+      if (typeof value !== "boolean") {
+        throw new ToolError("INVALID_ARGS", `${field} must be a boolean`);
+      }
+      return value;
+    };
+    const body: Record<string, unknown> = { action };
+    switch (action) {
+      case "create":
+        body.venueId = args.venue_id;
+        if (isUuid(args.session_id)) body.sessionId = args.session_id;
+        if (isString(args.spot_code)) body.spotCode = args.spot_code;
+        if (args.buyer !== undefined) body.buyer = args.buyer;
+        if (Array.isArray(args.lines)) body.lines = args.lines;
+        if (args.mode === "preview") body.mode = "preview";
+        // The confirmed pending-action id is the natural idempotency key; fall
+        // back to a fresh key only when the tool is exercised outside a proposal.
+        body.idempotencyKey = isString(args.idempotency_key)
+          ? args.idempotency_key
+          : newIdempotencyKey();
+        break;
+      case "settle":
+        body.orderId = requireUuid(args.order_id, "order_id");
+        if (
+          args.method !== "venue_collected" && args.method !== "bill_to_phone"
+        ) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "method must be venue_collected or bill_to_phone",
+          );
+        }
+        body.method = args.method;
+        if (args.buyer !== undefined) body.buyer = args.buyer;
+        break;
+      case "tab_open":
+        body.sessionId = requireUuid(args.session_id, "session_id");
+        break;
+      case "tab_close":
+        body.sessionId = requireUuid(args.session_id, "session_id");
+        if (
+          args.settlement_method !== "venue_collected" &&
+          args.settlement_method !== "bill_to_phone"
+        ) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "settlement_method must be venue_collected or bill_to_phone",
+          );
+        }
+        body.settlementMethod = args.settlement_method;
+        if (args.buyer !== undefined) body.buyer = args.buyer;
+        break;
+      case "transition":
+        body.orderId = requireUuid(args.order_id, "order_id");
+        if (typeof args.to !== "string") {
+          throw new ToolError("INVALID_ARGS", "to is required");
+        }
+        body.to = args.to;
+        if (isString(args.reason)) body.reason = args.reason;
+        break;
+      case "refund_decision":
+        body.orderId = requireUuid(args.order_id, "order_id");
+        if (args.decision !== "approved" && args.decision !== "declined") {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "decision must be approved or declined",
+          );
+        }
+        body.decision = args.decision;
+        if (isString(args.note)) body.note = args.note;
+        break;
+      case "item_availability":
+        body.menuItemId = requireUuid(args.menu_item_id, "menu_item_id");
+        body.isAvailable = requireBool(args.is_available, "is_available");
+        break;
+      case "pause":
+        body.venueId = args.venue_id;
+        body.paused = requireBool(args.paused, "paused");
+        break;
+      case "set_ordering_enabled":
+        body.venueId = args.venue_id;
+        body.enabled = requireBool(args.enabled, "enabled");
+        break;
+      default:
+        throw new ToolError("INVALID_ARGS", `unknown action ${action}`);
+    }
+    return await invokeFn(client, "venue-order-staff", body);
+  },
+);
+
+// #1979 — the ONLY approved venue SMS is the waitlist "table's ready" send, and
+// send-venue-sms accepts EXACTLY { waitlistId }. It derives the destination,
+// venue name, market, provider, consent, and the locked template from the
+// waitlist row server-side (COMMS-0129 / #1541). The pre-#1979 tool advertised
+// an arbitrary { to_phone, body } — a destination/body the endpoint neither
+// reads nor allows, bypassing the resource, consent, and template boundaries.
+// The wire body is waitlistId ONLY; brand_id is carried for the #2019 role gate.
+const sendVenueSms = writeTool(
+  "send_venue_sms",
+  "Send the approved venue waitlist 'table's ready' SMS via send-venue-sms (smsAdapter only). " +
+    "The locked template, destination, and consent are derived from the waitlist row server-side — " +
+    "Ari never supplies a phone number or message body. Role-gated (event_manager+).",
+  { brand_id: UUID, venue_id: UUID, waitlist_id: UUID },
+  ["brand_id", "waitlist_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.waitlist_id)) {
+      throw new ToolError("INVALID_ARGS", "waitlist_id must be a uuid");
+    }
+    return await invokeFn(client, "send-venue-sms", {
+      waitlistId: args.waitlist_id,
     });
   },
 );
 
-const sendVenueSms = writeTool(
-  "send_venue_sms",
-  "Send a venue SMS via send-venue-sms (smsAdapter only — never a raw SMS provider).",
-  { brand_id: UUID, venue_id: UUID, to_phone: STR, body: STR },
-  ["brand_id", "venue_id", "to_phone", "body"],
+// #1979 — venue availability & reservation configuration. Reads come from the
+// server slot engine (pg_venue_available_slots) and the canonical settings row;
+// writes ride the manager-plus RLS on venue_reservation_settings / venue_blackouts
+// under the caller JWT (I-ARI-USER-JWT-ONLY), the same tables the Business UI writes.
+const manageVenueAvailability = writeTool(
+  "manage_venue_availability",
+  "Venue reservation availability config and blackouts: read_config | read_slots | update_config | " +
+    "list_blackouts | upsert_blackout | delete_blackout. Opening hours / service periods are NOT " +
+    "editable here (use the hours tool). Role-gated (event_manager+).",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "read_config",
+        "read_slots",
+        "update_config",
+        "list_blackouts",
+        "upsert_blackout",
+        "delete_blackout",
+      ],
+    },
+    date: { type: "string" },
+    party_size: { type: "integer", minimum: 1, maximum: 100 },
+    reservations_enabled: { type: "boolean" },
+    fee_enabled: { type: "boolean" },
+    fee_amount_cents: { type: "integer", minimum: 0 },
+    fee_currency: { type: "string", minLength: 3, maxLength: 3 },
+    cancel_cutoff_hours: { type: "integer", minimum: 0, maximum: 720 },
+    no_show_fee_policy: { type: "string", enum: ["forfeit", "none"] },
+    blackout_id: UUID,
+    date_start: { type: "string" },
+    date_end: { type: "string" },
+    reason: { type: "string", maxLength: 280 },
+    applies_to: { type: "string", enum: ["all", "zone", "table"] },
+    zone: {
+      type: "string",
+      enum: ["indoor", "outdoor", "private_room", "bar", "patio"],
+    },
+    table_id: UUID,
+  },
+  ["brand_id", "action"],
   async (args, client, userId) => {
-    await requireBrand(args, client, userId);
-    return await invokeFn(client, "send-venue-sms", {
-      venue_id: args.venue_id,
-      to: args.to_phone,
-      body: args.body,
-    });
+    const brandId = await requireBrand(args, client, userId);
+    const action = String(args.action);
+    switch (action) {
+      case "read_config": {
+        // ORCH-1255 rekeyed venue_reservation_settings PK to venue_id.
+        if (!isUuid(args.venue_id)) {
+          throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+        }
+        const { data, error } = await client
+          .from("venue_reservation_settings")
+          .select(
+            "brand_id, venue_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, fee_refundable, cancel_cutoff_hours, no_show_fee_policy, updated_at",
+          )
+          .eq("venue_id", args.venue_id)
+          .eq("brand_id", brandId)
+          .maybeSingle();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data ?? {
+          brand_id: brandId,
+          venue_id: args.venue_id,
+          reservations_enabled: false,
+        };
+      }
+      case "read_slots": {
+        if (!isString(args.date)) {
+          throw new ToolError("INVALID_ARGS", "date is required (YYYY-MM-DD)");
+        }
+        if (typeof args.party_size !== "number") {
+          throw new ToolError("INVALID_ARGS", "party_size is required");
+        }
+        return await callRpc(client, "pg_venue_available_slots", {
+          p_date: args.date,
+          p_party_size: args.party_size,
+          p_venue_id: isUuid(args.venue_id) ? args.venue_id : null,
+          p_brand_id: brandId,
+        });
+      }
+      case "update_config": {
+        // ORCH-1255: PK is venue_id (not brand_id). Match Business hook upserts.
+        if (!isUuid(args.venue_id)) {
+          throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+        }
+        const patch: Record<string, unknown> = {
+          brand_id: brandId,
+          venue_id: args.venue_id,
+        };
+        if (typeof args.reservations_enabled === "boolean") {
+          patch.reservations_enabled = args.reservations_enabled;
+        }
+        if (typeof args.fee_enabled === "boolean") {
+          patch.fee_enabled = args.fee_enabled;
+        }
+        if (typeof args.fee_amount_cents === "number") {
+          patch.fee_amount_cents = args.fee_amount_cents;
+        }
+        if (isString(args.fee_currency)) {
+          patch.fee_currency = args.fee_currency.toUpperCase();
+        }
+        if (typeof args.cancel_cutoff_hours === "number") {
+          patch.cancel_cutoff_hours = args.cancel_cutoff_hours;
+        }
+        if (
+          args.no_show_fee_policy === "forfeit" ||
+          args.no_show_fee_policy === "none"
+        ) {
+          patch.no_show_fee_policy = args.no_show_fee_policy;
+        }
+        if (Object.keys(patch).length === 2) {
+          throw new ToolError("INVALID_ARGS", "Nothing to update");
+        }
+        const { data, error } = await client
+          .from("venue_reservation_settings")
+          .upsert(patch, { onConflict: "venue_id" })
+          .select(
+            "brand_id, venue_id, reservations_enabled, fee_enabled, fee_amount_cents, fee_currency, cancel_cutoff_hours, no_show_fee_policy, updated_at",
+          )
+          .single();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data;
+      }
+      case "list_blackouts": {
+        const { data, error } = await client
+          .from("venue_blackouts")
+          .select(
+            "id, date_start, date_end, reason, applies_to, zone, table_id, created_at",
+          )
+          .eq("brand_id", brandId)
+          .order("date_start", { ascending: true })
+          .limit(200);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data ?? [];
+      }
+      case "upsert_blackout": {
+        if (!isString(args.date_start) || !isString(args.date_end)) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "date_start and date_end are required",
+          );
+        }
+        const row: Record<string, unknown> = {
+          brand_id: brandId,
+          date_start: args.date_start,
+          date_end: args.date_end,
+          reason: isString(args.reason) ? args.reason : null,
+          applies_to: typeof args.applies_to === "string"
+            ? args.applies_to
+            : "all",
+          zone: typeof args.zone === "string" ? args.zone : null,
+          table_id: isUuid(args.table_id) ? args.table_id : null,
+        };
+        if (isUuid(args.blackout_id)) {
+          const { data, error } = await client
+            .from("venue_blackouts")
+            .update(row)
+            .eq("id", args.blackout_id)
+            .eq("brand_id", brandId)
+            .select("id, date_start, date_end, applies_to, zone, table_id")
+            .maybeSingle();
+          if (error) throw new ToolError("RPC_FAILED", error.message);
+          if (!data) {
+            throw new ToolError(
+              "BRAND_ACCESS_DENIED",
+              "That blackout is unavailable",
+            );
+          }
+          return data;
+        }
+        const { data, error } = await client
+          .from("venue_blackouts")
+          .insert(row)
+          .select("id, date_start, date_end, applies_to, zone, table_id")
+          .single();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data;
+      }
+      case "delete_blackout": {
+        if (!isUuid(args.blackout_id)) {
+          throw new ToolError("INVALID_ARGS", "blackout_id must be a uuid");
+        }
+        const { error } = await client
+          .from("venue_blackouts")
+          .delete()
+          .eq("id", args.blackout_id)
+          .eq("brand_id", brandId);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return { blackout_id: args.blackout_id, deleted: true };
+      }
+      default:
+        throw new ToolError("INVALID_ARGS", `unknown action ${action}`);
+    }
+  },
+);
+
+// #1979 — venue menus, items, item availability/86, and modifier groups. All
+// writes ride the manager-plus RLS on menus / menu_items / menu_modifier_groups /
+// menu_modifiers under the caller JWT. price_cents is minor units (or null for
+// "price on request"); currency is welded to the parent's ISO code server-side.
+const manageVenueMenu = writeTool(
+  "manage_venue_menu",
+  "Venue menus, items, item availability/86, and modifier groups: list_menus | upsert_menu | " +
+    "delete_menu | upsert_menu_item | delete_menu_item | set_item_availability | list_modifier_groups | " +
+    "save_modifier_group | delete_modifier_group. Role-gated (event_manager+).",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "list_menus",
+        "upsert_menu",
+        "delete_menu",
+        "upsert_menu_item",
+        "delete_menu_item",
+        "set_item_availability",
+        "list_modifier_groups",
+        "save_modifier_group",
+        "delete_modifier_group",
+      ],
+    },
+    menu_id: UUID,
+    menu_item_id: UUID,
+    modifier_group_id: UUID,
+    name: { type: "string", minLength: 1, maxLength: 160 },
+    description: { type: "string", maxLength: 600 },
+    price_cents: { type: "integer", minimum: 0, maximum: 100000000 },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    is_available: { type: "boolean" },
+    sort_order: { type: "integer", minimum: 0 },
+    selection_mode: { type: "string", enum: ["single", "multi"] },
+    min_select: { type: "integer", minimum: 0, maximum: 20 },
+    max_select: { type: "integer", minimum: 1, maximum: 20 },
+    modifiers: {
+      type: "array",
+      maxItems: 50,
+      items: { type: "object" },
+    },
+  },
+  ["brand_id", "action"],
+  async (args, client, userId) => {
+    const brandId = await requireBrand(args, client, userId);
+    const action = String(args.action);
+    switch (action) {
+      case "list_menus": {
+        const { data, error } = await client
+          .from("menus")
+          .select("id, name, description, sort_order, is_active")
+          .eq("brand_id", brandId)
+          .order("sort_order", { ascending: true })
+          .limit(200);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data ?? [];
+      }
+      case "upsert_menu": {
+        if (!isString(args.name)) {
+          throw new ToolError("INVALID_ARGS", "name is required");
+        }
+        const row: Record<string, unknown> = {
+          brand_id: brandId,
+          name: args.name,
+          description: isString(args.description) ? args.description : null,
+          sort_order: typeof args.sort_order === "number" ? args.sort_order : 0,
+        };
+        if (isUuid(args.menu_id)) {
+          const { data, error } = await client
+            .from("menus")
+            .update(row)
+            .eq("id", args.menu_id)
+            .eq("brand_id", brandId)
+            .select("id, name, sort_order, is_active")
+            .maybeSingle();
+          if (error) throw new ToolError("RPC_FAILED", error.message);
+          if (!data) {
+            throw new ToolError(
+              "BRAND_ACCESS_DENIED",
+              "That menu is unavailable",
+            );
+          }
+          return data;
+        }
+        const { data, error } = await client
+          .from("menus")
+          .insert(row)
+          .select("id, name, sort_order, is_active")
+          .single();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data;
+      }
+      case "delete_menu": {
+        if (!isUuid(args.menu_id)) {
+          throw new ToolError("INVALID_ARGS", "menu_id must be a uuid");
+        }
+        const { error } = await client
+          .from("menus")
+          .delete()
+          .eq("id", args.menu_id)
+          .eq("brand_id", brandId);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return { menu_id: args.menu_id, deleted: true };
+      }
+      case "upsert_menu_item": {
+        if (!isString(args.name)) {
+          throw new ToolError("INVALID_ARGS", "name is required");
+        }
+        const currency = isString(args.currency)
+          ? args.currency.toUpperCase()
+          : null;
+        if (!isUuid(args.menu_item_id) && !isUuid(args.menu_id)) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "menu_id is required to create a menu item",
+          );
+        }
+        const patch: Record<string, unknown> = {
+          brand_id: brandId,
+          name: args.name,
+          description: isString(args.description) ? args.description : null,
+          price_cents: typeof args.price_cents === "number"
+            ? args.price_cents
+            : null,
+        };
+        if (typeof args.is_available === "boolean") {
+          patch.is_available = args.is_available;
+        }
+        if (isUuid(args.menu_item_id)) {
+          if (currency) patch.currency = currency;
+          const { data, error } = await client
+            .from("menu_items")
+            .update(patch)
+            .eq("id", args.menu_item_id)
+            .eq("brand_id", brandId)
+            .select("id, name, price_cents, currency, is_available")
+            .maybeSingle();
+          if (error) throw new ToolError("RPC_FAILED", error.message);
+          if (!data) {
+            throw new ToolError(
+              "BRAND_ACCESS_DENIED",
+              "That item is unavailable",
+            );
+          }
+          return data;
+        }
+        // Weld the item's currency to its parent menu's brand default when the
+        // caller did not pin one, so a public price never renders currency-less.
+        patch.menu_id = args.menu_id;
+        patch.currency = currency ??
+          await resolveBrandCurrency(client, brandId);
+        const { data, error } = await client
+          .from("menu_items")
+          .insert(patch)
+          .select("id, name, price_cents, currency, is_available")
+          .single();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data;
+      }
+      case "delete_menu_item": {
+        if (!isUuid(args.menu_item_id)) {
+          throw new ToolError("INVALID_ARGS", "menu_item_id must be a uuid");
+        }
+        const { error } = await client
+          .from("menu_items")
+          .delete()
+          .eq("id", args.menu_item_id)
+          .eq("brand_id", brandId);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return { menu_item_id: args.menu_item_id, deleted: true };
+      }
+      case "set_item_availability": {
+        if (!isUuid(args.menu_item_id)) {
+          throw new ToolError("INVALID_ARGS", "menu_item_id must be a uuid");
+        }
+        if (typeof args.is_available !== "boolean") {
+          throw new ToolError("INVALID_ARGS", "is_available must be a boolean");
+        }
+        const { data, error } = await client
+          .from("menu_items")
+          .update({ is_available: args.is_available })
+          .eq("id", args.menu_item_id)
+          .eq("brand_id", brandId)
+          .select("id, is_available")
+          .maybeSingle();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        if (!data) {
+          throw new ToolError(
+            "BRAND_ACCESS_DENIED",
+            "That item is unavailable",
+          );
+        }
+        return data;
+      }
+      case "list_modifier_groups": {
+        if (!isUuid(args.menu_item_id)) {
+          throw new ToolError("INVALID_ARGS", "menu_item_id must be a uuid");
+        }
+        const { data, error } = await client
+          .from("menu_modifier_groups")
+          .select(
+            "id, name, selection_mode, min_select, max_select, is_active, sort_order",
+          )
+          .eq("brand_id", brandId)
+          .eq("menu_item_id", args.menu_item_id)
+          .order("sort_order", { ascending: true });
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return data ?? [];
+      }
+      case "save_modifier_group": {
+        if (!isUuid(args.menu_item_id)) {
+          throw new ToolError("INVALID_ARGS", "menu_item_id must be a uuid");
+        }
+        if (!isString(args.name)) {
+          throw new ToolError("INVALID_ARGS", "name is required");
+        }
+        const selectionMode = args.selection_mode === "multi"
+          ? "multi"
+          : "single";
+        const groupRow: Record<string, unknown> = {
+          brand_id: brandId,
+          menu_item_id: args.menu_item_id,
+          name: args.name,
+          selection_mode: selectionMode,
+          min_select: typeof args.min_select === "number" ? args.min_select : 0,
+          max_select: typeof args.max_select === "number"
+            ? args.max_select
+            : null,
+          sort_order: typeof args.sort_order === "number" ? args.sort_order : 0,
+        };
+        let groupId: string;
+        if (isUuid(args.modifier_group_id)) {
+          const { data, error } = await client
+            .from("menu_modifier_groups")
+            .update(groupRow)
+            .eq("id", args.modifier_group_id)
+            .eq("brand_id", brandId)
+            .select("id")
+            .maybeSingle();
+          if (error) throw new ToolError("RPC_FAILED", error.message);
+          if (!data) {
+            throw new ToolError(
+              "BRAND_ACCESS_DENIED",
+              "That modifier group is unavailable",
+            );
+          }
+          groupId = String(data.id);
+        } else {
+          const { data, error } = await client
+            .from("menu_modifier_groups")
+            .insert(groupRow)
+            .select("id")
+            .single();
+          if (error) throw new ToolError("RPC_FAILED", error.message);
+          groupId = String(data.id);
+        }
+        // Full replacement of the group's modifiers when a list is supplied, so
+        // the confirmation card's removed/added preview matches the stored set.
+        if (Array.isArray(args.modifiers)) {
+          const { error: delErr } = await client
+            .from("menu_modifiers")
+            .delete()
+            .eq("group_id", groupId)
+            .eq("brand_id", brandId);
+          if (delErr) throw new ToolError("RPC_FAILED", delErr.message);
+          const currency = await resolveBrandCurrency(client, brandId);
+          const rows = (args.modifiers as Array<Record<string, unknown>>).map(
+            (mod, index) => ({
+              group_id: groupId,
+              brand_id: brandId,
+              name: typeof mod.name === "string" ? mod.name : "",
+              price_delta_cents: Number.isInteger(mod.price_delta_cents)
+                ? Number(mod.price_delta_cents)
+                : 0,
+              currency,
+              sort_order: Number.isInteger(mod.sort_order)
+                ? Number(mod.sort_order)
+                : index,
+            }),
+          );
+          if (rows.length > 0) {
+            const { error: insErr } = await client
+              .from("menu_modifiers")
+              .insert(rows);
+            if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
+          }
+        }
+        return {
+          modifier_group_id: groupId,
+          modifier_count: Array.isArray(args.modifiers)
+            ? args.modifiers.length
+            : null,
+        };
+      }
+      case "delete_modifier_group": {
+        if (!isUuid(args.modifier_group_id)) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "modifier_group_id must be a uuid",
+          );
+        }
+        const { error } = await client
+          .from("menu_modifier_groups")
+          .delete()
+          .eq("id", args.modifier_group_id)
+          .eq("brand_id", brandId);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return { modifier_group_id: args.modifier_group_id, deleted: true };
+      }
+      default:
+        throw new ToolError("INVALID_ARGS", `unknown action ${action}`);
+    }
+  },
+);
+
+/** Resolve the brand's default ISO currency for currency-welded menu writes. */
+async function resolveBrandCurrency(
+  client: any,
+  brandId: string,
+): Promise<string> {
+  const { data } = await client
+    .from("brands")
+    .select("default_currency")
+    .eq("id", brandId)
+    .maybeSingle();
+  const code = typeof data?.default_currency === "string"
+    ? data.default_currency.toUpperCase()
+    : "";
+  // Do not manufacture a currency — #1974 forbids literal USD (and any ISO
+  // fallback) in domain tools; the brand row must already carry a real code.
+  if (!/^[A-Z]{3}$/.test(code)) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "brand has no default_currency; pass currency explicitly",
+    );
+  }
+  return code;
+}
+
+/** Redact a stored guest name to a safe label (never phone/email to the model). */
+function safeGuestLabel(name: unknown): string {
+  if (typeof name !== "string" || name.trim().length === 0) return "Guest";
+  const parts = name.trim().split(/\s+/);
+  const first = parts[0];
+  const initial = parts.length > 1 ? ` ${parts[parts.length - 1][0]}.` : "";
+  return `${first}${initial}`;
+}
+
+// #1979 — venue waitlist read/add/lost/convert. list returns a SAFE guest label
+// only (phone/email are never returned to the model). Notification is NOT here:
+// a "text the guest" request resolves to send_venue_sms.send_table_ready. Convert
+// reuses the row-locked atomic RPC. Role-gated (event_manager+).
+const manageVenueWaitlist = writeTool(
+  "manage_venue_waitlist",
+  "Venue waitlist: list_waitlist | add_waitlist_entry | mark_waitlist_lost | convert_waitlist_to_reservation. " +
+    "Guest contact is masked in reads; to notify a guest use send_venue_sms. Role-gated (event_manager+).",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "list_waitlist",
+        "add_waitlist_entry",
+        "mark_waitlist_lost",
+        "convert_waitlist_to_reservation",
+      ],
+    },
+    waitlist_id: UUID,
+    guest_name: { type: "string", minLength: 1, maxLength: 120 },
+    guest_phone_e164: { type: "string", minLength: 2, maxLength: 20 },
+    party_size: { type: "integer", minimum: 1, maximum: 100 },
+    preferred_zone: {
+      type: "string",
+      enum: ["indoor", "outdoor", "private_room", "bar", "patio"],
+    },
+    quoted_wait_minutes: { type: "integer", minimum: 0 },
+    reserved_for: { type: "string", format: "date-time" },
+    table_id: UUID,
+  },
+  ["brand_id", "action"],
+  async (args, client, userId) => {
+    const brandId = await requireBrand(args, client, userId);
+    const action = String(args.action);
+    switch (action) {
+      case "list_waitlist": {
+        const { data, error } = await client
+          .from("venue_waitlist")
+          .select(
+            "id, guest_name, party_size, preferred_zone, quoted_wait_minutes, status, created_at, notified_at, expires_at",
+          )
+          .eq("brand_id", brandId)
+          .in("status", ["waiting", "notified"])
+          .order("created_at", { ascending: true })
+          .limit(200);
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        return ((data ?? []) as Array<Record<string, unknown>>).map((
+          row,
+          index,
+        ) => ({
+          id: row.id,
+          position: index + 1,
+          guest_label: safeGuestLabel(row.guest_name),
+          party_size: row.party_size,
+          preferred_zone: row.preferred_zone,
+          quoted_wait_minutes: row.quoted_wait_minutes,
+          status: row.status,
+          created_at: row.created_at,
+          notified_at: row.notified_at,
+          expires_at: row.expires_at,
+        }));
+      }
+      case "add_waitlist_entry": {
+        if (typeof args.party_size !== "number") {
+          throw new ToolError("INVALID_ARGS", "party_size is required");
+        }
+        const row: Record<string, unknown> = {
+          brand_id: brandId,
+          party_size: args.party_size,
+          guest_name: isString(args.guest_name) ? args.guest_name : null,
+          guest_phone_e164: isString(args.guest_phone_e164)
+            ? args.guest_phone_e164
+            : null,
+          preferred_zone: typeof args.preferred_zone === "string"
+            ? args.preferred_zone
+            : null,
+          quoted_wait_minutes: typeof args.quoted_wait_minutes === "number"
+            ? args.quoted_wait_minutes
+            : null,
+        };
+        const { data, error } = await client
+          .from("venue_waitlist")
+          .insert(row)
+          .select("id, party_size, preferred_zone, status")
+          .single();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        // Never echo stored contact back into the model-visible result.
+        return {
+          id: data.id,
+          guest_label: safeGuestLabel(args.guest_name),
+          party_size: data.party_size,
+          preferred_zone: data.preferred_zone,
+          status: data.status,
+        };
+      }
+      case "mark_waitlist_lost": {
+        if (!isUuid(args.waitlist_id)) {
+          throw new ToolError("INVALID_ARGS", "waitlist_id must be a uuid");
+        }
+        const { data, error } = await client
+          .from("venue_waitlist")
+          .update({ status: "lost" })
+          .eq("id", args.waitlist_id)
+          .eq("brand_id", brandId)
+          .in("status", ["waiting", "notified"])
+          .select("id, status")
+          .maybeSingle();
+        if (error) throw new ToolError("RPC_FAILED", error.message);
+        if (!data) {
+          throw new ToolError(
+            "INVALID_ARGS",
+            "Only an active (waiting/notified) entry can be marked lost",
+          );
+        }
+        return data;
+      }
+      case "convert_waitlist_to_reservation": {
+        if (!isUuid(args.waitlist_id)) {
+          throw new ToolError("INVALID_ARGS", "waitlist_id must be a uuid");
+        }
+        if (!isString(args.reserved_for)) {
+          throw new ToolError("INVALID_ARGS", "reserved_for is required");
+        }
+        const res = await callRpc<Record<string, unknown>>(
+          client,
+          "biz_waitlist_convert_to_reservation",
+          {
+            p_waitlist_id: args.waitlist_id,
+            p_reserved_for: args.reserved_for,
+            p_table_id: isUuid(args.table_id) ? args.table_id : null,
+          },
+        );
+        // Return a redacted reservation reference — no guest contact.
+        return {
+          reservation_id: (res as { id?: string })?.id ?? null,
+          status: (res as { status?: string })?.status ?? null,
+          reserved_for: (res as { reserved_for?: string })?.reserved_for ??
+            null,
+        };
+      }
+      default:
+        throw new ToolError("INVALID_ARGS", `unknown action ${action}`);
+    }
   },
 );
 
@@ -2316,6 +3156,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listVenueClaimFeedback,
   venueOpsAction,
   sendVenueSms,
+  manageVenueAvailability,
+  manageVenueMenu,
+  manageVenueWaitlist,
   draftCampaign,
   scheduleCampaign,
   sendCampaignNow,

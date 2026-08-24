@@ -10,13 +10,13 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 77,
+    "registered_tool_count": 80,
     "capability_count": 120,
     "status_breakdown": {
-      "registered_unverified": 49,
-      "broken": 27,
+      "registered_unverified": 54,
+      "broken": 25,
       "guided_handoff": 8,
-      "unsupported": 32,
+      "unsupported": 29,
       "in_flight": 4,
       "verified": 0
     }
@@ -2098,32 +2098,28 @@
         ],
         "source": [
           {
-            "path": "mingla-business/src/services/venueOrderingService.ts",
-            "symbol": "venueOrderGuestAction"
-          },
-          {
             "path": "supabase/functions/_shared/agentDomainTools.ts",
             "symbol": "const venueOpsAction"
           }
         ]
       },
       "ari_tool": "venue_ops_action",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:venueOpsAction vocabulary diverges from venue-order-staff"
+          "sha": "e0d20c6a7032caafd6949c6302ed3350ac2a6cd6",
+          "reference": "#1979 agentDomainTools.ts:venueOpsAction advertises and forwards the exact venue-order-staff actions (create/settle/tab_open/tab_close/transition/refund_decision/item_availability/pause/set_ordering_enabled)"
         }
       ],
       "owning_issues": [
-        2000
+        1979
       ],
       "blockers": [
-        "Action vocabulary and envelopes do not match canonical endpoint"
+        "No exact-revision deployed runtime evidence across the required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-21"
     },
     {
       "id": "ari.venue.send_sms",
@@ -2153,22 +2149,22 @@
         ]
       },
       "ari_tool": "send_venue_sms",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:sendVenueSms wrong endpoint payload"
+          "sha": "e0d20c6a7032caafd6949c6302ed3350ac2a6cd6",
+          "reference": "#1979 agentDomainTools.ts:sendVenueSms sends { waitlistId } only; destination/body/template derived server-side via send-venue-sms + smsAdapter"
         }
       ],
       "owning_issues": [
-        2000
+        1979
       ],
       "blockers": [
-        "Payload does not match send-venue-sms contract"
+        "No exact-revision deployed runtime evidence across the required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-21"
     },
     {
       "id": "ari.marketing.draft_campaign",
@@ -4137,28 +4133,28 @@
         ],
         "source": [
           {
-            "path": "mingla-business/src/services/venueGuestReservationService.ts",
-            "symbol": "fetchPublicVenueSlots"
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageVenueAvailability"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_venue_availability",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "venue availability hooks/services"
+          "sha": "e0d20c6a7032caafd6949c6302ed3350ac2a6cd6",
+          "reference": "#1979 agentDomainTools.ts:manageVenueAvailability (read_config/read_slots/update_config/list_blackouts/upsert_blackout/delete_blackout over venue_reservation_settings, venue_blackouts, pg_venue_available_slots)"
         }
       ],
       "owning_issues": [
-        2000
+        1979
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision deployed runtime evidence across the required Business surfaces"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-21"
     },
     {
       "id": "ari.venue.manage_menu",
@@ -4182,28 +4178,28 @@
         ],
         "source": [
           {
-            "path": "mingla-business/src/services/menusService.ts",
-            "symbol": "fetchBrandMenus"
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageVenueMenu"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_venue_menu",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "menusService.ts"
+          "sha": "e0d20c6a7032caafd6949c6302ed3350ac2a6cd6",
+          "reference": "#1979 agentDomainTools.ts:manageVenueMenu (menus/menu_items/menu_modifier_groups/menu_modifiers CRUD, 86, and full modifier replacement under manager-plus RLS)"
         }
       ],
       "owning_issues": [
-        2000
+        1979
       ],
       "blockers": [
-        "No explicit Ari operation family"
+        "No exact-revision deployed runtime evidence across the required Business surfaces"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-21"
     },
     {
       "id": "ari.venue.manage_waitlist",
@@ -4227,28 +4223,28 @@
         ],
         "source": [
           {
-            "path": "mingla-business/src/services/waitlistService.ts",
-            "symbol": "fetchEventWaitlist"
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageVenueWaitlist"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_venue_waitlist",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "waitlistService.ts"
+          "sha": "e0d20c6a7032caafd6949c6302ed3350ac2a6cd6",
+          "reference": "#1979 agentDomainTools.ts:manageVenueWaitlist (list/add/lost over venue_waitlist RLS; convert via biz_waitlist_convert_to_reservation; PII masked to a safe guest label)"
         }
       ],
       "owning_issues": [
-        2000
+        1979
       ],
       "blockers": [
-        "venue_ops_action is broken and does not establish parity"
+        "No exact-revision deployed runtime evidence across the required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-21"
     },
     {
       "id": "ari.marketing.manage_audiences",

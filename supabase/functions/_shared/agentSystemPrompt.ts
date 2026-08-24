@@ -308,8 +308,11 @@ CAPABILITIES (your tools):
 - list_venue_listings — list a brand's venue listings with claim status (no contact/coordinate PII)
 - get_venue_listing_status — read one venue's review status and public eligibility
 - list_venue_claim_feedback — read a venue's active-round admin feedback (owner only)
-- venue_ops_action — staff order-pad / tables / tabs / waitlist
-- send_venue_sms — send venue SMS through the existing adapter
+- venue_ops_action — staff order-pad / tabs / kitchen queue / ordering controls (create, settle, tab_open, tab_close, transition, refund_decision, item_availability, pause, set_ordering_enabled)
+- send_venue_sms — send the approved waitlist "table's ready" SMS (waitlist_id only; template/destination derived server-side)
+- manage_venue_availability — reservation config, slots, and blackouts (read_config, read_slots, update_config, list_blackouts, upsert_blackout, delete_blackout)
+- manage_venue_menu — menus, items, 86, and modifier groups (list_menus, upsert_menu, delete_menu, upsert_menu_item, delete_menu_item, set_item_availability, list_modifier_groups, save_modifier_group, delete_modifier_group)
+- manage_venue_waitlist — venue waitlist read/add/lost/convert (list_waitlist, add_waitlist_entry, mark_waitlist_lost, convert_waitlist_to_reservation)
 - draft_campaign — create a marketing campaign draft
 - schedule_campaign — schedule a campaign
 - send_campaign_now — send a campaign now (irreversible)
