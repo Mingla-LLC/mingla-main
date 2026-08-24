@@ -646,7 +646,7 @@ output = {
       "hostTimeoutMinutes" => entry["hostTimeoutMinutes"], "secondaryClass" => entry["secondaryClass"]&.to_s,
       "secondaryNode" => entry["secondaryNode"]&.to_s, "secondaryDeno" => entry["secondaryDeno"]&.to_s,
       "tertiaryClass" => entry["tertiaryClass"]&.to_s, "tertiaryNode" => entry["tertiaryNode"]&.to_s,
-      "tertiaryDeno" => entry["tertiaryDeno"]&.to_s }
+      "tertiaryDeno" => entry["tertiaryDeno"]&.to_s, "tertiaryOrder" => entry["tertiaryOrder"]&.to_s }
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
@@ -1178,26 +1178,26 @@ export function validateRegistry(
   // it is red. Phase 3C adds NO new matrix row: the fourteen primary jobs are
   // unchanged and the six new classes ride inside six of them.
   const expectedPhase3bRows = {
-    "node20-noinstall": [50, "phase3b-tenant-node20-deno146", "20", "1.46.x", "", "", ""],
-    "business-node20-1": [45, "", "", "", "phase3c-deno146-node20", "20", "1.46.x"],
-    "business-node20-2": [40, "", "", "", "phase3c-deno2x-node20", "20", "v2.x"],
-    "business-node20-3": [45, "", "", "", "phase3c-deno2714-admin-node20", "20", "v2.7.14"],
-    "business-node20-4": [45, "", "", "", "phase3c-deno2x-admin-node20", "20", "v2.x"],
-    "admin-node20-install": [55, "phase3b-lifecycle-node20-deno2", "20", "v2.x", "", "", ""],
-    "node22-noinstall": [55, "phase3b-theme-node20", "20", "", "", "", ""],
-    "app-node22-install": [50, "", "", "", "phase3c-deno2x-app-node22", "22", "v2.x"],
-    "business-node22-ignore-scripts": [60, "phase3b-brand-follow-node20-deno146", "20", "1.46.x", "", "", ""],
-    "cross-root-node22-ignore-scripts": [62, "phase3b-draft-node20-renderer", "20", "", "phase3c-deno2714-node20", "20", "v2.7.14"],
-    "root-node20-yaml-no-save": [55, "phase3b-scanner-node20-renderer", "20", "", "", "", ""],
-    "node20-19-noinstall": [55, "phase3b-screens-node20-deno2-renderer", "20", "v2.x", "", "", ""],
-    "ota-app-node20-19-install": [105, "phase3b-business-node22", "22", "", "", "", ""],
-    "ota-business-node20-19-install": [55, "phase3b-enablers-node20-deno2", "20", "v2.x", "", "", ""],
+    "node20-noinstall": [50, "phase3b-tenant-node20-deno146", "20", "1.46.x", "", "", "", ""],
+    "business-node20-1": [45, "", "", "", "phase3c-deno146-node20", "20", "1.46.x", "node-first"],
+    "business-node20-2": [40, "", "", "", "phase3c-deno2x-node20", "20", "v2.x", "node-first"],
+    "business-node20-3": [45, "", "", "", "phase3c-deno2714-admin-node20", "20", "v2.7.14", "node-first"],
+    "business-node20-4": [45, "", "", "", "phase3c-deno2x-admin-node20", "20", "v2.x", "deno-first"],
+    "admin-node20-install": [55, "phase3b-lifecycle-node20-deno2", "20", "v2.x", "", "", "", ""],
+    "node22-noinstall": [55, "phase3b-theme-node20", "20", "", "", "", "", ""],
+    "app-node22-install": [50, "", "", "", "phase3c-deno2x-app-node22", "22", "v2.x", "node-first"],
+    "business-node22-ignore-scripts": [60, "phase3b-brand-follow-node20-deno146", "20", "1.46.x", "", "", "", ""],
+    "cross-root-node22-ignore-scripts": [62, "phase3b-draft-node20-renderer", "20", "", "phase3c-deno2714-node20", "20", "v2.7.14", "node-first"],
+    "root-node20-yaml-no-save": [55, "phase3b-scanner-node20-renderer", "20", "", "", "", "", ""],
+    "node20-19-noinstall": [55, "phase3b-screens-node20-deno2-renderer", "20", "v2.x", "", "", "", ""],
+    "ota-app-node20-19-install": [105, "phase3b-business-node22", "22", "", "", "", "", ""],
+    "ota-business-node20-19-install": [55, "phase3b-enablers-node20-deno2", "20", "v2.x", "", "", "", ""],
   };
   if (batchTopology.timeoutMinutes !== "${{ matrix.hostTimeoutMinutes }}") fail(errors, "batch timeout must be sourced from the exact integer matrix ceiling");
   for (const route of batchTopology.matrix || []) {
     const expected = expectedPhase3bRows[route.class];
     if (!expected || JSON.stringify([route.hostTimeoutMinutes, route.secondaryClass, route.secondaryNode, route.secondaryDeno,
-      route.tertiaryClass, route.tertiaryNode, route.tertiaryDeno]) !== JSON.stringify(expected)) {
+      route.tertiaryClass, route.tertiaryNode, route.tertiaryDeno, route.tertiaryOrder]) !== JSON.stringify(expected)) {
       fail(errors, `${route.class}: Phase 3B/3C host timeout, secondary or tertiary route drifted`);
     }
   }
@@ -1235,16 +1235,34 @@ export function validateRegistry(
       fail(errors, `Phase 3C Deno runtime selector drifted: ${stepName}`);
     }
   }
-  const phase3cNode = named["Select tertiary Node runtime"];
+  // [#2439 SC-7.2] Setup ORDER is part of the profile. Exactly two mutually
+  // exclusive setup-node steps exist, one before the Deno selectors and one
+  // after, and a host takes exactly one of them.
+  const phase3cNodeFirst = named["Select tertiary Node runtime before Deno"];
+  const phase3cDenoFirst = named["Select tertiary Node runtime after Deno"];
   const phase3cSetup = named["Execute one typed Phase 3C setup"];
   const phase3cRun = named["Run assigned Phase 3C suites with exact attribution"];
   const phase3cUpload = named["Upload Phase 3C suite results"];
-  if (phase3cNode?.uses !== PINNED_SETUP_NODE
+  if (phase3cNodeFirst?.uses !== PINNED_SETUP_NODE
+      || phase3cNodeFirst?.if !== "always() && matrix.tertiaryClass != '' && matrix.tertiaryOrder == 'node-first'"
+      || phase3cDenoFirst?.uses !== PINNED_SETUP_NODE
+      || phase3cDenoFirst?.if !== "always() && matrix.tertiaryClass != '' && matrix.tertiaryOrder == 'deno-first'"
       || phase3cSetup?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.tertiaryClass }}"'
       || phase3cSetup?.timeoutMinutes !== 5
       || phase3cRun?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run-phase3c-host "${{ matrix.class }}"'
       || phase3cUpload?.if !== "always() && matrix.tertiaryClass != ''") {
     fail(errors, "Phase 3C tertiary setup/run/upload protocol drifted");
+  }
+  // The node-first step must precede every Deno selector and the deno-first step
+  // must follow them, or the matrix field would name an order the file does not
+  // actually implement.
+  const stepNames = (batchTopology.steps || []).map((step) => step.name);
+  const firstDeno = stepNames.findIndex((name) => name?.startsWith("Select immutable Phase 3C Deno"));
+  const lastDeno = stepNames.reduce((last, name, index) => (name?.startsWith("Select immutable Phase 3C Deno") ? index : last), -1);
+  const beforeIndex = stepNames.indexOf("Select tertiary Node runtime before Deno");
+  const afterIndex = stepNames.indexOf("Select tertiary Node runtime after Deno");
+  if (firstDeno < 0 || beforeIndex < 0 || afterIndex < 0 || beforeIndex > firstDeno || afterIndex < lastDeno) {
+    fail(errors, "Phase 3C tertiary setup ORDER does not match the reviewed per-class profile");
   }
   if (!resolvedMatrixSource.includes("name: suite-results-phase3c-${{ matrix.class }}")
       || !resolvedMatrixSource.includes("path: suite-results-phase3c.json")) fail(errors, "Phase 3C result artifact identity/path contract drifted");

@@ -250,8 +250,13 @@ export function recordSetup(manifest, klass, installExecutions, tempRoot = proce
 }
 
 export function commandFingerprint(suite) {
+  // The bounded retry is executable semantics, so it MUST be inside the
+  // fingerprint - but only where it exists. Emitting `retry: null` on every row
+  // would silently change every frozen Phase 3B fingerprint, which is how a
+  // sibling wave's sealed evidence stops matching without anyone editing it.
   const rows = executesLeaves(suite)
-    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null, retry: step.retry || null }))
+    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null,
+      ...(step.retry ? { retry: step.retry } : {}) }))
     : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
   return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
 }

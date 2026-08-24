@@ -71,6 +71,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           # The business suites are split 4 ways: MEASURED locally they take ~730s
           # end to end, so as ONE job they would become the new critical path — a
           # regression, since today they run in parallel. The split is round-robin
@@ -87,6 +88,7 @@ jobs:
             tertiaryClass: phase3c-deno146-node20
             tertiaryNode: "20"
             tertiaryDeno: "1.46.x"
+            tertiaryOrder: "node-first"
           - class: business-node20-2
             node: "20"
             cache: npm
@@ -98,6 +100,7 @@ jobs:
             tertiaryClass: phase3c-deno2x-node20
             tertiaryNode: "20"
             tertiaryDeno: "v2.x"
+            tertiaryOrder: "node-first"
           - class: business-node20-3
             node: "20"
             cache: npm
@@ -109,6 +112,7 @@ jobs:
             tertiaryClass: phase3c-deno2714-admin-node20
             tertiaryNode: "20"
             tertiaryDeno: "v2.7.14"
+            tertiaryOrder: "node-first"
           - class: business-node20-4
             node: "20"
             cache: npm
@@ -120,6 +124,7 @@ jobs:
             tertiaryClass: phase3c-deno2x-admin-node20
             tertiaryNode: "20"
             tertiaryDeno: "v2.x"
+            tertiaryOrder: "deno-first"
           - class: admin-node20-install
             node: "20"
             cache: npm
@@ -131,6 +136,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: node22-noinstall
             node: "22"
             cache: ""
@@ -142,6 +148,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: app-node22-install
             node: "22"
             cache: npm
@@ -153,6 +160,7 @@ jobs:
             tertiaryClass: phase3c-deno2x-app-node22
             tertiaryNode: "22"
             tertiaryDeno: "v2.x"
+            tertiaryOrder: "node-first"
           - class: business-node22-ignore-scripts
             node: "22"
             cache: npm
@@ -164,6 +172,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: cross-root-node22-ignore-scripts
             node: "22"
             cache: ""
@@ -175,6 +184,7 @@ jobs:
             tertiaryClass: phase3c-deno2714-node20
             tertiaryNode: "20"
             tertiaryDeno: "v2.7.14"
+            tertiaryOrder: "node-first"
           - class: root-node20-yaml-no-save
             node: "20"
             cache: ""
@@ -186,6 +196,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: node20-19-noinstall
             node: "20.19.4"
             cache: ""
@@ -197,6 +208,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: ota-app-node20-19-install
             node: "20.19.4"
             cache: npm
@@ -208,6 +220,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
           - class: ota-business-node20-19-install
             node: "20.19.4"
             cache: npm
@@ -219,6 +232,7 @@ jobs:
             tertiaryClass: ""
             tertiaryNode: ""
             tertiaryDeno: ""
+            tertiaryOrder: ""
     steps:
       # fetch-depth: 0 is REQUIRED, not incidental. Three batched suites
       # (#1881, #1532, #1996) run `git show <baseline>` / `git diff <baseline>` to
@@ -342,8 +356,12 @@ jobs:
       # over. The three Deno runtime selectors are mutually exclusive by matrix
       # value and every action SHA is immutable.
       # ---------------------------------------------------------------------
-      - name: Select tertiary Node runtime
-        if: always() && matrix.tertiaryClass != ''
+      # [#2439 SC-7.2] Setup ORDER is part of the profile, so it is preserved per
+      # class rather than normalised. #1427 and #2230 ran setup-node BEFORE
+      # setup-deno; #1950 ran setup-deno FIRST. Exactly one of these two steps
+      # fires for a given host, chosen by the reviewed matrix field.
+      - name: Select tertiary Node runtime before Deno
+        if: always() && matrix.tertiaryClass != '' && matrix.tertiaryOrder == 'node-first'
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: ${{ matrix.tertiaryNode }}
@@ -362,6 +380,11 @@ jobs:
         uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed
         with:
           deno-version: v2.7.14
+      - name: Select tertiary Node runtime after Deno
+        if: always() && matrix.tertiaryClass != '' && matrix.tertiaryOrder == 'deno-first'
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: ${{ matrix.tertiaryNode }}
       - name: Execute one typed Phase 3C setup
         if: always() && matrix.tertiaryClass != ''
         timeout-minutes: 5

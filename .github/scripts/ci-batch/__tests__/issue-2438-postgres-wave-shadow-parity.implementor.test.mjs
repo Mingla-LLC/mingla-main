@@ -434,8 +434,14 @@ test("suite deadline records every remaining outer and leaf instead of hiding wo
 
 test("material count, attribution, setup, env, marker, and sibling reversions are red", () => {
   const base = manifest(); const attacks = [];
-  const omitted = structuredClone(base); omitted.suites.pop(); attacks.push(omitted);
-  const outer = structuredClone(base); outer.suites.at(-1).steps.pop(); attacks.push(outer);
+  // [TEST-MOD-APPROVED #2439] WAVE-SCOPED, not positional. `suites.pop()` and
+  // `suites.at(-1)` meant "a Phase 3B suite" only while Phase 3B was the last
+  // wave in the array; once Phase 3C was appended both attacks became NO-OPS
+  // against assertWave, which asserts the Phase 3B wave. Same attacks, now aimed
+  // at the wave they were always written for.
+  const phase3bOf = (value) => value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
+  const omitted = structuredClone(base); omitted.suites.splice(omitted.suites.indexOf(phase3bOf(omitted).at(-1)), 1); attacks.push(omitted);
+  const outer = structuredClone(base); phase3bOf(outer).at(-1).steps.pop(); attacks.push(outer);
   const leaf = structuredClone(base); leaf.phase3bLeafCapabilities.leaves.pop(); attacks.push(leaf);
   const setup = structuredClone(base); setup.setupProfiles["phase3b-lifecycle-node20-deno2"].installs.reverse(); attacks.push(setup);
   const env = structuredClone(base); env.suites.find((suite)=>suite.id==="issue-1902-public-event-lifecycle-tests").steps[2].env.NODE_PATH="../node_modules"; attacks.push(env);
