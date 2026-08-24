@@ -114,6 +114,33 @@ jest.mock("react-native-safe-area-context", () => ({
 // palette, surface styles, the static-map URL builder) so every value asserted
 // below is genuinely computed, with the shell as a transparent passthrough so
 // the body it wraps is observable. Same shape as the #1559 harness.
+// [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no assertion
+// changed. The shared copy-address button and map-app chooser draw lucide
+// glyphs through `react-native-svg` (a REAL dependency of both apps —
+// react-native-svg 15.12.1 — and an existing peer of @mingla/offering-rendering).
+// This render config simply cannot resolve it from `packages/`, so it is mocked
+// to plain react-native Views, the same idiom
+// issue_1890_ari_composer_clearance uses. Nothing this suite asserts is a glyph.
+jest.mock(
+  "react-native-svg",
+  () => {
+    const Glyph = (): null => null;
+    return {
+      __esModule: true,
+      default: Glyph,
+      Svg: Glyph,
+      Path: Glyph,
+      Circle: Glyph,
+      Rect: Glyph,
+      G: Glyph,
+      Defs: Glyph,
+      Stop: Glyph,
+      LinearGradient: Glyph,
+    };
+  },
+  { virtual: true },
+);
+
 jest.mock("@mingla/offering-rendering", () => {
   const ReactLocal = require("react") as typeof React;
   const themeResolver = require("../../../../../packages/offering-rendering/themeResolver");
@@ -124,6 +151,13 @@ jest.mock("@mingla/offering-rendering", () => {
   // helpers ... so every value asserted below is genuinely computed"). The
   // shared venue screen now reads its maps target from it.
   const mapsDeepLink = require("../../../../../packages/offering-rendering/mapsDeepLink");
+  // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
+  // assertion changed. maps-app-chooser added the shared "which map app?"
+  // chooser + copy-address button, and PublicVenueScreen reaches them through
+  // THIS barrel (its only barrel-sourced UI). Registering the REAL module
+  // matches this factory's rule of spreading the real helpers, and keeps the
+  // venue card's rendered output genuine rather than stubbed away.
+  const venueMapsActions = require("../../../../../packages/offering-rendering/VenueMapsActions");
   const ParallaxCoverShell = (
     props: Record<string, unknown>,
   ): React.ReactElement => {
@@ -145,6 +179,7 @@ jest.mock("@mingla/offering-rendering", () => {
     ...themePalette,
     ...mapboxStaticImage,
     ...mapsDeepLink,
+    ...venueMapsActions,
     // The consumer app is phone-only for this route (its `useResponsiveLayout`
     // returns isDesktop:false unconditionally on native), so the phone branch
     // is the one a consumer guest actually gets.
@@ -500,7 +535,7 @@ describe("#1560 the consumer app adopts the shared venue page", () => {
   });
 
   test("G-2 the address card is TAPPABLE and opens maps", () => {
-    expect.assertions(8);
+    expect.assertions(13);
     const mounted = mountRoute({
       venue: consumerVenue("restaurant"),
       stayDetail: null,
@@ -538,9 +573,59 @@ describe("#1560 the consumer app adopts the shared venue page", () => {
     // (Constitution #2). The address survives as the pin's label and as the
     // fallback for a venue whose lat/lng is missing; that fallback is pinned by
     // issue_2468_maps_deep_link.test.ts T-2.
+    //
+    // [TEST-MOD-APPROVED #2508] maps-app-chooser. This line pinned the tap as a
+    // SILENT open — one press, one URL, no say in which app. #2508 is the issue
+    // that changes that on purpose: on a platform where more than one map app
+    // can honestly open the pin (iOS here — Apple Maps and Google Maps), the
+    // tap now ASKS first, so `openedUrls` is legitimately empty until the guest
+    // picks. Asserting the old shape would be asserting the feature is absent.
+    //
+    // The assertion is not weakened, it is EXTENDED end to end: the tap opens
+    // the chooser, the chooser offers exactly the two apps iOS can open, and
+    // BOTH of them open the SAME stored coordinate — the #2468 property this
+    // line has always existed to protect. The chooser picks the app, never the
+    // accuracy.
+    expect(openedUrls).toEqual([]);
+    const appOptions = findPressables(mounted.root, "Open in Google Maps");
+    expect(appOptions.length).toBeGreaterThanOrEqual(1);
+    const appleOptions = findPressables(mounted.root, "Open in Apple Maps");
+    expect(appleOptions.length).toBeGreaterThanOrEqual(1);
+
+    TestRenderer.act(() => {
+      (appOptions[0]?.props.onPress as () => void)();
+    });
     expect(openedUrls).toEqual([
       "https://www.google.com/maps/search/?api=1&query=51.5361,-0.1035",
     ]);
+
+    // ...and Apple Maps is anchored on the identical pair, not on the address
+    // text the provider would re-geocode.
+    //
+    // This harness renders the page as WEB (`Platform.OS === "web"`), which is
+    // why Apple's option is `https://maps.apple.com/?ll=…` and not `maps://`:
+    // #2508 deliberately never emits a custom scheme from a browser, where the
+    // page cannot verify it and a desktop browser would silently do nothing.
+    // The coordinate is identical either way — that is the whole point.
+    openedUrls.length = 0;
+    TestRenderer.act(() => {
+      (onPress as () => void)();
+    });
+    TestRenderer.act(() => {
+      (
+        findPressables(mounted.root, "Open in Apple Maps")[0]?.props
+          .onPress as () => void
+      )();
+    });
+    expect(openedUrls).toEqual([
+      `https://maps.apple.com/?ll=51.5361,-0.1035&q=${encodeURIComponent(
+        "12 Academy Street, London N1 4AB",
+      )}`,
+    ]);
+
+    // issue #2508 — and the copy button rides on the same card, so a guest who
+    // wants Waze or Citymapper can paste the address there.
+    expect(mounted.json).toContain("Copy address");
     mounted.unmount();
   });
 

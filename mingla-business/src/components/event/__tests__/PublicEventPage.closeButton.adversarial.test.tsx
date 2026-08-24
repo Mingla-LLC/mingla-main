@@ -406,6 +406,13 @@ const renderPublicEventPage = (
       // every close assertion below is untouched.
       case "../../utils/openMapsTarget":
         return { openMapsTarget: () => undefined };
+      // [TEST-MOD-APPROVED #2508] Harness registration only — ADDITION, no
+      // assertion changed. maps-app-chooser gives the venue card a copy-address
+      // button, whose clipboard write is a host effect the adapter imports
+      // beside the maps one. The close-callback contract is unrelated; every
+      // close assertion below is untouched.
+      case "../../utils/copyAddressText":
+        return { copyAddressText: () => Promise.resolve() };
       default:
         throw new Error(`Unexpected PublicEventPage dependency: ${request}`);
     }

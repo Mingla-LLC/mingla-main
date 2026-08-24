@@ -41,6 +41,10 @@ on:
       - "app-mobile/src/**"
       - "mingla-business/app/**"
       - "mingla-business/src/**"
+      # issue #2508 — the shared offering-rendering barrel is jest-mocked here,
+      # so a change to the mock can break every venue render suite this job
+      # runs. Path filters err BROAD by this file's house rule.
+      - "mingla-business/__manual_mocks__/**"
       - "mingla-marketing/lib/**"
       - "supabase/migrations/**"
       - ".github/workflows/meta-orch-1337-social-proof-tests.yml"
@@ -56,6 +60,10 @@ on:
       - "app-mobile/src/**"
       - "mingla-business/app/**"
       - "mingla-business/src/**"
+      # issue #2508 — the shared offering-rendering barrel is jest-mocked here,
+      # so a change to the mock can break every venue render suite this job
+      # runs. Path filters err BROAD by this file's house rule.
+      - "mingla-business/__manual_mocks__/**"
       - "mingla-marketing/lib/**"
       - "supabase/migrations/**"
       - ".github/workflows/meta-orch-1337-social-proof-tests.yml"
@@ -158,6 +166,16 @@ jobs:
             packages/offering-rendering/__tests__/issue_2468_maps_deep_link.test.ts
             packages/offering-rendering/__tests__/issue_2468_maps_deep_link.tester_adversarial.test.ts
             app-mobile/src/services/__tests__/issue_2469_explorer_parsed_location.test.ts
+            # issue #2508 [maps-app-chooser] — the "which map app?" chooser +
+            # copy-address suite. Registered HERE for the SAME reason #2468 was
+            # (see the note above): #2148's CI registry pins `legacyOrigins` at
+            # exactly 199 and discovers origins from the filesystem, so a new
+            # workflow file is rejected as an unregistered origin and
+            # registering it is rejected as a 200th. This job already runs the
+            # #2468 suites this one extends, and already path-scopes every tree
+            # it guards. Named in FULL, one path per line — verified GREEN
+            # (11 tests) on 2508-maps-chooser before registration.
+            packages/offering-rendering/__tests__/issue_2508_maps_app_chooser.test.ts
           )
           for attempt in 1 2 3; do
             # issue #2469 — `publicEventSeedService.ts` (in DENO_TEST_FILES below)
@@ -227,4 +245,5 @@ jobs:
           src/components/checkout/__tests__/orch_1342_download_cta_ssot.test.ts
           src/components/event/__tests__/orch_1342_see_whos_going_gate.test.tsx
           src/services/__tests__/orch_1342_guest_funnel_link.test.ts
+          src/utils/__tests__/issue_2508_copy_address.test.ts
           --runInBand
