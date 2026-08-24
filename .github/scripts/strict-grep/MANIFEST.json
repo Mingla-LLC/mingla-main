@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 602,
+  "expectedStrictGrepMjsFiles": 603,
   "selfTestWiredFloor": 384,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -461,6 +461,17 @@
     },
     {
       "script": ".github/scripts/strict-grep/__tests__/issue-2305-status-table-has-a-resolver.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/__tests__/issue-2534-lucide-gate-perimeter.tester.adversarial.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
