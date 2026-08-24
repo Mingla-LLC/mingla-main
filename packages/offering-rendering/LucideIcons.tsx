@@ -25,6 +25,37 @@
 import React from "react";
 import Svg, { Circle, Path, Rect } from "react-native-svg";
 
+// ─────────────────────── the package-local React bridge ─────────────────────
+// issue #2508 [maps-app-chooser].
+//
+// This package is source-linked into both apps, and their typecheck roots
+// resolve bare specifiers through `paths` in their own tsconfig. That map pins
+// `react-native`, `react-native-svg`, `expo-blur` and friends — but NOT `react`
+// — and a file under `packages/` sits outside the app directory, so Node-style
+// lookup walks up to a repo root that has no `node_modules`. Every direct
+// `import … from "react"` in this package therefore raises TS2307, and once
+// React is unresolved every component typed `React.FC<Props>` degrades to
+// `any`, taking its destructured props down with it as implicit-any cascade.
+// That cascade is what `scripts/ci/issue-1403-typecheck-delta.mjs` ratchets on.
+//
+// `packages/brand-rendering` solved this with the same one-module bridge (see
+// `PublicVenueTabs.tsx`), and its consumers — `PublicVenueScreen.tsx` at 1,400
+// lines, `StayGuestBooking.tsx` at 988 — carry ZERO diagnostics as a result.
+//
+// This module is the right host here because it is the package's only true
+// LEAF: it imports nothing but `react` and `react-native-svg`, so nothing can
+// cycle through it, and five package modules already depend on it. It already
+// owns an unavoidable `react` import, so publishing the bridge from here adds
+// no new unresolved-peer diagnostic anywhere.
+//
+// NEW SHARED RENDERERS IN THIS PACKAGE SHOULD IMPORT REACT FROM HERE, and
+// should type their components as explicit functions with named prop types
+// rather than `React.FC` — naming the props concretely is what keeps the body
+// genuinely type-checked instead of silently widening to `any`.
+export const OfferingRenderingReact = React;
+export type OfferingRenderingReactElement = React.ReactElement;
+export type OfferingRenderingReactNode = React.ReactNode;
+
 export interface LucideIconProps {
   /** Rendered width = height in px (the 24×24 art scales to fit). */
   size: number;
@@ -136,7 +167,7 @@ export const BadgeCheck: React.FC<LucideIconProps> = (props) => (
 );
 
 /** lucide `copy` — the two offset sheets. issue #2508 [maps-app-chooser]. */
-export const Copy: React.FC<LucideIconProps> = (props) => (
+export const Copy = (props: LucideIconProps): OfferingRenderingReactElement => (
   <LucideFrame {...props}>
     <Rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
     <Path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
@@ -144,7 +175,7 @@ export const Copy: React.FC<LucideIconProps> = (props) => (
 );
 
 /** lucide `check` — the bare tick, for the "Copied" confirm (issue #2508). */
-export const Check: React.FC<LucideIconProps> = (props) => (
+export const Check = (props: LucideIconProps): OfferingRenderingReactElement => (
   <LucideFrame {...props}>
     <Path d="M20 6 9 17l-5-5" />
   </LucideFrame>

@@ -34,7 +34,6 @@
  * package composes and renders; it does not touch `Linking` or `Clipboard`.
  */
 
-import React from "react";
 import {
   AccessibilityInfo,
   Modal,
@@ -45,7 +44,19 @@ import {
   View,
 } from "react-native";
 
-import { Check, Copy, MapPin } from "./LucideIcons";
+// React comes from the PACKAGE BRIDGE, not from "react" directly — see the
+// bridge's own docs in LucideIcons.tsx. A direct import here raises TS2307 (the
+// app typecheck roots' `paths` maps pin react-native but not react, and a file
+// under packages/ cannot reach the app's node_modules), and an unresolved React
+// drags every `React.FC` component and its destructured props down into an
+// implicit-any cascade that the #1403 typecheck ratchet blocks.
+import {
+  Check,
+  Copy,
+  MapPin,
+  OfferingRenderingReact as React,
+  type OfferingRenderingReactElement,
+} from "./LucideIcons";
 import {
   listMapsAppChoices,
   selectAddressCopyText,
@@ -260,12 +271,12 @@ const COPY_LABEL: Readonly<Record<VenueCopyState, string>> = {
   failed: "Couldn't copy",
 };
 
-export const VenueCopyAddressButton: React.FC<VenueCopyAddressButtonProps> = ({
+export const VenueCopyAddressButton = ({
   actions,
   palette,
   font,
   testID = "issue-2508-copy-address",
-}) => {
+}: VenueCopyAddressButtonProps): OfferingRenderingReactElement | null => {
   if (!actions.canCopy) return null;
   const state = actions.copyState;
   const label = COPY_LABEL[state];
@@ -340,13 +351,13 @@ export interface MapsAppChooserDialogProps {
   testID?: string;
 }
 
-export const MapsAppChooserDialog: React.FC<MapsAppChooserDialogProps> = ({
+export const MapsAppChooserDialog = ({
   actions,
   palette,
   placeLabel,
   font,
   testID = "issue-2508-maps-app-chooser",
-}) => {
+}: MapsAppChooserDialogProps): OfferingRenderingReactElement | null => {
   // Never mount a chooser that has nothing to choose between.
   if (!actions.offersChoice) return null;
   const boldStyle = font === undefined ? null : { fontFamily: font };
@@ -395,7 +406,7 @@ export const MapsAppChooserDialog: React.FC<MapsAppChooserDialogProps> = ({
             </Text>
           ) : null}
 
-          {actions.choices.map((choice) => (
+          {actions.choices.map((choice: MapsAppChoice) => (
             <Pressable
               key={choice.id}
               onPress={() => actions.chooseApp(choice.id)}
