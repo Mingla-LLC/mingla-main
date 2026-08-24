@@ -54,6 +54,13 @@ module.exports = {
     // #679 TESTER adversarial web-render suite (real RNW mount) — matched here
     // so it is swept the moment the tester lands it.
     "**/__tests__/issue_679_follow_gate.adversarial.render.test.tsx",
+    // #2539 [brand avatar renders square instead of clipped to a circle] —
+    // implementor happy-path for the round clip + accent glow, added under
+    // SPEC AMENDMENT 1. Same reason #1 in this file's header: rootDir is
+    // mingla-business, so a suite under packages/**/__tests__ that is not
+    // named here runs in NO CI job at all. The file's contents are unchanged
+    // by the amendment; only where it runs from.
+    "**/__tests__/issue_2539_avatar_clip_and_glow.test.tsx",
   ],
   transformIgnorePatterns: [
     "node_modules/(?!(jest-)?react-native|@react-native|react-native-web|@react-native-community|react-native-svg|lucide-react-native|expo|@expo)",
