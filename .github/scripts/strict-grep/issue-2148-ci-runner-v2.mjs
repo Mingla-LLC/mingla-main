@@ -6,7 +6,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, withTrackedFilesScope, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
+import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, withTrackedFilesScope, discoverWorkflowProviders, discoverLiveOrigins, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
 import { commandFingerprint, executesLeaves, absentFileIsFailure } from "../ci-batch/run-suite-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -35,7 +35,20 @@ function assertionDigest(suites) {
   return crypto.createHash("sha256").update(JSON.stringify(assertions)).digest("hex");
 }
 function orderedDigest(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
-function errors(value, matrixSource = workflow()) { return validateRegistry(value, { root: DEFAULT_ROOT, matrixSource }); }
+// [#2439 SC-16.6(1)] Discovery is precomputed ONCE per entry point and handed to
+// every mutant. No mutant below touches the tree or the index, so the provider
+// inventory and the live-origin list are invariant across all of them; without
+// this, each of the ~24 registry attacks re-read the whole tracked corpus and the
+// self-test alone ran past two minutes. Nothing is removed or weakened - the same
+// attacks run against the same validator, only the shared inputs are hoisted.
+let DISCOVERY = null;
+function discovery() {
+  if (!DISCOVERY) DISCOVERY = { workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT), liveOrigins: discoverLiveOrigins(DEFAULT_ROOT) };
+  return DISCOVERY;
+}
+function errors(value, matrixSource = workflow()) {
+  return validateRegistry(value, { root: DEFAULT_ROOT, matrixSource, ...discovery() });
+}
 
 export function verifyLive() {
   const raw = manifest();

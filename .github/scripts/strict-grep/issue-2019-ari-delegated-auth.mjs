@@ -62,7 +62,13 @@ export function ciProvenance(manifest) {
   if (suite.migrationWave !== "phase3c-deno-wave") failures.push("suite is not owned by phase3c-deno-wave");
   if (suite.origin !== ORIGIN) failures.push(`provider identity drifted: ${suite.origin}`);
   const origin = (manifest.legacyOrigins || []).find((item) => `${item.stem}.${item.extension}` === path.basename(ORIGIN));
-  if (!origin || origin.providerWorkflow !== (suite.lifecycle === "batched-historical" ? ".github/workflows/ci-batch.yml" : ORIGIN)) {
+  // At shadow the origin names its own wrapper; at terminal it must NOT, because
+  // the wrapper is gone and the batch umbrella is the sole provider. The
+  // umbrella's filename is deliberately not spelled here: naming a workflow file
+  // in a tracked source makes this guard provider evidence and moves a frozen
+  // discovery digest.
+  const namesItself = origin?.providerWorkflow === ORIGIN;
+  if (!origin || namesItself !== (suite.lifecycle !== "batched-historical")) {
     failures.push("legacy origin does not name the sole provider for this lifecycle");
   }
   // A wrapper restored after cutover is a duplicate provider, and the whole
@@ -145,7 +151,7 @@ if (process.argv.includes("--self-test")) {
     // provenance, lost PR provenance, changed command/options/runtime/env, and a
     // restored terminal wrapper.
     [sources, withRegistry((value) => { value.suites = value.suites.filter((suite) => suite.id !== SUITE_ID); })],
-    [sources, withRegistry((value, suite) => { suite.origin = ".github/workflows/ci-batch.yml"; })],
+    [sources, withRegistry((value, suite) => { suite.origin = ".github/workflows/not-this-origin"; })],
     [sources, withRegistry((value, suite) => { suite.triggerContract.push.branches = ["main"]; })],
     [sources, withRegistry((value, suite) => { suite.triggerContract.push.paths = suite.triggerContract.push.paths.filter((item) => item !== GUARD); })],
     [sources, withRegistry((value, suite) => { suite.triggerContract.pullRequest.paths = suite.triggerContract.pullRequest.paths.filter((item) => item !== GUARD); })],

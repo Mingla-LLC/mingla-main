@@ -219,7 +219,7 @@ if (process.argv.includes("--self-test")) {
     ["registry", "issue_2230_cart_days.test.tsx src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx", "issue_2230_cart_days.test.tsx"],
     ["registry", '"app-mobile/src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx"', '"app-mobile/src/components/expandedCard/__tests__/gone.tsx"'],
     ["registry", '"packages/offering-rendering/QuantityRow.tsx"', '"packages/offering-rendering/Gone.tsx"'],
-    ["registry", '".github/workflows/issue-2230-consumer-multiday-tests.yml"', '".github/workflows/ci-batch.yml"'],
+    ["registry", ORIGIN, ".github/workflows/not-a-real-workflow-identity"],
     ["registry", '"phase3c-deno-wave"', '"phase3d-unreviewed-wave"'],
     ["registry", DENO_V2_ACTION, "denoland/setup-deno@v2"],
     ["registry", '"contents: read"', '"contents: write"'],
