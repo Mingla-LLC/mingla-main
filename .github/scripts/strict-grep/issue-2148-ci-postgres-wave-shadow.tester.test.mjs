@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import {
   PHASE3B_SHADOW_MARKER,
   canonicalizeShadowWrapperSource,
+  discoverLiveOrigins,
   discoverWorkflowProviders,
   inspectWorkflow,
   isNonAuthoritativeProviderEvidence,
@@ -75,7 +76,7 @@ test("reconstructs source truth before trusting generated registry", () => {
 
 test("locks independent registry, leaf, setup, provider and lifecycle identities", () => {
   const value = manifest(); const suites = value.suites.filter((suite) => suite.migrationWave === WAVE);
-  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [199,67,194,89]);
+  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200,67,194,91]);
   assert.deepEqual([suites.length, suites.flatMap((suite) => suite.steps).length, value.phase3bLeafCapabilities.leaves.length, value.phase3bLeafCapabilities.currentExecutedLeaves, value.phase3bLeafCapabilities.currentAbsentLeaves], [12,36,40,37,3]);
   assert.equal(sha(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(sha(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
@@ -85,8 +86,21 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   const lifecycle = suites.find((suite) => suite.origin.endsWith("issue-1902-public-event-lifecycle-tests.yml"));
   assert.deepEqual(lifecycle.steps.map((step) => step.env || null).filter(Boolean), [{ NODE_PATH: "./node_modules" }]);
   assert.deepEqual(value.setupProfiles[lifecycle.setupProfile].installs.map((item) => [item.cwd,item.invocation.command,item.invocation.argv]), [["mingla-business","npm",["ci"]],["app-mobile","npm",["ci"]]]);
-  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 71); assert.equal(sha(providers), "2f43d33d10134bc0e9989213bae161d93b59707b2ce0295c697cc5c90d3ab86d");
+  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 73); assert.equal(sha(providers), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
   assert.equal(providers.some((item) => item.workflow === "issue-948-w3-screens-copy-tests.yml"), false);
+  // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
+  // the amended line above pins only the first. discoverLiveOrigins() is the second and
+  // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.
+  assert.equal(discoverLiveOrigins(ROOT).length, 146);
+  // The invariant #2492 actually violated: two workflows were externally REFERENCED but
+  // never REGISTERED. A pair of totals cannot catch that — they both just move. Bind the
+  // derived discovery set to the declared live-provider set by identity, so a referenced
+  // but unregistered workflow reds here even when every count still agrees.
+  const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
+  const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
+  assert.deepEqual([retained.length, batched.length], [73, 18]);
+  assert.equal(retained.length + batched.length, value.workflowProviders.length);
+  assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
   assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
 });
 
