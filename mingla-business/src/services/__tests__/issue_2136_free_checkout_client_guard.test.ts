@@ -30,6 +30,7 @@ import {
   // token the client could not read.
   FREE_CHECKOUT_CONFLICT_MESSAGE,
   FREE_CHECKOUT_FAILED_MESSAGE,
+  FREE_CHECKOUT_UNKNOWN_MESSAGE,
   FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
   freeCheckoutErrorMessage,
   isCompletedFreeOrder,
@@ -105,7 +106,9 @@ describe("#2136 freeCheckoutErrorMessage — the guest never sees a raw runtime 
     const thrown = new TypeError(
       "Cannot read properties of undefined (reading 'map')",
     );
-    expect(freeCheckoutErrorMessage(thrown)).toBe(FREE_CHECKOUT_FAILED_MESSAGE);
+    // [TEST-MOD-APPROVED #2511] a raw TypeError carries no token and no status,
+    // so the honest answer is "we do not know", not "nothing was reserved".
+    expect(freeCheckoutErrorMessage(thrown)).toBe(FREE_CHECKOUT_UNKNOWN_MESSAGE);
     expect(freeCheckoutErrorMessage(thrown)).not.toContain("undefined");
     expect(freeCheckoutErrorMessage(thrown)).not.toContain("map");
   });
@@ -159,15 +162,24 @@ describe("#2136 freeCheckoutErrorMessage — the guest never sees a raw runtime 
   });
 
   test("the opaque transport message is never shown verbatim", () => {
+    // [TEST-MOD-APPROVED #2511] The terminal arm no longer claims
+    // "nothing was reserved" for an OPAQUE failure. A dropped reply may mean
+    // the reservation SUCCEEDED, so that claim was unprovable - and it caused
+    // real duplicate orders (#2462). The invariant this test exists to protect
+    // is unchanged and still asserted: never a raw runtime string, always a
+    // string this module owns. Only WHICH honest sentence changed.
     const opaque = new Error("Edge Function returned a non-2xx status code");
-    expect(freeCheckoutErrorMessage(opaque)).toBe(FREE_CHECKOUT_FAILED_MESSAGE);
+    expect(freeCheckoutErrorMessage(opaque)).toBe(FREE_CHECKOUT_UNKNOWN_MESSAGE);
+    expect(freeCheckoutErrorMessage(opaque)).not.toMatch(/non-2xx/);
   });
 
   test("it is TOTAL — every non-Error shape still yields human copy", () => {
     for (const value of [null, undefined, 0, "", "boom", {}, [], NaN, false]) {
       const message = freeCheckoutErrorMessage(value);
+      // [TEST-MOD-APPROVED #2511] opaque shapes now resolve to the honest
+      // "we do not know" sentence; the totality property is unchanged.
       expect([
-        FREE_CHECKOUT_FAILED_MESSAGE,
+        FREE_CHECKOUT_UNKNOWN_MESSAGE,
         FREE_CHECKOUT_UNAVAILABLE_MESSAGE,
       ]).toContain(message);
     }
