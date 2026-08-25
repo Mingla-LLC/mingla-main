@@ -545,6 +545,37 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2013_agent_conversation_brand_immutable.test.sql
 
+          # Issue #2489 — address privacy is enforced at the SERVER boundary. A host who
+          # turns on "Hide address until ticket purchase" was relying on renderers to keep
+          # that promise; one anon-readable read path returned the exact pin, the combined
+          # address string and the structured street address inside the theme JSON, so the
+          # values were on the wire before any renderer ran. Registered HERE, inside the
+          # already-registered migrations provider, rather than as a new issue-named
+          # workflow: new wrappers are refused by the CI registry gate, and an
+          # unregistered .test.sql is invisible — a check that carries no information.
+          # Every read in the fixture executes as `anon`, which is the only reader whose
+          # experience proves the gate, and three of the fifteen scenarios are reveal-case
+          # twins so an implementation that NULLed the columns unconditionally cannot pass.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2489_address_privacy_server_gate.test.sql
+
+          # Issue #2489 — INDEPENDENT TESTER adversarial fixture. Deliberately a
+          # different angle from the implementor file above, which proves the four
+          # gated objects withhold. This one attacks what that file does not test:
+          # the predicate's TOTALITY across twenty-two adversarial value shapes at
+          # the flag rather than one string; that exactly ONE of them reveals, so a
+          # predicate hard-wired to withhold cannot pass; that the WITHHOLD BRANCH is
+          # as total as the predicate guarding it, because a gate whose guard cannot
+          # raise but whose body can is fail-loud rather than fail-closed, and on the
+          # two list paths one malformed row answers a whole market's rows with an
+          # exception; that all four objects agree on the SAME pair of offerings in
+          # one transaction, so an object that drifts off the shared predicate cannot
+          # hide behind a differently-seeded neighbour; and that anon's select("*")
+          # still succeeds with the gated columns at their shipped names, types and
+          # ordinals, because app builds already on phones cannot be patched.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2489_address_privacy_server_gate.tester_adversarial.test.sql
+
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
     runs-on: ubuntu-latest

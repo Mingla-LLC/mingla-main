@@ -704,10 +704,15 @@ export async function getPublicExperienceById(
   // COMMS-0009 / P0-1: the embedded brands(...) select carries only anon-readable
   // cover columns — NOT theme_* (anon 401 `42501`). The brand theme is sourced
   // from the anon-safe `business_public_events_view` below.
+  // #2489 — NAMED COLUMNS, not a star, for the same reason as the trip resolver: this
+  // runs as `anon` on the public experience checkout chain, and the star pulled the
+  // exact pin and the combined street string on every screen although the mapper reads
+  // neither. An experience's own stop addresses are unaffected — they live in the
+  // sidecar and are gated there.
   const eventResp = await supabase
     .from("events")
     .select(
-      "*, brands(id, slug, name, description, cover_media_url, cover_media_type, cover_hue)",
+      "id,brand_id,title,description,slug,status,visibility,timezone,theme,theme_color_override,theme_font_override,theme_animation_override,cover_media_url,cover_media_type,is_recurring,is_multi_date,recurrence_rules,experience_intents, brands(id, slug, name, description, cover_media_url, cover_media_type, cover_hue)",
     )
     .eq("id", eventId)
     .eq("event_type", "experience")

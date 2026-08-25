@@ -2129,9 +2129,21 @@ export const getPublicTripById = async (
 ): Promise<PublicTripDetail | null> => {
   // 1. Resolve trip row — pins event_type='trip' + scheduled/live + not deleted.
   // orch-strict-grep-allow events-type-filter — ORCH-0876: trip-only resolver
+  //
+  // #2489 — NAMED COLUMNS, not a star. This read runs as `anon` on the public trip
+  // checkout chain, and a star-select pulled the exact venue pin and the combined
+  // "venue, then street" string across the wire on every one of those screens even
+  // though nothing below ever reads either of them. Two consequences: the values stop
+  // being handed to a caller that has no use for them, and this reader stops depending
+  // on a privilege that is being narrowed. Every column below is one the mapper further
+  // down actually consumes — add here only when you add a read there.
   const eventResp = await supabase
     .from("events")
-    .select("*")
+    .select(
+      "id,brand_id,title,description,slug,status,visibility,timezone,theme," +
+        "cover_media_url,cover_media_type,published_at,created_at,updated_at," +
+        "refund_policy,booking_deadline,bookings_closed,bookings_closed_at",
+    )
     .eq("id", tripEventId)
     .eq("event_type", "trip")
     .in("status", ["scheduled", "live"])
