@@ -49,6 +49,7 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // classification message.
 //
 
+// [TEST-MOD-APPROVED #1978] manage_venue_gallery (107→108). unsupported 1→0.
 // [TEST-MOD-APPROVED #1983] edit_profile_avatar + manage_ari_history + notifications + support inbox (103→107).
 // [TEST-MOD-APPROVED #1980] manage_marketing_audiences + templates + get_campaign_report (100→103).
 // [TEST-MOD-APPROVED #1972] manage_event_group_chat + door_sale + list_event_orders + waitlist + scanners (95→100).
@@ -126,6 +127,7 @@ const EXPECTED_TOOL_NAMES = [
   "manage_trip_tiers",
   "manage_trip_traveler_intake",
   "manage_venue_availability",
+  "manage_venue_gallery",
   "manage_venue_menu",
   "manage_venue_waitlist",
   "mark_claim_feedback_fixed",
@@ -173,16 +175,16 @@ const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 106,
+    registered_unverified: 107,
     broken: 0,
     guided_handoff: 8,
-    unsupported: 1,
+    unsupported: 0,
     in_flight: 5,
   }),
   idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
-  statusDigest: "44a62044a024d29470b3811cc5873bf7d49cd6606cf12286c72e9e49deac3b90",
-  mappingDigest: "3dcb2a2f3152781167975dd113cfc30b1c41e4348acc7ba0ffa5a7c0eec4c444",
-  sourceRefDigest: "6e5d3a07575d406ad64511a8c11280b0b7752b4982ef681599922161e19190c7",
+  statusDigest: "a124115a7354deb8b0d685747dc298aa58e4b0752c19bea32a9d117df039aa5e",
+  mappingDigest: "fa0fc2d2051ee32a05ed4f387d64e1f0884fcb06eadc99b67d6d0fd9d27bc713",
+  sourceRefDigest: "5b125f4e45ac9e043a566b79f41a3a42b053b41d4b18d3b57283c44d48ac768c",
 });
 
 function readLedger() {
@@ -208,9 +210,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("107-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("108-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("106/0/1/8/5/0 classification changed");
+    failures.push("107/0/0/8/5/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

@@ -5116,6 +5116,101 @@ const manageSupportInbox = writeTool(
   },
 );
 
+// ----------------------------------------------------------------------------
+// #1978 reopen — venue gallery (URL sync; device pick stays a guided handoff)
+// ----------------------------------------------------------------------------
+
+const manageVenueGallery = writeTool(
+  "manage_venue_gallery",
+  "Read or sync a venue's gallery URL set via place_pool.business_gallery_urls / run-business-place-authoring-pipeline sync_gallery. URLs must come from the proposal-card picker — device media selection is a guided handoff.",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    place_pool_id: UUID,
+    action: { type: "string", enum: ["get", "sync"] },
+    gallery_urls: {
+      type: "array",
+      items: { type: "string", maxLength: 2000 },
+      maxItems: 20,
+    },
+  },
+  ["brand_id", "venue_id", "action"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    const { data: venue, error: venueErr } = await client
+      .from("venue_listings")
+      .select("id, brand_id, place_pool_id")
+      .eq("id", args.venue_id)
+      .eq("brand_id", args.brand_id)
+      .maybeSingle();
+    if (venueErr) throw new ToolError("RPC_FAILED", venueErr.message);
+    if (venue === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Venue not found for this brand, or you lack permission.",
+      );
+    }
+    const placePoolId = isUuid(args.place_pool_id)
+      ? args.place_pool_id
+      : venue.place_pool_id;
+    if (!isUuid(placePoolId)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "place_pool_id is required (venue has no linked place).",
+      );
+    }
+    if (actionIsGet(args.action)) {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      const { data: place, error: placeErr } = await client
+        .from("place_pool")
+        .select("id, business_gallery_urls")
+        .eq("id", placePoolId)
+        .maybeSingle();
+      if (placeErr) throw new ToolError("RPC_FAILED", placeErr.message);
+      if (place === null) {
+        throw new ToolError("INVALID_ARGS", "Place pool not found.");
+      }
+      const urls = Array.isArray(place.business_gallery_urls)
+        ? place.business_gallery_urls.filter((u: unknown) =>
+          typeof u === "string" && u.trim().length > 0
+        )
+        : [];
+      return {
+        venue_id: args.venue_id,
+        place_pool_id: placePoolId,
+        gallery_urls: urls,
+        gallery_count: urls.length,
+      };
+    }
+    if (String(args.action) !== "sync") {
+      throw new ToolError("INVALID_ARGS", "action must be get or sync");
+    }
+    const raw = Array.isArray(args.gallery_urls) ? args.gallery_urls : null;
+    if (raw === null) {
+      throw new ToolError("INVALID_ARGS", "gallery_urls is required for sync");
+    }
+    const galleryUrls = raw
+      .filter((u): u is string => typeof u === "string")
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0)
+      .slice(0, 20);
+    return await invokeFn(client, "run-business-place-authoring-pipeline", {
+      action: "sync_gallery",
+      brand_id: args.brand_id,
+      venue_id: args.venue_id,
+      place_pool_id: placePoolId,
+      gallery_urls: galleryUrls,
+    });
+  },
+);
+
+function actionIsGet(action: unknown): boolean {
+  return action === "get";
+}
+
 // #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
 // about status + next action. Drops contactLabel (partial email/phone),
 // avatarUrl, delivery attempts, and order ids so raw PII never enters the
@@ -5578,6 +5673,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   manageAriHistory,
   manageBusinessNotifications,
   manageSupportInbox,
+  manageVenueGallery,
   listGuestRoster,
   exportBrandPeople,
   updateAriPrefs,

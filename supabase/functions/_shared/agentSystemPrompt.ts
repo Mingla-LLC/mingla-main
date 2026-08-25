@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v14";
+export const PROMPT_VERSION = "v15";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -374,6 +374,7 @@ CAPABILITIES (your tools):
 - manage_ari_history — list/delete Ari conversations (or all data)
 - manage_business_notifications — list/mark/soft-delete Host notifications
 - manage_support_inbox — list/get/reply on support tickets
+- manage_venue_gallery — get/sync venue gallery URLs
 - list_guest_roster — list guests (names/status only)
 - export_brand_people — export Brand People CSV (PII confirm)
 - update_ari_prefs — conversational Ari preferences

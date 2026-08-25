@@ -177,6 +177,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_ari_history: role("self", "none"),
   manage_business_notifications: role("self", "none"),
   manage_support_inbox: role("self", "none"),
+  // #1978 reopen — venue gallery sync.
+  manage_venue_gallery: role("event_manager", "brand"),
   list_guest_roster: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),

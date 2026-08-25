@@ -1600,5 +1600,7 @@ export function isReadOnlyAgentToolCall(
     (toolName === "manage_ari_history" && args.action === "list") ||
     (toolName === "manage_business_notifications" && args.action === "list") ||
     (toolName === "manage_support_inbox" &&
-      (args.action === "list" || args.action === "get"));
+      (args.action === "list" || args.action === "get")) ||
+    // #1978 reopen — gallery get is a pure read.
+    (toolName === "manage_venue_gallery" && args.action === "get");
 }

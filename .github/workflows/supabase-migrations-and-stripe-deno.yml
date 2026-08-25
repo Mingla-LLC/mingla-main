@@ -923,6 +923,10 @@ jobs:
             supabase/functions/_shared/__tests__/issue_1980_ari_marketing.implementor.test.ts
             # ISSUE-1983 — profile avatar, Ari history, notifications, support inbox.
             supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_1983_ari_account_inbox.tester_adversarial.test.ts
+            # ISSUE-1978 reopen — venue gallery get/sync.
+            supabase/functions/_shared/__tests__/issue_1978_ari_venue_gallery.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_1978_ari_venue_gallery.tester_adversarial.test.ts
             # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
             supabase/functions/manage-stay-inventory/index.test.ts
             # ISSUE-1388 — grouped Stay cart, Request actions, and error hygiene.

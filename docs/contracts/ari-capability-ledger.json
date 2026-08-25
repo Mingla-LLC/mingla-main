@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 107,
+    "registered_tool_count": 108,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 106,
+      "registered_unverified": 107,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 1,
+      "unsupported": 0,
       "in_flight": 5
     }
   },
@@ -5816,26 +5816,31 @@
           {
             "path": "mingla-business/src/services/venueGalleryService.ts",
             "symbol": "uploadGalleryPhoto"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageVenueGallery"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_venue_gallery",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "venue gallery service"
+          "sha": "8a9b7e7faeec3d8fc73676fe396b41f7bf2a7a6a",
+          "reference": "#1978 agentDomainTools.ts:manageVenueGallery syncs via run-business-place-authoring-pipeline"
         }
       ],
       "owning_issues": [
+        1978,
         2000
       ],
       "blockers": [
-        "No registered tool; device media selection also needs handoff"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.partner.brand_links",
