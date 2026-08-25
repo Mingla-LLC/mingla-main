@@ -172,6 +172,11 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   manage_marketing_audiences: role("marketing_manager", "optional_brand"),
   manage_marketing_templates: role("marketing_manager", "optional_brand"),
   get_campaign_report: role("marketing_manager", "campaign"),
+  // #1983 — self-scoped account / inbox / support.
+  edit_profile_avatar: role("self", "none"),
+  manage_ari_history: role("self", "none"),
+  manage_business_notifications: role("self", "none"),
+  manage_support_inbox: role("self", "none"),
   list_guest_roster: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),

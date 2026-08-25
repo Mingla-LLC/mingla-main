@@ -1595,5 +1595,10 @@ export function isReadOnlyAgentToolCall(
     (toolName === "manage_event_scanners" && args.action === "list") ||
     // #1980 — marketing list actions run inline.
     (toolName === "manage_marketing_audiences" && args.action === "list") ||
-    (toolName === "manage_marketing_templates" && args.action === "list");
+    (toolName === "manage_marketing_templates" && args.action === "list") ||
+    // #1983 — self inbox/history reads run inline.
+    (toolName === "manage_ari_history" && args.action === "list") ||
+    (toolName === "manage_business_notifications" && args.action === "list") ||
+    (toolName === "manage_support_inbox" &&
+      (args.action === "list" || args.action === "get"));
 }

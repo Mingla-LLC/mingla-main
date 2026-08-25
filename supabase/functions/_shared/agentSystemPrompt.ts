@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v13";
+export const PROMPT_VERSION = "v14";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -370,6 +370,10 @@ CAPABILITIES (your tools):
 - manage_marketing_audiences — list/ensure campaign audiences
 - manage_marketing_templates — list/create/update/delete templates
 - get_campaign_report — campaign delivery/engagement report
+- edit_profile_avatar — update display name / avatar URL
+- manage_ari_history — list/delete Ari conversations (or all data)
+- manage_business_notifications — list/mark/soft-delete Host notifications
+- manage_support_inbox — list/get/reply on support tickets
 - list_guest_roster — list guests (names/status only)
 - export_brand_people — export Brand People CSV (PII confirm)
 - update_ari_prefs — conversational Ari preferences

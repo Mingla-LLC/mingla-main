@@ -4825,6 +4825,297 @@ const getCampaignReport = writeTool(
   },
 );
 
+// ----------------------------------------------------------------------------
+// #1983 — profile avatar, Ari history, notifications inbox, support inbox
+// ----------------------------------------------------------------------------
+
+const editProfileAvatar = writeTool(
+  "edit_profile_avatar",
+  "Update the signed-in operator's display name and/or avatar_url on creator_accounts. Avatar URL must come from the proposal-card picker (never invented).",
+  {
+    display_name: { type: "string", minLength: 1, maxLength: 80 },
+    avatar_url: { type: "string", maxLength: 2000 },
+    clear_avatar: { type: "boolean" },
+  },
+  [],
+  async (args, client, userId) => {
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof args.display_name === "string") {
+      const name = args.display_name.trim();
+      if (name.length < 1) {
+        throw new ToolError("INVALID_ARGS", "display_name can't be empty");
+      }
+      patch.display_name = name;
+    }
+    if (args.clear_avatar === true) {
+      patch.avatar_url = null;
+    } else if (typeof args.avatar_url === "string") {
+      const url = args.avatar_url.trim();
+      if (url.length < 1) {
+        throw new ToolError("INVALID_ARGS", "avatar_url can't be empty");
+      }
+      patch.avatar_url = url;
+    }
+    if (Object.keys(patch).length === 1) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Provide display_name, avatar_url, and/or clear_avatar.",
+      );
+    }
+    const { data, error } = await client
+      .from("creator_accounts")
+      .update(patch)
+      .eq("id", userId)
+      .select("id, display_name, avatar_url")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (data === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Creator account not found for this user.",
+      );
+    }
+    return { profile: data, updated: true };
+  },
+);
+
+const manageAriHistory = writeTool(
+  "manage_ari_history",
+  "List Ari conversations, delete one conversation, or delete all Ari data for the signed-in operator (agent_conversations + agent_user_profile).",
+  {
+    action: {
+      type: "string",
+      enum: ["list", "delete_conversation", "delete_all"],
+    },
+    conversation_id: UUID,
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("agent_conversations")
+        .select("id, title, brand_id, created_at, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(50);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { conversations: data ?? [] };
+    }
+    if (action === "delete_conversation") {
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("agent_conversations")
+        .delete()
+        .eq("id", args.conversation_id)
+        .eq("user_id", userId)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Conversation not found or already deleted.",
+        );
+      }
+      return { conversation_id: args.conversation_id, deleted: true };
+    }
+    if (action === "delete_all") {
+      const conversationsResult = await client
+        .from("agent_conversations")
+        .delete()
+        .eq("user_id", userId)
+        .select("id");
+      if (conversationsResult.error) {
+        throw new ToolError("RPC_FAILED", conversationsResult.error.message);
+      }
+      const profileResult = await client
+        .from("agent_user_profile")
+        .delete()
+        .eq("user_id", userId)
+        .select("id");
+      if (profileResult.error) {
+        throw new ToolError("RPC_FAILED", profileResult.error.message);
+      }
+      return {
+        deleted_conversations: (conversationsResult.data ?? []).length,
+        deleted_profile: (profileResult.data ?? []).length > 0,
+        deleted_all: true,
+      };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported Ari history action");
+  },
+);
+
+const manageBusinessNotifications = writeTool(
+  "manage_business_notifications",
+  "List, mark-read, mark-all-read, or soft-delete Host business notifications (stripe.% / business.% only).",
+  {
+    action: {
+      type: "string",
+      enum: ["list", "mark_read", "mark_all_read", "soft_delete"],
+    },
+    notification_id: UUID,
+    limit: { type: "integer", minimum: 1, maximum: 50 },
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const limit = typeof args.limit === "number"
+        ? Math.min(50, Math.max(1, Math.floor(args.limit)))
+        : 50;
+      const { data, error } = await client
+        .from("notifications")
+        .select(
+          "id, brand_id, type, title, body, deep_link, read_at, created_at",
+        )
+        .eq("user_id", userId)
+        .or("type.like.stripe.%,type.like.business.%")
+        .is("deleted_at", null)
+        .is("in_app_suppressed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      const rows = data ?? [];
+      return {
+        notifications: rows,
+        unread_count: rows.filter((n) =>
+          (n as { read_at?: string | null }).read_at == null
+        ).length,
+      };
+    }
+    if (action === "mark_read") {
+      if (!isUuid(args.notification_id)) {
+        throw new ToolError("INVALID_ARGS", "notification_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", args.notification_id)
+        .eq("user_id", userId)
+        .select("id, read_at")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("INVALID_ARGS", "Notification not found.");
+      }
+      return { notification_id: data.id, read_at: data.read_at };
+    }
+    if (action === "mark_all_read") {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await client
+        .from("notifications")
+        .update({ read_at: nowIso })
+        .eq("user_id", userId)
+        .is("read_at", null)
+        .or("type.like.stripe.%,type.like.business.%")
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { marked: (data ?? []).length, read_at: nowIso };
+    }
+    if (action === "soft_delete") {
+      if (!isUuid(args.notification_id)) {
+        throw new ToolError("INVALID_ARGS", "notification_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("notifications")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", args.notification_id)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("INVALID_ARGS", "Notification not found.");
+      }
+      return { notification_id: data.id, soft_deleted: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported notification action");
+  },
+);
+
+const manageSupportInbox = writeTool(
+  "manage_support_inbox",
+  "List/get the caller's support tickets, or reply with a text message on the ticket's conversation (same Host supportService + groupChat post).",
+  {
+    action: { type: "string", enum: ["list", "get", "reply"] },
+    ticket_id: UUID,
+    content: { type: "string", minLength: 1, maxLength: 4000 },
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("support_tickets")
+        .select(
+          "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
+        )
+        .order("last_message_at", { ascending: false })
+        .limit(50);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { tickets: data ?? [] };
+    }
+    if (action === "get") {
+      if (!isUuid(args.ticket_id)) {
+        throw new ToolError("INVALID_ARGS", "ticket_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("support_tickets")
+        .select(
+          "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
+        )
+        .eq("id", args.ticket_id)
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("INVALID_ARGS", "Ticket not found or access denied.");
+      }
+      return { ticket: data };
+    }
+    if (action === "reply") {
+      if (!isUuid(args.ticket_id)) {
+        throw new ToolError("INVALID_ARGS", "ticket_id must be a uuid");
+      }
+      const content = typeof args.content === "string" ? args.content.trim() : "";
+      if (content.length < 1) {
+        throw new ToolError("INVALID_ARGS", "content is required");
+      }
+      const { data: ticket, error: ticketErr } = await client
+        .from("support_tickets")
+        .select("id, conversation_id")
+        .eq("id", args.ticket_id)
+        .maybeSingle();
+      if (ticketErr) throw new ToolError("RPC_FAILED", ticketErr.message);
+      if (ticket === null || !isUuid(ticket.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "Ticket not found or access denied.");
+      }
+      const { data: message, error: msgErr } = await client
+        .from("messages")
+        .insert({
+          conversation_id: ticket.conversation_id,
+          sender_id: userId,
+          content,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+      if (msgErr) throw new ToolError("RPC_FAILED", msgErr.message);
+      return {
+        ticket_id: ticket.id,
+        conversation_id: ticket.conversation_id,
+        message_id: message.id,
+        replied: true,
+      };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported support action");
+  },
+);
+
 // #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
 // about status + next action. Drops contactLabel (partial email/phone),
 // avatarUrl, delivery attempts, and order ids so raw PII never enters the
@@ -5283,6 +5574,10 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   manageMarketingAudiences,
   manageMarketingTemplates,
   getCampaignReport,
+  editProfileAvatar,
+  manageAriHistory,
+  manageBusinessNotifications,
+  manageSupportInbox,
   listGuestRoster,
   exportBrandPeople,
   updateAriPrefs,

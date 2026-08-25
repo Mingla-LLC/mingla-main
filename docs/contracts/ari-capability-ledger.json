@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 103,
+    "registered_tool_count": 107,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 102,
+      "registered_unverified": 106,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 5,
+      "unsupported": 1,
       "in_flight": 5
     }
   },
@@ -4777,26 +4777,31 @@
           {
             "path": "mingla-business/src/services/creatorAvatarService.ts",
             "symbol": "uploadCreatorAvatar"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const editProfileAvatar"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "edit_profile_avatar",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "edit-profile route and avatar service"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:editProfileAvatar updates creator_accounts like edit-profile"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No registered tool; file selection is separate"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.account.manage_ari_history",
@@ -4822,26 +4827,31 @@
           {
             "path": "mingla-business/src/services/agentChatService.ts",
             "symbol": "deleteAllAriData"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageAriHistory"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_ari_history",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentChatService history operations"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:manageAriHistory mirrors agentChatService history ops"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.notifications.read_manage",
@@ -4867,26 +4877,31 @@
           {
             "path": "mingla-business/src/hooks/useBusinessNotifications.ts",
             "symbol": "useBusinessNotifications"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageBusinessNotifications"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_business_notifications",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "notifications route/hook"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:manageBusinessNotifications mirrors useBusinessNotificationsInbox"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Preference update is not notification inbox parity"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.support.read_reply",
@@ -4912,26 +4927,31 @@
           {
             "path": "mingla-business/src/services/supportService.ts",
             "symbol": "listOwnSupportTickets"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageSupportInbox"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_support_inbox",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "supportService read surface"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:manageSupportInbox mirrors supportService list/get + message reply"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Create ticket does not cover inbox/detail/reply"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.analytics.orders_reconciliation",
