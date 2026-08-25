@@ -17341,7 +17341,7 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "3f768ab774097562de68ec4194ad247556fea8aafa7d1911347fbd68f2a6ae90",
+        "sourceSha256": "48b1f42708b963e9406476752f41cf3eefede9c67c7c488fc3fbd5d4e8c6b28b",
         "triggers": [
           "pull_request",
           "push"
@@ -17374,7 +17374,9 @@
           "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql",
           "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql",
           "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql",
+          "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql",
           "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
         ],

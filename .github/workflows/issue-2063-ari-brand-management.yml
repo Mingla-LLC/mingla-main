@@ -13,6 +13,8 @@ on:
       - "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql"
       - "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
+      - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
+      - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
@@ -50,6 +52,8 @@ on:
       - "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql"
       - "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
+      - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
+      - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
@@ -180,5 +184,7 @@ jobs:
           set -euo pipefail
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql

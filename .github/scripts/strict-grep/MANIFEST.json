@@ -4795,6 +4795,18 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/issue-2592-ari-cert-requirements-digest-parity.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-862-ad-token-env-server-only.mjs",
       "kind": "file",
       "enforcement": "batch:A",
