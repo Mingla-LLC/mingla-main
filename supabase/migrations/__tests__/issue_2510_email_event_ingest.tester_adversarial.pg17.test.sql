@@ -15,22 +15,22 @@ DO $$
 DECLARE
   v_brand uuid; v_user uuid; v_aud uuid; v_camp uuid; v_msg uuid;
 BEGIN
-  SELECT id INTO v_user FROM auth.users LIMIT 1;
-  IF v_user IS NULL THEN
-    INSERT INTO auth.users (id, email) VALUES (gen_random_uuid(), 'i2510@example.test')
-    RETURNING id INTO v_user;
-  END IF;
+  -- Fixture chain: brands.account_id -> creator_accounts.id -> auth.users.id.
+  -- My first cut pointed account_id straight at auth.users; the FK is
+  -- `brands_account_id_fkey REFERENCES creator_accounts(id)`, so it failed on a
+  -- baseline build. Pattern copied from issue_1014_free_publish_currency.
+  v_user := gen_random_uuid();
+  INSERT INTO auth.users (id) VALUES (v_user);
+  INSERT INTO public.creator_accounts (id) VALUES (v_user);
 
-  -- `brands.account_id` is NOT NULL. The production probe passed without this
-  -- because it reused an EXISTING campaign rather than minting a brand; CI
-  -- builds from baseline and caught the difference.
   INSERT INTO public.brands (id, account_id, name, slug)
   VALUES (gen_random_uuid(), v_user, 'i2510 brand',
           'i2510-brand-' || substr(md5(random()::text),1,8))
   RETURNING id INTO v_brand;
 
-  INSERT INTO public.marketing_audiences (id, brand_id, name, query_definition, is_system_generated)
-  VALUES (gen_random_uuid(), v_brand, 'i2510 aud',
+  -- account_id is NOT NULL here too — found by executing this, not by reading it.
+  INSERT INTO public.marketing_audiences (id, account_id, brand_id, name, query_definition, is_system_generated)
+  VALUES (gen_random_uuid(), v_user, v_brand, 'i2510 aud',
           jsonb_build_object('kind','brand_buyers','brand_id',v_brand::text), true)
   RETURNING id INTO v_aud;
 
