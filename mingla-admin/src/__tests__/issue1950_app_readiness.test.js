@@ -61,8 +61,25 @@ test("#1950 provider corrective links use the Admin external-navigation owner", 
   assert.doesNotMatch(row, /window\.open\(/);
 });
 
+// [TEST-MOD-APPROVED #2439] SC-14.1. This test read
+// `../.github/workflows/issue-1950-app-readiness-tests.yml`, which #2439 Phase 3C
+// deletes at cutover — the read happens inside the test body, so it would have
+// failed this one test rather than the file, but it would have failed
+// permanently on a correct tree. It now asserts the SAME four properties against
+// the CI registry record that actually runs the suite: no `npm run lint` leaf
+// exists; the exact `node --test src/__tests__/issue1950*.test.js` leaf exists
+// with cwd `mingla-admin`; the `npm run build` leaf exists; and all 22
+// lint-surface paths appear in the eslint leaf's argv. Nothing is loosened: each
+// property is now pinned to the leaf that owns it, which is strictly tighter
+// than matching anywhere in a YAML file.
 test("#1950 CI lints its exact Admin ownership surface without inheriting unrelated baseline debt", () => {
-  const workflow = read("../.github/workflows/issue-1950-app-readiness-tests.yml");
+  const registry = JSON.parse(read("../.github/ci-batch/MANIFEST.json"));
+  const suite = registry.suites.filter((item) => item.id === "issue-1950-app-readiness-tests");
+  assert.equal(suite.length, 1, "#1950 must be exactly one registered CI suite");
+  const leaves = suite[0].steps.flatMap((step) => (step.children ?? []).map((child) => ({
+    cwd: child.cwd ?? step.cwd ?? ".",
+    command: child.invocation?.argv?.[1] ?? "",
+  })));
   const owned = [
     "src/services/adEngineService.js",
     "src/lib/adAppReadiness.js",
@@ -87,8 +104,16 @@ test("#1950 CI lints its exact Admin ownership surface without inheriting unrela
     "src/__tests__/issue1950_app_readiness.test.js",
     "src/__tests__/issue1950_app_readiness_gate.test.js",
   ];
-  assert.doesNotMatch(workflow, /npm run lint/);
-  assert.match(workflow, /node --test src\/__tests__\/issue1950\*\.test\.js/);
-  assert.match(workflow, /npm run build/);
-  for (const relative of owned) assert.match(workflow, new RegExp(`\\s${relative.replaceAll(".", "\\.")}\\s`));
+  for (const { command } of leaves) assert.doesNotMatch(command, /npm run lint/);
+  assert.ok(
+    leaves.some(({ cwd, command }) => cwd === "mingla-admin" && /^node --test src\/__tests__\/issue1950\*\.test\.js$/.test(command)),
+    "the exact node --test leaf must run in mingla-admin",
+  );
+  assert.ok(leaves.some(({ cwd, command }) => cwd === "mingla-admin" && /^npm run build$/.test(command)), "the npm run build leaf must exist");
+  const eslint = leaves.filter(({ command }) => command.startsWith("npx eslint "));
+  assert.equal(eslint.length, 1, "exactly one eslint leaf owns the lint surface");
+  assert.equal(eslint[0].cwd, "mingla-admin");
+  const linted = eslint[0].command.slice("npx eslint ".length).split(/\s+/).filter(Boolean);
+  for (const relative of owned) assert.ok(linted.includes(relative), `lint surface lost ${relative}`);
+  assert.equal(owned.length, 22);
 });

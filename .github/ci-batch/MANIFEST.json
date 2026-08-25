@@ -8040,7 +8040,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1170",
       "setupProfile": "phase3c-deno146-node20",
@@ -8154,7 +8154,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1176",
       "setupProfile": "phase3c-deno2x-node20",
@@ -8297,7 +8297,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1178",
       "setupProfile": "phase3c-deno2x-node20",
@@ -8416,7 +8416,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1237",
       "setupProfile": "phase3c-deno146-node20",
@@ -8598,7 +8598,7 @@
           }
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1326",
       "setupProfile": "phase3c-deno146-node20",
@@ -8898,7 +8898,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1427",
       "setupProfile": "phase3c-deno2714-admin-node20",
@@ -9042,7 +9042,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1430",
       "setupProfile": "phase3c-deno2714-node20",
@@ -9292,7 +9292,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1437",
       "setupProfile": "phase3c-deno2714-node20",
@@ -9471,7 +9471,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1465",
       "setupProfile": "phase3c-deno2x-node20",
@@ -9728,7 +9728,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1637",
       "setupProfile": "phase3c-deno146-node20",
@@ -10059,7 +10059,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1950",
       "setupProfile": "phase3c-deno2x-admin-node20",
@@ -10260,7 +10260,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1999",
       "setupProfile": "phase3c-deno146-node20",
@@ -10492,7 +10492,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#2019",
       "setupProfile": "phase3c-deno146-node20",
@@ -10820,7 +10820,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#2230",
       "setupProfile": "phase3c-deno2x-app-node22",
@@ -11008,7 +11008,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#2245",
       "setupProfile": "phase3c-deno2x-node20",
@@ -11232,7 +11232,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#2321",
       "setupProfile": "phase3c-deno2x-node20",
@@ -11356,7 +11356,7 @@
           ]
         }
       ],
-      "lifecycle": "shadow-active",
+      "lifecycle": "batched-historical",
       "migrationWave": "phase3c-deno-wave",
       "ownerIssue": "#1371",
       "setupProfile": "phase3c-deno146-node20",
@@ -11836,8 +11836,8 @@
       "stem": "issue-1170-stripe-money-path-tests",
       "extension": "yml",
       "ownerIssue": "#1170",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1170-stripe-money-path-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane, not for any database dependency; migrated in Phase 3C under the reviewed Deno 1.46 execution class.",
       "workflowMetadata": {
         "sourceSha256": "b9ba4bf6dcea05d983cdced225bf441589866b8b5a59c17eca5b5c7b0a045bf7",
@@ -12124,8 +12124,8 @@
       "stem": "issue-1176-paystack-recipient-tests",
       "extension": "yml",
       "ownerIssue": "#1176",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1176-paystack-recipient-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane carrying a bare workflow_dispatch; migrated in Phase 3C under the reviewed Deno v2.x execution class.",
       "workflowMetadata": {
         "sourceSha256": "e00de06442684ebc7fee1bf61f2297f72d183a4cf113b75d8a0b950cf57e7d2f",
@@ -12217,8 +12217,8 @@
       "stem": "issue-1178-ng-split-removal-tests",
       "extension": "yml",
       "ownerIssue": "#1178",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1178-ng-split-removal-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane carrying a forward-looking glob; migrated in Phase 3C under the reviewed Deno v2.x execution class with glob semantics preserved.",
       "workflowMetadata": {
         "sourceSha256": "fa7e64e0b36cff3e07fb6621b5ad879f197104b3ba66977f433d232a185f1b52",
@@ -12512,8 +12512,8 @@
       "stem": "issue-1237-parse-falsy-amount-tests",
       "extension": "yml",
       "ownerIssue": "#1237",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1237-parse-falsy-amount-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane, not for any database dependency; migrated in Phase 3C under the reviewed Deno 1.46 execution class.",
       "workflowMetadata": {
         "sourceSha256": "44041b72158254d464d8bade467cdf0f17d1556e1be1019782f31ad3d0e0482f",
@@ -12613,8 +12613,8 @@
       "stem": "issue-1326-ng-reservation-finalize-tests",
       "extension": "yml",
       "ownerIssue": "#1326",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1326-ng-reservation-finalize-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 because its assertions embed a shell retry loop and a literal environment map; migrated in Phase 3C under the reviewed bounded-retry field and the authorised literal environment allowlist.",
       "workflowMetadata": {
         "sourceSha256": "51e435bb5dbf2038d1d4919d3f10bb1233039e239b9e0a0956474a93918fec64",
@@ -12885,8 +12885,8 @@
       "stem": "issue-1427-admin-stay-support-tests",
       "extension": "yml",
       "ownerIssue": "#1427",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1427-admin-stay-support-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as a mixed Node+Deno lane requiring an Admin dependency install; migrated in Phase 3C under the reviewed Deno v2.7.14 Admin execution class.",
       "workflowMetadata": {
         "sourceSha256": "1d04279abd5240f113d97d044f677508e3c135c207d37ddbaaca5e21a83c8434",
@@ -12937,8 +12937,8 @@
       "stem": "issue-1430-refund-replay-tests",
       "extension": "yml",
       "ownerIssue": "#1430",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1430-refund-replay-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane pinned to an exact v2.7.14 selector; migrated in Phase 3C under the reviewed Deno v2.7.14 execution class.",
       "workflowMetadata": {
         "sourceSha256": "eabc1d432805357c74c2b5f9e92d9ea4acef60752daa6f66a168342f2dbc6da8",
@@ -13037,8 +13037,8 @@
       "stem": "issue-1437-secret-bundle-compatibility-tests",
       "extension": "yml",
       "ownerIssue": "#1437",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1437-secret-bundle-compatibility-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane pinned to an exact v2.7.14 selector; migrated in Phase 3C under the reviewed Deno v2.7.14 execution class.",
       "workflowMetadata": {
         "sourceSha256": "92377118c9a06dd2002e9ed73a5a70f4ba0dbf58d80279626cbc715ace16b36b",
@@ -13355,8 +13355,8 @@
       "stem": "issue-1465-permitted-staff-authoring-pipeline-tests",
       "extension": "yml",
       "ownerIssue": "#1465",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1465-permitted-staff-authoring-pipeline-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 because its second assertion is free-form source-contract shell; migrated in Phase 3C under three reviewed typed source-contract predicates.",
       "workflowMetadata": {
         "sourceSha256": "01acdf82dfab690b1600f488b66ac920fca8fedd849131b95a0eb944fbf2ee1c",
@@ -14519,8 +14519,8 @@
       "stem": "issue-1637-discover-single-fetch-tests",
       "extension": "yml",
       "ownerIssue": "#1637",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1637-discover-single-fetch-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 because its first assertion is an embedded shell existence loop; migrated in Phase 3C under ten reviewed required-file predicates that fail loudly on absence.",
       "workflowMetadata": {
         "sourceSha256": "c58b0870e46a823068567ed9c0364c58e42ff9e34f33092bd0a3412320db9907",
@@ -16299,8 +16299,8 @@
       "stem": "issue-1950-app-readiness-tests",
       "extension": "yml",
       "ownerIssue": "#1950",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1950-app-readiness-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as a mixed Node+Deno lane requiring an Admin dependency install and carrying wildcard file selection; migrated in Phase 3C under the reviewed Deno v2.x Admin execution class.",
       "workflowMetadata": {
         "sourceSha256": "42d3ab12ecdfa9cb4706bb33c3b1efab5896e56016d34bf21b49fceb50df025f",
@@ -16887,8 +16887,8 @@
       "stem": "issue-1999-ari-provider-schema-tests",
       "extension": "yml",
       "ownerIssue": "#1999",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-1999-ari-provider-schema-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane, not for any database dependency; migrated in Phase 3C under the reviewed Deno 1.46 execution class.",
       "workflowMetadata": {
         "sourceSha256": "9071f14c7d37b853e3684dbf5d0606ea59eaad03650650affb1851acd5edcf9b",
@@ -17165,8 +17165,8 @@
       "stem": "issue-2019-ari-delegated-auth",
       "extension": "yml",
       "ownerIssue": "#2019",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2019-ari-delegated-auth.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane whose push trigger carries no branch filter; migrated in Phase 3C under the reviewed Deno 1.46 execution class with that provenance preserved.",
       "workflowMetadata": {
         "sourceSha256": "b130a3e918226819ebfd47b65c35b4009c90992a3b8e0e59aee89c3215b7704b",
@@ -18465,8 +18465,8 @@
       "stem": "issue-2230-consumer-multiday-tests",
       "extension": "yml",
       "ownerIssue": "#2230",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2230-consumer-multiday-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as a full-suite superset lane requiring an app-mobile dependency install; migrated in Phase 3C under the reviewed Deno v2.x Node 22 execution class.",
       "workflowMetadata": {
         "sourceSha256": "bfa6db45a36eec0cf1654a8948e0693a9c4ae216a3692d51180196876ec4140f",
@@ -18584,8 +18584,8 @@
       "stem": "issue-2245-declared-app-links-resolve",
       "extension": "yml",
       "ownerIssue": "#2245",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2245-declared-app-links-resolve.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an operationally-excluded lane sharing one YAML path node between its push and pull_request triggers; migrated in Phase 3C under the reviewed Deno v2.x execution class with the shared node preserved by construction.",
       "workflowMetadata": {
         "sourceSha256": "154f2ffd3be1ef874f7cd96207addbd1f75b9a2e311c1d30e80d7780db0c15f6",
@@ -19023,8 +19023,8 @@
       "stem": "issue-2321-account-deletion-tests",
       "extension": "yml",
       "ownerIssue": "#2321",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/issue-2321-account-deletion-tests.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane invoking a registered external gate directory; migrated in Phase 3C under the reviewed Deno v2.x execution class with that invocation preserved as an executed leaf.",
       "workflowMetadata": {
         "sourceSha256": "620e701f898ffcce3f52f4e8a5fab292fdcd441cd666c3ef30b2a6d5e2fcc599",
@@ -20732,8 +20732,8 @@
       "stem": "orch-1371-1372-tester-adversarial",
       "extension": "yml",
       "ownerIssue": "#1371",
-      "disposition": "shadow-active",
-      "providerWorkflow": ".github/workflows/orch-1371-1372-tester-adversarial.yml",
+      "disposition": "batched-historical",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "rationale": "Excluded from Phase 1 as an unreviewed Deno lane, not for any database dependency; migrated in Phase 3C under the reviewed Deno 1.46 execution class.",
       "workflowMetadata": {
         "sourceSha256": "d17a57b491255ae56283f1555456dc2207cae4f14c5f1b042a31c967efbcb2c0",
@@ -20873,7 +20873,7 @@
       "originInstallSteps": 3,
       "profileInstallExecutions": 4,
       "fileExistsPredicateCount": 11,
-      "lifecycle": "shadow-active"
+      "lifecycle": "batched-historical"
     }
   },
   "executionClasses": [
@@ -21798,8 +21798,8 @@
     {
       "workflow": "issue-1430-refund-replay-tests.yml",
       "ownerIssue": "#1430",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1430-refund-replay-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs"
       ],
@@ -21808,8 +21808,8 @@
     {
       "workflow": "issue-1437-secret-bundle-compatibility-tests.yml",
       "ownerIssue": "#1437",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1437-secret-bundle-compatibility-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs"
       ],
@@ -22174,8 +22174,8 @@
     {
       "workflow": "issue-1950-app-readiness-tests.yml",
       "ownerIssue": "#1950",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1950-app-readiness-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-admin/src/__tests__/issue1950_app_readiness.test.js"
       ],
@@ -22226,8 +22226,8 @@
     {
       "workflow": "issue-1999-ari-provider-schema-tests.yml",
       "ownerIssue": "#1999",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1999-ari-provider-schema-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs"
       ],
@@ -22256,8 +22256,8 @@
     {
       "workflow": "issue-2019-ari-delegated-auth.yml",
       "ownerIssue": "#2019",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2019-ari-delegated-auth.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
       ],
@@ -22384,8 +22384,8 @@
     {
       "workflow": "issue-2230-consumer-multiday-tests.yml",
       "ownerIssue": "#2230",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2230-consumer-multiday-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
@@ -22416,8 +22416,8 @@
     {
       "workflow": "issue-2321-account-deletion-tests.yml",
       "ownerIssue": "#2321",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-2321-account-deletion-tests.yml",
+      "transition": "batched-provider",
+      "providerWorkflow": ".github/workflows/ci-batch.yml",
       "referenceFiles": [
         "mingla-business/jest.config.cjs"
       ],

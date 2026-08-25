@@ -162,7 +162,15 @@ if (process.argv.includes("--self-test")) {
     [sources, withRegistry((value, suite) => { suite.runtime.deno.version = "v2.x"; })],
     [sources, withRegistry((value, suite) => { suite.runtime.deno.action = "denoland/setup-deno@v1"; })],
     [sources, withRegistry((value, suite) => { suite.expectedFiles = suite.expectedFiles.filter((item) => item !== TESTER_SUITE); })],
-    [sources, withRegistry((value, suite) => { suite.lifecycle = "batched-historical"; })],
+    // [#2439 SC-19.3] The lifecycle mutant INVERTS rather than pins. Pinned to
+    // "batched-historical" it was a mutant that could not fail at terminal —
+    // after cutover it mutated the value to what it already is, so the clause it
+    // was written to attack went green and stayed green. Inverting fires on both
+    // sides of cutover: at shadow it claims terminal while the wrapper is live,
+    // at terminal it claims shadow while the wrapper is gone.
+    [sources, withRegistry((value, suite) => {
+      suite.lifecycle = suite.lifecycle === "batched-historical" ? "shadow-active" : "batched-historical";
+    })],
   ];
   const survivors = mutations.filter(([mutatedSources, mutatedRegistry]) => check(mutatedSources, mutatedRegistry).length === 0);
   if (survivors.length) {

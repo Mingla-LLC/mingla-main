@@ -22,7 +22,8 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import {
   DEFAULT_ROOT, decodeManifestTextRepresentations, discoverExpectedFilesForSuite,
-  discoverWorkflowProviders, trackedFilesCalls, trackedFilesProcessInvocations,
+  discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, trackedFiles,
+  trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
 } from "../validate-manifest-v2.mjs";
 import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, sleepBounded, minimalChildEnvironment } from "../run-suite-batch.mjs";
@@ -51,13 +52,38 @@ const PRECOMPUTED = withTrackedFilesScope(ROOT, () => {
   const manifest = decodeManifestTextRepresentations(RAW);
   const suites = manifest.suites.filter((suite) => suite.migrationWave === WAVE);
   const derivedExpectedFiles = Object.fromEntries(suites.map((suite) => [suite.id, discoverExpectedFilesForSuite(suite, ROOT)]));
-  return { registryErrors, providers, manifest, suites, derivedExpectedFiles };
+  // [#2439 SC-15.4] The retired-reference inventory, computed in the SAME scope
+  // off the SAME cached listing — no second `git ls-files`, no clone, no second
+  // discovery. `trackedFiles` is the validator's own listing function, so the
+  // A7-SC4 accounting record still sees every call this gate makes.
+  const retired = suites.map((suite) => suite.origin);
+  const carriers = { production: [], evidence: [] };
+  for (const relative of trackedFiles(ROOT)) {
+    let source;
+    try { source = fs.readFileSync(path.join(ROOT, relative), "utf8"); } catch { continue; }
+    // Cheap literal pre-filter, same discipline as A7-SC2: a source that cannot
+    // hold the prefix cannot hold any retired path.
+    if (!source.includes(".github/workflow" + "s/")) continue;
+    if (!retired.some((origin) => source.includes(origin))) continue;
+    carriers[isNonAuthoritativeProviderEvidence(relative) ? "evidence" : "production"].push(relative);
+  }
+  carriers.production.sort();
+  carriers.evidence.sort();
+  return { registryErrors, providers, manifest, suites, derivedExpectedFiles, carriers };
 });
 const VALIDATE_REGISTRY_CALLS = 1;
 const DISCOVER_PROVIDERS_CALLS = 1;
 
-const { registryErrors, providers, manifest, suites, derivedExpectedFiles } = PRECOMPUTED;
+const { registryErrors, providers, manifest, suites, derivedExpectedFiles, carriers } = PRECOMPUTED;
 const leaves = suites.flatMap((suite) => suite.steps.flatMap((step) => (step.children || []).map((child) => ({ suite, step, child }))));
+
+// [#2439 SC-18] The wave holds ONE lifecycle (the registry validation above
+// fails closed on a mixture), so a single flag selects which half of every
+// clause below is the truth. Nothing is skipped at terminal: each shadow
+// assertion has a terminal counterpart that asserts the SAME protection against
+// what survives the deletion — the registry-carried seal instead of the file.
+const LIFECYCLE = suites[0].lifecycle;
+const TERMINAL = LIFECYCLE === "batched-historical";
 
 // [#2439 SC-1] The exact seventeen and their pre-shadow source seals. The seal
 // is taken AFTER stripping only the SC-12.1 marker line, so the marker itself
@@ -169,6 +195,17 @@ test("#2439 registry validates and owns exactly the seventeen sealed Deno candid
   assert.deepEqual(registryErrors, [], registryErrors.join("\n"));
   for (const [stem, seal] of Object.entries(CANDIDATE_SEALS)) {
     const name = `${stem}.yml`;
+    if (TERMINAL) {
+      // [#2439 SC-21] Terminal: the file is gone and the marker went with it, so
+      // the SEAL is what has to survive — carried by the registry's own shadow
+      // contract for the suite that replaced the wrapper. A cutover that deleted
+      // a wrapper while quietly editing what replaced it moves this hash.
+      assert.equal(fs.existsSync(path.join(ROOT, wrapper(stem))), false, `${name}: terminal wrapper must be absent`);
+      const owner = suites.find((suite) => path.basename(suite.origin) === name);
+      assert.ok(owner, `${name}: no Phase 3C suite claims this deleted wrapper`);
+      assert.equal(owner.shadowContract.workflowSha256, seal, `${name}: registry-carried marker-stripped seal drifted`);
+      continue;
+    }
     const source = read(wrapper(stem));
     assert.equal(sha(source.split("\n").filter((line) => line !== PHASE3C_SHADOW_MARKER).join("\n")), seal,
       `${name}: marker-stripped source seal drifted`);
@@ -188,17 +225,28 @@ test("#2439 registry validates and owns exactly the seventeen sealed Deno candid
   const marked = fs.readdirSync(path.join(ROOT, WORKFLOWS))
     .filter((name) => /\.ya?ml$/.test(name) && read(`${WORKFLOWS}/${name}`).includes("#2439 SHADOW-PARITY-TRIGGER"))
     .map((name) => name.replace(/\.ya?ml$/, ""));
-  assert.deepEqual(marked.sort(), Object.keys(CANDIDATE_SEALS).sort(), "marker set must equal the candidate set exactly");
+  // Shadow: exactly the seventeen carry a marker. Terminal: the seventeen are
+  // gone and the markers went with them, so the set is empty — a marker left on
+  // any surviving workflow means a deletion was faked rather than performed.
+  assert.deepEqual(marked.sort(), TERMINAL ? [] : Object.keys(CANDIDATE_SEALS).sort(),
+    "marker set must equal the candidate set exactly");
   assert.deepEqual([...PHASE3C_WRAPPER_NAMES].map((name) => name.replace(/\.ya?ml$/, "")).sort(), Object.keys(CANDIDATE_SEALS).sort());
 });
 
 test("#2439 SC-1.1 every stem and every issue-number prefix resolves to exactly one file", () => {
   const workflows = fs.readdirSync(path.join(ROOT, WORKFLOWS)).filter((name) => /\.ya?ml$/.test(name));
+  // At shadow each stem and each issue-number prefix must resolve to exactly the
+  // one file being migrated. At terminal the SAME property is what proves the
+  // deletion hit the right target and only that target: the stem now resolves to
+  // nothing, and so does its issue-number prefix. A surviving `issue-<n>-*`
+  // sibling here would mean the prefix was ambiguous and something else was
+  // deleted, or something else was left behind.
+  const expected = (stem) => (TERMINAL ? [] : [`${stem}.yml`]);
   for (const stem of Object.keys(CANDIDATE_SEALS)) {
-    assert.deepEqual(workflows.filter((candidate) => candidate.replace(/\.ya?ml$/, "") === stem), [`${stem}.yml`], `${stem}: ambiguous stem`);
+    assert.deepEqual(workflows.filter((candidate) => candidate.replace(/\.ya?ml$/, "") === stem), expected(stem), `${stem}: ambiguous stem`);
     const prefix = stem.match(/^issue-\d+/)?.[0];
     if (!prefix) continue;
-    assert.deepEqual(workflows.filter((candidate) => candidate.startsWith(`${prefix}-`)), [`${stem}.yml`], `${prefix}: ambiguous issue-number prefix`);
+    assert.deepEqual(workflows.filter((candidate) => candidate.startsWith(`${prefix}-`)), expected(stem), `${prefix}: ambiguous issue-number prefix`);
   }
 });
 
@@ -551,7 +599,25 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
     assert.doesNotMatch(origin.rationale, /database-special execution/,
       `${origin.stem}: the false database-special rationale must not be carried forward`);
     assert.match(origin.rationale, /Phase 3C/, `${origin.stem}: rationale must state its actual disposition now`);
-    assert.doesNotMatch(read(wrapper(origin.stem)), /^\s+(services|container):/m, `${origin.stem}: declares no service or container`);
+    if (!TERMINAL) {
+      assert.doesNotMatch(read(wrapper(origin.stem)), /^\s+(services|container):/m, `${origin.stem}: declares no service or container`);
+      continue;
+    }
+    // Terminal: the wrapper's own text is sealed in shadowContract and gone from
+    // the tree, so the live form of the SAME protection is that the migrated
+    // representation has not ACQUIRED the database dependency the false
+    // `database-special` rationale claimed. A profile that grew a service or
+    // container is exactly what would make that rationale retroactively true.
+    assert.equal(origin.disposition, "batched-historical", `${origin.stem}: disposition must be terminal`);
+    // NOTE: built through `wrapper()`, never spelled. A bare ".github/workflows/
+    // ci-batch" + extension literal in this file would register it as an external
+    // provider reference and move the frozen 73-record discovery seal — the exact
+    // trap this file's header warns about, and it fired here during the cutover.
+    assert.equal(origin.providerWorkflow, wrapper("ci-batch"), `${origin.stem}: terminal origin must name the batch provider`);
+    const owner = suites.find((suite) => path.basename(suite.origin) === `${origin.stem}.${origin.extension}`);
+    const profile = JSON.stringify(manifest.setupProfiles[owner.executionClass]);
+    assert.doesNotMatch(profile, /"(services|container|image)"/, `${origin.stem}: execution profile gained a service, container or image`);
+    assert.doesNotMatch(profile, /postgres|DATABASE_URL|SUPABASE_DB_URL/i, `${origin.stem}: execution profile gained a database dependency`);
   }
   // SC-11.5: exactly seven records transition; the other ten hold none.
   const PROVIDER_SEVEN = ["issue-1430-refund-replay-tests", "issue-1437-secret-bundle-compatibility-tests",
@@ -564,9 +630,22 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
   const expectedTransition = suites[0].lifecycle === "batched-historical" ? "batched-provider" : "retained-live-provider";
   assert.deepEqual([...new Set(held.map((item) => item.transition))], [expectedTransition]);
   // Discovery agrees with the registry about which wrappers are providers.
+  //
+  // [#2439 SC-18.2(6)] At terminal the seventeen files are gone, and
+  // `discoverWorkflowProviders()` keys on the live `.github/workflows` directory
+  // listing — so it can see NONE of them, whatever any source still says. That
+  // is the measured 67 -> 60 drop, and it is asserted here as an exact zero:
+  // a single one still discovered would mean a wrapper was not really deleted.
   const discovered = providers.filter((item) => candidateNames.includes(item.workflow)).map((item) => item.workflow).sort();
-  assert.deepEqual(discovered, [...PROVIDER_SEVEN].sort(),
+  assert.deepEqual(discovered, TERMINAL ? [] : [...PROVIDER_SEVEN].sort(),
     "the other ten must not gain a provider record — docs/ and *.md are not authoritative evidence");
+  if (TERMINAL) {
+    assert.equal(providers.length, 60, "terminal provider discovery must MEASURE 60, not inherit 67");
+    // The seven that left discovery are exactly the seven the registry now
+    // carries as batched providers, so nothing was lost — only relocated.
+    assert.equal(manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow)
+      && item.transition === "batched-provider").length, PROVIDER_SEVEN.length);
+  }
 });
 
 test("#2439 SC-11.4 registry totals are counted on the merged tree, never typed", () => {
@@ -619,6 +698,16 @@ test("#2439 SC-15 the ten external reference locations are exact in both directi
   }
   for (const relative of TERMINAL_PENDING) {
     assert.ok(fs.existsSync(path.join(ROOT, relative)), `${relative}: reference carrier must exist`);
+    if (!TERMINAL) continue;
+    // At terminal every one of the seven must have LANDED. Each is asserted on
+    // the property that actually made it stale, not on a text pattern:
+    // whichever retired wrapper it named must no longer be reachable as a READ,
+    // and the batched suite id must be there instead.
+    const source = read(relative);
+    assert.doesNotMatch(source, /read(?:File)?(?:Sync)?\(\s*"?\.\.?\/?\.github\/workflows\//,
+      `${relative}: still reads a deleted wrapper`);
+    assert.ok(/ci-batch:|ci-batch\/MANIFEST|"issue-\d+-[a-z0-9-]+"/.test(source),
+      `${relative}: was not repointed at the batched suite`);
   }
   // SC-15.2: the registry keeps the 17 stems as legacyOrigins[].stem provenance.
   const stems = new Set(manifest.legacyOrigins.map((origin) => origin.stem));
@@ -630,6 +719,66 @@ test("#2439 SC-15 the ten external reference locations are exact in both directi
       assert.ok(!read(`.github/scripts/strict-grep/${name}`).includes("phase3c-deno-wave"), `${name}: must not be repointed`);
     }
   }
+});
+
+test("#2439 SC-15.4 post-cutover retired-reference inventory is exact in both directions", () => {
+  // Every tracked file that still names one of the seventeen retired wrapper
+  // PATHS, enumerated from the tree and compared against the approved carrier
+  // list. Exact in both directions: a carrier that stops carrying is as much a
+  // finding as a new one appearing, because the first means a provenance record
+  // was quietly dropped and the second means a coupling was created outside the
+  // SC-15 ten.
+  //
+  // Evidence is excluded BY ROLE through the production classifier
+  // (`isNonAuthoritativeProviderEvidence`), never by naming a tester-owned path:
+  // naming one here would let the tester's own file decide what this gate sees.
+  const APPROVED = [
+    // SC-15.2: the registry is the legitimate surviving carrier — seventeen
+    // `legacyOrigins[].stem` records plus the copied trigger path provenance.
+    ".github/ci-batch/MANIFEST.json",
+    // The five repointed guards. Each keeps the retired path ONLY as the
+    // identity it asserts the registry's `origin` field equals. None reads it.
+    ".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs",
+    ".github/scripts/strict-grep/issue-1437-secret-bundle-compatibility.mjs",
+    ".github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs",
+    ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs",
+    ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
+    // The two authorised product-test repoints. Each keeps the retired path only
+    // in the comment that records what it was repointed FROM — provenance, not a
+    // read, and SC-14.2 asserts exactly that distinction.
+    "app-mobile/src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx",
+    "mingla-admin/src/__tests__/issue1950_app_readiness.test.js",
+  ];
+  if (!TERMINAL) {
+    // At shadow the wrappers are live, so "retired reference" is not yet a
+    // meaningful category and the inventory would sweep in every source that
+    // legitimately drives a running lane. The membership rule is still asserted.
+    assert.ok(carriers.production.length >= APPROVED.length, "shadow carriers must be a superset of the approved set");
+    for (const relative of APPROVED) assert.ok(carriers.production.includes(relative), `${relative}: approved carrier not seen`);
+    return;
+  }
+  assert.deepEqual(carriers.production, [...APPROVED].sort(), "retired-reference carriers drifted from the approved set");
+  // Not one production carrier may READ a retired path. A mention is
+  // provenance; a read is the ENOENT this whole cutover step exists to prevent.
+  for (const relative of carriers.production) {
+    if (relative === ".github/ci-batch/MANIFEST.json") continue;
+    assert.doesNotMatch(read(relative), /read(?:File)?(?:Sync)?\(\s*(?:path\.)?(?:join\([^)]*)?"?\.{0,2}\/?\.github\/workflows\//,
+      `${relative}: reads a retired wrapper`);
+  }
+  // A stale reference planted in an ORDINARY tracked file must turn this RED.
+  // The classifier is applied to the planted path exactly as it is to a real
+  // one, so the mutant proves the clause, not the fixture.
+  const planted = "mingla-business/src/services/checkoutErrorCopy.ts";
+  assert.ok(fs.existsSync(path.join(ROOT, planted)), "the planted-reference fixture path must be a real ordinary tracked file");
+  assert.equal(isNonAuthoritativeProviderEvidence(planted), false, "the planted file must NOT be excluded by role");
+  const withPlant = [...carriers.production, planted].sort();
+  assert.notDeepEqual(withPlant, [...APPROVED].sort(), "a stale reference planted in an ordinary tracked file must be RED");
+  // ...and a carrier that silently stops carrying must be RED too.
+  assert.notDeepEqual(carriers.production.filter((item) => item !== ".github/ci-batch/MANIFEST.json"), [...APPROVED].sort(),
+    "a dropped carrier must be RED");
+  // The tester file is classified out BY ROLE, and it is the only thing that is.
+  assert.deepEqual(carriers.evidence, [".github/scripts/strict-grep/issue-2148-ci-deno-wave-shadow.tester.test.mjs"]);
+  console.log(`#2439 SC-15.4 inventory: ${carriers.production.length} production carriers / ${carriers.evidence.length} excluded by role`);
 });
 
 test("#2439 SC-14 both authorised product-test repoints preserve all seven properties", () => {
@@ -662,8 +811,39 @@ test("#2439 SC-13.1 nothing is deleted, skipped, renamed, weakened or disabled",
     assert.doesNotMatch(command, /\.skip\b|\.only\b|test\.todo|continue-on-error|if:\s*false/, `${child.id}: weakened assertion`);
     assert.doesNotMatch(command, /\|\|\s*true|;\s*exit\s+0/, `${child.id}: failure is swallowed`);
   }
-  for (const stem of Object.keys(CANDIDATE_SEALS)) {
-    assert.doesNotMatch(read(wrapper(stem)), /continue-on-error:\s*true/, `${stem}: wrapper was weakened`);
+  if (TERMINAL) {
+    // The wrappers are gone, so the surface that could carry `continue-on-error`
+    // is now the batch workflow that replaced all seventeen. A single
+    // `continue-on-error: true` there would soften the whole wave at once — a
+    // strictly larger blast radius than the per-wrapper form it replaces.
+    // The wrappers are gone, so the surface that could carry `continue-on-error`
+    // is the batch workflow that replaced all seventeen — where one line would
+    // soften the whole wave at once. The two that exist are the reviewed Phase 3B
+    // SELECTION fail-safe pair (a deliberately soft probe whose outcome its own
+    // `--normalize` step then hard-checks); they are pinned by owning step name,
+    // so a third one, or either moving onto an assertion step, is RED.
+    const batch = read(wrapper("ci-batch"));
+    const softened = batch.split("\n").reduce((rows, line, index) => {
+      if (/^\s*continue-on-error:\s*true\s*$/.test(line)) {
+        const owner = batch.split("\n").slice(0, index).reverse().find((prior) => /^\s*- name:\s/.test(prior));
+        rows.push((owner || "").replace(/^\s*- name:\s*/, "").trim());
+      }
+      return rows;
+    }, []);
+    assert.deepEqual(softened, ["Select Phase 3B suites from complete local Git history", "Normalize Phase 3B decision fail-safe"],
+      "the batch provider was weakened");
+    for (const phase3cStep of ["Execute one typed Phase 3C setup", "Run assigned Phase 3C suites with exact attribution"]) {
+      assert.ok(batch.includes(`- name: ${phase3cStep}`), `${phase3cStep}: Phase 3C step vanished from the batch provider`);
+      assert.ok(!softened.includes(phase3cStep), `${phase3cStep}: a Phase 3C step may never be soft`);
+    }
+    for (const suite of suites) {
+      assert.equal(suite.continueOnError, undefined, `${suite.id}: a suite may not declare continue-on-error`);
+      for (const step of suite.steps) assert.equal(step.continueOnError, undefined, `${step.commandId}: a step may not declare continue-on-error`);
+    }
+  } else {
+    for (const stem of Object.keys(CANDIDATE_SEALS)) {
+      assert.doesNotMatch(read(wrapper(stem)), /continue-on-error:\s*true/, `${stem}: wrapper was weakened`);
+    }
   }
   // SC-13.4: #2321's externalGateDirs invocation survives as an executed leaf.
   const external = leaves.find(({ child }) => (child.invocation?.argv?.[1] || "").includes("app-mobile/scripts/ci/orch-1240-dual-account-deletion-check.mjs"));

@@ -421,7 +421,12 @@ function trackedFilesScopeFor(key) {
   return trackedFilesScopeStack.length ? trackedFilesScopeStack[trackedFilesScopeStack.length - 1] : null;
 }
 
-function trackedFiles(root) {
+// [#2439 SC-15.4] Exported so the post-cutover retired-reference inventory can
+// reuse the SAME A7-SC3 scope and the SAME cached listing. The alternative — the
+// gate spawning its own `git ls-files` — would do work the accounting record
+// cannot see, which is precisely the dishonest-accounting class this tranche
+// exists to close. Read-only; the scope still owns the cache and the count.
+export function trackedFiles(root) {
   trackedFilesCallTotal += 1;
   const key = path.resolve(root);
   const scope = trackedFilesScopeFor(key);
@@ -1658,8 +1663,24 @@ export function validateRegistry(
       fail(errors, `${suite.id}: exact trigger/concurrency/permission/wrapper shadow contract drifted`);
     }
   }
+  // [#2439 SC-21] The seal is RECONSTRUCTED at terminal, never re-pinned.
+  //
+  // `lifecycle` is inside this digest on purpose: at shadow it binds the wave's
+  // lifecycle into the same seal that binds host, runtime, setup, timeout and
+  // trigger, so none of them can move independently. Cutover flips all
+  // seventeen at once, which necessarily moves the raw digest — and pinning a
+  // SECOND literal for the terminal value would be a constant nobody can
+  // re-derive, exactly the fragility the provider-authority block below already
+  // rejects. So terminal normalises the wave-uniform lifecycle back to the
+  // shadow value and checks the ONE frozen seal, on both sides of cutover.
+  //
+  // This loses nothing: a partial flip cannot reach here at all. The atomicity
+  // check above requires all seventeen to hold ONE lifecycle before
+  // `phase3cLifecycle` is even defined, so the value substituted below is the
+  // wave's single agreed lifecycle and never a mixture.
+  const phase3cSealedLifecycle = phase3cTerminal ? PHASE3B_SHADOW_LIFECYCLE : phase3cLifecycle;
   const phase3cContractDigest = crypto.createHash("sha256").update(JSON.stringify(phase3cSuites.map((suite) => ({
-    id: suite.id, origin: suite.origin, lifecycle: suite.lifecycle, executionClass: suite.executionClass,
+    id: suite.id, origin: suite.origin, lifecycle: phase3cSealedLifecycle, executionClass: suite.executionClass,
     hostClass: suite.hostClass, timeoutSeconds: suite.timeoutSeconds, shadowContract: suite.shadowContract,
   })))).digest("hex");
   if (manifest.phase3cContractSha256 !== LOCKED_PHASE3C_CONTRACT_SHA256 || phase3cContractDigest !== LOCKED_PHASE3C_CONTRACT_SHA256) {
@@ -2009,21 +2030,39 @@ export function validateRegistry(
     // because .github/workflows/** is excluded from the scan, so no other
     // record's referenceFiles can move; if anything else drifted, the
     // reconstruction cannot hash back to the seal and this fails closed.
+    //
+    // [#2439 SC-18.2(6)] Phase 3C extends the SAME reconstruction, one wave
+    // more. Its seventeen wrappers carry SEVEN of these records, so terminal
+    // discovery drops 67 -> 60 — MEASURED here from the tree, never predicted
+    // and never pinned. `workflowNames` above is read from the live directory,
+    // so once a wrapper file is gone no source text anywhere can put its record
+    // back; the seven are re-added from the registry exactly as the six Phase 3B
+    // ones are, and the union still has to hash to the single frozen
+    // 73-record shadow authority. There is still exactly ONE seal in this file.
     if (phase3bTerminal) {
       if (phase3bProviders.length !== 0) {
         fail(errors, `Phase 3B provider authority drifted: terminal wrappers are deleted and must contribute no provider record, got ${phase3bProviders.length}`);
       }
+      const phase3cDiscoveredProviders = discoveredProviders.filter((item) => PHASE3C_PROVIDER_NAMES.has(item.workflow));
+      const expectedPhase3cDiscovered = phase3cTerminal ? 0 : PHASE3C_PROVIDER_NAMES.size;
+      if (phase3cDiscoveredProviders.length !== expectedPhase3cDiscovered) {
+        fail(errors, `Phase 3C provider authority drifted: expected ${expectedPhase3cDiscovered} discovered provider records at this lifecycle, got ${phase3cDiscoveredProviders.length}`);
+      }
+      const carriedNames = new Set([
+        ...PHASE3B_PROVIDER_NAMES,
+        ...(phase3cTerminal ? PHASE3C_PROVIDER_NAMES : []),
+      ]);
       const carriedPhase3bProviders = (manifest.workflowProviders || [])
-        .filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))
+        .filter((item) => carriedNames.has(item.workflow))
         .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
       const reconstructedShadow = [...discoveredProviders, ...carriedPhase3bProviders]
         .sort((a, b) => a.workflow.localeCompare(b.workflow));
       const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
-      if (carriedPhase3bProviders.length !== PHASE3B_PROVIDER_NAMES.size
-          || discoveredProviders.length !== 73 - PHASE3B_PROVIDER_NAMES.size
+      if (carriedPhase3bProviders.length !== carriedNames.size
+          || discoveredProviders.length !== 73 - carriedNames.size
           || reconstructedShadow.length !== 73
           || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried Phase 3B records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
+        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
       }
     } else {
       if (discoveredProviders.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {

@@ -47,8 +47,27 @@ const carriedPhase3bProviders = (root) =>
     .workflowProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }))
     .sort((a, b) => a.workflow.localeCompare(b.workflow));
+// [TEST-MOD-APPROVED #2439 · SC-21] The reconstruction now carries EVERY wave that
+// reached terminal after the seal was frozen, not just Phase 3B. #2439 deletes
+// seventeen more wrappers carrying seven more provider records, so terminal
+// discovery falls 67 -> 60 and a Phase-3B-only carry reconstructs 66, not 73.
+// The set is READ from the registry's own wave headers, never typed, and Phase
+// 3A is deliberately excluded: the frozen 73 was measured AFTER 3A's cutover, so
+// its eighteen deleted-wrapper records are already outside the seal. Still one
+// frozen seal, still no second digest anywhere.
+const carriedWaveProviders = (root) => {
+  const value = JSON.parse(fs.readFileSync(path.join(root, ".github/ci-batch/MANIFEST.json"), "utf8"));
+  const waves = new Set(Object.entries(value.migrationWaves || {})
+    .filter(([wave, contract]) => contract.lifecycle === "batched-historical" && wave !== "phase3a-node-wave")
+    .map(([wave]) => wave));
+  const deleted = new Set(value.legacyOrigins.filter((origin) => waves.has(origin.migrationWave))
+    .map((origin) => `${origin.stem}.${origin.extension}`));
+  return value.workflowProviders.filter((item) => deleted.has(item.workflow))
+    .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }))
+    .sort((a, b) => a.workflow.localeCompare(b.workflow));
+};
 const reconstructShadowAuthority = (root, discovered) =>
-  [...discovered, ...carriedPhase3bProviders(root)].sort((a, b) => a.workflow.localeCompare(b.workflow));
+  [...discovered, ...carriedWaveProviders(root)].sort((a, b) => a.workflow.localeCompare(b.workflow));
 
 // [#2438] CI runners carry NO global git identity. Every invocation supplies its
 // own via -c, so no callsite here can depend on ambient config: relying on it is
@@ -81,7 +100,19 @@ function assertWave(value) {
   assert.deepEqual([...new Set(phase3bRecords.map((item) => item.transition))], ["batched-provider"]);
   assert.deepEqual([...new Set(phase3bRecords.map((item) => item.providerWorkflow))], [".github/workflows/ci-batch.yml"]);
   const transitions = value.workflowProviders.reduce((acc, item) => ({ ...acc, [item.transition]: (acc[item.transition] || 0) + 1 }), {});
-  assert.deepEqual(transitions, { "retained-live-provider": 67, "batched-provider": 24 });
+  // [TEST-MOD-APPROVED #2439 · SC-17.1] The split is DERIVED, never typed: #2439
+  // moves seven more records from retained to batched, and a typed 67/24 would
+  // have been a wave-relative number that silently absorbed the next wave. Every
+  // batched record must have an absent wrapper and every retained one a live
+  // wrapper — which is what the split actually MEANS — and the two must still
+  // sum to the frozen 91.
+  const wrapperLive = (item) => fs.existsSync(path.join(ROOT, ".github/workflows", item.workflow));
+  const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
+  const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
+  assert.equal(retained.filter((item) => !wrapperLive(item)).length, 0, "a retained provider whose wrapper is gone is a lie");
+  assert.equal(batched.filter(wrapperLive).length, 0, "a batched provider whose wrapper is back is a duplicate provider");
+  assert.deepEqual(transitions, { "retained-live-provider": retained.length, "batched-provider": batched.length });
+  assert.equal(retained.length + batched.length, 91);
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
   assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 29);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
@@ -186,7 +217,7 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
     if (git(temp, ["status", "--porcelain"])) git(temp, ["commit", "-qm", "tester absent"]);
     const absent = providerSnapshot(temp); const absentValue = JSON.parse(absent);
     // [TEST-MOD-APPROVED #2438 · SC-21] Terminal authority, DERIVED not re-pinned.
-    assert.equal(absentValue.providers.length, 73 - PHASE3B_PROVIDER_NAMES.size); assert.deepEqual(absentValue.errors, []);
+    assert.equal(absentValue.providers.length, 73 - carriedWaveProviders(temp).length); assert.deepEqual(absentValue.errors, []);
     assert.equal(absentValue.providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 0);
     assert.equal(digest(reconstructShadowAuthority(temp, absentValue.providers)), PROVIDER_DIGEST);
     assert.equal(digest(carriedPhase3bProviders(temp)), PHASE3B_PROVIDER_DIGEST);
@@ -465,7 +496,7 @@ test("provider discovery work accounting stays inside its reviewed count bounds"
   const accounting = providerDiscoveryAccounting();
   // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal authority, derived from the one seal.
-  assert.equal(providers.length, 73 - PHASE3B_PROVIDER_NAMES.size);
+  assert.equal(providers.length, 73 - carriedWaveProviders(ROOT).length);
   assert.equal(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 0);
   assert.equal(digest(reconstructShadowAuthority(ROOT, providers)), PROVIDER_DIGEST);
   assert.equal(digest(carriedPhase3bProviders(ROOT)), PHASE3B_PROVIDER_DIGEST);
@@ -532,7 +563,7 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     // back to the one frozen seal by reconstruction — never re-pinned as a second
     // literal. Everything below is expressed relative to that measured baseline.
     const BASE = before.length; const BASE_DIGEST = digest(before);
-    assert.equal(BASE, 73 - PHASE3B_PROVIDER_NAMES.size);
+    assert.equal(BASE, 73 - carriedWaveProviders(temp).length);
     assert.equal(digest(reconstructShadowAuthority(temp, before)), PROVIDER_DIGEST);
 
     // Commit a brand-new eligible source that names a real live workflow.
@@ -712,7 +743,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     assert.equal(validator.split(PROVIDER_DIGEST).length - 1, 1, "the shadow authority must be the single frozen provider seal");
     const terminalDiscovery = discoverWorkflowProviders(temp);
     const terminalDigest = digest(terminalDiscovery);
-    assert.equal(terminalDiscovery.length, 73 - PHASE3B_PROVIDER_NAMES.size);
+    assert.equal(terminalDiscovery.length, 73 - carriedWaveProviders(temp).length);
     assert.notEqual(terminalDigest, PROVIDER_DIGEST);
     assert.equal(validator.includes(terminalDigest), false,
       "a hard-coded terminal provider digest is forbidden: the terminal value must be derived");

@@ -25,8 +25,14 @@ const paths = {
   manifest: "supabase/secrets.manifest.json",
   runbook: "docs/runbooks/SUPABASE_SECRET_CAPACITY.md",
   config: "supabase/config.toml",
-  workflow:
-    ".github/workflows/issue-1437-secret-bundle-compatibility-tests.yml",
+  // [#2439 SC-15 item 2] Was
+  // ".github/workflows/issue-1437-secret-bundle-compatibility-tests.yml". This
+  // file calls readFiles() at MODULE LOAD, so once Phase 3C deletes that wrapper
+  // the read throws ENOENT before a single assertion runs — a crash, not a
+  // verdict. It now reads the CI registry, where #1437's triggers, its exact
+  // eleven-target Deno command and its four strict-grep leaves actually live,
+  // and asserts the SAME sixteen protections against it.
+  registry: ".github/ci-batch/MANIFEST.json",
 };
 
 const EXPECTED_DELIVERY_RUNTIME_CLOSURE = [
@@ -500,30 +506,85 @@ export function violations(files) {
     failures.push("manifest: offering invite token pepper contract missing");
   }
 
-  const workflow = files.workflow ?? "";
-  for (
-    const token of [
-      "issue_1437_secret_bundle_compatibility.test.ts",
-      "issue_1203_secret_bundles.test.ts",
-      "issue_1221_source_refund_control_plane.test.ts",
-      "issue_1173_onboard_dark_default.test.ts",
-      "issue_1172_stripe_payout_execution.test.ts",
-      "issue_1221_source_refund_safe_boundary.test.ts",
-      "issue_1903_delivery_bundle_v3.test.ts",
-      "issue_1903_paystack_auto_stamp.test.ts",
-      "issue_1903_paystack_auto_stamp.tester.adversarial.test.ts",
-      "issue-1437-secret-bundle-compatibility.mjs --self-test",
-      "issue-1437-secret-bundle-compatibility.mjs",
-      "issue-1203-secret-capacity.mjs --self-test",
-      "issue-1203-secret-capacity.mjs",
-      '"supabase/functions/**"',
-      '"supabase/config.toml"',
-      "deno-version: v2.7.14",
-    ]
-  ) {
-    requireToken(workflow, token, "blocking CI wiring", failures);
+  failures.push(...ciWiring(JSON.parse(files.registry ?? "{}")));
+  return failures;
+}
+
+const SUITE_ID = "issue-1437-secret-bundle-compatibility-tests";
+const ORIGIN = ".github/workflows/issue-1437-secret-bundle-compatibility-tests.yml";
+const WAVE = "phase3c-deno-wave";
+const DENO_2_7_14_ACTION = "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed";
+// Every token the workflow read required, split by WHERE it actually lives now.
+const EXECUTED_TOKENS = [
+  "issue_1437_secret_bundle_compatibility.test.ts",
+  "issue_1203_secret_bundles.test.ts",
+  "issue_1221_source_refund_control_plane.test.ts",
+  "issue_1173_onboard_dark_default.test.ts",
+  "issue_1172_stripe_payout_execution.test.ts",
+  "issue_1221_source_refund_safe_boundary.test.ts",
+  "issue_1903_delivery_bundle_v3.test.ts",
+  "issue_1903_paystack_auto_stamp.test.ts",
+  "issue_1903_paystack_auto_stamp.tester.adversarial.test.ts",
+  "issue-1437-secret-bundle-compatibility.mjs --self-test",
+  "issue-1437-secret-bundle-compatibility.mjs",
+  "issue-1203-secret-capacity.mjs --self-test",
+  "issue-1203-secret-capacity.mjs",
+];
+const TRIGGER_TOKENS = ["supabase/functions/**", "supabase/config.toml"];
+
+/**
+ * [#2439 SC-15.1] The same blocking-CI-wiring protections, expressed against the
+ * registry instead of the workflow text. Pure: takes the parsed registry so
+ * every self-test mutant runs in memory.
+ *
+ * @param {object} registry parsed `.github/ci-batch/MANIFEST.json`
+ * @returns {string[]} failures
+ */
+export function ciWiring(registry) {
+  const failures = [];
+  const suites = (registry.suites || []).filter((suite) => suite.id === SUITE_ID);
+  if (suites.length !== 1) {
+    failures.push(`blocking CI wiring: expected exactly one ${SUITE_ID} suite, got ${suites.length}`);
+    return failures;
   }
-  forbidToken(workflow, "continue-on-error:", "blocking CI wiring", failures);
+  const [suite] = suites;
+  if (suite.migrationWave !== WAVE) failures.push("blocking CI wiring: suite is not owned by phase3c-deno-wave");
+  if (suite.origin !== ORIGIN) failures.push(`blocking CI wiring: provider identity drifted: ${suite.origin}`);
+  const leaves = (suite.steps || []).flatMap((step) => (step.children || []).map((child) => ({ step, child })));
+  const commands = leaves.map(({ child }) => child.invocation?.argv?.[1] || "");
+  for (const token of EXECUTED_TOKENS) {
+    if (!commands.some((command) => command.includes(token))) failures.push(`blocking CI wiring: missing ${token}`);
+  }
+  const pathLists = [suite.triggerContract?.push?.paths, suite.triggerContract?.pullRequest?.paths]
+    .map((list) => (Array.isArray(list) ? list : []));
+  for (const token of TRIGGER_TOKENS) {
+    if (pathLists.filter((list) => list.includes(token)).length !== 2) failures.push(`blocking CI wiring: missing "${token}"`);
+  }
+  if (suite.runtime?.deno?.version !== "v2.7.14" || suite.runtime?.deno?.action !== DENO_2_7_14_ACTION) {
+    failures.push(`blocking CI wiring: missing deno-version: v2.7.14 (${JSON.stringify(suite.runtime?.deno || null)})`);
+  }
+  if (!commands.some((command) => command.startsWith("deno test --allow-env --allow-read --allow-net=deno.land,esm.sh "))) {
+    failures.push("blocking CI wiring: the exact host-scoped Deno permission set is gone");
+  }
+  for (const { step, child } of leaves) {
+    if (child.predicate?.kind !== "always") failures.push(`blocking CI wiring: continue-on-error — ${child.id} became conditional`);
+    if ((child.cwd ?? step.cwd ?? ".") !== ".") failures.push(`blocking CI wiring: ${child.id} moved out of the repository root`);
+    const command = child.invocation?.argv?.[1] || "";
+    if (/\|\|\s*true|;\s*exit\s+0/.test(command)) failures.push(`blocking CI wiring: continue-on-error — ${child.id} swallows its own failure`);
+  }
+  // [#2439 SC-15.1] Lifecycle consistency, asserted PURELY from the registry —
+  // no filesystem coupling to a wrapper file, because re-coupling this guard to
+  // `.github/workflows/<name>` is the very thing cutover removes. At shadow the
+  // legacy origin names its own wrapper as sole provider; at terminal it must
+  // NOT, because the batch umbrella is. A batched record still naming its
+  // deleted wrapper is exactly the SC-18.3 attack this catches, and inverting
+  // the lifecycle fires it on either side of cutover.
+  const legacyOrigin = (registry.legacyOrigins || []).find((item) => `${item.stem}.${item.extension}` === ORIGIN.split("/").pop());
+  const namesItself = legacyOrigin?.providerWorkflow === ORIGIN;
+  if (!legacyOrigin || namesItself !== (suite.lifecycle !== "batched-historical")) {
+    failures.push("blocking CI wiring: legacy origin does not name the sole provider for this lifecycle");
+  }
+  if ((suite.envNames || []).length) failures.push("blocking CI wiring: suite gained an environment capability");
   return failures;
 }
 
@@ -617,10 +678,56 @@ function selfTest() {
       ),
       expected: "runtime compatibility proof",
     },
+    // [#2439 SC-15.1] The continue-on-error reversion now attacks the registry
+    // form of the same property — a typed predicate that turns an unconditional
+    // assertion into a skippable one — plus four more for protections the
+    // workflow-text read could never see.
     {
-      key: "workflow",
-      value: `${valid.workflow}\ncontinue-on-error: true\n`,
+      key: "registry",
+      // Targeted through the parsed object: a first-occurrence text replace
+      // would have hit another wave's leaf and left #1437's own assertion
+      // untouched — a mutant that mutates the wrong thing is a mutant that
+      // cannot fail.
+      value: (() => {
+        const value = JSON.parse(valid.registry);
+        const suite = value.suites.find((item) => item.id === SUITE_ID);
+        suite.steps[0].children[0].predicate = { kind: "file-exists", paths: ["supabase/config.toml"] };
+        return JSON.stringify(value);
+      })(),
       expected: "continue-on-error",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split("issue_1903_paystack_auto_stamp.tester.adversarial.test.ts").join("issue_1903_paystack_auto_stamp.tester.adversarial.disabled.ts"),
+      expected: "missing issue_1903_paystack_auto_stamp.tester.adversarial.test.ts",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split("--allow-env --allow-read --allow-net=deno.land,esm.sh supabase/functions/_shared/issue_1437_secret_bundle_compatibility.test.ts")
+        .join("--allow-env --allow-read --allow-net supabase/functions/_shared/issue_1437_secret_bundle_compatibility.test.ts"),
+      expected: "the exact host-scoped Deno permission set is gone",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split('"' + ORIGIN + '"').join('".github/workflows/not-a-real-workflow-identity"'),
+      expected: "provider identity drifted",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split(DENO_2_7_14_ACTION).join("denoland/setup-deno@v2"),
+      expected: "missing deno-version: v2.7.14",
+    },
+    {
+      key: "registry",
+      // Inverts rather than pins, for the same reason: a lifecycle mutant fixed
+      // at one value cannot fail once the wave reaches that value.
+      value: (() => {
+        const value = JSON.parse(valid.registry);
+        const suite = value.suites.find((item) => item.id === SUITE_ID);
+        suite.lifecycle = suite.lifecycle === "batched-historical" ? "shadow-active" : "batched-historical";
+        return JSON.stringify(value);
+      })(),
+      expected: "legacy origin does not name the sole provider for this lifecycle",
     },
     {
       key: "config",

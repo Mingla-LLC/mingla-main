@@ -84,8 +84,24 @@ test("#2437 terminal registry is exactly 31 historical origins / 32 typed varian
   const phase3bOrigins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical"
     && origin.migrationWave === "phase3b-postgres-wave");
   assert.equal(phase3bOrigins.length, 12);
-  assert.equal(value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical").length,
-    origins.length + phase3bOrigins.length);
+  // [TEST-MOD-APPROVED #2439 · SC-17.1] The cross-wave total is DERIVED from the
+  // registry's own wave headers, never typed. #2439's cutover flips seventeen
+  // more origins to batched-historical, and the typed subtrahend that stood here
+  // (43) was already the exact defect SC-17.1 bans: a wave-relative number that
+  // silently absorbs the next wave's work. Every terminal origin must now be
+  // owned by a wave whose header declares that wave terminal, and the total is
+  // the sum over exactly those waves — which stays honest when Phase 3D flips.
+  const historicalOrigins = value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical");
+  for (const origin of historicalOrigins) {
+    assert.equal(value.migrationWaves?.[origin.migrationWave]?.lifecycle, "batched-historical",
+      `${origin.stem}.${origin.extension}: terminal origin outside a terminal wave header`);
+  }
+  const terminalWaves = Object.entries(value.migrationWaves)
+    .filter(([, contract]) => contract.lifecycle === "batched-historical").map(([wave]) => wave);
+  assert.deepEqual([...terminalWaves].sort(), ["phase3a-node-wave", "phase3b-postgres-wave", "phase3c-deno-wave"]);
+  assert.equal(historicalOrigins.length, terminalWaves.reduce((sum, wave) => sum
+    + value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical"
+      && origin.migrationWave === wave).length, 0));
   assert.equal(value.legacyOrigins.length, 200);
   assert.equal(value.suites.length, 84);
   assert.equal(value.workflowProviders.length, 91);
@@ -134,8 +150,21 @@ test("terminal source wave retains all 107 exact assertion commands with wrapper
   assert.equal(suites.flatMap((suite) => suite.steps).length, 107);
   assert.equal(phase3bSuites.length, 12);
   assert.equal(phase3bSuites.flatMap((suite) => suite.steps).length, 36);
-  assert.equal(value.suites.filter((suite) => suite.lifecycle === "batched-historical").flatMap((suite) => suite.steps).length, 143);
-  assert.equal(names.length, 43);
+  // [TEST-MOD-APPROVED #2439 · SC-17.1] Both cross-wave totals are DERIVED per
+  // wave from the registry's own headers instead of typed. #2439 adds a third
+  // terminal wave (17 suites / 46 outers), and the typed 143 and 43 would have
+  // gone stale the moment it flipped — the same wave-relative-subtrahend defect
+  // SC-17.1 bans. Each wave's own frozen count is still pinned above.
+  const terminalWaves = Object.entries(value.migrationWaves)
+    .filter(([, contract]) => contract.lifecycle === "batched-historical").map(([wave]) => wave);
+  assert.deepEqual([...terminalWaves].sort(), ["phase3a-node-wave", "phase3b-postgres-wave", "phase3c-deno-wave"]);
+  const outersInWave = (wave) => value.suites.filter((suite) => suite.lifecycle === "batched-historical"
+    && suite.migrationWave === wave).flatMap((suite) => suite.steps).length;
+  assert.equal(value.suites.filter((suite) => suite.lifecycle === "batched-historical").flatMap((suite) => suite.steps).length,
+    terminalWaves.reduce((sum, wave) => sum + outersInWave(wave), 0));
+  assert.equal(names.length, terminalWaves.reduce((sum, wave) => sum
+    + value.legacyOrigins.filter((origin) => origin.disposition === "batched-historical"
+      && origin.migrationWave === wave).length, 0));
   assert.equal(names.filter((name) => fs.existsSync(path.join(ROOT, ".github/workflows", name))).length, 0);
 });
 

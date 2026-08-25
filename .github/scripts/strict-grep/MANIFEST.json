@@ -4518,7 +4518,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2230-consumer-multiday-tests.yml",
+      "enforcement": "ci-batch:issue-2230-consumer-multiday-tests",
       "invocation": "node",
       "modes": [
         "self-test",

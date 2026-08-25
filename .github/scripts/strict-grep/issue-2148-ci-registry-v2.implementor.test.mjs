@@ -106,11 +106,29 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const phase3bWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3b-postgres-wave");
   const phase3bProviders = manifest.workflowProviders.filter((item) =>
     phase3bWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
+  // [TEST-MOD-APPROVED #2439 · SC-17.1] Phase 3C deletes SEVENTEEN more wrappers
+  // carrying SEVEN more provider records, so the subtrahend is no longer one
+  // wave. It is now every wave whose own header declares it terminal AFTER the
+  // Phase 3A baseline the 146 was measured at — read from the registry, never
+  // typed, so Phase 3D moves this assertion instead of silently agreeing with
+  // it. Each wave's own contribution is still pinned separately below, so a wave
+  // that quietly changed size cannot hide inside the combined subtraction.
+  const terminalWavesAfter3a = Object.entries(manifest.migrationWaves)
+    .filter(([wave, contract]) => contract.lifecycle === "batched-historical" && wave !== "phase3a-node-wave")
+    .map(([wave]) => wave);
+  assert.deepEqual([...terminalWavesAfter3a].sort(), ["phase3b-postgres-wave", "phase3c-deno-wave"]);
+  const deletedWrappers = manifest.legacyOrigins.filter((origin) => terminalWavesAfter3a.includes(origin.migrationWave));
+  const deletedProviders = manifest.workflowProviders.filter((item) =>
+    deletedWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
+  const phase3cWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3c-deno-wave");
   assert.equal(phase3bWrappers.length, 12);
   assert.equal(phase3bProviders.length, 6);
-  assert.equal(phase3bWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
-  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146 - phase3bWrappers.length);
-  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73 - phase3bProviders.length);
+  assert.equal(phase3cWrappers.length, 17);
+  assert.equal(deletedWrappers.length, 29);
+  assert.equal(deletedProviders.length, 13);
+  assert.equal(deletedWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
+  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146 - deletedWrappers.length);
+  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73 - deletedProviders.length);
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
@@ -130,7 +148,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // Phase 3B origins are batched-historical now, so they leave this non-batched
   // inventory with their wrappers. The ratified 146 stays pinned; the wave's own
   // size is read from the registry, never typed.
-  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146 - phase3bWrappers.length);
+  // [TEST-MOD-APPROVED #2439 · SC-17.1] Extended to every post-3A terminal wave
+  // for the same reason: Phase 3C's seventeen origins are batched-historical now
+  // and leave this non-batched inventory with their wrappers. The ratified 146
+  // stays pinned; the subtrahend is still read from the registry, never typed.
+  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146 - deletedWrappers.length);
 
   const mixed = structuredClone(manifest);
   mixed.suites[23].lifecycle = "shadow-active";

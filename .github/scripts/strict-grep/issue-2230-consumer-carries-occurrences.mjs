@@ -79,6 +79,15 @@ export function ciWiring(manifest, testerSuite, sharedQuantityRow) {
   const wrapperLive = fs.existsSync(path.join(ROOT, ORIGIN));
   if (suite.lifecycle === "batched-historical" && wrapperLive) failures.push("terminal wrapper was restored");
   if (suite.lifecycle === "shadow-active" && !wrapperLive) failures.push("shadow wrapper is missing");
+  // [#2439 SC-15.1] Lifecycle consistency asserted PURELY from the registry, so
+  // it is falsifiable in memory: at shadow the legacy origin names its own
+  // wrapper as sole provider, at terminal it must name the batch umbrella. A
+  // batched record still naming its deleted wrapper is the SC-18.3 attack.
+  const legacyOrigin = (manifest.legacyOrigins || []).find((item) => `${item.stem}.${item.extension}` === ORIGIN.split("/").pop());
+  const namesItself = legacyOrigin?.providerWorkflow === ORIGIN;
+  if (!legacyOrigin || namesItself !== (suite.lifecycle !== "batched-historical")) {
+    failures.push("legacy origin does not name the sole provider for this lifecycle");
+  }
   return failures;
 }
 
@@ -223,6 +232,10 @@ if (process.argv.includes("--self-test")) {
     ["registry", '"phase3c-deno-wave"', '"phase3d-unreviewed-wave"'],
     ["registry", DENO_V2_ACTION, "denoland/setup-deno@v2"],
     ["registry", '"contents: read"', '"contents: write"'],
+    // Attacks the registry-only lifecycle/provider agreement above. Removing the
+    // legacy origin record fires on BOTH sides of cutover, so unlike a mutant
+    // pinned to one lifecycle value it never becomes unfalsifiable.
+    ["registry", '"stem": "issue-2230-consumer-multiday-tests"', '"stem": "issue-2230-consumer-multiday-tests-gone"'],
     ["flow", "...(eventDateIds.length > 0 ? { eventDateIds } : {})", ""],
     ["flow", "? { eventDateIds: normalizedEventDateIds(input) }", "? {}"],
   ];
