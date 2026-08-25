@@ -363,7 +363,11 @@ export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
   assertSource(
     matchingValues(
       consumerClient,
-      /^import \{ (SUPABASE_URL) \} from '\.\.\/config\/supabaseProject';$/gm,
+      // Quote-agnostic on purpose: this file is single-quoted today, and a
+      // future formatter pass must not turn a production-authority gate red for
+      // a cosmetic reason. The identity being pinned is the specifier, not the
+      // punctuation around it.
+      /^import \{ (SUPABASE_URL) \} from ['"]\.\.\/config\/supabaseProject['"];$/gm,
     ).length === 1 &&
       matchingValues(
         consumerClient,
@@ -377,7 +381,7 @@ export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
   assertSource(
     matchingValues(
       consumerConfig,
-      /^const \{ SUPABASE_URL \} = (require\("\.\/src\/config\/supabaseProject"\));$/gm,
+      /^const \{ SUPABASE_URL \} = (require\(['"]\.\/src\/config\/supabaseProject['"]\));$/gm,
     ).length === 1 &&
       matchingValues(
         consumerConfig,
