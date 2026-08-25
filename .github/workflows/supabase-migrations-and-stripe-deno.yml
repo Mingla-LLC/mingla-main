@@ -330,6 +330,15 @@ jobs:
           # stopped using them.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql
+          # Issue #1971 — INDEPENDENT TESTER guard, the opposite axis. The
+          # implementor guard above proves the orders trigger does not
+          # UNDER-reach (a door sale blocks the delete). This one proves it does
+          # not OVER-reach: a BEFORE row trigger on the money table can silently
+          # cancel a write by returning NULL, and can block orders belonging to
+          # concerts, stays and venues that merely share the table. It also pins
+          # the trigger's column scope and its BEFORE-trigger firing order.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1971_trip_order_guard_blast_radius.tester.adversarial.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
