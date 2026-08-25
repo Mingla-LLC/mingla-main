@@ -151,6 +151,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   cancel_order: role("finance_manager", "brand"),
   cancel_trip_booking: role("finance_manager", "brand"),
   retry_installment: role("finance_manager", "brand"),
+  // #1981 — Trip Money manual charge + reminder; same finance floor as Host.
+  charge_installment_now: role("finance_manager", "brand"),
+  send_installment_reminder: role("finance_manager", "brand"),
   get_brand_analytics: role("scanner", "brand"),
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),

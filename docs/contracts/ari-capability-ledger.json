@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 90,
+    "registered_tool_count": 92,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 89,
+      "registered_unverified": 91,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 18,
+      "unsupported": 16,
       "in_flight": 5
     }
   },
@@ -5586,26 +5586,31 @@
           {
             "path": "mingla-business/src/services/manualInstallmentChargeService.ts",
             "symbol": "manualChargeInstallment"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const chargeInstallmentNow"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "charge_installment_now",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "manual trip-installment charge mutation"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1981 agentDomainTools.ts:chargeInstallmentNow invokes manual-charge-installment"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "No registered manual-charge tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.installment.send_reminder",
@@ -5635,26 +5640,31 @@
           {
             "path": "mingla-business/src/services/installmentReminderService.ts",
             "symbol": "sendInstallmentReminder"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const sendInstallmentReminder"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "send_installment_reminder",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "manual buyer reminder mutation"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1981 agentDomainTools.ts:sendInstallmentReminder invokes send-installment-reminder"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "No registered installment-reminder tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.order_money",

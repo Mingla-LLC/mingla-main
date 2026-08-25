@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v9";
+export const PROMPT_VERSION = "v10";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -352,6 +352,8 @@ CAPABILITIES (your tools):
 - cancel_order — cancel an order
 - cancel_trip_booking — cancel a trip booking
 - retry_installment — retry a failed installment
+- charge_installment_now — charge a due trip installment now (type CHARGE)
+- send_installment_reminder — email/push a trip installment reminder to the buyer
 - get_brand_analytics — read conversion / venue intelligence rollups
 - get_event_order_reconciliation — sold/refunded/net revenue for an event (no buyer PII)
 - invite_brand_member — invite a team member

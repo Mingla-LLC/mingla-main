@@ -3661,6 +3661,46 @@ const retryInstallment = writeTool(
   },
 );
 
+// #1981 — same Host edge as Trip Money → Charge now.
+const chargeInstallmentNow = writeTool(
+  "charge_installment_now",
+  "Charge a due trip installment now via manual-charge-installment. Finance-gated. Type CHARGE to confirm.",
+  {
+    brand_id: UUID,
+    installment_id: UUID,
+    at_risk_override: { type: "boolean" },
+  },
+  ["brand_id", "installment_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.installment_id)) {
+      throw new ToolError("INVALID_ARGS", "installment_id must be a uuid");
+    }
+    return await invokeFn(client, "manual-charge-installment", {
+      installmentId: args.installment_id,
+      atRiskOverride: args.at_risk_override === true,
+    });
+  },
+  "CHARGE",
+);
+
+// #1981 — same Host edge as Trip Money → Send reminder.
+const sendInstallmentReminder = writeTool(
+  "send_installment_reminder",
+  "Send a buyer trip-installment reminder via send-installment-reminder. Finance-gated.",
+  { brand_id: UUID, order_id: UUID },
+  ["brand_id", "order_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.order_id)) {
+      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    }
+    return await invokeFn(client, "send-installment-reminder", {
+      orderId: args.order_id,
+    });
+  },
+);
+
 // ----------------------------------------------------------------------------
 // L. Analytics (read)
 // ----------------------------------------------------------------------------
@@ -4315,6 +4355,8 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   cancelOrder,
   cancelTripBooking,
   retryInstallment,
+  chargeInstallmentNow,
+  sendInstallmentReminder,
   getBrandAnalytics,
   getEventOrderReconciliation,
   inviteBrandMember,
@@ -4359,6 +4401,7 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "refund_order",
   "cancel_order",
   "cancel_trip_booking",
+  "charge_installment_now",
   "export_brand_people",
   "request_account_deletion",
   // #1975 — money-affecting Stay operations. create/transition hold priced

@@ -48,6 +48,10 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // statusBreakdown, statusDigest, mappingDigest, sourceRefDigest, and
 // classification message.
 //
+
+// [TEST-MOD-APPROVED #1981] Register charge_installment_now +
+// send_installment_reminder (90→92). Two unsupported rows leave into
+// registered_unverified (89→91, unsupported 18→16). Denominator stays 120.
 // [TEST-MOD-APPROVED #1976] Three partner/payments reads (87→90):
 // get_brand_balances_reports, list_partner_brand_links, list_partner_splits.
 // unsupported 21→18; registered_unverified 86→89. Denominator stays 120.
@@ -56,6 +60,7 @@ const EXPECTED_TOOL_NAMES = [
   "cancel_event",
   "cancel_order",
   "cancel_trip_booking",
+  "charge_installment_now",
   "create_brand",
   "create_event",
   "create_experience",
@@ -121,6 +126,7 @@ const EXPECTED_TOOL_NAMES = [
   "run_growth_tool",
   "schedule_campaign",
   "send_campaign_now",
+  "send_installment_reminder",
   "send_venue_sms",
   "set_brand_pricing_defaults",
   "set_event_cover",
@@ -148,16 +154,16 @@ const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 89,
+    registered_unverified: 91,
     broken: 0,
     guided_handoff: 8,
-    unsupported: 18,
+    unsupported: 16,
     in_flight: 5,
   }),
   idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
-  statusDigest: "990bb5f152c24816e09320224eb7d3ad14d767a8ba3bfd1143761307b6f04619",
-  mappingDigest: "b73182c732984557c8e483f23a278f34f57815575ded9ea76fbb2cd238137ab9",
-  sourceRefDigest: "e9ddf779e608aff8d966b069521592b5d832825b79fc0d0a1431a580d40bc185",
+  statusDigest: "3b47723eeb588b7363a7d731c39d08dbbdb95ccb824c9ad69a2ab15bfa9f9869",
+  mappingDigest: "ca375d851eb0cdeda4ed920573a5e2896ac905ba66be4c0e36e351f87ee6e623",
+  sourceRefDigest: "4eb90be1388c463e15e0fba6b13229d288e465ae39b5036e67dec259606459b3",
 });
 
 function readLedger() {
@@ -183,9 +189,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("90-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("92-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("89/0/18/8/5/0 classification changed");
+    failures.push("91/0/16/8/5/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

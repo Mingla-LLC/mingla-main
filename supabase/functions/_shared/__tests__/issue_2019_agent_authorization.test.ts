@@ -42,13 +42,14 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
 // count, and the mapped ledger-row count). No role translation, ordering,
 // resource binding or denial assertion changes.
 // [TEST-MOD-APPROVED #1976] Three partner/payments reads; 87→90.
+// [TEST-MOD-APPROVED #1981] charge_installment_now + send_installment_reminder; 90→92.
   assert(
-    AGENT_TOOLS.length === 90,
-    `expected 90 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 92,
+    `expected 92 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 90, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 92, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 90,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 92,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -98,7 +99,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   // [TEST-MOD-APPROVED #1977] 85 -> 86: drop set_guest_approval; add update_rsvp + update_rsvp_contribution_settings.
   // [TEST-MOD-APPROVED #1984] 87 -> 90: get_event_order_reconciliation.
   // [TEST-MOD-APPROVED #1976] 87 -> 90: balances + partner links + splits.
-  assert(rows.length === 90, `expected 90 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #1981] 90 -> 92: charge_now + send_reminder.
+  assert(rows.length === 92, `expected 92 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
