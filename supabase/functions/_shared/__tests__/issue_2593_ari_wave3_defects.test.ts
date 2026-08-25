@@ -247,6 +247,41 @@ Deno.test("#2593 D2c an rsvp_id from a FOREIGN brand fails closed", async () => 
   assertEquals(error.code, "BRAND_ACCESS_DENIED");
 });
 
+Deno.test("#2593 D2d the guest two-hop chain enforces the same containment", async () => {
+  const GUEST = "77777777-7777-4777-8777-777777777777";
+  const guestClient = (rsvpEventId: string) =>
+    makeClient({
+      rows: {
+        events: {
+          [EVENT]: RSVP_EVENT_ROW,
+          [OTHER_EVENT]: RSVP_EVENT_ROW,
+        },
+        event_rsvp_guests: { [GUEST]: { id: GUEST, rsvp_id: RSVP } },
+        event_rsvps: { [RSVP]: { id: RSVP, event_id: rsvpEventId } },
+      },
+      rpc: () => 40,
+    }).client;
+  const args = { event_id: EVENT, guest_id: GUEST, status: "approved" };
+  const context = await authorizeAgentTool(
+    securedTool("set_rsvp_guest_status"),
+    args,
+    guestClient(EVENT),
+    CALLER,
+  );
+  assertEquals(context.brandId, BRAND);
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("set_rsvp_guest_status"),
+        args,
+        guestClient(OTHER_EVENT),
+        CALLER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
+});
+
 // ---------------------------------------------------------------------------
 // Item 3 — roster fields read the keys biz_guest_roster_list actually emits.
 // ---------------------------------------------------------------------------
