@@ -164,7 +164,7 @@ export default function CampaignReportRoute(): React.ReactElement {
 
   const { campaign, recipientStats, clickStats, recipients } = reportQuery.data;
   const glyph = STATUS_GLYPH[campaign.status] ?? "•";
-  const isLivePreviewOnly = recipientStats.preview_skipped > 0 && recipientStats.sent === 0;
+  const isLivePreviewOnly = recipientStats.preview_skipped > 0 && recipientStats.accepted === 0;
 
   return (
     <View style={styles.host}>
@@ -222,12 +222,28 @@ export default function CampaignReportRoute(): React.ReactElement {
         {/* Recipient stats */}
         <Text style={styles.sectionLabel}>WHO IT WENT TO</Text>
         <View style={styles.statsGrid}>
+          {/* #2510 — one honest vocabulary. "Delivered" used to mean the
+              ACCEPTED count here and the CLICK count on the overview: one
+              word, two different wrong numbers. Delivered/Opened render as
+              unknown (not 0) for campaigns sent before the webhook existed,
+              because a 0% open rate reads as "nobody read it". */}
           <StatCell label="Total audience" value={recipientStats.total} />
-          <StatCell label="Delivered" value={recipientStats.sent} tone={semantic.success} />
+          <StatCell label="Accepted by provider" value={recipientStats.accepted} tone={semantic.success} />
+          <StatCell
+            label="Delivered"
+            value={recipientStats.hasEventCoverage ? recipientStats.delivered : null}
+            tone={semantic.success}
+          />
+          <StatCell
+            label="Opened"
+            value={recipientStats.hasEventCoverage ? recipientStats.opened : null}
+          />
+          <StatCell label="Clicked a link" value={recipientStats.clicked} />
+          <StatCell label="Bounced" value={recipientStats.bounced} tone={semantic.warning} />
+          <StatCell label="Marked as spam" value={recipientStats.complained} tone={semantic.warning} />
           <StatCell label="Preview only" value={recipientStats.preview_skipped} tone={textTokens.tertiary} />
           <StatCell label="Failed to send" value={recipientStats.failed} tone={semantic.warning} />
           <StatCell label="Unsubscribed" value={recipientStats.unsubscribed} tone={semantic.warning} />
-          <StatCell label="Clicked a link" value={recipientStats.clicked} />
         </View>
 
         {/* Click stats */}
@@ -329,14 +345,26 @@ const Header: React.FC<{ onBack: () => void; title: string }> = ({
 
 interface StatCellProps {
   label: string;
-  value: number;
+  /** `null` = not tracked for this campaign; renders an em-dash, never 0. */
+  value: number | null;
   tone?: string;
 }
+/**
+ * #2510 — `null` means UNKNOWN and renders an em-dash, not "0".
+ *
+ * A campaign sent before the Resend webhook existed has no delivery events.
+ * Showing "Opened 0" for it would tell an organiser nobody read their email,
+ * which is a claim we cannot make. Constitution rule 9: missing is hidden,
+ * never faked.
+ */
 const StatCell: React.FC<StatCellProps> = ({ label, value, tone }) => (
   <View style={styles.statCell}>
     <Text style={styles.statLabel}>{label}</Text>
-    <Text style={[styles.statValue, tone !== undefined ? { color: tone } : null]}>
-      {value}
+    <Text
+      style={[styles.statValue, tone !== undefined ? { color: tone } : null]}
+      accessibilityLabel={value === null ? `${label}: not tracked` : undefined}
+    >
+      {value === null ? "—" : value}
     </Text>
   </View>
 );

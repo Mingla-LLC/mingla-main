@@ -6,9 +6,24 @@
  * (RLS-gated to brand members) and rolls them into a single shape the
  * report screen consumes.
  *
- * Open-rate is intentionally absent from this report — opens require a
- * Resend webhook ingest path which is a separate, later ORCH. Click data
- * IS available (we own `/m/<tracking_id>` and write `clicked_at`).
+ * #2510 — open rate is HERE now. The Resend webhook ingest
+ * (`supabase/functions/resend-webhook`) writes `delivered_at`, `opened_at`,
+ * bounces and complaints, so this report no longer has to guess.
+ *
+ * The vocabulary is deliberate, because the old screen was wrong in BOTH
+ * directions at once: it labelled the ACCEPTED count "Delivered" (a provider
+ * message id is not delivery — `docs/INVARIANT_REGISTRY.md:401` says so), while
+ * the overview called the CLICK count "Delivered". One word, two wrong numbers.
+ *
+ *   accepted  — the provider took it. Not delivery.
+ *   delivered — `email.delivered` arrived.
+ *   opened    — `email.opened` arrived (unique people).
+ *   clicked   — our own `/m/<tracking_id>` redirect fired.
+ *
+ * A campaign sent before the webhook existed has no delivery events, and its
+ * delivered/opened figures are UNKNOWN — not zero. `hasEventCoverage` carries
+ * that distinction so the screen can render an em-dash instead of a "0%" that
+ * would read as "nobody opened it".
  */
 
 import { supabase } from "../supabase";
@@ -26,12 +41,22 @@ function assertUuid(value: string, label: string): void {
 export interface RecipientStats {
   total: number;
   queued: number;
-  sent: number;
+  /** Provider accepted it. NOT delivery. */
+  accepted: number;
   delivered: number;
+  opened: number;
   preview_skipped: number;
   failed: number;
+  bounced: number;
+  complained: number;
   unsubscribed: number;
   clicked: number;
+  /**
+   * #2510 — did ANY delivery event ever arrive for this campaign? False for
+   * every campaign sent before the webhook existed. The screen must render
+   * delivered/opened as unknown in that case, never as 0.
+   */
+  hasEventCoverage: boolean;
 }
 
 export interface TopLink {
@@ -52,6 +77,10 @@ export interface PerRecipientRow {
   sent_at: string | null;
   click_count: number;
   failure_reason: string | null;
+  /** #2510 — null until `email.delivered` arrives. */
+  delivered_at: string | null;
+  /** #2510 — null until `email.opened` arrives. */
+  opened_at: string | null;
 }
 
 export interface CampaignReport {
@@ -60,6 +89,18 @@ export interface CampaignReport {
   clickStats: ClickStats;
   recipients: PerRecipientRow[];
 }
+
+/**
+ * Every status that means "the provider accepted this email". Engagement
+ * statuses are included on purpose — a clicked email was accepted first.
+ */
+const ACCEPTED_STATUSES = [
+  "sent",
+  "delivered",
+  "opened",
+  "clicked",
+  "unsubscribed",
+] as const;
 
 const STATUS_KEYS: MessageStatus[] = [
   "queued",
@@ -95,7 +136,7 @@ export async function getCampaignReport(
   const { data: messageData, error: messageErr } = await supabase
     .from("marketing_messages")
     .select(
-      "id, recipient_email, status, sent_at, click_count, failure_reason",
+      "id, recipient_email, status, sent_at, click_count, failure_reason, delivered_at, opened_at",
     )
     .eq("campaign_id", campaignId)
     .order("sent_at", { ascending: false, nullsFirst: false })
@@ -121,15 +162,30 @@ export async function getCampaignReport(
   for (const key of STATUS_KEYS) counts[key] = 0;
   for (const msg of messages) counts[msg.status] = (counts[msg.status] ?? 0) + 1;
 
+  // ACCEPTED is every row the provider took, whatever happened after. A row
+  // that went on to be delivered/opened/clicked was accepted first, so summing
+  // only `status='sent'` would make the number FALL as engagement rose.
+  const accepted = ACCEPTED_STATUSES.reduce(
+    (sum, key) => sum + (counts[key] ?? 0),
+    0,
+  );
+  const delivered = messages.filter((m) => m.delivered_at !== null).length;
+  const opened = messages.filter((m) => m.opened_at !== null).length;
+
   const recipientStats: RecipientStats = {
     total: messages.length,
     queued: counts.queued ?? 0,
-    sent: counts.sent ?? 0,
-    delivered: counts.delivered ?? 0,
+    accepted,
+    delivered,
+    opened,
     preview_skipped: counts.preview_skipped ?? 0,
     failed: counts.failed ?? 0,
+    bounced: counts.bounced ?? 0,
+    complained: counts.complained ?? 0,
     unsubscribed: counts.unsubscribed ?? 0,
-    clicked: counts.clicked ?? 0,
+    clicked: messages.filter((m) => m.click_count > 0).length,
+    hasEventCoverage: delivered > 0 || opened > 0 ||
+      (counts.bounced ?? 0) > 0 || (counts.complained ?? 0) > 0,
   };
 
   // Click stats aggregation.

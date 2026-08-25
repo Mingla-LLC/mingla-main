@@ -211,6 +211,11 @@ verify_jwt = false
 
 # ORCH-0897 — direct user send path and cron/service-role path both provide
 # Authorization headers. Keep JWT verification enabled at the function gateway.
+# #2510 — Resend posts with no Supabase JWT; authenticity is the Svix
+# signature, verified against RESEND_WEBHOOK_SECRET inside the function.
+[functions.resend-webhook]
+verify_jwt = false
+
 [functions.marketing-send]
 verify_jwt = true
 
