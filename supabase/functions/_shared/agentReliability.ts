@@ -1,10 +1,9 @@
 /**
  * Issue #2060 — Ari's common reliability envelope.
  *
- * This module is intentionally independent of the two hot-path functions while
- * #1972 and #1985 finish. Those issues own the atomic domain receipt and task
- * state respectively. The narrow integration commit imports this module after
- * both land; no competing receipt or task-state owner is defined here.
+ * Hot-path consumers: `agent-chat`, `agent-confirm-action`, and the Business
+ * Ari client. #1972 owns the atomic domain receipt; #1985 owns task state /
+ * client_turn_id. This module does not redefine either owner.
  */
 
 export const ARI_PROTOCOL_VERSION = 1 as const;
@@ -350,6 +349,115 @@ export function resolveRequestId(candidate?: string | null): string {
   return candidate && UUID_PATTERN.test(candidate)
     ? candidate
     : crypto.randomUUID();
+}
+
+/**
+ * Map legacy hot-path error tokens onto the locked AriErrorCode registry.
+ * Unknown tokens fail closed to INTERNAL so callers cannot invent families.
+ */
+export function mapLegacyAriErrorCode(legacy: string): AriErrorCode {
+  const code = legacy.trim().toUpperCase();
+  if (code in ARI_ERROR_REGISTRY) return code as AriErrorCode;
+  switch (code) {
+    case "UNAUTHORIZED":
+      return "UNAUTHENTICATED";
+    case "BRAND_ACCESS_DENIED":
+    case "OWNERSHIP_DENIED":
+    case "ROLE_DENIED":
+      return "FORBIDDEN";
+    case "TASK_STATE_CONFLICT":
+    case "CHOICE_STALE":
+    case "EXPIRED":
+    case "STALE":
+      return "STALE_PROPOSAL";
+    case "WRONG_STATE":
+    case "VERSION_CONFLICT":
+    case "TASK_STATE_VERSION_UNSUPPORTED":
+    case "DELETE_BLOCKED_BY_EVENTS":
+    case "PAYOUT_NOT_READY":
+    case "TAX_REGISTRATION_REQUIRED":
+    case "EVENT_CURRENCY_REQUIRED":
+    case "SLUG_TAKEN":
+      return "CONFLICT";
+    case "TIMEOUT":
+      return "DEADLINE_EXCEEDED";
+    case "TENANT_SCOPE_UNAVAILABLE":
+    case "ROLE_CHECK_UNAVAILABLE":
+    case "PAYOUT_CHECK_FAILED":
+      return "DEPENDENCY_UNAVAILABLE";
+    case "MODEL_EMPTY":
+    case "MODEL_SCHEMA_INVALID":
+    case "MODEL_ERROR":
+    case "GEMINI_FAILED":
+      return "PROVIDER_UNAVAILABLE";
+    case "TASK_RECOVERY_REQUIRED":
+    case "TERMINALIZATION_FAILED":
+      return "RECONCILIATION_REQUIRED";
+    case "EXECUTION_FAILED":
+      return "RESULT_UNKNOWN";
+    case "BAD_REQUEST":
+    case "MESSAGE_TOO_LONG":
+    case "INVALID_ARGS":
+    case "METHOD_NOT_ALLOWED":
+    case "NOT_FOUND":
+    case "CONVERSATION_NOT_FOUND":
+    case "PRIVATE_VISIBILITY_UNAVAILABLE":
+      return "VALIDATION_FAILED";
+    case "HANDLER_THREW":
+    case "INTERNAL":
+    default:
+      return "INTERNAL";
+  }
+}
+
+/** Domain response kinds → protocol success codes for the Pass-5 envelope. */
+export function successCodeForDomainKind(
+  kind: string,
+): AriSuccessCode {
+  switch (kind) {
+    case "executed":
+      return "CANONICAL_READBACK_MATCHED";
+    case "cancelled":
+      return "ACTION_CANCELLED";
+    case "text":
+    case "pending_action":
+    case "proposal_replaced":
+    case "expired_regenerate":
+      return "PROPOSAL_READY";
+    default:
+      return "PROPOSAL_READY";
+  }
+}
+
+export function userMessageForSuccessCode(
+  code: AriSuccessCode,
+  domain?: { followup_text?: unknown; text?: unknown },
+): string {
+  if (
+    code === "CANONICAL_READBACK_MATCHED" &&
+    typeof domain?.followup_text === "string" &&
+    domain.followup_text.trim().length > 0
+  ) {
+    return domain.followup_text.trim().slice(0, 500);
+  }
+  if (
+    code === "PROPOSAL_READY" &&
+    typeof domain?.text === "string" &&
+    domain.text.trim().length > 0
+  ) {
+    return domain.text.trim().slice(0, 500);
+  }
+  switch (code) {
+    case "CANONICAL_READBACK_MATCHED":
+      return "Done.";
+    case "ACTION_CANCELLED":
+      return "Cancelled.";
+    case "EXECUTION_IN_PROGRESS":
+      return "Ari is still finishing that action.";
+    case "PROPOSAL_READY":
+    default:
+      return "Review Ari's reply.";
+  }
 }
 
 export function resolveReleaseAttestation(

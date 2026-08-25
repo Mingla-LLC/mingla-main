@@ -2,8 +2,8 @@
  * Issue #2060 — platform-neutral Ari recovery state.
  *
  * Business web, iOS, and Android consume this one pure state machine. The
- * hook/screen integration is dependency-held until #1985's task-state branch
- * merges; this module deliberately owns no React Query cache or server state.
+ * hot-path client (`agentChatService` / `useAgentChat`) imports and applies it
+ * after #1985's task-state / client_turn_id and #1972's receipts landed.
  */
 
 export type AriRetryability =
@@ -444,11 +444,24 @@ export function retryDelayMs(
 
 export function assertAriEnvelope(
   value: unknown,
+  options: { allowUnattested?: boolean } = {},
 ): asserts value is AriResponseEnvelope {
   if (!value || typeof value !== "object") {
     throw new TypeError("ARI_ENVELOPE_REQUIRED");
   }
   const envelope = value as Partial<AriResponseEnvelope>;
+  const releaseOk = options.allowUnattested
+    ? typeof envelope.release_sha === "string" &&
+      (RELEASE_SHA_PATTERN.test(envelope.release_sha) ||
+        envelope.release_sha === "unattested")
+    : typeof envelope.release_sha === "string" &&
+      RELEASE_SHA_PATTERN.test(envelope.release_sha);
+  const functionVersionOk = options.allowUnattested
+    ? typeof envelope.function_version === "string" &&
+      envelope.function_version.length > 0
+    : typeof envelope.function_version === "string" &&
+      envelope.function_version.length > 0 &&
+      envelope.function_version !== "unknown";
   if (
     envelope.protocol_version !== 1 ||
     (envelope.kind !== "success" && envelope.kind !== "error") ||
@@ -465,11 +478,8 @@ export function assertAriEnvelope(
     (envelope.execution_id !== null &&
       (typeof envelope.execution_id !== "string" ||
         !UUID_PATTERN.test(envelope.execution_id))) ||
-    typeof envelope.release_sha !== "string" ||
-    !RELEASE_SHA_PATTERN.test(envelope.release_sha) ||
-    typeof envelope.function_version !== "string" ||
-    envelope.function_version.length === 0 ||
-    envelope.function_version === "unknown" ||
+    !releaseOk ||
+    !functionVersionOk ||
     typeof envelope.safe_to_retry !== "boolean" ||
     (envelope.retryability === "never" && envelope.safe_to_retry) ||
     (envelope.retryability === "server_reconcile" && envelope.safe_to_retry)

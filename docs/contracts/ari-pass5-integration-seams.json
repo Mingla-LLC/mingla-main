@@ -5,7 +5,7 @@
     {
       "id": "task_state_and_client_turn",
       "owner_issue": 1985,
-      "state": "dependency_pending",
+      "state": "ready",
       "required_symbols": [
         "client_turn_id",
         "claim_agent_first_turn",
@@ -16,7 +16,7 @@
     {
       "id": "atomic_execution_receipt",
       "owner_issue": 1972,
-      "state": "dependency_pending",
+      "state": "ready",
       "required_symbols": [
         "agent_operation_receipts",
         "agent_operation_receipt_begin",
@@ -27,11 +27,11 @@
     {
       "id": "brand_domain_readback",
       "owner_issue": 2063,
-      "state": "dependency_pending",
+      "state": "ready",
       "required_symbols": [
         "ari_execute_brand_operation"
       ],
-      "consumer_after_merge": "brand certification adapter supplies the canonical readback reference and query-key owner"
+      "consumer_after_merge": "brand certification adapter supplies the canonical readback reference and query-key owner; hot-path confirm already receipt-aliases brand writes via #1972"
     },
     {
       "id": "venue_operations_readback",
@@ -41,7 +41,7 @@
         "ari.venue.manage_availability",
         "tables_waitlist_menu_sms_operation_receipts"
       ],
-      "consumer_after_merge": "venue availability, tables, waitlist, menu, and SMS certification adapters use #1979 canonical executor/readback ownership; listing and claims remain #1978"
+      "consumer_after_merge": "venue availability/tables/waitlist/menu/SMS tools exist from #1979, but the receipt-backed confirm alias family (tables_waitlist_menu_sms_operation_receipts) is not yet named in agent-confirm-action RECEIPT_BACKED; certification adapters still owed before Pass-5 matrix"
     }
   ],
   "forbidden_competing_owners": [

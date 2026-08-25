@@ -3,9 +3,15 @@
  *
  * Wraps `agent-chat` and `agent-confirm-action` with typed responses and
  * graceful error extraction (mirrors the app-mobile edgeFunctionError pattern).
+ * Issue #2060: responses are protocol-v1 envelopes; this module asserts them
+ * and unwraps nested domain payloads so existing UI kinds keep working.
  */
 
 import { supabase } from "./supabase";
+import {
+  assertAriEnvelope,
+  type AriResponseEnvelope,
+} from "./agentReliability";
 
 // ----------------------------------------------------------------------------
 // Types
@@ -89,6 +95,39 @@ export interface ConfirmActionArgs {
   edited_args?: Record<string, unknown>;
 }
 
+function allowUnattestedRelease(): boolean {
+  // Local/dev edge functions often lack MINGLA_RELEASE_SHA. Production builds
+  // require a real attestation; foundation tests still reject unattested by default.
+  return typeof __DEV__ !== "undefined" && __DEV__ === true;
+}
+
+function unwrapAriDomainPayload<T extends { kind: string }>(
+  raw: unknown,
+  fallback: string,
+): T | { kind: "error"; code: string; message: string; retry_after_seconds?: number } {
+  try {
+    assertAriEnvelope(raw, { allowUnattested: allowUnattestedRelease() });
+  } catch {
+    return { kind: "error", code: "ENVELOPE_INVALID", message: fallback };
+  }
+  const envelope = raw as AriResponseEnvelope;
+  if (envelope.kind === "error") {
+    return {
+      kind: "error",
+      code: envelope.code,
+      message: envelope.user_message,
+      ...(typeof envelope.retry_after_seconds === "number"
+        ? { retry_after_seconds: envelope.retry_after_seconds }
+        : {}),
+    };
+  }
+  const data = envelope.data;
+  if (!data || typeof data !== "object" || typeof (data as { kind?: unknown }).kind !== "string") {
+    return { kind: "error", code: "EMPTY", message: fallback };
+  }
+  return data as T;
+}
+
 // ----------------------------------------------------------------------------
 // Error extraction (mirrors app-mobile/src/utils/edgeFunctionError.ts)
 // ----------------------------------------------------------------------------
@@ -103,6 +142,20 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
         const raw = await ctx.text();
         try {
           const body = JSON.parse(raw);
+          if (body?.protocol_version === 1 && typeof body.user_message === "string") {
+            try {
+              assertAriEnvelope(body, { allowUnattested: allowUnattestedRelease() });
+              return {
+                code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
+                message: body.user_message,
+                ...(typeof body.retry_after_seconds === "number"
+                  ? { retry_after_seconds: body.retry_after_seconds }
+                  : {}),
+              };
+            } catch {
+              return { code: "ENVELOPE_INVALID", message: fallback };
+            }
+          }
           if (body?.message && typeof body.message === "string") return {
             code: typeof body.code === "string" ? body.code : "EDGE_ERROR",
             message: body.message,
@@ -117,10 +170,10 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
         // fall through
       }
       const status = (ctx as Response).status;
-      if (status === 401) return { code: "UNAUTHORIZED", message: "Session expired — please sign in again" };
-      if (status === 403) return { code: "BRAND_ACCESS_DENIED", message: "You no longer have access to that brand." };
-      if (status === 410) return { code: "EXPIRED", message: "This proposal expired. Ask Ari to propose it again." };
-      if (status === 429) return { code: "RATE_LIMITED", message: "You've reached today's chat limit — try again later" };
+      if (status === 401) return { code: "UNAUTHENTICATED", message: "Sign in again to continue with Ari." };
+      if (status === 403) return { code: "FORBIDDEN", message: "Your current access does not allow this action." };
+      if (status === 410) return { code: "STALE_PROPOSAL", message: "This proposal changed. Review the latest version before confirming." };
+      if (status === 429) return { code: "RATE_LIMITED", message: "Ari is busy right now. Try again shortly." };
     }
     const msg = err.message;
     if (typeof msg === "string" && !msg.startsWith("Edge Function returned")) {
@@ -137,7 +190,7 @@ async function extractError(error: unknown, fallback: string): Promise<{ code: s
 // ----------------------------------------------------------------------------
 
 export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChatResponse> {
-  const { data, error } = await supabase.functions.invoke<AgentChatResponse>("agent-chat", {
+  const { data, error } = await supabase.functions.invoke<unknown>("agent-chat", {
     body: args,
   });
   if (error) {
@@ -147,11 +200,14 @@ export async function sendAgentMessage(args: SendMessageArgs): Promise<AgentChat
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Ari returned an empty response" };
   }
-  return data;
+  return unwrapAriDomainPayload<Exclude<AgentChatResponse, { kind: "error" }>>(
+    data,
+    "Ari returned an empty response",
+  ) as AgentChatResponse;
 }
 
 export async function confirmAgentAction(args: ConfirmActionArgs): Promise<AgentConfirmResponse> {
-  const { data, error } = await supabase.functions.invoke<AgentConfirmResponse>(
+  const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
     { body: { action: "confirm", ...args } },
   );
@@ -162,13 +218,16 @@ export async function confirmAgentAction(args: ConfirmActionArgs): Promise<Agent
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
   }
-  return data;
+  return unwrapAriDomainPayload<Exclude<AgentConfirmResponse, { kind: "error" }>>(
+    data,
+    "Empty response",
+  ) as AgentConfirmResponse;
 }
 
 export async function cancelAgentAction(
   pending_action_id: string,
 ): Promise<AgentConfirmResponse> {
-  const { data, error } = await supabase.functions.invoke<AgentConfirmResponse>(
+  const { data, error } = await supabase.functions.invoke<unknown>(
     "agent-confirm-action",
     { body: { action: "cancel", pending_action_id } },
   );
@@ -179,7 +238,10 @@ export async function cancelAgentAction(
   if (!data) {
     return { kind: "error", code: "EMPTY", message: "Empty response" };
   }
-  return data;
+  return unwrapAriDomainPayload<Exclude<AgentConfirmResponse, { kind: "error" }>>(
+    data,
+    "Empty response",
+  ) as AgentConfirmResponse;
 }
 
 // ----------------------------------------------------------------------------

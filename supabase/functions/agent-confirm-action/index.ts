@@ -40,6 +40,16 @@ import {
   requireAccessibleAgentBrand,
   resolveAccessibleAgentBrands,
 } from "../_shared/agentTenantScope.ts";
+import {
+  decideAriFinalization,
+} from "../_shared/agentReliability.ts";
+import {
+  ariErrorResponse,
+  ariJsonResponse,
+  emitAriPhase,
+  runWithAriRequest,
+  updateAriRequest,
+} from "../_shared/agentReliabilityHttp.ts";
 
 interface RequestBody {
   action: "confirm" | "cancel";
@@ -79,10 +89,7 @@ type Response_ =
   | { kind: "error"; code: string; message: string };
 
 function jsonResponse(status: number, body: Response_): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
+  return ariJsonResponse(status, body);
 }
 
 function errorResponse(
@@ -90,7 +97,8 @@ function errorResponse(
   code: string,
   message: string,
 ): Response {
-  return jsonResponse(status, { kind: "error", code, message });
+  // Legacy `message` is intentionally discarded — registry owns user_message.
+  return ariErrorResponse(status, code, message);
 }
 
 const RECEIPT_BACKED_TOOL_NAMES = new Set([
@@ -423,83 +431,121 @@ async function persistTaskOutcome(args: {
 }
 
 Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response("ok", { headers: corsHeaders });
-  }
-  if (req.method !== "POST") {
-    return errorResponse(405, "METHOD_NOT_ALLOWED", "POST required");
-  }
+  return await runWithAriRequest({
+    requestIdHeader: req.headers.get("x-request-id"),
+  }, async () => {
+    emitAriPhase("received", { operationState: "none" });
+    if (req.method === "OPTIONS") {
+      return new Response("ok", { headers: corsHeaders });
+    }
+    if (req.method !== "POST") {
+      return errorResponse(405, "METHOD_NOT_ALLOWED", "POST required");
+    }
 
-  let body: RequestBody;
-  try {
-    body = await req.json() as RequestBody;
-  } catch {
-    return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
-  }
+    let body: RequestBody;
+    try {
+      body = await req.json() as RequestBody;
+    } catch {
+      return errorResponse(400, "BAD_REQUEST", "Invalid JSON body");
+    }
 
-  if (typeof body.pending_action_id !== "string") {
-    return errorResponse(400, "BAD_REQUEST", "pending_action_id required");
-  }
-  if (body.action !== "confirm" && body.action !== "cancel") {
-    return errorResponse(
-      400,
-      "BAD_REQUEST",
-      "action must be 'confirm' or 'cancel'",
+    if (typeof body.pending_action_id !== "string") {
+      return errorResponse(400, "BAD_REQUEST", "pending_action_id required");
+    }
+    if (body.action !== "confirm" && body.action !== "cancel") {
+      return errorResponse(
+        400,
+        "BAD_REQUEST",
+        "action must be 'confirm' or 'cancel'",
+      );
+    }
+    // pending_action_id is the sole execution identity (#1972 receipt / #2060).
+    updateAriRequest({ executionId: body.pending_action_id });
+
+    const authHeader = req.headers.get("Authorization");
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+      return errorResponse(401, "UNAUTHORIZED", "Missing authorization");
+    }
+    const jwt = authHeader.slice("Bearer ".length);
+
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
+    if (!supabaseUrl || !supabaseAnonKey) {
+      return errorResponse(500, "INTERNAL", "Supabase config missing");
+    }
+
+    const userClient = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } },
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+
+    const { data: userData, error: userErr } = await userClient.auth.getUser(
+      jwt,
     );
-  }
+    if (userErr || !userData?.user) {
+      return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
+    }
+    const userId = userData.user.id;
+    emitAriPhase("authorized", { operationState: "pending" });
+    let pendingStateClient: ReturnType<typeof buildServiceClient>;
+    try {
+      pendingStateClient = buildServiceClient();
+    } catch {
+      return errorResponse(
+        500,
+        "INTERNAL",
+        "Pending-action authority unavailable",
+      );
+    }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return errorResponse(401, "UNAUTHORIZED", "Missing authorization");
-  }
-  const jwt = authHeader.slice("Bearer ".length);
+    // Load the pending action
+    const { data: pending, error: pendingErr } = await userClient
+      .from("agent_pending_actions")
+      .select(
+        "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id, server_proposed_at",
+      )
+      .eq("id", body.pending_action_id)
+      .eq("user_id", userId)
+      .maybeSingle();
+    if (pendingErr || !pending) {
+      return errorResponse(404, "NOT_FOUND", "Pending action not found");
+    }
+    if (pending.server_proposed_at === null) {
+      return errorResponse(
+        400,
+        "WRONG_STATE",
+        "Pending action is not server-attested",
+      );
+    }
 
-  const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
-  const supabaseAnonKey = Deno.env.get("SUPABASE_ANON_KEY") ?? "";
-  if (!supabaseUrl || !supabaseAnonKey) {
-    return errorResponse(500, "INTERNAL", "Supabase config missing");
-  }
-
-  const userClient = createClient(supabaseUrl, supabaseAnonKey, {
-    global: { headers: { Authorization: authHeader } },
-    auth: { autoRefreshToken: false, persistSession: false },
+    return await handleConfirmAction({
+      body,
+      userId,
+      userClient,
+      pendingStateClient,
+      pending,
+    });
   });
+});
 
-  const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
-  if (userErr || !userData?.user) {
-    return errorResponse(401, "UNAUTHORIZED", "Invalid or expired session");
-  }
-  const userId = userData.user.id;
-  let pendingStateClient: ReturnType<typeof buildServiceClient>;
-  try {
-    pendingStateClient = buildServiceClient();
-  } catch {
-    return errorResponse(
-      500,
-      "INTERNAL",
-      "Pending-action authority unavailable",
-    );
-  }
-
-  // Load the pending action
-  const { data: pending, error: pendingErr } = await userClient
-    .from("agent_pending_actions")
-    .select(
-      "id, conversation_id, tool_name, tool_args, status, expires_at, source, related_brand_id, server_proposed_at",
-    )
-    .eq("id", body.pending_action_id)
-    .eq("user_id", userId)
-    .maybeSingle();
-  if (pendingErr || !pending) {
-    return errorResponse(404, "NOT_FOUND", "Pending action not found");
-  }
-  if (pending.server_proposed_at === null) {
-    return errorResponse(
-      400,
-      "WRONG_STATE",
-      "Pending action is not server-attested",
-    );
-  }
+async function handleConfirmAction(args: {
+  body: RequestBody;
+  userId: string;
+  userClient: SupabaseClient;
+  pendingStateClient: ReturnType<typeof buildServiceClient>;
+  pending: {
+    id: string;
+    conversation_id: string | null;
+    tool_name: string;
+    tool_args: unknown;
+    status: string;
+    expires_at: string;
+    source: string | null;
+    related_brand_id: string | null;
+    server_proposed_at: string | null;
+  };
+}): Promise<Response> {
+  const { body, userId, userClient, pendingStateClient, pending } = args;
 
   let conversationTask: { row: ConversationTaskRow; state: TaskStateV1 } | null;
   try {
@@ -993,6 +1039,7 @@ Deno.serve(async (req) => {
         "Race detected — this action was already handled",
       );
     }
+    emitAriPhase("execution_claimed", { operationState: "executing" });
   }
 
   // Execute
@@ -1053,6 +1100,17 @@ Deno.serve(async (req) => {
         }
       }
     }
+    if (isAmbiguous) {
+      const decision = decideAriFinalization(false, {
+        state: "unavailable",
+        reference: null,
+      });
+      emitAriPhase("canonical_readback", {
+        operationState: "reconciliation_required",
+        errorCode: decision.code,
+      });
+      return errorResponse(202, decision.code, "result unknown");
+    }
     if (err instanceof ToolError) {
       return errorResponse(
         toolErrorHttpStatus(err.code),
@@ -1064,6 +1122,7 @@ Deno.serve(async (req) => {
   }
 
   let terminalMessageId: string | undefined;
+  let receiptDurable = false;
   try {
     const terminalized = await terminalizePending(pendingStateClient, {
       id: pending.id,
@@ -1074,14 +1133,38 @@ Deno.serve(async (req) => {
       requireOperationReceipt: RECEIPT_BACKED_EVENT_TOOL_NAMES.has(tool.name),
     });
     terminalMessageId = terminalized.terminalMessageId;
+    receiptDurable = true;
   } catch (error) {
+    const decision = decideAriFinalization(false, {
+      state: "unavailable",
+      reference: null,
+    });
+    emitAriPhase("canonical_readback", {
+      operationState: "reconciliation_required",
+      errorCode: decision.code,
+    });
     return errorResponse(
-      500,
-      "TERMINALIZATION_FAILED",
+      202,
+      decision.code,
       error instanceof Error
         ? error.message
         : "Executed result was not durably recorded",
     );
+  }
+
+  const decision = decideAriFinalization(receiptDurable, {
+    state: "matched",
+    reference: pending.id,
+    value: result,
+  });
+  emitAriPhase("canonical_readback", {
+    operationState: decision.state === "executed"
+      ? "executed"
+      : "reconciliation_required",
+    errorCode: decision.state === "executed" ? null : decision.code,
+  });
+  if (decision.state !== "executed") {
+    return errorResponse(202, decision.code, "reconciliation required");
   }
 
   const followupText = buildFollowupText(tool.name, result);
@@ -1143,7 +1226,7 @@ Deno.serve(async (req) => {
       ? { task_state_revision: nextTaskRevision }
       : {}),
   });
-});
+}
 
 export function buildFollowupText(
   toolName: string,

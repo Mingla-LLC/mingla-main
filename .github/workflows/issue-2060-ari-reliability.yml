@@ -6,9 +6,14 @@ on:
     types: [opened, synchronize, reopened, ready_for_review]
     paths:
       - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/agentReliabilityHttp.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.tester.adversarial.test.ts"
+      - "supabase/functions/agent-chat/index.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql"
       - "supabase/migrations/20270529002060_issue_2060_ari_cert_requirements_set_digest.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.implementor.pg17.test.sql"
@@ -22,8 +27,12 @@ on:
       - "supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
       - "mingla-business/src/services/agentReliability.ts"
+      - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/hooks/useConfirmPendingAction.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.test.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/agentChatService.issue2060.wire.test.ts"
       - "docs/contracts/ari-capability-ledger.json"
       - "docs/contracts/ari-certification-*.json"
       - "docs/contracts/ari-observability.json"
@@ -36,9 +45,14 @@ on:
     branches: ["**"]
     paths:
       - "supabase/functions/_shared/agentReliability.ts"
+      - "supabase/functions/_shared/agentReliabilityHttp.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.implementor.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.tester.adversarial.test.ts"
+      - "supabase/functions/agent-chat/index.ts"
+      - "supabase/functions/agent-confirm-action/index.ts"
       - "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql"
       - "supabase/migrations/20270529002060_issue_2060_ari_cert_requirements_set_digest.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.implementor.pg17.test.sql"
@@ -52,8 +66,12 @@ on:
       - "supabase/migrations/__tests__/issue_2060_ari_certification_canonical_digest.implementor.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql"
       - "mingla-business/src/services/agentReliability.ts"
+      - "mingla-business/src/services/agentChatService.ts"
+      - "mingla-business/src/hooks/useAgentChat.ts"
+      - "mingla-business/src/hooks/useConfirmPendingAction.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.test.ts"
       - "mingla-business/src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts"
+      - "mingla-business/src/services/__tests__/agentChatService.issue2060.wire.test.ts"
       - "docs/contracts/ari-capability-ledger.json"
       - "docs/contracts/ari-certification-*.json"
       - "docs/contracts/ari-observability.json"
@@ -87,9 +105,10 @@ jobs:
           cache-dependency-path: mingla-business/package-lock.json
       - name: Edge reliability type and unit contracts
         run: |
-          deno fmt --check supabase/functions/_shared/agentReliability.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts
+          deno fmt --check supabase/functions/_shared/agentReliability.ts supabase/functions/_shared/agentReliabilityHttp.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.implementor.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.tester.adversarial.test.ts
           deno check supabase/functions/_shared/agentReliability.ts
-          deno test supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts
+          deno check supabase/functions/_shared/agentReliabilityHttp.ts
+          deno test --allow-env supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_foundation.tester_adversarial.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_reliability_typed_success.tester.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.implementor.test.ts supabase/functions/_shared/__tests__/issue_2060_ari_envelope_wire.tester.adversarial.test.ts
       - name: Certification migration contract
         run: deno test --allow-read supabase/migrations/__tests__/issue_2060_ari_certification_foundation.test.ts
       - name: 116-row exact-release certification harness
@@ -102,7 +121,7 @@ jobs:
         working-directory: mingla-business
         run: |
           npm ci
-          npx jest --runInBand src/services/__tests__/agentReliability.issue2060.test.ts src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts
+          npx jest --runInBand src/services/__tests__/agentReliability.issue2060.test.ts src/services/__tests__/agentReliability.issue2060.tester.adversarial.test.ts src/services/__tests__/agentChatService.issue2060.wire.test.ts
           npx tsc --noEmit --pretty false --target es2021 --module commonjs --strict --skipLibCheck src/services/agentReliability.ts
 
   reliability-certification-pg17:
