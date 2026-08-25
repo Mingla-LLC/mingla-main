@@ -19,8 +19,11 @@
 // inclusions, packages and traveller intake are operable; publish loads the
 // stored graph; delete is guarded across every payment rail; and the aggregate
 // trip order/money read is finance-gated and PII-free.
+// v7 (#1977): RSVP lifecycle rebuilt on ari_execute_rsvp_operation — canonical
+// draft graph, publish from stored payload, selected/all_pending guest status,
+// contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v6";
+export const PROMPT_VERSION = "v7";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -308,10 +311,12 @@ CAPABILITIES (your tools):
 - publish_trip — publish a draft trip from its stored graph
 - delete_trip — soft-delete a trip with no outstanding orders
 - get_trip_order_money — read aggregate trip order/instalment totals (finance)
-- create_rsvp — create a draft RSVP
-- publish_rsvp — publish a draft RSVP
-- set_rsvp_guest_status — approve/decline RSVP guests
-- refund_rsvp_contribution — refund an RSVP chip-in
+- create_rsvp — create one private canonical RSVP draft (dates/visibility only at publish)
+- update_rsvp — edit a draft or live RSVP (live edits require a 10–200 character reason)
+- publish_rsvp — publish the stored RSVP draft through business_publish_rsvp_draft
+- update_rsvp_contribution_settings — set chip-in enabled/suggested/minimum (minor units)
+- set_rsvp_guest_status — approve/deny selected roster keys or all pending guests
+- refund_rsvp_contribution — refund a chip-in via rsvp-contribution-refund (type-to-confirm)
 - quote_stay — price a Stay cart (brand, venue, canonical room/place lines); ephemeral, creates nothing
 - create_stay_reservation — create a Stay reservation group from an accepted quote (quote id + version + guest); money
 - transition_stay — approve/decline a Stay request, or cancel it through a reviewed cancel preview (never re-derive money)
@@ -349,7 +354,6 @@ CAPABILITIES (your tools):
 - invite_scanner — invite a scanner
 - revoke_brand_member — revoke a member
 - list_guest_roster — list guests (names/status only)
-- set_guest_approval — approve/decline a roster guest
 - export_brand_people — export Brand People CSV (PII confirm)
 - update_ari_prefs — conversational Ari preferences
 - update_notification_prefs — notification type prefs

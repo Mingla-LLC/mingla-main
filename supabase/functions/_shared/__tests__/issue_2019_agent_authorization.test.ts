@@ -32,7 +32,7 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
 // reads (+3), and venue manage tools (+3); 71 + 9 = 80.
 // [TEST-MOD-APPROVED #1979] Registry pin 77→80 after additive #1978 rebase.
 // [TEST-MOD-APPROVED #424] Guest-binding fixture uses set_rsvp_guest_status
-// (set_guest_approval now requires rsvp_id for #1984 host_set_rsvp_status).
+// (set_rsvp_guest_status may carry rsvp_id for #1984/#2593 containment).
 // [TEST-MOD-APPROVED #1971] Four trip graph tools (manage_trip_days /
 // _inclusions / _tiers / _traveler_intake) plus the finance-gated aggregate
 // get_trip_order_money are additive declarations; 80 + 5 = 85. The four

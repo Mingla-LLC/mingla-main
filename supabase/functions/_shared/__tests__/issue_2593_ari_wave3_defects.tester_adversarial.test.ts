@@ -1,4 +1,7 @@
 // deno-lint-ignore-file no-explicit-any
+// [TEST-MOD-APPROVED #1977] set_guest_approval retired; containment
+// proofs now drive set_rsvp_guest_status while still passing rsvp_id
+// so the bare-rsvp binding axis stays exercised.
 // #2593 — INDEPENDENT TESTER adversarial proofs for the eight #2415 (#424
 // Wave 3) defect-class repairs. Deliberately a DIFFERENT AXIS from the
 // implementor suite in issue_2593_ari_wave3_defects.test.ts:
@@ -437,7 +440,7 @@ Deno.test("#2593 T-D1 a bulk guest_ids array is checked at EVERY position, not s
 Deno.test("#2593 T-D2 a bulk array whose members ALL belong to the named event is authorized", async () => {
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
-    { event_id: EVENT, guest_ids: [GUEST_A, GUEST_B], status: "approved" },
+    ,
     guestClient(
       { [GUEST_A]: RSVP_A, [GUEST_B]: RSVP_B },
       { [RSVP_A]: EVENT, [RSVP_B]: EVENT },
@@ -453,8 +456,8 @@ Deno.test("#2593 T-D3 an RSVP with no resolvable parent event fails CLOSED on bo
     await assertRejects(
       () =>
         authorizeAgentTool(
-          securedTool("set_guest_approval"),
-          { event_id: EVENT, rsvp_id: RSVP_A, approved: true },
+          securedTool("set_rsvp_guest_status"),
+          { event_id: EVENT, rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
           makeClient({
             rows: {
               events: { [EVENT]: RSVP_EVENT_ROW },
@@ -572,15 +575,15 @@ Deno.test("#2593 T-E0 the case fixtures are genuinely cased (an all-digit uuid w
 Deno.test("#2593 T-E1 an uppercase or MIXED-case event_id that matches is accepted on both chains", async () => {
   for (const form of [upper, mixed]) {
     const bare = await authorizeAgentTool(
-      securedTool("set_guest_approval"),
-      { event_id: form(CASE_EVENT), rsvp_id: RSVP_A, approved: true },
+      securedTool("set_rsvp_guest_status"),
+      { event_id: form(CASE_EVENT), rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
       caseHarness(CASE_EVENT),
       CALLER,
     );
     assertEquals(bare.brandId, BRAND);
     const guest = await authorizeAgentTool(
       securedTool("set_rsvp_guest_status"),
-      { event_id: form(CASE_EVENT), guest_id: GUEST_A, status: "approved" },
+      { event_id: form(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
       caseHarness(CASE_EVENT),
       CALLER,
     );
@@ -593,7 +596,7 @@ Deno.test("#2593 T-E2 case-insensitivity did NOT become a hole: a different even
   for (const form of [upper, mixed, (value: string) => value]) {
     for (
       const [tool, args] of [
-        ["set_guest_approval", { rsvp_id: RSVP_A, approved: true }],
+        ["set_rsvp_guest_status", { decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] }],
         ["set_rsvp_guest_status", { guest_id: GUEST_A, status: "approved" }],
       ] as Array<[string, Row]>
     ) {
@@ -621,7 +624,7 @@ Deno.test("#2593 T-E3 the compare is WHOLE-STRING: a uuid differing only in the 
     const error = await assertRejects(
       () =>
         authorizeAgentTool(
-          securedTool("set_guest_approval"),
+          securedTool("set_rsvp_guest_status"),
           {
             event_id: form(CASE_NEAR_COLLISION),
             rsvp_id: RSVP_A,
@@ -640,8 +643,8 @@ Deno.test("#2593 T-E3 the compare is WHOLE-STRING: a uuid differing only in the 
   }
   // ...and the genuine match still passes, so this is not just a blanket deny.
   const context = await authorizeAgentTool(
-    securedTool("set_guest_approval"),
-    { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, approved: true },
+    securedTool("set_rsvp_guest_status"),
+    { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
     caseHarness(CASE_EVENT),
     CALLER,
   );
@@ -697,8 +700,8 @@ Deno.test("#2593 T-E5 a non-string event_id on the database side still fails CLO
     await assertRejects(
       () =>
         authorizeAgentTool(
-          securedTool("set_guest_approval"),
-          { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, approved: true },
+          securedTool("set_rsvp_guest_status"),
+          { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
           caseHarness(value),
           CALLER,
         ),

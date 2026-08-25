@@ -40,11 +40,12 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   delete_trip: "trip",
   get_trip_order_money: "trip",
   cancel_trip_booking: "trip",
+  update_rsvp: "rsvp",
   publish_rsvp: "rsvp",
+  update_rsvp_contribution_settings: "rsvp",
   set_rsvp_guest_status: "rsvp",
   refund_rsvp_contribution: "rsvp",
   list_guest_roster: "rsvp",
-  set_guest_approval: "rsvp",
 });
 
 const role = (
@@ -100,7 +101,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // (biz_trip_require_finance); the coarse gate here agrees.
   get_trip_order_money: role("finance_manager", "event"),
   create_rsvp: role("event_manager", "brand"),
+  update_rsvp: role("event_manager", "event"),
   publish_rsvp: role("event_manager", "event"),
+  update_rsvp_contribution_settings: role("event_manager", "event"),
   set_rsvp_guest_status: role("event_manager", "event"),
   refund_rsvp_contribution: role("finance_manager", "event"),
   quote_stay: role("scanner", "brand"),
@@ -148,7 +151,6 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   invite_scanner: role("event_manager", "brand"),
   revoke_brand_member: role("brand_admin", "brand"),
   list_guest_roster: role("event_manager", "event"),
-  set_guest_approval: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),
   update_notification_prefs: role("self", "none"),
@@ -335,6 +337,25 @@ async function resolveBrand(
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
+  if (isUuid(args.contribution_id)) {
+    const contribution = await rowBrand(
+      client,
+      "event_rsvp_contributions",
+      args.contribution_id,
+      "event_id",
+    );
+    const event = await rowBrand(
+      client,
+      "events",
+      contribution.event_id,
+      "brand_id, event_type",
+      true,
+    );
+    assertExpectedEventType(toolName, event);
+    if (event.brand_id !== brandId || contribution.event_id !== args.event_id) {
+      unavailable();
+    }
+  }
   if (isUuid(args.installment_id)) {
     const installment = await rowBrand(
       client,
@@ -367,7 +388,33 @@ async function resolveBrand(
     const venue = await rowBrand(client, "venue_listings", resourceId);
     if (venue.brand_id !== brandId) unavailable();
   }
-  const guestIds = [
+  if (Array.isArray(args.roster_keys)) {
+    for (const key of args.roster_keys) {
+      if (typeof key !== "string" || !/^rsvp:[0-9a-f-]{36}$/i.test(key)) {
+        unavailable();
+      }
+      const rsvpId = key.slice(5);
+      const rosterRsvp = await rowBrand(
+        client,
+        "event_rsvps",
+        rsvpId,
+        "event_id",
+      );
+      const rosterEvent = await rowBrand(
+        client,
+        "events",
+        rosterRsvp.event_id,
+        "brand_id, event_type",
+        true,
+      );
+      assertExpectedEventType(toolName, rosterEvent);
+      if (rosterEvent.brand_id !== brandId) unavailable();
+      if (isUuid(args.event_id) && !sameUuid(rosterRsvp.event_id, args.event_id)) {
+        unavailable();
+      }
+    }
+  }
+    const guestIds = [
     args.guest_id,
     ...(Array.isArray(args.guest_ids) ? args.guest_ids : []),
   ]
