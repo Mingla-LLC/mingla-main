@@ -10,7 +10,7 @@ import path from "node:path";
 import crypto from "node:crypto";
 import { execFileSync, spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations } from "./validate-manifest-v2.mjs";
+import { decodeManifestTextRepresentations, isMigratedSuite, isPrimarySuite, suiteCommandFingerprint } from "./validate-manifest-v2.mjs";
 import { validateDecision } from "./select-phase3b-suites.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
@@ -18,13 +18,70 @@ export const REPO_ROOT = path.resolve(HERE, "../../..");
 const MANIFEST_PATH = path.join(REPO_ROOT, ".github/ci-batch/MANIFEST.json");
 const SUPERVISOR_PATH = path.join(HERE, "process-supervisor.py");
 const CHILD_ENV_NAMES = new Set(["CI", "NODE_ENV", "TZ", "LANG", "LC_ALL", "FORCE_COLOR"]);
+// [#2439 SC-6.1 / PR #2546] The four authorised inert literals #1326 carries.
+// They were registered in the manifest and pinned by the validator but the
+// RUNNER still rejected them, so every attempt of the money-critical NG Paystack
+// suite died on `undeclared child environment capability: SUPABASE_URL` — an
+// environment represented but not executable, exactly like the retry that was
+// carried in the schema and never honoured. Values are re-checked against the
+// reviewed literals at spawn time; the registry is the gate, this is the lock.
+const PHASE3C_AUTHORISED_ENV_NAMES = new Set([
+  "SUPABASE_URL", "SUPABASE_SERVICE_ROLE_KEY", "PAYSTACK_MODE", "PAYSTACK_SECRET_KEY_TEST",
+]);
+const PHASE3B_WAVE = "phase3b-postgres-wave";
+const PHASE3C_WAVE = "phase3c-deno-wave";
+
+// [#2439] Lane routing is DERIVED from the registry, never from a wave name.
+// A migrated suite is one the registry gives its own executionClass; it runs in
+// its host's own lane, which is the lane that reports leaves. Phase 1 and Phase
+// 3A suites carry no executionClass and take the single-command branch. This is
+// byte-identical to the previous two-name set on today's tree (29 migrated
+// suites either way) and it is the reason Phase 3D cannot repeat the failure
+// that took six batch hosts red on PR #2546.
+export function executesLeaves(suite) { return isMigratedSuite(suite); }
+
+/**
+ * [#2439 SC-5.1] Whether an absent `file-exists` target FAILS, derived per
+ * TARGET rather than per wave.
+ *
+ * The real distinction was never the wave: it is whether the registry declares
+ * this exact target as a CONDITIONAL proof. Phase 3B's #1902 registers its three
+ * absent targets in `conditionalExpectedFiles` and means "run when present";
+ * Phase 3C registers none and means `test -f "$f" || exit 1`. Deriving from the
+ * registration makes both behaviours fall out of the data, and the validator
+ * already enforces that every phase3b file-exists target is registered there.
+ */
+export function absentFileIsFailure(suite, target) {
+  if (!isMigratedSuite(suite)) return false;
+  return !(suite.conditionalExpectedFiles || []).includes(target);
+}
+// The runner honours whatever bounded retry the REVIEWED registry declares; it
+// is the schema, not the runner, that decides which steps may declare one (the
+// validator pins it to exactly #1326's two steps at 3 attempts / 10s).
+export function retryIsHonoured(suite) { return isMigratedSuite(suite); }
+/**
+ * [PR #2546] Bounded backoff between retry attempts.
+ *
+ * This MUST hold the event loop open. It previously called `timer.unref()`,
+ * which tells Node the timer may not keep the process alive — and during a
+ * backoff the timer is the ONLY pending work, so Node drained the loop and
+ * EXITED mid-wait. Attempt 1 failed, "waiting 10s" printed, and the process
+ * ended: no attempt 2, no verdict, no results artifact. A bounded retry whose
+ * own wait terminates the run is a retry in name only, and #1326 is a
+ * money-critical Nigerian Paystack path whose three attempts are the reason the
+ * origin's `for attempt in 1 2 3` / `sleep 10` exists.
+ *
+ * Reproduced deterministically: an unref'd timer prints the wait line and exits
+ * 0 without running the next attempt; a ref'd timer runs all three.
+ */
+export const sleepBounded = (ms) => new Promise((resolve) => { setTimeout(resolve, Math.max(0, ms)); });
 
 export function loadManifest(p = MANIFEST_PATH) {
   return decodeManifestTextRepresentations(JSON.parse(fs.readFileSync(p, "utf8")));
 }
 export function expectedSuites(manifest, klass) { return manifest.suites.filter((suite) => !klass || suite.class === klass); }
 export function expectedPrimarySuites(manifest, klass) {
-  return manifest.suites.filter((suite) => (!klass || suite.class === klass) && suite.migrationWave !== "phase3b-postgres-wave");
+  return manifest.suites.filter((suite) => (!klass || suite.class === klass) && isPrimarySuite(suite));
 }
 
 // Compatibility API for the pre-Phase-2 committed regression. Production uses
@@ -234,12 +291,9 @@ export function recordSetup(manifest, klass, installExecutions, tempRoot = proce
   return evidencePath;
 }
 
-export function commandFingerprint(suite) {
-  const rows = suite.migrationWave === "phase3b-postgres-wave"
-    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null }))
-    : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
-  return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
-}
+// Re-exported from the single canonical definition so the runner that WRITES a
+// fingerprint and the reconciler that CHECKS it cannot drift apart.
+export const commandFingerprint = suiteCommandFingerprint;
 
 export function capabilityPayloadDigest({ cwd, executable, argv, env, compound }) {
   const payload = env !== undefined || compound !== undefined ? { cwd, executable, argv, env: env || null, compound: Boolean(compound) } : { cwd, executable, argv };
@@ -272,16 +326,28 @@ export function resolveCommandCapability(registry, suite, step, stepIndex) {
 }
 
 export function resolveLeafCapability(registry, suite, step, stepIndex, child, childIndex) {
+  // A typed predicate leaf carries no shell at all; the runner evaluates it.
+  // WAVE-SCOPED: Phase 3B's `file-exists` leaves are conditional guards on a
+  // real command and keep their invocation. Only Phase 3C introduces predicates
+  // that ARE the assertion.
+  // Derived from the sealed capability, not the wave: a typed predicate leaf is
+  // one the registry declares with no executable and no argv at all.
+  const registered = (registry?.leaves || []).find((entry) => entry.id === child.id);
+  const typedPredicate = registered ? registered.executable === null && registered.argv === null : false;
   if (registry?.schemaVersion !== 1 || registry?.expectedLeaves !== registry?.leaves?.length
       || capabilityRegistryDigest(registry.leaves || []) !== registry.registrySha256) throw new Error("leaf capability registry is missing or corrupt");
   const matches = registry.leaves.filter((entry) => entry.id === child.id);
   if (matches.length !== 1) throw new Error(`${suite.id}: leaf ${child.id} must resolve exactly once`);
   const leaf = matches[0];
   if (leaf.suiteId !== suite.id || leaf.outerCommandId !== step.commandId || leaf.outerIndex !== stepIndex || leaf.leafIndex !== childIndex
-      || leaf.cwd !== child.cwd || leaf.executable !== child.invocation?.command || JSON.stringify(leaf.argv) !== JSON.stringify(child.invocation?.argv)
+      || leaf.cwd !== child.cwd || leaf.executable !== (child.invocation?.command ?? null) || JSON.stringify(leaf.argv) !== JSON.stringify(child.invocation?.argv ?? null)
       || JSON.stringify(leaf.env) !== JSON.stringify(child.env || null) || JSON.stringify(leaf.predicate) !== JSON.stringify(child.predicate)) throw new Error(`${child.id}: leaf ownership drifted`);
   const payload = { cwd: leaf.cwd, executable: leaf.executable, argv: leaf.argv, env: leaf.env, predicate: leaf.predicate };
   if (leaf.payloadSha256 !== crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex")) throw new Error(`${child.id}: leaf payload digest drifted`);
+  if (typedPredicate) {
+    if (leaf.executable !== null || leaf.argv !== null) throw new Error(`${child.id}: typed predicate leaf must carry no shell invocation`);
+    return null;
+  }
   return { command: leaf.executable, argv: [...leaf.argv] };
 }
 
@@ -412,9 +478,12 @@ function signalProcessGroup(child, signal) {
 
 const SECRET_NAME = /(?:secret|token|password|passwd|credential|private|api[_-]?key|auth|cookie|webhook)/i;
 
-export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false } = {}) {
+export function minimalChildEnvironment(requested = {}, home, { allowNodePath = false, allowReviewedEnv = false } = {}) {
   for (const name of Object.keys(requested)) {
-    if (!CHILD_ENV_NAMES.has(name) && !(allowNodePath && name === "NODE_PATH" && requested[name] === "./node_modules")) throw new Error(`undeclared child environment capability: ${name}`);
+    const reviewedEnv = allowReviewedEnv && PHASE3C_AUTHORISED_ENV_NAMES.has(name) && typeof requested[name] === "string"
+      && !/\$\{\{|\$\(|`|secrets\./.test(requested[name]);
+    if (!CHILD_ENV_NAMES.has(name) && !reviewedEnv
+      && !(allowNodePath && name === "NODE_PATH" && requested[name] === "./node_modules")) throw new Error(`undeclared child environment capability: ${name}`);
   }
   const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
   const temporaryDirectory = path.join(temporaryHome, "tmp");
@@ -446,7 +515,7 @@ function secretValues(extraEnv = {}) {
     if (typeof value !== "string" || value.length < 6) continue;
     // Values excluded from the explicit child environment are sensitive by
     // boundary, regardless of whether their variable name looks secret-like.
-    if ((!CHILD_ENV_NAMES.has(name) && name !== "PATH") || SECRET_NAME.test(name)) {
+    if ((!CHILD_ENV_NAMES.has(name) && name !== "PATH" && !PHASE3C_AUTHORISED_ENV_NAMES.has(name)) || (SECRET_NAME.test(name) && !PHASE3C_AUTHORISED_ENV_NAMES.has(name))) {
       values.push(value, encodeURIComponent(value), Buffer.from(value).toString("base64"), Buffer.from(value).toString("base64url"));
     }
   }
@@ -493,7 +562,7 @@ function pipeRedacted(stream, destination, env) {
   stream.on("end", () => { if (buffer) destination.write(redactText(buffer, env)); });
 }
 
-export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false,
+export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 2_000, spawnImpl = spawn, allowNodePath = false, allowReviewedEnv = false,
   stdout = process.stdout, stderr = process.stderr, home } = {}) {
   return new Promise((resolve) => {
     let settled = false;
@@ -503,7 +572,7 @@ export function runInvocation(invocation, { cwd, env = {}, timeoutMs, graceMs = 
     const ownsHome = !home;
     const temporaryHome = home || fs.mkdtempSync(path.join(os.tmpdir(), "ci-batch-home-"));
     let childEnv;
-    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath }); }
+    try { childEnv = minimalChildEnvironment(env, temporaryHome, { allowNodePath, allowReviewedEnv }); }
     catch (error) { if (ownsHome) fs.rmSync(temporaryHome, { recursive: true, force: true }); resolve({ ok: false, code: 2, timedOut: false, reason: redactText(error.message) }); return; }
     const supervised = spawnImpl === spawn;
     const actual = supervised
@@ -551,6 +620,44 @@ function generatedPathAllowed(relative, allowed) {
   return allowed.some((candidate) => { const clean = candidate.replace(/^\.\//, "").replace(/\/$/, ""); return normalized === clean || normalized.startsWith(`${clean}/`); });
 }
 
+/**
+ * [#2439 SC-5.1 / SC-5.2] Evaluate a typed leaf predicate.
+ *
+ * Returns null for `always` (the leaf runs its command), or a verdict for a
+ * typed predicate the runner owns. A failing verdict names the exact target, so
+ * the reason is attributable rather than "a leaf failed somewhere".
+ *
+ * @param {object} child        the declared leaf
+ * @param {string} workspaceRoot isolated worktree root
+ * @param {string} leafCwd      resolved leaf working directory
+ * @returns {{ok: boolean, reason: string|null}|null}
+ */
+export function evaluateTypedPredicate(child, workspaceRoot, leafCwd) {
+  const kind = child.predicate?.kind;
+  if (!kind || kind === "always") return null;
+  if (kind === "file-exists") {
+    const targets = child.predicate.paths || (child.predicate.path ? [child.predicate.path] : []);
+    if (!targets.length) return { ok: false, reason: `${child.id}: required-file predicate names no target` };
+    for (const target of targets) {
+      if (!fs.statSync(path.resolve(leafCwd, target), { throwIfNoEntry: false })?.isFile()) {
+        return { ok: false, reason: `MISSING: ${target} (required by ${child.id})` };
+      }
+    }
+    return { ok: true, reason: null };
+  }
+  if (kind === "source-contract") {
+    const { path: target, needle, sense } = child.predicate;
+    if (!["must-contain", "must-not-contain"].includes(sense)) return { ok: false, reason: `${child.id}: unknown source-contract sense` };
+    const absolute = path.resolve(leafCwd, target);
+    if (!fs.statSync(absolute, { throwIfNoEntry: false })?.isFile()) return { ok: false, reason: `MISSING: ${target} (source contract ${child.id})` };
+    const contains = fs.readFileSync(absolute, "utf8").includes(needle);
+    if (sense === "must-contain" && !contains) return { ok: false, reason: `${target} no longer contains ${JSON.stringify(needle)} (${child.id})` };
+    if (sense === "must-not-contain" && contains) return { ok: false, reason: `${target} contains forbidden ${JSON.stringify(needle)} (${child.id})` };
+    return { ok: true, reason: null };
+  }
+  return { ok: false, reason: `${child.id}: unsupported leaf predicate ${kind}` };
+}
+
 export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFactory = createIsolatedWorkspace,
   execute = runInvocation, now = Date.now, graceMs = 2_000, commandCapabilities,
   leafCapabilities,
@@ -594,21 +701,75 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
         ? resolveCommandCapability(commandCapabilities, suite, step, stepIndex)
         : execute !== runInvocation ? step.invocation
           : (() => { throw new Error(`${suite.id}: production execution requires the assertion command capability registry`); })();
-      if (suite.migrationWave === "phase3b-postgres-wave") {
+      if (executesLeaves(suite)) {
         const children = step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`, predicate: { kind: "always" }, cwd: step.cwd, invocation: step.invocation, env: step.env || null }];
         let outerFailed = false;
         for (const [childIndex, child] of children.entries()) {
-          if (child.predicate?.kind === "file-exists" && !fs.existsSync(path.join(workspace.root, child.predicate.path))) {
+          // Phase 1 / 3A / 3B semantics are untouched: an absent conditional
+          // proof is skipped silently, because that is what those origins meant.
+          if (child.predicate?.kind === "file-exists" && child.predicate.path
+              && !absentFileIsFailure(suite, child.predicate.path)
+              && !fs.existsSync(path.join(workspace.root, child.predicate.path))) {
             leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "skipped-absent", executed: false }); continue;
           }
           const leafCwd = path.resolve(workspace.root, child.cwd || ".");
+          // Resolve the sealed capability FIRST, for every leaf including typed
+          // predicates. It proves ownership and the payload digest, and it
+          // returns null for a leaf that carries no shell. Evaluating the
+          // predicate before this ran would let a tampered `predicate` in the
+          // suite execute without ever meeting its own sealed registry entry.
           const leafInvocation = resolveLeafCapability(leafCapabilities, suite, step, stepIndex, child, childIndex);
-          const leafRemaining = suite.timeoutSeconds * 1_000 - (now() - started);
-          if (leafRemaining <= 0) { leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "timed-out", executed: true }); status = "timed-out"; code = 124; reason = "suite deadline exceeded"; outerFailed = true; break; }
-          const leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
-            allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03") });
+          // [#2439 SC-5.1 / SC-5.2] Typed predicates are evaluated here, by the
+          // runner, and they FAIL LOUDLY naming the exact target. The origins say
+          // `test -f "$f" || { echo "MISSING: $f"; exit 1; }` and
+          // `grep -q <needle> <file>`; representing those as skip-silently leaves
+          // would be a fresh instance of the #1584 dark-suite class.
+          if (leafInvocation === null) {
+            const verdict = evaluateTypedPredicate(child, workspace.root, leafCwd);
+            leafResults.push({ id: child.id, outerCommandId: step.commandId, status: verdict.ok ? "passed" : "failed", executed: true });
+            if (!verdict.ok) {
+              outerFailed = true; status = "failed"; code = Math.max(code, 2); reason ||= verdict.reason;
+            }
+            continue;
+          }
+          // [#2439 SC-4.1 / SC-4.2] The bounded retry is a typed field the runner
+          // HONOURS. #1326's origin wrapped this exact invocation in a
+          // three-attempt loop with a 10s back-off; that loop is deliberately
+          // absent from the command string, so without this the retry would be
+          // silently DROPPED — a weakening SC-4.3 forbids outright. Attempts are
+          // bounded by the schema and every wait is bounded by the suite deadline.
+          const retry = step.retry && retryIsHonoured(suite) ? step.retry : null;
+          const maxAttempts = retry ? retry.attempts : 1;
+          let leafResult = null;
+          let deadlineHit = false;
+          for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+            const leafRemaining = suite.timeoutSeconds * 1_000 - (now() - started);
+            if (leafRemaining <= 0) { deadlineHit = true; break; }
+            leafResult = await execute(leafInvocation, { cwd: leafCwd, env: child.env || step.env, timeoutMs: leafRemaining, graceMs, home: suiteHome,
+              allowNodePath: suite.id === "issue-1902-public-event-lifecycle-tests" && step.commandId.endsWith(":03"),
+              // Only a migrated suite whose registry record DECLARES the env may
+              // receive it; the validator pins which suites and which literals.
+              allowReviewedEnv: isMigratedSuite(suite) && Boolean(step.env) });
+            if (leafResult.ok || leafResult.timedOut || attempt === maxAttempts) break;
+            const backoffMs = retry.backoffSeconds * 1_000;
+            const remainingAfter = suite.timeoutSeconds * 1_000 - (now() - started);
+            if (remainingAfter <= backoffMs) { deadlineHit = true; break; }
+            console.log(`RETRY ${child.id} attempt ${attempt}/${maxAttempts} failed; waiting ${retry.backoffSeconds}s`);
+            await sleepBounded(backoffMs);
+          }
+          if (deadlineHit) { leafResults.push({ id: child.id, outerCommandId: step.commandId, status: "timed-out", executed: true }); status = "timed-out"; code = 124; reason = "suite deadline exceeded"; outerFailed = true; break; }
           leafResults.push({ id: child.id, outerCommandId: step.commandId, status: leafResult.ok ? "passed" : leafResult.timedOut ? "timed-out" : "failed", executed: true });
-          if (!leafResult.ok) { outerFailed = true; status = leafResult.timedOut ? "timed-out" : "failed"; code = Math.max(code, leafResult.code || 1); reason ||= leafResult.reason || `leaf failed: ${child.id}`; if (leafResult.timedOut) break; }
+          if (!leafResult.ok) {
+            outerFailed = true; status = leafResult.timedOut ? "timed-out" : "failed"; code = Math.max(code, leafResult.code || 1);
+            // [PR #2546] The reason must NAME the failing leaf. It used to take
+            // `runInvocation`'s bare "process exited 1", so a suite whose later
+            // five steps all printed PASS reported a nonzero exit with nothing
+            // identifying which step produced it. The verdict was honest; the
+            // evidence line was not, and an unattributable failure is
+            // indistinguishable from a spurious one.
+            reason ||= `${child.id} (${step.commandId}): ${leafResult.reason || "leaf failed"}`;
+            if (leafResult.timedOut) break;
+          }
         }
         executed += 1;
         if (status === "timed-out") break;
@@ -643,13 +804,24 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
     catch (error) { status = "failed"; code = code || 2; reason = `workspace cleanup failed: ${error.message}`; }
   }
   const durationMs = Math.max(0, now() - started);
-  const expectedLeafRows = suite.migrationWave === "phase3b-postgres-wave"
+  // [PR #2546] The verdict and its own evidence must agree, in BOTH directions.
+  // "passed with a failing leaf" would ship a green lie; "failed with every leaf
+  // passing" is the inverse and is what a bare exit code looked like. Either way
+  // the run is not trustworthy, so fail closed rather than report the mismatch.
+  const verdictDisagrees = (leaves) => {
+    if (!leaves.length) return null;
+    const bad = leaves.filter((leaf) => !["passed", "skipped-absent"].includes(leaf.status));
+    if (status === "passed" && bad.length) return `suite reported passed while ${bad.length} leaf result(s) did not pass`;
+    if (status !== "passed" && !bad.length && !reason) return "suite reported a failure with no failing leaf and no reason";
+    return null;
+  };
+  const expectedLeafRows = executesLeaves(suite)
     ? suite.steps.flatMap((step, stepIndex) => (step.children || [{ id: `leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1` }])
       .map((leaf) => ({ id: leaf.id, outerCommandId: step.commandId }))) : [];
   const observedLeaves = new Map(leafResults.map((leaf) => [leaf.id, leaf]));
   const completeLeafResults = expectedLeafRows.map((leaf) => observedLeaves.get(leaf.id) || { ...leaf,
     status: status === "timed-out" ? "not-run-suite-deadline" : "missing", executed: false });
-  const outerResults = suite.migrationWave === "phase3b-postgres-wave" ? suite.steps.map((step, index) => {
+  const outerResults = executesLeaves(suite) ? suite.steps.map((step, index) => {
     const leaves = completeLeafResults.filter((leaf) => leaf.outerCommandId === step.commandId);
     const initiated = index < executed;
     const outerStatus = !initiated ? (status === "timed-out" ? "not-run-suite-deadline" : "missing")
@@ -660,6 +832,8 @@ export async function runSuiteV2(suite, { root = REPO_ROOT, profile, workspaceFa
       expectedLeaves: leaves.length, executedLeaves: leaves.filter((leaf) => leaf.executed).length,
       skippedAbsentLeaves: leaves.filter((leaf) => leaf.status === "skipped-absent").length };
   }) : undefined;
+  const disagreement = verdictDisagrees(completeLeafResults);
+  if (disagreement) { status = "failed"; code = Math.max(code, 2); reason = `verdict/evidence mismatch: ${disagreement}`; }
   return redactResultText({ id: suite.id, setupProfile: suite.setupProfile, commandFingerprint: commandFingerprint(suite), status,
     ok: status === "passed", code, reason, durationMs, seconds: Math.round(durationMs / 1_000), timeoutSeconds: suite.timeoutSeconds,
     expected: suite.steps.length, executed, outerResults,
@@ -678,6 +852,15 @@ export async function runSuitesV2(suites, options = {}) {
     const result = await runSuiteV2(suite, options);
     results.push(result);
     console.log(redactText(`${result.ok ? "PASS" : "FAIL"}  ${String(result.seconds).padStart(4)}s  ${suite.id}${result.reason ? `  (${result.reason})` : ""}`));
+    // [PR #2546] A leaf-executing suite never breaks early (ORCH-1383 R2), so a
+    // failure in step 1 is followed by five more steps printing PASS. Print every
+    // outer's own outcome so the verdict and the visible evidence cannot look
+    // like they disagree.
+    for (const outer of result.outerResults || []) {
+      const leaves = (result.leafResults || []).filter((leaf) => leaf.outerCommandId === outer.id);
+      const detail = leaves.map((leaf) => `${leaf.id.split(":").pop()}=${leaf.status}`).join(" ");
+      console.log(redactText(`      ${outer.status === "passed" ? "ok  " : "FAIL"}  ${outer.id}  [${detail}]`));
+    }
   }
   return results;
 }
@@ -725,7 +908,7 @@ function writeReport(manifest, report, root = REPO_ROOT, resultsFile = manifest.
 }
 
 function selectedPhase3bSuites(manifest, hostClass, documentPath, failSafeClass) {
-  const owned = manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave" && suite.hostClass === hostClass);
+  const owned = manifest.suites.filter((suite) => suite.migrationWave === PHASE3B_WAVE && suite.hostClass === hostClass);
   if (!manifest.classes.includes(hostClass) || !owned.length) throw new Error(`unreviewed Phase 3B host ${hostClass}`);
   try {
     const document = validateDecision(manifest, JSON.parse(fs.readFileSync(documentPath, "utf8")), hostClass);
@@ -735,6 +918,97 @@ function selectedPhase3bSuites(manifest, hostClass, documentPath, failSafeClass)
     if (!failSafeClass || executionClasses.length !== 1 || executionClasses[0] !== failSafeClass) throw new Error("Phase 3B selection evidence is missing, corrupt, or cross-host");
     return { document: { digest: "fail-safe-host", mode: "fail-safe-host", deferredError: true, error: error.message }, suites: owned };
   }
+}
+
+/**
+ * [#2439] Phase 3C host execution. There is no selection protocol here: a
+ * Phase 3C host runs every suite the registry assigns to it, so there is no
+ * decision document to forge, defer, or fail safe over.
+ */
+export function phase3cSuitesForHost(manifest, hostClass) {
+  const owned = manifest.suites.filter((suite) => suite.migrationWave === PHASE3C_WAVE && suite.hostClass === hostClass);
+  if (!manifest.classes.includes(hostClass) || !owned.length) throw new Error(`unreviewed Phase 3C host ${hostClass}`);
+  return owned;
+}
+
+async function runPhase3cHost(manifest, hostClass) {
+  // [PR #2546] Last-resort artifact guard. If this process ends before a report
+  // is emitted — for ANY reason, including one nobody has thought of yet — write
+  // a failing one naming that fact. "No files were found" tells an operator
+  // nothing; "the run ended before any verdict was recorded" tells them exactly
+  // where to look. Armed before the first suite runs and disarmed on emission.
+  let emitted = false;
+  const guard = () => {
+    if (emitted) return;
+    emitted = true;
+    try {
+      const report = buildShardReport(`phase3c:${hostClass}`, [], [], null, 0);
+      report.ok = false; report.code = process.exitCode || 2;
+      report.abnormalTermination = "the run ended before any Phase 3C verdict was recorded";
+      writeReport(manifest, report, REPO_ROOT, "suite-results-phase3c.json");
+    } catch { /* a guard that throws would replace one red with a worse one */ }
+    if (!process.exitCode) process.exitCode = 2;
+  };
+  process.once("exit", guard);
+  // [PR #2546] Host resolution is INSIDE the try. It used to throw before the
+  // report was written, so a hard error produced no `suite-results-phase3c.json`
+  // at all and the upload failed with `if-no-files-found: error` — a second,
+  // misleading red on top of the real one. The artifact must always exist and
+  // must say what went wrong.
+  const started = Date.now(); let evidence = null; let results = []; let suites = [];
+  try {
+    suites = phase3cSuitesForHost(manifest, hostClass);
+    const classes = [...new Set(suites.map((suite) => suite.executionClass))];
+    if (classes.length !== 1) throw new Error(`${hostClass}: assigned suites span unreviewed Phase 3C classes`);
+    const evidencePath = setupEvidencePath(manifest, classes[0]); evidence = JSON.parse(fs.readFileSync(evidencePath, "utf8"));
+    const { profile } = validateSetupEvidence(manifest, classes[0], evidence);
+    results = await runSuitesV2(suites, { profile, commandCapabilities: manifest.commandCapabilities,
+      leafCapabilities: manifest.phase3cLeafCapabilities, graceMs: manifest.runnerContract.timeoutGraceSeconds * 1_000 });
+    fs.rmSync(evidencePath, { force: true });
+  } catch (error) {
+    results = suites.map((suite) => missingPhase3bResult(suite, error.message));
+    if (!suites.length) {
+      // Nothing resolved: still emit an honest, failing report rather than no file.
+      const report = buildShardReport(`phase3c:${hostClass}`, [], [], null, Date.now() - started);
+      report.ok = false; report.code = 2; report.hostResolutionError = error.message;
+      emitted = true; process.removeListener("exit", guard);
+      writeReport(manifest, report, REPO_ROOT, "suite-results-phase3c.json");
+      process.exitCode = 2;
+      return;
+    }
+  }
+  emitted = true;
+  process.removeListener("exit", guard);
+  return emitPhase3cReport(manifest, hostClass, suites, results, evidence, started);
+}
+
+/**
+ * [PR #2546] The Phase 3C artifact is written on EVERY path. `runPhase3cHost`
+ * used to reach its writeReport only when suite execution returned normally, so
+ * any abnormal termination — the unref'd backoff above, an uncaught rejection, a
+ * supervisor kill — produced no `suite-results-phase3c.json` at all and the
+ * upload failed with `if-no-files-found: error`. That stacked a second,
+ * misleading red on top of the real one and hid which host actually broke.
+ */
+function emitPhase3cReport(manifest, hostClass, suites, results, evidence, started) {
+  const report = buildShardReport(`phase3c:${hostClass}`, suites, results, evidence, Date.now() - started);
+  report.expectedOuterIds = suites.flatMap((suite) => suite.steps.map((step) => step.commandId));
+  report.executedOuterIds = results.flatMap((result) => {
+    const suite = suites.find((candidate) => candidate.id === result.id);
+    return suite ? suite.steps.slice(0, result.executed).map((step) => step.commandId) : [];
+  });
+  report.expectedLeafIds = suites.flatMap((suite) => suite.steps.flatMap((step, stepIndex) =>
+    step.children?.map((child) => child.id) || [`leaf:${suite.id}:${String(stepIndex + 1).padStart(2, "0")}:1`]));
+  const leafResults = results.flatMap((result) => result.leafResults || []);
+  report.observedLeafIds = leafResults.map((leaf) => leaf.id);
+  report.executedLeafIds = leafResults.filter((leaf) => leaf.executed).map((leaf) => leaf.id);
+  // [#2439 SC-5.1] Phase 3C has no conditional proofs at all: every required
+  // file is required. An empty absent set is an assertion, not a description -
+  // a non-empty one here means a leaf was skipped where the origin would have
+  // failed the job.
+  report.absentLeafIds = leafResults.filter((leaf) => leaf.status === "skipped-absent").map((leaf) => leaf.id);
+  if (report.absentLeafIds.length) { report.ok = false; report.code = report.code || 1; }
+  writeReport(manifest, report, REPO_ROOT, "suite-results-phase3c.json"); process.exitCode = report.code;
 }
 
 function missingPhase3bResult(suite, reason) {
@@ -790,6 +1064,9 @@ async function main() {
   if (process.argv[2] === "--run-phase3b-host") {
     const flag = process.argv[5] === "--fail-safe-host" ? process.argv[6] : null;
     return runPhase3bHost(manifest, process.argv[3], process.argv[4], flag);
+  }
+  if (process.argv[2] === "--run-phase3c-host") {
+    return runPhase3cHost(manifest, process.argv[3]);
   }
   const klass = process.argv[2] === "--run" ? process.argv[3] : process.argv[2];
   const suites = expectedPrimarySuites(manifest, klass);

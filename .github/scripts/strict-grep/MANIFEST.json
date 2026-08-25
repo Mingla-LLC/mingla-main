@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff — there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 606,
+  "expectedStrictGrepMjsFiles": 607,
   "selfTestWiredFloor": 385,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -61,6 +61,17 @@
       "jobKeys": []
     },
     {
+      "script": ".github/scripts/strict-grep/issue-2148-ci-deno-wave-shadow.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/ci-batch/select-phase3b-suites.mjs",
       "kind": "file",
       "enforcement": "batch:A",
@@ -84,6 +95,17 @@
     },
     {
       "script": ".github/scripts/ci-batch/__tests__/issue-2438-postgres-wave-shadow-parity.implementor.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/ci-batch/__tests__/issue-2439-deno-wave-shadow-parity.implementor.test.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node --test",
@@ -4496,7 +4518,7 @@
     {
       "script": ".github/scripts/strict-grep/issue-2230-consumer-carries-occurrences.mjs",
       "kind": "file",
-      "enforcement": "external:issue-2230-consumer-multiday-tests.yml",
+      "enforcement": "ci-batch:issue-2230-consumer-multiday-tests",
       "invocation": "node",
       "modes": [
         "self-test",

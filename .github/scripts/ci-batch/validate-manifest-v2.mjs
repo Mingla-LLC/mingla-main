@@ -25,10 +25,11 @@ const ALLOWED_DISPOSITIONS = new Set([
   "approved-retired",
 ]);
 const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
-const LOCKED_SHADOW_CAPABILITY_SHA256 = "2acfb137cb60c03f88e85aaa941ef65971ce926983dde05ecfb8972f6798ebeb";
+const LOCKED_SHADOW_CAPABILITY_SHA256 = "7af6028109ff91e1c996a8231e932d5deb26b714d2c22b2264b17fb072593091";
 const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
 const LOCKED_PHASE3B_CONTRACT_SHA256 = "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9";
-const LOCKED_SETUP_PROFILES_SHA256 = "7b6de9312326d102ed0330179443731ed154e1a83381c17eabde53f03838bc60";
+const LOCKED_PHASE3C_CONTRACT_SHA256 = "caaed7cab03f977c040a68e884b2c2dfb4316f832756de8e10943179d2e5abe5";
+const LOCKED_SETUP_PROFILES_SHA256 = "982809d5c0f79590410647543013b8bd71d40b1ae47d1ae4728761e1659adc47";
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
 const PINNED_UPLOAD_ARTIFACT = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02";
@@ -40,6 +41,81 @@ const PHASE3B_WAVE = "phase3b-postgres-wave";
 const PHASE3B_SHADOW_LIFECYCLE = "shadow-active";
 const PHASE3B_TERMINAL_LIFECYCLE = "batched-historical";
 const PHASE3B_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
+const PHASE3C_WAVE = "phase3c-deno-wave";
+// [#2439 SC-11.1] Phase 3C is one atomic wave in exactly one of the two reviewed
+// lifecycles. A mixed wave (16 terminal + 1 shadow) is red by construction.
+const PHASE3C_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
+const PHASE3C_SUITE_COUNT = 17;
+
+/**
+ * [#2439] THE lane derivation. Read this before adding another wave.
+ *
+ * A suite runs in the PRIMARY lane of its matrix job unless it has been migrated
+ * into a reviewed secondary/tertiary execution class hosted inside that job. The
+ * registry already records exactly that, and records it for no other reason:
+ * `executionClass` is present on a migrated suite and ABSENT on a primary one.
+ * Measured on this tree — Phase 1: 23 suites, 0 with executionClass; Phase 3A:
+ * 32 suites, 0; Phase 3B: 12 suites, all 12; Phase 3C: 17 suites, all 17.
+ *
+ * Every lane decision in this repository must go through these two predicates.
+ * Identifying a lane by WAVE NAME has now broken three times as soon as a second
+ * wave appeared — the runner's leaf branch (SPEC item 11), two #2438 mutants that
+ * selected positionally, and the reconciler's primary vector, which is what took
+ * six batch hosts red on PR #2546. Adding `phase3cIds` beside `phase3bIds` would
+ * have been the fourth. A name-free predicate cannot be broken by Phase 3D.
+ *
+ * @param {object} suite a registry suite record
+ * @returns {boolean} true when the suite belongs to a migrated wave's own lane
+ */
+export function isMigratedSuite(suite) {
+  return typeof suite?.executionClass === "string" && suite.executionClass.length > 0;
+}
+
+/** @returns {boolean} true when the suite is executed by the primary batch lane. */
+export function isPrimarySuite(suite) {
+  return !isMigratedSuite(suite);
+}
+
+/**
+ * [PR #2546] THE canonical suite command fingerprint. There used to be two
+ * implementations of this — one in run-suite-batch.mjs keyed on the leaf lane and
+ * one in select-phase3b-suites.mjs keyed on the literal Phase 3B wave name — and
+ * for a Phase 3C suite they produced DIFFERENT digests. The runner writes the
+ * fingerprint and the reconciler checks it, so a divergence here is a
+ * `primary-identity-mismatch` waiting for the next wave. One definition, imported
+ * by both, makes the divergence unrepresentable.
+ *
+ * A migrated suite's fingerprint covers its env, its leaves and its bounded retry,
+ * because all three are executable semantics the runner honours.
+ */
+export function suiteCommandFingerprint(suite) {
+  const rows = isMigratedSuite(suite)
+    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation,
+      env: step.env || null, children: step.children || null, ...(step.retry ? { retry: step.retry } : {}) }))
+    : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
+  return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+}
+
+const PHASE3C_OUTER_COUNT = 46;
+const PHASE3C_LEAF_COUNT = 54;
+const PHASE3C_INSTALL_COUNT = 3;
+const PHASE3C_FILE_EXISTS_PREDICATES = 11;
+// [#2439 SC-6.1] The exact authorised literal environment maps, byte for byte,
+// on exactly the two #1326 steps that carry them. This is an allowlist that
+// cannot be extended at runtime: it is a frozen module constant, and SC-6.3's
+// guard proves a mutation attempt does not take effect.
+const PHASE3C_AUTHORISED_ENV = Object.freeze([
+  Object.freeze({
+    SUPABASE_URL: "https://example-test.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real",
+  }),
+  Object.freeze({
+    SUPABASE_URL: "https://example-test.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "test-service-role-key-not-real",
+    PAYSTACK_MODE: "test",
+    PAYSTACK_SECRET_KEY_TEST: "sk_test_issue1326_confirm_secret",
+  }),
+]);
 const LOCKED_PROVIDER_DISCOVERY_SHA256 = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158";
 const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
 const PHASE3B_PROVIDER_NAMES = new Set([
@@ -100,6 +176,34 @@ export const PHASE3B_WRAPPER_NAMES = Object.freeze([
   "issue-948-w3-screens-copy-tests.yml", "orch-0976-draft-promotion-tests.yml",
 ]);
 const PHASE3B_WRAPPER_SET = new Set(PHASE3B_WRAPPER_NAMES);
+export const PHASE3C_SHADOW_MARKER = "# #2439 SHADOW-PARITY-TRIGGER — remove before cutover";
+const PHASE3C_SHADOW_TOKEN = "#2439 SHADOW-PARITY-TRIGGER";
+// [#2439 SC-1] The exact seventeen Deno wrapper identities. No pattern-expanded
+// neighbour is admissible: membership is this literal list and nothing else.
+export const PHASE3C_WRAPPER_NAMES = Object.freeze([
+  "issue-1170-stripe-money-path-tests.yml", "issue-1176-paystack-recipient-tests.yml",
+  "issue-1178-ng-split-removal-tests.yml", "issue-1237-parse-falsy-amount-tests.yml",
+  "issue-1326-ng-reservation-finalize-tests.yml", "issue-1427-admin-stay-support-tests.yml",
+  "issue-1430-refund-replay-tests.yml", "issue-1437-secret-bundle-compatibility-tests.yml",
+  "issue-1465-permitted-staff-authoring-pipeline-tests.yml", "issue-1637-discover-single-fetch-tests.yml",
+  "issue-1950-app-readiness-tests.yml", "issue-1999-ari-provider-schema-tests.yml",
+  "issue-2019-ari-delegated-auth.yml", "issue-2230-consumer-multiday-tests.yml",
+  "issue-2245-declared-app-links-resolve.yml", "issue-2321-account-deletion-tests.yml",
+  "orch-1371-1372-tester-adversarial.yml",
+]);
+const PHASE3C_WRAPPER_SET = new Set(PHASE3C_WRAPPER_NAMES);
+// [#2439 SC-11.5] The seven Phase 3C records that hold a provider record and
+// transition retained-live-provider -> batched-provider at cutover. The other
+// ten hold none and must not gain one.
+const PHASE3C_PROVIDER_NAMES = new Set([
+  "issue-1430-refund-replay-tests.yml",
+  "issue-1437-secret-bundle-compatibility-tests.yml",
+  "issue-1950-app-readiness-tests.yml",
+  "issue-1999-ari-provider-schema-tests.yml",
+  "issue-2019-ari-delegated-auth.yml",
+  "issue-2230-consumer-multiday-tests.yml",
+  "issue-2321-account-deletion-tests.yml",
+]);
 const REVIEWED_TEXT_ENCODING = "concat-v1";
 const STALE_CONFIG_ROOT = ["app.config", "ts"].join(".");
 const REVIEWED_SPLIT_PATHS = Object.freeze([
@@ -175,7 +279,8 @@ export function validateManifestTextRepresentations(rawManifest) {
 
 export function canonicalizeShadowWrapperSource(workflowName, source) {
   const marker = SHADOW_PARITY_WRAPPER_SET.has(workflowName) ? SHADOW_PARITY_MARKER
-    : PHASE3B_WRAPPER_SET.has(workflowName) ? PHASE3B_SHADOW_MARKER : null;
+    : PHASE3B_WRAPPER_SET.has(workflowName) ? PHASE3B_SHADOW_MARKER
+      : PHASE3C_WRAPPER_SET.has(workflowName) ? PHASE3C_SHADOW_MARKER : null;
   if (!marker) return source;
   const lines = source.split("\n");
   const index = lines.indexOf(marker);
@@ -240,6 +345,34 @@ export function validatePhase3bMarkers(manifest, workflowSources) {
   return errors;
 }
 
+// [#2439 SC-12.1] Phase 3C marker contract. The wave owns exactly seventeen
+// wrapper identities, holds one atomic lifecycle across all of them, and each
+// shadow wrapper carries exactly one exact top-level marker line. A missing,
+// duplicated, altered or stray marker is red, and so is a marker on any
+// workflow outside the seventeen.
+export function validatePhase3cMarkers(manifest, workflowSources) {
+  const errors = [];
+  const records = (manifest.legacyOrigins || []).filter((origin) => origin.migrationWave === PHASE3C_WAVE);
+  const names = records.map((origin) => `${origin.stem}.${origin.extension}`);
+  if (names.length !== PHASE3C_SUITE_COUNT || new Set(names).size !== PHASE3C_SUITE_COUNT
+      || names.some((name) => !PHASE3C_WRAPPER_SET.has(name))) {
+    fail(errors, `Phase 3C must own the exact ${PHASE3C_SUITE_COUNT} reviewed wrapper identities`);
+  }
+  const lifecycles = new Set(records.map((origin) => origin.disposition));
+  if (lifecycles.size !== 1 || ![...PHASE3C_ATOMIC_LIFECYCLES].includes([...lifecycles][0])) fail(errors, "Phase 3C lifecycle must be atomic");
+  for (const name of PHASE3C_WRAPPER_NAMES) {
+    const source = workflowSources[name]; const shadow = lifecycles.has("shadow-active");
+    if (shadow && typeof source !== "string") { fail(errors, `${name}: shadow wrapper missing`); continue; }
+    if (!shadow && typeof source === "string") { fail(errors, `${name}: terminal wrapper must be absent`); continue; }
+    if (!shadow) continue;
+    const exact = source.split("\n").filter((line) => line === PHASE3C_SHADOW_MARKER).length;
+    const tokens = source.split(PHASE3C_SHADOW_TOKEN).length - 1;
+    if (exact !== 1 || tokens !== 1 || !source.startsWith(`${PHASE3C_SHADOW_MARKER}\n`)) fail(errors, `${name}: requires one exact top-level #2439 marker`);
+  }
+  for (const [name, source] of Object.entries(workflowSources)) if (!PHASE3C_WRAPPER_SET.has(name) && source.includes(PHASE3C_SHADOW_TOKEN)) fail(errors, `${name}: stray #2439 marker`);
+  return errors;
+}
+
 // [#2438 A7-SC3] Explicitly entered, explicitly exited tracked-file scope.
 //
 // Ambient, process-lifetime or module-global memoisation of trackedFiles() (or
@@ -288,7 +421,12 @@ function trackedFilesScopeFor(key) {
   return trackedFilesScopeStack.length ? trackedFilesScopeStack[trackedFilesScopeStack.length - 1] : null;
 }
 
-function trackedFiles(root) {
+// [#2439 SC-15.4] Exported so the post-cutover retired-reference inventory can
+// reuse the SAME A7-SC3 scope and the SAME cached listing. The alternative — the
+// gate spawning its own `git ls-files` — would do work the accounting record
+// cannot see, which is precisely the dishonest-accounting class this tranche
+// exists to close. Read-only; the scope still owns the cache and the count.
+export function trackedFiles(root) {
   trackedFilesCallTotal += 1;
   const key = path.resolve(root);
   const scope = trackedFilesScopeFor(key);
@@ -561,7 +699,9 @@ output = {
     { "class" => entry["class"]&.to_s, "node" => entry["node"]&.to_s,
       "cache" => entry["cache"]&.to_s, "cacheLock" => entry["cache-lock"]&.to_s,
       "hostTimeoutMinutes" => entry["hostTimeoutMinutes"], "secondaryClass" => entry["secondaryClass"]&.to_s,
-      "secondaryNode" => entry["secondaryNode"]&.to_s, "secondaryDeno" => entry["secondaryDeno"]&.to_s }
+      "secondaryNode" => entry["secondaryNode"]&.to_s, "secondaryDeno" => entry["secondaryDeno"]&.to_s,
+      "tertiaryClass" => entry["tertiaryClass"]&.to_s, "tertiaryNode" => entry["tertiaryNode"]&.to_s,
+      "tertiaryDeno" => entry["tertiaryDeno"]&.to_s, "tertiaryOrder" => entry["tertiaryOrder"]&.to_s }
   end,
   "setupNode" => {
     "action" => setup_node["uses"]&.to_s,
@@ -659,8 +799,24 @@ export function validatePhase2Contract(manifestOrOptions, matrixSource) {
     if (suite.isolation !== "clean-worktree") fail(errors, `${suite.id}: isolation must be exactly clean-worktree`);
     const exactPhase3bEnv = suite.id === "issue-1902-public-event-lifecycle-tests"
       && JSON.stringify((suite.steps || []).map((step) => step.env || null).filter(Boolean)) === JSON.stringify([{ NODE_PATH: "./node_modules" }]);
-    if (JSON.stringify(suite.envNames) !== "[]" || ((suite.steps || []).some((step) => step.env && Object.keys(step.env).length) && !exactPhase3bEnv)) {
+    // [#2439 SC-6] Exactly four keys, two maps, literals only, on exactly the two
+    // #1326 steps that carry them. Everything else about the env boundary is
+    // unchanged: no interpolation, no command substitution, no process-env
+    // forwarding, no secrets.* reference, and no other suite may carry env at all.
+    const exactPhase3cEnv = suite.id === "issue-1326-ng-reservation-finalize-tests"
+      && JSON.stringify((suite.steps || []).map((step) => step.env || null).filter(Boolean)) === JSON.stringify(PHASE3C_AUTHORISED_ENV);
+    if (JSON.stringify(suite.envNames) !== "[]" && !exactPhase3cEnv) {
       fail(errors, `${suite.id}: assertion children may not receive repository or job environment capabilities`);
+    }
+    if ((suite.steps || []).some((step) => step.env && Object.keys(step.env).length) && !exactPhase3bEnv && !exactPhase3cEnv) {
+      fail(errors, `${suite.id}: assertion children may not receive repository or job environment capabilities`);
+    }
+    for (const step of suite.steps || []) {
+      for (const [key, value] of Object.entries(step.env || {})) {
+        if (typeof value !== "string" || /\$\{\{|\$\(|`|secrets\./.test(value) || /\$\{\{|secrets\./.test(key)) {
+          fail(errors, `${suite.id}: environment value for ${key} must be an inert literal`);
+        }
+      }
     }
     for (const generated of suite.generatedPaths || []) {
       if (!generated || path.isAbsolute(generated) || path.normalize(generated).startsWith("..")) {
@@ -867,6 +1023,14 @@ export function discoverExpectedFilesForSuite(suite, root = DEFAULT_ROOT) {
     const units = step.children?.length ? step.children : [step];
     for (const unit of units) {
     const cwd = unit.cwd || step.cwd || suite.cwd || ".";
+    // [#2439 SC-5.1 / SC-5.2] A typed required-file or source-contract leaf
+    // carries no shell at all: its named targets ARE its file selection, and
+    // they must enter the inventory or the tokenizer would report a leaf that
+    // asserts on files the registry never claims exist.
+    for (const declared of [...(unit.predicate?.paths || []), ...(unit.predicate?.path ? [unit.predicate.path] : [])]) {
+      const relative = path.normalize(path.join(cwd, declared)).replaceAll(path.sep, "/");
+      if (repositoryFiles.has(relative) && fs.statSync(path.join(root, relative), { throwIfNoEntry: false })?.isFile()) found.add(relative);
+    }
     const command = unit.invocation?.argv?.[1] ?? unit.run ?? step.invocation?.argv?.[1] ?? step.run ?? "";
     const commandTestMatch = [...command.matchAll(/(?:^|\s)--testMatch(?:=|\s+)(?:"([^"]+)"|'([^']+)'|([^\s]+))/g)]
       .map((match) => match[1] || match[2] || match[3]);
@@ -1009,7 +1173,11 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
     accounting.filesPatternScanned += 1;
     const mentioned = new Set(source.match(/[A-Za-z0-9_.-]+\.ya?ml/g) || []);
     for (const name of mentioned) {
-      if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs" && PHASE3B_WRAPPER_SET.has(name)) continue;
+      // This file carries the reviewed wave identity lists as literals. Its own
+      // source naming a wrapper is an identity declaration, not evidence that the
+      // wrapper provides a suite, so it is exempted for the wave sets only.
+      if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs"
+        && (PHASE3B_WRAPPER_SET.has(name) || PHASE3C_WRAPPER_SET.has(name))) continue;
       if (!workflowNames.has(name)) continue;
       if (!references.has(name)) references.set(name, []);
       references.get(name).push(relative);
@@ -1033,12 +1201,23 @@ export function validateRegistry(
     .readdirSync(path.join(root, ".github/workflows"), { withFileTypes: true })
     .filter((entry) => entry.isFile() && /\.ya?ml$/.test(entry.name))
     .map((entry) => [entry.name, fs.readFileSync(path.join(root, ".github/workflows", entry.name), "utf8")]));
+  // [#2439 SC-16.7] ONE workflow inspection per validateRegistry call.
+  // inspectWorkflow() re-derives its cache key by reading and hashing all 165
+  // workflow sources, so calling it once per shadow suite paid that 29 times per
+  // validation. Hoisting it is not memoisation - nothing is cached across calls
+  // and every observation is identical - it simply stops recomputing one
+  // deterministic map inside a loop. This makes the shared path cheaper for
+  // Phase 3A, Phase 3B and Phase 3C alike, which is SC-16.7's structural remedy
+  // rather than a Phase 3C-only shortcut.
+  const inspections = inspectWorkflows(root, liveOrigins ?? discoverLiveOrigins(root));
+  const inspect = (name) => inspections[name];
   errors.push(...validateShadowParityMarkers(manifest, workflowSources));
   errors.push(...validatePhase3bMarkers(manifest, workflowSources));
+  errors.push(...validatePhase3cMarkers(manifest, workflowSources));
   if (manifest.schemaVersion !== 2) fail(errors, "schemaVersion must be exactly 2");
   if (manifest.generatedAtCommit !== undefined) fail(errors, "generatedAtCommit is forbidden: it makes registry diffs nondeterministic");
-  if (manifest.expectedExecutableSuites !== 67 || manifest.expectedSuites !== 67 || manifest.shadowExpectedVariants !== 44) {
-    fail(errors, "wave lock requires exactly 67 executable suites, including 32 Phase 3A and 12 Phase 3B variants");
+  if (manifest.expectedExecutableSuites !== 84 || manifest.expectedSuites !== 84 || manifest.shadowExpectedVariants !== 44) {
+    fail(errors, "wave lock requires exactly 84 executable suites, including 32 Phase 3A, 12 Phase 3B and 17 Phase 3C variants");
   }
   if (!Array.isArray(manifest.classes) || manifest.classes.length === 0 || new Set(manifest.classes).size !== manifest.classes.length) {
     fail(errors, "classes must be a non-empty unique array");
@@ -1046,9 +1225,9 @@ export function validateRegistry(
   if (!manifest.setupProfiles || typeof manifest.setupProfiles !== "object" || Array.isArray(manifest.setupProfiles)) {
     fail(errors, "setupProfiles must be an object");
   } else if (crypto.createHash("sha256").update(JSON.stringify(manifest.setupProfiles)).digest("hex") !== LOCKED_SETUP_PROFILES_SHA256) {
-    fail(errors, "setupProfiles differ from the exact reviewed Phase 2 + #2437 shadow setup contract");
+    fail(errors, "setupProfiles differ from the exact reviewed Phase 2 + #2437 + #2439 shadow setup contract");
   }
-  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 67) fail(errors, "suites must contain exactly 67 entries");
+  if (!Array.isArray(manifest.suites) || manifest.suites.length !== 84) fail(errors, "suites must contain exactly 84 entries");
 
   const resolvedMatrixSource = matrixSource ?? fs.readFileSync(path.join(root, ".github/workflows/ci-batch.yml"), "utf8");
   errors.push(...validatePhase2Contract(manifest, resolvedMatrixSource));
@@ -1058,24 +1237,33 @@ export function validateRegistry(
   } catch (error) {
     fail(errors, `ci-batch.yml is not valid inspectable YAML: ${error.message}`);
   }
+  // [#2438 / #2439] Every matrix row's exact host ceiling and its secondary
+  // (Phase 3B) and tertiary (Phase 3C) migrated-class routes. A drifted route,
+  // a silently-raised ceiling, or a class hosted where the registry does not put
+  // it is red. Phase 3C adds NO new matrix row: the fourteen primary jobs are
+  // unchanged and the six new classes ride inside six of them.
   const expectedPhase3bRows = {
-    "node20-noinstall": [50, "phase3b-tenant-node20-deno146", "20", "1.46.x"],
-    "business-node20-1": [25, "", "", ""], "business-node20-2": [25, "", "", ""],
-    "business-node20-3": [25, "", "", ""], "business-node20-4": [25, "", "", ""],
-    "admin-node20-install": [55, "phase3b-lifecycle-node20-deno2", "20", "v2.x"],
-    "node22-noinstall": [55, "phase3b-theme-node20", "20", ""], "app-node22-install": [25, "", "", ""],
-    "business-node22-ignore-scripts": [60, "phase3b-brand-follow-node20-deno146", "20", "1.46.x"],
-    "cross-root-node22-ignore-scripts": [52, "phase3b-draft-node20-renderer", "20", ""],
-    "root-node20-yaml-no-save": [55, "phase3b-scanner-node20-renderer", "20", ""],
-    "node20-19-noinstall": [55, "phase3b-screens-node20-deno2-renderer", "20", "v2.x"],
-    "ota-app-node20-19-install": [105, "phase3b-business-node22", "22", ""],
-    "ota-business-node20-19-install": [55, "phase3b-enablers-node20-deno2", "20", "v2.x"],
+    "node20-noinstall": [50, "phase3b-tenant-node20-deno146", "20", "1.46.x", "", "", "", ""],
+    "business-node20-1": [45, "", "", "", "phase3c-deno146-node20", "20", "1.46.x", "node-first"],
+    "business-node20-2": [40, "", "", "", "phase3c-deno2x-node20", "20", "v2.x", "node-first"],
+    "business-node20-3": [45, "", "", "", "phase3c-deno2714-admin-node20", "20", "v2.7.14", "node-first"],
+    "business-node20-4": [45, "", "", "", "phase3c-deno2x-admin-node20", "20", "v2.x", "deno-first"],
+    "admin-node20-install": [55, "phase3b-lifecycle-node20-deno2", "20", "v2.x", "", "", "", ""],
+    "node22-noinstall": [55, "phase3b-theme-node20", "20", "", "", "", "", ""],
+    "app-node22-install": [50, "", "", "", "phase3c-deno2x-app-node22", "22", "v2.x", "node-first"],
+    "business-node22-ignore-scripts": [60, "phase3b-brand-follow-node20-deno146", "20", "1.46.x", "", "", "", ""],
+    "cross-root-node22-ignore-scripts": [62, "phase3b-draft-node20-renderer", "20", "", "phase3c-deno2714-node20", "20", "v2.7.14", "node-first"],
+    "root-node20-yaml-no-save": [55, "phase3b-scanner-node20-renderer", "20", "", "", "", "", ""],
+    "node20-19-noinstall": [55, "phase3b-screens-node20-deno2-renderer", "20", "v2.x", "", "", "", ""],
+    "ota-app-node20-19-install": [105, "phase3b-business-node22", "22", "", "", "", "", ""],
+    "ota-business-node20-19-install": [55, "phase3b-enablers-node20-deno2", "20", "v2.x", "", "", "", ""],
   };
   if (batchTopology.timeoutMinutes !== "${{ matrix.hostTimeoutMinutes }}") fail(errors, "batch timeout must be sourced from the exact integer matrix ceiling");
   for (const route of batchTopology.matrix || []) {
     const expected = expectedPhase3bRows[route.class];
-    if (!expected || JSON.stringify([route.hostTimeoutMinutes, route.secondaryClass, route.secondaryNode, route.secondaryDeno]) !== JSON.stringify(expected)) {
-      fail(errors, `${route.class}: Phase 3B host timeout/secondary route drifted`);
+    if (!expected || JSON.stringify([route.hostTimeoutMinutes, route.secondaryClass, route.secondaryNode, route.secondaryDeno,
+      route.tertiaryClass, route.tertiaryNode, route.tertiaryDeno, route.tertiaryOrder]) !== JSON.stringify(expected)) {
+      fail(errors, `${route.class}: Phase 3B/3C host timeout, secondary or tertiary route drifted`);
     }
   }
   const named = Object.fromEntries((batchTopology.steps || []).filter((step) => step.name).map((step) => [step.name, step]));
@@ -1094,6 +1282,55 @@ export function validateRegistry(
   const deno2 = named["Select immutable Deno v2 runtime"];
   if (deno1?.uses !== "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"
       || deno2?.uses !== "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed") fail(errors, "Phase 3B Deno actions must remain immutable");
+  // [#2439 SC-7.1 / SC-7.3] One and only one correct action/selector per Phase 3C
+  // Deno class, every action SHA immutable, and the run route pinned by name.
+  const phase3cDeno = {
+    "Select immutable Phase 3C Deno 1.46 runtime": ["denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d", "1.46.x"],
+    "Select immutable Phase 3C Deno v2 runtime": ["denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed", "v2.x"],
+    "Select immutable Phase 3C Deno v2.7.14 runtime": ["denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed", "v2.7.14"],
+  };
+  for (const [stepName, [action, selector]] of Object.entries(phase3cDeno)) {
+    const step = named[stepName];
+    // The step inventory carries name/uses/if; the exact `with: deno-version`
+    // pair lives only in the source, so both are checked. A selector that
+    // drifted without its action would otherwise pass here.
+    const exactBlock = `      - name: ${stepName}\n        if: always() && matrix.tertiaryDeno == '${selector}'\n        uses: ${action}\n        with:\n          deno-version: ${selector}\n`;
+    if (step?.uses !== action || step?.if !== `always() && matrix.tertiaryDeno == '${selector}'`
+        || !resolvedMatrixSource.includes(exactBlock)) {
+      fail(errors, `Phase 3C Deno runtime selector drifted: ${stepName}`);
+    }
+  }
+  // [#2439 SC-7.2] Setup ORDER is part of the profile. Exactly two mutually
+  // exclusive setup-node steps exist, one before the Deno selectors and one
+  // after, and a host takes exactly one of them.
+  const phase3cNodeFirst = named["Select tertiary Node runtime before Deno"];
+  const phase3cDenoFirst = named["Select tertiary Node runtime after Deno"];
+  const phase3cSetup = named["Execute one typed Phase 3C setup"];
+  const phase3cRun = named["Run assigned Phase 3C suites with exact attribution"];
+  const phase3cUpload = named["Upload Phase 3C suite results"];
+  if (phase3cNodeFirst?.uses !== PINNED_SETUP_NODE
+      || phase3cNodeFirst?.if !== "always() && matrix.tertiaryClass != '' && matrix.tertiaryOrder == 'node-first'"
+      || phase3cDenoFirst?.uses !== PINNED_SETUP_NODE
+      || phase3cDenoFirst?.if !== "always() && matrix.tertiaryClass != '' && matrix.tertiaryOrder == 'deno-first'"
+      || phase3cSetup?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --setup "${{ matrix.tertiaryClass }}"'
+      || phase3cSetup?.timeoutMinutes !== 5
+      || phase3cRun?.run !== 'node .github/scripts/ci-batch/run-suite-batch.mjs --run-phase3c-host "${{ matrix.class }}"'
+      || phase3cUpload?.if !== "always() && matrix.tertiaryClass != ''") {
+    fail(errors, "Phase 3C tertiary setup/run/upload protocol drifted");
+  }
+  // The node-first step must precede every Deno selector and the deno-first step
+  // must follow them, or the matrix field would name an order the file does not
+  // actually implement.
+  const stepNames = (batchTopology.steps || []).map((step) => step.name);
+  const firstDeno = stepNames.findIndex((name) => name?.startsWith("Select immutable Phase 3C Deno"));
+  const lastDeno = stepNames.reduce((last, name, index) => (name?.startsWith("Select immutable Phase 3C Deno") ? index : last), -1);
+  const beforeIndex = stepNames.indexOf("Select tertiary Node runtime before Deno");
+  const afterIndex = stepNames.indexOf("Select tertiary Node runtime after Deno");
+  if (firstDeno < 0 || beforeIndex < 0 || afterIndex < 0 || beforeIndex > firstDeno || afterIndex < lastDeno) {
+    fail(errors, "Phase 3C tertiary setup ORDER does not match the reviewed per-class profile");
+  }
+  if (!resolvedMatrixSource.includes("name: suite-results-phase3c-${{ matrix.class }}")
+      || !resolvedMatrixSource.includes("path: suite-results-phase3c.json")) fail(errors, "Phase 3C result artifact identity/path contract drifted");
   const matrixRoutes = new Map();
   for (const route of batchTopology.matrix || []) {
     if (!route.class || matrixRoutes.has(route.class)) fail(errors, `duplicate or empty ci-batch matrix class: ${route.class || "<empty>"}`);
@@ -1111,13 +1348,19 @@ export function validateRegistry(
       continue;
     }
     const expectedKeys = "installs" in profile
-      ? name === "phase3b-lifecycle-node20-deno2" ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
+      ? ["phase3b-lifecycle-node20-deno2", "phase3c-deno2x-app-node22"].includes(name)
+        ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
       : ["runtime", "install", "classes"];
     if (!sameStrings(Object.keys(profile), expectedKeys)) fail(errors, `setup profile ${name} has a malformed or unknown field`);
     const nodeRuntime = profile.runtime?.name === "node" && ["20", "22", "20.19.4"].includes(profile.runtime?.version)
       && sameStrings(Object.keys(profile.runtime || {}), ["name", "version"]);
-    const denoRuntime = profile.runtime?.name === "node+deno" && profile.runtime?.nodeVersion === "20"
-      && [["1.46.x", "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"], ["v2.x", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]]
+    // [#2439 SC-7.3] The action SHA is immutable in every row. The runtime
+    // selector may float exactly where the audited origin floated (v2.x) and no
+    // further; v2.7.14 is an exact selector and must NOT fold into the v2.x row.
+    const denoRuntime = profile.runtime?.name === "node+deno" && ["20", "22"].includes(profile.runtime?.nodeVersion)
+      && [["1.46.x", "denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d"],
+        ["v2.x", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"],
+        ["v2.7.14", "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]]
         .some(([version, action]) => profile.runtime?.deno?.version === version && profile.runtime?.deno?.action === action);
     if (!nodeRuntime && !denoRuntime) {
       fail(errors, `setup profile ${name} must use an approved exact Node runtime schema`);
@@ -1132,9 +1375,14 @@ export function validateRegistry(
     }
     const installs = profileInstallList(profile);
     if (profile.install !== null || "installs" in profile) {
-      if ("installs" in profile && (!Array.isArray(profile.installs) || profile.installs.length === 0)) fail(errors, `setup profile ${name} installs must be a non-empty ordered array`);
+      // [#2439 SC-8.2] Three of the six Phase 3C classes install nothing: their
+      // suites rely on the host's ambient Node for .mjs gates and on the typed
+      // Deno runtime for everything else. An empty ordered array is the honest
+      // representation; only a Phase 3C profile may use it.
+      const mayBeEmpty = name.startsWith("phase3c-");
+      if ("installs" in profile && (!Array.isArray(profile.installs) || (profile.installs.length === 0 && !mayBeEmpty))) fail(errors, `setup profile ${name} installs must be a non-empty ordered array`);
       for (const [installIndex, install] of installs.entries()) {
-      const phase3bInstall = typeof install?.id === "string" && install.id.startsWith("setup:phase3b-");
+      const phase3bInstall = typeof install?.id === "string" && /^setup:phase3[bc]-/.test(install.id);
       if (!install || typeof install !== "object" || !sameStrings(Object.keys(install), phase3bInstall ? ["id", "cwd", "invocation"] : ["cwd", "invocation"])) {
         fail(errors, `setup profile ${name} install must use the exact typed schema`);
       }
@@ -1178,10 +1426,10 @@ export function validateRegistry(
   const capabilityCommands = capabilityRegistry?.commands || [];
   const capabilityRegistryDigest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands)).digest("hex");
   const preservedPhase2Digest = crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(0, 51))).digest("hex");
-  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 194
-      || capabilityCommands.length !== 194 || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
+  if (capabilityRegistry?.schemaVersion !== 1 || capabilityRegistry?.expectedCommands !== 240
+      || capabilityCommands.length !== 240 || capabilityRegistry?.registrySha256 !== LOCKED_SHADOW_CAPABILITY_SHA256
       || capabilityRegistryDigest !== capabilityRegistry?.registrySha256) {
-    fail(errors, "the 194 assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B registry");
+    fail(errors, "the 240 assertion command capabilities must equal the locked Phase 1 + Phase 3A + Phase 3B + Phase 3C registry");
   }
   if (preservedPhase2Digest !== LOCKED_ASSERTION_CAPABILITY_SHA256) fail(errors, "the current-main 51 Phase 2 assertion capabilities changed");
   const capabilitiesById = new Map();
@@ -1198,7 +1446,7 @@ export function validateRegistry(
     if (!manifest.executionClasses?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
     if (!suite.setupProfile || !manifest.setupProfiles?.[suite.setupProfile]) fail(errors, `${suite.id}: unknown setupProfile ${suite.setupProfile}`);
     else selectedProfiles.add(suite.setupProfile);
-    const ownedClass = suite.migrationWave === PHASE3B_WAVE ? suite.executionClass : suite.class;
+    const ownedClass = isMigratedSuite(suite) ? suite.executionClass : suite.class;
     if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(ownedClass) !== true) {
       fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route execution class ${ownedClass}`);
     }
@@ -1208,18 +1456,32 @@ export function validateRegistry(
     if (suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
     if (suite.lifecycle === "shadow-active" && !originIsLive) fail(errors, `${suite.id}: shadow origin must remain live: ${suite.origin}`);
     if (suite.lifecycle === "batched-historical" && originIsLive) fail(errors, `${suite.id}: terminal origin wrapper must be absent: ${suite.origin}`);
+    // The lane predicate is only safe if a migrated record is complete: an
+    // executionClass without a wave or a host would route into a lane nothing
+    // reconciles. Fail closed rather than let a half-migrated record through.
+    if (isMigratedSuite(suite) && (!suite.migrationWave || !suite.hostClass)) {
+      fail(errors, `${suite.id}: a migrated suite must declare migrationWave and hostClass`);
+    }
+    if (!isMigratedSuite(suite) && suite.hostClass) {
+      fail(errors, `${suite.id}: a primary suite must not declare a hostClass`);
+    }
     const phase3b = suite.migrationWave === PHASE3B_WAVE;
-    if (!phase3b && (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version))) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
+    const phase3c = suite.migrationWave === PHASE3C_WAVE;
+    // Phase 3B and Phase 3C share one reviewed typed-capability boundary:
+    // reviewed-shell-v1 invocations, env/compound-bearing payload digests, a
+    // full runtime object, and leaf-aware expected-file derivation.
+    const phase3 = phase3b || phase3c;
+    if (!phase3 && (suite.runtime?.name !== "node" || !["20", "22", "20.19.4"].includes(suite.runtime?.version))) fail(errors, `${suite.id}: runtime must use an approved exact Node version`);
     const profileRuntime = manifest.setupProfiles?.[suite.setupProfile]?.runtime;
     const matrixRuntime = matrixRoutes.get(suite.class)?.node;
-    if ((!phase3b && (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime))
-        || (phase3b && (JSON.stringify(suite.runtime) !== JSON.stringify(profileRuntime) || suite.class !== suite.hostClass || !matrixRoutes.has(suite.hostClass)))) {
+    if ((!phase3 && (suite.runtime?.name !== profileRuntime?.name || suite.runtime?.version !== profileRuntime?.version || suite.runtime?.version !== matrixRuntime))
+        || (phase3 && (JSON.stringify(suite.runtime) !== JSON.stringify(profileRuntime) || suite.class !== suite.hostClass || !matrixRoutes.has(suite.hostClass)))) {
       fail(errors, `${suite.id}: suite, setup profile, and matrix runtime must agree exactly`);
     }
     if (!suite.ownerIssue || !/^#\d+$/.test(suite.ownerIssue)) fail(errors, `${suite.id}: ownerIssue must be an issue token`);
     if (!suite.cwd || !fs.existsSync(path.join(root, suite.cwd))) fail(errors, `${suite.id}: cwd does not exist: ${suite.cwd}`);
     if (!suite.requiredContext?.trim()) fail(errors, `${suite.id}: requiredContext classification is missing`);
-    if (!phase3b && !suite.exceptionRationale?.includes("Raw shell")) fail(errors, `${suite.id}: suite raw-shell exception is missing`);
+    if (!phase3 && !suite.exceptionRationale?.includes("Raw shell")) fail(errors, `${suite.id}: suite raw-shell exception is missing`);
     if (!suite.timingSeconds || !("p50" in suite.timingSeconds) || !("p95" in suite.timingSeconds)) fail(errors, `${suite.id}: p50/p95 timing classification is missing`);
     for (const key of ["envNames", "expectedFiles", "originPaths", "externalReferenceFiles", "generatedPaths"]) {
       if (!strings(suite[key])) fail(errors, `${suite.id}: ${key} must be a string array`);
@@ -1232,18 +1494,18 @@ export function validateRegistry(
     for (const [index, step] of (suite.steps || []).entries()) {
       if (!step.run?.trim()) fail(errors, `${suite.id}: step ${index} has an empty compatibility command`);
       const invocation = step.invocation;
-      const expectedKind = phase3b ? "reviewed-shell-v1" : "raw-shell";
+      const expectedKind = phase3 ? "reviewed-shell-v1" : "raw-shell";
       if (invocation?.kind !== expectedKind || invocation.command !== "bash" || !strings(invocation.argv) || invocation.argv.length !== 2 || invocation.argv[0] !== "-c" || invocation.argv[1] !== step.run) {
         fail(errors, `${suite.id}: step ${index} typed invocation must be bash [-c, exact legacy command]`);
       }
-      if (!phase3b && !step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
+      if (!phase3 && !step.exceptionRationale?.includes("legacy workflow")) fail(errors, `${suite.id}: step ${index} raw-shell exception is not explicit`);
       const expectedCommandId = `assert:${suite.id}:${String(index + 1).padStart(2, "0")}`;
       const capability = capabilitiesById.get(step.commandId);
       if (step.commandId !== expectedCommandId || !capability) {
         fail(errors, `${suite.id}: step ${index} has no stable assertion command capability`);
       } else {
         claimedCapabilities.add(capability.id);
-        const payload = phase3b ? { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv, env: step.env || null, compound: Boolean(step.children) }
+        const payload = phase3 ? { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv, env: step.env || null, compound: Boolean(step.children) }
           : { cwd: step.cwd || ".", executable: invocation.command, argv: invocation.argv };
         const payloadSha256 = crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex");
         if (capability.suiteId !== suite.id || capability.stepIndex !== index || capability.cwd !== payload.cwd
@@ -1254,7 +1516,7 @@ export function validateRegistry(
       }
     }
     const derivedExpectedFiles = discoverExpectedFilesForSuite(suite, root);
-    const registeredExpectedFiles = phase3b
+    const registeredExpectedFiles = phase3
       ? [...new Set([...(suite.expectedFiles || []), ...(suite.conditionalExpectedFiles || []).filter((file) => fs.existsSync(path.join(root, file)))])].sort()
       : suite.expectedFiles;
     if (JSON.stringify(registeredExpectedFiles) !== JSON.stringify(derivedExpectedFiles)) {
@@ -1276,7 +1538,7 @@ export function validateRegistry(
       if (JSON.stringify(variants) !== JSON.stringify(expectedVariants)) fail(errors, `${origin}: originVariant mapping drifted`);
     }
     for (const suite of waveOwners) {
-      const metadata = suite.lifecycle === "shadow-active" ? inspectWorkflow(root, path.basename(origin)) : null;
+      const metadata = suite.lifecycle === "shadow-active" ? inspect(path.basename(origin)) : null;
       if (!suite.shadowContract || (metadata && suite.shadowContract.workflowSha256 !== metadata.sourceSha256)
           || suite.shadowContract.variant !== suite.originVariant) fail(errors, `${suite.id}: immutable wave contract no longer matches its reviewed variant`);
     }
@@ -1326,7 +1588,7 @@ export function validateRegistry(
       fail(errors, `${suite.id}: shadow wrapper ${wrapperName} must remain live until cutover`);
       continue;
     }
-    const metadata = inspectWorkflow(root, wrapperName);
+    const metadata = inspect(wrapperName);
     if (!metadata) {
       fail(errors, `${suite.id}: shadow wrapper ${wrapperName} could not be inspected`);
       continue;
@@ -1349,6 +1611,254 @@ export function validateRegistry(
   }
   if (crypto.createHash("sha256").update(JSON.stringify(capabilityCommands.slice(51, 158))).digest("hex") !== "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709") {
     fail(errors, "Phase 3A 107-command capability digest changed");
+  }
+
+  // ==========================================================================
+  // [#2439] Phase 3C - the seventeen Deno origins.
+  //
+  // Every number below is COUNTED from the merged tree and compared against the
+  // reviewed contract; none is copied from a sibling wave. The wave-scoped
+  // selectors are deliberate (SC-17.1): selecting by lifecycle value rather than
+  // by wave is what let three #2438 governance tests auto-pass at shadow and go
+  // wrong the moment another wave reached terminal.
+  // ==========================================================================
+  const phase3cSuites = (manifest.suites || []).filter((suite) => suite.migrationWave === PHASE3C_WAVE);
+  const phase3cLifecycles = new Set(phase3cSuites.map((suite) => suite.lifecycle));
+  const phase3cLifecycle = phase3cLifecycles.size === 1 ? [...phase3cLifecycles][0] : null;
+  const phase3cTerminal = phase3cLifecycle === PHASE3B_TERMINAL_LIFECYCLE;
+  if (phase3cSuites.length !== PHASE3C_SUITE_COUNT || !PHASE3C_ATOMIC_LIFECYCLES.has(phase3cLifecycle)) {
+    fail(errors, `Phase 3C must contain exactly ${PHASE3C_SUITE_COUNT} suites in one atomic ${[...PHASE3C_ATOMIC_LIFECYCLES].join(" or ")} lifecycle`);
+  }
+  const phase3cOuterCount = phase3cSuites.reduce((sum, suite) => sum + suite.steps.length, 0);
+  if (phase3cOuterCount !== PHASE3C_OUTER_COUNT) fail(errors, `Phase 3C must own exactly ${PHASE3C_OUTER_COUNT} outer assertions, counted ${phase3cOuterCount}`);
+  for (const suite of phase3cSuites) {
+    if (!PHASE3C_WRAPPER_SET.has(path.basename(suite.origin || ""))) fail(errors, `${suite.id}: origin is outside the exact Phase 3C candidate list`);
+    if (manifest.phase3cHostMap?.[suite.id] !== suite.hostClass) fail(errors, `${suite.id}: Phase 3C host map disagrees with the suite host class`);
+    const wrapperName = path.basename(suite.origin);
+    const wrapperPresent = fs.existsSync(path.join(root, ".github/workflows", wrapperName));
+    const triggerDigest = crypto.createHash("sha256").update(JSON.stringify(suite.triggerContract)).digest("hex");
+    if (phase3cTerminal) {
+      if (wrapperPresent) { fail(errors, `${suite.id}: terminal wrapper ${wrapperName} must be absent`); continue; }
+      if (suite.shadowContract?.triggerSha256 !== triggerDigest || !/^[0-9a-f]{64}$/.test(String(suite.shadowContract?.workflowSha256))) {
+        fail(errors, `${suite.id}: exact trigger/wrapper terminal contract drifted`);
+      }
+      continue;
+    }
+    if (!wrapperPresent) { fail(errors, `${suite.id}: shadow wrapper ${wrapperName} must remain live until cutover`); continue; }
+    const metadata = inspect(wrapperName);
+    if (!metadata) { fail(errors, `${suite.id}: shadow wrapper ${wrapperName} could not be inspected`); continue; }
+    // [#2439 SC-9] Provenance is preserved exactly as audited: the union of the
+    // push and pull_request path lists must equal the wrapper's own path scope,
+    // the declared events must match, and the marker-stripped source digest must
+    // equal the frozen shadow contract.
+    const triggerPaths = [...new Set([...(suite.triggerContract?.push?.paths || []), ...(suite.triggerContract?.pullRequest?.paths || [])])].sort();
+    const triggerEvents = [suite.triggerContract?.push && "push", suite.triggerContract?.pullRequest && "pull_request",
+      suite.triggerContract?.workflowDispatch && "workflow_dispatch"].filter(Boolean).sort();
+    if (JSON.stringify(triggerPaths) !== JSON.stringify(metadata.pathScope)
+        || JSON.stringify(triggerEvents) !== JSON.stringify(metadata.triggers)
+        || JSON.stringify(suite.triggerContract?.concurrency) !== JSON.stringify(metadata.phase3bConcurrency)
+        || JSON.stringify(suite.triggerContract?.permissions) !== JSON.stringify(metadata.trustBoundary?.permissions)
+        || suite.shadowContract?.triggerSha256 !== triggerDigest
+        || suite.shadowContract?.workflowSha256 !== metadata.sourceSha256) {
+      fail(errors, `${suite.id}: exact trigger/concurrency/permission/wrapper shadow contract drifted`);
+    }
+  }
+  // [#2439 SC-21] The seal is RECONSTRUCTED at terminal, never re-pinned.
+  //
+  // `lifecycle` is inside this digest on purpose: at shadow it binds the wave's
+  // lifecycle into the same seal that binds host, runtime, setup, timeout and
+  // trigger, so none of them can move independently. Cutover flips all
+  // seventeen at once, which necessarily moves the raw digest — and pinning a
+  // SECOND literal for the terminal value would be a constant nobody can
+  // re-derive, exactly the fragility the provider-authority block below already
+  // rejects. So terminal normalises the wave-uniform lifecycle back to the
+  // shadow value and checks the ONE frozen seal, on both sides of cutover.
+  //
+  // This loses nothing: a partial flip cannot reach here at all. The atomicity
+  // check above requires all seventeen to hold ONE lifecycle before
+  // `phase3cLifecycle` is even defined, so the value substituted below is the
+  // wave's single agreed lifecycle and never a mixture.
+  const phase3cSealedLifecycle = phase3cTerminal ? PHASE3B_SHADOW_LIFECYCLE : phase3cLifecycle;
+  const phase3cContractDigest = crypto.createHash("sha256").update(JSON.stringify(phase3cSuites.map((suite) => ({
+    id: suite.id, origin: suite.origin, lifecycle: phase3cSealedLifecycle, executionClass: suite.executionClass,
+    hostClass: suite.hostClass, timeoutSeconds: suite.timeoutSeconds, shadowContract: suite.shadowContract,
+  })))).digest("hex");
+  if (manifest.phase3cContractSha256 !== LOCKED_PHASE3C_CONTRACT_SHA256 || phase3cContractDigest !== LOCKED_PHASE3C_CONTRACT_SHA256) {
+    fail(errors, "Phase 3C exact host/runtime/setup/timeout/trigger shadow contract drifted");
+  }
+
+  // ---- Phase 3C leaf registry: 54 leaves, three typed predicate kinds -------
+  const phase3cLeafRegistry = manifest.phase3cLeafCapabilities;
+  const phase3cLeaves = phase3cLeafRegistry?.leaves || [];
+  const phase3cSuiteIds = new Set(phase3cSuites.map((suite) => suite.id));
+  const declaredLeaves = phase3cSuites.flatMap((suite) => suite.steps.flatMap((step) => step.children || []));
+  const requiredFilePredicates = phase3cLeaves.reduce((sum, leaf) => sum + (leaf.predicate?.kind === "file-exists" ? (leaf.predicate.paths || []).length : 0), 0);
+  if (phase3cLeafRegistry?.schemaVersion !== 1 || phase3cLeafRegistry?.expectedLeaves !== PHASE3C_LEAF_COUNT
+      || phase3cLeaves.length !== PHASE3C_LEAF_COUNT || declaredLeaves.length !== PHASE3C_LEAF_COUNT
+      || requiredFilePredicates !== PHASE3C_FILE_EXISTS_PREDICATES
+      || phase3cLeafRegistry?.currentRequiredFilePredicates !== PHASE3C_FILE_EXISTS_PREDICATES
+      || crypto.createHash("sha256").update(JSON.stringify(phase3cLeaves)).digest("hex") !== phase3cLeafRegistry?.registrySha256) {
+    fail(errors, `Phase 3C leaf registry must equal ${PHASE3C_LEAF_COUNT} leaves carrying ${PHASE3C_FILE_EXISTS_PREDICATES} required-file predicates, got ${phase3cLeaves.length}/${requiredFilePredicates}`);
+  }
+  const phase3cLeafIds = new Set();
+  for (const leaf of phase3cLeaves) {
+    if (!leaf.id || phase3cLeafIds.has(leaf.id)) fail(errors, `duplicate or empty Phase 3C leaf capability: ${leaf.id || "<empty>"}`);
+    phase3cLeafIds.add(leaf.id);
+    if (!capabilitiesById.has(leaf.outerCommandId) || !phase3cSuiteIds.has(leaf.suiteId)) fail(errors, `${leaf.id}: leaf ownership is stale`);
+    const kind = leaf.predicate?.kind;
+    if (!["always", "file-exists", "source-contract"].includes(kind)) fail(errors, `${leaf.id}: unsupported leaf predicate`);
+    if (kind === "always" && (leaf.executable !== "bash" || !strings(leaf.argv) || leaf.argv.length !== 2 || leaf.argv[0] !== "-c")) {
+      fail(errors, `${leaf.id}: command leaf must be bash [-c, exact command]`);
+    }
+    // A typed predicate leaf carries NO shell at all. That is the whole point:
+    // the runner evaluates it and names the exact failing target, where the
+    // origin's own `test -f` / `grep -q` would have to be re-parsed to do so.
+    if (kind !== "always" && (leaf.executable !== null || leaf.argv !== null)) fail(errors, `${leaf.id}: typed predicate leaf must carry no shell invocation`);
+    if (kind === "file-exists") {
+      const owner = phase3cSuites.find((suite) => suite.id === leaf.suiteId);
+      if (!strings(leaf.predicate.paths) || leaf.predicate.paths.length === 0) fail(errors, `${leaf.id}: required-file predicate must name at least one target`);
+      for (const target of leaf.predicate.paths || []) {
+        if (!owner?.expectedFiles?.includes(target)) fail(errors, `${leaf.id}: required file is not registered in expectedFiles: ${target}`);
+      }
+    }
+    if (kind === "source-contract") {
+      const owner = phase3cSuites.find((suite) => suite.id === leaf.suiteId);
+      if (!["must-contain", "must-not-contain"].includes(leaf.predicate.sense)
+          || typeof leaf.predicate.needle !== "string" || !leaf.predicate.needle
+          || typeof leaf.predicate.path !== "string" || !owner?.expectedFiles?.includes(leaf.predicate.path)) {
+        fail(errors, `${leaf.id}: source-contract predicate must name a registered target, a literal needle and an explicit sense`);
+      }
+    }
+    const payload = { cwd: leaf.cwd, executable: leaf.executable, argv: leaf.argv, env: leaf.env, predicate: leaf.predicate };
+    if (crypto.createHash("sha256").update(JSON.stringify(payload)).digest("hex") !== leaf.payloadSha256) fail(errors, `${leaf.id}: immutable leaf payload drifted`);
+  }
+  if (JSON.stringify(declaredLeaves.map((leaf) => leaf.id)) !== JSON.stringify(phase3cLeaves.map((leaf) => leaf.id))) {
+    fail(errors, "Phase 3C leaf registry order must equal the registry's own declared leaf order");
+  }
+  // The suite-side child and the capability entry are TWO copies of one fact.
+  // Comparing only ids leaves the suite side free to drift - a predicate path
+  // could be deleted from the suite while the sealed registry kept reporting
+  // eleven. Bind the whole payload in both directions.
+  const phase3cLeavesById = new Map(phase3cLeaves.map((leaf) => [leaf.id, leaf]));
+  for (const suite of phase3cSuites) {
+    suite.steps.forEach((step, outerIndex) => {
+      (step.children || []).forEach((child, leafIndex) => {
+        const registered = phase3cLeavesById.get(child.id);
+        if (!registered) { fail(errors, `${child.id}: declared leaf has no capability entry`); return; }
+        const declaredPayload = { cwd: child.cwd || ".", executable: child.invocation?.command ?? null,
+          argv: child.invocation?.argv ?? null, env: child.env || null, predicate: child.predicate };
+        const registeredPayload = { cwd: registered.cwd, executable: registered.executable,
+          argv: registered.argv, env: registered.env, predicate: registered.predicate };
+        if (JSON.stringify(declaredPayload) !== JSON.stringify(registeredPayload)
+            || registered.outerCommandId !== step.commandId || registered.suiteId !== suite.id
+            || registered.outerIndex !== outerIndex || registered.leafIndex !== leafIndex) {
+          fail(errors, `${child.id}: declared leaf differs from its immutable leaf capability`);
+        }
+      });
+    });
+  }
+  // [#2439 SC-5.2] Exactly three source-contract predicates, all on #1465, and
+  // the third is the INVERTED one. Its sense is pinned by name: an inverted
+  // sense would assert the opposite of its purpose while staying green.
+  const sourceContracts = phase3cLeaves.filter((leaf) => leaf.predicate?.kind === "source-contract");
+  const expectedSourceContracts = [
+    ["issue-1465-permitted-staff-authoring-pipeline-tests", "biz_brand_effective_rank", "must-contain"],
+    ["issue-1465-permitted-staff-authoring-pipeline-tests", "RANK_EVENT_MANAGER = 40", "must-contain"],
+    ["issue-1465-permitted-staff-authoring-pipeline-tests", "brand.account_id !== userId", "must-not-contain"],
+  ];
+  if (JSON.stringify(sourceContracts.map((leaf) => [leaf.suiteId, leaf.predicate.needle, leaf.predicate.sense])) !== JSON.stringify(expectedSourceContracts)
+      || phase3cLeafRegistry?.currentSourceContractPredicates !== expectedSourceContracts.length) {
+    fail(errors, "Phase 3C source-contract predicates must be the exact three reviewed #1465 assertions with their audited senses");
+  }
+  // [#2439 SC-4] The bounded retry is a typed field on exactly the two #1326
+  // steps that carried the shell loop, and nowhere else. Collapsing it to one
+  // attempt is a weakening; a retry on any other step is an invention.
+  const retryOwners = phase3cSuites.flatMap((suite) => suite.steps
+    .filter((step) => step.retry !== undefined)
+    .map((step) => [step.commandId, step.retry?.attempts, step.retry?.backoffSeconds]));
+  if (JSON.stringify(retryOwners) !== JSON.stringify([
+    ["assert:issue-1326-ng-reservation-finalize-tests:01", 3, 10],
+    ["assert:issue-1326-ng-reservation-finalize-tests:02", 3, 10],
+  ])) fail(errors, "Phase 3C bounded retry must be the exact two reviewed #1326 steps at 3 attempts / 10s backoff");
+  for (const [, attempts, backoff] of retryOwners) {
+    if (!Number.isInteger(attempts) || attempts !== 3 || !Number.isInteger(backoff) || backoff !== 10) {
+      fail(errors, "Phase 3C retry schema rejects any attempts value other than 3 and any non-integer backoff");
+    }
+  }
+  // [#2439 SC-6.1] Typed env has exactly the two reviewed #1326 owners.
+  const phase3cEnvOwners = phase3cSuites.flatMap((suite) => suite.steps.filter((step) => step.env).map((step) => `${step.commandId}:${JSON.stringify(step.env)}`));
+  if (JSON.stringify(phase3cEnvOwners) !== JSON.stringify(PHASE3C_AUTHORISED_ENV.map((env, index) =>
+    `assert:issue-1326-ng-reservation-finalize-tests:0${index + 1}:${JSON.stringify(env)}`))) {
+    fail(errors, "Phase 3C typed env must have the sole exact #1326 owners with the audited inert literals");
+  }
+  // [#2439 SC-8.2] Six new execution classes, each with exactly one setup
+  // profile, and exactly three installs across the whole wave.
+  const phase3cClasses = [...new Set(phase3cSuites.map((suite) => suite.executionClass))].sort();
+  if (phase3cClasses.length > 7 || phase3cClasses.some((klass) => !klass.startsWith("phase3c-"))) {
+    fail(errors, `Phase 3C may introduce at most 7 reviewed execution classes, got ${phase3cClasses.length}`);
+  }
+  // [PR #2546 follow-up] TWO quantities, derived from two different sources.
+  // Conflating them is what let a broken suite hide behind a green-looking count:
+  //   originInstallSteps       - `npm ci` steps in the seventeen ORIGIN workflows.
+  //   profileInstallExecutions - dependency trees the reviewed setup profiles
+  //                              materialise, which is larger whenever a suite
+  //                              needs a tool its own package tree lacks.
+  // #1902 has the same shape: one origin install step, two profile installs plus
+  // a typed jest exposure, because app-mobile declares no jest at all.
+  const phase3cProfileInstalls = phase3cClasses.reduce((sum, klass) => sum + profileInstallList(manifest.setupProfiles?.[klass]).length, 0);
+  const phase3cOriginInstallSteps = PHASE3C_INSTALL_COUNT;
+  if (phase3cProfileInstalls < phase3cOriginInstallSteps) {
+    fail(errors, `Phase 3C profiles materialise ${phase3cProfileInstalls} trees, fewer than the ${phase3cOriginInstallSteps} the origins install`);
+  }
+  // A tool exposure's provider AND consumer must both be installed by the same
+  // profile, or the link target cannot exist when the suite runs.
+  for (const klass of phase3cClasses) {
+    const profile = manifest.setupProfiles?.[klass];
+    const installedCwds = new Set(profileInstallList(profile).map((install) => install.cwd));
+    for (const exposure of profile?.toolExposures || []) {
+      if (!installedCwds.has(exposure.providerCwd) || !installedCwds.has(exposure.consumerCwd)) {
+        fail(errors, `${klass}: tool exposure ${exposure.id} needs both ${exposure.providerCwd} and ${exposure.consumerCwd} installed by this profile`);
+      }
+    }
+  }
+  // A leaf that invokes `npx <tool>` in a cwd whose package tree cannot resolve
+  // that tool MUST have a typed exposure providing it. The absence of this check
+  // is what let `npx jest` in app-mobile reach CI and exit 1 while every
+  // assertion in the suite passed.
+  for (const suite of phase3cSuites) {
+    const profile = manifest.setupProfiles?.[suite.executionClass];
+    const exposed = new Set((profile?.toolExposures || []).map((exposure) => `${exposure.consumerCwd}::${exposure.executableName}`));
+    for (const step of suite.steps) {
+      for (const child of step.children || []) {
+        const match = (child.invocation?.argv?.[1] || "").match(/^npx\s+([A-Za-z0-9@._-]+)/);
+        if (!match) continue;
+        const cwd = child.cwd || step.cwd || ".";
+        const lockPath = path.join(root, cwd, "package-lock.json");
+        const lock = fs.existsSync(lockPath) ? JSON.parse(fs.readFileSync(lockPath, "utf8")) : null;
+        if (!lock?.packages?.[`node_modules/${match[1]}`] && !exposed.has(`${cwd}::${match[1]}`)) {
+          fail(errors, `${child.id}: npx ${match[1]} cannot resolve in ${cwd} and no typed tool exposure provides it`);
+        }
+      }
+    }
+  }
+  // [#2439 SC-11.4] The wave header is DERIVED, then compared. A typed header
+  // over a differently-shaped wave stays red.
+  const phase3cWaveContract = manifest.migrationWaves?.[PHASE3C_WAVE];
+  const expectedPhase3cWave = { suiteCount: phase3cSuites.length, outerCommandCount: phase3cOuterCount,
+    maximumLeafCount: phase3cLeaves.length, originInstallSteps: phase3cOriginInstallSteps,
+    profileInstallExecutions: phase3cProfileInstalls, fileExistsPredicateCount: requiredFilePredicates,
+    lifecycle: phase3cTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };
+  if (JSON.stringify(phase3cWaveContract) !== JSON.stringify(expectedPhase3cWave)) fail(errors, "Phase 3C wave count contract drifted");
+  // [#2439 SC-11.5] Seven provider records transition; the other ten must not
+  // gain one. Membership is derived from the registry, never typed here.
+  const phase3cProviderRecords = (manifest.workflowProviders || []).filter((item) => PHASE3C_WRAPPER_SET.has(item.workflow));
+  if (phase3cProviderRecords.length !== PHASE3C_PROVIDER_NAMES.size
+      || phase3cProviderRecords.some((item) => !PHASE3C_PROVIDER_NAMES.has(item.workflow))) {
+    fail(errors, `Phase 3C must hold exactly the ${PHASE3C_PROVIDER_NAMES.size} reviewed provider records, got ${phase3cProviderRecords.length}`);
+  }
+  for (const item of phase3cProviderRecords) {
+    const expectedTransition = phase3cTerminal ? "batched-provider" : "retained-live-provider";
+    if (item.transition !== expectedTransition) fail(errors, `${item.workflow}: provider transition must be ${expectedTransition} at this lifecycle`);
   }
   const leafRegistry = manifest.phase3bLeafCapabilities;
   const leaves = leafRegistry?.leaves || [];
@@ -1403,15 +1913,22 @@ export function validateRegistry(
     if (actual !== expected) fail(errors, `#1902 package authority drifted: ${relative}`);
   }
   const primaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
-    manifest.suites.filter((suite) => suite.class === klass && suite.migrationWave !== PHASE3B_WAVE).length]));
+    manifest.suites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
   const expectedPrimaryVector = { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
     "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 };
   if (JSON.stringify(Object.entries(primaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
       || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== 55) fail(errors, "primary lane must retain exactly the frozen 55-suite host vector");
-  if (capabilityCommands.slice(158).some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) fail(errors, "setup/install leaked into Phase 3B assertion capabilities");
-  if (manifest.executionClasses?.length !== 23 || manifest.classes?.length !== 14) fail(errors, "topology must remain 14 matrix hosts / 23 execution classes");
+  // Derived, not positional: `slice(158)` meant "the migrated waves" only while
+  // Phase 3B was the last block in the array. Select the capabilities owned by
+  // migrated suites and the check keeps meaning what it says as waves are added.
+  const migratedSuiteIds = new Set((manifest.suites || []).filter(isMigratedSuite).map((suite) => suite.id));
+  if (capabilityCommands.filter((capability) => migratedSuiteIds.has(capability.suiteId))
+    .some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) {
+    fail(errors, "setup/install leaked into a migrated wave's assertion capabilities");
+  }
+  if (manifest.executionClasses?.length !== 29 || manifest.classes?.length !== 14) fail(errors, "topology must remain 14 matrix hosts / 29 execution classes");
   const waveContract = manifest.migrationWaves?.[PHASE3B_WAVE];
   // [#2438 SC-13] Exactly two accepted forms — the shadow contract and the
   // terminal contract — and the wave header must agree with the suites' own
@@ -1467,7 +1984,7 @@ export function validateRegistry(
       if (item.providerWorkflow !== `.github/workflows/${key}` || !fs.existsSync(path.join(root, item.providerWorkflow || ""))) {
         fail(errors, `${key}: shadow stage must keep the exact historical workflow live`);
       }
-      const expectedMetadata = inspectWorkflow(root, key);
+      const expectedMetadata = inspect(key);
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: shadow runtime/setup/trust/trigger inventory drifted`);
     } else if (item.disposition === "batched-historical") {
       if (item.providerWorkflow !== ".github/workflows/ci-batch.yml" || fs.existsSync(path.join(root, `.github/workflows/${key}`))) {
@@ -1476,7 +1993,7 @@ export function validateRegistry(
     } else if (item.disposition !== "batched-active") {
       if (item.providerWorkflow !== `.github/workflows/${key}`) fail(errors, `${key}: live origin must name its sole provider workflow`);
       if (!fs.existsSync(path.join(root, item.providerWorkflow || ""))) fail(errors, `${key}: live provider workflow is missing`);
-      const expectedMetadata = inspectWorkflow(root, key);
+      const expectedMetadata = inspect(key);
       if (JSON.stringify(item.workflowMetadata) !== JSON.stringify(expectedMetadata)) fail(errors, `${key}: runtime/setup/trust/trigger inventory drifted`);
     }
   }
@@ -1513,21 +2030,39 @@ export function validateRegistry(
     // because .github/workflows/** is excluded from the scan, so no other
     // record's referenceFiles can move; if anything else drifted, the
     // reconstruction cannot hash back to the seal and this fails closed.
+    //
+    // [#2439 SC-18.2(6)] Phase 3C extends the SAME reconstruction, one wave
+    // more. Its seventeen wrappers carry SEVEN of these records, so terminal
+    // discovery drops 67 -> 60 — MEASURED here from the tree, never predicted
+    // and never pinned. `workflowNames` above is read from the live directory,
+    // so once a wrapper file is gone no source text anywhere can put its record
+    // back; the seven are re-added from the registry exactly as the six Phase 3B
+    // ones are, and the union still has to hash to the single frozen
+    // 73-record shadow authority. There is still exactly ONE seal in this file.
     if (phase3bTerminal) {
       if (phase3bProviders.length !== 0) {
         fail(errors, `Phase 3B provider authority drifted: terminal wrappers are deleted and must contribute no provider record, got ${phase3bProviders.length}`);
       }
+      const phase3cDiscoveredProviders = discoveredProviders.filter((item) => PHASE3C_PROVIDER_NAMES.has(item.workflow));
+      const expectedPhase3cDiscovered = phase3cTerminal ? 0 : PHASE3C_PROVIDER_NAMES.size;
+      if (phase3cDiscoveredProviders.length !== expectedPhase3cDiscovered) {
+        fail(errors, `Phase 3C provider authority drifted: expected ${expectedPhase3cDiscovered} discovered provider records at this lifecycle, got ${phase3cDiscoveredProviders.length}`);
+      }
+      const carriedNames = new Set([
+        ...PHASE3B_PROVIDER_NAMES,
+        ...(phase3cTerminal ? PHASE3C_PROVIDER_NAMES : []),
+      ]);
       const carriedPhase3bProviders = (manifest.workflowProviders || [])
-        .filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow))
+        .filter((item) => carriedNames.has(item.workflow))
         .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
       const reconstructedShadow = [...discoveredProviders, ...carriedPhase3bProviders]
         .sort((a, b) => a.workflow.localeCompare(b.workflow));
       const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
-      if (carriedPhase3bProviders.length !== PHASE3B_PROVIDER_NAMES.size
-          || discoveredProviders.length !== 73 - PHASE3B_PROVIDER_NAMES.size
+      if (carriedPhase3bProviders.length !== carriedNames.size
+          || discoveredProviders.length !== 73 - carriedNames.size
           || reconstructedShadow.length !== 73
           || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried Phase 3B records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
+        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
       }
     } else {
       if (discoveredProviders.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
@@ -1589,10 +2124,18 @@ function main() {
     console.error(`#2435 registry v2: FAIL (${errors.length} error(s))`);
     process.exit(1);
   }
-  console.log("Phase 1: 23 suites / 51 outer assertions");
-  console.log("Phase 3A: 32 suites / 107 outer assertions");
-  console.log("Phase 3B: 12 suites / 36 outer assertions / 40 maximum leaves / current 37 executed + 3 absent");
-  console.log("Terminal: 200 origins / 67 suites / 194 outer assertions / 91 providers");
+  // Every figure below is COUNTED from the validated registry, never typed: a
+  // printed literal is a number nobody re-derives, which is the class this
+  // tranche keeps finding.
+  const count = (wave) => manifest.suites.filter((suite) => suite.migrationWave === wave);
+  const outers = (suites) => suites.reduce((sum, suite) => sum + suite.steps.length, 0);
+  const phase1 = manifest.suites.filter((suite) => !suite.migrationWave);
+  const a = count("phase3a-node-wave"); const b = count("phase3b-postgres-wave"); const c = count("phase3c-deno-wave");
+  console.log(`Phase 1: ${phase1.length} suites / ${outers(phase1)} outer assertions`);
+  console.log(`Phase 3A: ${a.length} suites / ${outers(a)} outer assertions`);
+  console.log(`Phase 3B: ${b.length} suites / ${outers(b)} outer assertions / ${manifest.phase3bLeafCapabilities.expectedLeaves} maximum leaves / current ${manifest.phase3bLeafCapabilities.currentExecutedLeaves} executed + ${manifest.phase3bLeafCapabilities.currentAbsentLeaves} absent`);
+  console.log(`Phase 3C: ${c.length} suites / ${outers(c)} outer assertions / ${manifest.phase3cLeafCapabilities.expectedLeaves} leaves / ${manifest.migrationWaves["phase3c-deno-wave"].originInstallSteps} origin installs / ${manifest.migrationWaves["phase3c-deno-wave"].profileInstallExecutions} materialised / ${manifest.phase3cLeafCapabilities.currentRequiredFilePredicates} required-file predicates (${manifest.migrationWaves["phase3c-deno-wave"].lifecycle})`);
+  console.log(`Terminal: ${manifest.legacyOrigins.length} origins / ${manifest.suites.length} suites / ${outers(manifest.suites)} outer assertions / ${manifest.workflowProviders.length} providers`);
   console.log("#1902 setup: 1 setup execution / 2 ordered install executions");
 }
 

@@ -16,7 +16,14 @@ const paths = {
     "supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts",
   adversarial:
     "supabase/functions/_shared/__tests__/issue_1430_refund_replay.tester.adversarial.test.ts",
-  workflow: ".github/workflows/issue-1430-refund-replay-tests.yml",
+  // [#2439 SC-15 item 1] Was ".github/workflows/issue-1430-refund-replay-tests.yml".
+  // Phase 3C deletes that wrapper at cutover, and this file reads every entry in
+  // `paths` eagerly — so the read would have thrown ENOENT and taken the whole
+  // gate down with an unhandled crash instead of a verdict. It now reads the CI
+  // registry, which is where #1430's triggers and its exact Deno command live,
+  // and asserts the SAME eight protections plus the ones a text read could not
+  // see: provider identity, wave, cwd, action pin and environment.
+  registry: ".github/ci-batch/MANIFEST.json",
 };
 
 function requireToken(source, token, label, failures) {
@@ -215,27 +222,80 @@ export function violations(files) {
     );
   }
 
-  const workflow = files.workflow ?? "";
-  for (
-    const token of [
-      '"supabase/functions/_shared/paystackRefunds.ts"',
-      '"supabase/functions/_shared/sourceRefundControlPlane.ts"',
-      '".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs"',
-      '".github/workflows/issue-1430-refund-replay-tests.yml"',
-      "issue_1430_refund_replay_happy.test.ts",
-      "issue_1430_refund_replay.tester.adversarial.test.ts",
-      "deno-version: v2.7.14",
-      "deno test --allow-env --allow-read --allow-net=deno.land,esm.sh",
-    ]
-  ) {
-    requireToken(workflow, token, "blocking runtime CI wiring", failures);
+  failures.push(...ciWiring(JSON.parse(files.registry ?? "{}")));
+  return failures;
+}
+
+const SUITE_ID = "issue-1430-refund-replay-tests";
+const ORIGIN = ".github/workflows/issue-1430-refund-replay-tests.yml";
+const WAVE = "phase3c-deno-wave";
+const DENO_2_7_14_ACTION = "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed";
+const GUARDED_TRIGGER_PATHS = [
+  "supabase/functions/_shared/paystackRefunds.ts",
+  "supabase/functions/_shared/sourceRefundControlPlane.ts",
+  ".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs",
+];
+const EXECUTED_SUITES = [
+  "supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts",
+  "supabase/functions/_shared/__tests__/issue_1430_refund_replay.tester.adversarial.test.ts",
+];
+const EXACT_DENO_COMMAND =
+  `deno test --allow-env --allow-read --allow-net=deno.land,esm.sh ${EXECUTED_SUITES[0]} ${EXECUTED_SUITES[1]}`;
+
+/**
+ * [#2439 SC-15.1] The same blocking-CI-wiring protections the workflow text read
+ * enforced, expressed against the registry that production actually executes.
+ * Pure: takes the parsed registry so every self-test mutant runs in memory.
+ *
+ * @param {object} registry parsed `.github/ci-batch/MANIFEST.json`
+ * @returns {string[]} failures
+ */
+export function ciWiring(registry) {
+  const failures = [];
+  const suites = (registry.suites || []).filter((suite) => suite.id === SUITE_ID);
+  if (suites.length !== 1) {
+    failures.push(`blocking runtime CI wiring: expected exactly one ${SUITE_ID} suite, got ${suites.length}`);
+    return failures;
   }
-  forbidToken(
-    workflow,
-    "continue-on-error:",
-    "blocking runtime CI wiring",
-    failures,
-  );
+  const [suite] = suites;
+  if (suite.migrationWave !== WAVE) failures.push("blocking runtime CI wiring: suite is not owned by phase3c-deno-wave");
+  if (suite.origin !== ORIGIN) failures.push(`blocking runtime CI wiring: provider identity drifted: ${suite.origin}`);
+  const pathLists = [suite.triggerContract?.push?.paths, suite.triggerContract?.pullRequest?.paths]
+    .map((list) => (Array.isArray(list) ? list : []));
+  for (const guarded of [...GUARDED_TRIGGER_PATHS, ...EXECUTED_SUITES]) {
+    if (pathLists.filter((list) => list.includes(guarded)).length !== 2) {
+      failures.push(`blocking runtime CI wiring: missing ${guarded} from both trigger path lists`);
+    }
+  }
+  const leaves = (suite.steps || []).flatMap((step) => (step.children || []).map((child) => ({ step, child })));
+  const exact = leaves.find(({ child }) => (child.invocation?.argv?.[1] || "") === EXACT_DENO_COMMAND);
+  if (!exact) {
+    failures.push(`blocking runtime CI wiring: missing ${EXACT_DENO_COMMAND}`);
+  } else {
+    if ((exact.child.cwd ?? exact.step.cwd ?? ".") !== ".") failures.push("blocking runtime CI wiring: the Deno command moved out of the repository root");
+    if (exact.child.predicate?.kind !== "always") failures.push("blocking runtime CI wiring: continue-on-error — the Deno command became conditional");
+  }
+  for (const { child } of leaves) {
+    const command = child.invocation?.argv?.[1] || "";
+    if (/\|\|\s*true|;\s*exit\s+0/.test(command)) failures.push("blocking runtime CI wiring: continue-on-error — a leaf swallows its own failure");
+  }
+  const runtime = suite.runtime || {};
+  if (runtime.deno?.version !== "v2.7.14" || runtime.deno?.action !== DENO_2_7_14_ACTION) {
+    failures.push(`blocking runtime CI wiring: missing deno-version: v2.7.14 (${JSON.stringify(runtime.deno || null)})`);
+  }
+  // [#2439 SC-15.1] Lifecycle consistency, asserted PURELY from the registry —
+  // no filesystem coupling to a wrapper file, because re-coupling this guard to
+  // `.github/workflows/<name>` is the very thing cutover removes. At shadow the
+  // legacy origin names its own wrapper as sole provider; at terminal it must
+  // NOT, because the batch umbrella is. A batched record still naming its
+  // deleted wrapper is exactly the SC-18.3 attack this catches, and inverting
+  // the lifecycle fires it on either side of cutover.
+  const legacyOrigin = (registry.legacyOrigins || []).find((item) => `${item.stem}.${item.extension}` === ORIGIN.split("/").pop());
+  const namesItself = legacyOrigin?.providerWorkflow === ORIGIN;
+  if (!legacyOrigin || namesItself !== (suite.lifecycle !== "batched-historical")) {
+    failures.push("blocking runtime CI wiring: legacy origin does not name the sole provider for this lifecycle");
+  }
+  if ((suite.envNames || []).length) failures.push("blocking runtime CI wiring: suite gained an environment capability");
   return failures;
 }
 
@@ -359,21 +419,59 @@ function selfTest() {
       ),
       expected: "reversal-pending exact identity is read-only adopted",
     },
+    // [#2439 SC-15.1] The two workflow-text reversions become registry
+    // reversions attacking the same two properties, plus five more for the
+    // protections a filename read could never see. The registry is JSON and one
+    // identity appears in both trigger path lists AND a leaf argv, so a registry
+    // reversion must replace EVERY occurrence: a first-occurrence-only mutant
+    // would leave the assertion it was written to attack still satisfied.
     {
-      key: "workflow",
-      value: valid.workflow.replaceAll(
-        "issue_1430_refund_replay_happy.test.ts",
-        "issue_1430_refund_replay_happy.disabled.ts",
-      ),
+      key: "registry",
+      value: valid.registry.split("issue_1430_refund_replay_happy.test.ts").join("issue_1430_refund_replay_happy.disabled.ts"),
       expected: "issue_1430_refund_replay_happy.test.ts",
     },
     {
-      key: "workflow",
-      value: valid.workflow.replaceAll(
-        "issue_1430_refund_replay.tester.adversarial.test.ts",
-        "issue_1430_refund_replay.tester.adversarial.disabled.ts",
-      ),
+      key: "registry",
+      value: valid.registry.split("issue_1430_refund_replay.tester.adversarial.test.ts").join("issue_1430_refund_replay.tester.adversarial.disabled.ts"),
       expected: "issue_1430_refund_replay.tester.adversarial.test.ts",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split("--allow-env --allow-read --allow-net=deno.land,esm.sh supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts")
+        .join("--allow-env --allow-read --allow-net supabase/functions/_shared/__tests__/issue_1430_refund_replay_happy.test.ts"),
+      expected: EXACT_DENO_COMMAND,
+    },
+    {
+      key: "registry",
+      value: valid.registry.split('"' + ORIGIN + '"').join('".github/workflows/not-a-real-workflow-identity"'),
+      expected: "provider identity drifted",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split(DENO_2_7_14_ACTION).join("denoland/setup-deno@v2"),
+      expected: "deno-version: v2.7.14",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split('".github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs"').join('".github/scripts/strict-grep/gone.mjs"'),
+      expected: "missing .github/scripts/strict-grep/issue-1430-refund-replay-safety.mjs",
+    },
+    {
+      key: "registry",
+      value: valid.registry.split('"' + SUITE_ID + '"').join('"' + SUITE_ID + '-renamed"'),
+      expected: `expected exactly one ${SUITE_ID} suite`,
+    },
+    {
+      key: "registry",
+      // Inverts rather than pins: a lifecycle mutant fixed at one value is a
+      // mutant that cannot fail once the wave reaches that value.
+      value: (() => {
+        const value = JSON.parse(valid.registry);
+        const suite = value.suites.find((item) => item.id === SUITE_ID);
+        suite.lifecycle = suite.lifecycle === "batched-historical" ? "shadow-active" : "batched-historical";
+        return JSON.stringify(value);
+      })(),
+      expected: "legacy origin does not name the sole provider for this lifecycle",
     },
   ];
   for (const reversion of reversions) {

@@ -6,8 +6,8 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, withTrackedFilesScope, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
-import { commandFingerprint } from "../ci-batch/run-suite-batch.mjs";
+import { decodeManifestTextRepresentations, validateManifestTextRepresentations, validateRegistry, validatePhase2Contract, forbiddenEmbeddedSetup, withTrackedFilesScope, discoverWorkflowProviders, discoverLiveOrigins, DEFAULT_ROOT } from "../ci-batch/validate-manifest-v2.mjs";
+import { commandFingerprint, executesLeaves, absentFileIsFailure } from "../ci-batch/run-suite-batch.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../..");
@@ -22,6 +22,10 @@ const PHASE3B_ASSERTION_SHA256 = "315f490f71623287fb2b0cfa1a6cfe8e9846408c5fa35c
 const PHASE3B_CAPABILITY_SHA256 = "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1";
 const PHASE3B_TIMEOUT_SHA256 = "94e778c9202e5f55537115cfe17cd4a099f897a76e38cd1a607c0159ec86aa87";
 const PROCESS_SUPERVISOR_SHA256 = "1c890b876833df9e6f9c8cf2b0dc8cec4ba1364b7b5519e68b0245b5077dfb20";
+const PHASE3C_ASSERTION_SHA256 = "7df4a25e2fe8642092c96b444427fb01e8a4103ebb392da8f21c8dcc540c763f";
+const PHASE3C_CAPABILITY_SHA256 = "625a72f9109b1b05887ac6e399d21d03c4ebd476345dd90df150bb8fc658b255";
+const PHASE3C_TIMEOUT_SHA256 = "a1d4ed3f7b064f6f9fb2dba35572c7dea56049e0315073d0a433420b1f14a869";
+const PHASE3C_LEAF_SHA256 = "a5707e6e6450e63192c2c0c93b2a4422fb1802970a0082c51b45eac1b5be68a1";
 
 function clone(value) { return structuredClone(value); }
 function manifest() { return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8")); }
@@ -31,7 +35,20 @@ function assertionDigest(suites) {
   return crypto.createHash("sha256").update(JSON.stringify(assertions)).digest("hex");
 }
 function orderedDigest(value) { return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex"); }
-function errors(value, matrixSource = workflow()) { return validateRegistry(value, { root: DEFAULT_ROOT, matrixSource }); }
+// [#2439 SC-16.6(1)] Discovery is precomputed ONCE per entry point and handed to
+// every mutant. No mutant below touches the tree or the index, so the provider
+// inventory and the live-origin list are invariant across all of them; without
+// this, each of the ~24 registry attacks re-read the whole tracked corpus and the
+// self-test alone ran past two minutes. Nothing is removed or weakened - the same
+// attacks run against the same validator, only the shared inputs are hoisted.
+let DISCOVERY = null;
+function discovery() {
+  if (!DISCOVERY) DISCOVERY = { workflowProviders: discoverWorkflowProviders(DEFAULT_ROOT), liveOrigins: discoverLiveOrigins(DEFAULT_ROOT) };
+  return DISCOVERY;
+}
+function errors(value, matrixSource = workflow()) {
+  return validateRegistry(value, { root: DEFAULT_ROOT, matrixSource, ...discovery() });
+}
 
 export function verifyLive() {
   const raw = manifest();
@@ -39,10 +56,16 @@ export function verifyLive() {
   assert.deepEqual(failures, [], failures.join("\n"));
   assert.deepEqual(validateManifestTextRepresentations(raw), []);
   const value = decodeManifestTextRepresentations(raw);
-  const baseline = value.suites.slice(0, 23);
-  const shadow = value.suites.slice(23, 55);
-  const phase3b = value.suites.slice(55);
-  assert.equal(value.suites.length, 67);
+  // [#2439 SC-11.1 / SC-17.1] Wave-SCOPED selection, not positional slicing. A
+  // positional slice silently re-partitions the moment another wave is appended,
+  // and selecting by lifecycle VALUE would auto-pass at shadow and go wrong the
+  // moment a later wave reached terminal. Every existing digest below is
+  // unchanged under this selection, which is what proves it is the same set.
+  const baseline = value.suites.filter((suite) => !suite.migrationWave);
+  const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
+  const phase3b = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
+  const phase3c = value.suites.filter((suite) => suite.migrationWave === "phase3c-deno-wave");
+  assert.equal(value.suites.length, 84);
   assert.equal(baseline.flatMap((suite) => suite.steps).length, 51);
   assert.equal(shadow.length, 32);
   assert.equal(shadow.flatMap((suite) => suite.steps).length, 107);
@@ -54,8 +77,31 @@ export function verifyLive() {
   assert.equal(orderedDigest(value.commandCapabilities.commands.slice(0, 51)), ASSERTION_CAPABILITY_SHA256, "current-main 51 assertion capabilities drifted");
   assert.equal(orderedDigest(value.commandCapabilities.commands.slice(51, 158)), SHADOW_CAPABILITY_SHA256, "Phase 3A assertion capabilities drifted");
   assert.equal(assertionDigest(phase3b), PHASE3B_ASSERTION_SHA256, "the ordered 12 Phase 3B variants / 36 commands drifted");
-  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(158)), PHASE3B_CAPABILITY_SHA256, "Phase 3B assertion capabilities drifted");
-  assert.equal(value.commandCapabilities.commands.length, 194);
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(158, 194)), PHASE3B_CAPABILITY_SHA256, "Phase 3B assertion capabilities drifted");
+  assert.equal(phase3c.length, 17);
+  assert.equal(phase3c.flatMap((suite) => suite.steps).length, 46);
+  assert.equal(phase3c.flatMap((suite) => suite.steps).flatMap((step) => step.children || []).length, 54);
+  assert.equal(assertionDigest(phase3c), PHASE3C_ASSERTION_SHA256, "the ordered 17 Phase 3C variants / 46 commands drifted");
+  assert.equal(orderedDigest(value.commandCapabilities.commands.slice(194)), PHASE3C_CAPABILITY_SHA256, "Phase 3C assertion capabilities drifted");
+  assert.equal(value.phase3cLeafCapabilities.registrySha256, PHASE3C_LEAF_SHA256, "Phase 3C leaf capabilities drifted");
+  assert.equal(value.commandCapabilities.commands.length, 240);
+  // [#2439 SC-2.3] The runner must route this wave through the LEAF branch.
+  // Without this, 46 outers report executed and all 54 leaves silently never
+  // run - a green check carrying no information on seventeen migrations.
+  assert.ok(phase3c.every((suite) => executesLeaves(suite)), "phase3c-deno-wave must route through the runner leaf branch");
+  assert.ok(phase3b.every((suite) => executesLeaves(suite)), "phase3b-postgres-wave leaf routing must be preserved");
+  assert.ok(baseline.concat(shadow).every((suite) => !executesLeaves(suite)), "Phase 1 and Phase 3A must keep the single-command branch");
+  // [#2439 SC-5.1] Fail-loud absence is derived per TARGET, not per wave: a
+  // target registered as a conditional proof skips, anything else fails.
+  const anyRequired = (suite) => suite.steps.flatMap((step) => step.children || [])
+    .filter((child) => child.predicate?.kind === "file-exists")
+    .flatMap((child) => child.predicate.paths || [child.predicate.path]);
+  for (const suite of phase3c) {
+    for (const target of anyRequired(suite)) assert.ok(absentFileIsFailure(suite, target), `${suite.id}: an absent required file must fail the suite`);
+  }
+  for (const suite of phase3b) {
+    for (const target of anyRequired(suite)) assert.ok(!absentFileIsFailure(suite, target), `${suite.id}: Phase 3B conditional-proof semantics must be unchanged`);
+  }
   const business994 = value.suites.find((suite) => suite.id === "issue-994-ota-env-resolution-mingla-business");
   assert.equal(commandFingerprint(business994), "064b393af16099018770cf8f08456114e777a3b5ad79586f5bcfa3ebff217c25", "#994 business execution bytes drifted");
   const supervisor = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/process-supervisor.py"), "utf8");
@@ -68,6 +114,7 @@ export function verifyLive() {
     && suite.isolation === "clean-worktree"));
   assert.equal(orderedDigest(value.suites.slice(0, 55).map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "exact Phase 2 + Phase 3A timeout contract drifted");
   assert.equal(orderedDigest(phase3b.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), PHASE3B_TIMEOUT_SHA256, "exact Phase 3B timeout contract drifted");
+  assert.equal(orderedDigest(phase3c.map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), PHASE3C_TIMEOUT_SHA256, "exact Phase 3C timeout contract drifted");
 }
 
 function expectRed(label, mutateManifest, mutateWorkflow = (source) => source) {
@@ -80,6 +127,12 @@ function expectRegistryRed(label, mutateManifest) {
   const value = manifest();
   mutateManifest(value);
   assert.ok(errors(value).length > 0, `${label} must fail closed`);
+}
+
+// The Phase 3C tertiary route is validated by the full registry validator, not
+// by the Phase 2 contract, so its workflow attacks need the registry entry point.
+function expectRegistryWorkflowRed(label, mutateWorkflow) {
+  assert.ok(errors(manifest(), mutateWorkflow(workflow())).length > 0, `${label} must fail closed`);
 }
 
 export function selfTest() {
@@ -126,16 +179,40 @@ export function selfTest() {
   timeoutDrift.suites[23].timeoutSeconds += 1;
   assert.notEqual(orderedDigest(timeoutDrift.suites.slice(0, 55).map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), TIMEOUT_CONTRACT_SHA256, "Phase 3A timeout drift must change the gate lock");
   const phase3bTimeoutDrift = manifest(); phase3bTimeoutDrift.suites[55].timeoutSeconds += 1;
-  assert.notEqual(orderedDigest(phase3bTimeoutDrift.suites.slice(55).map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), PHASE3B_TIMEOUT_SHA256, "Phase 3B timeout drift must change the gate lock");
+  assert.notEqual(orderedDigest(phase3bTimeoutDrift.suites.slice(55, 67).map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), PHASE3B_TIMEOUT_SHA256, "Phase 3B timeout drift must change the gate lock");
+  const phase3cTimeoutDrift = manifest(); phase3cTimeoutDrift.suites[67].timeoutSeconds += 1;
+  assert.notEqual(orderedDigest(phase3cTimeoutDrift.suites.slice(67).map(({ id, timeoutSeconds }) => ({ id, timeoutSeconds }))), PHASE3C_TIMEOUT_SHA256, "Phase 3C timeout drift must change the gate lock");
+  expectRegistryRed("Phase 3C variant omission", (value) => { value.suites.splice(67, 1); });
+  expectRegistryRed("Phase 3C capability drift", (value) => { value.commandCapabilities.commands[194].argv[1] += " # drift"; });
+  expectRegistryRed("Phase 3C leaf omission", (value) => { value.phase3cLeafCapabilities.leaves.pop(); });
+  expectRegistryRed("Phase 3C required-file predicate deleted", (value) => {
+    value.suites.find((suite) => suite.id === "issue-1637-discover-single-fetch-tests").steps[0].children[0].predicate.paths.pop();
+  });
+  expectRegistryRed("Phase 3C retry collapsed to one attempt", (value) => {
+    value.suites.find((suite) => suite.id === "issue-1326-ng-reservation-finalize-tests").steps[0].retry.attempts = 1;
+  });
+  expectRegistryRed("Phase 3C source-contract sense inverted", (value) => {
+    const leaf = value.phase3cLeafCapabilities.leaves.find((item) => item.predicate?.needle === "brand.account_id !== userId");
+    leaf.predicate.sense = "must-contain";
+  });
+  expectRegistryWorkflowRed("Phase 3C run route removed", (source) => source.replace('--run-phase3c-host "${{ matrix.class }}"', '--run-phase3c-host "wrong"'));
+  expectRegistryWorkflowRed("Phase 3C tertiary host route removed", (source) => source.replace("tertiaryClass: phase3c-deno146-node20", 'tertiaryClass: ""'));
+  expectRegistryWorkflowRed("Phase 3C host ceiling silently raised", (source) => source.replace("hostTimeoutMinutes: 45", "hostTimeoutMinutes: 90"));
+  expectRegistryWorkflowRed("Phase 3C result artifact renamed", (source) => source.replace("path: suite-results-phase3c.json", "path: suite-results.json"));
+  expectRegistryWorkflowRed("Phase 3C exact Deno selector folded into the floating one",
+    (source) => source.replace("          deno-version: v2.7.14\n", "          deno-version: v2.x\n"));
+  expectRegistryWorkflowRed("Phase 3C Deno action tag floated",
+    (source) => source.replace("        uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed\n        with:\n          deno-version: v2.7.14",
+      "        uses: denoland/setup-deno@v2\n        with:\n          deno-version: v2.7.14"));
   expectRed("shared trust drift", () => {}, (source) => source.replace("persist-credentials: false", "persist-credentials: true"));
   expectRed("unavailable pre-matrix job context", () => {}, (source) => source.replace("if: github.event_name != 'workflow_dispatch'", "if: github.event_name != 'workflow_dispatch' || matrix.class == 'node20-19-noinstall'"));
   expectRed("unbounded dispatch", () => {}, (source) => source.replace("inputs.suite == 'issue-2300-orch-artifact-reap'", "true"));
   expectRed("dispatch route removed", () => {}, (source) => source.replace("  dispatch:\n", "  missing-dispatch:\n"));
-  console.log("#2438 wave runner self-test: PASS — Phase 2/3A locks and additive Phase 3B attacks went RED");
+  console.log("#2438/#2439 wave runner self-test: PASS — Phase 2/3A locks held and additive Phase 3B + Phase 3C attacks went RED");
 }
 
 // [#2438 A7-SC3] Explicitly entered, explicitly exited tracked-file scope. This
 // module performs no fs write, mkdir, rm or subprocess, so the tree and index are
 // provably immutable for the duration. Ambient memoisation stays forbidden.
 if (process.argv[2] === "--self-test") withTrackedFilesScope(ROOT, () => selfTest());
-else { withTrackedFilesScope(ROOT, () => verifyLive()); console.log("#2438 wave runner: PASS — 23/51 and 32/107 immutable; additive 12/36 locked"); }
+else { withTrackedFilesScope(ROOT, () => verifyLive()); console.log("#2438/#2439 wave runner: PASS — 23/51 and 32/107 immutable; additive 12/36 and 17/46/54 locked"); }

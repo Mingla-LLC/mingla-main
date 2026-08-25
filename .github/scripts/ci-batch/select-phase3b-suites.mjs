@@ -9,6 +9,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint } from "./validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(HERE, "../../..");
@@ -73,12 +74,6 @@ export function expectedPhase3bIdentities(manifest, suiteIds) {
 
 const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
 
-function suiteCommandFingerprint(suite) {
-  const rows = suite.migrationWave === WAVE
-    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation, env: step.env || null, children: step.children || null }))
-    : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
-  return sha256(JSON.stringify(rows));
-}
 
 function profileInstalls(profile) {
   return profile?.install ? [profile.install] : Array.isArray(profile?.installs) ? profile.installs : [];
@@ -200,11 +195,20 @@ export function reconcilePhase3bReports(manifest, host, rawDecision, primary, se
   const errors = []; let decision = null;
   try { decision = validateDecision(manifest, rawDecision, host); }
   catch (error) { errors.push(`decision-invalid: ${error.message}`); }
-  const phase3bIds = new Set(phase3bSuites(manifest).map((suite) => suite.id));
-  const expectedPrimaryIds = manifest.suites.filter((suite) => suite.class === host && suite.migrationWave !== WAVE).map((suite) => suite.id);
+  // [#2439] DERIVED lane membership. This filter used to read
+  // `suite.migrationWave !== WAVE`, i.e. "not Phase 3B", which silently meant
+  // "primary" only while Phase 3B was the only migrated wave. The moment Phase
+  // 3C shipped, its seventeen suites were in neither set: they ran in their own
+  // host lane while this reconciler still counted them as primary, and six batch
+  // hosts died on `primary-identity-mismatch`. The fix is not a second
+  // hard-coded name — it is to ask the registry which lane a suite belongs to.
+  const migratedIds = new Set(manifest.suites.filter(isMigratedSuite).map((suite) => suite.id));
+  const expectedPrimaryIds = manifest.suites.filter((suite) => suite.class === host && isPrimarySuite(suite)).map((suite) => suite.id);
   const primaryIds = Array.isArray(primary?.results) ? primary.results.map((result) => result.id) : [];
-  const primaryPhase3b = primaryIds.filter((id) => phase3bIds.has(id));
-  if (primaryPhase3b.length) errors.push(`wrong-lane-duplicate: ${primaryPhase3b.join(",")}`);
+  // Any migrated suite appearing in the primary report is a wrong-lane duplicate,
+  // whichever wave it belongs to — not only a Phase 3B one.
+  const primaryMigrated = primaryIds.filter((id) => migratedIds.has(id));
+  if (primaryMigrated.length) errors.push(`wrong-lane-duplicate: ${primaryMigrated.join(",")}`);
   const expectedPrimarySuites = expectedPrimaryIds.map((id) => manifest.suites.find((suite) => suite.id === id));
   if (primary?.schemaVersion !== 2 || primary?.class !== host || !topLevelVerdictIsExact(primary, expectedPrimaryIds)
       || expectedPrimarySuites.some((suite, index) => !primaryResultIsExact(suite, primary?.results?.[index]))) {

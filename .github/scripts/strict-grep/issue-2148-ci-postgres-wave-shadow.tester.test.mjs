@@ -92,11 +92,11 @@ test("reconstructs source truth before trusting generated registry", () => {
 
 test("locks independent registry, leaf, setup, provider and lifecycle identities", () => {
   const value = manifest(); const suites = value.suites.filter((suite) => suite.migrationWave === WAVE);
-  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200,67,194,91]);
+  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200,84,240,91]);
   assert.deepEqual([suites.length, suites.flatMap((suite) => suite.steps).length, value.phase3bLeafCapabilities.leaves.length, value.phase3bLeafCapabilities.currentExecutedLeaves, value.phase3bLeafCapabilities.currentAbsentLeaves], [12,36,40,37,3]);
   assert.equal(sha(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(sha(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
-  assert.equal(sha(value.commandCapabilities.commands.slice(158)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
+  assert.equal(sha(value.commandCapabilities.commands.slice(158,194)), "df9f09e2454fa05f7d74ae96517657a8582aff4c3ad742c6f2ab657cef179bc1");
   assert.equal(sha(value.phase3bLeafCapabilities.leaves), "76d627f1f117923c41dc2a4b928d606a134c2a3a0d948010e565828fa91be89d");
   assert.equal(new Set(suites.map((suite) => suite.lifecycle)).size, 1); assert.equal(suites[0].lifecycle, "batched-historical");
   // The flip is only atomic if the wave header moved with the suites, and the legacy
@@ -106,7 +106,14 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   const lifecycle = suites.find((suite) => suite.origin.endsWith("issue-1902-public-event-lifecycle-tests.yml"));
   assert.deepEqual(lifecycle.steps.map((step) => step.env || null).filter(Boolean), [{ NODE_PATH: "./node_modules" }]);
   assert.deepEqual(value.setupProfiles[lifecycle.setupProfile].installs.map((item) => [item.cwd,item.invocation.command,item.invocation.argv]), [["mingla-business","npm",["ci"]],["app-mobile","npm",["ci"]]]);
-  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 67); assert.equal(sha(providers), "af756cd7e72c0c4ed208408d23eec621349b8eb7aaefb197214af8794efee305");
+  // [#2439 SC-18.2(6)] The raw-discovery digest that stood here is DELETED, not re-pinned.
+  // It drifted every wave — 71 at shadow, 73 after #2492, 67 after Phase 3B's cutover,
+  // 60 after Phase 3C's — so as a literal it measured the calendar, not the contract, and
+  // it went stale three times in three phases. "No second digest may be pinned anywhere."
+  // The count stays exact, and the cryptographic weight moves entirely onto the
+  // reconstruction below, which is checked against the ONE frozen shadow seal and does not
+  // drift when a later wave retires more wrappers.
+  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 60);
   // [#2438 SC-21] The single-wrapper W3 assertion that stood here was removed under the
   // ruling at issue #2438 comment 5398524723. At shadow it was real: W3 was live and kept
   // out of discovery only by the A4-SC2 carve-out. At terminal it interrogates a deleted
@@ -119,24 +126,46 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // independently: what discovery still sees, plus the six records the registry carries
   // for the deleted wrappers, re-sorted as discovery sorts, must hash back to the one
   // locked shadow seal. A fabricated terminal digest cannot satisfy this.
+  // [#2439] Phase 3C retired seventeen more wrappers, so the seal is now reconstructed
+  // from BOTH retired waves. The carried set is DERIVED from the registry's own wave
+  // membership rather than a second hard-coded name list, so the next wave extends it
+  // without another literal going stale.
+  const RETIRED_WAVES = ["phase3b-postgres-wave", "phase3c-deno-wave"];
+  const carriedNames = new Set(value.suites
+    .filter((suite) => RETIRED_WAVES.includes(suite.migrationWave))
+    .map((suite) => suite.origin.split("/").pop()));
+  assert.equal(carriedNames.size, 29);
   const carried = value.workflowProviders
-    .filter((item) => WRAPPERS.some(([name]) => name === item.workflow))
+    .filter((item) => carriedNames.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
-  assert.equal(carried.length, 6); assert.equal(sha(carried), "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1");
+  assert.equal(carried.length, 13);
+  // The Phase 3B six keep their A4-SC3 locked subset digest, unchanged and still exact.
+  const carriedPhase3b = carried.filter((item) => WRAPPERS.some(([name]) => name === item.workflow));
+  assert.equal(carriedPhase3b.length, 6);
+  assert.equal(sha(carriedPhase3b), "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1");
+  // The Phase 3C seven are pinned by IDENTITY, not by a digest — SC-18.2(6) forbids a
+  // second pinned digest, and identity is the stronger form here anyway: a swapped record
+  // reds even if the count holds.
+  assert.deepEqual(carried.filter((item) => !WRAPPERS.some(([name]) => name === item.workflow))
+    .map((item) => item.workflow).sort(),
+    ["issue-1430-refund-replay-tests.yml", "issue-1437-secret-bundle-compatibility-tests.yml",
+     "issue-1950-app-readiness-tests.yml", "issue-1999-ari-provider-schema-tests.yml",
+     "issue-2019-ari-delegated-auth.yml", "issue-2230-consumer-multiday-tests.yml",
+     "issue-2321-account-deletion-tests.yml"]);
   const reconstructed = [...providers, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
   assert.equal(reconstructed.length, 73);
   assert.equal(sha(reconstructed), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.
-  assert.equal(discoverLiveOrigins(ROOT).length, 134);
+  assert.equal(discoverLiveOrigins(ROOT).length, 117);
   // The invariant #2492 actually violated: two workflows were externally REFERENCED but
   // never REGISTERED. A pair of totals cannot catch that — they both just move. Bind the
   // derived discovery set to the declared live-provider set by identity, so a referenced
   // but unregistered workflow reds here even when every count still agrees.
   const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
   const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
-  assert.deepEqual([retained.length, batched.length], [67, 24]);
+  assert.deepEqual([retained.length, batched.length], [60, 31]);
   assert.equal(retained.length + batched.length, value.workflowProviders.length);
   assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
   assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
@@ -166,7 +195,7 @@ test("canonical cost fixture and workflow topology remain exact", () => {
   const histogram = Object.fromEntries([0,1,2,3,4,5].map((n)=>[n,rows.filter((row)=>row.matchedOrigins.length===n).length])); assert.deepEqual(histogram,{0:25,1:41,2:20,3:9,4:4,5:1});
   const workflow = read(".github/workflows/ci-batch.yml");
   assert.equal((workflow.match(/^\s+- class:/gm)||[]).length,14); assert.equal((workflow.match(/^\s+secondaryClass: phase3b-/gm)||[]).length,9);
-  assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,25,25,25,25,55,55,25,60,52,55,55,105,55]);
+  assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,45,40,45,45,55,55,50,60,62,55,55,105,55]);
   for (const pin of ["actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683","denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d","denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]) assert.match(workflow,new RegExp(pin));
   assert.doesNotMatch(workflow,/pull_request_target|id-token:\s*write|contents:\s*write|secrets\./);
   for (const stage of ["id: phase3b-select","id: phase3b-decision","Run selected Phase 3B suites with exact attribution","Upload Phase 3B suite results","Reconcile Phase 3B host"]) assert.match(workflow,new RegExp(stage));

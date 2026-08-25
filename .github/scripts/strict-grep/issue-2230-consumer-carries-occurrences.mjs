@@ -15,7 +15,12 @@ const PATHS = {
   flow: "app-mobile/src/payments/nativeCheckoutFlow.ts",
   quantityRow: "packages/offering-rendering/QuantityRow.tsx",
   businessQuantityRow: "mingla-business/src/components/checkout/QuantityRow.tsx",
-  workflow: ".github/workflows/issue-2230-consumer-multiday-tests.yml",
+  // [#2439 SC-15 item 5] Was ".github/workflows/issue-2230-consumer-multiday-tests.yml".
+  // That wrapper is deleted at Phase 3C cutover; the CI registry is where #2230's
+  // trigger provenance and executed assertions live from the shadow commit
+  // onward. The three properties this guard protected are unchanged, expressed
+  // against the registry instead of a filename.
+  registry: ".github/ci-batch/MANIFEST.json",
 };
 const readSources = () => Object.fromEntries(
   Object.entries(PATHS).map(([key, rel]) => [key, fs.readFileSync(path.join(ROOT, rel), "utf8")]),
@@ -23,6 +28,68 @@ const readSources = () => Object.fromEntries(
 const code = (source) => source
   .replace(/\/\*[\s\S]*?\*\//g, "")
   .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+const SUITE_ID = "issue-2230-consumer-multiday-tests";
+const ORIGIN = ".github/workflows/issue-2230-consumer-multiday-tests.yml";
+const DENO_V2_ACTION = "denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed";
+
+/**
+ * [#2439 SC-15.1] The same three protections the workflow read enforced, now
+ * against the CI registry: the tester suite is named in BOTH trigger path lists
+ * (the two occurrences the old regex counted), it is executed by a real leaf
+ * with the right cwd, and the shared QuantityRow is named in both path lists.
+ * Runtime, action pin, permissions and environment are checked too, because a
+ * filename read could never see them.
+ *
+ * Pure: takes the parsed registry so every mutant runs in memory.
+ */
+export function ciWiring(manifest, testerSuite, sharedQuantityRow) {
+  const failures = [];
+  const suites = (manifest.suites || []).filter((suite) => suite.id === SUITE_ID);
+  if (suites.length !== 1) {
+    failures.push(`expected exactly one ${SUITE_ID} suite in the CI registry, got ${suites.length}`);
+    return failures;
+  }
+  const [suite] = suites;
+  if (suite.migrationWave !== "phase3c-deno-wave") failures.push("suite is not owned by phase3c-deno-wave");
+  if (suite.origin !== ORIGIN) failures.push(`provider identity drifted: ${suite.origin}`);
+  const pathLists = [suite.triggerContract?.push?.paths, suite.triggerContract?.pullRequest?.paths];
+  for (const [label, needle] of [["tester suite", testerSuite], ["shared QuantityRow", sharedQuantityRow]]) {
+    const occurrences = pathLists.filter((list) => Array.isArray(list) && list.includes(needle)).length;
+    if (occurrences !== 2) failures.push(`${label} is named in ${occurrences} of 2 trigger path lists`);
+  }
+  const leaves = (suite.steps || []).flatMap((step) => (step.children || []).map((child) => ({ step, child })));
+  const executesTester = leaves.some(({ step, child }) => (child.cwd ?? step.cwd) === "app-mobile"
+    && (child.invocation?.argv?.[1] || "").includes("src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx"));
+  if (!executesTester) failures.push("no app-mobile leaf executes the scaled-text tester suite");
+  if (!(suite.expectedFiles || []).includes(testerSuite)) failures.push("tester suite is not a registered expected file");
+  // The shared QuantityRow is a guarded SOURCE file, not a test the suite names
+  // in a command, so it belongs to the origin path provenance rather than the
+  // command-derived expected-file inventory. Both are asserted, each where it
+  // actually lives.
+  if (!(suite.originPaths || []).includes(sharedQuantityRow)) failures.push("shared QuantityRow left the origin path provenance");
+  const runtime = suite.runtime || {};
+  if (runtime.name !== "node+deno" || runtime.nodeVersion !== "22" || runtime.deno?.action !== DENO_V2_ACTION) {
+    failures.push(`runtime or Deno action pin drifted: ${JSON.stringify(runtime)}`);
+  }
+  if ((suite.envNames || []).length) failures.push("suite gained an environment capability");
+  if (JSON.stringify(suite.triggerContract?.permissions) !== JSON.stringify(["contents: read"])) {
+    failures.push("trust boundary drifted from contents: read");
+  }
+  const wrapperLive = fs.existsSync(path.join(ROOT, ORIGIN));
+  if (suite.lifecycle === "batched-historical" && wrapperLive) failures.push("terminal wrapper was restored");
+  if (suite.lifecycle === "shadow-active" && !wrapperLive) failures.push("shadow wrapper is missing");
+  // [#2439 SC-15.1] Lifecycle consistency asserted PURELY from the registry, so
+  // it is falsifiable in memory: at shadow the legacy origin names its own
+  // wrapper as sole provider, at terminal it must name the batch umbrella. A
+  // batched record still naming its deleted wrapper is the SC-18.3 attack.
+  const legacyOrigin = (manifest.legacyOrigins || []).find((item) => `${item.stem}.${item.extension}` === ORIGIN.split("/").pop());
+  const namesItself = legacyOrigin?.providerWorkflow === ORIGIN;
+  if (!legacyOrigin || namesItself !== (suite.lifecycle !== "batched-historical")) {
+    failures.push("legacy origin does not name the sole provider for this lifecycle");
+  }
+  return failures;
+}
 
 export function check(raw) {
   const failures = [];
@@ -33,7 +100,6 @@ export function check(raw) {
   const flow = code(raw.flow);
   const quantityRow = code(raw.quantityRow);
   const businessQuantityRow = code(raw.businessQuantityRow);
-  const workflow = raw.workflow;
 
   for (const token of [
     "occurrences: mapOccurrences(payload.occurrences, timezone)",
@@ -86,11 +152,7 @@ export function check(raw) {
   }
   const testerSuite = "app-mobile/src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx";
   const sharedQuantityRow = "packages/offering-rendering/QuantityRow.tsx";
-  if ((workflow.match(new RegExp(testerSuite.replaceAll(".", "\\."), "g")) ?? []).length < 2 ||
-      !workflow.includes("src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx") ||
-      (workflow.match(new RegExp(sharedQuantityRow.replaceAll(".", "\\."), "g")) ?? []).length < 2) {
-    failures.push("scaled-text tester suite or shared QuantityRow is not fully workflow-wired");
-  }
+  failures.push(...ciWiring(JSON.parse(raw.registry), testerSuite, sharedQuantityRow));
 
   const chooserAt = sheet.indexOf("<EventDayChooser");
   const tiersAt = sheet.indexOf("SELECT YOUR TICKETS", chooserAt);
@@ -159,13 +221,31 @@ if (process.argv.includes("--self-test")) {
     ["sheet", "numberOfLines={multiDaySelection === null ? 1 : undefined}", "numberOfLines={1}"],
     ["sheet", "const pricing = (():", "const pricing = useMemo<"],
     ["quantityRow", "allowUnboundedNameWrap = false", "allowUnboundedNameWrap = true"],
-    ["workflow", "src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx", "src/components/expandedCard/__tests__/missing-scaled-text-suite.tsx"],
+    // [#2439 SC-15.1] The workflow-text mutant is replaced by registry mutants
+    // that attack the same three properties plus the ones a filename read could
+    // not see. All of them are applied to the registry JSON in memory.
+    ["registry", '"issue-2230-consumer-multiday-tests"', '"issue-2230-consumer-multiday-tests-renamed"'],
+    ["registry", "issue_2230_cart_days.test.tsx src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx", "issue_2230_cart_days.test.tsx"],
+    ["registry", '"app-mobile/src/components/expandedCard/__tests__/issue_2230_scaled_text.tester_adversarial.test.tsx"', '"app-mobile/src/components/expandedCard/__tests__/gone.tsx"'],
+    ["registry", '"packages/offering-rendering/QuantityRow.tsx"', '"packages/offering-rendering/Gone.tsx"'],
+    ["registry", ORIGIN, ".github/workflows/not-a-real-workflow-identity"],
+    ["registry", '"phase3c-deno-wave"', '"phase3d-unreviewed-wave"'],
+    ["registry", DENO_V2_ACTION, "denoland/setup-deno@v2"],
+    ["registry", '"contents: read"', '"contents: write"'],
+    // Attacks the registry-only lifecycle/provider agreement above. Removing the
+    // legacy origin record fires on BOTH sides of cutover, so unlike a mutant
+    // pinned to one lifecycle value it never becomes unfalsifiable.
+    ["registry", '"stem": "issue-2230-consumer-multiday-tests"', '"stem": "issue-2230-consumer-multiday-tests-gone"'],
     ["flow", "...(eventDateIds.length > 0 ? { eventDateIds } : {})", ""],
     ["flow", "? { eventDateIds: normalizedEventDateIds(input) }", "? {}"],
   ];
   for (const [key, from, to] of mutations) {
     if (!sources[key].includes(from)) throw new Error(`self-test fixture missing: ${from}`);
-    const changed = { ...sources, [key]: sources[key].replace(from, to) };
+    // The registry is JSON: one identity can appear in originPaths, in both
+    // trigger path lists and in a leaf argv, so a registry mutant replaces EVERY
+    // occurrence. A first-occurrence-only mutant would silently leave the
+    // assertion it was written to attack still satisfied.
+    const changed = { ...sources, [key]: key === "registry" ? sources[key].split(from).join(to) : sources[key].replace(from, to) };
     let rejected = false;
     try { check(changed); } catch { rejected = true; }
     if (!rejected) throw new Error(`self-test mutation survived: ${from}`);
