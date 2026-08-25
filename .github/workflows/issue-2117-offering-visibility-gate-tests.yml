@@ -58,6 +58,27 @@ jobs:
           for f in $(find supabase/migrations -maxdepth 1 -type f -name '*.sql' | sort); do
             case "$f" in
               *20270415002117_issue_2117_offering_visibility_gate.sql) continue ;;
+              # issue #2489 — SKIPPED for the same reason this phase skips #2117.
+              #
+              # This phase deliberately runs the chain WITHOUT #2117, and
+              # 20270523002489 re-emits `pg_public_experience_by_slug`, whose
+              # CURRENT body — defined by #2117 itself — calls
+              # `pg_offering_visibility_gate`. A `LANGUAGE sql` body is validated
+              # at CREATE time, so applying #2489 here aborts with "function
+              # public.pg_offering_visibility_gate(...) does not exist".
+              #
+              # The reference is CORRECT — it is the visibility control on a public
+              # reader — and removing it to green this lane would delete that
+              # control. #2489 re-emits the function only to route its
+              # address-privacy predicate through the one shared definition; the
+              # visibility arm is untouched.
+              #
+              # Covered end-to-end by the unfiltered full-chain lanes that trigger
+              # on `supabase/migrations/**`, which replay the FULL chain in true
+              # filename order.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20270523002489_issue_2489_address_privacy_server_gate.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

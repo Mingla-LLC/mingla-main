@@ -131,6 +131,34 @@ jobs:
               # `.github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs`
               # now enforces this list instead of trusting the comment.
               *20270522002462_issue_2462_checkout_determinism.sql) continue ;;
+              # issue #2489 — SKIPPED under the standing instruction above ("any
+              # future migration that re-emits a #1931-defined object belongs on
+              # this list too").
+              #
+              # 20270523002489 re-emits `pg_direct_event_checkout_bundle` and
+              # `pg_public_event_by_slug`, both defined by #1931 itself, to move an
+              # address-privacy fallback inside the privacy gate. Both bodies are
+              # `LANGUAGE sql`, validated at CREATE time, and both carry
+              # `AND NOT public.issue_1931_event_ordinary_read_blocked(e.id)`.
+              # It also re-emits `pg_discover_business_events`, which carries the
+              # same deny.
+              #
+              # The deny is CORRECT — it is the private-event guard on a public
+              # reader — and stripping it to green this deliberately-pre-#1931
+              # chain would delete a security control to satisfy CI, which is the
+              # exact defect class #2489 exists to close. The re-emission also
+              # reads `e.multi_date_pricing_mode`, a column supplied only by the
+              # already-skipped #2160, so this migration would abort here on two
+              # independent faults even if the deny were removed.
+              #
+              # Covered end-to-end by the unfiltered full-chain lanes that trigger
+              # on `supabase/migrations/**`, which replay every migration in true
+              # filename order and run both #2489 fixtures against the terminal
+              # state — the state a filtered lane structurally cannot observe.
+              #
+              # Matched by EXACT filename, never `*_issue_2489_*`, for the same
+              # reason recorded for #2462 directly above.
+              *20270523002489_issue_2489_address_privacy_server_gate.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done
