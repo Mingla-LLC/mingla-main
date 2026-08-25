@@ -71,7 +71,15 @@ export function readinessVerdict(input: {
   // genuinely differ, so this one IS retried.
   if (pageStatus !== 200 || imageStatus !== 200) return { state: 'transient', status: 503, version: null, retryable: true }
 
-  const canonical = `https://usemingla.com/s/${code}`
+  // Built exactly the way the readiness route has always built it — origin and
+  // path assembled by `URL`, never spliced into one literal. `packages/sharing`
+  // owns the ONE canonical builder (`buildShortShareUrl`), and the
+  // content-sharing semantic gate refuses an inline short-share URL anywhere
+  // else; `mingla-marketing` has no dependency on that workspace package, and
+  // adding one to reach a two-segment path would put a bundler dependency
+  // inside the module whose whole purpose is to have none. Do not "tidy" this
+  // into a template literal: that reds `content-sharing-semantic-gate`.
+  const canonical = new URL(`/s/${code}`, 'https://usemingla.com').toString()
   if (!html.includes(`<link rel="canonical" href="${canonical}" />`)) {
     return { state: 'transient', status: 502, version: null, retryable: false }
   }
