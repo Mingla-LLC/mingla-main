@@ -1711,7 +1711,23 @@ export const PublicVenueScreen = ({
   );
 
   return (
-    <View style={styles.host}>
+    // #1595 [venue-host-palette] — the host wears `palette.page` through the
+    // canonical `offeringSurfaceStyles` helper, not a hex. `styles.host` used to
+    // hardcode `#0c0e12`, which the #1550 SPEC named for cleanup by line and
+    // which the theming step (#1564) then moved here unchanged. It is the LAST
+    // raw page colour in this file.
+    //
+    // WHY THIS IS NOT COSMETIC. `createThemePalette` resolves a NEAR-WHITE page
+    // whenever the brand's accent is too dark to clear 3:1 on black — a deep
+    // navy or charcoal, which is an ordinary choice for a hotel. On such a venue
+    // the themed page floated inside a near-black frame that nobody chose. The
+    // trigger is a DARK brand colour, not a light one, which is why "no brand
+    // uses a light palette today" was never the right test.
+    //
+    // `surface.page` is the same `{ backgroundColor: palette.page }` every other
+    // themed surface in the offering system reads (ORCH-1138 A2: "every
+    // primitive reads from ONE resolved palette and never a raw hex").
+    <View style={[styles.host, surface.page]}>
       {headSlot}
       <ParallaxCoverShell
         palette={palette}
@@ -1767,9 +1783,12 @@ export const PublicVenueScreen = ({
 };
 
 const styles = StyleSheet.create({
+  // #1595 — NO `backgroundColor` here. The host's colour is themed and is
+  // supplied at the call site from `surface.page`. A constant reinstated here
+  // would win on any render where the palette resolves light, which is the
+  // exact defect this removed.
   host: {
     flex: 1,
-    backgroundColor: "#0c0e12",
   },
   body: {
     gap: 20,
