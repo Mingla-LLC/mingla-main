@@ -9,7 +9,7 @@
 import {
   assertEquals,
   assertFalse,
-  assertRejects,
+  assertThrows,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
   ariErrorResponse,
@@ -40,17 +40,14 @@ Deno.test("#2060 adversarial: secret/exception strings never reach user_message"
   assertFalse("data" in body);
 });
 
-Deno.test("#2060 adversarial: responders require request context", async () => {
-  await assertRejects(
-    () =>
-      Promise.resolve(
-        ariJsonResponse(200, { kind: "text", text: "hi", conversation_id: "x" }),
-      ),
+Deno.test("#2060 adversarial: responders require request context", () => {
+  assertThrows(
+    () => ariJsonResponse(200, { kind: "text", text: "hi", conversation_id: "x" }),
     TypeError,
     "ari_request_context_missing",
   );
-  await assertRejects(
-    () => Promise.resolve(ariErrorResponse(500, "INTERNAL", "nope")),
+  assertThrows(
+    () => ariErrorResponse(500, "INTERNAL", "nope"),
     TypeError,
     "ari_request_context_missing",
   );
