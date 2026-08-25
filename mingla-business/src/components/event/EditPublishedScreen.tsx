@@ -1446,6 +1446,7 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         // masterStartAtUtc is a publish-time bridge value and is null here,
         // while the live row carries the canonical `event_dates.start_at`.
         eventStartsAtIso: liveEvent.masterStartAtUtc ?? null,
+        eventEndsAtIso: liveEvent.masterEndAtUtc ?? null,
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,

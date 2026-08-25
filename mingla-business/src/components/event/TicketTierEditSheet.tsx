@@ -42,6 +42,7 @@ import type {
 import { useEventWaitlist } from "../../hooks/useEventWaitlist";
 import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
+import { saleWindowCaution } from "../../utils/saleWindowCaution";
 import { formatCurrency } from "../../utils/currency";
 
 import { Button } from "../ui/Button";
@@ -381,6 +382,18 @@ export interface TicketTierEditSheetProps {
    * and any surface without a resolved date — behaves exactly as before.
    */
   eventStartsAtIso?: string | null;
+  /**
+   * issue #2590 — when the event's LAST occurrence ENDS, ISO-8601 UTC.
+   *
+   * Needed because "sales close before the doors" is the SINGLE-DAY shape of
+   * the problem. On a multi-day event the damaging shape is different and the
+   * first-occurrence check misses it entirely: We Go Again Exhibition sells
+   * 29-30 Aug and closes sales at 07:00 on the 30th — comfortably AFTER Day 1
+   * opened, so a first-occurrence comparison says nothing, while Day 2 cannot
+   * be bought on the day at all. Both bounds are required to tell the two
+   * apart. Optional and null in the create wizard.
+   */
+  eventEndsAtIso?: string | null;
 }
 
 export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
@@ -391,6 +404,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   nextOrder,
   soldCount = 0,
   eventStartsAtIso = null,
+  eventEndsAtIso = null,
   canEditPrice = true,
   eventCurrency,
   eventId = null,
@@ -549,19 +563,19 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     saleStartAt !== null &&
     saleEndAt !== null &&
     new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime();
-  // issue #2590 — sales closing before the doors open. A CAUTION, never a block:
-  // an organiser may genuinely want to stop selling the night before, and
-  // refusing that would trade one wrong lock for another. It is loud, it says
-  // what will happen, and it lets them save anyway.
-  const eventStartsAtMs =
-    typeof eventStartsAtIso === "string" && eventStartsAtIso.length > 0
-      ? new Date(eventStartsAtIso).getTime()
-      : Number.NaN;
-  const saleEndsBeforeDoors =
-    saleEndAt !== null &&
-    Number.isFinite(eventStartsAtMs) &&
-    Number.isFinite(new Date(saleEndAt).getTime()) &&
-    new Date(saleEndAt).getTime() < eventStartsAtMs;
+  // issue #2590 — a sale window that leaves part of the event unbuyable.
+  // A CAUTION, never a block: an organiser may genuinely want to stop selling
+  // the night before. The rule itself lives in `saleWindowCaution` so it can be
+  // executed in a test — the first version of it, written inline here, compared
+  // only against the FIRST occurrence and therefore said nothing about the very
+  // event that motivated it.
+  const windowCaution = saleWindowCaution(
+    saleEndAt,
+    eventStartsAtIso,
+    eventEndsAtIso,
+  );
+  const saleEndsBeforeDoors = windowCaution === "closes-before-doors";
+  const saleEndsMidEvent = windowCaution === "closes-mid-event";
   const waitlistRow =
     initial !== null
       ? (eventWaitlistQuery.data?.find(
@@ -1296,6 +1310,14 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             {saleEndBeforeStart ? (
               <Text style={styles.helperError}>
                 Sales close must be after sales open.
+              </Text>
+            ) : saleEndsMidEvent ? (
+              /* issue #2590 — the multi-day shape. Distinct copy, because the
+                 organiser's mistake and its consequence are different here. */
+              <Text style={styles.helperHintWarn}>
+                Heads up: sales stop while this event is still running, so the
+                later days can&apos;t be bought on the day. Move it to the
+                event&apos;s end time to sell throughout.
               </Text>
             ) : saleEndsBeforeDoors ? (
               /* issue #2590 — a CAUTION, not a block. Save stays enabled: an

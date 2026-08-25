@@ -76,6 +76,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
   showErrors,
   editMode,
   eventStartsAtIso = null,
+  eventEndsAtIso = null,
   canEditTicketPrice = true,
   coverMediaEventId,
   brandDefaultCurrency,
@@ -414,6 +415,7 @@ export const CreatorStep5Tickets: React.FC<StepBodyProps> = ({
           eventCurrency={hasDisplayCurrency ? displayCurrency : undefined}
           eventId={coverMediaEventId}
           eventStartsAtIso={eventStartsAtIso}
+          eventEndsAtIso={eventEndsAtIso}
         />
       </Suspense>
 

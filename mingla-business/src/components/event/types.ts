@@ -21,6 +21,8 @@ export interface StepBodyProps {
    * the caution simply does not render, which is correct there.
    */
   eventStartsAtIso?: string | null;
+  /** issue #2590 — the event's LAST occurrence END, ISO-8601 UTC. */
+  eventEndsAtIso?: string | null;
   draft: DraftEvent;
   /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
