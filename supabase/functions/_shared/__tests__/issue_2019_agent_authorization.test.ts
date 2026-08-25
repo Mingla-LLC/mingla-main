@@ -35,18 +35,18 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
 // (set_rsvp_guest_status may carry rsvp_id for #1984/#2593 containment).
 // [TEST-MOD-APPROVED #1971] Four trip graph tools (manage_trip_days /
 // _inclusions / _tiers / _traveler_intake) plus the finance-gated aggregate
-// get_trip_order_money are additive declarations; 80 + 5 = 85. The four
+// get_trip_order_money are additive declarations; 85 - 1 set_guest_approval + 2 RSVP writes = 86. The four
 // invalidated assertions are exactly the four census counts below
 // (AGENT_TOOLS.length, the unique-name set size, AGENT_TOOL_AUTHORIZATION key
 // count, and the mapped ledger-row count). No role translation, ordering,
 // resource binding or denial assertion changes.
   assert(
-    AGENT_TOOLS.length === 85,
-    `expected 85 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 86,
+    `expected 86 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 85, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 86, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 85,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 86,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -93,8 +93,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     AGENT_TOOL_AUTHORIZATION[row.ari_tool]
   );
   // [TEST-MOD-APPROVED #1979] Mapped ledger rows track the 80-tool registry.
-  // [TEST-MOD-APPROVED #1971] 80 -> 85 with the five trip tools.
-  assert(rows.length === 85, `expected 85 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #1977] 85 -> 86: drop set_guest_approval; add update_rsvp + update_rsvp_contribution_settings.
+  assert(rows.length === 86, `expected 86 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===

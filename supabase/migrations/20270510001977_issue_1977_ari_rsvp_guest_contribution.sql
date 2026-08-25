@@ -747,19 +747,32 @@ GRANT EXECUTE ON FUNCTION public.biz_guest_roster_set_rsvp_approval(uuid,text,te
 GRANT EXECUTE ON FUNCTION public.biz_prepare_rsvp_contribution_refund(uuid,uuid,text,text,text) TO authenticated,service_role;
 GRANT EXECUTE ON FUNCTION public.ari_execute_rsvp_operation(uuid,text,jsonb) TO authenticated,service_role;
 
--- #1977 — promote contribution_settings to write evidence without rewriting
--- ari_cert_begin_run / ari_cert_finalize_run (those literals are owned by the
--- #2592 parity contract at 120 requirements / be0add47…). Do not delete
--- ari.guests.set_approval here; the ledger still carries that row until a
--- dedicated cleanup PR reconciles guest-approval vs set_rsvp_guest_status.
+-- #1977 certification requirements (120-row tip / #2592 digest be0add47…).
+-- Do NOT replace ari_cert_begin_run / ari_cert_finalize_run in this PR — those
+-- two functions already agree on be0add47… with capability_count 120. This
+-- migration only:
+--   1. retires the duplicate ari.guests.set_approval requirement in favour of
+--      set_rsvp_guest_status's selected scope (ledger + tools match);
+--   2. inserts ari.rsvp.update (write) so the requirement set stays at 120;
+--   3. promotes ari.rsvp.contribution_settings from unsupported → write.
+-- Net row count stays 120. Digests on begin/finalize are intentionally left
+-- alone (see issue #1977 / COMMS-0160 / #2592).
 
 DROP TRIGGER IF EXISTS ari_cert_capability_requirements_immutable_trigger
   ON public.ari_cert_capability_requirements;
+
+DELETE FROM public.ari_cert_capability_requirements
+WHERE capability_id = 'ari.guests.set_approval';
 
 UPDATE public.ari_cert_capability_requirements
 SET evidence_mode = 'write'
 WHERE capability_id = 'ari.rsvp.contribution_settings'
   AND evidence_mode IN ('unsupported', 'read');
+
+INSERT INTO public.ari_cert_capability_requirements (capability_id, evidence_mode)
+VALUES ('ari.rsvp.update', 'write')
+ON CONFLICT (capability_id) DO UPDATE
+SET evidence_mode = EXCLUDED.evidence_mode;
 
 CREATE TRIGGER ari_cert_capability_requirements_immutable_trigger
 BEFORE UPDATE OR DELETE ON public.ari_cert_capability_requirements
@@ -772,12 +785,20 @@ BEGIN
   IF v_count <> 120 THEN
     RAISE EXCEPTION 'issue_1977_expected_120_certification_requirements:%', v_count;
   END IF;
-  IF NOT EXISTS (
+  IF EXISTS (
+    SELECT 1
+    FROM (VALUES
+      ('ari.rsvp.update', 'write'),
+      ('ari.rsvp.contribution_settings', 'write')
+    ) expected(capability_id, evidence_mode)
+    LEFT JOIN public.ari_cert_capability_requirements actual
+      USING (capability_id, evidence_mode)
+    WHERE actual.capability_id IS NULL
+  ) OR EXISTS (
     SELECT 1 FROM public.ari_cert_capability_requirements
-    WHERE capability_id = 'ari.rsvp.contribution_settings'
-      AND evidence_mode = 'write'
+    WHERE capability_id = 'ari.guests.set_approval'
   ) THEN
-    RAISE EXCEPTION 'issue_1977_contribution_settings_not_write';
+    RAISE EXCEPTION 'issue_1977_certification_requirement_drift';
   END IF;
 END;
 $cert_requirements$;

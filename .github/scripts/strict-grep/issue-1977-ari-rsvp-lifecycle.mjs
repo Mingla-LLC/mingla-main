@@ -129,7 +129,7 @@ export function audit(base) {
   if (
     !migration.includes("issue_1977_expected_120_certification_requirements") ||
     !migration.includes("ari.rsvp.contribution_settings") ||
-    !migration.includes("evidence_kind = 'write'")
+    !migration.includes("evidence_mode = 'write'")
   ) {
     failures.push("contribution_settings write promote / 120-row assert is incomplete");
   }
@@ -314,7 +314,7 @@ function selfTest() {
     const cleanWorkflow = fs.readFileSync(workflow, "utf8");
     fs.writeFileSync(
       workflow,
-      cleanWorkflow.replace("issue-1977-ari-rsvp-lifecycle.mjs", "issue-1977-missing.mjs"),
+      cleanWorkflow.replaceAll("issue-1977-ari-rsvp-lifecycle.mjs", "issue-1977-missing.mjs"),
     );
     if (!audit(tmp).some((failure) => failure.includes("shared supabase lane"))) {
       throw new Error("true mutation: workflow unwire was not detected");

@@ -98,7 +98,6 @@ const EXPECTED_TOOL_NAMES = [
   "set_brand_pricing_defaults",
   "set_event_cover",
   "set_event_guest_privacy",
-  "set_guest_approval",
   "set_pricing_switches",
   "set_rsvp_guest_status",
   "submit_venue_claim",
@@ -111,25 +110,27 @@ const EXPECTED_TOOL_NAMES = [
   "update_event",
   "update_experience",
   "update_notification_prefs",
+  "update_rsvp",
+  "update_rsvp_contribution_settings",
   "update_trip",
   "upsert_ticket_tier",
-  "venue_ops_action",
+  "venue_ops_action"
 ];
 
 const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 63,
-    broken: 21,
+    registered_unverified: 69,
+    broken: 16,
     guided_handoff: 8,
-    unsupported: 24,
+    unsupported: 23,
     in_flight: 4,
   }),
-  idDigest: "e28cf99d53c6a2c3205a2a5aaab5f3b0cd4dd4a36cdd8b834ee3ab86b57cc556",
-  statusDigest: "a487b817393732127a3f2f218584142699d6ab2a200f83b83a0273c1736e6b2c",
-  mappingDigest: "041212bb7146f9acbce72f4103cf0f45b13f800ff4534c59118764e036abdcf2",
-  sourceRefDigest: "02bd022a1d553964b08eafc15f1aa79ba0e71eecd2526a5fc88443318e278ec7",
+  idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
+  statusDigest: "45a4e78c0878cf5abac3cbefc3008175477ffe2ff2a8c60fdc59c62fbe10ab92",
+  mappingDigest: "2799d3d25f3d6e7ccbd2dc7be131746231bcb2475ba2a994fed0b5ccebb55953",
+  sourceRefDigest: "61a1d550b694516de4524a3fcad4e75f6447c49b4496a37b997052e1f6ee8d78",
 });
 
 function readLedger() {
@@ -155,9 +156,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("85-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("86-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("63/21/24/8/4/0 classification changed");
+    failures.push("69/16/23/8/4/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

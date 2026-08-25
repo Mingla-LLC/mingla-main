@@ -1,7 +1,6 @@
 // deno-lint-ignore-file no-explicit-any
 // [TEST-MOD-APPROVED #1977] set_guest_approval retired; containment
-// proofs now drive set_rsvp_guest_status while still passing rsvp_id
-// so the bare-rsvp binding axis stays exercised.
+// proofs now drive set_rsvp_guest_status via roster_keys (rsvp:<uuid>).
 // #2593 — INDEPENDENT TESTER adversarial proofs for the eight #2415 (#424
 // Wave 3) defect-class repairs. Deliberately a DIFFERENT AXIS from the
 // implementor suite in issue_2593_ari_wave3_defects.test.ts:
@@ -413,16 +412,21 @@ function guestClient(
   }).client;
 }
 
-Deno.test("#2593 T-D1 a bulk guest_ids array is checked at EVERY position, not short-circuited", async () => {
-  // GUEST_A belongs to this event; GUEST_B belongs to a DIFFERENT event of the
+Deno.test("#2593 T-D1 a bulk roster_keys array is checked at EVERY position, not short-circuited", async () => {
+  // RSVP_A belongs to this event; RSVP_B belongs to a DIFFERENT event of the
   // SAME brand. The refusal must hold whichever position the bad member sits
   // in — a loop that stops after the first success would let one ordering pass.
-  for (const order of [[GUEST_A, GUEST_B], [GUEST_B, GUEST_A]]) {
+  for (const order of [[RSVP_A, RSVP_B], [RSVP_B, RSVP_A]]) {
     const error = await assertRejects(
       () =>
         authorizeAgentTool(
           securedTool("set_rsvp_guest_status"),
-          { event_id: EVENT, guest_ids: order, status: "approved" },
+          {
+            event_id: EVENT,
+            decision: "approve",
+            scope: "selected",
+            roster_keys: order.map((id) => `rsvp:${id}`),
+          },
           guestClient(
             { [GUEST_A]: RSVP_A, [GUEST_B]: RSVP_B },
             { [RSVP_A]: EVENT, [RSVP_B]: OTHER_EVENT },
@@ -431,7 +435,7 @@ Deno.test("#2593 T-D1 a bulk guest_ids array is checked at EVERY position, not s
         ),
       ToolError,
       undefined,
-      `a mismatched member at position ${order.indexOf(GUEST_B)} was allowed`,
+      `a mismatched member at position ${order.indexOf(RSVP_B)} was allowed`,
     );
     assertEquals(error.code, "BRAND_ACCESS_DENIED");
   }
@@ -440,7 +444,12 @@ Deno.test("#2593 T-D1 a bulk guest_ids array is checked at EVERY position, not s
 Deno.test("#2593 T-D2 a bulk array whose members ALL belong to the named event is authorized", async () => {
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
-    ,
+    {
+      event_id: EVENT,
+      decision: "approve",
+      scope: "selected",
+      roster_keys: [`rsvp:${RSVP_A}`, `rsvp:${RSVP_B}`],
+    },
     guestClient(
       { [GUEST_A]: RSVP_A, [GUEST_B]: RSVP_B },
       { [RSVP_A]: EVENT, [RSVP_B]: EVENT },
@@ -457,7 +466,7 @@ Deno.test("#2593 T-D3 an RSVP with no resolvable parent event fails CLOSED on bo
       () =>
         authorizeAgentTool(
           securedTool("set_rsvp_guest_status"),
-          { event_id: EVENT, rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+          { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
           makeClient({
             rows: {
               events: { [EVENT]: RSVP_EVENT_ROW },
@@ -576,7 +585,7 @@ Deno.test("#2593 T-E1 an uppercase or MIXED-case event_id that matches is accept
   for (const form of [upper, mixed]) {
     const bare = await authorizeAgentTool(
       securedTool("set_rsvp_guest_status"),
-      { event_id: form(CASE_EVENT), rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+      { event_id: form(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
       caseHarness(CASE_EVENT),
       CALLER,
     );
@@ -597,7 +606,7 @@ Deno.test("#2593 T-E2 case-insensitivity did NOT become a hole: a different even
     for (
       const [tool, args] of [
         ["set_rsvp_guest_status", { decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] }],
-        ["set_rsvp_guest_status", { guest_id: GUEST_A, status: "approved" }],
+        ["set_rsvp_guest_status", { decision: "deny", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] }],
       ] as Array<[string, Row]>
     ) {
       const error = await assertRejects(
@@ -627,8 +636,9 @@ Deno.test("#2593 T-E3 the compare is WHOLE-STRING: a uuid differing only in the 
           securedTool("set_rsvp_guest_status"),
           {
             event_id: form(CASE_NEAR_COLLISION),
-            rsvp_id: RSVP_A,
-            approved: true,
+            decision: "approve",
+            scope: "selected",
+            roster_keys: [`rsvp:${RSVP_A}`],
           },
           caseHarness(CASE_EVENT),
           CALLER,
@@ -644,28 +654,29 @@ Deno.test("#2593 T-E3 the compare is WHOLE-STRING: a uuid differing only in the 
   // ...and the genuine match still passes, so this is not just a blanket deny.
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
-    { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+    { event_id: upper(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
     caseHarness(CASE_EVENT),
     CALLER,
   );
   assertEquals(context.brandId, BRAND);
 });
 
-Deno.test("#2593 T-E4 an uppercase event_id does not weaken BULK guest_ids containment", async () => {
+Deno.test("#2593 T-E4 an uppercase event_id does not weaken BULK roster_keys containment", async () => {
   // Axis D, re-run under the case fix: every member is still checked, at every
   // position, when the event is named in uppercase.
   const rsvps = {
     [RSVP_B]: { id: RSVP_B, event_id: CASE_OTHER_EVENT },
   };
-  for (const order of [[GUEST_A, GUEST_B], [GUEST_B, GUEST_A]]) {
+  for (const order of [[RSVP_A, RSVP_B], [RSVP_B, RSVP_A]]) {
     const error = await assertRejects(
       () =>
         authorizeAgentTool(
           securedTool("set_rsvp_guest_status"),
           {
             event_id: upper(CASE_EVENT),
-            guest_ids: order,
-            status: "approved",
+            decision: "approve",
+            scope: "selected",
+            roster_keys: order.map((id) => `rsvp:${id}`),
           },
           caseHarness(CASE_EVENT, rsvps),
           CALLER,
@@ -679,8 +690,9 @@ Deno.test("#2593 T-E4 an uppercase event_id does not weaken BULK guest_ids conta
     securedTool("set_rsvp_guest_status"),
     {
       event_id: upper(CASE_EVENT),
-      guest_ids: [GUEST_A, GUEST_B],
-      status: "approved",
+      decision: "approve",
+      scope: "selected",
+      roster_keys: [`rsvp:${RSVP_A}`, `rsvp:${RSVP_B}`],
     },
     caseHarness(CASE_EVENT, {
       [RSVP_B]: { id: RSVP_B, event_id: CASE_EVENT },
@@ -701,7 +713,7 @@ Deno.test("#2593 T-E5 a non-string event_id on the database side still fails CLO
       () =>
         authorizeAgentTool(
           securedTool("set_rsvp_guest_status"),
-          { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+          { event_id: upper(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
           caseHarness(value),
           CALLER,
         ),
