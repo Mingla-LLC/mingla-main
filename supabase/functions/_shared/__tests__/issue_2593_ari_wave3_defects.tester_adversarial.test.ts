@@ -470,3 +470,241 @@ Deno.test("#2593 T-D3 an RSVP with no resolvable parent event fails CLOSED on bo
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// AXIS E — P2-2: the containment compare is UUID-case-insensitive.
+//
+// `isUuid` carries the /i flag, so an uppercase event_id is a VALID uuid, while
+// Postgres always returns uuids lowercase. The first containment fix compared
+// with a raw `!==`, so a caller naming the RIGHT event in uppercase was told it
+// had no permission. `sameUuid` fixes that. These tests attack a DIFFERENT axis
+// than the implementor's D2e/D2f/D2g:
+//
+//   1. The implementor repaired its MOCK to lowercase the row-lookup key
+//      (Postgres compares a uuid COLUMN by parsed value, so `WHERE id='AAA…'`
+//      matches a lowercase row). That is faithful, but it means its fixtures
+//      depend on the mock being right. This harness does the opposite: the
+//      lookup stays CASE-SENSITIVE and every row is registered under lowercase,
+//      uppercase AND mixed case, so a lookup can never 404 and can never be the
+//      reason a case behaves differently. Only the comparison can be.
+//   2. MIXED case, which the implementor only tests as all-uppercase.
+//   3. A NEAR-COLLISION pair — two uuids sharing every character except the
+//      last — which proves the comparison is whole-string. A prefix-only
+//      comparison passes every implementor test and would be a false GRANT.
+//   4. The bulk `guest_ids` array under an uppercase event_id.
+// ---------------------------------------------------------------------------
+
+// Hex LETTERS in every group. The other ids in this file are all digits, so a
+// case test built on one would silently prove nothing — CASE_FIXTURE_IS_CASED
+// below pins that, and pins it harder than `upper !== lower`.
+const CASE_EVENT = "3a3b3c3d-4e4f-4a4b-8c8d-9e9f0a0b0c0d";
+const CASE_OTHER_EVENT = "5b5c5d5e-6f6a-4b6c-8d8e-af0b1c2d3e4f";
+// Differs from CASE_EVENT in the FINAL character only.
+const CASE_NEAR_COLLISION = "3a3b3c3d-4e4f-4a4b-8c8d-9e9f0a0b0c0e";
+
+const upper = (value: string) => value.toUpperCase();
+const mixed = (value: string) =>
+  [...value].map((char, index) => index % 2 ? char.toUpperCase() : char).join(
+    "",
+  );
+
+/** Rows registered under EVERY casing, looked up CASE-SENSITIVELY: the lookup
+ * is therefore never the variable under test. */
+function caseHarness(rsvpEventIdInDatabase: unknown, guestRsvps: Row = {}) {
+  const everyCasing = (rows: Row): Row => {
+    const out: Row = {};
+    for (const [key, value] of Object.entries(rows)) {
+      out[key] = value;
+      out[upper(key)] = value;
+      out[mixed(key)] = value;
+    }
+    return out;
+  };
+  return makeClient({
+    rows: {
+      events: everyCasing({
+        [CASE_EVENT]: RSVP_EVENT_ROW,
+        [CASE_OTHER_EVENT]: RSVP_EVENT_ROW,
+        [CASE_NEAR_COLLISION]: RSVP_EVENT_ROW,
+      }),
+      // The database returns the CANONICAL value, never an echo of the input.
+      event_rsvps: everyCasing({
+        [RSVP_A]: { id: RSVP_A, event_id: rsvpEventIdInDatabase },
+        ...guestRsvps,
+      }),
+      event_rsvp_guests: everyCasing({
+        [GUEST_A]: { id: GUEST_A, rsvp_id: RSVP_A },
+        [GUEST_B]: { id: GUEST_B, rsvp_id: RSVP_B },
+      }),
+    },
+    rpc: () => 40,
+  }).client;
+}
+
+Deno.test("#2593 T-E0 the case fixtures are genuinely cased (an all-digit uuid would prove nothing)", () => {
+  for (
+    const [label, value] of [
+      ["CASE_EVENT", CASE_EVENT],
+      ["CASE_OTHER_EVENT", CASE_OTHER_EVENT],
+      ["CASE_NEAR_COLLISION", CASE_NEAR_COLLISION],
+    ] as Array<[string, string]>
+  ) {
+    const letters = value.replace(/[-0-9]/g, "");
+    assert(
+      letters.length >= 8,
+      `${label} has only ${letters.length} hex letters — .toUpperCase() would barely change it`,
+    );
+    assert(upper(value) !== value, `${label} is not actually case-bearing`);
+    assert(mixed(value) !== value, `${label} has no mixed-case form`);
+  }
+  // The premise of the whole defect: an uppercase uuid is a VALID uuid, which
+  // is why a raw `!==` produced a false denial instead of an INVALID_ARGS.
+  const schemaUuid = (domainTool("list_guest_roster").parameters as any)
+    .properties.event_id;
+  assert(schemaUuid, "event_id is not schema-declared");
+  assertEquals(
+    CASE_NEAR_COLLISION.slice(0, -1),
+    CASE_EVENT.slice(0, -1),
+    "the near-collision pair must differ in the LAST character only",
+  );
+});
+
+Deno.test("#2593 T-E1 an uppercase or MIXED-case event_id that matches is accepted on both chains", async () => {
+  for (const form of [upper, mixed]) {
+    const bare = await authorizeAgentTool(
+      securedTool("set_guest_approval"),
+      { event_id: form(CASE_EVENT), rsvp_id: RSVP_A, approved: true },
+      caseHarness(CASE_EVENT),
+      CALLER,
+    );
+    assertEquals(bare.brandId, BRAND);
+    const guest = await authorizeAgentTool(
+      securedTool("set_rsvp_guest_status"),
+      { event_id: form(CASE_EVENT), guest_id: GUEST_A, status: "approved" },
+      caseHarness(CASE_EVENT),
+      CALLER,
+    );
+    assertEquals(guest.brandId, BRAND);
+  }
+});
+
+Deno.test("#2593 T-E2 case-insensitivity did NOT become a hole: a different event is still refused", async () => {
+  // The repair must not trade a false denial for a false grant.
+  for (const form of [upper, mixed, (value: string) => value]) {
+    for (
+      const [tool, args] of [
+        ["set_guest_approval", { rsvp_id: RSVP_A, approved: true }],
+        ["set_rsvp_guest_status", { guest_id: GUEST_A, status: "approved" }],
+      ] as Array<[string, Row]>
+    ) {
+      const error = await assertRejects(
+        () =>
+          authorizeAgentTool(
+            securedTool(tool),
+            { ...args, event_id: form(CASE_OTHER_EVENT) },
+            caseHarness(CASE_EVENT),
+            CALLER,
+          ),
+        ToolError,
+      );
+      assertEquals(error.code, "BRAND_ACCESS_DENIED");
+    }
+  }
+});
+
+Deno.test("#2593 T-E3 the compare is WHOLE-STRING: a uuid differing only in the LAST character is refused", async () => {
+  // A prefix-only or truncated comparison satisfies every other case test in
+  // this repo — both fixtures elsewhere differ in their first characters — yet
+  // would conflate two distinct events. Attack the far end of the string, in
+  // every casing.
+  for (const form of [upper, mixed, (value: string) => value]) {
+    const error = await assertRejects(
+      () =>
+        authorizeAgentTool(
+          securedTool("set_guest_approval"),
+          {
+            event_id: form(CASE_NEAR_COLLISION),
+            rsvp_id: RSVP_A,
+            approved: true,
+          },
+          caseHarness(CASE_EVENT),
+          CALLER,
+        ),
+      ToolError,
+      undefined,
+      `a uuid differing only in the last character was accepted (${
+        form(CASE_NEAR_COLLISION)
+      })`,
+    );
+    assertEquals(error.code, "BRAND_ACCESS_DENIED");
+  }
+  // ...and the genuine match still passes, so this is not just a blanket deny.
+  const context = await authorizeAgentTool(
+    securedTool("set_guest_approval"),
+    { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, approved: true },
+    caseHarness(CASE_EVENT),
+    CALLER,
+  );
+  assertEquals(context.brandId, BRAND);
+});
+
+Deno.test("#2593 T-E4 an uppercase event_id does not weaken BULK guest_ids containment", async () => {
+  // Axis D, re-run under the case fix: every member is still checked, at every
+  // position, when the event is named in uppercase.
+  const rsvps = {
+    [RSVP_B]: { id: RSVP_B, event_id: CASE_OTHER_EVENT },
+  };
+  for (const order of [[GUEST_A, GUEST_B], [GUEST_B, GUEST_A]]) {
+    const error = await assertRejects(
+      () =>
+        authorizeAgentTool(
+          securedTool("set_rsvp_guest_status"),
+          {
+            event_id: upper(CASE_EVENT),
+            guest_ids: order,
+            status: "approved",
+          },
+          caseHarness(CASE_EVENT, rsvps),
+          CALLER,
+        ),
+      ToolError,
+    );
+    assertEquals(error.code, "BRAND_ACCESS_DENIED");
+  }
+  // All members inside the named event, addressed in uppercase: authorized.
+  const context = await authorizeAgentTool(
+    securedTool("set_rsvp_guest_status"),
+    {
+      event_id: upper(CASE_EVENT),
+      guest_ids: [GUEST_A, GUEST_B],
+      status: "approved",
+    },
+    caseHarness(CASE_EVENT, {
+      [RSVP_B]: { id: RSVP_B, event_id: CASE_EVENT },
+    }),
+    CALLER,
+  );
+  assertEquals(context.brandId, BRAND);
+});
+
+Deno.test("#2593 T-E5 a non-string event_id on the database side still fails CLOSED", async () => {
+  // Reachability note: these refuse UPSTREAM of the comparison, at the row
+  // guard, with INVALID_ARGS rather than BRAND_ACCESS_DENIED — so `sameUuid`'s
+  // own typeof guards are defence in depth rather than the active gate here.
+  // Pinned anyway: if the row guard is ever loosened, the comparison must not
+  // start coercing a non-string into a match.
+  for (const value of [null, undefined, 12345, true, { id: CASE_EVENT }]) {
+    await assertRejects(
+      () =>
+        authorizeAgentTool(
+          securedTool("set_guest_approval"),
+          { event_id: upper(CASE_EVENT), rsvp_id: RSVP_A, approved: true },
+          caseHarness(value),
+          CALLER,
+        ),
+      ToolError,
+      undefined,
+      `rsvp.event_id=${JSON.stringify(value)} was authorized`,
+    );
+  }
+});
