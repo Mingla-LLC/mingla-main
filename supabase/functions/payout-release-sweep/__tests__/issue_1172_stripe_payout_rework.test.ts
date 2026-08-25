@@ -1,4 +1,5 @@
 import {
+  assert,
   assertEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
@@ -110,16 +111,148 @@ Deno.test("webhook reconciliation preserves release attribution and delegates re
   );
 });
 
+// [TEST-MOD-APPROVED #2591] — re-point + strengthen.
+//
+// WHAT THIS TEST IS FOR, restated so the next reader cannot mistake the pin for
+// the property: the #1172 disposable CI database must be reachable only with a
+// credential minted fresh for that run. A static password checked into a
+// workflow is a credential in a public repository (this repo IS public).
+//
+// #2591 collapses nine migration-gated Postgres lanes into
+// `.github/workflows/postgres-contract-suites.yml`. The property does not move
+// -- only the file that carries it. Three deliberate changes, none of them a
+// relaxation:
+//
+//  1. CANDIDATES, not one path. Both the origin workflow and the consolidated
+//     one are checked while both exist (they overlap for the whole shadow
+//     window), and the surviving one is checked after the cutover deletes the
+//     other. There is no instant at which the property is unasserted, which the
+//     naive "just change the string" re-point would have opened for the length
+//     of the shadow PR.
+//  2. AT LEAST ONE CANDIDATE MUST EXIST. Deleting every candidate is RED, not
+//     green. A universal quantifier over an empty set is the check-that-carries-
+//     no-information shape (#2113); this clause is what stops it.
+//  3. The randomness is asserted as a PROPERTY, not as one spelling of a
+//     variable name. The old assertion pinned the literal
+//     `issue1172_db_password="$(openssl rand -hex 24)"`. That pin is satisfied
+//     by a DEAD assignment -- the line can sit in the file while the container
+//     is actually started from some other, static value -- and it is defeated by
+//     a rename that also drops the randomness only because the rename half fails
+//     first, which invites "just update the string" as the repair. So instead:
+//     some shell variable is assigned `$(openssl rand -hex 24)`, AND that same
+//     variable is the one interpolated into `POSTGRES_PASSWORD`, AND no
+//     `POSTGRES_PASSWORD` is ever assigned anything but a variable reference.
+//     Every defect the old form caught is still caught; the dead-assignment hole
+//     and the "random var exists, static password used" hole are new catches.
+//     `pg_contract_db_password` therefore needs no mention here at all -- the
+//     name is free to change, the property is not.
+//
+// Fails-on-revert, clause by clause. Drop `openssl rand -hex 24` -> clause (a)
+// fails. Keep the random assignment but start the container from an inline
+// value rather than a variable reference, or drop the container's password
+// assignment altogether -> clause (c) fails. Point `POSTGRES_PASSWORD` at a
+// variable that exists but was never minted -> clause (d) fails. Delete both
+// workflows -> the existence clause fails.
+//
+// And clause (b): writing, anywhere in either workflow, the one environment
+// assignment that hands the disposable database the stock throwaway credential
+// -- the assignment that sets the password to the default superuser's own name
+// -- turns (b) red. That assignment is the only clause in this list this
+// comment DESCRIBES instead of quoting, and the omission is deliberate. Clause
+// (b) below builds the forbidden string from fragments at runtime so this
+// source file never contains it; prose is not an exemption from that rule,
+// because written out in full it IS a hardcoded database credential and the
+// secret scanner reads it as one inside a comment exactly as it does inside
+// code. If you are documenting this property again: describe the string, do
+// not write it, and do not reach for the fragment-join trick in prose either.
+const PG_PASSWORD_CANDIDATE_WORKFLOWS = [
+  // The #1172 origin lane. Live today; deleted by #2591's cutover PR.
+  ".github/workflows/issue-1172-stripe-payout-execution-tests.yml",
+  // The consolidated provider. Absent today; lands in #2591's shadow PR.
+  ".github/workflows/postgres-contract-suites.yml",
+];
+
+async function readIfPresent(path: string): Promise<string | null> {
+  try {
+    return await Deno.readTextFile(path);
+  } catch (error) {
+    if (error instanceof Deno.errors.NotFound) return null;
+    throw error;
+  }
+}
+
 Deno.test("CI disposable PostgreSQL password is generated and no password-shaped literal remains", async () => {
-  const workflow = await Deno.readTextFile(
-    ".github/workflows/issue-1172-stripe-payout-execution-tests.yml",
+  const present: Array<{ path: string; text: string }> = [];
+  for (const path of PG_PASSWORD_CANDIDATE_WORKFLOWS) {
+    const text = await readIfPresent(path);
+    if (text !== null) present.push({ path, text });
+  }
+
+  // (existence) The property must have a live carrier. Both candidates gone
+  // means the executable SQL contract suites are booting a database from a
+  // workflow nothing here inspects -- or not booting one at all.
+  assert(
+    present.length > 0,
+    `no live carrier for the disposable-database credential contract; none of ${
+      PG_PASSWORD_CANDIDATE_WORKFLOWS.join(", ")
+    } exists. If the provider moved again, add it to PG_PASSWORD_CANDIDATE_WORKFLOWS -- do not delete this test.`,
   );
-  assertStringIncludes(
-    workflow,
-    'issue1172_db_password="$(openssl rand -hex 24)"',
-  );
-  const forbiddenCredential = ["POSTGRES", "_PASSWORD=", "postgres"].join("");
-  assertEquals(workflow.includes(forbiddenCredential), false);
+
+  for (const { path, text } of present) {
+    // (a) Some variable is minted per run from `openssl rand -hex 24`.
+    const minted = [
+      ...text.matchAll(/([A-Za-z_][A-Za-z0-9_]*)="\$\(openssl rand -hex 24\)"/g),
+    ].map((m) => m[1]);
+    assert(
+      minted.length > 0,
+      `${path}: no per-run credential is minted; expected a shell assignment of the form <name>="$(openssl rand -hex 24)".`,
+    );
+
+    // (b) The forbidden static credential, asserted exactly as before and at the
+    //     same strength: the concatenation is built at runtime so this source
+    //     file never contains the literal it forbids.
+    const forbiddenCredential = ["POSTGRES", "_PASSWORD=", "postgres"].join("");
+    assertEquals(
+      text.includes(forbiddenCredential),
+      false,
+      `${path}: a static database password literal is present.`,
+    );
+
+    // (c) The database is started from one of those minted variables -- not from
+    //     a literal, and not from some other variable that merely looks safe.
+    //     The expected shape is the one every origin lane uses and §3.3 of the
+    //     #2591 spec pins: `docker run ... -e POSTGRES_PASSWORD="$<minted>"`.
+    //     It is deliberately strict. A `services:`/`env:` container block would
+    //     satisfy a looser reading while breaking the `docker exec` path that
+    //     #1171's Deno tests and #1174's bash driver reach the database through,
+    //     so a deviation here should stop the build and come back to the tester.
+    const passwordAssignments = [
+      ...text.matchAll(/POSTGRES_PASSWORD=("?)([^"\s]*)\1/g),
+    ].map((m) => m[2]);
+    assert(
+      passwordAssignments.length > 0,
+      `${path}: no \`-e POSTGRES_PASSWORD=...\` assignment, so this workflow does not start the disposable database it is supposed to certify. Expected \`docker run ... -e POSTGRES_PASSWORD="$<minted>"\` where <minted> is one of: ${
+        minted.join(", ")
+      }.`,
+    );
+    for (const value of passwordAssignments) {
+      const referenced = /^\$\{?([A-Za-z_][A-Za-z0-9_]*)\}?$/.exec(value);
+      assert(
+        referenced !== null,
+        `${path}: POSTGRES_PASSWORD is assigned the literal "${value}" rather than a per-run minted variable.`,
+      );
+      // (d) ...and the variable it references is one of the minted ones. This is
+      //     the clause the old literal pin did not have: a minted assignment can
+      //     sit in the file, unused, beside a container started from something
+      //     else entirely, and the old form called that green.
+      assert(
+        minted.includes(referenced[1]),
+        `${path}: POSTGRES_PASSWORD is built from "$${referenced[1]}", which is not minted by "openssl rand -hex 24" (minted: ${
+          minted.join(", ")
+        }). A per-run credential that the container never receives is a dead assignment.`,
+      );
+    }
+  }
 });
 
 Deno.test("attempt-cap alert survives transport failure and delivers once without retrying payout", async () => {

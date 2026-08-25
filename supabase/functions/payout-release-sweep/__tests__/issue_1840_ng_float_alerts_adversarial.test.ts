@@ -72,7 +72,48 @@ import {
 const MIGRATION =
   "supabase/migrations/20270320001840_issue_1840_ng_payout_float_alerts.sql";
 const SWEEP = "supabase/functions/payout-release-sweep/index.ts";
-const WORKFLOW = ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml";
+// [TEST-MOD-APPROVED #2591] — re-point + strengthen.
+//
+// B8 asserts the CI wiring the #1840 guarantees actually depend on. #2591 moves
+// that wiring into `.github/workflows/postgres-contract-suites.yml`, and the
+// origin lane and the consolidated one are live simultaneously for the whole
+// shadow window. So the four clauses become a universal over the candidates that
+// exist, with an existence floor.
+//
+// The universal is deliberate and it is the strong form: EVERY live candidate
+// must satisfy ALL FOUR clauses BY ITSELF. Spreading them across two files --
+// one workflow supplying `ON_ERROR_STOP=1` and another supplying the file list
+// -- would satisfy a "union" formulation while no single lane actually runs the
+// suites under the stop flag. That union reading is the weakening this
+// formulation refuses.
+//
+// The existence floor is what stops the empty-set pass: delete every candidate
+// and the clauses are vacuously true, which is the check-that-carries-no-
+// information shape (#2113, 60 confirmed). RED, not green.
+const WORKFLOW_CANDIDATES = [
+  // The #1840 origin lane. Live today; deleted by #2591's cutover PR.
+  ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml",
+  // The consolidated provider. Absent today; lands in #2591's shadow PR.
+  ".github/workflows/postgres-contract-suites.yml",
+];
+
+async function liveWorkflows(): Promise<Array<{ path: string; text: string }>> {
+  const live: Array<{ path: string; text: string }> = [];
+  for (const path of WORKFLOW_CANDIDATES) {
+    try {
+      live.push({ path, text: await Deno.readTextFile(path) });
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+  }
+  assert(
+    live.length > 0,
+    `no live workflow carries the #1840 suites; none of ${
+      WORKFLOW_CANDIDATES.join(", ")
+    } exists. If the provider moved again, add it to WORKFLOW_CANDIDATES -- do not delete this test.`,
+  );
+  return live;
+}
 
 type Scenario = {
   execute?: boolean;
@@ -526,25 +567,41 @@ Deno.test("#1840 ADV every kind the drain may deliver has dedicated ops copy (no
 // ── B8: CI wiring the guarantees actually depend on ────────────────────────
 
 Deno.test("#1840 ADV the workflow runs both SQL suites under ON_ERROR_STOP and registers the adversarial files", async () => {
-  const workflow = await Deno.readTextFile(WORKFLOW);
-  // Without ON_ERROR_STOP the migration's own advisory RAISE would print and
-  // the step would still pass — the #1217 trap would re-open silently.
-  assertStringIncludes(workflow, "ON_ERROR_STOP=1");
-  // The jobs run EXPLICIT file lists; an unregistered file runs nowhere.
-  for (
-    const file of [
-      "supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql",
-      "supabase/migrations/__tests__/issue_1840_ng_float_alerts_adversarial.test.sql",
-      "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
-      "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
-    ]
-  ) {
-    assertStringIncludes(workflow, file);
+  for (const { path, text: workflow } of await liveWorkflows()) {
+    // Without ON_ERROR_STOP the migration's own advisory RAISE would print and
+    // the step would still pass — the #1217 trap would re-open silently.
+    assertStringIncludes(
+      workflow,
+      "ON_ERROR_STOP=1",
+      `${path}: psql runs without ON_ERROR_STOP, so a raised advisory prints and the step still passes.`,
+    );
+    // The jobs run EXPLICIT file lists; an unregistered file runs nowhere.
+    for (
+      const file of [
+        "supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql",
+        "supabase/migrations/__tests__/issue_1840_ng_float_alerts_adversarial.test.sql",
+        "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
+        "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
+      ]
+    ) {
+      assertStringIncludes(workflow, file, `${path}: ${file} is not registered.`);
+    }
+    assertEquals(
+      workflow.includes("continue-on-error"),
+      false,
+      `${path}: continue-on-error can downgrade a #1840 failure to a pass.`,
+    );
+    // The migration-apply step must feed EVERY migration, so the #1840 file is
+    // exercised at its real position in the chain rather than in isolation.
+    // #2591 D-2 makes this stronger, not weaker: the consolidated replay is
+    // unconditional — no snapshot, no cache, no `if:` on the replay mode — so
+    // the literal below can no longer be present in a branch that never runs.
+    assertStringIncludes(
+      workflow,
+      "supabase/migrations/*.sql",
+      `${path}: the migration-apply step does not feed every migration, so #1840's migration is exercised in isolation rather than at its real position in the chain.`,
+    );
   }
-  assertEquals(workflow.includes("continue-on-error"), false);
-  // The migration-apply step must feed EVERY migration, so the #1840 file is
-  // exercised at its real position in the chain rather than in isolation.
-  assertStringIncludes(workflow, "supabase/migrations/*.sql");
 });
 
 // ── B9: an earlier early-return silences the forecast entirely ─────────────
