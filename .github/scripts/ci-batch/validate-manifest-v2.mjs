@@ -46,6 +46,56 @@ const PHASE3C_WAVE = "phase3c-deno-wave";
 // lifecycles. A mixed wave (16 terminal + 1 shadow) is red by construction.
 const PHASE3C_ATOMIC_LIFECYCLES = new Set([PHASE3B_SHADOW_LIFECYCLE, PHASE3B_TERMINAL_LIFECYCLE]);
 const PHASE3C_SUITE_COUNT = 17;
+
+/**
+ * [#2439] THE lane derivation. Read this before adding another wave.
+ *
+ * A suite runs in the PRIMARY lane of its matrix job unless it has been migrated
+ * into a reviewed secondary/tertiary execution class hosted inside that job. The
+ * registry already records exactly that, and records it for no other reason:
+ * `executionClass` is present on a migrated suite and ABSENT on a primary one.
+ * Measured on this tree — Phase 1: 23 suites, 0 with executionClass; Phase 3A:
+ * 32 suites, 0; Phase 3B: 12 suites, all 12; Phase 3C: 17 suites, all 17.
+ *
+ * Every lane decision in this repository must go through these two predicates.
+ * Identifying a lane by WAVE NAME has now broken three times as soon as a second
+ * wave appeared — the runner's leaf branch (SPEC item 11), two #2438 mutants that
+ * selected positionally, and the reconciler's primary vector, which is what took
+ * six batch hosts red on PR #2546. Adding `phase3cIds` beside `phase3bIds` would
+ * have been the fourth. A name-free predicate cannot be broken by Phase 3D.
+ *
+ * @param {object} suite a registry suite record
+ * @returns {boolean} true when the suite belongs to a migrated wave's own lane
+ */
+export function isMigratedSuite(suite) {
+  return typeof suite?.executionClass === "string" && suite.executionClass.length > 0;
+}
+
+/** @returns {boolean} true when the suite is executed by the primary batch lane. */
+export function isPrimarySuite(suite) {
+  return !isMigratedSuite(suite);
+}
+
+/**
+ * [PR #2546] THE canonical suite command fingerprint. There used to be two
+ * implementations of this — one in run-suite-batch.mjs keyed on the leaf lane and
+ * one in select-phase3b-suites.mjs keyed on the literal Phase 3B wave name — and
+ * for a Phase 3C suite they produced DIFFERENT digests. The runner writes the
+ * fingerprint and the reconciler checks it, so a divergence here is a
+ * `primary-identity-mismatch` waiting for the next wave. One definition, imported
+ * by both, makes the divergence unrepresentable.
+ *
+ * A migrated suite's fingerprint covers its env, its leaves and its bounded retry,
+ * because all three are executable semantics the runner honours.
+ */
+export function suiteCommandFingerprint(suite) {
+  const rows = isMigratedSuite(suite)
+    ? suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation,
+      env: step.env || null, children: step.children || null, ...(step.retry ? { retry: step.retry } : {}) }))
+    : suite.steps.map((step) => ({ commandId: step.commandId, cwd: step.cwd, invocation: step.invocation }));
+  return crypto.createHash("sha256").update(JSON.stringify(rows)).digest("hex");
+}
+
 const PHASE3C_OUTER_COUNT = 46;
 const PHASE3C_LEAF_COUNT = 54;
 const PHASE3C_INSTALL_COUNT = 3;
@@ -1390,7 +1440,7 @@ export function validateRegistry(
     if (!manifest.executionClasses?.includes(suite.class)) fail(errors, `${suite.id}: unknown class ${suite.class}`);
     if (!suite.setupProfile || !manifest.setupProfiles?.[suite.setupProfile]) fail(errors, `${suite.id}: unknown setupProfile ${suite.setupProfile}`);
     else selectedProfiles.add(suite.setupProfile);
-    const ownedClass = [PHASE3B_WAVE, PHASE3C_WAVE].includes(suite.migrationWave) ? suite.executionClass : suite.class;
+    const ownedClass = isMigratedSuite(suite) ? suite.executionClass : suite.class;
     if (manifest.setupProfiles?.[suite.setupProfile]?.classes?.includes(ownedClass) !== true) {
       fail(errors, `${suite.id}: setupProfile ${suite.setupProfile} does not route execution class ${ownedClass}`);
     }
@@ -1400,6 +1450,15 @@ export function validateRegistry(
     if (suite.lifecycle === "batched-active" && originIsLive) fail(errors, `${suite.id}: origin is live and batched (duplicate provider): ${suite.origin}`);
     if (suite.lifecycle === "shadow-active" && !originIsLive) fail(errors, `${suite.id}: shadow origin must remain live: ${suite.origin}`);
     if (suite.lifecycle === "batched-historical" && originIsLive) fail(errors, `${suite.id}: terminal origin wrapper must be absent: ${suite.origin}`);
+    // The lane predicate is only safe if a migrated record is complete: an
+    // executionClass without a wave or a host would route into a lane nothing
+    // reconciles. Fail closed rather than let a half-migrated record through.
+    if (isMigratedSuite(suite) && (!suite.migrationWave || !suite.hostClass)) {
+      fail(errors, `${suite.id}: a migrated suite must declare migrationWave and hostClass`);
+    }
+    if (!isMigratedSuite(suite) && suite.hostClass) {
+      fail(errors, `${suite.id}: a primary suite must not declare a hostClass`);
+    }
     const phase3b = suite.migrationWave === PHASE3B_WAVE;
     const phase3c = suite.migrationWave === PHASE3C_WAVE;
     // Phase 3B and Phase 3C share one reviewed typed-capability boundary:
@@ -1789,14 +1848,21 @@ export function validateRegistry(
     if (actual !== expected) fail(errors, `#1902 package authority drifted: ${relative}`);
   }
   const primaryVector = Object.fromEntries((manifest.classes || []).map((klass) => [klass,
-    manifest.suites.filter((suite) => suite.class === klass && ![PHASE3B_WAVE, PHASE3C_WAVE].includes(suite.migrationWave)).length]));
+    manifest.suites.filter((suite) => suite.class === klass && isPrimarySuite(suite)).length]));
   const expectedPrimaryVector = { "admin-node20-install":2, "app-node22-install":6, "business-node20-1":2, "business-node20-2":3,
     "business-node20-3":5, "business-node20-4":5, "business-node22-ignore-scripts":3, "cross-root-node22-ignore-scripts":1,
     "node20-19-noinstall":1, "node20-noinstall":14, "node22-noinstall":10, "ota-app-node20-19-install":1,
     "ota-business-node20-19-install":1, "root-node20-yaml-no-save":1 };
   if (JSON.stringify(Object.entries(primaryVector).sort()) !== JSON.stringify(Object.entries(expectedPrimaryVector).sort())
       || Object.values(primaryVector).reduce((sum, count) => sum + count, 0) !== 55) fail(errors, "primary lane must retain exactly the frozen 55-suite host vector");
-  if (capabilityCommands.slice(158).some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) fail(errors, "setup/install leaked into Phase 3B assertion capabilities");
+  // Derived, not positional: `slice(158)` meant "the migrated waves" only while
+  // Phase 3B was the last block in the array. Select the capabilities owned by
+  // migrated suites and the check keeps meaning what it says as waves are added.
+  const migratedSuiteIds = new Set((manifest.suites || []).filter(isMigratedSuite).map((suite) => suite.id));
+  if (capabilityCommands.filter((capability) => migratedSuiteIds.has(capability.suiteId))
+    .some((capability) => capability.argv?.[1]?.trim?.() === "npm ci")) {
+    fail(errors, "setup/install leaked into a migrated wave's assertion capabilities");
+  }
   if (manifest.executionClasses?.length !== 29 || manifest.classes?.length !== 14) fail(errors, "topology must remain 14 matrix hosts / 29 execution classes");
   const waveContract = manifest.migrationWaves?.[PHASE3B_WAVE];
   // [#2438 SC-13] Exactly two accepted forms — the shadow contract and the

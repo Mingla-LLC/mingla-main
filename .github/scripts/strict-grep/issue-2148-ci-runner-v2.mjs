@@ -91,9 +91,17 @@ export function verifyLive() {
   assert.ok(phase3c.every((suite) => executesLeaves(suite)), "phase3c-deno-wave must route through the runner leaf branch");
   assert.ok(phase3b.every((suite) => executesLeaves(suite)), "phase3b-postgres-wave leaf routing must be preserved");
   assert.ok(baseline.concat(shadow).every((suite) => !executesLeaves(suite)), "Phase 1 and Phase 3A must keep the single-command branch");
-  // [#2439 SC-5.1] Fail-loud absence is wave-scoped: Phase 3C only.
-  assert.ok(phase3c.every((suite) => absentFileIsFailure(suite)), "an absent Phase 3C required file must fail the suite");
-  assert.ok(phase3b.every((suite) => !absentFileIsFailure(suite)), "Phase 3B conditional-proof semantics must be unchanged");
+  // [#2439 SC-5.1] Fail-loud absence is derived per TARGET, not per wave: a
+  // target registered as a conditional proof skips, anything else fails.
+  const anyRequired = (suite) => suite.steps.flatMap((step) => step.children || [])
+    .filter((child) => child.predicate?.kind === "file-exists")
+    .flatMap((child) => child.predicate.paths || [child.predicate.path]);
+  for (const suite of phase3c) {
+    for (const target of anyRequired(suite)) assert.ok(absentFileIsFailure(suite, target), `${suite.id}: an absent required file must fail the suite`);
+  }
+  for (const suite of phase3b) {
+    for (const target of anyRequired(suite)) assert.ok(!absentFileIsFailure(suite, target), `${suite.id}: Phase 3B conditional-proof semantics must be unchanged`);
+  }
   const business994 = value.suites.find((suite) => suite.id === "issue-994-ota-env-resolution-mingla-business");
   assert.equal(commandFingerprint(business994), "064b393af16099018770cf8f08456114e777a3b5ad79586f5bcfa3ebff217c25", "#994 business execution bytes drifted");
   const supervisor = fs.readFileSync(path.join(ROOT, ".github/scripts/ci-batch/process-supervisor.py"), "utf8");

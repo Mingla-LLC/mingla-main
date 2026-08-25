@@ -25,7 +25,10 @@ import {
   discoverWorkflowProviders, trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
 } from "../validate-manifest-v2.mjs";
-import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, runSuiteV2 } from "../run-suite-batch.mjs";
+import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured } from "../run-suite-batch.mjs";
+import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
+import { commandFingerprint } from "../run-suite-batch.mjs";
+import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint } from "../validate-manifest-v2.mjs";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(HERE, "../../../..");
@@ -234,9 +237,16 @@ test("#2439 SC-2.3 the runner routes this wave through its LEAF branch, and reve
 test("#2439 SC-5.1 BOTH halves: the runner fails an absent required file, and the absent set is empty", () => {
   // Half one - mechanism. Wave-scoped: Phase 3C fails loudly, Phase 1/3A/3B are
   // untouched and keep skip-silently conditional-proof semantics.
-  assert.ok(suites.every((suite) => absentFileIsFailure(suite)));
+  const requiredTargets = (suite) => suite.steps.flatMap((step) => step.children || [])
+    .filter((child) => child.predicate?.kind === "file-exists")
+    .flatMap((child) => child.predicate.paths || [child.predicate.path]);
+  for (const suite of suites) for (const target of requiredTargets(suite)) {
+    assert.ok(absentFileIsFailure(suite, target), `${suite.id}: ${target} must fail when absent`);
+  }
   const phase3b = manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
-  assert.ok(phase3b.every((suite) => !absentFileIsFailure(suite)), "Phase 3B conditional-proof semantics must not change");
+  for (const suite of phase3b) for (const target of requiredTargets(suite)) {
+    assert.ok(!absentFileIsFailure(suite, target), `${suite.id}: Phase 3B conditional-proof semantics must not change`);
+  }
   const requiredLeaf = leaves.find(({ child }) => child.predicate?.kind === "file-exists");
   assert.ok(requiredLeaf, "the wave must own at least one required-file leaf");
   assert.deepEqual(evaluateTypedPredicate(requiredLeaf.child, ROOT, ROOT), { ok: true, reason: null });
@@ -396,9 +406,16 @@ test("#2439 SC-4 / SC-6 / SC-7 / SC-10: retry, env, setup profile and timeout pr
   // SC-4.2: the runner must HONOUR the field, not merely carry it. Without this
   // the shell loop is gone from the command string and the retry is silently
   // dropped, which SC-4.3 calls a weakening.
-  assert.ok(suites.every((suite) => retryIsHonoured(suite)), "phase3c-deno-wave retries must be honoured by the runner");
-  const phase3bWave = manifest.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
-  assert.ok(phase3bWave.every((suite) => !retryIsHonoured(suite)), "no sibling wave carries or honours a retry");
+  assert.ok(suites.every((suite) => retryIsHonoured(suite)), "this wave's retries must be honoured by the runner");
+  // The runner honours what the REVIEWED registry declares; it is the schema,
+  // not a wave name, that decides who may declare one. So the invariant to hold
+  // is that no sibling wave DECLARES a retry — asserted over the registry — and
+  // the schema mutant below proves an invented one is rejected.
+  const otherWaves = manifest.suites.filter((suite) => suite.migrationWave !== WAVE);
+  assert.equal(otherWaves.flatMap((suite) => suite.steps.filter((step) => step.retry !== undefined)).length, 0,
+    "no suite outside this wave may declare a bounded retry");
+  assert.ok(manifest.suites.filter((suite) => !isPrimarySuite(suite)).every((suite) => retryIsHonoured(suite)),
+    "retry honouring follows the lane, not a wave name");
   const runnerSource = read(".github/scripts/ci-batch/run-suite-batch.mjs");
   assert.match(runnerSource, /attempt <= maxAttempts/, "the runner must contain a bounded attempt loop");
   assert.match(runnerSource, /sleepBounded\(backoffMs\)/, "the runner must wait the reviewed back-off between attempts");
@@ -682,4 +699,96 @@ test("#2439 SC-19.1 expectedFiles equal what the preserved typed commands actual
       `${suite.id}: registered expectedFiles must equal the tokenizer's derivation`);
     assert.ok(suite.expectedFiles.length > 0, `${suite.id}: expectedFiles cannot be empty`);
   }
+});
+
+test("#2439 a hypothetical PHASE 3D wave reconciles without touching a line of code", () => {
+  // [PR #2546] The regression this replaces: `expectedPrimaryIds` filtered
+  // `migrationWave !== "phase3b-postgres-wave"`, so Phase 3C's seventeen suites
+  // counted as primary while running in their own lane, and six batch hosts died
+  // on `primary-identity-mismatch`. The lane is now DERIVED, so a third migrated
+  // wave must reconcile with no edit anywhere. This fixture proves that, and the
+  // reverted form below proves the assertion can fail.
+  const host = "business-node20-1";
+  const withPhase3d = clone(manifest);
+  const donor = withPhase3d.suites.find((suite) => suite.id === "issue-1170-stripe-money-path-tests");
+  const phase3d = clone(donor);
+  phase3d.id = "issue-9999-hypothetical-phase3d";
+  phase3d.migrationWave = "phase3d-hypothetical-wave";
+  phase3d.executionClass = "phase3d-hypothetical-class";
+  phase3d.hostClass = host;
+  phase3d.class = host;
+  withPhase3d.suites.push(phase3d);
+
+  // DERIVED: the new wave is migrated, so it is not primary and does not enter
+  // the primary vector for its host.
+  assert.equal(isPrimarySuite(phase3d), false, "a suite with its own executionClass is not primary");
+  assert.equal(isMigratedSuite(phase3d), true);
+  assert.equal(executesLeaves(phase3d), true, "a migrated suite reports leaves");
+  const derivedPrimary = withPhase3d.suites.filter((suite) => suite.class === host && isPrimarySuite(suite)).map((suite) => suite.id);
+  assert.ok(!derivedPrimary.includes(phase3d.id), "Phase 3D must not appear in its host's primary vector");
+  assert.ok(!derivedPrimary.includes("issue-1170-stripe-money-path-tests"), "Phase 3C must not appear either");
+  assert.deepEqual(derivedPrimary, expectedPrimarySuites(withPhase3d, host).map((suite) => suite.id),
+    "the reconciler's primary vector and the runner's primary lane must agree by construction");
+
+  // The reconciler reconciles a primary report that contains exactly the derived
+  // vector, with a third migrated wave present in the registry.
+  const results = derivedPrimary.map((id) => {
+    const suite = withPhase3d.suites.find((item) => item.id === id);
+    return { id, ok: true, status: "passed", code: 0, setupProfile: suite.setupProfile,
+      commandFingerprint: commandFingerprint(suite), expected: suite.steps.length, executed: suite.steps.length };
+  });
+  const primary = {
+    schemaVersion: 2, class: host, expected: derivedPrimary.length, executed: derivedPrimary.length,
+    shortfall: 0, failed: [], duplicateIds: [], identityMismatch: false, malformedIds: [], ok: true, code: 0,
+    expectedSuiteIds: derivedPrimary, executedSuiteIds: derivedPrimary, results,
+    statuses: { passed: results.length, failed: 0, "timed-out": 0, missing: 0 },
+  };
+  const emptyDecision = selectionDocument(withPhase3d, host, []);
+  const errors = reconcilePhase3bReports(withPhase3d, host, emptyDecision, primary, null);
+  assert.ok(!errors.includes("primary-identity-mismatch"),
+    `a third migrated wave must not break the primary vector; got ${JSON.stringify(errors)}`);
+
+  // REVERTED FORM — the hard-coded list this replaced. Reproduced here rather
+  // than described, so the claim "deriving fixes it" is falsifiable: the old
+  // predicate puts BOTH migrated waves back into the primary vector.
+  const revertedPrimary = withPhase3d.suites
+    .filter((suite) => suite.class === host && suite.migrationWave !== "phase3b-postgres-wave")
+    .map((suite) => suite.id);
+  assert.notDeepEqual(revertedPrimary, derivedPrimary,
+    "the reverted hard-coded predicate must produce a DIFFERENT vector — that difference is the outage");
+  assert.ok(revertedPrimary.includes(phase3d.id) && revertedPrimary.includes("issue-1170-stripe-money-path-tests"),
+    "the reverted predicate wrongly counts both migrated waves as primary");
+  const revertedErrors = reconcilePhase3bReports(
+    { ...withPhase3d, suites: withPhase3d.suites.map((suite) => (isMigratedSuite(suite) ? { ...suite, executionClass: undefined } : suite)) },
+    host, emptyDecision, primary, null,
+  );
+  assert.ok(revertedErrors.includes("primary-identity-mismatch"),
+    "with the derivation removed the reconciler must go RED — this is the PR #2546 failure reproduced");
+});
+
+test("#2439 the runner and the reconciler cannot disagree about a fingerprint", () => {
+  // [PR #2546] Two implementations of this existed and DIVERGED for a Phase 3C
+  // suite: the runner keyed on the leaf lane, the reconciler on the literal
+  // Phase 3B name. The runner writes the value and the reconciler checks it, so
+  // the divergence was a primary-identity-mismatch waiting for the next wave.
+  // There is now one definition; this proves the runner's export IS it.
+  assert.equal(commandFingerprint, suiteCommandFingerprint, "the runner must re-export the canonical fingerprint");
+  const runnerSource = read(".github/scripts/ci-batch/run-suite-batch.mjs");
+  const reconcilerSource = read(".github/scripts/ci-batch/select-phase3b-suites.mjs");
+  for (const [label, source] of [["runner", runnerSource], ["reconciler", reconcilerSource]]) {
+    assert.doesNotMatch(source, /function suiteCommandFingerprint\s*\(/, `${label} must not define a second fingerprint`);
+  }
+  // A migrated suite's fingerprint must see env, leaves and retry; a primary
+  // suite's must not change shape.
+  for (const suite of suites) {
+    const stripped = clone(suite);
+    for (const step of stripped.steps) delete step.children;
+    assert.notEqual(suiteCommandFingerprint(stripped), suiteCommandFingerprint(suite), `${suite.id}: leaves must be inside the fingerprint`);
+  }
+  const primary = manifest.suites.find((suite) => isPrimarySuite(suite));
+  assert.ok(primary && !isMigratedSuite(primary));
+  const primaryRows = clone(primary);
+  primaryRows.steps[0].children = [{ id: "forged" }];
+  assert.equal(suiteCommandFingerprint(primaryRows), suiteCommandFingerprint(primary),
+    "a primary suite's fingerprint shape must be unchanged by this refactor");
 });

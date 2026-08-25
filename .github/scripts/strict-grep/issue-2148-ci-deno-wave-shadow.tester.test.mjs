@@ -240,7 +240,13 @@ test("every tool family the wave executes is still executed by a leaf", () => {
 test("a typed predicate cannot become a silent skip, and its sense cannot invert", () => {
   const suites = waveSuites(BASE);
   assert.ok(suites.every((suite) => executesLeaves(suite)), "the wave must route through the runner's leaf branch");
-  assert.ok(suites.every((suite) => absentFileIsFailure(suite)), "an absent required file must fail, never skip");
+  for (const suite of suites) {
+    for (const child of suite.steps.flatMap((step) => step.children || [])) {
+      for (const target of child.predicate?.kind === "file-exists" ? child.predicate.paths : []) {
+        assert.ok(absentFileIsFailure(suite, target), `${target}: an absent required file must fail, never skip`);
+      }
+    }
+  }
   const required = waveLeaves(BASE).filter(({ child }) => child.predicate?.kind === "file-exists");
   const contracts = waveLeaves(BASE).filter(({ child }) => child.predicate?.kind === "source-contract");
   assert.equal(required.reduce((sum, { child }) => sum + child.predicate.paths.length, 0), 11);
