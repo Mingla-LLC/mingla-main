@@ -16704,7 +16704,7 @@
       "providerWorkflow": ".github/workflows/issue-1979-ari-venue-ops.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "01341ec256730f1abf529090e5442642dd466526d3c077e708a3771e664ea428",
+        "sourceSha256": "d0ad8afb60cb109aca4bf10c04450e431bbc6a81707df3514da4b7f257350cb9",
         "triggers": [
           "pull_request",
           "push"
@@ -16716,6 +16716,7 @@
           "docs/contracts/ari-capability-ledger.json",
           "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts",
           "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts",
+          "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts",
           "supabase/functions/_shared/agentDomainTools.ts",
           "supabase/functions/_shared/agentSystemPrompt.ts",
