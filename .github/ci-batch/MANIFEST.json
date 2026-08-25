@@ -16715,6 +16715,7 @@
           ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs",
           "docs/contracts/ari-capability-ledger.json",
           "supabase/functions/_shared/__tests__/issue_1975_ari_stays_reservations.test.ts",
+          "supabase/functions/_shared/__tests__/issue_1978_venue_listings_claims.test.ts",
           "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts",
           "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts",
           "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts",
