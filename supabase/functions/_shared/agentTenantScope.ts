@@ -19,6 +19,9 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_venue_listings",
   "get_venue_listing_status",
   "list_venue_claim_feedback",
+  // issue #1971 — the aggregate trip order/money snapshot runs inline under the
+  // same tenant scope as every other read.
+  "get_trip_order_money",
 ]);
 
 export interface AccessibleAgentBrand {

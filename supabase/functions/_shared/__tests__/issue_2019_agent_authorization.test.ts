@@ -33,13 +33,20 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
 // [TEST-MOD-APPROVED #1979] Registry pin 77→80 after additive #1978 rebase.
 // [TEST-MOD-APPROVED #424] Guest-binding fixture uses set_rsvp_guest_status
 // (set_guest_approval now requires rsvp_id for #1984 host_set_rsvp_status).
+// [TEST-MOD-APPROVED #1971] Four trip graph tools (manage_trip_days /
+// _inclusions / _tiers / _traveler_intake) plus the finance-gated aggregate
+// get_trip_order_money are additive declarations; 80 + 5 = 85. The four
+// invalidated assertions are exactly the four census counts below
+// (AGENT_TOOLS.length, the unique-name set size, AGENT_TOOL_AUTHORIZATION key
+// count, and the mapped ledger-row count). No role translation, ordering,
+// resource binding or denial assertion changes.
   assert(
-    AGENT_TOOLS.length === 80,
-    `expected 80 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 85,
+    `expected 85 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 80, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 85, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 80,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 85,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -86,7 +93,8 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
     AGENT_TOOL_AUTHORIZATION[row.ari_tool]
   );
   // [TEST-MOD-APPROVED #1979] Mapped ledger rows track the 80-tool registry.
-  assert(rows.length === 80, `expected 80 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #1971] 80 -> 85 with the five trip tools.
+  assert(rows.length === 85, `expected 85 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
@@ -291,7 +299,13 @@ Deno.test("#2019 foreign, deleted, nonexistent, and type-confused events are una
     try {
       await authorizeAgentTool(
         tool("publish_trip"),
-        { event_id: EVENT },
+        // [TEST-MOD-APPROVED #1971] publish_trip now REQUIRES expected_updated_at
+        // (compare-and-swap). Without it the shared schema check fires first and
+        // this case would assert INVALID_ARGS instead of the indistinguishable
+        // not-found behaviour it exists to prove. Only the fixture changed — the
+        // four states, the codes assertion and the messages assertion are
+        // untouched.
+        { event_id: EVENT, expected_updated_at: "2027-01-01T00:00:00Z" },
         eventClient(state),
         UUID,
       );

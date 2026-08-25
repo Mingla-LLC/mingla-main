@@ -105,10 +105,13 @@ Deno.test("ORCH-1103 G-3: update_brand + delete_brand are in BOTH registry and C
 // #1970 Wave 0 bumped PROMPT_VERSION v3 → v4 (create_experience advertised +
 // full CAPABILITIES list). The v3 pin was correct for ORCH-1103 and is now
 // wrong: the prompt changed in the same PR as the registry.
-Deno.test("ORCH-1103: PROMPT_VERSION bumped (v5 keeps the earlier tools)", () => {
+Deno.test("ORCH-1103: PROMPT_VERSION bumped (v6 keeps the earlier tools)", () => {
   // [TEST-MOD-APPROVED #1978] issue #1978 bumps PROMPT_VERSION v4 → v5 (venue
   // listings/claims corrected + PII-minimised venue reads advertised).
-  assertEquals(PROMPT_VERSION, "v5");
+  // [TEST-MOD-APPROVED #1971] issue #1971 bumps v5 → v6 (trip lifecycle rebuilt
+  // on the canonical command boundary). ONE assertion is invalidated — the
+  // version literal. No brand-tool assertion changes.
+  assertEquals(PROMPT_VERSION, "v6");
 });
 
 // ── richer brand context in the prompt (currency / cover / deletable hint) ──
