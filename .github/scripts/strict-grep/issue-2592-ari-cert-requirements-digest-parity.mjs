@@ -1,49 +1,22 @@
 #!/usr/bin/env node
 /**
- * #2592 — `ari_cert_begin_run` and `ari_cert_finalize_run` must pin the SAME
- * reviewed requirement-set digest.
+ * #2592 / #2060 Pass-5 — `ari_cert_begin_run` and `ari_cert_finalize_run` must
+ * both derive `requirements_digest` from the same set-digest helper.
  *
- * `requirements_digest` is one contract with two halves: `ari_cert_begin_run`
- * STAMPS it onto a run, and `ari_cert_finalize_run` CHECKS it at the end. When
- * they disagree, every run created through the canonical entry point dies at
- * `ari_cert_requirements_digest_mismatch` regardless of the evidence it
- * collected — certification is a dead path, and nothing else reports it.
+ * History:
+ *   Hardcoded dual literals drifted twice (#1973, #1978) and killed every
+ *   canonical certification run. #2592 realigned the literals and pinned them
+ *   with a static parity gate.
+ *   #2060 Pass-5 replaces that contract: the digest must hash the ordered
+ *   `(capability_id, evidence_mode)` rows in `ari_cert_capability_requirements`
+ *   via `private.ari_cert_requirements_set_digest_v1()`. Both halves call that
+ *   helper; neither may pin a 64-hex literal as the authority.
  *
- * That is not hypothetical. It happened twice:
- *   20270504002060 (#2060)  29b71dbe…  set in BOTH functions — agreed
- *   20270505001973 (#1973)  5e06801c…  replaced ONLY the finalizer
- *   20270521001978 (#1978)  be0add47…  replaced ONLY the finalizer
- * Production ran with begin_run on `29b71dbe…` and the finalizer on
- * `5e06801c…` from 2026-08-20 until #2592.
- *
- * NEITHER LITERAL IS HARDCODED HERE, on purpose. The gate reads every
- * migration, finds the LAST one that defines each function, and compares what
- * those two files actually say. A future issue is free to move the requirement
- * set to a new reviewed value — this gate keeps passing as long as it moves
- * BOTH halves, and fails the moment it moves only one.
- *
- * The digest is deliberately NOT computed from
- * `public.ari_cert_capability_requirements` at runtime: the literal exists to
- * pin the requirement set to a value a human reviewed, so deriving both sides
- * from the table would let anyone who mutates the table satisfy the check by
- * construction.
- *
- * MATCHING IS STYLE-TOLERANT BY NECESSITY (independent tester P2-2). A gate
- * that only recognised `CREATE OR REPLACE FUNCTION public.fn(` would report
- * PASS while a redefinition written in any of the styles this repository
- * ALREADY uses drifted the digest underneath it. Measured on this tree:
- *   lowercase `create or replace function`   14 occurrences
- *   whitespace before the paren              31
- *   bare `CREATE FUNCTION` (no OR REPLACE)   47
- *   quoted identifiers `"public"."fn"`      197
- * and the body tag is not always `$function$`: `$$` 640, `$function$` 639,
- * `$fn$` 91, `$f$` 51, `$derive$` 3.
- *
- * Tolerance stops at code. A `CREATE FUNCTION` inside a `--` comment, a block
- * comment, a quoted string, or another function's dollar-quoted body is NOT a
- * declaration, so the source is lexed first and every non-code region is
- * masked out before the scan. (A substring hole exactly like this let an
- * earlier self-test mutant pass — see M7.)
+ * The gate reads every migration, finds the LAST definition of each function,
+ * and requires:
+ *   - both bodies call `private.ari_cert_requirements_set_digest_v1`
+ *   - neither body checks `requirements_digest <> '<64-hex>'`
+ *   - begin_run still writes `requirements_digest` on insert
  *
  * Usage:
  *   node .github/scripts/strict-grep/issue-2592-ari-cert-requirements-digest-parity.mjs --self-test
@@ -56,8 +29,12 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const MIGRATIONS_DIR = "supabase/migrations";
-const SHA256_LITERAL = /'([0-9a-f]{64})'/g;
-const DIGEST_CHECK = /\brequirements_digest\s*<>\s*'([0-9a-f]{64})'/g;
+const HELPER = "ari_cert_requirements_set_digest_v1";
+const HELPER_CALL = new RegExp(
+  String.raw`\bprivate\s*\.\s*${HELPER}\s*\(`,
+  "i",
+);
+const HARDCODED_CHECK = /\brequirements_digest\s*<>\s*'[0-9a-f]{64}'/i;
 
 const BEGIN_FN = { schema: "public", name: "ari_cert_begin_run" };
 const FINALIZE_FN = { schema: "public", name: "ari_cert_finalize_run" };
@@ -81,9 +58,6 @@ export function readLive() {
  * Lex SQL once. Returns the source with every NON-CODE byte replaced by a
  * space (offsets and newlines preserved) plus the dollar-quoted regions, which
  * are where function bodies live.
- *
- * Handles: `--` line comments, NESTABLE `/* *\/` block comments, `'…''…'`
- * strings, `"…"` quoted identifiers, and `$tag$…$tag$` dollar quoting.
  */
 export function lexSql(source) {
   const masked = source.split("");
@@ -120,7 +94,6 @@ export function lexSql(source) {
     if (source[i] === '"') {
       const end = source.indexOf('"', i + 1);
       const stop = end === -1 ? source.length : end + 1;
-      // Quoted identifiers ARE code (`"public"."fn"`), so they stay visible.
       i = stop; continue;
     }
     const tag = /^\$[A-Za-z_][A-Za-z0-9_]*\$|^\$\$/.exec(source.slice(i));
@@ -137,11 +110,6 @@ export function lexSql(source) {
   return { masked: masked.join(""), dollarRegions };
 }
 
-/**
- * Style-tolerant declaration matcher: case-insensitive, whitespace-tolerant
- * between every token and before the paren, `OR REPLACE` optional, schema and
- * name each optionally double-quoted.
- */
 function declarationPattern(fn) {
   const ident = (word) => `(?:"${word}"|${word})`;
   return new RegExp(
@@ -151,10 +119,6 @@ function declarationPattern(fn) {
   );
 }
 
-/**
- * The body of the LAST declaration of `fn` across the chain, plus the
- * migration it came from. Returns null when nothing declares it.
- */
 function lastDefinition(migrations, fn) {
   const pattern = declarationPattern(fn);
   for (let i = migrations.length - 1; i >= 0; i -= 1) {
@@ -169,75 +133,83 @@ function lastDefinition(migrations, fn) {
     assert.ok(
       body,
       `${name}: ${label(fn)} is declared but has no dollar-quoted body — ` +
-        "cannot read the digest it pins, so this fails closed.",
+        "cannot read the digest contract, so this fails closed.",
     );
     assert.ok(
       body.terminated,
       `${name}: ${label(fn)}'s body opens with ${body.tag} and is never closed — ` +
-        "cannot read the digest it pins, so this fails closed.",
+        "cannot read the digest contract, so this fails closed.",
     );
     return { name, tag: body.tag, body: source.slice(match.index, body.end) };
   }
   return null;
 }
 
-function soleSha256(body, where) {
-  const found = [...body.matchAll(SHA256_LITERAL)].map((m) => m[1]);
-  const unique = [...new Set(found)];
-  assert.equal(
-    unique.length,
-    1,
-    `${where}: expected exactly one 64-hex requirements digest, found ${unique.length} (${unique.join(", ") || "none"})`,
-  );
-  return unique[0];
-}
-
-/** What `ari_cert_begin_run` STAMPS onto a new run. */
-export function stampedDigest(migrations) {
-  const definition = lastDefinition(migrations, BEGIN_FN);
-  assert.ok(definition, `no migration declares ${label(BEGIN_FN)}`);
+function assertUsesHelper(definition, where) {
   assert.ok(
-    /INSERT\s+INTO\s+public\.ari_cert_runs[\s\S]*\brequirements_digest\b/i.test(definition.body),
-    `${definition.name}: ${label(BEGIN_FN)} no longer writes requirements_digest`,
+    HELPER_CALL.test(definition.body),
+    `${where}: ${definition.name} must call private.${HELPER}() — ` +
+      "both halves derive the requirements set digest from the same helper.",
   );
-  return { ...definition, digest: soleSha256(definition.body, `${definition.name}: ${label(BEGIN_FN)}`) };
-}
-
-/** What `ari_cert_finalize_run` CHECKS before it will certify. */
-export function checkedDigest(migrations) {
-  const definition = lastDefinition(migrations, FINALIZE_FN);
-  assert.ok(definition, `no migration declares ${label(FINALIZE_FN)}`);
-  DIGEST_CHECK.lastIndex = 0;
-  const unique = [...new Set([...definition.body.matchAll(DIGEST_CHECK)].map((m) => m[1]))];
-  assert.equal(
-    unique.length,
-    1,
-    `${definition.name}: ${label(FINALIZE_FN)} must check exactly one requirements digest, found ${unique.length}`,
+  assert.ok(
+    !HARDCODED_CHECK.test(definition.body),
+    `${where}: ${definition.name} still checks a hardcoded 64-hex requirements_digest — ` +
+      "Pass-5 replaced literal parity with the shared set-digest helper.",
   );
-  return { ...definition, digest: unique[0] };
 }
 
 export function checkContract(fixture) {
   const { migrations } = fixture;
   assert.ok(Array.isArray(migrations) && migrations.length > 0, "no migrations found");
 
-  const stamped = stampedDigest(migrations);
-  const checked = checkedDigest(migrations);
-
-  assert.equal(
-    stamped.digest,
-    checked.digest,
-    `ari_cert requirements-digest DRIFT: ${label(BEGIN_FN)} stamps ${stamped.digest} ` +
-      `(${stamped.name}) but ${label(FINALIZE_FN)} demands ${checked.digest} (${checked.name}). ` +
-      "Every run created through the canonical entry point will die at " +
-      "ari_cert_requirements_digest_mismatch. Both halves move together or neither does.",
+  const helperMigration = [...migrations].reverse().find((m) =>
+    new RegExp(
+      String.raw`\bcreate\s+(?:or\s+replace\s+)?function\s+(?:"?private"?\s*\.\s*)?"?${HELPER}"?\s*\(`,
+      "i",
+    ).test(lexSql(m.source).masked)
+  );
+  assert.ok(
+    helperMigration,
+    `no migration declares private.${HELPER} — Pass-5 set-digest helper is missing`,
   );
 
-  return { digest: stamped.digest, stampedIn: stamped.name, checkedIn: checked.name };
+  const stamped = lastDefinition(migrations, BEGIN_FN);
+  assert.ok(stamped, `no migration declares ${label(BEGIN_FN)}`);
+  assert.ok(
+    /INSERT\s+INTO\s+public\.ari_cert_runs[\s\S]*\brequirements_digest\b/i.test(stamped.body),
+    `${stamped.name}: ${label(BEGIN_FN)} no longer writes requirements_digest`,
+  );
+  assertUsesHelper(stamped, label(BEGIN_FN));
+  // A VALUES clause that still stamps a raw 64-hex (and never assigns from the
+  // helper) is the pre-Pass-5 shape. Allow hex elsewhere (artifact fixtures in
+  // comments are stripped by lex, but body text may mention digests); require
+  // the helper call is what feeds the insert.
+  assert.ok(
+    /v_requirements_digest\s*:=\s*private\s*\.\s*ari_cert_requirements_set_digest_v1\s*\(/i
+      .test(stamped.body) ||
+      /VALUES\s*\([\s\S]*private\s*\.\s*ari_cert_requirements_set_digest_v1\s*\(/i
+        .test(stamped.body),
+    `${stamped.name}: ${label(BEGIN_FN)} must stamp private.${HELPER}(), not a literal`,
+  );
+
+  const checked = lastDefinition(migrations, FINALIZE_FN);
+  assert.ok(checked, `no migration declares ${label(FINALIZE_FN)}`);
+  assertUsesHelper(checked, label(FINALIZE_FN));
+  assert.ok(
+    /requirements_digest\s+IS\s+DISTINCT\s+FROM\s+private\s*\.\s*ari_cert_requirements_set_digest_v1\s*\(/i
+      .test(checked.body) ||
+      /requirements_digest\s*<>\s*private\s*\.\s*ari_cert_requirements_set_digest_v1\s*\(/i
+        .test(checked.body),
+    `${checked.name}: ${label(FINALIZE_FN)} must compare v_run.requirements_digest to private.${HELPER}()`,
+  );
+
+  return {
+    helperIn: helperMigration.name,
+    stampedIn: stamped.name,
+    checkedIn: checked.name,
+  };
 }
 
-// --------------------------------------------------------------------------
-// self-test
 // --------------------------------------------------------------------------
 const clone = (fixture) => ({ migrations: fixture.migrations.map((m) => ({ ...m })) });
 
@@ -262,92 +234,83 @@ function lastIndexDeclaring(fixture, fn) {
   throw new Error(`self-test could not find a migration declaring ${label(fn)}`);
 }
 
-/** A later migration that drifts begin_run's digest, written in `style`. */
-function driftingBeginRun(style, digest) {
+function driftingBeginRun(style, useHelper) {
   const header = {
-    canonical: 'CREATE OR REPLACE FUNCTION public.ari_cert_begin_run(',
-    lowercase: 'create or replace function public.ari_cert_begin_run(',
-    spaced: 'CREATE   OR   REPLACE   FUNCTION   public . ari_cert_begin_run   (',
-    bare: 'CREATE FUNCTION public.ari_cert_begin_run(',
+    canonical: "CREATE OR REPLACE FUNCTION public.ari_cert_begin_run(",
+    lowercase: "create or replace function public.ari_cert_begin_run(",
+    spaced: "CREATE   OR   REPLACE   FUNCTION   public . ari_cert_begin_run   (",
+    bare: "CREATE FUNCTION public.ari_cert_begin_run(",
     quoted: 'CREATE OR REPLACE FUNCTION "public"."ari_cert_begin_run"(',
   }[style];
+  const digestExpr = useHelper
+    ? "private.ari_cert_requirements_set_digest_v1()"
+    : `'${"a".repeat(64)}'`;
   return [
     `${header}p_release_sha text)`,
     "RETURNS uuid LANGUAGE plpgsql AS $$",
+    "DECLARE v_requirements_digest text;",
     "BEGIN",
+    useHelper
+      ? "  v_requirements_digest := private.ari_cert_requirements_set_digest_v1();"
+      : "  v_requirements_digest := NULL;",
     "  INSERT INTO public.ari_cert_runs (release_sha, requirements_digest)",
-    `  VALUES (p_release_sha, '${digest}');`,
+    `  VALUES (p_release_sha, ${digestExpr});`,
     "END;",
     "$$;",
+  ].join("\n");
+}
+
+function finalizeWith(contract) {
+  const check = {
+    helper:
+      "IF v_run.requirements_digest IS DISTINCT FROM private.ari_cert_requirements_set_digest_v1() THEN",
+    literal: `IF v_run.requirements_digest <> '${"b".repeat(64)}' THEN`,
+    missing: "IF FALSE THEN",
+  }[contract];
+  return [
+    "CREATE OR REPLACE FUNCTION public.ari_cert_finalize_run(p_run_id uuid)",
+    "RETURNS jsonb LANGUAGE plpgsql AS $function$",
+    "BEGIN",
+    `  ${check}`,
+    "    RAISE EXCEPTION 'ari_cert_requirements_digest_mismatch';",
+    "  END IF;",
+    "END;",
+    "$function$;",
   ].join("\n");
 }
 
 function selfTest() {
   const live = checkContract(readLive());
   const good_ = readLive();
-  const other = "a".repeat(64);
 
-  // M1 — the two literals diverge. The exact production defect.
-  bad(good_, (x) => {
-    const i = lastIndexDeclaring(x, BEGIN_FN);
-    x.migrations[i].source = x.migrations[i].source.replace(live.digest, other);
-  }, "begin_run and finalize digests diverge");
-
-  // M2 — the same divergence introduced from the finalizer side.
-  bad(good_, (x) => {
-    const i = lastIndexDeclaring(x, FINALIZE_FN);
-    x.migrations[i].source = x.migrations[i].source.replace(
-      `requirements_digest <> '${live.digest}'`,
-      `requirements_digest <> '${other}'`,
-    );
-  }, "finalize digest moved alone");
-
-  // M3 — begin_run's literal deleted entirely.
-  bad(good_, (x) => {
-    const i = lastIndexDeclaring(x, BEGIN_FN);
-    x.migrations[i].source = x.migrations[i].source.replace(`'${live.digest}'`, "NULL");
-  }, "begin_run digest literal deleted");
-
-  // M4 — the finalizer's check deleted entirely.
-  bad(good_, (x) => {
-    const i = lastIndexDeclaring(x, FINALIZE_FN);
-    x.migrations[i].source = x.migrations[i].source.replace(
-      `requirements_digest <> '${live.digest}'`,
-      "FALSE",
-    );
-  }, "finalize digest check deleted");
-
-  // M5 — THE #1973 / #1978 SHAPE: a later migration forward-replaces ONLY the
-  // finalizer with a new reviewed digest and forgets begin_run.
+  // M1 — begin_run drops the helper and stamps a literal again.
   bad(good_, (x) => {
     x.migrations.push({
-      name: "29999999999999_a_future_issue_that_forgets_begin_run.sql",
+      name: "29999999999999_begin_reverts_to_literal.sql",
       version: "29999999999999",
-      source: [
-        "CREATE OR REPLACE FUNCTION public.ari_cert_finalize_run(p_run_id uuid)",
-        "RETURNS jsonb LANGUAGE plpgsql AS $function$",
-        "BEGIN",
-        `  IF v_run.requirements_digest <> '${other}' THEN`,
-        "    RAISE EXCEPTION 'ari_cert_requirements_digest_mismatch';",
-        "  END IF;",
-        "END;",
-        "$function$;",
-      ].join("\n"),
+      source: driftingBeginRun("canonical", false),
     });
-  }, "a later migration replaces only the finalizer");
+  }, "begin_run reverts to a hardcoded digest stamp");
 
-  // M6 — the mirror image: only begin_run moves forward.
+  // M2 — finalize_run reverts to a hardcoded <> check.
   bad(good_, (x) => {
     x.migrations.push({
-      name: "29999999999999_a_future_issue_that_forgets_the_finalizer.sql",
+      name: "29999999999999_finalize_reverts_to_literal.sql",
       version: "29999999999999",
-      source: driftingBeginRun("canonical", other),
+      source: finalizeWith("literal"),
     });
-  }, "a later migration replaces only begin_run");
+  }, "finalize_run reverts to a hardcoded digest check");
 
-  // M7 — begin_run stops writing the column at all. (This mutant PASSED against
-  // an earlier draft, because `requirements_digest` matched as a substring of
-  // `requirements_digest_unused`. Word boundary added; kept as a regression.)
+  // M3 — finalize_run drops the digest gate entirely.
+  bad(good_, (x) => {
+    x.migrations.push({
+      name: "29999999999999_finalize_drops_digest_gate.sql",
+      version: "29999999999999",
+      source: finalizeWith("missing"),
+    });
+  }, "finalize_run drops the set-digest comparison");
+
+  // M4 — begin_run stops writing the column.
   bad(good_, (x) => {
     const i = lastIndexDeclaring(x, BEGIN_FN);
     x.migrations[i].source = x.migrations[i].source.replaceAll(
@@ -356,81 +319,70 @@ function selfTest() {
     );
   }, "begin_run stops writing requirements_digest");
 
-  // M8 — an ambiguous begin_run carrying two different digests.
-  bad(good_, (x) => {
-    const i = lastIndexDeclaring(x, BEGIN_FN);
-    x.migrations[i].source = x.migrations[i].source.replace(
-      `'${live.digest}'`,
-      `CASE WHEN true THEN '${live.digest}' ELSE '${other}' END`,
-    );
-  }, "begin_run carries two candidate digests");
-
-  // M9 — nothing declares begin_run at all.
+  // M5 — helper function deleted from the chain.
   bad(good_, (x) => {
     for (const migration of x.migrations) {
-      migration.source = migration.source.replaceAll("ari_cert_begin_run", "removed_begin_run");
+      migration.source = migration.source.replaceAll(
+        "ari_cert_requirements_set_digest_v1",
+        "ari_cert_requirements_set_digest_removed",
+      );
     }
-  }, "begin_run no longer exists");
+  }, "set-digest helper renamed away");
 
-  // ----------------------------------------------------------------------
-  // P2-2 — one hostile mutant per declaration style this repo already uses.
-  // Each drifts the digest while writing the declaration in a style the
-  // previous exact-literal matcher was blind to.
-  // ----------------------------------------------------------------------
+  // M6 — only finalize moves forward with the helper; begin stays on a literal.
+  bad(good_, (x) => {
+    x.migrations.push({
+      name: "29999999999998_literal_begin.sql",
+      version: "29999999999998",
+      source: driftingBeginRun("canonical", false),
+    });
+    x.migrations.push({
+      name: "29999999999999_helper_finalize.sql",
+      version: "29999999999999",
+      source: finalizeWith("helper"),
+    });
+  }, "finalize uses the helper while begin still stamps a literal");
+
+  // Style-tolerant hostile begin_run that drops the helper.
   for (const style of ["lowercase", "spaced", "bare", "quoted"]) {
     bad(good_, (x) => {
       x.migrations.push({
         name: `29999999999999_drift_via_${style}_declaration.sql`,
         version: "29999999999999",
-        source: driftingBeginRun(style, other),
+        source: driftingBeginRun(style, false),
       });
-    }, `digest drifted via a ${style} declaration`);
+    }, `digest drifted via a ${style} declaration without the helper`);
   }
 
-  // M14 — P3: a `$$`-quoted redefinition is read, not misreported. Same digest,
-  // different body tag: the gate must PASS rather than fail on a parse message.
+  // Control — both halves redefined with the helper still PASS.
   good(good_, (x) => {
     x.migrations.push({
-      name: "29999999999999_dollar_quoted_redefinition.sql",
+      name: "29999999999999_helper_redefinition.sql",
       version: "29999999999999",
-      source: driftingBeginRun("canonical", live.digest),
+      source: [
+        driftingBeginRun("canonical", true),
+        "",
+        finalizeWith("helper"),
+      ].join("\n"),
     });
-  }, "a $$-quoted redefinition carrying the SAME digest");
+  }, "both halves redefined still calling the helper");
 
-  // M15 — tolerance stops at code: a declaration inside a comment or a string
-  // is not a declaration. Over-loosening here is how a gate starts reading
-  // prose, which is the #2113 class in the other direction.
+  // Comments/strings mentioning a literal are not declarations.
   good(good_, (x) => {
     x.migrations.push({
       name: "29999999999999_only_mentions_in_comments_and_strings.sql",
       version: "29999999999999",
       source: [
-        `-- create or replace function public.ari_cert_begin_run( '${other}' )`,
-        `/* CREATE FUNCTION "public"."ari_cert_begin_run" ( '${other}' ) */`,
-        `SELECT 'CREATE OR REPLACE FUNCTION public.ari_cert_begin_run( ${other} )';`,
+        `-- requirements_digest <> '${"c".repeat(64)}'`,
+        `/* private.ari_cert_requirements_set_digest_v1() */`,
+        `SELECT 'CREATE OR REPLACE FUNCTION public.ari_cert_begin_run()';`,
       ].join("\n"),
     });
-  }, "declarations that exist only inside comments and strings");
-
-  // M16 — an unterminated body fails closed with a body-tag message, not a
-  // hardcoded `$function$` one.
-  bad(good_, (x) => {
-    x.migrations.push({
-      name: "29999999999999_unterminated_body.sql",
-      version: "29999999999999",
-      source: [
-        "CREATE OR REPLACE FUNCTION public.ari_cert_begin_run(p_release_sha text)",
-        "RETURNS uuid LANGUAGE plpgsql AS $fn$",
-        "BEGIN",
-        "  INSERT INTO public.ari_cert_runs (release_sha, requirements_digest)",
-        `  VALUES (p_release_sha, '${other}');`,
-        "END;",
-      ].join("\n"),
-    });
-  }, "an unterminated function body");
+  }, "mentions that exist only inside comments and strings");
 
   console.log(
-    `issue-2592 self-test: 2 GOOD + 14 BAD fixtures passed (live digest ${live.digest})`,
+    `issue-2592/#2060 set-digest parity self-test: PASS ` +
+      `(helper in ${live.helperIn}; begin ${live.stampedIn}; finalize ${live.checkedIn})`,
   );
 }
 
@@ -438,7 +390,7 @@ if (process.argv.includes("--self-test")) selfTest();
 else {
   const live = checkContract(readLive());
   console.log(
-    `issue-2592 ari_cert requirements-digest parity: PASS — ${live.digest} ` +
-      `stamped in ${live.stampedIn}, checked in ${live.checkedIn}`,
+    `issue-2592/#2060 ari_cert requirements set-digest parity: PASS — ` +
+      `helper ${live.helperIn}; stamped in ${live.stampedIn}; checked in ${live.checkedIn}`,
   );
 }

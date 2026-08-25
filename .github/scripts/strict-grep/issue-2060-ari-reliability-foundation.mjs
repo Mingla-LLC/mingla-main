@@ -16,7 +16,12 @@ const FILES = {
   digest: "docs/contracts/ari-certification-digest-v1.json",
   certifier: "scripts/ari/certify-capabilities.mjs",
   migration: "supabase/migrations/20270504002060_issue_2060_ari_certification_foundation.sql",
+<<<<<<< HEAD
   currentMigration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
+=======
+  currentMigration: "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql",
+  setDigestMigration: "supabase/migrations/20270529002060_issue_2060_ari_cert_requirements_set_digest.sql",
+>>>>>>> 8b6decb29 (Replace the dual hardcoded digest literals with private.ari_cert_requirements_set_digest_v1() so begin_run stamps and finalize_run rechecks a content hash of ordered (capability_id, evidence_mode) rows. Same-count swaps now fail closed; the #2592 parity gate requires both halves call the helper.)
   invariants: "docs/INVARIANT_REGISTRY.md",
   rollback: "docs/runbooks/ARI_RELIABILITY_ROLLBACK.md",
   workflow: ".github/workflows/issue-2060-ari-reliability.yml",
@@ -182,6 +187,14 @@ export function checkContract(fixture) {
     "'capability_count', 132",
   ], "#2830 current certification upgrade");
 
+  need(fixture.setDigestMigration, [
+    "private.ari_cert_requirements_set_digest_v1",
+    "'requirements-set'",
+    "'requirement'",
+    "v_requirements_digest := private.ari_cert_requirements_set_digest_v1()",
+    "IS DISTINCT FROM private.ari_cert_requirements_set_digest_v1()",
+  ], "#2060 Pass-5 requirements set digest");
+
   need(fixture.migration, [
     "CREATE TABLE IF NOT EXISTS public.ari_cert_runs",
     "CREATE TABLE IF NOT EXISTS public.ari_cert_evidence",
@@ -299,9 +312,10 @@ function selfTest() {
   bad(good, (x) => { x.certifier = x.certifier.replace("signCertificationAttestation", "trustCallerAttestation"); }, "unsigned certification");
   bad(good, (x) => { x.migration = x.migration.replace("extensions.hmac", "caller_signature"); }, "server signature removed");
   bad(good, (x) => { x.migration = x.migration.replaceAll("private.ari_cert_verified_provenance", "private.unverified_claims"); }, "canonical provenance removed");
+  bad(good, (x) => { x.setDigestMigration = x.setDigestMigration.replaceAll("ari_cert_requirements_set_digest_v1", "ari_cert_requirements_count_only"); }, "set-digest helper removed");
   bad(good, (x) => { x.workflow = x.workflow.replaceAll("issue_2060_ari_certification_unicode_boundary.tester.pg17.test.sql", "missing-unicode-boundary.test.sql"); }, "Unicode boundary CI wiring");
   bad(good, (x) => { x.unicodeBoundaryGuard = x.unicodeBoundaryGuard.replace("issue_2060_unicode_value_not_bound", "unicode_values_unbound"); }, "Unicode bound-field guard removed");
-  console.log("issue-2060 self-test: 1 GOOD + 27 BAD fixtures passed");
+  console.log("issue-2060 self-test: 1 GOOD + 28 BAD fixtures passed");
 }
 
 if (process.argv.includes("--self-test")) selfTest();

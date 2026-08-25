@@ -17,7 +17,10 @@ on:
       - "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
       - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
+      - "supabase/migrations/20270529002060_issue_2060_ari_cert_requirements_set_digest.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.tester.adversarial.pg17.test.sql"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
@@ -57,7 +60,10 @@ on:
       - "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
       - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
+      - "supabase/migrations/20270529002060_issue_2060_ari_cert_requirements_set_digest.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.implementor.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.tester.adversarial.pg17.test.sql"
       - "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
@@ -188,7 +194,7 @@ jobs:
       # issue #2592. Runs LAST: the reservation contract deliberately drops and
       # re-adds `reservations_version_positive` through a real re-application of
       # the #1975 migration, so it must not precede another suite's assertions.
-      - name: "#2592 reservation version contract and Ari certification denominator"
+      - name: "#2592/#2060 Ari certification set-digest and reservation version contract"
         env:
           PGPASSWORD: ${{ github.run_id }}
         run: |
@@ -197,6 +203,11 @@ jobs:
             -f supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql
+          # issue #2060 Pass-5 — set-digest contract (same full-replay lane; I-PROPOSED-2148).
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2060_ari_cert_requirements_set_digest.tester.adversarial.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql
           # issue #2592 TESTER adversarial. Runs LAST: it plants a decoy relation named

@@ -1,31 +1,22 @@
 -- =====================================================================================
 -- #2592 implementor proof — a certification run can actually REACH its finalizer.
 --
+-- [TEST-MOD-APPROVED #2060] Pass-5 replaced the dual-literal contract with a shared
+-- set-digest helper. This suite still proves a canonical begin_run reaches past
+-- the digest gate; it now compares both halves against
+-- private.ari_cert_requirements_set_digest_v1() instead of two hardcoded hexes.
+--
 -- Run AFTER the complete migration chain has been applied to a fresh
 -- supabase/postgres:17.4.1.075:
 --   psql -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql
 --
--- `requirements_digest` is one contract with two halves: `ari_cert_begin_run`
--- STAMPS it, `ari_cert_finalize_run` CHECKS it. #1973 and #1978 each replaced only
--- the finalizer, so production ran with begin_run on `29b71dbe…` while the live
--- finalizer demanded `5e06801c…` from 2026-08-20. Every run created through the
--- canonical entry point died at `ari_cert_requirements_digest_mismatch` no matter
--- what evidence it had collected.
---
 -- Three assertions:
---   (a) the digest `ari_cert_begin_run` actually WRITES onto a run equals the digest
---       the deployed `ari_cert_finalize_run` actually DEMANDS. Both are read out of
---       the live database — one by calling the RPC, one out of `pg_get_functiondef`
---       — never from a literal typed into this file, so this keeps proving the right
---       thing after a future issue moves the requirement set.
---   (b) the finalizer's own digest predicate, evaluated against the stamped value,
---       is FALSE — i.e. it would not raise.
---   (c) THE BEHAVIOUR THAT WAS DEAD FOR FIVE DAYS: a run created through
---       `ari_cert_begin_run`, given evidence for every required capability, gets
---       PAST the digest gate. It still fails closed further down the chain (the
---       fixture evidence is deliberately not a real matrix), and what matters is
---       exactly which gate stops it: `ari_cert_missing_matrix_evidence`, never
---       `ari_cert_requirements_digest_mismatch`.
+--   (a) the digest ari_cert_begin_run WRITES equals
+--       private.ari_cert_requirements_set_digest_v1() of the live table.
+--   (b) ari_cert_finalize_run's body calls that same helper (no hex literal check).
+--   (c) a run created through ari_cert_begin_run, given evidence for every
+--       required capability, gets PAST the digest gate and stops at
+--       ari_cert_missing_matrix_evidence — never ari_cert_requirements_digest_mismatch.
 --
 -- All fixtures roll back.
 -- =====================================================================================
@@ -38,7 +29,8 @@ DO $test$
 DECLARE
   v_run_id uuid;
   v_stamped text;
-  v_demanded text;
+  v_live text;
+  v_definition text;
   v_release_sha constant text := repeat('a', 40);
   v_native constant jsonb := '[
     {"surface":"business_ios_simulator","artifact_id":"issue-2592-ios-sim","runtime_version":"1.1.5","device":"iPhone simulator"},
@@ -49,9 +41,6 @@ DECLARE
   v_message text;
   v_evidence_capabilities integer;
 BEGIN
-  -- ---------------------------------------------------------------------------
-  -- Arrange: a run opened exactly the way the certification harness opens one.
-  -- ---------------------------------------------------------------------------
   SET LOCAL ROLE service_role;
   v_run_id := public.ari_cert_begin_run(
     v_release_sha,
@@ -68,38 +57,29 @@ BEGIN
     v_run_id, 'business_android', 'issue-2592-android', v_release_sha, repeat('d', 64));
   RESET ROLE;
 
-  -- ---------------------------------------------------------------------------
-  -- (a) What begin_run WROTE vs what the finalizer DEMANDS. Both live values.
-  -- ---------------------------------------------------------------------------
   SELECT requirements_digest INTO v_stamped
   FROM public.ari_cert_runs WHERE id = v_run_id;
-  v_demanded := (regexp_match(
-    pg_get_functiondef('public.ari_cert_finalize_run(uuid)'::regprocedure),
-    'requirements_digest <> ''([0-9a-f]{64})'''))[1];
+  v_live := private.ari_cert_requirements_set_digest_v1();
 
-  IF v_stamped IS NULL OR v_demanded IS NULL THEN
+  IF v_stamped IS NULL OR v_live IS NULL THEN
     RAISE EXCEPTION
-      'issue_2592_requirements_digest_contract_missing: stamped=%, demanded=%',
-      v_stamped, v_demanded;
+      'issue_2592_requirements_digest_contract_missing: stamped=%, live=%',
+      v_stamped, v_live;
   END IF;
-  IF v_stamped <> v_demanded THEN
+  IF v_stamped <> v_live THEN
     RAISE EXCEPTION
-      'issue_2592_requirements_digest_drift: ari_cert_begin_run stamps % but ari_cert_finalize_run demands % — every canonical run dies at ari_cert_requirements_digest_mismatch',
-      v_stamped, v_demanded;
+      'issue_2592_requirements_digest_drift: ari_cert_begin_run stamps % but set digest is %',
+      v_stamped, v_live;
   END IF;
 
-  -- (b) The finalizer's own predicate, evaluated against the stamped value.
-  IF (v_stamped <> v_demanded) THEN
-    RAISE EXCEPTION 'issue_2592_digest_predicate_would_raise';
+  v_definition := pg_get_functiondef('public.ari_cert_finalize_run(uuid)'::regprocedure);
+  IF v_definition !~ 'private\.ari_cert_requirements_set_digest_v1\s*\(' THEN
+    RAISE EXCEPTION 'issue_2592_finalize_missing_set_digest_helper';
+  END IF;
+  IF v_definition ~ $re$requirements_digest\s*<>\s*'[0-9a-f]{64}'$re$ THEN
+    RAISE EXCEPTION 'issue_2592_finalize_still_pins_hardcoded_digest';
   END IF;
 
-  -- ---------------------------------------------------------------------------
-  -- (c) Give the run evidence for every required capability so the capability
-  --     count gate (which sits BEFORE the digest gate) passes, then prove which
-  --     gate actually stops the run. Written as the database owner: the
-  --     service role is correctly refused direct evidence INSERTs, and this
-  --     fixture is not pretending to be a real evidence matrix.
-  -- ---------------------------------------------------------------------------
   INSERT INTO public.ari_cert_evidence (
     run_id, capability_id, surface, tenant_case, role_case, scenario,
     artifact_type, artifact_id, outcome, safe_evidence, evidence_digest
@@ -139,7 +119,7 @@ BEGIN
   END IF;
 
   RAISE NOTICE
-    '#2592 begin_run/finalize digest parity: both on %, % capabilities of evidence reached the matrix gate ("%") — ALL PASSED',
+    '#2592/#2060 begin_run/finalize set-digest parity: both on %, % capabilities reached the matrix gate ("%") — ALL PASSED',
     v_stamped, v_evidence_capabilities, v_message;
 END;
 $test$;
