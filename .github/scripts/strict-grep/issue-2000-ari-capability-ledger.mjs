@@ -52,6 +52,7 @@ ari.trip.update
 ari.trip.publish
 ari.trip.delete
 ari.rsvp.create
+ari.rsvp.update
 ari.rsvp.publish
 ari.rsvp.bulk_status
 ari.rsvp.refund_contribution
@@ -86,7 +87,6 @@ ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
 ari.guests.list_roster
-ari.guests.set_approval
 ari.people.export
 ari.settings.preferences
 ari.settings.notifications
@@ -180,11 +180,9 @@ ari.partner.splits
 // blocker rule, and the executable proofs live in
 // supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
+// [TEST-MOD-APPROVED #1977] 21 - 5 RSVP lifecycle rows (create/publish/bulk/
+// refund + retired duplicate set_approval) = 16.
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
-ari.rsvp.create
-ari.rsvp.publish
-ari.rsvp.bulk_status
-ari.rsvp.refund_contribution
 ari.marketing.send_now
 ari.growth.run_tool
 ari.payout.status
@@ -199,7 +197,6 @@ ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
 ari.guests.list_roster
-ari.guests.set_approval
 ari.people.export
 ari.operator.snapshot
 `.trim().split(/\s+/));
@@ -343,10 +340,10 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  // [TEST-MOD-APPROVED #1971] 25 - 4 trip lifecycle rows = 21.
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 21) {
+  // [TEST-MOD-APPROVED #1977] 21 - 5 RSVP rows = 16.
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 16) {
     failures.push(
-      `proven-broken authority must contain 21 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 16 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -560,11 +557,9 @@ function selfTest() {
     ledger.audit.status_breakdown.broken--;
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
-  // [TEST-MOD-APPROVED #1971] Re-aimed from ari.trip.create, which this issue
-  // repairs, to ari.rsvp.create, which remains proven broken. The mutation and
-  // its predicate are unchanged.
+  // [TEST-MOD-APPROVED #1977] Re-aimed from ari.rsvp.create to ari.guests.list_roster.
   expectMutation("broken to unverified laundering", ({ ledger }) => {
-    const row = ledger.capabilities.find((c) => c.id === "ari.rsvp.create");
+    const row = ledger.capabilities.find((c) => c.id === "ari.guests.list_roster");
     row.status = "registered_unverified";
     row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
     ledger.audit.status_breakdown.broken--;
@@ -573,10 +568,9 @@ function selfTest() {
   expectMutation("stale symbol", ({ ledger }) => {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
-  // [TEST-MOD-APPROVED #1971] Same re-aim: the historical-source rule only
-  // applies to rows still inside the proven-broken authority.
+  // [TEST-MOD-APPROVED #1977] Same re-aim onto ari.guests.list_roster.
   expectMutation("proven-broken historical source must exist", ({ ledger }) => {
-    const broken = ledger.capabilities.find((c) => c.id === "ari.rsvp.create");
+    const broken = ledger.capabilities.find((c) => c.id === "ari.guests.list_roster");
     const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
     broken.owners.source[0] = { ...postBaseline.owners.source[0] };
   }, (failure) => failure.includes("absent at audit SHA"));

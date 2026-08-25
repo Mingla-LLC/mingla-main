@@ -9,16 +9,16 @@
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 85,
+    "verified_at": "2026-08-25T00:00:00Z",
+    "registered_tool_count": 86,
     "capability_count": 120,
     "status_breakdown": {
-      "registered_unverified": 63,
-      "broken": 21,
+      "verified": 0,
+      "registered_unverified": 69,
+      "broken": 16,
       "guided_handoff": 8,
-      "unsupported": 24,
-      "in_flight": 4,
-      "verified": 0
+      "unsupported": 23,
+      "in_flight": 4
     }
   },
   "operation_universe": {
@@ -1374,22 +1374,70 @@
         ]
       },
       "ari_tool": "create_rsvp",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical draft graph",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.update",
+      "domain": "rsvp",
+      "outcome": "Update a draft or live RSVP",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-1977"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/rsvp/[id]/edit.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateRsvp"
+          }
+        ]
+      },
+      "ari_tool": "update_rsvp",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical update graph",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        1977
+      ],
+      "blockers": [
+        "Exact-revision runtime and cross-surface parity evidence are pending"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-20"
     },
     {
       "id": "ari.rsvp.publish",
@@ -1423,19 +1471,21 @@
         ]
       },
       "ari_tool": "publish_rsvp",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical publish graph",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1472,19 +1522,21 @@
         ]
       },
       "ari_tool": "set_rsvp_guest_status",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:setRsvpGuestStatus discards selected ids and approves all pending"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts exact selected/all-pending scopes",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Selected IDs are not preserved"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1521,19 +1573,21 @@
         ]
       },
       "ari_tool": "refund_rsvp_contribution",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:refundRsvpContribution uses wrong refund-order envelope"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts event-bound source refund",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Required source refund payload omitted"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -3037,51 +3091,6 @@
       ],
       "blockers": [
         "Delegated event managers blocked"
-      ],
-      "confidence": "high",
-      "verified_at": "2026-08-13"
-    },
-    {
-      "id": "ari.guests.set_approval",
-      "domain": "guests",
-      "outcome": "Approve or deny one guest",
-      "safety": "write",
-      "required_role": "owner_or_event_manager",
-      "confirmation": "standard",
-      "surfaces": [
-        "business_ios",
-        "business_android",
-        "business_web"
-      ],
-      "provenance": {
-        "phase": "pr_1986",
-        "introduced_by": "PR-1986"
-      },
-      "owners": {
-        "ui": [
-          "mingla-business/app/event/[id]/guests/[guestId].tsx"
-        ],
-        "source": [
-          {
-            "path": "supabase/functions/_shared/agentDomainTools.ts",
-            "symbol": "const setGuestApproval"
-          }
-        ]
-      },
-      "ari_tool": "set_guest_approval",
-      "status": "broken",
-      "evidence": [
-        {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:setGuestApproval calls wrong access RPC"
-        }
-      ],
-      "owning_issues": [
-        2000
-      ],
-      "blockers": [
-        "Wrong RPC and argument meaning"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -5448,20 +5457,22 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "update_rsvp_contribution_settings",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "RSVP live-edit contribution contract"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts shared contribution-settings owner",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "No registered settings tool"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"

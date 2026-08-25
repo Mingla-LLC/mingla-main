@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 625,
-  "selfTestWiredFloor": 398,
+  "expectedStrictGrepMjsFiles": 626,
+  "selfTestWiredFloor": 399,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -3992,6 +3992,20 @@
       ],
       "selfTest": "wired",
       "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1977-rsvp-lifecycle-jest"
+      ]
     },
     {
       "script": ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs",

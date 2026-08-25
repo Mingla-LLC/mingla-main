@@ -137,6 +137,14 @@ on:
       - ".github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs"
       - "mingla-admin/src/pages/ClaimsPage.jsx"
       - "mingla-admin/src/__tests__/issue2724_admin_approve_without_call.happy.test.js"
+      - "mingla-business/src/services/rsvpEvents.ts"
+      - "mingla-business/src/services/rsvpApprovals.ts"
+      - "mingla-business/src/services/guestRosterService.ts"
+      - "mingla-business/src/services/sourceRefundService.ts"
+      - "mingla-business/src/services/eventDrafts.ts"
+      - "mingla-business/src/hooks/useRsvpApprovals.ts"
+      - "supabase/functions/rsvp-contribution-refund/**"
+      - ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
   pull_request:
     paths:
@@ -232,6 +240,14 @@ on:
       - ".github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs"
       - "mingla-admin/src/pages/ClaimsPage.jsx"
       - "mingla-admin/src/__tests__/issue2724_admin_approve_without_call.happy.test.js"
+      - "mingla-business/src/services/rsvpEvents.ts"
+      - "mingla-business/src/services/rsvpApprovals.ts"
+      - "mingla-business/src/services/guestRosterService.ts"
+      - "mingla-business/src/services/sourceRefundService.ts"
+      - "mingla-business/src/services/eventDrafts.ts"
+      - "mingla-business/src/hooks/useRsvpApprovals.ts"
+      - "supabase/functions/rsvp-contribution-refund/**"
+      - ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
 
 # ORCH-1383 — cancel a superseded PR run instead of letting it finish.
@@ -370,6 +386,16 @@ jobs:
           # the trigger's column scope and its BEFORE-trigger firing order.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1971_trip_order_guard_blast_radius.tester.adversarial.pg17.test.sql
+          # Issue #1977 — canonical RSVP draft/guest/contribution owners and
+          # the Ari receipt seam. Behavioural against the applied schema.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_ari_rsvp_guest_contribution.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_ari_rsvp_receipt.implementor.test.sql
+          # Issue #1977 — independent tester: contribution refund prepare must
+          # bind event_id and refuse cross-event splicing.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1977_rsvp_refund_event_binding.tester.adversarial.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -880,6 +906,8 @@ jobs:
             # receipt-backed and routed through ari_execute_trip_operation, with
             # no direct trip-table mutation left in any executor.
             supabase/functions/_shared/__tests__/issue_1971_ari_trips.implementor.test.ts
+            supabase/functions/_shared/__tests__/issue_1977_ari_rsvp_lifecycle.test.ts
+            supabase/functions/_shared/__tests__/issue_1977_rsvp_task_state.implementor.test.ts
             # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
             supabase/functions/manage-stay-inventory/index.test.ts
             # ISSUE-1388 — grouped Stay cart, Request actions, and error hygiene.
@@ -1586,6 +1614,33 @@ jobs:
         run: |
           node .github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs --self-test
           node .github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs
+
+  issue-1977-rsvp-lifecycle-jest:
+    name: "ISSUE-1977 — Business RSVP shares one canonical graph/guest/contribution owner"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      - name: Run ISSUE-1977 RSVP lifecycle contract
+        run: >
+          npx jest
+          src/services/__tests__/issue1977RsvpLifecycle.test.ts
+          src/services/__tests__/rsvpEvents.orch1150.test.ts
+          src/services/__tests__/orch_1150_r2_rsvp_draft_type.test.ts
+          --runInBand
+      - name: Run the ISSUE-1977 canonical-ownership gate
+        working-directory: .
+        run: |
+          node .github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs --self-test
+          node .github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs
 
   orch-1331-partner-paystack-strict-grep:
     name: "ORCH-1331: split fan-out stays fail-soft + share rate single-source / no Option-A checkout creep (I-PROPOSED-1331-PARTNER-SPLIT-FAIL-SOFT + I-PROPOSED-1331-PARTNER-SHARE-FROM-PLATFORM-FEE)"
