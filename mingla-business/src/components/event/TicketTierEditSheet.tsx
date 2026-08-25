@@ -368,6 +368,19 @@ export interface TicketTierEditSheetProps {
   eventCurrency?: string;
   /** Supabase events.id for planner waitlist reads on saved tiers. */
   eventId?: string | null;
+  /**
+   * issue #2590 — when the event's FIRST occurrence starts, ISO-8601.
+   *
+   * Used for one caution only: a sale window that closes before the doors open
+   * turns away everyone who tries on the day. We Go Again Exhibition shipped
+   * exactly that — sales ending 07:00 on the morning of a 13:00 event, six
+   * hours early, almost certainly 19:00 misread on a 12-hour picker. Nothing in
+   * the product said so, because a stored timestamp is invisible.
+   *
+   * Optional and defaulting to null so every existing caller — the create flow,
+   * and any surface without a resolved date — behaves exactly as before.
+   */
+  eventStartsAtIso?: string | null;
 }
 
 export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
@@ -377,6 +390,7 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
   initial,
   nextOrder,
   soldCount = 0,
+  eventStartsAtIso = null,
   canEditPrice = true,
   eventCurrency,
   eventId = null,
@@ -535,6 +549,19 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     saleStartAt !== null &&
     saleEndAt !== null &&
     new Date(saleEndAt).getTime() <= new Date(saleStartAt).getTime();
+  // issue #2590 — sales closing before the doors open. A CAUTION, never a block:
+  // an organiser may genuinely want to stop selling the night before, and
+  // refusing that would trade one wrong lock for another. It is loud, it says
+  // what will happen, and it lets them save anyway.
+  const eventStartsAtMs =
+    typeof eventStartsAtIso === "string" && eventStartsAtIso.length > 0
+      ? new Date(eventStartsAtIso).getTime()
+      : Number.NaN;
+  const saleEndsBeforeDoors =
+    saleEndAt !== null &&
+    Number.isFinite(eventStartsAtMs) &&
+    Number.isFinite(new Date(saleEndAt).getTime()) &&
+    new Date(saleEndAt).getTime() < eventStartsAtMs;
   const waitlistRow =
     initial !== null
       ? (eventWaitlistQuery.data?.find(
@@ -578,6 +605,37 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     !priceInvalid &&
     !capacityInvalid &&
     !capacityBelowSold;
+
+  // issue #2590 — one list, rendered at the button. Derived from the SAME
+  // predicates that gate `canSave`, never a second copy of the rules: a
+  // summary that can disagree with the button is worse than no summary.
+  const saveBlockers: string[] = [];
+  if (name.trim().length === 0) saveBlockers.push("Give this ticket a name.");
+  if (priceInvalid) saveBlockers.push("Enter a valid price, or mark it free.");
+  if (capacityInvalid) {
+    saveBlockers.push("Enter a capacity above zero, or mark it unlimited.");
+  }
+  if (capacityBelowSold) {
+    saveBlockers.push(
+      `Capacity is below the ${soldCount} ticket${soldCount === 1 ? "" : "s"} already sold.`,
+    );
+  }
+  if (minTooLow) saveBlockers.push("Minimum per buyer must be at least 1.");
+  if (maxLessThanMin) {
+    saveBlockers.push("Maximum per buyer is lower than the minimum.");
+  }
+  if (passwordTooShort) {
+    saveBlockers.push("Password must be at least 4 characters.");
+  }
+  if (waitlistConflict) {
+    saveBlockers.push("A waitlist needs a limited capacity.");
+  }
+  if (descriptionTooLong) {
+    saveBlockers.push("Description is over 280 characters.");
+  }
+  if (saleEndBeforeStart) {
+    saveBlockers.push("Sales close before they open.");
+  }
 
   // Sale period picker handlers — bottom-docked inline DateTimePicker
   // (matches MultiDateOverrideSheet's pattern for in-sheet pickers).
@@ -1239,6 +1297,16 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
               <Text style={styles.helperError}>
                 Sales close must be after sales open.
               </Text>
+            ) : saleEndsBeforeDoors ? (
+              /* issue #2590 — a CAUTION, not a block. Save stays enabled: an
+                 organiser may genuinely want to stop selling the night before.
+                 It exists because a stored timestamp is invisible, which is how
+                 We Go Again ended up closing six hours before its own doors. */
+              <Text style={styles.helperHintWarn}>
+                Heads up: sales close before this event starts, so nobody can
+                get a ticket on the day. Set it to the event&apos;s end time to
+                sell right through, or leave it if you meant to close early.
+              </Text>
             ) : (
               <Text style={styles.helperHint}>
                 Leave blank for sales-open-immediately and
@@ -1265,6 +1333,24 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
             radius="xxl"
             style={styles.sheetActionDock}
           >
+            {/* issue #2590 — the SAME problems, restated at the button.
+                Seth's ask, and the right one: a disabled Save with the reason
+                200px up the sheet is a dead control. Errors block; the caution
+                above never appears here, because it does not block. */}
+            {saveBlockers.length > 0 ? (
+              <View style={styles.saveBlockerBox}>
+                <Text style={styles.saveBlockerTitle}>
+                  {saveBlockers.length === 1
+                    ? "One thing to fix before saving"
+                    : `${saveBlockers.length} things to fix before saving`}
+                </Text>
+                {saveBlockers.map((blocker) => (
+                  <Text key={blocker} style={styles.saveBlockerItem}>
+                    {`\u2022 ${blocker}`}
+                  </Text>
+                ))}
+              </View>
+            ) : null}
             <View style={styles.sheetActionRow}>
               <View style={styles.actionCell}>
                 <Button
@@ -1469,6 +1555,37 @@ const styles = StyleSheet.create({
     color: semantic.error,
     marginTop: spacing.xs,
     marginBottom: spacing.sm,
+  },
+  // issue #2590 — a caution, deliberately NOT `semantic.error`. It does not
+  // block the save, and colouring it like a failure would teach organisers to
+  // ignore the colour that does mean failure.
+  helperHintWarn: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: accent.warm,
+    marginTop: spacing.xs,
+    marginBottom: spacing.sm,
+  },
+  // issue #2590 — the blocking problems, restated at the button.
+  saveBlockerBox: {
+    padding: spacing.md,
+    borderRadius: radiusTokens.md,
+    backgroundColor: semantic.errorTint,
+    borderWidth: 1,
+    borderColor: semantic.errorTint,
+    gap: spacing.xxs,
+    marginBottom: spacing.md,
+  },
+  saveBlockerTitle: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    fontWeight: "600",
+    color: semantic.error,
+  },
+  saveBlockerItem: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: semantic.error,
   },
   helperHint: {
     fontSize: typography.caption.fontSize,
