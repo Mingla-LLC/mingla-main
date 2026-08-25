@@ -82,6 +82,7 @@ import {
   describeUnmappedEditGuard,
   resolvePaidPublishGuardCopy,
 } from "../../utils/paidPublishGuards";
+import { tierEditGuardMessage } from "../../services/tierEditGuardCopy";
 import type { EditSeverity } from "../../store/eventEditLogStore";
 import {
   validateStep,
@@ -1265,6 +1266,15 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           showToast(guardCopy.body);
           return;
         }
+        // issue #2590 — the six tier-edit refusals that used to fall all the way
+        // through to `describeUnmappedEditGuard` and reach the organiser as a
+        // raw token they had never seen. Consulted BEFORE the chain below so a
+        // deliberate rule reads as a decision, not a malfunction.
+        const tierGuardCopy = tierEditGuardMessage(code);
+        if (tierGuardCopy !== null) {
+          showToast(tierGuardCopy);
+          return;
+        }
         const message =
           code.includes("tax_registration_required")
             ? "Set up an active tax registration in Brand > Payments before passing tax to buyers."
@@ -1432,6 +1442,11 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
         editMode: { soldCountByTier: soldCountCtx.soldCountByTier },
         canEditTicketPrice,
         coverMediaEventId: liveEvent.serverEventId,
+        // issue #2590 — from the LIVE event, not the draft: the draft's
+        // masterStartAtUtc is a publish-time bridge value and is null here,
+        // while the live row carries the canonical `event_dates.start_at`.
+        eventStartsAtIso: liveEvent.masterStartAtUtc ?? null,
+        eventEndsAtIso: liveEvent.masterEndAtUtc ?? null,
         brandDefaultCurrency: liveEvent.currency ?? null,
         coverMediaApplyMode: "published_manual" as const,
         onCoverVideoProcessingChange: setCoverVideoProcessing,

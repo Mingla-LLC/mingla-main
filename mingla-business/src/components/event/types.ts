@@ -12,6 +12,17 @@ import type { DraftEvent } from "../../store/draftEventStore";
 import type { ValidationError } from "../../utils/draftEventValidation";
 
 export interface StepBodyProps {
+  /**
+   * issue #2590 — the event's FIRST occurrence, ISO-8601 UTC, when one exists.
+   *
+   * Threaded to `TicketTierEditSheet` for a single caution: a sale window that
+   * closes before the doors open turns away everyone who tries on the day.
+   * Optional and null in the create wizard, where the date may not be set yet —
+   * the caution simply does not render, which is correct there.
+   */
+  eventStartsAtIso?: string | null;
+  /** issue #2590 — the event's LAST occurrence END, ISO-8601 UTC. */
+  eventEndsAtIso?: string | null;
   draft: DraftEvent;
   /** Patches the draft via draftEventStore.updateDraft (create-flow) or local state setter (edit-published flow). */
   updateDraft: (
