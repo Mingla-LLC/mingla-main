@@ -26,6 +26,10 @@ on:
       - "supabase/functions/_shared/**"
       - "supabase/functions/_shared/__tests__/**"
       - "supabase/functions/__tests__/**"
+      # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
+      # a change to the proof itself re-runs it; the code it guards already
+      # rides on `supabase/functions/_shared/**` above.
+      - "scripts/issue-2587/**"
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
@@ -117,6 +121,10 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/_shared/**"
       - "supabase/functions/__tests__/**"
+      # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
+      # a change to the proof itself re-runs it; the code it guards already
+      # rides on `supabase/functions/_shared/**` above.
+      - "scripts/issue-2587/**"
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
@@ -237,7 +245,13 @@ jobs:
         # privilege type". Pin to a 17.x image to match production.
         image: supabase/postgres:17.4.1.075
         env:
-          POSTGRES_PASSWORD: postgres
+          # Issue #2587 — generated per run, never a literal. A secret scanner
+          # cannot tell a throwaway CI credential from a real one, and it is not
+          # its job to try; 33 sibling workflows already use this exact shape.
+          # initdb applies this ONCE at container start, so every consumer below
+          # must repeat the identical expression — a literal left behind in one
+          # step fails authentication at test time, not at lint time.
+          POSTGRES_PASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
         ports:
           - 5432:5432
         options: >-
@@ -248,9 +262,16 @@ jobs:
           --health-start-period 30s
     steps:
       - uses: actions/checkout@v4
+      # Issue #2587 — the share-capture gate proof runs the real edge-function
+      # TypeScript against this job's postgres service, so this job needs a Node
+      # that can strip types. 22, not the 20 the strict-grep jobs below pin:
+      # `--experimental-strip-types` does not exist on 20.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - name: Wait for postgres
         env:
-          PGPASSWORD: postgres
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
         run: |
           for i in {1..90}; do
             if psql -h localhost -U postgres -d postgres -c "SELECT 1" >/dev/null 2>&1; then
@@ -263,7 +284,7 @@ jobs:
           exit 1
       - name: Apply migrations in timestamp order
         env:
-          PGPASSWORD: postgres
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
         run: |
           set -e
           for f in $(ls supabase/migrations/*.sql | sort); do
@@ -593,6 +614,33 @@ jobs:
           # ordinals, because app builds already on phones cannot be patched.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2489_address_privacy_server_gate.tester_adversarial.test.sql
+
+      # Issue #2587 — the share path publishes an offering's location, and it
+      # read the base relation with no privacy gate at all: a host who turned on
+      # "hide the address until someone buys" had that address served to an
+      # unauthenticated crawler and baked into an image cached for a year.
+      #
+      # Registered HERE, in the already-registered migrations provider, for the
+      # same two reasons #2489 was: a new issue-named workflow is refused by the
+      # CI registry gate, and this proof needs a live PostgreSQL — which is the
+      # whole point of it. The defect was graded "latent" twice, both times by
+      # asking something other than the thing that serves the public. So this
+      # suite asserts on rows read back out of the share-version table, written
+      # by the real mint RPC, with the privacy verdict produced by the deployed
+      # #2489 predicate. It creates and drops its own database and never touches
+      # the migrated one above.
+      #
+      # It carries its own anti-vacuity twin (an offering whose host never asked
+      # for privacy must still publish its location — a gate that strips
+      # everything is an outage) and its own negative control (a real leaking
+      # row, minted through the real RPC, that the detector must catch).
+      - name: "Issue #2587 — the share capture cannot publish a withheld location"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: node --experimental-strip-types --test scripts/issue-2587/share-capture-gate.dbboundary.test.mjs
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"
