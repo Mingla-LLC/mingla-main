@@ -1,3 +1,106 @@
+
+/**
+ * issue #2579 — fire-and-forget refusal telemetry.
+ *
+ * `raiseToken` is recovered from the Postgres error message, which for a
+ * SECURITY DEFINER `RAISE EXCEPTION 'token'` arrives as the token itself,
+ * sometimes wrapped. Matching a bounded set rather than parsing keeps an
+ * unexpected message shape from writing garbage — and the RPC records anything
+ * it does not recognise as `unknown_token`, so a new refusal reason shows up as
+ * a visible gap rather than silently vanishing.
+ */
+const REFUSAL_TOKENS: readonly string[] = [
+  "buyer_phone_required",
+  "event_already_ended",
+  "event_currency_required",
+  "event_not_found",
+  "event_not_selling",
+  "mixed_currency_cart",
+  "occurrence_not_available",
+  "occurrence_not_found",
+  "payment_plan_choice_invalid",
+  "stripe_account_not_ready",
+  "ticket_capacity_exceeded",
+  "ticket_lines_required",
+  "ticket_quantity_above_max",
+  "ticket_quantity_below_min",
+  "ticket_quantity_invalid",
+  "ticket_sales_ended",
+  "ticket_sales_not_started",
+  "ticket_type_not_found",
+  "ticket_type_unavailable",
+];
+
+const refusalTokenFrom = (message: string | undefined): string => {
+  if (typeof message !== "string" || message.length === 0) {
+    return "unknown_token";
+  }
+  // Longest first, so `ticket_sales_not_started` is never shadowed by a
+  // shorter token that happens to be a prefix of another.
+  for (
+    const token of [...REFUSAL_TOKENS].sort((a, b) => b.length - a.length)
+  ) {
+    if (message.includes(token)) return token;
+  }
+  return "unknown_token";
+};
+
+const firstTicketTypeId = (
+  lines: ReadonlyArray<Record<string, unknown>>,
+): string | null => {
+  for (const line of lines) {
+    const id = line?.ticketTypeId;
+    if (typeof id === "string" && id.length > 0) return id;
+  }
+  return null;
+};
+
+const totalRequestedQuantity = (
+  lines: ReadonlyArray<Record<string, unknown>>,
+): number | null => {
+  let total = 0;
+  let saw = false;
+  for (const line of lines) {
+    const q = Number(line?.quantity);
+    if (Number.isFinite(q)) {
+      total += q;
+      saw = true;
+    }
+  }
+  return saw ? total : null;
+};
+
+const recordCheckoutRefusal = async (
+  // deno-lint-ignore no-explicit-any
+  client: any,
+  input: {
+    eventId: string;
+    ticketTypeId: string | null;
+    message: string | undefined;
+    quantity: number | null;
+    surface: string;
+    phoneE164: string | null;
+    email: string | null;
+  },
+): Promise<void> => {
+  try {
+    await client.rpc("issue_2579_record_checkout_refusal", {
+      p_event_id: input.eventId.length > 0 ? input.eventId : null,
+      p_ticket_type_id: input.ticketTypeId,
+      p_raise_token: refusalTokenFrom(input.message),
+      p_quantity_requested: input.quantity,
+      p_surface: input.surface,
+      // FULL E.164 in; the RPC stores the dial code only. Extraction lives
+      // there because the migration's probe runs in CI and a new edge test
+      // file would run in no lane.
+      p_buyer_phone_e164: input.phoneE164,
+      p_buyer_email: input.email,
+    });
+  } catch (_error) {
+    // Swallowed on purpose. See the call site: telemetry must never turn a
+    // refusal into a failure.
+  }
+};
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
@@ -798,6 +901,27 @@ export const createTicketCheckoutCreateHandler = (
         "[ticket-checkout-create] session RPC failed",
         sessionError,
       );
+      // ═══ issue #2579 — RECORD THE REFUSAL, BECAUSE NOTHING ELSE DOES ═══
+      //
+      // The RPC refuses by RAISE, which rolls its transaction back, so no
+      // session row survives to say what happened. Nothing reaches the logs
+      // either: a search of every retained edge-log row found ZERO occurrences
+      // of any refusal token. That absence is why the We Go Again report cost a
+      // multi-day forensic pass instead of one query.
+      //
+      // THIS MUST NEVER AFFECT THE BUYER. It is deliberately not awaited and
+      // its failure is swallowed: a telemetry outage that turned a refusal into
+      // a 500 would be far worse than the blindness it fixes. The response
+      // below is emitted on exactly the same path whether this succeeds or not.
+      void recordCheckoutRefusal(supabase, {
+        eventId,
+        ticketTypeId: firstTicketTypeId(lines),
+        message: sessionError?.message,
+        quantity: totalRequestedQuantity(lines),
+        surface,
+        phoneE164: buyerPhoneE164,
+        email: buyerEmail,
+      });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
