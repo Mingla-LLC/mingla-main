@@ -69,7 +69,11 @@ function makeClient(options: ClientOptions): { client: any; calls: Recorder } {
       const query: any = {
         select: () => query,
         eq: (key: string, value: unknown) => {
-          if (key === "id") id = String(value);
+          // Postgres compares a uuid COLUMN by parsed value, not by string, so
+          // `WHERE id = 'AAAA...'` matches a lowercase row. Lowercase the
+          // lookup key so the fixture cannot accidentally "prove" a
+          // case-sensitivity fix by 404-ing the row instead.
+          if (key === "id") id = String(value).toLowerCase();
           return query;
         },
         is: () => query,
@@ -266,6 +270,88 @@ Deno.test("#2593 D2d the guest two-hop chain enforces the same containment", asy
     securedTool("set_rsvp_guest_status"),
     args,
     guestClient(EVENT),
+    CALLER,
+  );
+  assertEquals(context.brandId, BRAND);
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("set_rsvp_guest_status"),
+        args,
+        guestClient(OTHER_EVENT),
+        CALLER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
+});
+
+// #2593 P2-2 — `isUuid` carries the /i flag, so an uppercase event_id is a
+// VALID uuid, and Postgres returns the RSVP's event_id lowercase. A raw `!==`
+// therefore denied a caller whose uppercase event_id genuinely matched. The
+// fix must accept the match WITHOUT weakening containment.
+//
+// This fixture deliberately carries hex LETTERS. The other ids in this file
+// are all digits, so `.toUpperCase()` on them is a no-op and a case test built
+// on one would silently prove nothing — the assert below pins that.
+const CASED_EVENT = "3a3b3c3d-4e4f-4a4b-8c8d-9e9f0a0b0c0d";
+const UPPER_EVENT = CASED_EVENT.toUpperCase();
+
+Deno.test("#2593 D2e an uppercase event_id that MATCHES the rsvp is accepted", async () => {
+  // Sanity: the uppercase form is still a valid uuid and a different string,
+  // so this test is exercising the comparison and not a typo.
+  assert(UPPER_EVENT !== CASED_EVENT, "fixture is not actually uppercase");
+  const context = await authorizeAgentTool(
+    securedTool("set_guest_approval"),
+    { event_id: UPPER_EVENT, rsvp_id: RSVP, approved: true },
+    approvalClient(CASED_EVENT, { [CASED_EVENT]: RSVP_EVENT_ROW }),
+    CALLER,
+  );
+  assertEquals(context.brandId, BRAND);
+});
+
+Deno.test("#2593 D2f an uppercase event_id from a DIFFERENT event is still refused", async () => {
+  const error = await assertRejects(
+    () =>
+      authorizeAgentTool(
+        securedTool("set_guest_approval"),
+        { event_id: UPPER_EVENT, rsvp_id: RSVP, approved: true },
+        // Same brand, different event — case-insensitivity must not become a
+        // hole in the containment guard.
+        approvalClient(OTHER_EVENT, {
+          [CASED_EVENT]: RSVP_EVENT_ROW,
+          [OTHER_EVENT]: RSVP_EVENT_ROW,
+        }),
+        CALLER,
+      ),
+    ToolError,
+  );
+  assertEquals(error.code, "BRAND_ACCESS_DENIED");
+});
+
+Deno.test("#2593 D2g the guest chain matches case-insensitively and still contains", async () => {
+  const GUEST = "88888888-8888-4888-8888-888888888888";
+  const guestClient = (rsvpEventId: string) =>
+    makeClient({
+      rows: {
+        events: {
+          [CASED_EVENT]: RSVP_EVENT_ROW,
+          [OTHER_EVENT]: RSVP_EVENT_ROW,
+        },
+        event_rsvp_guests: { [GUEST]: { id: GUEST, rsvp_id: RSVP } },
+        event_rsvps: { [RSVP]: { id: RSVP, event_id: rsvpEventId } },
+      },
+      rpc: () => 40,
+    }).client;
+  const args = {
+    event_id: UPPER_EVENT,
+    guest_id: GUEST,
+    status: "approved",
+  };
+  const context = await authorizeAgentTool(
+    securedTool("set_rsvp_guest_status"),
+    args,
+    guestClient(CASED_EVENT),
     CALLER,
   );
   assertEquals(context.brandId, BRAND);
