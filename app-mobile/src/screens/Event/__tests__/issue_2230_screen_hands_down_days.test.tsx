@@ -6,6 +6,12 @@ jest.mock("../../../services/supabase", () => ({
   supabase: { rpc: jest.fn() },
 }));
 jest.mock("@mingla/offering-rendering", () => ({
+  // issue #2562 — this partial factory must carry every export the hook
+  // imports, or the mapper throws before any assertion below runs. These
+  // suites predate the past-event rule and assert nothing about it, so the
+  // stub returns `undefined`: exactly the shape they were written against.
+  forwardableAcquisitionState: () => undefined,
+
   isThemeAnimationSlug: () => false,
   isThemeColor: () => false,
   isThemeFontSlug: () => false,

@@ -1,4 +1,4 @@
-jest.mock("@mingla/offering-rendering", () => ({ isThemeAnimationSlug:()=>false,isThemeColor:()=>false,isThemeFontSlug:()=>false }));
+jest.mock("@mingla/offering-rendering", () => ({ isThemeAnimationSlug:()=>false,isThemeColor:()=>false,isThemeFontSlug:()=>false,forwardableAcquisitionState:()=>undefined }));
 jest.mock("@tanstack/react-query", () => ({ useQuery:jest.fn() }));
 jest.mock("../../../services/supabase", () => ({ supabase:{rpc:jest.fn()} }));
 import { acceptRsvpLegacySeed, directEventColdReadPlan, mapRpcPayloadToPublicEvent } from "../../../hooks/usePublicEventBySlug";

@@ -410,6 +410,7 @@ export type {
 export { GlassBlur } from "./GlassBlur";
 export {
   eventAcquisitionNoticeCopy,
+  forwardableAcquisitionState,
   nextEventAcquisitionBoundaryDelayMs,
   resolveEventAcquisitionState,
 } from "./eventAcquisitionLifecycle";

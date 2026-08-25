@@ -7,6 +7,19 @@ jest.mock("@tanstack/react-query", () => ({
   },
 }));
 jest.mock("@mingla/offering-rendering", () => ({
+  // issue #2562 — this partial factory must carry every export the hook
+  // imports, or the mapper throws before any assertion below runs. Unlike the
+  // sibling suites, this one DELEGATES to the real lifecycle module rather than
+  // stubbing: the #2562 block at the bottom of this file asserts the mapper's
+  // real past-event behaviour, and a stub would make it assert against itself.
+  // The deep specifier resolves through the workspace symlink and pulls in no
+  // React Native, so it is safe under this config.
+  forwardableAcquisitionState: (
+    jest.requireActual(
+      "@mingla/offering-rendering/eventAcquisitionLifecycle",
+    ) as { forwardableAcquisitionState: (...a: unknown[]) => unknown }
+  ).forwardableAcquisitionState,
+
   isThemeAnimationSlug: () => false,
   isThemeColor: () => false,
   isThemeFontSlug: () => false,
@@ -98,5 +111,53 @@ describe("#1929 direct event bundle hook behavior", () => {
     expect(isDirectEventBundlePayload([bundle()])).toBe(false);
     expect(isDirectEventBundlePayload({ tickets: [] })).toBe(false);
     expect(isDirectEventBundlePayload(bundle())).toBe(true);
+  });
+});
+
+// ── issue #2562 [a past event was still purchasable] ────────────────────────
+//
+// APPENDED HERE ON PURPOSE, not given its own file. This lane already triggers
+// on `app-mobile/src/hooks/usePublicEventBySlug.ts`, and this file already
+// exercises `mapRpcPayloadToPublicEvent` — so these assertions run whenever the
+// mapper changes. A new file would run in no lane at all (app-mobile lanes name
+// their test files explicitly), and adding one to a lane means editing a
+// sha-registered workflow.
+//
+// WHAT THIS COVERS THAT THE SHARED TEST CANNOT. The mingla-business suite proves
+// the forwarding rule and its effect on `computeOfferingVariant`. It cannot
+// prove the CONSUMER HOOK calls the rule — importing across the workspace
+// boundary drags app-mobile's dependency tree into the business typecheck. This
+// is the only place that call site can be executed, and the call site is the
+// bug: the rule already existed and the buyer web already used it; Explorer
+// never did.
+describe("issue #2562 — the consumer mapper derives past state from the clock", () => {
+  test("a finished event maps to an ENDED acquisition state", () => {
+    const result = mapRpcPayloadToPublicEvent(
+      bundle({ status: "scheduled", masterEndAt: "2020-01-01T00:00:00.000Z" }),
+    );
+    expect(result.event.acquisitionState?.kind).toBe("ended");
+  });
+
+  test("an event still ahead carries no acquisition state", () => {
+    const result = mapRpcPayloadToPublicEvent(
+      bundle({ status: "scheduled", masterEndAt: "2100-01-01T00:00:00.000Z" }),
+    );
+    expect(result.event.acquisitionState).toBeUndefined();
+  });
+
+  test("FAIL SAFE — a missing end time is NOT treated as past", () => {
+    // `unavailable` reads as past downstream. Forwarding it raw would stop
+    // sales on a live event the moment its end time went missing.
+    const result = mapRpcPayloadToPublicEvent(
+      bundle({ status: "scheduled", masterEndAt: null }),
+    );
+    expect(result.event.acquisitionState).toBeUndefined();
+  });
+
+  test("a cancelled event maps to cancelled, not ended", () => {
+    const result = mapRpcPayloadToPublicEvent(
+      bundle({ status: "cancelled", masterEndAt: "2100-01-01T00:00:00.000Z" }),
+    );
+    expect(result.event.acquisitionState?.kind).toBe("cancelled");
   });
 });

@@ -18,6 +18,7 @@
 
 import { useQuery, type UseQueryResult } from "@tanstack/react-query";
 import {
+  forwardableAcquisitionState,
   isThemeAnimationSlug,
   isThemeColor,
   isThemeFontSlug,
@@ -271,6 +272,19 @@ export const mapRpcPayloadToPublicEvent = (
         : payload.status === "ended"
           ? "ended"
           : "published",
+    // issue #2562 [a past event was still purchasable] — derive the
+    // past/cancelled state from the CLOCK, not just the operator's status.
+    // The forwarding rule — and why a missing end time must NOT read as past
+    // — lives beside the resolver it wraps, in the shared package.
+    acquisitionState: forwardableAcquisitionState(
+      // `payload.status` is `unknown` on this untyped RPC payload. Narrow it the
+      // same way every other field here is narrowed rather than widening the
+      // shared rule's parameter to `unknown` — the rule should keep saying that
+      // it takes a status, and the coercion belongs at the boundary that has the
+      // untyped data. `asString` also maps "" to null, which reads as scheduled.
+      asString(payload.status),
+      asString(payload.masterEndAt),
+    ),
     endedAt: null,
     format: asFormat(payload.format),
     venueName: asString(payload.venueName),
