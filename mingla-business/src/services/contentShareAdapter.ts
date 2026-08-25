@@ -36,7 +36,6 @@ export function isAllowedBusinessShareIntent(value:string):boolean{
   } catch { return false }
 }
 
-
 /**
  * #2589 — WHY a share could not be prepared, not merely THAT it could not.
  *
@@ -50,6 +49,10 @@ export function isAllowedBusinessShareIntent(value:string):boolean{
  */
 export type BusinessShareFailureReason = 'not_public' | 'unauthorized' | 'unavailable' | 'unknown';
 
+// The human-readable half of a preparation failure. The MACHINE-readable half
+// is the `reason` property attached beside it — a message is for a log, and a
+// sheet that had to parse one to decide what to render would be one string
+// edit away from showing the wrong thing.
 const SHARE_FAILURE_PREFIX = 'share_create_failed:';
 
 /** Maps a transport status onto the reason the sheet renders. */
@@ -68,21 +71,6 @@ const invokeStatus = (error: unknown): number | null => {
   const status = (error as { context?: { status?: unknown } } | null | undefined)?.context?.status;
   return typeof status === 'number' ? status : null;
 };
-
-/**
- * Recovers the reason from the error `prepareBusinessContentShare` threw.
- * Reads the property first, then the message prefix, and defaults to `unknown`
- * for anything else — including an error thrown by some other layer entirely.
- */
-export function businessShareFailureReason(error: unknown): BusinessShareFailureReason {
-  const carried = (error as { reason?: unknown } | null | undefined)?.reason;
-  if (carried === 'not_public' || carried === 'unauthorized' || carried === 'unavailable' || carried === 'unknown') return carried;
-  const message = typeof (error as { message?: unknown } | null | undefined)?.message === 'string'
-    ? (error as { message: string }).message : '';
-  if (!message.startsWith(SHARE_FAILURE_PREFIX)) return 'unknown';
-  const reason = message.slice(SHARE_FAILURE_PREFIX.length);
-  return reason === 'not_public' || reason === 'unauthorized' || reason === 'unavailable' ? reason : 'unknown';
-}
 
 /**
  * The reason travels as a PROPERTY on the error, not only inside its message.
