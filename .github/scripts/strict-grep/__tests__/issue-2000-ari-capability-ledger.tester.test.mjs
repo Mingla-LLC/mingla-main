@@ -35,6 +35,12 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // Capability denominator and tool set are UNCHANGED at 120 / 86. Re-pin
 // statusBreakdown, statusDigest, and the classification message; re-aim the
 // broken-laundering mutant at ari.operator.snapshot.
+//
+// [TEST-MOD-APPROVED #424/#1983] ari.operator.snapshot leaves broken (1→0) into
+// registered_unverified (84→85) after getOperatorSnapshot admits all accessible
+// brands. Tool set and denominator UNCHANGED (86 / 120). Re-pin statusBreakdown,
+// statusDigest, and classification message; re-aim the status-laundering mutant
+// at unverified→broken (no broken rows remain to flip the other way).
 const EXPECTED_TOOL_NAMES = [
   "cancel_campaign",
   "cancel_event",
@@ -128,14 +134,14 @@ const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 84,
-    broken: 1,
+    registered_unverified: 85,
+    broken: 0,
     guided_handoff: 8,
     unsupported: 22,
     in_flight: 5,
   }),
   idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
-  statusDigest: "42e381bdd40138905a667f90481a5b1c0c07bc44ce1f7a652cf5d86cbf9e746b",
+  statusDigest: "ddb26d3bf3a9f9c1e3126a5028d91979bca0cb80159ead40235faa98e3993acd",
   mappingDigest: "2799d3d25f3d6e7ccbd2dc7be131746231bcb2475ba2a994fed0b5ccebb55953",
   sourceRefDigest: "61a1d550b694516de4524a3fcad4e75f6447c49b4496a37b997052e1f6ee8d78",
 });
@@ -165,7 +171,7 @@ function independentlyValidateSnapshot(ledger) {
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
   if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("86-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("84/1/22/8/5/0 classification changed");
+    failures.push("85/0/22/8/5/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
@@ -197,7 +203,7 @@ test("tester rejects a bijective but semantically swapped tool mapping", () => {
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /tool-to-capability mapping changed/);
 });
 
-test("tester rejects broken-to-unverified status laundering with reconciled counters", () => {
+test("tester rejects status laundering with reconciled counters", () => {
   const ledger = readLedger();
   // [TEST-MOD-APPROVED #1978] pin a still-broken row after ticket pricing and
   // venue listing repairs moved prior targets out of broken.
@@ -206,10 +212,12 @@ test("tester rejects broken-to-unverified status laundering with reconciled coun
   // shape and still fires — only its target row moved.
   // [TEST-MOD-APPROVED #424 ledger-truth] Re-aimed from ari.rsvp.create to
   // ari.operator.snapshot after Wave-3 rows left broken.
+  // [TEST-MOD-APPROVED #424/#1983] No broken rows remain; re-aim to
+  // unverified→broken so statusDigest/classification still move.
   const row = ledger.capabilities.find((capability) => capability.id === "ari.operator.snapshot");
-  row.status = "registered_unverified";
-  ledger.audit.status_breakdown.broken--;
-  ledger.audit.status_breakdown.registered_unverified++;
+  row.status = "broken";
+  ledger.audit.status_breakdown.registered_unverified--;
+  ledger.audit.status_breakdown.broken++;
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /classification changed|status assignment changed/);
 });
 

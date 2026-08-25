@@ -378,7 +378,7 @@ if (process.argv.includes("--self-test")) {
     ["ledger audit capability_count drifts",
       mutate("ledger", '"capability_count": 120', '"capability_count": 119')],
     ["ledger audit status_breakdown drifts",
-      mutate("ledger", '"broken": 1', '"broken": 2')],
+      mutate("ledger", '"broken": 0', '"broken": 1')],
     ["merge-marker residue in the tester",
       mutate("ledgerTester", "const EXPECTED = Object.freeze({", "<<<<<<< HEAD\nconst EXPECTED = Object.freeze({")],
     ["delegated gate no longer parses",
@@ -407,11 +407,11 @@ if (process.argv.includes("--self-test")) {
     ["tester pins a tool name the ledger does not have",
       mutate("ledgerTester", '"cancel_campaign",', '"cancel_campaigns",')],
     ["tester statusBreakdown count drifts from the ledger",
-      mutate("ledgerTester", "broken: 1,", "broken: 2,")],
+      mutate("ledgerTester", "broken: 0,", "broken: 1,")],
     ["tester stops censusing one ledger status",
       mutate("ledgerTester", "    verified: 0,\n", "")],
     ["tester classification message drifts from the ledger",
-      mutate("ledgerTester", "84/1/22/8/5/0 classification changed", "84/2/22/8/5/0 classification changed")],
+      mutate("ledgerTester", "85/0/22/8/5/0 classification changed", "85/1/22/8/5/0 classification changed")],
     // The .ts files are not parsed here, so this mutant proves the merge-marker
     // scan fires on its OWN merit and is not just riding on `node --check`.
     ["merge-marker residue in a .ts census file (never reaches a parser)",
@@ -419,7 +419,9 @@ if (process.argv.includes("--self-test")) {
     ["provider test is dropped out of its deno lane",
       mutateAll("ciBatchManifest", "issue_1999_ari_provider_schema_contract.test.ts", "issue_1999_ari_provider_schema_contract.retired.ts")],
     ["a capability carries a status absent from status_definitions",
-      mutate("ledger", '"status": "broken"', '"status": "mostly_fine"')],
+      // [TEST-MOD-APPROVED #424/#1983] No capability is "broken" anymore; anchor on
+      // a status that still appears in the ledger body.
+      mutate("ledger", '"status": "unsupported"', '"status": "mostly_fine"')],
     ["authorization test unique-tool-name census goes stale",
       mutate("authorizationTest", ".size === 86", ".size === 85")],
     ["authorization test AGENT_TOOL_AUTHORIZATION census goes stale",

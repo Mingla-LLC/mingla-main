@@ -14,8 +14,8 @@
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 84,
-      "broken": 1,
+      "registered_unverified": 85,
+      "broken": 0,
       "guided_handoff": 8,
       "unsupported": 22,
       "in_flight": 5
@@ -3371,22 +3371,23 @@
         ]
       },
       "ari_tool": "get_operator_snapshot",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:getOperatorSnapshot filters brands to role===owner after assertAgentReadBrand"
+          "sha": "0d96e695e7eaf7e4733f4444089aedead415f78f",
+          "reference": "#1983 agentDomainTools.ts:getOperatorSnapshot lists all accessible brands (brand_member), not owner-only"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Owner-only brands filter still excludes delegated members from snapshot brand list and auto-select"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.brand.hours",

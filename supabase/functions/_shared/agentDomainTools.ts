@@ -4013,15 +4013,17 @@ const getOperatorSnapshot = writeTool(
     if (brandId) {
       await assertAgentReadBrand(client, userId, brandId);
     }
-    // Preserve this tool's pre-existing owner-only detail semantics after the
-    // broader accessibility guard; delegated roles are not silently promoted.
-    const brands = scope.filter((brand) => brand.role === "owner").slice(0, 8)
-      .map(({ id, name, role, effective_rank }) => ({
+    // Ledger `ari.operator.snapshot` requires brand_member: list every brand the
+    // caller can already read. Owner-only filtering was the Wave-3 leftover that
+    // kept delegated members out of the snapshot brand list and auto-select.
+    const brands = scope.slice(0, 8).map(
+      ({ id, name, role, effective_rank }) => ({
         id,
         name,
         role,
         effective_rank,
-      }));
+      }),
+    );
     if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
     let canCollect: unknown = null;
