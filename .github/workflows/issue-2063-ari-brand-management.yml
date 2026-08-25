@@ -12,6 +12,7 @@ on:
       - "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
       - "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql"
       - "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
+      - "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
       - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
@@ -51,6 +52,7 @@ on:
       - "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
       - "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql"
       - "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
+      - "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
       - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
       - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
@@ -188,3 +190,8 @@ jobs:
             -f supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql
+          # issue #2592 TESTER adversarial. Runs LAST: it plants a decoy relation named
+          # `reservations` in the `private` schema and re-applies the #1975 migration, so
+          # it must not precede another suite's assertions. It drops the decoy itself.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql

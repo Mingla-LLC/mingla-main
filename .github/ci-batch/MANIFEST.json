@@ -17341,7 +17341,7 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "48b1f42708b963e9406476752f41cf3eefede9c67c7c488fc3fbd5d4e8c6b28b",
+        "sourceSha256": "45a0be3a29376ea90fc8d23d4e5a40c3fec4159ae668d9fa3834c579cb0b9864",
         "triggers": [
           "pull_request",
           "push"
@@ -17378,7 +17378,8 @@
           "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql",
           "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql",
-          "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
+          "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql",
+          "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
         ],
         "jobKeys": [
           "issue-2063-business-parity",
