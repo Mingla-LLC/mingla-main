@@ -1,6 +1,12 @@
 -- #1977 — canonical RSVP draft/lifecycle, minimized guest/contribution reads,
 -- one guest-status effect owner, and contribution source-refund binding.
 --
+-- MONOTONIC VERSION 20270530001977 — MUST sort after
+--   20270521001978 (#1978 120-row cert tip) and
+--   20270527002592 (#2592 begin/finalize digest realign).
+-- The prior filename 20270510001977 ran before the 120-row tip existed and
+-- failed full-chain apply (#1174) on `issue_1977_expected_120_certification_requirements`.
+--
 -- #1972's shared agent_operation_receipts remains the only Ari confirmation
 -- receipt. The domain receipt below is restricted to non-Ari Business clients
 -- that provide their own stable request ID; Ari passes NULL to domain owners

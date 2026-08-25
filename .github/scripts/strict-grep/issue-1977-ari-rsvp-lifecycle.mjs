@@ -20,7 +20,7 @@ import { fileURLToPath } from "node:url";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 
 const files = {
-  migration: "supabase/migrations/20270510001977_issue_1977_ari_rsvp_guest_contribution.sql",
+  migration: "supabase/migrations/20270530001977_issue_1977_ari_rsvp_guest_contribution.sql",
   tools: "supabase/functions/_shared/agentDomainTools.ts",
   auth: "supabase/functions/_shared/agentToolAuthorization.ts",
   prompt: "supabase/functions/_shared/agentSystemPrompt.ts",
