@@ -422,7 +422,13 @@ test("suite deadline records every remaining outer and leaf instead of hiding wo
     fs.writeFileSync(path.join(root,"proof.test"),"proof\n"); execFileSync("git",["add","."] ,{cwd:root}); execFileSync("git",[...GIT_IDENTITY,"commit","-qm","fixture"],{cwd:root});
     const invocation={kind:"reviewed-shell-v1",command:"bash",argv:["-c","true"]};
     const steps=[1,2].map((ordinal)=>({name:`step ${ordinal}`,cwd:".",run:"true",invocation,commandId:`assert:fixture:${String(ordinal).padStart(2,"0")}`}));
-    const suite={id:"fixture",migrationWave:"phase3b-postgres-wave",setupProfile:"fixture",expectedFiles:["proof.test"],generatedPaths:[],timeoutSeconds:60,steps};
+    // [TEST-MOD-APPROVED #2439] The fixture named a migrated wave but omitted the
+    // field that MAKES a suite migrated. It only routed through the leaf lane
+    // because the runner keyed on the wave NAME — the assumption that took six
+    // batch hosts red on PR #2546. A migrated fixture now declares the same
+    // executionClass/hostClass a real migrated record carries, so it exercises
+    // the derived lane instead of a literal.
+    const suite={id:"fixture",migrationWave:"phase3b-postgres-wave",executionClass:"fixture",hostClass:"fixture",setupProfile:"fixture",expectedFiles:["proof.test"],generatedPaths:[],timeoutSeconds:60,steps};
     const leaves=steps.map((step,index)=>{const payload={cwd:".",executable:"bash",argv:["-c","true"],env:null,predicate:{kind:"always"}};return{id:`leaf:fixture:${String(index+1).padStart(2,"0")}:1`,suiteId:"fixture",outerCommandId:step.commandId,outerIndex:index,leafIndex:0,...payload,payloadSha256:digest(payload)}});
     const leafCapabilities={schemaVersion:1,expectedLeaves:leaves.length,registrySha256:digest(leaves),leaves};
     const result=await runSuiteV2(suite,{root,profile:{classes:["fixture"],runtime:{name:"node",version:"20"},installs:[]},workspaceFactory:()=>({root,cleanup(){}}),leafCapabilities,execute:async()=>({ok:false,code:124,timedOut:true,reason:"suite deadline exceeded"})});
