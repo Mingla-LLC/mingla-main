@@ -1,7 +1,7 @@
 import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AccessibilityInfo, ActivityIndicator, AppState, Dimensions, Image, Platform, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions } from 'react-native';
 import type { ShareEntityKind } from '@mingla/sharing';
-import type { PreparedBusinessShare } from '../../services/contentShareAdapter';
+import type { BusinessShareFailureReason, PreparedBusinessShare } from '../../services/contentShareAdapter';
 import { copyPublicUrl, sharePublicUrl } from '../../utils/sharePublicUrl';
 import { Sheet } from './Sheet';
 import { useShareNetworkState } from './useShareNetworkState';
@@ -24,6 +24,34 @@ export interface ShareModalProps {
   preloadContent?: boolean;
 }
 
+/**
+ * #2589 — one string per cause. The generic *"Couldn't prepare this share"*
+ * survives only for a genuinely unknown failure; the two causes a Retry cannot
+ * fix now say what the organiser has to do instead, and do not offer one.
+ * `UnifiedShareProvider.tsx` carries the byte-identical table — the two sheets
+ * are a mirrored pair and must move together.
+ */
+const SHARE_FAILURE_COPY: Record<BusinessShareFailureReason, string> = {
+  not_public: "This isn't public yet. Publish it, then share.",
+  unauthorized: 'Sign in to share this.',
+  unavailable: "Sharing is briefly unavailable. Try again in a moment.",
+  unknown: "Couldn't prepare this share",
+};
+/** Only these two can change on a second attempt. */
+const RETRYABLE_SHARE_FAILURES = new Set<BusinessShareFailureReason>(['unavailable', 'unknown']);
+
+/**
+ * Reads the reason the adapter attached to the rejection. Local and pure on
+ * purpose: the failure path must not depend on loading another module, or a
+ * chunk that fails to load leaves the sheet with no message at all. Anything
+ * unrecognised — including an error thrown by some other layer — is `unknown`,
+ * which keeps the original generic copy and its Retry.
+ */
+function shareFailureReasonOf(error: unknown): BusinessShareFailureReason {
+  const reason = (error as { reason?: unknown } | null | undefined)?.reason;
+  return reason === 'not_public' || reason === 'unauthorized' || reason === 'unavailable' ? reason : 'unknown';
+}
+
 function canWebShare(): boolean {
   return Platform.OS !== 'web' || typeof (globalThis as { navigator?: { share?: unknown } }).navigator?.share === 'function';
 }
@@ -41,7 +69,8 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
   const dialogRef = useRef<View | null>(null);
   const [prepared, setPrepared] = useState<PreparedBusinessShare | null>(null);
   const [previewCopy, setPreviewCopy] = useState({ facts: '', kind: '', status: '' });
-  const [failed, setFailed] = useState(false);
+  // #2589 — WHY it failed, not just THAT it failed. `null` = no failure.
+  const [failure, setFailure] = useState<BusinessShareFailureReason | null>(null);
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [showQr, setShowQr] = useState(false);
@@ -54,7 +83,7 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
   const prepare = useCallback(() => {
     const token = generation.current;
     const startedAt = Date.now();
-    setFailed(false);
+    setFailure(null);
     void import('../../services/contentShareAdapter')
       .then(({ prepareBusinessContentShare }) => prepareBusinessContentShare(url, 'generic', contentKind))
       .then(async (value) => {
@@ -69,16 +98,17 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
           trackBusinessShareEvent('share_link_ready', { kind: contentKind, result_class: 'ready', duration_ms: Date.now() - startedAt });
         }
       })
-      .catch(() => {
-        if (generation.current === token) setFailed(true);
-        trackBusinessShareEvent('share_failure', { kind: contentKind, failure_type: 'prepare', result_class: 'failed', duration_ms: Date.now() - startedAt });
+      .catch((error: unknown) => {
+        const reason = shareFailureReasonOf(error);
+        if (generation.current === token) setFailure(reason);
+        trackBusinessShareEvent('share_failure', { kind: contentKind, failure_type: 'prepare', failure_reason: reason, result_class: 'failed', duration_ms: Date.now() - startedAt });
       });
   }, [contentKind, url]);
 
   useEffect(() => {
     if (!visible) return;
     generation.current += 1;
-    setPrepared(null); setPreviewCopy({ facts: '', kind: '', status: '' }); setFailed(false); setBusy(false); setCopied(false); setShowQr(false);
+    setPrepared(null); setPreviewCopy({ facts: '', kind: '', status: '' }); setFailure(null); setBusy(false); setCopied(false); setShowQr(false);
     setPosterFailed(false); setActionError(null); setContentHeight(0); setReadiness('idle');
     trackBusinessShareEvent('share_sheet_opened', { kind: contentKind, result: 'committed' });
     prepare();
@@ -93,9 +123,19 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     if (!onlineRef.current) { setReadiness('offline'); return; }
     const token = generation.current;
     setReadiness(retrying ? 'retrying' : 'pending');
-    void import('../../services/contentShareAdapter').then(({ checkContentShareReadiness }) => checkContentShareReadiness(prepared.shortCode, prepared.version)).then((result) => {
-      if (generation.current === token && (Platform.OS === 'web' || AppState.currentState === 'active')) setReadiness(result);
-    }).catch(() => { if (generation.current === token) setReadiness('transient'); });
+    void import('../../services/contentShareAdapter').then(({ checkContentShareReadinessDetailed, buildSharePortraitUrl }) => checkContentShareReadinessDetailed(prepared.shortCode, prepared.version).then((result) => {
+      if (generation.current !== token || !(Platform.OS === 'web' || AppState.currentState === 'active')) return;
+      // #2589 — the share page re-derives on read, so it can legitimately have
+      // moved past the version create handed us. That is ready, not broken, and
+      // the portrait URL follows the server's version rather than pinning a
+      // number the page has left behind.
+      if (result.state === 'ready' && result.version !== null && result.version > prepared.version) {
+        setPrepared((current) => (current && current.shortCode === prepared.shortCode && result.version !== null
+          ? { ...current, version: result.version, s4Url: current.media === null ? null : buildSharePortraitUrl(current.shortCode, result.version) }
+          : current));
+      }
+      setReadiness(result.state);
+    })).catch(() => { if (generation.current === token) setReadiness('transient'); });
   }, [prepared]);
 
   useEffect(() => { if (prepared) verifyReadiness(false); }, [prepared, verifyReadiness]);
@@ -187,10 +227,10 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     <View ref={dialogRef} role={Platform.OS === 'web' ? 'dialog' : undefined} aria-modal={Platform.OS === 'web' ? true : undefined} accessibilityViewIsModal style={styles.container} accessibilityLabel={`Share ${title}`} onLayout={(event) => setContentHeight(Math.ceil(event.nativeEvent.layout.height))}>
       <View style={styles.header}><Text numberOfLines={1} ellipsizeMode="tail" style={styles.heading}>{shareHeading}</Text><Pressable accessibilityRole="button" accessibilityLabel="Close share" onPress={onClose} disabled={busy} style={styles.closeTarget}><Text style={styles.close}>×</Text></Pressable></View>
       <View style={styles.summary}>
-        {!prepared && !failed ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => trackBusinessShareEvent('share_poster_result', { kind: contentKind, result_class: 'ready', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) })} onError={() => { setPosterFailed(true); trackBusinessShareEvent('share_poster_result', { kind: contentKind, result_class: 'failed', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.tag}><Text style={styles.tagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.noCover}><Text style={styles.noCoverText}>{previewCopy.kind.slice(0, 1) || 'M'}</Text></View>}
+        {!prepared && failure === null ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => trackBusinessShareEvent('share_poster_result', { kind: contentKind, result_class: 'ready', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) })} onError={() => { setPosterFailed(true); trackBusinessShareEvent('share_poster_result', { kind: contentKind, result_class: 'failed', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.tag}><Text style={styles.tagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.noCover}><Text style={styles.noCoverText}>{previewCopy.kind.slice(0, 1) || 'M'}</Text></View>}
         <View style={styles.copy}><Text numberOfLines={1} style={styles.meta}>{prepared ? `${previewCopy.kind}${status ? ` · ${status}` : ''}` : 'Preparing'}</Text><Text numberOfLines={2} style={styles.title}>{prepared?.title ?? 'Preparing share…'}</Text>{facts ? <Text numberOfLines={2} style={styles.facts}>{facts}</Text> : null}</View>
       </View>
-      {failed ? <View style={styles.errorRow}><Text style={styles.error}>{"Couldn't prepare this share"}</Text><Pressable accessibilityRole="button" onPress={prepare}><Text style={styles.retry}>Retry share</Text></Pressable></View> : null}
+      {failure !== null ? <View style={styles.errorRow} accessibilityLiveRegion="polite"><Text style={styles.error}>{SHARE_FAILURE_COPY[failure]}</Text>{RETRYABLE_SHARE_FAILURES.has(failure) ? <Pressable accessibilityRole="button" onPress={prepare}><Text style={styles.retry}>Retry share</Text></Pressable> : null}</View> : null}
       {fontScale < 1.4 ? <Text style={styles.section}>Share elsewhere</Text> : null}
       <View style={styles.actions}>
         {canWebShare() ? <Pressable accessibilityRole="button" accessibilityLabel="Share elsewhere" accessibilityHint={!shareReady && prepared?.media ? 'Preview is preparing. Copy link is available.' : undefined} disabled={!shareReady || busy} onPress={() => void share()} style={[styles.shareButton, (!shareReady || busy) && styles.disabled]}>{busy ? <ActivityIndicator color={dark ? '#F9FAFB' : '#111827'} /> : <Text style={styles.buttonText}>Share</Text>}</Pressable> : null}

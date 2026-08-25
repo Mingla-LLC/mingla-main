@@ -23,20 +23,50 @@ const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/gu;
 const CONTENT_SHARE_NOTE_MAX_GRAPHEMES = 120;
 const readinessFlight = createContentShareSingleFlight();
 
-async function checkContentShareReadiness(code, version, fetchImpl = fetch) {
+/**
+ * #2589 — readiness, plus the version the SERVER says is live.
+ *
+ * The share page re-derives the offering on every read, so the version a client
+ * holds from `create` can legitimately be behind the version the page is now
+ * advertising. The server side of this contract is monotonic (see
+ * `mingla-marketing/lib/content-share-readiness.ts`): M >= N is ready, and the
+ * body carries M. Surfacing M is what lets a sheet ADOPT the newer version for
+ * its portrait URL instead of holding a number the page has moved past.
+ *
+ * `version` is null whenever the server did not name one — an older deployment,
+ * a non-ready state, or an unparseable body. A null is never treated as 1.
+ */
+async function checkContentShareReadinessDetailed(code, version, fetchImpl = fetch) {
   if (!isShortShareCode(code) || !Number.isSafeInteger(version) || version < 1) throw new TypeError('invalid_share_readiness_identity');
   return readinessFlight(`${code}:${version}`, async () => {
     try {
       const response = await fetchImpl(`https://usemingla.com/api/content-share-readiness/${code}/${version}`, {
         method: 'GET', redirect: 'manual', cache: 'no-store',
       });
-      if (response.status === 200) return 'ready';
-      if (response.status === 410) return 'terminal';
-      if (response.status === 404) return 'terminal';
-      if (response.status === 503) return 'waiting';
-      return 'transient';
-    } catch { return 'transient'; }
+      if (response.status === 200) {
+        let served = null;
+        try {
+          const body = await response.json();
+          const candidate = body && typeof body === 'object' ? body.version : null;
+          if (Number.isSafeInteger(candidate) && candidate >= version) served = candidate;
+        } catch { served = null; }
+        return { state: 'ready', version: served };
+      }
+      if (response.status === 410) return { state: 'terminal', version: null };
+      if (response.status === 404) return { state: 'terminal', version: null };
+      if (response.status === 503) return { state: 'waiting', version: null };
+      return { state: 'transient', version: null };
+    } catch { return { state: 'transient', version: null }; }
   });
+}
+
+/**
+ * The state-only view of the same call. Kept because two share sheets and every
+ * existing proof of this contract read a bare string; it is a projection of
+ * `checkContentShareReadinessDetailed`, never a second implementation.
+ */
+async function checkContentShareReadiness(code, version, fetchImpl = fetch) {
+  return (await checkContentShareReadinessDetailed(code, version, fetchImpl)).state;
 }
 
 function segmentGraphemes(value) {
@@ -213,6 +243,28 @@ function cleanMedia(value) {
   };
 }
 
+/**
+ * #2589 — Giphy's real delivery hosts. See the twin comment in
+ * `supabase/functions/_shared/contentShare.ts`. Giphy serves search results and
+ * `*_still` posters from `media0.giphy.com` … `media4.giphy.com`; the literal
+ * `media.giphy.com` this list used to carry matched none of them, so every GIF
+ * cover in production produced a share with no card. `media` + zero digits keeps
+ * the historical host matching. NOT a suffix match on `giphy.com` — that would
+ * admit any subdomain pointed at that zone, and this predicate decides what URL
+ * Mingla will fetch and bake into a publicly cached image.
+ */
+const GIPHY_DELIVERY_HOST = /^media[0-9]*\.giphy\.com$/;
+
+/**
+ * #2589 — THE host rule for every CommonJS/Metro caller.
+ *
+ * `mingla-business/server/cardIdentityRenderer.js` used to carry a third,
+ * narrower hand-copy of this list. It now delegates here. The Deno edge carries
+ * the fourth-and-final definition (`isPublicShareMediaHost`) because a Deno ESM
+ * module and this CommonJS module cannot share one file without a build step;
+ * `scripts/issue-2589/share-media-hosts.corpus.test.mjs` runs one shared URL
+ * corpus through BOTH and fails if the two verdicts ever differ.
+ */
 function isPublicShareMediaUrl(value, allowedBunnyHosts = []) {
   const url = cleanHttpsUrl(value);
   if (!url) return false;
@@ -221,7 +273,7 @@ function isPublicShareMediaUrl(value, allowedBunnyHosts = []) {
   const host = parsed.hostname.toLowerCase();
   if (['usemingla.com', 'www.usemingla.com', 'host.usemingla.com'].includes(host)) return true;
   if (host === 'images.pexels.com' || host === 'videos.pexels.com') return true;
-  if (['i.giphy.com', 'media.giphy.com'].includes(host)) return true;
+  if (host === 'i.giphy.com' || GIPHY_DELIVERY_HOST.test(host)) return true;
   if (host === 'vz-a16fce08-6c6.b-cdn.net') return true;
   if (Array.isArray(allowedBunnyHosts) && allowedBunnyHosts.includes(host)) return true;
   return host === 'gqnoajqerqhnvulmnyvv.supabase.co'
@@ -536,5 +588,5 @@ module.exports = {
   isPublicShareMediaUrl, selectPublicMediaIdentity,
   isShortShareCode, sanitizeReferralCode, buildShortShareUrl, buildSharePortraitUrl, contentShareRequestFromPublicUrl, validateShareFactsV1, parseShareFactsV1,
   formatMoney, formatEstimate, formatRating, statusLabel, shareKindLabel, formatPlanningPreference, selectRecipientFacts, selectPreviewFacts, selectCompactPreviewFacts,
-  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, nativeContentCardCacheKey, createNativeContentCardSessionCache, createContentShareSingleFlight, checkContentShareReadiness, weekdayForShareTimezone, openStateForHours,
+  buildShareMessage, routeContractFor, validateNativeContentCardDescriptorV1, nativeContentCardCacheKey, createNativeContentCardSessionCache, createContentShareSingleFlight, checkContentShareReadiness, checkContentShareReadinessDetailed, weekdayForShareTimezone, openStateForHours,
 };

@@ -85,20 +85,50 @@ const publicDetailsFor = (kind: ContentShareKind, row: RecordLike, assembled: Re
   return { kind };
 };
 
-const publicMediaUrl = (value: unknown): string | null => {
+/**
+ * #2589 — Giphy's real delivery hosts.
+ *
+ * The allowlist previously named `media.giphy.com` — a host Giphy's API never
+ * returns. Its search results and its `*_still` posters are served from
+ * `media0.giphy.com` … `media4.giphy.com` (the digit is a shard index and Giphy
+ * is free to add more). The literal therefore matched ZERO real Giphy URLs, and
+ * every GIF cover in production silently produced a share with no card at all.
+ *
+ * `media` + zero digits keeps the historical `media.giphy.com` matching, so this
+ * is a widening and not a swap. It is deliberately NOT a suffix match on
+ * `giphy.com`: a suffix match admits any subdomain an attacker can get pointed
+ * at that zone, and this predicate decides what URL Mingla will fetch, re-encode
+ * and bake into a publicly cached image.
+ */
+const GIPHY_DELIVERY_HOST = /^media[0-9]*\.giphy\.com$/;
+
+/**
+ * #2589 — THE host rule for the edge. One definition, two callers.
+ *
+ * `contentShareService.ts` used to carry a hand-copied sibling of this list and
+ * the two had already drifted. Import it; never restate it. The Node/CommonJS
+ * half of the same rule lives in `packages/sharing` (`isPublicShareMediaUrl`)
+ * because a Deno ESM module and a CommonJS module cannot share one file without
+ * a build step — `scripts/issue-2589/share-media-hosts.corpus.test.mjs` runs a
+ * shared URL corpus through BOTH and fails if their verdicts ever differ.
+ */
+export function isPublicShareMediaHost(url: URL): boolean {
+  const hasUserInfo = !url.href.startsWith(`${url.protocol}//${url.host}`);
+  if (url.protocol !== "https:" || hasUserInfo || url.port) return false;
+  const host = url.hostname.toLowerCase();
+  const bunnyHost = clean((globalThis as any).Deno?.env?.get?.("BUNNY_STREAM_CDN_HOSTNAME"), 255).toLowerCase();
+  return ["usemingla.com","www.usemingla.com","host.usemingla.com"].includes(host)
+    || host === "images.pexels.com" || host === "videos.pexels.com"
+    || host === "i.giphy.com" || GIPHY_DELIVERY_HOST.test(host)
+    || host === "vz-a16fce08-6c6.b-cdn.net" || (bunnyHost.length > 0 && host === bunnyHost)
+    || (host === "gqnoajqerqhnvulmnyvv.supabase.co" && url.pathname.startsWith("/storage/v1/object/public/"));
+}
+
+export const publicMediaUrl = (value: unknown): string | null => {
   const text = clean(value, 2048);
   try {
     const url = new URL(text);
-    const hasUserInfo = !url.href.startsWith(`${url.protocol}//${url.host}`);
-    if (url.protocol !== "https:" || hasUserInfo || url.port) return null;
-    const host = url.hostname.toLowerCase();
-    const bunnyHost = clean((globalThis as any).Deno?.env?.get?.("BUNNY_STREAM_CDN_HOSTNAME"), 255).toLowerCase();
-    const allowed = ["usemingla.com","www.usemingla.com","host.usemingla.com"].includes(host)
-      || host === "images.pexels.com" || host === "videos.pexels.com"
-      || host === "i.giphy.com" || host === "media.giphy.com"
-      || host === "vz-a16fce08-6c6.b-cdn.net" || (bunnyHost.length > 0 && host === bunnyHost)
-      || (host === "gqnoajqerqhnvulmnyvv.supabase.co" && url.pathname.startsWith("/storage/v1/object/public/"));
-    return allowed ? url.toString() : null;
+    return isPublicShareMediaHost(url) ? url.toString() : null;
   } catch { return null; }
 };
 

@@ -1,4 +1,4 @@
-import { loadAuthoritativeContentShare, type ContentShareKind } from "./contentShare.ts";
+import { isPublicShareMediaHost, loadAuthoritativeContentShare, type ContentShareKind } from "./contentShare.ts";
 
 const clean = (value: unknown, max: number): string =>
   typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -47,13 +47,16 @@ const httpsUrl = (value: unknown): boolean => {
   if (!bounded(value, 2048, true)) return false;
   try { const parsed = new URL(value as string); return parsed.protocol === "https:" && !parsed.username && !parsed.password; } catch { return false; }
 };
+// #2589 — this used to be a hand-copied sibling of the mapper's allowlist, and
+// the two had already drifted (the mapper allowed `videos.pexels.com`; this copy
+// did not, so the edge could persist a poster its own validator would reject).
+// The host verdict now has exactly one definition on this side of the wire. The
+// `bounded`/`httpsUrl` strictness stays here on purpose: this is the fail-closed
+// envelope validator and it must not accept a value that only becomes valid
+// after normalisation.
 const mediaUrl = (value: unknown): boolean => {
   if (!httpsUrl(value)) return false;
-  const parsed = new URL(value as string); if (parsed.port) return false; const host = parsed.hostname.toLowerCase();
-  const bunnyHost = clean((globalThis as any).Deno?.env?.get?.("BUNNY_STREAM_CDN_HOSTNAME"), 255).toLowerCase();
-  return ["usemingla.com","www.usemingla.com","host.usemingla.com"].includes(host) || host === "images.pexels.com" || host === "videos.pexels.com"
-    || host === "i.giphy.com" || host === "media.giphy.com" || host === "vz-a16fce08-6c6.b-cdn.net" || (bunnyHost.length > 0 && host === bunnyHost)
-    || (host === "gqnoajqerqhnvulmnyvv.supabase.co" && parsed.pathname.startsWith("/storage/v1/object/public/"));
+  return isPublicShareMediaHost(new URL(value as string));
 };
 const isoInstant = (value: unknown): boolean => bounded(value, 40, true) && Number.isFinite(Date.parse(value as string));
 const ianaTimezone=(value:unknown):boolean=>{if(!bounded(value,80,true))return false;try{new Intl.DateTimeFormat("en-US",{timeZone:value as string}).format(0);return true}catch{return false}};

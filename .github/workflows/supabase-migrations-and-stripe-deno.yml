@@ -30,6 +30,15 @@ on:
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
       - "scripts/issue-2587/**"
+      # Issue #2589 — the share-version identity proofs. Listed EXPLICITLY for the
+      # same reason as #2587's, plus two of their own: the readiness decision and
+      # the host allowlist live OUTSIDE `supabase/**`, so a change to either
+      # would otherwise never re-run the suites that guard them.
+      - "scripts/issue-2589/**"
+      - "mingla-marketing/lib/content-share-readiness.ts"
+      - "mingla-marketing/lib/content-share-readiness-verdict.ts"
+      - "packages/sharing/**"
+      - "mingla-business/server/cardIdentityRenderer.js"
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
@@ -133,6 +142,15 @@ on:
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
       - "scripts/issue-2587/**"
+      # Issue #2589 — the share-version identity proofs. Listed EXPLICITLY for the
+      # same reason as #2587's, plus two of their own: the readiness decision and
+      # the host allowlist live OUTSIDE `supabase/**`, so a change to either
+      # would otherwise never re-run the suites that guard them.
+      - "scripts/issue-2589/**"
+      - "mingla-marketing/lib/content-share-readiness.ts"
+      - "mingla-marketing/lib/content-share-readiness-verdict.ts"
+      - "packages/sharing/**"
+      - "mingla-business/server/cardIdentityRenderer.js"
       # Issue #1537 — the delivery ledger's only live reader; its provider->tile
       # test runs in the notification Deno job below.
       - "supabase/functions/api-health-probe/**"
@@ -697,6 +715,52 @@ jobs:
           PGUSER: postgres
           PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
         run: node --experimental-strip-types --test scripts/issue-2587/share-capture-gate.dbboundary.test.mjs
+
+      # Issue #2589 — one mechanism, four symptoms, and the interaction between
+      # two of them.
+      #
+      # A volatile fact that the card CLIPS OFF and never draws was inside the
+      # version fingerprint, so an ordinary ticket sale minted a new immutable
+      # version and a new immutable image URL. Measured on the busiest live link:
+      # 88 versions in four days, and versions 40/41/42/88 render BYTE-IDENTICAL
+      # JPEGs. Every bump strands the warm CDN copy and buys a ~2 s cold render
+      # for a picture that had not changed.
+      #
+      # THE INTERACTION IS WHY THIS RUNS AGAINST A REAL DATABASE. Stopping the
+      # churn could create a stale-image bug: today a newly added cover
+      # propagates by RIDING on that churn. So the suite asserts, in both
+      # directions and by counting rows in the real table written by the real
+      # mint RPC, that adding, changing and removing a cover each still mint —
+      # and that a ticket sale no longer does. It carries its own anti-vacuity
+      # twin (a fingerprint that never moves is exactly as broken as one that
+      # always moves) and its own negative control, which restores the shipped
+      # pre-fix arithmetic and proves the detector can go red. It creates and
+      # drops its own database and never touches the migrated one above.
+      - name: "Issue #2589 — a share version identifies the card, and a cover change still mints"
+        env:
+          PGHOST: localhost
+          PGPORT: "5432"
+          PGUSER: postgres
+          PGPASSWORD: ${{ format('issue-2587-ci-{0}', github.run_id) }}
+        run: node --experimental-strip-types --test scripts/issue-2589/share-version-identity.dbboundary.test.mjs
+
+      # Issue #2589 — the readiness check demanded EXACT version equality against
+      # a page whose own fetch mints the next version. Deterministic, could not
+      # converge, never timed out, and it disabled the Share button. Needs no
+      # database: the decision was extracted into a dependency-free module for
+      # exactly this reason, so it can be asserted here rather than only in a job
+      # that installs a native image toolchain.
+      - name: "Issue #2589 — readiness converges and stops retrying a settled verdict"
+        run: node --experimental-strip-types --test scripts/issue-2589/readiness-convergence.test.mjs
+
+      # Issue #2589 — the share host allowlist named `media.giphy.com`, which
+      # Giphy's API never returns, so it matched ZERO real Giphy URLs; and the
+      # content-type gate omitted GIF, so even a host-allowed GIF was refused.
+      # The list was hand-copied into three files that had already drifted. One
+      # shared URL corpus is now run through both remaining owners, so a
+      # disagreement between them fails here instead of in production.
+      - name: "Issue #2589 — one host corpus, every allowlist owner"
+        run: node --experimental-strip-types --test scripts/issue-2589/share-media-hosts.corpus.test.mjs
 
   deno-tests:
     name: "Deno unit tests for Stripe shared modules"

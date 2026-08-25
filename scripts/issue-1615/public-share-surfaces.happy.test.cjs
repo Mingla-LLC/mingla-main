@@ -113,7 +113,19 @@ test("H11 ShareModal exposes create states and removes fabricated facts", () => 
   // [TEST-MOD-APPROVED #1615] RETURN replaced the under-specified four-state
   // source pin with the binding lifecycle and forbids the old silent fallback.
   assert.match(source, /setVisible\(true\)[\s\S]*loadShare\(nextInput, token\)/);
-  assert.match(source, /setPrepError\(true\)[\s\S]*Retry share/);
+  // [TEST-MOD-APPROVED #2589] `setPrepError(true)` was a boolean: it could record
+  // THAT preparation failed but never WHY, so an unpublished offering (404), a
+  // signed-out session (401) and a real outage (503) all rendered one string
+  // beside a Retry that could not help two of them. The successor pins more, not
+  // less — the reason is captured, a per-cause string exists for each of the four
+  // reasons, and Retry is offered ONLY for the two a second attempt can change.
+  assert.match(source, /setPrepFailure\(reason\)/);
+  assert.match(source, /SHARE_FAILURE_COPY: Record<ContentShareFailureReason, string>/);
+  for (const reason of ["not_public", "unauthorized", "unavailable", "unknown"]) {
+    assert.match(source, new RegExp(`SHARE_FAILURE_COPY[\\s\\S]*\\b${reason}:`));
+  }
+  assert.match(source, /RETRYABLE_SHARE_FAILURES = new Set<ContentShareFailureReason>\(\['unavailable', 'unknown'\]\)/);
+  assert.match(source, /RETRYABLE_SHARE_FAILURES\.has\(prepFailure\)[\s\S]*Retry share/);
   // [TEST-MOD-APPROVED #1719] Written reason: the redesigned 92px summary uses
   // the shared compact selector by design; the old selector name incorrectly
   // pinned the superseded large preview even though the truth/fact limit stays.

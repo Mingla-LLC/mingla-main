@@ -43,6 +43,51 @@ export type ShareMessageContext = {
   senderNote?: string;
 };
 
+/**
+ * #2589 — WHY a share could not be prepared, not merely THAT it could not.
+ *
+ * Byte-mirrored from `mingla-business/src/services/contentShareAdapter.ts`: the
+ * two sheets are a pair and their failure vocabulary must not diverge. Three
+ * unrelated server outcomes used to reach the sheet as one string beside a Retry
+ * that could not help two of them — an unpublished offering (404), a signed-out
+ * session (401), and a real outage (503). The consumer app's own runtime capture
+ * on 2026-08-25 showed the 401 case wearing the 404 case's copy.
+ */
+export type ContentShareFailureReason = 'not_public' | 'unauthorized' | 'unavailable' | 'unknown';
+
+const SHARE_FAILURE_PREFIX = 'share_create_failed:';
+
+const reasonForStatus = (status: number | null): ContentShareFailureReason =>
+  status === 401 || status === 403 ? 'unauthorized'
+    : status === 404 ? 'not_public'
+    : status === 503 ? 'unavailable'
+    : 'unknown';
+
+/**
+ * supabase-js wraps a non-2xx edge response in a FunctionsHttpError whose
+ * `context` IS the Response. Read defensively: a network failure carries no
+ * context, and a thrown plain object is not an Error instance.
+ */
+const invokeStatus = (error: unknown): number | null => {
+  const status = (error as { context?: { status?: unknown } } | null | undefined)?.context?.status;
+  return typeof status === 'number' ? status : null;
+};
+
+/**
+ * Recovers the reason from the error `prepareContentShare` threw. Reads the
+ * property the adapter attached first, then the message prefix, and defaults to
+ * `unknown` for anything else — including an error from some other layer.
+ */
+export function contentShareFailureReason(error: unknown): ContentShareFailureReason {
+  const carried = (error as { reason?: unknown } | null | undefined)?.reason;
+  if (carried === 'not_public' || carried === 'unauthorized' || carried === 'unavailable' || carried === 'unknown') return carried;
+  const message = typeof (error as { message?: unknown } | null | undefined)?.message === 'string'
+    ? (error as { message: string }).message : '';
+  if (!message.startsWith(SHARE_FAILURE_PREFIX)) return 'unknown';
+  const reason = message.slice(SHARE_FAILURE_PREFIX.length);
+  return reason === 'not_public' || reason === 'unauthorized' || reason === 'unavailable' ? reason : 'unknown';
+}
+
 export async function prepareContentShare(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic', messageContext: ShareMessageContext = {}): Promise<PreparedContentShare> {
   const key = JSON.stringify([kind, identity, messageContext]);
   const prepared=await singleFlight(key,async () => {
@@ -50,7 +95,10 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
       body: { contract:'content_share_v1', kind, identity, attribution:{ channel }, messageContext },
     });
     if (!error && data?.shortCode && data?.facts) return { contract: 'content_share_v1' as const, data };
-    throw new Error(error?.message || 'share_create_failed');
+    // The reason travels as a PROPERTY as well as in the message: the sheet reads
+    // it with a local pure helper and imports nothing to describe a failure.
+    const reason = reasonForStatus(error ? invokeStatus(error) : null);
+    throw Object.assign(new Error(`${SHARE_FAILURE_PREFIX}${reason}`), { reason });
   });
   const data=prepared.data;
   const canonicalUrl=buildShortShareUrl(data.shortCode);

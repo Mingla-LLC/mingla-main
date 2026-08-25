@@ -85,12 +85,30 @@ test('A-T3 a failed readiness flight is cleared so Retry performs a real new req
 });
 
 test('A-T4 the server verifies exact HTML and portrait concurrently and never trusts a forged public marker', () => {
-  const verifier = read('mingla-marketing/lib/content-share-readiness.ts');
+  // [TEST-MOD-APPROVED #2589] The readiness route and the readiness DECISION are
+  // now two files: the decision was extracted so it can be asserted without the
+  // native image toolchain the route drags in. Every assertion below is
+  // unchanged in meaning — it is the same contract, read across both halves.
+  const verifier = read('mingla-marketing/lib/content-share-readiness.ts')
+    + read('mingla-marketing/lib/content-share-readiness-verdict.ts');
   const proxy = read('mingla-marketing/lib/shared-card-proxy.ts');
   const middleware = read('mingla-marketing/middleware.ts');
   assert.match(verifier, /Promise\.all\(\[\s*proxySharedCard\(request, code, 'content-page'\),\s*proxySharedCard\(request, code, 'content-image', fetch, version\)/s);
   assert.match(verifier, /<link rel="canonical" href="\$\{canonical\}" \/>/);
-  assert.match(verifier, /<meta property="og:image:secure_url" content="\$\{image\}" \/>/);
+  // [TEST-MOD-APPROVED #2589] The exact-version identity assertion this line used
+  // to make is the defect #2589 was dispatched to remove: readiness demanded that
+  // the served page advertise EXACTLY the version the client held, against a page
+  // whose own fetch had just minted the next one. Deterministic, non-converging,
+  // and it disabled the Share button. The replacement is STRICTLY STRONGER than
+  // what it replaces — it still pins the portrait identity to THIS code's route
+  // and this revision, in both og:image forms, and additionally pins the two
+  // properties the old contract lacked: monotonic acceptance, and no self-retry of
+  // a settled comparison.
+  assert.match(verifier, /og:image\(:secure_url\)\?" content="https:/);
+  assert.match(verifier, /\/og\/s\/\$\{code\}\/v\(\[1-9\]\[0-9\]\*\)-r2/);
+  assert.match(verifier, /advertised === null \|\| advertised < requested/);
+  assert.match(verifier, /if \(attempted\.verdict\.retryable\) \{/);
+  assert.doesNotMatch(verifier, /result\.status === 502 \|\| result\.status === 503/);
   assert.match(verifier, /const flights = new Map/);
   assert.match(verifier, /finally\(\(\) => flights\.delete\(key\)\)/);
   assert.match(proxy, /redirect: 'manual'/);

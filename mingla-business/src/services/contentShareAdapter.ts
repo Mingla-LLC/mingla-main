@@ -1,4 +1,4 @@
-import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, contentShareRequestFromPublicUrl, createContentShareSingleFlight, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
+import { buildSharePortraitUrl, buildShortShareUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, contentShareRequestFromPublicUrl, createContentShareSingleFlight, selectCompactPreviewFacts, shareKindLabel, statusLabel, type ShareEntityKind, type ShareFactsV1, type ShareMediaIdentity } from '@mingla/sharing';
 import { Platform } from 'react-native';
 import { supabase } from './supabase';
 import { postHogService } from './postHogService';
@@ -16,7 +16,7 @@ export { contentShareRequestFromPublicUrl } from '@mingla/sharing';
 // ShareModalContent loads this adapter on demand. Re-export the preview helpers
 // through that same split boundary so @mingla/sharing is owned by one async
 // chunk instead of being hoisted into Metro's eager __common chunk.
-export { checkContentShareReadiness, selectCompactPreviewFacts, shareKindLabel, statusLabel };
+export { buildSharePortraitUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, selectCompactPreviewFacts, shareKindLabel, statusLabel };
 
 export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_poster_result'|'share_failure',properties:Record<string,string|number|boolean>):void{
   try{postHogService.capture(event,properties)}catch{/* telemetry never owns sharing */}
@@ -37,13 +37,77 @@ export function isAllowedBusinessShareIntent(value:string):boolean{
 }
 
 
+/**
+ * #2589 — WHY a share could not be prepared, not merely THAT it could not.
+ *
+ * Three unrelated server outcomes used to arrive at the sheet as one string,
+ * *"Couldn't prepare this share"*, beside a Retry that could not help two of
+ * them: a draft or private offering (404 — retry can never succeed, the
+ * organiser has to publish it), a signed-out session (401), and a genuine
+ * outage (503 — retry is exactly right). Guessing between them from the copy is
+ * impossible, and that is precisely how one screenshot got attributed to the
+ * wrong cause during the investigation.
+ */
+export type BusinessShareFailureReason = 'not_public' | 'unauthorized' | 'unavailable' | 'unknown';
+
+const SHARE_FAILURE_PREFIX = 'share_create_failed:';
+
+/** Maps a transport status onto the reason the sheet renders. */
+const reasonForStatus = (status: number | null): BusinessShareFailureReason =>
+  status === 401 || status === 403 ? 'unauthorized'
+    : status === 404 ? 'not_public'
+    : status === 503 ? 'unavailable'
+    : 'unknown';
+
+/**
+ * supabase-js wraps a non-2xx edge response in a FunctionsHttpError whose
+ * `context` IS the Response. Read defensively: a network failure has no context
+ * at all, and a thrown plain object is not an Error instance.
+ */
+const invokeStatus = (error: unknown): number | null => {
+  const status = (error as { context?: { status?: unknown } } | null | undefined)?.context?.status;
+  return typeof status === 'number' ? status : null;
+};
+
+/**
+ * Recovers the reason from the error `prepareBusinessContentShare` threw.
+ * Reads the property first, then the message prefix, and defaults to `unknown`
+ * for anything else — including an error thrown by some other layer entirely.
+ */
+export function businessShareFailureReason(error: unknown): BusinessShareFailureReason {
+  const carried = (error as { reason?: unknown } | null | undefined)?.reason;
+  if (carried === 'not_public' || carried === 'unauthorized' || carried === 'unavailable' || carried === 'unknown') return carried;
+  const message = typeof (error as { message?: unknown } | null | undefined)?.message === 'string'
+    ? (error as { message: string }).message : '';
+  if (!message.startsWith(SHARE_FAILURE_PREFIX)) return 'unknown';
+  const reason = message.slice(SHARE_FAILURE_PREFIX.length);
+  return reason === 'not_public' || reason === 'unauthorized' || reason === 'unavailable' ? reason : 'unknown';
+}
+
+/**
+ * The reason travels as a PROPERTY on the error, not only inside its message.
+ * The sheet reads that property with a local pure helper and imports nothing to
+ * do it — an error handler that has to load a module in order to describe a
+ * failure is one module-load away from having no message at all.
+ */
+const shareCreateFailure = (status: number | null): Error => {
+  const reason = reasonForStatus(status);
+  return Object.assign(new Error(`${SHARE_FAILURE_PREFIX}${reason}`), { reason });
+};
+
 export async function prepareBusinessContentShare(publicUrl:string,channel='generic',overrideKind?:ShareEntityKind):Promise<PreparedBusinessShare>{
   const request=contentShareRequestFromPublicUrl(publicUrl,overrideKind);if(!request)throw new Error('not_content_share');
   const key=JSON.stringify(request);const data=await singleFlight(key,async()=>{
     if(Platform.OS==='web'){
       const response=await fetch('/api/create-content-share',{method:'POST',credentials:'same-origin',headers:{'content-type':'application/json'},body:JSON.stringify({contract:'content_share_v1',...request,attribution:{channel}})});
-      const body=await response.json().catch(()=>null) as CreatedShareResponse|null;if(!response.ok||!body?.shortCode||!body?.facts||!body.message)throw new Error('share_create_failed');return body;
+      const body=await response.json().catch(()=>null) as CreatedShareResponse|null;
+      if(!response.ok)throw shareCreateFailure(response.status);
+      if(!body?.shortCode||!body?.facts||!body.message)throw shareCreateFailure(null);
+      return body;
     }
-    const {data,error}=await supabase.functions.invoke<CreatedShareResponse>('shared-card',{body:{contract:'content_share_v1',...request,attribution:{channel}}});if(error||!data?.shortCode||!data?.facts||!data.message)throw new Error(error?.message||'share_create_failed');return data
+    const {data,error}=await supabase.functions.invoke<CreatedShareResponse>('shared-card',{body:{contract:'content_share_v1',...request,attribution:{channel}}});
+    if(error)throw shareCreateFailure(invokeStatus(error));
+    if(!data?.shortCode||!data?.facts||!data.message)throw shareCreateFailure(null);
+    return data
   });const url=buildShortShareUrl(data.shortCode);return{shortCode:data.shortCode,version:data.version,facts:data.facts,media:data.media??null,url,title:data.facts.title,message:data.message,s4Url:data.media==null?null:buildSharePortraitUrl(data.shortCode,data.version)}
 }
