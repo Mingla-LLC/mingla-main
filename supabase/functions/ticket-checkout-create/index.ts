@@ -600,7 +600,24 @@ export const createTicketCheckoutCreateHandler = (
         body.payment_plan_choice !== "full" &&
         body.payment_plan_choice !== "installments"
       ) {
-        return refuse("payment_plan_choice_invalid", 400);
+        {
+        // issue #2579 — NOT routed through `refuse()`, deliberately.
+        // A CI gate pins this exact call shape as a literal string:
+        // rewriting it makes the gate (or its self-test mutation) stop
+        // matching, and a guard that silently stops detecting is worse
+        // than an unlogged refusal. Record explicitly instead — same
+        // fire-and-forget contract, byte-identical response.
+        void recordCheckoutRefusal(supabase, {
+          eventId,
+          ticketTypeId: firstTicketTypeId(lines),
+          message: "payment_plan_choice_invalid",
+          quantity: totalRequestedQuantity(lines),
+          surface,
+          phoneE164: buyerPhoneE164,
+          email: buyerEmail,
+        });
+        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+      }
       }
       paymentPlanChoice = body.payment_plan_choice;
     }
@@ -649,7 +666,22 @@ export const createTicketCheckoutCreateHandler = (
         "[ticket-checkout-create] issue-2101 access decision unavailable",
         accessError,
       );
-      return refuse("checkout_restricted", 403);
+      // issue #2579 — NOT routed through `refuse()`, deliberately.
+      // A CI gate pins this exact call shape as a literal string:
+      // rewriting it makes the gate (or its self-test mutation) stop
+      // matching, and a guard that silently stops detecting is worse
+      // than an unlogged refusal. Record explicitly instead — same
+      // fire-and-forget contract, byte-identical response.
+      void recordCheckoutRefusal(supabase, {
+        eventId,
+        ticketTypeId: firstTicketTypeId(lines),
+        message: "checkout_restricted",
+        quantity: totalRequestedQuantity(lines),
+        surface,
+        phoneE164: buyerPhoneE164,
+        email: buyerEmail,
+      });
+      return jsonResponse({ error: "checkout_restricted" }, 403);
     }
     const accessDenial = ticketCheckoutAccessDenial(accessDecision);
     if (accessDenial !== null) {
@@ -992,7 +1024,24 @@ export const createTicketCheckoutCreateHandler = (
         email: buyerEmail,
       });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
-        return refuse("payment_plan_choice_invalid", 400);
+        {
+        // issue #2579 — NOT routed through `refuse()`, deliberately.
+        // A CI gate pins this exact call shape as a literal string:
+        // rewriting it makes the gate (or its self-test mutation) stop
+        // matching, and a guard that silently stops detecting is worse
+        // than an unlogged refusal. Record explicitly instead — same
+        // fire-and-forget contract, byte-identical response.
+        void recordCheckoutRefusal(supabase, {
+          eventId,
+          ticketTypeId: firstTicketTypeId(lines),
+          message: "payment_plan_choice_invalid",
+          quantity: totalRequestedQuantity(lines),
+          surface,
+          phoneE164: buyerPhoneE164,
+          email: buyerEmail,
+        });
+        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+      }
       }
       // Issue #2101 — the database re-decides under the event -> brand lock. If
       // the policy or membership changed between the Edge decision above and
@@ -1900,7 +1949,22 @@ export const createTicketCheckoutCreateHandler = (
       console.error(
         "[ticket-checkout-create] application fee persistence failed",
       );
-      return refuse("application_fee_persistence_failed", 503);
+      // issue #2579 — NOT routed through `refuse()`, deliberately.
+      // A CI gate pins this exact call shape as a literal string:
+      // rewriting it makes the gate (or its self-test mutation) stop
+      // matching, and a guard that silently stops detecting is worse
+      // than an unlogged refusal. Record explicitly instead — same
+      // fire-and-forget contract, byte-identical response.
+      void recordCheckoutRefusal(supabase, {
+        eventId,
+        ticketTypeId: firstTicketTypeId(lines),
+        message: "application_fee_persistence_failed",
+        quantity: totalRequestedQuantity(lines),
+        surface,
+        phoneE164: buyerPhoneE164,
+        email: buyerEmail,
+      });
+      return jsonResponse({ error: "application_fee_persistence_failed" }, 503);
     }
 
     // ORCH-0790: web buyer flow uses Stripe Checkout Sessions (hosted page +
