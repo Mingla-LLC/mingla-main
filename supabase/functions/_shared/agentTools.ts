@@ -1582,5 +1582,8 @@ export function isReadOnlyAgentToolCall(
       args.action === "get_state") ||
     // #1975 — manage_stay_inventory 'get' is a pure read that may run inline;
     // every other action is a confirmed mutation.
-    (toolName === "manage_stay_inventory" && args.action === "get");
+    (toolName === "manage_stay_inventory" && args.action === "get") ||
+    // #1982 — Brand People list/get are pure reads; add is confirmed.
+    (toolName === "manage_brand_people" &&
+      (args.action === "list" || args.action === "get"));
 }

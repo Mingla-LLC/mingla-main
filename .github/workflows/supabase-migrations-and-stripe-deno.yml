@@ -915,6 +915,8 @@ jobs:
             supabase/functions/_shared/__tests__/issue_1976_ari_payments_partner.implementor.test.ts
             # ISSUE-1981 — trip installment charge-now + reminder.
             supabase/functions/_shared/__tests__/issue_1981_ari_installments.implementor.test.ts
+            # ISSUE-1982 — team list, scanner revoke, Brand People manage.
+            supabase/functions/_shared/__tests__/issue_1982_ari_team_people.implementor.test.ts
             # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
             supabase/functions/manage-stay-inventory/index.test.ts
             # ISSUE-1388 — grouped Stay cart, Request actions, and error hygiene.

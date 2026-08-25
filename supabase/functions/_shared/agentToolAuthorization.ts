@@ -158,6 +158,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),
   revoke_brand_member: role("brand_admin", "brand"),
+  // #1982 — team list + scanner revoke + Brand People book.
+  list_brand_team: role("brand_admin", "brand"),
+  revoke_scanner_invitation: role("event_manager", "brand"),
+  manage_brand_people: role("marketing_manager", "brand"),
   list_guest_roster: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),
@@ -392,6 +396,14 @@ async function resolveBrand(
   if (isUuid(args.member_id)) {
     const member = await rowBrand(client, "brand_team_members", args.member_id);
     if (member.brand_id !== brandId) unavailable();
+  }
+  if (isUuid(args.invitation_id)) {
+    const invitation = await rowBrand(
+      client,
+      "scanner_invitations",
+      args.invitation_id,
+    );
+    if (invitation.brand_id !== brandId) unavailable();
   }
   for (const resourceId of [args.listing_id, args.venue_id]) {
     if (!isUuid(resourceId)) continue;

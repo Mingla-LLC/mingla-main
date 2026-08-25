@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 92,
+    "registered_tool_count": 95,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 91,
+      "registered_unverified": 94,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 16,
+      "unsupported": 13,
       "in_flight": 5
     }
   },
@@ -4411,26 +4411,31 @@
           {
             "path": "mingla-business/src/services/peopleService.ts",
             "symbol": "listBrandPeople"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageBrandPeople"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_brand_people",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "peopleService.ts canonical People book"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "Export tool does not cover book/detail/add"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.people.import_contacts",
@@ -4657,26 +4662,31 @@
           {
             "path": "mingla-business/src/hooks/useBrandInvitations.ts",
             "symbol": "useBrandInvitations"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listBrandTeam"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_brand_team",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "team management surface"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors listBrandTeamMembers + listBrandInvitations"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "Invite/revoke tools do not cover listing and role changes"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.revoke_scanner",
@@ -4702,26 +4712,31 @@
           {
             "path": "mingla-business/src/services/scannerInvitationsService.ts",
             "symbol": "revokeScannerInvitation"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const revokeScannerInvitation"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "revoke_scanner_invitation",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "scannerInvitationsService.ts"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1982 agentDomainTools.ts:revokeScannerInvitation mirrors scannerInvitationsService.revokeScannerInvitation"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.account.edit_profile_avatar",

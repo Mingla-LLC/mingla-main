@@ -3915,6 +3915,139 @@ const revokeBrandMember = writeTool(
   },
 );
 
+// #1982 — Team screen list (listBrandTeamMembers + listBrandInvitations).
+// Role changes are invite-time only on Host; invite_brand_member already covers that.
+const listBrandTeam = writeTool(
+  "list_brand_team",
+  "List active brand team members and pending brand invitations (roles included). Admin-gated by RLS.",
+  { brand_id: UUID },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    await requireBrand(args, client, userId);
+    const [members, invitations] = await Promise.all([
+      client
+        .from("brand_team_members")
+        .select("id, user_id, role, invited_at, accepted_at")
+        .eq("brand_id", args.brand_id)
+        .is("removed_at", null),
+      client
+        .from("brand_invitations")
+        .select(
+          "id, email, invitee_name, role, status, expires_at, accepted_at, revoked_at",
+        )
+        .eq("brand_id", args.brand_id)
+        .order("expires_at", { ascending: false }),
+    ]);
+    if (members.error) throw new ToolError("RPC_FAILED", members.error.message);
+    if (invitations.error) {
+      throw new ToolError("RPC_FAILED", invitations.error.message);
+    }
+    return {
+      brand_id: args.brand_id,
+      members: members.data ?? [],
+      invitations: invitations.data ?? [],
+    };
+  },
+);
+
+// #1982 — same Host verb as scannerInvitationsService.revokeScannerInvitation.
+const revokeScannerInvitation = writeTool(
+  "revoke_scanner_invitation",
+  "Revoke a pending scanner invitation (scanner_invitations.status=revoked). Event-manager gated by RLS.",
+  { brand_id: UUID, invitation_id: UUID },
+  ["brand_id", "invitation_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.invitation_id)) {
+      throw new ToolError("INVALID_ARGS", "invitation_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("scanner_invitations")
+      .update({ status: "revoked", revoked_at: new Date().toISOString() })
+      .eq("id", args.invitation_id)
+      .eq("brand_id", args.brand_id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (data === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "That scanner invitation was not found, is not pending, or you lack permission.",
+      );
+    }
+    return { invitation_id: args.invitation_id, revoked: true };
+  },
+);
+
+// #1982 — Brand People book list/detail/add via the same RPCs Host uses.
+const manageBrandPeople = writeTool(
+  "manage_brand_people",
+  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated.",
+  {
+    brand_id: UUID,
+    action: { type: "string", enum: ["list", "get", "add"] },
+    person_id: UUID,
+    search: { type: "string", maxLength: 200 },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+    display_name: { type: "string", minLength: 1, maxLength: 200 },
+    email: { type: "string", maxLength: 320 },
+    phone_e164: { type: "string", maxLength: 32 },
+    phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
+    client_request_id: UUID,
+  },
+  ["brand_id", "action"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    const action = String(args.action);
+    if (action === "list") {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      const limit = typeof args.limit === "number" && args.limit >= 1
+        ? Math.min(100, Math.floor(args.limit))
+        : 25;
+      return await callRpc(client, "biz_get_brand_people_book", {
+        p_brand_id: args.brand_id,
+        p_search: typeof args.search === "string" ? args.search : null,
+        p_cursor: null,
+        p_limit: limit,
+      });
+    }
+    if (action === "get") {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      if (!isUuid(args.person_id)) {
+        throw new ToolError("INVALID_ARGS", "person_id must be a uuid");
+      }
+      return await callRpc(client, "biz_get_brand_person", {
+        p_brand_id: args.brand_id,
+        p_person_id: args.person_id,
+      });
+    }
+    if (action === "add") {
+      const displayName = typeof args.display_name === "string"
+        ? args.display_name.trim()
+        : "";
+      if (displayName.length < 1) {
+        throw new ToolError("INVALID_ARGS", "display_name is required to add a person");
+      }
+      const clientRequestId = isUuid(args.client_request_id)
+        ? args.client_request_id
+        : newIdempotencyKey();
+      return await callRpc(client, "biz_add_brand_person", {
+        p_brand_id: args.brand_id,
+        p_display_name: displayName,
+        p_email: typeof args.email === "string" ? args.email : null,
+        p_phone_e164: typeof args.phone_e164 === "string" ? args.phone_e164 : null,
+        p_phone_country_iso: typeof args.phone_country_iso === "string"
+          ? args.phone_country_iso
+          : null,
+        p_client_request_id: clientRequestId,
+      });
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list, get, or add");
+  },
+);
+
 // #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
 // about status + next action. Drops contactLabel (partial email/phone),
 // avatarUrl, delivery attempts, and order ids so raw PII never enters the
@@ -4362,6 +4495,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   inviteBrandMember,
   inviteScanner,
   revokeBrandMember,
+  listBrandTeam,
+  revokeScannerInvitation,
+  manageBrandPeople,
   listGuestRoster,
   exportBrandPeople,
   updateAriPrefs,
@@ -4381,6 +4517,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_partner_splits",
   "get_brand_analytics",
   "list_guest_roster",
+  "list_brand_team",
   "get_operator_snapshot",
   "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline; they never mutate.

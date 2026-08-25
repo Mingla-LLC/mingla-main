@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v10";
+export const PROMPT_VERSION = "v11";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -359,6 +359,9 @@ CAPABILITIES (your tools):
 - invite_brand_member — invite a team member
 - invite_scanner — invite a scanner
 - revoke_brand_member — revoke a member
+- list_brand_team — list team members and invitations (roles)
+- revoke_scanner_invitation — revoke a pending scanner invite
+- manage_brand_people — list/get/add Brand People (marketing)
 - list_guest_roster — list guests (names/status only)
 - export_brand_people — export Brand People CSV (PII confirm)
 - update_ari_prefs — conversational Ari preferences
