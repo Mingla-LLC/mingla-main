@@ -74,6 +74,48 @@ const BATCH_LIMIT = 10;
 const RESEND_MAX_RETRIES = 3;
 const RESEND_BACKOFF_MS = [1000, 3000, 9000];
 
+/**
+ * #2509 — how long one dispatch pass may run before handing the campaign back.
+ *
+ * Both 2026-08-24 runs were killed by the runtime at ~196s. 100s leaves ample
+ * headroom for the in-flight request plus the finalize call, and the cron
+ * re-claims within 60s, so a large blast completes across several passes
+ * instead of dying inside one.
+ */
+const SEND_BUDGET_MS = 100_000;
+
+/** Recipients between liveness heartbeats. ~15s of work at the observed rate. */
+const HEARTBEAT_EVERY = 25;
+
+/**
+ * #2509 — statuses that mean "this recipient is DONE for this campaign".
+ * `queued` and `deferred` are absent on purpose: they are what a resume pass
+ * exists to pick up.
+ */
+const RESUME_TERMINAL_STATUSES = new Set<string>([
+  "sent",
+  "delivered",
+  "opened",
+  "clicked",
+  "bounced",
+  "failed",
+  "unsubscribed",
+  "preview_skipped",
+]);
+
+interface EmailResumeRow {
+  id: string;
+  recipient_email: string | null;
+  status: string;
+  attempt_count: number | null;
+}
+
+/** #2509 — a row from a previous pass that this pass should REUSE, not re-insert. */
+interface ReusableRow {
+  id: string;
+  attemptCount: number;
+}
+
 // META-ORCH-1161 Sub-B — SMS throughput throttling. Mirror the email
 // BATCH_LIMIT discipline: cap concurrent SMS sends and pace them so we never
 // burst-blast past the toll-free/10DLC throughput tier (SPEC §6.8, R-2).
@@ -579,8 +621,16 @@ export async function handleMarketingSendRequest(
     // A null schedule is the direct-send contract: atomically confirmed SQL
     // has made the campaign claimable, so enter the exact same claim/dispatch/
     // finalize path as the legacy direct invocation. Future schedules remain
-    // untouched for cron. Atomic claim + marketing_messages uniqueness make a
-    // repeated request provider-idempotent.
+    // untouched for cron.
+    //
+    // #2509 — this comment used to assert that "marketing_messages uniqueness"
+    // made a repeated request provider-idempotent. THAT WAS NOT TRUE: the only
+    // unique key on the table was the PRIMARY KEY over a client-generated
+    // `id`, so a re-run inserted a second row per recipient and re-sent to
+    // everyone. It is true NOW, and only because
+    // `20270525002509_issue_2509_blast_durability.sql` added
+    // `issue_2509_one_email_row_per_campaign` / `..._one_sms_row_per_campaign`.
+    // If either index is ever dropped, this sentence becomes a lie again.
     const directDispatch = body.scheduledFor == null
       ? await dispatchConfirmedBookSend(
         supabase,
@@ -722,6 +772,8 @@ interface DispatchOutcome {
   deferred: number;
   failed: number;
   preview_skipped: number;
+  /** #2509 — true when the pass stopped on its wall-clock budget, not on completion. */
+  budget_paused?: boolean;
 }
 
 type CampaignDispatcher = (
@@ -1082,8 +1134,69 @@ async function sendEmail(
   }
   let previewSkipped = 0;
   let sent = 0;
+  let deferredCount = 0;
+
+  // #2509 — RESUME. A campaign that ran out of wall clock, or whose isolate
+  // was killed, comes back through the claim predicate. Without this it would
+  // rebuild the whole audience and re-send to everyone already reached:
+  // recovering the 8 stranded recipients of `f770996f` by replay would have
+  // emailed the 189 who already had it a SECOND time. The unique index added
+  // in 20270525002509 makes that structurally impossible now, but relying on a
+  // constraint violation to stop a duplicate send is not a plan — we skip them.
+  const alreadyHandled = new Set<string>();
+  const reusable = new Map<string, ReusableRow>();
+  {
+    const { data: priorRows, error: priorErr } = await supabase
+      .from("marketing_messages")
+      .select("id,recipient_email,status,attempt_count")
+      .eq("campaign_id", campaign.id)
+      .eq("channel", "email");
+    if (priorErr) throw new Error(`resume_scan:${priorErr.message}`);
+    for (const row of (priorRows ?? []) as EmailResumeRow[]) {
+      if (row.recipient_email === null) continue;
+      const key = row.recipient_email.toLowerCase();
+      if (RESUME_TERMINAL_STATUSES.has(row.status)) {
+        alreadyHandled.add(key);
+      } else {
+        // `deferred` / `queued` — the recipients this pass exists to pick up.
+        // Their row must be REUSED: the unique index added in
+        // 20270525002509 means a second INSERT for the same
+        // (campaign, email) now fails, and inserting a duplicate was the
+        // double-send bug in the first place.
+        reusable.set(key, { id: row.id, attemptCount: row.attempt_count ?? 0 });
+      }
+    }
+  }
+
+  // #2509 — WALL-CLOCK BUDGET. Both 2026-08-24 runs died at ~196s, mid-loop,
+  // with no finalize and no record of where they got to. Stopping ourselves
+  // BEFORE the runtime does is what turns "killed and wedged" into "paused and
+  // resumable": we hand the campaign back as `scheduled`, and the every-minute
+  // cron picks it up within 60s.
+  const runStartedAt = Date.now();
+  let heartbeatCountdown = HEARTBEAT_EVERY;
+  let budgetExhausted = false;
 
   for (const contact of resolved.rows) {
+    if (
+      contact.raw_email !== null &&
+      alreadyHandled.has(contact.raw_email.toLowerCase())
+    ) continue;
+
+    if (Date.now() - runStartedAt > SEND_BUDGET_MS) {
+      budgetExhausted = true;
+      break;
+    }
+    if (--heartbeatCountdown <= 0) {
+      heartbeatCountdown = HEARTBEAT_EVERY;
+      // Proves this isolate is alive so the 10-minute reclaim predicate cannot
+      // steal a campaign from a healthy long run. Best-effort: a missed
+      // heartbeat costs at worst one reclaimed pass, which resume makes safe.
+      await supabase.rpc("mkt_heartbeat_campaign", {
+        p_campaign_id: campaign.id,
+      }).then(() => undefined, () => undefined);
+    }
+
     if (!contact.email_marketing_ok || contact.raw_email === null) {
       // Skip contacts whose email channel is suppressed. Do NOT write
       // a marketing_messages row — the campaign report should reflect
@@ -1092,7 +1205,14 @@ async function sendEmail(
     }
     const inviteContext = offeringContext(contact, audience.query_definition);
 
-    const messageId = crypto.randomUUID();
+    // #2509 — reuse the row from a previous pass when there is one, so a
+    // resumed recipient keeps their identity and attempt history instead of
+    // colliding with the unique index added in 20270525002509.
+    const priorRow = contact.raw_email === null
+      ? undefined
+      : reusable.get(contact.raw_email.toLowerCase());
+    const priorAttempts = priorRow?.attemptCount ?? 0;
+    const messageId = priorRow?.id ?? crypto.randomUUID();
     const unsubscribeToken = await signUnsubscribeToken({
       campaign_id: campaign.id,
       recipient_email: contact.raw_email,
@@ -1120,21 +1240,38 @@ async function sendEmail(
       )
     ) throw new Error("offering_invite_volatile_link_invalid");
 
-    // INSERT marketing_messages row (status='queued' until terminal).
-    const { error: insMsgErr } = await supabase
-      .from("marketing_messages")
-      .insert({
-        id: messageId,
-        campaign_id: campaign.id,
-        recipient_email: contact.raw_email,
-        channel: "email",
-        status: "queued",
-      });
-    if (insMsgErr) {
-      throw new Error(`message_insert:${insMsgErr.message}`);
+    // Row for this recipient — INSERT on a first pass, reset to `queued` on a
+    // resume. Never a second INSERT for the same (campaign, email): that
+    // duplicate WAS the double-send bug, and the unique index now refuses it.
+    if (priorRow === undefined) {
+      const { error: insMsgErr } = await supabase
+        .from("marketing_messages")
+        .insert({
+          id: messageId,
+          campaign_id: campaign.id,
+          recipient_email: contact.raw_email,
+          channel: "email",
+          status: "queued",
+        });
+      if (insMsgErr) {
+        throw new Error(`message_insert:${insMsgErr.message}`);
+      }
+    } else {
+      const { error: reErr } = await supabase
+        .from("marketing_messages")
+        .update({ status: "queued", next_attempt_at: null })
+        .eq("id", messageId);
+      if (reErr) throw new Error(`message_resume:${reErr.message}`);
     }
 
-    // INSERT marketing_clicks rows (one per rewritten href).
+    // INSERT marketing_clicks rows (one per rewritten href). On a resume the
+    // previous pass's unclicked rows are dropped first: their tracking ids
+    // belong to an email that was never delivered, and leaving them would
+    // inflate the link count on the campaign report.
+    if (priorRow !== undefined) {
+      await supabase.from("marketing_clicks").delete()
+        .eq("message_id", messageId).is("clicked_at", null);
+    }
     if (rendered.links.length > 0) {
       const { error: insClicksErr } = await supabase
         .from("marketing_clicks")
@@ -1225,6 +1362,24 @@ async function sendEmail(
         safe_reason_code: "provider_outcome_unknown",
         is_retryable: false,
       }).eq("id", inviteContext.attempt_id);
+    } else if (sendOutcome.retryable === true) {
+      // #2509 — the address is fine; the provider was busy or out of quota.
+      // Writing this `failed` is precisely what burned 21 invitees on
+      // 2026-08-24 with no path back. `next_attempt_at` and `attempt_count`
+      // have existed on this table since ORCH-1270 and were simply never
+      // written by the email path.
+      const waitSeconds = sendOutcome.retryAfterSeconds ?? 300;
+      await supabase
+        .from("marketing_messages")
+        .update({
+          status: "deferred",
+          failure_reason: sendOutcome.error,
+          next_attempt_at: new Date(Date.now() + waitSeconds * 1000)
+            .toISOString(),
+          attempt_count: priorAttempts + 1,
+        })
+        .eq("id", messageId);
+      deferredCount += 1;
     } else {
       await supabase
         .from("marketing_messages")
@@ -1234,6 +1389,21 @@ async function sendEmail(
         })
         .eq("id", messageId);
     }
+  }
+
+  // #2509 — a paused run must come back. `mkt_finalize_campaign` already sends
+  // a campaign with deferred recipients to `scheduled` with the earliest
+  // `next_attempt_at`; a budget stop needs the same treatment WITHOUT waiting
+  // on a provider clock, so it goes back on the very next cron minute.
+  if (budgetExhausted) {
+    await supabase
+      .from("marketing_campaigns")
+      .update({
+        status: "scheduled",
+        scheduled_for: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", campaign.id);
   }
 
   try {
@@ -1256,9 +1426,13 @@ async function sendEmail(
   // from marketing_messages, so these counts drive only the JSON response body.
   return {
     delivered: sent,
-    deferred: 0,
+    // #2509 — email DOES defer now. The old comment here said "email NEVER
+    // defers" and hard-coded 0; that was true only because a 429'd recipient
+    // was written off instead.
+    deferred: deferredCount,
     failed: 0,
     preview_skipped: previewSkipped,
+    budget_paused: budgetExhausted,
   };
 }
 
@@ -2373,7 +2547,40 @@ function getPublicAppOrigin(): string {
 
 export type ResendOutcome =
   | { ok: true; providerId: string }
-  | { ok: false; error: string };
+  | {
+    ok: false;
+    error: string;
+    /**
+     * #2509 — is this recipient worth coming back for?
+     *
+     * A rate limit or a spent quota is TRANSIENT: the address is fine and the
+     * send will work later. Writing those `failed` is what burned 21 real
+     * invitees on 2026-08-24 with no path back. A 4xx about the address
+     * itself is not retryable and stays terminal.
+     */
+    retryable?: boolean;
+    /** Seconds to wait, from the provider's own `retry-after` when it sent one. */
+    retryAfterSeconds?: number | null;
+  };
+
+/**
+ * #2509 — clamp a `retry-after` header to something a scheduler can hold.
+ * Mirrors `_shared/adCreativePrepare.ts`, which has read this header correctly
+ * since ORCH-0891; the marketing path simply never did.
+ */
+export function boundedRetryAfterSeconds(raw: string | null): number | null {
+  if (raw === null) return null;
+  const trimmed = raw.trim();
+  // `Number("")` is 0, not NaN — so without this an EMPTY header would read as
+  // "wait 1 second" instead of "no header was sent". Caught by the adversarial
+  // suite, not by inspection.
+  if (trimmed.length === 0) return null;
+  const n = Number(trimmed);
+  if (!Number.isFinite(n) || n < 0) return null;
+  // Floor 1s so a `0` cannot busy-loop; ceiling 6h so a hostile or confused
+  // header cannot park a campaign past the event it is advertising.
+  return Math.min(Math.max(Math.ceil(n), 1), 21_600);
+}
 
 interface TerminalUpdateError {
   code?: string;
@@ -2468,6 +2675,7 @@ export async function postToResend(input: {
   beforeProviderIo?: () => Promise<void>;
 }): Promise<ResendOutcome> {
   let lastError = "";
+  let lastRetryAfterSeconds: number | null = null;
   await input.beforeProviderIo?.();
   for (let attempt = 0; attempt < RESEND_MAX_RETRIES; attempt += 1) {
     // no-attachment: marketing campaign emails (Cycle B5 Phase B) are pure
@@ -2512,8 +2720,46 @@ export async function postToResend(input: {
       return { ok: false, error: "resend_network_unknown" };
     }
     if (response.status === 429) {
-      lastError = "resend_rate_limited";
-      const delay = RESEND_BACKOFF_MS[attempt] ?? 9000;
+      // #2509 — CLASSIFY the 429 instead of guessing. Every 429 used to be
+      // labelled `resend_rate_limited`, a name that actively points the reader
+      // at the wrong cause: on 2026-08-24 the real reason was the FREE plan's
+      // 100/day cap (dashboard read 200/100), while the send rate was 1.9/s
+      // against a documented 10 req/s allowance. The label cost a dashboard
+      // trip to disprove. Resend distinguishes these itself, and other Mingla
+      // integrations already read `retry-after` (_shared/adCreativePrepare.ts).
+      // https://resend.com/docs/api-reference/rate-limit
+      const retryAfter = boundedRetryAfterSeconds(
+        response.headers.get("retry-after"),
+      );
+      let kind = "rate_limit";
+      try {
+        const body = await response.clone().json() as { name?: string } | null;
+        const name = typeof body?.name === "string" ? body.name : "";
+        if (name.includes("daily_quota")) kind = "daily_quota_exceeded";
+        else if (name.includes("monthly_quota")) kind = "monthly_quota_exceeded";
+        else if (name.length > 0) kind = name;
+      } catch { /* body unreadable — the header data below still stands */ }
+      const daily = response.headers.get("x-resend-daily-quota");
+      const monthly = response.headers.get("x-resend-monthly-quota");
+      lastError = `resend_429:${kind}` +
+        (daily === null ? "" : `;daily=${daily}`) +
+        (monthly === null ? "" : `;monthly=${monthly}`);
+      lastRetryAfterSeconds = retryAfter;
+      // A QUOTA does not clear in nine seconds. Burning the remaining in-process
+      // attempts against it only wastes the run's wall-clock budget, which is
+      // exactly how campaign 8a54fc7c spent 180s to send zero emails. Hand it
+      // straight back so the caller can DEFER the recipient instead.
+      if (kind !== "rate_limit") {
+        return {
+          ok: false,
+          error: lastError,
+          retryable: true,
+          retryAfterSeconds: retryAfter ?? 3600,
+        };
+      }
+      const delay = retryAfter !== null
+        ? Math.min(retryAfter * 1000, 10_000)
+        : (RESEND_BACKOFF_MS[attempt] ?? 9000);
       await new Promise((resolve) => setTimeout(resolve, delay));
       continue;
     }
@@ -2536,7 +2782,14 @@ export async function postToResend(input: {
         : `resend_${response.status}`,
     };
   }
-  return { ok: false, error: lastError || "resend_rate_limited_max_retries" };
+  // #2509 — in-process retries exhausted. The address is not at fault, so the
+  // recipient is DEFERRED for another pass rather than burned.
+  return {
+    ok: false,
+    error: lastError || "resend_429:rate_limit;retries_exhausted",
+    retryable: true,
+    retryAfterSeconds: lastRetryAfterSeconds ?? 300,
+  };
 }
 
 export function isResendOk(value: unknown): value is { id: string } {

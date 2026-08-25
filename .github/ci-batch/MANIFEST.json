@@ -13193,7 +13193,7 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e95c87d12b2b60c1a2084b935c88a40d1424e1e5b20060d82eedb9aee48d5888",
+        "sourceSha256": "bfdd1beb6ab183bc4038eb6dbb065e8fa09eb044dc49e271df50bc779dd7946a",
         "triggers": [
           "pull_request"
         ],
@@ -13202,6 +13202,8 @@
           ".github/workflows/issue-1995-contact-book-blast.yml",
           "mingla-business/**",
           "supabase/functions/_shared/email/shell.ts",
+          "supabase/functions/_shared/issue_2509_blast_durability.test.ts",
+          "supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts",
           "supabase/functions/_shared/issue_2520_email_paragraphs.test.ts",
           "supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts",
           "supabase/functions/_shared/marketingAudience.ts",
@@ -13210,7 +13212,8 @@
           "supabase/functions/_shared/offeringInviteQuote.ts",
           "supabase/functions/_shared/smsPriceBook.ts",
           "supabase/functions/marketing-send/**",
-          "supabase/migrations/20270401001995_issue_1995_contact_book_blast.sql"
+          "supabase/migrations/20270401001995_issue_1995_contact_book_blast.sql",
+          "supabase/migrations/20270525002509_issue_2509_blast_durability.sql"
         ],
         "jobKeys": [
           "issue-1995-contact-book-blast"

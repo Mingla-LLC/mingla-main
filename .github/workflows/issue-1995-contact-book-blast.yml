@@ -16,6 +16,10 @@ on:
       - "supabase/functions/_shared/email/shell.ts"
       - "supabase/functions/_shared/issue_2520_email_paragraphs.test.ts"
       - "supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts"
+      # #2509 — blast durability: resume, wall-clock budget, reclaim, honest 429.
+      - "supabase/migrations/20270525002509_issue_2509_blast_durability.sql"
+      - "supabase/functions/_shared/issue_2509_blast_durability.test.ts"
+      - "supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts"
       - "mingla-business/**"
       - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
       - ".github/workflows/issue-1995-contact-book-blast.yml"
@@ -60,6 +64,16 @@ jobs:
           deno test --allow-env --allow-read \
             supabase/functions/_shared/issue_2520_email_paragraphs.test.ts \
             supabase/functions/_shared/issue_2520_email_paragraphs.tester_adversarial.test.ts
+      - name: Format-check the new #2509 Deno test files (NARROW gate — #1184 precedent)
+        run: |
+          deno fmt --check \
+            supabase/functions/_shared/issue_2509_blast_durability.test.ts \
+            supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts
+      - name: "#2509 blast durability (implementor happy-path + tester adversarial)"
+        run: |
+          deno test --allow-env --allow-read \
+            supabase/functions/_shared/issue_2509_blast_durability.test.ts \
+            supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts
       - name: "#2520 neighbouring email-pipeline suites must stay green"
         run: |
           deno test --allow-env --allow-read --no-check \
@@ -75,6 +89,19 @@ jobs:
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$migration" >/dev/null
           done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f supabase/migrations/__tests__/issue_1995_contact_book_blast.happy.pg17.test.sql
+      # #2509 — the chain above already APPLIES the durability migration. What
+      # it does not prove is that re-applying is safe (every migration is
+      # replayed on a fresh baseline) or that the indexes actually REFUSE the
+      # duplicate that caused the double-send. Both are asserted here.
+      - name: "#2509 migration is idempotent and the uniqueness actually bites"
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/20270525002509_issue_2509_blast_durability.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2509_blast_durability.pg17.test.sql
       - run: npm ci
         working-directory: mingla-business
       - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx --runInBand
