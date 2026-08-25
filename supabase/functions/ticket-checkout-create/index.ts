@@ -184,6 +184,25 @@ const recordCheckoutRefusal = async (
   }
 };
 
+/**
+ * issue #2579 — the ONE place a refusal leaves this function.
+ *
+ * The first cut of this recorded only refusals raised by the session RPC. Fired
+ * at the deployed endpoint with a past event, it logged NOTHING: that refusal
+ * exits at `event_no_active_dates`, one of TWENTY-FIVE early returns that never
+ * reach the RPC. A log that covers one class of refusal while reading as
+ * complete is the defect this issue exists to fix, wearing a new hat.
+ *
+ * So refusals go out through here. Same response, byte for byte — `jsonResponse`
+ * is untouched and still shared by 94 other functions — with the recording
+ * attached on the way past. A future author adding a refusal writes `refuse(…)`
+ * and is logged automatically; the alternative was hand-maintaining 25 call
+ * sites, which is the treadmill this codebase keeps tripping over.
+ *
+ * Fire-and-forget, exactly as before: never awaited, errors swallowed. A
+ * telemetry fault must never become a buyer's failed checkout.
+ */
+
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
 // ORCH-1006 Slice 2 (SPEC §B.6): the BuyerAddress type + parseBuyerAddress +
@@ -475,6 +494,13 @@ export const createTicketCheckoutCreateHandler = (
       return jsonResponse({ error: "invalid_json" }, 400);
     }
 
+    // issue #2579 — hoisted from below the validation block. Every refusal from
+    // here down is a BUYER being turned away, and each one is now recorded; the
+    // recorder needs a client, so the client has to exist before the first of
+    // them rather than eighty lines later. Construction only — no I/O, no
+    // behaviour change to anything downstream, which still uses this same
+    // binding.
+    const supabase = deps.serviceClient();
     const eventId = typeof body.eventId === "string" ? body.eventId : "";
     // ORCH-0839-B: three-way discriminator. Unknown values fall through to
     // "native" to preserve backward compat with older mingla-business builds
@@ -492,9 +518,51 @@ export const createTicketCheckoutCreateHandler = (
     const buyerPhoneE164 = normalizePhoneE164(buyer.phone);
     const marketingOptIn = buyer.marketingOptIn === true;
     // ORCH-1006 Slice 2 (SPEC §B.6): no buyer-address parse. Tax is venue-sourced.
+    // issue #2579 — what is known about this attempt when it is refused.
+    // Read lazily by `refuse`, so a refusal late in the function carries more
+    // than one raised early. Deliberately a getter bundle rather than a
+    // snapshot: taking a copy here would record `surface` as "unknown" on every
+    // refusal after it, which is the shape of a log that looks populated and
+    // answers nothing.
     const lines = Array.isArray(body.lines)
       ? body.lines.filter(isCheckoutLine)
       : [];
+
+    // issue #2579 — THE ONE PLACE A REFUSAL LEAVES THIS FUNCTION.
+    //
+    // The first cut recorded only refusals raised by the session RPC. Fired at
+    // the deployed endpoint with a past event, it logged NOTHING: that refusal
+    // exits at `event_no_active_dates`, one of twenty-five early returns that
+    // never reach the RPC. A log covering one class of refusal while reading as
+    // complete is the defect this issue exists to fix, wearing a new hat.
+    //
+    // Same response as before, byte for byte — `jsonResponse` is untouched and
+    // still shared by 94 other functions — with the recording attached on the
+    // way past. A future author writes `refuse(...)` and is logged for free;
+    // hand-maintaining 25 call sites is the treadmill this repo keeps tripping
+    // over.
+    //
+    // A closure, not a module function, so it reads the LIVE bindings: a
+    // refusal late in the function carries more context than one raised early,
+    // without threading a context object through eighty lines.
+    //
+    // Fire-and-forget, unchanged: never awaited, errors swallowed. Telemetry
+    // must never turn a refusal into a failed checkout.
+    const refuse = (
+      body: { error: string; [k: string]: unknown },
+      status: number,
+    ): Response => {
+      void recordCheckoutRefusal(supabase, {
+        eventId,
+        ticketTypeId: firstTicketTypeId(lines),
+        message: body.error,
+        quantity: totalRequestedQuantity(lines),
+        surface,
+        phoneE164: buyerPhoneE164,
+        email: buyerEmail,
+      });
+      return jsonResponse(body, status);
+    };
     const mode: CheckoutMode = body.mode === "preview" ? "preview" : "create";
     // ORCH-1072: OPTIONAL chosen experience occurrence (event_dates.id). When a
     // recurring/multi-date experience is booked, the consumer Book sheet sends the
@@ -531,30 +599,46 @@ export const createTicketCheckoutCreateHandler = (
         body.payment_plan_choice !== "full" &&
         body.payment_plan_choice !== "installments"
       ) {
+        {
+        // issue #2579 — NOT routed through `refuse()`, deliberately.
+        // A CI gate pins this exact call shape as a literal string:
+        // rewriting it makes the gate (or its self-test mutation) stop
+        // matching, and a guard that silently stops detecting is worse
+        // than an unlogged refusal. Record explicitly instead — same
+        // fire-and-forget contract, byte-identical response.
+        void recordCheckoutRefusal(supabase, {
+          eventId,
+          ticketTypeId: firstTicketTypeId(lines),
+          message: "payment_plan_choice_invalid",
+          quantity: totalRequestedQuantity(lines),
+          surface,
+          phoneE164: buyerPhoneE164,
+          email: buyerEmail,
+        });
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+      }
       }
       paymentPlanChoice = body.payment_plan_choice;
     }
 
-    if (!eventId) return jsonResponse({ error: "event_id_required" }, 400);
+    if (!eventId) return refuse({ error: "event_id_required" }, 400);
     if (buyerName.length < 2) {
-      return jsonResponse({ error: "buyer_name_required" }, 400);
+      return refuse({ error: "buyer_name_required" }, 400);
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(buyerEmail)) {
-      return jsonResponse({ error: "buyer_email_invalid" }, 400);
+      return refuse({ error: "buyer_email_invalid" }, 400);
     }
     if (buyerPhoneE164 === null) {
-      return jsonResponse({ error: "buyer_phone_required" }, 400);
+      return refuse({ error: "buyer_phone_required" }, 400);
     }
     if (lines.length === 0) {
-      return jsonResponse({ error: "ticket_lines_required" }, 400);
+      return refuse({ error: "ticket_lines_required" }, 400);
     }
     // ORCH-1006 Slice 2 (SPEC §B.6): native create/preview no longer gate on a
     // buyer address. The address-required + address-invalid gates are DELETED —
     // tax is sourced at the venue, so the buyer never supplies an address.
 
     const userId = await deps.userIdFromAuthHeader(req);
-    const supabase = deps.serviceClient();
 
     // ── Issue #2101 [named-buyer checkout] — the FIRST authority. It runs for
     // every surface (web, mobile-web, native) BEFORE the event-date read, the
@@ -581,6 +665,21 @@ export const createTicketCheckoutCreateHandler = (
         "[ticket-checkout-create] issue-2101 access decision unavailable",
         accessError,
       );
+      // issue #2579 — NOT routed through `refuse()`, deliberately.
+      // A CI gate pins this exact call shape as a literal string:
+      // rewriting it makes the gate (or its self-test mutation) stop
+      // matching, and a guard that silently stops detecting is worse
+      // than an unlogged refusal. Record explicitly instead — same
+      // fire-and-forget contract, byte-identical response.
+      void recordCheckoutRefusal(supabase, {
+        eventId,
+        ticketTypeId: firstTicketTypeId(lines),
+        message: "checkout_restricted",
+        quantity: totalRequestedQuantity(lines),
+        surface,
+        phoneE164: buyerPhoneE164,
+        email: buyerEmail,
+      });
       return jsonResponse({ error: "checkout_restricted" }, 403);
     }
     const accessDenial = ticketCheckoutAccessDenial(accessDecision);
@@ -608,7 +707,7 @@ export const createTicketCheckoutCreateHandler = (
       );
     }
     if ((futureDateCount ?? 0) === 0) {
-      return jsonResponse({ error: "event_no_active_dates" }, 422);
+      return refuse({ error: "event_no_active_dates" }, 422);
     }
 
     // ORCH-1072: validate the chosen experience occurrence when one was supplied.
@@ -637,14 +736,14 @@ export const createTicketCheckoutCreateHandler = (
       }
       if (occRow === null) {
         // Not an occurrence of THIS event (or deleted) → unbookable.
-        return jsonResponse({ error: "occurrence_not_found" }, 422);
+        return refuse({ error: "occurrence_not_found" }, 422);
       }
       if (
         typeof occRow.end_at === "string" &&
         new Date(occRow.end_at).getTime() <= Date.now()
       ) {
         // The chosen occurrence already ended → unbookable.
-        return jsonResponse({ error: "occurrence_not_available" }, 422);
+        return refuse({ error: "occurrence_not_available" }, 422);
       }
     }
 
@@ -683,7 +782,7 @@ export const createTicketCheckoutCreateHandler = (
       const rows = (occRows ?? []) as Array<{ id: string; end_at: string | null }>;
       if (rows.length !== eventDateIds.length) {
         // At least one id is not an occurrence of THIS event (or was deleted).
-        return jsonResponse({ error: "occurrence_not_found" }, 422);
+        return refuse({ error: "occurrence_not_found" }, 422);
       }
       if (
         rows.some((row) =>
@@ -691,7 +790,7 @@ export const createTicketCheckoutCreateHandler = (
           new Date(row.end_at).getTime() <= Date.now()
         )
       ) {
-        return jsonResponse({ error: "occurrence_not_available" }, 422);
+        return refuse({ error: "occurrence_not_available" }, 422);
       }
       orderedEventDateIds.push(...rows.map((row) => row.id));
 
@@ -924,7 +1023,24 @@ export const createTicketCheckoutCreateHandler = (
         email: buyerEmail,
       });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
+        {
+        // issue #2579 — NOT routed through `refuse()`, deliberately.
+        // A CI gate pins this exact call shape as a literal string:
+        // rewriting it makes the gate (or its self-test mutation) stop
+        // matching, and a guard that silently stops detecting is worse
+        // than an unlogged refusal. Record explicitly instead — same
+        // fire-and-forget contract, byte-identical response.
+        void recordCheckoutRefusal(supabase, {
+          eventId,
+          ticketTypeId: firstTicketTypeId(lines),
+          message: "payment_plan_choice_invalid",
+          quantity: totalRequestedQuantity(lines),
+          surface,
+          phoneE164: buyerPhoneE164,
+          email: buyerEmail,
+        });
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+      }
       }
       // Issue #2101 — the database re-decides under the event -> brand lock. If
       // the policy or membership changed between the Edge decision above and
@@ -1024,7 +1140,7 @@ export const createTicketCheckoutCreateHandler = (
             replayAuthError.message,
           );
         }
-        return jsonResponse({ error: "free_reservation_already_exists" }, 409);
+        return refuse({ error: "free_reservation_already_exists" }, 409);
       }
       const replayedTickets = await readIssuedTicketsForOrder(
         supabase,
@@ -1182,7 +1298,7 @@ export const createTicketCheckoutCreateHandler = (
       try {
         qrPepper = qrTokenPepper();
       } catch {
-        return jsonResponse({ error: "qr_token_pepper_missing" }, 500);
+        return refuse({ error: "qr_token_pepper_missing" }, 500);
       }
       const { data: finalized, error: finalizeError } = await supabase.rpc(
         "biz_ticket_checkout_finalize",
@@ -1647,7 +1763,7 @@ export const createTicketCheckoutCreateHandler = (
       ? session.stripeAccountId
       : null;
     if (!stripeAccountId) {
-      return jsonResponse({ error: "stripe_account_not_ready" }, 409);
+      return refuse({ error: "stripe_account_not_ready" }, 409);
     }
 
     // ORCH-1006 [Universal all-in pricing engine] — resolve the brand/event
@@ -1832,6 +1948,21 @@ export const createTicketCheckoutCreateHandler = (
       console.error(
         "[ticket-checkout-create] application fee persistence failed",
       );
+      // issue #2579 — NOT routed through `refuse()`, deliberately.
+      // A CI gate pins this exact call shape as a literal string:
+      // rewriting it makes the gate (or its self-test mutation) stop
+      // matching, and a guard that silently stops detecting is worse
+      // than an unlogged refusal. Record explicitly instead — same
+      // fire-and-forget contract, byte-identical response.
+      void recordCheckoutRefusal(supabase, {
+        eventId,
+        ticketTypeId: firstTicketTypeId(lines),
+        message: "application_fee_persistence_failed",
+        quantity: totalRequestedQuantity(lines),
+        surface,
+        phoneE164: buyerPhoneE164,
+        email: buyerEmail,
+      });
       return jsonResponse({ error: "application_fee_persistence_failed" }, 503);
     }
 
@@ -1866,7 +1997,7 @@ export const createTicketCheckoutCreateHandler = (
           console.error(
             "[ticket-checkout-create] BUSINESS_WEB_ORIGIN (or the legacy MINGLA_PUBLIC_WEB_BASE_URL) not set or invalid",
           );
-          return jsonResponse({ error: "web_base_url_missing" }, 500);
+          return refuse({ error: "web_base_url_missing" }, 500);
         }
         // ORCH-0911: branch buyer-web confirm/payment URLs on event_type.
         const isTrip = tripGateRow?.event_type === "trip";
@@ -1932,7 +2063,7 @@ export const createTicketCheckoutCreateHandler = (
         webClaim.outcome === "provider_unknown" ||
         webClaim.outcome === "in_progress"
       ) {
-        return jsonResponse({ error: "checkout_in_progress" }, 409);
+        return refuse({ error: "checkout_in_progress" }, 409);
       }
       try {
         stripeWeb = stripeTicketCheckout();
@@ -2099,7 +2230,7 @@ export const createTicketCheckoutCreateHandler = (
       }
 
       if (!checkoutSession.url) {
-        return jsonResponse({ error: "checkout_session_url_missing" }, 502);
+        return refuse({ error: "checkout_session_url_missing" }, 502);
       }
 
       if (webClaim.outcome === "fresh_claim") {
@@ -2182,7 +2313,7 @@ export const createTicketCheckoutCreateHandler = (
         nativeClaim.outcome === "provider_unknown" ||
         nativeClaim.outcome === "in_progress"
       ) {
-        return jsonResponse({ error: "checkout_in_progress" }, 409);
+        return refuse({ error: "checkout_in_progress" }, 409);
       }
     }
 
