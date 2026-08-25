@@ -1,5 +1,12 @@
 // @ts-check
 
+// #1594 [consumer-map-url] — THE single owner of this app's Supabase project
+// URL, `require`d rather than re-typed. `src/services/supabase.ts` imports the
+// same module, so the URL the runtime client talks to and the URL emitted into
+// `extra` below are the same string by construction. See that file's header for
+// why this app does not use an env var for it.
+const { SUPABASE_URL } = require("./src/config/supabaseProject");
+
 // ORCH-1313 (§4.C) — env-drive the AppsFlyer dev key + app IDs with a
 // RELEASE-BOUND fail-loud guard. Consumer AppsFlyer works today via hard-coded
 // literals; moving to env must NEVER introduce a silent-dark release. So on a
@@ -129,6 +136,27 @@ module.exports = ({ config }) => ({
       "EXPO_PUBLIC_APPSFLYER_ANDROID_APP_ID",
       "com.mingla.app.v2",
     ),
+    // #1594 [consumer-map-url] — the Supabase project URL, which the SHARED
+    // static-map resolver (`packages/offering-rendering/mapboxFunctionsBase.ts`)
+    // reads out of `extra` to build `<base>/functions/v1/static-map`. That
+    // module's own comment has always claimed "every app already ships this in
+    // Constants.expoConfig.extra"; `mingla-business` did, this app never did, so
+    // the resolver returned null and the map HID ITSELF on all four consumer
+    // surfaces that render one — public venue, trip, experience and RSVP. It
+    // failed safe (Constitution rule 9), which is exactly why nobody saw it for
+    // months. Found on #1550's device pass, filed as #1594.
+    //
+    // NO `process.env` OVERRIDE, DELIBERATELY. Every other value in this block
+    // takes one because it is genuinely environment-specific. This one is not:
+    // it must always equal the project the app's own Supabase client is talking
+    // to. An override could let `extra` and that client disagree about which
+    // project they mean, which is the two-truths bug #1594 exists to close. If
+    // this app ever gains a second project, change SUPABASE_URL's owner — not
+    // this line.
+    //
+    // Not a secret: the anon REST/Functions host is public by design and already
+    // ships in every client bundle on every surface.
+    EXPO_PUBLIC_SUPABASE_URL: SUPABASE_URL,
     // META-ORCH-1187 [Growth Analytics Hub] Phase 1 — PostHog native keys.
     // Read at runtime via Constants.expoConfig.extra (COMMS-0028 — a dynamic
     // process.env read is NOT inlined by babel-preset-expo and is undefined in

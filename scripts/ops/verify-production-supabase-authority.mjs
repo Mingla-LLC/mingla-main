@@ -312,18 +312,88 @@ export function validateRepositoryAuthority(repoRoot = REPO_ROOT) {
       failures,
     );
   }
-  const consumerClient = read("app-mobile/src/services/supabase.ts", repoRoot);
+  // #1594 [consumer-map-url] — the consumer project URL literal MOVED, and this
+  // gate follows it rather than being relaxed around it.
+  //
+  // WHY IT MOVED. The shared static-map resolver
+  // (`packages/offering-rendering/mapboxFunctionsBase.ts`) reads the Supabase URL
+  // out of `Constants.expoConfig.extra`, which `app-mobile/app.config.js` never
+  // emitted — so the map hid itself on four consumer surfaces. `app.config.js`
+  // runs in plain Node at config time and cannot import a `.ts` module, so the
+  // literal now lives in a CommonJS owner both layers read:
+  // `app-mobile/src/config/supabaseProject.js`.
+  //
+  // WHY THIS IS NOT A WEAKENING. The old pair of assertions became VACUOUS the
+  // moment the literal left `services/supabase.ts`: `canonical_url` would match
+  // nothing (which is why this gate went red and caught the move — working as
+  // designed) and `alternate_origin` would pass over a file with no URL in it.
+  // So the anchor moves to the owner and the surrounding wiring is pinned too.
+  // FOUR assertions now stand where there were two, and none of them is vacuous:
+  //   consumer:canonical_url        the owner literal IS canonical
+  //   consumer:owner_alternate_origin  the owner names no other project
+  //   consumer:alternate_origin     the client still names no other project
+  //                                 (catches a rogue literal re-added there)
+  //   consumer:client_reads_owner   the client consumes the owner, and the
+  //                                 supabase client is built from it
+  //   consumer:config_emits_owner   app.config.js emits `extra` FROM the owner,
+  //                                 with no literal and no env override of its
+  //                                 own — a path this gate did not cover at all
+  //                                 before #1594
+  const consumerUrlOwner = read("app-mobile/src/config/supabaseProject.js", repoRoot);
   assertSingleValue(
-    consumerClient,
-    /^export const supabaseUrl\s*=\s*['"]([^'"]+)['"];\s*$/gm,
+    consumerUrlOwner,
+    /^\s*SUPABASE_URL:\s*"([^"]+)",\s*$/gm,
     canonicalRest,
     "consumer:canonical_url",
     failures,
   );
   assertNoAlternateSupabaseOrigins(
+    consumerUrlOwner,
+    authority,
+    "consumer:owner_alternate_origin",
+    failures,
+  );
+  const consumerClient = read("app-mobile/src/services/supabase.ts", repoRoot);
+  assertNoAlternateSupabaseOrigins(
     consumerClient,
     authority,
     "consumer:alternate_origin",
+    failures,
+  );
+  assertSource(
+    matchingValues(
+      consumerClient,
+      // Quote-agnostic on purpose: this file is single-quoted today, and a
+      // future formatter pass must not turn a production-authority gate red for
+      // a cosmetic reason. The identity being pinned is the specifier, not the
+      // punctuation around it.
+      /^import \{ (SUPABASE_URL) \} from ['"]\.\.\/config\/supabaseProject['"];$/gm,
+    ).length === 1 &&
+      matchingValues(
+        consumerClient,
+        /^export const supabaseUrl = (SUPABASE_URL);$/gm,
+      ).length === 1 &&
+      matchingValues(consumerClient, /createClient\((supabaseUrl),\s*supabaseAnonKey/g).length === 1,
+    "consumer:client_reads_owner",
+    failures,
+  );
+  const consumerConfig = read("app-mobile/app.config.js", repoRoot);
+  assertSource(
+    matchingValues(
+      consumerConfig,
+      /^const \{ SUPABASE_URL \} = (require\(['"]\.\/src\/config\/supabaseProject['"]\));$/gm,
+    ).length === 1 &&
+      matchingValues(
+        consumerConfig,
+        /^\s*EXPO_PUBLIC_SUPABASE_URL: (SUPABASE_URL),$/gm,
+      ).length === 1,
+    "consumer:config_emits_owner",
+    failures,
+  );
+  assertNoAlternateSupabaseOrigins(
+    consumerConfig,
+    authority,
+    "consumer:config_alternate_origin",
     failures,
   );
   const businessConfig = read("mingla-business/app.config.js", repoRoot);
