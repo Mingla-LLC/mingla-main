@@ -1,4 +1,86 @@
 
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
+// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
+// persistAttributionClickId (WP-C, P2-1): the DECOUPLED, fail-open threading
+// write — attribution capture is never on the fatal checkout-creation path.
+import {
+  fireAdConversion,
+  persistAttributionClickId,
+} from "../_shared/adConversionFire.ts";
+import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
+import { resolvePublishableKey } from "../_shared/stripeMode.ts";
+import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
+// ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
+// ORCH-0849 R-2 regex (single-symbol braces) keeps matching above.
+import { getInstallmentPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
+import {
+  cancelPaymentIntentIfClientAvailable,
+  checkoutIdempotencyKey,
+  classifyStripeCheckoutSessionCreateFailure,
+  classifyStripePaymentIntentCreateFailure,
+  dispatchTicketConfirmation,
+  jsonResponse,
+  normalizePhoneE164,
+  qrTokenPepper,
+  randomBuyerStatusToken,
+  serviceClient,
+  sha256Hex,
+  ticketCorsHeaders,
+  userIdFromAuthHeader,
+} from "../_shared/ticketCheckout.ts";
+// ORCH-1006 [Universal all-in pricing engine] — shared money engine.
+// Slice 2 wires in the full engine: the gross-up (computeBuyerSubtotal), the
+// canonical breakdown assembler (buildPricingBreakdown), the region→behaviour
+// map (taxBehaviorForRegion), and the service-fee default (MINGLA_SERVICE_FEE_BPS).
+// The engine is the SINGLE owner of the all-in math (Constitution #2); this
+// edge function never hand-rolls tax/fee arithmetic.
+import {
+  buildPricingBreakdown,
+  type ComputeAllInInput,
+  computeBuyerSubtotal,
+  computeConfigVat,
+  inclusiveVatDivisorForRegion,
+  MINGLA_SERVICE_FEE_BPS,
+  type PricingBreakdown,
+  type PricingRegion,
+  type PricingSwitches,
+  type TaxBasis,
+  taxBehaviorForRegion,
+} from "../_shared/allInPricingEngine.ts";
+// META-ORCH-1076 [Paystack Africa] — provider routing + the Paystack
+// transaction client (additive; the Stripe arm below is byte-for-byte
+// unchanged and never imports these). The Paystack arm activates ONLY when
+// resolveProviderRouting(...).provider === "paystack".
+import {
+  paystackChannelsForCountry,
+  resolveProviderRouting,
+} from "../_shared/paymentProvider.ts";
+import { paystackInitializeTransaction } from "../_shared/paystack.ts";
+// issue #2216 — a free reservation lands the guest on the SAME confirmation
+// carousel a paid one does, so it owes the guest the SAME rendered pass.
+import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
+import {
+  checkoutUnavailableResponse,
+  claimTicketProviderAttempt,
+  commitTicketProviderAttempt,
+  markTicketProviderUnknown,
+  type TicketAttemptClaim,
+} from "../_shared/checkoutSaleTruth.ts";
+import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
+// Issue #2101 [named-buyer checkout] — the ONE edge adapter for the sole
+// database decision owner. Enforced BEFORE any session, capacity, provider or
+// free-ticket work, and re-decided inside the database on every value-moving
+// path so a direct Edge/RPC call cannot bypass it.
+import {
+  ticketCheckoutAccessDecision,
+  ticketCheckoutAccessDenial,
+  ticketCheckoutAccessDenialFromDbMessage,
+} from "../_shared/ticketCheckoutAccess.ts";
+// #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
+// unit-testable without importing this serve()-on-load entry).
+import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
+
 /**
  * issue #2579 — fire-and-forget refusal telemetry.
  *
@@ -101,87 +183,6 @@ const recordCheckoutRefusal = async (
     // refusal into a failure.
   }
 };
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
-// ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
-// persistAttributionClickId (WP-C, P2-1): the DECOUPLED, fail-open threading
-// write — attribution capture is never on the fatal checkout-creation path.
-import {
-  fireAdConversion,
-  persistAttributionClickId,
-} from "../_shared/adConversionFire.ts";
-import { STRIPE_API_VERSION, stripeTicketCheckout } from "../_shared/stripe.ts";
-import { resolvePublishableKey } from "../_shared/stripeMode.ts";
-import { getPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
-// ORCH-0869 [Tr3 Installment Payments] — separate-line import so the
-// ORCH-0849 R-2 regex (single-symbol braces) keeps matching above.
-import { getInstallmentPaymentMethodTypes } from "../_shared/stripePaymentMethods.ts";
-import {
-  cancelPaymentIntentIfClientAvailable,
-  checkoutIdempotencyKey,
-  classifyStripeCheckoutSessionCreateFailure,
-  classifyStripePaymentIntentCreateFailure,
-  dispatchTicketConfirmation,
-  jsonResponse,
-  normalizePhoneE164,
-  qrTokenPepper,
-  randomBuyerStatusToken,
-  serviceClient,
-  sha256Hex,
-  ticketCorsHeaders,
-  userIdFromAuthHeader,
-} from "../_shared/ticketCheckout.ts";
-// ORCH-1006 [Universal all-in pricing engine] — shared money engine.
-// Slice 2 wires in the full engine: the gross-up (computeBuyerSubtotal), the
-// canonical breakdown assembler (buildPricingBreakdown), the region→behaviour
-// map (taxBehaviorForRegion), and the service-fee default (MINGLA_SERVICE_FEE_BPS).
-// The engine is the SINGLE owner of the all-in math (Constitution #2); this
-// edge function never hand-rolls tax/fee arithmetic.
-import {
-  buildPricingBreakdown,
-  type ComputeAllInInput,
-  computeBuyerSubtotal,
-  computeConfigVat,
-  inclusiveVatDivisorForRegion,
-  MINGLA_SERVICE_FEE_BPS,
-  type PricingBreakdown,
-  type PricingRegion,
-  type PricingSwitches,
-  type TaxBasis,
-  taxBehaviorForRegion,
-} from "../_shared/allInPricingEngine.ts";
-// META-ORCH-1076 [Paystack Africa] — provider routing + the Paystack
-// transaction client (additive; the Stripe arm below is byte-for-byte
-// unchanged and never imports these). The Paystack arm activates ONLY when
-// resolveProviderRouting(...).provider === "paystack".
-import {
-  paystackChannelsForCountry,
-  resolveProviderRouting,
-} from "../_shared/paymentProvider.ts";
-import { paystackInitializeTransaction } from "../_shared/paystack.ts";
-// issue #2216 — a free reservation lands the guest on the SAME confirmation
-// carousel a paid one does, so it owes the guest the SAME rendered pass.
-import { attachQrImageDataUrls } from "../_shared/ticketQrImage.ts";
-import {
-  checkoutUnavailableResponse,
-  claimTicketProviderAttempt,
-  commitTicketProviderAttempt,
-  markTicketProviderUnknown,
-  type TicketAttemptClaim,
-} from "../_shared/checkoutSaleTruth.ts";
-import { PRODUCTION_BUSINESS_WEB_ORIGIN } from "../_shared/businessWebOrigin.ts";
-// Issue #2101 [named-buyer checkout] — the ONE edge adapter for the sole
-// database decision owner. Enforced BEFORE any session, capacity, provider or
-// free-ticket work, and re-decided inside the database on every value-moving
-// path so a direct Edge/RPC call cannot bypass it.
-import {
-  ticketCheckoutAccessDecision,
-  ticketCheckoutAccessDenial,
-  ticketCheckoutAccessDenialFromDbMessage,
-} from "../_shared/ticketCheckoutAccess.ts";
-// #1178 [ng-split-removal] — pure Paystack split-field gate (co-located so it is
-// unit-testable without importing this serve()-on-load entry).
-import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 
 type CheckoutLine = { ticketTypeId: string; quantity: number };
 type CheckoutMode = "create" | "preview";
