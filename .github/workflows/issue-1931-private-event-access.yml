@@ -131,6 +131,38 @@ jobs:
               # `.github/scripts/strict-grep/issue-2492-replay-skip-closure.mjs`
               # now enforces this list instead of trusting the comment.
               *20270522002462_issue_2462_checkout_determinism.sql) continue ;;
+              # issue #2562 — SKIPPED at the request of, and attributed to, the
+              # owner of #2564, who traced the mechanism and approved the entry.
+              #
+              # This is an OVERLOAD SPLIT, not a stale definition.
+              # `issue_1930_ticket_checkout_create_session_base` was created by
+              # #1930 taking 11 arguments. #2160 added a 12th
+              # (`p_event_date_ids uuid[] DEFAULT NULL`), and both #2462 and #2562
+              # carry that 12-argument shape. This lane skips `*_issue_2160_*`, so
+              # when #2562 runs here its `CREATE OR REPLACE` replaces NOTHING: the
+              # argument list does not match, so PostgreSQL ADDS A SECOND FUNCTION.
+              # `pg_proc` then holds two rows under that name — the guardless
+              # 11-argument original and the 12-argument one carrying the guard.
+              #
+              # #2562's probe reads `pg_get_functiondef` with no signature filter,
+              # and `SELECT ... INTO` in plpgsql takes the first row of an
+              # unordered scan, so it inspects the 11-argument one. Its error is
+              # literally true of the function it looked at.
+              #
+              # So the skip is NECESSARY, not convenient: on this lane the
+              # migration leaves a guardless overload installed, and a delta that
+              # re-emits #2462's body cannot mean anything on a chain built
+              # without #2160 or #2462. The replay is incoherent here, not merely
+              # strict.
+              #
+              # Coverage is NOT lost. #2562 lives under `supabase/migrations/**`,
+              # so the 10 unfiltered full-chain lanes replay it WITH #2160 and
+              # #2462 present — the only configuration in which the probe's
+              # precondition holds. Same coverage argument recorded for #2462
+              # directly above.
+              #
+              # Matched by EXACT filename, never an issue-number infix.
+              *20270525002562_issue_2562_past_event_guard.sql) continue ;;
               # issue #2489 — SKIPPED under the standing instruction above ("any
               # future migration that re-emits a #1931-defined object belongs on
               # this list too").

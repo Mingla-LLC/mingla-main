@@ -12613,7 +12613,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5ddd1ef189f3461a556004c145896a0b0aae6e8925f235bef19513a50f314cd9",
+        "sourceSha256": "34126bc24bec59e66fc756b5762a2eb3580a664322a9ba0911b2e0fc6778a34d",
         "triggers": [
           "pull_request",
           "push"
