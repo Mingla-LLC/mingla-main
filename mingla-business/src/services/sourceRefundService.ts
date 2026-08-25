@@ -51,6 +51,7 @@ export async function requestSourceRefundAction(input: {
 }
 
 export async function requestRsvpContributionRefund(input: {
+  eventId: string;
   contributionId: string;
   mode: "discretionary" | "cancellation";
   reason: string;
@@ -59,7 +60,7 @@ export async function requestRsvpContributionRefund(input: {
     "rsvp-contribution-refund",
     {
       body: input,
-      headers: { "idempotency-key": `${input.contributionId}:${input.mode}` },
+      headers: { "idempotency-key": `${input.eventId}:${input.contributionId}:${input.mode}` },
     },
   );
   if (error) throw error;

@@ -137,10 +137,12 @@ export async function setGuestRosterRsvpApproval(input: {
   decision: "approve" | "deny";
   clientRequestId: string;
 }): Promise<Record<string, unknown>> {
-  const { data, error } = await supabase.rpc("biz_guest_roster_set_rsvp_approval", {
+  const { data, error } = await supabase.rpc("business_set_rsvp_guest_status", {
     p_event_id: input.eventId,
-    p_roster_key: input.rosterKey,
     p_decision: input.decision,
+    p_scope: "selected",
+    p_roster_keys: [input.rosterKey],
+    p_expected_watermark: null,
     p_client_request_id: input.clientRequestId,
   });
   if (error !== null) throw new GuestRosterError(error.message, error.message);
