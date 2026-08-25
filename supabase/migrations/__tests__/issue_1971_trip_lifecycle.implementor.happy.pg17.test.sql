@@ -3,7 +3,13 @@
 -- Issue #1971 — implementor happy-path proof for the canonical trip command
 -- boundary. Run after the full migration chain on PostgreSQL 17.
 --
--- Every VALUE assertion uses `IS DISTINCT FROM`, never `<>`. In SQL,
+-- The `<>` comparisons that DO remain are the two shapes that cannot be NULL:
+-- `count(*)`, and `SQLERRM` read inside an exception handler. Everything else
+-- uses `IS DISTINCT FROM`.
+--
+-- Every assertion whose left side can legitimately be NULL — a vanished jsonb
+-- key, a vanished row, or a `SELECT INTO` that matched nothing — uses
+-- `IS DISTINCT FROM`, never `<>`. In SQL,
 -- `NULL <> 'x'` evaluates to NULL and `IF NULL THEN` does not execute — so an
 -- `IF (graph#>>'{...}') <> 'expected' THEN RAISE` clause is SILENTLY INERT for
 -- exactly the failure it is written to catch: the key disappearing. That is not
@@ -196,7 +202,7 @@ BEGIN
     RAISE EXCEPTION 'C-01 a stale revision was accepted';
   EXCEPTION WHEN sqlstate '40001' THEN NULL;
   END;
-  IF (SELECT title FROM public.events WHERE id = v_event) <> v_title THEN
+  IF (SELECT title FROM public.events WHERE id = v_event) IS DISTINCT FROM v_title THEN
     RAISE EXCEPTION 'C-02 a stale-revision reject still wrote';
   END IF;
 
@@ -347,7 +353,7 @@ BEGIN
   END;
 
   IF (SELECT tier_metadata FROM public.trip_pricing_tiers WHERE event_id = v_event LIMIT 1)
-       <> '{}'::jsonb THEN
+       IS DISTINCT FROM '{}'::jsonb THEN
     RAISE EXCEPTION 'D-07 a rejected tier patch still wrote metadata';
   END IF;
 
@@ -433,7 +439,7 @@ BEGIN
   END;
 
   SELECT status INTO v_status FROM public.events WHERE id = v_event;
-  IF v_status <> 'draft' THEN RAISE EXCEPTION 'F-02 a refused publish still moved status to %', v_status; END IF;
+  IF v_status IS DISTINCT FROM 'draft' THEN RAISE EXCEPTION 'F-02 a refused publish still moved status to %', v_status; END IF;
 
   -- Give it a master date, then publish for real.
   SELECT id, updated_at INTO v_event, v_rev FROM public.events WHERE id = v_event;
@@ -530,7 +536,7 @@ BEGIN
 
   IF v_snapshot IS NULL THEN RAISE EXCEPTION 'H-00 the money snapshot returned nothing'; END IF;
   IF v_snapshot->>'event_id' IS NULL THEN RAISE EXCEPTION 'H-01 snapshot has no event'; END IF;
-  IF v_snapshot->>'currency' <> 'GBP' THEN RAISE EXCEPTION 'H-02 snapshot lost the event currency'; END IF;
+  IF v_snapshot->>'currency' IS DISTINCT FROM 'GBP' THEN RAISE EXCEPTION 'H-02 snapshot lost the event currency'; END IF;
   IF (v_snapshot->>'order_count')::int IS DISTINCT FROM 0 THEN RAISE EXCEPTION 'H-03 unexpected orders'; END IF;
 
   FOREACH v_key IN ARRAY ARRAY[
@@ -563,7 +569,7 @@ BEGIN
   IF COALESCE((v_result->>'deleted')::boolean, false) THEN
     RAISE EXCEPTION 'I-01 a trip with a confirmed door order was deleted';
   END IF;
-  IF v_result->>'reason' <> 'has_confirmed_orders' THEN
+  IF v_result->>'reason' IS DISTINCT FROM 'has_confirmed_orders' THEN
     RAISE EXCEPTION 'I-02 wrong rejection reason: %', v_result->>'reason';
   END IF;
   IF (SELECT deleted_at FROM public.events WHERE id = v_event) IS NOT NULL THEN

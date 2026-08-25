@@ -136,10 +136,33 @@ describe("issue #1014 §9(6) — host render-site tripwires (source-level)", () 
   });
 
   it("createTripDraft no longer fabricates USD on currency-less trip drafts", () => {
-    // Scoped to the SPEC-allowlisted createTripDraft block: the draft-creation
-    // fallback is `?? null` now. (Two `?? "USD"` fallbacks REMAIN in
-    // updateTripPricing/createTripPricingTier further down the file — outside
-    // the #1014 allowlist; reported as tester finding F-2, not pinned here.)
+    // [TEST-MOD-APPROVED #1971] ONE assertion is invalidated: the positive
+    // `toContain('(brandCurrencyQuery.data?.default_currency as string | null) ?? null')`.
+    //
+    // WHY IT WAS SUPERSEDED, not merely broken. It pinned the exact TEXT of a
+    // client-side currency resolution. #1971 moved trip creation behind
+    // `biz_create_trip_draft`, which reads `brands.default_currency` itself
+    // under a row lock, so `brandCurrencyQuery` does not exist here any more —
+    // there is no client-side resolution left to spell out. The rule survives
+    // and is now owned in one place instead of three:
+    //
+    //     -- issue #1014: NULL brand currency stays NULL. Never invent USD.
+    //     SELECT default_currency INTO v_currency
+    //       FROM public.brands WHERE id = p_brand_id AND deleted_at IS NULL;
+    //
+    // in supabase/migrations/20270509001971_issue_1971_ari_trip_lifecycle.sql,
+    // with no COALESCE and no literal fallback. The executable proof that a
+    // currency-less brand yields a NULL-currency draft is assertion A-06 of
+    // supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql,
+    // which is the only place it can be MEASURED rather than read.
+    //
+    // The replacement is deliberately NOT another literal — re-pinning a new
+    // string would re-arm the same trap with different text. It asserts the
+    // SEAM (this block delegates to the server command) and the ABSENCE of any
+    // client-side currency handling at all, which is strictly wider than the
+    // two literals it replaces: it reds on `?? "USD"`, on `?? "GBP"`, and on a
+    // re-introduced read-then-coalesce, because the identifier itself cannot
+    // reappear in this block.
     const src = read("../../services/tripsService.ts");
     const start = src.indexOf("export async function createTripDraft");
     const end = src.indexOf("export async function", start + 1);
@@ -149,9 +172,25 @@ describe("issue #1014 §9(6) — host render-site tripwires (source-level)", () 
       .split("\n")
       .filter((line) => !line.trimStart().startsWith("//"))
       .join("\n");
+
+    // Fixture sanity: the slice really is this function's body, so nothing
+    // below can pass vacuously against an empty or mis-anchored string.
+    expect(block).toContain("export async function createTripDraft");
+    expect(block).toContain("return created;");
+
+    // The original guard, unchanged.
     expect(block).not.toContain('?? "USD"');
-    expect(block).toContain(
-      '(brandCurrencyQuery.data?.default_currency as string | null) ?? null',
-    );
+
+    // The seam: creation is the server command's job.
+    expect(block).toContain('supabase.rpc("biz_create_trip_draft"');
+
+    // The teeth: no client-side currency resolution of ANY shape survives here.
+    expect(block).not.toMatch(/currency/i);
+
+    // And the two `?? "USD"` fallbacks the previous version of this test
+    // recorded as remaining in updateTripPricing/createTripPricingTier (tester
+    // finding F-2) are gone from the whole file, not just from this block —
+    // those functions route through the same canonical command now.
+    expect(src).not.toContain('?? "USD"');
   });
 });
