@@ -763,6 +763,171 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
+-- N. META-ORCH-1174 per-package authoring, proven at the layer that now owns it.
+--
+--    #1971 moved the tier write from two client-side inserts into
+--    `biz_apply_trip_draft_graph`. META-ORCH-1174's three commitments therefore
+--    split across two layers, and BOTH halves need proving:
+--
+--      * the client decides the metadata SHAPE — blank description omits the
+--        key, a description merges without clobbering `installments`. That is
+--        still asserted in
+--        mingla-business/src/components/trip/__tests__/metaOrch1174_multiPackageAuthoring.test.ts;
+--      * the server decides PERSISTENCE — and if it stored the object
+--        differently from how it was handed over, the client's decision would
+--        never reach the database and those jest assertions would be measuring
+--        nothing. That is what this section pins.
+--
+--    The load-bearing one is N-04. If the server had merged `tier_metadata`
+--    with `||` instead of replacing it, every assertion above would still pass
+--    while CLEARING a description silently failed.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_brand uuid := '19710000-0000-4000-8000-000000000010';
+  v_event uuid;
+  v_rev timestamptz;
+  g jsonb;
+  v_standard uuid;
+  v_vip uuid;
+  v_meta jsonb;
+BEGIN
+  -- Paid packages need a collect-capable brand; this is the same predicate the
+  -- command checks (`pg_brand_can_collect`), satisfied the cheapest legitimate
+  -- way so the price assertions below are about per-package pricing and not
+  -- about payout readiness.
+  UPDATE public.brands SET paystack_subaccount_code = 'ACCT_issue1971'
+   WHERE id = v_brand;
+
+  g := public.biz_create_trip_draft(
+    v_brand, jsonb_build_object('title', 'Multi-package trip'),
+    '19710000-0000-4000-8000-0000000009a1');
+  v_event := (g#>>'{event,id}')::uuid;
+  v_rev := (g->>'revision')::timestamptz;
+  v_standard := (g#>>'{tiers,0,ticket_type_id}')::uuid;
+
+  -- N-01 a description handed over is stored EXACTLY, alongside an unrelated key.
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'ticket_type_id', v_standard,
+      'tier_name', 'Standard',
+      'price_cents', 5000,
+      'capacity', 20,
+      'tier_metadata', jsonb_build_object(
+        'description', 'Spa + private transfer',
+        'installments', jsonb_build_object(
+          'deposit_pct', 25,
+          'installments', jsonb_build_array(jsonb_build_object(
+            'ordinal', 1, 'pct', 75, 'days_after_booking', 30))))))),
+    v_rev, '19710000-0000-4000-8000-0000000009a2');
+
+  v_meta := g#>'{tiers,0,tier_metadata}';
+  IF (v_meta->>'description') IS DISTINCT FROM 'Spa + private transfer' THEN
+    RAISE EXCEPTION 'N-01 the per-package description did not persist, got %',
+      COALESCE(v_meta->>'description', '<null>');
+  END IF;
+  IF v_meta->'installments' IS NULL THEN
+    RAISE EXCEPTION 'N-02 an unrelated tier_metadata key was lost on the same write';
+  END IF;
+
+  -- N-03 a key the caller did NOT hand over is ABSENT, not stored as an empty
+  -- string. This is what carries the client's blank-description decision into
+  -- the database; if the server invented the key, "blank omits it" would be
+  -- decided client-side and undone server-side.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'ticket_type_id', v_standard,
+      'tier_metadata', jsonb_build_object('installments', jsonb_build_object(
+        'deposit_pct', 25,
+        'installments', jsonb_build_array(jsonb_build_object(
+          'ordinal', 1, 'pct', 75, 'days_after_booking', 30))))))),
+    v_rev, '19710000-0000-4000-8000-0000000009a3');
+
+  v_meta := g#>'{tiers,0,tier_metadata}';
+  IF v_meta ? 'description' THEN
+    RAISE EXCEPTION 'N-03 the server kept or invented a description key the caller omitted: %', v_meta;
+  END IF;
+
+  -- N-04 THE LOAD-BEARING ONE. tier_metadata is REPLACED, not merged. A server
+  -- that merged would leave the description above still present, so clearing a
+  -- description would silently fail while every other assertion stayed green.
+  IF (v_meta->>'description') IS NOT NULL THEN
+    RAISE EXCEPTION 'N-04 tier_metadata was merged, not replaced — a cleared description survives';
+  END IF;
+
+  -- N-05 per-package price and capacity are per-package, on their own
+  -- ticket_types rows.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'tier_name', 'VIP',
+      'price_cents', 15000,
+      'capacity', 5,
+      'display_order', 1,
+      'tier_metadata', jsonb_build_object('description', 'Suite upgrade')))),
+    v_rev, '19710000-0000-4000-8000-0000000009a4');
+
+  SELECT (value#>>'{ticket_type,id}')::uuid INTO v_vip
+    FROM jsonb_array_elements(g->'tiers') value
+   WHERE value->>'tier_name' = 'VIP';
+  IF v_vip IS NULL THEN RAISE EXCEPTION 'N-05 the second package was not created'; END IF;
+  IF jsonb_array_length(g->'tiers') IS DISTINCT FROM 2 THEN
+    RAISE EXCEPTION 'N-05 expected two packages, got %', jsonb_array_length(g->'tiers');
+  END IF;
+
+  IF (SELECT price_cents FROM public.ticket_types WHERE id = v_vip) IS DISTINCT FROM 15000
+     OR (SELECT quantity_total FROM public.ticket_types WHERE id = v_vip) IS DISTINCT FROM 5 THEN
+    RAISE EXCEPTION 'N-06 the new package did not carry its own price/capacity';
+  END IF;
+  IF (SELECT price_cents FROM public.ticket_types WHERE id = v_standard) IS DISTINCT FROM 5000
+     OR (SELECT quantity_total FROM public.ticket_types WHERE id = v_standard) IS DISTINCT FROM 20 THEN
+    RAISE EXCEPTION 'N-06 creating a package changed the OTHER package''s price/capacity';
+  END IF;
+
+  -- N-07 an update addressed by ticket_type_id touches ONLY that package. This
+  -- is the N-tier-safety commitment: before META-ORCH-1174 a single-tier
+  -- assumption made this impossible to express at all.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object('tiers', jsonb_build_array(jsonb_build_object(
+      'ticket_type_id', v_vip,
+      'tier_name', 'VIP renamed',
+      'price_cents', 17500,
+      'tier_metadata', jsonb_build_object('description', 'Updated blurb')))),
+    v_rev, '19710000-0000-4000-8000-0000000009a5');
+
+  IF (SELECT price_cents FROM public.ticket_types WHERE id = v_vip) IS DISTINCT FROM 17500 THEN
+    RAISE EXCEPTION 'N-07 the addressed package was not updated';
+  END IF;
+  IF (SELECT tier_name FROM public.trip_pricing_tiers WHERE ticket_type_id = v_vip)
+       IS DISTINCT FROM 'VIP renamed' THEN
+    RAISE EXCEPTION 'N-07 the addressed package kept its old name';
+  END IF;
+  -- ...and the sibling is untouched in every field.
+  IF (SELECT price_cents FROM public.ticket_types WHERE id = v_standard) IS DISTINCT FROM 5000
+     OR (SELECT quantity_total FROM public.ticket_types WHERE id = v_standard) IS DISTINCT FROM 20
+     OR (SELECT tier_name FROM public.trip_pricing_tiers WHERE ticket_type_id = v_standard)
+          IS DISTINCT FROM 'Standard' THEN
+    RAISE EXCEPTION 'N-08 updating one package changed a sibling package';
+  END IF;
+  IF (SELECT tier_metadata FROM public.trip_pricing_tiers WHERE ticket_type_id = v_standard)
+       ? 'description' THEN
+    RAISE EXCEPTION 'N-08 updating one package leaked its description onto a sibling';
+  END IF;
+
+  -- N-09 an omitted scalar keeps its stored value — `capacity` was not sent in
+  -- the N-07 patch, so it must not have been nulled.
+  IF (SELECT quantity_total FROM public.ticket_types WHERE id = v_vip) IS DISTINCT FROM 5 THEN
+    RAISE EXCEPTION 'N-09 an omitted capacity was overwritten instead of preserved';
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
 -- J. The Ari EXECUTOR SEAM. This is deliberately not a helper-level assertion:
 --    it goes through `ari_execute_trip_operation` and a real confirmed
 --    pending action, so deleting the call site cannot leave this green.

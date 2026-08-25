@@ -106,13 +106,23 @@ function nextRowFor(table: string): { data: unknown; error: null } {
   return { data: null, error: null };
 }
 
-const rpcMock = jest.fn(async (name: string, args: Record<string, unknown>) => {
+// [TEST-MOD-APPROVED #1971] Extracted so `beforeEach` can REINSTALL it. Two of
+// the tests below call `rpcMock.mockImplementation(...)` to seed the post-write
+// readback, and `mockClear()` resets recorded CALLS but not the IMPLEMENTATION —
+// so without this the create-tests' implementation stayed installed and
+// overwrote the rows the update-tests seeded, and both update-tests died on
+// `updateTripPricing: tier not found after update`. No assertion is changed.
+const defaultRpcImpl = async (
+  name: string,
+  args: Record<string, unknown>,
+) => {
   rpcCalls.push({ name, args });
   if (name === "biz_apply_trip_draft_graph") {
     return { data: { ok: true }, error: null };
   }
   return { data: {}, error: null };
-});
+};
+const rpcMock = jest.fn(defaultRpcImpl);
 
 jest.mock("../../../services/supabase", () => ({
   supabase: {
@@ -131,6 +141,9 @@ beforeEach(() => {
   calls.length = 0;
   rpcCalls.length = 0;
   rpcMock.mockClear();
+  // Reinstall the default: a per-test mockImplementation would otherwise leak
+  // into every later test in this file.
+  rpcMock.mockImplementation(defaultRpcImpl);
   listTiersRows = [];
   listTicketRows = [];
   seededEventRow = {
