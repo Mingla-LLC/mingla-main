@@ -262,6 +262,18 @@ test("T-15 — a lane that continues but yields zero globs reds C-4b, never 'unf
 // ONLY the pinned counts move below. No assertion's logic, no parser case and no
 // scenario was changed, so the blind-parser property these tests exist for is
 // unaltered: a parser that reads fewer branches than exist still reds here.
+//
+// [TEST-MOD-APPROVED #2489] SECOND MOVE, phase 2: SIX to SEVEN, adding
+// 20270528002489_issue_2489_phase2_base_relation_grant.sql. It is a consequence of
+// the #2489 entry above, not an independent one: phase 2 puts events_public_view on
+// owner rights so it survives the base-relation grant change, and on THIS lane the
+// gated owner-rights body of that view comes only from the already skipped
+// …002489_…server_gate.sql — so the lane's "Apply #1931 and re-capture" step
+// restores caller rights and the SC-47 capture then fails on a permission error
+// rather than on a behavioural difference. Reproduced before, clean after; the
+// #2117 lane was simulated with phase 2 present and needs no entry.
+// Every count below is derived from the base, so each moves WITH it: the
+// delete-a-branch fixtures go base-1, the add-a-branch fixtures base+1.
 test("T-13 — a lane rewritten to the basename nested-quote form is still discovered (R-2)", (t) => {
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
     editWorkflow: [
@@ -280,8 +292,8 @@ test("T-13 — a lane rewritten to the basename nested-quote form is still disco
   const lane = lanes.find((l) => l.workflow === LANE);
   assert.ok(lane, "the nested quote in `case \"$(basename \"$migration\")\" in` must not hide the lane");
   assert.equal(lane.subjectKind, "basename");
-  assert.equal(lane.globs.length, 6);
-  assert.equal(lane.skipped.length, 6, "subject-correct matching (R-4) must still resolve all six files");
+  assert.equal(lane.globs.length, 7);
+  assert.equal(lane.skipped.length, 7, "subject-correct matching (R-4) must still resolve all seven files");
   assert.equal(lanes.length, 4, "the inventory must not collapse when a lane changes spelling");
   assert.deepEqual(checksIn(violations), [], "a semantics-preserving rewrite must stay green");
 });
@@ -329,7 +341,7 @@ test("T-12 — independent fails-on-revert, built differently from the implement
 
   // The lane is still fully parsed — the red is the closure failure, not a parse failure.
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 5);
+  assert.equal(lane.globs.length, 6);
   assert.deepEqual(checksIn(violations), ["C-1"], "reverting the fix must red C-1 and ONLY C-1");
 
   // Assert the OTHER limb from the implementor's T-2: the column, which is the
@@ -407,7 +419,7 @@ test("T-16 — a `;;&` fall-through terminator does not hide a branch", (t) => {
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.globs.length, 6, "a `;;&` terminator must not drop the branch it terminates");
+  assert.equal(lane.globs.length, 7, "a `;;&` terminator must not drop the branch it terminates");
   assert.deepEqual(checksIn(violations), [], "a semantics-preserving terminator change must not flag");
 });
 
@@ -416,7 +428,7 @@ test("T-17 — the leading-paren branch form `(glob)` is still read", (t) => {
     editWorkflow: [LANE, (src) => src.replace("              *_issue_2160_*) continue ;;", "              (*_issue_2160_*) continue ;;")],
   });
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
-  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 6);
+  assert.equal(lanes.find((l) => l.workflow === LANE).globs.length, 7);
   assert.deepEqual(checksIn(violations), [], "`(pattern)` is the same branch, written the other legal way");
 });
 
@@ -427,7 +439,7 @@ test("T-18 — a braced `${f}` case subject still resolves to a full path (R-4)"
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
   assert.equal(lane.subjectKind, "path", "`${f}` is the same loop variable and must resolve, not fail closed to null");
-  assert.equal(lane.globs.length, 6);
+  assert.equal(lane.globs.length, 7);
   assert.deepEqual(checksIn(violations), [], "brace syntax must not fire C-2 on a clean repo");
 });
 
@@ -518,8 +530,8 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 7, "R-5 must read the two-line branch form");
-    assert.equal(lane.globs.length, 7, "and extract its glob");
+    assert.equal(lane.branchCount, 8, "R-5 must read the two-line branch form");
+    assert.equal(lane.globs.length, 8, "and extract its glob");
     assert.ok(
       lane.skipped.includes(REAL_UNSKIPPED),
       "reading the branch is not enough — the skip must actually take effect on the file it names",
@@ -541,7 +553,7 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
     });
     const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
     const lane = lanes.find((l) => l.workflow === LANE);
-    assert.equal(lane.branchCount, 6, "R-5 is scoped to the two-line form; a three-line branch stays unread");
+    assert.equal(lane.branchCount, 7, "R-5 is scoped to the two-line form; a three-line branch stays unread");
     assert.equal(
       lane.skipped.includes(REAL_UNSKIPPED),
       false,
@@ -553,8 +565,8 @@ test("T-22 — R-5's scope boundary, both sides: the form it reads, and the form
       "and C-4(c) alone must catch it — C-4(b) cannot, because the other branches still yield globs",
     );
     const census = branchCensus(fs.readFileSync(path.join(workflowsDir, LANE), "utf8"), lane);
-    assert.equal(census.terminators, 7);
-    assert.equal(census.continues, 7);
+    assert.equal(census.terminators, 8);
+    assert.equal(census.continues, 8);
     assert.ok(
       census.terminators > lane.branchCount && census.continues > lane.branchCount,
       "the census must STRICTLY EXCEED the parser here, or C-4(c) would be a check that cannot fail",
