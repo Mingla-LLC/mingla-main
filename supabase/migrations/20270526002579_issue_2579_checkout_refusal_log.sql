@@ -66,6 +66,23 @@ CREATE INDEX IF NOT EXISTS idx_checkout_refusals_token_time
 
 ALTER TABLE public.checkout_refusals ENABLE ROW LEVEL SECURITY;
 
+-- ══ THE GRANTS, WHICH SUPABASE HANDS OUT BEFORE ANYONE ASKS ════════════════
+-- A new table in `public` inherits default privileges that give BOTH `anon` and
+-- `authenticated` the full set — SELECT, INSERT, UPDATE, DELETE, TRIGGER,
+-- REFERENCES, MAINTAIN. RLS still stands in front of the rows, so nothing was
+-- readable, but a table holding hashed buyer emails should not be one policy
+-- mistake away from public. The #1856 grant gate refused this migration on a
+-- from-baseline replay and was right to.
+--
+-- Revoke everything, then grant back exactly one thing: SELECT for
+-- `authenticated`, because the organiser-read policy above is `FOR SELECT TO
+-- authenticated` and a policy cannot apply without the underlying table grant.
+--
+-- `service_role` needs nothing. Writes arrive only through the SECURITY DEFINER
+-- function below, which inserts as its owner.
+REVOKE ALL ON public.checkout_refusals FROM PUBLIC, anon, authenticated;
+GRANT SELECT ON public.checkout_refusals TO authenticated;
+
 -- No INSERT/UPDATE/DELETE policy exists on purpose. Writes arrive only through
 -- the SECURITY DEFINER function below, so the bounded-token check cannot be
 -- bypassed by anything holding a table grant.
@@ -220,6 +237,34 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.checkout_refusals
               WHERE surface = 'probe' AND buyer_country_code LIKE '%8012345678%') THEN
     RAISE EXCEPTION 'issue #2579 probe: a full phone number was stored';
+  END IF;
+
+  -- `anon` must hold NOTHING on this table. The #1856 gate checks the whole
+  -- schema; this checks the one table this migration is responsible for, so a
+  -- future edit that reinstates a grant fails here rather than three lanes away.
+  IF EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants
+     WHERE table_schema='public' AND table_name='checkout_refusals'
+       AND grantee='anon'
+  ) THEN
+    RAISE EXCEPTION 'issue #2579 probe: anon still holds a grant on checkout_refusals';
+  END IF;
+
+  -- And `authenticated` must hold SELECT and nothing else, or the organiser
+  -- read policy silently stops working.
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants
+     WHERE table_schema='public' AND table_name='checkout_refusals'
+       AND grantee='authenticated' AND privilege_type='SELECT'
+  ) THEN
+    RAISE EXCEPTION 'issue #2579 probe: authenticated lost SELECT, so organisers cannot read their own refusals';
+  END IF;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.role_table_grants
+     WHERE table_schema='public' AND table_name='checkout_refusals'
+       AND grantee='authenticated' AND privilege_type <> 'SELECT'
+  ) THEN
+    RAISE EXCEPTION 'issue #2579 probe: authenticated holds more than SELECT on checkout_refusals';
   END IF;
 
   DELETE FROM public.checkout_refusals WHERE surface = 'probe';
