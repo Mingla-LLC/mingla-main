@@ -183,10 +183,33 @@ describe("#2539 brand avatar — round clip survives WebKit, glow renders", () =
       expect(glowStyleObject).not.toMatch(new RegExp(`(^|[\\s,{])${prop}\\s*:`));
     }
     // hexToRgba must be a real, imported export — not a local re-definition.
-    expect(brandPage).toMatch(/^\s*hexToRgba,$/m);
+    // RETARGETED (PR #2552 CI): it now arrives by DEEP import from the module
+    // rather than through the barrel, so the assertion follows the import to
+    // where it actually is. Same meaning, new target.
+    expect(brandPage).toMatch(
+      /^import \{ hexToRgba \} from "@mingla\/offering-rendering\/themePalette";$/m,
+    );
     expect(brandPage).not.toMatch(/const hexToRgba\s*=/);
     expect(themePalette).toMatch(/export const hexToRgba = \(hex: string, alpha: number\): string =>/);
-    expect(offeringIndex).toMatch(/^\s*hexToRgba,$/m);
+    // …and it must NOT come back through the barrel. This one INVERTED — it
+    // used to assert the barrel re-exports hexToRgba, and now asserts it does
+    // not. Flagged to the orchestrator rather than changed quietly, because
+    // inverting an assertion is not a retarget.
+    //
+    // Why the inversion is the correct guard: 18 test files hand-build a
+    // partial mock of the `@mingla/offering-rendering` barrel. A new name on
+    // that barrel is `undefined` in every one of them, and the failure lands at
+    // RENDER as "hexToRgba is not a function" inside whichever component
+    // imports it — so it reads as a bug in the component, not as a stale mock.
+    // Re-adding the re-export re-arms exactly that trap; this line is what
+    // stops the next person from doing it by reflex.
+    // (Direct negation rather than a blockAfter() slice: a token ending in `{`
+    // makes blockAfter skip to the NEXT brace group — it already bit this file
+    // once on `styles.avatar`. `hexToRgba,` alone on a line can only ever be an
+    // export/import entry, so the whole-file negation is both simpler and
+    // stricter. The explanatory comment added to index.ts writes the name as
+    // `hexToRgba` inside backticks, which this pattern does not match.)
+    expect(offeringIndex).not.toMatch(/^\s*hexToRgba,$/m);
   });
 
   test("T-6 exactly one accessible node still carries the avatar label", () => {

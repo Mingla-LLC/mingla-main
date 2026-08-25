@@ -335,9 +335,11 @@ export {
   // fontFamily at the 700-weight loaded family. boldFontFamily(theme) returns it.
   FONT_FAMILY_BOLD_MAP,
   boldFontFamily,
-  // #2539 — translucent-accent helper, so a shadow colour can be derived from
-  // palette.accent at the call site instead of hard-coding an rgba() string.
-  hexToRgba,
+  // #2539 — `hexToRgba` is deliberately NOT re-exported here. 18 test files
+  // hand-build a PARTIAL mock of this barrel, so every NEW name added to it is
+  // `undefined` inside those suites and blows up at render in whatever
+  // component imports it. PublicBrandPage.tsx deep-imports it from
+  // "./themePalette" instead, which no barrel mock can intercept.
 } from "./themePalette";
 export type { ThemePalette, OfferingSurfaceStyles } from "./themePalette";
 export { PublicEventNotFound } from "./PublicEventNotFound";

@@ -56,7 +56,6 @@ import {
   EventCoverMedia,
   MINGLA_DEFAULT_THEME,
   createThemePalette,
-  hexToRgba,
   offeringSurfaceStyles,
   nextEventAcquisitionBoundaryDelayMs,
   resolveEventAcquisitionState,
@@ -68,6 +67,21 @@ import {
   ParallaxCoverShell,
   useResponsiveLayout,
 } from "@mingla/offering-rendering";
+// #2539 — DEEP import, deliberately NOT the barrel. Sanctioned by tsconfig
+// paths ("@mingla/offering-rendering/*") + both apps' metro extraNodeModules,
+// and precedented by SeeWhosGoingGate.tsx importing `opaqueSurfaceColor` from
+// this very module.
+//
+// WHY IT MATTERS HERE. 18 test files hand-build a PARTIAL mock of the
+// `@mingla/offering-rendering` barrel — `jest.mock(...)` returning a fixed
+// object listing only the names each author happened to need. A new barrel
+// export is invisible to every one of them: it resolves to `undefined`, and
+// the failure surfaces at RENDER as "hexToRgba is not a function" pointing at
+// this component, so it reads as a bug in the thing that just changed rather
+// than as a stale mock. Importing from the module directly bypasses those
+// mocks entirely, which is why this stays a deep import and why `hexToRgba` is
+// deliberately NOT re-exported from the barrel (#2539 PR #2552 CI).
+import { hexToRgba } from "@mingla/offering-rendering/themePalette";
 
 import { spacing } from "./designTokens";
 // META-ORCH-1255(R2) — the DISPLAY-ONLY menu renderer lives in its own module
