@@ -106,7 +106,14 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   const lifecycle = suites.find((suite) => suite.origin.endsWith("issue-1902-public-event-lifecycle-tests.yml"));
   assert.deepEqual(lifecycle.steps.map((step) => step.env || null).filter(Boolean), [{ NODE_PATH: "./node_modules" }]);
   assert.deepEqual(value.setupProfiles[lifecycle.setupProfile].installs.map((item) => [item.cwd,item.invocation.command,item.invocation.argv]), [["mingla-business","npm",["ci"]],["app-mobile","npm",["ci"]]]);
-  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 67); assert.equal(sha(providers), "af756cd7e72c0c4ed208408d23eec621349b8eb7aaefb197214af8794efee305");
+  // [#2439 SC-18.2(6)] The raw-discovery digest that stood here is DELETED, not re-pinned.
+  // It drifted every wave — 71 at shadow, 73 after #2492, 67 after Phase 3B's cutover,
+  // 60 after Phase 3C's — so as a literal it measured the calendar, not the contract, and
+  // it went stale three times in three phases. "No second digest may be pinned anywhere."
+  // The count stays exact, and the cryptographic weight moves entirely onto the
+  // reconstruction below, which is checked against the ONE frozen shadow seal and does not
+  // drift when a later wave retires more wrappers.
+  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 60);
   // [#2438 SC-21] The single-wrapper W3 assertion that stood here was removed under the
   // ruling at issue #2438 comment 5398524723. At shadow it was real: W3 was live and kept
   // out of discovery only by the A4-SC2 carve-out. At terminal it interrogates a deleted
@@ -119,24 +126,46 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // independently: what discovery still sees, plus the six records the registry carries
   // for the deleted wrappers, re-sorted as discovery sorts, must hash back to the one
   // locked shadow seal. A fabricated terminal digest cannot satisfy this.
+  // [#2439] Phase 3C retired seventeen more wrappers, so the seal is now reconstructed
+  // from BOTH retired waves. The carried set is DERIVED from the registry's own wave
+  // membership rather than a second hard-coded name list, so the next wave extends it
+  // without another literal going stale.
+  const RETIRED_WAVES = ["phase3b-postgres-wave", "phase3c-deno-wave"];
+  const carriedNames = new Set(value.suites
+    .filter((suite) => RETIRED_WAVES.includes(suite.migrationWave))
+    .map((suite) => suite.origin.split("/").pop()));
+  assert.equal(carriedNames.size, 29);
   const carried = value.workflowProviders
-    .filter((item) => WRAPPERS.some(([name]) => name === item.workflow))
+    .filter((item) => carriedNames.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
-  assert.equal(carried.length, 6); assert.equal(sha(carried), "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1");
+  assert.equal(carried.length, 13);
+  // The Phase 3B six keep their A4-SC3 locked subset digest, unchanged and still exact.
+  const carriedPhase3b = carried.filter((item) => WRAPPERS.some(([name]) => name === item.workflow));
+  assert.equal(carriedPhase3b.length, 6);
+  assert.equal(sha(carriedPhase3b), "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1");
+  // The Phase 3C seven are pinned by IDENTITY, not by a digest — SC-18.2(6) forbids a
+  // second pinned digest, and identity is the stronger form here anyway: a swapped record
+  // reds even if the count holds.
+  assert.deepEqual(carried.filter((item) => !WRAPPERS.some(([name]) => name === item.workflow))
+    .map((item) => item.workflow).sort(),
+    ["issue-1430-refund-replay-tests.yml", "issue-1437-secret-bundle-compatibility-tests.yml",
+     "issue-1950-app-readiness-tests.yml", "issue-1999-ari-provider-schema-tests.yml",
+     "issue-2019-ari-delegated-auth.yml", "issue-2230-consumer-multiday-tests.yml",
+     "issue-2321-account-deletion-tests.yml"]);
   const reconstructed = [...providers, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
   assert.equal(reconstructed.length, 73);
   assert.equal(sha(reconstructed), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.
-  assert.equal(discoverLiveOrigins(ROOT).length, 134);
+  assert.equal(discoverLiveOrigins(ROOT).length, 117);
   // The invariant #2492 actually violated: two workflows were externally REFERENCED but
   // never REGISTERED. A pair of totals cannot catch that — they both just move. Bind the
   // derived discovery set to the declared live-provider set by identity, so a referenced
   // but unregistered workflow reds here even when every count still agrees.
   const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
   const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
-  assert.deepEqual([retained.length, batched.length], [67, 24]);
+  assert.deepEqual([retained.length, batched.length], [60, 31]);
   assert.equal(retained.length + batched.length, value.workflowProviders.length);
   assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
   assert.deepEqual(validateRegistry(value, { root: ROOT }), []);

@@ -136,12 +136,20 @@ const MUTANTS = [
     for (const suite of waveSuites(value)) suite.lifecycle = "batched-historical";
     waveSuites(value)[0].lifecycle = "shadow-active";
   }],
-  ["declared terminal while the wrappers are still present", (value) => {
-    for (const suite of waveSuites(value)) suite.lifecycle = "batched-historical";
-    for (const origin of value.legacyOrigins.filter((item) => item.migrationWave === WAVE)) origin.disposition = "batched-historical";
+  // [#2439 SC-21] At shadow this declared terminal while the seventeen were still on
+  // disk. Post-cutover "batched-historical" is what every suite and origin already
+  // carries, so the mutation mutated NOTHING and the clause could not fail. Inverted to
+  // the terminal mirror of the same lie: declare SHADOW while the wrappers are absent.
+  ["declared shadow while the wrappers are absent", (value) => {
+    for (const suite of waveSuites(value)) suite.lifecycle = "shadow-active";
+    for (const origin of value.legacyOrigins.filter((item) => item.migrationWave === WAVE)) origin.disposition = "shadow-active";
   }],
-  ["provider transition flipped early", (value) => {
-    value.workflowProviders.find((item) => item.workflow === "issue-1430-refund-replay-tests.yml").transition = "batched-provider";
+  // [#2439 SC-21] Same shape: at shadow this flipped a record forward before its time,
+  // but post-cutover "batched-provider" is what the record already holds. Inverted to a
+  // transition that REGRESSED — a carried record dragged back to retained-live-provider,
+  // which is what would silently break the frozen-seal reconstruction.
+  ["provider transition regressed to retained-live-provider", (value) => {
+    value.workflowProviders.find((item) => item.workflow === "issue-1430-refund-replay-tests.yml").transition = "retained-live-provider";
   }],
   ["an eleventh provider record invented for one of the other ten", (value) => {
     value.workflowProviders.push({
@@ -280,7 +288,7 @@ test("environment, retry, runtime and setup cannot widen", () => {
 
 test("lifecycle, provider and reference transitions cannot go partial", () => {
   for (const label of ["mixed lifecycle: 16 terminal + 1 shadow",
-    "declared terminal while the wrappers are still present", "provider transition flipped early",
+    "declared shadow while the wrappers are absent", "provider transition regressed to retained-live-provider",
     "an eleventh provider record invented for one of the other ten",
     "a wave-scoped host reassigned to an unreviewed host", "the host map disagrees with the suite",
     "a candidate quietly dropped out of the wave", "a non-candidate claimed for the wave"]) assertRed(label);
@@ -289,10 +297,19 @@ test("lifecycle, provider and reference transitions cannot go partial", () => {
   assert.equal(isNonAuthoritativeProviderEvidence(".github/scripts/strict-grep/issue-2148-ci-deno-wave-shadow.tester.test.mjs"), true);
   assert.equal(isNonAuthoritativeProviderEvidence(".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"), false);
   assert.equal(isNonAuthoritativeProviderEvidence("app-mobile/src/x.tester.test.ts"), false);
-  // The seven that transition are the seven that hold a record; the other ten
-  // hold none, and discovery agrees.
+  // [#2439 SC-21] At shadow, discovery held exactly the seven that carry a record. The
+  // seventeen are now deleted, so discovery holds NONE of them. That is the terminal
+  // invariant and it is falsifiable — restore one and name it from a tracked source and
+  // this reds. But asserting only `[]` would throw away the seven-versus-ten distinction
+  // this clause existed for, so it is kept on the side that survives the cutover: the
+  // REGISTRY still carries exactly those seven, which is what lets the frozen-seal
+  // reconstruction reach 73. Losing one, or gaining an eighth, reds here.
   const held = providers.filter((item) => [...PHASE3C_WRAPPER_NAMES].includes(item.workflow)).map((item) => item.workflow).sort();
-  assert.deepEqual(held, ["issue-1430-refund-replay-tests.yml", "issue-1437-secret-bundle-compatibility-tests.yml",
+  assert.deepEqual(held, []);
+  const registryHeld = BASE.workflowProviders
+    .filter((item) => [...PHASE3C_WRAPPER_NAMES].includes(item.workflow))
+    .map((item) => item.workflow).sort();
+  assert.deepEqual(registryHeld, ["issue-1430-refund-replay-tests.yml", "issue-1437-secret-bundle-compatibility-tests.yml",
     "issue-1950-app-readiness-tests.yml", "issue-1999-ari-provider-schema-tests.yml", "issue-2019-ari-delegated-auth.yml",
     "issue-2230-consumer-multiday-tests.yml", "issue-2321-account-deletion-tests.yml"].sort());
 });
