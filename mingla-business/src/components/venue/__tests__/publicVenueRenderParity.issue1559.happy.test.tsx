@@ -35,6 +35,40 @@
  * APPEND-ONLY — new file; modifies/deletes no existing test.
  *
  * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #1595] — THE BASELINE MOVES BY 22 CHARACTERS, IN ONE PLACE
+ * ---------------------------------------------------------------------------
+ * #1595 gives the page host `palette.page` instead of a hardcoded `#0c0e12`.
+ * That is a deliberate change to the rendered tree, so this guard failed — which
+ * is the guard working, not a problem with it.
+ *
+ * WHAT IS INVALIDATED, named exactly. Only the parity assertion, and only for
+ * the single root `View`. Every case's diff was measured before the baseline was
+ * touched, and all seven are byte-for-byte the SAME edit:
+ *
+ *     before  "style": { "backgroundColor": "#0c0e12", "flex": 1 }
+ *     after   "style": [ { "flex": 1 }, { "backgroundColor": "#1e120d" } ]
+ *
+ *     restaurant-phone-full            49607 -> 49629   (+22)
+ *     restaurant-desktop-full          53877 -> 53899   (+22)
+ *     stay-phone-full                  39320 -> 39342   (+22)
+ *     stay-desktop-reservations-tab    24170 -> 24192   (+22)
+ *     play-phone-reservability-error   41933 -> 41955   (+22)
+ *     restaurant-phone-menu-tab        30332 -> 30354   (+22)
+ *     uncategorised-phone-sparse       24509 -> 24531   (+22)
+ *
+ * `#1e120d` is not another constant — it is what `createThemePalette` resolves
+ * for these fixtures' amber brand (`#eb7825`), i.e. the page colour the rest of
+ * the screen was already painted with. On the light-resolving themes #1595 is
+ * actually about, the same node resolves near-white; that case is proven in
+ * `venueHostPalette.issue1595.happy.test.tsx`, which mounts this same route.
+ *
+ * NOTHING ELSE IS INVALIDATED. No case changed anywhere but that one node, so
+ * every anchor, the size floor, the case roster and the `expect.assertions`
+ * pins are untouched and still hold. Regenerated with
+ * `MINGLA_1559_WRITE_BASELINE=1 npx jest publicVenueRenderParity.issue1559`.
+ * Only the fixture JSON changed; this file's assertions did not.
+ *
+ * ---------------------------------------------------------------------------
  * [TEST-MOD-APPROVED #1561] — WHAT THIS FILE MEANS AFTER #1561
  * ---------------------------------------------------------------------------
  * #1559's question was "did the MOVE change anything?" and the answer was no.
