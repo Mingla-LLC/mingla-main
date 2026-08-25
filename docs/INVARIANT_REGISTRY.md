@@ -262,7 +262,8 @@
 ### I-PROPOSED-2000-ARI-CAPABILITY-LEDGER-FAIL-CLOSED (DRAFT)
 
 - **Rule:** `docs/contracts/ari-capability-ledger.json` is the canonical statement of what Ari can and cannot do across Host iOS, Android, and web. Registration is not verification: every Host operation has one stable row and one of `verified`, `registered_unverified`, `broken`, `guided_handoff`, `unsupported`, or `in_flight`; every registered tool maps exactly once; no row may claim `verified` without distinct implementor/tester regressions, exact-revision deployment evidence, and production observation on every required surface.
-- **Current audited truth:** 117 operations across 21 domains: 36 broken, 33 registered-unverified, 36 unsupported, 8 guided handoffs, 4 in flight, and 0 verified. All 70 registered tools map exactly once. The 36 broken IDs are independently pinned at the immutable audit baseline, preventing status/blocker/counter laundering.
+- **Audit baseline (immutable, #2000 2026-08-13):** 117 operations across 21 domains: 36 broken, 33 registered-unverified, 36 unsupported, 8 guided handoffs, 4 in flight, 0 verified; 70 registered tools. The 36 broken IDs are independently pinned at this baseline, preventing status/blocker/counter laundering.
+- **Current truth (2026-08-25, read from `docs/contracts/ari-capability-ledger.json`):** 120 operations across 21 domains: 25 broken, 54 registered-unverified, 29 unsupported, 8 guided handoffs, 4 in flight, and 0 verified. All 80 registered tools map exactly once. These counters move as #1975/#1978/#1979/#424 land and will move again at #1971 and #1977 — do NOT restate them from memory. `.github/scripts/strict-grep/issue-2417-ari-contract-collision-census.mjs` derives every denominator from the ledger at runtime and fails when any downstream census disagrees, so the ledger is the only place these numbers are authored.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs` validates the explicit operation universe, registry↔prompt parity, tool bijection, status/evidence rules, exact code symbols at current and audit revisions, and proven-broken authority. The independently authored `.github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs` pins the reviewed denominator, mappings, classifications, and source evidence. Both run in Class A.
 - **Regression:** Implementor self-test has 10 hostile mutations; tester has 5 independent attacks. True deletion/status-laundering reversions make both guards fail, then pass on restore. Full Class A passes 846/846.
 - **Scope:** Truth inventory and CI enforcement only. This invariant does not repair or newly enable any Ari runtime operation.
@@ -277,7 +278,7 @@
 - **Rule:** Every Ari tool declaration sent to Gemini MUST pass through the single recursive compiler in `supabase/functions/_shared/agentGemini.ts`. The compiler may consume only canonical `additionalProperties: false`, MUST reject every other unsupported keyword or value before secret lookup/network access, MUST normalize Gemini typed-schema int64 fields to canonical decimal strings, and MUST NOT mutate the canonical schemas used by Ari's execution layer.
 - **Failure contract:** Provider-schema drift returns HTTP 500 code `MODEL_SCHEMA_INVALID` with fixed provider-neutral user copy. Logs may identify the static tool name, JSON pointer, keyword, and classification, but never schema values, prompts, or user data.
 - **Enforcement:** `ci-batch:issue-1999-ari-provider-schema-tests` (the batched suite that replaced the retired wrapper at #2439 Phase 3C cutover) runs the implementor contract and independently authored tester adversarial suite; `.github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs` pins both tests and both `callGemini` boundaries.
-- **Regression:** 70/70 real registered tool schemas compile. True reversions of `additionalProperties: false` consumption and unknown-keyword rejection make their respective suites fail, then pass after restoration.
+- **Regression:** every real registered tool schema compiles — 70/70 at the #1999 baseline, 80/80 as of 2026-08-25. The count is derived from the ledger, never hardcoded here. True reversions of `additionalProperties: false` consumption and unknown-keyword rejection make their respective suites fail, then pass after restoration.
 - **Scope:** Provider-boundary translation only. Confirmation, JWT/RLS, prompts, models/keys, domain executors, migrations, and native/web clients are unchanged.
 - **Established:** DRAFT at #1999 IMPLEMENT/TEST 2026-08-13; flip to ACTIVE only after all-green PR, exact merged-main edge deployment, and production live-fire.
 
@@ -8852,48 +8853,48 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
-## DRAFT — issue #1974 (canonical Ari ticket tiers and pricing)
+## ACTIVE — issue #1974 (canonical Ari ticket tiers and pricing)
 
-### I-ARI-TICKET-CANONICAL-STATE (DRAFT)
+### I-ARI-TICKET-CANONICAL-STATE (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Event and experience drafts store ticket tiers only in `events.theme.business_draft.tickets`; scheduled/live tiers store only in `ticket_types`.
 
-### I-ARI-TICKET-ONE-WRITER (DRAFT)
+### I-ARI-TICKET-ONE-WRITER (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Ari and the shared Business web/iOS/Android draft and published editors persist through `business_patch_event_ticket_tiers`.
 
-### I-ARI-TIER-COMPLETE (DRAFT)
+### I-ARI-TIER-COMPLETE (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** The full tier modifier contract round-trips, sparse updates preserve omitted fields, and password material never enters the model path.
 
-### I-ARI-TICKET-ID-BINDING (DRAFT)
+### I-ARI-TICKET-ID-BINDING (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Supplied tier IDs bind to the requested event and lifecycle; malformed, deleted, stale, cross-event, RSVP, and trip IDs fail closed.
 
-### I-ARI-MONEY-CURRENCY (DRAFT)
+### I-ARI-MONEY-CURRENCY (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Ticket currency is derived from event then active provider/brand authority; Ari never supplies or defaults a literal currency.
 
-### I-ARI-PAID-READY (DRAFT)
+### I-ARI-PAID-READY (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** New and newly-paid tiers recheck `pg_brand_can_collect` at proposal and confirmation; provider ambiguity produces no write.
 
-### I-ARI-SOLD-PROTECTION (DRAFT)
+### I-ARI-SOLD-PROTECTION (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Sold live tiers cannot change buyer-breaking fields, be removed, or reduce capacity below sold count; pricing switches lock after first sale.
 
-### I-ARI-PRICING-PATCH (DRAFT)
+### I-ARI-PRICING-PATCH (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Event pricing patches use key presence, preserve omitted switches, and support SQL `NULL` inheritance; brand defaults remain concrete.
 
-### I-ARI-TAX-FAIL-CLOSED (DRAFT)
+### I-ARI-TAX-FAIL-CLOSED (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Passing/involving tax requires a fresh active-registration provider probe at proposal and confirmation; missing or ambiguous registration writes nothing.
 
-### I-ARI-MONEY-ROLES (DRAFT)
+### I-ARI-MONEY-ROLES (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Tier writes require event-manager rank 40; event pricing and brand defaults require finance-manager rank 30 through canonical monotonic role functions.
 
-### I-ARI-CONFIRM-EXACTLY-ONCE (DRAFT)
+### I-ARI-CONFIRM-EXACTLY-ONCE (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** The pending-action UUID is immutable execution context and deterministic tier identity; issue #1972 owns the shared atomic receipt/terminalization seam.
 
-### I-ARI-NO-TICKET-SECRET-IN-MODEL (DRAFT)
+### I-ARI-NO-TICKET-SECRET-IN-MODEL (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Plaintext ticket passwords and hashes never enter Gemini arguments, proposal cards, tool results, logs, or ledger evidence; setup remains a guided Business handoff.
 
-### I-ARI-LEDGER-TRUTH (DRAFT)
+### I-ARI-LEDGER-TRUTH (ACTIVE — flipped at #1974 CLOSE 2026-08-25)
 - **Rule:** Source evidence may advance #1974 rows only to `registered_unverified`; independent deployed web+iOS+Android proof is required for `verified`.
 
-- **Enforcement:** `issue-1974-ari-ticket-pricing.mjs` (plain + mutation self-test), issue-specific Deno/migration/Jest tests, and the capability-ledger bijection guard. #1972 round 3 must first provide canonical draft ticket list/readback plus one atomic mixed-draft save transaction; #1974 integrates at that seam and does not duplicate it. Activate only after independent exact-revision runtime PASS.
+- **Enforcement:** `issue-1974-ari-ticket-pricing.mjs` (plain + mutation self-test), issue-specific Deno/migration/Jest tests, and the capability-ledger bijection guard. #1972 round 3 must first provide canonical draft ticket list/readback plus one atomic mixed-draft save transaction; #1974 integrates at that seam and does not duplicate it. Activated 2026-08-25 on merged `main`: independent QA returned PASS on candidate `c225d45b214dd5228f245835c1289109a8831a2c` with authenticated Business web, iOS, and Android runtime evidence; production migration `20270508001974` is applied and stamped atomically (SHA-256 `5c1e24922938b0d6dad2a662478c7a6029cdcb0b277dce3cea7aaecd8bf20458`); all six issue-owned rollback-only production SQL guards passed against the live schema with no fixture residue; and #2417 landed the cross-file collision census that closes the premature-red-merge path PR #2069 took.
 
 ---
 
