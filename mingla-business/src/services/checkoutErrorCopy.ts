@@ -178,6 +178,12 @@ const FREE_CHECKOUT_MESSAGE_BY_RAISE: Readonly<Record<string, string>> = Object
       "This event is no longer available. Nothing was reserved.",
     event_not_selling:
       "This event is not selling tickets right now. Nothing was reserved.",
+    // issue #2562 — the event already happened. Distinct from
+    // `ticket_sales_ended` (the ORGANISER closed sales while the event is still
+    // ahead) because the guest can act on that one by asking the organiser to
+    // reopen, and cannot act on this one at all.
+    event_already_ended:
+      "This event has already taken place, so tickets are no longer available. Nothing was reserved.",
     occurrence_not_found:
       "The day you picked is no longer part of this event. Choose another day \u2014 nothing was reserved.",
     occurrence_not_available:
