@@ -3371,6 +3371,127 @@ const getTaxStatus = writeTool(
   },
 );
 
+// #1976 — balances + payout ledger read. Same edge as Host
+// (`brand-stripe-balances`) plus the same `brand_payout_releases` table Host
+// reads in brandPayoutLedgerService. CSV export remains a guided handoff.
+const getBrandBalancesReports = writeTool(
+  "get_brand_balances_reports",
+  "Read Stripe available/pending balances and recent payout-release ledger rows for a brand. Finance-gated. CSV export stays in Brand → Payments → Reports.",
+  { brand_id: UUID, limit: { type: "integer", minimum: 1, maximum: 50 } },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    await requireBrand(args, client, userId);
+    const balances = await invokeFn<Record<string, unknown>>(
+      client,
+      "brand-stripe-balances",
+      { brand_id: args.brand_id },
+    );
+    const limit = typeof args.limit === "number" && args.limit >= 1
+      ? Math.min(50, Math.floor(args.limit))
+      : 20;
+    const { data, error } = await client
+      .from("brand_payout_releases")
+      .select(
+        "id, event_id, provider, currency, status, releasable_at, released_at, gross_cents, refunded_cents, net_release_cents, organiser_cash_delivered_cents",
+      )
+      .eq("brand_id", args.brand_id)
+      .order("releasable_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    return {
+      brand_id: args.brand_id,
+      balances: {
+        currency: (balances.currency as string | undefined) ?? null,
+        available_minor: (balances.available_minor as number | undefined) ??
+          (balances.availableMinor as number | undefined) ?? null,
+        pending_minor: (balances.pending_minor as number | undefined) ??
+          (balances.pendingMinor as number | undefined) ?? null,
+        retrieved_at: (balances.retrieved_at as string | undefined) ??
+          (balances.retrievedAt as string | undefined) ?? null,
+      },
+      payout_releases: data ?? [],
+      guide:
+        "CSV exports (Stripe payouts / tax / all transactions) open in Brand → Payments → Reports.",
+    };
+  },
+);
+
+// #1976 — partner-side brand-link list (partnerBrandLinksService.listPartnerBrandLinks).
+// RLS binds partner_account_id = auth.uid(); never surface the partner account id.
+const listPartnerBrandLinks = writeTool(
+  "list_partner_brand_links",
+  "List the caller's partner-brand links (partner_brand_links). Optional include_cancelled. Never exposes partner_account_id.",
+  {
+    include_cancelled: { type: "boolean" },
+  },
+  [],
+  async (args, client, userId) => {
+    let query = client
+      .from("partner_brand_links")
+      .select(
+        "id, brand_id, invited_owner_email, invited_at, accepted_at, owner_stripe_connected_at, first_split_at, cancelled_at, cancelled_reason, brand:brands(id, name, slug, default_currency)",
+      )
+      .eq("partner_account_id", userId)
+      .order("invited_at", { ascending: false });
+    if (args.include_cancelled !== true) {
+      query = query.is("cancelled_at", null);
+    }
+    const { data, error } = await query;
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+      id: row.id,
+      brand_id: row.brand_id,
+      invited_owner_email: row.invited_owner_email,
+      status: derivePartnerLinkStatus(
+        row as unknown as Parameters<typeof derivePartnerLinkStatus>[0],
+      ),
+      cancelled_reason: row.cancelled_reason ?? null,
+      brand: row.brand ?? null,
+    }));
+  },
+);
+
+// #1976 — partner split earnings read (partnerSplitsService.listPartnerSplits).
+// RLS admits partner self-read and brand finance/admin. No mutations (webhook-only writes).
+const listPartnerSplits = writeTool(
+  "list_partner_splits",
+  "List partner_splits earnings rows for the caller (status, share, currency). Optional brand/currency/date filters. Read-only.",
+  {
+    brand_id: UUID,
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    from: { type: "string", minLength: 10, maxLength: 40 },
+    to: { type: "string", minLength: 10, maxLength: 40 },
+    limit: { type: "integer", minimum: 1, maximum: 200 },
+  },
+  [],
+  async (args, client, _userId) => {
+    if (args.brand_id !== undefined && !isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const limit = typeof args.limit === "number" && args.limit >= 1
+      ? Math.min(200, Math.floor(args.limit))
+      : 50;
+    let query = client
+      .from("partner_splits")
+      .select(
+        "id, order_id, brand_id, mingla_fee_cents, partner_share_cents, transfer_currency, status, created_at, transferred_at, reversed_at, provider",
+      )
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (isUuid(args.brand_id)) query = query.eq("brand_id", args.brand_id);
+    if (typeof args.currency === "string" && args.currency.length === 3) {
+      query = query.eq("transfer_currency", args.currency.toLowerCase());
+    }
+    if (typeof args.from === "string") query = query.gte("created_at", args.from);
+    if (typeof args.to === "string") query = query.lte("created_at", args.to);
+    const { data, error } = await query;
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    // PII minimization: never return partner_account_id even if selected.
+    return data ?? [];
+  },
+);
+
 // ----------------------------------------------------------------------------
 // K. Refunds / cancels / installments
 // ----------------------------------------------------------------------------
@@ -3577,6 +3698,9 @@ const getEventOrderReconciliation = writeTool(
   { event_id: UUID },
   ["event_id"],
   async (args, client, userId) => {
+    if (!isUuid(args.event_id)) {
+      throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+    }
     await assertAgentReadEvent(client, userId, args.event_id);
     await requireEvent(args, client, userId);
     const { data, error } = await client
@@ -4184,6 +4308,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   getPartnerStatus,
   disconnectPartner,
   getTaxStatus,
+  getBrandBalancesReports,
+  listPartnerBrandLinks,
+  listPartnerSplits,
   refundOrder,
   cancelOrder,
   cancelTripBooking,
@@ -4207,6 +4334,9 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_payout_status",
   "get_partner_status",
   "get_tax_status",
+  "get_brand_balances_reports",
+  "list_partner_brand_links",
+  "list_partner_splits",
   "get_brand_analytics",
   "list_guest_roster",
   "get_operator_snapshot",

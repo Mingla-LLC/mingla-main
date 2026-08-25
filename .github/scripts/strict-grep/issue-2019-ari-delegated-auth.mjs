@@ -119,7 +119,7 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #1971] Four trip graph tools (days/inclusions/tiers/
   // traveler intake) plus the finance-gated aggregate trip money read extend it
   // again (80 + 5 = 85). No inherited role changes.
-  if (declarationCount !== 87) failures.push(`expected 87 declarations, got ${declarationCount}`);
+  if (declarationCount !== 90) failures.push(`expected 90 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

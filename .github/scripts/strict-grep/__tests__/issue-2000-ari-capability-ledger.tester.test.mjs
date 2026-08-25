@@ -47,6 +47,10 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // registered_unverified (85→86). Denominator stays 120. Re-pin tool names,
 // statusBreakdown, statusDigest, mappingDigest, sourceRefDigest, and
 // classification message.
+//
+// [TEST-MOD-APPROVED #1976] Three partner/payments reads (87→90):
+// get_brand_balances_reports, list_partner_brand_links, list_partner_splits.
+// unsupported 21→18; registered_unverified 86→89. Denominator stays 120.
 const EXPECTED_TOOL_NAMES = [
   "cancel_campaign",
   "cancel_event",
@@ -71,6 +75,7 @@ const EXPECTED_TOOL_NAMES = [
   "end_event_sales",
   "export_brand_people",
   "get_brand_analytics",
+  "get_brand_balances_reports",
   "get_event_order_reconciliation",
   "get_operator_snapshot",
   "get_partner_status",
@@ -84,6 +89,8 @@ const EXPECTED_TOOL_NAMES = [
   "list_brands",
   "list_events",
   "list_guest_roster",
+  "list_partner_brand_links",
+  "list_partner_splits",
   "list_venue_claim_feedback",
   "list_venue_listings",
   "manage_brand_discovery_currency",
@@ -134,23 +141,23 @@ const EXPECTED_TOOL_NAMES = [
   "update_rsvp_contribution_settings",
   "update_trip",
   "upsert_ticket_tier",
-  "venue_ops_action"
+  "venue_ops_action",
 ];
 
 const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 86,
+    registered_unverified: 89,
     broken: 0,
     guided_handoff: 8,
-    unsupported: 21,
+    unsupported: 18,
     in_flight: 5,
   }),
   idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
-  statusDigest: "dedc210db6144d0667cf6582b974879169825eac7ec99c3d246155c770a9ab2f",
-  mappingDigest: "24d69ef647043c90479f3e4b34bcda59e30b213e32db0e6fb2982826c1acbb03",
-  sourceRefDigest: "70e37df418544a8b80cb8b9d8f12d30c459bcda05fc4572bb5ef42da672404d4",
+  statusDigest: "990bb5f152c24816e09320224eb7d3ad14d767a8ba3bfd1143761307b6f04619",
+  mappingDigest: "b73182c732984557c8e483f23a278f34f57815575ded9ea76fbb2cd238137ab9",
+  sourceRefDigest: "e9ddf779e608aff8d966b069521592b5d832825b79fc0d0a1431a580d40bc185",
 });
 
 function readLedger() {
@@ -176,9 +183,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("87-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("90-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("86/0/21/8/5/0 classification changed");
+    failures.push("89/0/18/8/5/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");

@@ -142,6 +142,11 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_partner_status: role("finance_manager", "brand"),
   disconnect_partner: role("finance_manager", "brand"),
   get_tax_status: role("finance_manager", "brand"),
+  // #1976 — balances/ledger read is finance-gated like Host payments surfaces.
+  get_brand_balances_reports: role("finance_manager", "brand"),
+  // #1976 — partner self-reads; RLS binds partner_account_id / partner splits.
+  list_partner_brand_links: role("business_user", "none"),
+  list_partner_splits: role("business_user", "optional_brand"),
   refund_order: role("finance_manager", "brand"),
   cancel_order: role("finance_manager", "brand"),
   cancel_trip_booking: role("finance_manager", "brand"),

@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 87,
+    "registered_tool_count": 90,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 86,
+      "registered_unverified": 89,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 21,
+      "unsupported": 18,
       "in_flight": 5
     }
   },
@@ -4603,26 +4603,35 @@
           {
             "path": "mingla-business/src/services/brandStripeBalancesService.ts",
             "symbol": "fetchBrandStripeBalances"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getBrandBalancesReports"
+          },
+          {
+            "path": "mingla-business/src/services/brandPayoutLedgerService.ts",
+            "symbol": "fetchBrandPayoutLedger"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_brand_balances_reports",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "payments reports surface"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1976 agentDomainTools.ts:getBrandBalancesReports invokes brand-stripe-balances and reads brand_payout_releases"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "Payout readiness is not balance/report parity"
+        "No deployed cross-surface Pass-5 proof"
       ],
-      "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "confidence": "high",
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.list_manage_roles",
@@ -5746,10 +5755,10 @@
     {
       "id": "ari.partner.brand_links",
       "domain": "payments",
-      "outcome": "Invite and manage partner-brand links",
-      "safety": "write",
-      "required_role": "partner_or_owner",
-      "confirmation": "standard",
+      "outcome": "List partner-brand links for the caller",
+      "safety": "read",
+      "required_role": "business_user",
+      "confirmation": "none",
       "surfaces": [
         "business_ios",
         "business_android",
@@ -5767,34 +5776,39 @@
           {
             "path": "mingla-business/src/services/partnerBrandLinksService.ts",
             "symbol": "listPartnerBrandLinks"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listPartnerBrandLinks"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_partner_brand_links",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "partner brand-links service"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1976 agentDomainTools.ts:listPartnerBrandLinks mirrors partnerBrandLinksService.listPartnerBrandLinks"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
-      "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "confidence": "high",
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.partner.splits",
       "domain": "payments",
-      "outcome": "Read and manage partner split allocations",
-      "safety": "money",
-      "required_role": "partner_or_finance_manager",
-      "confirmation": "standard",
+      "outcome": "Read partner split earnings for the caller",
+      "safety": "read",
+      "required_role": "business_user",
+      "confirmation": "none",
       "surfaces": [
         "business_ios",
         "business_android",
@@ -5812,26 +5826,31 @@
           {
             "path": "mingla-business/src/services/partnerSplitsService.ts",
             "symbol": "listPartnerSplits"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listPartnerSplits"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_partner_splits",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "partner splits service"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1976 agentDomainTools.ts:listPartnerSplits mirrors partnerSplitsService.listPartnerSplits"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "Partner status does not cover splits"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     }
   ]
 }

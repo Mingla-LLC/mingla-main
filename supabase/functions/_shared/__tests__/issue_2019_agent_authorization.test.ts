@@ -36,18 +36,19 @@ Deno.test("#2019 registry is exact, duplicate-free, and fully declared", () => {
 // [TEST-MOD-APPROVED #1971] Four trip graph tools (manage_trip_days /
 // _inclusions / _tiers / _traveler_intake) plus the finance-gated aggregate
 // // get_trip_order_money are additive declarations; 85 - 1 set_guest_approval + 2 RSVP writes = 86.
-// [TEST-MOD-APPROVED #1984] get_event_order_reconciliation; 86→87. The four
+// [TEST-MOD-APPROVED #1984] get_event_order_reconciliation; 87→90. The four
 // invalidated assertions are exactly the four census counts below
 // (AGENT_TOOLS.length, the unique-name set size, AGENT_TOOL_AUTHORIZATION key
 // count, and the mapped ledger-row count). No role translation, ordering,
 // resource binding or denial assertion changes.
+// [TEST-MOD-APPROVED #1976] Three partner/payments reads; 87→90.
   assert(
-    AGENT_TOOLS.length === 87,
-    `expected 87 tools, got ${AGENT_TOOLS.length}`,
+    AGENT_TOOLS.length === 90,
+    `expected 90 tools, got ${AGENT_TOOLS.length}`,
   );
-  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 87, "duplicate tool");
+  assert(new Set(AGENT_TOOLS.map((t) => t.name)).size === 90, "duplicate tool");
   assert(
-    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 87,
+    Object.keys(AGENT_TOOL_AUTHORIZATION).length === 90,
     "authorization registry drift",
   );
   for (const tool of AGENT_TOOLS) {
@@ -95,8 +96,9 @@ Deno.test("#2019 declarations exactly translate the accepted capability ledger",
   );
   // [TEST-MOD-APPROVED #1979] Mapped ledger rows track the 80-tool registry.
   // [TEST-MOD-APPROVED #1977] 85 -> 86: drop set_guest_approval; add update_rsvp + update_rsvp_contribution_settings.
-  // [TEST-MOD-APPROVED #1984] 86 -> 87: get_event_order_reconciliation.
-  assert(rows.length === 87, `expected 87 ledger rows, got ${rows.length}`);
+  // [TEST-MOD-APPROVED #1984] 87 -> 90: get_event_order_reconciliation.
+  // [TEST-MOD-APPROVED #1976] 87 -> 90: balances + partner links + splits.
+  assert(rows.length === 90, `expected 90 ledger rows, got ${rows.length}`);
   for (const row of rows) {
     assert(
       AGENT_TOOL_AUTHORIZATION[row.ari_tool].requiredRole ===
@@ -509,9 +511,12 @@ Deno.test("#2019 malformed final args fail before any authority or resource look
   );
 });
 
-Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", async () => {
+Deno.test("#2019 RSVP selected roster_keys bind each RSVP to its event", async () => {
+  // [TEST-MOD-APPROVED #1977] set_rsvp_guest_status dropped guest_id/status for
+  // decision+scope+roster_keys. The containment proof now follows the selected
+  // roster_keys path (rsvp:<uuid> → event_rsvps → events) that authorization
+  // actually walks. guest_id is rejected by additionalProperties:false.
   const EVENT = "44444444-4444-4444-8444-444444444444";
-  const GUEST = "55555555-5555-4555-8555-555555555555";
   const RSVP = "66666666-6666-4666-8666-666666666666";
   const selects: string[] = [];
   const resourceClient: any = {
@@ -535,8 +540,6 @@ Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", as
           Promise.resolve({
             data: table === "events" && selected === "brand_id, event_type"
               ? { brand_id: UUID, event_type: "rsvp" }
-              : table === "event_rsvp_guests" && selected === "rsvp_id"
-              ? { rsvp_id: RSVP }
               : table === "event_rsvps" && selected === "event_id"
               ? { event_id: EVENT }
               : null,
@@ -548,16 +551,21 @@ Deno.test("#2019 RSVP plus-one guest binding follows guest to RSVP to event", as
   };
   await authorizeAgentTool(
     tool("set_rsvp_guest_status"),
-    { event_id: EVENT, guest_id: GUEST, status: "approved" },
+    {
+      event_id: EVENT,
+      decision: "approve",
+      scope: "selected",
+      roster_keys: [`rsvp:${RSVP}`],
+    },
     resourceClient,
     UUID,
   );
   assert(
-    selects.includes("event_rsvp_guests:rsvp_id"),
-    "guest binding queried a nonexistent direct event_id",
+    selects.includes("event_rsvps:event_id"),
+    "roster_keys binding skipped canonical RSVP parent",
   );
   assert(
-    selects.includes("event_rsvps:event_id"),
-    "guest binding skipped canonical RSVP parent",
+    selects.filter((row) => row.startsWith("events:")).length >= 1,
+    "roster_keys binding never resolved the parent event",
   );
 });

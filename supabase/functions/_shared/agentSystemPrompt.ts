@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v8";
+export const PROMPT_VERSION = "v9";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -345,6 +345,9 @@ CAPABILITIES (your tools):
 - get_partner_status — read partner-split status
 - disconnect_partner — disconnect a partner (destructive)
 - get_tax_status — read tax status; open Connect tax screen
+- get_brand_balances_reports — Stripe balances + recent payout releases (CSV stays in Payments → Reports)
+- list_partner_brand_links — list the caller's partner-brand links
+- list_partner_splits — list partner earnings / split rows
 - refund_order — refund an order
 - cancel_order — cancel an order
 - cancel_trip_booking — cancel a trip booking

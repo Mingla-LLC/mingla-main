@@ -911,6 +911,8 @@ jobs:
             # ISSUE-1984 — event order reconciliation aggregate (no buyer PII).
             supabase/functions/_shared/__tests__/issue_1984_ari_orders_reconciliation.implementor.test.ts
             supabase/functions/_shared/__tests__/issue_1984_ari_orders_reconciliation.tester_adversarial.test.ts
+            # ISSUE-1976 — balances + partner links/splits reads.
+            supabase/functions/_shared/__tests__/issue_1976_ari_payments_partner.implementor.test.ts
             # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
             supabase/functions/manage-stay-inventory/index.test.ts
             # ISSUE-1388 — grouped Stay cart, Request actions, and error hygiene.
