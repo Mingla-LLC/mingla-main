@@ -13,10 +13,7 @@ import {
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import { AGENT_TOOLS } from "../agentTools.ts";
-import {
-  DOMAIN_READ_ONLY,
-  MONEY_CONFIRM_TOOLS,
-} from "../agentDomainTools.ts";
+import { DOMAIN_READ_ONLY, MONEY_CONFIRM_TOOLS } from "../agentDomainTools.ts";
 import { AGENT_TOOL_AUTHORIZATION } from "../agentToolAuthorization.ts";
 import { TENANT_SCOPED_READ_TOOL_NAMES } from "../agentTenantScope.ts";
 import { buildSystemPrompt, PROMPT_VERSION } from "../agentSystemPrompt.ts";
@@ -123,7 +120,10 @@ Deno.test("#1971 happy: every trip tool carries a declared role and resource bin
     create_trip: { requiredRole: "event_manager", resource: "brand" },
     update_trip: { requiredRole: "event_manager", resource: "event" },
     manage_trip_days: { requiredRole: "event_manager", resource: "event" },
-    manage_trip_inclusions: { requiredRole: "event_manager", resource: "event" },
+    manage_trip_inclusions: {
+      requiredRole: "event_manager",
+      resource: "event",
+    },
     manage_trip_tiers: { requiredRole: "event_manager", resource: "event" },
     manage_trip_traveler_intake: {
       requiredRole: "event_manager",
@@ -133,7 +133,10 @@ Deno.test("#1971 happy: every trip tool carries a declared role and resource bin
     delete_trip: { requiredRole: "event_manager", resource: "event" },
     // The aggregate money read is finance-gated, matching
     // biz_trip_require_finance in the migration.
-    get_trip_order_money: { requiredRole: "finance_manager", resource: "event" },
+    get_trip_order_money: {
+      requiredRole: "finance_manager",
+      resource: "event",
+    },
   };
   for (const [name, declaration] of Object.entries(expected)) {
     const registered = AGENT_TOOL_AUTHORIZATION[name];
@@ -217,8 +220,8 @@ const VALID_WRITE_ARGS: [string, Record<string, unknown>][] = [
     expected_updated_at: "2027-01-01T00:00:00Z",
   }],
   ["delete_trip", {
-  event_id: EVENT_ID,
-  expected_updated_at: "2027-01-01T00:00:00Z",
+    event_id: EVENT_ID,
+    expected_updated_at: "2027-01-01T00:00:00Z",
   }],
 ];
 
