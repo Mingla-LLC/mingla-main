@@ -213,7 +213,8 @@ export type MessageStatus =
    * (the Marketing Overview funnel counts it as pending in NEITHER bucket).
    * The deferred cohort's campaign reuses CampaignStatus='scheduled'.
    */
-  | "deferred";
+  | "deferred"
+  | "complained";
 
 export type UnsubscribeScope = "account" | "brand" | "global";
 export type UnsubscribeChannel = MarketingChannel | "all";
@@ -271,10 +272,20 @@ export interface AudienceReachSummary {
 // All counts windowed to the last 30 days.
 
 export interface MarketingOverviewFunnel {
+  /** Accepted by the provider. NOT delivery. */
   sent: number;
+  /** #2510 — from `email.delivered`. Meaningless unless `hasEventCoverage`. */
   delivered: number;
+  /** #2510 — from `email.opened`. Meaningless unless `hasEventCoverage`. */
+  opened: number;
   clicked: number;
   failed: number;
+  /**
+   * #2510 — false for campaigns sent before the Resend webhook existed. The UI
+   * must render delivered/opened as unknown, never as 0: "0% opened" is a
+   * claim we cannot make about a campaign we never measured.
+   */
+  hasEventCoverage: boolean;
 }
 
 export interface MarketingOverviewRecentCampaign {

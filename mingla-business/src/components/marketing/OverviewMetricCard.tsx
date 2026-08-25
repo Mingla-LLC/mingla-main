@@ -23,7 +23,13 @@ export type OverviewMetricTone = "default" | "warning";
 
 export interface OverviewMetricCardProps {
   label: string;
-  value: number;
+  /**
+   * #2510 — `null` means NOT TRACKED and renders an em-dash, never 0.
+   * A campaign sent before the Resend webhook existed has no delivery events;
+   * drawing "OPENED 0" would tell the organiser nobody read it, which is a
+   * claim we have no evidence for. Constitution rule 9.
+   */
+  value: number | null;
   /** Optional percentage (0-100). Omitted when undefined; rendered as integer "12%". */
   percent?: number;
   /** Warning tone tints value + percentage when value > 0. */
@@ -38,7 +44,9 @@ export const OverviewMetricCard: React.FC<OverviewMetricCardProps> = ({
   tone = "default",
   testID,
 }) => {
-  const applyWarning = tone === "warning" && value > 0;
+  const applyWarning = tone === "warning" && value !== null && value > 0;
+  const shownValue = value === null ? "—" : value.toLocaleString();
+  const a11yValue = value === null ? "not tracked" : String(value);
   const valueColor = applyWarning ? semantic.warning : textTokens.primary;
   const percentColor = applyWarning ? semantic.warning : textTokens.tertiary;
 
@@ -53,14 +61,14 @@ export const OverviewMetricCard: React.FC<OverviewMetricCardProps> = ({
       testID={testID}
       accessibilityLabel={
         pctLabel !== null
-          ? `${label}: ${value}, ${pctLabel}${applyWarning ? ", warning" : ""}`
-          : `${label}: ${value}${applyWarning ? ", warning" : ""}`
+          ? `${label}: ${a11yValue}, ${pctLabel}${applyWarning ? ", warning" : ""}`
+          : `${label}: ${a11yValue}${applyWarning ? ", warning" : ""}`
       }
     >
       <Text style={styles.label}>{label}</Text>
       <View style={styles.valueRow}>
         <Text style={[styles.value, { color: valueColor }]}>
-          {value.toLocaleString()}
+          {shownValue}
         </Text>
         {pctLabel !== null ? (
           <Text style={[styles.percent, { color: percentColor }]}>{pctLabel}</Text>

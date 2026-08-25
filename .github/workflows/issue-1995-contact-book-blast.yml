@@ -20,6 +20,10 @@ on:
       - "supabase/migrations/20270525002509_issue_2509_blast_durability.sql"
       - "supabase/functions/_shared/issue_2509_blast_durability.test.ts"
       - "supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts"
+      # #2510 — Resend event ingest: open rate, bounce/complaint suppression.
+      - "supabase/functions/resend-webhook/**"
+      - "supabase/migrations/20270526002510_issue_2510_email_event_ingest.sql"
+      - "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql"
       - "mingla-business/**"
       - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
       - ".github/workflows/issue-1995-contact-book-blast.yml"
@@ -93,6 +97,22 @@ jobs:
       # it does not prove is that re-applying is safe (every migration is
       # replayed on a fresh baseline) or that the indexes actually REFUSE the
       # duplicate that caused the double-send. Both are asserted here.
+      - name: Format-check the new #2510 Deno files (NARROW gate — #1184 precedent)
+        run: |
+          deno fmt --check \
+            supabase/functions/resend-webhook/index.ts \
+            supabase/functions/resend-webhook/issue_2510_resend_webhook.test.ts
+      - name: "#2510 webhook signature + fail-closed contracts"
+        run: |
+          deno check supabase/functions/resend-webhook/index.ts
+          deno test --allow-env --allow-read \
+            supabase/functions/resend-webhook/issue_2510_resend_webhook.test.ts
+      - name: "#2510 event ingest is idempotent, monotonic, and suppresses correctly"
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql
       - name: "#2509 migration is idempotent and the uniqueness actually bites"
         env:
           PGPASSWORD: ${{ github.run_id }}

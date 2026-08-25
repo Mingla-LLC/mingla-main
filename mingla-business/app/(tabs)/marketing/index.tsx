@@ -106,6 +106,12 @@ export default function MarketingOverviewRoute(): React.ReactElement {
   const snap = overviewQuery.data;
   const sent = snap.funnel.sent;
   const deliveredPct = sent > 0 ? (snap.funnel.delivered / sent) * 100 : undefined;
+  // #2510 — open rate is measured against DELIVERED, not accepted: an email
+  // that never arrived cannot be opened, and dividing by accepted would
+  // understate every campaign that had bounces.
+  const openedPct = snap.funnel.delivered > 0
+    ? (snap.funnel.opened / snap.funnel.delivered) * 100
+    : undefined;
   const clickedPct = sent > 0 ? (snap.funnel.clicked / sent) * 100 : undefined;
   const failedPct = sent > 0 ? (snap.funnel.failed / sent) * 100 : undefined;
 
@@ -132,11 +138,20 @@ export default function MarketingOverviewRoute(): React.ReactElement {
         </View>
 
         <View style={styles.metricGrid}>
-          <OverviewMetricCard label="SENT" value={snap.funnel.sent} />
+          {/* #2510 — DELIVERED was COUNT(status IN ('delivered','clicked')),
+              and nothing ever wrote 'delivered', so this tile was the CLICK
+              count under a Delivered label. It read "DELIVERED 3 (1.5%)" for a
+              campaign where 189 emails were accepted. */}
+          <OverviewMetricCard label="ACCEPTED" value={snap.funnel.sent} />
           <OverviewMetricCard
             label="DELIVERED"
-            value={snap.funnel.delivered}
-            percent={deliveredPct}
+            value={snap.funnel.hasEventCoverage ? snap.funnel.delivered : null}
+            percent={snap.funnel.hasEventCoverage ? deliveredPct : undefined}
+          />
+          <OverviewMetricCard
+            label="OPENED"
+            value={snap.funnel.hasEventCoverage ? snap.funnel.opened : null}
+            percent={snap.funnel.hasEventCoverage ? openedPct : undefined}
           />
           <OverviewMetricCard
             label="CLICKED"

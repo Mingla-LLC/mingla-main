@@ -7,8 +7,13 @@
  * the hook can pivot without component churn.
  *
  * Funnel formulas (BINDING — pinned by SPEC §6.1.4):
- *   sent      = COUNT(messages WHERE status IN ('sent','delivered','clicked','preview_skipped'))
- *   delivered = COUNT(messages WHERE status IN ('delivered','clicked'))
+ *   accepted  = COUNT(messages WHERE status IN ('sent','delivered','opened','clicked','unsubscribed','preview_skipped'))
+ *   delivered = COUNT(messages WHERE delivered_at IS NOT NULL)   -- #2510
+ *
+ * #2510 — `delivered` used to be COUNT(status IN ('delivered','clicked')).
+ * Nothing ever wrote `delivered`, so that tile was simply the CLICK count
+ * under a Delivered label, and the We Go Again organiser was shown
+ * "DELIVERED 3 (1.5%)" for a campaign where 189 emails were accepted.
  *   clicked   = COUNT(DISTINCT message_id from marketing_clicks WHERE clicked_at IS NOT NULL)
  *   failed    = COUNT(messages WHERE status IN ('failed','bounced'))
  *
@@ -46,25 +51,54 @@ const CLICK_QUERY_LIMIT = 2000; // matches marketingReportService precedent
  * Internal helper — reduce a list of message-status rows into the 4 funnel
  * buckets per the binding formulas above. Exported for unit testing.
  */
+/** #2510 — a row the provider accepted, whatever happened to it afterwards. */
+const ACCEPTED: ReadonlySet<string> = new Set([
+  "sent",
+  "delivered",
+  // `opened` is NEW here and is the only addition #2510 makes: the ingest
+  // writes it, and without it the headline would FALL as opens arrived.
+  "opened",
+  "clicked",
+  "preview_skipped",
+]);
+// `unsubscribed` and `queued` stay OUT, per the orthogonal-states rule pinned
+// by marketingOverviewService.test.ts. That rule is not part of this issue and
+// widening it here would be scope creep with its own blast radius.
+
+export interface FunnelRow {
+  status: MessageStatus;
+  delivered_at?: string | null;
+  opened_at?: string | null;
+}
+
 export function rollupFunnel(
-  statuses: ReadonlyArray<MessageStatus>,
+  rows: ReadonlyArray<FunnelRow>,
   uniqueClickedMessageIds: number,
 ): MarketingOverviewFunnel {
   let sent = 0;
   let delivered = 0;
+  let opened = 0;
   let failed = 0;
-  for (const s of statuses) {
-    if (s === "sent" || s === "delivered" || s === "clicked" || s === "preview_skipped") {
-      sent += 1;
-    }
-    if (s === "delivered" || s === "clicked") {
-      delivered += 1;
-    }
-    if (s === "failed" || s === "bounced") {
-      failed += 1;
-    }
+  for (const row of rows) {
+    // `opened` and `clicked` were MISSING from the accepted set, so the
+    // headline fell as engagement rose — the more people read a campaign, the
+    // fewer it claimed to have sent.
+    if (ACCEPTED.has(row.status)) sent += 1;
+    // Delivery is an EVENT now, not a guess from status.
+    if (row.delivered_at != null) delivered += 1;
+    if (row.opened_at != null) opened += 1;
+    if (row.status === "failed" || row.status === "bounced") failed += 1;
   }
-  return { sent, delivered, clicked: uniqueClickedMessageIds, failed };
+  return {
+    sent,
+    delivered,
+    opened,
+    clicked: uniqueClickedMessageIds,
+    failed,
+    // No delivery event has ever arrived for these campaigns — delivered and
+    // opened are UNKNOWN, and the screen must not draw them as 0.
+    hasEventCoverage: delivered > 0 || opened > 0,
+  };
 }
 
 export interface GetMarketingOverviewInput {
@@ -132,7 +166,14 @@ export async function getMarketingOverview(
     return {
       window_days: WINDOW_DAYS,
       campaigns_sent_count: campaignsSentCount,
-      funnel: { sent: 0, delivered: 0, clicked: 0, failed: 0 },
+      funnel: {
+        sent: 0,
+        delivered: 0,
+        opened: 0,
+        clicked: 0,
+        failed: 0,
+        hasEventCoverage: false,
+      },
       recent_campaigns: recentCampaigns,
     };
   }
@@ -141,16 +182,14 @@ export async function getMarketingOverview(
   const { data: messageData, error: messageErr } = await withTimeout(
     supabase
       .from("marketing_messages")
-      .select("status")
+      .select("status, delivered_at, opened_at")
       .in("campaign_id", windowCampaignIds)
       .gte("created_at", windowStartIso),
     DATA_FETCH_TIMEOUT_MS,
     "getMarketingOverview:messages",
   );
   if (messageErr) throw messageErr;
-  const messageStatuses = ((messageData ?? []) as Array<{ status: MessageStatus }>).map(
-    (m) => m.status,
-  );
+  const funnelRows = (messageData ?? []) as unknown as FunnelRow[];
 
   // Query 4 — distinct message_id from marketing_clicks WHERE clicked_at NOT NULL.
   // Bounded by .limit() to match marketingReportService precedent at line 110.
@@ -173,7 +212,7 @@ export async function getMarketingOverview(
   return {
     window_days: WINDOW_DAYS,
     campaigns_sent_count: campaignsSentCount,
-    funnel: rollupFunnel(messageStatuses, uniqueClickedMessageIds.size),
+    funnel: rollupFunnel(funnelRows, uniqueClickedMessageIds.size),
     recent_campaigns: recentCampaigns,
   };
 }

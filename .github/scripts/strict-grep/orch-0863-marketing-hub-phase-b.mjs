@@ -134,21 +134,57 @@ function checkOverviewNoRevenue(source) {
 }
 
 // ---------------------------------------------------------------------------
+// [TEST-MOD-APPROVED #2510]
+//
+// SUPERSEDED ASSERTION, named: C3 "overview-no-opened", whose stated reason was
+// "SPEC NG-8 — no Resend webhook ingest path". That premise was TRUE and worth
+// enforcing — an open rate we could not measure is exactly the Constitution #9
+// fabrication this gate exists to stop. #2510 removes the premise by BUILDING
+// the ingest (supabase/functions/resend-webhook -> mkt_ingest_email_event ->
+// marketing_messages.opened_at).
+//
+// The protection MOVES rather than disappears: the card is now required to
+// exist AND to be gated on real event coverage, in both its value and its
+// percent. A campaign with no events must render an em-dash, never 0%. The
+// gate therefore still fails on the thing it always cared about — showing a
+// number we have not earned.
+//
 // Check 3: Overview route does NOT render 'Opened' as a funnel-card label
 // ---------------------------------------------------------------------------
 function checkOverviewNoOpened(source) {
+  // `label="OPENED"` is the ONE permitted form and is checked for its guard
+  // below. Any other spelling is an ungated card slipped in by another route.
   if (
     source.includes('label="Opened"') ||
-    source.includes('label="OPENED"') ||
     source.includes("label={'Opened'}") ||
     source.includes('label={"Opened"}')
   ) {
     fail(
-      "C3: overview-no-opened",
-      `${OVERVIEW_ROUTE} renders an 'Opened' funnel-card label (SPEC NG-8 — no Resend webhook ingest path)`,
+      "C3: overview-opened-needs-coverage",
+      `${OVERVIEW_ROUTE} renders a bare 'Opened' label — it must be the guarded OPENED card`,
+    );
+  } else if (!source.includes('label="OPENED"')) {
+    // Vacuity guard. If the card were renamed or removed this check would pass
+    // by matching nothing, and the protection below would silently evaporate.
+    fail(
+      "C3: overview-opened-needs-coverage",
+      `${OVERVIEW_ROUTE} has no OPENED card at all — #2510 shipped one; did it get dropped?`,
+    );
+  } else if (
+    !/label="OPENED"[\s\S]{0,240}hasEventCoverage \? snap\.funnel\.opened : null/
+      .test(source) ||
+    !/label="OPENED"[\s\S]{0,300}hasEventCoverage \? openedPct : undefined/
+      .test(source)
+  ) {
+    fail(
+      "C3: overview-opened-needs-coverage",
+      `${OVERVIEW_ROUTE} shows an open rate without gating on hasEventCoverage — an unmeasured campaign would read 0%`,
     );
   } else {
-    ok("C3: overview-no-opened", "no 'Opened' funnel-card label literal");
+    ok(
+      "C3: overview-opened-needs-coverage",
+      "OPENED card is gated on real event coverage (value AND percent)",
+    );
   }
 }
 

@@ -51,11 +51,47 @@ describe("Marketing Overview tab (ORCH-0863) — Constitution #9 enforcement", (
     expect(lower.includes("revenue")).toBe(false);
   });
 
-  it("(T-06) does NOT render 'Opened' as a funnel-card label", () => {
-    // Tolerate the word in surrounding prose / comments, but the LITERAL
-    // funnel-card label is `<OverviewMetricCard label="Opened" ...>` — block
-    // that pattern. Also block a `"OPENED"` (all-caps labelCap style) literal.
-    expect(source.includes('label="Opened"')).toBe(false);
-    expect(source.includes('label="OPENED"')).toBe(false);
+  /**
+   * [TEST-MOD-APPROVED #2510]
+   *
+   * SUPERSEDED ASSERTION, named explicitly: T-06's "does NOT render 'Opened'
+   * as a funnel-card label".
+   *
+   * Its stated premise was "no Resend webhook ingest path; SPEC NG-8" — and
+   * that premise was TRUE and worth enforcing: showing an open rate we could
+   * not measure is exactly the Constitution #9 fabrication this file exists to
+   * prevent. #2510 removes the premise by building the ingest
+   * (`supabase/functions/resend-webhook` → `mkt_ingest_email_event` →
+   * `marketing_messages.opened_at`), so the label now has evidence behind it.
+   *
+   * The PROTECTION does not go away, it MOVES: the card may only show a number
+   * when real events exist, and must render an em-dash otherwise. A campaign
+   * sent before the webhook existed still shows "—", never "0%", because
+   * "nobody opened it" remains a claim we cannot make. That is asserted below,
+   * so this file still fails if anyone shows an unmeasured open rate.
+   *
+   * The revenue half of T-06 is UNTOUCHED — no attribution exists, so `$` and
+   * "revenue" stay banned.
+   */
+  it("(T-06) renders 'Opened' ONLY behind real event coverage (#2510)", () => {
+    // The label is allowed now...
+    expect(source.includes('label="OPENED"')).toBe(true);
+    // ...but only guarded by hasEventCoverage, and only with an unknown
+    // fallback. Both halves must be present, or an unmeasured campaign would
+    // be shown a fabricated 0%.
+    expect(source.includes("snap.funnel.hasEventCoverage")).toBe(true);
+    expect(
+      /label="OPENED"[\s\S]{0,240}hasEventCoverage \? snap\.funnel\.opened : null/
+        .test(source),
+    ).toBe(true);
+  });
+
+  it("(T-06b) an unmeasured campaign can never be shown a 0% open rate (#2510)", () => {
+    // The percent prop must be gated too. A `null` value with a live percent
+    // would still render "0%" beside the em-dash.
+    expect(
+      /label="OPENED"[\s\S]{0,300}hasEventCoverage \? openedPct : undefined/
+        .test(source),
+    ).toBe(true);
   });
 });

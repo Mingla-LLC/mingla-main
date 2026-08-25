@@ -16829,7 +16829,7 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bfdd1beb6ab183bc4038eb6dbb065e8fa09eb044dc49e271df50bc779dd7946a",
+        "sourceSha256": "b01c8e926151415614fafa8b3d0e4f0dc1c1cc243203db547f6508350bc9ffb6",
         "triggers": [
           "pull_request"
         ],
@@ -16848,8 +16848,11 @@
           "supabase/functions/_shared/offeringInviteQuote.ts",
           "supabase/functions/_shared/smsPriceBook.ts",
           "supabase/functions/marketing-send/**",
+          "supabase/functions/resend-webhook/**",
           "supabase/migrations/20270401001995_issue_1995_contact_book_blast.sql",
-          "supabase/migrations/20270525002509_issue_2509_blast_durability.sql"
+          "supabase/migrations/20270525002509_issue_2509_blast_durability.sql",
+          "supabase/migrations/20270526002510_issue_2510_email_event_ingest.sql",
+          "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql"
         ],
         "jobKeys": [
           "issue-1995-contact-book-blast"
