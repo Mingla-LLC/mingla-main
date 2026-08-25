@@ -798,6 +798,20 @@ const refundRsvpContribution = writeTool(
 // header, or RPC signature. Caller JWT only; the database re-authorizes the
 // exact resource, role/capability, optimistic version, and idempotency.
 
+// #2592 B4 — ONE strict E.164 shape for every Ari reservation guest contact.
+// This is the EXACT pattern the owning authorities already enforce: `STRICT_E164`
+// in `supabase/functions/stay-reservations/index.ts`, and the SQL
+// `reservation_phone_must_be_e164` guard on `biz_reservation_create`
+// (`20270325001857_issue_1857_phone_country_authority.sql`).
+//
+// `normalizeE164()` from `_shared/e164Country.ts` is deliberately NOT reused as
+// the validator: it NORMALISES and accepts 2-digit national numbers (`+2000`),
+// which both owners reject. Reusing it would make this tool accept payloads the
+// owning Edge and RPC refuse, which is the same class of contract lie #2592 is
+// repairing.
+const STRICT_E164_RE = /^\+[1-9][0-9]{7,14}$/;
+const E164_PATTERN = "^\\+[1-9][0-9]{7,14}$";
+
 const STAY_GUEST_SCHEMA = {
   type: "object",
   additionalProperties: false,
@@ -805,7 +819,11 @@ const STAY_GUEST_SCHEMA = {
   properties: {
     name: STR,
     email: { type: "string" },
-    phone: { type: "string" },
+    phone: {
+      type: "string",
+      pattern: E164_PATTERN,
+      description: "Strict E.164, e.g. +14155550123.",
+    },
     phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
   },
 };
@@ -823,7 +841,18 @@ function buildStayGuest(raw: unknown): Record<string, unknown> {
   const hasEmail = isString(guest.email);
   const hasPhone = isString(guest.phone);
   if (hasEmail) out.email = (guest.email as string).trim();
-  if (hasPhone) out.phone = (guest.phone as string).trim();
+  if (hasPhone) {
+    // #2592 B4 — the refusal below CLAIMS E.164; nothing used to check it, so a
+    // free-text phone reached `stay-reservations`, which rejects it there.
+    const phone = (guest.phone as string).trim();
+    if (!STRICT_E164_RE.test(phone)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "guest.phone must be E.164 (e.g. +14155550123)",
+      );
+    }
+    out.phone = phone;
+  }
   if (isString(guest.phone_country_iso)) {
     if (!hasPhone) {
       throw new ToolError(
@@ -939,17 +968,59 @@ const transitionStay = writeTool(
       enum: ["approve_request", "decline_request", "cancel"],
     },
     group_id: UUID,
-    expected_version: { type: "integer", minimum: 1 },
+    expected_version: {
+      type: "integer",
+      minimum: 1,
+      description:
+        "Current group version. REQUIRED for approve_request and decline_request; MUST be omitted for cancel.",
+    },
     // Cancellation must reference an existing canonical cancel_preview result.
-    preview_id: UUID,
-    preview_hash: { type: "string", minLength: 64, maxLength: 64 },
-    reason: { type: "string", minLength: 3, maxLength: 500 },
+    preview_id: {
+      ...UUID,
+      description:
+        "cancel_preview id. REQUIRED for cancel; MUST be omitted otherwise.",
+    },
+    preview_hash: {
+      type: "string",
+      minLength: 64,
+      maxLength: 64,
+      description:
+        "cancel_preview hash. REQUIRED for cancel; MUST be omitted otherwise.",
+    },
+    reason: {
+      type: "string",
+      minLength: 3,
+      maxLength: 500,
+      description:
+        "Cancellation reason. REQUIRED for cancel; MUST be omitted otherwise.",
+    },
   },
   ["operation", "group_id"],
   async (args, client, _userId, context) => {
     const operationId = requireAgentOperationId(context);
     if (!isUuid(args.group_id)) {
       throw new ToolError("INVALID_ARGS", "group_id must be a uuid");
+    }
+    // #2592 B3 — `operation` discriminates a union whose per-branch
+    // requirements the provider typed schema cannot express: only the keywords
+    // in `PROVIDER_SCHEMA_FIELDS` (`_shared/agentGemini.ts`) reach the model,
+    // and `oneOf`, `allOf`, and `if`/`then` are not among them — emitting one
+    // would fail EVERY Ari turn closed with MODEL_SCHEMA_INVALID. The union is
+    // therefore refused HERE, deterministically, before any dispatch:
+    //   1. the discriminator itself is validated — without this, an unknown
+    //      operation fell through to the `cancel` branch and could execute a
+    //      cancellation the caller never named;
+    //   2. each branch rejects the OTHER branch's fields, so a versioned
+    //      approve cannot smuggle a preview binding and vice versa.
+    if (
+      args.operation !== "approve_request" &&
+      args.operation !== "decline_request" &&
+      args.operation !== "cancel"
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "operation must be approve_request, decline_request, or cancel",
+      );
     }
     if (
       args.operation === "approve_request" ||
@@ -962,6 +1033,15 @@ const transitionStay = writeTool(
         throw new ToolError(
           "INVALID_ARGS",
           "expected_version (current group version) is required",
+        );
+      }
+      if (
+        args.preview_id !== undefined || args.preview_hash !== undefined ||
+        args.reason !== undefined
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "preview_id, preview_hash, and reason belong to cancel only",
         );
       }
       return await invokeFn(
@@ -978,6 +1058,12 @@ const transitionStay = writeTool(
     // cancel — a two-stage contract: the proposal owner runs cancel_preview and
     // binds previewId/previewHash; only the confirmed, same-hash preview may
     // execute the canonical cancel. A direct cancel(groupId) path does not exist.
+    if (args.expected_version !== undefined) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "cancel is bound to a preview, not a version — omit expected_version",
+      );
+    }
     if (
       !isUuid(args.preview_id) ||
       typeof args.preview_hash !== "string" ||
@@ -1027,7 +1113,11 @@ const createVenueReservation = writeTool(
     party_size: { type: "integer", minimum: 1, maximum: 100 },
     source: { type: "string", enum: VENUE_RESERVATION_SOURCES },
     guest_name: { type: "string" },
-    guest_phone_e164: { type: "string" },
+    guest_phone_e164: {
+      type: "string",
+      pattern: E164_PATTERN,
+      description: "Strict E.164, e.g. +14155550123.",
+    },
     guest_email: { type: "string" },
     table_id: UUID,
     occasion: { type: "string" },
@@ -1037,8 +1127,9 @@ const createVenueReservation = writeTool(
     status: { type: "string", enum: ["requested", "confirmed", "seated"] },
   },
   ["brand_id", "venue_id", "reserved_for", "party_size"],
-  async (args, client, _userId, context) => {
+  async (args, client, userId, context) => {
     requireAgentOperationId(context);
+    requireBrand(args, client, userId);
     if (!isUuid(args.venue_id)) {
       throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
     }
@@ -1056,15 +1147,42 @@ const createVenueReservation = writeTool(
     }
     if (
       isString(args.guest_phone_e164) &&
-      !/^\+[1-9][0-9]{7,14}$/.test((args.guest_phone_e164 as string).trim())
+      !STRICT_E164_RE.test((args.guest_phone_e164 as string).trim())
     ) {
       throw new ToolError(
         "INVALID_ARGS",
         "guest_phone_e164 must be E.164 (e.g. +14155550123)",
       );
     }
+    // #2592 B1 — the canonical RPC is VENUE-keyed. Its first parameter is
+    // `p_venue_id` (see `biz_reservation_create` in
+    // `20261130000002_orch_1255_ops_rekey.sql`, re-stated identically in
+    // `20270325001857_issue_1857_phone_country_authority.sql`), and it derives
+    // the brand from `venue_listings`. There is no `p_brand_id` parameter at
+    // all, so the previous call could never resolve: PostgREST matches an RPC
+    // by its named-argument set, and this tool required a `venue_id` it then
+    // dropped on the floor. Bind the venue explicitly, and bind it to the
+    // brand this proposal was authorised against so the brand on the
+    // confirmation card is the brand the reservation is written to. The read
+    // is on the caller's own JWT-scoped client (I-ARI-USER-JWT-ONLY); the RPC
+    // still re-gates manager+ on the derived brand.
+    const { data: venueRow, error: venueError } = await client
+      .from("venue_listings")
+      .select("id, brand_id")
+      .eq("id", args.venue_id)
+      .maybeSingle();
+    if (venueError) throw new ToolError("READ_FAILED", venueError.message);
+    if (
+      !venueRow ||
+      (venueRow as Record<string, unknown>).brand_id !== args.brand_id
+    ) {
+      throw new ToolError(
+        "BRAND_ACCESS_DENIED",
+        "That brand or resource is unavailable",
+      );
+    }
     return await callRpc(client, "biz_reservation_create", {
-      p_brand_id: args.brand_id,
+      p_venue_id: args.venue_id,
       p_reserved_for: args.reserved_for,
       p_party_size: args.party_size,
       p_source: isString(args.source) ? args.source : "phone",
@@ -1076,7 +1194,15 @@ const createVenueReservation = writeTool(
       p_table_id: isUuid(args.table_id) ? args.table_id : null,
       p_occasion: isString(args.occasion) ? args.occasion : null,
       p_guest_notes: isString(args.guest_notes) ? args.guest_notes : null,
-      p_tags: Array.isArray(args.tags) ? args.tags : [],
+      // #2592 B5 — the schema says `items: STR`, but nothing enforced element
+      // type at runtime, so a non-string element reached a `text[]` parameter.
+      // Coerce to exactly what STR declares: trimmed, 1..500-character strings.
+      p_tags: Array.isArray(args.tags)
+        ? (args.tags as unknown[])
+          .filter((tag): tag is string => typeof tag === "string")
+          .map((tag) => tag.trim())
+          .filter((tag) => tag.length >= 1 && tag.length <= 500)
+        : [],
       p_status: isString(args.status) ? args.status : "confirmed",
     });
   },
@@ -1157,7 +1283,12 @@ const manageStayInventory = writeTool(
       ],
     },
     payload: { type: "object" },
-    expected_version: { type: "integer", minimum: 1 },
+    expected_version: {
+      type: "integer",
+      minimum: 1,
+      description:
+        "Current Stay version. REQUIRED for every action except 'get'.",
+    },
   },
   ["brand_id", "venue_id", "action"],
   async (args, client, userId, context) => {
@@ -1173,15 +1304,34 @@ const manageStayInventory = writeTool(
       });
     }
     requireAgentOperationId(context);
-    const body: Record<string, unknown> = {
+    // #2592 B2 — this tool's own description states that every non-`get`
+    // action is a versioned mutation, but `expected_version` sat outside the
+    // schema's `required` list and was only forwarded when present, so a
+    // confirmed mutation could dispatch with no `expectedVersion` at all and
+    // lose optimistic concurrency entirely.
+    //
+    // It cannot move into the flat `required` list without also making it
+    // mandatory for `get`, and the conditional forms that would express it
+    // (`oneOf`, `allOf`, `if`/`then`) are not in `PROVIDER_SCHEMA_FIELDS`
+    // (`_shared/agentGemini.ts`) — emitting one fails EVERY Ari turn closed
+    // with MODEL_SCHEMA_INVALID. So the conditional requirement is enforced
+    // here, deterministically, and `expectedVersion` is now ALWAYS forwarded
+    // for a mutation rather than conditionally.
+    if (
+      !Number.isInteger(args.expected_version) ||
+      Number(args.expected_version) < 1
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "expected_version (current Stay version) is required for every action except get",
+      );
+    }
+    return await invokeFn(client, "manage-stay-inventory", {
       action: args.action,
       venueId: args.venue_id,
       payload: (args.payload as Record<string, unknown>) ?? {},
-    };
-    if (args.expected_version !== undefined) {
-      body.expectedVersion = args.expected_version;
-    }
-    return await invokeFn(client, "manage-stay-inventory", body);
+      expectedVersion: args.expected_version,
+    });
   },
 );
 

@@ -36,10 +36,16 @@ BEGIN;
 ALTER TABLE public.reservations
   ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 1;
 
+-- #2592 A1: `pg_constraint.conname` is unique PER RELATION, not per cluster, so
+-- a same-named constraint on ANY other table used to satisfy this probe and the
+-- CHECK was silently never added to `public.reservations`. The lookup is scoped
+-- to the target relation so only THIS table's constraint can satisfy it.
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'reservations_version_positive'
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'reservations_version_positive'
+       AND conrelid = 'public.reservations'::regclass
   ) THEN
     ALTER TABLE public.reservations
       ADD CONSTRAINT reservations_version_positive CHECK (version > 0);
@@ -110,9 +116,25 @@ BEGIN
   END IF;
 
   -- Optimistic concurrency: refuse a stale expected version before any write.
+  --
+  -- #2592 A2: this used to raise SQLSTATE '40001' (serialization_failure).
+  -- A stale expected version is a DETERMINISTIC application conflict, not a
+  -- transient serialization anomaly: retrying it re-sends the SAME stale
+  -- p_expected_version and fails identically, forever. PostgREST, the pooler,
+  -- and common client retry wrappers all auto-retry the 40001 class, so the
+  -- old code turned one caller mistake into a retry loop.
+  --
+  -- 'P1975' is a user-defined SQLSTATE in the repo's established issue-numbered
+  -- convention (see 'P1901'/'P1902' in 20270322001902 and 20270325001857).
+  -- Class 'P1' is not assigned by the SQL standard or by PostgreSQL (PostgreSQL
+  -- only defines class 'P0'), so it cannot collide with a built-in condition,
+  -- and it is distinct from the generic plpgsql default 'P0001' so a client can
+  -- tell a version conflict apart from every other RAISE in this function.
+  -- Nothing anywhere in this repository consumes '40001' from this function —
+  -- it has never been applied to any database.
   IF v_row.version <> p_expected_version THEN
     RAISE EXCEPTION 'reservation_version_conflict_expected_%_actual_%',
-      p_expected_version, v_row.version USING ERRCODE = '40001';
+      p_expected_version, v_row.version USING ERRCODE = 'P1975';
   END IF;
 
   -- Legal-transition enforcement (server-side; the heart of the invariant).
