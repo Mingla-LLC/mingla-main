@@ -21,8 +21,12 @@ BEGIN
     RETURNING id INTO v_user;
   END IF;
 
-  INSERT INTO public.brands (id, name, slug)
-  VALUES (gen_random_uuid(), 'i2510 brand', 'i2510-brand-' || substr(md5(random()::text),1,8))
+  -- `brands.account_id` is NOT NULL. The production probe passed without this
+  -- because it reused an EXISTING campaign rather than minting a brand; CI
+  -- builds from baseline and caught the difference.
+  INSERT INTO public.brands (id, account_id, name, slug)
+  VALUES (gen_random_uuid(), v_user, 'i2510 brand',
+          'i2510-brand-' || substr(md5(random()::text),1,8))
   RETURNING id INTO v_brand;
 
   INSERT INTO public.marketing_audiences (id, brand_id, name, query_definition, is_system_generated)

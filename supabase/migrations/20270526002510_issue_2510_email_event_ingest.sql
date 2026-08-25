@@ -57,6 +57,13 @@ CREATE INDEX IF NOT EXISTS issue_2510_email_events_by_message
   ON public.marketing_email_events (message_id, event_type);
 
 ALTER TABLE public.marketing_email_events ENABLE ROW LEVEL SECURITY;
+-- Supabase grants `anon` and `authenticated` full DML on new public tables by
+-- default. RLS-with-no-policy already denies reads, but the GRANT itself is the
+-- problem: `anon` holding INSERT means an unauthenticated caller could write
+-- events straight through PostgREST, bypassing the Svix signature that is the
+-- only thing making this data trustworthy. Caught by the #1856 grants gate.
+REVOKE ALL ON public.marketing_email_events FROM anon, authenticated;
+GRANT ALL ON public.marketing_email_events TO service_role;
 -- No policy: service-role only. The webhook writes it; nothing reads it from a
 -- client. An RLS-enabled table with no policy denies every authenticated read,
 -- which is the intent — this is a raw provider log, not organiser-facing data.
