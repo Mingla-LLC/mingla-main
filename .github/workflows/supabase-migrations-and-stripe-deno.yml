@@ -192,6 +192,24 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  # #2598 — the receipt ledger must stay usable as an answer to "what is
+  # applied". A CHECK constraint merged 2026-04-25 never reached production and
+  # hid for four months among clerical gaps because nothing distinguished a real
+  # gap from an unstamped one, and six colliding version slots meant six
+  # migrations could never be represented at all.
+  migration-receipt-hygiene:
+    name: "Migration receipt hygiene (#2598)"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - name: Audit self-test then filename and version hygiene
+        run: |
+          node scripts/ops/audit-migration-receipts.mjs --self-test
+          node --test scripts/ops/__tests__/audit-migration-receipts.issue2598.test.mjs
+
   migrations:
     name: "Migrations apply cleanly from baseline"
     runs-on: ubuntu-latest
