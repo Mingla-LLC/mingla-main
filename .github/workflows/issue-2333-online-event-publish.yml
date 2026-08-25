@@ -155,6 +155,30 @@ jobs:
             -f supabase/migrations/20270427002334_issue_2333_patch_taxonomy_online_city_optional.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270427002335_issue_2333_discover_online_carveout.sql
+          # Issue #2620 — THIS FILE IS PART OF THE RE-APPLY SET, AND IT MUST BE LAST.
+          #
+          # `20270523002489_issue_2489_address_privacy_server_gate.sql` re-emits
+          # `pg_discover_business_events` — one of the three objects snapshotted
+          # above — to add the address-privacy gate to it. On a full replay #2489
+          # therefore lands AFTER #2333's carve-out and owns the final definition.
+          #
+          # So re-applying #2333's three files alone rewinds that object to its
+          # pre-#2489 form and REVERTS THE GATE, and `before` (gated) stops
+          # matching `after` (un-gated). The step was right to go red: it caught a
+          # real regression on the first occasion it ever could. The fix is to end
+          # the re-apply in the true final state, not to relax what is asserted.
+          #
+          # SAY IT PLAINLY: any future migration that re-emits one of the three
+          # snapshotted objects must be added here too, after #2333's files and in
+          # timestamp order — AND NOTHING ENFORCES THAT. This list is maintained by
+          # hand and will go stale silently the next time it happens.
+          #
+          # The durable fix belongs to this lane's owner, not to a passing change:
+          # assert "the gate survives the replay" instead of "nothing changed at
+          # all", and the list stops needing to be updated. Noted, deliberately not
+          # implemented here — it is #2333's semantics to change.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270523002489_issue_2489_address_privacy_server_gate.sql
           after="$(snapshot)"
           test "$before" = "$after"
           echo "OK — replay is definition- and grant-equivalent."
