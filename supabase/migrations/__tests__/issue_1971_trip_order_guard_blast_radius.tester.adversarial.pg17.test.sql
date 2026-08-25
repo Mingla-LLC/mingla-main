@@ -55,10 +55,49 @@ VALUES ('19710000-0000-4000-8000-00000000adf1',
 -- ---------------------------------------------------------------------------
 -- X-01  A soft-deleted NON-TRIP event must still accept a new paid order.
 --
---       The trigger's containment is the `event_type = 'trip'` predicate inside
---       its EXISTS. Without it, every cancelled/archived concert, stay and venue
---       in the product stops accepting money the moment it is soft-deleted —
---       a silent, cross-product revenue outage introduced by a trip issue.
+--       Without containment, every cancelled/archived concert, stay and venue in
+--       the product stops accepting money the moment it is soft-deleted — a
+--       silent, cross-product revenue outage introduced by a trip issue.
+--
+--       WHAT THIS PINS, PRECISELY: the OUTCOME, not any single line.
+--
+--       The trigger contains itself TWICE — an unlocked `event_type = 'trip'`
+--       fast path that returns early for non-trips, and the `event_type = 'trip'`
+--       predicate inside the EXISTS under the lock. Deleting EITHER alone leaves
+--       X-01 GREEN, because the other still catches it. Measured, not assumed:
+--
+--         delete only the fast-path check   -> X-01 PASSES
+--         delete only the EXISTS predicate  -> X-01 PASSES
+--         delete both                       -> X-01 FAILS
+--
+--       This file was first committed when the trigger had ONE containment
+--       mechanism, and that commit message claims X-01 fails on a single-line
+--       revert. THAT CLAIM NO LONGER HOLDS at this head: the #1971 repair for the
+--       advisory-lock over-reach added the second mechanism. Recorded here rather
+--       than left looking like a single-line proof — the same disclosure the
+--       implementor suite carries at M-02, for the same reason.
+--
+--       Coverage is not lost at the SUITE level. Deleting the fast path reds
+--       L-01 in `issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql`,
+--       which reads `pg_locks` and sees exactly that. X-06 below is UNAFFECTED
+--       and still reds on its own single-line revert.
+--
+--       DELIBERATELY NOT COVERED BY ANY TEST: deleting the `AND event_type =
+--       'trip'` predicate from the EXISTS reds NOTHING in either suite. Given the
+--       fast path it is redundant for every reachable input, which is why it is
+--       invisible. It is still meaningful — it is the TYPE half of
+--       check -> lock -> re-check, and the whole justification for that pattern is
+--       that the unlocked read is NOT authoritative. Without it the re-check
+--       confirms only `deleted_at`, not that the row is still a trip.
+--
+--       It is accepted as defence-in-depth instead of tested because the race it
+--       guards is benign today: `event_type` has no immutability trigger (unlike
+--       brand_id/created_by/slug) and 20270418002009 does contemplate rows
+--       crossing the class boundary, but no shipped writer changes `event_type`
+--       after creation, so nothing can open the window. A faithful test would
+--       have to cross the type under real concurrency. If anyone ever ships an
+--       `event_type` mutation, this stops being defence-in-depth and needs a
+--       real test.
 -- ---------------------------------------------------------------------------
 UPDATE public.events SET deleted_at = now()
  WHERE id = '19710000-0000-4000-8000-00000000adc1';
