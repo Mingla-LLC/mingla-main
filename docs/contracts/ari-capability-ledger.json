@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 86,
+    "registered_tool_count": 87,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 85,
+      "registered_unverified": 86,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 22,
+      "unsupported": 21,
       "in_flight": 5
     }
   },
@@ -4918,26 +4918,31 @@
           {
             "path": "mingla-business/src/services/eventOrdersService.ts",
             "symbol": "getEventOrderRevenue"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getEventOrderReconciliation"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_event_order_reconciliation",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "event reconciliation surface"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1984 agentDomainTools.ts:getEventOrderReconciliation aggregates orders sold/refunded/net without buyer PII"
         }
       ],
       "owning_issues": [
+        1984,
         2000
       ],
       "blockers": [
-        "Brand analytics tool does not cover order reconciliation"
+        "No deployed cross-surface Pass-5 proof"
       ],
-      "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "confidence": "high",
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.venue.organic_insights",

@@ -157,6 +157,8 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   create_support_ticket: role("self", "optional_brand"),
   request_account_deletion: role("self", "none"),
   get_operator_snapshot: role("scanner", "optional_brand"),
+  // #1984 — same finance floor as brand analytics refunds; event-scoped.
+  get_event_order_reconciliation: role("finance_manager", "event"),
 });
 
 function unavailable(): never {

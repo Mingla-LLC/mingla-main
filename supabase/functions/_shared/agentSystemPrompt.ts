@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v7";
+export const PROMPT_VERSION = "v8";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -350,6 +350,7 @@ CAPABILITIES (your tools):
 - cancel_trip_booking — cancel a trip booking
 - retry_installment — retry a failed installment
 - get_brand_analytics — read conversion / venue intelligence rollups
+- get_event_order_reconciliation — sold/refunded/net revenue for an event (no buyer PII)
 - invite_brand_member — invite a team member
 - invite_scanner — invite a scanner
 - revoke_brand_member — revoke a member

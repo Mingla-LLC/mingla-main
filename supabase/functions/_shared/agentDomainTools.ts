@@ -3568,6 +3568,75 @@ const getBrandAnalytics = writeTool(
   },
 );
 
+// #1984 — event order reconciliation (Business getEventOrderRevenue parity,
+// without buyer PII). Aggregates from the same orders + line items the orders
+// screen reads under caller JWT / RLS.
+const getEventOrderReconciliation = writeTool(
+  "get_event_order_reconciliation",
+  "Read sold count, gross, refunded, and net revenue for an event from orders. No buyer PII.",
+  { event_id: UUID },
+  ["event_id"],
+  async (args, client, userId) => {
+    await assertAgentReadEvent(client, userId, args.event_id);
+    await requireEvent(args, client, userId);
+    const { data, error } = await client
+      .from("orders")
+      .select(
+        `payment_status, total_cents, refunded_amount_cents, currency,
+         order_line_items ( id, quantity ),
+         refunds ( status, refund_line_items ( order_line_item_id, quantity ) )`,
+      )
+      .eq("event_id", args.event_id);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    let soldCount = 0;
+    let revenueCents = 0;
+    let refundedCents = 0;
+    let currency: string | null = null;
+    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+      const status = String(row.payment_status ?? "");
+      // Mirror eventOrdersService.getEventOrderRevenue: paid + partial refund.
+      if (status !== "paid" && status !== "partial_refund") continue;
+      if (currency === null && typeof row.currency === "string") {
+        currency = row.currency;
+      }
+      revenueCents += Number(row.total_cents ?? 0);
+      refundedCents += Number(row.refunded_amount_cents ?? 0);
+      const refundedQtyByLine: Record<string, number> = {};
+      const refunds = Array.isArray(row.refunds)
+        ? row.refunds as Array<Record<string, unknown>>
+        : [];
+      for (const refund of refunds) {
+        if (refund.status !== "succeeded") continue;
+        const rlis = Array.isArray(refund.refund_line_items)
+          ? refund.refund_line_items as Array<Record<string, unknown>>
+          : [];
+        for (const rli of rlis) {
+          const lineId = String(rli.order_line_item_id ?? "");
+          if (!lineId) continue;
+          refundedQtyByLine[lineId] = (refundedQtyByLine[lineId] ?? 0) +
+            Number(rli.quantity ?? 0);
+        }
+      }
+      const lines = Array.isArray(row.order_line_items)
+        ? row.order_line_items as Array<Record<string, unknown>>
+        : [];
+      for (const line of lines) {
+        const lineId = String(line.id ?? "");
+        const qty = Number(line.quantity ?? 0);
+        soldCount += Math.max(0, qty - (refundedQtyByLine[lineId] ?? 0));
+      }
+    }
+    return {
+      event_id: args.event_id,
+      sold_count: soldCount,
+      revenue_cents: revenueCents,
+      refunded_cents: refundedCents,
+      net_revenue_cents: revenueCents - refundedCents,
+      currency,
+    };
+  },
+);
+
 // ----------------------------------------------------------------------------
 // M. Team / scanners / Brand People
 // ----------------------------------------------------------------------------
@@ -4120,6 +4189,7 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   cancelTripBooking,
   retryInstallment,
   getBrandAnalytics,
+  getEventOrderReconciliation,
   inviteBrandMember,
   inviteScanner,
   revokeBrandMember,
@@ -4140,6 +4210,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_brand_analytics",
   "list_guest_roster",
   "get_operator_snapshot",
+  "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline; they never mutate.
   "list_venue_listings",
   "get_venue_listing_status",
