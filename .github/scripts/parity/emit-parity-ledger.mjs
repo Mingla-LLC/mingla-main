@@ -148,8 +148,29 @@ for (const [id, kind, database, file, exitCode] of executed) {
   }
 
   if (kind === "deno") {
-    row.denoCases = [...log.matchAll(/^(.*?) \.\.\. (ok|FAILED)(?: \(|$)/gm)]
+    // [#2591 tester, shadow run 2] `deno test` COLOURS its per-case verdict, and
+    // an Actions log keeps the escapes: ` ... ok (0ms)` is really
+    // ` ... <ESC>[0m<ESC>[32mok<ESC>[0m <ESC>[0m<ESC>[38;5;245m(0ms)<ESC>[0m`.
+    // Without stripping them this matcher found ZERO cases in all nine rows on
+    // BOTH sides, and the Deno leg of the ledger reconciled as empty-set equals
+    // empty-set. MEASURED: 220 cases are really there.
+    // eslint-disable-next-line no-control-regex
+    const plain = log.replace(/\u001B\[[0-?]*[ -/]*[@-~]/g, "");
+    row.denoCases = [...plain.matchAll(/^(.*?) \.\.\. (ok|FAILED)(?: \(|$)/gm)]
       .map((match) => `${match[1]}:${match[2]}`);
+    // ── G-2c — a Deno row that registered no cases is RED ─────────────────
+    // A suite that ran zero cases exits 0 and reports success exactly like one
+    // that passed every case, and a set-equality leg comparing two empty sets
+    // passes. The origin side already refuses this; the consolidated side must
+    // too, or the two halves disagree about what counts as evidence.
+    if (row.denoCases.length === 0) {
+      failures.push(
+        `G-2c: ${id} is a deno row whose log carries no test-case lines at all. A suite that registered zero cases reports success exactly like one that passed, and an empty case set reconciles against another empty case set.`,
+      );
+    }
+    if (row.denoCases.some((c) => c.endsWith(":FAILED"))) {
+      failures.push(`G-2c: ${id} reported at least one FAILED Deno case.`);
+    }
   }
 
   rows.push(row);

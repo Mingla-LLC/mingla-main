@@ -67,20 +67,46 @@
 // touch. The same-SHA ledger exists at exactly one commit, and that commit is
 // the shadow PR's head.
 //
-// BEFORE GENERATING THE LEDGER, CONFIRM THE LOG FRAMING ON A REAL LOG.
+// LOG FRAMING — CONFIRMED ON REAL LOGS, 2026-08-25, AND IT DID DIFFER.
 //
-// The block splitter below is written against the documented raw-job-log shape —
-// an ISO timestamp per line, `##[group]Run <script>` … `##[endgroup]`, then the
-// step's output. It has been proven RED and GREEN on fixtures built from the
-// real workflows, but fixtures are self-authored: a parser proven only against
-// its own author's idea of the input is one assumption away from fabricating
-// agreement, which is the failure mode the uninstrumented-origin design traded
-// for. Fetch one real job log first and confirm the framing:
+// The block splitter was originally written against the documented raw-job-log
+// shape and proven only on self-authored fixtures. All ten real job logs at
+// shadow head ff6e19fb1 were then fetched and the framing checked. Three things
+// the fixtures did not carry, each of which made this parser FAIL a log that
+// deserved to pass — i.e. it was not fabricating agreement, but it was also not
+// usable as written:
+//
+//   (F-a) REAL LOGS CARRY ANSI SGR ESCAPES. `deno test` colours its case lines,
+//         so `<name> ... ok (0ms)` is really
+//         `<name> ... \x1b[0m\x1b[32mok\x1b[0m \x1b[0m\x1b[38;5;245m(0ms)\x1b[0m`.
+//         The un-stripped matcher found ZERO cases in all nine lanes. Since the
+//         consolidated emitter carries the identical matcher, BOTH sides
+//         reported `denoCases: []` and the Deno leg reconciled vacuously —
+//         empty set equals empty set. ANSI is now stripped before any match.
+//   (F-b) FOUR ORIGIN LANES RUN THE 526-FILE MIGRATION REPLAY AND THEIR SUITE
+//         SQL IN ONE STEP (#1172, #1173, #1217 alert-drain, #1217 tester
+//         adversarial). One step block therefore carries the replay's command
+//         tags as well as the suite's. The replay's own tag count is DERIVED
+//         from the tree, not hardcoded: `supabase/migrations/*.sql` declares 367
+//         anonymous blocks case-insensitively, and #1177 — the one lane that
+//         replays and executes no suite SQL — emitted exactly 367. MEASURED.
+//         Note the case-insensitivity: four migrations spell it `do $$`, and
+//         PostgreSQL does not care. A case-sensitive count says 362 and is
+//         wrong by five.
+//   (F-c) A COMPOSITE ACTION'S OWN STEPS APPEAR AS `##[group]Run <script>`
+//         BLOCKS TOO. `./.github/actions/migrated-postgres` (used by #1171)
+//         emits a block whose script names the glob `supabase/migrations/*.sql`,
+//         which the unattributed sweep read as a contract command that ran
+//         without being declared.
+//
+// Everything else held exactly as documented: one ISO timestamp per line, a
+// UTF-8 BOM on the first line only, LF endings, `##[group]Run <script>` …
+// `##[endgroup]`, then the step's output, and psql's bare `DO` command tag
+// present WITHOUT `-e` exactly as the design assumed.
+//
+// Re-confirm on any future format change:
 //
 //     gh api repos/<owner>/<repo>/actions/jobs/<job_id>/logs | head -40
-//
-// If it differs, the fix is in the block splitter only; everything downstream
-// works on the split.
 //
 // [TRANSITIONAL] #2591 shadow scaffolding. Exit condition: the #2591 cutover.
 
@@ -144,7 +170,54 @@ function staticDoBlocks(file) {
   return (fs.readFileSync(absolute, "utf8").match(/^[ \t]*DO[ \t]*\$/gm) || []).length;
 }
 
+// F-b. Four origin lanes run the full migration replay and their suite SQL in
+// ONE step, so that step's output carries the replay's command tags too. The
+// replay's contribution is DERIVED from the tree here, never hardcoded, so it
+// tracks the migration set. Case-insensitive: four migrations spell it `do $$`
+// and PostgreSQL does not care — a case-sensitive count is wrong by five.
+// The derivation is corroborated by #1177, the one lane that replays and
+// executes no suite SQL: it emitted exactly this number and nothing else.
+const MIGRATION_GLOB_RE = /for\s+\w+\s+in\s+supabase\/migrations\/\*\.sql/;
+let replayDoBlocksCache = null;
+function replayDoBlocks() {
+  if (replayDoBlocksCache !== null) return replayDoBlocksCache;
+  const dir = path.join(repoRoot, "supabase/migrations");
+  const files = fs.readdirSync(dir).filter((f) => f.endsWith(".sql")).sort();
+  replayDoBlocksCache = files.reduce(
+    (total, f) => total
+      + (fs.readFileSync(path.join(dir, f), "utf8").match(/^[ \t]*DO[ \t]*\$/gim) || []).length,
+    0,
+  );
+  return replayDoBlocksCache;
+}
+
 const workflowSource = fs.readFileSync(workflowPath, "utf8");
+
+// [U-5] THE JOIN KEY. The origin half used to emit `id: null` on every row, so
+// L-1 — "compare the id sets" — was not evaluable from the two ledger JSONs at
+// all: it reconciled only because a reader went and read the join key out of the
+// consolidated workflow by hand. A leg that needs a third artifact and a human is
+// not a leg. The ids are now read from the consolidated workflow's own call sites
+// and attached here, so the two files reconcile on their own.
+const CONSOLIDATED = path.join(repoRoot, ".github/workflows/postgres-contract-suites.yml");
+const idByFile = new Map();
+const idByFileSet = new Map();
+if (fs.existsSync(CONSOLIDATED)) {
+  const text = fs.readFileSync(CONSOLIDATED, "utf8");
+  for (const m of text.matchAll(/^\s*run_psql(?:_background)? (\S+) (\S+) (\S+)\s*$/gm)) {
+    idByFile.set(m[3], m[1]);
+  }
+  // Non-psql rows are identified by the SET of files their command names, which
+  // is what makes #1840's re-run of #1177's suites its own row rather than a
+  // duplicate of it.
+  const flattened = text.replace(/[ \t]*\\\n\s*/g, " ");
+  for (const m of flattened.matchAll(/run_logged (\S+) (\S+) (\S+) -- (.+)/g)) {
+    const files = [...m[4].matchAll(/(supabase\/\S+\.(?:ts|sh)|supabase\/\S+\/index\.ts)/g)].map((x) => x[1]);
+    if (files.length > 0) idByFileSet.set([...new Set(files)].sort().join("|"), m[1]);
+  }
+}
+const idForPsql = (file) => idByFile.get(file) ?? null;
+const idForCommand = (files) => idByFileSet.get([...new Set(files)].sort().join("|")) ?? null;
 const expectations = [];
 for (const step of stepsFromWorkflow(workflowSource)) {
   // The migration replay loop is not a contract command; exclude it explicitly
@@ -168,6 +241,9 @@ for (const step of stepsFromWorkflow(workflowSource)) {
     denoFiles: grepTarget.length > 0 ? [] : denoFiles,
     bashDriver,
     grepTarget,
+    // F-b: this step also drives the full-chain replay, so its command tags are
+    // in the same block as the suite's.
+    carriesReplay: MIGRATION_GLOB_RE.test(script),
   });
 }
 
@@ -178,8 +254,18 @@ if (expectations.length === 0) {
 
 // ── 2. The Actions job log, split into step blocks ─────────────────────────
 const rawLog = fs.readFileSync(logPath, "utf8");
+// F-a. Real Actions logs preserve the tool's ANSI SGR escapes; `deno test`
+// colours its per-case verdict, so ` ... ok` is really ` ... <ESC>[32mok<ESC>[0m`.
+// Stripped before anything else, so every matcher downstream sees plain text.
+// eslint-disable-next-line no-control-regex
+const ANSI = /\u001B\[[0-?]*[ -/]*[@-~]/g;
+const stripAnsi = (line) => line.replace(ANSI, "");
+// The BOM is on the first line only, ahead of its timestamp.
+const stripBom = (line) => line.replace(/^\uFEFF/, "");
 const stripTimestamp = (line) => line.replace(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z\s?/, "");
-const logLines = rawLog.split("\n").map(stripTimestamp);
+const logLines = rawLog
+  .split("\n")
+  .map((line) => stripTimestamp(stripAnsi(stripBom(line))));
 
 const blocks = [];
 let block = null;
@@ -238,28 +324,44 @@ for (const exp of expectations) {
       failures.push(`${lane}: "${exp.name}" names ${missing.map((f) => f.file).join(", ")}, which is not in the tree. The expectation cannot be derived, so this cannot pass.`);
       continue;
     }
-    const expectedTotal = perFile.reduce((a, f) => a + f.expected, 0);
+    const suiteExpected = perFile.reduce((a, f) => a + f.expected, 0);
+    // F-b. A replay-bearing step's block carries the migration chain's tags as
+    // well as the suite's. Both halves are derived from the tree, so the
+    // comparison stays a measurement against a static expectation.
+    const replayExpected = exp.carriesReplay ? replayDoBlocks() : 0;
+    const expectedTotal = suiteExpected + replayExpected;
     if (witnessed !== expectedTotal) {
-      failures.push(`${lane}: "${exp.name}" witnessed ${witnessed} completed DO blocks; its ${exp.sqlFiles.length} file(s) statically declare ${expectedTotal}. Truncated, aborted early, skipped, or run against the wrong database — all four look exactly like this.`);
+      const breakdown = exp.carriesReplay
+        ? ` (${replayExpected} from the full-chain replay in the same step + ${suiteExpected} from its ${exp.sqlFiles.length} suite file(s))`
+        : "";
+      failures.push(`${lane}: "${exp.name}" witnessed ${witnessed} completed DO blocks; the tree statically declares ${expectedTotal}${breakdown}. Truncated, aborted early, skipped, or run against the wrong database — all four look exactly like this.`);
     }
     if (expectedTotal === 0 && output.trim() === "") {
       failures.push(`${lane}: "${exp.name}" produced no output at all. psql over an empty or unread file exits 0 with nothing on stdout; the exit status does not say so and this does.`);
     }
-    // Ordered partition. An INFERENCE, stamped as one.
+    // The suite's tags are the TAIL of the block: the replay runs first and its
+    // contribution is known, so the suite-attributable remainder is measured,
+    // not guessed.
+    const suiteWitnessed = witnessed - replayExpected;
+    // Ordered partition WITHIN the suite remainder. An INFERENCE, stamped as one.
     let cursor = 0;
     for (const f of perFile) {
       rows.push({
-        id: null,
+        id: idForPsql(f.file),
         lane,
         step: exp.name,
         kind: "psql",
         file: f.file,
         database: "postgres",
         exit,
-        doBlocksWitnessed: exp.sqlFiles.length === 1 ? witnessed : Math.min(f.expected, Math.max(0, witnessed - cursor)),
+        doBlocksWitnessed: exp.sqlFiles.length === 1
+          ? suiteWitnessed
+          : Math.min(f.expected, Math.max(0, suiteWitnessed - cursor)),
         doBlocksExpected: f.expected,
         stepDoBlocksWitnessed: witnessed,
         stepDoBlocksExpected: expectedTotal,
+        stepReplayDoBlocksExpected: replayExpected,
+        stepSuiteDoBlocksWitnessed: suiteWitnessed,
         attribution: exp.sqlFiles.length === 1 ? "measured" : "ordered-partition",
         denoCases: null,
         streams: "actions-job-log",
@@ -272,7 +374,7 @@ for (const exp of expectations) {
 
   const kind = exp.bashDriver.length > 0 ? "bash" : exp.grepTarget.length > 0 ? "grep" : "deno";
   rows.push({
-    id: null,
+    id: idForCommand([...exp.denoFiles, ...exp.bashDriver, ...exp.grepTarget]),
     lane,
     step: exp.name,
     kind,
@@ -298,9 +400,37 @@ for (const exp of expectations) {
 for (let i = 0; i < blocks.length; i += 1) {
   if (matchedBlocks.has(i)) continue;
   const script = blocks[i].script.join("\n");
-  if (!/supabase\/\S+\.(sql|ts|sh)/.test(script)) continue;
-  if (/for migration_file in supabase\/migrations\/\*\.sql/.test(script)) continue;
-  failures.push(`${lane}: a step naming ${(script.match(/supabase\/\S+\.(?:sql|ts|sh)/) || ["?"])[0]} ran but matches no command this workflow declares. UNATTRIBUTED output cannot be reconciled.`);
+  // F-c. Bring-up steps — the inline replay loop AND the steps inside the
+  // `migrated-postgres` composite action, which appear as their own
+  // `##[group]Run` blocks — name the glob `supabase/migrations/*.sql` and never
+  // a concrete file. A block that names no path that exists in the tree is
+  // infrastructure, not a contract command. A block that names a real suite
+  // file and matches nothing declared is still RED, which is the case this
+  // sweep exists for.
+  const named = [...script.matchAll(/supabase\/\S+\.(?:sql|ts|sh)/g)].map((m) => m[0]);
+  const real = named.filter((f) => !f.includes("*") && fs.existsSync(path.join(repoRoot, f)));
+  if (real.length === 0) {
+    // [#2591 tester] A STANDALONE replay step declares no suite file, so it is
+    // not an expectation and its command tags were checked by nothing. MEASURED
+    // on the real #1840 log: removing three `DO` tags from the replay left the
+    // ledger GREEN. Five lanes replay in a step of their own (#1174, #1612,
+    // #1840, #1177) and the template every suite then runs against is built
+    // there, so its liveness is checked here on the same derived expectation.
+    if (MIGRATION_GLOB_RE.test(script)) {
+      const seen = (blocks[i].output.join("\n").match(/^DO$/gm) || []).length;
+      if (seen !== replayDoBlocks()) {
+        failures.push(`${lane}: the standalone from-zero replay witnessed ${seen} completed DO blocks; supabase/migrations/*.sql statically declares ${replayDoBlocks()}. The template every suite copies is built here, so a short replay is a short template.`);
+      }
+    }
+    continue;
+  }
+  failures.push(`${lane}: a step naming ${real[0]} ran but matches no command this workflow declares. UNATTRIBUTED output cannot be reconciled.`);
+}
+
+for (const row of rows) {
+  if (row.id === null) {
+    failures.push(`${lane}: a row for ${row.file || row.step} carries no id. L-1 compares id SETS, and a null id cannot be compared — this is the U-5 defect, and it fails closed rather than reconciling 30 ids against nulls.`);
+  }
 }
 
 if (truncated) {

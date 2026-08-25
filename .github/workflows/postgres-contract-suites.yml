@@ -488,6 +488,273 @@ jobs:
           fi
           echo "G-1 PASS: 8 of 8 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
 
+      # ── L-5 — the terminal-assertion RED proof ───────────────────────────
+      #
+      # The one leg that asks whether the suites still ASSERT anything.
+      #
+      # L-2 counts `DO` blocks that COMPLETED, and a block completes whether or
+      # not the `IF` inside it ever fired — so L-2 proves execution and proves
+      # nothing about teeth. A file that had silently stopped asserting would
+      # reconcile perfectly on every other leg. That is the #2438 shape, and this
+      # is the only step that closes it.
+      #
+      # THE OBLIGATION, as restated after run 6: the file fails, under a
+      # deliberate falsification of its contract, carrying ONE OF ITS OWN
+      # terminal-class assertion messages — and passes unmutated.
+      #
+      # The earlier phrasing ("its LAST labelled RAISE EXCEPTION") was never
+      # expressible: only 1 of the 17 files ends on a labelled one. And in
+      # M-1173-02c the terminal assertion is SUBSUMED by an earlier one that
+      # asserts the same invariant more strongly, so it can never be the first
+      # failure — which is not the same as being unable to fail.
+      #
+      # For each of the SEVENTEEN assertion-bearing files: copy the migrated
+      # template into one throwaway database, run the UNMODIFIED file and require
+      # exit 0; then copy again, apply the file's mutation from
+      # .github/scripts/parity/l5-terminal-mutations.sql, run the same unmodified
+      # file, and require a NON-ZERO exit carrying that file's own terminal
+      # message — read out of the file at run time, never hardcoded — or, where a
+      # subsumption is DECLARED in the mutation section, the message of the
+      # assertion that subsumes it.
+      #
+      # No test file is edited. The mutation is applied to the DATABASE.
+      #
+      # Self-checking in three directions, all failing CLOSED: a mutation that
+      # trips an EARLIER assertion stops psql with the wrong message and is
+      # refused; a mutation that falsifies nothing exits 0 under mutation and is
+      # refused; a file that stopped asserting passes the control and exits 0
+      # under mutation, and is refused.
+      #
+      # The template stays closed to connections for the whole phase, so the 34
+      # copies cannot lose the 55006 race, and it is reopened from a trap.
+      - name: "L-5 · every suite file's terminal assertion still has teeth"
+        id: l5
+        run: |
+          workflow=".github/workflows/postgres-contract-suites.yml"
+          mutations=".github/scripts/parity/l5-terminal-mutations.sql"
+          scratch=l5_scratch
+          psql_admin() { docker exec -i "$PG_CONTRACT_CONTAINER" psql -h 127.0.0.1 -U supabase_admin -d template1 "$@"; }
+
+          restore_template_connections() {
+            psql_admin -q -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS true" >/dev/null 2>&1 || true
+          }
+          trap restore_template_connections EXIT
+          psql_admin -q -v ON_ERROR_STOP=1 -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS false"
+          psql_admin -At -c "SELECT count(*) FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' AND pid <> pg_backend_pid()) t" >/dev/null
+          template_owner="$(psql_admin -At -v ON_ERROR_STOP=1 -c "SELECT datdba::regrole::text FROM pg_database WHERE datname = '$PG_CONTRACT_TEMPLATE'")"
+
+          fresh_scratch() {
+            psql_admin -q -c "DROP DATABASE IF EXISTS $scratch" >/dev/null
+            psql_admin -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE $scratch TEMPLATE $PG_CONTRACT_TEMPLATE OWNER $template_owner"
+            # nextval() is NON-TRANSACTIONAL, so it survives the ROLLBACK every one
+            # of these files ends with. It is the only witness that can separate
+            # "my mutation never fired" from "the assertion has no teeth", and run 6
+            # produced seven files where those two were indistinguishable.
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -q -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              -c "CREATE SEQUENCE public.l5_fired" >/dev/null
+          }
+          # M-1173-02i is the ONLY subject with predecessors: it is the last of
+          # #1173's four-file ordered sequence, and it detected its own missing
+          # fixtures and refused to pass vacuously rather than reporting a false
+          # green. L-5's "one file against a fresh copy" model does not fit it, so
+          # the model is corrected for this one subject and deliberately NOT
+          # generalised to the other sixteen, which have no predecessors.
+          run_prerequisites() { # command-id
+            [ "$1" = "M-1173-02i" ] || return 0
+            local base=supabase/migrations/__tests__
+            docker exec -i "$PG_CONTRACT_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              < "$base/issue_1807_tester_adversarial_race_setup.sql" >/dev/null 2>&1
+            docker exec -i "$PG_CONTRACT_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              < "$base/issue_1807_tester_adversarial_race_a.sql" >/dev/null 2>&1 &
+            local race_a_pid=$!
+            sleep 2
+            docker exec -i "$PG_CONTRACT_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              < "$base/issue_1807_tester_adversarial_race_b.sql" >/dev/null 2>&1
+            wait "$race_a_pid" || true
+          }
+          run_suite_file() { # file -> writes combined output to $2
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" < "$1" > "$2" 2>&1
+          }
+
+          # The id -> file map is read from THIS workflow's own call sites, so a
+          # file that moves takes L-5 with it instead of leaving it pointed at a
+          # path nothing runs.
+          perl -0777 -ne 'while (/^\s*run_psql(?:_background)?\s+(\S+)\s+(\S+)\s+(\S+)\s*$/gm) { print "$1\t$3\n" }' \
+            "$workflow" > "$RUNNER_TEMP/l5_map.tsv"
+          call_sites=$(wc -l < "$RUNNER_TEMP/l5_map.tsv" | tr -d ' ')
+          # TWO different denominators, named so a reader is never left guessing
+          # which one a mismatch is about: 19 psql call sites exist, but only 17
+          # are L-5 SUBJECTS. race_a and race_b are call sites carrying zero
+          # RAISE EXCEPTION, so there is nothing to falsify in them.
+          echo "psql call sites in the workflow: $call_sites (L-5 subjects: 17; race_a and race_b are call sites but carry no assertion)"
+
+          mkdir -p "$RUNNER_TEMP/l5"
+          # The id is captured by PATTERN, not by field position. It used to read
+          # `$4` on `-- ===== M-1172-02a =====`, where $3 is the id and $4 is the
+          # trailing `=====` — so all seventeen sections were written to one file
+          # called `=====.sql` and the totality check correctly refused to run.
+          # A positional read of a delimiter is one respacing away from doing that
+          # again; a capture is not.
+          awk -v out="$RUNNER_TEMP/l5" '
+            /^-- ===== M-/ {
+              match($0, /M-[A-Za-z0-9-]+/);
+              id = substr($0, RSTART, RLENGTH);
+              f = out "/" id ".sql";
+              next
+            }
+            id != "" { print > f }
+          ' "$mutations"
+          sections=$(ls -1 "$RUNNER_TEMP/l5"/*.sql 2>/dev/null | wc -l | tr -d ' ')
+          echo "mutation sections split out: $sections"
+          if [ "$sections" != "17" ]; then
+            echo "::error::L-5: expected 17 mutation sections, split out $sections. The mutation table and the splitter disagree, so nothing can be proven."
+            ls -1 "$RUNNER_TEMP/l5" 2>/dev/null | sed 's/^/  section file: /'
+            exit 1
+          fi
+          # Set equality, not just a count: the seventeen sections must be exactly
+          # the seventeen subjects, so a renamed section cannot be absorbed by a
+          # matching total.
+          ls -1 "$RUNNER_TEMP/l5"/*.sql | xargs -n1 basename | sed 's/\.sql$//' | sort > "$RUNNER_TEMP/l5_sections.txt"
+          awk -F'\t' '{print $1}' "$RUNNER_TEMP/l5_map.tsv" | grep -vE '^(M-1173-02e|M-1173-02g)$' | sort > "$RUNNER_TEMP/l5_subjects.txt"
+          if ! diff -q "$RUNNER_TEMP/l5_sections.txt" "$RUNNER_TEMP/l5_subjects.txt" >/dev/null; then
+            echo "::error::L-5: the mutation sections and the workflow's L-5 subjects are not the same set."
+            diff "$RUNNER_TEMP/l5_subjects.txt" "$RUNNER_TEMP/l5_sections.txt" | sed 's/^/  /'
+            exit 1
+          fi
+          # V-3. A LIST of permitted ids, not a count. The bare count `!= 2` was
+          # written to stop a THIRD subsumption, but it equally forbade RETIRING a
+          # wrong one — which is exactly what V-1 required — and it pinned the
+          # number as a standing assertion that both grants were correct. They were
+          # not. Shrinking this list is not a violation; adding to it needs a
+          # ruling, and an undeclared id is refused either way.
+          L5_PERMITTED_SUBSUMPTIONS=""   # none permitted: both earlier grants retired (V-1, V-2)
+          declared_ids="$(grep -l '^-- @l5-subsumed-by: ' "$RUNNER_TEMP/l5"/*.sql 2>/dev/null \
+            | xargs -n1 basename 2>/dev/null | sed 's/\.sql$//' | sort | tr '\n' ' ')"
+          for did in $declared_ids; do
+            case " $L5_PERMITTED_SUBSUMPTIONS " in
+              *" $did "*) ;;
+              *) echo "::error::L-5: $did declares a subsumption that is not in the permitted list [$L5_PERMITTED_SUBSUMPTIONS]. A subsumption is never granted silently — it needs a ruling and an entry here."
+                 exit 1 ;;
+            esac
+            if ! grep -q '^-- @l5-subsumption-class: ' "$RUNNER_TEMP/l5/$did.sql"; then
+              echo "::error::L-5: $did declares a subsumption with no @l5-subsumption-class. Every one states its class, because the kinds are different findings and must not read alike."
+              exit 1
+            fi
+          done
+          echo "declared subsumptions: [${declared_ids:-none}] against permitted [${L5_PERMITTED_SUBSUMPTIONS:-none}]"
+
+          failures=0
+          proven_terminal=0
+          proven_subsumed=0
+          for mutation_file in "$RUNNER_TEMP/l5"/*.sql; do
+            id="$(basename "$mutation_file" .sql)"
+            file="$(awk -v i="$id" -F'\t' '$1==i {print $2}' "$RUNNER_TEMP/l5_map.tsv")"
+            if [ -z "$file" ]; then
+              echo "::error::L-5: $id has a mutation but no call site in $workflow. The mutation table and the job have diverged."
+              failures=$((failures + 1)); continue
+            fi
+            expected="$(node .github/scripts/parity/l5-terminal-message.mjs "$file")"
+
+            fresh_scratch
+            run_prerequisites "$id"
+            if run_suite_file "$file" "$RUNNER_TEMP/l5/$id.control.log"; then
+              control=0
+            else
+              control=$?
+            fi
+            if [ "$control" -ne 0 ]; then
+              echo "::error::L-5 $id: the UNMUTATED control failed (exit $control) against a faithful copy. The file is broken independently of any mutation, so nothing can be concluded about its terminal assertion."
+              tail -5 "$RUNNER_TEMP/l5/$id.control.log"
+              failures=$((failures + 1)); continue
+            fi
+
+            fresh_scratch
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" < "$mutation_file" > "$RUNNER_TEMP/l5/$id.mutation.log" 2>&1 || {
+                echo "::error::L-5 $id: the mutation itself would not apply."
+                tail -5 "$RUNNER_TEMP/l5/$id.mutation.log"
+                failures=$((failures + 1)); continue
+              }
+            run_prerequisites "$id"
+            if run_suite_file "$file" "$RUNNER_TEMP/l5/$id.mutant.log"; then
+              mutant=0
+            else
+              mutant=$?
+            fi
+            # Did the mutation actually take? Run 6 produced seven files where
+            # "my mutation is wrong" and "the assertion has no teeth" were
+            # indistinguishable from the outside. They have completely different
+            # consequences — one is a harness bug, the other is a check that
+            # carries no information sitting in production test code — so the
+            # harness now answers it instead of leaving it to be assumed.
+            verify_sql="$(sed -n 's/^-- @l5-verify: //p' "$mutation_file" | head -1)"
+            if [ -z "$verify_sql" ]; then
+              echo "::error::L-5 $id: the mutation section declares no @l5-verify, so whether it took effect cannot be established."
+              failures=$((failures + 1)); continue
+            fi
+            took="$(docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -At -U postgres -d "$scratch" -c "$verify_sql" 2>/dev/null | head -1)"
+            if [ "$mutant" -eq 0 ]; then
+              if [ "$took" = "t" ]; then
+                echo "::error::L-5 $id: FINDING — the mutation IS PROVEN to have taken effect ($verify_sql = t) and the file STILL PASSED. Its terminal assertion cannot fail: a check that carries no information. This is a defect in the suite, not in the harness. Do not weaken L-5 for it."
+              else
+                echo "::error::L-5 $id: HARNESS BUG — the file passed because the mutation never took effect ($verify_sql = ${took:-<null>}). The mutation is wrong, not the assertion."
+              fi
+              failures=$((failures + 1)); continue
+            fi
+            subsumed_by="$(sed -n 's/^-- @l5-subsumed-by: //p' "$mutation_file" | head -1)"
+            if grep -qF -- "$expected" "$RUNNER_TEMP/l5/$id.mutant.log"; then
+              proven_terminal=$((proven_terminal + 1))
+            echo "  L-5 OK  $id  control=0  mutant=$mutant  terminal message matched: $expected"
+            elif [ -n "$subsumed_by" ] && grep -qF -- "$subsumed_by" "$RUNNER_TEMP/l5/$id.mutant.log"; then
+              # DECLARED SUBSUMPTION. Both assertions are named, and the subsuming
+              # one is proven to have teeth by this very mutation rather than being
+              # taken on trust. The argument lives in the mutation section.
+              subsumption_class="$(sed -n 's/^-- @l5-subsumption-class: //p' "$mutation_file" | head -1)"
+              proven_subsumed=$((proven_subsumed + 1))
+              echo "  L-5 OK  $id  control=0  mutant=$mutant  SUBSUMED [$subsumption_class]: the terminal assertion [$expected] is unreachable as the first failure; the file failed on its own [$subsumed_by], which this mutation thereby proves has teeth."
+              echo "L5-SUBSUMPTION $id class=$subsumption_class terminal=[$expected] witness=[$subsumed_by]" >> "$RUNNER_TEMP/parity/l5-subsumptions.txt"
+            else
+              echo "::error::L-5 $id: the file failed, but NOT on its terminal assertion. The mutation tripped something earlier, so this proves nothing about the terminal predicate. Expected: $expected"
+              [ -n "$subsumed_by" ] && echo "::error::L-5 $id: nor on its declared subsuming assertion: $subsumed_by"
+              grep -m3 -E '^(ERROR|psql:)' "$RUNNER_TEMP/l5/$id.mutant.log" || tail -3 "$RUNNER_TEMP/l5/$id.mutant.log"
+              failures=$((failures + 1)); continue
+            fi
+          done
+
+          # The two race fixtures carry ZERO RAISE EXCEPTION and are not L-5
+          # subjects. Accounted for explicitly rather than quietly dropped: their
+          # verdict is rendered by the assert file, which must still read them.
+          for race in issue_1807_tester_adversarial_race_a issue_1807_tester_adversarial_race_b; do
+            if node .github/scripts/parity/l5-terminal-message.mjs "supabase/migrations/__tests__/$race.sql" >/dev/null 2>&1; then
+              echo "::error::L-5: $race.sql now carries a RAISE EXCEPTION and must become an L-5 subject in its own right."
+              failures=$((failures + 1))
+            fi
+          done
+          assert_file="$(awk -F'\t' '$1=="M-1173-02i" {print $2}' "$RUNNER_TEMP/l5_map.tsv")"
+          for fixture in 18079999-0000-4000-8000-000000000011 18079999-0000-4000-8000-000000000012; do
+            if ! grep -qF -- "$fixture" "$assert_file"; then
+              echo "::error::L-5: the assert file does not read race fixture $fixture, so the two race fixtures have no verdict at all."
+              failures=$((failures + 1))
+            fi
+          done
+          echo "race fixtures: 0 RAISE EXCEPTION each, verdict rendered by M-1173-02i, which reads both fixture brands."
+
+          psql_admin -q -c "DROP DATABASE IF EXISTS $scratch" >/dev/null
+          restore_template_connections
+          trap - EXIT
+          if [ "$failures" -ne 0 ]; then
+            echo "::error::L-5: $failures of 17 terminal assertions could not be proven to have teeth."
+            exit 1
+          fi
+          if [ -s "$RUNNER_TEMP/parity/l5-subsumptions.txt" ]; then
+            echo "── declared subsumptions, for the ledger ──"
+            cat "$RUNNER_TEMP/parity/l5-subsumptions.txt"
+          fi
+          echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 17 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
+
       # ── Guard G-9 — the trigger union is a superset of every member ──────
       #
       # Collapsed per the orchestrator's STOP-1 ruling: there is one path list
@@ -503,6 +770,7 @@ jobs:
       # lists — e.g. `supabase/functions/record-visit/**`, which only #1612
       # contributes.
       - name: "G-9 · the consolidated trigger union covers every origin lane's paths"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
         run: |
           node -e '
             const fs = require("node:fs");
@@ -566,6 +834,7 @@ jobs:
       # psql's `-e` echo, and a tee into $RUNNER_TEMP/parity/<command-id>.log.
       - name: Prepare the parity ledger workspace
         id: helpers
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
         run: |
           mkdir -p "$RUNNER_TEMP/parity"
           # The wrappers live in .github/scripts/parity/pgsuite.sh. They add
@@ -626,8 +895,20 @@ jobs:
       # The needle is assembled from fragments so this guard does not match its
       # own source.
       - name: "G-3 · no contract suite connects to the migrated template"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
         run: |
           workflow=".github/workflows/postgres-contract-suites.yml"
+          # READABILITY FIRST, so every message below can honestly be about
+          # CONTENT. Run 10 failed here with a message asserting the #1174 call
+          # site was wrong; it was not, and a guard that reports a wrong cause
+          # costs a full round trip to disbelieve. Whatever the runner saw, it
+          # must never again be described as a defect in the file.
+          if [ ! -r "$workflow" ] || [ ! -s "$workflow" ]; then
+            echo "::error::G-3a: $workflow is unreadable or empty from this step, so NONE of the call-site checks ran. This is not a statement about any call site — the guard could not look. pwd=$(pwd)"
+            ls -l "$workflow" 2>&1 | sed 's/^/  /' || true
+            exit 1
+          fi
+          echo "G-3a reading $workflow ($(wc -l < "$workflow" | tr -d ' ') lines, $(wc -c < "$workflow" | tr -d ' ') bytes) from $(pwd)"
           dash_d="-d"
           needle="$dash_d $PG_CONTRACT_TEMPLATE"
           template_uses="$(grep -cF -- "$needle" "$workflow" || true)"
@@ -635,8 +916,15 @@ jobs:
             echo "::error::G-3a: the literal [$needle] appears $template_uses time(s) in $workflow; it must appear exactly once, in the from-zero replay loop."
             exit 1
           fi
-          if ! grep -F -- "$needle" "$workflow" | grep -qF "psql -v ON_ERROR_STOP=1 -U postgres"; then
-            echo "::error::G-3a: the single template connection in $workflow is not the replay loop's psql invocation."
+          # Audited with the driver check: same `… | grep -q` shape, replaced with a
+          # herestring so no pipeline stands between the evidence and the verdict.
+          template_line="$(grep -F -- "$needle" "$workflow")"
+          if [ -z "$template_line" ]; then
+            echo "::error::G-3a: $workflow could not be read, so the template-connection check DID NOT RUN."
+            exit 1
+          fi
+          if ! grep -qF "psql -v ON_ERROR_STOP=1 -U postgres" <<< "$template_line"; then
+            echo "::error::G-3a: the single template connection in $workflow is not the replay loop's psql invocation. Line: $template_line"
             exit 1
           fi
           bad=0
@@ -654,14 +942,37 @@ jobs:
               *) echo "::error::G-3a: run_logged call site names database [$db], not a per-suite database: $site"; bad=1 ;;
             esac
           done < <(grep -E '^ *run_logged [A-Za-z0-9_-]+ ' "$workflow")
-          # Shell line continuations are folded first, so a call site split
-          # across lines is checked as the single command it becomes. The needle
-          # is assembled from a variable so this guard cannot match its own
-          # source and pass on itself.
-          flattened="$(perl -0777 -pe 's/[ \t]*\\\n\s*/ /g' "$workflow")"
+          # Shell line continuations are folded first, so a call site split across
+          # lines is checked as the single command it becomes. The needle is
+          # assembled from a variable so this guard cannot match its own source.
+          #
+          # RUN 10: this check failed in CI while passing locally on the identical
+          # commit. It was the ONLY G-3a matcher that shelled out to `perl` — every
+          # other one greps the file directly, and every other one passed. An empty
+          # $flattened matches nothing, and the guard then announced a specific
+          # conclusion about the #1174 call site that was provably false.
+          #
+          # Two things were wrong and both are fixed. The fold now uses awk, which
+          # is POSIX and already relied on elsewhere in this job, so there is no
+          # second interpreter to be absent. And the failure is HONEST: "I could
+          # not read the workflow" and "I read it and the call site is wrong" are
+          # now different messages, because a guard that reports a wrong cause
+          # costs a full round trip to disbelieve.
+          flattened="$(awk '{
+            line = $0
+            while (sub(/[ \t]*\\$/, "", line) > 0) {
+              if ((getline nxt) <= 0) break
+              sub(/^[ \t]+/, "", nxt)
+              line = line " " nxt
+            }
+            print line
+          }' "$workflow")"
           driver_sh="issue_1174_atomic_visibility_race_adversarial.sh"
-          if ! printf '%s' "$flattened" | grep -qF "$driver_sh pg-contract-suites suite_1174"; then
-            echo "::error::G-3a: the #1174 bash driver is not invoked with BOTH its container and its database argument."
+          if [ -z "$flattened" ]; then
+            echo "::error::G-3a: $workflow could not be read or folded, so the call-site checks DID NOT RUN. This is not a statement about the #1174 driver — the guard could not look."
+            bad=1
+          elif ! grep -qF "$driver_sh pg-contract-suites suite_1174" <<< "$flattened"; then
+            echo "::error::G-3a: $workflow was read ($(printf '%s' "$flattened" | wc -l | tr -d ' ') folded lines) and the #1174 bash driver call site does NOT carry both its container and its database argument."
             bad=1
           fi
           if ! grep -qE '^ *ISSUE_1171_POSTGRES_DATABASE: suite_1171$' "$workflow"; then
@@ -1096,6 +1407,17 @@ jobs:
           PARITY_SIDE: consolidated
         run: |
           export PARITY_DIR="$RUNNER_TEMP/parity"
+          # A MISSING inventory must not read as "everything is unregistered".
+          # Run 9: L-5 failed, and because the step that writes inventory.tsv
+          # carried no `if:` it was SKIPPED by success(). The ledger then compared
+          # 30 executed commands against an empty set and reported them as
+          # unregistered — G-5 pointing at the wrong thing entirely. The `if:`
+          # gating is the fix; this is the backstop, so the same shape can never
+          # again present as a totality failure.
+          if [ ! -s "$PARITY_DIR/inventory.tsv" ]; then
+            echo "::error::the committed command inventory is missing or empty, so G-5 cannot be evaluated at all. It has NOT passed and it has NOT failed — the step that writes it did not run."
+            exit 1
+          fi
           node .github/scripts/parity/emit-parity-ledger.mjs
 
       - name: Upload the parity ledger

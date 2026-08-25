@@ -145,9 +145,14 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     issue: 2591,
     workflow: "postgres-contract-suites.yml",
     // Discovery derives a provider record from the source files that name a
-    // workflow. These are the three workflow-content tests the #2591 tester
-    // re-pointed at the consolidated lane under [TEST-MOD-APPROVED #2591].
+    // workflow. Three are the workflow-content tests the #2591 tester re-pointed
+    // at the consolidated lane under [TEST-MOD-APPROVED #2591]. The fourth is the
+    // origin-side ledger parser, which reads the consolidated workflow to recover
+    // the command-id join key (U-5) — it names the workflow, so discovery records
+    // it, and the declaration says so rather than hiding the reference or
+    // widening an exemption to look away from it.
     referenceFiles: Object.freeze([
+      ".github/scripts/parity/parse-origin-log.mjs",
       "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",

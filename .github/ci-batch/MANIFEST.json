@@ -22597,6 +22597,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
       "referenceFiles": [
+        ".github/scripts/parity/parse-origin-log.mjs",
         "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts"
