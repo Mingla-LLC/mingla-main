@@ -36,7 +36,16 @@
  * FAILS-ON-REVERT (verified, not asserted): delete the
  * `EXPO_PUBLIC_SUPABASE_URL: SUPABASE_URL` line from
  * `app-mobile/app.config.js` — a true line deletion, not a comment-out — and
- * C1, C3 and C5 go red while C2 stays green.
+ * C1, C3, C5 and G1 go red while C2 stays green.
+ *
+ * THE PRODUCTION-AUTHORITY GATE. `scripts/ops/verify-production-supabase-authority.mjs`
+ * pins the consumer project URL to `docs/contracts/production-supabase-authority.json`,
+ * fail-closed. It caught this change on the first CI run, because the literal
+ * moved out of the file it was anchored at — the gate working exactly as
+ * designed. The anchor moved with the value and the surrounding wiring was
+ * pinned too (2 assertions -> 5, none vacuous). G1 holds the whole gate green
+ * from inside the required jest lane, so a future edit to the consumer's URL
+ * plumbing cannot go red only in a separate workflow.
  */
 import {
   afterEach,
@@ -46,8 +55,10 @@ import {
   it,
   jest,
 } from "@jest/globals";
+import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { pathToFileURL } from "node:url";
 
 const REPO_ROOT = path.resolve(__dirname, "../../..");
 const APP_MOBILE = path.join(REPO_ROOT, "app-mobile");
@@ -263,5 +274,33 @@ describe("#1594 — the consumer static map resolves a functions base URL", () =
       // surface from the fix and from C1's coverage.
       expect(code).not.toContain("functionsBaseUrl:");
     }
+  });
+
+  // ---- G1: the production-authority gate agrees with the new layout --------
+
+  it("G1 — the fail-closed production-authority verifier reports zero failures", () => {
+    // Run the REAL ESM verifier in a REAL node, rather than importing it through
+    // jest's transform. Two reasons, and the second is the one that matters:
+    // (a) `babel-preset-expo` does not parse this module, and (b) executing it
+    // the way CI executes it is stronger evidence than executing a transpiled
+    // copy of it. This is the same command shape the "Fail-closed production
+    // authority" workflow runs.
+    const script =
+      "import('" +
+      pathToFileURL(
+        path.join(REPO_ROOT, "scripts/ops/verify-production-supabase-authority.mjs"),
+      ).href +
+      "').then((m) => { process.stdout.write(JSON.stringify(m.validateRepositoryAuthority(" +
+      JSON.stringify(REPO_ROOT) +
+      "))); });";
+
+    const stdout = execFileSync(process.execPath, ["-e", script], {
+      encoding: "utf8",
+      timeout: 60_000,
+    });
+
+    // Vacuity guard: an empty stdout must FAIL rather than parse to nothing.
+    expect(stdout.trim().length).toBeGreaterThan(0);
+    expect(JSON.parse(stdout) as string[]).toEqual([]);
   });
 });
