@@ -32,6 +32,7 @@
  */
 
 import { supabase } from "./supabase";
+import { newTripOperationId, readTripRevision } from "./tripsService";
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -318,8 +319,14 @@ export async function upsertTripIntakeSchema(args: {
   /** Caller's hint to skip the status probe; only set true when caller already
    * knows the trip is in draft state. */
   skipStatusProbe?: boolean;
+  /**
+   * issue #1971 — stable per-user-action id, reused across an automatic retry
+   * so the canonical command replays its receipt instead of writing twice.
+   */
+  operationId?: string;
 }): Promise<void> {
-  const { eventId, ticketTypeId, schema, reason, skipStatusProbe } = args;
+  const { eventId, ticketTypeId, schema, reason, skipStatusProbe, operationId } =
+    args;
   if (!eventId || !ticketTypeId) {
     throw makeError("not_found", "Trip or tier not found.");
   }
@@ -357,8 +364,11 @@ export async function upsertTripIntakeSchema(args: {
       );
     }
 
+    // issue #1971 — the canonical live command. It forwards this exact patch to
+    // the same #1719 audited/refund-safe owner `biz_update_live_trip` reached
+    // before, and adds compare-and-swap plus an exactly-once receipt.
     const { data: rpcResult, error: rpcErr } = await supabase.rpc(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       {
         p_event_id: eventId,
         p_patch: {
@@ -367,6 +377,8 @@ export async function upsertTripIntakeSchema(args: {
           ],
         },
         p_reason: trimmedReason,
+        p_expected_updated_at: await readTripRevision(eventId),
+        p_operation_id: operationId ?? newTripOperationId(),
       },
     );
 
@@ -379,51 +391,20 @@ export async function upsertTripIntakeSchema(args: {
     return;
   }
 
-  // Draft path: direct upsert per RLS policy.
-  // I-PROPOSED-I MUTATION-ROWCOUNT-VERIFIED: chain .select("id").maybeSingle()
-  // — but use .upsert() return rows directly since onConflict requires no
-  // separate .select.
-  if (schema === null) {
-    // Clear the tier's schema = DELETE the row.
-    const { data, error } = await supabase
-      .from("trip_intake_schemas")
-      .delete()
-      .eq("event_id", eventId)
-      .eq("ticket_type_id", ticketTypeId)
-      .select("id")
-      .maybeSingle();
-
-    if (error) throw mapPgError(error);
-    // Delete with no row is fine (idempotent — already cleared). Don't throw
-    // not_found here; that would noisy the planner if they delete twice.
-    void data;
-    return;
-  }
-
-  // Upsert with schema_version_id from the schema payload (planner mints new
-  // UUIDs client-side on every "Save question" tap for cache-busting).
-  const { data, error } = await supabase
-    .from("trip_intake_schemas")
-    .upsert(
-      {
-        event_id: eventId,
-        ticket_type_id: ticketTypeId,
-        schema,
-        schema_version_id: schema.schema_version_id,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "event_id,ticket_type_id" },
-    )
-    .select("id")
-    .maybeSingle();
-
+  // issue #1971 — the draft path no longer writes `trip_intake_schemas`
+  // directly. It goes through the same canonical graph command Ari uses, which
+  // validates the schema, proves the tier belongs to this trip, and commits
+  // under compare-and-swap with an exactly-once receipt. A NULL schema still
+  // clears the tier's questions idempotently.
+  const { error } = await supabase.rpc("biz_apply_trip_draft_graph", {
+    p_event_id: eventId,
+    p_patch: {
+      intake_schemas: [{ ticket_type_id: ticketTypeId, schema }],
+    },
+    p_expected_updated_at: await readTripRevision(eventId),
+    p_operation_id: operationId ?? newTripOperationId(),
+  });
   if (error) throw mapPgError(error);
-  if (data === null) {
-    throw makeError(
-      "unauthorized",
-      "Couldn't save intake form — permission denied.",
-    );
-  }
 }
 
 // ---------------------------------------------------------------------------

@@ -22,6 +22,119 @@ import type { BrandRole } from "../store/currentBrandStore";
 // META-ORCH-1235 — settle-guarantee for the Hub trips full-screen gate.
 import { withTimeout, DATA_FETCH_TIMEOUT_MS } from "../utils/withTimeout";
 
+// ============================================================================
+// issue #1971 — the canonical trip command boundary.
+//
+// Business web/iOS/Android and Ari now share ONE owner per trip write. These
+// helpers are the whole of the client's side of that contract: mint a stable
+// operation id per user action, read the current graph revision, and call the
+// RPC. No multi-statement create, no delete-then-insert sidecar write, no split
+// ticket/tier write and no raw `events.deleted_at` update remain below.
+// ============================================================================
+
+/** Command options every #1971 mutation accepts. */
+export interface TripCommandOptions {
+  /**
+   * Stable per-user-action id. The SAME value must be reused across an
+   * automatic network retry so the server replays its receipt instead of
+   * mutating twice; a NEW value means a new deliberate edit. The hook layer
+   * owns this — see `useTrips.ts`.
+   */
+  operationId?: string;
+  /**
+   * The revision the caller believes it is editing. Omitted means "read it now
+   * and use that", which is correct for a single user action but is NOT a
+   * substitute for passing the revision the UI actually rendered.
+   */
+  expectedUpdatedAt?: string;
+  /**
+   * `publishTrip` runs TWO canonical commands — it commits the wizard's pending
+   * graph, then publishes from stored state — so it needs a second stable id.
+   * A receipt binds actor + command + arguments, so reusing one id across two
+   * different commands is an `idempotency_conflict`, not a replay.
+   */
+  saveOperationId?: string;
+}
+
+export function newTripOperationId(): string {
+  // `crypto.randomUUID` is present on Hermes/RN 0.81, modern browsers and Node
+  // 20. The fallback keeps a v4-shaped id on any runtime that lacks it rather
+  // than throwing inside a money-adjacent write path.
+  const cryptoRef = (globalThis as { crypto?: Crypto }).crypto;
+  if (cryptoRef && typeof cryptoRef.randomUUID === "function") {
+    return cryptoRef.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
+    const random = (Math.random() * 16) | 0;
+    const value = char === "x" ? random : (random & 0x3) | 0x8;
+    return value.toString(16);
+  });
+}
+
+/**
+ * One stable operation id per user action.
+ *
+ * React Query hands `mutationFn` the SAME variables OBJECT on an automatic
+ * retry and a NEW object for a new `mutate()` call, so keying on object
+ * identity gives exactly the contract #1971 needs: a retried delivery replays
+ * the server receipt, and a deliberate second edit is a genuinely new command.
+ * A WeakMap keeps this leak-free — the entry dies with the variables object.
+ */
+const TRIP_OPERATION_IDS = new WeakMap<object, string>();
+
+export function operationIdFor(variables: object): string {
+  const existing = TRIP_OPERATION_IDS.get(variables);
+  if (existing !== undefined) return existing;
+  const minted = newTripOperationId();
+  TRIP_OPERATION_IDS.set(variables, minted);
+  return minted;
+}
+
+/** The trip's current graph revision (`events.updated_at`). */
+export async function readTripRevision(eventId: string): Promise<string> {
+  const { data, error } = await supabase
+    .from("events")
+    .select("updated_at")
+    .eq("id", eventId)
+    .eq("event_type", "trip")
+    .is("deleted_at", null)
+    .maybeSingle();
+  if (error) throw error;
+  if (data === null) {
+    throw new Error("readTripRevision: trip not found for id=" + eventId);
+  }
+  return data.updated_at as string;
+}
+
+async function resolveRevision(
+  eventId: string,
+  options?: TripCommandOptions,
+): Promise<string> {
+  return options?.expectedUpdatedAt ?? (await readTripRevision(eventId));
+}
+
+/**
+ * Apply one atomic patch to a DRAFT trip graph through the canonical command.
+ * Every group in `patch` commits or none of them does.
+ */
+export async function applyTripDraftGraph(
+  eventId: string,
+  patch: Record<string, unknown>,
+  options?: TripCommandOptions,
+): Promise<Record<string, unknown>> {
+  const { data, error } = await supabase.rpc("biz_apply_trip_draft_graph", {
+    p_event_id: eventId,
+    p_patch: patch,
+    p_expected_updated_at: await resolveRevision(eventId, options),
+    p_operation_id: options?.operationId ?? newTripOperationId(),
+  });
+  if (error) throw error;
+  if (data === null) {
+    throw new Error("applyTripDraftGraph: RPC returned null");
+  }
+  return data as Record<string, unknown>;
+}
+
 // ---------------------- Types ----------------------
 
 /**
@@ -719,102 +832,44 @@ export const TRIP_DRAFT_PLACEHOLDER_TITLE = "Untitled trip";
 export async function createTripDraft(
   input: CreateTripDraftInput,
   _role: BrandRole,
+  options?: TripCommandOptions,
 ): Promise<Trip> {
   // I-BRAND-UNIVERSAL-AUTHORING (META-ORCH-0972) — no kind gate.
-
+  //
+  // issue #1971 — ONE call. The previous three client-side statements (events
+  // insert, placeholder ticket insert, pricing-tier insert) could orphan a
+  // draft or leave a ticket without a tier if any one of them failed. The
+  // canonical command creates all three in a single transaction, derives the
+  // brand's currency server-side (issue #1014: a NULL brand currency stays
+  // NULL, never a fabricated USD), and returns the complete graph.
+  // ORCH-1177 — the create-mode guard in app/trip/[id]/edit.tsx keys off this
+  // exact constant, so the seed still comes FROM it rather than a literal.
   const tempTitle = input.initialTitle?.trim() || TRIP_DRAFT_PLACEHOLDER_TITLE;
-  const tempSlug = `draft-${Date.now().toString(36)}`;
 
-  // 1. Look up brand default_currency + slug BEFORE creating the event.
-  //    issue #1014 — the pre-#1014 coalesce-to-USD fallback here existed ONLY to
-  //    dodge the old tg_enforce_event_ticket_currency `event_currency_not_found`
-  //    raiser when the placeholder ticket row was inserted. That trigger now
-  //    permits a FREE (price 0) placeholder on a NULL-currency draft, so a
-  //    currency-less brand's trip draft carries NULL — no fabricated USD.
-  //    Legacy fabricated-USD drafts are healed at publish (the #1014 migration
-  //    NULLs/normalizes event + ticket currencies on the publish path).
-  const brandCurrencyQuery = await supabase
-    .from("brands")
-    .select("default_currency, slug")
-    .eq("id", input.brandId)
-    .is("deleted_at", null)
-    .maybeSingle();
-  if (brandCurrencyQuery.error) throw brandCurrencyQuery.error;
-  const defaultCurrency =
-    (brandCurrencyQuery.data?.default_currency as string | null) ?? null;
-  const brandSlug = (brandCurrencyQuery.data?.slug as string | null) ?? null;
-
-  // 2. INSERT events row with currency populated up front.
-  const { data: eventRow, error: eventError } = await supabase
-    .from("events")
-    .insert({
-      brand_id: input.brandId,
-      created_by: (await supabase.auth.getUser()).data.user?.id ?? null,
-      title: tempTitle,
-      slug: tempSlug,
-      event_type: "trip",
-      status: "draft",
-      visibility: "draft",
-      currency: defaultCurrency,
-      theme: { business_trip: {} },
-      timezone: "UTC",
-    })
-    .select()
-    .single();
-
-  if (eventError) {
-    if (eventError.code === "23505") {
-      throw new SlugCollisionError(tempSlug);
-    }
-    throw eventError;
-  }
-  if (eventRow === null) {
-    throw new Error("createTripDraft: insert returned null row");
-  }
-
-  // 3. INSERT placeholder ticket_types row (price 0, capacity 1)
-
-  const { data: ticketRow, error: ticketError } = await supabase
-    .from("ticket_types")
-    .insert({
-      event_id: eventRow.id,
-      name: "Standard",
-      price_cents: 0,
-      currency: defaultCurrency,
-      quantity_total: 1,
-      is_unlimited: false,
-      is_free: true,
-      min_purchase_qty: 1,
-      available_online: true,
-      available_in_person: false,
-      display_order: 0,
-    })
-    .select()
-    .single();
-
-  if (ticketError) throw ticketError;
-  if (ticketRow === null) {
-    throw new Error("createTripDraft: ticket_types insert returned null row");
-  }
-
-  // 4. INSERT placeholder trip_pricing_tiers row
-  const { error: tierError } = await supabase.from("trip_pricing_tiers").insert({
-    event_id: eventRow.id,
-    ticket_type_id: ticketRow.id,
-    tier_name: "Standard",
-    tier_metadata: {},
+  const { data, error } = await supabase.rpc("biz_create_trip_draft", {
+    p_brand_id: input.brandId,
+    p_seed: { title: tempTitle },
+    p_operation_id: options?.operationId ?? newTripOperationId(),
   });
-  if (tierError) throw tierError;
+  if (error) {
+    if (error.code === "23505") {
+      throw new SlugCollisionError("draft");
+    }
+    throw error;
+  }
+  if (data === null) {
+    throw new Error("createTripDraft: RPC returned null");
+  }
 
-  return mapTrip(
-    eventRow as EventRow,
-    brandSlug,
-    [],
-    [],
-    [],
-    [ticketRow as TicketTypeRow],
-    0,
-  );
+  const eventId = (data as Record<string, any>)?.event?.id as string | undefined;
+  if (!eventId) {
+    throw new Error("createTripDraft: RPC returned no event");
+  }
+  const created = await getTrip(eventId);
+  if (created === null) {
+    throw new Error("createTripDraft: trip not found after create");
+  }
+  return created;
 }
 
 // ---------------------- getTrip ----------------------
@@ -1019,21 +1074,10 @@ export async function aggregatePaidOrdersByEvent(
 export async function updateTripBasics(
   eventId: string,
   patch: TripBasicsPatch,
+  options?: TripCommandOptions,
 ): Promise<Trip> {
-  // Build the partial events UPDATE
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const update: Record<string, any> = { updated_at: new Date().toISOString() };
-  if (patch.title !== undefined) update.title = patch.title;
-  if (patch.description !== undefined) update.description = patch.description;
-  if (patch.coverMediaUrl !== undefined) update.cover_media_url = patch.coverMediaUrl;
-  if (patch.coverMediaPosterUrl !== undefined) update.cover_media_poster_url = patch.coverMediaPosterUrl;
-  if (patch.coverMediaType !== undefined) update.cover_media_type = patch.coverMediaType;
-  // issue #868 [cover-gallery] — additive gallery write; the cover-field writes
-  // above stay UNCHANGED (no sync/derive between the two).
-  if (patch.coverGallery !== undefined) update.cover_media_gallery = patch.coverGallery;
-  if (patch.timezone !== undefined) update.timezone = patch.timezone;
-
-  // theme.business_trip merge — read current, jsonb_set-style merge in JS
+  // ORCH-0950 — capacity and (on a published trip) dates/destination have
+  // their own owners. These guards are unchanged; only the WRITE moved.
   if (patch.businessTrip !== undefined) {
     if ((patch.businessTrip as Record<string, unknown>).capacity !== undefined) {
       // orch-strict-grep-allow trip-capacity-defensive-throw
@@ -1045,7 +1089,7 @@ export async function updateTripBasics(
     // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — trip-only.
     const current = await supabase
       .from("events")
-      .select("theme,status")
+      .select("status")
       .eq("id", eventId)
       .eq("event_type", "trip")
       .maybeSingle();
@@ -1070,25 +1114,27 @@ export async function updateTripBasics(
         "ORCH-0950 expanded: trip destination must route through updateLiveTripFields (writes events.destination_text), not updateTripBasics.",
       );
     }
-    const currentTheme =
-      (current.data?.theme as Record<string, unknown> | null) ?? {};
-    const currentBusinessTrip =
-      (currentTheme.business_trip as Record<string, unknown> | undefined) ?? {};
-    update.theme = {
-      ...currentTheme,
-      business_trip: { ...currentBusinessTrip, ...patch.businessTrip },
-    };
   }
 
-  // ORCH-0859 REWORK 3: defensive UPDATE on trip rows only.
-  const { error } = await supabase
-    .from("events")
-    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — caller refreshes via getTrip() immediately after; rowcount-verify deferred to subsequent read.
-    .update(update)
-    .eq("id", eventId)
-    .eq("event_type", "trip")
-    .is("deleted_at", null);
-  if (error) throw error;
+  // issue #1971 — one atomic canonical patch. The server owns the theme merge
+  // (it also keeps `events.departure_text` in step through the existing
+  // `tg_events_sync_departure_from_theme` trigger), so the client no longer
+  // read-modify-writes `theme` and can no longer lose a concurrent edit.
+  const eventPatch: Record<string, unknown> = {};
+  if (patch.title !== undefined) eventPatch.title = patch.title;
+  if (patch.description !== undefined) eventPatch.description = patch.description;
+  if (patch.coverMediaUrl !== undefined) eventPatch.cover_media_url = patch.coverMediaUrl;
+  if (patch.coverMediaPosterUrl !== undefined) {
+    eventPatch.cover_media_poster_url = patch.coverMediaPosterUrl;
+  }
+  if (patch.coverMediaType !== undefined) eventPatch.cover_media_type = patch.coverMediaType;
+  // issue #868 [cover-gallery] — additive gallery write; the cover-field writes
+  // above stay UNCHANGED (no sync/derive between the two).
+  if (patch.coverGallery !== undefined) eventPatch.cover_media_gallery = patch.coverGallery;
+  if (patch.timezone !== undefined) eventPatch.timezone = patch.timezone;
+  if (patch.businessTrip !== undefined) eventPatch.business_trip = patch.businessTrip;
+
+  await applyTripDraftGraph(eventId, { event: eventPatch }, options);
 
   const refreshed = await getTrip(eventId);
   if (refreshed === null) {
@@ -1102,37 +1148,29 @@ export async function updateTripBasics(
 export async function upsertTripDays(
   eventId: string,
   days: TripDayInput[],
+  options?: TripCommandOptions,
 ): Promise<TripDay[]> {
-  // Delete all existing days for this event (DELETE-then-INSERT pattern).
-  const deleteResp = await supabase
-    .from("trip_days")
-    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — DELETE-then-INSERT pattern; rowcount intentionally not verified (zero rows is the valid initial-create case).
-    .delete()
-    .eq("event_id", eventId);
-  if (deleteResp.error) throw deleteResp.error;
-
-  if (days.length === 0) return [];
-
-  const insertRows = days.map((d) => ({
-    event_id: eventId,
-    ordinal: d.ordinal,
-    title: d.title,
-    narrative: d.narrative ?? null,
-    date: d.date ?? null,
-    stops: [],
-    // ORCH-1119: per-day media MUST persist on both draft (upsertTripDays, here)
-    // and published-edit (biz_update_live_trip §5b) — reverting either silently
-    // drops galleries (see orch1119_trip_day_media_persistence.test.ts).
-    media: d.media ?? [],
-  }));
-
-  const { data, error } = await supabase
-    .from("trip_days")
-    .insert(insertRows)
-    .select()
-    .order("ordinal");
-  if (error) throw error;
-  return ((data ?? []) as TripDayRow[]).map(mapTripDay);
+  // issue #1971 — the DELETE-then-INSERT pair is gone. A failure between the
+  // two used to erase the itinerary; the replacement happens inside one
+  // canonical transaction, so it either lands whole or not at all.
+  const graph = await applyTripDraftGraph(
+    eventId,
+    {
+      days: days.map((d) => ({
+        ordinal: d.ordinal,
+        title: d.title,
+        narrative: d.narrative ?? null,
+        date: d.date ?? null,
+        // ORCH-1119: per-day media MUST persist on both draft (here) and
+        // published-edit (biz_update_live_trip §5b) — reverting either silently
+        // drops galleries (see orch1119_trip_day_media_persistence.test.ts).
+        media: d.media ?? [],
+      })),
+    },
+    options,
+  );
+  const rows = ((graph.days ?? []) as TripDayRow[]);
+  return rows.map(mapTripDay);
 }
 
 // ---------------------- upsertTripInclusions (DELETE-then-INSERT) ----------------------
@@ -1140,31 +1178,22 @@ export async function upsertTripDays(
 export async function upsertTripInclusions(
   eventId: string,
   items: TripInclusionInput[],
+  options?: TripCommandOptions,
 ): Promise<TripInclusion[]> {
-  const deleteResp = await supabase
-    .from("trip_inclusions")
-    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — DELETE-then-INSERT pattern; rowcount intentionally not verified (zero rows is the valid initial-create case).
-    .delete()
-    .eq("event_id", eventId);
-  if (deleteResp.error) throw deleteResp.error;
-
-  if (items.length === 0) return [];
-
-  const insertRows = items.map((i) => ({
-    event_id: eventId,
-    kind: i.kind,
-    item: i.item,
-    ordinal: i.ordinal,
-  }));
-
-  const { data, error } = await supabase
-    .from("trip_inclusions")
-    .insert(insertRows)
-    .select()
-    .order("kind")
-    .order("ordinal");
-  if (error) throw error;
-  return ((data ?? []) as TripInclusionRow[]).map(mapTripInclusion);
+  // issue #1971 — same atomic replacement as upsertTripDays.
+  const graph = await applyTripDraftGraph(
+    eventId,
+    {
+      inclusions: items.map((i) => ({
+        kind: i.kind,
+        item: i.item,
+        ordinal: i.ordinal,
+      })),
+    },
+    options,
+  );
+  const rows = ((graph.inclusions ?? []) as TripInclusionRow[]);
+  return rows.map(mapTripInclusion);
 }
 
 // ---------------------- updateTripPricing ----------------------
@@ -1172,36 +1201,17 @@ export async function upsertTripInclusions(
 export async function updateTripPricing(
   eventId: string,
   patch: TripPricingPatch,
+  options?: TripCommandOptions,
 ): Promise<TripPricingTier> {
-  // ORCH-0859 REWORK 2: ALWAYS derive currency from the event row.
-  // The tg_enforce_event_ticket_currency trigger rejects any mismatch.
-  // The patch.currency field is accepted on the type for source
-  // compatibility but IGNORED here.
-  // ORCH-0859 REWORK 3 (events-type-filter audit): defensive — currency
-  // probe scoped to trip rows.
-  const eventCurrencyResp = await supabase
-    .from("events")
-    .select("currency")
-    .eq("id", eventId)
-    .eq("event_type", "trip")
-    .maybeSingle();
-  if (eventCurrencyResp.error) throw eventCurrencyResp.error;
-  if (eventCurrencyResp.data === null) {
-    throw new Error("updateTripPricing: event not found for id=" + eventId);
-  }
-  // issue #1014 (rework F-2) — NULL passthrough, no fabricated USD: on a
-  // NULL-currency draft the tg_enforce_event_ticket_currency trigger is
-  // authoritative (free ticket → NULL; paid ticket → resolves the brand
-  // currency and stamps event+ticket, or raises event_currency_required —
-  // which the wizard's autosave catch maps to the payments-setup copy).
-  const eventCurrency = (eventCurrencyResp.data.currency as string | null) ?? null;
-
-  // META-ORCH-1174 Leg B1 — lift the single-tier `.maybeSingle()` choke. A trip
-  // may now carry N pricing tiers (packages). Target the tier addressed by
-  // `patch.ticketTypeId` when provided; otherwise fall back to the trip's sole
-  // tier (deterministically the earliest-created row if, defensively, >1 exists
-  // — NEVER throw on >1 as the old `.maybeSingle()` did, which was the hard
-  // single-package barrier). The per-tier validation below is unchanged.
+  // The currency still comes from the event row, NEVER from the caller: the
+  // canonical command derives it server-side and `patch.currency` remains
+  // accepted-but-ignored for source compatibility (ORCH-0859 REWORK 2,
+  // issue #1014 NULL passthrough — no fabricated USD).
+  //
+  // META-ORCH-1174 Leg B1 — a trip may carry N packages. Target the tier named
+  // by `patch.ticketTypeId` when provided; otherwise the trip's earliest tier.
+  // NEVER throw on >1 (the pre-B1 `.maybeSingle()` was the single-package
+  // barrier).
   let tierQuery = supabase
     .from("trip_pricing_tiers")
     .select("*")
@@ -1221,25 +1231,6 @@ export async function updateTripPricing(
           ? " ticketTypeId=" + patch.ticketTypeId
           : ""),
     );
-  }
-
-  // Update ticket_types row — currency comes from event, NEVER from caller.
-  const { data: ticketRow, error: ticketError } = await supabase
-    .from("ticket_types")
-    .update({
-      price_cents: patch.priceCents,
-      currency: eventCurrency,
-      quantity_total: patch.capacity,
-      is_unlimited: false,
-      is_free: patch.priceCents === 0,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", tierRow.ticket_type_id)
-    .select()
-    .single();
-  if (ticketError) throw ticketError;
-  if (ticketRow === null) {
-    throw new Error("updateTripPricing: ticket_types update returned null");
   }
 
   // ORCH-0873 [Tr3 Stage 2 UI]: merge installmentSchedule into
@@ -1275,22 +1266,33 @@ export async function updateTripPricing(
         : metadataWithoutDescription;
   }
 
-  // Update tier name + metadata
-  const { data: tierUpdated, error: tierUpdateError } = await supabase
-    .from("trip_pricing_tiers")
-    .update({ tier_name: patch.tierName, tier_metadata: nextMetadata })
-    .eq("id", tierRow.id)
-    .select()
-    .single();
-  if (tierUpdateError) throw tierUpdateError;
-  if (tierUpdated === null) {
-    throw new Error("updateTripPricing: tier update returned null");
-  }
-
-  return mapTripPricingTier(
-    tierUpdated as TripPricingTierRow,
-    ticketRow as TicketTypeRow,
+  // issue #1971 — the ticket_types write and the trip_pricing_tiers write were
+  // two separate statements; a failure between them left a package priced one
+  // way and named another. They are now one canonical tiers-group patch, and
+  // the server validates the deposit/instalment schedule against the same
+  // bounds checkout enforces BEFORE anything is stored.
+  await applyTripDraftGraph(
+    eventId,
+    {
+      tiers: [{
+        ticket_type_id: tierRow.ticket_type_id,
+        tier_name: patch.tierName,
+        price_cents: patch.priceCents,
+        capacity: patch.capacity,
+        tier_metadata: nextMetadata,
+      }],
+    },
+    options,
   );
+
+  const refreshed = await listTripPricingTiers(eventId);
+  const updated = refreshed.find(
+    (tier) => tier.ticketTypeId === tierRow.ticket_type_id,
+  );
+  if (updated === undefined) {
+    throw new Error("updateTripPricing: tier not found after update");
+  }
+  return updated;
 }
 
 // ---------------------- META-ORCH-1174 Leg B1: N-tier data layer ----------------------
@@ -1351,21 +1353,8 @@ export async function listTripPricingTiers(
 export async function createTripPricingTier(
   eventId: string,
   patch: Omit<TripPricingPatch, "ticketTypeId">,
+  options?: TripCommandOptions,
 ): Promise<TripPricingTier> {
-  const eventResp = await supabase
-    .from("events")
-    .select("currency")
-    .eq("id", eventId)
-    .eq("event_type", "trip")
-    .maybeSingle();
-  if (eventResp.error) throw eventResp.error;
-  if (eventResp.data === null) {
-    throw new Error("createTripPricingTier: event not found for id=" + eventId);
-  }
-  // issue #1014 (rework F-2) — NULL passthrough, no fabricated USD; trigger
-  // (d) is authoritative (see updateTripPricing above).
-  const eventCurrency = (eventResp.data.currency as string | null) ?? null;
-
   // Place the new package after the existing ones.
   const { data: existing, error: existingErr } = await supabase
     .from("trip_pricing_tiers")
@@ -1373,28 +1362,9 @@ export async function createTripPricingTier(
     .eq("event_id", eventId);
   if (existingErr) throw existingErr;
   const displayOrder = (existing ?? []).length;
-
-  const { data: ticketRow, error: ticketError } = await supabase
-    .from("ticket_types")
-    .insert({
-      event_id: eventId,
-      name: patch.tierName,
-      price_cents: patch.priceCents,
-      currency: eventCurrency,
-      quantity_total: patch.capacity,
-      is_unlimited: false,
-      is_free: patch.priceCents === 0,
-      min_purchase_qty: 1,
-      available_online: true,
-      available_in_person: false,
-      display_order: displayOrder,
-    })
-    .select()
-    .single();
-  if (ticketError) throw ticketError;
-  if (ticketRow === null) {
-    throw new Error("createTripPricingTier: ticket_types insert returned null");
-  }
+  const before = new Set(
+    (existing ?? []).map((row) => row.ticket_type_id as string),
+  );
 
   // Build tier_metadata from the optional per-package plan + description.
   const tierMetadata: Record<string, unknown> = {};
@@ -1409,25 +1379,31 @@ export async function createTripPricingTier(
     tierMetadata.description = patch.description.trim();
   }
 
-  const { data: tierRow, error: tierError } = await supabase
-    .from("trip_pricing_tiers")
-    .insert({
-      event_id: eventId,
-      ticket_type_id: (ticketRow as TicketTypeRow).id,
-      tier_name: patch.tierName,
-      tier_metadata: tierMetadata,
-    })
-    .select()
-    .single();
-  if (tierError) throw tierError;
-  if (tierRow === null) {
-    throw new Error("createTripPricingTier: tier insert returned null");
-  }
-
-  return mapTripPricingTier(
-    tierRow as TripPricingTierRow,
-    ticketRow as TicketTypeRow,
+  // issue #1971 — the ticket_types insert and the trip_pricing_tiers insert
+  // were separate statements; a failure between them left a ticket with no
+  // tier. One canonical patch now creates both, derives the event currency
+  // server-side (issue #1014 NULL passthrough), and validates any instalment
+  // plan before it is stored.
+  await applyTripDraftGraph(
+    eventId,
+    {
+      tiers: [{
+        tier_name: patch.tierName,
+        price_cents: patch.priceCents,
+        capacity: patch.capacity,
+        display_order: displayOrder,
+        tier_metadata: tierMetadata,
+      }],
+    },
+    options,
   );
+
+  const refreshed = await listTripPricingTiers(eventId);
+  const created = refreshed.find((tier) => !before.has(tier.ticketTypeId));
+  if (created === undefined) {
+    throw new Error("createTripPricingTier: tier not found after create");
+  }
+  return created;
 }
 
 /**
@@ -1440,25 +1416,22 @@ export async function createTripPricingTier(
 export async function removeTripPricingTier(
   eventId: string,
   ticketTypeId: string,
+  options?: TripCommandOptions,
 ): Promise<void> {
   const soldByTier = await readTripSoldCountsByTier(eventId);
   if ((soldByTier.get(ticketTypeId) ?? 0) > 0) {
     throw new Error("tier_delete_with_sales");
   }
 
-  // I-PROPOSED-I (MUTATION-ROWCOUNT-VERIFIED): chain .select() so a 0-row write
-  // surfaces as an error rather than a silent no-op.
-  const { data, error } = await supabase
-    .from("ticket_types")
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", ticketTypeId)
-    .eq("event_id", eventId)
-    .is("deleted_at", null)
-    .select("id");
-  if (error) throw error;
-  if (data === null || data.length === 0) {
-    throw new Error("removeTripPricingTier: no rows updated (already removed?)");
-  }
+  // issue #1971 — the client no longer writes ticket_types.deleted_at itself.
+  // The canonical command re-checks sold inventory inside the transaction, so
+  // a sale landing between the preflight above and the write can no longer slip
+  // through; it raises `tier_delete_with_sales` and writes nothing.
+  await applyTripDraftGraph(
+    eventId,
+    { tiers: [{ ticket_type_id: ticketTypeId, deleted: true }] },
+    options,
+  );
 }
 
 export async function readTripSoldCountsByTier(
@@ -1484,11 +1457,36 @@ export async function readTripSoldCountsByTier(
 export async function publishTrip(
   eventId: string,
   draftPayload: Record<string, unknown>,
+  options?: TripCommandOptions,
 ): Promise<Trip> {
-  const { data, error } = await supabase.rpc("issue_1719_publish_trip_with_poster", {
+  // issue #1971 — publish no longer accepts a caller-assembled payload. The
+  // wizard's pending Step-1 state is COMMITTED to the canonical graph first,
+  // and the publish command then loads that persisted graph server-side. A
+  // caller can no longer publish something the database never stored (the old
+  // Ari executor sent `{}` and could never succeed), and the wizard's own
+  // save now has to land before publish rather than racing it.
+  const eventPatch = mapDraftPayloadToGraphEvent(draftPayload);
+  if (Object.keys(eventPatch).length > 0) {
+    try {
+      await applyTripDraftGraph(eventId, { event: eventPatch }, {
+        operationId: options?.saveOperationId ?? newTripOperationId(),
+        expectedUpdatedAt: options?.expectedUpdatedAt,
+      });
+    } catch (error) {
+      // From the wizard's point of view this IS publish failing, so it must
+      // surface through the same error type its Step-5 mapper switches on.
+      const pg = error as { code?: string; message?: string };
+      throw new TripPublishValidationError(
+        pg?.code ?? "publish_failed",
+        pg?.message ?? "publish_failed",
+      );
+    }
+  }
+
+  const { data, error } = await supabase.rpc("biz_publish_trip_command", {
     p_event_id: eventId,
-    p_draft_payload: draftPayload,
-    p_client_revision: null,
+    p_expected_updated_at: await readTripRevision(eventId),
+    p_operation_id: options?.operationId ?? newTripOperationId(),
   });
 
   if (error) {
@@ -1498,6 +1496,13 @@ export async function publishTrip(
   if (data === null) {
     throw new Error("publishTrip: RPC returned null");
   }
+  const result = data as Record<string, unknown>;
+  if (result.ok === false) {
+    throw new TripPublishValidationError(
+      String(result.reason ?? "publish_failed"),
+      String(result.reason ?? "publish_failed"),
+    );
+  }
 
   // Re-fetch full trip after publish (RPC returns composite payload but
   // getTrip gives us the canonical mapper-shaped view).
@@ -1506,6 +1511,38 @@ export async function publishTrip(
     throw new Error("publishTrip: trip not found after publish");
   }
   return refreshed;
+}
+
+/**
+ * Translate the wizard's publish payload into the canonical draft-graph `event`
+ * group. `theme.business_trip` is carried across whole so unknown keys (issue
+ * #1363's coordinate precision, the trip-level capacity) survive exactly as the
+ * publish owner already preserves them.
+ */
+function mapDraftPayloadToGraphEvent(
+  draftPayload: Record<string, unknown>,
+): Record<string, unknown> {
+  const eventPatch: Record<string, unknown> = {};
+  for (
+    const key of [
+      "title",
+      "description",
+      "timezone",
+      "cover_media_url",
+      "cover_media_poster_url",
+      "cover_media_type",
+      "cover_media_gallery",
+    ] as const
+  ) {
+    if (draftPayload[key] !== undefined) eventPatch[key] = draftPayload[key];
+  }
+  const theme = draftPayload.theme as
+    | { business_trip?: Record<string, unknown> }
+    | undefined;
+  if (theme?.business_trip !== undefined) {
+    eventPatch.business_trip = theme.business_trip;
+  }
+  return eventPatch;
 }
 
 // ---------------------- softDeleteTrip ----------------------
@@ -1652,13 +1689,21 @@ export async function updateLiveTripFields(
   eventId: string,
   patch: LiveTripPatch,
   reason: string,
+  options?: TripCommandOptions,
 ): Promise<UpdateLiveTripResult> {
-  // #1719 wraps the proven refund gate and appends the poster write in the
-  // SAME database transaction, so URL/type/poster can never split.
-  const { data, error } = await supabase.rpc("issue_1719_update_live_trip_with_poster", {
+  // issue #1971 — the canonical live command. It forwards this established
+  // top-level `LiveTripPatch` vocabulary to #1719's proven refund-gated,
+  // audited, poster-preserving updater BYTE FOR BYTE (an earlier draft
+  // allow-listed only Ari's grouped keys and made published trip editing dead
+  // on web, iOS and Android at once — see the #1971 QA record). What it adds is
+  // compare-and-swap, an exactly-once receipt, and deposit/instalment bounds
+  // checked before delegation.
+  const { data, error } = await supabase.rpc("biz_update_trip_live_command", {
     p_event_id: eventId,
     p_patch: patch as Record<string, unknown>,
     p_reason: reason,
+    p_expected_updated_at: await resolveRevision(eventId, options),
+    p_operation_id: options?.operationId ?? newTripOperationId(),
   });
 
   if (error !== null) {
@@ -1716,26 +1761,28 @@ export async function updateLiveTripFields(
 
 // ---------------------- softDeleteTrip ----------------------
 
-export async function softDeleteTrip(eventId: string): Promise<SoftDeleteResult> {
-  // Reject if confirmed orders exist (mirror softDeleteBrand pattern)
-  const { count, error: countError } = await supabase
-    .from("orders")
-    .select("id", { count: "exact", head: true })
-    .eq("event_id", eventId)
-    .not("payment_status", "in", "(failed,cancelled)");
-  if (countError) throw countError;
-  if (count !== null && count > 0) {
+export async function softDeleteTrip(
+  eventId: string,
+  options?: TripCommandOptions,
+): Promise<SoftDeleteResult> {
+  // issue #1971 — the raw `events.deleted_at` write and its best-effort
+  // pre-query are gone. The canonical command takes the SAME advisory lock the
+  // order/delete trigger takes, re-checks every order on every payment rail
+  // (card, door and manual — `biz_trip_has_web_purchases` stays notification-
+  // only and would have missed door sales), and marks the row deleted inside
+  // that one transaction.
+  const { data, error } = await supabase.rpc("biz_soft_delete_trip", {
+    p_event_id: eventId,
+    p_expected_updated_at: await resolveRevision(eventId, options),
+    p_operation_id: options?.operationId ?? newTripOperationId(),
+  });
+  if (error) throw error;
+  if (data === null) {
+    throw new Error("softDeleteTrip: RPC returned null");
+  }
+  const result = data as Record<string, unknown>;
+  if (result.rejected === true) {
     return { rejected: true, reason: "has_confirmed_orders" };
   }
-
-  // Soft-delete trip; idempotent via .is("deleted_at", null) defensive filter.
-  const { error } = await supabase
-    .from("events")
-    // I-MUTATION-ROWCOUNT-WAIVER: ORCH-0859 — soft-delete trip; mirrors ORCH-0734 softDeleteBrand pattern; result type doesn't expose rowcount.
-    .update({ deleted_at: new Date().toISOString() })
-    .eq("id", eventId)
-    .eq("event_type", "trip")
-    .is("deleted_at", null);
-  if (error) throw error;
   return { rejected: false };
 }
