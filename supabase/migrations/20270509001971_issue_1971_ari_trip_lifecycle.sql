@@ -15,13 +15,18 @@
 --    what the database actually stores.
 --
 --  * `trg_events_sync_departure` (BEFORE, `tg_events_sync_departure_from_theme`)
---    DERIVES `events.departure_text` from `theme.business_trip.departureLocationText`
---    whenever that key is present on NEW.theme. A patch that wrote the column
---    directly would be silently clobbered by the existing theme on the very
---    next events UPDATE. `destination_text` is likewise derived from
---    `theme.business_trip.destinationLocationText` by the publish and live-update
---    owners. So destination/departure are authored INTO THE THEME here and the
---    existing owners derive the columns — this migration does not fork them.
+--    DERIVES `events.departure_text` from the theme's business_trip
+--    departureLocationText key whenever that key is present on NEW.theme. A
+--    patch that wrote the column directly would be silently clobbered by the
+--    existing theme on the very next events UPDATE. The publish and live-update
+--    owners derive `events.destination_text` the same way, from the theme's
+--    destinationLocationText key.
+--
+--    So this migration keeps BOTH in step in one statement: the canonical
+--    columns stay populated (I-PROPOSED-TRIP-CANONICAL-COLUMNS: they remain the
+--    source of truth every reader uses) AND the theme keys the existing publish
+--    owner reads stay in sync, so publishing a draft this command wrote cannot
+--    fail its destination validation. It forks neither owner.
 --
 --  * `public.orders` carries no BEFORE row trigger today (only AFTER ones:
 --    issue_0873_order_change, issue_1770_order_ingest,
@@ -429,10 +434,10 @@ BEGIN
       RAISE EXCEPTION 'trip_event_patch_invalid' USING ERRCODE = '22023';
     END IF;
 
-    -- destination/departure are THEME-authored: `tg_events_sync_departure_from_theme`
-    -- derives events.departure_text from theme.business_trip.departureLocationText,
-    -- and publish/live-update derive destination_text the same way. Writing the
-    -- columns directly here would be overwritten on the next events UPDATE.
+    -- The theme keys are the WIRE FORMAT the existing publish/live-update
+    -- owners read; `events.destination_text` / `events.departure_text` remain
+    -- the canonical columns every reader uses. Both are written in the one
+    -- statement below, so neither can drift from the other.
     v_theme := COALESCE(v_event.theme, '{}'::jsonb);
     v_business_trip := COALESCE(v_theme->'business_trip', '{}'::jsonb);
     IF (p_patch->'event') ? 'business_trip' THEN

@@ -115,6 +115,14 @@ on:
       - "supabase/functions/venue-order-guest-action/**"
       - "supabase/functions/venue-order-escalation-sweep/**"
       - "supabase/functions/_shared/venueOrderNotify.ts"
+      # Issue #1971 — the canonical trip command boundary. Listed EXPLICITLY for
+      # the same reason #2218's are: the guards below assert the SHARED Business
+      # trip service and hooks against the SQL owner, so a change touching only
+      # `mingla-business/src` must still run them or they go dark.
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/intakeSchemaService.ts"
+      - "mingla-business/src/hooks/useTrips.ts"
+      - ".github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
   pull_request:
     paths:
@@ -188,6 +196,14 @@ on:
       - "supabase/functions/venue-order-guest-action/**"
       - "supabase/functions/venue-order-escalation-sweep/**"
       - "supabase/functions/_shared/venueOrderNotify.ts"
+      # Issue #1971 — the canonical trip command boundary. Listed EXPLICITLY for
+      # the same reason #2218's are: the guards below assert the SHARED Business
+      # trip service and hooks against the SQL owner, so a change touching only
+      # `mingla-business/src` must still run them or they go dark.
+      - "mingla-business/src/services/tripsService.ts"
+      - "mingla-business/src/services/intakeSchemaService.ts"
+      - "mingla-business/src/hooks/useTrips.ts"
+      - ".github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs"
       - ".github/workflows/supabase-migrations-and-stripe-deno.yml"
 
 # ORCH-1383 — cancel a superseded PR run instead of letting it finish.
@@ -306,6 +322,14 @@ jobs:
           # and a truth-check with no cron entry is the same shape.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2218_ng_sms_embargo_and_delivery_truth.test.sql
+          # Issue #1971 — the canonical trip command boundary. Behavioural, not
+          # structural: it CREATES a draft through biz_create_trip_draft, patches
+          # every graph group, publishes from persisted state, and drives the Ari
+          # executor through a real confirmed pending action, because a gate that
+          # only proved the functions EXIST would stay green if every caller
+          # stopped using them.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_1387_stay_inventory.test.sql
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
@@ -691,6 +715,10 @@ jobs:
             # currency/mingla_event_id (only when NULL, never clobbering, never
             # touching the *_status dedup gate). Hermetic — spy senders + fake supabase.
             supabase/functions/_shared/__tests__/issue_855_pr0_conversion_brand_backfill.test.ts
+            # ISSUE-1971 — the nine trip capabilities are registered, role-bound,
+            # receipt-backed and routed through ari_execute_trip_operation, with
+            # no direct trip-table mutation left in any executor.
+            supabase/functions/_shared/__tests__/issue_1971_ari_trips.implementor.test.ts
             # ISSUE-1387 — JWT gate, canonical action envelope, and error hygiene.
             supabase/functions/manage-stay-inventory/index.test.ts
             # ISSUE-1388 — grouped Stay cart, Request actions, and error hygiene.
@@ -1348,6 +1376,47 @@ jobs:
           src/analytics/__tests__/webAnalytics.pixels.issue865.test.ts
           src/analytics/__tests__/webAnalytics.pixels.issue865.adversarial.tester.test.ts
           --runInBand
+
+  issue-1971-trip-command-jest:
+    name: "ISSUE-1971 — Business web/iOS/Android share one canonical trip command owner"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-business
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - run: npm ci
+      # The implementor contract plus every suite that pinned a client-side
+      # trip write shape before #1971 moved it server-side. Running them
+      # together is the point: the re-pinned assertions and the new ones have to
+      # agree about who owns the write.
+      - name: Run ISSUE-1971 trip command contract and its regression neighbours
+        run: >
+          npx jest
+          src/services/__tests__/issue_1971_trip_command_contract.implementor.test.ts
+          src/services/__tests__/tripsService.test.ts
+          src/services/__tests__/tripsService.createTripDraft.currency.test.ts
+          src/services/__tests__/tripsService.updateTripPricing.currency.test.ts
+          src/services/__tests__/tripsService.updateTripBasics.capacity_throws.test.ts
+          src/services/__tests__/tripsService.dashboard_reader_canonical.adversarial.test.ts
+          src/services/__tests__/orch1119_trip_day_media_persistence.test.ts
+          src/services/__tests__/eventType.filter.audit.test.ts
+          src/services/__tests__/intakeSchemaService_published_trip_rpc_adversarial.test.ts
+          src/services/__tests__/intakeSchemaService_happy_path.test.ts
+          src/components/trip/__tests__/issue_1014_trip_currency_required_mapping.test.ts
+          src/hooks/__tests__/useTrips.test.ts
+          app/trip/__tests__/orch_1177_create_mode_placeholder.test.ts
+          --runInBand
+      - name: Run the ISSUE-1971 canonical-ownership gate
+        working-directory: .
+        run: |
+          node .github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs --self-test
+          node .github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs
 
   orch-1331-partner-paystack-strict-grep:
     name: "ORCH-1331: split fan-out stays fail-soft + share rate single-source / no Option-A checkout creep (I-PROPOSED-1331-PARTNER-SPLIT-FAIL-SOFT + I-PROPOSED-1331-PARTNER-SHARE-FROM-PLATFORM-FEE)"
