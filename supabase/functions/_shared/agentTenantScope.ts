@@ -18,6 +18,7 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "list_brand_audit_log",
   "list_guest_roster",
   "list_brand_team",
+  "list_event_orders",
   "get_operator_snapshot",
   // #1984 — event order sold/refunded/net read; same tenant scope as other reads.
   "get_event_order_reconciliation",

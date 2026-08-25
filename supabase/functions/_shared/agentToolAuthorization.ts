@@ -162,6 +162,12 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   list_brand_team: role("brand_admin", "brand"),
   revoke_scanner_invitation: role("event_manager", "brand"),
   manage_brand_people: role("marketing_manager", "brand"),
+  // #1972 reopen — event group chat / door / orders / waitlist / scanners.
+  manage_event_group_chat: role("event_manager", "event"),
+  manage_event_door_sale: role("event_manager", "event"),
+  list_event_orders: role("finance_manager", "event"),
+  manage_event_waitlist: role("event_manager", "event"),
+  manage_event_scanners: role("event_manager", "event"),
   list_guest_roster: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),

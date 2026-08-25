@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 95,
+    "registered_tool_count": 100,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 94,
+      "registered_unverified": 99,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 13,
+      "unsupported": 8,
       "in_flight": 5
     }
   },
@@ -3554,26 +3554,31 @@
           {
             "path": "mingla-business/src/services/groupChatService.ts",
             "symbol": "getEventGroupChat"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventGroupChat"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_group_chat",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "groupChatService.ts"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventGroupChat mirrors groupChatService"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.scan_ticket",
@@ -5174,26 +5179,31 @@
           {
             "path": "mingla-business/src/services/ticketCheckoutService.ts",
             "symbol": "createTicketCheckout"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventDoorSale"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_door_sale",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "event door-sale surface"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventDoorSale writes door_sales_ledger"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.order_management",
@@ -5219,26 +5229,31 @@
           {
             "path": "mingla-business/src/services/eventOrdersService.ts",
             "symbol": "fetchEventOrders"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listEventOrders"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_event_orders",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "event orders service"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:listEventOrders mirrors fetchEventOrders without buyer PII"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "Refund/cancel tools do not cover order reading"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.waitlist",
@@ -5264,26 +5279,31 @@
           {
             "path": "mingla-business/src/services/waitlistService.ts",
             "symbol": "fetchEventWaitlist"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventWaitlist"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_waitlist",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "waitlistService event flow"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventWaitlist calls event_waitlist_get / ticket_types"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "No registered event-waitlist tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.scanner_admin",
@@ -5309,26 +5329,31 @@
           {
             "path": "mingla-business/src/services/scannerInvitationsService.ts",
             "symbol": "listScannerInvitationsForEvent"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventScanners"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_scanners",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "scanner invitation administration"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventScanners mirrors listScannerInvitationsForEvent + revoke"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "invite_scanner does not cover list/revoke"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.experience.snap_generation",

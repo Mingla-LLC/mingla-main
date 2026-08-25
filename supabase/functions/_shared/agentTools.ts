@@ -1585,5 +1585,12 @@ export function isReadOnlyAgentToolCall(
     (toolName === "manage_stay_inventory" && args.action === "get") ||
     // #1982 — Brand People list/get are pure reads; add is confirmed.
     (toolName === "manage_brand_people" &&
-      (args.action === "list" || args.action === "get"));
+      (args.action === "list" || args.action === "get")) ||
+    // #1972 reopen — read actions on multi-action event tools run inline.
+    (toolName === "manage_event_group_chat" &&
+      (args.action === "get" || args.action === "list_messages" ||
+        args.action === "list_participants")) ||
+    (toolName === "manage_event_door_sale" && args.action === "list") ||
+    (toolName === "manage_event_waitlist" && args.action === "list") ||
+    (toolName === "manage_event_scanners" && args.action === "list");
 }

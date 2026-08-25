@@ -4048,6 +4048,452 @@ const manageBrandPeople = writeTool(
   },
 );
 
+// ----------------------------------------------------------------------------
+// #1972 reopen — event group chat, door sale, orders, waitlist, scanner admin
+// ----------------------------------------------------------------------------
+
+const manageEventGroupChat = writeTool(
+  "manage_event_group_chat",
+  "Read and moderate an event group chat (conversations/messages). Actions: get, list_messages, list_participants, post, set_broadcast_only, remove_participant, delete_message. Text posts only — media stays a guided handoff.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "get",
+        "list_messages",
+        "list_participants",
+        "post",
+        "set_broadcast_only",
+        "remove_participant",
+        "delete_message",
+      ],
+    },
+    conversation_id: UUID,
+    message_id: UUID,
+    participant_user_id: UUID,
+    content: { type: "string", minLength: 1, maxLength: 4000 },
+    is_broadcast_only: { type: "boolean" },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    const action = String(args.action);
+    if (action === "get") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const { data, error } = await client
+        .from("conversations")
+        .select("id, name, is_broadcast_only, is_enabled, events!event_id(title)")
+        .eq("event_id", eventId)
+        .in("linked_entity_type", ["trip", "event"])
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) return { conversation: null };
+      const eventName =
+        (data as { events?: { title?: string | null } | null }).events?.title
+          ?.trim() || data.name?.trim() || "Group chat";
+      return {
+        conversation: {
+          id: data.id,
+          name: data.name ?? "Group chat",
+          event_name: eventName,
+          is_broadcast_only: Boolean(data.is_broadcast_only),
+          is_enabled: Boolean(data.is_enabled),
+        },
+      };
+    }
+    if (action === "list_messages") {
+      await assertAgentReadEvent(client, userId, eventId);
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const limit = typeof args.limit === "number"
+        ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+        : 80;
+      const { data, error } = await client
+        .from("messages")
+        .select(
+          "id, sender_id, content, created_at, message_type, file_url, file_name",
+        )
+        .eq("conversation_id", args.conversation_id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { messages: data ?? [] };
+    }
+    if (action === "list_participants") {
+      await assertAgentReadEvent(client, userId, eventId);
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("conversation_participants")
+        .select("user_id, joined_at")
+        .eq("conversation_id", args.conversation_id)
+        .order("joined_at", { ascending: true });
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return {
+        participants: (data ?? []).map((row: { user_id: string; joined_at: string }) => ({
+          user_id: row.user_id,
+          joined_at: row.joined_at,
+        })),
+      };
+    }
+    if (action === "post") {
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const content = typeof args.content === "string" ? args.content.trim() : "";
+      if (content.length < 1) {
+        throw new ToolError("INVALID_ARGS", "content is required for a text post");
+      }
+      const { data, error } = await client
+        .from("messages")
+        .insert({
+          conversation_id: args.conversation_id,
+          sender_id: userId,
+          content,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { message_id: data.id, posted: true };
+    }
+    if (action === "set_broadcast_only") {
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      if (typeof args.is_broadcast_only !== "boolean") {
+        throw new ToolError("INVALID_ARGS", "is_broadcast_only is required");
+      }
+      const { data, error } = await client
+        .from("conversations")
+        .update({
+          is_broadcast_only: args.is_broadcast_only,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", args.conversation_id)
+        .eq("event_id", eventId)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Not allowed to toggle broadcast-only on this conversation.",
+        );
+      }
+      return { conversation_id: args.conversation_id, is_broadcast_only: args.is_broadcast_only };
+    }
+    if (action === "remove_participant") {
+      if (!isUuid(args.conversation_id) || !isUuid(args.participant_user_id)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "conversation_id and participant_user_id must be uuids",
+        );
+      }
+      const { data, error } = await client
+        .from("conversation_participants")
+        .delete()
+        .eq("conversation_id", args.conversation_id)
+        .eq("user_id", args.participant_user_id)
+        .select("user_id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Not allowed to remove this participant or already removed.",
+        );
+      }
+      return { removed_user_id: args.participant_user_id, removed: true };
+    }
+    if (action === "delete_message") {
+      if (!isUuid(args.message_id)) {
+        throw new ToolError("INVALID_ARGS", "message_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("messages")
+        .update({
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", args.message_id)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Not allowed to delete this message or already deleted.",
+        );
+      }
+      return { message_id: args.message_id, deleted: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported group-chat action");
+  },
+);
+
+const manageEventDoorSale = writeTool(
+  "manage_event_door_sale",
+  "List or record in-person door sales on door_sales_ledger (cash/card_reader/nfc/manual). 'list' is a read; 'create' records a sale.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: { type: "string", enum: ["list", "create"] },
+    payment_method: {
+      type: "string",
+      enum: ["cash", "card_reader", "nfc", "manual"],
+    },
+    amount_cents: { type: "integer", minimum: 0, maximum: 10_000_000 },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    notes: { type: "string", maxLength: 500 },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    if (args.action === "list") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const limit = typeof args.limit === "number"
+        ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+        : 50;
+      const { data, error } = await client
+        .from("door_sales_ledger")
+        .select(
+          "id, event_id, payment_method, amount_cents, currency, reconciled, notes, created_at, scanner_user_id",
+        )
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { event_id: eventId, sales: data ?? [] };
+    }
+    if (args.action === "create") {
+      const method = args.payment_method;
+      if (
+        method !== "cash" && method !== "card_reader" && method !== "nfc" &&
+        method !== "manual"
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "payment_method must be cash, card_reader, nfc, or manual",
+        );
+      }
+      if (
+        typeof args.amount_cents !== "number" ||
+        !Number.isInteger(args.amount_cents) ||
+        args.amount_cents < 0
+      ) {
+        throw new ToolError("INVALID_ARGS", "amount_cents must be a non-negative integer");
+      }
+      const currency = typeof args.currency === "string"
+        ? args.currency.trim().toUpperCase()
+        : "GBP";
+      if (!/^[A-Z]{3}$/.test(currency)) {
+        throw new ToolError("INVALID_ARGS", "currency must be a 3-letter ISO code");
+      }
+      const { data, error } = await client
+        .from("door_sales_ledger")
+        .insert({
+          event_id: eventId,
+          scanner_user_id: userId,
+          payment_method: method,
+          amount_cents: args.amount_cents,
+          currency,
+          notes: typeof args.notes === "string" ? args.notes : null,
+        })
+        .select("id, payment_method, amount_cents, currency, created_at")
+        .single();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { sale: data, recorded: true };
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list or create");
+  },
+);
+
+const listEventOrders = writeTool(
+  "list_event_orders",
+  "List event orders (id, status, totals, line counts) without buyer PII. Mirrors Host eventOrdersService.fetchEventOrders for operators.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    await assertAgentReadEvent(client, userId, eventId);
+    const limit = typeof args.limit === "number"
+      ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+      : 50;
+    const { data, error } = await client
+      .from("orders")
+      .select(
+        "id, event_id, total_cents, currency, payment_method, payment_status, confirmed_at, created_at, cancelled_at, refunded_amount_cents, order_line_items(id, quantity, total_cents)",
+      )
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    const orders = (data ?? []).map((row: Record<string, unknown>) => {
+      const lines = Array.isArray(row.order_line_items) ? row.order_line_items : [];
+      return {
+        id: row.id,
+        event_id: row.event_id,
+        total_cents: row.total_cents,
+        currency: row.currency,
+        payment_method: row.payment_method,
+        payment_status: row.payment_status,
+        confirmed_at: row.confirmed_at,
+        created_at: row.created_at,
+        cancelled_at: row.cancelled_at,
+        refunded_amount_cents: row.refunded_amount_cents ?? 0,
+        line_count: lines.length,
+        quantity_total: lines.reduce(
+          (sum: number, line: { quantity?: number }) =>
+            sum + (typeof line.quantity === "number" ? line.quantity : 0),
+          0,
+        ),
+      };
+    });
+    return { event_id: eventId, orders };
+  },
+);
+
+const manageEventWaitlist = writeTool(
+  "manage_event_waitlist",
+  "Read an event ticket waitlist (event_waitlist_get) or toggle waitlist_enabled on a ticket type. Recent entries omit raw contact when possible.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: { type: "string", enum: ["list", "set_enabled"] },
+    ticket_type_id: UUID,
+    waitlist_enabled: { type: "boolean" },
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    if (args.action === "list") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const rows = await callRpc(client, "event_waitlist_get", {
+        p_event_id: eventId,
+        p_recent_limit: 25,
+      });
+      const tickets = (Array.isArray(rows) ? rows : []).map(
+        (row: Record<string, unknown>) => ({
+          ticket_type_id: row.ticket_type_id,
+          ticket_type_name: row.ticket_type_name,
+          waitlist_enabled: row.waitlist_enabled,
+          waiting_count: row.waiting_count,
+          invited_count: row.invited_count,
+          recent: Array.isArray(row.recent)
+            ? row.recent.map((entry: Record<string, unknown>) => ({
+              id: entry.id,
+              qty_requested: entry.qty_requested,
+              status: entry.status,
+              created_at: entry.created_at,
+              // Drop email/phone/name — roster-style PII minimization.
+            }))
+            : [],
+        }),
+      );
+      return { event_id: eventId, tickets };
+    }
+    if (args.action === "set_enabled") {
+      if (!isUuid(args.ticket_type_id)) {
+        throw new ToolError("INVALID_ARGS", "ticket_type_id must be a uuid");
+      }
+      if (typeof args.waitlist_enabled !== "boolean") {
+        throw new ToolError("INVALID_ARGS", "waitlist_enabled is required");
+      }
+      const { data, error } = await client
+        .from("ticket_types")
+        .update({ waitlist_enabled: args.waitlist_enabled })
+        .eq("id", args.ticket_type_id)
+        .eq("event_id", eventId)
+        .is("deleted_at", null)
+        .select("id, waitlist_enabled")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Ticket type not found for this event, or you lack permission.",
+        );
+      }
+      return { ticket_type_id: data.id, waitlist_enabled: data.waitlist_enabled };
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list or set_enabled");
+  },
+);
+
+const manageEventScanners = writeTool(
+  "manage_event_scanners",
+  "List scanner invitations for an event, or revoke a pending invitation. Invite remains invite_scanner.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: { type: "string", enum: ["list", "revoke"] },
+    invitation_id: UUID,
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    if (args.action === "list") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const { data, error } = await client
+        .from("scanner_invitations")
+        .select(
+          "id, brand_id, event_id, scope, email, invitee_name, permissions, status, expires_at, accepted_at, revoked_at, created_at",
+        )
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false });
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { event_id: eventId, invitations: data ?? [] };
+    }
+    if (args.action === "revoke") {
+      if (!isUuid(args.invitation_id)) {
+        throw new ToolError("INVALID_ARGS", "invitation_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("scanner_invitations")
+        .update({ status: "revoked", revoked_at: new Date().toISOString() })
+        .eq("id", args.invitation_id)
+        .eq("brand_id", brandId)
+        .eq("event_id", eventId)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "That scanner invitation was not found, is not pending, or you lack permission.",
+        );
+      }
+      return { invitation_id: args.invitation_id, revoked: true };
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list or revoke");
+  },
+);
+
 // #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
 // about status + next action. Drops contactLabel (partial email/phone),
 // avatarUrl, delivery attempts, and order ids so raw PII never enters the
@@ -4498,6 +4944,11 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listBrandTeam,
   revokeScannerInvitation,
   manageBrandPeople,
+  manageEventGroupChat,
+  manageEventDoorSale,
+  listEventOrders,
+  manageEventWaitlist,
+  manageEventScanners,
   listGuestRoster,
   exportBrandPeople,
   updateAriPrefs,
@@ -4518,6 +4969,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_brand_analytics",
   "list_guest_roster",
   "list_brand_team",
+  "list_event_orders",
   "get_operator_snapshot",
   "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline; they never mutate.
@@ -4550,4 +5002,6 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   // issue #1971 — deposit and instalment metadata changes what a traveller is
   // charged and when. Confirmed, never inline.
   "manage_trip_tiers",
+  // #1972 reopen — recording a door sale is money; list stays read-only above.
+  "manage_event_door_sale",
 ]);
