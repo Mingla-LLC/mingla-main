@@ -8,6 +8,8 @@ on:
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts"
       - "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts"
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
       - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
@@ -19,6 +21,8 @@ on:
       - "supabase/functions/_shared/agentSystemPrompt.ts"
       - "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts"
       - "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts"
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
       - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
@@ -42,6 +46,18 @@ jobs:
           deno-version: "1.46.x"
       # Source contract + adversarial rejection for the repaired/registered tools.
       - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts
+      # issue #2593 — the eight #2415 (#424 Wave 3) defect-class repairs. Both
+      # source files this lane already watches are the ones under repair, so the
+      # proofs execute in the SAME lane that type-checks them.
+      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts
+      - run: deno fmt --check supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts
+      # issue #2593 — INDEPENDENT TESTER adversarial proofs. Different axis:
+      # the cursor guard at the executor seam (which the implementor suite
+      # never reaches), the advertised contracts compared against the MIGRATION
+      # itself, the refund numeric tower in BOTH directions, and containment
+      # across the bulk guest_ids array. Reads the migration, so --allow-read.
+      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts
+      - run: deno fmt --check supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts
       - run: deno check supabase/functions/_shared/agentDomainTools.ts supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentToolAuthorization.ts
       # The registry / prompt / ledger / authorization contracts stay in bijection.
       - run: node .github/scripts/strict-grep/issue-1970-ari-capabilities-sync.mjs
