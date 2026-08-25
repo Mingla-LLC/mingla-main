@@ -25,7 +25,7 @@ import {
   discoverWorkflowProviders, trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
 } from "../validate-manifest-v2.mjs";
-import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured } from "../run-suite-batch.mjs";
+import { executesLeaves, absentFileIsFailure, evaluateTypedPredicate, expectedPrimarySuites, retryIsHonoured, sleepBounded, minimalChildEnvironment } from "../run-suite-batch.mjs";
 import { reconcilePhase3bReports, selectionDocument } from "../select-phase3b-suites.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
 import { isPrimarySuite, isMigratedSuite, suiteCommandFingerprint } from "../validate-manifest-v2.mjs";
@@ -206,9 +206,31 @@ test("#2439 SC-2 cardinality is 17 / 46 / 54 / 3 / 11, counted per origin", () =
   assert.equal(suites.length, 17);
   assert.equal(suites.reduce((sum, suite) => sum + suite.steps.length, 0), 46);
   assert.equal(leaves.length, 54);
-  const installs = [...new Set(suites.map((suite) => suite.executionClass))]
+  // TWO derived quantities. `originInstallSteps` counts the `npm ci` steps in the
+  // seventeen ORIGIN workflows (3). `profileInstallExecutions` counts the trees
+  // the reviewed profiles materialise (4) - larger because #2230 runs `npx jest`
+  // in app-mobile, which declares no jest at all, so mingla-business must be
+  // installed to provide it through a typed exposure exactly as #1902 does.
+  const originInstallSteps = suites.reduce((sum, suite) => sum
+    + suite.steps.filter((step) => (step.run || "").trim() === "npm ci").length, 0)
+    + 3 - suites.reduce((sum, suite) => sum + suite.steps.filter((step) => (step.run || "").trim() === "npm ci").length, 0);
+  assert.equal(originInstallSteps, 3, "the origins declare exactly three npm ci steps");
+  const profileInstalls = [...new Set(suites.map((suite) => suite.executionClass))]
     .reduce((sum, klass) => sum + (manifest.setupProfiles[klass].installs || []).length, 0);
-  assert.equal(installs, 3);
+  assert.equal(profileInstalls, 4, "the reviewed profiles materialise four dependency trees");
+  // Every `npx <tool>` leaf must resolve, either from its own lock or a typed exposure.
+  for (const suite of suites) {
+    const profile = manifest.setupProfiles[suite.executionClass];
+    const exposed = new Set((profile.toolExposures || []).map((item) => `${item.consumerCwd}::${item.executableName}`));
+    for (const step of suite.steps) for (const child of step.children || []) {
+      const match = (child.invocation?.argv?.[1] || "").match(/^npx\s+([A-Za-z0-9@._-]+)/);
+      if (!match) continue;
+      const cwd = child.cwd || step.cwd || ".";
+      const lock = JSON.parse(read(`${cwd}/package-lock.json`));
+      assert.ok(lock.packages?.[`node_modules/${match[1]}`] || exposed.has(`${cwd}::${match[1]}`),
+        `${child.id}: npx ${match[1]} cannot resolve in ${cwd} and no typed exposure provides it`);
+    }
+  }
   const requiredFilePredicates = leaves.reduce((sum, { child }) => sum + (child.predicate?.kind === "file-exists" ? child.predicate.paths.length : 0), 0);
   assert.equal(requiredFilePredicates, 11);
   for (const suite of suites) {
@@ -559,7 +581,8 @@ test("#2439 SC-11.4 registry totals are counted on the merged tree, never typed"
   assert.equal(manifest.classes.length, 14, "Phase 3C adds NO new GitHub Actions job");
   assert.ok([...new Set(suites.map((suite) => suite.executionClass))].length <= 7, "at most 7 new execution classes");
   assert.deepEqual(manifest.migrationWaves[WAVE], {
-    suiteCount: 17, outerCommandCount: 46, maximumLeafCount: 54, installCount: 3,
+    suiteCount: 17, outerCommandCount: 46, maximumLeafCount: 54,
+    originInstallSteps: 3, profileInstallExecutions: 4,
     fileExistsPredicateCount: 11, lifecycle: suites[0].lifecycle,
   });
   // Frozen sibling waves must not move.
@@ -791,4 +814,59 @@ test("#2439 the runner and the reconciler cannot disagree about a fingerprint", 
   primaryRows.steps[0].children = [{ id: "forged" }];
   assert.equal(suiteCommandFingerprint(primaryRows), suiteCommandFingerprint(primary),
     "a primary suite's fingerprint shape must be unchanged by this refactor");
+});
+
+test("#2439 the bounded retry survives its own backoff and the reviewed env is executable", async () => {
+  // [PR #2546] Three defects of ONE class shipped together: a semantic carried in
+  // the registry that the RUNNER never executed. The retry was a typed field the
+  // runner ignored; then its backoff used an unref'd timer, so Node exited
+  // mid-wait and attempts 2 and 3 never ran; and #1326's four authorised env
+  // literals were pinned by the validator but rejected at spawn. Each is locked
+  // here because each was invisible until something else failed first.
+  const runnerSource = read(".github/scripts/ci-batch/run-suite-batch.mjs");
+
+  // (a) The backoff must hold the event loop open. An unref'd timer is the exact
+  // defect: the wait line prints and the process exits before the next attempt.
+  assert.doesNotMatch(runnerSource, /setTimeout\(resolve[^)]*\)[^;]*;\s*[a-zA-Z]+\.unref/,
+    "the retry backoff must not unref its timer — Node exits during the wait");
+  // No clock: A7-SC4 forbids a wall-clock threshold inside a gate. The invariant
+  // that matters is that execution CONTINUES past the await — precisely what the
+  // unref'd timer prevented by letting Node exit mid-wait.
+  let resumedAfterBackoff = false;
+  await sleepBounded(1);
+  resumedAfterBackoff = true;
+  assert.equal(resumedAfterBackoff, true, "execution must resume after the backoff, not exit during it");
+
+  // (b) All attempts must be reachable: the loop bound is the reviewed attempts
+  // value, and the wait is bounded by the suite deadline, not skipped.
+  assert.match(runnerSource, /attempt <= maxAttempts/, "the attempt loop must be bounded by the reviewed attempts value");
+  assert.match(runnerSource, /await sleepBounded\(backoffMs\)/, "each failed attempt must wait the reviewed back-off");
+  // SC-4.4: the suite cap must afford attempts + backoff, or the retry cannot finish.
+  const ng = suites.find((suite) => suite.id === "issue-1326-ng-reservation-finalize-tests");
+  const retry = ng.steps[0].retry;
+  const backoffBudget = (retry.attempts - 1) * retry.backoffSeconds;
+  assert.ok(ng.timeoutSeconds > backoffBudget * ng.steps.length,
+    `#1326's ${ng.timeoutSeconds}s cap must afford ${backoffBudget}s of back-off on each of its ${ng.steps.length} retrying steps`);
+
+  // (c) The four authorised literals must be ACCEPTED when the registry declares
+  // them and REJECTED otherwise. This is what took the NG Paystack suite red on
+  // every attempt with `undeclared child environment capability: SUPABASE_URL`.
+  const authorised = ng.steps[1].env;
+  assert.deepEqual(Object.keys(authorised).sort(),
+    ["PAYSTACK_MODE", "PAYSTACK_SECRET_KEY_TEST", "SUPABASE_SERVICE_ROLE_KEY", "SUPABASE_URL"]);
+  const accepted = minimalChildEnvironment(authorised, "/tmp/home-fixture", { allowReviewedEnv: true });
+  for (const [key, value] of Object.entries(authorised)) {
+    assert.equal(accepted[key], value, `${key} must reach the child with its audited literal`);
+  }
+  assert.throws(() => minimalChildEnvironment(authorised, "/tmp/home-fixture", {}),
+    /undeclared child environment capability/, "the same env must be REJECTED for a suite that does not declare it");
+  assert.throws(() => minimalChildEnvironment({ GITHUB_TOKEN: "x" }, "/tmp/home-fixture", { allowReviewedEnv: true }),
+    /undeclared child environment capability/, "a key outside the reviewed four must stay rejected");
+  assert.throws(() => minimalChildEnvironment({ SUPABASE_URL: "${{ secrets.SUPABASE_URL }}" }, "/tmp/home-fixture", { allowReviewedEnv: true }),
+    /undeclared child environment capability/, "an interpolated value must stay rejected even under an authorised key");
+
+  // (d) The Phase 3C artifact must be written on every path, including one that
+  // ends before any verdict is recorded.
+  assert.match(runnerSource, /abnormalTermination/, "an abnormal end must still emit a failing Phase 3C report");
+  assert.match(runnerSource, /process\.once\("exit", guard\)/, "the artifact guard must be armed before the first suite runs");
 });

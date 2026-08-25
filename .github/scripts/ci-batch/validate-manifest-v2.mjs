@@ -29,7 +29,7 @@ const LOCKED_SHADOW_CAPABILITY_SHA256 = "7af6028109ff91e1c996a8231e932d5deb26b71
 const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
 const LOCKED_PHASE3B_CONTRACT_SHA256 = "8b3a94d67e1e32b7cb5580bbab84db525ad196769608d42cc0607652a3c6cad9";
 const LOCKED_PHASE3C_CONTRACT_SHA256 = "caaed7cab03f977c040a68e884b2c2dfb4316f832756de8e10943179d2e5abe5";
-const LOCKED_SETUP_PROFILES_SHA256 = "68981f296e784e4d71a0b40e7f5350661e58d210c7d52be00395deb5b931fa91";
+const LOCKED_SETUP_PROFILES_SHA256 = "982809d5c0f79590410647543013b8bd71d40b1ae47d1ae4728761e1659adc47";
 const PINNED_CHECKOUT = "actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683";
 const PINNED_SETUP_NODE = "actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020";
 const PINNED_UPLOAD_ARTIFACT = "actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02";
@@ -1343,7 +1343,8 @@ export function validateRegistry(
       continue;
     }
     const expectedKeys = "installs" in profile
-      ? name === "phase3b-lifecycle-node20-deno2" ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
+      ? ["phase3b-lifecycle-node20-deno2", "phase3c-deno2x-app-node22"].includes(name)
+        ? ["runtime", "installs", "toolExposures", "classes"] : ["runtime", "installs", "classes"]
       : ["runtime", "install", "classes"];
     if (!sameStrings(Object.keys(profile), expectedKeys)) fail(errors, `setup profile ${name} has a malformed or unknown field`);
     const nodeRuntime = profile.runtime?.name === "node" && ["20", "22", "20.19.4"].includes(profile.runtime?.version)
@@ -1775,13 +1776,56 @@ export function validateRegistry(
   if (phase3cClasses.length > 7 || phase3cClasses.some((klass) => !klass.startsWith("phase3c-"))) {
     fail(errors, `Phase 3C may introduce at most 7 reviewed execution classes, got ${phase3cClasses.length}`);
   }
-  const phase3cInstalls = phase3cClasses.reduce((sum, klass) => sum + profileInstallList(manifest.setupProfiles?.[klass]).length, 0);
-  if (phase3cInstalls !== PHASE3C_INSTALL_COUNT) fail(errors, `Phase 3C must own exactly ${PHASE3C_INSTALL_COUNT} installs, counted ${phase3cInstalls}`);
+  // [PR #2546 follow-up] TWO quantities, derived from two different sources.
+  // Conflating them is what let a broken suite hide behind a green-looking count:
+  //   originInstallSteps       - `npm ci` steps in the seventeen ORIGIN workflows.
+  //   profileInstallExecutions - dependency trees the reviewed setup profiles
+  //                              materialise, which is larger whenever a suite
+  //                              needs a tool its own package tree lacks.
+  // #1902 has the same shape: one origin install step, two profile installs plus
+  // a typed jest exposure, because app-mobile declares no jest at all.
+  const phase3cProfileInstalls = phase3cClasses.reduce((sum, klass) => sum + profileInstallList(manifest.setupProfiles?.[klass]).length, 0);
+  const phase3cOriginInstallSteps = PHASE3C_INSTALL_COUNT;
+  if (phase3cProfileInstalls < phase3cOriginInstallSteps) {
+    fail(errors, `Phase 3C profiles materialise ${phase3cProfileInstalls} trees, fewer than the ${phase3cOriginInstallSteps} the origins install`);
+  }
+  // A tool exposure's provider AND consumer must both be installed by the same
+  // profile, or the link target cannot exist when the suite runs.
+  for (const klass of phase3cClasses) {
+    const profile = manifest.setupProfiles?.[klass];
+    const installedCwds = new Set(profileInstallList(profile).map((install) => install.cwd));
+    for (const exposure of profile?.toolExposures || []) {
+      if (!installedCwds.has(exposure.providerCwd) || !installedCwds.has(exposure.consumerCwd)) {
+        fail(errors, `${klass}: tool exposure ${exposure.id} needs both ${exposure.providerCwd} and ${exposure.consumerCwd} installed by this profile`);
+      }
+    }
+  }
+  // A leaf that invokes `npx <tool>` in a cwd whose package tree cannot resolve
+  // that tool MUST have a typed exposure providing it. The absence of this check
+  // is what let `npx jest` in app-mobile reach CI and exit 1 while every
+  // assertion in the suite passed.
+  for (const suite of phase3cSuites) {
+    const profile = manifest.setupProfiles?.[suite.executionClass];
+    const exposed = new Set((profile?.toolExposures || []).map((exposure) => `${exposure.consumerCwd}::${exposure.executableName}`));
+    for (const step of suite.steps) {
+      for (const child of step.children || []) {
+        const match = (child.invocation?.argv?.[1] || "").match(/^npx\s+([A-Za-z0-9@._-]+)/);
+        if (!match) continue;
+        const cwd = child.cwd || step.cwd || ".";
+        const lockPath = path.join(root, cwd, "package-lock.json");
+        const lock = fs.existsSync(lockPath) ? JSON.parse(fs.readFileSync(lockPath, "utf8")) : null;
+        if (!lock?.packages?.[`node_modules/${match[1]}`] && !exposed.has(`${cwd}::${match[1]}`)) {
+          fail(errors, `${child.id}: npx ${match[1]} cannot resolve in ${cwd} and no typed tool exposure provides it`);
+        }
+      }
+    }
+  }
   // [#2439 SC-11.4] The wave header is DERIVED, then compared. A typed header
   // over a differently-shaped wave stays red.
   const phase3cWaveContract = manifest.migrationWaves?.[PHASE3C_WAVE];
   const expectedPhase3cWave = { suiteCount: phase3cSuites.length, outerCommandCount: phase3cOuterCount,
-    maximumLeafCount: phase3cLeaves.length, installCount: phase3cInstalls, fileExistsPredicateCount: requiredFilePredicates,
+    maximumLeafCount: phase3cLeaves.length, originInstallSteps: phase3cOriginInstallSteps,
+    profileInstallExecutions: phase3cProfileInstalls, fileExistsPredicateCount: requiredFilePredicates,
     lifecycle: phase3cTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };
   if (JSON.stringify(phase3cWaveContract) !== JSON.stringify(expectedPhase3cWave)) fail(errors, "Phase 3C wave count contract drifted");
   // [#2439 SC-11.5] Seven provider records transition; the other ten must not
@@ -2051,7 +2095,7 @@ function main() {
   console.log(`Phase 1: ${phase1.length} suites / ${outers(phase1)} outer assertions`);
   console.log(`Phase 3A: ${a.length} suites / ${outers(a)} outer assertions`);
   console.log(`Phase 3B: ${b.length} suites / ${outers(b)} outer assertions / ${manifest.phase3bLeafCapabilities.expectedLeaves} maximum leaves / current ${manifest.phase3bLeafCapabilities.currentExecutedLeaves} executed + ${manifest.phase3bLeafCapabilities.currentAbsentLeaves} absent`);
-  console.log(`Phase 3C: ${c.length} suites / ${outers(c)} outer assertions / ${manifest.phase3cLeafCapabilities.expectedLeaves} leaves / ${manifest.migrationWaves["phase3c-deno-wave"].installCount} installs / ${manifest.phase3cLeafCapabilities.currentRequiredFilePredicates} required-file predicates (${manifest.migrationWaves["phase3c-deno-wave"].lifecycle})`);
+  console.log(`Phase 3C: ${c.length} suites / ${outers(c)} outer assertions / ${manifest.phase3cLeafCapabilities.expectedLeaves} leaves / ${manifest.migrationWaves["phase3c-deno-wave"].originInstallSteps} origin installs / ${manifest.migrationWaves["phase3c-deno-wave"].profileInstallExecutions} materialised / ${manifest.phase3cLeafCapabilities.currentRequiredFilePredicates} required-file predicates (${manifest.migrationWaves["phase3c-deno-wave"].lifecycle})`);
   console.log(`Terminal: ${manifest.legacyOrigins.length} origins / ${manifest.suites.length} suites / ${outers(manifest.suites)} outer assertions / ${manifest.workflowProviders.length} providers`);
   console.log("#1902 setup: 1 setup execution / 2 ordered install executions");
 }

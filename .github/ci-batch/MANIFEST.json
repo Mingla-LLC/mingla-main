@@ -607,6 +607,17 @@
       "installs": [
         {
           "id": "setup:phase3c-deno2x-app-node22:01",
+          "cwd": "mingla-business",
+          "invocation": {
+            "kind": "argv",
+            "command": "npm",
+            "argv": [
+              "ci"
+            ]
+          }
+        },
+        {
+          "id": "setup:phase3c-deno2x-app-node22:02",
           "cwd": "app-mobile",
           "invocation": {
             "kind": "argv",
@@ -615,6 +626,24 @@
               "ci"
             ]
           }
+        }
+      ],
+      "toolExposures": [
+        {
+          "id": "tool:phase3c-deno2x-app-node22:jest-29.7.0",
+          "providerCwd": "mingla-business",
+          "consumerCwd": "app-mobile",
+          "packageName": "jest",
+          "executableName": "jest",
+          "version": "29.7.0",
+          "providerPackage": "mingla-business/node_modules/jest/package.json",
+          "providerExecutable": "mingla-business/node_modules/jest/bin/jest.js",
+          "consumerPackageLink": "app-mobile/node_modules/jest",
+          "consumerPackageLinkTarget": "../../mingla-business/node_modules/jest",
+          "consumerBinLink": "app-mobile/node_modules/.bin/jest",
+          "consumerBinLinkTarget": "../jest/bin/jest.js",
+          "authorityLock": "mingla-business/package-lock.json",
+          "authorityKey": "node_modules/jest"
         }
       ],
       "classes": [
@@ -20841,7 +20870,8 @@
       "suiteCount": 17,
       "outerCommandCount": 46,
       "maximumLeafCount": 54,
-      "installCount": 3,
+      "originInstallSteps": 3,
+      "profileInstallExecutions": 4,
       "fileExistsPredicateCount": 11,
       "lifecycle": "shadow-active"
     }
