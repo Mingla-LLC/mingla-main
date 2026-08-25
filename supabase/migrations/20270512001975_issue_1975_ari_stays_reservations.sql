@@ -117,24 +117,42 @@ BEGIN
 
   -- Optimistic concurrency: refuse a stale expected version before any write.
   --
-  -- #2592 A2: this used to raise SQLSTATE '40001' (serialization_failure).
-  -- A stale expected version is a DETERMINISTIC application conflict, not a
-  -- transient serialization anomaly: retrying it re-sends the SAME stale
-  -- p_expected_version and fails identically, forever. PostgREST, the pooler,
-  -- and common client retry wrappers all auto-retry the 40001 class, so the
-  -- old code turned one caller mistake into a retry loop.
+  -- #2592 A2 — SQLSTATE '40001' is KEPT here, deliberately, after re-deriving
+  -- the question from the code rather than from the SQLSTATE's textbook name.
   --
-  -- 'P1975' is a user-defined SQLSTATE in the repo's established issue-numbered
-  -- convention (see 'P1901'/'P1902' in 20270322001902 and 20270325001857).
-  -- Class 'P1' is not assigned by the SQL standard or by PostgreSQL (PostgreSQL
-  -- only defines class 'P0'), so it cannot collide with a built-in condition,
-  -- and it is distinct from the generic plpgsql default 'P0001' so a client can
-  -- tell a version conflict apart from every other RAISE in this function.
-  -- Nothing anywhere in this repository consumes '40001' from this function —
-  -- it has never been applied to any database.
+  -- '40001' is this repository's ESTABLISHED convention for an optimistic-
+  -- concurrency conflict: `stay_version_conflict`, `stay_media_set_changed` and
+  -- `stay_idempotency_conflict` in 20270131013808, `range_version_conflict` in
+  -- 20270131013809, and `stay_version_conflict` in 20270204001448 — ~20 sites
+  -- for structurally the SAME operation as this one. Diverging on this single
+  -- function would make the reservation path behave differently from the Stay
+  -- path for an identical failure, which is its own defect.
+  --
+  -- Nothing in this repository reads a Postgres SQLSTATE to decide a retry:
+  -- there is no pooler retry setting, no library default, and no branch on
+  -- '40001' anywhere in `mingla-business/src`, `app-mobile/src` or
+  -- `supabase/functions`. The searched-for retry loop does not exist on this
+  -- stack, so the SQLSTATE is not where the exposure lives.
+  --
+  -- What DOES carry the meaning is the MESSAGE LITERAL. Every existing site
+  -- pairs '40001' with a stable literal that the OWNING Edge function maps to
+  -- HTTP 409 (`manage-stay-inventory/index.ts`, `stay-reservations/index.ts`,
+  -- `manage-brand-discovery-currency/index.ts` all match on the literal, never
+  -- on the code). `reservation_version_conflict` is that stable literal here,
+  -- and the expected/actual versions are appended so the caller can re-read the
+  -- real one instead of re-sending the stale one.
+  --
+  -- This function is the one version-conflict site with NO owning Edge in
+  -- front of it — Ari calls it straight through `callRpc`. The 409 translation
+  -- therefore happens in the tool layer, in `transition_venue_reservation`
+  -- (`_shared/agentDomainTools.ts`), which raises `VERSION_CONFLICT` instead of
+  -- the generic `RPC_FAILED`; `toolErrorHttpStatus` maps that to 409 rather
+  -- than the 500 a stale version used to be reported as. Without that, a
+  -- deterministic caller mistake was surfaced as a server fault — the one
+  -- classification the Ari envelope contract calls `safe_to_retry: true`.
   IF v_row.version <> p_expected_version THEN
     RAISE EXCEPTION 'reservation_version_conflict_expected_%_actual_%',
-      p_expected_version, v_row.version USING ERRCODE = 'P1975';
+      p_expected_version, v_row.version USING ERRCODE = '40001';
   END IF;
 
   -- Legal-transition enforcement (server-side; the heart of the invariant).

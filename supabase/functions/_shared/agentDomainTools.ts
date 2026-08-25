@@ -1244,13 +1244,48 @@ const transitionVenueReservation = writeTool(
         "expected_version (current reservation version) is required",
       );
     }
-    return await callRpc(client, "issue_1975_reservation_transition", {
-      p_reservation_id: args.reservation_id,
-      p_to_status: args.to_status,
-      p_expected_version: args.expected_version,
-      p_table_id: isUuid(args.table_id) ? args.table_id : null,
-      p_reason: isString(args.reason) ? args.reason : null,
-    });
+    try {
+      return await callRpc(client, "issue_1975_reservation_transition", {
+        p_reservation_id: args.reservation_id,
+        p_to_status: args.to_status,
+        p_expected_version: args.expected_version,
+        p_table_id: isUuid(args.table_id) ? args.table_id : null,
+        p_reason: isString(args.reason) ? args.reason : null,
+      });
+    } catch (error) {
+      // #2592 A2 — a stale `expected_version` is a DETERMINISTIC caller
+      // mistake, and it must never be re-sent unchanged.
+      //
+      // Every other optimistic-concurrency site in this repo raises the same
+      // SQLSTATE '40001' and lets its OWNING Edge function translate the stable
+      // message literal into HTTP 409 (`manage-stay-inventory`,
+      // `stay-reservations`, `manage-brand-discovery-currency` all do exactly
+      // this). `issue_1975_reservation_transition` is the one such site Ari
+      // calls straight through `callRpc`, with no owning Edge in front of it —
+      // so the conflict arrived as the generic `RPC_FAILED`, which
+      // `toolErrorHttpStatus` maps to 500. A 500 is the one classification the
+      // Ari envelope contract treats as `safe_to_retry: true`, and it tells
+      // both the model and the operator "server fault, try again" about a
+      // request that will fail identically forever.
+      //
+      // The translation happens here instead, in the same shape and with the
+      // same 409 semantics as the Edge-owned siblings, and the message carries
+      // the ACTUAL current version so the next attempt is a fresh read rather
+      // than the same stale number.
+      const message = error instanceof ToolError
+        ? error.message
+        : String((error as { message?: unknown })?.message ?? error);
+      if (message.includes("reservation_version_conflict")) {
+        const actual = message.match(/actual_(\d+)/)?.[1];
+        throw new ToolError(
+          "VERSION_CONFLICT",
+          actual === undefined
+            ? "This reservation changed since you looked. Read it again and retry with its current version."
+            : `This reservation changed since you looked — it is now at version ${actual}. Read it again and retry with that version, not ${args.expected_version}.`,
+        );
+      }
+      throw error;
+    }
   },
 );
 
