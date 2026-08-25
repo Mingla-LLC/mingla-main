@@ -102,15 +102,40 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
       return arrayChain;
     });
 
+    rpcMock.mockResolvedValueOnce({ data: 0, error: null });
+
     await publishTrip("trip-1", { title: "Test Trip", theme: {} });
 
-    expect(rpcMock).toHaveBeenCalledTimes(2);
-    const [calledFn] = rpcMock.mock.calls[0] as [string, unknown];
     // [TEST-MOD-APPROVED #1719] Publish now enters the atomic poster-triplet
     // wrapper, which delegates to the proven trip publisher in one transaction.
-    expect(calledFn).toBe("issue_1719_publish_trip_with_poster");
-    expect(calledFn).not.toBe("business_publish_event_draft");
-    expect(rpcMock.mock.calls[1]).toEqual([
+    // [TEST-MOD-APPROVED #1971] TWO assertions are invalidated — the call count
+    // and the name of the first RPC. Publish is now a two-command sequence:
+    // COMMIT the wizard's pending graph, then publish FROM STORED STATE. The
+    // negative assertion against the event RPC is retained, and the new
+    // assertion that the publish call carries NO payload is the point of the
+    // change: a caller can no longer publish something the database never
+    // stored (the old Ari executor sent `{}` and could never succeed).
+    expect(rpcMock).toHaveBeenCalledTimes(3);
+    const [saveFn, saveArgs] = rpcMock.mock.calls[0] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(saveFn).toBe("biz_apply_trip_draft_graph");
+    expect(saveArgs.p_expected_updated_at).toBe("2026-05-17T00:00:00Z");
+
+    const [publishFn, publishArgs] = rpcMock.mock.calls[1] as [
+      string,
+      Record<string, unknown>,
+    ];
+    expect(publishFn).toBe("biz_publish_trip_command");
+    expect(publishFn).not.toBe("business_publish_event_draft");
+    expect(Object.keys(publishArgs).sort()).toEqual([
+      "p_event_id",
+      "p_expected_updated_at",
+      "p_operation_id",
+    ]);
+
+    expect(rpcMock.mock.calls[2]).toEqual([
       "biz_trip_tickets_sold",
       { p_event_id: "trip-1" },
     ]);
@@ -121,6 +146,26 @@ describe("ORCH-0859 — tripsService.publishTrip", () => {
     // `RAISE EXCEPTION 'foo'` statements; the literal name lives in
     // `message`. Earlier mock incorrectly inverted these (would have
     // masked the wizard mapper bug fixed in same ORCH-0859 commit).
+    // [TEST-MOD-APPROVED #1971] The graph commit runs first and succeeds; the
+    // publish command is the one that raises. The assertions on the error SHAPE
+    // — which the wizard's Step-5 mapper switches on — are untouched.
+    const eventChain = {
+      select: () => eventChain,
+      eq: () => eventChain,
+      is: () => eventChain,
+      maybeSingle: () =>
+        Promise.resolve({
+          data: { updated_at: "2026-05-17T00:00:00Z" },
+          error: null,
+        }),
+      in: () => eventChain,
+      order: () => eventChain,
+    };
+    fromMock.mockImplementation((table: string) => {
+      if (table === "events") return eventChain;
+      return createChainableQuery({ data: [] });
+    });
+    rpcMock.mockResolvedValueOnce({ data: { event: {} }, error: null });
     rpcMock.mockResolvedValueOnce({
       data: null,
       error: { code: "P0001", message: "trip_days_required" },

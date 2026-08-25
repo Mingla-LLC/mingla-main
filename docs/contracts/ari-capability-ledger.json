@@ -10,13 +10,13 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 80,
+    "registered_tool_count": 85,
     "capability_count": 120,
     "status_breakdown": {
-      "registered_unverified": 54,
-      "broken": 25,
+      "registered_unverified": 63,
+      "broken": 21,
       "guided_handoff": 8,
-      "unsupported": 29,
+      "unsupported": 24,
       "in_flight": 4,
       "verified": 0
     }
@@ -1174,22 +1174,24 @@
         ]
       },
       "ari_tool": "create_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:createTrip omits canonical draft graph"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section A (atomic canonical draft graph)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Shallow event row is not the canonical trip draft"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.update",
@@ -1223,22 +1225,24 @@
         ]
       },
       "ari_tool": "update_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section B/G (draft basics and audited live edit)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.publish",
@@ -1272,22 +1276,24 @@
         ]
       },
       "ari_tool": "publish_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section F (publish loads the persisted graph)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.delete",
@@ -1321,22 +1327,24 @@
         ]
       },
       "ari_tool": "delete_trip",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section I (confirmed orders on every rail block delete)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.rsvp.create",
@@ -3664,26 +3672,32 @@
           {
             "path": "mingla-business/src/services/tripsService.ts",
             "symbol": "upsertTripDays"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageTripDays"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_days",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "tripsService.ts:upsertTripDays"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section B/K (ordered itinerary replacement)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.manage_inclusions",
@@ -3709,26 +3723,32 @@
           {
             "path": "mingla-business/src/services/tripsService.ts",
             "symbol": "upsertTripInclusions"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageTripInclusions"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_inclusions",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "tripsService.ts:upsertTripInclusions"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section B (inclusions replacement)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.manage_tiers",
@@ -3753,27 +3773,33 @@
         "source": [
           {
             "path": "mingla-business/src/services/tripsService.ts",
-            "symbol": "createTripPricingTier"
+            "symbol": "updateTripPricing"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageTripTiers"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_tiers",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "tripsService.ts:createTripPricingTier"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section D (deposit and instalment bounds)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.quote_builder",
@@ -5464,26 +5490,32 @@
           {
             "path": "mingla-business/src/services/intakeSchemaService.ts",
             "symbol": "upsertTripIntakeSchema"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageTripTravelerIntake"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_trip_traveler_intake",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "trip traveler intake service"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section B (per-tier intake schema patch)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.installment.charge_now",
@@ -5607,26 +5639,32 @@
           {
             "path": "mingla-business/src/services/tripsService.ts",
             "symbol": "aggregatePaidOrdersByEvent"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getTripOrderMoney"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_trip_order_money",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "trip money dashboard"
+          "tier": "regression",
+          "sha": "1e2c9ca76fe47dc828e9a8644c5feba948640905",
+          "reference": "issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql section H (finance-gated aggregate, no buyer PII)",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1971,
         2000
       ],
       "blockers": [
-        "No registered read tool"
+        "No exact-revision deployed runtime evidence on all required Business surfaces"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.venue.gallery",

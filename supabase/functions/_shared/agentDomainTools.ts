@@ -609,88 +609,222 @@ const deleteExperience = writeTool(
 
 // ----------------------------------------------------------------------------
 // D. Trips
+//
+// issue #1971 — every trip write commits through `ari_execute_trip_operation`,
+// which is the same canonical command boundary Business web/iOS/Android call.
+// No Ari executor may touch events / event_dates / trip_days / trip_inclusions /
+// ticket_types / trip_pricing_tiers / trip_intake_schemas directly for these
+// operations (I-PROPOSED-1971-TRIP-GRAPH-ONE-COMMAND).
 // ----------------------------------------------------------------------------
+
+const TRIP_REVISION = {
+  type: "string",
+  description:
+    "The trip's current updated_at, exactly as the last read returned it. A stale value fails with trip_revision_conflict and writes nothing.",
+};
+const TRIP_LIVE_REASON = {
+  type: "string",
+  minLength: 10,
+  maxLength: 200,
+  description:
+    "Audit reason. Required when the trip is scheduled or live; ignored on a draft.",
+};
+
+async function executeTripWrite(
+  name: string,
+  args: Record<string, unknown>,
+  client: any,
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  return await callRpc(client, "ari_execute_trip_operation", {
+    p_operation_id: requireAgentOperationId(context),
+    p_tool_name: name,
+    p_args: args,
+  });
+}
+
+/**
+ * Shared executor body for the four trip graph-group tools. Each tool still
+ * calls `writeTool("<literal name>", ...)` directly: the #1970 registry sync and
+ * the #2000 ledger gate discover tool names by scanning for that literal, so a
+ * factory that CONSTRUCTED the writeTool call would register a tool neither gate
+ * can see. Sharing the executor, not the registration, keeps both true.
+ */
+function tripGraphGroupSchema(
+  itemSchema: Record<string, unknown>,
+): Record<string, unknown> {
+  return {
+    event_id: UUID,
+    expected_updated_at: TRIP_REVISION,
+    reason: TRIP_LIVE_REASON,
+    items: { type: "array", items: itemSchema },
+  };
+}
+
+const TRIP_GRAPH_REQUIRED = ["event_id", "expected_updated_at", "items"];
+
+function tripGraphExecutor(
+  name: string,
+): AgentToolDefinition["executor"] {
+  return async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    if (!Array.isArray(args.items)) {
+      throw new ToolError("INVALID_ARGS", "items must be an array");
+    }
+    return await executeTripWrite(name, args, client, context);
+  };
+}
 
 const createTrip = writeTool(
   "create_trip",
-  "Create a draft trip under an owned brand.",
-  { brand_id: UUID, title: STR, description: { type: "string" } },
+  "Create a draft trip under an owned brand. Produces the complete canonical draft graph — event, placeholder Standard package and its pricing tier — so it opens identically in the manual trip wizard.",
+  {
+    brand_id: UUID,
+    title: STR,
+    description: { type: "string" },
+    provenance: {
+      type: "object",
+      description:
+        "Opaque origin marker (issue #1753 owns quote-to-draft mapping). Never invent one.",
+    },
+  },
   ["brand_id", "title"],
-  async (args, client, userId) => {
-    const brandId = await requireBrand(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .insert({
-        brand_id: brandId,
-        created_by: userId,
-        title: args.title,
-        description: args.description ?? null,
-        event_type: "trip",
-        status: "draft",
-      })
-      .select("id, title, status")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+  async (args, client, userId, context) => {
+    requireBrand(args, client, userId);
+    return await executeTripWrite("create_trip", args, client, context);
   },
 );
 
 const updateTrip = writeTool(
   "update_trip",
-  "Update an owned trip's title/description.",
-  { event_id: UUID, title: STR, description: { type: "string" } },
-  ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    const patch: Record<string, unknown> = {};
-    if (isString(args.title)) patch.title = args.title;
-    if (typeof args.description === "string") {
-      patch.description = args.description;
-    }
-    if (Object.keys(patch).length === 0) {
+  "Edit an owned trip's title/description. A draft edits in place; a scheduled or live trip routes through the audited live-edit authority and needs a 10-200 character reason.",
+  {
+    event_id: UUID,
+    expected_updated_at: TRIP_REVISION,
+    title: STR,
+    description: { type: "string" },
+    reason: TRIP_LIVE_REASON,
+  },
+  ["event_id", "expected_updated_at"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    if (!isString(args.title) && typeof args.description !== "string") {
       throw new ToolError("INVALID_ARGS", "Nothing to update");
     }
-    const { data, error } = await client.from("events").update(patch).eq(
-      "id",
-      eventId,
-    ).select("id, title").single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+    return await executeTripWrite("update_trip", args, client, context);
   },
+);
+
+const manageTripDays = writeTool(
+  "manage_trip_days",
+  "Replace the trip's ordered itinerary in one atomic write. Send the COMPLETE list you want to end up with — omitted days are removed. Never invent media URLs.",
+  tripGraphGroupSchema({
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      ordinal: { type: "integer", minimum: 1 },
+      title: STR,
+      narrative: { type: "string" },
+      date: { type: "string" },
+      media: { type: "array", items: { type: "object" } },
+    },
+    required: ["ordinal", "title"],
+  }),
+  TRIP_GRAPH_REQUIRED,
+  tripGraphExecutor("manage_trip_days"),
+);
+
+const manageTripInclusions = writeTool(
+  "manage_trip_inclusions",
+  "Replace the trip's what's-included and what's-not lists in one atomic write. Send the COMPLETE list you want to end up with.",
+  tripGraphGroupSchema({
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      kind: { type: "string", enum: ["included", "excluded"] },
+      item: STR,
+      ordinal: { type: "integer", minimum: 0 },
+    },
+    required: ["kind", "item", "ordinal"],
+  }),
+  TRIP_GRAPH_REQUIRED,
+  tripGraphExecutor("manage_trip_inclusions"),
+);
+
+const manageTripTiers = writeTool(
+  "manage_trip_tiers",
+  "Create, update or remove trip packages, including deposit and instalment metadata. Money-bearing: always show the currency and the before/after amounts in the proposal. A package that has sold cannot be removed.",
+  tripGraphGroupSchema({
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      ticket_type_id: { type: "string", format: "uuid" },
+      tier_name: STR,
+      price_cents: { type: "integer", minimum: 0 },
+      capacity: { type: "integer", minimum: 1 },
+      display_order: { type: "integer", minimum: 0 },
+      deleted: { type: "boolean" },
+      tier_metadata: { type: "object" },
+    },
+    required: [],
+  }),
+  TRIP_GRAPH_REQUIRED,
+  tripGraphExecutor("manage_trip_tiers"),
+);
+
+const manageTripTravelerIntake = writeTool(
+  "manage_trip_traveler_intake",
+  "Replace the traveller-question schema for a trip package. Name the package and which required questions were added or removed; never read or repeat a traveller's answers.",
+  tripGraphGroupSchema({
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      ticket_type_id: { type: "string", format: "uuid" },
+      schema: { type: "object" },
+    },
+    required: ["ticket_type_id"],
+  }),
+  TRIP_GRAPH_REQUIRED,
+  tripGraphExecutor("manage_trip_traveler_intake"),
 );
 
 const publishTrip = writeTool(
   "publish_trip",
-  "Publish a draft trip via issue_1719_publish_trip_with_poster.",
-  { event_id: UUID },
-  ["event_id"],
-  async (args, client, userId) => {
+  "Publish a draft trip. The server loads the complete stored graph and publishes that — you cannot supply or reconstruct the payload.",
+  { event_id: UUID, expected_updated_at: TRIP_REVISION },
+  ["event_id", "expected_updated_at"],
+  async (args, client, userId, context) => {
     const { eventId, brandId } = await requireEvent(args, client, userId);
     const { data: paid } = await client.from("ticket_types").select("id").eq(
       "event_id",
       eventId,
     ).gt("price_cents", 0).limit(1);
     if (paid && paid.length > 0) await assertCanCollect(client, brandId);
-    return await callRpc(client, "issue_1719_publish_trip_with_poster", {
-      p_event_id: eventId,
-      p_draft_payload: {},
-      p_client_revision: null,
-    });
+    return await executeTripWrite("publish_trip", args, client, context);
   },
 );
 
 const deleteTrip = writeTool(
   "delete_trip",
-  "Soft-delete an owned trip.",
+  "Soft-delete an owned trip. Refused while ANY order is outstanding on any payment rail — card, door, or manual. The confirmation performs the authoritative transactional recheck.",
+  { event_id: UUID, expected_updated_at: TRIP_REVISION },
+  ["event_id", "expected_updated_at"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeTripWrite("delete_trip", args, client, context);
+  },
+);
+
+const getTripOrderMoney = writeTool(
+  "get_trip_order_money",
+  "Read a trip's aggregate order and instalment totals (finance-manager+). Counts, gross, refunded and per-package sold only — never a buyer's name, email, phone, address or payment instrument.",
   { event_id: UUID },
   ["event_id"],
   async (args, client, userId) => {
     const { eventId } = await requireEvent(args, client, userId);
-    const { error } = await client.from("events").update({
-      deleted_at: new Date().toISOString(),
-    }).eq("id", eventId);
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return { id: eventId, deleted: true };
+    return await callRpc(client, "biz_get_trip_order_money_snapshot", {
+      p_event_id: eventId,
+    });
   },
 );
 
@@ -3796,8 +3930,13 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   deleteExperience,
   createTrip,
   updateTrip,
+  manageTripDays,
+  manageTripInclusions,
+  manageTripTiers,
+  manageTripTravelerIntake,
   publishTrip,
   deleteTrip,
+  getTripOrderMoney,
   createRsvp,
   publishRsvp,
   setRsvpGuestStatus,
@@ -3860,6 +3999,9 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_venue_listings",
   "get_venue_listing_status",
   "list_venue_claim_feedback",
+  // issue #1971 — the trip order/money snapshot is a fail-closed aggregate
+  // read. finance_manager+ is enforced in SQL; it writes nothing.
+  "get_trip_order_money",
 ]);
 
 export const MONEY_CONFIRM_TOOLS = new Set<string>([
@@ -3879,4 +4021,7 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "create_stay_reservation",
   "transition_stay",
   "manage_stay_policy_price_media",
+  // issue #1971 — deposit and instalment metadata changes what a traveller is
+  // charged and when. Confirmed, never inline.
+  "manage_trip_tiers",
 ]);

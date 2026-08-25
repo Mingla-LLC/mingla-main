@@ -29,7 +29,9 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //   +  1  #1979 venue_reservation_settings (venue_id) call site
   //          — supabase/functions/_shared/agentDomainTools.ts
   //            (same ORCH-1255 venue_id PK already used by Business hooks)
-  //   = 88
+  //   -  1  #1971 trip_intake_schemas (event_id,ticket_type_id) call site
+  //          — mingla-business/src/services/intakeSchemaService.ts:415, REMOVED
+  //   = 87
   //
   // [TEST-MOD-APPROVED #1789] Both #1789 sites resolve to a real, non-partial
   // arbiter — `PRIMARY KEY (id)` on each table, created at
@@ -43,7 +45,24 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   // assertion in this file is untouched; only the additive census advances.
   // [TEST-MOD-APPROVED #1979] Additive call site on the existing venue_id PK
   // (ORCH-1255). No new arbiter columns; census +1 for the Ari upsert only.
-  assert.equal(sites.length, 88);
+  //
+  // [TEST-MOD-APPROVED #1971] The FIRST subtraction this census has taken, so it
+  // is worth being explicit about what went and why. The removed site is
+  //     .from("trip_intake_schemas").upsert(..., { onConflict: "event_id,ticket_type_id" })
+  // at mingla-business/src/services/intakeSchemaService.ts:415 — the draft-path
+  // branch of `upsertTripIntakeSchema`. #1971 moved trip draft-graph authoring
+  // behind `biz_apply_trip_draft_graph`, which owns the intake write inside the
+  // same transaction as the rest of the graph (and validates the schema and
+  // proves the tier belongs to the trip, which the client upsert could not).
+  // So the client does not need an arbiter here any more: it no longer writes
+  // the table at all. The arbiter ITSELF is unchanged — the unique index
+  // `(event_id, ticket_type_id)` still exists and is still the conflict target;
+  // only the CALL SITE moved from TypeScript into SQL, and this audit
+  // enumerates call sites, not indexes.
+  //
+  // Every behavioural assertion below is untouched; only the census moves, and
+  // the derivation comment above moves with it so the figure stays checkable.
+  assert.equal(sites.length, 87);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);

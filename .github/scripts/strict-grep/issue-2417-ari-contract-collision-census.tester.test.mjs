@@ -54,6 +54,17 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const GATE_REL = ".github/scripts/strict-grep/issue-2417-ari-contract-collision-census.mjs";
 
+// [TEST-MOD-APPROVED #1971] The canonical denominators, read from the ledger
+// rather than pinned as literals. This file's job is false-positive immunity;
+// a hardcoded count here becomes a false positive the moment the ledger moves.
+const CANONICAL_LEDGER = JSON.parse(
+  fs.readFileSync(path.join(ROOT, "docs/contracts/ari-capability-ledger.json"), "utf8"),
+);
+const CAPABILITY_COUNT = CANONICAL_LEDGER.capabilities.length;
+const TOOL_COUNT = CANONICAL_LEDGER.capabilities.filter(
+  (row) => typeof row.ari_tool === "string",
+).length;
+
 // The six files the census reads, plus the two ownership inputs.
 const INPUTS = Object.freeze({
   ledger: "docs/contracts/ari-capability-ledger.json",
@@ -216,14 +227,27 @@ test("#2417 forward-safety: adding a capability fails LOUDLY and names every sta
     assert.match(text, /census FAIL:/, "forward-safety: gate crashed instead of failing cleanly");
     assert.doesNotMatch(text, /Cannot read|is not a function|undefined is not/, `gate crashed:\n${text}`);
     // Each downstream census must be named individually.
+    //
+    // [TEST-MOD-APPROVED #1971] These eight expectations previously hardcoded
+    // 80/81 and 120/121. This suite's own header names #1971 as the issue that
+    // would add capabilities and tools, so those literals were guaranteed to
+    // go stale on exactly this change — and a stale literal here reds a
+    // CORRECT ledger, which is the false-positive failure mode this whole file
+    // exists to prevent. The counts are now DERIVED from the ledger the mirror
+    // actually holds, plus the one synthetic row this mutation adds. No
+    // assertion is removed or loosened: the same eight downstream censuses must
+    // still each be named, with the same before/after arithmetic. It simply
+    // cannot go stale again.
+    const baseTools = TOOL_COUNT;
+    const baseCapabilities = CAPABILITY_COUNT;
     for (const expected of [
-      /authorization: 80 role declarations for 81 mapped ledger tools/,
-      /delegated gate declarationCount: expected 81, got 80/,
-      /provider test title: expected 81, got 80/,
-      /provider test registry baseline: expected 81, got 80/,
-      /authorization test AGENT_TOOLS: expected 81, got 80/,
-      /authorization test AGENT_TOOL_AUTHORIZATION: expected 81, got 80/,
-      /ledger tester capabilityCount: expected 121, got 120/,
+      new RegExp(`authorization: ${baseTools} role declarations for ${baseTools + 1} mapped ledger tools`),
+      new RegExp(`delegated gate declarationCount: expected ${baseTools + 1}, got ${baseTools}`),
+      new RegExp(`provider test title: expected ${baseTools + 1}, got ${baseTools}`),
+      new RegExp(`provider test registry baseline: expected ${baseTools + 1}, got ${baseTools}`),
+      new RegExp(`authorization test AGENT_TOOLS: expected ${baseTools + 1}, got ${baseTools}`),
+      new RegExp(`authorization test AGENT_TOOL_AUTHORIZATION: expected ${baseTools + 1}, got ${baseTools}`),
+      new RegExp(`ledger tester capabilityCount: expected ${baseCapabilities + 1}, got ${baseCapabilities}`),
       /pinned tool census differs from the canonical ledger \(missing tester_synthetic_forward_tool\)/,
     ]) {
       assert.match(text, expected, `forward-safety: gate did not name a stale census: ${expected}\n${text}`);

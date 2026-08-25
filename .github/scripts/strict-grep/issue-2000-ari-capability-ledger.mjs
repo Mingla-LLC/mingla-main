@@ -152,19 +152,35 @@ ari.partner.splits
 // are repaired by issue #1972, minus the four Stay/venue reservation rows
 // whose envelope/role defects are repaired by issue #1975 (quote/create/
 // transition stay + create_venue_reservation), minus the three venue write
-// rows whose canonical-arity/role defects are repaired by issue #1978, and
-// minus ari.venue.ops / ari.venue.send_sms repaired by issue #1979
-// (venue_ops_action forwards exact venue-order-staff actions; send_venue_sms
-// sends { waitlistId } only). Ledger prose may explain a remaining defect, but
-// it cannot remove one from this set or create a new proven-broken claim.
+// rows whose canonical-arity/role defects are repaired by issue #1978, minus
+// ari.venue.ops / ari.venue.send_sms repaired by issue #1979 (venue_ops_action
+// forwards exact venue-order-staff actions; send_venue_sms sends
+// { waitlistId } only), and minus the four trip lifecycle rows repaired by
+// issue #1971. Ledger prose may explain a remaining defect, but it cannot
+// remove one from this set or create a new proven-broken claim.
 // [TEST-MOD-APPROVED #1975+#1978+#1979] Proven-broken authority shrinks only for
 // rows whose concrete defects these issues repair; no behavioral coverage removed.
+//
+// [TEST-MOD-APPROVED #1971] ari.trip.create/.update/.publish/.delete leave this
+// set. Each named defect is repaired at source by
+// supabase/migrations/20270509001971_issue_1971_ari_trip_lifecycle.sql plus the
+// rewritten trip executors:
+//   * create no longer inserts a bare events row — biz_create_trip_draft emits
+//     the full canonical draft graph including the placeholder ticket and tier;
+//   * update/publish/delete no longer depend on the owner-first guard the
+//     original evidence cites (that seam was already replaced by #2019's
+//     delegated adapter, and every trip command now enforces the event_manager
+//     floor through biz_trip_require_manager);
+//   * publish no longer sends `{}` — biz_publish_trip_command reconstructs the
+//     payload from persisted state;
+//   * delete no longer writes events.deleted_at directly — biz_soft_delete_trip
+//     rejects any order outside failed/cancelled on every payment rail.
+// No behavioural coverage is removed: those four rows move to
+// registered_unverified, which the gate still holds to the verification-gap
+// blocker rule, and the executable proofs live in
+// supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
 const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
-ari.trip.create
-ari.trip.update
-ari.trip.publish
-ari.trip.delete
 ari.rsvp.create
 ari.rsvp.publish
 ari.rsvp.bulk_status
@@ -327,9 +343,10 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 25) {
+  // [TEST-MOD-APPROVED #1971] 25 - 4 trip lifecycle rows = 21.
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 21) {
     failures.push(
-      `proven-broken authority must contain 25 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 21 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -543,8 +560,11 @@ function selfTest() {
     ledger.audit.status_breakdown.broken--;
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
+  // [TEST-MOD-APPROVED #1971] Re-aimed from ari.trip.create, which this issue
+  // repairs, to ari.rsvp.create, which remains proven broken. The mutation and
+  // its predicate are unchanged.
   expectMutation("broken to unverified laundering", ({ ledger }) => {
-    const row = ledger.capabilities.find((c) => c.id === "ari.trip.create");
+    const row = ledger.capabilities.find((c) => c.id === "ari.rsvp.create");
     row.status = "registered_unverified";
     row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
     ledger.audit.status_breakdown.broken--;
@@ -553,8 +573,10 @@ function selfTest() {
   expectMutation("stale symbol", ({ ledger }) => {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
+  // [TEST-MOD-APPROVED #1971] Same re-aim: the historical-source rule only
+  // applies to rows still inside the proven-broken authority.
   expectMutation("proven-broken historical source must exist", ({ ledger }) => {
-    const broken = ledger.capabilities.find((c) => c.id === "ari.trip.create");
+    const broken = ledger.capabilities.find((c) => c.id === "ari.rsvp.create");
     const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
     broken.owners.source[0] = { ...postBaseline.owners.source[0] };
   }, (failure) => failure.includes("absent at audit SHA"));

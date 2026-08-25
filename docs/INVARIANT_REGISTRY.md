@@ -263,7 +263,7 @@
 
 - **Rule:** `docs/contracts/ari-capability-ledger.json` is the canonical statement of what Ari can and cannot do across Host iOS, Android, and web. Registration is not verification: every Host operation has one stable row and one of `verified`, `registered_unverified`, `broken`, `guided_handoff`, `unsupported`, or `in_flight`; every registered tool maps exactly once; no row may claim `verified` without distinct implementor/tester regressions, exact-revision deployment evidence, and production observation on every required surface.
 - **Audit baseline (immutable, #2000 2026-08-13):** 117 operations across 21 domains: 36 broken, 33 registered-unverified, 36 unsupported, 8 guided handoffs, 4 in flight, 0 verified; 70 registered tools. The 36 broken IDs are independently pinned at this baseline, preventing status/blocker/counter laundering.
-- **Current truth (2026-08-25, read from `docs/contracts/ari-capability-ledger.json`):** 120 operations across 21 domains: 25 broken, 54 registered-unverified, 29 unsupported, 8 guided handoffs, 4 in flight, and 0 verified. All 80 registered tools map exactly once. These counters move as #1975/#1978/#1979/#424 land and will move again at #1971 and #1977 — do NOT restate them from memory. `.github/scripts/strict-grep/issue-2417-ari-contract-collision-census.mjs` derives every denominator from the ledger at runtime and fails when any downstream census disagrees, so the ledger is the only place these numbers are authored.
+- **Current truth (2026-08-25, read from `docs/contracts/ari-capability-ledger.json`):** 120 operations across 21 domains: 21 broken, 63 registered-unverified, 24 unsupported, 8 guided handoffs, 4 in flight, and 0 verified. All 85 registered tools map exactly once. These counters move as #1975/#1978/#1979/#1971/#424 land and will move again at #1977 — do NOT restate them from memory. Nothing censuses a `.md`, so this line is maintained by hand and is the one number here that can rot silently; #1971 found it stale within hours of it being written. `.github/scripts/strict-grep/issue-2417-ari-contract-collision-census.mjs` derives every denominator from the ledger at runtime and fails when any downstream census disagrees, so the ledger is the only place these numbers are authored.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs` validates the explicit operation universe, registry↔prompt parity, tool bijection, status/evidence rules, exact code symbols at current and audit revisions, and proven-broken authority. The independently authored `.github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs` pins the reviewed denominator, mappings, classifications, and source evidence. Both run in Class A.
 - **Regression:** Implementor self-test has 10 hostile mutations; tester has 5 independent attacks. True deletion/status-laundering reversions make both guards fail, then pass on restore. Full Class A passes 846/846.
 - **Scope:** Truth inventory and CI enforcement only. This invariant does not repair or newly enable any Ari runtime operation.
@@ -9397,6 +9397,42 @@ enforced by the executed PostgreSQL suites listed at the end, not by review.
 - **Established:** DRAFT at #2322, 2026-08-19; flip to ACTIVE only after independent tester PASS on a real onboarding screen, all-green merge, and merged-main verification.
 
 ---
+
+## DRAFT — issue #1971 (canonical Ari trip lifecycle)
+
+### I-PROPOSED-1971-TRIP-GRAPH-ONE-COMMAND (DRAFT)
+
+- **Rule:** Business web/iOS/Android and Ari mutate one canonical trip graph through the same six SQL commands. No client and no agent executor may `insert`/`update`/`delete` `events`, `event_dates`, `trip_days`, `trip_inclusions`, `ticket_types`, `trip_pricing_tiers` or `trip_intake_schemas` directly for a trip lifecycle operation. Publish loads the PERSISTED graph server-side and never accepts a caller-assembled payload.
+- **What this replaced:** a three-statement client create that could orphan a draft or leave a ticket without a tier; delete-then-insert day/inclusion replacement that erased the itinerary if the insert failed; split `ticket_types`/`trip_pricing_tiers` writes; a direct `trip_intake_schemas` upsert; and an Ari `publish_trip` that sent `{}` to a publish contract requiring a full graph and therefore could never succeed.
+- **The trap this rule exists to keep closed:** the shared Business `LiveTripPatch` vocabulary is TOP-LEVEL (`title`, `theme`, `pricing_tiers`, …) while Ari's `TripDraftGraphV1` is grouped (`event`, `tiers`, …). An earlier attempt allow-listed only the grouped keys, and independent QA proved that made published-trip editing dead on web, iOS and Android at once. `biz_update_trip_live_command` forwards the top-level vocabulary byte for byte to `issue_1719_update_live_trip_with_poster` and TRANSLATES the grouped keys into that same owner.
+- **Enforcement:** `.github/scripts/strict-grep/issue-1971-ari-trip-lifecycle.mjs` (24 mutants, each required red for its own assertion), `supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql`, `supabase/functions/_shared/__tests__/issue_1971_ari_trips.implementor.test.ts`, and `mingla-business/src/services/__tests__/issue_1971_trip_command_contract.implementor.test.ts`.
+- **Status:** DRAFT until independent deployed runtime proof on Business web, iOS and Android.
+
+### I-PROPOSED-1971-TRIP-WRITES-IDEMPOTENT (DRAFT)
+
+- **Rule:** Every trip command commits its domain mutation and its receipt in ONE transaction. The receipt binds actor, tenant, command, resource, canonical arguments AND the expected revision. An identical replay returns the recorded result; any changed member fails closed with `idempotency_conflict`. A stale expected revision is a typed `trip_revision_conflict` with zero writes. Ari additionally passes the immutable confirmed pending-action id, never a model-supplied value, and consumes #1972's shared recovery receipt.
+- **Why `expected_updated_at` is inside the hash:** without it, reusing one operation id with a materially different expected revision returns the EARLIER result instead of conflicting — the caller believes it edited revision B and is handed the outcome of editing revision A. Independent QA found exactly that.
+- **Enforcement:** `biz_trip_command_begin`/`_finish`, `ari_execute_trip_operation`, and sections C/E/J of the #1971 PostgreSQL 17 guard.
+- **Status:** DRAFT pending independent runtime proof of concurrent and retried confirmation.
+
+### I-PROPOSED-1971-TRIP-DELETE-NO-CONFIRMED-ORDERS (DRAFT)
+
+- **Rule:** A trip may be soft-deleted only when NO order sits outside `failed`/`cancelled`, on any payment rail. `biz_trip_has_web_purchases` is a notification-only predicate — it sees card/Apple Pay/Google Pay only — and must never be the deletion guard. Delete and confirmed-order arrival serialize on one advisory key so neither can win a race: a deleted trip also refuses a new confirmed order.
+- **Enforcement:** `biz_soft_delete_trip`, the `trg_biz_trip_order_delete_lock` BEFORE trigger on `public.orders`, and section I of the #1971 PostgreSQL 17 guard (which uses a DOOR sale — the exact order the web-purchase predicate would have missed).
+- **Status:** DRAFT pending independent adversarial race proof.
+
+### I-PROPOSED-1971-TRIP-SIDECAR-EVENT-MANAGER (DRAFT)
+
+- **Rule:** Direct write access to `trip_days`, `trip_inclusions` and `trip_pricing_tiers` requires effective rank `event_manager` or higher. The deployed policies used a brand-membership-for-READ predicate, which let scanner-class members attempt graph mutation. Reads are unchanged.
+- **Enforcement:** the `*_write_event_managers` policies in `20270509001971_issue_1971_ari_trip_lifecycle.sql`, plus `biz_trip_require_manager` on every command.
+- **Status:** DRAFT pending an independent scanner-role denial proof against a deployed database.
+
+### I-PROPOSED-1971-TRIP-ORDER-MONEY-NO-PII (DRAFT)
+
+- **Rule:** The trip order/money capability is read-only, `finance_manager`+, trip- and brand-scoped, and fail-closed. It returns counts, gross and refunded totals in canonical integer units, sold counts by package, and instalment counts/amounts by status and due bucket — and never a buyer name, email, phone, address, payment instrument, note or raw order payload. A read failure raises; it never degrades to zero.
+- **Why "never degrades to zero" is part of the rule:** the pre-#1971 `aggregatePaidOrdersByEvent` silently converted a read failure into an empty map, which is indistinguishable from a genuinely empty trip.
+- **Enforcement:** `biz_get_trip_order_money_snapshot`, its `finance_manager` declaration in `agentToolAuthorization.ts`, its entry in the #2013 tenant-scoped read registry, and section H of the #1971 PostgreSQL 17 guard (which asserts the absence of each named PII key).
+- **Status:** DRAFT pending independent runtime inspection of the raw tool response.
 
 ## DRAFT — issue #1973 (canonical Ari experience lifecycle)
 

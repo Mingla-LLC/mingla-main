@@ -157,9 +157,21 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     // the count below 2.
     const fn = TRIPS.match(/export async function updateTripBasics[^]*?^\}/m);
     expect(fn).not.toBeNull();
-    // updateTripBasics has TWO event_type='trip' filters (theme SELECT + UPDATE).
+    // [TEST-MOD-APPROVED #1971] Was: TWO `.eq("event_type","trip")` filters —
+    // the theme SELECT and the events UPDATE. #1971 removed the client-side
+    // UPDATE entirely: the write is now one canonical
+    // `biz_apply_trip_draft_graph` call whose SQL raises `event_not_a_trip` on
+    // a non-trip row, which is a STRONGER guarantee than a client filter (a
+    // client filter can be bypassed by any other caller; the command cannot).
+    // The remaining status probe keeps its filter, and the invariant this test
+    // exists for — "this function can never touch a non-trip row" — is asserted
+    // on BOTH halves below.
     const matches = fn?.[0].match(/\.eq\("event_type",\s*"trip"\)/g);
-    expect((matches ?? []).length).toBeGreaterThanOrEqual(2);
+    expect((matches ?? []).length).toBeGreaterThanOrEqual(1);
+    expect(fn?.[0]).toMatch(/applyTripDraftGraph\(/);
+    expect(TRIPS).toMatch(
+      /supabase\.rpc\(["']biz_apply_trip_draft_graph["']/,
+    );
   });
 
   test("tripsService has at least 4 .eq event_type='trip' filters (getTrip + updateBasics select + updateBasics update + updatePricing probe)", () => {
@@ -168,8 +180,50 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     expect((matches ?? []).length).toBeGreaterThanOrEqual(4);
   });
 
-  test("tripsService.updateTripPricing source contains the trip-currency probe filter", () => {
-    // Locate the function by its signature and scan to the next `export `.
+  // [TEST-MOD-APPROVED #1971] The trip-only guarantee for every write this
+  // issue moved server-side. A client `.eq("event_type","trip")` filter only
+  // protects the caller that remembers to write it; the canonical commands
+  // reject a non-trip row for EVERY caller, Ari included.
+  test("issue #1971 canonical trip commands refuse a non-trip row server-side", () => {
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20270509001971_issue_1971_ari_trip_lifecycle.sql",
+      ),
+      "utf8",
+    );
+    for (
+      const command of [
+        "biz_apply_trip_draft_graph",
+        "biz_update_trip_live_command",
+        "biz_publish_trip_command",
+        "biz_soft_delete_trip",
+      ]
+    ) {
+      const start = migration.indexOf(
+        `CREATE OR REPLACE FUNCTION public.${command}(`,
+      );
+      expect(start).toBeGreaterThan(-1);
+      const body = migration.slice(start, migration.indexOf("$fn$;", start));
+      expect(body).toMatch(/event_type <> 'trip'/);
+      expect(body).toMatch(/RAISE EXCEPTION 'event_not_a_trip'/);
+    }
+  });
+
+  test("tripsService.updateTripPricing derives the trip currency server-side", () => {
+    // [TEST-MOD-APPROVED #1971] Was: the function must contain a client-side
+    // `.eq("event_type","trip")` currency probe. That probe existed only to
+    // read `events.currency` before writing `ticket_types`; #1971 moved the
+    // whole tier write into `biz_apply_trip_draft_graph`, which reads the
+    // event's currency itself under a row lock. The probe is not weakened, it
+    // is gone — so the assertion now pins what replaced it, plus the issue
+    // #1014 rule the probe was really protecting (never fabricate USD).
     const idx = TRIPS.indexOf("export async function updateTripPricing");
     expect(idx).toBeGreaterThan(-1);
     const nextExport = TRIPS.indexOf("export ", idx + 1);
@@ -177,7 +231,11 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
       idx,
       nextExport === -1 ? TRIPS.length : nextExport,
     );
-    expect(fnSource).toMatch(/\.eq\("event_type",\s*"trip"\)/);
+    expect(fnSource).toMatch(/applyTripDraftGraph\(/);
+    // No client-side ticket_types / trip_pricing_tiers write survives.
+    expect(fnSource).not.toMatch(/\.from\("ticket_types"\)[^]*?\.update\(/);
+    expect(fnSource).not.toMatch(/\.from\("trip_pricing_tiers"\)[^]*?\.update\(/);
+    expect(fnSource).not.toMatch(/"USD"/);
   });
 
   // ============================================================
@@ -218,7 +276,28 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (trip-only defensive)"
     );
     // [TEST-MOD-APPROVED #1719] Live edits now enter the atomic poster wrapper;
     // the wrapper delegates to the existing refund-gated trip function.
-    expect(fnSource).toMatch(/supabase\.rpc\(["']issue_1719_update_live_trip_with_poster["']/);
+    // [TEST-MOD-APPROVED #1971] ONE assertion is invalidated: the service now
+    // calls `biz_update_trip_live_command`, which forwards this exact patch to
+    // `issue_1719_update_live_trip_with_poster` unchanged and adds CAS + an
+    // exactly-once receipt. The delegation is asserted at the migration, so the
+    // chain is still proven end to end rather than merely renamed.
+    expect(fnSource).toMatch(/supabase\.rpc\(["']biz_update_trip_live_command["']/);
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20270509001971_issue_1971_ari_trip_lifecycle.sql",
+      ),
+      "utf8",
+    );
+    expect(migration).toMatch(
+      /public\.issue_1719_update_live_trip_with_poster\(p_event_id, v_forward, p_reason\)/,
+    );
   });
 
   test("ORCH-0876 migration body enforces event_type='trip' + raises event_not_a_trip", () => {

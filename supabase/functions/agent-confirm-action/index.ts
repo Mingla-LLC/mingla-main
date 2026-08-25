@@ -123,6 +123,18 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "upsert_ticket_tier",
   "set_pricing_switches",
   "set_brand_pricing_defaults",
+  // Issue #1971 — trip lifecycle and graph writes commit through
+  // ari_execute_trip_operation and the shared #1972 operation receipt, so an
+  // ambiguous `executing` retry replays that receipt instead of returning
+  // WRONG_STATE or re-running the mutation.
+  "create_trip",
+  "update_trip",
+  "manage_trip_days",
+  "manage_trip_inclusions",
+  "manage_trip_tiers",
+  "manage_trip_traveler_intake",
+  "publish_trip",
+  "delete_trip",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.

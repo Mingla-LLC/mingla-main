@@ -12,6 +12,22 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // tools (77) and register three venue manage tools + ops/SMS repairs (77→80).
 // Capability denominator stays 120; broken 27→25; registered_unverified 49→54;
 // unsupported 32→29.
+//
+// [TEST-MOD-APPROVED #1971] Trip lifecycle. Five tools are registered
+// (manage_trip_days / _inclusions / _tiers / _traveler_intake and the
+// finance-gated get_trip_order_money), so the pinned tool census moves 80→85.
+// Nine trip rows change status: the four repaired lifecycle rows leave broken
+// (25→21) and the five previously tool-less rows leave unsupported (29→24), all
+// landing in registered_unverified (54→63). The capability denominator is
+// UNCHANGED at 120 — no operation was added to or removed from the reviewed
+// universe. Exactly four assertions are invalidated and re-pinned:
+// EXPECTED_TOOL_NAMES, EXPECTED.statusBreakdown (with its "N-tool"/classification
+// messages), EXPECTED.statusDigest, EXPECTED.mappingDigest and
+// EXPECTED.sourceRefDigest — the last because the nine rows now name their real
+// canonical owners. EXPECTED.idDigest is deliberately unchanged, which is the
+// independent proof that the denominator itself did not move. Every hostile
+// mutant below still fires; the broken-laundering mutant is simply re-aimed at a
+// row that is still broken.
 const EXPECTED_TOOL_NAMES = [
   "cancel_campaign",
   "cancel_event",
@@ -40,6 +56,7 @@ const EXPECTED_TOOL_NAMES = [
   "get_partner_status",
   "get_payout_status",
   "get_tax_status",
+  "get_trip_order_money",
   "get_venue_listing_status",
   "invite_brand_member",
   "invite_scanner",
@@ -54,6 +71,10 @@ const EXPECTED_TOOL_NAMES = [
   "manage_experience_stops",
   "manage_stay_inventory",
   "manage_stay_policy_price_media",
+  "manage_trip_days",
+  "manage_trip_inclusions",
+  "manage_trip_tiers",
+  "manage_trip_traveler_intake",
   "manage_venue_availability",
   "manage_venue_menu",
   "manage_venue_waitlist",
@@ -99,16 +120,16 @@ const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 54,
-    broken: 25,
+    registered_unverified: 63,
+    broken: 21,
     guided_handoff: 8,
-    unsupported: 29,
+    unsupported: 24,
     in_flight: 4,
   }),
   idDigest: "e28cf99d53c6a2c3205a2a5aaab5f3b0cd4dd4a36cdd8b834ee3ab86b57cc556",
-  statusDigest: "1a12632640045add1158976d2b7bf3d5e915a03af92b8088bfdd753251b11106",
-  mappingDigest: "07bd54ce9bebb45551112e96b08b165d3dce05e74447793477b147a9dec5e021",
-  sourceRefDigest: "8ec32f844481a48ac96cc31a6e95d0f283eda11834d3d239b43853f6ad89c7dc",
+  statusDigest: "a487b817393732127a3f2f218584142699d6ab2a200f83b83a0273c1736e6b2c",
+  mappingDigest: "041212bb7146f9acbce72f4103cf0f45b13f800ff4534c59118764e036abdcf2",
+  sourceRefDigest: "02bd022a1d553964b08eafc15f1aa79ba0e71eecd2526a5fc88443318e278ec7",
 });
 
 function readLedger() {
@@ -134,9 +155,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("80-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("85-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("54/25/29/8/4/0 classification changed");
+    failures.push("63/21/24/8/4/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
@@ -172,7 +193,10 @@ test("tester rejects broken-to-unverified status laundering with reconciled coun
   const ledger = readLedger();
   // [TEST-MOD-APPROVED #1978] pin a still-broken row after ticket pricing and
   // venue listing repairs moved prior targets out of broken.
-  const row = ledger.capabilities.find((capability) => capability.id === "ari.trip.create");
+  // [TEST-MOD-APPROVED #1971] Re-aimed from ari.trip.create (repaired here) to
+  // ari.rsvp.create, which is still proven broken. The mutant is unchanged in
+  // shape and still fires — only its target row moved.
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.rsvp.create");
   row.status = "registered_unverified";
   ledger.audit.status_breakdown.broken--;
   ledger.audit.status_breakdown.registered_unverified++;

@@ -58,6 +58,10 @@ import {
   updateLiveTripFields,
   type LiveTripPatch,
   type UpdateLiveTripResult,
+  // issue #1971 — one stable operation id per user action, reused across an
+  // automatic retry so the canonical command replays its receipt instead of
+  // mutating twice. See operationIdFor's contract in tripsService.
+  operationIdFor,
 } from "../services/tripsService";
 
 // ---------------------- Query key factory ----------------------
@@ -137,7 +141,8 @@ export interface UseCreateTripDraftResult {
 export const useCreateTripDraft = (): UseCreateTripDraftResult => {
   const queryClient = useQueryClient();
   const mutation = useMutation<Trip, Error, CreateTripDraftInput>({
-    mutationFn: async (input) => createTripDraft(input, "owner"),
+    mutationFn: async (input) =>
+      createTripDraft(input, "owner", { operationId: operationIdFor(input) }),
     onSuccess: (trip) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({
@@ -175,8 +180,10 @@ export const useUpdateTripBasics = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<Trip, Error, UpdateTripBasicsInput>({
-    mutationFn: async ({ eventId, patch }) =>
-      updateTripBasics(eventId, patch),
+    mutationFn: async (variables) =>
+      updateTripBasics(variables.eventId, variables.patch, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({
@@ -208,7 +215,10 @@ export const useUpsertTripDays = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripDay[], Error, UpsertTripDaysInput>({
-    mutationFn: async ({ eventId, days }) => upsertTripDays(eventId, days),
+    mutationFn: async (variables) =>
+      upsertTripDays(variables.eventId, variables.days, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -235,8 +245,10 @@ export const useUpsertTripInclusions = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripInclusion[], Error, UpsertTripInclusionsInput>({
-    mutationFn: async ({ eventId, items }) =>
-      upsertTripInclusions(eventId, items),
+    mutationFn: async (variables) =>
+      upsertTripInclusions(variables.eventId, variables.items, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -263,8 +275,10 @@ export const useUpdateTripPricing = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripPricingTier, Error, UpdateTripPricingInput>({
-    mutationFn: async ({ eventId, patch }) =>
-      updateTripPricing(eventId, patch),
+    mutationFn: async (variables) =>
+      updateTripPricing(variables.eventId, variables.patch, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -296,8 +310,10 @@ export const useCreateTripPricingTier = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<TripPricingTier, Error, CreateTripPricingTierInput>({
-    mutationFn: async ({ eventId, patch }) =>
-      createTripPricingTier(eventId, patch),
+    mutationFn: async (variables) =>
+      createTripPricingTier(variables.eventId, variables.patch, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -327,8 +343,10 @@ export const useRemoveTripPricingTier = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<void, Error, RemoveTripPricingTierInput>({
-    mutationFn: async ({ eventId, ticketTypeId }) =>
-      removeTripPricingTier(eventId, ticketTypeId),
+    mutationFn: async (variables) =>
+      removeTripPricingTier(variables.eventId, variables.ticketTypeId, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (_, { eventId }) => {
       queryClient.invalidateQueries({ queryKey: tripKeys.detail(eventId) });
     },
@@ -356,8 +374,12 @@ export const usePublishTrip = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<Trip, Error, PublishTripInput>({
-    mutationFn: async ({ eventId, draftPayload }) =>
-      publishTrip(eventId, draftPayload),
+    mutationFn: async (variables) =>
+      publishTrip(variables.eventId, variables.draftPayload, {
+        operationId: operationIdFor(variables),
+        // publish runs two commands; the pre-save needs its own stable id.
+        saveOperationId: operationIdFor(variables.draftPayload),
+      }),
     onSuccess: (trip, { brandId }) => {
       queryClient.setQueryData<Trip>(tripKeys.detail(trip.id), trip);
       queryClient.invalidateQueries({
@@ -395,7 +417,10 @@ export const useSoftDeleteTrip = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<SoftDeleteResult, Error, SoftDeleteTripInput>({
-    mutationFn: async ({ eventId }) => softDeleteTrip(eventId),
+    mutationFn: async (variables) =>
+      softDeleteTrip(variables.eventId, {
+        operationId: operationIdFor(variables),
+      }),
     onSuccess: (result, { eventId, brandId }) => {
       if (!result.rejected) {
         queryClient.removeQueries({ queryKey: tripKeys.detail(eventId) });
@@ -441,8 +466,13 @@ export const useUpdateLiveTripFields = (): UseMutationResult<
 > => {
   const queryClient = useQueryClient();
   return useMutation<UpdateLiveTripResult, Error, UpdateLiveTripFieldsInput>({
-    mutationFn: async ({ eventId, patch, reason }) =>
-      updateLiveTripFields(eventId, patch, reason),
+    mutationFn: async (variables) =>
+      updateLiveTripFields(
+        variables.eventId,
+        variables.patch,
+        variables.reason,
+        { operationId: operationIdFor(variables) },
+      ),
     onSuccess: (result, { eventId }) => {
       // Only invalidate on actual successful patch — refund-gate rejections
       // do NOT mutate the trip, so cache stays valid.

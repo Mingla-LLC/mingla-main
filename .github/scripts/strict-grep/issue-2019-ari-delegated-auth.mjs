@@ -116,7 +116,10 @@ function check(s, manifest) {
   // [TEST-MOD-APPROVED #1975+#1978+#1979] Stay (+3), venue listing reads (+3),
   // and venue manage tools (+3 availability/menu/waitlist) extend the
   // denominator (71 + 9 = 80).
-  if (declarationCount !== 80) failures.push(`expected 80 declarations, got ${declarationCount}`);
+  // [TEST-MOD-APPROVED #1971] Four trip graph tools (days/inclusions/tiers/
+  // traveler intake) plus the finance-gated aggregate trip money read extend it
+  // again (80 + 5 = 85). No inherited role changes.
+  if (declarationCount !== 85) failures.push(`expected 85 declarations, got ${declarationCount}`);
   for (const needle of ["biz_brand_effective_rank_for_caller", 'rpc("biz_role_rank"', "secureAgentTools(", "await authorizeAgentTool"]) {
     if (!Object.values(s).some((value) => value.includes(needle))) failures.push(`missing ${needle}`);
   }

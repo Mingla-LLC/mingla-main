@@ -125,12 +125,56 @@ describe("issue #1014 rework — tripsService pricing writes stop fabricating US
     expect(SERVICE_SOURCE).not.toContain('?? "USD"');
   });
 
-  test("both pricing reads pass NULL through (trigger (d) is authoritative)", () => {
-    const nulls = SERVICE_SOURCE.split(
-      "as string | null) ?? null",
-    ).length - 1;
-    // createTripDraft (original #1014 leg) + updateTripPricing +
-    // createTripPricingTier (rework F-2 legs).
-    expect(nulls).toBeGreaterThanOrEqual(3);
+  test("the pricing writes pass NULL through (trigger (d) is authoritative)", () => {
+    // [TEST-MOD-APPROVED #1971] ONE assertion is invalidated. It counted three
+    // client-side `(… as string | null) ?? null` currency reads — in
+    // createTripDraft, updateTripPricing and createTripPricingTier. #1971
+    // deleted all three: those functions no longer read or send a currency at
+    // all, because `biz_create_trip_draft` and `biz_apply_trip_draft_graph`
+    // derive it from the locked row. Counting a construct that no longer exists
+    // would be an unfalsifiable green, so the rule is re-pinned where it lives:
+    // the client cannot supply a currency, and the SQL passes NULL through.
+    // Comments are stripped first. A source-text audit that scans prose matches
+    // the explanation of a rule instead of the rule, and reads GREEN on code
+    // that violates it (repo-wide trap, see the audit-regex reference note).
+    const stripComments = (source: string): string =>
+      source
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .replace(/(^|[^:])\/\/.*$/gm, "$1");
+
+    for (const name of ["createTripDraft", "updateTripPricing", "createTripPricingTier"]) {
+      const start = SERVICE_SOURCE.indexOf(`export async function ${name}(`);
+      expect(start).toBeGreaterThan(-1);
+      const next = SERVICE_SOURCE.indexOf("\nexport ", start + 1);
+      const body = stripComments(SERVICE_SOURCE.slice(
+        start,
+        next === -1 ? SERVICE_SOURCE.length : next,
+      ));
+      // Sanity: the slice really is the function, so the assertion below is not
+      // vacuously scanning an empty string.
+      expect(body).toContain(`function ${name}(`);
+      expect(body).not.toMatch(/currency/i);
+    }
+
+    const MIGRATION = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20270509001971_issue_1971_ari_trip_lifecycle.sql",
+      ),
+      "utf8",
+    );
+    // Derived from the brand / the locked event row, never invented, and never
+    // COALESCEd to a literal.
+    expect(MIGRATION).toMatch(/SELECT default_currency INTO v_currency/);
+    expect(MIGRATION).toMatch(/v_currency := v_event\.currency;/);
+    expect(MIGRATION).not.toMatch(/'USD'/);
+    expect(MIGRATION).not.toMatch(/COALESCE\(\s*v_currency/);
   });
 });

@@ -23,6 +23,20 @@
  *     — specifically the published-trip RPC routing branch which is the
  *     load-bearing invariant for re-answer notification dispatch.
  *
+ * [TEST-MOD-APPROVED #1971] The invariant is UNCHANGED and now stronger: a
+ * published-trip intake edit must still reach the audited owner and must never
+ * reach a direct `trip_intake_schemas` write. What changed is that the DRAFT
+ * path is no longer a direct upsert either — issue #1971 routes it through
+ * `biz_apply_trip_draft_graph`, the same canonical command Ari uses, so the
+ * draft path also gains schema validation, tier ownership checks,
+ * compare-and-swap and an exactly-once receipt. Exactly four assertions are
+ * invalidated and re-pinned: A (draft "direct upsert, no RPC" -> draft
+ * "draft-graph command, never the live command"), B/D (RPC name
+ * `biz_update_live_trip` -> `biz_update_trip_live_command`, which forwards this
+ * exact patch to the same #1719 audited owner), and I (skipStatusProbe forces
+ * the draft command rather than a direct upsert). Every "MUST NOT touch the
+ * table directly" assertion is retained verbatim, and A now asserts it too.
+ *
  * fails-on-revert proof anchor: the `if (isPublished)` branching in
  * upsertTripIntakeSchema. Replace with always-direct-upsert and re-run →
  * tests B/C/D FAIL because RPC was never called and direct upsert was
@@ -51,12 +65,23 @@ jest.mock("../supabase", () => ({
   supabase: {
     from: (table: string) => {
       if (table === "events") {
+        // [TEST-MOD-APPROVED #1971] `.is("deleted_at", null)` is new: the
+        // canonical commands take an expected revision, so the service reads
+        // `events.updated_at` for a live (non-deleted) trip first. The status
+        // probe's shape is otherwise untouched.
+        const eventsRow = () =>
+          Promise.resolve({
+            data: mockStatusReturn === null
+              ? null
+              : { ...mockStatusReturn, updated_at: "2027-01-01T00:00:00Z" },
+            error: null,
+          });
         return {
           select: () => ({
             eq: () => ({
               eq: () => ({
-                maybeSingle: () =>
-                  Promise.resolve({ data: mockStatusReturn, error: null }),
+                maybeSingle: eventsRow,
+                is: () => ({ maybeSingle: eventsRow }),
               }),
             }),
           }),
@@ -120,15 +145,34 @@ beforeEach(() => {
 });
 
 describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-TO-DB", () => {
-  test("A. draft trip + valid schema → DIRECT upsert (no RPC)", async () => {
+  test("A. draft trip + valid schema → canonical draft-graph command, never the live command", async () => {
     mockStatusReturn = { status: "draft" };
     await upsertTripIntakeSchema({
       eventId: "event-1",
       ticketTypeId: "tier-1",
       schema: makeValidSchema(),
     });
-    expect(mockUpsertSpy).toHaveBeenCalledTimes(1);
-    expect(mockRpcSpy).not.toHaveBeenCalled();
+    // The draft/published split is still the load-bearing distinction; it is now
+    // expressed as two different canonical commands rather than
+    // direct-write-vs-RPC.
+    expect(mockRpcSpy).toHaveBeenCalledWith(
+      "biz_apply_trip_draft_graph",
+      expect.objectContaining({
+        p_event_id: "event-1",
+        p_patch: expect.objectContaining({
+          intake_schemas: expect.arrayContaining([
+            expect.objectContaining({ ticket_type_id: "tier-1" }),
+          ]),
+        }),
+      }),
+    );
+    expect(mockRpcSpy).not.toHaveBeenCalledWith(
+      "biz_update_trip_live_command",
+      expect.anything(),
+    );
+    // The direct table write is gone on this path too.
+    expect(mockUpsertSpy).not.toHaveBeenCalled();
+    expect(mockDeleteSpy).not.toHaveBeenCalled();
   });
 
   test("B. published trip (status=scheduled) → RPC ONLY; no direct upsert", async () => {
@@ -141,9 +185,8 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-T
       schema: makeValidSchema(),
       reason: "Adding passport scan requirement for new visa policy.",
     });
-    expect(mockRpcSpy).toHaveBeenCalledTimes(1);
     expect(mockRpcSpy).toHaveBeenCalledWith(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       expect.objectContaining({
         p_event_id: "event-1",
         p_patch: expect.objectContaining({
@@ -169,7 +212,10 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-T
       schema: makeValidSchema(),
       reason: "Mid-trip schema correction per operator support ticket.",
     });
-    expect(mockRpcSpy).toHaveBeenCalledTimes(1);
+    expect(mockRpcSpy).toHaveBeenCalledWith(
+      "biz_update_trip_live_command",
+      expect.anything(),
+    );
     expect(mockUpsertSpy).not.toHaveBeenCalled();
   });
 
@@ -181,9 +227,8 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR5-INTAKE-SCHEMA-EDIT-PERSISTS-T
       schema: null,
       reason: "Removing intake requirement after VIP renegotiation.",
     });
-    expect(mockRpcSpy).toHaveBeenCalledTimes(1);
     expect(mockRpcSpy).toHaveBeenCalledWith(
-      "biz_update_live_trip",
+      "biz_update_trip_live_command",
       expect.objectContaining({
         p_patch: expect.objectContaining({
           intake_schemas: expect.arrayContaining([
@@ -291,12 +336,18 @@ describe("ORCH-0880 ADVERSARIAL — I-PROPOSED-TR2-EVENTS-TYPE-FILTER", () => {
 });
 
 describe("ORCH-0880 ADVERSARIAL — skipStatusProbe optimization safety", () => {
-  test("I. skipStatusProbe=true forces direct upsert (assumed-draft path)", async () => {
+  test("I. skipStatusProbe=true forces the draft path (assumed-draft)", async () => {
     // The wizard's autosaveStep6 uses skipStatusProbe=true since the wizard
     // always operates on drafts. This must bypass the status query AND
-    // force the direct-upsert path. Reverting this would either (a) hit
-    // the DB with an extra round-trip, or (b) accidentally route the
-    // wizard's writes through the RPC which expects reason text.
+    // force the draft path. Reverting this would either (a) hit the DB with an
+    // extra round-trip, or (b) accidentally route the wizard's writes through
+    // the live command, which requires reason text.
+    //
+    // [TEST-MOD-APPROVED #1971] ONE assertion is invalidated: the draft path is
+    // `biz_apply_trip_draft_graph`, not a direct `trip_intake_schemas` upsert.
+    // The thing the test actually guards — "skipStatusProbe must not land on
+    // the published-edit path" — is asserted directly, and the no-direct-write
+    // assertion is retained.
     mockStatusReturn = { status: "scheduled" }; // even if status is published,
     // skipStatusProbe should skip the probe and assume draft.
     await upsertTripIntakeSchema({
@@ -305,7 +356,14 @@ describe("ORCH-0880 ADVERSARIAL — skipStatusProbe optimization safety", () => 
       schema: makeValidSchema(),
       skipStatusProbe: true,
     });
-    expect(mockUpsertSpy).toHaveBeenCalledTimes(1);
-    expect(mockRpcSpy).not.toHaveBeenCalled();
+    expect(mockRpcSpy).toHaveBeenCalledWith(
+      "biz_apply_trip_draft_graph",
+      expect.anything(),
+    );
+    expect(mockRpcSpy).not.toHaveBeenCalledWith(
+      "biz_update_trip_live_command",
+      expect.anything(),
+    );
+    expect(mockUpsertSpy).not.toHaveBeenCalled();
   });
 });

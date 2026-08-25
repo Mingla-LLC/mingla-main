@@ -56,19 +56,55 @@ describe("ORCH-0859 — useTrips structural contract", () => {
     expect(useTripsSource).toMatch(/export const useTrip\b/);
   });
 
-  test("tripsService.publishTrip calls business_publish_trip_draft RPC (NOT event RPC)", () => {
+  test("tripsService.publishTrip calls the canonical trip publish command (NOT event RPC)", () => {
     // [TEST-MOD-APPROVED #1719] Pin the new atomic poster wrapper instead of
     // the retired direct entry point; the event/trip separation is unchanged.
+    // [TEST-MOD-APPROVED #1971] ONE assertion is invalidated: publish is now
+    // `biz_publish_trip_command`, which loads the PERSISTED graph and delegates
+    // to `issue_1719_publish_trip_with_poster` inside the same transaction. The
+    // event/trip separation this test exists for is unchanged, and the negative
+    // assertion against the event RPC is retained verbatim.
     expect(tripsServiceSource).toMatch(
-      /supabase\.rpc\(\s*"issue_1719_publish_trip_with_poster"/,
+      /supabase\.rpc\(\s*"biz_publish_trip_command"/,
     );
     expect(tripsServiceSource).not.toMatch(
       /supabase\.rpc\(\s*"business_publish_event_draft"/,
     );
   });
 
-  test("tripsService.createTripDraft inserts event_type='trip'", () => {
-    expect(tripsServiceSource).toMatch(/event_type:\s*"trip"/);
+  test("tripsService.createTripDraft creates a trip through the canonical command", () => {
+    // [TEST-MOD-APPROVED #1971] ONE assertion is invalidated: the client no
+    // longer writes `event_type: "trip"` on an events insert, because it no
+    // longer inserts. `biz_create_trip_draft` is trip-typed by construction, so
+    // the rule is re-pinned where it now lives — and the client is additionally
+    // pinned as having NO events insert at all, which the old regex could not
+    // see.
+    expect(tripsServiceSource).toMatch(
+      /supabase\.rpc\(\s*"biz_create_trip_draft"/,
+    );
+    expect(tripsServiceSource).not.toMatch(
+      /\.from\("events"\)\s*\n?\s*\.insert\(/,
+    );
+    const migration = readFileSync(
+      join(
+        __dirname,
+        "..",
+        "..",
+        "..",
+        "..",
+        "supabase",
+        "migrations",
+        "20270509001971_issue_1971_ari_trip_lifecycle.sql",
+      ),
+      "utf8",
+    );
+    const start = migration.indexOf(
+      "CREATE OR REPLACE FUNCTION public.biz_create_trip_draft(",
+    );
+    expect(start).toBeGreaterThan(-1);
+    expect(migration.slice(start, migration.indexOf("$fn$;", start))).toMatch(
+      /'trip',\s*\n\s*'draft',/,
+    );
   });
 
   test("tripKeys are immutable readonly literal tuples (cache discipline)", () => {

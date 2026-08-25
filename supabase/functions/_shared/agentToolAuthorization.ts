@@ -32,8 +32,13 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   unpublish_experience: "experience",
   delete_experience: "experience",
   update_trip: "trip",
+  manage_trip_days: "trip",
+  manage_trip_inclusions: "trip",
+  manage_trip_tiers: "trip",
+  manage_trip_traveler_intake: "trip",
   publish_trip: "trip",
   delete_trip: "trip",
+  get_trip_order_money: "trip",
   cancel_trip_booking: "trip",
   publish_rsvp: "rsvp",
   set_rsvp_guest_status: "rsvp",
@@ -82,8 +87,18 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   delete_experience: role("event_manager", "event"),
   create_trip: role("event_manager", "brand"),
   update_trip: role("event_manager", "event"),
+  // #1971 — the trip graph groups. The database floor is event_manager on the
+  // owning brand (biz_trip_require_manager), so the proposal-time gate matches
+  // it exactly; the executor reauthorizes the final edited arguments again.
+  manage_trip_days: role("event_manager", "event"),
+  manage_trip_inclusions: role("event_manager", "event"),
+  manage_trip_tiers: role("event_manager", "event"),
+  manage_trip_traveler_intake: role("event_manager", "event"),
   publish_trip: role("event_manager", "event"),
   delete_trip: role("event_manager", "event"),
+  // #1971 — the aggregate money read is finance-gated in SQL
+  // (biz_trip_require_finance); the coarse gate here agrees.
+  get_trip_order_money: role("finance_manager", "event"),
   create_rsvp: role("event_manager", "brand"),
   publish_rsvp: role("event_manager", "event"),
   set_rsvp_guest_status: role("event_manager", "event"),
