@@ -14,6 +14,7 @@ import {
   discoverLiveOrigins,
   discoverWorkflowProviders,
   inspectWorkflows,
+  PROVIDERS_ADDED_SINCE_SEAL,
   SHADOW_PARITY_MARKER,
   SHADOW_PARITY_WRAPPER_NAMES,
   validateRegistry,
@@ -96,7 +97,13 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.deepEqual(shadow.map((suite) => suite.id).sort(), approvedShadowIds);
   assert.equal(baseline.some((suite) => approvedShadowIds.includes(suite.id)), false);
   assert.equal(manifest.legacyOrigins.length, 200);
-  assert.equal(manifest.workflowProviders.length, 91);
+  // [TEST-MOD-APPROVED #2591] Re-pointed to its derivation, not weakened. The
+  // literal 91 is now `91 + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one
+  // declared set the validator subtracts from the frozen provider seal. Two
+  // hand-typed numbers that must agree is how a 607 once landed where two sides
+  // had said 606 and 603 — auto-merged clean, no conflict marker. Deriving both
+  // from one set makes that disagreement unrepresentable.
+  assert.equal(manifest.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   // [TEST-MOD-APPROVED #2438 · SC-15/SC-21] The cutover deletes exactly the twelve
   // Phase 3B wrappers, so live-origin discovery and provider discovery each fall by
   // exactly that wave's own size. Neither figure is re-chosen: the A9-SC1 146 and the
@@ -128,9 +135,11 @@ test("#2435 registry v2 proves the complete current topology", () => {
   assert.equal(deletedProviders.length, 13);
   assert.equal(deletedWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
   assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146 - deletedWrappers.length);
-  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73 - deletedProviders.length);
+  // [TEST-MOD-APPROVED #2591] Same derivation. Raw discovery now also carries the
+  // declared additions; the SEAL subtracts them, this count does not.
+  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73 - deletedProviders.length + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200);
-  assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91);
+  assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
   const suite1532 = manifest.suites.find((suite) => suite.id === "issue-1532-tester-adversarial");
   assert.ok(suite1036.expectedFiles.includes("mingla-business/src/components/theme/__tests__/issue1036NoContrastNode.web.render.test.tsx"));

@@ -118,6 +118,45 @@ const PHASE3C_AUTHORISED_ENV = Object.freeze([
 ]);
 const LOCKED_PROVIDER_DISCOVERY_SHA256 = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158";
 const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
+// [#2591] Providers that have legitimately appeared SINCE the seal, each
+// declared by name and by exact content and each reviewed on its own issue.
+//
+// LOCKED_PROVIDER_DISCOVERY_SHA256 is NOT re-frozen and the reconstructed length
+// stays 73. Nothing is added to the sealed world; what has been added since it is
+// declared here and SUBTRACTED before the digest is taken. Three properties fall
+// out of that, and all three are the reason this is stronger than moving the
+// literal would have been:
+//
+//   * an UNDECLARED new provider still breaks the seal — that tripwire is the
+//     whole point and it stays armed;
+//   * a declared addition whose referenceFiles drift still breaks it, because the
+//     subtraction is by exact content, never by name;
+//   * the blind-memo detection this file forbids by name at the trackedFiles
+//     scope survives intact: a memo that keeps reporting the pre-#2591 discovery
+//     means the declared addition is ABSENT, the presence assertion fails, and
+//     this goes RED naming it. Re-freezing the literal is precisely what would
+//     have destroyed that.
+//
+// Every count that moves because of an addition is DERIVED from this one set. A
+// second hand-typed number is how a value of 607 once landed where two sides had
+// independently said 606 and 603, auto-merged clean with no conflict marker.
+export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
+  Object.freeze({
+    issue: 2591,
+    workflow: "postgres-contract-suites.yml",
+    // Discovery derives a provider record from the source files that name a
+    // workflow. These are the three workflow-content tests the #2591 tester
+    // re-pointed at the consolidated lane under [TEST-MOD-APPROVED #2591].
+    referenceFiles: Object.freeze([
+      "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
+      "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
+      "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
+    ]),
+  }),
+]);
+const PROVIDERS_ADDED_SINCE_SEAL_NAMES = new Set(
+  PROVIDERS_ADDED_SINCE_SEAL.map((item) => item.workflow),
+);
 const PHASE3B_PROVIDER_NAMES = new Set([
   "issue-1022-theme-control-tests.yml",
   "issue-1902-public-event-lifecycle-tests.yml",
@@ -1176,8 +1215,17 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       // This file carries the reviewed wave identity lists as literals. Its own
       // source naming a wrapper is an identity declaration, not evidence that the
       // wrapper provides a suite, so it is exempted for the wave sets only.
+      //
+      // [#2591] PROVIDERS_ADDED_SINCE_SEAL is the same shape of literal and gets
+      // the same exemption, for the same reason and no wider. Without it the
+      // declaration MANUFACTURES the drift it exists to detect: naming
+      // postgres-contract-suites.yml in the declaration made this file a fourth
+      // discovered referenceFile for it, so the byte-equality subtraction failed
+      // against a list the declaration itself had changed. MEASURED, not
+      // theorised — it was the first thing the new guard reported.
       if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs"
-        && (PHASE3B_WRAPPER_SET.has(name) || PHASE3C_WRAPPER_SET.has(name))) continue;
+        && (PHASE3B_WRAPPER_SET.has(name) || PHASE3C_WRAPPER_SET.has(name)
+          || PROVIDERS_ADDED_SINCE_SEAL_NAMES.has(name))) continue;
       if (!workflowNames.has(name)) continue;
       if (!references.has(name)) references.set(name, []);
       references.get(name).push(relative);
@@ -2008,8 +2056,25 @@ export function validateRegistry(
 
   const discoveredProviders = workflowProviders ?? discoverWorkflowProviders(root);
   if (workflowProviders == null) {
-    const discoveryDigest = crypto.createHash("sha256").update(JSON.stringify(discoveredProviders)).digest("hex");
-    const phase3bProviders = discoveredProviders.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
+    // [#2591] Subtract the declared additions before the seal is computed. Each
+    // must be PRESENT and BYTE-EQUAL to its declaration; anything else is RED.
+    const declaredAdditions = new Map(PROVIDERS_ADDED_SINCE_SEAL.map((item) => [item.workflow, item]));
+    const declaredSeen = new Set();
+    const sealedDiscovery = [];
+    for (const item of discoveredProviders) {
+      const declared = declaredAdditions.get(item.workflow);
+      if (!declared) { sealedDiscovery.push(item); continue; }
+      declaredSeen.add(item.workflow);
+      if (JSON.stringify(item.referenceFiles) !== JSON.stringify([...declared.referenceFiles])) {
+        fail(errors, `declared provider addition ${declared.workflow} (#${declared.issue}) has drifted: discovery reports ${JSON.stringify(item.referenceFiles)}, the declaration in PROVIDERS_ADDED_SINCE_SEAL says ${JSON.stringify([...declared.referenceFiles])}. The seal subtracts declared additions by exact content, never by name.`);
+      }
+    }
+    for (const declared of PROVIDERS_ADDED_SINCE_SEAL) {
+      if (declaredSeen.has(declared.workflow)) continue;
+      fail(errors, `declared provider addition ${declared.workflow} (#${declared.issue}) was NOT FOUND in discovery. Either the workflow or the sources that reference it are gone, or discovery is being served from a cache — a blind memo reporting the pre-addition world looks exactly like this, and that is why the seal subtracts a declared set instead of being re-frozen.`);
+    }
+    const discoveryDigest = crypto.createHash("sha256").update(JSON.stringify(sealedDiscovery)).digest("hex");
+    const phase3bProviders = sealedDiscovery.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow));
     const phase3bDigest = crypto.createHash("sha256").update(JSON.stringify(phase3bProviders)).digest("hex");
     // [#2438 SC-13] The authority expectation follows the wave's own atomic
     // lifecycle, and there is exactly ONE frozen seal on both sides of it:
@@ -2043,7 +2108,7 @@ export function validateRegistry(
       if (phase3bProviders.length !== 0) {
         fail(errors, `Phase 3B provider authority drifted: terminal wrappers are deleted and must contribute no provider record, got ${phase3bProviders.length}`);
       }
-      const phase3cDiscoveredProviders = discoveredProviders.filter((item) => PHASE3C_PROVIDER_NAMES.has(item.workflow));
+      const phase3cDiscoveredProviders = sealedDiscovery.filter((item) => PHASE3C_PROVIDER_NAMES.has(item.workflow));
       const expectedPhase3cDiscovered = phase3cTerminal ? 0 : PHASE3C_PROVIDER_NAMES.size;
       if (phase3cDiscoveredProviders.length !== expectedPhase3cDiscovered) {
         fail(errors, `Phase 3C provider authority drifted: expected ${expectedPhase3cDiscovered} discovered provider records at this lifecycle, got ${phase3cDiscoveredProviders.length}`);
@@ -2055,18 +2120,18 @@ export function validateRegistry(
       const carriedPhase3bProviders = (manifest.workflowProviders || [])
         .filter((item) => carriedNames.has(item.workflow))
         .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
-      const reconstructedShadow = [...discoveredProviders, ...carriedPhase3bProviders]
+      const reconstructedShadow = [...sealedDiscovery, ...carriedPhase3bProviders]
         .sort((a, b) => a.workflow.localeCompare(b.workflow));
       const reconstructedDigest = crypto.createHash("sha256").update(JSON.stringify(reconstructedShadow)).digest("hex");
       if (carriedPhase3bProviders.length !== carriedNames.size
-          || discoveredProviders.length !== 73 - carriedNames.size
+          || sealedDiscovery.length !== 73 - carriedNames.size
           || reconstructedShadow.length !== 73
           || reconstructedDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${discoveredProviders.length} discovered`);
+        fail(errors, `workflow provider authority drifted: terminal discovery plus the ${carriedPhase3bProviders.length} carried records must reconstruct the frozen 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${reconstructedShadow.length}/${reconstructedDigest} from ${sealedDiscovery.length} discovered (${discoveredProviders.length} before subtracting ${PROVIDERS_ADDED_SINCE_SEAL.length} declared addition(s))`);
       }
     } else {
-      if (discoveredProviders.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
-        fail(errors, `workflow provider authority drifted: expected 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${discoveredProviders.length}/${discoveryDigest}`);
+      if (sealedDiscovery.length !== 73 || discoveryDigest !== LOCKED_PROVIDER_DISCOVERY_SHA256) {
+        fail(errors, `workflow provider authority drifted: expected 73/${LOCKED_PROVIDER_DISCOVERY_SHA256}, got ${sealedDiscovery.length}/${discoveryDigest}`);
       }
       if (phase3bProviders.length !== 6 || phase3bDigest !== LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256) {
         fail(errors, `Phase 3B provider authority drifted: expected 6/${LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256}, got ${phase3bProviders.length}/${phase3bDigest}`);
@@ -2074,7 +2139,9 @@ export function validateRegistry(
     }
   }
   const registeredProviders = manifest.workflowProviders || [];
-  if (!Array.isArray(registeredProviders) || registeredProviders.length !== 91) fail(errors, "workflowProviders must contain exactly the amended 91 providers");
+  // [#2591] DERIVED from the one declared set, never hand-typed alongside it.
+  const expectedProviderCount = 91 + PROVIDERS_ADDED_SINCE_SEAL.length;
+  if (!Array.isArray(registeredProviders) || registeredProviders.length !== expectedProviderCount) fail(errors, `workflowProviders must contain exactly the amended 91 providers plus ${PROVIDERS_ADDED_SINCE_SEAL.length} declared addition(s) = ${expectedProviderCount}`);
   const providerKeys = new Set();
   const registeredByName = new Map();
   for (const item of registeredProviders) {

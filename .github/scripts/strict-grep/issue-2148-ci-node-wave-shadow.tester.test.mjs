@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { execFileSync, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { PROVIDERS_ADDED_SINCE_SEAL } from "../ci-batch/validate-manifest-v2.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const PRE_AMENDMENT_6_TESTER_SHA256 = "d54eb1655eb4bc7ddd157785743954a1cbdbac6f6ae938c07a111f7256ae08a0";
@@ -253,7 +254,11 @@ function assertReconstructed(value, inspections) {
   const shadow = value.suites.filter((suite) => suite.migrationWave === "phase3a-node-wave");
   assert.equal(value.legacyOrigins.length, 200);
   assert.equal(value.suites.length, 84);
-  assert.equal(value.workflowProviders.length, 91);
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(shadow.length, 32);
   assert.deepEqual(shadow.map((suite) => suite.id), Object.keys(VARIANTS));
   assert.deepEqual([...new Set(shadow.map((suite) => path.basename(suite.origin)))].sort(), ORIGINS);

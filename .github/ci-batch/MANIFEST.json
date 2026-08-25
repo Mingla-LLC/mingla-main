@@ -22592,6 +22592,18 @@
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
     {
+      "workflow": "postgres-contract-suites.yml",
+      "ownerIssue": "#2591",
+      "transition": "retained-live-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "referenceFiles": [
+        "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
+        "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
+        "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts"
+      ],
+      "rationale": "#2591 consolidates the nine migration-gated Postgres contract lanes into this workflow; the three re-pointed workflow-content tests name it, so discovery records it as their provider. Declared in PROVIDERS_ADDED_SINCE_SEAL so the frozen provider seal is subtracted from, never re-frozen."
+    },
+    {
       "workflow": "production-supabase-authority.yml",
       "ownerIssue": "#2148",
       "transition": "retained-live-provider",
