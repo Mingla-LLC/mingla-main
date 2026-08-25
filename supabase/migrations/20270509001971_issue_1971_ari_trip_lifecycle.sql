@@ -14,19 +14,32 @@
 --    `now()` explicitly rather than `clock_timestamp()`, so the source says
 --    what the database actually stores.
 --
---  * `trg_events_sync_departure` (BEFORE, `tg_events_sync_departure_from_theme`)
---    DERIVES `events.departure_text` from the theme's business_trip
---    departureLocationText key whenever that key is present on NEW.theme. A
---    patch that wrote the column directly would be silently clobbered by the
---    existing theme on the very next events UPDATE. The publish and live-update
---    owners derive `events.destination_text` the same way, from the theme's
---    destinationLocationText key.
+--  * THE COLUMNS ARE AUTHORITATIVE; the theme keys are an authoring INPUT that
+--    is mirrored into them. This is the schema's own position, not a choice
+--    invented here:
+--      - ORCH-0950-expanded made `events.destination_text` canonical and
+--        backfilled it FROM the theme;
+--      - `tg_events_sync_departure_from_theme` (20260803000000) documents
+--        itself as mirroring the theme key into "the canonical
+--        events.departure_text + departure_geo columns", explicitly as a
+--        "mirror of the destination_text canonical-write pattern";
+--      - the active I-PROPOSED-TRIP-CANONICAL-COLUMNS gate forbids new code
+--        from reintroducing those theme keys as source-of-truth readers/writers.
 --
---    So this migration keeps BOTH in step in one statement: the canonical
---    columns stay populated (I-PROPOSED-TRIP-CANONICAL-COLUMNS: they remain the
---    source of truth every reader uses) AND the theme keys the existing publish
---    owner reads stay in sync, so publishing a draft this command wrote cannot
---    fail its destination validation. It forks neither owner.
+--    Note precisely what that mirror trigger is: `BEFORE INSERT OR UPDATE OF
+--    theme`. It fires ONLY when `theme` is in the UPDATE's column list, so a
+--    column-only write SURVIVES it — it cannot clobber a direct column write,
+--    and it cannot be relied on as the mechanism either.
+--
+--    So the draft-graph command writes the COLUMNS itself, derived from the
+--    merged business_trip object, and writes that merged object back to `theme`
+--    in the same statement. Whichever shape the caller used —
+--    `event.destination_text`, or the destinationLocationText key nested under
+--    `event.business_trip` — both land in the canonical column, and the theme
+--    mirror the existing
+--    publish/live owners consume stays coherent with it. Publish then reads the
+--    COLUMN, so a theme-shaped input can no longer produce a draft that is
+--    unpublishable.
 --
 --  * `public.orders` carries no BEFORE row trigger today (only AFTER ones:
 --    issue_0873_order_change, issue_1770_order_ingest,
@@ -434,10 +447,12 @@ BEGIN
       RAISE EXCEPTION 'trip_event_patch_invalid' USING ERRCODE = '22023';
     END IF;
 
-    -- The theme keys are the WIRE FORMAT the existing publish/live-update
-    -- owners read; `events.destination_text` / `events.departure_text` remain
-    -- the canonical columns every reader uses. Both are written in the one
-    -- statement below, so neither can drift from the other.
+    -- `events.destination_text` / `events.departure_text` are the canonical
+    -- columns (ORCH-0950-expanded, ORCH-1016, I-PROPOSED-TRIP-CANONICAL-COLUMNS)
+    -- and publish reads them. The theme keys are the authoring input and the
+    -- wire format the existing publish/live owners consume. Both are written in
+    -- the one statement below, DERIVED FROM THE SAME merged object, so the two
+    -- cannot drift and neither input shape can produce a half-written trip.
     v_theme := COALESCE(v_event.theme, '{}'::jsonb);
     v_business_trip := COALESCE(v_theme->'business_trip', '{}'::jsonb);
     IF (p_patch->'event') ? 'business_trip' THEN
@@ -463,8 +478,15 @@ BEGIN
                 THEN NULLIF(p_patch#>>'{event,description}', '') ELSE description END,
       timezone = CASE WHEN (p_patch->'event') ? 'timezone'
                 THEN COALESCE(NULLIF(p_patch#>>'{event,timezone}', ''), 'UTC') ELSE timezone END,
-      destination_text = CASE WHEN (p_patch->'event') ? 'destination_text'
-                THEN NULLIF(btrim(p_patch#>>'{event,destination_text}'), '') ELSE destination_text END,
+      -- Derived from the MERGED business_trip, not from the raw patch key, so a
+      -- destinationLocationText nested under `event.business_trip` populates
+      -- the canonical column exactly as `event.destination_text` does. This
+      -- also heals a legacy row whose theme and column disagree, on the next
+      -- patch.
+      destination_text = CASE WHEN v_business_trip ? 'destinationLocationText'
+                THEN NULLIF(btrim(v_business_trip->>'destinationLocationText'), '') ELSE destination_text END,
+      departure_text = CASE WHEN v_business_trip ? 'departureLocationText'
+                THEN NULLIF(btrim(v_business_trip->>'departureLocationText'), '') ELSE departure_text END,
       cover_media_url = CASE WHEN (p_patch->'event') ? 'cover_media_url'
                 THEN NULLIF(p_patch#>>'{event,cover_media_url}', '') ELSE cover_media_url END,
       cover_media_poster_url = CASE WHEN (p_patch->'event') ? 'cover_media_poster_url'
@@ -1068,11 +1090,30 @@ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public, pg_temp
 AS $fn$
 DECLARE
   v_event_id uuid := NEW.event_id;
+  v_is_trip boolean;
 BEGIN
   IF v_event_id IS NULL THEN RETURN NEW; END IF;
   IF NEW.payment_status IN ('failed', 'cancelled') THEN RETURN NEW; END IF;
+
+  -- CHECK -> LOCK -> RE-CHECK. Taking the advisory lock BEFORE establishing that
+  -- this is even a trip order made every concert, stay and venue order on the
+  -- platform serialise against every other order on the same event: MEASURED at
+  -- 1.71s for a second concurrent concert order against 0.02s on a different
+  -- event. A trips issue must not slow checkout for products it does not own.
+  --
+  -- The unlocked read is a FAST PATH, never the authority: `event_type` is NOT
+  -- immutable in this schema (see 20270418002009), so a row can cross types
+  -- concurrently. Non-trips leave here and never touch the lock; trips take it
+  -- and then re-read `deleted_at` UNDER it, which is where the delete/order
+  -- serialisation this trigger exists for actually happens.
+  SELECT (event_type = 'trip') INTO v_is_trip
+    FROM public.events WHERE id = v_event_id;
+  IF NOT COALESCE(v_is_trip, false) THEN RETURN NEW; END IF;
+
   -- Same advisory key the delete command takes, so the two directions serialize
-  -- on one point instead of racing a best-effort pre-query.
+  -- on one point instead of racing a best-effort pre-query. Lock ordering is
+  -- uniform across both sides — advisory first, row locks after — so the
+  -- trigger never holds a row lock while waiting for the advisory key.
   PERFORM pg_advisory_xact_lock(hashtextextended(v_event_id::text, 1971));
   IF EXISTS (
     SELECT 1 FROM public.events
@@ -1190,7 +1231,11 @@ DECLARE
   v_event_patch jsonb := '{}'::jsonb;
   v_seed jsonb := '{}'::jsonb;
 BEGIN
-  IF p_tool_name NOT IN (
+  -- `NULL NOT IN (...)` is NULL and `IF NULL THEN` does not execute, so a NULL
+  -- tool name would fall past this allowlist and be refused further downstream
+  -- by #1972's receipt function instead. That still fails closed, but it means
+  -- the allowlist is not doing the work it appears to. Make it explicit.
+  IF p_tool_name IS NULL OR p_tool_name NOT IN (
     'create_trip', 'update_trip', 'manage_trip_days', 'manage_trip_inclusions',
     'manage_trip_tiers', 'manage_trip_traveler_intake', 'publish_trip', 'delete_trip'
   ) THEN

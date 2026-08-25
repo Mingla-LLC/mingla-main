@@ -600,6 +600,169 @@ BEGIN
 END $$;
 
 -- ---------------------------------------------------------------------------
+-- L. The orders trigger must not OVER-REACH onto other products.
+--
+--    Taking the advisory lock before establishing that the row is even a trip
+--    order serialised every concert, stay and venue order against every other
+--    order on the same event. MEASURED on this harness before the repair: 1.71s
+--    for a second concurrent concert order, against 0.02s on a different event.
+--
+--    This is asserted from `pg_locks` rather than by wall-clock timing. A
+--    timing assertion in CI is a flake generator, and it can only ever say
+--    "this was slow", never "the lock was taken". Reading the lock table says
+--    exactly which of those happened, deterministically.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_brand uuid := '19710000-0000-4000-8000-000000000010';
+  v_concert uuid := '19710000-0000-4000-8000-0000000000d0';
+  v_trip uuid := '19710000-0000-4000-8000-0000000000d1';
+  v_key bigint;
+  v_locks int;
+BEGIN
+  INSERT INTO public.events(id, brand_id, title, slug, event_type, status, currency, theme)
+  VALUES (v_concert, v_brand, 'A concert', 'issue-1971-concert', 'event', 'scheduled', 'GBP', '{}'::jsonb),
+         (v_trip, v_brand, 'A live trip', 'issue-1971-live-trip', 'trip', 'scheduled', 'GBP', '{}'::jsonb);
+
+  -- L-01 an order on a NON-TRIP event must not take the trip advisory lock.
+  v_key := hashtextextended(v_concert::text, 1971);
+  INSERT INTO public.orders(id, event_id, total_cents, currency, payment_method, payment_status, source)
+  VALUES (gen_random_uuid(), v_concert, 2500, 'GBP', 'card_reader', 'paid', 'door_sale');
+
+  SELECT count(*) INTO v_locks FROM pg_locks
+   WHERE locktype = 'advisory' AND pid = pg_backend_pid()
+     AND ((classid::bigint << 32) | objid::bigint) = v_key;
+  IF v_locks <> 0 THEN
+    RAISE EXCEPTION 'L-01 a non-trip order took the trip advisory lock — every order on this event now serialises';
+  END IF;
+
+  -- L-02 the same insert on a TRIP does take it, so L-01 is not passing because
+  -- the trigger stopped working. This is the control that makes L-01 mean
+  -- something.
+  v_key := hashtextextended(v_trip::text, 1971);
+  INSERT INTO public.orders(id, event_id, total_cents, currency, payment_method, payment_status, source)
+  VALUES (gen_random_uuid(), v_trip, 2500, 'GBP', 'card_reader', 'paid', 'door_sale');
+
+  SELECT count(*) INTO v_locks FROM pg_locks
+   WHERE locktype = 'advisory' AND pid = pg_backend_pid()
+     AND ((classid::bigint << 32) | objid::bigint) = v_key;
+  IF v_locks <> 1 THEN
+    RAISE EXCEPTION 'L-02 a trip order did NOT take the advisory lock (found %) — delete/order serialisation is gone', v_locks;
+  END IF;
+
+  -- L-03 a cancelled/failed order leaves before any of it, on either type.
+  v_key := hashtextextended(v_concert::text, 1971);
+  INSERT INTO public.orders(id, event_id, total_cents, currency, payment_method, payment_status, source)
+  VALUES (gen_random_uuid(), v_concert, 100, 'GBP', 'card_reader', 'cancelled', 'door_sale');
+  SELECT count(*) INTO v_locks FROM pg_locks
+   WHERE locktype = 'advisory' AND pid = pg_backend_pid()
+     AND ((classid::bigint << 32) | objid::bigint) = v_key;
+  IF v_locks <> 0 THEN
+    RAISE EXCEPTION 'L-03 a cancelled non-trip order took the trip advisory lock';
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
+-- M. destination/departure: the COLUMN is authoritative, whichever shape the
+--    caller used to author it.
+--
+--    ORCH-0950-expanded made `events.destination_text` canonical;
+--    `tg_events_sync_departure_from_theme` documents itself as mirroring the
+--    theme key into "the canonical events.departure_text column"; and the
+--    active I-PROPOSED-TRIP-CANONICAL-COLUMNS gate forbids treating the theme
+--    keys as source of truth. Publish therefore reads the COLUMN — so a
+--    theme-shaped input that never reached the column would produce a draft
+--    that cannot publish. It must reach the column.
+--
+--    Note the mirror trigger is `BEFORE INSERT OR UPDATE OF theme`: it fires
+--    only when `theme` is written, so it can neither clobber a column-only
+--    write nor be relied on as the mechanism. The command writes both columns
+--    itself, derived from the merged object.
+-- ---------------------------------------------------------------------------
+DO $$
+DECLARE
+  v_brand uuid := '19710000-0000-4000-8000-000000000010';
+  v_event uuid;
+  v_rev timestamptz;
+  g jsonb;
+  v_result jsonb;
+BEGIN
+  g := public.biz_create_trip_draft(
+    v_brand, jsonb_build_object('title', 'Theme-shaped authoring'),
+    '19710000-0000-4000-8000-0000000000e9');
+  v_event := (g#>>'{event,id}')::uuid;
+  v_rev := (g->>'revision')::timestamptz;
+
+  -- M-01 a THEME-SHAPED patch must populate the canonical COLUMNS.
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object('event', jsonb_build_object(
+      'business_trip', jsonb_build_object(
+        'destinationLocationText', 'Accra, Ghana',
+        'departureLocationText', 'Manchester, UK'))),
+    v_rev, '19710000-0000-4000-8000-0000000000ea');
+
+  IF (g#>>'{event,destination_text}') IS DISTINCT FROM 'Accra, Ghana' THEN
+    RAISE EXCEPTION 'M-01 a theme-shaped destination did not reach the canonical column, got %',
+      COALESCE(g#>>'{event,destination_text}', '<null>');
+  END IF;
+  -- M-02 the same for departure. Note this one has TWO contributors: the
+  -- command's own explicit write, and the pre-existing ORCH-1016 mirror trigger
+  -- (`BEFORE UPDATE OF theme`), which fires because the command writes `theme`
+  -- in the same statement. So M-02 pins the OUTCOME, not the command's line —
+  -- deleting that line alone leaves M-02 green because the trigger still
+  -- covers it. `destination_text` has no such trigger, which is why M-01 is the
+  -- assertion that actually holds the derivation up.
+  IF (g#>>'{event,departure_text}') IS DISTINCT FROM 'Manchester, UK' THEN
+    RAISE EXCEPTION 'M-02 a theme-shaped departure did not reach the canonical column, got %',
+      COALESCE(g#>>'{event,departure_text}', '<null>');
+  END IF;
+
+  -- M-03 and a COLUMN-SHAPED patch must keep the theme mirror coherent, so the
+  -- two can never disagree whichever way the caller authored.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  g := public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object('event', jsonb_build_object(
+      'destination_text', 'Lomé, Togo', 'departure_text', 'Bristol, UK')),
+    v_rev, '19710000-0000-4000-8000-0000000000eb');
+
+  IF (g#>>'{event,destination_text}') IS DISTINCT FROM 'Lomé, Togo'
+     OR (g#>>'{event,theme,business_trip,destinationLocationText}') IS DISTINCT FROM 'Lomé, Togo' THEN
+    RAISE EXCEPTION 'M-03 column and theme disagree on destination: column=% theme=%',
+      COALESCE(g#>>'{event,destination_text}', '<null>'),
+      COALESCE(g#>>'{event,theme,business_trip,destinationLocationText}', '<null>');
+  END IF;
+  IF (g#>>'{event,departure_text}') IS DISTINCT FROM 'Bristol, UK'
+     OR (g#>>'{event,theme,business_trip,departureLocationText}') IS DISTINCT FROM 'Bristol, UK' THEN
+    RAISE EXCEPTION 'M-04 column and theme disagree on departure';
+  END IF;
+
+  -- M-05 a trip authored ONLY through the theme shape must publish. This is the
+  -- regression the tester found: publish reads the column, so if a theme-shaped
+  -- destination never reached it, publish raised trip_destination_required
+  -- where the pre-#1971 control published cleanly.
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  PERFORM public.biz_apply_trip_draft_graph(
+    v_event,
+    jsonb_build_object(
+      'days', jsonb_build_array(jsonb_build_object('ordinal', 1, 'title', 'Arrive')),
+      'event_dates', jsonb_build_array(jsonb_build_object(
+        'start_at', (now() + interval '90 days')::text,
+        'end_at', (now() + interval '97 days')::text,
+        'is_master', true))),
+    v_rev, '19710000-0000-4000-8000-0000000000ec');
+
+  SELECT updated_at INTO v_rev FROM public.events WHERE id = v_event;
+  v_result := public.biz_publish_trip_command(
+    v_event, v_rev, '19710000-0000-4000-8000-0000000000ed');
+
+  IF (SELECT status FROM public.events WHERE id = v_event) NOT IN ('scheduled', 'live') THEN
+    RAISE EXCEPTION 'M-05 a theme-authored trip could not publish: %', v_result;
+  END IF;
+END $$;
+
+-- ---------------------------------------------------------------------------
 -- J. The Ari EXECUTOR SEAM. This is deliberately not a helper-level assertion:
 --    it goes through `ari_execute_trip_operation` and a real confirmed
 --    pending action, so deleting the call site cannot leave this green.
@@ -650,6 +813,22 @@ BEGIN
     RAISE EXCEPTION 'J-07 the Ari trip executor accepted a foreign tool';
   EXCEPTION WHEN sqlstate 'P0001' THEN
     IF SQLERRM <> 'unsupported_trip_operation' THEN RAISE; END IF;
+  END;
+
+  -- J-08 a NULL tool name must be refused BY THIS ALLOWLIST, naming its own
+  -- error. `NULL NOT IN (...)` is NULL and `IF NULL THEN` does not execute, so
+  -- without the explicit IS NULL arm the call falls through to #1972's receipt
+  -- function and dies as `invalid_operation_receipt_request` instead. It still
+  -- fails closed either way — which is exactly why this needs asserting: the
+  -- allowlist would LOOK like it was doing the work while something else was.
+  BEGIN
+    PERFORM public.ari_execute_trip_operation(
+      '19710000-0000-4000-8000-000000000f03', NULL, '{}'::jsonb);
+    RAISE EXCEPTION 'J-08 the Ari trip executor accepted a NULL tool name';
+  EXCEPTION WHEN sqlstate 'P0001' THEN
+    IF SQLERRM <> 'unsupported_trip_operation' THEN
+      RAISE EXCEPTION 'J-08 a NULL tool name was refused by %, not by the trip allowlist', SQLERRM;
+    END IF;
   END;
 END $$;
 
