@@ -168,6 +168,10 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   list_event_orders: role("finance_manager", "event"),
   manage_event_waitlist: role("event_manager", "event"),
   manage_event_scanners: role("event_manager", "event"),
+  // #1980 — marketing audiences / templates / campaign reports.
+  manage_marketing_audiences: role("marketing_manager", "optional_brand"),
+  manage_marketing_templates: role("marketing_manager", "optional_brand"),
+  get_campaign_report: role("marketing_manager", "campaign"),
   list_guest_roster: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),

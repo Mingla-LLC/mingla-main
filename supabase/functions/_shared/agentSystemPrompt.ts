@@ -23,7 +23,7 @@
 // draft graph, publish from stored payload, selected/all_pending guest status,
 // contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v12";
+export const PROMPT_VERSION = "v13";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -367,6 +367,9 @@ CAPABILITIES (your tools):
 - list_event_orders — list event orders (no buyer PII)
 - manage_event_waitlist — list/toggle event ticket waitlist
 - manage_event_scanners — list/revoke event scanner invitations
+- manage_marketing_audiences — list/ensure campaign audiences
+- manage_marketing_templates — list/create/update/delete templates
+- get_campaign_report — campaign delivery/engagement report
 - list_guest_roster — list guests (names/status only)
 - export_brand_people — export Brand People CSV (PII confirm)
 - update_ari_prefs — conversational Ari preferences

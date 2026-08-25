@@ -4494,6 +4494,337 @@ const manageEventScanners = writeTool(
   },
 );
 
+// ----------------------------------------------------------------------------
+// #1980 — marketing audiences, templates, campaign reports
+// ----------------------------------------------------------------------------
+
+const manageMarketingAudiences = writeTool(
+  "manage_marketing_audiences",
+  "List marketing audiences for the signed-in account, or ensure a brand/event buyers audience exists (same Host ensureBrandBuyersAudience / ensureEventBuyersAudience).",
+  {
+    brand_id: UUID,
+    action: {
+      type: "string",
+      enum: ["list", "ensure_brand_buyers", "ensure_event_buyers"],
+    },
+    event_id: UUID,
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("marketing_audiences")
+        .select("id, brand_id, name, query_definition, is_system_generated, created_at")
+        .eq("account_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { audiences: data ?? [] };
+    }
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    await requireBrand(args, client, userId);
+    if (action === "ensure_brand_buyers") {
+      const { data: existing, error: selErr } = await client
+        .from("marketing_audiences")
+        .select("id, query_definition")
+        .eq("brand_id", args.brand_id)
+        .eq("is_system_generated", true);
+      if (selErr) throw new ToolError("RPC_FAILED", selErr.message);
+      for (const row of existing ?? []) {
+        const qd = (row as { query_definition?: { kind?: string; brand_id?: string } })
+          .query_definition;
+        if (qd?.kind === "brand_buyers" && qd.brand_id === args.brand_id) {
+          return { audience_id: row.id, ensured: false };
+        }
+      }
+      const { data: inserted, error: insErr } = await client
+        .from("marketing_audiences")
+        .insert({
+          account_id: userId,
+          brand_id: args.brand_id,
+          name: "All brand buyers",
+          query_definition: {
+            kind: "brand_buyers",
+            brand_id: args.brand_id,
+            payment_statuses: ["paid", "partial_refund"],
+          },
+          is_system_generated: true,
+        })
+        .select("id")
+        .maybeSingle();
+      if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
+      if (inserted === null) {
+        throw new ToolError("RPC_FAILED", "Audience insert returned no row");
+      }
+      return { audience_id: inserted.id, ensured: true };
+    }
+    if (action === "ensure_event_buyers") {
+      if (!isUuid(args.event_id)) {
+        throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+      }
+      const { data: existing, error: selErr } = await client
+        .from("marketing_audiences")
+        .select("id, query_definition")
+        .eq("brand_id", args.brand_id)
+        .eq("is_system_generated", true);
+      if (selErr) throw new ToolError("RPC_FAILED", selErr.message);
+      for (const row of existing ?? []) {
+        const qd = (row as { query_definition?: { kind?: string; event_id?: string } })
+          .query_definition;
+        if (qd?.kind === "event_buyers" && qd.event_id === args.event_id) {
+          return { audience_id: row.id, ensured: false };
+        }
+      }
+      const { data: inserted, error: insErr } = await client
+        .from("marketing_audiences")
+        .insert({
+          account_id: userId,
+          brand_id: args.brand_id,
+          name: "Event buyers",
+          query_definition: {
+            kind: "event_buyers",
+            event_id: args.event_id,
+            payment_statuses: ["paid", "partial_refund"],
+          },
+          is_system_generated: true,
+        })
+        .select("id")
+        .maybeSingle();
+      if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
+      if (inserted === null) {
+        throw new ToolError("RPC_FAILED", "Audience insert returned no row");
+      }
+      return { audience_id: inserted.id, ensured: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported audience action");
+  },
+);
+
+const manageMarketingTemplates = writeTool(
+  "manage_marketing_templates",
+  "List, create, update, or delete the caller's marketing email templates (not starter packs).",
+  {
+    brand_id: UUID,
+    action: { type: "string", enum: ["list", "create", "update", "delete"] },
+    template_id: UUID,
+    name: { type: "string", minLength: 1, maxLength: 200 },
+    subject_template: { type: "string", maxLength: 500 },
+    body_template: { type: "string", minLength: 1, maxLength: 20000 },
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("marketing_templates")
+        .select(
+          "id, account_id, brand_id, name, channel, subject_template, body_template, updated_at",
+        )
+        .eq("is_starter_pack", false)
+        .eq("account_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(100);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { templates: data ?? [] };
+    }
+    if (action === "create") {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      const body = typeof args.body_template === "string" ? args.body_template : "";
+      if (name.length < 1 || body.length < 1) {
+        throw new ToolError("INVALID_ARGS", "name and body_template are required");
+      }
+      if (args.brand_id !== undefined && args.brand_id !== null) {
+        await requireBrand(args, client, userId);
+      }
+      const { data, error } = await client
+        .from("marketing_templates")
+        .insert({
+          account_id: userId,
+          brand_id: isUuid(args.brand_id) ? args.brand_id : null,
+          name,
+          channel: "email",
+          subject_template: typeof args.subject_template === "string"
+            ? args.subject_template
+            : null,
+          body_template: body,
+          is_starter_pack: false,
+        })
+        .select(
+          "id, account_id, brand_id, name, channel, subject_template, body_template, updated_at",
+        )
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("RPC_FAILED", "Template insert returned no row");
+      }
+      return { template: data, created: true };
+    }
+    if (action === "update") {
+      if (!isUuid(args.template_id)) {
+        throw new ToolError("INVALID_ARGS", "template_id must be a uuid");
+      }
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      const body = typeof args.body_template === "string" ? args.body_template : "";
+      if (name.length < 1 || body.length < 1) {
+        throw new ToolError("INVALID_ARGS", "name and body_template are required");
+      }
+      const { data, error } = await client
+        .from("marketing_templates")
+        .update({
+          name,
+          subject_template: typeof args.subject_template === "string"
+            ? args.subject_template
+            : null,
+          body_template: body,
+          ...(args.brand_id !== undefined
+            ? { brand_id: isUuid(args.brand_id) ? args.brand_id : null }
+            : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", args.template_id)
+        .eq("account_id", userId)
+        .eq("is_starter_pack", false)
+        .select(
+          "id, account_id, brand_id, name, channel, subject_template, body_template, updated_at",
+        )
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Template not found, is a starter pack, or you lack permission.",
+        );
+      }
+      return { template: data, updated: true };
+    }
+    if (action === "delete") {
+      if (!isUuid(args.template_id)) {
+        throw new ToolError("INVALID_ARGS", "template_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("marketing_templates")
+        .delete()
+        .eq("id", args.template_id)
+        .eq("account_id", userId)
+        .eq("is_starter_pack", false)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Template not found, is a starter pack, or you lack permission.",
+        );
+      }
+      return { template_id: args.template_id, deleted: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported template action");
+  },
+);
+
+const getCampaignReport = writeTool(
+  "get_campaign_report",
+  "Read campaign delivery/engagement report (accepted/delivered/opened/clicked aggregates + top links). No recipient emails returned.",
+  { brand_id: UUID, campaign_id: UUID },
+  ["campaign_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const { data: campaign, error: campaignErr } = await client
+      .from("marketing_campaigns")
+      .select(
+        "id, brand_id, name, channel, status, scheduled_for, sent_at, recipient_count, created_at",
+      )
+      .eq("id", args.campaign_id)
+      .maybeSingle();
+    if (campaignErr) throw new ToolError("RPC_FAILED", campaignErr.message);
+    if (campaign === null) {
+      throw new ToolError("INVALID_ARGS", "Campaign not found or access denied.");
+    }
+    if (isUuid(args.brand_id) && args.brand_id !== campaign.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the campaign");
+    }
+    if (isUuid(campaign.brand_id)) {
+      await assertAgentReadBrand(client, userId, campaign.brand_id);
+    }
+    const { data: messages, error: messageErr } = await client
+      .from("marketing_messages")
+      .select("id, status, sent_at, click_count, delivered_at, opened_at")
+      .eq("campaign_id", args.campaign_id)
+      .limit(500);
+    if (messageErr) throw new ToolError("RPC_FAILED", messageErr.message);
+    const rows = messages ?? [];
+    const acceptedStatuses = new Set([
+      "sent",
+      "delivered",
+      "opened",
+      "clicked",
+      "unsubscribed",
+    ]);
+    const counts: Record<string, number> = {};
+    for (const msg of rows) {
+      const status = String((msg as { status?: string }).status ?? "");
+      counts[status] = (counts[status] ?? 0) + 1;
+    }
+    const accepted = Object.entries(counts).reduce(
+      (sum, [status, n]) => sum + (acceptedStatuses.has(status) ? n : 0),
+      0,
+    );
+    const delivered = rows.filter((m) =>
+      (m as { delivered_at?: string | null }).delivered_at != null
+    ).length;
+    const opened = rows.filter((m) =>
+      (m as { opened_at?: string | null }).opened_at != null
+    ).length;
+    const clicked = rows.filter((m) =>
+      ((m as { click_count?: number }).click_count ?? 0) > 0
+    ).length;
+    const { data: clicks, error: clickErr } = await client
+      .from("marketing_clicks")
+      .select("destination_url, clicked_at, message_id")
+      .eq("campaign_id", args.campaign_id)
+      .limit(2000);
+    if (clickErr) throw new ToolError("RPC_FAILED", clickErr.message);
+    const linkCounts = new Map<string, number>();
+    let totalClicks = 0;
+    const unique = new Set<string>();
+    for (const click of clicks ?? []) {
+      if ((click as { clicked_at?: string | null }).clicked_at == null) continue;
+      totalClicks += 1;
+      const url = String((click as { destination_url?: string }).destination_url ?? "");
+      linkCounts.set(url, (linkCounts.get(url) ?? 0) + 1);
+      const mid = (click as { message_id?: string | null }).message_id;
+      if (typeof mid === "string") unique.add(mid);
+    }
+    const topLinks = Array.from(linkCounts.entries())
+      .map(([destination_url, n]) => ({ destination_url, clicks: n }))
+      .sort((a, b) => b.clicks - a.clicks)
+      .slice(0, 5);
+    return {
+      campaign,
+      recipient_stats: {
+        total: rows.length,
+        accepted,
+        delivered,
+        opened,
+        clicked,
+        bounced: counts.bounced ?? 0,
+        failed: counts.failed ?? 0,
+        has_event_coverage: delivered > 0 || opened > 0 ||
+          (counts.bounced ?? 0) > 0,
+      },
+      click_stats: {
+        total_clicks: totalClicks,
+        unique_clickers: unique.size,
+        top_links: topLinks,
+      },
+    };
+  },
+);
+
 // #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
 // about status + next action. Drops contactLabel (partial email/phone),
 // avatarUrl, delivery attempts, and order ids so raw PII never enters the
@@ -4949,6 +5280,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   listEventOrders,
   manageEventWaitlist,
   manageEventScanners,
+  manageMarketingAudiences,
+  manageMarketingTemplates,
+  getCampaignReport,
   listGuestRoster,
   exportBrandPeople,
   updateAriPrefs,
@@ -4970,6 +5304,7 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "list_guest_roster",
   "list_brand_team",
   "list_event_orders",
+  "get_campaign_report",
   "get_operator_snapshot",
   "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline; they never mutate.

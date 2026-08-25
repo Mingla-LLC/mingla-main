@@ -1592,5 +1592,8 @@ export function isReadOnlyAgentToolCall(
         args.action === "list_participants")) ||
     (toolName === "manage_event_door_sale" && args.action === "list") ||
     (toolName === "manage_event_waitlist" && args.action === "list") ||
-    (toolName === "manage_event_scanners" && args.action === "list");
+    (toolName === "manage_event_scanners" && args.action === "list") ||
+    // #1980 — marketing list actions run inline.
+    (toolName === "manage_marketing_audiences" && args.action === "list") ||
+    (toolName === "manage_marketing_templates" && args.action === "list");
 }

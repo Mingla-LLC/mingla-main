@@ -10,14 +10,14 @@
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
     "verified_at": "2026-08-25T00:00:00Z",
-    "registered_tool_count": 100,
+    "registered_tool_count": 103,
     "capability_count": 120,
     "status_breakdown": {
       "verified": 0,
-      "registered_unverified": 99,
+      "registered_unverified": 102,
       "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 8,
+      "unsupported": 5,
       "in_flight": 5
     }
   },
@@ -4326,26 +4326,31 @@
           {
             "path": "mingla-business/src/services/marketing/marketingAudienceService.ts",
             "symbol": "listAudiencesForAccount"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageMarketingAudiences"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_marketing_audiences",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "marketingAudienceService.ts"
+          "sha": "72ec52f3169be2f1c5faa56f88894133859869ff",
+          "reference": "#1980 agentDomainTools.ts:manageMarketingAudiences mirrors listAudiencesForAccount / ensure*Audience"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.marketing.manage_templates",
@@ -4371,26 +4376,31 @@
           {
             "path": "mingla-business/src/services/marketing/marketingTemplateService.ts",
             "symbol": "listUserTemplates"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageMarketingTemplates"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_marketing_templates",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "marketingTemplateService.ts"
+          "sha": "72ec52f3169be2f1c5faa56f88894133859869ff",
+          "reference": "#1980 agentDomainTools.ts:manageMarketingTemplates mirrors marketingTemplateService"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.people.list_detail_add",
@@ -5042,26 +5052,31 @@
           {
             "path": "mingla-business/src/services/marketing/marketingReportService.ts",
             "symbol": "getCampaignReport"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getCampaignReport"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_campaign_report",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "marketingReportService.ts"
+          "sha": "72ec52f3169be2f1c5faa56f88894133859869ff",
+          "reference": "#1980 agentDomainTools.ts:getCampaignReport mirrors getCampaignReport without recipient emails"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.brand.audit_log",
