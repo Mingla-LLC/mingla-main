@@ -378,7 +378,7 @@ if (process.argv.includes("--self-test")) {
     ["ledger audit capability_count drifts",
       mutate("ledger", '"capability_count": 120', '"capability_count": 119')],
     ["ledger audit status_breakdown drifts",
-      mutate("ledger", '"broken": 21', '"broken": 22')],
+      mutate("ledger", '"broken": 1', '"broken": 2')],
     ["merge-marker residue in the tester",
       mutate("ledgerTester", "const EXPECTED = Object.freeze({", "<<<<<<< HEAD\nconst EXPECTED = Object.freeze({")],
     ["delegated gate no longer parses",
@@ -407,11 +407,11 @@ if (process.argv.includes("--self-test")) {
     ["tester pins a tool name the ledger does not have",
       mutate("ledgerTester", '"cancel_campaign",', '"cancel_campaigns",')],
     ["tester statusBreakdown count drifts from the ledger",
-      mutate("ledgerTester", "broken: 16,", "broken: 17,")],
+      mutate("ledgerTester", "broken: 1,", "broken: 2,")],
     ["tester stops censusing one ledger status",
       mutate("ledgerTester", "    verified: 0,\n", "")],
     ["tester classification message drifts from the ledger",
-      mutate("ledgerTester", "69/16/23/8/4/0 classification changed", "69/17/23/8/4/0 classification changed")],
+      mutate("ledgerTester", "84/1/22/8/5/0 classification changed", "84/2/22/8/5/0 classification changed")],
     // The .ts files are not parsed here, so this mutant proves the merge-marker
     // scan fires on its OWN merit and is not just riding on `node --check`.
     ["merge-marker residue in a .ts census file (never reaches a parser)",
