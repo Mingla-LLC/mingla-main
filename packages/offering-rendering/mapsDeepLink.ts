@@ -359,6 +359,67 @@ export function buildMapsAppLink(
   // Google. The https form is a universal/app link on BOTH mobile platforms —
   // it opens the Google Maps app when it is installed and the browser when it
   // is not, so it can never dead-tap and it needs no scheme whitelisting.
+  //
+  // ------------------------------------------------------------------------
+  // issue #2553 [gmaps-label] — WHY GOOGLE SHOWS THE COORDINATE, NOT THE NAME
+  // ------------------------------------------------------------------------
+  // Seth, on a real device: Google Maps opens the right place but labels it
+  // `6.43273,3.423375`. Apple does not have this problem because `maps://` has
+  // TWO slots — `ll=` is the anchor and `q=` is a pure display label. Google's
+  // URL contract has ONE slot and it is a SEARCH slot, so accuracy and
+  // readability cannot both fit. We spend it on accuracy. This is a MEASURED
+  // dead end, not an oversight — do not "fix" it without re-reading this.
+  //
+  // Google's own current docs (developers.google.com/maps/documentation/urls):
+  //   search  → `query` (required) + `query_place_id` (optional). `query_place_id`
+  //             is the ONLY documented way to get an exact anchor AND a name
+  //             ("the query is only used if Google Maps cannot find the place
+  //             ID"). It needs a GOOGLE place id. `public.events` has no
+  //             place-id column at all (only location_geo / location_text /
+  //             location_mode) — our addresses come from Mapbox. Even
+  //             `venue_listings`, which HAS the column, populated it for 1 of 5
+  //             rows. So it is unavailable on the surface that reported this.
+  //   ios     → comgooglemaps:// documents `q` as "the query string for your
+  //             search". No label parameter. No parentheses. Anywhere.
+  //
+  // Every candidate was RUNTIME-tested against the #2468 production event
+  // (`We Go Again Exhibition`, stored pin 6.43273 / 3.423375, Didi Museum,
+  // Victoria Island Lagos) from a device located in LONDON — the far-from-Lagos
+  // condition under which #2468 originally mis-resolved. Each was probed with a
+  // DELIBERATELY MISMATCHED label ("Eiffel Tower") so that a coincidental POI
+  // match could not be mistaken for coordinate anchoring:
+  //
+  //   `search/?api=1&query=<lat>,<lng>(<label>)`
+  //     web → Google STRIKES THE COORDINATE THROUGH, reports "Partial match",
+  //           and offers Eiffel Tower, Av. Gustave Eiffel — PARIS.
+  //     ios → results are Paris photographs. The Lagos coordinate is gone.
+  //     ⇒ NOT an anchor. It is free-text search. This IS #2468. Disqualified.
+  //
+  //   `maps.google.com/?q=<lat>,<lng>(<label>)`   (the Android geo: convention)
+  //     web + ios → pin CORRECT (6.432730, 3.423375, CCMF+38X Lagos), but the
+  //           parenthesised label is SILENTLY DISCARDED: the title renders
+  //           `6°25'57.8"N 3°25'24.2"E`, identical to what we ship today.
+  //     ⇒ Safe, and worth nothing. The label never reaches the user.
+  //
+  //   `maps.google.com/?ll=<lat>,<lng>&q=<label>` (the Apple-shaped analogue)
+  //     web → resolved URL came back `…!3d48.8583701!4d2.2944813` — PARIS.
+  //           `ll` is ignored outright; `q` is geocoded. Disqualified.
+  //
+  //   `maps/place/<label>/@<lat>,<lng>,17z`  (undocumented internal shape)
+  //     web → renders an EMPTY card, no title, no pin. It needs Google's
+  //           internal `data=!…` feature-id blob, which we cannot mint.
+  //
+  // CONCLUSION: no Google Maps URL form carries a coordinate anchor AND a human
+  // label without a Google place id. A friendly label on the wrong continent is
+  // strictly worse than an ugly label on the right pin, so the coordinate keeps
+  // the slot. If the label is ever worth more than the ~zero risk it costs, the
+  // ONLY correct route is acquiring a real `query_place_id` server-side.
+  //
+  // ANDROID IS ALREADY RIGHT and is deliberately untouched below: `geo:` is the
+  // one place the parenthesised label IS documented (Android's own intents
+  // guide: "geo:0,0?q=lat,lng(label) — Show the map at the given longitude and
+  // latitude with a string label"), the OS resolves it, and the coordinate
+  // authority sits BEFORE the `?`, so the label cannot move the pin.
   if (geo !== null) {
     const pair = `${geo.lat},${geo.lng}`;
     const fallbackUrl = googleSearchUrl(pair);

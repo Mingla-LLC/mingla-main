@@ -19,6 +19,25 @@
 //   T-5  the exact production case from the issue resolves to the stored pin.
 //   T-6  no product call site composes a maps URL inline any more.
 //
+// ---------------------------------------------------------------------------
+// issue #2553 [gmaps-label] EXTENSION — G-1..G-6, appended below the #2468
+// tests. Same ground, same file, on purpose: #2553 asked whether Google can be
+// made to show the VENUE NAME instead of `6.43273,3.423375`, and the answer —
+// runtime-proved from a device in London against this very event — is that no
+// Google URL form carries a coordinate anchor AND a label. The candidate that
+// looks right (`query=<lat>,<lng>(<label>)`) makes Google STRIKE THE COORDINATE
+// THROUGH and resolve the label: "Eiffel Tower" landed in PARIS on web and iOS.
+// That is #2468 wearing a friendly label, which is why the guard belongs HERE,
+// next to the assertions it protects, and not in a file of its own.
+//   G-1  the exact Google URL per platform for a geo target
+//   G-2  LOAD-BEARING: Google's https `query` is the coordinate pair and
+//        NOTHING else, across every platform x every shape of label
+//   G-3  ANTI-VACUITY TWIN: the G-2 predicate is shown to REJECT each form
+//        runtime-proved to mis-resolve, and to ACCEPT the shipped one
+//   G-4  Android keeps the one documented labelled form, coordinate first
+//   G-5  Apple carries the name and Google must not — the asymmetry pinned
+//   G-6  the no-coordinate honest text fallback is unchanged
+//
 // FAILS-ON-REVERT (verified by true LINE DELETION, recorded in the report):
 //   delete the `if (geo !== null)` branch in buildMapsDeepLink → T-1/T-5 fail;
 //   delete the `if (params.addressHidden) return null;` line in
@@ -26,13 +45,16 @@
 import {
   assert,
   assertEquals,
+  assertNotEquals,
   assertStringIncludes,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
+  buildMapsAppLink,
   buildMapsDeepLink,
   buildMapsUrl,
   canOpenMapsTarget,
+  listMapsAppChoices,
   selectVenueMapsTarget,
 } from "../mapsDeepLink.ts";
 
@@ -270,4 +292,330 @@ Deno.test("#2468 T-6: NO product call site composes a maps URL inline", async ()
       `${relative} still builds a maps URL inline: ${JSON.stringify(offenders)}`,
     );
   }
+});
+
+// ===========================================================================
+// issue #2553 [gmaps-label] — THE GUARD.
+//
+// Nothing shipped for #2553: every Google URL form was runtime-tested against
+// the DIDI event above, from a simulator located in London (the far-from-Lagos
+// condition that exposed #2468), and each one either discarded the coordinate
+// or discarded the label. Full evidence lives in the module's own comment block.
+//
+// The DECISION is the fragile thing. It reads like a one-line cosmetic bug, it
+// will be re-reported, and the obvious "fix" — the venue name in Google's
+// `query` — is the Paris resolution. These tests make that fix impossible to
+// merge quietly.
+//
+// FAILS-ON-REVERT: delete the `if (geo !== null) { … }` block from
+// `buildMapsAppLink`'s Google arm in mapsDeepLink.ts. Execution falls through
+// to the text path, the Google URL becomes `?api=1&query=Didi%20Museum` — the
+// exact #2468 free-text form — and G-1, G-2, G-4 and G-5 go red.
+// ===========================================================================
+
+const PAIR = "6.43273,3.423375";
+const PLATFORMS = ["ios", "android", "web"] as const;
+
+/**
+ * THE PREDICATE THE GUARD RESTS ON.
+ *
+ * True ⇔ this https Google URL is anchored on `expectedPair` and the pair is
+ * the ENTIRE query — no label smuggled in beside it, in parentheses or
+ * otherwise, and no second parameter that could out-rank it.
+ *
+ * Written against the PARSED url, never the raw string, precisely so it cannot
+ * be satisfied by a substring coincidence: `query=6.43273,3.423375(Didi Museum)`
+ * CONTAINS the pair and is still the Paris bug.
+ */
+const isPureCoordinateGoogleUrl = (
+  url: string,
+  expectedPair: string,
+): boolean => {
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return false;
+  }
+  if (parsed.protocol !== "https:") return false;
+  if (!parsed.hostname.endsWith("google.com")) return false;
+  // `q` is Google's legacy SEARCH slot. Its presence at all means someone
+  // reached for the Apple-shaped `ll=…&q=…` form, which runtime-resolved to
+  // Paris (`!3d48.8583701!4d2.2944813`). There is no safe use of it here.
+  if (parsed.searchParams.has("q")) return false;
+  const query = parsed.searchParams.get("query");
+  if (query === null) return false;
+  return query === expectedPair;
+};
+
+Deno.test("#2553 G-1: the Google link is the coordinate form on every platform", () => {
+  const ios = buildMapsAppLink({
+    app: "google",
+    geo: DIDI,
+    label: "Didi Museum",
+    platform: "ios",
+  });
+  assertEquals(
+    ios?.url,
+    `https://www.google.com/maps/search/?api=1&query=${PAIR}`,
+    "iOS Google must stay on the coordinate-only https form",
+  );
+
+  const web = buildMapsAppLink({
+    app: "google",
+    geo: DIDI,
+    label: "Didi Museum",
+    platform: "web",
+  });
+  assertEquals(
+    web?.url,
+    `https://www.google.com/maps/search/?api=1&query=${PAIR}`,
+    "web Google must stay on the coordinate-only https form",
+  );
+
+  const android = buildMapsAppLink({
+    app: "google",
+    geo: DIDI,
+    label: "Didi Museum",
+    platform: "android",
+  });
+  assertEquals(
+    android?.url,
+    `geo:${PAIR}?q=${PAIR}(Didi%20Museum)`,
+    "Android keeps the documented geo: intent, label included",
+  );
+
+  for (const platform of PLATFORMS) {
+    const choice = buildMapsAppLink({
+      app: "google",
+      geo: DIDI,
+      label: "Didi Museum",
+      platform,
+    });
+    assertEquals(
+      choice?.coordinateAnchored,
+      true,
+      `${platform}: a stored coordinate must report coordinateAnchored`,
+    );
+  }
+});
+
+Deno.test("#2553 G-2: Google's query is the coordinate pair and nothing else", () => {
+  // Deliberately hostile labels: a plain name, one whose parentheses collide
+  // with the geo: label wrapper, an accented one, and one naming a world-famous
+  // place 5,000km away — the exact probe that exposed the Paris resolution.
+  const labels = ["Didi Museum", "The Shed (Brixton)", "Café Neu", "Eiffel Tower", null];
+
+  for (const label of labels) {
+    for (const platform of PLATFORMS) {
+      const choice = buildMapsAppLink({
+        app: "google",
+        geo: DIDI,
+        label,
+        platform,
+      });
+      assert(choice !== null, `${platform}/${label}: expected a Google choice`);
+
+      // The https form is what iOS and web OPEN, and Android's fallback.
+      assert(
+        isPureCoordinateGoogleUrl(choice.fallbackUrl, PAIR),
+        `${platform}/${label}: Google https fallback is not purely coordinate-anchored — got ${choice.fallbackUrl}`,
+      );
+
+      // Not one character of the label may reach the https URL. A label that
+      // cannot reach the query cannot re-geocode the pin.
+      if (label !== null) {
+        const firstWord = label.split(/[\s(]+/)[0];
+        assert(
+          !choice.fallbackUrl.includes(firstWord),
+          `${platform}/${label}: label text leaked into the Google https URL — ${choice.fallbackUrl}`,
+        );
+      }
+
+      if (platform !== "android") {
+        assert(
+          isPureCoordinateGoogleUrl(choice.url, PAIR),
+          `${platform}/${label}: primary Google url is not purely coordinate-anchored — got ${choice.url}`,
+        );
+      }
+    }
+  }
+
+  // The chooser path must not launder a different URL in.
+  for (const platform of PLATFORMS) {
+    const google = listMapsAppChoices({
+      geo: DIDI,
+      label: "Didi Museum",
+      platform,
+    }).find((c) => c.id === "google");
+    assert(google !== undefined, `${platform}: chooser dropped Google`);
+    assert(
+      isPureCoordinateGoogleUrl(google.fallbackUrl, PAIR),
+      `${platform}: chooser's Google fallback drifted from the coordinate form`,
+    );
+  }
+});
+
+Deno.test("#2553 G-3: the guard rejects every form proven to mis-resolve", () => {
+  // Runtime-proved: Google struck the coordinate through ("Partial match") and
+  // offered the Eiffel Tower in Paris. This is #2468 wearing a label.
+  assertEquals(
+    isPureCoordinateGoogleUrl(
+      `https://www.google.com/maps/search/?api=1&query=${PAIR}(Didi%20Museum)`,
+      PAIR,
+    ),
+    false,
+    "parenthesised label inside `query` must be rejected — it re-geocodes",
+  );
+
+  // Runtime-proved: resolved to !3d48.8583701!4d2.2944813 — Paris. `ll` ignored.
+  assertEquals(
+    isPureCoordinateGoogleUrl(
+      `https://maps.google.com/?ll=${PAIR}&q=Didi%20Museum`,
+      PAIR,
+    ),
+    false,
+    "the Apple-shaped ll=&q= form must be rejected — Google ignores `ll`",
+  );
+
+  // The original #2468 defect, unadorned.
+  assertEquals(
+    isPureCoordinateGoogleUrl(
+      "https://www.google.com/maps/search/?api=1&query=Didi%20Museum",
+      PAIR,
+    ),
+    false,
+    "a free-text query must be rejected",
+  );
+
+  // A DIFFERENT coordinate must not satisfy a guard asked about ours.
+  assertEquals(
+    isPureCoordinateGoogleUrl(
+      "https://www.google.com/maps/search/?api=1&query=48.8583701,2.2944813",
+      PAIR,
+    ),
+    false,
+    "the guard must compare the actual pair, not merely 'looks like a coordinate'",
+  );
+
+  // ...and the real shipped URL must still be ACCEPTED, or the predicate is
+  // simply always-false and proves nothing at all (#2113's bug class).
+  assertEquals(
+    isPureCoordinateGoogleUrl(
+      `https://www.google.com/maps/search/?api=1&query=${PAIR}`,
+      PAIR,
+    ),
+    true,
+    "the shipped URL must PASS — a cannot-pass guard carries no information",
+  );
+});
+
+Deno.test("#2553 G-4: Android keeps its label, and the coordinate outranks it", () => {
+  const android = buildMapsAppLink({
+    app: "google",
+    geo: DIDI,
+    label: "Eiffel Tower",
+    platform: "android",
+  });
+  assert(android !== null);
+
+  // The authority is the segment BEFORE the `?`. A label cannot reach it.
+  const [authority, queryPart] = android.url.split("?");
+  assertEquals(
+    authority,
+    `geo:${PAIR}`,
+    "the geo: authority must be the stored coordinate",
+  );
+  assert(
+    queryPart.startsWith(`q=${PAIR}(`),
+    `the geo: query must lead with the coordinate — got ${queryPart}`,
+  );
+  assertStringIncludes(
+    android.url,
+    "(Eiffel%20Tower)",
+    "Android must still carry the human label Android documents",
+  );
+  assertEquals(android.coordinateAnchored, true);
+
+  // Structural parentheses in a venue name must not close the wrapper early.
+  const parens = buildMapsAppLink({
+    app: "google",
+    geo: DIDI,
+    label: "The Shed (Brixton)",
+    platform: "android",
+  });
+  assertEquals(
+    parens?.url,
+    `geo:${PAIR}?q=${PAIR}(The%20Shed%20%28Brixton%29)`,
+    "inner parentheses must be percent-escaped so the wrapper stays balanced",
+  );
+});
+
+Deno.test("#2553 G-5: Apple anchors AND labels, which is why the gap is Google's", () => {
+  const apple = buildMapsAppLink({
+    app: "apple",
+    geo: DIDI,
+    label: "Didi Museum",
+    platform: "ios",
+  });
+  assertEquals(
+    apple?.url,
+    `maps://?ll=${PAIR}&q=Didi%20Museum`,
+    "Apple must keep BOTH the ll anchor and the q label",
+  );
+  assertEquals(apple?.coordinateAnchored, true);
+
+  // The asymmetry IS the finding: Apple's link carries the name, Google's
+  // cannot. If these two ever agree, someone has changed one of them.
+  const google = buildMapsAppLink({
+    app: "google",
+    geo: DIDI,
+    label: "Didi Museum",
+    platform: "ios",
+  });
+  assertNotEquals(
+    apple?.url,
+    google?.url,
+    "Apple and Google links are different shapes by necessity",
+  );
+  assertStringIncludes(
+    apple!.url,
+    "Didi",
+    "Apple carries the venue name (its q= is a pure display label)",
+  );
+  assert(
+    !google!.url.includes("Didi"),
+    "Google must NOT carry the venue name (its query= is a search slot)",
+  );
+});
+
+Deno.test("#2553 G-6: with no coordinate, the honest text fallback still applies", () => {
+  const web = buildMapsAppLink({
+    app: "google",
+    geo: null,
+    label: "Didi Museum",
+    platform: "web",
+  });
+  assertEquals(
+    web?.url,
+    "https://www.google.com/maps/search/?api=1&query=Didi%20Museum",
+    "no pin ⇒ text search is the honest fallback, not a fabricated coordinate",
+  );
+  assertEquals(
+    web?.coordinateAnchored,
+    false,
+    "the text fallback must declare itself NOT coordinate-anchored",
+  );
+
+  // And nothing at all is still nothing — never a dead tap.
+  assertEquals(
+    buildMapsAppLink({
+      app: "google",
+      geo: null,
+      label: null,
+      platform: "web",
+    }),
+    null,
+    "no coordinate and no label must return null, not an empty search",
+  );
 });
