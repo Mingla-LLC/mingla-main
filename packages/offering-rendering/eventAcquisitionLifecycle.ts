@@ -129,3 +129,54 @@ export const eventAcquisitionNoticeCopy = (
     announcement: `${heading}. ${body}`,
   };
 };
+
+/**
+ * issue #2562 [a past event was still purchasable] — the state a CLIENT is
+ * allowed to forward to the renderer.
+ *
+ * `computeOfferingVariant` decides "past" from `status === "ended"` OR from
+ * `acquisitionState`. Explorer set NEITHER from the clock — it forwarded the
+ * operator's `status`, and a finished event is still `scheduled` (status
+ * describes the LISTING, not the calendar). So the native screen offered
+ * "Buy ticket" and "28 tickets left" on an event that had ended a month
+ * earlier, while the buyer web showed "PAST EVENT — ticket sales are closed"
+ * for that same event and the server accepted a checkout session for it.
+ *
+ * FAIL SAFE ON MISSING DATA, which is why this is not a pass-through. The
+ * resolver above answers `unavailable` when there is no master end time, and
+ * `computeOfferingVariant` treats `unavailable` as PAST. Forwarding that
+ * blindly would mark a live event as finished the moment its end time went
+ * missing — a worse bug than the one being fixed, because it would silently
+ * stop sales on events that are still selling. So only a DEFINITE `ended` or
+ * `cancelled` is forwarded; anything else is left `undefined` and the screen
+ * behaves exactly as it does today.
+ *
+ * Same principle as the server guard in migration 20270525002562: absence of
+ * data is not evidence of an ending.
+ *
+ * @param status         the operator's listing status as it arrives on the payload
+ * @param masterEndAtUtc the last occurrence's end time, ISO-8601, or null
+ * @param nowMs          injectable clock; defaults to the real one
+ */
+export const forwardableAcquisitionState = (
+  status: string | null | undefined,
+  masterEndAtUtc: string | null,
+  nowMs: number = Date.now(),
+): EventAcquisitionState | undefined => {
+  const resolved = resolveEventAcquisitionState(
+    {
+      operatorStatus:
+        status === "cancelled"
+          ? "cancelled"
+          : status === "ended"
+            ? "ended"
+            : "scheduled",
+      operatorEndedAtUtc: null,
+      masterEndAtUtc,
+    },
+    nowMs,
+  );
+  return resolved.kind === "ended" || resolved.kind === "cancelled"
+    ? resolved
+    : undefined;
+};

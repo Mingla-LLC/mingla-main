@@ -1,6 +1,6 @@
 let options: Record<string, unknown>;
 jest.mock("@tanstack/react-query", () => ({ useQuery: (o: Record<string, unknown>) => (options=o,o) }));
-jest.mock("@mingla/offering-rendering", () => ({ isThemeAnimationSlug:()=>false,isThemeColor:()=>false,isThemeFontSlug:()=>false }));
+jest.mock("@mingla/offering-rendering", () => ({ isThemeAnimationSlug:()=>false,isThemeColor:()=>false,isThemeFontSlug:()=>false,forwardableAcquisitionState:()=>undefined }));
 jest.mock("../../services/supabase", () => ({ supabase:{rpc:jest.fn()} }));
 import { supabase } from "../../services/supabase";
 import { mapRpcPayloadToPublicEvent, usePublicEventBySlug } from "../usePublicEventBySlug";
