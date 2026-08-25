@@ -47,6 +47,7 @@ type ClientOptions = {
   members?: Row[];
   rows?: Record<string, Record<string, Row | null>>;
   rpc?: (name: string, args: Row) => unknown;
+  rpcError?: (name: string, args: Row) => unknown;
   invoke?: (name: string, body: Row) => unknown;
 };
 
@@ -87,6 +88,9 @@ function makeClient(options: ClientOptions): { client: any; calls: Recorder } {
     },
     rpc(name: string, args: Row) {
       calls.rpcCalls.push({ name, args });
+      // PostgREST hands back a PLAIN OBJECT in `error`, never an Error.
+      const error = options.rpcError ? options.rpcError(name, args) : null;
+      if (error) return Promise.resolve({ data: null, error });
       return Promise.resolve({
         data: options.rpc ? options.rpc(name, args) : null,
         error: null,
@@ -439,6 +443,44 @@ Deno.test("#2593 D6 a foreign sentinel embedded in prose is NOT this RPC's refus
       code: "P0001",
       message: "link_not_found_v2",
     })
+      .code,
+    "RPC_FAILED",
+  );
+});
+
+async function disconnectWith(error: Row): Promise<ToolError> {
+  const { client } = makeClient({ rpcError: () => error });
+  return await assertRejects(
+    () =>
+      domainTool("disconnect_partner").executor(
+        {
+          brand_id: BRAND,
+          partner_id: RSVP,
+          confirm_phrase: "DISCONNECT",
+        },
+        client,
+        CALLER,
+        undefined as never,
+      ),
+    ToolError,
+  );
+}
+
+Deno.test("#2593 D6 disconnect_partner routes failures through the structured classifier", async () => {
+  // The RPC's own sentinels still map to their clean refusals...
+  assertEquals(
+    (await disconnectWith({ code: "P0001", message: "link_not_active" })).code,
+    "INVALID_ARGS",
+  );
+  assertEquals(
+    (await disconnectWith({ code: "P0001", message: "forbidden" })).code,
+    "BRAND_ACCESS_DENIED",
+  );
+  // ...but a DIFFERENT failure that merely contains the substring "forbidden"
+  // must not be dressed up as this RPC's permission refusal. The substring
+  // classifier called this BRAND_ACCESS_DENIED.
+  assertEquals(
+    (await disconnectWith({ code: "42501", message: "guest_roster_forbidden" }))
       .code,
     "RPC_FAILED",
   );
