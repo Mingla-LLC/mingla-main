@@ -247,11 +247,11 @@ export function audit(base) {
     const mapped = (parsed.capabilities ?? [])
       .map((row) => row.ari_tool)
       .filter((name) => typeof name === "string");
-    if (parsed.audit?.registered_tool_count !== 86) {
-      failures.push("ledger audit registered_tool_count is not 86");
+    if (parsed.audit?.registered_tool_count !== 108) {
+      failures.push("ledger audit registered_tool_count is not 108");
     }
-    if (mapped.length !== 86 || new Set(mapped).size !== 86) {
-      failures.push("ledger mapped tool census is not 86 unique tools");
+    if (mapped.length !== 108 || new Set(mapped).size !== 108) {
+      failures.push("ledger mapped tool census is not 108 unique tools");
     }
     if (!mapped.includes("update_rsvp") || !mapped.includes("update_rsvp_contribution_settings")) {
       failures.push("ledger lost the #1977 RSVP write mappings");
