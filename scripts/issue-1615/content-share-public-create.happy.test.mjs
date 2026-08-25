@@ -74,6 +74,13 @@ class FakeDb {
     // server-authored message stored with the version. The old fake knew only
     // the mint RPC and therefore rejected the new authoritative read.
     if(name==='resolve_content_share_message')return{data:`Public truth\n\nhttps://usemingla.com/s/${args.p_code}`,error:null};
+    // [TEST-MOD-APPROVED #2587] The served mapper now reads the shared
+    // address-privacy predicate before it maps an offering's location, because
+    // this is a service_role path against the base relation and RLS does not
+    // reach it. The old fake knew only the mint RPC and rejected the new
+    // authoritative read. These fixtures carry no theme, and the deployed
+    // predicate fails closed on an absent flag, so `true` models it faithfully.
+    if(name==='issue_2489_address_withheld')return{data:true,error:null};
     assert.equal(name,'upsert_content_share_version');this.rpcCalls.push(args);const key=args.p_source_key;const fingerprint=JSON.stringify([args.p_facts,args.p_media_identity,args.p_destination_manifest]);
     const prior=this.links.get(key);const next=prior?{...prior,version:prior.fingerprint===fingerprint?prior.version:prior.version+1,fingerprint}:{shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:1,fingerprint};this.links.set(key,next);
     return{data:{shortCode:next.shortCode,version:next.version,versionCreated:!prior||prior.fingerprint!==fingerprint},error:null};

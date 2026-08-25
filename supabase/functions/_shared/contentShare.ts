@@ -539,8 +539,41 @@ const mapCuratedComposition = (rows: RecordLike[]) => {
   };
 };
 
+/**
+ * #2587 — THE interim disclosure form for a gated offering's location fact.
+ *
+ * Seth has not yet ruled between "the venue name alone" and "omit the fact
+ * entirely" (#2589 §13 Q-2). Omitting is the fail-closed answer — it cannot be
+ * wrong whichever way he rules — so that is what ships in the hotfix.
+ *
+ * THIS EXPRESSION IS THE WHOLE SWITCH. To adopt the venue-name-only form
+ * instead, replace the body of this one function with
+ *   clean((row?.theme?.business_event?.location || {}).venueName, max)
+ * and nothing else in this file changes. `clean()` already collapses an absent
+ * or empty name to "", and `compact()` then drops the key — so even the
+ * venue-name variant still fails closed when the name is missing, rather than
+ * falling back to the withheld string.
+ */
+const gatedLocationFact = (_row: RecordLike, _max: number): string => "";
+
+/**
+ * #2587 — whether THIS assembly must withhold the offering's location.
+ *
+ * The verdict is produced by `public.issue_2489_address_withheld` in the
+ * database (see `loadAuthoritativeContentShare`) and carried here as a plain
+ * boolean. It is never re-derived from `theme` in TypeScript: #2489 exists to
+ * make that decision in exactly one place, and #2589 F-12 found the rule had
+ * already drifted into three.
+ *
+ * Fail-closed by construction: anything that is not an explicit `false` — an
+ * absent flag, a caller that predates the gate, a shape the database did not
+ * produce — withholds.
+ */
+const withholdsLocation = (assembled: RecordLike): boolean => assembled.addressWithheld !== false;
+
 export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: RecordLike) {
   const row = assembled.row || {};
+  const withheld = withholdsLocation(assembled);
   const brand = Array.isArray(row.brands) ? row.brands[0] : row.brands || assembled.brand || {};
   const date = assembled.date || {};
   const schedule = localSchedule(date.start_at, row.timezone || date.timezone);
@@ -584,27 +617,29 @@ export function mapAuthoritativeShareFacts(kind: ContentShareKind, assembled: Re
     }
     case "event":
       facts = compact({ schemaVersion: 1, kind, title: clean(row.title), ...schedule,
-        venue: clean(row.location_text, 160), price,
+        venue: withheld ? gatedLocationFact(row, 160) : clean(row.location_text, 160), price,
         availability: clean(assembled.availability, 80), status: status(row, assembled), timezone: clean(row.timezone, 80), description: clean(row.description, 600),
         route: { eventSlug: clean(row.slug, 160) } });
       destination = { ...routeBase, webPath: `/e/${clean(brand.slug, 160)}/${clean(row.slug, 160)}` };
       break;
     case "rsvp_event":
       facts = compact({ schemaVersion: 1, kind, title: clean(row.title), ...schedule,
-        venue: clean(row.location_text, 160),
+        venue: withheld ? gatedLocationFact(row, 160) : clean(row.location_text, 160),
         availability: clean(assembled.availability, 80), status: status(row, assembled), timezone: clean(row.timezone, 80), description: clean(row.description, 600),
         route: { eventSlug: clean(row.slug, 160) } });
       destination = { ...routeBase, webPath: `/e/${clean(brand.slug, 160)}/${clean(row.slug, 160)}` };
       break;
     case "trip":
-      facts = compact({ schemaVersion: 1, kind, title: clean(row.title), destination: clean(row.destination_text || row.location_text, 160),
+      facts = compact({ schemaVersion: 1, kind, title: clean(row.title),
+        destination: clean(row.destination_text || (withheld ? gatedLocationFact(row, 160) : row.location_text), 160),
         dateRange: clean(assembled.dateRange, 120), duration: clean(assembled.duration, 80), startingPrice: price,
         status: status(row, assembled), timezone: clean(row.timezone, 80), description: clean(row.description, 600),
         route: { eventSlug: clean(row.slug, 160) } });
       destination = { ...routeBase, webPath: `/t/${clean(brand.slug, 160)}/${clean(row.slug, 160)}` };
       break;
     case "experience":
-      facts = compact({ schemaVersion: 1, kind, title: clean(row.title), area: clean(row.location_text, 120),
+      facts = compact({ schemaVersion: 1, kind, title: clean(row.title),
+        area: withheld ? gatedLocationFact(row, 120) : clean(row.location_text, 120),
         nextDate: [schedule.localDate, schedule.localTime].filter(Boolean).join(" at "), duration: clean(assembled.duration, 80), price,
         availability: clean(assembled.availability, 80), status: status(row, assembled), timezone: clean(row.timezone, 80), description: clean(row.description, 600),
         route: { eventSlug: clean(row.slug, 160) } });
@@ -768,7 +803,10 @@ export async function loadAuthoritativeContentShare(
     const eventSlug = sourceId(identity, "eventSlug");
     const brandSlug = sourceId(identity, "brandSlug");
     if (!id && (!eventSlug || !brandSlug)) throw new Error("validation");
-    let query = db.from("events").select("id,title,description,slug,location_text,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_poster_url,cover_media_alt,cover_media_gallery,is_multi_date,rsvp_capacity,rsvp_waitlist_enabled,rsvp_approval_mode,bookings_closed,booking_deadline,brands!inner(name,slug,deleted_at)")
+    // issue #2587 — `theme` is selected for ONE reason: it is the argument to the
+    // shared address-privacy predicate below. Nothing in this module reads a key
+    // out of it, and nothing may start to.
+    let query = db.from("events").select("id,title,description,slug,location_text,theme,status,visibility,published_at,deleted_at,timezone,event_type,destination_text,cover_media_url,cover_media_type,cover_media_poster_url,cover_media_alt,cover_media_gallery,is_multi_date,rsvp_capacity,rsvp_waitlist_enabled,rsvp_approval_mode,bookings_closed,booking_deadline,brands!inner(name,slug,deleted_at)")
       .eq("event_type", expectedType).limit(1);
     query = id ? query.eq("id", id) : query.eq("slug", eventSlug).eq("brands.slug", brandSlug);
     const { data: row, error: rowError } = await query.maybeSingle();
@@ -779,7 +817,7 @@ export async function loadAuthoritativeContentShare(
     // is shareable by this complete event identity without becoming eligible
     // for any discovery/list query. Private and draft rows still fail closed.
     if ((!["public", "discover"].includes(row.visibility) && row.visibility !== "hidden") || !row.published_at || !["scheduled", "live", "ended", "cancelled"].includes(row.status)) throw new Error("not_public");
-    const [datesResult, ticketsResult, remainingResult, allInResult, rsvpResult] = await Promise.all([
+    const [datesResult, ticketsResult, remainingResult, allInResult, rsvpResult, addressWithheldResult] = await Promise.all([
       db.from("event_dates").select("start_at,end_at,timezone,is_master").eq("event_id", row.id).order("start_at", { ascending: true }),
       db.from("ticket_types").select("id,price_cents,currency,is_free,is_hidden,is_disabled,available_online,is_unlimited,sale_start_at,sale_end_at,display_order").eq("event_id", row.id).is("deleted_at", null).order("display_order", { ascending: true }),
       // issue #2117 §4.5 — repointed to the privileged siblings. This share
@@ -793,8 +831,39 @@ export async function loadAuthoritativeContentShare(
       expectedType === "rsvp"
         ? db.from("event_rsvps").select("id,plus_count").eq("event_id", row.id).eq("rsvp_status", "going").eq("approval_status", "approved")
         : Promise.resolve({ data: [], error: null }),
+      // ===================================================================
+      // issue #2587 — THE address-privacy gate for the share path.
+      //
+      // Read this before touching it. This function is a SERVICE-ROLE path
+      // that selects from the BASE relation `public.events`, not from any of
+      // the derived read models #2489 phase 1 gated. Two consequences follow,
+      // and both were measured live on 2026-08-25:
+      //
+      //   1. Row-level policy does not constrain it. #2489 phase 2 revokes the
+      //      base relation from the unauthenticated role; a service-role
+      //      client is unaffected by that revoke. So phase 2 landing does NOT
+      //      make this call redundant — it stays the only control that reaches
+      //      this path. Do not delete it as "already covered".
+      //   2. What it captures FREEZES. The mint RPC writes an immutable
+      //      content-share version row, and the rendered card is served with a
+      //      one-year immutable cache header. A gate applied a day late does
+      //      not reach what was already captured.
+      //
+      // The verdict comes from the deployed predicate, never from a TypeScript
+      // reading of the flag. #2589 F-12 found the rule had already been
+      // re-implemented in three places that disagreed; one authority is the
+      // entire point. `issue_2489_address_withheld` is IMMUTABLE, PARALLEL
+      // SAFE and TOTAL — it cannot raise, and it fails closed on a NULL theme,
+      // an absent key and any non-boolean value.
+      // ===================================================================
+      db.rpc("issue_2489_address_withheld", { p_theme: row.theme ?? null }),
     ]);
     if (datesResult.error || ticketsResult.error || remainingResult.error || allInResult.error || rsvpResult.error) throw new Error("db_error");
+    // Fail-closed AND loud: a gate that silently degrades to "disclose" on a
+    // transport error is not a gate. `db_error` is what every other read in
+    // this function raises, and the caller already maps it to a retryable 503.
+    if (addressWithheldResult?.error) throw new Error("db_error");
+    const addressWithheld = addressWithheldResult?.data === false ? false : true;
     const dates = datesResult.data || [];
     const allInById=new Map<string,RecordLike>((allInResult.data||[]).map((item:RecordLike)=>[String(item.ticket_type_id),item] as [string,RecordLike]));
     const tickets = (ticketsResult.data || []).map((ticket:RecordLike)=>{
@@ -810,7 +879,7 @@ export async function loadAuthoritativeContentShare(
     const ticketTruth = ticketTruthAt(tickets, remainingResult.data || []);
     const rsvpGoing = (rsvpResult.data || []).reduce((sum: number, item: RecordLike) => sum + 1 + (Number.isInteger(item.plus_count) ? item.plus_count : 0), 0);
     const rsvpFull = expectedType === "rsvp" && Number.isInteger(row.rsvp_capacity) && rsvpGoing >= row.rsvp_capacity;
-    const assembled = { row, date: firstDate, tickets, relevantDates, ...ticketTruth,
+    const assembled = { row, date: firstDate, tickets, relevantDates, addressWithheld, ...ticketTruth,
       rsvpClosed: rsvpFull && row.rsvp_waitlist_enabled !== true && row.rsvp_approval_mode !== "manual",
       availability: expectedType === "rsvp" && rsvpFull && row.rsvp_waitlist_enabled === true ? "Waitlist available" : ticketTruth.availability,
       actionEligible: Boolean(firstDate) && !(expectedType === "trip" && (row.bookings_closed === true

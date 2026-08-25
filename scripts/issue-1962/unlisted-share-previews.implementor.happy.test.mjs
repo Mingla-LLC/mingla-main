@@ -80,6 +80,13 @@ class ShareDb {
       name === "pg_public_event_tier_allin"
     ) return { data: [], error: null };
     if (name === "resolve_content_share_message") return { data: `Collector's Preview\n\nhttps://usemingla.com/s/${args.p_code}`, error: null };
+    // [TEST-MOD-APPROVED #2587] The share capture now asks the database for the
+    // address-privacy verdict before it maps facts, because this path reads the
+    // base relation as service_role and no role-level control reaches it. The
+    // old fake treated that read as a forbidden persistence call. This fixture
+    // carries no theme, and the deployed predicate fails closed on an absent
+    // flag, so `true` is the faithful model of the served contract.
+    if (name === "issue_2489_address_withheld") return { data: true, error: null };
     assert.equal(name, "upsert_content_share_version");
     return { data: { shortCode: "Aa0Bb1Cc2Dd3Ee4F", version: 1, versionCreated: true }, error: null };
   }
