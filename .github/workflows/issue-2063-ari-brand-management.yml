@@ -5,6 +5,18 @@ on:
     paths:
       - "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql"
       - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
+      # issue #2592 — the repaired #1975 reservation version contract and the
+      # #1978 certification denominator both need the FULL migration replay this
+      # job already performs, so they run here rather than in a new lane
+      # (I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED).
+      - "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
+      - "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql"
+      - "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
+      - "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
+      - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
+      - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
+      - "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
       - "supabase/functions/_shared/agentTools.ts"
@@ -33,6 +45,18 @@ on:
     paths:
       - "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql"
       - "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
+      # issue #2592 — the repaired #1975 reservation version contract and the
+      # #1978 certification denominator both need the FULL migration replay this
+      # job already performs, so they run here rather than in a new lane
+      # (I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED).
+      - "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
+      - "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql"
+      - "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql"
+      - "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql"
+      - "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql"
+      - "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql"
+      - "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts"
       - "supabase/functions/_shared/agentToolHelpers.ts"
       - "supabase/functions/_shared/agentToolAuthorization.ts"
       - "supabase/functions/_shared/agentTools.ts"
@@ -83,6 +107,13 @@ jobs:
           supabase/functions/_shared/__tests__/issue_2063_brand_hours_proposal_canonicalization.implementor.test.ts
           supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts
           supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts
+      # issue #2592 — the shipped status mapping, executed. Follows the #2009
+      # precedent: importing the handler needs net/env, and the ToolError code is
+      # taken off the real executor rather than typed by hand.
+      - name: "#2592 a stale reservation version is a 409 conflict, not a 500"
+        run: >-
+          deno test --no-check --allow-env --allow-net --allow-read
+          supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts
       - name: Shared chat and confirmation typecheck
         run: >-
           deno check
@@ -145,3 +176,22 @@ jobs:
               done
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql
+      # issue #2592. Runs LAST: the reservation contract deliberately drops and
+      # re-adds `reservations_version_positive` through a real re-application of
+      # the #1975 migration, so it must not precede another suite's assertions.
+      - name: "#2592 reservation version contract and Ari certification denominator"
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql
+          # issue #2592 TESTER adversarial. Runs LAST: it plants a decoy relation named
+          # `reservations` in the `private` schema and re-applies the #1975 migration, so
+          # it must not precede another suite's assertions. It drops the decoy itself.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql

@@ -226,6 +226,16 @@ export function toolErrorHttpStatus(code: string): number {
   // ORCH-1103 — delete refused because the brand has upcoming/live events.
   // Recoverable, user-actionable conflict (cancel/transfer first) → 409.
   if (code === "DELETE_BLOCKED_BY_EVENTS") return 409;
+  // issue #2592 — an optimistic-concurrency conflict. The resource moved under
+  // the caller, so the request is CORRECTLY refused and the caller resolves it
+  // by re-reading the current version. That is the same 409 the Edge-owned
+  // version-conflict siblings already return (`manage-stay-inventory`,
+  // `stay-reservations`, `manage-brand-discovery-currency` all map their stable
+  // conflict literal to 409). Before this branch a stale version fell through
+  // to 500 — a server fault, and the one status the Ari envelope contract
+  // classifies `safe_to_retry: true`, which is precisely what a deterministic
+  // caller mistake must never be told.
+  if (code === "VERSION_CONFLICT") return 409;
   // issue #2009 (BINDING SPEC AMENDMENT 3B, Defect 4) — `business_set_event_visibility`
   // refuses every transition entering or leaving Private while #1931's private-access
   // release stays frozen. This is a KNOWN, EXPECTED, CORRECTLY-REFUSED request, not a

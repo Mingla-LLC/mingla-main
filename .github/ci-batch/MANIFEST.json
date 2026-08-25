@@ -16704,7 +16704,7 @@
       "providerWorkflow": ".github/workflows/issue-1979-ari-venue-ops.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d0ad8afb60cb109aca4bf10c04450e431bbc6a81707df3514da4b7f257350cb9",
+        "sourceSha256": "c85d6087bd2a42cdefc01c44c34f031c7068b9f66a48eee1288d30e983d62531",
         "triggers": [
           "pull_request",
           "push"
@@ -16714,13 +16714,16 @@
           ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs",
           ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs",
           "docs/contracts/ari-capability-ledger.json",
+          "supabase/functions/_shared/__tests__/issue_1975_ari_stays_reservations.test.ts",
+          "supabase/functions/_shared/__tests__/issue_1978_venue_listings_claims.test.ts",
           "supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts",
           "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts",
           "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts",
           "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts",
           "supabase/functions/_shared/agentDomainTools.ts",
           "supabase/functions/_shared/agentSystemPrompt.ts",
-          "supabase/functions/_shared/agentToolAuthorization.ts"
+          "supabase/functions/_shared/agentToolAuthorization.ts",
+          "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
         ],
         "jobKeys": [
           "venue-ops-contract"
@@ -17339,7 +17342,7 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "15a5a15d8096a809fbc331f9908855cca5181682e25f101a01372d82fd7c8e28",
+        "sourceSha256": "45a0be3a29376ea90fc8d23d4e5a40c3fec4159ae668d9fa3834c579cb0b9864",
         "triggers": [
           "pull_request",
           "push"
@@ -17367,9 +17370,17 @@
           "supabase/functions/_shared/agentToolHelpers.ts",
           "supabase/functions/_shared/agentTools.ts",
           "supabase/functions/agent-chat/index.ts",
+          "supabase/functions/agent-confirm-action/__tests__/issue_2592_version_conflict_status.test.ts",
           "supabase/functions/agent-confirm-action/index.ts",
           "supabase/migrations/20270507002063_issue_2063_ari_brand_management.sql",
-          "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql"
+          "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql",
+          "supabase/migrations/20270521001978_issue_1978_ari_venue_listings_certification.sql",
+          "supabase/migrations/20270527002592_issue_2592_ari_cert_begin_run_digest.sql",
+          "supabase/migrations/__tests__/issue_2063_ari_brand_management.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2592_ari_cert_begin_run_digest.implementor.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2592_ari_cert_denominator.implementor.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2592_reservation_version_contract.test.sql",
+          "supabase/migrations/__tests__/issue_2592_reservation_version_race.tester.adversarial.pg17.test.sql"
         ],
         "jobKeys": [
           "issue-2063-business-parity",

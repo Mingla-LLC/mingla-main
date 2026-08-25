@@ -36,10 +36,16 @@ BEGIN;
 ALTER TABLE public.reservations
   ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 1;
 
+-- #2592 A1: `pg_constraint.conname` is unique PER RELATION, not per cluster, so
+-- a same-named constraint on ANY other table used to satisfy this probe and the
+-- CHECK was silently never added to `public.reservations`. The lookup is scoped
+-- to the target relation so only THIS table's constraint can satisfy it.
 DO $$
 BEGIN
   IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'reservations_version_positive'
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'reservations_version_positive'
+       AND conrelid = 'public.reservations'::regclass
   ) THEN
     ALTER TABLE public.reservations
       ADD CONSTRAINT reservations_version_positive CHECK (version > 0);
@@ -110,6 +116,40 @@ BEGIN
   END IF;
 
   -- Optimistic concurrency: refuse a stale expected version before any write.
+  --
+  -- #2592 A2 — SQLSTATE '40001' is KEPT here, deliberately, after re-deriving
+  -- the question from the code rather than from the SQLSTATE's textbook name.
+  --
+  -- '40001' is this repository's ESTABLISHED convention for an optimistic-
+  -- concurrency conflict: `stay_version_conflict`, `stay_media_set_changed` and
+  -- `stay_idempotency_conflict` in 20270131013808, `range_version_conflict` in
+  -- 20270131013809, and `stay_version_conflict` in 20270204001448 — ~20 sites
+  -- for structurally the SAME operation as this one. Diverging on this single
+  -- function would make the reservation path behave differently from the Stay
+  -- path for an identical failure, which is its own defect.
+  --
+  -- Nothing in this repository reads a Postgres SQLSTATE to decide a retry:
+  -- there is no pooler retry setting, no library default, and no branch on
+  -- '40001' anywhere in `mingla-business/src`, `app-mobile/src` or
+  -- `supabase/functions`. The searched-for retry loop does not exist on this
+  -- stack, so the SQLSTATE is not where the exposure lives.
+  --
+  -- What DOES carry the meaning is the MESSAGE LITERAL. Every existing site
+  -- pairs '40001' with a stable literal that the OWNING Edge function maps to
+  -- HTTP 409 (`manage-stay-inventory/index.ts`, `stay-reservations/index.ts`,
+  -- `manage-brand-discovery-currency/index.ts` all match on the literal, never
+  -- on the code). `reservation_version_conflict` is that stable literal here,
+  -- and the expected/actual versions are appended so the caller can re-read the
+  -- real one instead of re-sending the stale one.
+  --
+  -- This function is the one version-conflict site with NO owning Edge in
+  -- front of it — Ari calls it straight through `callRpc`. The 409 translation
+  -- therefore happens in the tool layer, in `transition_venue_reservation`
+  -- (`_shared/agentDomainTools.ts`), which raises `VERSION_CONFLICT` instead of
+  -- the generic `RPC_FAILED`; `toolErrorHttpStatus` maps that to 409 rather
+  -- than the 500 a stale version used to be reported as. Without that, a
+  -- deterministic caller mistake was surfaced as a server fault — the one
+  -- classification the Ari envelope contract calls `safe_to_retry: true`.
   IF v_row.version <> p_expected_version THEN
     RAISE EXCEPTION 'reservation_version_conflict_expected_%_actual_%',
       p_expected_version, v_row.version USING ERRCODE = '40001';

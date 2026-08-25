@@ -10,6 +10,14 @@ on:
       - "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts"
+      # issue #2592 — the #1975 Stay/venue reservation tool contract, and the
+      # migration whose repaired database contract that suite asserts. The
+      # #1978 venue listings/claims suite is here for the same reason: it was
+      # merged by PR #2413 and executed by NO lane, so it could pass by hand
+      # forever while the contracts it pins drifted underneath it.
+      - "supabase/functions/_shared/__tests__/issue_1975_ari_stays_reservations.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1978_venue_listings_claims.test.ts"
+      - "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
       - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
@@ -23,6 +31,14 @@ on:
       - "supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.test.ts"
       - "supabase/functions/_shared/__tests__/issue_2593_ari_wave3_defects.tester_adversarial.test.ts"
+      # issue #2592 — the #1975 Stay/venue reservation tool contract, and the
+      # migration whose repaired database contract that suite asserts. The
+      # #1978 venue listings/claims suite is here for the same reason: it was
+      # merged by PR #2413 and executed by NO lane, so it could pass by hand
+      # forever while the contracts it pins drifted underneath it.
+      - "supabase/functions/_shared/__tests__/issue_1975_ari_stays_reservations.test.ts"
+      - "supabase/functions/_shared/__tests__/issue_1978_venue_listings_claims.test.ts"
+      - "supabase/migrations/20270512001975_issue_1975_ari_stays_reservations.sql"
       - "docs/contracts/ari-capability-ledger.json"
       - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
       - ".github/scripts/strict-grep/issue-2019-ari-delegated-auth.mjs"
@@ -45,7 +61,7 @@ jobs:
         with:
           deno-version: "1.46.x"
       # Source contract + adversarial rejection for the repaired/registered tools.
-      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts
+      - run: deno test --allow-read supabase/functions/_shared/__tests__/issue_1979_ari_venue_ops.test.ts supabase/functions/_shared/__tests__/issue_424_ari_domain_children.test.ts supabase/functions/_shared/__tests__/issue_1975_ari_stays_reservations.test.ts supabase/functions/_shared/__tests__/issue_1978_venue_listings_claims.test.ts
       # issue #2593 — the eight #2415 (#424 Wave 3) defect-class repairs. Both
       # source files this lane already watches are the ones under repair, so the
       # proofs execute in the SAME lane that type-checks them.
