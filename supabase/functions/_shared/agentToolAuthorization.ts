@@ -362,6 +362,9 @@ async function resolveBrand(
     );
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
+    // #2593 — same containment rule as the bare rsvp_id chain below: when the
+    // caller also names the event, the guest's RSVP must belong to THAT event.
+    if (isUuid(args.event_id) && rsvp.event_id !== args.event_id) unavailable();
   }
   // #1984 — bind a bare rsvp_id (host_set_rsvp_status target) to its event's
   // brand. Keep identifiers distinct from the guest two-hop anchors so the
@@ -382,6 +385,17 @@ async function resolveBrand(
     );
     assertExpectedEventType(toolName, bareRsvpEvent);
     if (bareRsvpEvent.brand_id !== brandId) unavailable();
+    // #2593 — the two identifiers must name the SAME parent record. Brand
+    // membership plus event_type is not scope: a tool that takes both
+    // `event_id` and `rsvp_id` (set_guest_approval) resolved each of them
+    // independently and never asserted they agreed, so an authorized member of
+    // a brand could act on an RSVP belonging to a DIFFERENT event of that same
+    // brand by naming a mismatched pair. Assert the relationship and fail
+    // closed when it does not hold. Intra-tenant containment, not a tenant
+    // boundary: brand membership was and remains required.
+    if (isUuid(args.event_id) && bareRsvp.event_id !== args.event_id) {
+      unavailable();
+    }
   }
   return brandId;
 }

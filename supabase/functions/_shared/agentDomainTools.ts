@@ -2671,7 +2671,11 @@ const runGrowthTool = writeTool(
     },
     input: { type: "object" },
   },
-  ["brand_id", "tool_key"],
+  // #2593 — `input` IS the intake object the engine runs on, and the
+  // description has always said so. It was optional, and the executor
+  // substituted `{}` for a missing one, so a model that forgot the intake
+  // silently ran the engine on nothing instead of being told to ask for it.
+  ["brand_id", "tool_key", "input"],
   async (args, client, userId) => {
     await requireBrand(args, client, userId);
     const fn = GROWTH_TOOL_FUNCTION[String(args.tool_key)];
@@ -2681,11 +2685,18 @@ const runGrowthTool = writeTool(
         "tool_key must be one of site_check, turnout_forecast, trip_quote, pricing_audit",
       );
     }
+    const input = args.input;
+    if (input === null || typeof input !== "object" || Array.isArray(input)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "input is required and must be the Growth Tool's intake object.",
+      );
+    }
     return await invokeFn(client, fn, {
       action: "run",
       lane: "app",
       brand_id: args.brand_id,
-      input: (args.input ?? {}) as Record<string, unknown>,
+      input: input as Record<string, unknown>,
     });
   },
 );
@@ -2702,14 +2713,32 @@ const getPayoutStatus = writeTool(
   async (args, client, userId) => {
     await assertAgentReadBrand(client, userId, args.brand_id);
     await requireBrand(args, client, userId);
-    // #1982 — canonical readiness gate. pg_brand_can_collect returns a scalar
-    // boolean (charges_enabled AND payouts_enabled for the brand's connected
-    // account). Ari NEVER completes hosted KYC in chat — it only reads the gate
-    // and hands the owner off to the native Payouts flow.
-    const can = await callRpc(client, "pg_brand_can_collect", {
+    // #1982 — canonical readiness gate. Ari NEVER completes hosted KYC in chat
+    // — it only reads the gate and hands the owner off to the native Payouts
+    // flow.
+    //
+    // #2593 — the bare-boolean read is CORRECT and is now pinned. Production
+    // carries exactly ONE overload, `pg_brand_can_collect(uuid) RETURNS
+    // boolean` (created 20261220000000, replaced in place by 20270129001384),
+    // whose body is `(pg_brand_can_charge(..) OR EXISTS(..)) AND NOT EXISTS(..)`
+    // — every leg is an EXISTS, so it can never evaluate to SQL NULL and
+    // PostgREST can never surface an object. Sibling readers still carry an
+    // `{ can_collect: true }` fallback for a shape this RPC cannot return; that
+    // tolerance is dead code, not a contract, so it is not reintroduced here.
+    //
+    // What IS restored is loudness: a non-boolean must never be folded into a
+    // silent `can_collect: false`, because that answer tells an already-onboarded
+    // owner to go redo KYC. Contract violation fails closed and says so.
+    const can = await callRpc<unknown>(client, "pg_brand_can_collect", {
       p_brand_id: args.brand_id,
     });
-    const canCollect = can === true;
+    if (typeof can !== "boolean") {
+      throw new ToolError(
+        "RPC_FAILED",
+        "Payout readiness is unavailable right now. Open Brand → Payouts to check directly.",
+      );
+    }
+    const canCollect = can;
     return {
       brand_id: args.brand_id,
       can_collect: canCollect,
@@ -2771,6 +2800,54 @@ const getPartnerStatus = writeTool(
   },
 );
 
+// #2593 — classify partner_disconnect_link failures on STRUCTURED fields, not
+// on prose. Every failure the RPC raises (migration 20270102000000) is
+// `RAISE EXCEPTION '<sentinel>' USING ERRCODE = 'P0001'`, and PostgREST surfaces
+// that as a PLAIN OBJECT `{ code, message, details, hint }` — never an `Error`
+// instance, so nothing below uses `instanceof`. Two things changed:
+//   1. the SQLSTATE must be the RPC's own `P0001`, so an infrastructure or RLS
+//      failure can no longer be dressed up as a clean user-facing refusal; and
+//   2. the sentinel is matched as a WHOLE TOKEN across the structured fields
+//      rather than by substring, so `guest_roster_forbidden` (or any future
+//      `<sentinel>_v2`) can never be read as this RPC's answer.
+// Message text stays the transport for the sentinel because that is what
+// PostgREST does with `RAISE EXCEPTION`, but it is no longer the classifier.
+const PARTNER_DISCONNECT_SENTINELS: ReadonlyArray<
+  readonly [string, string, string]
+> = Object.freeze([
+  [
+    "forbidden",
+    "BRAND_ACCESS_DENIED",
+    "You do not have permission to disconnect this partner.",
+  ],
+  ["link_not_found", "INVALID_ARGS", "That partner link no longer exists."],
+  [
+    "link_not_active",
+    "INVALID_ARGS",
+    "Only an active partner link can be disconnected.",
+  ],
+]);
+
+export function classifyPartnerDisconnectError(error: unknown): ToolError {
+  const row = (error ?? {}) as Record<string, unknown>;
+  const message = typeof row.message === "string" ? row.message : "";
+  if (row.code === "P0001") {
+    const fields = [row.message, row.details, row.hint].filter(
+      (value): value is string => typeof value === "string",
+    );
+    for (const [sentinel, code, copy] of PARTNER_DISCONNECT_SENTINELS) {
+      const token = new RegExp(`(^|[^a-z0-9_])${sentinel}([^a-z0-9_]|$)`);
+      if (fields.some((value) => token.test(value))) {
+        return new ToolError(code, copy);
+      }
+    }
+  }
+  return new ToolError(
+    "RPC_FAILED",
+    message || "partner_disconnect_link failed",
+  );
+}
+
 const disconnectPartner = writeTool(
   "disconnect_partner",
   "Disconnect an active partner split via partner_disconnect_link. Destructive confirm.",
@@ -2788,28 +2865,7 @@ const disconnectPartner = writeTool(
     const { error } = await client.rpc("partner_disconnect_link", {
       p_link_id: args.partner_id,
     });
-    if (error) {
-      const message = error.message ?? "";
-      if (message.includes("forbidden")) {
-        throw new ToolError(
-          "BRAND_ACCESS_DENIED",
-          "You do not have permission to disconnect this partner.",
-        );
-      }
-      if (message.includes("link_not_found")) {
-        throw new ToolError(
-          "INVALID_ARGS",
-          "That partner link no longer exists.",
-        );
-      }
-      if (message.includes("link_not_active")) {
-        throw new ToolError(
-          "INVALID_ARGS",
-          "Only an active partner link can be disconnected.",
-        );
-      }
-      throw new ToolError("RPC_FAILED", message);
-    }
+    if (error) throw classifyPartnerDisconnectError(error);
     return { partner_id: args.partner_id, disconnected: true };
   },
   "DISCONNECT",
@@ -2955,10 +3011,23 @@ const cancelTripBooking = writeTool(
       "cancel-trip-booking",
       { mode: "preview", orderId: args.booking_id },
     );
-    const expectedRefundTotalCents =
-      typeof preview?.refundTotalCents === "number"
-        ? preview.refundTotalCents
-        : 0;
+    // #2593 — FAIL CLOSED on the amount. This used to default a missing or
+    // non-numeric `refundTotalCents` to `0` and commit anyway, which is the
+    // exact opposite of the freshness contract two lines above: a preview that
+    // could not price the cancellation would silently commit a ZERO refund and
+    // the buyer would be owed money nobody moved. There is no safe default for
+    // a money amount — if the preview did not price it, nothing is committed.
+    const expectedRefundTotalCents = preview?.refundTotalCents;
+    if (
+      typeof expectedRefundTotalCents !== "number" ||
+      !Number.isInteger(expectedRefundTotalCents) ||
+      expectedRefundTotalCents < 0
+    ) {
+      throw new ToolError(
+        "REFUND_PREVIEW_UNPRICED",
+        "The cancellation preview did not return an exact refund amount, so nothing was cancelled. Try again in a moment.",
+      );
+    }
     return await invokeFn(
       client,
       "cancel-trip-booking",
@@ -3141,9 +3210,16 @@ function slimRosterRow(row: Record<string, unknown>): Record<string, unknown> {
     primaryStatus: row.primaryStatus,
     invitationStatus: row.invitationStatus,
     rsvpId: row.rsvpId ?? null,
-    approvalStatus: row.approvalStatus ?? null,
+    // #2593 — read the keys biz_guest_roster_list actually emits. The row is
+    // built by biz_guest_roster_project (migration
+    // 20270319000873_issue_0873_guest_status_roster.sql), which names them
+    // `rsvpApprovalStatus` and `party.size`. The previous `approvalStatus` /
+    // `party.rsvpPartySize` / `row.rsvpPartySize` keys exist nowhere in that
+    // projection, so BOTH fields were permanently null and Ari reasoned about
+    // approvals and party sizes it could not actually see (Constitution 3 + 9).
+    approvalStatus: row.rsvpApprovalStatus ?? null,
     checkedIn: row.checkedIn ?? false,
-    partySize: party.rsvpPartySize ?? row.rsvpPartySize ?? null,
+    partySize: party.size ?? null,
     canApprove: row.canApprove ?? false,
     canDeny: row.canDeny ?? false,
     canRemind: row.canRemind ?? false,
@@ -3151,12 +3227,97 @@ function slimRosterRow(row: Record<string, unknown>): Record<string, unknown> {
   };
 }
 
+// #2593 (item 8) — the exact `p_filter` domain biz_guest_roster_list accepts.
+// Anything outside this list raises `guest_roster_filter_invalid` (22023) in
+// the RPC, so an unconstrained free-text string could only ever reach the
+// database to be rejected there. Copied verbatim from the IF ... NOT IN (...)
+// guard in migration 20270319000873_issue_0873_guest_status_roster.sql.
+const ROSTER_FILTERS = [
+  "all",
+  "rsvpd",
+  "ticketed",
+  "not_yet",
+  "suppressed",
+  "needs_attention",
+  "no_response",
+  "confirmed",
+  "checked_in",
+  "not_checked_in",
+  "delivery_failed",
+  "removed",
+  "going",
+  "maybe",
+  "awaiting_approval",
+  "waitlisted",
+  "declined",
+  "denied",
+  "bought_ticket",
+  "refunded",
+  "cancelled",
+  "transferred",
+] as const;
+const ROSTER_FILTER_SET: ReadonlySet<string> = new Set(ROSTER_FILTERS);
+
+// #2593 (item 4) — the roster cursor is OPAQUE and SIGNED. The RPC accepts a
+// jsonb object whose key SET must be exactly these seven, then re-derives the
+// HMAC signature and rejects a stale watermark or a forged cursor. So the only
+// correct client behaviour is to hand back the previous `nextCursor` byte for
+// byte. We validate the key set here purely so a mangled or model-invented
+// cursor gets an actionable refusal instead of a raw Postgres sentinel.
+const ROSTER_CURSOR_KEYS = [
+  "activityAt",
+  "name",
+  "queryHash",
+  "rank",
+  "rosterKey",
+  "signature",
+  "watermark",
+] as const;
+
+const ROSTER_CURSOR = {
+  type: "object",
+  additionalProperties: false,
+  required: [...ROSTER_CURSOR_KEYS],
+  properties: {
+    activityAt: { type: "string" },
+    name: { type: "string" },
+    queryHash: { type: "string" },
+    rank: { type: "integer" },
+    rosterKey: { type: "string" },
+    signature: { type: "string" },
+    watermark: { type: "integer" },
+  },
+};
+
+function normalizeRosterCursor(value: unknown): Record<string, unknown> | null {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "object" || Array.isArray(value)) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "cursor must be the nextCursor object returned by the previous page.",
+    );
+  }
+  const keys = Object.keys(value as Record<string, unknown>).sort();
+  const expected = [...ROSTER_CURSOR_KEYS].sort();
+  if (
+    keys.length !== expected.length ||
+    keys.some((key, index) => key !== expected[index])
+  ) {
+    throw new ToolError(
+      "INVALID_ARGS",
+      "cursor must be passed back exactly as it was returned — never edited or rebuilt.",
+    );
+  }
+  return value as Record<string, unknown>;
+}
+
 const listGuestRoster = writeTool(
   "list_guest_roster",
-  "List an owned event's guest roster (biz_guest_roster_list) with names/status only — never raw emails/phones. Supports filter, search and pagination.",
+  "List an owned event's guest roster (biz_guest_roster_list) with names/status only — never raw emails/phones. Supports filter, search and pagination: when the response has hasMore=true, call again with cursor set to the returned nextCursor, unchanged, and the same filter/search/sort/limit.",
   {
     event_id: UUID,
-    filter: { type: "string" },
+    filter: { type: "string", enum: [...ROSTER_FILTERS] },
+    cursor: ROSTER_CURSOR,
     search: { type: "string", maxLength: 200 },
     sort: {
       type: "string",
@@ -3175,25 +3336,43 @@ const listGuestRoster = writeTool(
     const limit = typeof args.limit === "number"
       ? Math.min(Math.max(Math.trunc(args.limit), 1), 100)
       : 25;
+    // #2593 (item 8) — the schema advertises the enum; the executor enforces
+    // it, because the schema is a hint to the model and this is the gate.
+    const filter = args.filter === undefined || args.filter === null
+      ? "all"
+      : String(args.filter);
+    if (!ROSTER_FILTER_SET.has(filter)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        `filter must be one of ${ROSTER_FILTERS.join(", ")}`,
+      );
+    }
+    // #2593 (item 4) — pagination is now real. It used to hardcode
+    // `p_cursor: null`, accept no cursor and return no nextCursor, so a caller
+    // that saw hasMore=true had no way to ever reach page 2 — the description
+    // advertised a capability the code could not perform.
+    const cursor = normalizeRosterCursor(args.cursor);
     const result = await callRpc<Record<string, unknown>>(
       client,
       "biz_guest_roster_list",
       {
         p_event_id: args.event_id,
-        p_filter: typeof args.filter === "string" ? args.filter : "all",
+        p_filter: filter,
         p_search: typeof args.search === "string" ? args.search : null,
         p_sort: typeof args.sort === "string" ? args.sort : "action_priority",
-        p_cursor: null,
+        p_cursor: cursor,
         p_limit: limit,
       },
     );
     const rows = Array.isArray(result?.rows)
       ? (result.rows as Array<Record<string, unknown>>).map(slimRosterRow)
       : [];
+    const nextCursor = result?.nextCursor ?? null;
     return {
       rows,
       summary: result?.summary ?? null,
-      hasMore: result?.nextCursor != null,
+      hasMore: nextCursor != null,
+      nextCursor,
     };
   },
 );
