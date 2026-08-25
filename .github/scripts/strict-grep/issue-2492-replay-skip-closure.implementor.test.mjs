@@ -6,7 +6,7 @@
 // T-3  error      synthetic migration reading a skipped column from
 //                 a `LANGUAGE sql` body                              -> non-zero
 // T-5  negative   the SAME reference inside a plpgsql body           -> exit 0
-// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 6/1/3/2,
+// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 7/1/3/2,
 //                 zero violations
 //
 // T-10 is the non-vacuous one. "Real chain -> exit 0" passes just as happily
@@ -135,7 +135,19 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // ONLY the pinned counts move below. No assertion's logic, no parser case and no
 // scenario was changed, so the blind-parser property these tests exist for is
 // unaltered: a parser that reads fewer branches than exist still reds here.
-test("T-10 — lane inventory is exactly 4 lanes at 6/1/3/2 (a blind parser reds here)", () => {
+//
+// [TEST-MOD-APPROVED #2489] SECOND MOVE, phase 2: SIX to SEVEN. The added entry is
+// 20270528002489_issue_2489_phase2_base_relation_grant.sql. It follows from the
+// #2489 entry above rather than standing alone: phase 2 gives events_public_view
+// owner rights so it survives the base-relation grant change, and on THIS lane the
+// gated owner-rights definition of that view is supplied only by the already
+// skipped …002489_…server_gate.sql — so the lane's own "Apply #1931 and re-capture"
+// step puts the view back on caller rights and the SC-47 capture then dies on a
+// permission error rather than on any behavioural difference. Reproduced before the
+// entry was added, clean after. The #2117 lane was simulated with phase 2 present
+// and needs no entry, so only this lane's count moves.
+// Again ONLY counts move; every assertion, parser case and scenario is unchanged.
+test("T-10 — lane inventory is exactly 4 lanes at 7/1/3/2 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -143,7 +155,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 6/1/3/2 (a blind parser reds
   assert.deepEqual(inventory, {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    [LANE]: 6,
+    [LANE]: 7,
     "issue-2117-offering-visibility-gate-tests.yml": 2,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
@@ -160,9 +172,9 @@ test("T-10 — lane inventory is exactly 4 lanes at 6/1/3/2 (a blind parser reds
   assert.equal(alternation.branchCount, 1);
   assert.equal(alternation.globs.length, 3);
 
-  // SC-2: the #1931 lane skips exactly six files, and ...002463 is NOT one.
+  // SC-2: the #1931 lane skips exactly seven files, and ...002463 is NOT one.
   const pinned = lanes.find((l) => l.workflow === LANE);
-  assert.equal(pinned.skipped.length, 6);
+  assert.equal(pinned.skipped.length, 7);
   assert.ok(pinned.skipped.includes(SKIPPED_MIGRATION));
   assert.equal(
     pinned.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
@@ -271,8 +283,8 @@ test("T-23 — the two-line branch form is read, and its skip actually takes eff
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 7, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
-  assert.equal(lane.globs.length, 7);
+  assert.equal(lane.branchCount, 8, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
+  assert.equal(lane.globs.length, 8);
   assert.ok(
     lane.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
     "reading the branch is not enough — the glob must actually resolve and skip the file",
@@ -286,7 +298,7 @@ test("T-23 — the two-line branch form is read, and its skip actually takes eff
 
 test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cannot", (t) => {
   // Three physical lines, so R-5's two-line matcher does not cover it either.
-  // The six readable branches still yield globs, so C-4(b) stays quiet by
+  // The seven readable branches still yield globs, so C-4(b) stays quiet by
   // construction — this is exactly the shape the census exists for.
   const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
     editWorkflow: [
@@ -301,7 +313,7 @@ test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cann
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 6, "precondition: the 3-line branch really is unread");
+  assert.equal(lane.branchCount, 7, "precondition: the 3-line branch really is unread");
   assert.ok(lane.globs.length > 0, "precondition: sibling branches still yield globs, so C-4(b) cannot fire");
   assert.equal(
     violations.some((v) => v.check === "C-4b"),

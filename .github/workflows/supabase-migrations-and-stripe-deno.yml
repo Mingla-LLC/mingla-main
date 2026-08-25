@@ -615,6 +615,29 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2489_address_privacy_server_gate.tester_adversarial.test.sql
 
+          # Issue #2489 PHASE 2 — the base relation itself. Phase 1 gated nine derived
+          # read paths; an unauthenticated caller never had to use one. It could read the
+          # withheld values straight off the base record, and — the half a projection gate
+          # can never answer — it could recover them WITHOUT selecting them, by filtering
+          # on them and bisecting. This suite proves both vectors are closed, through
+          # direct reads, through a whole-row read, and through an embedded read off a
+          # child table; and it proves with equal weight that anonymous browsing still
+          # works, because a revoke that closes the hole by closing the product is an
+          # outage. Registered HERE, in the already-registered migrations provider, for
+          # the reason recorded above: a new issue-named workflow is refused by the CI
+          # topology gate, and an unregistered .test.sql is a check that carries no
+          # information.
+          #
+          # Two of its sixteen scenarios are negative controls, and the second is the one
+          # this file exists for. The form of this fix that was specified first was a
+          # COLUMN-level revoke, which is a no-op while the role holds a table-level grant
+          # — it applies, exits zero, and changes nothing. NC-2 stages exactly that inside
+          # a savepoint and requires the anonymous read to STILL SUCCEED, so the reason
+          # the migration revokes the table-level grant and grants columns back is proven
+          # here rather than argued in a comment.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2489_phase2_base_relation_grant.test.sql
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an

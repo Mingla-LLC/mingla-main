@@ -191,6 +191,43 @@ jobs:
               # Matched by EXACT filename, never `*_issue_2489_*`, for the same
               # reason recorded for #2462 directly above.
               *20270523002489_issue_2489_address_privacy_server_gate.sql) continue ;;
+              # #2489 PHASE 2 — the base-relation grant change. Skipped here for a
+              # reason that is a consequence of the line directly above, not a
+              # separate judgement.
+              #
+              # Phase 2 does two things this lane cannot host together. It removes
+              # `anon`'s table-level SELECT on `public.events` and grants back a
+              # column subset; and it gives `events_public_view` OWNER rights,
+              # which is what keeps that view readable once the base grant narrows
+              # — a caller-rights view raises permission denied for anon when its
+              # BODY reads a column anon may not select, even if the caller's own
+              # query never projects it.
+              #
+              # On this lane the gated, owner-rights definition of that view is
+              # supplied ONLY by the already-skipped `…002489_…server_gate.sql`.
+              # So phase 2 would flip the pre-#2489 body, and then step "Apply
+              # #1931 and re-capture" re-emits that view at caller rights — after
+              # which the SC-47 re-capture cannot read `events` at all and the
+              # equality diff fails on a permission error rather than on a
+              # behavioural difference. Reproduced exactly before this line was
+              # added: `ERROR: permission denied for table events` at
+              # issue_1931_reader_equality.test.sql:69, baseline clean, post-#1931
+              # capture red.
+              #
+              # The skip is NOT a way to green the lane by dropping a control:
+              # nothing is removed from phase 2, and the #2117 lane was simulated
+              # with phase 2 PRESENT and stays green, so this is the one lane whose
+              # own skip list creates the conflict. Phase 2's grant change and both
+              # of its negative controls are covered end-to-end by the unfiltered
+              # full-chain provider, which replays every migration in true filename
+              # order and runs the phase 1 and phase 2 fixtures against the
+              # terminal state — the state a filtered lane structurally cannot
+              # observe.
+              #
+              # Matched by EXACT filename, never `*_issue_2489_*`, for the same
+              # reason recorded for #2462 above — an infix glob here would also
+              # drop the phase 1 file's siblings.
+              *20270528002489_issue_2489_phase2_base_relation_grant.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f" >/dev/null
           done
