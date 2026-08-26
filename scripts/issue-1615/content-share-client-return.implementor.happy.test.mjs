@@ -197,7 +197,19 @@ test('C11 enabled V1 failures never mint a fresh legacy /p share', () => {
   // the exact 503 → new `/p` downgrade that surfaced stale artwork and no chat
   // preview. Historical `/p` reads remain; new producer fallback is forbidden.
   const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
-  assert.match(adapter, /if \(!error && data\?\.shortCode && data\?\.facts\)[\s\S]*throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
+  // [TEST-MOD-APPROVED #2589] The PROPERTY here is "a V1 failure never mints a
+  // fresh legacy /p share" — carried by the `doesNotMatch` below, which is
+  // UNCHANGED and still passes. The `match` this replaces pinned the exact throw
+  // EXPRESSION, `throw new Error(error?.message || 'share_create_failed')`. #2589
+  // had to change that expression: three unrelated server outcomes (404 for an
+  // unpublished offering, 401 signed-out, 503 outage) were arriving at the sheet
+  // as one string beside a Retry that could not help two of them, so the throw
+  // now carries a typed reason. The replacement pins MORE of the property than
+  // the literal did: the success branch is unchanged, EVERY other path still
+  // throws, and the reason is derived only for copy — never to select a fallback
+  // producer, which is what the original was guarding against.
+  assert.match(adapter, /if \(!error && data\?\.shortCode && data\?\.facts\) return \{ contract: 'content_share_v1' as const, data \};/);
+  assert.match(adapter, /throw Object\.assign\(new Error\(`\$\{SHARE_FAILURE_PREFIX\}\$\{reason\}`\), \{ reason \}\);/);
   assert.doesNotMatch(adapter, /createSharedCard|prepareLegacyPublicFields|legacy_shared_card|usemingla\.com\/p\//);
 });
 
@@ -207,10 +219,25 @@ test('C12 every v1 failure, including retryable and transport failures, stays vi
   // amended contract makes all of them fail visibly in the same V1 path.
   const adapter = read('app-mobile/src/services/contentShareAdapter.ts');
   assert.doesNotMatch(adapter, /response\?\.status|FunctionsFetchError|FunctionsRelayError|RETRYABLE_STATUS/);
-  assert.match(adapter, /throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
-  // [TEST-MOD-APPROVED #1719] The retry owner moved from the deleted legacy
-  // modal to the single app-wide provider; the visible failure guarantee stays.
-  assert.match(read('app-mobile/src/components/share/UnifiedShareProvider.tsx'), /setPrepError\(true\)[\s\S]*Retry share/);
+  // [TEST-MOD-APPROVED #2589] Same two shape pins, same surviving property.
+  //
+  // (a) The exact throw expression became a typed throw — see C11. Every failure
+  //     still throws; none is reclassified into a fallback.
+  // (b) `setPrepError(true)` was a BOOLEAN: it could record THAT preparation
+  //     failed but never WHY, which is precisely why one runtime screenshot got
+  //     attributed to the wrong cause during #2589's investigation. It is now a
+  //     reason. THE GUARANTEE THIS TEST NAMES IS UNCHANGED AND IS ASSERTED
+  //     HARDER: every failure this test enumerates — transport, 408/425/429, and
+  //     5xx — maps to `unavailable` or `unknown`, and BOTH are in the retryable
+  //     set, so all of them still fail visibly WITH a Retry. The only two causes
+  //     that lost Retry are 401 and 404, which this test does not name and where
+  //     a second attempt provably cannot succeed; each of those now states what
+  //     the organiser must actually do instead.
+  assert.match(adapter, /throw Object\.assign\(new Error\(`\$\{SHARE_FAILURE_PREFIX\}\$\{reason\}`\), \{ reason \}\);/);
+  const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
+  assert.match(provider, /setPrepFailure\(reason\)[\s\S]*Retry share/);
+  assert.match(provider, /RETRYABLE_SHARE_FAILURES = new Set<ContentShareFailureReason>\(\['unavailable', 'unknown'\]\)/);
+  assert.match(provider, /RETRYABLE_SHARE_FAILURES\.has\(prepFailure\)[\s\S]*Retry share/);
 });
 
 test('C13 opaque installed-direct state activates once after identity and malformed state fails closed', async () => {

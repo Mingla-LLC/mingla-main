@@ -16,12 +16,33 @@ export { contentShareRequestFromPublicUrl } from '@mingla/sharing';
 // ShareModalContent loads this adapter on demand. Re-export the preview helpers
 // through that same split boundary so @mingla/sharing is owned by one async
 // chunk instead of being hoisted into Metro's eager __common chunk.
-export { buildSharePortraitUrl, checkContentShareReadiness, checkContentShareReadinessDetailed, selectCompactPreviewFacts, shareKindLabel, statusLabel };
+export { checkContentShareReadiness, checkContentShareReadinessDetailed, selectCompactPreviewFacts, shareKindLabel, statusLabel };
 
 export function trackBusinessShareEvent(event:'share_sheet_opened'|'share_link_ready'|'share_sheet_returned'|'share_link_opened'|'share_poster_result'|'share_failure',properties:Record<string,string|number|boolean>):void{
   try{postHogService.capture(event,properties)}catch{/* telemetry never owns sharing */}
   try{captureWeb(event,properties)}catch{/* telemetry never owns sharing */}
   try{logAppsFlyerEvent(event,properties)}catch{/* telemetry never owns sharing */}
+}
+
+/**
+ * #2589 — adopt the version the readiness check reports, keeping the prepared
+ * share internally consistent. Mirrors `adoptContentShareVersion` in the
+ * Explorer adapter: the portrait-card URL is the adapter's to build, and the
+ * share sheet previews the COVER, never the generated card.
+ *
+ * Returns the SAME object when there is nothing to adopt, so a caller can use
+ * the result as a state update without forcing a re-render.
+ */
+export function adoptBusinessShareVersion(
+  prepared: PreparedBusinessShare,
+  version: number,
+): PreparedBusinessShare {
+  if (!Number.isSafeInteger(version) || version <= prepared.version) return prepared;
+  return {
+    ...prepared,
+    version,
+    s4Url: prepared.media === null ? null : buildSharePortraitUrl(prepared.shortCode, version),
+  };
 }
 
 export function buildBusinessShareIntent(channel:'twitter'|'whatsapp'|'email'|'sms',url:string,title:string,message?:string):string{

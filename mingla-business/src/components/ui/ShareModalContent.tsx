@@ -123,15 +123,17 @@ export const ShareModal: React.FC<ShareModalProps> = ({ visible, onClose, url, t
     if (!onlineRef.current) { setReadiness('offline'); return; }
     const token = generation.current;
     setReadiness(retrying ? 'retrying' : 'pending');
-    void import('../../services/contentShareAdapter').then(({ checkContentShareReadinessDetailed, buildSharePortraitUrl }) => checkContentShareReadinessDetailed(prepared.shortCode, prepared.version).then((result) => {
+    void import('../../services/contentShareAdapter').then(({ adoptBusinessShareVersion, checkContentShareReadinessDetailed }) => checkContentShareReadinessDetailed(prepared.shortCode, prepared.version).then((result) => {
       if (generation.current !== token || !(Platform.OS === 'web' || AppState.currentState === 'active')) return;
       // #2589 — the share page re-derives on read, so it can legitimately have
       // moved past the version create handed us. That is ready, not broken, and
-      // the portrait URL follows the server's version rather than pinning a
-      // number the page has left behind.
-      if (result.state === 'ready' && result.version !== null && result.version > prepared.version) {
-        setPrepared((current) => (current && current.shortCode === prepared.shortCode && result.version !== null
-          ? { ...current, version: result.version, s4Url: current.media === null ? null : buildSharePortraitUrl(current.shortCode, result.version) }
+      // the prepared share follows the server's version rather than pinning a
+      // number the page has left behind. The adoption belongs to the adapter:
+      // this sheet previews the COVER, never the generated portrait card.
+      const served = result.version;
+      if (result.state === 'ready' && served !== null) {
+        setPrepared((current) => (current && current.shortCode === prepared.shortCode
+          ? adoptBusinessShareVersion(current, served)
           : current));
       }
       setReadiness(result.state);

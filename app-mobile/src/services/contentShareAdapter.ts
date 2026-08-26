@@ -38,6 +38,35 @@ export function trackContentShareEvent(
   try { logAppsFlyerEvent(event, properties); } catch { /* telemetry never owns sharing */ }
 }
 
+/**
+ * #2589 — adopt the version the readiness check reports, keeping the prepared
+ * share internally consistent.
+ *
+ * WHY IT LIVES HERE AND NOT IN THE SHEET. The portrait-card URL is this
+ * adapter's to build (it is the only place that calls `buildSharePortraitUrl`
+ * for a prepared share), and the share sheet is a presentation surface that
+ * previews the COVER — `prepared.media.posterUrl` — never the generated card.
+ * Three separate suites pin that boundary by forbidding the portrait URL inside
+ * `UnifiedShareProvider.tsx`, alongside `Share.share`, `Linking.openURL` and the
+ * per-channel intents: the list is "things the sheet must not do itself". An
+ * earlier draft of #2589 recomputed the URL inside the sheet, which is exactly
+ * the boundary those suites exist to hold.
+ *
+ * Returns the SAME object when there is nothing to adopt, so a caller can use
+ * the result as a state update without forcing a re-render.
+ */
+export function adoptContentShareVersion(
+  prepared: PreparedContentShare,
+  version: number,
+): PreparedContentShare {
+  if (!Number.isSafeInteger(version) || version <= prepared.version) return prepared;
+  return {
+    ...prepared,
+    version,
+    s4Url: prepared.media === null ? null : buildSharePortraitUrl(prepared.shortCode, version),
+  };
+}
+
 export type ShareMessageContext = {
   planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string };
   senderNote?: string;

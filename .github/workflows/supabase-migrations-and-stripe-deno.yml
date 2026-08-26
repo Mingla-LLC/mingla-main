@@ -753,6 +753,17 @@ jobs:
       - name: "Issue #2589 — readiness converges and stops retrying a settled verdict"
         run: node --experimental-strip-types --test scripts/issue-2589/readiness-convergence.test.mjs
 
+      # Issue #2589 — the property the convergence work put at risk, proven by
+      # EXECUTING the shipped function rather than reading it. The consumer share
+      # sheet must become visible before anything is fetched, and preparation and
+      # recipients must not gate each other: that is the behaviour behind the
+      # original "tap Share, stare at nothing" report. The suites that already
+      # guarded it compared string positions in a file; this one lifts the real
+      # `openContentShare` body out of the provider, runs it over recording
+      # stubs, and asserts the observed call order.
+      - name: "Issue #2589 — the consumer sheet still opens synchronously"
+        run: node --experimental-strip-types --test scripts/issue-2589/consumer-sheet-open.runtime.test.mjs
+
       # Issue #2589 — the share host allowlist named `media.giphy.com`, which
       # Giphy's API never returns, so it matched ZERO real Giphy URLs; and the
       # content-type gate omitted GIF, so even a host-allowed GIF was refused.

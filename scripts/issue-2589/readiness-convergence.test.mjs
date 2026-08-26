@@ -183,17 +183,77 @@ test("R6 the client surfaces the version the server named, and never invents one
   assert.equal(await sharing.checkContentShareReadiness("Ff0Gg1Hh2Ii3Jj4K", 1, body({ state: "transient" }, 502)), "transient");
 });
 
-test("R7 both share sheets ADOPT the newer version rather than holding a dead one", () => {
-  // The portrait URL the sheet carries is versioned. Accepting M > N without
-  // adopting M leaves the sheet pointing at a number the page has moved past —
-  // which is how a "ready" share still hands over a stale card.
-  for (const relative of [
-    "mingla-business/src/components/ui/ShareModalContent.tsx",
-    "app-mobile/src/components/share/UnifiedShareProvider.tsx",
+test("R7 both share sheets ADOPT the newer version — through the layer that owns the card URL", () => {
+  // The portrait URL the prepared share carries is versioned. Accepting M > N
+  // without adopting M leaves the share pointing at a number the page has moved
+  // past — which is how a "ready" share still hands over a stale card.
+  //
+  // The adoption is performed by the ADAPTER, never by the sheet. The sheet is a
+  // presentation surface that previews the COVER; three separate suites forbid
+  // the generated portrait URL inside `UnifiedShareProvider.tsx`, in the same
+  // breath as `Share.share`, `Linking.openURL` and the per-channel intents —
+  // the list is "things the sheet must not do itself". That boundary is asserted
+  // here so #2589's convergence fix cannot quietly cross it again.
+  for (const [sheet, adapter, helper] of [
+    ["mingla-business/src/components/ui/ShareModalContent.tsx", "mingla-business/src/services/contentShareAdapter.ts", "adoptBusinessShareVersion"],
+    ["app-mobile/src/components/share/UnifiedShareProvider.tsx", "app-mobile/src/services/contentShareAdapter.ts", "adoptContentShareVersion"],
   ]) {
-    const source = read(relative);
-    assert.match(source, /checkContentShareReadinessDetailed\(prepared\.shortCode, prepared\.version\)/, relative);
-    assert.match(source, /result\.state === 'ready' && result\.version !== null && result\.version > prepared\.version/, relative);
-    assert.match(source, /s4Url: current\.media === null \? null : buildSharePortraitUrl\(current\.shortCode, result\.version\)/, relative);
+    const sheetSource = read(sheet);
+    assert.match(sheetSource, /checkContentShareReadinessDetailed\(prepared\.shortCode, prepared\.version\)/, sheet);
+    assert.match(sheetSource, new RegExp(`\\? ${helper}\\(current, served\\)`), sheet);
+    assert.doesNotMatch(sheetSource, /s4Url|buildSharePortraitUrl/, `${sheet}: the sheet must not handle the generated card URL`);
+
+    const adapterSource = read(adapter);
+    assert.match(adapterSource, new RegExp(`export function ${helper}\\(`), adapter);
+    assert.match(adapterSource, /s4Url: prepared\.media === null \? null : buildSharePortraitUrl\(prepared\.shortCode, version\)/, adapter);
   }
 });
+
+test("R8 the adoption helper is monotonic, identity-preserving, and honest about a cover-less share", async () => {
+  // Executed, not read. Both helpers are pure, so they run directly.
+  const business = await import("../../mingla-business/src/services/contentShareAdapter.ts").catch(() => null);
+  const consumer = await import("../../app-mobile/src/services/contentShareAdapter.ts").catch(() => null);
+  // Both adapters pull React Native at module scope. When that import cannot be
+  // resolved in this runtime the helper is exercised from its own source below
+  // rather than skipped — a test that quietly does nothing is worse than none.
+  const helpers = [business?.adoptBusinessShareVersion, consumer?.adoptContentShareVersion].filter(Boolean);
+  const fromSource = helpers.length === 2 ? helpers : [
+    buildAdoptFromSource("mingla-business/src/services/contentShareAdapter.ts", "adoptBusinessShareVersion"),
+    buildAdoptFromSource("app-mobile/src/services/contentShareAdapter.ts", "adoptContentShareVersion"),
+  ];
+  assert.equal(fromSource.length, 2);
+
+  const prepared = { shortCode: CODE, version: 3, media: { kind: "photo" }, s4Url: `https://usemingla.com/og/s/${CODE}/v3-r2.jpg` };
+  for (const adopt of fromSource) {
+    // Forward: the card URL follows the version.
+    const moved = adopt(prepared, 7);
+    assert.equal(moved.version, 7);
+    assert.equal(moved.s4Url, `https://usemingla.com/og/s/${CODE}/v7-r2.jpg`);
+
+    // Never backwards, and never sideways — the same object comes back, so this
+    // cannot spin a re-render loop when readiness re-fires on AppState.
+    for (const stale of [3, 2, 0, -1, 1.5, Number.NaN]) assert.equal(adopt(prepared, stale), prepared, String(stale));
+
+    // A cover-less share has no card, and adopting a version must not invent one.
+    const coverless = adopt({ ...prepared, media: null, s4Url: null }, 9);
+    assert.equal(coverless.version, 9);
+    assert.equal(coverless.s4Url, null);
+  }
+});
+
+/**
+ * Builds the adoption helper out of its own source, for a runtime that cannot
+ * resolve React Native. Pinned: if the helper is renamed or reshaped this
+ * throws rather than silently testing nothing.
+ */
+function buildAdoptFromSource(relative, name) {
+  const source = read(relative);
+  const start = source.indexOf(`export function ${name}(`);
+  assert.notEqual(start, -1, `${relative}: ${name} is no longer where it was`);
+  const end = source.indexOf("\n}", source.indexOf("buildSharePortraitUrl(prepared.shortCode, version)", start));
+  assert.notEqual(end, -1, `${relative}: ${name}'s body is no longer where it was`);
+  const body = source.slice(start, end + 2)
+    .replace(new RegExp(`export function ${name}\\([\\s\\S]*?\\): \\w+ \\{`), `return function ${name}(prepared, version) {`);
+  // eslint-disable-next-line no-new-func -- the helper's own source, read from disk
+  return new Function("buildSharePortraitUrl", body)(sharing.buildSharePortraitUrl);
+}

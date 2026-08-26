@@ -2,12 +2,12 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AccessibilityInfo, AppState, Clipboard, findNodeHandle, Image, Platform, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { buildSharePortraitUrl, checkContentShareReadinessDetailed, normalizeContentShareNote, selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
+import { checkContentShareReadinessDetailed, normalizeContentShareNote, selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
 import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
 import { Icon } from '../ui/Icon';
 import { colors } from '../../constants/colors';
 import {
-  prepareContentShare, sharePreparedContent,
+  adoptContentShareVersion, prepareContentShare, sharePreparedContent,
   type ContentShareFailureReason, type PreparedContentShare,
   trackContentShareEvent,
 } from '../../services/contentShareAdapter';
@@ -352,12 +352,16 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
       if (generation.current !== token || AppState.currentState !== 'active') return;
       // #2589 — the share page re-derives on read, so it can legitimately have
       // moved past the version create handed us. That is ready, not broken, and
-      // the portrait URL follows the server's version rather than pinning a
+      // the prepared share follows the server's version rather than pinning a
       // number the page has left behind. This is also what stops the
       // AppState-'active' re-check greying out Share AFTER a successful share.
-      if (result.state === 'ready' && result.version !== null && result.version > prepared.version) {
-        setPrepared((current) => (current && current.shortCode === prepared.shortCode && result.version !== null
-          ? { ...current, version: result.version, s4Url: current.media === null ? null : buildSharePortraitUrl(current.shortCode, result.version) }
+      //
+      // The adoption itself belongs to the adapter: this sheet previews the
+      // COVER and must never handle the generated portrait card's URL.
+      const served = result.version;
+      if (result.state === 'ready' && served !== null) {
+        setPrepared((current) => (current && current.shortCode === prepared.shortCode
+          ? adoptContentShareVersion(current, served)
           : current));
       }
       setReadiness(result.state);
