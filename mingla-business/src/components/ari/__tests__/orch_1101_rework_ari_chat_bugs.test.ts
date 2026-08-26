@@ -58,7 +58,38 @@ describe("ORCH-1101 REWORK · #1 guard — separator never reads undefined trail
     expect(messageList).toMatch(/ItemSeparatorComponent=\{\(\{ leadingItem \}\)/);
     expect(messageList).not.toMatch(/trailingItem\s*[.?]/); // never dereferenced
     expect(messageList).not.toMatch(/\bconst\b[^\n]*trailingItem/); // never aliased into a const
-    expect(messageList).toMatch(/lead\.tail === false/);
+    // [TEST-MOD-APPROVED #2649] — this ONE assertion is amended; :58/:59/:60
+    // above are untouched and still binding. It used to read
+    // `toMatch(/lead\.tail === false/)`, and the sentence about "the precomputed
+    // tail flag" in the comment above is superseded with it.
+    //
+    // WHY. `tail` means "this row groups with the NEXT one" — a neighbour-
+    // relative flag. #2649 inverted the thread, so the item FlatList hands the
+    // separator is the row rendered BELOW the gap, and #2649 F-8 MEASURED the
+    // old predicate putting every 4pt cluster gap one boundary off. The gap is
+    // now stamped on each row during the grouping pass as `gapAbove` and read
+    // straight off the row the gap sits above.
+    //
+    // WHY THIS IS NOT A WEAKENING. The original protected "the separator's gap
+    // comes from the grouping pass, not from an ad-hoc read of a prop that is
+    // always undefined". This still pins that, on the current predicate. And
+    // the thing the original could NOT do is exactly how F-8 nearly shipped:
+    // it is a SOURCE pin, and it read correctly the whole time the rendered
+    // gaps were wrong. That hole is now closed behaviourally, against rendered
+    // separator heights in visual order, by
+    //   issue_2649_ari_thread_bottom_anchored.happy.test.tsx        (T-2)
+    //   issue_2649_ari_thread_bottom_anchored.adversarial.test.tsx  (T-5)
+    // Net coverage is strictly greater than before, which is why this was
+    // amended rather than refused.
+    //
+    // MATCHED ON THE WHOLE RENDER EXPRESSION, NOT THE BARE IDENTIFIER. A
+    // `/lead\?\.gapAbove/` pin passes even with the old predicate restored,
+    // because MessageList's own comment block explains the union narrowing in
+    // those exact words — the audit-regex-matches-comments trap. Verified by
+    // reverting the predicate and watching the bare-identifier version stay
+    // green; the pair below goes red on that same revert.
+    expect(messageList).toMatch(/height: lead\?\.gapAbove \?\? ariThread\.gapTurn/);
+    expect(messageList).not.toMatch(/lead\.tail === false/); // superseded predicate stays gone
   });
 
   it("guards speakerOf against null/undefined items", () => {

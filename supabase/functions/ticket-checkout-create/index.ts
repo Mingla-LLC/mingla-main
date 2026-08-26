@@ -498,10 +498,90 @@ const defaultDeps: TicketCheckoutCreateDeps = {
   paystackInitializeTransaction,
 };
 
+/**
+ * issue #2670 — the real emitter, kept reachable under a second name.
+ *
+ * The handler below SHADOWS `jsonResponse` with a recording version. Shadowing
+ * rather than editing call sites is deliberate: five of those sites are pinned
+ * by CI gates as literal source text, and a guard that silently stops matching
+ * is worse than the bug it watches for. Every exit records; not one call site
+ * changes a character.
+ */
+const emitJsonResponse = jsonResponse;
+
 export const createTicketCheckoutCreateHandler = (
   deps: TicketCheckoutCreateDeps = defaultDeps,
 ): (req: Request) => Promise<Response> =>
   wrapEdgeHandler("ticket-checkout-create", async (req) => {
+    // issue #2670 — RECORD EVERY REFUSAL, AT THE ONE PLACE THEY ALL LEAVE.
+    //
+    // #2579 made the log record, and it recorded 6 of 51 exits. The other 45
+    // returned in silence — including `bookings_closed`, `intake_form_required`,
+    // `pricing_config_unavailable` and every payment-rail failure. Read that log
+    // and you would conclude the problem is event dates, because event dates was
+    // one of the few things it could see. A partial log that reads as complete is
+    // worse than no log.
+    //
+    // The fix is NOT a recorder at 45 call sites. That is the treadmill this
+    // issue already fell off three times with its allowlist, and it would go
+    // stale the first time someone adds exit 52. Instead `jsonResponse` is
+    // shadowed for the whole handler body: every existing `return jsonResponse(
+    // { error: ... }, 4xx)` now records on its way out, no call site is edited,
+    // and a new exit written next year is covered the day it is written.
+    //
+    // Mutable bag rather than a closure over the `const`s below, because the
+    // first two exits (`method_not_allowed`, `invalid_json`) run BEFORE those
+    // bindings exist and reading them there would throw. The bag is always
+    // initialised; the values fill in as they become known.
+    const refusal: {
+      // deno-lint-ignore no-explicit-any
+      client: any;
+      eventId: string;
+      lines: Record<string, unknown>[];
+      surface: string;
+      phoneE164: string | null;
+      email: string | null;
+    } = {
+      client: null,
+      eventId: "",
+      lines: [],
+      surface: "unknown",
+      phoneE164: null,
+      email: null,
+    };
+
+    const jsonResponse = async (
+      body: Record<string, unknown>,
+      status = 200,
+    ): Promise<Response> => {
+      const token = typeof body.error === "string" ? body.error : null;
+      // NOT lazily constructed. #1929 requires an invalid request to die BEFORE
+      // the service client, the auth bootstrap or any network object exists, and
+      // its adversarial test asserts exactly that. Building a client here to log
+      // `method_not_allowed` would have broken a security boundary to record two
+      // reasons that are malformed requests rather than buyers being turned away.
+      // So those two exits stay unrecorded, deliberately and by name.
+      if (token !== null && status >= 400 && refusal.client !== null) {
+        try {
+          await recordCheckoutRefusal(refusal.client, {
+            eventId: refusal.eventId,
+            ticketTypeId: firstTicketTypeId(refusal.lines),
+            message: token,
+            quantity: totalRequestedQuantity(refusal.lines),
+            surface: refusal.surface,
+            phoneE164: refusal.phoneE164,
+            email: refusal.email,
+          });
+        } catch (error) {
+          console.error(
+            "[ticket-checkout-create] refusal recording skipped",
+            { token, error },
+          );
+        }
+      }
+      return emitJsonResponse(body, status);
+    };
+
     // The three-dependency factory is the established import-safe provider
     // harness. Its injected Paystack adapter owns the provider boundary during
     // unit tests; production always uses the database claim/commit authority.
@@ -528,7 +608,9 @@ export const createTicketCheckoutCreateHandler = (
     // behaviour change to anything downstream, which still uses this same
     // binding.
     const supabase = deps.serviceClient();
+    refusal.client = supabase;
     const eventId = typeof body.eventId === "string" ? body.eventId : "";
+    refusal.eventId = eventId;
     // ORCH-0839-B: three-way discriminator. Unknown values fall through to
     // "native" to preserve backward compat with older mingla-business builds
     // that send no surface field (older builds: omitted → "native").
@@ -537,12 +619,15 @@ export const createTicketCheckoutCreateHandler = (
       : body.surface === "mobile-web"
       ? "mobile-web"
       : "native";
+    refusal.surface = surface;
     const buyer = (body.buyer ?? {}) as Record<string, unknown>;
     const buyerName = typeof buyer.name === "string" ? buyer.name.trim() : "";
     const buyerEmail = typeof buyer.email === "string"
       ? buyer.email.trim().toLowerCase()
       : "";
     const buyerPhoneE164 = normalizePhoneE164(buyer.phone);
+    refusal.phoneE164 = buyerPhoneE164;
+    refusal.email = buyerEmail;
     const marketingOptIn = buyer.marketingOptIn === true;
     // ORCH-1006 Slice 2 (SPEC §B.6): no buyer-address parse. Tax is venue-sourced.
     // issue #2579 — what is known about this attempt when it is refused.
@@ -554,6 +639,7 @@ export const createTicketCheckoutCreateHandler = (
     const lines = Array.isArray(body.lines)
       ? body.lines.filter(isCheckoutLine)
       : [];
+    refusal.lines = lines;
 
     // issue #2579 — THE ONE PLACE A REFUSAL LEAVES THIS FUNCTION.
     //
@@ -579,16 +665,11 @@ export const createTicketCheckoutCreateHandler = (
       body: { error: string; [k: string]: unknown },
       status: number,
     ): Promise<Response> => {
-      await recordCheckoutRefusal(supabase, {
-        eventId,
-        ticketTypeId: firstTicketTypeId(lines),
-        message: body.error,
-        quantity: totalRequestedQuantity(lines),
-        surface,
-        phoneE164: buyerPhoneE164,
-        email: buyerEmail,
-      });
-      return jsonResponse(body, status);
+      // issue #2670 — recording moved OUT of here and into the shadowed
+      // `jsonResponse` above, which every exit goes through. This helper now
+      // adds nothing but is kept so its seventeen call sites stay byte-identical
+      // to what the CI gates and the #2579 regression test already pin.
+      return await jsonResponse(body, status);
     };
     const mode: CheckoutMode = body.mode === "preview" ? "preview" : "create";
     // ORCH-1072: OPTIONAL chosen experience occurrence (event_dates.id). When a
@@ -627,21 +708,6 @@ export const createTicketCheckoutCreateHandler = (
         body.payment_plan_choice !== "installments"
       ) {
         {
-        // issue #2579 — NOT routed through `refuse()`, deliberately.
-        // A CI gate pins this exact call shape as a literal string:
-        // rewriting it makes the gate (or its self-test mutation) stop
-        // matching, and a guard that silently stops detecting is worse
-        // than an unlogged refusal. Record explicitly instead — same
-        // fire-and-forget contract, byte-identical response.
-        await recordCheckoutRefusal(supabase, {
-          eventId,
-          ticketTypeId: firstTicketTypeId(lines),
-          message: "payment_plan_choice_invalid",
-          quantity: totalRequestedQuantity(lines),
-          surface,
-          phoneE164: buyerPhoneE164,
-          email: buyerEmail,
-        });
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
       }
@@ -692,21 +758,6 @@ export const createTicketCheckoutCreateHandler = (
         "[ticket-checkout-create] issue-2101 access decision unavailable",
         accessError,
       );
-      // issue #2579 — NOT routed through `refuse()`, deliberately.
-      // A CI gate pins this exact call shape as a literal string:
-      // rewriting it makes the gate (or its self-test mutation) stop
-      // matching, and a guard that silently stops detecting is worse
-      // than an unlogged refusal. Record explicitly instead — same
-      // fire-and-forget contract, byte-identical response.
-      await recordCheckoutRefusal(supabase, {
-        eventId,
-        ticketTypeId: firstTicketTypeId(lines),
-        message: "checkout_restricted",
-        quantity: totalRequestedQuantity(lines),
-        surface,
-        phoneE164: buyerPhoneE164,
-        email: buyerEmail,
-      });
       return jsonResponse({ error: "checkout_restricted" }, 403);
     }
     const accessDenial = ticketCheckoutAccessDenial(accessDecision);
@@ -1051,21 +1102,6 @@ export const createTicketCheckoutCreateHandler = (
       });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         {
-        // issue #2579 — NOT routed through `refuse()`, deliberately.
-        // A CI gate pins this exact call shape as a literal string:
-        // rewriting it makes the gate (or its self-test mutation) stop
-        // matching, and a guard that silently stops detecting is worse
-        // than an unlogged refusal. Record explicitly instead — same
-        // fire-and-forget contract, byte-identical response.
-        await recordCheckoutRefusal(supabase, {
-          eventId,
-          ticketTypeId: firstTicketTypeId(lines),
-          message: "payment_plan_choice_invalid",
-          quantity: totalRequestedQuantity(lines),
-          surface,
-          phoneE164: buyerPhoneE164,
-          email: buyerEmail,
-        });
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
       }
@@ -1975,21 +2011,6 @@ export const createTicketCheckoutCreateHandler = (
       console.error(
         "[ticket-checkout-create] application fee persistence failed",
       );
-      // issue #2579 — NOT routed through `refuse()`, deliberately.
-      // A CI gate pins this exact call shape as a literal string:
-      // rewriting it makes the gate (or its self-test mutation) stop
-      // matching, and a guard that silently stops detecting is worse
-      // than an unlogged refusal. Record explicitly instead — same
-      // fire-and-forget contract, byte-identical response.
-      await recordCheckoutRefusal(supabase, {
-        eventId,
-        ticketTypeId: firstTicketTypeId(lines),
-        message: "application_fee_persistence_failed",
-        quantity: totalRequestedQuantity(lines),
-        surface,
-        phoneE164: buyerPhoneE164,
-        email: buyerEmail,
-      });
       return jsonResponse({ error: "application_fee_persistence_failed" }, 503);
     }
 
