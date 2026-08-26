@@ -27,8 +27,9 @@ Deno.test("#2060 adversarial: secret/exception strings never reach user_message"
   const secret =
     "jwt_eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.sql SELECT * FROM agent_messages";
 
-  const response = await runWithAriRequest({ executionId: PENDING }, () =>
-    ariErrorResponse(500, "HANDLER_THREW", `agent-chat threw: ${secret}`)
+  const response = await runWithAriRequest(
+    { executionId: PENDING },
+    () => ariErrorResponse(500, "HANDLER_THREW", `agent-chat threw: ${secret}`),
   );
 
   const body = await response.json();
@@ -42,7 +43,8 @@ Deno.test("#2060 adversarial: secret/exception strings never reach user_message"
 
 Deno.test("#2060 adversarial: responders require request context", () => {
   assertThrows(
-    () => ariJsonResponse(200, { kind: "text", text: "hi", conversation_id: "x" }),
+    () =>
+      ariJsonResponse(200, { kind: "text", text: "hi", conversation_id: "x" }),
     TypeError,
     "ari_request_context_missing",
   );
@@ -55,8 +57,10 @@ Deno.test("#2060 adversarial: responders require request context", () => {
 
 Deno.test("#2060 adversarial: TIMEOUT maps to DEADLINE_EXCEEDED not raw echo", async () => {
   Deno.env.set("MINGLA_RELEASE_SHA", RELEASE_SHA);
-  const response = await runWithAriRequest({}, () =>
-    ariErrorResponse(504, "TIMEOUT", "Ari is taking too long — try again")
+  const response = await runWithAriRequest(
+    {},
+    () =>
+      ariErrorResponse(504, "TIMEOUT", "Ari is taking too long — try again"),
   );
   assertEquals(response.status, 504);
   const body = await response.json();

@@ -54,7 +54,10 @@ Deno.test("#2060 implementor: text success nests domain payload under data", asy
   assertEquals(body.client_turn_id, CLIENT_TURN);
   assertEquals(body.release_sha, RELEASE_SHA);
   assertEquals(body.function_version, "wire-impl-v1");
-  assertEquals(body.retryability, ARI_SUCCESS_REGISTRY.PROPOSAL_READY.retryability);
+  assertEquals(
+    body.retryability,
+    ARI_SUCCESS_REGISTRY.PROPOSAL_READY.retryability,
+  );
   assertEquals(body.data.kind, "text");
   assertEquals(body.data.text, "Hello from Ari");
 });
@@ -63,16 +66,18 @@ Deno.test("#2060 implementor: pending_action stamps execution_id from pending_ac
   Deno.env.set("MINGLA_RELEASE_SHA", RELEASE_SHA);
   Deno.env.set("DENO_DEPLOYMENT_ID", "wire-impl-v2");
 
-  const response = await runWithAriRequest({ clientTurnId: CLIENT_TURN }, () =>
-    ariJsonResponse(200, {
-      kind: "pending_action",
-      pending_action_id: PENDING,
-      tool_name: "create_event",
-      tool_args: { brand_id: "623e4567-e89b-42d3-a456-426614174000" },
-      conversation_id: "423e4567-e89b-42d3-a456-426614174000",
-      message_id: "523e4567-e89b-42d3-a456-426614174000",
-      task_state_revision: 2,
-    })
+  const response = await runWithAriRequest(
+    { clientTurnId: CLIENT_TURN },
+    () =>
+      ariJsonResponse(200, {
+        kind: "pending_action",
+        pending_action_id: PENDING,
+        tool_name: "create_event",
+        tool_args: { brand_id: "623e4567-e89b-42d3-a456-426614174000" },
+        conversation_id: "423e4567-e89b-42d3-a456-426614174000",
+        message_id: "523e4567-e89b-42d3-a456-426614174000",
+        task_state_revision: 2,
+      }),
   );
 
   const body = await response.json();
@@ -112,11 +117,13 @@ Deno.test("#2060 implementor: cancelled maps to ACTION_CANCELLED", async () => {
   Deno.env.set("MINGLA_RELEASE_SHA", RELEASE_SHA);
   Deno.env.set("DENO_DEPLOYMENT_ID", "wire-impl-v4");
 
-  const response = await runWithAriRequest({ executionId: PENDING }, () =>
-    ariJsonResponse(200, {
-      kind: "cancelled",
-      pending_action_id: PENDING,
-    })
+  const response = await runWithAriRequest(
+    { executionId: PENDING },
+    () =>
+      ariJsonResponse(200, {
+        kind: "cancelled",
+        pending_action_id: PENDING,
+      }),
   );
 
   const body = await response.json();
@@ -129,10 +136,17 @@ Deno.test("#2060 implementor: legacy RATE_LIMITED maps through registry", async 
   Deno.env.set("MINGLA_RELEASE_SHA", RELEASE_SHA);
   Deno.env.set("DENO_DEPLOYMENT_ID", "wire-impl-v5");
 
-  const response = await runWithAriRequest({}, () =>
-    ariErrorResponse(429, "RATE_LIMITED", "You've reached today's chat limit", {
-      retry_after_seconds: 30,
-    })
+  const response = await runWithAriRequest(
+    {},
+    () =>
+      ariErrorResponse(
+        429,
+        "RATE_LIMITED",
+        "You've reached today's chat limit",
+        {
+          retry_after_seconds: 30,
+        },
+      ),
   );
 
   assertEquals(response.status, 429);

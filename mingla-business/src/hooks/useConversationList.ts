@@ -6,7 +6,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { AgentConversation, fetchConversations } from "../services/agentChatService";
-import { agentQueryKeys } from "./useAgentChat";
+import { agentQueryKeys } from "./agentQueryKeys";
 import { useAuth } from "../context/AuthContext";
 
 const DISABLED_KEY = ["ari-conversations-disabled"] as const;

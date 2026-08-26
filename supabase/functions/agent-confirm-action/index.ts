@@ -40,9 +40,7 @@ import {
   requireAccessibleAgentBrand,
   resolveAccessibleAgentBrands,
 } from "../_shared/agentTenantScope.ts";
-import {
-  decideAriFinalization,
-} from "../_shared/agentReliability.ts";
+import { decideAriFinalization } from "../_shared/agentReliability.ts";
 import {
   ariErrorResponse,
   ariJsonResponse,
@@ -1105,6 +1103,9 @@ async function handleConfirmAction(args: {
         state: "unavailable",
         reference: null,
       });
+      if (decision.state === "executed") {
+        return errorResponse(500, "EXECUTION_FAILED", "result unknown");
+      }
       emitAriPhase("canonical_readback", {
         operationState: "reconciliation_required",
         errorCode: decision.code,
@@ -1139,6 +1140,15 @@ async function handleConfirmAction(args: {
       state: "unavailable",
       reference: null,
     });
+    if (decision.state === "executed") {
+      return errorResponse(
+        500,
+        "EXECUTION_FAILED",
+        error instanceof Error
+          ? error.message
+          : "Executed result was not durably recorded",
+      );
+    }
     emitAriPhase("canonical_readback", {
       operationState: "reconciliation_required",
       errorCode: decision.code,

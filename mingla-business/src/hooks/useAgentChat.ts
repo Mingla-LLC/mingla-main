@@ -22,14 +22,9 @@ import {
   reduceAriClientIntent,
 } from "../services/agentReliability";
 import { useShareNetworkState } from "../components/ui/useShareNetworkState";
+import { agentQueryKeys } from "./agentQueryKeys";
 
-export const agentQueryKeys = {
-  conversationsRoot: () => ["ari", "conversations"] as const,
-  conversations: (brandId: string | null = null) => ["ari", "conversations", brandId ?? "unscoped"] as const,
-  messages: (conversationId: string | null) =>
-    ["ari", "messages", conversationId ?? "new"] as const,
-  profile: () => ["ari", "profile"] as const,
-};
+export { agentQueryKeys };
 
 export interface PendingActionView {
   pending_action_id: string;

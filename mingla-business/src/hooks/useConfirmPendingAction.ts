@@ -19,7 +19,7 @@ import {
   reduceAriClientIntent,
 } from "../services/agentReliability";
 import { useShareNetworkState } from "../components/ui/useShareNetworkState";
-import { agentQueryKeys } from "./useAgentChat";
+import { agentQueryKeys } from "./agentQueryKeys";
 import { brandKeys } from "./brandKeys";
 import { creatorAccountKeys } from "./creatorAccountKeys";
 import { brandHoursKeys } from "./useBrandHours";

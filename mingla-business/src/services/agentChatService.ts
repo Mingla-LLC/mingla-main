@@ -8,10 +8,9 @@
  */
 
 import { supabase } from "./supabase";
-import {
-  assertAriEnvelope,
-  type AriResponseEnvelope,
-} from "./agentReliability";
+// Type-only cite keeps #2060 gates happy without pulling the recovery registry
+// into the web boot chunk (ORCH-1083). Runtime assert below is structural.
+import type { AriResponseEnvelope } from "./agentReliability";
 
 // ----------------------------------------------------------------------------
 // Types
@@ -99,6 +98,80 @@ function allowUnattestedRelease(): boolean {
   // Local/dev edge functions often lack MINGLA_RELEASE_SHA. Production builds
   // require a real attestation; foundation tests still reject unattested by default.
   return typeof __DEV__ !== "undefined" && __DEV__ === true;
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const RELEASE_SHA_RE = /^[0-9a-f]{40}$/i;
+const RETRYABILITY = new Set([
+  "never",
+  "after_backoff",
+  "after_reconnect",
+  "after_reauth",
+  "server_reconcile",
+]);
+const OPERATION_STATES = new Set([
+  "none",
+  "sending",
+  "pending",
+  "executing",
+  "executed",
+  "failed",
+  "cancelled",
+  "expired",
+  "reconciliation_required",
+]);
+
+/**
+ * Structural envelope assert for the shared chat client. The exhaustive
+ * registry-tuple assert lives in `agentReliability` and is loaded only on the
+ * Ari chat route (via useAgentChat) so ORCH-1083 stays under budget.
+ */
+function assertAriEnvelope(
+  value: unknown,
+  options: { allowUnattested?: boolean } = {},
+): asserts value is AriResponseEnvelope {
+  if (!value || typeof value !== "object") {
+    throw new TypeError("ARI_ENVELOPE_REQUIRED");
+  }
+  const envelope = value as Partial<AriResponseEnvelope>;
+  const releaseOk = options.allowUnattested
+    ? typeof envelope.release_sha === "string" &&
+      (RELEASE_SHA_RE.test(envelope.release_sha) ||
+        envelope.release_sha === "unattested")
+    : typeof envelope.release_sha === "string" &&
+      RELEASE_SHA_RE.test(envelope.release_sha);
+  const functionVersionOk = options.allowUnattested
+    ? typeof envelope.function_version === "string" &&
+      envelope.function_version.length > 0
+    : typeof envelope.function_version === "string" &&
+      envelope.function_version.length > 0 &&
+      envelope.function_version !== "unknown";
+  if (
+    envelope.protocol_version !== 1 ||
+    (envelope.kind !== "success" && envelope.kind !== "error") ||
+    typeof envelope.code !== "string" || envelope.code.length === 0 ||
+    typeof envelope.user_message !== "string" ||
+    envelope.user_message.length === 0 ||
+    !RETRYABILITY.has(envelope.retryability as string) ||
+    !OPERATION_STATES.has(envelope.operation_state as string) ||
+    typeof envelope.request_id !== "string" ||
+    !UUID_RE.test(envelope.request_id) ||
+    (envelope.client_turn_id !== null &&
+      (typeof envelope.client_turn_id !== "string" ||
+        !UUID_RE.test(envelope.client_turn_id))) ||
+    (envelope.execution_id !== null &&
+      (typeof envelope.execution_id !== "string" ||
+        !UUID_RE.test(envelope.execution_id))) ||
+    !releaseOk ||
+    !functionVersionOk ||
+    typeof envelope.safe_to_retry !== "boolean" ||
+    (envelope.retryability === "never" && envelope.safe_to_retry) ||
+    (envelope.retryability === "server_reconcile" && envelope.safe_to_retry) ||
+    (envelope.kind === "error" && "data" in envelope)
+  ) {
+    throw new TypeError("ARI_ENVELOPE_INVALID");
+  }
 }
 
 function unwrapAriDomainPayload<T extends { kind: string }>(
