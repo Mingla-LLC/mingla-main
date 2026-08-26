@@ -1,21 +1,46 @@
 #!/usr/bin/env node
-// #2591 — the same-SHA parity ledger emitter, CONSOLIDATED SIDE.
+// #2591 — the parity ledger emitter for the CONSOLIDATED Postgres contract lane.
 //
-// The origin side is NOT instrumented. The nine origin lanes are byte-identical
-// to `origin/main` on this branch, and their half of the ledger is READ back
-// from the Actions job logs afterwards by parse-origin-log.mjs. That is possible
-// because psql emits the bare `DO` command tag this ledger witnesses with or
-// without `-e` (MEASURED on PostgreSQL 17.10), so an unmodified lane already
-// prints the evidence. Instrumenting the origins would have put a change into
-// the very run whose job is proving nothing changed.
+// [TEST-MOD-APPROVED #2591] WHAT THIS FILE IS FOR, NOW. Every run of the
+// consolidated postgres-contract-suites workflow invokes it once, with
+// PARITY_SIDE=consolidated. It is what turns "the job exited 0" into per-command
+// evidence: G-5 compares the committed command inventory against what actually
+// executed, as SETS; G-2, G-2b and G-2c then require each executed row to have
+// left a witness behind. That live inventory check is why this file was KEPT at
+// the cutover while its origin-side counterpart, parse-origin-log.mjs, was
+// retired.
 //
-// Both files write the same row schema, so the two sides join on it.
+// Note for whoever edits this header next: the workflow is named above WITHOUT
+// its file extension, deliberately. discoverWorkflowProviders() in
+// validate-manifest-v2.mjs treats any workflow-filename literal in a tracked
+// source as a provider reference, and one here — even inside a comment — makes
+// this file a fourth discovered referenceFile and fails the #2591 seal
+// subtraction by exact content. MEASURED: it did exactly that on the first draft
+// of this comment. Keep the extension out.
 //
-// THE LEDGER IS REPRODUCIBLE ONLY AT THE SHADOW SHA. The origin side's
-// expectations come from the nine origin workflows' YAML, and the cutover
-// deletes those files, so the origin half loses its subject by construction and
-// is retired with them. A post-cutover re-run failing is correct behaviour, not
-// a regression.
+// [#2591 cutover] THE NEXT TWO PARAGRAPHS ARE HISTORY. They describe the shadow
+// arrangement, which ENDED when the cutover deleted the nine origin lanes. They
+// are moved to the past tense rather than removed, because they record how the
+// parity that justified that deletion was obtained — and therefore why this file
+// witnesses what it witnesses. Do not read them as a description of anything that
+// runs today.
+//
+//   The origin side was NOT instrumented. The nine origin lanes were
+//   byte-identical to `origin/main` on the shadow branch, and their half of the
+//   ledger was READ back from the Actions job logs afterwards by
+//   parse-origin-log.mjs. That was possible because psql emits the bare `DO`
+//   command tag this ledger witnesses with or without `-e` (MEASURED on
+//   PostgreSQL 17.10), so an unmodified lane already printed the evidence.
+//   Instrumenting the origins would have put a change into the very run whose
+//   job was proving nothing changed. Both files wrote the same row schema, so
+//   the two sides joined on it.
+//
+//   That two-sided ledger was reproducible ONLY at the shadow SHA. The origin
+//   side's expectations were derived from the nine origin workflows' YAML; the
+//   cutover commit deleted those files, so the origin half lost its subject by
+//   construction and parse-origin-log.mjs was retired alongside them in that same
+//   commit. There is no origin half any more, and a re-run of one would fail
+//   correctly rather than regress.
 //
 // INPUTS, from $PARITY_DIR (default "$RUNNER_TEMP/parity"):
 //   inventory.tsv   id \t kind \t database        — the committed command inventory
@@ -39,8 +64,8 @@
 //
 // Per-assertion positive evidence at RAISE-site granularity is NOT obtainable
 // without editing the proof files. This buys per-DO-block liveness plus per-file
-// end-to-end liveness. It does not widen the gap the origin lanes already have,
-// and it does not close it either.
+// end-to-end liveness. It neither widened nor closed the gap the nine origin
+// lanes carried before the cutover; that same gap is now this lane's, unchanged.
 
 import fs from "node:fs";
 import crypto from "node:crypto";
@@ -49,6 +74,10 @@ import path from "node:path";
 const dir = process.env.PARITY_DIR
   || path.join(process.env.RUNNER_TEMP || process.cwd(), "parity");
 const side = process.env.PARITY_SIDE;
+// [#2591 cutover] `origin` is now a VESTIGIAL accepted value — no workflow passes
+// it any more, because there is no origin side left to pass it. The check is left
+// exactly as it is: it is executable, it fails closed on anything unrecognised,
+// and narrowing it would be a behaviour change made for tidiness alone.
 if (side !== "origin" && side !== "consolidated") {
   console.log("::error::PARITY_SIDE must be exactly 'origin' or 'consolidated'");
   process.exit(1);
@@ -122,7 +151,9 @@ for (const [id, kind, database, file, exitCode] of executed) {
     doBlocksExpected: null,
     denoCases: null,
     // stdout and stderr are merged before the tee, because one stream is what a
-    // tee can carry; the field name is kept so both sides join on one schema.
+    // tee can carry. The field NAME dates from the shadow arrangement, when both
+    // sides had to join on one row schema; it is kept unchanged so ledgers
+    // emitted before and after the cutover stay comparable.
     streams: "merged",
     stderrSha256: crypto.createHash("sha256").update(normalise(log)).digest("hex"),
   };
@@ -161,8 +192,10 @@ for (const [id, kind, database, file, exitCode] of executed) {
     // ── G-2c — a Deno row that registered no cases is RED ─────────────────
     // A suite that ran zero cases exits 0 and reports success exactly like one
     // that passed every case, and a set-equality leg comparing two empty sets
-    // passes. The origin side already refuses this; the consolidated side must
-    // too, or the two halves disagree about what counts as evidence.
+    // passes. The origin side refused this, so the consolidated side had to as
+    // well, or the two halves would have disagreed about what counts as evidence.
+    // Post-cutover there is no second half and the guard stands alone, unchanged:
+    // a deno row whose log carries no case lines is RED here, on its own account.
     if (row.denoCases.length === 0) {
       failures.push(
         `G-2c: ${id} is a deno row whose log carries no test-case lines at all. A suite that registered zero cases reports success exactly like one that passed, and an empty case set reconciles against another empty case set.`,
@@ -199,6 +232,12 @@ const ledger = {
   doBlocksWitnessedTotal: witnessedTotal,
   doBlocksExpectedTotal: expectedTotal,
   raiseExceptionCountsUsedAsEvidence: false,
+  // [#2591 cutover] The note below is EMITTED DATA, not a comment: it is written
+  // into parity-<side>.json and every ledger banked at and before the cutover
+  // carries it byte-for-byte. Its closing clause — "the gap the origin lanes
+  // already have" — is therefore frozen in the tense it was written in. Read it
+  // historically: those lanes are gone, and the gap it names is now this lane's.
+  // Rewording it would change the emitter's output and break that comparability.
   raiseExceptionEvidenceNote:
     "A RAISE EXCEPTION site is the failure path: it emits nothing when the assertion holds, so a matching count proves nothing. Per-assertion positive evidence at RAISE-site granularity is NOT obtainable without editing the proof files. This ledger buys per-DO-block liveness plus per-file end-to-end liveness, and it neither widens nor closes the gap the origin lanes already have.",
   rows,
