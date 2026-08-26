@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
+  FlatList,
   Image,
   Pressable,
   StyleSheet,
@@ -17,7 +18,17 @@ import { KeyboardAvoidingView } from "../../wrappers/SmartKeyboardAvoidingView";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 // #1850 — the composer's lift is budgeted against the DERIVED Done-bar cost, not
 // a hand-typed number. See the comment at the KeyboardAvoidingView below.
-import { DONE_BAR_OCCUPIED, ScrollView } from "../../wrappers/SmartScrollView";
+//
+// #2649 — the `ScrollView` this used to also import is GONE, and its removal is
+// the point rather than tidying. That specifier resolves to the wrapper's
+// re-export of KeyboardAwareScrollView, which appended a `keyboardHeight + 1`
+// spacer to this thread's content whenever the keyboard opened — measured at
+// 335pt on iOS and 302.9dp on Android, buying nothing, because this screen's
+// composer is a SIBLING of the thread, not a child, so there is no focused
+// input inside it for the library to keep clear. Worse, that phantom content
+// made `scrollToEnd` land ~351pt past the last message in blank space. The
+// thread is now an inverted FlatList and needs neither.
+import { DONE_BAR_OCCUPIED } from "../../wrappers/SmartScrollView";
 // #1890 C-5 REWORK — the composer's bottom spacer comes from the shared
 // occluder budget, which is where the rule "a lifted surface does not also
 // budget for the screen edge it is no longer touching" is written down. Both
@@ -73,6 +84,17 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
     () => chat.messages.slice().sort((a, b) => a.created_at.localeCompare(b.created_at)),
     [chat.messages],
   );
+
+  // #2649 — the thread is an `inverted` FlatList, which paints data[0] at the
+  // frame's bottom edge. Feeding it newest-first is what makes the thread open
+  // on the NEWEST message and stay pinned there when the composer grows. Before
+  // this, the panel had no scroll of any kind and opened on the OLDEST message
+  // in every keyboard state — 692pt from the newest on iPhone 16.
+  //
+  // Deliberately NOT paired with a scrollToEnd: bottom-anchoring comes from
+  // `inverted` alone. See the SmartScrollView import note for the trap that
+  // rule exists to avoid.
+  const invertedMessages = useMemo(() => sortedMessages.slice().reverse(), [sortedMessages]);
 
   const handleSend = async () => {
     const content = composer.trim();
@@ -187,19 +209,26 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
         </View>
       ) : (
         <>
-          <ScrollView
+          {/* #2649 — virtualised and bottom-anchored. The `inverted` prop is the
+              whole fix: the newest message is pinned to the frame's bottom edge
+              by construction, so the composer can grow as much as the keyboard
+              needs and the thread rides up with it. No keyboard height is read
+              here, no listener is registered, and no scroll call holds it in
+              place — which is why it also survives #1894. */}
+          <FlatList
             style={styles.messages}
             contentContainerStyle={styles.messagesContent}
             showsVerticalScrollIndicator={false}
-          >
-            {sortedMessages.map((message) => {
+            inverted
+            data={invertedMessages}
+            keyExtractor={(message) => message.id}
+            renderItem={({ item: message }) => {
               const mine = message.sender_id === currentUserId;
               const blast = message.marketing_campaign_id !== null;
               const hasImage = message.message_type === "image" && message.file_url !== null;
               const hasCaption = message.content.length > 0;
               return (
                 <View
-                  key={message.id}
                   style={[
                     styles.messageRow,
                     mine ? styles.messageRowMine : styles.messageRowOther,
@@ -239,8 +268,8 @@ export const GroupChatPanel: React.FC<GroupChatPanelProps> = ({ eventId }) => {
                   </View>
                 </View>
               );
-            })}
-          </ScrollView>
+            }}
+          />
 
           {/* ORCH-1165: lift the composer so the Done bar sits above it.
               #1850 — the literal 42 that used to sit here was KEYBOARD_TOOLBAR_HEIGHT,
