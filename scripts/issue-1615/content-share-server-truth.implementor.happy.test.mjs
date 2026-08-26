@@ -54,11 +54,39 @@ test('ST3 mapper keeps free truthful, maps Google price enums and versions sanit
   assert.equal(JSON.stringify(curated.publicDetails).includes('placeId'),false);
 });
 
-test('ST4 coverless S6 omits all image claims while covered video has separate safe controls',()=>{
+test('ST4 coverless S6 claims only the version-addressed fallback card, never motion or a transaction it cannot honour',()=>{
   const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));
   const base={shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:2,facts:{schemaVersion:1,kind:'event',title:'Truth'},destination:{brandSlug:'b',eventSlug:'e'},publicDetails:{kind:'event',actionEligible:false}};
   const coverless=renderContentShareHtml({...base,media:null});
-  assert.doesNotMatch(coverless,/og:image|twitter:image|class="portrait"|>Buy tickets</);
+  // [TEST-MOD-APPROVED #2589] BEHAVIOUR INVERSION, not a narrowing. The former
+  // single guard `doesNotMatch(/og:image|twitter:image|class="portrait"|>Buy
+  // tickets</)` pinned the PRE-#2589 defect as a contract: it required a
+  // coverless share to make no image claim at all, which is precisely why a
+  // coverless offering previewed as a bare URL. #2589 exists to invert three of
+  // those four clauses — there is now always a real, first-party, version-
+  // addressed fallback card to point at, so og:image, twitter:image and the
+  // body portrait are CORRECT, not defects.
+  //
+  // The three obsolete clauses are replaced by POSITIVE assertions rather than
+  // deleted, so ST4 keeps its real intent: a coverless share must make no media
+  // claim it cannot honour.
+  //   (1) `>Buy tickets<` stays forbidden — UNCHANGED. This fixture is
+  //       actionEligible:false, so a transaction CTA would still be a lie.
+  //   (2) og:image / twitter:image must be PRESENT and must carry the
+  //       version-addressed first-party card for THIS short code — not empty,
+  //       not a placeholder, not a third-party host.
+  //   (3) exactly one <img> in the whole document and it is that same card, and
+  //       NO <video> element at all. #2589 detached only the image tag from the
+  //       poster gate; the MOTION layer is still gated on a real poster, so a
+  //       coverless share must not mount one. This is the assertion that
+  //       carries ST4's original meaning forward.
+  assert.doesNotMatch(coverless,/>Buy tickets</);
+  const ogImage=coverless.match(/<meta property="og:image" content="([^"]*)" \/>/)?.[1];
+  assert.match(String(ogImage),/^https:\/\/usemingla\.com\/og\/s\/Aa0Bb1Cc2Dd3Ee4F\/v2-r\d+\.jpg$/);
+  assert.ok(coverless.includes(`<meta name="twitter:image" content="${ogImage}" />`),'twitter:image carries the same fallback card');
+  assert.ok(coverless.includes(`<div class="portrait"><img class="portrait-poster" src="${ogImage}"`),'body portrait shows the same fallback card');
+  assert.deepEqual([...coverless.matchAll(/<img[^>]*\ssrc="([^"]*)"/g)].map((match)=>match[1]),[ogImage]);
+  assert.doesNotMatch(coverless,/<video/);
   const host='gqnoajqerqhnvulmnyvv.supabase.co/storage/v1/object/public/share';
   const video=renderContentShareHtml({...base,media:{kind:'video',url:`https://${host}/a.mp4`,posterUrl:`https://${host}/a.jpg`}});
   // [TEST-MOD-APPROVED #1615] The hand-built motion composition was an
@@ -66,6 +94,10 @@ test('ST4 coverless S6 omits all image claims while covered video has separate s
   // canonical portrait above motion while retaining independent safe controls.
   for(const token of ['play-control','sound-control','Unmute video','v.muted=true','portrait-identity-overlay'])assert.ok(video.includes(token),token);
   assert.doesNotMatch(video,/motion-(?:composition|wordmark|title|plate)/);
+  // [TEST-MOD-APPROVED #2589] Additive only — proves the new coverless `<video>`
+  // guard above is discriminating rather than vacuous: the SAME renderer does
+  // mount a motion element once a real poster stands behind it.
+  assert.match(video,/<video class="share-motion"/);
 });
 
 test('ST5 public details are exact, bounded and contain neither provider hours nor nested identity',()=>{
