@@ -84,47 +84,44 @@ import { paystackTicketSplitFields } from "./ngPaystackSplit.ts";
 /**
  * issue #2579 — fire-and-forget refusal telemetry.
  *
- * `raiseToken` is recovered from the Postgres error message, which for a
- * SECURITY DEFINER `RAISE EXCEPTION 'token'` arrives as the token itself,
- * sometimes wrapped. Matching a bounded set rather than parsing keeps an
- * unexpected message shape from writing garbage — and the RPC records anything
- * it does not recognise as `unknown_token`, so a new refusal reason shows up as
- * a visible gap rather than silently vanishing.
+ * `raiseToken` is NOT resolved here. issue #2579: this file used to carry its
+ * own nineteen-token list and collapse anything outside it to `unknown_token`
+ * BEFORE calling the RPC — which meant the RPC's own sixty-seven-token allowlist
+ * was unreachable on the only path that matters, and a real past-event refusal
+ * arrived already destroyed. Two allowlists is one more than the number of
+ * places a fact can live and stay true.
+ *
+ * The raw message goes to the RPC and the RPC does the matching: exact first
+ * (an edge refusal sends a bare token), then longest-first embedded match (a
+ * Postgres error arrives with the token inside it). Anything unrecognised is
+ * still KEPT as `unknown_token` rather than dropped, which is the property that
+ * made every gap in this system findable.
  */
-const REFUSAL_TOKENS: readonly string[] = [
-  "buyer_phone_required",
-  "event_already_ended",
-  "event_currency_required",
-  "event_not_found",
-  "event_not_selling",
-  "mixed_currency_cart",
-  "occurrence_not_available",
-  "occurrence_not_found",
-  "payment_plan_choice_invalid",
-  "stripe_account_not_ready",
-  "ticket_capacity_exceeded",
-  "ticket_lines_required",
-  "ticket_quantity_above_max",
-  "ticket_quantity_below_min",
-  "ticket_quantity_invalid",
-  "ticket_sales_ended",
-  "ticket_sales_not_started",
-  "ticket_type_not_found",
-  "ticket_type_unavailable",
-];
 
-const refusalTokenFrom = (message: string | undefined): string => {
-  if (typeof message !== "string" || message.length === 0) {
-    return "unknown_token";
+/**
+ * issue #2579 — DELIVERY MUST SURVIVE THE RESPONSE.
+ *
+ * Six real refusals fired back-to-back at the deployed endpoint recorded ZERO
+ * rows, while the same RPC called directly recorded fine. The promise was
+ * `void`-ed and never awaited, and the edge runtime tears the request context
+ * down the moment the response returns — so the write was abandoned in flight.
+ * The old comment claimed "fire-and-forget, never blocks the response"; it got
+ * the second half right and silently lost the first.
+ *
+ * `waitUntil` holds the isolate open until the write lands WITHOUT delaying the
+ * response, which is what that comment always meant. Where no such runtime
+ * exists (local `deno test`), fall back to the old behaviour rather than
+ * throwing: telemetry must never turn a refusal into a failed checkout.
+ */
+const keepAlive = (work: Promise<unknown>): void => {
+  const runtime = (globalThis as {
+    EdgeRuntime?: { waitUntil?: (p: Promise<unknown>) => void };
+  }).EdgeRuntime;
+  if (typeof runtime?.waitUntil === "function") {
+    runtime.waitUntil(work);
+    return;
   }
-  // Longest first, so `ticket_sales_not_started` is never shadowed by a
-  // shorter token that happens to be a prefix of another.
-  for (
-    const token of [...REFUSAL_TOKENS].sort((a, b) => b.length - a.length)
-  ) {
-    if (message.includes(token)) return token;
-  }
-  return "unknown_token";
+  void work;
 };
 
 const firstTicketTypeId = (
@@ -169,7 +166,8 @@ const recordCheckoutRefusal = async (
     await client.rpc("issue_2579_record_checkout_refusal", {
       p_event_id: input.eventId.length > 0 ? input.eventId : null,
       p_ticket_type_id: input.ticketTypeId,
-      p_raise_token: refusalTokenFrom(input.message),
+      // RAW. The RPC owns the allowlist; see the note above.
+      p_raise_token: input.message ?? null,
       p_quantity_requested: input.quantity,
       p_surface: input.surface,
       // FULL E.164 in; the RPC stores the dial code only. Extraction lives
@@ -552,7 +550,7 @@ export const createTicketCheckoutCreateHandler = (
       body: { error: string; [k: string]: unknown },
       status: number,
     ): Response => {
-      void recordCheckoutRefusal(supabase, {
+      keepAlive(recordCheckoutRefusal(supabase, {
         eventId,
         ticketTypeId: firstTicketTypeId(lines),
         message: body.error,
@@ -560,7 +558,7 @@ export const createTicketCheckoutCreateHandler = (
         surface,
         phoneE164: buyerPhoneE164,
         email: buyerEmail,
-      });
+      }));
       return jsonResponse(body, status);
     };
     const mode: CheckoutMode = body.mode === "preview" ? "preview" : "create";
@@ -606,7 +604,7 @@ export const createTicketCheckoutCreateHandler = (
         // matching, and a guard that silently stops detecting is worse
         // than an unlogged refusal. Record explicitly instead — same
         // fire-and-forget contract, byte-identical response.
-        void recordCheckoutRefusal(supabase, {
+        keepAlive(recordCheckoutRefusal(supabase, {
           eventId,
           ticketTypeId: firstTicketTypeId(lines),
           message: "payment_plan_choice_invalid",
@@ -614,7 +612,7 @@ export const createTicketCheckoutCreateHandler = (
           surface,
           phoneE164: buyerPhoneE164,
           email: buyerEmail,
-        });
+        }));
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
       }
@@ -671,7 +669,7 @@ export const createTicketCheckoutCreateHandler = (
       // matching, and a guard that silently stops detecting is worse
       // than an unlogged refusal. Record explicitly instead — same
       // fire-and-forget contract, byte-identical response.
-      void recordCheckoutRefusal(supabase, {
+      keepAlive(recordCheckoutRefusal(supabase, {
         eventId,
         ticketTypeId: firstTicketTypeId(lines),
         message: "checkout_restricted",
@@ -679,7 +677,7 @@ export const createTicketCheckoutCreateHandler = (
         surface,
         phoneE164: buyerPhoneE164,
         email: buyerEmail,
-      });
+      }));
       return jsonResponse({ error: "checkout_restricted" }, 403);
     }
     const accessDenial = ticketCheckoutAccessDenial(accessDecision);
@@ -1013,7 +1011,7 @@ export const createTicketCheckoutCreateHandler = (
       // its failure is swallowed: a telemetry outage that turned a refusal into
       // a 500 would be far worse than the blindness it fixes. The response
       // below is emitted on exactly the same path whether this succeeds or not.
-      void recordCheckoutRefusal(supabase, {
+      keepAlive(recordCheckoutRefusal(supabase, {
         eventId,
         ticketTypeId: firstTicketTypeId(lines),
         message: sessionError?.message,
@@ -1021,7 +1019,7 @@ export const createTicketCheckoutCreateHandler = (
         surface,
         phoneE164: buyerPhoneE164,
         email: buyerEmail,
-      });
+      }));
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         {
         // issue #2579 — NOT routed through `refuse()`, deliberately.
@@ -1030,7 +1028,7 @@ export const createTicketCheckoutCreateHandler = (
         // matching, and a guard that silently stops detecting is worse
         // than an unlogged refusal. Record explicitly instead — same
         // fire-and-forget contract, byte-identical response.
-        void recordCheckoutRefusal(supabase, {
+        keepAlive(recordCheckoutRefusal(supabase, {
           eventId,
           ticketTypeId: firstTicketTypeId(lines),
           message: "payment_plan_choice_invalid",
@@ -1038,7 +1036,7 @@ export const createTicketCheckoutCreateHandler = (
           surface,
           phoneE164: buyerPhoneE164,
           email: buyerEmail,
-        });
+        }));
         return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
       }
       }
@@ -1954,7 +1952,7 @@ export const createTicketCheckoutCreateHandler = (
       // matching, and a guard that silently stops detecting is worse
       // than an unlogged refusal. Record explicitly instead — same
       // fire-and-forget contract, byte-identical response.
-      void recordCheckoutRefusal(supabase, {
+      keepAlive(recordCheckoutRefusal(supabase, {
         eventId,
         ticketTypeId: firstTicketTypeId(lines),
         message: "application_fee_persistence_failed",
@@ -1962,7 +1960,7 @@ export const createTicketCheckoutCreateHandler = (
         surface,
         phoneE164: buyerPhoneE164,
         email: buyerEmail,
-      });
+      }));
       return jsonResponse({ error: "application_fee_persistence_failed" }, 503);
     }
 
