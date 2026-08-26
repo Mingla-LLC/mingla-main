@@ -144,7 +144,10 @@ export function ariJsonResponse(
   }
   const envelope = successEnvelope(state.context, {
     code,
-    userMessage: userMessageForSuccessCode(code, body),
+    userMessage: userMessageForSuccessCode(code, {
+      followup_text: body.followup_text,
+      text: body.text,
+    }),
     operationState: code === "CANONICAL_READBACK_MATCHED"
       ? "executed"
       : code === "ACTION_CANCELLED"

@@ -17189,11 +17189,7 @@
       "providerWorkflow": ".github/workflows/issue-2060-ari-reliability.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-<<<<<<< HEAD
         "sourceSha256": "a7f6c5bb628094df50f2f2ba9701c2cbf9384e62ee6222aa59c959738d2ec293",
-=======
-        "sourceSha256": "d34e4145306c3a857cd1d9ceec480d583280c0cf90012ea39923c52005e30ac2",
->>>>>>> 9f4ec0243 (Replace the dual hardcoded digest literals with private.ari_cert_requirements_set_digest_v1() so begin_run stamps and finalize_run rechecks a content hash of ordered (capability_id, evidence_mode) rows. Same-count swaps now fail closed; the #2592 parity gate requires both halves call the helper.)
         "triggers": [
           "pull_request",
           "push"
@@ -17262,11 +17258,7 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-<<<<<<< HEAD
         "sourceSha256": "b2820a27fbffa22a2aa3e7100c2fb077dd6851d7cf73feeec37e38ae0d6c82fb",
-=======
-        "sourceSha256": "e25cbf924ee41184bd3e1a1a00fa94ea1dbb52b1b4a7bba82330577065d918d9",
->>>>>>> 9f4ec0243 (Replace the dual hardcoded digest literals with private.ari_cert_requirements_set_digest_v1() so begin_run stamps and finalize_run rechecks a content hash of ordered (capability_id, evidence_mode) rows. Same-count swaps now fail closed; the #2592 parity gate requires both halves call the helper.)
         "triggers": [
           "pull_request",
           "push"
