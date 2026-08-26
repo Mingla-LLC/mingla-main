@@ -650,8 +650,13 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
     // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
     // validator subtracts from the frozen provider seal. Subject and strength unchanged;
     // the number simply stops being typed in a second place where it can disagree.
-    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length,
-      "terminal provider discovery must MEASURE 60 plus the declared additions, not inherit 67");
+    // [TEST-MOD-APPROVED #2591 · cutover] The MIRROR of the addition. The nine
+    // deleted Postgres wrappers take two discovery records with them, so the
+    // measured total is the frozen 60, plus what is declared as added, minus what
+    // the registry records as consolidated. Every term is derived.
+    const consolidatedProviders = manifest.workflowProviders.filter((item) => item.transition === "consolidated-provider");
+    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length,
+      "terminal provider discovery must MEASURE 60 plus the declared additions minus the consolidated records, not inherit 67");
     // The seven that left discovery are exactly the seven the registry now
     // carries as batched providers, so nothing was lost — only relocated.
     assert.equal(manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow)

@@ -128,16 +128,41 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const deletedProviders = manifest.workflowProviders.filter((item) =>
     deletedWrappers.some((origin) => `${origin.stem}.${origin.extension}` === item.workflow));
   const phase3cWrappers = manifest.legacyOrigins.filter((origin) => origin.migrationWave === "phase3c-deno-wave");
+  // [TEST-MOD-APPROVED #2591 · :137 :164] A SECOND way to leave these inventories,
+  // and it is not a wave. The nine migration-gated Postgres lanes were folded into
+  // the consolidated contract-suites capability workflow at #2591 — deliberately
+  // NOT named here in full, because discovery derives a provider record from any
+  // source file that spells a workflow's filename, and a test that named it would
+  // register ITSELF as that workflow's provider and break the seal it checks.
+  // Their wrappers are deleted, so they leave the live-origin and metadata
+  // inventories exactly as a batched wave's wrappers do,
+  // but they carry no migrationWave and `deletedWrappers` above does NOT move for
+  // them — MEASURED, it is still 29. Deriving one from the other would be wrong in
+  // both directions, so both are read from the registry independently.
+  const consolidatedOrigins = manifest.legacyOrigins.filter((origin) => origin.disposition === "consolidated-provider");
+  const consolidatedProviders = manifest.workflowProviders.filter((item) => item.transition === "consolidated-provider");
+  assert.equal(consolidatedOrigins.length, 9);
+  assert.equal(consolidatedProviders.length, 2);
+  assert.equal(consolidatedOrigins.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
   assert.equal(phase3bWrappers.length, 12);
   assert.equal(phase3bProviders.length, 6);
   assert.equal(phase3cWrappers.length, 17);
   assert.equal(deletedWrappers.length, 29);
   assert.equal(deletedProviders.length, 13);
   assert.equal(deletedWrappers.filter((origin) => fs.existsSync(path.join(DEFAULT_ROOT, `.github/workflows/${origin.stem}.${origin.extension}`))).length, 0);
-  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146 - deletedWrappers.length);
+  // [TEST-MOD-APPROVED #2591 · :137] The ratified 146 still stays pinned and both
+  // subtrahends are still read from the registry, never typed. MEASURED on the
+  // merged tree: 146 - 29 - 9 = 108.
+  assert.equal(discoverLiveOrigins(DEFAULT_ROOT).length, 146 - deletedWrappers.length - consolidatedOrigins.length);
   // [TEST-MOD-APPROVED #2591] Same derivation. Raw discovery now also carries the
-  // declared additions; the SEAL subtracts them, this count does not.
-  assert.equal(discoverWorkflowProviders(DEFAULT_ROOT).length, 73 - deletedProviders.length + PROVIDERS_ADDED_SINCE_SEAL.length);
+  // declared additions; the SEAL subtracts them, this count does not. It no longer
+  // carries the two records the consolidated wrappers contributed: discovery reads
+  // workflow names from the live directory, so those records died with the files
+  // even though the source text still names them. MEASURED: 73 - 13 - 2 + 1 = 59.
+  assert.equal(
+    discoverWorkflowProviders(DEFAULT_ROOT).length,
+    73 - deletedProviders.length - consolidatedProviders.length + PROVIDERS_ADDED_SINCE_SEAL.length,
+  );
   assert.equal(new Set(manifest.legacyOrigins.map((item) => `${item.stem}.${item.extension}`)).size, 200);
   assert.equal(new Set(manifest.workflowProviders.map((item) => item.workflow)).size, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   const suite1036 = manifest.suites.find((suite) => suite.id === "issue-1036-contrast-chip-removal-tests");
@@ -149,7 +174,15 @@ test("#2435 registry v2 proves the complete current topology", () => {
   const yamlTruth = inspectWorkflows(DEFAULT_ROOT, live);
   const registered = new Map(
     manifest.legacyOrigins
-      .filter((item) => !["batched-active", "batched-historical"].includes(item.disposition))
+      // [TEST-MOD-APPROVED #2591 · :177] `consolidated-provider` joins the excluded
+      // dispositions for the same reason batched-historical is excluded: the entry
+      // no longer describes a live wrapper, so it carries no workflowMetadata. Left
+      // in, it would have MATCHED — `JSON.stringify(undefined) === JSON.stringify(
+      // undefined)` is true, so all nine would have counted as agreeing with a
+      // yamlTruth entry that does not exist, and the assertion would have read 117
+      // while proving nothing about them. That is the check-carries-no-information
+      // shape (#2438); excluding them keeps the comparison meaningful.
+      .filter((item) => !["batched-active", "batched-historical", "consolidated-provider"].includes(item.disposition))
       .map((item) => [`${item.stem}.${item.extension}`, item.workflowMetadata]),
   );
   const metadata = (stem) => registered.get(`${stem}.${"yml"}`);
@@ -161,7 +194,9 @@ test("#2435 registry v2 proves the complete current topology", () => {
   // for the same reason: Phase 3C's seventeen origins are batched-historical now
   // and leave this non-batched inventory with their wrappers. The ratified 146
   // stays pinned; the subtrahend is still read from the registry, never typed.
-  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146 - deletedWrappers.length);
+  // [TEST-MOD-APPROVED #2591 · :164] Same subtraction, same reason: a consolidated
+  // origin has no yamlTruth[name] either, because its wrapper is gone.
+  assert.equal([...registered].filter(([name, metadata]) => JSON.stringify(metadata) === JSON.stringify(yamlTruth[name])).length, 146 - deletedWrappers.length - consolidatedOrigins.length);
 
   const mixed = structuredClone(manifest);
   mixed.suites[23].lifecycle = "shadow-active";
@@ -176,7 +211,13 @@ test("#2435 registry v2 proves the complete current topology", () => {
 
   // Real repository shapes that defeated the original line parser.
   assert.equal(metadata("issue-1773-reservation-stay-ingest-tests").pathScope.length, 10, "YAML path aliases must resolve");
-  assert.ok(metadata("issue-1171-dark-payout-ledger-tests").setupActions.includes("./.github/actions/migrated-postgres"), "named-step uses keys must be inventoried");
+  // [TEST-MOD-APPROVED #2591 · :179] Re-pointed, not weakened. #1171's wrapper is
+  // deleted by this change, so the old subject no longer describes a live file.
+  // issue-1403-listing-insights-tests keeps its Postgres job — it was the one lane
+  // of the ten deliberately left alone — and genuinely still uses the action, so
+  // the assertion's actual subject, that a named-step `uses:` key is inventoried,
+  // keeps a live subject rather than being retired with the file.
+  assert.ok(metadata("issue-1403-listing-insights-tests").setupActions.includes("./.github/actions/migrated-postgres"), "named-step uses keys must be inventoried");
   assert.ok(metadata("issue-1403-listing-insights-tests").setupActions.includes("actions/upload-artifact@v4"), "later mapping-key actions must be inventoried");
   assert.ok(metadata("issue-1995-contact-book-blast").runtimeVersions.includes("node:20"), "flow-style with maps must preserve runtime versions");
 });

@@ -68,6 +68,16 @@ const carriedWaveProviders = (root) => {
     .map(([wave]) => wave));
   const deleted = new Set(value.legacyOrigins.filter((origin) => waves.has(origin.migrationWave))
     .map((origin) => `${origin.stem}.${origin.extension}`));
+  // [TEST-MOD-APPROVED #2591 · cutover] A record can now leave discovery WITHOUT
+  // belonging to a wave: the #2591 cutover deletes the nine Postgres wrappers, and
+  // the two records #1172 and #1840 contributed die with their files. The registry
+  // carries them under the `consolidated-provider` transition and the validator
+  // reconstructs the frozen authority from them exactly as it does the waves' —
+  // so this helper, which every digest assertion in this file goes through, has to
+  // see them too. Extended in the ONE place rather than at each call site.
+  for (const item of value.workflowProviders) {
+    if (item.transition === "consolidated-provider") deleted.add(item.workflow);
+  }
   return value.workflowProviders.filter((item) => deleted.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }))
     .sort((a, b) => a.workflow.localeCompare(b.workflow));
@@ -131,14 +141,26 @@ function assertWave(value) {
   const wrapperLive = (item) => fs.existsSync(path.join(ROOT, ".github/workflows", item.workflow));
   const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
   const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
+  // [TEST-MOD-APPROVED #2591 · cutover] The MIRROR of the addition above. The
+  // #2591 cutover deletes the nine Postgres wrappers, so the two records #1172
+  // and #1840 still contributed leave discovery with their files and move to the
+  // `consolidated-provider` transition. Derived from the registry, never typed,
+  // for the same reason the addition is: a second hand-written number is how two
+  // sides disagree and auto-merge clean.
+  const consolidated = value.workflowProviders.filter((item) => item.transition === "consolidated-provider");
   assert.equal(retained.filter((item) => !wrapperLive(item)).length, 0, "a retained provider whose wrapper is gone is a lie");
   assert.equal(batched.filter(wrapperLive).length, 0, "a batched provider whose wrapper is back is a duplicate provider");
-  assert.deepEqual(transitions, { "retained-live-provider": retained.length, "batched-provider": batched.length });
+  assert.equal(consolidated.filter(wrapperLive).length, 0, "a consolidated provider whose wrapper is back is a duplicate provider");
+  assert.deepEqual(transitions, {
+    "retained-live-provider": retained.length,
+    "batched-provider": batched.length,
+    ...(consolidated.length > 0 ? { "consolidated-provider": consolidated.length } : {}),
+  });
   // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
   // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
-  assert.equal(retained.length + batched.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
+  assert.equal(retained.length + batched.length + consolidated.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
   assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 29);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");

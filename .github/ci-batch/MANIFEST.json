@@ -11886,185 +11886,110 @@
       "stem": "issue-1171-dark-payout-ledger-tests",
       "extension": "yml",
       "ownerIssue": "#1171",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1171-dark-payout-ledger-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "d18001be3de8bbd4e851c1712e2726269c9b0887fed176b452c89f105a2d1b52",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/actions/migrated-postgres/**",
-          ".github/workflows/issue-1171-dark-payout-ledger-tests.yml",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
           "supabase/config.toml",
+          "supabase/migrations/**",
           "supabase/functions/payout-release-sweep/**",
-          "supabase/migrations/**"
+          ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
         ],
-        "jobKeys": [
-          "issue-1171-dark-payout-ledger"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "./.github/actions/migrated-postgres",
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/config.toml",
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
+          ".github/workflows/issue-1171-dark-payout-ledger-tests.yml"
+        ]
       }
     },
     {
       "stem": "issue-1172-stripe-payout-execution-tests",
       "extension": "yml",
       "ownerIssue": "#1172",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1172-stripe-payout-execution-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "cb02a32b76fc91148f6fb7604b561b060a4c44ecb5f14747c91abb7ea7c47e97",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1172-stripe-payout-execution-tests.yml",
-          "supabase/functions/_shared/legacyEmailIdempotency.ts",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
           "supabase/functions/_shared/stripe.ts",
-          "supabase/functions/_shared/stripeEdgeAuth.ts",
           "supabase/functions/_shared/stripeMode.ts",
           "supabase/functions/_shared/stripeWebhookRouter.ts",
+          "supabase/functions/_shared/stripeEdgeAuth.ts",
+          "supabase/functions/_shared/legacyEmailIdempotency.ts",
           "supabase/functions/notify-dispatch/index.ts",
+          ".github/workflows/issue-1172-stripe-payout-execution-tests.yml"
+        ],
+        "push": [
+          "supabase/migrations/**",
           "supabase/functions/payout-release-sweep/**",
-          "supabase/migrations/**"
-        ],
-        "jobKeys": [
-          "issue-1172-stripe-payout-execution"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+          "supabase/functions/_shared/stripe.ts",
+          "supabase/functions/_shared/stripeMode.ts",
+          "supabase/functions/_shared/stripeWebhookRouter.ts",
+          "supabase/functions/_shared/stripeEdgeAuth.ts",
+          "supabase/functions/_shared/legacyEmailIdempotency.ts",
+          "supabase/functions/notify-dispatch/index.ts",
+          ".github/workflows/issue-1172-stripe-payout-execution-tests.yml"
+        ]
       }
     },
     {
       "stem": "issue-1173-stripe-schedule-flip-tests",
       "extension": "yml",
       "ownerIssue": "#1173",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1173-stripe-schedule-flip-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "8c830c267afc154d7933909d97990c723f68ff54725bcd89f3562e708c43cca9",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1173-stripe-schedule-flip-tests.yml",
-          "supabase/config.toml",
-          "supabase/functions/_shared/secretBundle.ts",
-          "supabase/functions/_shared/stripe.ts",
-          "supabase/functions/_shared/stripeBlueprintClient.ts",
-          "supabase/functions/_shared/stripeMode.ts",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
           "supabase/functions/admin-payout-hold-migrate/**",
           "supabase/functions/brand-stripe-onboard/**",
-          "supabase/migrations/**"
+          "supabase/functions/_shared/stripeBlueprintClient.ts",
+          "supabase/functions/_shared/stripeMode.ts",
+          "supabase/functions/_shared/secretBundle.ts",
+          "supabase/functions/_shared/stripe.ts",
+          "supabase/config.toml",
+          ".github/workflows/issue-1173-stripe-schedule-flip-tests.yml"
         ],
-        "jobKeys": [
-          "issue-1173-stripe-schedule-flip"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/migrations/**",
+          "supabase/functions/admin-payout-hold-migrate/**",
+          "supabase/functions/brand-stripe-onboard/**",
+          "supabase/functions/_shared/stripeBlueprintClient.ts",
+          "supabase/functions/_shared/stripeMode.ts",
+          "supabase/functions/_shared/secretBundle.ts",
+          "supabase/functions/_shared/stripe.ts",
+          "supabase/config.toml",
+          ".github/workflows/issue-1173-stripe-schedule-flip-tests.yml"
+        ]
       }
     },
     {
       "stem": "issue-1174-partner-payout-deferral-tests",
       "extension": "yml",
       "ownerIssue": "#1174",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1174-partner-payout-deferral-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "1bbe09918194befaed5f1797100d1eec4679ae8d357b4e7ca1ebff5f38388cbb",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1174-partner-payout-deferral-tests.yml",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
           "supabase/functions/_shared/partnerSplits.ts",
           "supabase/functions/_shared/paystackPartnerSplits.ts",
           "supabase/functions/payout-release-sweep/**",
-          "supabase/migrations/**"
+          ".github/workflows/issue-1174-partner-payout-deferral-tests.yml"
         ],
-        "jobKeys": [
-          "issue-1174-partner-payout-deferral"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/migrations/**",
+          "supabase/functions/_shared/partnerSplits.ts",
+          "supabase/functions/_shared/paystackPartnerSplits.ts",
+          "supabase/functions/payout-release-sweep/**",
+          ".github/workflows/issue-1174-partner-payout-deferral-tests.yml"
+        ]
       }
     },
     {
@@ -12172,45 +12097,26 @@
       "stem": "issue-1177-paystack-payout-execution-tests",
       "extension": "yml",
       "ownerIssue": "#1177",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1177-paystack-payout-execution-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "79191ded1771731837e8114c27afa4df484f3875cbb6ae7138e63d7994e6ca78",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1177-paystack-payout-execution-tests.yml",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
           "supabase/functions/_shared/paystack.ts",
           "supabase/functions/_shared/paystackOrganiserRelease.ts",
-          "supabase/functions/payout-release-sweep/**",
           "supabase/functions/paystack-webhook/**",
-          "supabase/migrations/**"
+          ".github/workflows/issue-1177-paystack-payout-execution-tests.yml"
         ],
-        "jobKeys": [
-          "issue-1177-paystack-payout-execution"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
+          "supabase/functions/_shared/paystack.ts",
+          "supabase/functions/_shared/paystackOrganiserRelease.ts",
+          "supabase/functions/paystack-webhook/**",
+          ".github/workflows/issue-1177-paystack-payout-execution-tests.yml"
+        ]
       }
     },
     {
@@ -12424,88 +12330,48 @@
       "stem": "issue-1217-ng-alert-reversal-gates-tests",
       "extension": "yml",
       "ownerIssue": "#1217",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1217-ng-alert-reversal-gates-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "27e6cb0c678b5caa046c1e92085feefe0f82900b3d66a85dd16ab3d33b885a7b",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1217-ng-alert-reversal-gates-tests.yml",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
           "supabase/functions/_shared/paystack.ts",
           "supabase/functions/_shared/paystackOrganiserRelease.ts",
+          ".github/workflows/issue-1217-ng-alert-reversal-gates-tests.yml"
+        ],
+        "push": [
+          "supabase/migrations/**",
           "supabase/functions/payout-release-sweep/**",
-          "supabase/migrations/**"
-        ],
-        "jobKeys": [
-          "issue-1217-ng-alert-reversal-gates"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+          "supabase/functions/_shared/paystack.ts",
+          "supabase/functions/_shared/paystackOrganiserRelease.ts",
+          ".github/workflows/issue-1217-ng-alert-reversal-gates-tests.yml"
+        ]
       }
     },
     {
       "stem": "issue-1217-tester-adversarial",
       "extension": "yml",
       "ownerIssue": "#1217",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1217-tester-adversarial.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "e8091824014c02fa5f867a10e7771bb913175be259759c722699fc32323dd4ad",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1217-tester-adversarial.yml",
-          "supabase/functions/payout-release-sweep/**",
-          "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
           "supabase/migrations/**",
-          "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql"
+          "supabase/functions/payout-release-sweep/**",
+          "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql",
+          "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts",
+          ".github/workflows/issue-1217-tester-adversarial.yml"
         ],
-        "jobKeys": [
-          "issue-1217-tester-adversarial"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
+          "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql",
+          "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts",
+          ".github/workflows/issue-1217-tester-adversarial.yml"
+        ]
       }
     },
     {
@@ -14316,39 +14182,20 @@
       "stem": "issue-1612-record-visit-conflict-tests",
       "extension": "yml",
       "ownerIssue": "#1612",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1612-record-visit-conflict-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "2dbd9df050d2382bbea2b47debdc8a8f9824121c5167d8f647c07b8bca6990d3",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1612-record-visit-conflict-tests.yml",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
           "supabase/functions/record-visit/**",
-          "supabase/migrations/**"
+          ".github/workflows/issue-1612-record-visit-conflict-tests.yml"
         ],
-        "jobKeys": [
-          "issue-1612-record-visit-conflict"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [],
-        "setupActions": [
-          "actions/checkout@v4"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/migrations/**",
+          "supabase/functions/record-visit/**",
+          ".github/workflows/issue-1612-record-visit-conflict-tests.yml"
+        ]
       }
     },
     {
@@ -15646,44 +15493,24 @@
       "stem": "issue-1840-ng-payout-float-alerts-tests",
       "extension": "yml",
       "ownerIssue": "#1840",
-      "disposition": "database-special",
-      "providerWorkflow": ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml",
-      "rationale": "Retained as the sole live provider because it requires database-special execution.",
-      "workflowMetadata": {
-        "sourceSha256": "ff3260d6af4fa054790de14ecbc1041bb898069edbf8fda4773a7b344898a22e",
-        "triggers": [
-          "pull_request",
-          "push"
-        ],
-        "pathScope": [
-          ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml",
-          "supabase/functions/_shared/paystackOrganiserRelease.ts",
-          "supabase/functions/_shared/runtimeConfig.ts",
+      "disposition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
+      "rationale": "Consolidated into postgres-contract-suites.yml at #2591. This lane's service container, migration replay and suite commands now run as per-suite databases inside the single migration-chain job; the wrapper is deleted and this entry records where its execution went.",
+      "consolidatedTriggerPaths": {
+        "pull_request": [
+          "supabase/migrations/**",
           "supabase/functions/payout-release-sweep/**",
-          "supabase/migrations/**"
+          "supabase/functions/_shared/runtimeConfig.ts",
+          "supabase/functions/_shared/paystackOrganiserRelease.ts",
+          ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml"
         ],
-        "jobKeys": [
-          "issue-1840-ng-payout-float-alerts"
-        ],
-        "runners": [
-          "ubuntu-latest"
-        ],
-        "runtimeVersions": [
-          "deno:1.46.x"
-        ],
-        "setupActions": [
-          "actions/checkout@v4",
-          "denoland/setup-deno@v1"
-        ],
-        "trustBoundary": {
-          "permissions": [
-            "contents: read"
-          ],
-          "environments": [],
-          "usesRepositorySecrets": false,
-          "usesOidc": false,
-          "pullRequestTarget": false
-        }
+        "push": [
+          "supabase/migrations/**",
+          "supabase/functions/payout-release-sweep/**",
+          "supabase/functions/_shared/runtimeConfig.ts",
+          "supabase/functions/_shared/paystackOrganiserRelease.ts",
+          ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml"
+        ]
       }
     },
     {
@@ -16246,7 +16073,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "260007584e15147e0594e9fd1e17ec1fa0beef1479a8d0c9c498f56e04d5e51a",
+        "sourceSha256": "475e7c3bfbbc8f19c2b4f47b1d37519bd0e2bcc24b2048bd2193c834f609ca11",
         "triggers": [
           "pull_request",
           "push"
@@ -21795,12 +21622,12 @@
     {
       "workflow": "issue-1172-stripe-payout-execution-tests.yml",
       "ownerIssue": "#1172",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1172-stripe-payout-execution-tests.yml",
+      "transition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
       "referenceFiles": [
         "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts"
       ],
-      "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
+      "rationale": "The wrapper this record described was deleted at #2591. The source files still name it, but discovery reads workflow names from the live directory, so the record leaves discovery with the file. It is carried here so the frozen 73-record provider authority still reconstructs without the seal being re-frozen."
     },
     {
       "workflow": "issue-1184-video-phase-a-tests.yml",
@@ -22082,13 +21909,13 @@
     {
       "workflow": "issue-1840-ng-payout-float-alerts-tests.yml",
       "ownerIssue": "#1840",
-      "transition": "retained-live-provider",
-      "providerWorkflow": ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml",
+      "transition": "consolidated-provider",
+      "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
       "referenceFiles": [
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts"
       ],
-      "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
+      "rationale": "The wrapper this record described was deleted at #2591. The source files still name it, but discovery reads workflow names from the live directory, so the record leaves discovery with the file. It is carried here so the frozen 73-record provider authority still reconstructs without the seal being re-frozen."
     },
     {
       "workflow": "issue-1857-phone-country-authority-tests.yml",
@@ -22597,7 +22424,6 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
       "referenceFiles": [
-        ".github/scripts/parity/parse-origin-log.mjs",
         "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts"

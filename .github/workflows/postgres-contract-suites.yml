@@ -37,7 +37,11 @@ on:
     # `supabase/functions/payout-release-sweep/**`. They are kept anyway.
     # Dropping a redundant entry is a coverage judgement, and this change makes
     # no coverage judgements. A union narrower than ANY member is a coverage
-    # loss — guard G-9 below re-derives that superset relation at run time.
+    # loss — guard G-9 below re-checks that superset relation at run time. The
+    # nine files are deleted as of the #2591 cutover, so G-9 reads each member's
+    # declared paths from the registry record captured at that commit rather than
+    # from the files; the relation is still checked, and the registry refuses an
+    # entry that lost its record.
     paths:
       - "supabase/config.toml"
       - "supabase/migrations/**"
@@ -814,21 +818,24 @@ jobs:
       # lists — e.g. `supabase/functions/record-visit/**`, which only #1612
       # contributes.
       - name: "G-9 · the consolidated trigger union covers every origin lane's paths"
+        # [#2591 cutover] G-9 used to read the nine origin YAMLs off disk. The
+        # cutover DELETES them, so that shape would have thrown ENOENT on the very
+        # commit it exists to police — a guard that loses its subject, the same
+        # defect that retired parse-origin-log.mjs. It is NOT deleted and NOT
+        # weakened. Each deleted lane's declared paths were captured from its own
+        # YAML at the cutover commit, with this same parser, and are recorded in
+        # the registry as `consolidatedTriggerPaths`; G-9 checks the union against
+        # that record. validate-manifest-v2.mjs refuses a consolidated entry whose
+        # record is missing or empty, so the comparison cannot go vacuous, and the
+        # superset relation stays checkable once the files are gone.
         if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
         run: |
           node -e '
             const fs = require("node:fs");
-            const NINE = [
-              "issue-1171-dark-payout-ledger-tests",
-              "issue-1172-stripe-payout-execution-tests",
-              "issue-1173-stripe-schedule-flip-tests",
-              "issue-1174-partner-payout-deferral-tests",
-              "issue-1177-paystack-payout-execution-tests",
-              "issue-1217-ng-alert-reversal-gates-tests",
-              "issue-1217-tester-adversarial",
-              "issue-1612-record-visit-conflict-tests",
-              "issue-1840-ng-payout-float-alerts-tests",
-            ];
+            const manifest = JSON.parse(fs.readFileSync(".github/ci-batch/MANIFEST.json", "utf8"));
+            const MEMBERS = manifest.legacyOrigins
+              .filter((o) => o.disposition === "consolidated-provider")
+              .map((o) => ({ stem: `${o.stem}.${o.extension}`, paths: o.consolidatedTriggerPaths }));
             const pathsByEvent = (text) => {
               const out = {};
               let inOn = false, event = null, inPaths = false;
@@ -853,15 +860,16 @@ jobs:
             for (const event of ["pull_request", "push"]) {
               const union = new Set(mine[event] || []);
               if (union.size === 0) failures.push(`${wf}: on.${event} declares no paths at all`);
-              for (const stem of NINE) {
-                const member = pathsByEvent(fs.readFileSync(`.github/workflows/${stem}.yml`, "utf8"))[event] || [];
-                if (member.length === 0) failures.push(`${stem}: on.${event} declares no paths — cannot verify the superset relation`);
-                for (const entry of member) {
-                  if (entry === `.github/workflows/${stem}.yml`) continue;
-                  if (!union.has(entry)) failures.push(`${wf}: on.${event} is NARROWER than ${stem}: it does not carry ${entry}`);
-                }
+              if (MEMBERS.length !== 9) failures.push(`the registry records ${MEMBERS.length} consolidated origins, expected 9 — G-9 cannot check a set that is not there`);
+            for (const { stem, paths } of MEMBERS) {
+              const member = (paths || {})[event] || [];
+              if (member.length === 0) failures.push(`${stem}: no recorded on.${event} paths — cannot verify the superset relation`);
+              for (const entry of member) {
+                if (entry === `.github/workflows/${stem}`) continue;
+                if (!union.has(entry)) failures.push(`${wf}: on.${event} is NARROWER than ${stem}: it does not carry ${entry}`);
               }
-              console.log(`G-9 on.${event}: union of ${union.size} entries checked against ${NINE.length} members`);
+            }
+            console.log(`G-9 on.${event}: union of ${union.size} entries checked against ${MEMBERS.length} recorded members`);
             }
             if (failures.length > 0) {
               for (const f of failures) console.log(`::error::G-9: ${f}`);

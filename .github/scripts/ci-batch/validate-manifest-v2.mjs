@@ -23,7 +23,19 @@ const ALLOWED_DISPOSITIONS = new Set([
   "database-special",
   "operational-excluded",
   "approved-retired",
+  // [#2591] A live origin whose lane was folded into a shared capability
+  // workflow. Distinct from batched-historical, which hardcodes ci-batch.yml as
+  // the provider, and from every other value, which requires the origin file to
+  // still exist. Here the origin file is GONE and the provider is a named
+  // workflow that is not the origin's own. Nothing else in the set can say that
+  // without lying about one of the two.
+  "consolidated-provider",
 ]);
+// [#2591] The nine migration-gated Postgres lanes folded into
+// postgres-contract-suites.yml. Their workflow files are deleted; their
+// legacyOrigins entries stay (legacyOrigins.length is pinned at 200 and entries
+// are re-dispositioned, never removed).
+const CONSOLIDATED_ORIGIN_PROVIDER = ".github/workflows/postgres-contract-suites.yml";
 const LOCKED_ASSERTION_CAPABILITY_SHA256 = "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f";
 const LOCKED_SHADOW_CAPABILITY_SHA256 = "7af6028109ff91e1c996a8231e932d5deb26b714d2c22b2264b17fb072593091";
 const LOCKED_SHADOW_CONTRACT_SHA256 = "b54121cb297f466d1d4d0ed4fae467e5c895804898018b752aa8e191159e673c";
@@ -145,14 +157,17 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     issue: 2591,
     workflow: "postgres-contract-suites.yml",
     // Discovery derives a provider record from the source files that name a
-    // workflow. Three are the workflow-content tests the #2591 tester re-pointed
-    // at the consolidated lane under [TEST-MOD-APPROVED #2591]. The fourth is the
-    // origin-side ledger parser, which reads the consolidated workflow to recover
-    // the command-id join key (U-5) — it names the workflow, so discovery records
-    // it, and the declaration says so rather than hiding the reference or
-    // widening an exemption to look away from it.
+    // workflow. These are the workflow-content tests the #2591 tester re-pointed
+    // at the consolidated lane under [TEST-MOD-APPROVED #2591].
+    //
+    // A fourth file was here at shadow: `.github/scripts/parity/parse-origin-log.mjs`,
+    // which read the consolidated workflow to recover the command-id join key
+    // (U-5). It derived its expectations from the nine origin workflows' YAML, so
+    // the cutover removed its subject; it is retired in the same commit rather
+    // than left to report `no such workflow` for every lane forever. The
+    // subtraction is by exact content, so dropping the file here is not optional
+    // bookkeeping — leaving it listed fails this closed.
     referenceFiles: Object.freeze([
-      ".github/scripts/parity/parse-origin-log.mjs",
       "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
@@ -2043,6 +2058,33 @@ export function validateRegistry(
       if (item.providerWorkflow !== ".github/workflows/ci-batch.yml" || fs.existsSync(path.join(root, `.github/workflows/${key}`))) {
         fail(errors, `${key}: cutover requires the historical wrapper absent and the batch provider exact`);
       }
+    } else if (item.disposition === "consolidated-provider") {
+      // [#2591] Both halves are load-bearing and they fail for different reasons.
+      // The origin file must be ABSENT — otherwise this disposition is being used
+      // to skip the metadata-drift check on a file that is still live. The named
+      // provider must EXIST and must not be the origin's own path — otherwise a
+      // deleted lane could claim itself as its own provider and the consolidation
+      // would be unfalsifiable.
+      if (fs.existsSync(path.join(root, `.github/workflows/${key}`))) {
+        fail(errors, `${key}: consolidated origin must be absent — its lane moved to ${item.providerWorkflow}`);
+      }
+      if (!item.providerWorkflow || item.providerWorkflow === `.github/workflows/${key}`) {
+        fail(errors, `${key}: consolidated origin must name a provider workflow other than itself`);
+      } else if (!fs.existsSync(path.join(root, item.providerWorkflow))) {
+        fail(errors, `${key}: consolidated provider workflow is missing: ${item.providerWorkflow}`);
+      }
+      // The deleted lane's own trigger paths, captured from its YAML at the
+      // cutover commit. G-9 in the provider workflow checks that the consolidated
+      // trigger union is a SUPERSET of every one of these; the files are gone, so
+      // this record is the only surviving subject that check has. An entry that
+      // lost it, or emptied it, would make G-9 pass by having nothing to compare —
+      // so it is refused here rather than left to read as a green check.
+      const recorded = item.consolidatedTriggerPaths;
+      for (const event of ["pull_request", "push"]) {
+        if (!strings(recorded?.[event]) || recorded[event].length === 0) {
+          fail(errors, `${key}: consolidated origin must record its on.${event} trigger paths — without them the provider's superset guard has nothing to check`);
+        }
+      }
     } else if (item.disposition !== "batched-active") {
       if (item.providerWorkflow !== `.github/workflows/${key}`) fail(errors, `${key}: live origin must name its sole provider workflow`);
       if (!fs.existsSync(path.join(root, item.providerWorkflow || ""))) fail(errors, `${key}: live provider workflow is missing`);
@@ -2056,6 +2098,15 @@ export function validateRegistry(
   }
   const expectedOriginKeys = new Set(liveOrigins ?? discoverLiveOrigins(root));
   for (const suite of manifest.suites || []) expectedOriginKeys.add(path.basename(suite.origin));
+  // [#2591] A consolidated origin's file is deleted, so discoverLiveOrigins can
+  // never see it, exactly as a batched-historical origin is admitted via
+  // suite.origin above. Without this the nine trip `stale or invented origin in
+  // registry` — the entry is neither stale nor invented, it is re-dispositioned.
+  // Only entries the branch above has already validated reach here, so this
+  // cannot admit a key whose provider is missing or whose file is still live.
+  for (const item of manifest.legacyOrigins || []) {
+    if (item.disposition === "consolidated-provider") expectedOriginKeys.add(`${item.stem}.${item.extension}`);
+  }
   for (const key of expectedOriginKeys) if (!legacyKeys.has(key)) fail(errors, `origin omitted from registry: ${key}`);
   for (const key of legacyKeys) if (!expectedOriginKeys.has(key)) fail(errors, `stale or invented origin in registry: ${key}`);
 
@@ -2118,9 +2169,29 @@ export function validateRegistry(
       if (phase3cDiscoveredProviders.length !== expectedPhase3cDiscovered) {
         fail(errors, `Phase 3C provider authority drifted: expected ${expectedPhase3cDiscovered} discovered provider records at this lifecycle, got ${phase3cDiscoveredProviders.length}`);
       }
+      // [#2591] The SAME reconstruction, one mechanism more — and this one is a
+      // REMOVAL, the mirror of PROVIDERS_ADDED_SINCE_SEAL. Deleting the nine
+      // Postgres wrappers drops the two records that #1172 and #1840 still
+      // contributed (their re-pointed tests name both the old wrapper and the new
+      // capability workflow, and `workflowNames` is read from the live directory,
+      // so the record dies with the file). MEASURED from the tree, 60 -> 58.
+      //
+      // The seal is NOT re-frozen. The two records are carried from the registry
+      // exactly as Phase 3B's six and Phase 3C's seven are, and the union still
+      // has to hash to the one frozen 73-record shadow authority. Carrying them
+      // cannot launder a change: the content must be byte-identical to the sealed
+      // world or the digest moves, and the disposition branch above has already
+      // proved each one's wrapper is absent and its provider exists. There is
+      // still exactly ONE seal in this file.
+      const consolidatedProviderNames = new Set(
+        (manifest.workflowProviders || [])
+          .filter((item) => item.transition === "consolidated-provider")
+          .map((item) => item.workflow),
+      );
       const carriedNames = new Set([
         ...PHASE3B_PROVIDER_NAMES,
         ...(phase3cTerminal ? PHASE3C_PROVIDER_NAMES : []),
+        ...consolidatedProviderNames,
       ]);
       const carriedPhase3bProviders = (manifest.workflowProviders || [])
         .filter((item) => carriedNames.has(item.workflow))
@@ -2153,12 +2224,24 @@ export function validateRegistry(
     if (!item.workflow || providerKeys.has(item.workflow)) fail(errors, `duplicate or empty workflow provider: ${item.workflow || "<empty>"}`);
     providerKeys.add(item.workflow);
     registeredByName.set(item.workflow, item);
-    if (!["retained-live-provider", "batched-provider"].includes(item.transition)) fail(errors, `${item.workflow}: unknown provider transition`);
+    if (!["retained-live-provider", "batched-provider", "consolidated-provider"].includes(item.transition)) fail(errors, `${item.workflow}: unknown provider transition`);
     if (!strings(item.referenceFiles) || item.referenceFiles.length === 0) fail(errors, `${item.workflow}: referenceFiles must be non-empty`);
     for (const ref of item.referenceFiles || []) if (!fs.existsSync(path.join(root, ref))) fail(errors, `${item.workflow}: stale reference file ${ref}`);
     if (item.transition === "retained-live-provider") {
       if (item.providerWorkflow !== `.github/workflows/${item.workflow}` || !fs.existsSync(path.join(root, item.providerWorkflow))) {
         fail(errors, `${item.workflow}: retained provider must remain the exact live historical wrapper`);
+      }
+    } else if (item.transition === "consolidated-provider") {
+      // [#2591] Mirror of the legacyOrigins disposition. The wrapper is deleted,
+      // so discovery drops this record; the record survives here because the seal
+      // reconstruction below carries it. Same two-sided check: the wrapper must
+      // be gone and the provider must be a different, existing workflow.
+      if (fs.existsSync(path.join(root, `.github/workflows/${item.workflow}`))) {
+        fail(errors, `${item.workflow}: consolidated provider requires the historical wrapper absent`);
+      }
+      if (!item.providerWorkflow || item.providerWorkflow === `.github/workflows/${item.workflow}`
+          || !fs.existsSync(path.join(root, item.providerWorkflow))) {
+        fail(errors, `${item.workflow}: consolidated provider must name a different, existing provider workflow`);
       }
     } else {
       if (item.providerWorkflow !== ".github/workflows/ci-batch.yml" || fs.existsSync(path.join(root, `.github/workflows/${item.workflow}`))) {
@@ -2176,6 +2259,9 @@ export function validateRegistry(
   for (const name of providerKeys) {
     const registration = registeredByName.get(name);
     if (registration.transition === "retained-live-provider" && !discoveredProviders.some((item) => item.workflow === name)) {
+      // A `consolidated-provider` record is deliberately undiscoverable: its
+      // wrapper is deleted, and the branch above already proved that. Only
+      // `retained-live-provider` claims to be discoverable, so only it is swept.
       fail(errors, `stale external provider registration: ${name}`);
     }
   }

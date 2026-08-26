@@ -9,9 +9,15 @@
 # The reason they need not be: psql prints the server's command tag — the bare
 # line `DO` for a completed anonymous block — with or without `-e`. MEASURED on
 # PostgreSQL 17.10. An unmodified lane therefore already prints the witness, and
-# the origin half of the ledger is READ BACK from the Actions job logs afterwards
-# by parse-origin-log.mjs. Nothing is instrumented on the commit whose whole job
-# is proving nothing changed.
+# the origin half of the ledger was READ BACK from the Actions job logs afterwards
+# by parse-origin-log.mjs. Nothing was instrumented on the commit whose whole job
+# was proving nothing changed.
+#
+# THAT PARAGRAPH IS HISTORY as of the #2591 cutover: the nine origin lanes are
+# deleted, there is no origin half any more, and parse-origin-log.mjs was retired
+# with its subject in the same commit. It is kept in the past tense rather than
+# removed because it records how the parity that justified the deletion was
+# obtained. What survives here is the consolidated side, which G-5 still reads.
 #
 # So the ONLY thing these wrappers add to a command is a tee into a durable
 # per-command log. The psql invocation is byte-identical to the origin lanes'
