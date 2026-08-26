@@ -170,9 +170,23 @@ const recordCheckoutRefusal = async (
         timer = setTimeout(resolve, TIMEOUT_MS);
       }),
     ]);
-  } catch (_error) {
-    // Swallowed on purpose. See the call site: telemetry must never turn a
-    // refusal into a failure.
+  } catch (error) {
+    // issue #2579 — SWALLOWED, BUT NEVER SILENT.
+    //
+    // The refusal never turns into a failed checkout: that property is
+    // non-negotiable and is why this catch exists at all. But the ORIGINAL
+    // catch also said nothing, and that is how a telemetry system that had
+    // recorded NOTHING for its entire life still looked healthy. Three
+    // successive fixes were reasoned out from indirect evidence — platform
+    // logs that disagreed with each other between queries — because the one
+    // component that knew exactly what went wrong was refusing to say.
+    //
+    // A swallowed error is a decision not to fail. It is not a decision not to
+    // tell anyone.
+    console.error(
+      "[ticket-checkout-create] refusal log write failed",
+      { token: input.message, surface: input.surface, error },
+    );
   } finally {
     if (timer !== undefined) clearTimeout(timer);
   }
