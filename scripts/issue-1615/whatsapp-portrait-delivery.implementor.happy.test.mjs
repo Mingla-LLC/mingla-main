@@ -45,7 +45,21 @@ test('W1 one shared owner emits the exact revisioned JPEG portrait URL', () => {
   assert.equal(SHARE_PORTRAIT_REVISION, 2);
   assert.equal(buildSharePortraitUrl(CODE, VERSION), `https://usemingla.com/og/s/${CODE}/v${VERSION}-r2.jpg`);
   const preview = read('mingla-business/server/socialPreview.js');
-  assert.match(preview, /buildSharePortraitUrl\(code, Number\(contentShare\.version\)\)/);
+  // [TEST-MOD-APPROVED #2589] Punctuation-only narrowing: `\.` -> `\??\.`.
+  // Byte-identical to the amendment already applied to R6 in
+  // scripts/issue-1615/content-share-receiver.happy.test.mjs. W1 pins that the
+  // public portrait URL is VERSION-ADDRESSED through the one shared owner. It
+  // never meant to pin the property access as non-optional. #2589 emits
+  // og:image for EVERY share, so the poster ternary that used to short-circuit
+  // this expression is gone and the line is now reachable with a
+  // null/undefined contentShare — the same nullability
+  // `renderContentShareHtml` already assumes three lines up
+  // (`contentShare?.facts`, `contentShare?.shortCode`). The owner therefore
+  // reads `Number(contentShare?.version)`. Same function, same two arguments,
+  // same version-addressing; only the `?` is new. Everything W1 guards still
+  // bites: drop the call, drop `Number(...)`, swap the version for a constant,
+  // or call a different builder and this assertion goes red.
+  assert.match(preview, /buildSharePortraitUrl\(code, Number\(contentShare\??\.version\)\)/);
   assert.doesNotMatch(preview, /\/og\/s\/\$\{encodeURIComponent\(code\)\}\/v\$\{Number\(contentShare\.version\)\}\.png/);
 });
 

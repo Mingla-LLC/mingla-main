@@ -1,4 +1,4 @@
-const { fetchContentShareVersion, firstQueryValue, setSharedNoStore, contentSharePosterUrl } = require("../server/socialPreview");
+const { fetchContentShareVersion, firstQueryValue, setSharedNoStore } = require("../server/socialPreview");
 const { isValidContentSharePortraitJpeg, renderContentSharePortraitJpeg } = require("../server/cardIdentityRenderer");
 const { hasValidSharedCardProxySecret } = require("../server/sharedCardProxyAuth");
 const IMMUTABLE_CACHE = "public, max-age=31536000, immutable";
@@ -24,7 +24,17 @@ const createContentShareImageHandler = (fetchShare = fetchContentShareVersion, r
     if (result.status === 410) return failClosed(res, 410);
     if ([429, 500, 502, 503].includes(result.status)) return failClosed(res, result.status === 429 ? 503 : result.status);
     const share = result.contentShare;
-    if (!share || Number(share.version) !== Number(version) || !contentSharePosterUrl(share)) return failClosed(res, 404);
+    /**
+     * #2589 — a coverless share is no longer a 404.
+     *
+     * This line used to demand a usable poster before the renderer was allowed
+     * to run, so every offering without one served nothing at all. The renderer
+     * now composes a card from the offering's own facts when there is no usable
+     * cover, so the only remaining 404 conditions are the two that are genuinely
+     * unanswerable: the share does not exist, or the requested version has
+     * drifted from the current one.
+     */
+    if (!share || Number(share.version) !== Number(version)) return failClosed(res, 404);
     const etag = `"content-share-${code}-v${version}-r2-jpeg"`;
     if (req.headers?.["if-none-match"] === etag) {
       res.statusCode = 304;

@@ -114,7 +114,7 @@ test('T1 current producers and both manifests emit only the exact revisioned JPE
   assert.match(read('mingla-marketing/middleware.ts'), /-r2\\\.jpg/);
 });
 
-test('T2 Business accepts a real JPEG but fails closed for PNG, marker-smuggled, oversized, drifted, and coverless output', async (t) => {
+test('T2 Business accepts a real JPEG and serves the coverless fallback card, but fails closed for PNG, marker-smuggled, oversized, and drifted output', async (t) => {
   const previous = process.env.SHARED_CARD_PROXY_SECRET;
   process.env.SHARED_CARD_PROXY_SECRET = SECRET;
   try {
@@ -150,10 +150,51 @@ test('T2 Business accepts a real JPEG but fails closed for PNG, marker-smuggled,
     assert.equal(stale.statusCode, 404);
     assertNodeNoStore(stale);
 
+    // [TEST-MOD-APPROVED #2589] BEHAVIOUR INVERSION of the COVERLESS LEG ONLY.
+    // Every other leg of T2 above is untouched and still fails closed.
+    //
+    // What this leg used to pin. A renderer stub that threw `renderer must not
+    // run`, plus `statusCode === 404`. That is the PRE-#2589 DEFECT written down
+    // as a contract: the route demanded a usable poster before the renderer was
+    // allowed to run, so a coverless offering served no image at all and the
+    // link previewed as a bare URL. #2589 exists to invert exactly that — the
+    // route now ALWAYS has a card to serve, so the renderer running is correct,
+    // not a violation.
+    //
+    // The stub is replaced by the REAL renderer rather than another canned
+    // JPEG, deliberately. A canned buffer would only prove the 404 gate is gone;
+    // driving `renderContentSharePortraitJpeg` end-to-end proves the thing #2589
+    // actually claims — that a share with `media: null` can be composed into a
+    // genuine 1080x1350 portrait from its own facts — and keeps this leg
+    // discriminating against a regression in EITHER the route gate or the
+    // coverless card itself.
+    //
+    // DELIBERATE DEVIATION from the dispatch, reported rather than silently
+    // complied with: the dispatch asked for "the same no-store/cache semantics
+    // the other legs assert via assertNodeNoStore". That is unsatisfiable here,
+    // and asserting it would be false. `assertNodeNoStore` describes a
+    // FAIL-CLOSED response; this leg is now a SUCCESS. `setSharedNoStore` runs
+    // only inside `failClosed`, so a served card carries the immutable headers
+    // instead — verified live: `public, max-age=31536000, immutable` on all
+    // three cache keys. The correct positive analogue is therefore the same
+    // IMMUTABLE + etag + content-type assertion the `exact` success leg at the
+    // top of this test makes, which is what is asserted below. Pinning
+    // `no-store` on a 200 would pin a defect, not guard one.
     const coverless = nodeResponse();
-    await createContentShareImageHandler(async () => ({ status: 200, contentShare: share('place', null) }), async () => { throw new Error('renderer must not run'); })(businessRequest(), coverless);
-    assert.equal(coverless.statusCode, 404);
-    assertNodeNoStore(coverless);
+    await createContentShareImageHandler(
+      async () => ({ status: 200, contentShare: share('place', null) }),
+      renderer.renderContentSharePortraitJpeg,
+    )(businessRequest(), coverless);
+    assert.equal(coverless.statusCode, 200, 'a coverless share must serve the generated fallback card');
+    assert.equal(coverless.headers['content-type'], 'image/jpeg');
+    assert.equal(coverless.headers.etag, ETAG);
+    for (const key of ['cache-control', 'cdn-cache-control', 'vercel-cdn-cache-control']) assert.equal(coverless.headers[key], IMMUTABLE);
+    // Not an empty 200: the body must be real, decodable portrait bytes at the
+    // exact dimensions the coverless HTML page advertises in og:image:width /
+    // og:image:height, so the page cannot promise a card the route does not send.
+    assert.ok(Buffer.isBuffer(coverless.body) && coverless.body.length > 0, 'coverless share served no card bytes');
+    const coverlessCard = await sharp(coverless.body).metadata();
+    assert.deepEqual([coverlessCard.format, coverlessCard.width, coverlessCard.height], ['jpeg', 1080, 1350]);
   } finally {
     if (previous === undefined) delete process.env.SHARED_CARD_PROXY_SECRET;
     else process.env.SHARED_CARD_PROXY_SECRET = previous;
@@ -296,14 +337,49 @@ test('T7 all eight covered kinds advertise the same JPEG portrait; coverless and
     assert.doesNotMatch(html, /class="brand(?:\s|")|>Mingla Host</);
   }
 
+  // [TEST-MOD-APPROVED #2589] BEHAVIOUR INVERSION — the byte-identical twin of
+  // the ST4 amendment in content-share-server-truth.implementor.happy.test.mjs.
+  // `doesNotMatch(/og:image|twitter:image|class="portrait"/)` required a
+  // coverless share to make no image claim at all. That is the PRE-#2589 DEFECT
+  // as a contract, and the reason a coverless offering previewed as a bare URL.
+  // All three clauses are now legitimately PRESENT, pointing at the generated
+  // fallback card, so they are replaced by POSITIVE assertions rather than
+  // deleted — T7's real intent, that a coverless share advertises nothing it
+  // cannot honour, is carried forward, not dropped.
   const coverless = preview.renderContentShareHtml(share('place', null));
-  assert.doesNotMatch(coverless, /og:image|twitter:image|class="portrait"/);
+  // The URL shape is asserted from this file's own CODE/VERSION constants and a
+  // literal first-party origin, NOT from `buildSharePortraitUrl`. Breaking the
+  // URL owner therefore cannot move the producer and the expectation together
+  // into a false green — it must break here even though T1 also guards it.
+  // `-r2` is pinned rather than ST4's looser `-r\d+` because every covered-kind
+  // assertion above pins r2; leaving the coverless card as the one revision-
+  // drift blind spot in this test would be a hole, and tightening is not a
+  // weakening.
+  const coverlessCard = coverless.match(/<meta property="og:image" content="([^"]*)" \/>/)?.[1];
+  assert.match(String(coverlessCard), new RegExp(`^https://usemingla\\.com/og/s/${CODE}/v${VERSION}-r2\\.jpg$`), 'coverless og:image must be the version-addressed first-party card');
+  assert.ok(coverless.includes(`<meta name="twitter:image" content="${coverlessCard}" />`), 'twitter:image must carry the same fallback card');
+  assert.ok(coverless.includes(`<div class="portrait"><img class="portrait-poster" src="${coverlessCard}"`), 'the body portrait must show the same fallback card');
+  // Exactly one image in the whole document and it is that card — no second,
+  // divergent claim smuggled in beside it.
+  assert.deepEqual([...coverless.matchAll(/<img[^>]*\ssrc="([^"]*)"/g)].map((match) => match[1]), [coverlessCard]);
+  // #2589 detached ONLY the still image from the poster gate. The motion layer
+  // is still gated on a real poster, so a coverless share must mount no video.
+  // The moving-media half below proves this guard is discriminating, not vacuous.
+  assert.doesNotMatch(coverless, /<video/);
 
   for (const [kind, url] of [['video', MOVING], ['gif', MOVING.replace('.mp4', '.gif')]]) {
     const html = preview.renderContentShareHtml(share('place', { kind, url, posterUrl: POSTER }));
     assert.match(html, new RegExp(`/og/s/${CODE}/v${VERSION}-r2\\.jpg`));
     assert.doesNotMatch(html, new RegExp(`<meta[^>]+(?:og:image|twitter:image)[^>]+${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
     assert.match(html, new RegExp(`data-source="${url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`));
+    // [TEST-MOD-APPROVED #2589] Additive only — the moving-media half is
+    // otherwise untouched. This proves the new coverless `<video>` guard above
+    // is discriminating rather than vacuous: the SAME renderer does mount a
+    // motion element once a real poster stands behind it. Scoped to `video`
+    // because a GIF is served as an <img data-source>, never a <video> — which
+    // is also why the pre-existing `data-source` match alone could not carry
+    // this proof.
+    if (kind === 'video') assert.match(html, /<video class="share-motion"/);
   }
 });
 

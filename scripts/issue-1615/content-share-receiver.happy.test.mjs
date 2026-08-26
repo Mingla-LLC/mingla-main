@@ -92,7 +92,18 @@ test('R6 public metadata is version-addressed and the deferred-install CTA is no
   const preview = read('mingla-business/server/socialPreview.js');
   // [TEST-MOD-APPROVED #1615] The URL owner now adds the render revision and
   // JPEG suffix, so HTML must delegate instead of reconstructing the old PNG.
-  assert.match(preview, /buildSharePortraitUrl\(code, Number\(contentShare\.version\)\)/);
+  // [TEST-MOD-APPROVED #2589] Punctuation-only narrowing: `\.` -> `\??\.`.
+  // R6 pins that the public portrait URL is VERSION-ADDRESSED. It never meant to
+  // pin the property access as non-optional. #2589 emits og:image for EVERY
+  // share, so the poster ternary that used to short-circuit this expression is
+  // gone and the line is now reachable with a null/undefined contentShare — the
+  // same nullability `renderContentShareHtml` already assumes three lines up
+  // (`contentShare?.facts`, `contentShare?.shortCode`). The owner therefore
+  // reads `Number(contentShare?.version)`. Same function, same two arguments,
+  // same version-addressing; only the `?` is new. Everything R6 guards still
+  // bites: drop the call, drop `Number(...)`, swap the version for a constant,
+  // or call a different builder and this assertion goes red.
+  assert.match(preview, /buildSharePortraitUrl\(code, Number\(contentShare\??\.version\)\)/);
   assert.match(preview, /canonicalUrl = `\$\{EXPLORER_PUBLIC_ORIGIN\}\/s\//);
   // [TEST-MOD-APPROVED #1615] Written reason: deferred web attribution now
   // builds URLSearchParams so optional server-derived af_sub1 is encoded safely;
