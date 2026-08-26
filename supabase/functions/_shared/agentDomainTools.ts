@@ -828,6 +828,14 @@ const getTripOrderMoney = writeTool(
   },
 );
 
+// ----------------------------------------------------------------------------
+// E. RSVP
+//
+// issue #1977 — RSVP writes commit through `ari_execute_rsvp_operation`, the
+// same canonical graph/guest/contribution boundary Business uses. No Ari
+// executor may shallow-insert `events` or call `refund-order` for chip-ins.
+// ----------------------------------------------------------------------------
+
 const RSVP_PARTY_TYPES = [
   "birthday-party",
   "rooftop-party",
@@ -942,14 +950,6 @@ async function executeRsvpWrite(
   });
 }
 
-
-// ----------------------------------------------------------------------------
-// E. RSVP
-//
-// issue #1977 — RSVP writes commit through `ari_execute_rsvp_operation`, the
-// same canonical graph/guest/contribution boundary Business uses. No Ari
-// executor may shallow-insert `events` or call `refund-order` for chip-ins.
-// ----------------------------------------------------------------------------
 
 const createRsvp = writeTool(
   "create_rsvp",

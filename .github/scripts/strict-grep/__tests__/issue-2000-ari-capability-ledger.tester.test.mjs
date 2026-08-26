@@ -268,3 +268,4 @@ test("tester rejects an extant-but-wrong source token that a substring check wou
   row.owners.source[0].symbol = "brand";
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /source path\/symbol evidence changed/);
 });
+

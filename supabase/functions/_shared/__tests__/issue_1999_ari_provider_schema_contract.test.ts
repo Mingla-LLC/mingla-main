@@ -205,3 +205,4 @@ Deno.test("#1999 happy: numeric enums normalize narrowly and invalid enum member
     );
   }
 });
+

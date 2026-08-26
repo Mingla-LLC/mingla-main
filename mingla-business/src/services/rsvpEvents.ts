@@ -3,7 +3,7 @@
  *
  * Forked from businessEvents.publishBusinessEventDraft. RSVP NEVER routes
  * through the EVENT publish RPC (I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC):
- *   - publishRsvpDraft → business_publish_rsvp_draft
+ *   - publishRsvpDraft → business_publish_rsvp_graph
  *   - updateLiveRsvp   → biz_update_live_rsvp
  *
  * ORCH-1150: do NOT merge back into the event/ticket service path. See SPEC §5.1.
