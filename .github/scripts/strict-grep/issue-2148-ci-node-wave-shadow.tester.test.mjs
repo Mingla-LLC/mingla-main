@@ -63,6 +63,23 @@ issue-994-ota-env-resolution.yml 976c1d47de4c1e712719f0f8b3928484bb75e04df460f5a
 orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90f5721553dfab69f9f
 `);
 
+// [TEST-MOD-APPROVED #2589] Two lock VALUES re-banked; the lock itself is
+// untouched — same paths, same coupled set, same assertions, same enforcement in
+// both the working tree and the depth-one fixture.
+//
+// Which and why: #2589 amended two coupled suites,
+// `curated-composition-terminal-ui.implementor.happy.test.mjs` (C6) and
+// `.tester.adversarial.test.mjs` (TA7). Both pinned a boolean failure flag,
+// `prepError`, that #2589 replaced with a typed reason so the share sheet could
+// tell an unpublished offering from a signed-out session from an outage. Every
+// PROPERTY those suites assert still passes untouched; only the names moved. One
+// of TA7's assertions would have gone SILENTLY VACUOUS under the rename — the
+// token it matched no longer existed — and was restated against the live name so
+// it keeps biting.
+//
+// Both replacement values were derived programmatically from the files on disk,
+// never hand-typed, and each old value was verified to occur exactly once in
+// this file before being replaced.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -92,8 +109,8 @@ packages/card-identity/__tests__/card_identity_isolation.test.mjs 7c12a6bb9e9066
 packages/card-identity/__tests__/card_identity_single_source.test.mjs 537507cbf17a718d1a75c644850b02e8b6bc0789255906c4ea74550a5f71eec4
 scripts/ci/__tests__/issue-2062-expo-config-node20.tester.adversarial.test.mjs a03d9052f03eeaefe686c66a3491f05d79deff1a851c57d21f47fa1afc9133b2
 scripts/ci/issue-2062-expo-config-node20.mjs edd8938c93367e76193c850206cae438a3f888a3bb6ffc7d5c6ad143cdb9384b
-scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs 5d878730c41290a9b491489f5c52a29d023f98f4a68412b06e2c4a6de155d9e9
-scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 730d561fde02accfda218456c4519c07085132fd12aa8b7d96490956bb6b2508
+scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1f3a94262faab8f998b27bccba420ed90085cfd6f9926334bd22408fce0d1a8
+scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 4d382fefd13bd483b711715005b602e4f4445b324a9804554458ef438bb99a39
 scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 0cbacffe0dea33f5b69b318ae537422a53d869d039f5cc037d1331c19a1bce63
 scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb8934df9435b1de1ce1daf8cb0fe8cf8abe8d481ce7ab734ea2e62807e
 .github/workflows/issue-2393-valid-marketing-test-fixtures.yml d6ea3933b77f620544626715509ca4a812266bfec3296e012ead9d9ca2ca4a61
