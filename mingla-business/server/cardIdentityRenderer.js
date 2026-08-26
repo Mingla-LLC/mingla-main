@@ -12,10 +12,38 @@ const {
   selectSharedCardFacts,
 } = require("@mingla/card-identity");
 const { isPublicShareMediaUrl, selectPreviewFacts, statusLabel } = require("../../packages/sharing");
+const { fieldFor, stampContent } = require("./fallbackShareCard");
 
 const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, index) => `${color} ${Math.round(ramp.locations[index] * 100)}%`).join(",")})`;
 
 const safeText = (value) => typeof value === "string" ? value.trim() : "";
+/**
+ * #2589 — the fallback card is the last thing standing between a share and a
+ * bare URL, so its composition must be total. Anything that can throw upstream
+ * (a facts blob that fails `parseShareFactsV1`, a malformed date) degrades to
+ * the documented empty result instead of failing the image. Surfaced to logs,
+ * never swallowed silently.
+ */
+const degradeTo = (fallback, label, run) => {
+  try { return run(); } catch (error) {
+    console.warn(`issue-2589 share card degraded (${label}):`, error?.message || error);
+    return fallback;
+  }
+};
+/**
+ * The stamp took these facts, so the plate re-selects WITHOUT them and the freed
+ * slot fills with the next available fact — nothing appears twice. Keys only:
+ * this card reads no `venue`, `area` or `destination`, which is what makes a
+ * gated offering and an ungated one render identical geometry (#2489 / #2587).
+ */
+const factsWithoutStamped = (facts, stamp) => {
+  if (!stamp || !Array.isArray(stamp.consumedKeys) || !stamp.consumedKeys.length) return facts;
+  const remaining = { ...facts };
+  for (const key of stamp.consumedKeys) delete remaining[key];
+  return remaining;
+};
+/** 20pt of air between the stamp's bottom edge and a worst-case 2-line title. */
+const STAMP_TITLE_CLEARANCE = 20;
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 const MAX_RENDERED_PNG_BYTES = 5 * 1024 * 1024;
 const MAX_CONTENT_SHARE_JPEG_BYTES = 200_000;
@@ -125,7 +153,16 @@ const portraitTitleSize = (title) => {
 
 /** Canonical #1615 portrait composition. S4 and S5 call this same function and
  * therefore receive byte-identical 1080x1350 artwork for one immutable share
- * version; transport encoding is selected after this composition renders. */
+ * version; transport encoding is selected after this composition renders.
+ *
+ * #2589 — the SAME function now also composes the coverless card. Only the
+ * photograph layer changes: it is replaced by a generated, luminance-normalised
+ * brand-hued field plus a headline stamp carrying the offering's most
+ * identifying fact. The pill, title, scrim and plate keep their exact positions,
+ * materials and derived contrast values, so a fallback card placed beside a
+ * covered one in the same thread reads as the same object with different
+ * content. That parity is structural, not copied: there is one composition.
+ */
 function contentSharePortraitElement(contentShare) {
   const s = SURFACES.s4Snippet;
   const scale = 3;
@@ -135,30 +172,101 @@ function contentSharePortraitElement(contentShare) {
   const poster = safeText(media?.posterUrl);
   const boundary = surfacePlateBoundary("s4Snippet");
   const titleSize = portraitTitleSize(facts.title);
+  /**
+   * #2589 — the title's clip height is COMPUTED, never hardcoded.
+   *
+   * The shipped card pinned `maxHeight` at 66 while the line height is
+   * `max(30, titleSize + 6)`. At the two smaller rungs 66 does not divide the
+   * line height: 25pt gives LH 31 (66/31 = 2.13 lines, 4pt of a third line's
+   * ascenders visible) and 23pt gives LH 30 (6pt visible). Only the 27pt rung's
+   * LH 33 divided cleanly, so every title over ~48 characters — the exact
+   * titles long enough to need a third line — shipped with a sliced line across
+   * its bottom edge. Deriving it from the line height makes the clip land on a
+   * line boundary at every rung.
+   */
+  const titleLH = Math.max(30, titleSize + 6);
+  const titleMaxHeight = titleLH * s.titleLines;
   const status = statusLabel(facts.status);
-  const tokens = selectPreviewFacts(facts, 8);
-  const titleBottom = px(s.bottomInset + s.plateH + s.gap);
+  const stamp = poster ? null : degradeTo(null, "stamp", () => stampContent(facts));
+  const tokens = degradeTo([], "facts", () => selectPreviewFacts(factsWithoutStamped(facts, stamp), 8));
+  const titleBottom = s.bottomInset + s.plateH + s.gap;
   const plateUnder = surfacePlateUnder("s4Snippet");
-  return React.createElement("div", { style:{ width:px(s.w),height:px(s.h),position:"relative",display:"flex",overflow:"hidden",borderRadius:px(s.cardR),color:"white",fontFamily:"Inter, Arial, sans-serif",background:"#0C0E12" } },
+  const plateMaterial = `linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(rgba(${PLATE.underRgb.join(",")},${plateUnder}),rgba(${PLATE.underRgb.join(",")},${plateUnder}))`;
+  const field = poster ? null : fieldFor(contentShare?.shortCode);
+  // Bottom-anchored so the content reads as ONE cluster and the open space
+  // lands in the top third where the field is brightest. Derived, not retyped:
+  // if `titleLH` or `titleBottom` ever move, the 20pt clearance moves with them.
+  const stampBottom = titleBottom + s.titleLines * s.titleLH + STAMP_TITLE_CLEARANCE;
+  return React.createElement("div", { style:{ width:px(s.w),height:px(s.h),position:"relative",display:"flex",overflow:"hidden",
+    /**
+     * #2589 — SQUARE. No radius is baked into the image, and this is deliberate
+     * for the covered card too.
+     *
+     * A JPEG has no alpha, so a baked `borderRadius` flattens its corners to
+     * near-black quarter-circles — invisible against a photograph, glaring
+     * against a bright field. PNG with real alpha is 3-4x larger and breaches
+     * the 200 KB ceiling on 4 of 5 cards. Every major chat client composites the
+     * preview onto its own background and applies its own rounding, so rendering
+     * square hands the corner to the only layer that can round it with real
+     * transparency: the client.
+     */
+    color:"white",fontFamily:"Inter, Arial, sans-serif",background:"#0C0E12" } },
+    // Satori silently drops a full-bleed `inset: 0` div with a gradient — no
+    // error, no warning, a uniform near-black card. Every layer below therefore
+    // declares explicit top/left/width/height in px.
+    field ? React.createElement("div", { style:{position:"absolute",top:0,left:0,width:px(s.w),height:px(s.h),display:"flex",backgroundImage:`linear-gradient(${field.angle}deg,${field.stops[0]} 0%,${field.stops[1]} 55%,${field.stops[2]} 100%)`} }) : null,
+    field ? React.createElement("div", { style:{position:"absolute",top:0,left:0,width:px(s.w),height:px(s.h),display:"flex",backgroundImage:`radial-gradient(circle at ${field.highlightX}% ${field.highlightY}%,rgba(255,255,255,0.34) 0%,rgba(255,255,255,0) 42%)`} }) : null,
     poster ? React.createElement("img", { src:poster, style:{position:"absolute",inset:0,width:"100%",height:"100%",objectFit:"cover",objectPosition:`${Number(media?.focalPoint?.x ?? .5)*100}% ${Number(media?.focalPoint?.y ?? .5)*100}%`} }) : null,
-    poster ? React.createElement("div", { style:{position:"absolute",left:0,right:0,bottom:0,height:px(surfaceScrimHeight("s4Snippet")),background:cssGradient(RAMP.bottom)} }) : null,
+    // Unchanged and unconditional. The scrim's 322pt was derived against a
+    // worst case of a pure-WHITE photograph; the field peaks at relative
+    // luminance 0.58, strictly inside that case, so every contrast floor the
+    // scrim already guarantees holds here by construction.
+    React.createElement("div", { style:{position:"absolute",left:0,right:0,bottom:0,height:px(surfaceScrimHeight("s4Snippet")),background:cssGradient(RAMP.bottom)} }),
     React.createElement("div", { style:{position:"absolute",left:px(24),top:px(24),width:px(124),height:px(44),display:"flex",alignItems:"center",justifyContent:"center",borderRadius:px(18),background:"#FFF7EF",border:`${px(1)}px solid rgba(12,14,18,.56)`,boxShadow:`0 ${px(4)}px ${px(12)}px rgba(12,14,18,.18)`,boxSizing:"border-box"} },
       React.createElement("img", { src:wordmarkSource(), style:{width:px(96),height:px(34),objectFit:"contain"} })),
-    React.createElement("div", { style:{position:"absolute",display:"flex",left:px(24),right:px(24),bottom:titleBottom,fontSize:px(titleSize),lineHeight:`${px(Math.max(30,titleSize+6))}px`,fontWeight:700,maxHeight:px(66),overflow:"hidden",wordBreak:"break-word"} }, safeText(facts.title)),
+    // The stamp reuses the facts plate's material exactly — zero new tokens. The
+    // card therefore has exactly two materials: cream chrome is Mingla's own
+    // identity, dark plate glass is the offering's own content.
+    stamp ? React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(stampBottom),maxWidth:px(s.plateW),display:"flex",flexDirection:"column",borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:plateMaterial,boxShadow:`inset 0 ${px(1)}px 0 ${PLATE.topHighlight}`,padding:`${px(stamp.padding[0])}px ${px(stamp.padding[1])}px ${px(stamp.padding[2])}px`,boxSizing:"border-box",overflow:"hidden"}},
+      React.createElement("div", {style:{display:"flex",fontSize:px(stamp.size),lineHeight:`${px(stamp.size+6)}px`,fontWeight:stamp.weight,letterSpacing:px(stamp.letterSpacing),color:"#FFFFFF",...(stamp.tabular?{fontVariantNumeric:"tabular-nums"}:{})}}, stamp.value),
+      stamp.meta ? React.createElement("div", {style:{display:"flex",marginTop:px(4),fontSize:px(14),lineHeight:`${px(18)}px`,fontWeight:600,letterSpacing:px(0.6),color:"rgba(255,255,255,0.80)"}}, stamp.meta) : null) : null,
+    React.createElement("div", { style:{position:"absolute",display:"flex",left:px(24),right:px(24),bottom:px(titleBottom),fontSize:px(titleSize),lineHeight:`${px(titleLH)}px`,fontWeight:700,maxHeight:px(titleMaxHeight),overflow:"hidden",wordBreak:"break-word"} }, safeText(facts.title)),
     facts.kind === "curated" ? SLIVER.offsets.map((offset,index)=>React.createElement("div", {key:index,style:{position:"absolute",left:px(s.sideInset+s.sliver.insets[index]),right:px(s.sideInset+s.sliver.insets[index]),bottom:px(s.bottomInset+s.plateH+offset),height:px(4),borderRadius:px(2),background:"rgba(255,255,255,.44)"}})) : null,
-    React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(s.bottomInset),width:px(s.plateW),height:px(s.plateH),borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:`linear-gradient(${PLATE.lift},${PLATE.lift}),linear-gradient(rgba(${PLATE.underRgb.join(",")},${plateUnder}),rgba(${PLATE.underRgb.join(",")},${plateUnder}))`,display:"flex",flexDirection:"column",padding:`${px(9)}px ${px(12)}px ${px(7)}px`,boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}},
+    // #2589 — an empty facts row centres the kind label instead of leaving 39pt
+    // of dead space below it. `plateH` stays 78, so `scrimHeight`, `plateUnder`
+    // and `titleBottom` are all untouched: nothing derived from the plate moves.
+    React.createElement("div", {style:{position:"absolute",left:px(s.sideInset),bottom:px(s.bottomInset),width:px(s.plateW),height:px(s.plateH),borderRadius:px(s.plateR),border:`${px(boundary.width)}px solid ${boundary.color}`,background:plateMaterial,display:"flex",flexDirection:"column",justifyContent:tokens.length?"flex-start":"center",padding:`${px(9)}px ${px(12)}px ${px(7)}px`,boxSizing:"border-box",fontVariantNumeric:"tabular-nums"}},
       React.createElement("div", {style:{height:px(20),display:"flex",alignItems:"center",fontSize:px(12),lineHeight:`${px(16)}px`,fontWeight:600}},
         React.createElement("span", null, kindLabel(facts.kind)),
         status ? React.createElement("span", {style:{marginLeft:"auto",height:px(20),padding:`0 ${px(8)}px`,display:"flex",alignItems:"center",borderRadius:px(10),background:"#FFF7EF",color:"#0C0E12",fontWeight:700}}, `● ${status}`) : null),
-      React.createElement("div", {style:{display:"flex",marginTop:px(3),fontSize:px(13),lineHeight:`${px(16)}px`,fontWeight:500,maxHeight:px(32),overflow:"hidden",wordBreak:"break-word"}}, tokens.join(" · "))));
+      tokens.length ? React.createElement("div", {style:{display:"flex",marginTop:px(3),fontSize:px(13),lineHeight:`${px(16)}px`,fontWeight:500,maxHeight:px(32),overflow:"hidden",wordBreak:"break-word"}}, tokens.join(" · ")) : null));
 }
 
 async function renderContentSharePortraitPng(contentShare) {
   const { ImageResponse } = await import("@vercel/og");
   const media = contentShare?.media || contentShare?.facts?.media;
-  if (!media?.posterUrl) throw new Error("cover_required");
-  const posterUrl = await prepareCoverForOg(media.posterUrl);
-  const element = contentSharePortraitElement({ ...contentShare, media: { ...media, posterUrl } });
+  const source = safeText(media?.posterUrl);
+  /**
+   * #2589 — an unusable cover is a FALLBACK CASE, not a failure.
+   *
+   * All three coverless populations converge here: no cover at all (no
+   * `posterUrl`), a cover the pipeline rejects (host off the allowlist, wrong
+   * MIME, oversize, fetch timeout), and a video or GIF whose poster is missing
+   * or unfetchable. Every one of them used to reach `throw` and surface as a 502
+   * with an empty body, so the page omitted `og:image` and the link shared as a
+   * bare URL. They now render the generated card instead.
+   *
+   * `posterUrl: ""` is passed EXPLICITLY rather than dropping `media`, because
+   * the element falls back to `facts.media` when `media` is absent — which would
+   * hand the composition an unprepared remote URL that never went through
+   * `prepareCoverForOg`.
+   */
+  let posterUrl = "";
+  if (source) {
+    try { posterUrl = await prepareCoverForOg(source); }
+    catch (error) { console.warn("issue-2589 cover unusable, rendering fallback card:", error?.message || error); }
+  }
+  const element = contentSharePortraitElement({ ...contentShare, media: { ...(media || {}), posterUrl } });
   const response = new ImageResponse(element, { width:1080, height:1350 });
   const png = Buffer.from(await response.arrayBuffer());
   if (png.length === 0 || png.length > MAX_RENDERED_PNG_BYTES) throw new Error("rendered_image_too_large");

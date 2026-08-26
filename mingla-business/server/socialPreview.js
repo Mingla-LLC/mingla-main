@@ -393,8 +393,25 @@ const renderContentShareHtml = (contentShare, installAttribution = null) => {
   const currentOpenState=openStateForHours(facts.hours,facts.timezone);
   const previewFacts = selectPreviewFacts(currentOpenState?{...facts,openState:currentOpenState}:facts, 8);
   const description = asText(facts.description) || previewFacts.join(" · ") || `Open ${title} on Mingla.`;
+  // Still the gate for the page body's MOTION layer: a video or GIF only gets
+  // its animated element when there is a real poster behind it. #2589 detaches
+  // only the og:image tag from this, never the motion.
   const posterUrl = contentSharePosterUrl(contentShare);
-  const imageUrl = posterUrl ? buildSharePortraitUrl(code, Number(contentShare.version)) : "";
+  /**
+   * #2589 — `og:image` is emitted for EVERY share, covered or not.
+   *
+   * The portrait URL used to be gated on a usable poster, so a coverless
+   * offering shipped an HTML page with no image block at all and the link
+   * previewed as a bare URL — the exact hole the fallback card exists to close.
+   * The image route now always has a card to serve, so the tag is always
+   * truthful. It is still built inside a guard because `buildSharePortraitUrl`
+   * throws on a malformed code or version, and this page must not 500 over a
+   * meta tag.
+   */
+  const imageUrl = (() => {
+    try { return buildSharePortraitUrl(code, Number(contentShare?.version)); }
+    catch { return ""; }
+  })();
   const alt = `${({place:"Place",curated:"Curated plan",event:"Event",rsvp_event:"RSVP event",trip:"Trip",experience:"Experience",venue:"Venue",brand:"Brand"})[facts.kind] || "Mingla"}: ${title}. ${previewFacts.slice(0, 3).join(". ")}`.trim();
   const status = statusLabel(facts.status);
   const terminal = ["sold_out", "ended", "cancelled", "rsvp_closed", "date_tbd", "dates_tbd"].includes(facts.status);

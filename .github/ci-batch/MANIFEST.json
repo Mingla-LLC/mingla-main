@@ -15074,7 +15074,7 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "77574221b296fe9c1fc8b69522df42ff4918c40a7283e2cab2bd358f5484a616",
+        "sourceSha256": "fc90d1904b9a219107e48e36512c8c521972cce3cb90f98cddcc81ddb5e8d05a",
         "triggers": [
           "pull_request",
           "push"
@@ -15086,6 +15086,7 @@
           "mingla-marketing/**",
           "packages/sharing/**",
           "scripts/issue-1719/**",
+          "scripts/issue-2589/**",
           "supabase/functions/_shared/contentShare*.ts",
           "supabase/functions/event-cover-video-*/**",
           "supabase/functions/run-business-place-authoring-pipeline/**",

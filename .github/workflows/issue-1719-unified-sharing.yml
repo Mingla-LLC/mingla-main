@@ -3,6 +3,12 @@ on:
   pull_request:
     paths:
       - "scripts/issue-1719/**"
+      # Issue #2589 — the coverless fallback share card. Its proofs live here
+      # rather than in a new workflow file because the CI origin registry is
+      # locked at 200 origins; this workflow already owns the share pipeline and
+      # already path-scopes `mingla-business/**`, which is where the renderer,
+      # the pure field/stamp layer and the image route all live.
+      - "scripts/issue-2589/**"
       - "packages/sharing/**"
       - "app-mobile/**"
       - "mingla-business/**"
@@ -40,6 +46,7 @@ jobs:
       - run: node --test scripts/issue-1719/unified-sharing.amendment.tester.adversarial.test.mjs
       - run: node --test packages/sharing/__tests__/issue_1615_sharing_contract.happy.test.mjs packages/sharing/__tests__/issue_1615_media_identity.happy.test.mjs
       - run: node --experimental-strip-types --test scripts/issue-1615/content-share-producers.happy.test.mjs scripts/issue-1615/content-share-portrait.happy.test.mjs scripts/issue-1615/content-share-portrait.adversarial.test.mjs
+      - run: node --test scripts/issue-2589/fallback-share-card.implementor.happy.test.mjs
       - run: node --test scripts/issue-1615/content-sharing-semantic-gate.implementor.happy.test.mjs scripts/issue-1615/content-sharing-semantic-gate.adversarial.test.mjs
       - run: node scripts/issue-1615/content-sharing-semantic-gate.mjs
       - run: node --test packages/card-identity/__tests__/card_identity_single_source.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs
