@@ -152,7 +152,19 @@ const recordCheckoutRefusal = async (
   const TIMEOUT_MS = 1_500;
   let timer: ReturnType<typeof setTimeout> | undefined;
   try {
-    await Promise.race([
+    // issue #2579 — INSPECT THE RESULT. supabase-js `.rpc()` DOES NOT THROW on
+    // a database error: it RESOLVES with `{ data, error }`. Awaiting it and
+    // discarding the value therefore succeeds no matter what happened, and the
+    // `catch` below can never run.
+    //
+    // That is the whole reason four fixes in a row failed to make this log
+    // record. Every one of them was correct about something — the allowlist WAS
+    // incomplete, the edge WAS collapsing the token, the write WAS abandoned at
+    // the response — and every one of them was verified against a call that
+    // reported success while the row was being rejected. Adding a `console.error`
+    // to the catch produced NOTHING, which is what finally proved the error was
+    // never an exception at all.
+    const outcome = await Promise.race([
       client.rpc("issue_2579_record_checkout_refusal", {
       p_event_id: input.eventId.length > 0 ? input.eventId : null,
       p_ticket_type_id: input.ticketTypeId,
@@ -166,10 +178,17 @@ const recordCheckoutRefusal = async (
       p_buyer_phone_e164: input.phoneE164,
         p_buyer_email: input.email,
       }),
-      new Promise((resolve) => {
-        timer = setTimeout(resolve, TIMEOUT_MS);
+      new Promise<undefined>((resolve) => {
+        timer = setTimeout(() => resolve(undefined), TIMEOUT_MS);
       }),
     ]);
+    const rpcError = (outcome as { error?: unknown } | undefined)?.error;
+    if (rpcError) {
+      console.error(
+        "[ticket-checkout-create] refusal log REJECTED by the database",
+        { token: input.message, surface: input.surface, rpcError },
+      );
+    }
   } catch (error) {
     // issue #2579 — SWALLOWED, BUT NEVER SILENT.
     //
