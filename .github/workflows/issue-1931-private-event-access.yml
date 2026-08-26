@@ -115,13 +115,20 @@ jobs:
               # the missing function. Both faults are real and the re-emission
               # governs.
               #
-              # #2462 has NO dedicated lane. It is proven end-to-end by the 10
+              # #2462 has NO dedicated lane. It is proven end-to-end by the 3
               # unfiltered full-chain lanes that trigger on
-              # `supabase/migrations/**` — #1172, #1173, #1174, #1177, #1217,
-              # #1217-tester-adversarial, #1612, #1840, the SECURITY DEFINER
-              # anon-grant gate and Supabase Migrations + Stripe Deno — all of
-              # which ran `success` on #2462's own PR head, plus #2462's own
+              # `supabase/migrations/**` — the `migration-chain` job of
+              # `postgres-contract-suites.yml`, the SECURITY DEFINER anon-grant
+              # gate and Supabase Migrations + Stripe Deno — plus #2462's own
               # in-migration `DO $probe$` and two mingla-business jest suites.
+              #
+              # The count fell from ten to three at #2591, which collapsed eight
+              # of the original ten into `migration-chain`. That job replays
+              # every migration from zero, unconditionally and with no `if:` on
+              # the replay mode, so the property those eight supplied is
+              # preserved once rather than eight times. On #2462's own PR head
+              # all ten predecessors ran `success`; the evidence is unchanged,
+              # its provider is not.
               #
               # Matched by EXACT filename, never `*_issue_2462_*`: that glob
               # would also drop ...002463_issue_2462_phone_backfill.sql, which

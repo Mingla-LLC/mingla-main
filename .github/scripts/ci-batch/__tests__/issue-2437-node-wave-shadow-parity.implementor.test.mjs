@@ -12,6 +12,7 @@ import {
   decodeManifestTextRepresentations,
   discoverLiveOrigins,
   discoverWorkflowProviders,
+  PROVIDERS_ADDED_SINCE_SEAL,
   inspectBatchWorkflow,
   inspectWorkflow,
   validateRegistry,
@@ -104,7 +105,11 @@ test("#2437 terminal registry is exactly 31 historical origins / 32 typed varian
       && origin.migrationWave === wave).length, 0));
   assert.equal(value.legacyOrigins.length, 200);
   assert.equal(value.suites.length, 84);
-  assert.equal(value.workflowProviders.length, 91);
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(origins.length, 31);
   assert.equal(shadow.length, 32);
   assert.equal(new Set(shadow.map((suite) => suite.id)).size, 32);

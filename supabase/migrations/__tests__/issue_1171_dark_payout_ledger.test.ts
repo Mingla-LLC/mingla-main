@@ -461,6 +461,93 @@ $test$;
 ROLLBACK;
 `;
 
+// [TEST-MOD-APPROVED #2591] — parameterise the database, and make the parameter
+// not reaching this process DETECTABLE rather than silent.
+//
+// #2591 gives every contract suite its own database, copied from the migrated
+// template with CREATE DATABASE ... TEMPLATE. These tests reach PostgreSQL by
+// `docker exec ... psql`, and the database was baked into the argv array as the
+// literal "postgres". It now comes from ISSUE_1171_POSTGRES_DATABASE, mirroring
+// the file's own existing ISSUE_1171_POSTGRES_CONTAINER pattern, and defaulting
+// to "postgres" so every existing invocation is unchanged.
+//
+// That default is the whole risk of the change: a consolidated job that forgets
+// to set the variable runs these suites against the migrated TEMPLATE, every
+// assertion still passes, and the isolation the design rests on is gone with no
+// signal at all. `isolationGuardSql` below removes the silence. It asks the
+// cluster whether per-suite databases exist and refuses to run in the template
+// when they do — self-configuring, with no new switch to forget to turn on:
+//
+//   legacy cluster (no suite_* databases) -> passes exactly as today;
+//   consolidated cluster, variable set    -> running in suite_1171, passes;
+//   consolidated cluster, variable unset  -> RED, naming the database.
+//
+// Clause A alone is not enough, and the second clause is the point of this guard.
+// A database can carry the RIGHT NAME and the WRONG CONTENTS: `suite_1174` built
+// from `template0` instead of from the migrated template passes every name check
+// ever written while holding zero tables, zero policies and zero triggers. That
+// is not hypothetical -- it is the shape a `pg_dump` restore produced in this repo
+// while tables and columns matched and 643 RLS policies had collapsed to 2, exit
+// code 0 throughout. So clause B asserts the SECURITY POSTURE of the specific
+// tables this suite is about to mutate: they exist, ROW LEVEL SECURITY is on, and
+// the objects that enforce append-only and per-brand isolation are present.
+// Counting tables and columns is explicitly insufficient; that is the check that
+// passed the disaster.
+const isolationGuardSql = String.raw`
+DO $issue_2591_isolation$
+DECLARE
+  v_suite_databases integer;
+  v_broken text;
+BEGIN
+  -- Clause A — PLACEMENT. If this cluster has per-suite contract databases at
+  -- all, then the #2591 design is in force and this session must be inside one
+  -- of them. Self-configuring: a legacy cluster has none, so this is inert there
+  -- and the file behaves exactly as it did before #2591.
+  SELECT count(*) INTO v_suite_databases
+  FROM pg_database
+  WHERE datname LIKE 'suite\_%';
+
+  IF v_suite_databases > 0 AND current_database() NOT LIKE 'suite\_%' THEN
+    RAISE EXCEPTION
+      '#2591 SUITE ISOLATION FAIL: % per-suite contract databases exist in this cluster, but this suite is executing in "%" — the migrated template every suite was copied from. ISSUE_1171_POSTGRES_DATABASE did not reach this process.',
+      v_suite_databases, current_database();
+  END IF;
+
+  -- Clause B — FIDELITY. The right name is not the right database.
+  SELECT string_agg(probe.what, '; ' ORDER BY probe.what) INTO v_broken
+  FROM (
+    SELECT 'public.brand_payout_releases is missing' AS what
+     WHERE to_regclass('public.brand_payout_releases') IS NULL
+    UNION ALL
+    SELECT 'public.organiser_payout_debts is missing'
+     WHERE to_regclass('public.organiser_payout_debts') IS NULL
+    UNION ALL
+    SELECT 'public.brand_payout_releases has ROW LEVEL SECURITY disabled'
+     WHERE NOT COALESCE((SELECT c.relrowsecurity FROM pg_class c
+       WHERE c.oid = to_regclass('public.brand_payout_releases')), false)
+    UNION ALL
+    SELECT 'public.organiser_payout_debts has ROW LEVEL SECURITY disabled'
+     WHERE NOT COALESCE((SELECT c.relrowsecurity FROM pg_class c
+       WHERE c.oid = to_regclass('public.organiser_payout_debts')), false)
+    UNION ALL
+    SELECT 'public.brand_payout_releases carries no RLS policy'
+     WHERE NOT EXISTS (SELECT 1 FROM pg_policy p
+       WHERE p.polrelid = to_regclass('public.brand_payout_releases'))
+    UNION ALL
+    SELECT 'public.organiser_payout_debts carries no RLS policy'
+     WHERE NOT EXISTS (SELECT 1 FROM pg_policy p
+       WHERE p.polrelid = to_regclass('public.organiser_payout_debts'))
+  ) AS probe;
+
+  IF v_broken IS NOT NULL THEN
+    RAISE EXCEPTION
+      '#2591 SUITE FIDELITY FAIL: database "%" is not a faithful copy of the migrated template — %. Tables and columns matching is NOT sufficient evidence: a pg_dump restore passed that check with 643 RLS policies collapsed to 2.',
+      current_database(), v_broken;
+  END IF;
+END
+$issue_2591_isolation$;
+`;
+
 if (Deno.env.get("ISSUE_1171_SQL_BEHAVIOR") === "1") {
   const spawnDockerSql = async (container: string, statement: string) => {
     const command = new Deno.Command("docker", {
@@ -475,7 +562,9 @@ if (Deno.env.get("ISSUE_1171_SQL_BEHAVIOR") === "1") {
         "-U",
         "postgres",
         "-d",
-        "postgres",
+        // [TEST-MOD-APPROVED #2591] per-suite database; default preserves every
+        // existing invocation. The silent-fallback guard is `isolationGuardSql`.
+        Deno.env.get("ISSUE_1171_POSTGRES_DATABASE") ?? "postgres",
       ],
       stdin: "piped",
       stdout: "piped",
@@ -491,6 +580,20 @@ if (Deno.env.get("ISSUE_1171_SQL_BEHAVIOR") === "1") {
     const command = await spawnDockerSql(container, statement);
     return await command.output();
   };
+
+  // [TEST-MOD-APPROVED #2591] The guard runs FIRST, through the same
+  // spawnDockerSql the contract tests use, so it certifies the exact connection
+  // they are about to assert against — not a separately-configured one.
+  Deno.test("#2591 the #1171 contract suite is not running in the migrated template", async () => {
+    const container = Deno.env.get("ISSUE_1171_POSTGRES_CONTAINER") ??
+      "issue1171-pg-20260724";
+    const result = await runDockerSql(container, isolationGuardSql);
+    assertEquals(
+      result.code,
+      0,
+      new TextDecoder().decode(result.stderr),
+    );
+  });
 
   Deno.test("#1171 executable PostgreSQL behavior contract", async () => {
     const container = Deno.env.get("ISSUE_1171_POSTGRES_CONTAINER") ??

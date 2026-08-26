@@ -1,0 +1,1485 @@
+name: "Postgres Contract Suites"
+
+# #2591 — one supabase/postgres service container hosts every executable SQL
+# contract suite that used to own a container of its own.
+#
+# Nine migration-gated lanes (#1171, #1172, #1173, #1174, #1177, #1217,
+# #1217-tester-adversarial, #1612, #1840) run here. Each suite executes in its
+# OWN database, created up front with `CREATE DATABASE <suite> TEMPLATE
+# <migrated>` — a physical file copy at the storage layer, which is the exact
+# opposite of the banned `pg_dump` path: it never re-executes DDL, so it cannot
+# lose a policy, a `search_path` pin or a `SECURITY DEFINER` flag. Mutation
+# cannot leak between suites and execution order is provably irrelevant.
+#
+# `issue-1403-listing-insights-tests.yml`'s Postgres job is deliberately NOT
+# here. It is the one member of the original ten with a bare `on: pull_request`
+# and no paths filter; folding it in would narrow its trigger, and folding the
+# nine into its trigger would make every docs-only PR pay a full replay. It
+# stays exactly where it is.
+#
+# SHADOW PHASE: this workflow runs ALONGSIDE all nine origin lanes. Nothing is
+# deleted here. The same-SHA parity ledger emitted below is what decides the
+# cutover.
+
+on:
+  push:
+    branches: [main]
+    # The true union of the NINE origin lanes' `paths` blocks, derived from
+    # their files rather than copied from prose. Working (counted from the nine
+    # `on.pull_request.paths` lists, which are byte-identical to their `push`
+    # lists): 52 member entries -> 32 distinct -> minus the 9 self-references
+    # each lane makes to its own file -> 23 -> plus this file's own
+    # self-reference -> 24.
+    #
+    # Two entries are SUBSUMED by broader ones already in the list:
+    # `…/issue_1217_1219_gates.adversarial.test.sql` by `supabase/migrations/**`
+    # and `…/issue_1218_parse_stamp_defensive.adversarial.test.ts` by
+    # `supabase/functions/payout-release-sweep/**`. They are kept anyway.
+    # Dropping a redundant entry is a coverage judgement, and this change makes
+    # no coverage judgements. A union narrower than ANY member is a coverage
+    # loss — guard G-9 below re-checks that superset relation at run time. The
+    # nine files are deleted as of the #2591 cutover, so G-9 reads each member's
+    # declared paths from the registry record captured at that commit rather than
+    # from the files; the relation is still checked, and the registry refuses an
+    # entry that lost its record.
+    paths:
+      - "supabase/config.toml"
+      - "supabase/migrations/**"
+      - "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts"
+      - "supabase/functions/record-visit/**"
+      - "supabase/functions/notify-dispatch/index.ts"
+      - "supabase/functions/paystack-webhook/**"
+      - "supabase/functions/admin-payout-hold-migrate/**"
+      - "supabase/functions/brand-stripe-onboard/**"
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/_shared/stripeMode.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/functions/_shared/stripeBlueprintClient.ts"
+      - "supabase/functions/_shared/secretBundle.ts"
+      - "supabase/functions/_shared/legacyEmailIdempotency.ts"
+      - "supabase/functions/_shared/partnerSplits.ts"
+      - "supabase/functions/_shared/paystackPartnerSplits.ts"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - "supabase/functions/_shared/runtimeConfig.ts"
+      - ".github/actions/migrated-postgres/**"
+      - ".github/workflows/postgres-contract-suites.yml"
+  pull_request:
+    paths:
+      - "supabase/config.toml"
+      - "supabase/migrations/**"
+      - "supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql"
+      - "supabase/functions/payout-release-sweep/**"
+      - "supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts"
+      - "supabase/functions/record-visit/**"
+      - "supabase/functions/notify-dispatch/index.ts"
+      - "supabase/functions/paystack-webhook/**"
+      - "supabase/functions/admin-payout-hold-migrate/**"
+      - "supabase/functions/brand-stripe-onboard/**"
+      - "supabase/functions/_shared/stripe.ts"
+      - "supabase/functions/_shared/stripeMode.ts"
+      - "supabase/functions/_shared/stripeWebhookRouter.ts"
+      - "supabase/functions/_shared/stripeEdgeAuth.ts"
+      - "supabase/functions/_shared/stripeBlueprintClient.ts"
+      - "supabase/functions/_shared/secretBundle.ts"
+      - "supabase/functions/_shared/legacyEmailIdempotency.ts"
+      - "supabase/functions/_shared/partnerSplits.ts"
+      - "supabase/functions/_shared/paystackPartnerSplits.ts"
+      - "supabase/functions/_shared/paystack.ts"
+      - "supabase/functions/_shared/paystackOrganiserRelease.ts"
+      - "supabase/functions/_shared/runtimeConfig.ts"
+      - ".github/actions/migrated-postgres/**"
+      - ".github/workflows/postgres-contract-suites.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # The container name is a fixed literal, not derived: #1171's Deno tests reach
+  # the database by `docker exec` on this name (ISSUE_1171_POSTGRES_CONTAINER),
+  # and #1174's bash driver takes it as $1.
+  PG_CONTRACT_CONTAINER: pg-contract-suites
+  # The database the from-zero replay builds, and the TEMPLATE every suite
+  # database is copied from. No suite ever connects to it.
+  PG_CONTRACT_TEMPLATE: postgres
+
+jobs:
+  migration-chain:
+    name: "Postgres contract suites — migration chain"
+    runs-on: ubuntu-latest
+    # Expected ~283 s (one bring-up + from-zero replay ~110 s, eight template
+    # copies ~5.6 s, eight suites' own work ~152 s of which #1173's pg_sleep(6)
+    # is the critical path, checkout + one setup-deno ~15 s). The origins ran
+    # 10-15 min caps over ~130 s each; 20 min keeps that ratio at ~4.2x while
+    # covering the two known tail risks — one job now carries all eight suite
+    # databases, and the unconditional from-zero replay grows with every
+    # migration landed.
+    timeout-minutes: 20
+    defaults:
+      run:
+        # `-eo pipefail`. Every contract command below is piped into `tee` for
+        # the parity ledger, and without pipefail a piped failure would be
+        # reported as a pass — the exact dark-gate shape this job exists to
+        # avoid. The helpers additionally read PIPESTATUS explicitly.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+
+      # ── Step 3 — the from-zero replay. Unconditional. ────────────────────
+      #
+      # There is NO `if:` on this step and no conditional inside it. No
+      # snapshot, no `actions/cache`, no applied-migration manifest, and no
+      # migrated-postgres composite action. A conditional replay is the shape
+      # that has produced six classes
+      # of dark gate in this repo, and the snapshot path matches its manifest by
+      # FILENAME, so a migration edited in place is treated as already applied
+      # and never re-runs. A from-zero replay has no such blind spot.
+      #
+      # This lane is one of the small number of unfiltered full-chain replays
+      # left in the repository. `issue-1931-private-event-access.yml`'s #2462
+      # skip-list rationale is written against that fact.
+      - name: Apply every migration to clean PostgreSQL 17
+        id: replay
+        run: |
+          pg_contract_db_password="$(openssl rand -hex 24)"
+          docker run --name pg-contract-suites \
+            -e POSTGRES_PASSWORD="$pg_contract_db_password" \
+            -d supabase/postgres:17.4.1.075
+          for attempt in {1..90}; do
+            state="$(docker inspect --format \
+              '{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}' \
+              pg-contract-suites)"
+            if [ "$state" = "healthy" ]; then
+              break
+            fi
+            sleep 1
+          done
+          applied=0
+          for migration_file in supabase/migrations/*.sql; do
+            docker exec -i pg-contract-suites \
+              psql -v ON_ERROR_STOP=1 -U postgres -d postgres \
+              < "$migration_file"
+            applied=$((applied + 1))
+          done
+          echo "applied=$applied" >> "$GITHUB_OUTPUT"
+          echo "applied $applied migrations from zero"
+
+      # ── Guard G-4 — the replay really replayed from zero ─────────────────
+      #
+      # Mutants that must turn this RED: (a) drop one file from the migration
+      # list so the applied count and the tree count disagree; (b) add an
+      # `actions/cache` restore step; (c) put an `if:` on the replay step.
+      #
+      # Every forbidden literal below is ASSEMBLED FROM FRAGMENTS. A guard that
+      # greps its own source for the string it forbids matches itself and can
+      # never pass — the audit-regex-matches-comments trap.
+      - name: "G-4 · the replay applied every migration in the tree, from zero"
+        env:
+          REPLAY_APPLIED: ${{ steps.replay.outputs.applied }}
+        run: |
+          workflow=".github/workflows/postgres-contract-suites.yml"
+          tree_count="$(ls -1 supabase/migrations/*.sql | wc -l | tr -d ' ')"
+          if [ "$REPLAY_APPLIED" != "$tree_count" ]; then
+            echo "::error::G-4: the replay applied $REPLAY_APPLIED migrations but supabase/migrations/*.sql holds $tree_count. A replay that skips a file is not a full-chain replay."
+            exit 1
+          fi
+          snap_a="migrated"; snap_b="postgres"
+          cache_a="actions/"; cache_b="cache"
+          applied_a="applied"; applied_b="txt"
+          for forbidden in \
+            "uses: ./.github/actions/${snap_a}-${snap_b}" \
+            "uses: ${cache_a}${cache_b}" \
+            "${applied_a}.${applied_b}"; do
+            if grep -qF -- "$forbidden" "$workflow"; then
+              echo "::error::G-4: [$forbidden] appears in $workflow. The migration-chain replay is unconditional and must have no snapshot, cache or restore path."
+              exit 1
+            fi
+          done
+          # The replay step itself must carry no `if:` — a replay that can stop
+          # firing is the dark-gate shape D-2 exists to forbid.
+          replay_gate="$(awk '/^      - name: Apply every migration to clean PostgreSQL 17$/{f=1;next} /^      - name: /{f=0} f && /^        if:/{n++} END{print n+0}' "$workflow")"
+          if [ "$replay_gate" != "0" ]; then
+            echo "::error::G-4: the replay step carries $replay_gate if-condition(s). The from-zero replay is unconditional and must not be gated."
+            exit 1
+          fi
+          echo "G-4 PASS: $REPLAY_APPLIED of $tree_count migrations replayed from zero; no snapshot, cache or restore path in the workflow; the replay step is ungated."
+
+      # ── Step 4 — provision one database per suite, up front ──────────────
+      #
+      # Eight databases, created BEFORE any suite opens a connection. An open
+      # connection to the template aborts the copy with SQLSTATE 55006, and a
+      # suite's session is not short-lived.
+      #
+      # Issued as `supabase_admin` over the container's loopback — the image's
+      # pg_hba carries `host all all 127.0.0.1/32 trust` and `supabase_admin`
+      # IS superuser there, while `postgres` is deliberately not. This is the
+      # identical path `adopt_password()` in the migrated-postgres action
+      # already exercises in CI.
+      #
+      # Copied from `template1`, never from the database being copied. Default
+      # WAL_LOG strategy (FILE_COPY is 3.7x slower and forces two checkpoints);
+      # STRATEGY is deliberately omitted so the default cannot silently diverge.
+      # `-c` is autocommit: CREATE DATABASE cannot run inside a transaction.
+      - name: Provision one database per contract suite
+        id: provision
+        run: |
+          mkdir -p "$RUNNER_TEMP/parity"
+
+          # ── DIAGNOSTIC, before anything is changed ──────────────────────
+          #
+          # The first CI run of this job failed here: two sessions held the
+          # template for the whole 20 s retry budget, so retrying could never
+          # win. Retrying is for a TRANSIENT holder; these are not transient.
+          # This dump is what identifies them, verbatim, instead of guessing.
+          echo "── backends attached to the template BEFORE provisioning ──"
+          docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 \
+            -c "SELECT pid, datname, usename, application_name, backend_type, state, left(coalesce(query, ''), 120) AS query
+                  FROM pg_stat_activity
+                 ORDER BY (datname IS DISTINCT FROM '$PG_CONTRACT_TEMPLATE'), pid" || true
+
+          # ── Close the template for the copy window ──────────────────────
+          #
+          # `datallowconn = false` refuses EVERYONE, superusers included — it is
+          # exactly what makes template0 uncopyable-into — so a background worker
+          # cannot race back in between the eviction and the last copy. That
+          # turns "win a race against a reconnecting worker eight times in a row"
+          # into a guarantee. MEASURED on PostgreSQL 17.10 with six continuous
+          # zero-gap reconnect loops running: 0 sessions could re-enter across a
+          # 3 s window and all 8 copies succeeded.
+          #
+          # The restore is a trap, so a mid-loop failure cannot leave the
+          # template unreachable for the fidelity guard or the teardown.
+          restore_template_connections() {
+            docker exec "$PG_CONTRACT_CONTAINER" \
+              psql -h 127.0.0.1 -U supabase_admin -d template1 -q \
+              -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS true" || true
+          }
+          trap restore_template_connections EXIT
+
+          docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 -q -v ON_ERROR_STOP=1 \
+            -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS false"
+          evicted="$(docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 -At \
+            -c "SELECT count(*) FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity
+                  WHERE datname = '$PG_CONTRACT_TEMPLATE' AND pid <> pg_backend_pid()) AS t")"
+          echo "evicted $evicted backend(s) from the template; it is now closed to new connections"
+          remaining="$(docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 -At \
+            -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE'")"
+          echo "backends still on the template: $remaining"
+
+          # ── The copy must be owned by whoever owns the template ──────────
+          #
+          # `CREATE DATABASE … TEMPLATE …` issued as supabase_admin makes
+          # supabase_admin the OWNER of the copy. Since PostgreSQL 15 the public
+          # schema is owned by the pseudo-role `pg_database_owner`, which resolves
+          # PER DATABASE — so in the template it is the template's owner and in an
+          # unowned copy it is supabase_admin, and `postgres`, which this image
+          # deliberately leaves non-superuser, loses CREATE on public. Reads and
+          # writes still work, which is why it surfaces only where a suite creates
+          # something: #1174's driver does CREATE OR REPLACE FUNCTION and
+          # CREATE TRIGGER, and those were the two steps that failed.
+          #
+          # MEASURED: template datdba=postgres, unowned copy datdba=supabase_admin,
+          # while nspowner and nspacl for public are TEXTUALLY IDENTICAL in both
+          # (`pg_database_owner` / `{pg_database_owner=UC/pg_database_owner,…}`)
+          # because the pseudo-role's name does not change — only datdba differs.
+          #
+          # Read at run time, never hardcoded: the template's owner is whatever
+          # the image made it.
+          template_owner="$(docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 -At -v ON_ERROR_STOP=1 \
+            -c "SELECT datdba::regrole::text FROM pg_database WHERE datname = '$PG_CONTRACT_TEMPLATE'")"
+          if [ -z "$template_owner" ]; then
+            echo "::error::could not read the template's owner; refusing to create copies whose ownership would be a guess."
+            exit 1
+          fi
+          echo "template owner: $template_owner (every copy is created OWNER $template_owner)"
+
+          # The 55006 retry below STAYS. It did its job on the first run — it is
+          # what turned an invisible race into a diagnosable failure — and it
+          # remains the backstop if anything ever holds the template despite the
+          # close.
+          create_suite_db() {
+            local suite="$1" attempt=1 out="" status=0
+            while [ "$attempt" -le 10 ]; do
+              set +e
+              out="$(docker exec "$PG_CONTRACT_CONTAINER" \
+                psql -h 127.0.0.1 -U supabase_admin -d template1 \
+                -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -q \
+                -c "CREATE DATABASE $suite TEMPLATE $PG_CONTRACT_TEMPLATE OWNER $template_owner" 2>&1)"
+              status=$?
+              set -e
+              if [ "$status" -eq 0 ]; then
+                echo "provisioned $suite from $PG_CONTRACT_TEMPLATE (attempt $attempt)"
+                return 0
+              fi
+              if printf '%s' "$out" | grep -q '55006'; then
+                echo "::warning::$suite: template busy (SQLSTATE 55006), attempt $attempt of 10; retrying in 2s"
+                sleep 2
+                attempt=$((attempt + 1))
+                continue
+              fi
+              echo "::error::$suite: CREATE DATABASE failed, and the failure is NOT SQLSTATE 55006. Verbatim psql output:"
+              printf '%s\n' "$out"
+              exit 1
+            done
+            echo "::error::$suite: CREATE DATABASE could not acquire the template after 10 attempts 2s apart. Verbatim psql output from the final attempt:"
+            printf '%s\n' "$out"
+            exit 1
+          }
+          for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
+                       suite_1217a suite_1217t suite_1612 suite_1840; do
+            create_suite_db "$suite"
+          done
+          docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 -At \
+            -c "SELECT datname, datallowconn FROM pg_database WHERE datname LIKE 'suite\_%' ORDER BY datname"
+          restore_template_connections
+          trap - EXIT
+          echo "── backends attached to the template AFTER the copy window reopened ──"
+          docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -h 127.0.0.1 -U supabase_admin -d template1 \
+            -c "SELECT pid, datname, usename, application_name, backend_type, state
+                  FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' ORDER BY pid" || true
+
+      # ── Guard G-1 — every suite database is a real copy of the template ──
+      #
+      # EXACT EQUALITY, not "at least" and not "not lower". The fingerprint is
+      # the one from the #2591 investigation: policy name + roles + qual +
+      # with_check, every index definition, every trigger definition,
+      # relrowsecurity + relforcerowsecurity, every function's prosecdef +
+      # proconfig (the search_path pins #1807 and #1403 assert on) + proacl +
+      # body, every column and default, every relacl, every constraint
+      # definition — collapsed to one MD5.
+      #
+      # A guard that compared only tables and columns would PASS the disaster
+      # this exists to catch: a pg_dump restore in this repo went green with
+      # 643 RLS policies collapsed to 2, 360 RLS tables to 3, 300 triggers to
+      # 1, 1331 indexes to 26, exit code 0 throughout.
+      #
+      # Mutant that must turn this RED: provision one suite from `template0`
+      # instead of from the migrated template.
+      - name: "G-1 · every suite database is a byte-faithful copy of the migrated template"
+        id: fidelity
+        run: |
+          cat > "$RUNNER_TEMP/fingerprint.sql" <<'SQL'
+          SELECT md5(string_agg(line, E'\n' ORDER BY line)) FROM (
+            -- [#2591 run 3] OWNERSHIP. G-1 passed on all eight copies while every
+            -- one of them was owned by the wrong role and the suites could not
+            -- CREATE in public. A fidelity guard blind to ownership certifies a
+            -- database the suites cannot use.
+            --
+            -- `datdba` is the term that actually discriminates: MEASURED, the
+            -- template's is `postgres` and an unowned copy's is `supabase_admin`,
+            -- while nspowner and nspacl for public are textually IDENTICAL in both
+            -- because `pg_database_owner` is a pseudo-role whose NAME does not
+            -- change even though what it resolves to does. nspowner and nspacl are
+            -- fingerprinted anyway — they catch ordinary schema-ownership drift —
+            -- but they would not have caught this, and saying so is the point.
+            SELECT 'dbowner:' || d.datdba::regrole::text AS line
+              FROM pg_database d WHERE d.datname = current_database()
+            UNION ALL
+            SELECT 'schema:' || n.nspname || ':' || n.nspowner::regrole::text || ':' ||
+                   coalesce(n.nspacl::text, '')
+              FROM pg_namespace n
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+               AND n.nspname NOT LIKE 'pg_toast%' AND n.nspname NOT LIKE 'pg_temp%'
+            UNION ALL
+            SELECT 'policy:' || n.nspname || '.' || c.relname || ':' || p.polname || ':' ||
+                   coalesce(array_to_string(p.polroles, ','), '') || ':' ||
+                   coalesce(pg_get_expr(p.polqual, p.polrelid), '') || ':' ||
+                   coalesce(pg_get_expr(p.polwithcheck, p.polrelid), '') AS line
+              FROM pg_policy p
+              JOIN pg_class c ON c.oid = p.polrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'index:' || schemaname || '.' || indexname || ':' || indexdef
+              FROM pg_indexes
+             WHERE schemaname NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'trigger:' || n.nspname || '.' || c.relname || ':' || t.tgname || ':' ||
+                   pg_get_triggerdef(t.oid)
+              FROM pg_trigger t
+              JOIN pg_class c ON c.oid = t.tgrelid
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE NOT t.tgisinternal
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'rls:' || n.nspname || '.' || c.relname || ':' ||
+                   c.relrowsecurity::text || ':' || c.relforcerowsecurity::text
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE c.relkind IN ('r', 'p')
+               AND n.nspname NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'func:' || n.nspname || '.' || p.proname || '(' ||
+                   pg_get_function_identity_arguments(p.oid) || '):' ||
+                   p.prosecdef::text || ':' ||
+                   coalesce(array_to_string(p.proconfig, ','), '') || ':' ||
+                   coalesce(p.proacl::text, '') || ':' || md5(coalesce(p.prosrc, ''))
+              FROM pg_proc p
+              JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'col:' || table_schema || '.' || table_name || '.' || column_name || ':' ||
+                   data_type || ':' || coalesce(column_default, '') || ':' || is_nullable
+              FROM information_schema.columns
+             WHERE table_schema NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'relacl:' || n.nspname || '.' || c.relname || ':' || coalesce(c.relacl::text, '')
+              FROM pg_class c
+              JOIN pg_namespace n ON n.oid = c.relnamespace
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+            UNION ALL
+            SELECT 'constraint:' || n.nspname || '.' || co.conrelid::regclass::text || ':' ||
+                   co.conname || ':' || pg_get_constraintdef(co.oid)
+              FROM pg_constraint co
+              JOIN pg_namespace n ON n.oid = co.connamespace
+             WHERE n.nspname NOT IN ('pg_catalog', 'information_schema')
+          ) s;
+          SQL
+          cat > "$RUNNER_TEMP/object_counts.sql" <<'SQL'
+          SELECT (SELECT count(*) FROM pg_policies),
+                 (SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal),
+                 (SELECT count(*) FROM pg_indexes WHERE schemaname NOT IN ('pg_catalog','information_schema')),
+                 (SELECT count(*) FROM pg_class WHERE relrowsecurity),
+                 (SELECT count(*) FROM information_schema.tables WHERE table_schema NOT IN ('pg_catalog','information_schema'));
+          SQL
+          fingerprint_of() {
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -At -U postgres -d "$1" < "$RUNNER_TEMP/fingerprint.sql"
+          }
+          counts_of() {
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -At -F' ' -U postgres -d "$1" < "$RUNNER_TEMP/object_counts.sql"
+          }
+          template_fp="$(fingerprint_of "$PG_CONTRACT_TEMPLATE")"
+          template_counts="$(counts_of "$PG_CONTRACT_TEMPLATE")"
+          echo "template $PG_CONTRACT_TEMPLATE fingerprint=$template_fp counts=[policies triggers indexes rls_tables tables]=$template_counts"
+          echo "template_fingerprint=$template_fp" >> "$GITHUB_OUTPUT"
+          broken=0
+          for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
+                       suite_1217a suite_1217t suite_1612 suite_1840; do
+            suite_fp="$(fingerprint_of "$suite")"
+            suite_counts="$(counts_of "$suite")"
+            echo "$suite fingerprint=$suite_fp counts=$suite_counts"
+            if [ "$suite_fp" != "$template_fp" ]; then
+              echo "::error::G-1: $suite is NOT a faithful copy of $PG_CONTRACT_TEMPLATE. Catalog fingerprint $suite_fp != $template_fp. Template object counts [policies triggers indexes rls_tables tables] = $template_counts; $suite = $suite_counts. Tables and columns matching is NOT sufficient evidence: a pg_dump restore passed that check with 643 RLS policies collapsed to 2."
+              broken=1
+            fi
+            if [ "$suite_counts" != "$template_counts" ]; then
+              echo "::error::G-1: $suite object counts $suite_counts != template $template_counts."
+              broken=1
+            fi
+          done
+          if [ "$broken" -ne 0 ]; then
+            exit 1
+          fi
+          echo "G-1 PASS: 8 of 8 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
+
+      # ── L-5 — the terminal-assertion RED proof ───────────────────────────
+      #
+      # The one leg that asks whether the suites still ASSERT anything.
+      #
+      # L-2 counts `DO` blocks that COMPLETED, and a block completes whether or
+      # not the `IF` inside it ever fired — so L-2 proves execution and proves
+      # nothing about teeth. A file that had silently stopped asserting would
+      # reconcile perfectly on every other leg. That is the #2438 shape, and this
+      # is the only step that closes it.
+      #
+      # THE OBLIGATION, as restated after run 6: the file fails, under a
+      # deliberate falsification of its contract, carrying ONE OF ITS OWN
+      # terminal-class assertion messages — and passes unmutated.
+      #
+      # The earlier phrasing ("its LAST labelled RAISE EXCEPTION") was never
+      # expressible: only 1 of the 17 files ends on a labelled one.
+      #
+      # This paragraph once continued that M-1173-02c's terminal assertion was
+      # SUBSUMED by an earlier one. V-1 retired that grant: the earlier assertion
+      # reads has_table_privilege, which a COLUMN-level grant leaves false while
+      # the runtime UPDATE succeeds, so (f) is independently falsifiable and now
+      # proves on its own message. The sentence is struck rather than left
+      # standing, because a stale subsumption claim in the repo is the thing V-1
+      # warned would later be cited as fact.
+      #
+      # For each of the SEVENTEEN assertion-bearing files: copy the migrated
+      # template into one throwaway database, run the UNMODIFIED file and require
+      # exit 0; then copy again, apply the file's mutation from
+      # .github/scripts/parity/l5-terminal-mutations.sql, run the same unmodified
+      # file, and require a NON-ZERO exit carrying that file's own terminal
+      # message — read out of the file at run time, never hardcoded — or, where a
+      # subsumption is DECLARED in the mutation section, the message of the
+      # assertion that subsumes it.
+      #
+      # No test file is edited. The mutation is applied to the DATABASE.
+      #
+      # Self-checking in three directions, all failing CLOSED: a mutation that
+      # trips an EARLIER assertion stops psql with the wrong message and is
+      # refused; a mutation that falsifies nothing exits 0 under mutation and is
+      # refused; a file that stopped asserting passes the control and exits 0
+      # under mutation, and is refused.
+      #
+      # The template stays closed to connections for the whole phase, so the 34
+      # copies cannot lose the 55006 race, and it is reopened from a trap.
+      - name: "L-5 · every suite file's terminal assertion still has teeth"
+        id: l5
+        run: |
+          workflow=".github/workflows/postgres-contract-suites.yml"
+          mutations=".github/scripts/parity/l5-terminal-mutations.sql"
+          scratch=l5_scratch
+          psql_admin() { docker exec -i "$PG_CONTRACT_CONTAINER" psql -h 127.0.0.1 -U supabase_admin -d template1 "$@"; }
+
+          restore_template_connections() {
+            psql_admin -q -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS true" >/dev/null 2>&1 || true
+          }
+          # RUN 12 died with `exit 123` and NOT ONE line of verdict output — no
+          # subject, no phase, no summary. A step that dies silently is the exact
+          # shape this whole change exists to eliminate, so L-5 now names where it
+          # was when it stopped. This is the G-3a readability lesson applied to the
+          # step as a whole: "I could not look" and "I looked and it is wrong" must
+          # never be the same silence.
+          l5_phase="startup"
+          l5_done=0
+          l5_finish() {
+            local rc=$?
+            if [ "$rc" -ne 0 ] && [ "$l5_done" -ne 1 ]; then
+              echo "::error::L-5 terminated during phase [$l5_phase] with exit $rc BEFORE reaching a verdict. No subject was adjudicated — this is not a statement about any suite file."
+            fi
+            restore_template_connections
+          }
+          trap l5_finish EXIT
+          l5_phase="closing the template for the copy window"
+          psql_admin -q -v ON_ERROR_STOP=1 -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS false"
+          psql_admin -At -c "SELECT count(*) FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' AND pid <> pg_backend_pid()) t" >/dev/null
+          template_owner="$(psql_admin -At -v ON_ERROR_STOP=1 -c "SELECT datdba::regrole::text FROM pg_database WHERE datname = '$PG_CONTRACT_TEMPLATE'")"
+
+          fresh_scratch() {
+            psql_admin -q -c "DROP DATABASE IF EXISTS $scratch" >/dev/null
+            psql_admin -q -v ON_ERROR_STOP=1 -c "CREATE DATABASE $scratch TEMPLATE $PG_CONTRACT_TEMPLATE OWNER $template_owner"
+            # nextval() is NON-TRANSACTIONAL, so it survives the ROLLBACK every one
+            # of these files ends with. It is the only witness that can separate
+            # "my mutation never fired" from "the assertion has no teeth", and run 6
+            # produced seven files where those two were indistinguishable.
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -q -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              -c "CREATE SEQUENCE public.l5_fired" >/dev/null
+          }
+          # M-1173-02i is the ONLY subject with predecessors: it is the last of
+          # #1173's four-file ordered sequence, and it detected its own missing
+          # fixtures and refused to pass vacuously rather than reporting a false
+          # green. L-5's "one file against a fresh copy" model does not fit it, so
+          # the model is corrected for this one subject and deliberately NOT
+          # generalised to the other sixteen, which have no predecessors.
+          run_prerequisites() { # command-id
+            [ "$1" = "M-1173-02i" ] || return 0
+            local base=supabase/migrations/__tests__
+            docker exec -i "$PG_CONTRACT_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              < "$base/issue_1807_tester_adversarial_race_setup.sql" >/dev/null 2>&1
+            docker exec -i "$PG_CONTRACT_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              < "$base/issue_1807_tester_adversarial_race_a.sql" >/dev/null 2>&1 &
+            local race_a_pid=$!
+            sleep 2
+            docker exec -i "$PG_CONTRACT_CONTAINER" psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" \
+              < "$base/issue_1807_tester_adversarial_race_b.sql" >/dev/null 2>&1
+            wait "$race_a_pid" || true
+          }
+          run_suite_file() { # file -> writes combined output to $2
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" < "$1" > "$2" 2>&1
+          }
+
+          # The id -> file map is read from THIS workflow's own call sites, so a
+          # file that moves takes L-5 with it instead of leaving it pointed at a
+          # path nothing runs.
+          perl -0777 -ne 'while (/^\s*run_psql(?:_background)?\s+(\S+)\s+(\S+)\s+(\S+)\s*$/gm) { print "$1\t$3\n" }' \
+            "$workflow" > "$RUNNER_TEMP/l5_map.tsv"
+          call_sites=$(wc -l < "$RUNNER_TEMP/l5_map.tsv" | tr -d ' ')
+          # TWO different denominators, named so a reader is never left guessing
+          # which one a mismatch is about: 19 psql call sites exist, but only 17
+          # are L-5 SUBJECTS. race_a and race_b are call sites carrying zero
+          # RAISE EXCEPTION, so there is nothing to falsify in them.
+          echo "psql call sites in the workflow: $call_sites (L-5 subjects: 17; race_a and race_b are call sites but carry no assertion)"
+
+          l5_phase="splitting the mutation table"
+          mkdir -p "$RUNNER_TEMP/l5"
+          # The id is captured by PATTERN, not by field position. It used to read
+          # `$4` on `-- ===== M-1172-02a =====`, where $3 is the id and $4 is the
+          # trailing `=====` — so all seventeen sections were written to one file
+          # called `=====.sql` and the totality check correctly refused to run.
+          # A positional read of a delimiter is one respacing away from doing that
+          # again; a capture is not.
+          awk -v out="$RUNNER_TEMP/l5" '
+            /^-- ===== M-/ {
+              match($0, /M-[A-Za-z0-9-]+/);
+              id = substr($0, RSTART, RLENGTH);
+              f = out "/" id ".sql";
+              next
+            }
+            id != "" { print > f }
+          ' "$mutations"
+          sections=$(ls -1 "$RUNNER_TEMP/l5"/*.sql 2>/dev/null | wc -l | tr -d ' ')
+          echo "mutation sections split out: $sections"
+          if [ "$sections" != "17" ]; then
+            echo "::error::L-5: expected 17 mutation sections, split out $sections. The mutation table and the splitter disagree, so nothing can be proven."
+            ls -1 "$RUNNER_TEMP/l5" 2>/dev/null | sed 's/^/  section file: /'
+            exit 1
+          fi
+          # Set equality, not just a count: the seventeen sections must be exactly
+          # the seventeen subjects, so a renamed section cannot be absorbed by a
+          # matching total.
+          : > "$RUNNER_TEMP/l5_sections.txt"
+          for sec in "$RUNNER_TEMP/l5"/*.sql; do
+            basename "$sec" .sql >> "$RUNNER_TEMP/l5_sections.txt"
+          done
+          sort -o "$RUNNER_TEMP/l5_sections.txt" "$RUNNER_TEMP/l5_sections.txt"
+          awk -F'\t' '{print $1}' "$RUNNER_TEMP/l5_map.tsv" | grep -vE '^(M-1173-02e|M-1173-02g)$' | sort > "$RUNNER_TEMP/l5_subjects.txt"
+          if ! diff -q "$RUNNER_TEMP/l5_sections.txt" "$RUNNER_TEMP/l5_subjects.txt" >/dev/null; then
+            echo "::error::L-5: the mutation sections and the workflow's L-5 subjects are not the same set."
+            diff "$RUNNER_TEMP/l5_subjects.txt" "$RUNNER_TEMP/l5_sections.txt" | sed 's/^/  /'
+            exit 1
+          fi
+          # V-3. A LIST of permitted ids, not a count. The bare count `!= 2` was
+          # written to stop a THIRD subsumption, but it equally forbade RETIRING a
+          # wrong one — which is exactly what V-1 required — and it pinned the
+          # number as a standing assertion that both grants were correct. They were
+          # not. Shrinking this list is not a violation; adding to it needs a
+          # ruling, and an undeclared id is refused either way.
+          L5_PERMITTED_SUBSUMPTIONS=""   # none permitted: both earlier grants retired (V-1, V-2)
+          # A plain loop, not `grep -l | xargs`. That pipeline was fine while a
+          # subsumption existed and DIED the moment none did — `grep -l` exits 1
+          # on no match, and GNU xargs then runs `basename` with no operand and
+          # reports 123. Zero declared subsumptions is the CORRECT state after
+          # V-1, so the validation broke on exactly the state it was meant to
+          # certify, and took the whole step with it before any subject ran.
+          l5_phase="validating declared subsumptions"
+          declared_ids=""
+          for sec in "$RUNNER_TEMP/l5"/*.sql; do
+            if grep -q '^-- @l5-subsumed-by: ' "$sec"; then
+              declared_ids="$declared_ids $(basename "$sec" .sql)"
+            fi
+          done
+          declared_ids="$(printf '%s' "$declared_ids" | sed 's/^ *//')"
+          for did in $declared_ids; do
+            case " $L5_PERMITTED_SUBSUMPTIONS " in
+              *" $did "*) ;;
+              *) echo "::error::L-5: $did declares a subsumption that is not in the permitted list [$L5_PERMITTED_SUBSUMPTIONS]. A subsumption is never granted silently — it needs a ruling and an entry here."
+                 exit 1 ;;
+            esac
+            if ! grep -q '^-- @l5-subsumption-class: ' "$RUNNER_TEMP/l5/$did.sql"; then
+              echo "::error::L-5: $did declares a subsumption with no @l5-subsumption-class. Every one states its class, because the kinds are different findings and must not read alike."
+              exit 1
+            fi
+          done
+          echo "declared subsumptions: [${declared_ids:-none}] against permitted [${L5_PERMITTED_SUBSUMPTIONS:-none}]"
+
+          failures=0
+          proven_terminal=0
+          proven_subsumed=0
+          l5_phase="adjudicating subjects"
+          for mutation_file in "$RUNNER_TEMP/l5"/*.sql; do
+            id="$(basename "$mutation_file" .sql)"
+            l5_phase="subject $id"
+            file="$(awk -v i="$id" -F'\t' '$1==i {print $2}' "$RUNNER_TEMP/l5_map.tsv")"
+            if [ -z "$file" ]; then
+              echo "::error::L-5: $id has a mutation but no call site in $workflow. The mutation table and the job have diverged."
+              failures=$((failures + 1)); continue
+            fi
+            expected="$(node .github/scripts/parity/l5-terminal-message.mjs "$file")"
+
+            fresh_scratch
+            run_prerequisites "$id"
+            if run_suite_file "$file" "$RUNNER_TEMP/l5/$id.control.log"; then
+              control=0
+            else
+              control=$?
+            fi
+            if [ "$control" -ne 0 ]; then
+              echo "::error::L-5 $id: the UNMUTATED control failed (exit $control) against a faithful copy. The file is broken independently of any mutation, so nothing can be concluded about its terminal assertion."
+              tail -5 "$RUNNER_TEMP/l5/$id.control.log"
+              failures=$((failures + 1)); continue
+            fi
+
+            fresh_scratch
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" < "$mutation_file" > "$RUNNER_TEMP/l5/$id.mutation.log" 2>&1 || {
+                echo "::error::L-5 $id: the mutation itself would not apply."
+                tail -5 "$RUNNER_TEMP/l5/$id.mutation.log"
+                failures=$((failures + 1)); continue
+              }
+            run_prerequisites "$id"
+            if run_suite_file "$file" "$RUNNER_TEMP/l5/$id.mutant.log"; then
+              mutant=0
+            else
+              mutant=$?
+            fi
+            # Did the mutation actually take? Run 6 produced seven files where
+            # "my mutation is wrong" and "the assertion has no teeth" were
+            # indistinguishable from the outside. They have completely different
+            # consequences — one is a harness bug, the other is a check that
+            # carries no information sitting in production test code — so the
+            # harness now answers it instead of leaving it to be assumed.
+            verify_sql="$(sed -n 's/^-- @l5-verify: //p' "$mutation_file" | head -1)"
+            if [ -z "$verify_sql" ]; then
+              echo "::error::L-5 $id: the mutation section declares no @l5-verify, so whether it took effect cannot be established."
+              failures=$((failures + 1)); continue
+            fi
+            took="$(docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -At -U postgres -d "$scratch" -c "$verify_sql" 2>/dev/null | head -1)"
+            if [ "$mutant" -eq 0 ]; then
+              if [ "$took" = "t" ]; then
+                echo "::error::L-5 $id: FINDING — the mutation IS PROVEN to have taken effect ($verify_sql = t) and the file STILL PASSED. Its terminal assertion cannot fail: a check that carries no information. This is a defect in the suite, not in the harness. Do not weaken L-5 for it."
+              else
+                echo "::error::L-5 $id: HARNESS BUG — the file passed because the mutation never took effect ($verify_sql = ${took:-<null>}). The mutation is wrong, not the assertion."
+              fi
+              failures=$((failures + 1)); continue
+            fi
+            subsumed_by="$(sed -n 's/^-- @l5-subsumed-by: //p' "$mutation_file" | head -1)"
+            if grep -qF -- "$expected" "$RUNNER_TEMP/l5/$id.mutant.log"; then
+              proven_terminal=$((proven_terminal + 1))
+            echo "  L-5 OK  $id  control=0  mutant=$mutant  terminal message matched: $expected"
+            elif [ -n "$subsumed_by" ] && grep -qF -- "$subsumed_by" "$RUNNER_TEMP/l5/$id.mutant.log"; then
+              # DECLARED SUBSUMPTION. Both assertions are named, and the subsuming
+              # one is proven to have teeth by this very mutation rather than being
+              # taken on trust. The argument lives in the mutation section.
+              subsumption_class="$(sed -n 's/^-- @l5-subsumption-class: //p' "$mutation_file" | head -1)"
+              proven_subsumed=$((proven_subsumed + 1))
+              echo "  L-5 OK  $id  control=0  mutant=$mutant  SUBSUMED [$subsumption_class]: the terminal assertion [$expected] is unreachable as the first failure; the file failed on its own [$subsumed_by], which this mutation thereby proves has teeth."
+              echo "L5-SUBSUMPTION $id class=$subsumption_class terminal=[$expected] witness=[$subsumed_by]" >> "$RUNNER_TEMP/parity/l5-subsumptions.txt"
+            else
+              echo "::error::L-5 $id: the file failed, but NOT on its terminal assertion. The mutation tripped something earlier, so this proves nothing about the terminal predicate. Expected: $expected"
+              [ -n "$subsumed_by" ] && echo "::error::L-5 $id: nor on its declared subsuming assertion: $subsumed_by"
+              grep -m3 -E '^(ERROR|psql:)' "$RUNNER_TEMP/l5/$id.mutant.log" || tail -3 "$RUNNER_TEMP/l5/$id.mutant.log"
+              failures=$((failures + 1)); continue
+            fi
+          done
+
+          # The two race fixtures carry ZERO RAISE EXCEPTION and are not L-5
+          # subjects. Accounted for explicitly rather than quietly dropped: their
+          # verdict is rendered by the assert file, which must still read them.
+          l5_phase="race-fixture accounting"
+          for race in issue_1807_tester_adversarial_race_a issue_1807_tester_adversarial_race_b; do
+            if node .github/scripts/parity/l5-terminal-message.mjs "supabase/migrations/__tests__/$race.sql" >/dev/null 2>&1; then
+              echo "::error::L-5: $race.sql now carries a RAISE EXCEPTION and must become an L-5 subject in its own right."
+              failures=$((failures + 1))
+            fi
+          done
+          assert_file="$(awk -F'\t' '$1=="M-1173-02i" {print $2}' "$RUNNER_TEMP/l5_map.tsv")"
+          for fixture in 18079999-0000-4000-8000-000000000011 18079999-0000-4000-8000-000000000012; do
+            if ! grep -qF -- "$fixture" "$assert_file"; then
+              echo "::error::L-5: the assert file does not read race fixture $fixture, so the two race fixtures have no verdict at all."
+              failures=$((failures + 1))
+            fi
+          done
+          echo "race fixtures: 0 RAISE EXCEPTION each, verdict rendered by M-1173-02i, which reads both fixture brands."
+
+          l5_phase="verdict"
+          psql_admin -q -c "DROP DATABASE IF EXISTS $scratch" >/dev/null
+          restore_template_connections
+          trap - EXIT
+          if [ "$failures" -ne 0 ]; then
+            l5_done=1
+            echo "::error::L-5: $failures of 17 terminal assertions could not be proven to have teeth."
+            exit 1
+          fi
+          if [ -s "$RUNNER_TEMP/parity/l5-subsumptions.txt" ]; then
+            echo "── declared subsumptions, for the ledger ──"
+            cat "$RUNNER_TEMP/parity/l5-subsumptions.txt"
+          fi
+          l5_done=1
+          echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 17 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
+
+      # ── Guard G-9 — the trigger union is a superset of every member ──────
+      #
+      # Collapsed per the orchestrator's STOP-1 ruling: there is one path list
+      # (this file's `on:`), so there is nothing to keep in sync with a second
+      # copy. What remains is the property that actually matters — a union
+      # NARROWER than any member is a coverage loss, and it is silent.
+      #
+      # Each of the nine members' self-reference to its own workflow file is
+      # the one entry deliberately NOT carried: the consolidation replaces nine
+      # self-references with one. Every other entry must be present.
+      #
+      # Mutant that must turn this RED: remove any single entry from the `on:`
+      # lists — e.g. `supabase/functions/record-visit/**`, which only #1612
+      # contributes.
+      - name: "G-9 · the consolidated trigger union covers every origin lane's paths"
+        # [#2591 cutover] G-9 used to read the nine origin YAMLs off disk. The
+        # cutover DELETES them, so that shape would have thrown ENOENT on the very
+        # commit it exists to police — a guard that loses its subject, the same
+        # defect that retired parse-origin-log.mjs. It is NOT deleted and NOT
+        # weakened. Each deleted lane's declared paths were captured from its own
+        # YAML at the cutover commit, with this same parser, and are recorded in
+        # the registry as `consolidatedTriggerPaths`; G-9 checks the union against
+        # that record. validate-manifest-v2.mjs refuses a consolidated entry whose
+        # record is missing or empty, so the comparison cannot go vacuous, and the
+        # superset relation stays checkable once the files are gone.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          node -e '
+            const fs = require("node:fs");
+            const manifest = JSON.parse(fs.readFileSync(".github/ci-batch/MANIFEST.json", "utf8"));
+            const MEMBERS = manifest.legacyOrigins
+              .filter((o) => o.disposition === "consolidated-provider")
+              .map((o) => ({ stem: `${o.stem}.${o.extension}`, paths: o.consolidatedTriggerPaths }));
+            const pathsByEvent = (text) => {
+              const out = {};
+              let inOn = false, event = null, inPaths = false;
+              for (const raw of text.split("\n")) {
+                if (/^on:\s*$/.test(raw)) { inOn = true; event = null; inPaths = false; continue; }
+                if (inOn && /^\S/.test(raw)) { inOn = false; event = null; inPaths = false; continue; }
+                if (!inOn) continue;
+                let m;
+                if ((m = raw.match(/^  ([a-z_]+):\s*$/))) { event = m[1]; inPaths = false; continue; }
+                if (/^    paths:\s*$/.test(raw)) { inPaths = true; out[event] = out[event] || []; continue; }
+                if (/^    [a-z_]+:/.test(raw)) { inPaths = false; continue; }
+                if (inPaths && (m = raw.match(/^      - "(.+)"\s*$/))) { out[event].push(m[1]); continue; }
+                if (inPaths && /^      #/.test(raw)) continue;
+                if (inPaths && raw.trim() === "") continue;
+                if (inPaths && !/^      /.test(raw)) inPaths = false;
+              }
+              return out;
+            };
+            const wf = ".github/workflows/postgres-contract-suites.yml";
+            const mine = pathsByEvent(fs.readFileSync(wf, "utf8"));
+            const failures = [];
+            for (const event of ["pull_request", "push"]) {
+              const union = new Set(mine[event] || []);
+              if (union.size === 0) failures.push(`${wf}: on.${event} declares no paths at all`);
+              if (MEMBERS.length !== 9) failures.push(`the registry records ${MEMBERS.length} consolidated origins, expected 9 — G-9 cannot check a set that is not there`);
+            for (const { stem, paths } of MEMBERS) {
+              const member = (paths || {})[event] || [];
+              if (member.length === 0) failures.push(`${stem}: no recorded on.${event} paths — cannot verify the superset relation`);
+              for (const entry of member) {
+                if (entry === `.github/workflows/${stem}`) continue;
+                if (!union.has(entry)) failures.push(`${wf}: on.${event} is NARROWER than ${stem}: it does not carry ${entry}`);
+              }
+            }
+            console.log(`G-9 on.${event}: union of ${union.size} entries checked against ${MEMBERS.length} recorded members`);
+            }
+            if (failures.length > 0) {
+              for (const f of failures) console.log(`::error::G-9: ${f}`);
+              process.exit(1);
+            }
+            console.log("G-9 PASS: the consolidated union is a superset of every one of the nine origin lanes, on both pull_request and push.");
+          '
+
+      # ── The parity-ledger helpers, written once and sourced by every suite ──
+      #
+      # The COMMANDS stay verbatim at their call sites (D-3: every command the
+      # nine jobs execute moves across unchanged, nothing dropped as duplicate,
+      # nothing relocated by argument). The helpers add exactly two things:
+      # psql's `-e` echo, and a tee into $RUNNER_TEMP/parity/<command-id>.log.
+      - name: Prepare the parity ledger workspace
+        id: helpers
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/parity"
+          # The wrappers live in .github/scripts/parity/pgsuite.sh. They add
+          # exactly ONE thing to every command: a tee into
+          # $RUNNER_TEMP/parity/<command-id>.log. The psql invocation itself is
+          # byte-identical to the origin lanes' modulo `-d`, because psql emits
+          # the bare `DO` command tag this ledger witnesses with or without
+          # `-e` — MEASURED, not assumed. The origin side is therefore READ from
+          # the Actions job logs rather than instrumented, and no origin lane
+          # changes on the commit whose job is proving nothing changed.
+          cat > "$RUNNER_TEMP/parity/inventory.tsv" <<'INVENTORY'
+          M-1172-02a	psql	suite_1172
+          M-1172-02b	psql	suite_1172
+          M-1172-02c	psql	suite_1172
+          M-1172-03	deno	-
+          M-1174-04	psql	suite_1174
+          M-1174-05	psql	suite_1174
+          M-1174-06	psql	suite_1174
+          M-1174-07	bash	suite_1174
+          M-1174-03	deno	-
+          M-1612-02	psql	suite_1612
+          M-1612-03	grep	-
+          M-1217A-02	psql	suite_1217a
+          M-1217A-03	deno	-
+          M-1217T-02	psql	suite_1217t
+          M-1217T-03	deno	-
+          M-1840-03	psql	suite_1840
+          M-1840-04	psql	suite_1840
+          M-1840-05	psql	suite_1840
+          M-1840-06	deno	-
+          M-1840-07	deno	-
+          M-1177-03	deno	-
+          M-1171-03	deno	suite_1171
+          M-1173-02a	psql	suite_1173
+          M-1173-02b	psql	suite_1173
+          M-1173-02c	psql	suite_1173
+          M-1173-02d	psql	suite_1173
+          M-1173-02e	psql	suite_1173
+          M-1173-02g	psql	suite_1173
+          M-1173-02i	psql	suite_1173
+          M-1173-03	deno	-
+          INVENTORY
+          : > "$RUNNER_TEMP/parity/index.tsv"
+          echo "inventory rows: $(wc -l < "$RUNNER_TEMP/parity/inventory.tsv" | tr -d ' ')"
+
+      # ── Guard G-3 — no suite ever connects to the template ───────────────
+      #
+      # (a) STATIC. The template database is named exactly once in this file —
+      #     in the from-zero replay loop. Every suite execution names a
+      #     `suite_*` database, at its call site, where a reviewer can see it.
+      # (b) RUNTIME. Immediately before the first suite runs, the template must
+      #     hold no session but this check's own.
+      #
+      # Mutants that must turn this RED: (a) change any suite call site back to
+      # the template; (b) open a background psql session on the template before
+      # this step.
+      #
+      # The needle is assembled from fragments so this guard does not match its
+      # own source.
+      - name: "G-3 · no contract suite connects to the migrated template"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          workflow=".github/workflows/postgres-contract-suites.yml"
+          # READABILITY FIRST, so every message below can honestly be about
+          # CONTENT. Run 10 failed here with a message asserting the #1174 call
+          # site was wrong; it was not, and a guard that reports a wrong cause
+          # costs a full round trip to disbelieve. Whatever the runner saw, it
+          # must never again be described as a defect in the file.
+          if [ ! -r "$workflow" ] || [ ! -s "$workflow" ]; then
+            echo "::error::G-3a: $workflow is unreadable or empty from this step, so NONE of the call-site checks ran. This is not a statement about any call site — the guard could not look. pwd=$(pwd)"
+            ls -l "$workflow" 2>&1 | sed 's/^/  /' || true
+            exit 1
+          fi
+          echo "G-3a reading $workflow ($(wc -l < "$workflow" | tr -d ' ') lines, $(wc -c < "$workflow" | tr -d ' ') bytes) from $(pwd)"
+          dash_d="-d"
+          needle="$dash_d $PG_CONTRACT_TEMPLATE"
+          template_uses="$(grep -cF -- "$needle" "$workflow" || true)"
+          if [ "$template_uses" != "1" ]; then
+            echo "::error::G-3a: the literal [$needle] appears $template_uses time(s) in $workflow; it must appear exactly once, in the from-zero replay loop."
+            exit 1
+          fi
+          # Audited with the driver check: same `… | grep -q` shape, replaced with a
+          # herestring so no pipeline stands between the evidence and the verdict.
+          template_line="$(grep -F -- "$needle" "$workflow")"
+          if [ -z "$template_line" ]; then
+            echo "::error::G-3a: $workflow could not be read, so the template-connection check DID NOT RUN."
+            exit 1
+          fi
+          if ! grep -qF "psql -v ON_ERROR_STOP=1 -U postgres" <<< "$template_line"; then
+            echo "::error::G-3a: the single template connection in $workflow is not the replay loop's psql invocation. Line: $template_line"
+            exit 1
+          fi
+          bad=0
+          while IFS= read -r site; do
+            db="$(printf '%s' "$site" | awk '{print $3}')"
+            case "$db" in
+              suite_*) ;;
+              *) echo "::error::G-3a: run_psql call site names database [$db], not a per-suite database: $site"; bad=1 ;;
+            esac
+          done < <(grep -E '^ *run_psql(_background)? [A-Za-z0-9_-]+ ' "$workflow")
+          while IFS= read -r site; do
+            db="$(printf '%s' "$site" | awk '{print $4}')"
+            case "$db" in
+              suite_*|-) ;;
+              *) echo "::error::G-3a: run_logged call site names database [$db], not a per-suite database: $site"; bad=1 ;;
+            esac
+          done < <(grep -E '^ *run_logged [A-Za-z0-9_-]+ ' "$workflow")
+          # Shell line continuations are folded first, so a call site split across
+          # lines is checked as the single command it becomes. The needle is
+          # assembled from a variable so this guard cannot match its own source.
+          #
+          # RUN 10: this check failed in CI while passing locally on the identical
+          # commit. It was the ONLY G-3a matcher that shelled out to `perl` — every
+          # other one greps the file directly, and every other one passed. An empty
+          # $flattened matches nothing, and the guard then announced a specific
+          # conclusion about the #1174 call site that was provably false.
+          #
+          # Two things were wrong and both are fixed. The fold now uses awk, which
+          # is POSIX and already relied on elsewhere in this job, so there is no
+          # second interpreter to be absent. And the failure is HONEST: "I could
+          # not read the workflow" and "I read it and the call site is wrong" are
+          # now different messages, because a guard that reports a wrong cause
+          # costs a full round trip to disbelieve.
+          flattened="$(awk '{
+            line = $0
+            while (sub(/[ \t]*\\$/, "", line) > 0) {
+              if ((getline nxt) <= 0) break
+              sub(/^[ \t]+/, "", nxt)
+              line = line " " nxt
+            }
+            print line
+          }' "$workflow")"
+          driver_sh="issue_1174_atomic_visibility_race_adversarial.sh"
+          if [ -z "$flattened" ]; then
+            echo "::error::G-3a: $workflow could not be read or folded, so the call-site checks DID NOT RUN. This is not a statement about the #1174 driver — the guard could not look."
+            bad=1
+          elif ! grep -qF "$driver_sh pg-contract-suites suite_1174" <<< "$flattened"; then
+            echo "::error::G-3a: $workflow was read ($(printf '%s' "$flattened" | wc -l | tr -d ' ') folded lines) and the #1174 bash driver call site does NOT carry both its container and its database argument."
+            bad=1
+          fi
+          if ! grep -qE '^ *ISSUE_1171_POSTGRES_DATABASE: suite_1171$' "$workflow"; then
+            echo "::error::G-3a: the #1171 Deno step does not set ISSUE_1171_POSTGRES_DATABASE to its per-suite database."
+            bad=1
+          fi
+          if [ "$bad" -ne 0 ]; then
+            exit 1
+          fi
+          # (b) RUNTIME. The subject is a SUITE in the template, and a suite always
+          #     reaches PostgreSQL through psql — i.e. a `client backend`. The
+          #     image's own background workers legitimately attach to the default
+          #     database and reconnect when evicted; that is what made the first
+          #     CI run's provisioning fail, and asserting zero backends of ANY
+          #     kind would be a check that can never pass rather than a check that
+          #     catches a suite. So the assertion is over client backends, and the
+          #     background workers are PRINTED rather than silently tolerated.
+          background="$(docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -v ON_ERROR_STOP=1 -At -U postgres -d template1 \
+            -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' AND backend_type IS DISTINCT FROM 'client backend'")"
+          echo "background workers attached to the template (not suites, reported for visibility): $background"
+          docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -At -U postgres -d template1 \
+            -c "SELECT pid, usename, application_name, backend_type FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' ORDER BY pid" || true
+          holders="$(docker exec "$PG_CONTRACT_CONTAINER" \
+            psql -v ON_ERROR_STOP=1 -At -U postgres -d template1 \
+            -c "SELECT count(*) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' AND pid <> pg_backend_pid() AND backend_type = 'client backend'")"
+          if [ "$holders" != "0" ]; then
+            echo "::error::G-3b: $holders client backend(s) are attached to the migrated template immediately before the first suite runs. A suite reaches PostgreSQL as a client backend, so this is a suite in the template."
+            docker exec "$PG_CONTRACT_CONTAINER" \
+              psql -At -U postgres -d template1 \
+              -c "SELECT pid, backend_type, state, left(query, 200) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' AND backend_type = 'client backend'"
+            exit 1
+          fi
+          echo "G-3 PASS: the template is named once (the replay loop), every suite call site names a suite_* database, and no client backend holds the template."
+
+      # ══ #1172 ═══════════════════════════════════════════════════════════
+      #
+      # The three SQL executions were inlined in the origin's bring-up step.
+      # They become three separately named steps here so a reader sees which
+      # one failed and the parity ledger can join on the origin's step name,
+      # which survives verbatim inside each new name. That is a reporting
+      # split, not a command change.
+      - name: "#1172 · Apply every migration to clean PostgreSQL 17 · issue_1172_stripe_payout_execution.test.sql"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1172-02a suite_1172 supabase/migrations/__tests__/issue_1172_stripe_payout_execution.test.sql
+
+      - name: "#1172 · Apply every migration to clean PostgreSQL 17 · issue_1172_stripe_payout_rework.test.sql"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1172-02b suite_1172 supabase/migrations/__tests__/issue_1172_stripe_payout_rework.test.sql
+
+      - name: "#1172 · Apply every migration to clean PostgreSQL 17 · issue_1172_email_provider_idempotency.test.sql"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1172-02c suite_1172 supabase/migrations/__tests__/issue_1172_email_provider_idempotency.test.sql
+
+      - name: "#1172 · Run Stripe payout execution regression tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1172-03 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/migrations/__tests__/issue_1172_stripe_payout_execution.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_execution.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_adversarial.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1172_email_provider_idempotency.test.ts
+
+      # ══ #1174 ═══════════════════════════════════════════════════════════
+      #
+      # Order 04 -> 05 -> 06 -> 07 is LOAD-BEARING and preserved verbatim.
+      # `issue_1174_atomic_partner_outcome.sql` counts payout_partner_attributions
+      # and partner_splits globally, with no namespace filter, and the shell
+      # driver at 07 commits durable rows into both. The per-suite database is
+      # what makes that safe rather than merely lucky.
+      - name: "#1174 · Run tester late-partner-ledger adversarial regression"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1174-04 suite_1174 supabase/functions/payout-release-sweep/__tests__/issue_1174_partner_late_ledger_adversarial.sql
+
+      - name: "#1174 · Run atomic provider-sale outcome regression"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1174-05 suite_1174 supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_partner_outcome.sql
+
+      - name: "#1174 · Run atomic ledger-commit boundary regression"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1174-06 suite_1174 supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_ledger_commit_boundary.sql
+
+      - name: "#1174 · Run tester two-session atomic visibility regression"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1174-07 bash suite_1174 -- \
+            bash \
+            supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_visibility_race_adversarial.sh \
+            pg-contract-suites suite_1174
+
+      # ── Guard G-7 — the #1174 driver honoured its database argument ──────
+      #
+      # This driver is the one file of the twenty-three that commits durable,
+      # un-cleaned fixture rows on SUCCESS. If the database argument had not
+      # reached it, that residue would be in the migrated template and every
+      # assertion in the file would still have passed.
+      #
+      # Mutant that must turn this RED: revert the driver's psql_cmd array to a
+      # hardcoded template database, or drop the second argument at the call
+      # site above.
+      - name: "G-7 · #1174's durable residue landed in suite_1174 and nowhere else"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          residue_in() {
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -At -U postgres -d "$1" \
+              -c "SELECT count(*) FROM auth.users WHERE id::text LIKE '1174b000-%'"
+          }
+          in_suite="$(residue_in suite_1174)"
+          in_template="$(residue_in "$PG_CONTRACT_TEMPLATE")"
+          if [ "$in_suite" = "0" ]; then
+            echo "::error::G-7: the #1174 driver left no durable fixture rows in suite_1174. Either it never ran, or it ran somewhere else."
+            exit 1
+          fi
+          if [ "$in_template" != "0" ]; then
+            echo "::error::G-7: the #1174 driver left $in_template durable fixture row(s) in the migrated template. The database argument did not reach it, and every suite copied afterwards would inherit the residue."
+            exit 1
+          fi
+          echo "G-7 PASS: $in_suite residue rows in suite_1174, 0 in the template."
+
+      - name: "#1174 · Run partner deferral behavior regression"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1174-03 deno - -- \
+            deno test --allow-read --allow-env --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1174_partner_deferral.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1174_atomic_ledger_commit_boundary.test.ts \
+            supabase/functions/_shared/__tests__/orch_1054_partner_splits_happy.test.ts
+
+      # ══ #1612 ═══════════════════════════════════════════════════════════
+      - name: "#1612 · Visit upsert must resolve an arbiter, stay idempotent, and label 'visited'"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1612-02 suite_1612 supabase/migrations/__tests__/issue_1612_record_visit_conflict_target.test.sql
+
+      # This gate needs no database. It moves across anyway (D-3): deleting a
+      # duplicate or relocating a check is a coverage decision, and coverage
+      # decisions are not made inside a packaging change. The pattern, the
+      # failure message and the exit status are copied byte for byte.
+      - name: "#1612 · record-visit must still upsert on (user_id, experience_id)"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1612-03 grep - -- \
+            bash -c 'grep -q '"'"'onConflict: "user_id,experience_id"'"'"' \
+            supabase/functions/record-visit/index.ts \
+            || { echo "record-visit no longer upserts on (user_id, experience_id) — re-verify the arbiter in supabase/migrations before changing this."; exit 1; }'
+
+      # ══ #1217 alert-drain ═══════════════════════════════════════════════
+      - name: "#1217 · Apply every migration to clean PostgreSQL 17 (validates the #1217 migration)"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1217A-02 suite_1217a supabase/migrations/__tests__/issue_1217_alert_drain_reversal.test.sql
+
+      - name: "#1217 · Run the #1219 reversal amount-safety + #1218 parse regression tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1217A-03 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1219_reversal_amount_safety.test.ts
+
+      # ══ #1217 tester adversarial ════════════════════════════════════════
+      - name: "#1217-tester-adversarial · Apply every migration to clean PostgreSQL 17, run the SQL adversarial suite"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1217T-02 suite_1217t supabase/migrations/__tests__/issue_1217_1219_gates.adversarial.test.sql
+
+      - name: "#1217-tester-adversarial · Run the #1218 stamp-parse defensive adversarial suite"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1217T-03 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1218_parse_stamp_defensive.adversarial.test.ts
+
+      # ══ #1840 ═══════════════════════════════════════════════════════════
+      - name: "#1840 · Run the #1840 alert-delivery + float-forecast SQL contract tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1840-03 suite_1840 supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql
+
+      - name: "#1840 · Run the #1840 independent adversarial SQL contract tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1840-04 suite_1840 supabase/migrations/__tests__/issue_1840_ng_float_alerts_adversarial.test.sql
+
+      - name: "#1840 · Run the #1840 rework retest SQL contract tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1840-05 suite_1840 supabase/migrations/__tests__/issue_1840_ng_float_alerts_retest.test.sql
+
+      - name: "#1840 · Run the #1840 sweep wiring + money-path regression tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1840-06 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_retest.test.ts
+
+      # Duplicates M-1177-03 and M-1217A-03 exactly. It moves across as its own
+      # step and is NOT merged with them (D-3).
+      - name: "#1840 · Re-run the neighbouring #1177/#1219 payout suites"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1840-07 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release_adversarial.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1219_reversal_amount_safety.test.ts
+
+      # ══ #1177 ═══════════════════════════════════════════════════════════
+      #
+      # #1177 executes ZERO SQL — its two Deno tests never touch a database.
+      # It moves across intact anyway (D-3), and it is given NO suite database.
+      # Provisioning one nothing connects to would be an artifact carrying no
+      # information. Guard G-2b asserts that absence positively, so it is
+      # visible rather than silent.
+      - name: "#1177 · Run the #1177 organiser Paystack execution behavior tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1177-03 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1177_paystack_organiser_release_adversarial.test.ts
+
+      # ══ #1171 ═══════════════════════════════════════════════════════════
+      #
+      # The only Deno leg of the nine that touches a database: its tests reach
+      # PostgreSQL by `docker exec`, taking the container from
+      # ISSUE_1171_POSTGRES_CONTAINER and — since #2591 — the database from
+      # ISSUE_1171_POSTGRES_DATABASE.
+      - name: "G-8 · record the per-database session counters before #1171 runs"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          sessions_of() {
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -At -U postgres -d template1 \
+              -c "SELECT coalesce(sessions, 0) FROM pg_stat_database WHERE datname = '$1'"
+          }
+          sessions_of suite_1171 > "$RUNNER_TEMP/g8_suite_before.txt"
+          echo "before: suite_1171=$(cat "$RUNNER_TEMP/g8_suite_before.txt")"
+
+      - name: "#1171 · Run executable SQL contract and seeded dark-sweep tests"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        env:
+          ISSUE_1171_SQL_BEHAVIOR: "1"
+          ISSUE_1171_POSTGRES_CONTAINER: pg-contract-suites
+          ISSUE_1171_POSTGRES_DATABASE: suite_1171
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1171-03 deno suite_1171 -- \
+            deno test --allow-read --allow-env --allow-net --allow-run=docker --no-check \
+            supabase/migrations/__tests__/issue_1171_dark_payout_ledger.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.test.ts \
+            supabase/functions/payout-release-sweep/__tests__/issue_1171_dark_payout_ledger.adversarial.test.ts
+
+      # ── Guard G-8 — #1171's Deno tests honoured their database variable ──
+      #
+      # #1171's SQL is BEGIN...ROLLBACK, so it leaves no durable residue to
+      # count. The POSITIVE witness is the cluster's own per-database session
+      # counter: sessions opened against suite_1171 must have gone up. If
+      # ISSUE_1171_POSTGRES_DATABASE does not reach the tests, that delta is zero
+      # and this is RED — which is the mutant this guard exists for.
+      #
+      # The NEGATIVE half deliberately no longer counts template sessions.
+      # `pg_stat_database.sessions` is cumulative over ALL sessions and cannot
+      # tell a background worker from a client backend, and this image runs
+      # `pg_net` and `pg_cron` permanently attached to the default database —
+      # MEASURED in run 3: they reconnect the instant the copy window reopens and
+      # contributed a template delta of 2 while all 19 of #1171's tests passed
+      # against suite_1171. A bare count cannot pass on this image. Subtracting a
+      # constant 2 would be worse than useless: it would match today's worker
+      # count and rot silently the day the image ships a third worker.
+      #
+      # This is the same defect as G-3b's, in a second place, and it is fixed the
+      # same way — by backend_type, not by arithmetic.
+      #
+      # What actually proves "not in the template" is the placement guard the
+      # tester ships INSIDE the two #1171 suites: it runs through the suite's own
+      # connection and RAISEs if current_database() is not a suite_* database, so
+      # no background worker can stand in for it and no counter can be fooled.
+      # This guard therefore asserts what only it can see from outside — that the
+      # suite really connected to suite_1171 — and reports the workers by name
+      # instead of pretending they are not there.
+      - name: "G-8 · #1171's SQL ran against suite_1171, not against the template"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          sessions_of() {
+            docker exec -i "$PG_CONTRACT_CONTAINER" \
+              psql -v ON_ERROR_STOP=1 -At -U postgres -d template1 \
+              -c "SELECT coalesce(sessions, 0) FROM pg_stat_database WHERE datname = '$1'"
+          }
+          suite_delta=$(( $(sessions_of suite_1171) - $(cat "$RUNNER_TEMP/g8_suite_before.txt") ))
+          echo "sessions opened against suite_1171 by #1171's suite: $suite_delta"
+          if [ "$suite_delta" -le 0 ]; then
+            echo "::error::G-8: #1171's Deno suite opened no session against suite_1171. ISSUE_1171_POSTGRES_DATABASE did not reach the tests, so their SQL ran somewhere else and every assertion still passed."
+            exit 1
+          fi
+          echo "── what is attached to the template, by identity, not by count ──"
+          docker exec -i "$PG_CONTRACT_CONTAINER" \
+            psql -v ON_ERROR_STOP=1 -At -F' | ' -U postgres -d template1 \
+            -c "SELECT pid, usename, coalesce(application_name, '-'), backend_type
+                  FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' ORDER BY pid" || true
+          stragglers="$(docker exec -i "$PG_CONTRACT_CONTAINER" \
+            psql -v ON_ERROR_STOP=1 -At -U postgres -d template1 \
+            -c "SELECT count(*) FROM pg_stat_activity
+                 WHERE datname = '$PG_CONTRACT_TEMPLATE' AND pid <> pg_backend_pid()
+                   AND backend_type = 'client backend'")"
+          if [ "$stragglers" != "0" ]; then
+            echo "::error::G-8: $stragglers client backend(s) are still attached to the migrated template after #1171 ran. A suite reaches PostgreSQL as a client backend, so this is a suite in the template."
+            exit 1
+          fi
+          echo "G-8 PASS: $suite_delta session(s) opened against suite_1171; no client backend on the template. The in-suite placement guard is the authority for the negative."
+
+      # ══ #1173 ═══════════════════════════════════════════════════════════
+      #
+      # One step, not seven. Its four processes are a single ordered sequence
+      # and splitting them would break the `&` / `$!` / `wait` pairing on which
+      # the concurrency proof depends. All seven executions target the SAME
+      # database — `race_setup` COMMITs the fixtures `race_a`, `race_b` and the
+      # assert file depend on, so a different database for any one of them
+      # silently voids the proof.
+      #
+      # Last in the job because `race_a` holds its FOR UPDATE lock through
+      # pg_sleep(6): this sequence carries a ~8 s serial floor and is the
+      # critical path.
+      - name: "#1173 · Apply every migration to clean PostgreSQL 17 + run the RPC SQL test"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1173-02a suite_1173 supabase/migrations/__tests__/issue_1173_stamp_cutover.test.sql
+          run_psql M-1173-02b suite_1173 supabase/migrations/__tests__/issue_1173_rollback_cutover_guard.adversarial.test.sql
+          run_psql M-1173-02c suite_1173 supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.test.sql
+          # The #1807 tester-adversarial suite proves two admins stamping the
+          # same brand at once cannot double-stamp it. That needs two genuinely
+          # concurrent sessions. dblink cannot supply them here: dblink_connect
+          # and dblink_connect_u are the same C function differing only in
+          # SECURITY DEFINER, and it gates on superuser() — supabase/postgres
+          # de-superusers `postgres`, which is also the role that creates the
+          # extension in this job and therefore OWNS dblink_connect_u, so the
+          # bypass is inert. Two real psql processes authenticate exactly the way
+          # every other step here already does, and need no credential passed in.
+          #
+          # A is launched in the background and holds the FOR UPDATE row lock;
+          # B contends two seconds later and blocks on it; the suite then asserts
+          # exactly one stamp and one idempotent skip per brand, whichever won.
+          run_psql M-1173-02d suite_1173 supabase/migrations/__tests__/issue_1807_tester_adversarial_race_setup.sql
+          # `race_a` is backgrounded by run_psql_background, which wraps it in a
+          # subshell exiting with psql's OWN status so `wait` below propagates a
+          # failure instead of reporting tee's success, and captures the PID with
+          # `$!` into PARITY_BG_PID. Its output is written to the ledger log and
+          # echoed once the process finishes, rather than teed, so it cannot
+          # interleave with `race_b`'s.
+          run_psql_background M-1173-02e suite_1173 supabase/migrations/__tests__/issue_1807_tester_adversarial_race_a.sql
+          issue1807_race_a_pid="$PARITY_BG_PID"
+          sleep 2
+          run_psql M-1173-02g suite_1173 supabase/migrations/__tests__/issue_1807_tester_adversarial_race_b.sql
+          wait "$issue1807_race_a_pid"
+          run_psql M-1173-02i suite_1173 supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql
+
+      - name: "#1173 · Run #1173 schedule-flip regression tests (Deno)"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_logged M-1173-03 deno - -- \
+            deno test --allow-read --allow-env --allow-net --no-check \
+            supabase/functions/_shared/__tests__/issue_1173_payout_schedule_helper.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1173_admin_migrate.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.test.ts \
+            supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.tester_adversarial.test.ts \
+            supabase/functions/brand-stripe-onboard/__tests__/issue_1173_onboard_dark_default.test.ts
+
+      # ── Guard G-2b — #1177's zero-SQL status, asserted positively ────────
+      - name: "G-2b · #1177 executed its Deno files and holds no database"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          suite_1177_present="$(docker exec -i "$PG_CONTRACT_CONTAINER" \
+            psql -v ON_ERROR_STOP=1 -At -U postgres -d template1 \
+            -c "SELECT count(*) FROM pg_database WHERE datname = 'suite_1177'")"
+          if [ "$suite_1177_present" != "0" ]; then
+            echo "::error::G-2b: a suite_1177 database exists. #1177 executes zero SQL; a database nothing connects to is an artifact that carries no information, and nobody decided to give it one."
+            exit 1
+          fi
+          echo "suite_1177 databases: $suite_1177_present"
+
+      # ── The same-SHA parity ledger, and guards G-2 and G-5 ───────────────
+      #
+      # Reconciliation is PER ASSERTION, never per job. A `RAISE EXCEPTION`
+      # count match is explicitly NOT evidence: the site is the failure path and
+      # emits nothing when the assertion holds, so a guarded block that never
+      # executed is byte-identical on stdout to one that executed and passed.
+      # That is the #2438 shape — a payment guard whose retry silently never ran
+      # while every count reconciled perfectly.
+      #
+      # The witness is psql's own command tag: one bare `DO` line per anonymous
+      # block that ran to completion, emitted by an UNMODIFIED psql invocation.
+      # An empty or unread file exits 0 with no output, which exit-status
+      # checking calls green and this does not.
+      - name: Emit the parity ledger
+        id: ledger
+        if: ${{ !cancelled() }}
+        env:
+          PARITY_SIDE: consolidated
+        run: |
+          export PARITY_DIR="$RUNNER_TEMP/parity"
+          # A MISSING inventory must not read as "everything is unregistered".
+          # Run 9: L-5 failed, and because the step that writes inventory.tsv
+          # carried no `if:` it was SKIPPED by success(). The ledger then compared
+          # 30 executed commands against an empty set and reported them as
+          # unregistered — G-5 pointing at the wrong thing entirely. The `if:`
+          # gating is the fix; this is the backstop, so the same shape can never
+          # again present as a totality failure.
+          if [ ! -s "$PARITY_DIR/inventory.tsv" ]; then
+            echo "::error::the committed command inventory is missing or empty, so G-5 cannot be evaluated at all. It has NOT passed and it has NOT failed — the step that writes it did not run."
+            exit 1
+          fi
+          node .github/scripts/parity/emit-parity-ledger.mjs
+
+      - name: Upload the parity ledger
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: parity-consolidated
+          path: ${{ runner.temp }}/parity/
+          if-no-files-found: error
+
+      - name: Remove disposable database
+        if: always()
+        run: docker rm -f pg-contract-suites || true

@@ -8509,8 +8509,10 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
   `DROP … IF EXISTS` a silent no-op and left a stale constraint still rejecting
   `stamp_failed`; every prior `result` value retained; `service_role` retains SELECT;
   `authenticated` retains SELECT), so a failed assertion rolls the whole migration back.
-  Regression suites, all registered in `.github/workflows/issue-1173-stripe-schedule-flip-tests.yml`
-  and run against a clean PostgreSQL 17 container with the full migration chain applied:
+  Regression suites, all registered in the `migration-chain` job of
+  `.github/workflows/postgres-contract-suites.yml` (they moved there at #2591, which
+  deleted the per-issue wrapper this line used to name)
+  and run against a clean PostgreSQL 17 database with the full migration chain applied:
   implementor `supabase/migrations/__tests__/issue_1807_paystack_ledger_truth.test.sql`
   and `supabase/functions/admin-payout-hold-migrate/__tests__/issue_1807_paystack_lane.test.ts`;
   independent tester `…/issue_1807_paystack_ledger_truth.tester_adversarial.test.sql`

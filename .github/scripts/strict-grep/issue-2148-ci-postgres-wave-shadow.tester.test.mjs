@@ -9,6 +9,7 @@ import {
   PHASE3B_SHADOW_MARKER,
   discoverLiveOrigins,
   discoverWorkflowProviders,
+  PROVIDERS_ADDED_SINCE_SEAL,
   isNonAuthoritativeProviderEvidence,
   validateRegistry,
 } from "../ci-batch/validate-manifest-v2.mjs";
@@ -92,7 +93,11 @@ test("reconstructs source truth before trusting generated registry", () => {
 
 test("locks independent registry, leaf, setup, provider and lifecycle identities", () => {
   const value = manifest(); const suites = value.suites.filter((suite) => suite.migrationWave === WAVE);
-  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200,84,240,91]);
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  assert.deepEqual([value.legacyOrigins.length, value.suites.length, value.commandCapabilities.commands.length, value.workflowProviders.length], [200,84,240,91 + PROVIDERS_ADDED_SINCE_SEAL.length]);
   assert.deepEqual([suites.length, suites.flatMap((suite) => suite.steps).length, value.phase3bLeafCapabilities.leaves.length, value.phase3bLeafCapabilities.currentExecutedLeaves, value.phase3bLeafCapabilities.currentAbsentLeaves], [12,36,40,37,3]);
   assert.equal(sha(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(sha(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
@@ -113,7 +118,15 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // The count stays exact, and the cryptographic weight moves entirely onto the
   // reconstruction below, which is checked against the ONE frozen shadow seal and does not
   // drift when a later wave retires more wrappers.
-  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 60);
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  // [TEST-MOD-APPROVED #2591 · cutover] The MIRROR of that addition: the nine
+  // deleted Postgres wrappers take two discovery records with them, and the
+  // registry carries them under `consolidated-provider`. Every term derived.
+  const consolidatedCount = value.workflowProviders.filter((item) => item.transition === "consolidated-provider").length;
+  const providers = discoverWorkflowProviders(ROOT); assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedCount);
   // [#2438 SC-21] The single-wrapper W3 assertion that stood here was removed under the
   // ruling at issue #2438 comment 5398524723. At shadow it was real: W3 was live and kept
   // out of discovery only by the A4-SC2 carve-out. At terminal it interrogates a deleted
@@ -135,38 +148,84 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
     .filter((suite) => RETIRED_WAVES.includes(suite.migrationWave))
     .map((suite) => suite.origin.split("/").pop()));
   assert.equal(carriedNames.size, 29);
-  const carried = value.workflowProviders
+  // [TEST-MOD-APPROVED #2591 · cutover] A record can leave discovery WITHOUT
+  // belonging to a retired wave. The #2591 cutover deletes the nine Postgres
+  // wrappers and the two records #1172 and #1840 contributed die with their files;
+  // the registry carries them under `consolidated-provider` and the validator
+  // reconstructs the frozen authority from them exactly as it does the waves'.
+  // Derived from the registry's own transition, so it cannot go stale — and the
+  // 29/13 wave literals above are untouched, which keeps the two mechanisms
+  // separately falsifiable rather than folded into one moving number.
+  const carriedConsolidated = value.workflowProviders
+    .filter((item) => item.transition === "consolidated-provider")
+    .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
+  assert.equal(carriedConsolidated.length, 2);
+  const carriedWave = value.workflowProviders
     .filter((item) => carriedNames.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }));
-  assert.equal(carried.length, 13);
+  assert.equal(carriedWave.length, 13);
+  // Pinned by IDENTITY for the same reason the Phase 3C seven are below: a swapped
+  // record reds even when the count holds.
+  assert.deepEqual(carriedConsolidated.map((item) => item.workflow).sort(),
+    ["issue-1172-stripe-payout-execution-tests.yml", "issue-1840-ng-payout-float-alerts-tests.yml"]);
+  const carried = [...carriedWave, ...carriedConsolidated];
+  assert.equal(carried.length, 13 + carriedConsolidated.length);
   // The Phase 3B six keep their A4-SC3 locked subset digest, unchanged and still exact.
-  const carriedPhase3b = carried.filter((item) => WRAPPERS.some(([name]) => name === item.workflow));
+  const carriedPhase3b = carriedWave.filter((item) => WRAPPERS.some(([name]) => name === item.workflow));
   assert.equal(carriedPhase3b.length, 6);
   assert.equal(sha(carriedPhase3b), "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1");
   // The Phase 3C seven are pinned by IDENTITY, not by a digest — SC-18.2(6) forbids a
   // second pinned digest, and identity is the stronger form here anyway: a swapped record
   // reds even if the count holds.
-  assert.deepEqual(carried.filter((item) => !WRAPPERS.some(([name]) => name === item.workflow))
+  assert.deepEqual(carriedWave.filter((item) => !WRAPPERS.some(([name]) => name === item.workflow))
     .map((item) => item.workflow).sort(),
     ["issue-1430-refund-replay-tests.yml", "issue-1437-secret-bundle-compatibility-tests.yml",
      "issue-1950-app-readiness-tests.yml", "issue-1999-ari-provider-schema-tests.yml",
      "issue-2019-ari-delegated-auth.yml", "issue-2230-consumer-multiday-tests.yml",
      "issue-2321-account-deletion-tests.yml"]);
-  const reconstructed = [...providers, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
+  // [TEST-MOD-APPROVED #2591] The reconstruction MIRRORS the validator: providers
+  // declared in PROVIDERS_ADDED_SINCE_SEAL are subtracted before the digest, so the
+  // frozen 73/aac3d8cf… seal is unchanged and still asserted here at full strength.
+  // Subtracting by exact content, not by name, is what keeps a drifted declaration
+  // red; an undeclared new provider still lands in `sealed` and still breaks it.
+  const declared = new Map(PROVIDERS_ADDED_SINCE_SEAL.map((item) => [item.workflow, JSON.stringify([...item.referenceFiles])]));
+  const sealed = providers.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+  assert.equal(providers.length - sealed.length, PROVIDERS_ADDED_SINCE_SEAL.length,
+    "every declared provider addition must be present in discovery and byte-equal to its declaration");
+  const reconstructed = [...sealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
   assert.equal(reconstructed.length, 73);
   assert.equal(sha(reconstructed), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.
-  assert.equal(discoverLiveOrigins(ROOT).length, 117);
+  // [TEST-MOD-APPROVED #2591 · cutover] 117 -> 108. The nine consolidated origins
+  // leave this inventory with their wrappers, exactly as a retired wave's do. The
+  // subtrahend is READ from the registry rather than typed, so the ratified total
+  // stays pinned and the number cannot be quietly adjusted until it passes.
+  const consolidatedOriginCount = value.legacyOrigins.filter((item) => item.disposition === "consolidated-provider").length;
+  assert.equal(consolidatedOriginCount, 9);
+  assert.equal(discoverLiveOrigins(ROOT).length, 117 - consolidatedOriginCount);
   // The invariant #2492 actually violated: two workflows were externally REFERENCED but
   // never REGISTERED. A pair of totals cannot catch that — they both just move. Bind the
   // derived discovery set to the declared live-provider set by identity, so a referenced
   // but unregistered workflow reds here even when every count still agrees.
   const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
   const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
-  assert.deepEqual([retained.length, batched.length], [60, 31]);
-  assert.equal(retained.length + batched.length, value.workflowProviders.length);
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  // Only the retained half moves: a declared addition is a live provider. The 31
+  // batched records are untouched and stay a literal.
+  // [TEST-MOD-APPROVED #2591 · cutover] The MIRROR of the addition above. The
+  // #2591 cutover deletes the nine Postgres wrappers, so the two records #1172
+  // and #1840 still contributed leave discovery with their files and move to the
+  // `consolidated-provider` transition. Derived from the registry, never typed,
+  // for the same reason the addition is: a second hand-written number is how two
+  // sides disagree and auto-merge clean.
+  const consolidated = value.workflowProviders.filter((item) => item.transition === "consolidated-provider");
+  assert.deepEqual([retained.length, batched.length], [60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidated.length, 31]);
+  assert.equal(retained.length + batched.length + consolidated.length, value.workflowProviders.length);
   assert.deepEqual(providers.map((item) => item.workflow).sort(), retained.map((item) => item.workflow).sort());
   assert.deepEqual(validateRegistry(value, { root: ROOT }), []);
 });

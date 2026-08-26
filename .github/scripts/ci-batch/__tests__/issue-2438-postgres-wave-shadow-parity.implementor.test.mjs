@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, providerDiscoveryAccounting, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
+import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, providerDiscoveryAccounting, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
@@ -13,6 +13,12 @@ import { expectedPhase3bIdentities, reconcilePhase3bReports, selectionDocument }
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const manifest = () => JSON.parse(fs.readFileSync(path.join(ROOT, ".github/ci-batch/MANIFEST.json"), "utf8"));
+// [TEST-MOD-APPROVED #2591] Raw discovery carries the providers declared in
+// PROVIDERS_ADDED_SINCE_SEAL; only the SEAL subtracts them. Counted by presence in
+// the workspace under test rather than by the declaration's length, so an isolated
+// workspace that does not carry the workflow still reconciles.
+const declaredAdditionsIn = (root) => PROVIDERS_ADDED_SINCE_SEAL
+  .filter((item) => fs.existsSync(path.join(root, ".github/workflows", item.workflow))).length;
 const digest = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
 const WRAPPERS = {
   "issue-1022-theme-control-tests.yml":"f4d461a534e2d0a0273e9ea60957605a4f6e9f832229f74cf9f695445ff655df",
@@ -62,12 +68,34 @@ const carriedWaveProviders = (root) => {
     .map(([wave]) => wave));
   const deleted = new Set(value.legacyOrigins.filter((origin) => waves.has(origin.migrationWave))
     .map((origin) => `${origin.stem}.${origin.extension}`));
+  // [TEST-MOD-APPROVED #2591 · cutover] A record can now leave discovery WITHOUT
+  // belonging to a wave: the #2591 cutover deletes the nine Postgres wrappers, and
+  // the two records #1172 and #1840 contributed die with their files. The registry
+  // carries them under the `consolidated-provider` transition and the validator
+  // reconstructs the frozen authority from them exactly as it does the waves' —
+  // so this helper, which every digest assertion in this file goes through, has to
+  // see them too. Extended in the ONE place rather than at each call site.
+  for (const item of value.workflowProviders) {
+    if (item.transition === "consolidated-provider") deleted.add(item.workflow);
+  }
   return value.workflowProviders.filter((item) => deleted.has(item.workflow))
     .map((item) => ({ workflow: item.workflow, referenceFiles: item.referenceFiles }))
     .sort((a, b) => a.workflow.localeCompare(b.workflow));
 };
+// [TEST-MOD-APPROVED #2591] The reconstruction MIRRORS the validator, in the one
+// helper all four digest assertions go through. Providers declared in
+// PROVIDERS_ADDED_SINCE_SEAL are subtracted BY EXACT CONTENT before the digest, so
+// the frozen 73/aac3d8cf… seal is unchanged and every one of those four assertions
+// keeps checking it at full strength. Subtracting by content and not by name is
+// what keeps a drifted declaration red, and an UNDECLARED new provider is not
+// subtracted at all, so it still breaks the digest — which is the tripwire.
+const sealedDiscovery = (discovered) => {
+  const declared = new Map(PROVIDERS_ADDED_SINCE_SEAL
+    .map((item) => [item.workflow, JSON.stringify([...item.referenceFiles])]));
+  return discovered.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+};
 const reconstructShadowAuthority = (root, discovered) =>
-  [...discovered, ...carriedWaveProviders(root)].sort((a, b) => a.workflow.localeCompare(b.workflow));
+  [...sealedDiscovery(discovered), ...carriedWaveProviders(root)].sort((a, b) => a.workflow.localeCompare(b.workflow));
 
 // [#2438] CI runners carry NO global git identity. Every invocation supplies its
 // own via -c, so no callsite here can depend on ambient config: relying on it is
@@ -84,7 +112,11 @@ function providerSnapshot(root) {
 
 function assertWave(value) {
   const suites = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");
-  assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 84); assert.equal(value.commandCapabilities.commands.length, 240); assert.equal(value.workflowProviders.length, 91);
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  assert.equal(value.legacyOrigins.length, 200); assert.equal(value.suites.length, 84); assert.equal(value.commandCapabilities.commands.length, 240); assert.equal(value.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(suites.length, 12); assert.equal(suites.flatMap((suite) => suite.steps).length, 36);
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal, and atomic on all three carriers of
   // the lifecycle: the suites, the wave header, and the legacy-origin dispositions.
@@ -105,14 +137,30 @@ function assertWave(value) {
   // have been a wave-relative number that silently absorbed the next wave. Every
   // batched record must have an absent wrapper and every retained one a live
   // wrapper — which is what the split actually MEANS — and the two must still
-  // sum to the frozen 91.
+  // sum to the frozen 91 plus whatever PROVIDERS_ADDED_SINCE_SEAL declares.
   const wrapperLive = (item) => fs.existsSync(path.join(ROOT, ".github/workflows", item.workflow));
   const retained = value.workflowProviders.filter((item) => item.transition === "retained-live-provider");
   const batched = value.workflowProviders.filter((item) => item.transition === "batched-provider");
+  // [TEST-MOD-APPROVED #2591 · cutover] The MIRROR of the addition above. The
+  // #2591 cutover deletes the nine Postgres wrappers, so the two records #1172
+  // and #1840 still contributed leave discovery with their files and move to the
+  // `consolidated-provider` transition. Derived from the registry, never typed,
+  // for the same reason the addition is: a second hand-written number is how two
+  // sides disagree and auto-merge clean.
+  const consolidated = value.workflowProviders.filter((item) => item.transition === "consolidated-provider");
   assert.equal(retained.filter((item) => !wrapperLive(item)).length, 0, "a retained provider whose wrapper is gone is a lie");
   assert.equal(batched.filter(wrapperLive).length, 0, "a batched provider whose wrapper is back is a duplicate provider");
-  assert.deepEqual(transitions, { "retained-live-provider": retained.length, "batched-provider": batched.length });
-  assert.equal(retained.length + batched.length, 91);
+  assert.equal(consolidated.filter(wrapperLive).length, 0, "a consolidated provider whose wrapper is back is a duplicate provider");
+  assert.deepEqual(transitions, {
+    "retained-live-provider": retained.length,
+    "batched-provider": batched.length,
+    ...(consolidated.length > 0 ? { "consolidated-provider": consolidated.length } : {}),
+  });
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  assert.equal(retained.length + batched.length + consolidated.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
   assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
   assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 29);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
@@ -217,7 +265,7 @@ test("provider authority ignores reserved tester bytes but rejects eligible sour
     if (git(temp, ["status", "--porcelain"])) git(temp, ["commit", "-qm", "tester absent"]);
     const absent = providerSnapshot(temp); const absentValue = JSON.parse(absent);
     // [TEST-MOD-APPROVED #2438 · SC-21] Terminal authority, DERIVED not re-pinned.
-    assert.equal(absentValue.providers.length, 73 - carriedWaveProviders(temp).length); assert.deepEqual(absentValue.errors, []);
+    assert.equal(absentValue.providers.length, 73 - carriedWaveProviders(temp).length + declaredAdditionsIn(temp)); assert.deepEqual(absentValue.errors, []);
     assert.equal(absentValue.providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 0);
     assert.equal(digest(reconstructShadowAuthority(temp, absentValue.providers)), PROVIDER_DIGEST);
     assert.equal(digest(carriedPhase3bProviders(temp)), PHASE3B_PROVIDER_DIGEST);
@@ -496,7 +544,7 @@ test("provider discovery work accounting stays inside its reviewed count bounds"
   const accounting = providerDiscoveryAccounting();
   // Byte-identity is the acceptance test for the A7-SC2 pre-filter, not speed.
   // [TEST-MOD-APPROVED #2438 · SC-21] Terminal authority, derived from the one seal.
-  assert.equal(providers.length, 73 - carriedWaveProviders(ROOT).length);
+  assert.equal(providers.length, 73 - carriedWaveProviders(ROOT).length + declaredAdditionsIn(ROOT));
   assert.equal(providers.filter((item) => PHASE3B_PROVIDER_NAMES.has(item.workflow)).length, 0);
   assert.equal(digest(reconstructShadowAuthority(ROOT, providers)), PROVIDER_DIGEST);
   assert.equal(digest(carriedPhase3bProviders(ROOT)), PHASE3B_PROVIDER_DIGEST);
@@ -563,7 +611,7 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
     // back to the one frozen seal by reconstruction — never re-pinned as a second
     // literal. Everything below is expressed relative to that measured baseline.
     const BASE = before.length; const BASE_DIGEST = digest(before);
-    assert.equal(BASE, 73 - carriedWaveProviders(temp).length);
+    assert.equal(BASE, 73 - carriedWaveProviders(temp).length + declaredAdditionsIn(temp));
     assert.equal(digest(reconstructShadowAuthority(temp, before)), PROVIDER_DIGEST);
 
     // Commit a brand-new eligible source that names a real live workflow.
@@ -743,7 +791,7 @@ test("SC-21 terminal state is executable and fail-closed in both directions", ()
     assert.equal(validator.split(PROVIDER_DIGEST).length - 1, 1, "the shadow authority must be the single frozen provider seal");
     const terminalDiscovery = discoverWorkflowProviders(temp);
     const terminalDigest = digest(terminalDiscovery);
-    assert.equal(terminalDiscovery.length, 73 - carriedWaveProviders(temp).length);
+    assert.equal(terminalDiscovery.length, 73 - carriedWaveProviders(temp).length + declaredAdditionsIn(temp));
     assert.notEqual(terminalDigest, PROVIDER_DIGEST);
     assert.equal(validator.includes(terminalDigest), false,
       "a hard-coded terminal provider digest is forbidden: the terminal value must be derived");

@@ -52,7 +52,55 @@ import {
 const MIGRATION =
   "supabase/migrations/20270320001840_issue_1840_ng_payout_float_alerts.sql";
 const SWEEP = "supabase/functions/payout-release-sweep/index.ts";
-const WORKFLOW = ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml";
+// [TEST-MOD-APPROVED #2591] — re-point + strengthen.
+//
+// The property this guards has never been "a particular YAML file mentions my
+// filenames". It is: BOTH #1840 regression suites are registered in a workflow
+// that actually runs them, and nothing in that workflow can downgrade their
+// failure to a pass. An unregistered file runs nowhere and reports nothing.
+//
+// #2591 moves the #1840 suites into
+// `.github/workflows/postgres-contract-suites.yml`. The origin lane and the
+// consolidated one are LIVE AT THE SAME TIME for the whole shadow window, so
+// the assertion becomes a universal over the candidates that exist, plus an
+// existence floor:
+//
+//   * every candidate that exists must register both suites and must be free of
+//     `continue-on-error` -- so a consolidated workflow that quietly drops one
+//     of the two is RED even while the origin lane is still green, and an origin
+//     lane that quietly acquires `continue-on-error` is RED even after the
+//     consolidated one lands;
+//   * at least one candidate must exist -- so the day both are deleted this
+//     test goes RED instead of vacuously green over an empty set. That empty-set
+//     pass is the shape #2113 catalogued 60 times in this repo, and it is the
+//     one thing the naive "swap the string" re-point could not have prevented.
+//
+// Fails-on-revert: delete either registered path from a live candidate; add
+// `continue-on-error` to one; delete every candidate.
+const WORKFLOW_CANDIDATES = [
+  // The #1840 origin lane. Live today; deleted by #2591's cutover PR.
+  ".github/workflows/issue-1840-ng-payout-float-alerts-tests.yml",
+  // The consolidated provider. Absent today; lands in #2591's shadow PR.
+  ".github/workflows/postgres-contract-suites.yml",
+];
+
+async function liveWorkflows(): Promise<Array<{ path: string; text: string }>> {
+  const live: Array<{ path: string; text: string }> = [];
+  for (const path of WORKFLOW_CANDIDATES) {
+    try {
+      live.push({ path, text: await Deno.readTextFile(path) });
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+  }
+  assert(
+    live.length > 0,
+    `no live workflow carries the #1840 suites; none of ${
+      WORKFLOW_CANDIDATES.join(", ")
+    } exists. If the provider moved again, add it to WORKFLOW_CANDIDATES -- do not delete this test.`,
+  );
+  return live;
+}
 
 const NEW_KINDS = ["paystack_balance_blocked", "paystack_float_shortfall"];
 const PRIOR_KINDS = [
@@ -677,14 +725,21 @@ Deno.test("#1840 only the float-shortfall kind carries its outbox idempotency ke
 });
 
 Deno.test("#1840 both regression suites are registered in a workflow that actually runs them", async () => {
-  const workflow = await Deno.readTextFile(WORKFLOW);
-  assertStringIncludes(
-    workflow,
-    "supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql",
-  );
-  assertStringIncludes(
-    workflow,
-    "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
-  );
-  assertEquals(workflow.includes("continue-on-error"), false);
+  for (const { path, text: workflow } of await liveWorkflows()) {
+    assertStringIncludes(
+      workflow,
+      "supabase/migrations/__tests__/issue_1840_ng_payout_float_alerts.test.sql",
+      `${path}: the #1840 SQL contract suite is not registered.`,
+    );
+    assertStringIncludes(
+      workflow,
+      "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
+      `${path}: the #1840 Deno regression suite is not registered.`,
+    );
+    assertEquals(
+      workflow.includes("continue-on-error"),
+      false,
+      `${path}: continue-on-error can downgrade a #1840 failure to a pass.`,
+    );
+  }
 });

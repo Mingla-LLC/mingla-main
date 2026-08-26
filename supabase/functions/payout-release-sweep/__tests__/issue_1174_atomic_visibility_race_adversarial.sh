@@ -10,8 +10,107 @@ set -euo pipefail
 # expose neither uncommitted row, and the edge-order simulation must perform
 # zero organiser mutations until the atomic statement commits.
 
+# [TEST-MOD-APPROVED #2591] — parameterise the database, and make the parameter
+# not reaching this process DETECTABLE rather than silent.
+#
+# #2591 gives every contract suite its own database, copied from the migrated
+# template with CREATE DATABASE ... TEMPLATE. This driver has to be told which
+# one, so $2 is the database name.
+#
+# $2 defaults to "postgres" so every existing call site keeps working unchanged.
+# That default is also the entire risk of this change, and it is a risk this file
+# did not previously have: a caller that forgets the second argument runs THIS
+# driver -- the one file of the twenty-three that commits durable, un-cleaned
+# fixture rows and creates a TRIGGER on public.payout_partner_attributions --
+# straight into the template that every other suite was copied from. Nothing
+# would fail. Every assertion in this file would still pass, because they are all
+# self-consistent within whatever database they are handed. The isolation the
+# whole #2591 design rests on would be gone, green, and invisible. That is the
+# same shape as the pg_dump restore that went green with 643 RLS policies
+# collapsed to 2.
+#
+# So the default does not ship alone. The guard below asks the cluster itself
+# whether per-suite databases exist, and refuses to run in the template when they
+# do. It needs no new environment variable and no new flag to enable -- a switch
+# that must be turned on is a switch nobody turns on (this repo has produced that
+# defect three times). It self-configures:
+#
+#   * legacy cluster, no suite_* databases  -> nothing to be isolated from, passes
+#     exactly as today;
+#   * consolidated cluster, $2 supplied     -> running in suite_1174, passes;
+#   * consolidated cluster, $2 FORGOTTEN    -> suite_* databases exist and this
+#     session is in "postgres", RED with the database named.
+#
+# Clause A alone is not enough, and the second clause is the point of this guard.
+# A database can carry the RIGHT NAME and the WRONG CONTENTS: `suite_1174` built
+# from `template0` instead of from the migrated template passes every name check
+# ever written while holding zero tables, zero policies and zero triggers. That
+# is not hypothetical -- it is the shape a `pg_dump` restore produced in this repo
+# while tables and columns matched and 643 RLS policies had collapsed to 2, exit
+# code 0 throughout. So clause B asserts the SECURITY POSTURE of the specific
+# tables this suite is about to mutate: they exist, ROW LEVEL SECURITY is on, and
+# the objects that enforce append-only and per-brand isolation are present.
+# Counting tables and columns is explicitly insufficient; that is the check that
+# passed the disaster.
 container_name="${1:-issue1174-postgres}"
-psql_cmd=(docker exec -i "$container_name" psql -X -v ON_ERROR_STOP=1 -U postgres -d postgres)
+database_name="${2:-postgres}"
+psql_cmd=(docker exec -i "$container_name" psql -X -v ON_ERROR_STOP=1 -U postgres -d "$database_name")
+
+"${psql_cmd[@]}" <<'SQL'
+DO $issue_2591_isolation$
+DECLARE
+  v_suite_databases integer;
+  v_broken text;
+BEGIN
+  -- Clause A — PLACEMENT. If this cluster has per-suite contract databases at
+  -- all, then the #2591 design is in force and this session must be inside one
+  -- of them. Self-configuring: a legacy cluster has none, so this is inert there
+  -- and the file behaves exactly as it did before #2591.
+  SELECT count(*) INTO v_suite_databases
+  FROM pg_database
+  WHERE datname LIKE 'suite\_%';
+
+  IF v_suite_databases > 0 AND current_database() NOT LIKE 'suite\_%' THEN
+    RAISE EXCEPTION
+      '#2591 SUITE ISOLATION FAIL: % per-suite contract databases exist in this cluster, but this driver is executing in "%" — the migrated template every suite was copied from. The database argument did not reach this process, so this suite is about to commit durable fixtures and a trigger into the template.',
+      v_suite_databases, current_database();
+  END IF;
+
+  -- Clause B — FIDELITY. The right name is not the right database.
+  SELECT string_agg(probe.what, '; ' ORDER BY probe.what) INTO v_broken
+  FROM (
+    SELECT 'public.payout_partner_attributions is missing' AS what
+     WHERE to_regclass('public.payout_partner_attributions') IS NULL
+    UNION ALL
+    SELECT 'public.partner_splits is missing'
+     WHERE to_regclass('public.partner_splits') IS NULL
+    UNION ALL
+    SELECT 'public.payout_partner_attributions has ROW LEVEL SECURITY disabled'
+     WHERE NOT COALESCE((SELECT c.relrowsecurity FROM pg_class c
+       WHERE c.oid = to_regclass('public.payout_partner_attributions')), false)
+    UNION ALL
+    SELECT 'public.partner_splits has ROW LEVEL SECURITY disabled'
+     WHERE NOT COALESCE((SELECT c.relrowsecurity FROM pg_class c
+       WHERE c.oid = to_regclass('public.partner_splits')), false)
+    UNION ALL
+    SELECT 'public.payout_partner_attributions has lost its append-only trigger'
+     WHERE NOT EXISTS (SELECT 1 FROM pg_trigger t
+       WHERE t.tgrelid = to_regclass('public.payout_partner_attributions')
+         AND NOT t.tgisinternal)
+    UNION ALL
+    SELECT 'public.partner_splits carries no RLS policy'
+     WHERE NOT EXISTS (SELECT 1 FROM pg_policy p
+       WHERE p.polrelid = to_regclass('public.partner_splits'))
+  ) AS probe;
+
+  IF v_broken IS NOT NULL THEN
+    RAISE EXCEPTION
+      '#2591 SUITE FIDELITY FAIL: database "%" is not a faithful copy of the migrated template — %. Tables and columns matching is NOT sufficient evidence: a pg_dump restore passed that check with 643 RLS policies collapsed to 2.',
+      current_database(), v_broken;
+  END IF;
+END
+$issue_2591_isolation$;
+SQL
 
 "${psql_cmd[@]}" <<'SQL'
 INSERT INTO auth.users (id) VALUES

@@ -23,6 +23,7 @@ import { fileURLToPath } from "node:url";
 import {
   DEFAULT_ROOT, decodeManifestTextRepresentations, discoverExpectedFilesForSuite,
   discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, trackedFiles,
+  PROVIDERS_ADDED_SINCE_SEAL,
   trackedFilesCalls, trackedFilesProcessInvocations,
   validateRegistry, withTrackedFilesScope, PHASE3C_SHADOW_MARKER, PHASE3C_WRAPPER_NAMES,
 } from "../validate-manifest-v2.mjs";
@@ -626,7 +627,12 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
   const candidateNames = Object.keys(CANDIDATE_SEALS).map((stem) => `${stem}.yml`);
   const held = manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow));
   assert.deepEqual(held.map((item) => item.workflow).sort(), [...PROVIDER_SEVEN].sort());
-  assert.equal(manifest.workflowProviders.length, 91, "workflowProviders must stay 91");
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+  // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+  // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+  // the number simply stops being typed in a second place where it can disagree.
+  assert.equal(manifest.workflowProviders.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length,
+    "workflowProviders must stay 91 plus the declared additions");
   const expectedTransition = suites[0].lifecycle === "batched-historical" ? "batched-provider" : "retained-live-provider";
   assert.deepEqual([...new Set(held.map((item) => item.transition))], [expectedTransition]);
   // Discovery agrees with the registry about which wrappers are providers.
@@ -640,7 +646,17 @@ test("#2439 SC-11 lifecycle is atomic, dispositions are honest, and providers tr
   assert.deepEqual(discovered, TERMINAL ? [] : [...PROVIDER_SEVEN].sort(),
     "the other ten must not gain a provider record — docs/ and *.md are not authoritative evidence");
   if (TERMINAL) {
-    assert.equal(providers.length, 60, "terminal provider discovery must MEASURE 60, not inherit 67");
+  // [TEST-MOD-APPROVED #2591] Literal -> derivation. The provider totals are now
+    // `<frozen> + PROVIDERS_ADDED_SINCE_SEAL.length`, read from the one declared set the
+    // validator subtracts from the frozen provider seal. Subject and strength unchanged;
+    // the number simply stops being typed in a second place where it can disagree.
+    // [TEST-MOD-APPROVED #2591 · cutover] The MIRROR of the addition. The nine
+    // deleted Postgres wrappers take two discovery records with them, so the
+    // measured total is the frozen 60, plus what is declared as added, minus what
+    // the registry records as consolidated. Every term is derived.
+    const consolidatedProviders = manifest.workflowProviders.filter((item) => item.transition === "consolidated-provider");
+    assert.equal(providers.length, 60 + PROVIDERS_ADDED_SINCE_SEAL.length - consolidatedProviders.length,
+      "terminal provider discovery must MEASURE 60 plus the declared additions minus the consolidated records, not inherit 67");
     // The seven that left discovery are exactly the seven the registry now
     // carries as batched providers, so nothing was lost — only relocated.
     assert.equal(manifest.workflowProviders.filter((item) => candidateNames.includes(item.workflow)
