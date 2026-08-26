@@ -1,21 +1,31 @@
 BEGIN;
 -- ===========================================================================
--- issue #2579 — TEACH THE ALLOWLIST THE EDGE FUNCTION'S OWN TOKENS.
+-- issue #2579 — MAKE THE REFUSAL ALLOWLIST COMPLETE, BY DERIVATION.
 --
 -- Found by firing a real refusal at the deployed endpoint, not by reading code.
 -- A past-event checkout was correctly refused with `event_no_active_dates` and
 -- correctly RECORDED — as `unknown_token`.
 --
--- The original allowlist was built from the 29 tokens the SQL checkout function
--- can RAISE. But the edge function refuses on its own account too, before the
--- RPC is ever reached, and #2629 started recording those. Nine of them were
--- names the allowlist had never heard.
+-- THE DESIGN HELD, and that is the part worth keeping. An unrecognised token is
+-- STORED as `unknown_token`, never dropped. That decision paid for itself within
+-- a minute of going live: the row existed, was queryable, and pointed straight at
+-- the gap. Had it dropped what it did not recognise — the obvious "only record
+-- known reasons" reading — the log would have looked perfectly healthy while
+-- silently under-reporting the most common refusal on that path. A telemetry
+-- system that discards what it does not understand cannot tell you what you do
+-- not already know.
 --
--- The design held: an unrecognised token is STORED as `unknown_token`, never
--- dropped. That decision paid for itself within a minute of going live — the
--- row existed, was queryable, and pointed straight at the gap. Had it dropped
--- the row instead, the log would have looked healthy and quietly under-reported
--- the single most common refusal on the path.
+-- THE FIRST FIX WAS ITSELF INCOMPLETE, in exactly the way it was fixing. It added
+-- the nine tokens that had been OBSERVED. Deriving the true set from ground truth
+-- — `pg_get_functiondef` on the installed checkout RPCs, plus every `error:` the
+-- edge function can emit — found 29 more still missing, including the ones that
+-- answer the question this log exists to answer: `bookings_closed`,
+-- `intake_form_required`, `tax_country_unsupported`, `checkout_sign_in_required`,
+-- `pricing_config_unavailable`, `paystack_initialize_failed`.
+--
+-- Patching what you have seen is how the gap got here. The allowlist below is the
+-- DERIVED UNION of both emitters, not a list of incidents. Over-inclusion is free
+-- — a token that never fires costs nothing. Under-inclusion is the bug.
 -- ===========================================================================
 
 CREATE OR REPLACE FUNCTION public.issue_2579_record_checkout_refusal(
@@ -33,23 +43,33 @@ SET search_path = public, extensions
 AS $$
 DECLARE
   v_known text[] := ARRAY[
-    -- Raised by `issue_1930_ticket_checkout_create_session_base`.
-    'buyer_phone_required','event_already_ended','event_currency_required',
-    'event_not_found','event_not_selling','installment_count_out_of_range',
-    'installment_days_after_booking_invalid','installment_deposit_pct_out_of_range',
-    'installment_due_mode_invalid','installment_ordinal_invalid',
-    'installment_pct_out_of_range','installment_pct_sum_mismatch',
-    'installment_rounding_invalid','installment_schedule_malformed',
-    'installment_schedule_past_due_at_booking','mixed_currency_cart',
-    'occurrence_not_available','occurrence_not_found','payment_plan_choice_invalid',
-    'stripe_account_not_ready','ticket_capacity_exceeded','ticket_lines_required',
+    -- Raised by the SQL checkout RPC *and* refusable at the edge.
+    'buyer_phone_required','checkout_restricted','occurrence_not_available',
+    'occurrence_not_found','payment_plan_choice_invalid','qr_token_pepper_missing',
+    'stripe_account_not_ready','ticket_lines_required',
+    -- Raised only by the SQL checkout RPC (installed definitions).
+    'checkout_session_not_found','checkout_sign_in_required','event_already_ended',
+    'event_currency_required','event_not_found','event_not_selling',
+    'installment_amount_invalid','installment_count_out_of_range','installment_days_after_booking_invalid',
+    'installment_deposit_pct_out_of_range','installment_due_mode_invalid','installment_ordinal_invalid',
+    'installment_pct_out_of_range','installment_pct_sum_mismatch','installment_plan_finalize_missing_customer_or_pm',
+    'installment_rounding_invalid','installment_schedule_malformed','installment_schedule_past_due_at_booking',
+    'mixed_currency_cart','payment_intent_required','ticket_capacity_exceeded',
     'ticket_quantity_above_max','ticket_quantity_below_min','ticket_quantity_invalid',
     'ticket_sales_ended','ticket_sales_not_started','ticket_type_not_found',
     'ticket_type_unavailable',
-    -- issue #2629 — refused by the EDGE function before the RPC is reached.
-    -- These never appear in any migration, which is why the first pass missed
-    -- them entirely.
-    'buyer_email_invalid','buyer_name_required','checkout_in_progress','checkout_session_url_missing','event_id_required','event_no_active_dates','free_reservation_already_exists','qr_token_pepper_missing','web_base_url_missing'
+    -- Refused only by the edge function, before the RPC is reached.
+    'application_fee_persistence_failed','bookings_closed','buyer_email_invalid',
+    'buyer_name_required','checkout_finalize_failed','checkout_in_progress',
+    'checkout_session_create_failed','checkout_session_failed','checkout_session_persist_failed',
+    'checkout_session_url_missing','event_date_lookup_failed','event_id_required',
+    'event_lookup_failed','event_no_active_dates','free_reservation_already_exists',
+    'installment_customer_provisioning_failed','intake_form_required','intake_schema_lookup_failed',
+    'intake_schema_stale','internal_error','invalid_json',
+    'method_not_allowed','occurrence_lookup_failed','payment_intent_create_failed',
+    'payment_session_persist_failed','paystack_initialize_failed','pricing_config_unavailable',
+    'tax_calculation_failed','tax_country_unsupported','upgrade_required',
+    'web_base_url_missing'
   ];
   v_token text;
   v_brand_id uuid;
@@ -92,7 +112,8 @@ GRANT EXECUTE ON FUNCTION public.issue_2579_record_checkout_refusal(
   uuid,uuid,text,integer,text,text,text) TO service_role;
 
 DO $probe$
-DECLARE v_def text; v_count int;
+DECLARE
+  v_t text; v_def text; v_count int;
 BEGIN
   SELECT count(*) INTO v_count FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace
    WHERE n.nspname='public' AND p.proname='issue_2579_record_checkout_refusal';
@@ -101,15 +122,27 @@ BEGIN
   END IF;
 
   -- The nine edge tokens must now be recognised BY NAME, not swallowed.
-  PERFORM public.issue_2579_record_checkout_refusal(
-    NULL, NULL, 'event_no_active_dates', 1, 'probe-allowlist', '+2348012345678', 'p@example.invalid');
-  IF NOT EXISTS (SELECT 1 FROM public.checkout_refusals
-                  WHERE surface='probe-allowlist' AND raise_token='event_no_active_dates') THEN
-    RAISE EXCEPTION 'issue #2579 probe: the edge token is still recorded as unknown';
-  END IF;
+  -- Assert the CLASS, not one incident. Every token below was missing before
+  -- this migration; each is a real reason a real buyer could not check out.
+  -- If a future emitter adds a token and nobody updates the array, the token
+  -- lands here as `unknown_token` and this probe fails loudly on next deploy.
+  FOREACH v_t IN ARRAY ARRAY[
+    'event_no_active_dates','bookings_closed','intake_form_required',
+    'tax_country_unsupported','checkout_sign_in_required','pricing_config_unavailable',
+    'paystack_initialize_failed','checkout_restricted','upgrade_required',
+    'internal_error','invalid_json','payment_intent_required'
+  ] LOOP
+    PERFORM public.issue_2579_record_checkout_refusal(
+      NULL, NULL, v_t, 1, 'probe-allowlist', '+2348012345678', 'p@example.invalid');
+    IF NOT EXISTS (SELECT 1 FROM public.checkout_refusals
+                    WHERE surface='probe-allowlist' AND raise_token=v_t) THEN
+      RAISE EXCEPTION 'issue #2579 probe: token % is still swallowed as unknown_token', v_t;
+    END IF;
+  END LOOP;
 
-  -- And a genuinely unknown token must STILL be kept, not dropped. That is the
-  -- property that surfaced this gap in the first place.
+  -- And a genuinely unknown token must STILL be kept, not dropped. This is the
+  -- property that made the original gap findable at all, so it is the one most
+  -- worth protecting.
   PERFORM public.issue_2579_record_checkout_refusal(
     NULL, NULL, 'not_a_real_token_at_all', 1, 'probe-allowlist', NULL, NULL);
   IF NOT EXISTS (SELECT 1 FROM public.checkout_refusals
