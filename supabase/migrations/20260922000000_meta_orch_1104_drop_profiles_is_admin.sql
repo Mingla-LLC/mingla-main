@@ -1,5 +1,11 @@
 -- META-ORCH-1104 D5.1 Step B — OPERATOR-GATED drop of the dead profiles.is_admin column.
 --
+-- @migration-hold: awaiting Seth's explicit go (#2614). Soak re-verified 2026-08-24:
+--   0 of 144 profiles have is_admin = true; 0 of 75 policies read it (all use
+--   is_admin_user()); 0 code readers; backup table holds 38 rows. This token
+--   tells scripts/ops/audit-migration-receipts.mjs the missing receipt is a
+--   DECISION, not a gap, so it stops being re-reported as a finding forever.
+--
 -- ⚠ DO NOT APPLY WITH THE FEATURE MIGRATION (20260921000000_meta_orch_1104_support_foundation.sql).
 -- Apply ONLY after Seth confirms Phase 0 has soaked with NO is_admin readers, on his
 -- explicit go. The feature migration SNAPSHOTTED the column into
