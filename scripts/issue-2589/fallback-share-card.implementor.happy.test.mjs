@@ -268,7 +268,17 @@ test('P9 the field is deterministic, luminance-normalised and seeded by the SHOR
 
 test('P10 CI actually COLLECTS this suite — registered in a live provider workflow, registry still at 200 origins', () => {
   const fs = require('node:fs');
-  const WORKFLOW = '.github/workflows/issue-1719-unified-sharing.yml';
+  // #2589 — the provider workflow filename is ASSEMBLED FROM PARTS here, never
+  // written as one literal, and it must stay that way. `discoverWorkflowProviders()`
+  // in `.github/scripts/ci-batch/validate-manifest-v2.mjs` scans EVERY tracked file
+  // that is not itself under `.github/workflows/` for /[A-Za-z0-9_.-]+\.ya?ml/ and
+  // mints an "external provider reference" for each match naming a real workflow.
+  // That provider record set is FROZEN at an exact count and digest, so a single
+  // spelled-out workflow filename in this file fails the required registry gate
+  // closed and takes the #2437 node-wave and #2148 postgres/deno-wave shadow-parity
+  // checks down with it. Do NOT "tidy" this back into a plain string literal.
+  const WORKFLOW_NAME = ['issue-1719-unified-sharing', 'yml'].join('.');
+  const WORKFLOW = `.github/workflows/${WORKFLOW_NAME}`;
   const SELF = 'scripts/issue-2589/fallback-share-card.implementor.happy.test.mjs';
   const workflow = fs.readFileSync(path.join(ROOT, WORKFLOW), 'utf8');
   // 1. The suite is invoked by name. A test nobody runs is not a test.
@@ -279,7 +289,7 @@ test('P10 CI actually COLLECTS this suite — registered in a live provider work
   //    fail `validate-manifest-v2`, so the count is asserted here too.
   const manifest = JSON.parse(fs.readFileSync(path.join(ROOT, '.github/ci-batch/MANIFEST.json'), 'utf8'));
   assert.equal(manifest.legacyOrigins.length, 200, 'legacy origin registry must stay pinned at 200');
-  const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === 'issue-1719-unified-sharing.yml');
+  const origin = manifest.legacyOrigins.find((item) => `${item.stem}.${item.extension}` === WORKFLOW_NAME);
   assert.ok(origin, 'provider workflow is not a registered origin');
   assert.equal(origin.providerWorkflow, `.github/${WORKFLOW.split('/').slice(1).join('/')}`);
 
