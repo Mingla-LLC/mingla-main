@@ -84,11 +84,35 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "../../..");
 
+/**
+ * Sweep roots, each with its own accounting. A single global element floor is
+ * NOT enough: measured contributions are `mingla-business/src` 20,
+ * `mingla-business/app` 0, `app-mobile/src` 12 and `packages` 1, so one global
+ * floor of 20 was cleared by `mingla-business/src` ALONE — three of the four
+ * roots could vanish and the gate still reported OK. That is the
+ * check-that-carries-no-information class, inside a gate whose whole purpose is
+ * preventing it.
+ *
+ * `minFiles` is the blunt assertion that the directory was actually WALKED. It
+ * is what catches a wrong path, and it is the ONLY thing guarding the one root
+ * that legitimately resolves zero elements.
+ *
+ * `minElements` is the floor on picker elements, set below today's measured
+ * count to leave room for genuine refactors but far above zero.
+ */
 const SCAN_ROOTS = [
-  "mingla-business/src",
-  "mingla-business/app",
-  "app-mobile/src",
-  "packages",
+  // measured: 2113 files, 20 elements, 11 importing files
+  { path: "mingla-business/src", minFiles: 1500, minElements: 15 },
+  // measured: 216 files, 0 elements. DELIBERATELY KEPT at minElements 0.
+  // This is the Expo Router route layer; it renders no picker today, so a naive
+  // "every root must contribute" rule would red on arrival. It stays in the
+  // sweep because a picker added to a route file must still be covered, and
+  // `minFiles` still proves the root was opened.
+  { path: "mingla-business/app", minFiles: 100, minElements: 0 },
+  // measured: 781 files, 12 elements, 6 importing files
+  { path: "app-mobile/src", minFiles: 500, minElements: 8 },
+  // measured: 214 files, 1 element, 1 importing file
+  { path: "packages", minFiles: 100, minElements: 1 },
 ];
 const SKIP_DIRS = new Set([
   "node_modules",
@@ -106,35 +130,66 @@ const CENSUS_FILES = [
   "mingla-business/src/components/event/TicketTierEditSheet.tsx",
   "mingla-business/src/components/trip/BookingDeadlinePicker.tsx",
 ];
-/**
- * Floor for total resolved elements across the sweep. Measured at 31 when this
- * gate shipped; 20 leaves room for genuine refactors while still failing loudly
- * if the parser goes blind.
- */
-const CENSUS_FLOOR = 20;
 
 // ---------------------------------------------------------------------------
 // Source normalisation
 // ---------------------------------------------------------------------------
 
 /**
+ * Index of the quote closing the one at `open`, if it closes on the SAME line;
+ * otherwise -1.
+ *
+ * A backslash escapes the next character INCLUDING a newline, so a genuine
+ * line-continuation string still resolves.
+ */
+export function stringCloserOnSameLine(src, open) {
+  const quote = src[open];
+  for (let i = open + 1; i < src.length; i += 1) {
+    const c = src[i];
+    if (c === "\\") { i += 1; continue; }
+    if (c === "\n") return -1;
+    if (c === quote) return i;
+  }
+  return -1;
+}
+
+/**
  * Blank comment bodies, preserving newlines and total character offsets so
  * reported line numbers stay true. String and template CONTENTS are preserved —
  * `"datetime"` is the payload — but the scanner still has to know where strings
  * start and end so that a `//` or `/*` inside one is not mistaken for a comment.
+ *
+ * APOSTROPHES IN JSX TEXT ARE NOT STRING DELIMITERS. Treating every `'` as one
+ * desynchronises the scanner on ordinary prose: `Brand's local time` opened a
+ * quote zone that ran to the next apostrophe — in practice to end of file — and
+ * comments inside that zone were never stripped, so a commented-out picker was
+ * read as live code. Measured blast radius when found: 207 files with such
+ * zones, 6 of them importing the picker, including a 529-line zone in
+ * CreatorStep2When.tsx.
+ *
+ * The rule that fixes it: a JS single- or double-quoted string literal cannot
+ * contain a raw newline. So a quote that does not close on its own line is not
+ * a delimiter, and is passed through as an ordinary character.
  */
 export function stripComments(src) {
   let out = "";
   let i = 0;
-  let state = "code"; // code | line | block | sq | dq | tpl
+  let state = "code"; // code | line | block | tpl
   while (i < src.length) {
     const c = src[i];
     const d = src[i + 1];
     if (state === "code") {
       if (c === "/" && d === "/") { out += "  "; i += 2; state = "line"; continue; }
       if (c === "/" && d === "*") { out += "  "; i += 2; state = "block"; continue; }
-      if (c === "'") { out += c; i += 1; state = "sq"; continue; }
-      if (c === '"') { out += c; i += 1; state = "dq"; continue; }
+      if (c === "'" || c === '"') {
+        const close = stringCloserOnSameLine(src, i);
+        // Unterminated on this line -> prose apostrophe, not a delimiter.
+        if (close === -1) { out += c; i += 1; continue; }
+        out += src.slice(i, close + 1);
+        i = close + 1;
+        continue;
+      }
+      // Template literals MAY legitimately span newlines, so they keep a state.
       if (c === "`") { out += c; i += 1; state = "tpl"; continue; }
       out += c; i += 1; continue;
     }
@@ -146,10 +201,9 @@ export function stripComments(src) {
       if (c === "*" && d === "/") { out += "  "; i += 2; state = "code"; continue; }
       out += c === "\n" ? "\n" : " "; i += 1; continue;
     }
-    // Inside a string/template: contents are KEPT verbatim.
+    // Inside a template literal: contents kept verbatim.
     if (c === "\\") { out += src.slice(i, i + 2); i += 2; continue; }
-    const closer = state === "sq" ? "'" : state === "dq" ? '"' : "`";
-    if (c === closer) { out += c; i += 1; state = "code"; continue; }
+    if (c === "`") { out += c; i += 1; state = "code"; continue; }
     out += c; i += 1;
   }
   return out;
@@ -368,6 +422,50 @@ function walk(dir, out) {
     }
   }
   return out;
+}
+
+// ---------------------------------------------------------------------------
+// Census
+// ---------------------------------------------------------------------------
+
+/**
+ * Judge the sweep from what was ACTUALLY walked.
+ *
+ * `measured` is a Map keyed by root path -> {exists, files, elements}. Kept pure
+ * and exported so the self-test can drive it with synthetic accounting,
+ * including the knife-edge case a global floor could not see.
+ */
+export function auditRoots(measured, roots = SCAN_ROOTS) {
+  const failures = [];
+  for (const root of roots) {
+    const m = measured.get(root.path);
+    if (m === undefined || m.exists !== true) {
+      failures.push(
+        `${root.path}: sweep root DOES NOT EXIST. The gate would report on a ` +
+          `directory it never opened — every file under it is unscanned and the ` +
+          `run would still be green. Fix the path or remove the root deliberately.`,
+      );
+      continue;
+    }
+    if (m.files < root.minFiles) {
+      failures.push(
+        `${root.path}: walked ${m.files} source files, expected at least ` +
+          `${root.minFiles}. The root exists but is nearly empty — a moved ` +
+          `directory or a broken walk, either way the files it should cover are ` +
+          `not being scanned.`,
+      );
+      continue;
+    }
+    if (m.elements < root.minElements) {
+      failures.push(
+        `${root.path}: resolved ${m.elements} picker elements, expected at least ` +
+          `${root.minElements}. The root is being walked but the parser has gone ` +
+          `blind there (import renamed, element renamed, or a refactor), so it ` +
+          `would pass vacuously on the very defect it guards.`,
+      );
+    }
+  }
+  return failures;
 }
 
 // ---------------------------------------------------------------------------
@@ -596,6 +694,133 @@ if (process.argv.includes("--self-test")) {
     }
   }
 
+  // ---- M-16 an apostrophe in JSX text must not open a quote zone -----------
+  // The conjunction that matters: prose containing `'` followed by a
+  // COMMENTED-OUT picker. Treating `'` as a string delimiter opened a zone that
+  // ran to the next apostrophe — in practice to EOF — and comments inside it
+  // were never stripped, so the commented picker was scanned as live code.
+  // Repro'd against ComposerStepWhen.tsx line 279 ("Brand's local time").
+  // TWO apostrophes, with the commented-out picker BETWEEN them. That is what
+  // makes this mutant discriminating: the opening `'` has to find a closing one
+  // for the broken scanner to swallow the comment into a "string". A fixture
+  // with a single apostrophe passes either way and proves nothing — the first
+  // version of this case had exactly that flaw.
+  expectPass(
+    "M-16 apostrophe zone containing a commented-out picker",
+    `${IMPORT}
+     const a = <Text>Brand's local time · best between 10am-2pm.</Text>;
+     // {Platform.OS === "android" && <DateTimePicker mode="datetime" />}
+     const b = <Text>We'll send the blast then.</Text>;
+     const el = <View>
+       {Platform.OS === "android" && (
+         <DateTimePicker value={v} mode={s === "date" ? "date" : "time"} onChange={h} />
+       )}
+     </View>;`,
+    1,
+  );
+
+  // ---- M-17 a real single-line string is STILL a string --------------------
+  // The apostrophe fix must not go the other way: `'https://x'` has to keep its
+  // `//` from being read as a comment.
+  {
+    const stripped = stripComments(`const u = 'https://example.com/a'; const k = 1;`);
+    if (!stripped.includes("const k = 1")) {
+      selfFailures.push("M-17: a real single-quoted string was treated as prose");
+    }
+    if (!stripped.includes("https://example.com/a")) {
+      selfFailures.push("M-17: string contents were blanked");
+    }
+  }
+
+  // ---- M-18…M-21  CENSUS: per-root accounting ------------------------------
+  // A single global element floor could not see any of these. Measured
+  // contributions are 20 / 0 / 12 / 1, so a global floor of 20 was cleared by
+  // `mingla-business/src` alone — three of four roots could vanish silently.
+  const ROOTS = [
+    { path: "a/src", minFiles: 1500, minElements: 15 },
+    { path: "a/app", minFiles: 100, minElements: 0 },
+    { path: "b/src", minFiles: 500, minElements: 8 },
+    { path: "c", minFiles: 100, minElements: 1 },
+  ];
+  const healthy = () =>
+    new Map([
+      ["a/src", { exists: true, files: 2113, elements: 20, importing: 11 }],
+      ["a/app", { exists: true, files: 216, elements: 0, importing: 0 }],
+      ["b/src", { exists: true, files: 781, elements: 12, importing: 6 }],
+      ["c", { exists: true, files: 214, elements: 1, importing: 1 }],
+    ]);
+  const censusFail = (name, mutate, needle) => {
+    const m = healthy();
+    mutate(m);
+    const f = auditRoots(m, ROOTS);
+    if (f.length === 0) { selfFailures.push(`${name}: NOT flagged`); return; }
+    if (!f.some((x) => x.includes(needle))) {
+      selfFailures.push(
+        `${name}: flagged for the wrong reason — expected a failure mentioning ` +
+          `${JSON.stringify(needle)}, got: ${f[0]}`,
+      );
+    }
+  };
+
+  // M-18 — the root path is broken. This is the one the gate shipped blind to.
+  censusFail(
+    "M-18 broken root path",
+    (m) => m.set("b/src", { exists: false, files: 0, elements: 0, importing: 0 }),
+    "DOES NOT EXIST",
+  );
+
+  // M-19 — the root exists but was not really walked.
+  censusFail(
+    "M-19 root exists but is empty",
+    (m) => m.set("b/src", { exists: true, files: 3, elements: 0, importing: 0 }),
+    "walked 3 source files",
+  );
+
+  // M-20 — THE KNIFE EDGE. `b/src` goes blind (12 -> 0) while `a/src` grows
+  // enough that the TOTAL still clears the old global floor of 20. A global
+  // check passes here; per-root accounting is the only thing that catches it.
+  censusFail(
+    "M-20 knife edge — total still clears a global floor",
+    (m) => {
+      m.set("b/src", { exists: true, files: 781, elements: 0, importing: 0 });
+      m.set("a/src", { exists: true, files: 2113, elements: 40, importing: 11 });
+    },
+    "b/src: resolved 0 picker elements",
+  );
+  {
+    // …and prove the premise: the total really does still clear 20, so this is
+    // a case a global floor genuinely could not see.
+    const m = healthy();
+    m.set("b/src", { exists: true, files: 781, elements: 0, importing: 0 });
+    m.set("a/src", { exists: true, files: 2113, elements: 40, importing: 11 });
+    const total = [...m.values()].reduce((n, x) => n + x.elements, 0);
+    if (total < 20) {
+      selfFailures.push(
+        `M-20: premise broken — total is ${total}, so a global floor would have ` +
+          `caught this and the mutant proves nothing`,
+      );
+    }
+  }
+
+  // M-21 — the declared-zero root must NOT red while it is genuinely walked.
+  // `mingla-business/app` renders no picker today; a naive "every root must
+  // contribute" rule would fail on arrival. Its guard is minFiles, not
+  // minElements.
+  {
+    const f = auditRoots(healthy(), ROOTS);
+    if (f.length !== 0) {
+      selfFailures.push(`M-21: healthy accounting wrongly flagged — ${f[0]}`);
+    }
+    const m = healthy();
+    m.set("a/app", { exists: false, files: 0, elements: 0, importing: 0 });
+    if (auditRoots(m, ROOTS).length === 0) {
+      selfFailures.push(
+        "M-21: the zero-element root can vanish entirely without failing — " +
+          "minFiles is not guarding it",
+      );
+    }
+  }
+
   if (selfFailures.length > 0) {
     console.error(
       "#2664 I-PROPOSED-2664-ANDROID-NEVER-DATETIME-PICKER-MODE self-test FAIL:",
@@ -605,10 +830,12 @@ if (process.argv.includes("--self-test")) {
   }
   console.log(
     "#2664 I-PROPOSED-2664-ANDROID-NEVER-DATETIME-PICKER-MODE self-test PASS " +
-      "(15/15 mutants: M-1 android-guard, M-2 !==web, M-3 !==ios substring trap, " +
+      "(21/21 mutants: M-1 android-guard, M-2 !==web, M-3 !==ios substring trap, " +
       "M-4 unguarded, M-5 ternary else, M-6 mode expression, M-7 aliased import, " +
       "M-8 shipped shape, M-9 && pin, M-10 commented-out violation, M-11 vacuity, M-12 no import, " +
-      "M-13 real modes, M-14 name-prefix trap, M-15 census).",
+      "M-13 real modes, M-14 name-prefix trap, M-15 census, M-16 apostrophe zone, " +
+      "M-17 real string, M-18 broken root, M-19 empty root, M-20 knife edge, " +
+      "M-21 declared-zero root).",
   );
   process.exit(0);
 }
@@ -617,26 +844,47 @@ if (process.argv.includes("--self-test")) {
 // Plain mode
 // ---------------------------------------------------------------------------
 
-const files = [];
-for (const root of SCAN_ROOTS) walk(path.join(repoRoot, root), files);
-files.sort();
-
+// Every root is walked SEPARATELY so its contribution is measured rather than
+// inferred from a global total. `exists` is recorded explicitly because `walk()`
+// swallows a missing directory — which is precisely how a broken root used to
+// pass: 781 files and 12 elements vanished and the run stayed green.
+const measured = new Map();
 const failures = [];
-let totalResolved = 0;
 const perCensusFile = new Map(CENSUS_FILES.map((f) => [f, null]));
-let swept = 0;
 
-for (const full of files) {
-  const rel = path.relative(repoRoot, full);
-  const { resolved } = checkSource(fs.readFileSync(full, "utf8"), rel, failures);
-  totalResolved += resolved;
-  if (resolved > 0) swept += 1;
-  if (perCensusFile.has(rel)) perCensusFile.set(rel, resolved);
+for (const root of SCAN_ROOTS) {
+  const abs = path.join(repoRoot, root.path);
+  let exists = false;
+  try {
+    exists = fs.statSync(abs).isDirectory();
+  } catch {
+    exists = false;
+  }
+  const rootFiles = exists ? walk(abs, []) : [];
+  rootFiles.sort();
+
+  let elements = 0;
+  let importing = 0;
+  for (const full of rootFiles) {
+    const rel = path.relative(repoRoot, full);
+    const { resolved } = checkSource(fs.readFileSync(full, "utf8"), rel, failures);
+    elements += resolved;
+    if (resolved > 0) importing += 1;
+    if (perCensusFile.has(rel)) perCensusFile.set(rel, resolved);
+  }
+  measured.set(root.path, {
+    exists,
+    files: rootFiles.length,
+    elements,
+    importing,
+  });
 }
 
 // C-3 — census, checked BEFORE reporting a clean run. "Zero violations" from a
 // parser that resolved zero elements is exactly the failure mode this gate
 // exists to prevent, and it must not produce it itself.
+failures.push(...auditRoots(measured));
+
 for (const [rel, resolved] of perCensusFile) {
   if (resolved === null) {
     failures.push(
@@ -651,23 +899,29 @@ for (const [rel, resolved] of perCensusFile) {
     );
   }
 }
-if (totalResolved < CENSUS_FLOOR) {
-  failures.push(
-    `census: resolved ${totalResolved} picker elements across ${SCAN_ROOTS.join(
-      " + ",
-    )}, expected at least ${CENSUS_FLOOR}. The sweep or the import matcher has ` +
-      `broken; a near-empty universe makes this gate carry no information.`,
-  );
-}
+
+// Built from what was ACTUALLY walked, never from the SCAN_ROOTS literal. The
+// previous success line named every configured root whether or not it had been
+// opened, which made the one output a reviewer trusts the one that lied.
+const perRootReport = SCAN_ROOTS.map((r) => {
+  const m = measured.get(r.path);
+  if (m === undefined || !m.exists) return `${r.path}=MISSING`;
+  return `${r.path}=${m.files}f/${m.elements}e`;
+}).join(" ");
+
+const totalFiles = [...measured.values()].reduce((n, m) => n + m.files, 0);
+const totalElements = [...measured.values()].reduce((n, m) => n + m.elements, 0);
+const totalImporting = [...measured.values()].reduce((n, m) => n + m.importing, 0);
 
 if (failures.length > 0) {
   console.error("FAIL: #2664 android-no-datetime-picker-mode");
   for (const f of failures) console.error(`  - ${f}`);
+  console.error(`  (walked: ${perRootReport})`);
   process.exit(1);
 }
 
 console.log(
-  `OK: #2664 android-no-datetime-picker-mode — ${files.length} source files swept ` +
-    `across ${SCAN_ROOTS.join(" + ")}; ${totalResolved} picker elements resolved in ` +
-    `${swept} importing files; none reaches Android with mode="datetime".`,
+  `OK: #2664 android-no-datetime-picker-mode — ${totalFiles} source files walked, ` +
+    `${totalElements} picker elements resolved in ${totalImporting} importing files; ` +
+    `none reaches Android with mode="datetime". Per root: ${perRootReport}.`,
 );
