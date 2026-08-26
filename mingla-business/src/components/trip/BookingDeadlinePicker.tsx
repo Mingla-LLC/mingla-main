@@ -34,6 +34,14 @@ import {
 // Class 2 fix: @react-native-community/datetimepicker has NO web build, so the
 // booking-deadline picker was broken on web.
 import { WebDateTimeInput } from "../ui/WebDateTimeInput";
+// #2664 — Android has no `datetime` picker mode. This component's picker was
+// gated `Platform.OS !== "web"`, so it reached Android and carried the same
+// unmount crash as the sale window; it just had not been reported yet.
+import {
+  type AndroidDateTimeStep,
+  combineAndroidDateAndTime,
+  seedAndroidTimeStep,
+} from "../../utils/androidDateTimeStep";
 
 export interface BookingDeadlinePickerProps {
   /** ISO timestamptz string, or null = no deadline set. */
@@ -89,6 +97,13 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
   // Pending Date the operator is scrubbing in the spinner. Only flushed to
   // `value` when they tap "Set deadline".
   const [pendingDate, setPendingDate] = useState<Date | null>(null);
+  // #2664 — Android two-step. `androidStep` names the real Android mode on
+  // screen (`date` then `time`); `androidDatePart` holds the step-1 calendar
+  // date. `onChange` is called once, from both halves, or not at all.
+  const [androidStep, setAndroidStep] = useState<AndroidDateTimeStep | null>(
+    null,
+  );
+  const [androidDatePart, setAndroidDatePart] = useState<Date | null>(null);
   // Track user intent independently of `value` so the controlled Switch flips
   // immediately on tap (parent `value` is still null until the spinner is
   // confirmed).
@@ -109,6 +124,10 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
         : new Date(Date.now() + 60 * 60 * 1000);
     setPendingDate(seed);
     setValidationError(null);
+    // #2664 — Android starts on the DATE half. iOS keeps its single `datetime`
+    // spinner, which is a real mode there.
+    setAndroidStep(Platform.OS === "android" ? "date" : null);
+    setAndroidDatePart(null);
     setPickerOpen(true);
   }, [value]);
 
@@ -122,6 +141,8 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
         onChange(null);
         setPickerOpen(false);
         setPendingDate(null);
+        setAndroidStep(null);
+        setAndroidDatePart(null);
         setValidationError(null);
       }
     },
@@ -135,21 +156,43 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
   const handlePickerChange = useCallback(
     (event: DateTimePickerEvent, selectedDate?: Date) => {
       if (Platform.OS === "android") {
-        // Android picker is modal — close on every change event (set OR dismiss).
-        setPickerOpen(false);
+        // #2664 — Android picker is modal and has only `date`/`time` modes, so
+        // it runs as two dialogs. Cancelling EITHER abandons the whole edit:
+        // a dismiss on the time step must not persist the date already chosen.
         if (event.type === "dismissed" || !selectedDate) {
+          setPickerOpen(false);
+          setPendingDate(null);
+          setAndroidStep(null);
+          setAndroidDatePart(null);
+          return;
+        }
+        if (androidStep === "date") {
+          // Step 1 of 2 — hold the calendar date, present the clock. The picker
+          // stays open and `onChange` has NOT been called.
+          setAndroidDatePart(selectedDate);
+          setAndroidStep("time");
+          return;
+        }
+        // Step 2 of 2 — combine both halves, then validate and commit inline
+        // (no separate Set button on Android — modal UX).
+        setPickerOpen(false);
+        setAndroidStep(null);
+        setAndroidDatePart(null);
+        if (androidDatePart === null) {
           setPendingDate(null);
           return;
         }
-        // Android commits inline (no separate Set button needed — modal UX).
-        const ms = selectedDate.getTime();
-        const err = validatePending(ms, tripStartIso);
+        const combined = combineAndroidDateAndTime(
+          androidDatePart,
+          selectedDate,
+        );
+        const err = validatePending(combined.getTime(), tripStartIso);
         if (err !== null) {
           setValidationError(err);
           return;
         }
         setValidationError(null);
-        onChange(selectedDate.toISOString());
+        onChange(combined.toISOString());
         return;
       }
       // iOS spinner — just track the in-progress selection; don't commit yet.
@@ -157,7 +200,7 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
         setPendingDate(selectedDate);
       }
     },
-    [onChange, tripStartIso],
+    [onChange, tripStartIso, androidStep, androidDatePart],
   );
 
   const handleConfirmPending = useCallback(() => {
@@ -180,6 +223,8 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
   const handleCancelPending = useCallback(() => {
     setPickerOpen(false);
     setPendingDate(null);
+    setAndroidStep(null);
+    setAndroidDatePart(null);
     setValidationError(null);
     // If no value was ever set, flip the Switch back to off — the operator
     // backed out of the picker without picking anything.
@@ -308,16 +353,34 @@ export const BookingDeadlinePicker: React.FC<BookingDeadlinePickerProps> = ({
               {formatDeadlineForDisplay(pendingDate.toISOString(), brandTimezone)}
             </Text>
           )}
-          <DateTimePicker
-            value={currentValueDate}
-            mode="datetime"
-            display={Platform.OS === "ios" ? "spinner" : "default"}
-            minimumDate={minDate}
-            maximumDate={maxDate}
-            onChange={handlePickerChange}
-            themeVariant="dark"
-            textColor={textTokens.primary}
-          />
+          {/* #2664 — the picker element is split by platform. `datetime` is a
+              real iOS mode; Android registers only `date` and `time`, so it
+              steps through both. This is CreatorStep2When's proven shape. */}
+          {Platform.OS === "ios" ? (
+            <DateTimePicker
+              value={currentValueDate}
+              mode="datetime"
+              display="spinner"
+              minimumDate={minDate}
+              maximumDate={maxDate}
+              onChange={handlePickerChange}
+              themeVariant="dark"
+              textColor={textTokens.primary}
+            />
+          ) : androidStep !== null ? (
+            <DateTimePicker
+              value={
+                androidStep === "time" && androidDatePart !== null
+                  ? seedAndroidTimeStep(androidDatePart, currentValueDate)
+                  : currentValueDate
+              }
+              mode={androidStep === "date" ? "date" : "time"}
+              display="default"
+              minimumDate={androidStep === "date" ? minDate : undefined}
+              maximumDate={androidStep === "date" ? maxDate : undefined}
+              onChange={handlePickerChange}
+            />
+          ) : null}
           {Platform.OS === "ios" && (
             <View style={styles.confirmRow}>
               <Pressable

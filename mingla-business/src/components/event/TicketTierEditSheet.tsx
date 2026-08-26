@@ -44,6 +44,13 @@ import type { EventWaitlistEntry } from "../../services/waitlistService";
 import { generateTicketId } from "../../utils/draftEventId";
 import { saleWindowCaution } from "../../utils/saleWindowCaution";
 import { formatCurrency } from "../../utils/currency";
+// #2664 — Android has no `datetime` picker mode; the sale window has to step
+// date -> time and combine. See the module header for the crash mechanism.
+import {
+  type AndroidDateTimeStep,
+  combineAndroidDateAndTime,
+  seedAndroidTimeStep,
+} from "../../utils/androidDateTimeStep";
 
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
@@ -445,6 +452,15 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     null,
   );
   const [salePickerTemp, setSalePickerTemp] = useState<Date | null>(null);
+  // #2664 — Android two-step. `saleAndroidStep` says which real Android mode is
+  // presented (`date` then `time`); `saleAndroidDatePart` holds the step-1
+  // calendar date while step 2 is up. NOTHING is committed until step 2 sets —
+  // cancelling either dialog must leave saleStartAt/saleEndAt untouched.
+  const [saleAndroidStep, setSaleAndroidStep] =
+    useState<AndroidDateTimeStep | null>(null);
+  const [saleAndroidDatePart, setSaleAndroidDatePart] = useState<Date | null>(
+    null,
+  );
 
   // Web hidden input refs — tap row → showPicker()/.click() opens browser
   // native datetime picker directly. No Sheet, no Done button on web.
@@ -677,6 +693,10 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
       const initialIso = mode === "start" ? saleStartAt : saleEndAt;
       const initial = initialIso !== null ? new Date(initialIso) : new Date();
       setSalePickerTemp(initial);
+      // #2664 — Android opens on the DATE half of the sequence. iOS keeps its
+      // single `datetime` spinner, which is a real mode there.
+      setSaleAndroidStep(Platform.OS === "android" ? "date" : null);
+      setSaleAndroidDatePart(null);
       setSalePickerMode(mode);
     },
     [saleStartAt, saleEndAt],
@@ -695,15 +715,38 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     (event: DateTimePickerEvent, selected?: Date): void => {
       if (Platform.OS === "android") {
         const mode = salePickerMode;
+        const step = saleAndroidStep;
+        // #2664 — cancelling EITHER dialog abandons the whole edit. A dismiss on
+        // the time step must not silently persist the date the operator already
+        // picked; the sale window is committed once, from both halves, or never.
+        if (event.type === "dismissed" || selected === undefined) {
+          setSalePickerMode(null);
+          setSaleAndroidStep(null);
+          setSaleAndroidDatePart(null);
+          return;
+        }
+        if (step === "date") {
+          // Step 1 of 2. Hold the calendar date and advance to the clock —
+          // the dialog stays open, and saleStartAt/saleEndAt are untouched.
+          setSaleAndroidDatePart(selected);
+          setSaleAndroidStep("time");
+          return;
+        }
+        // Step 2 of 2 — combine and commit.
         setSalePickerMode(null);
-        if (event.type === "dismissed" || selected === undefined) return;
-        commitSalePickerValue(mode, selected);
+        setSaleAndroidStep(null);
+        setSaleAndroidDatePart(null);
+        if (saleAndroidDatePart === null) return;
+        commitSalePickerValue(
+          mode,
+          combineAndroidDateAndTime(saleAndroidDatePart, selected),
+        );
         return;
       }
       // iOS: track temp value; commit on Done.
       if (selected !== undefined) setSalePickerTemp(selected);
     },
-    [salePickerMode, commitSalePickerValue],
+    [salePickerMode, saleAndroidStep, saleAndroidDatePart, commitSalePickerValue],
   );
 
   const handleCloseSalePicker = useCallback((): void => {
@@ -717,6 +760,8 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
     }
     setSalePickerMode(null);
     setSalePickerTemp(null);
+    setSaleAndroidStep(null);
+    setSaleAndroidDatePart(null);
   }, [salePickerMode, salePickerTemp, commitSalePickerValue]);
 
   const handleClearSaleStart = useCallback((): void => {
@@ -1436,19 +1481,29 @@ export const TicketTierEditSheet: React.FC<TicketTierEditSheetProps> = ({
         ) : null}
       </View>
 
-      {/* Android native datetime dialog — auto-dismisses */}
-      {salePickerMode !== null && Platform.OS === "android" ? (
+      {/* Android native dialog — auto-dismisses. #2664: Android registers only
+          `date` and `time` pickers, so this steps date -> time and combines;
+          `mode="datetime"` crashed on unmount here. Same shape as
+          CreatorStep2When's Android branch. */}
+      {salePickerMode !== null &&
+      Platform.OS === "android" &&
+      saleAndroidStep !== null ? (
         <DateTimePicker
           value={
-            salePickerMode === "start"
-              ? saleStartAt !== null
-                ? new Date(saleStartAt)
-                : new Date()
-              : saleEndAt !== null
-                ? new Date(saleEndAt)
-                : new Date()
+            saleAndroidStep === "time" && saleAndroidDatePart !== null
+              ? seedAndroidTimeStep(
+                  saleAndroidDatePart,
+                  salePickerTemp ?? new Date(),
+                )
+              : salePickerMode === "start"
+                ? saleStartAt !== null
+                  ? new Date(saleStartAt)
+                  : new Date()
+                : saleEndAt !== null
+                  ? new Date(saleEndAt)
+                  : new Date()
           }
-          mode="datetime"
+          mode={saleAndroidStep === "date" ? "date" : "time"}
           display="default"
           onChange={handleSalePickerChange}
           is24Hour
