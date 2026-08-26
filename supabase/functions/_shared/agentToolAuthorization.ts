@@ -448,12 +448,14 @@ async function resolveBrand(
       );
       assertExpectedEventType(toolName, rosterEvent);
       if (rosterEvent.brand_id !== brandId) unavailable();
-      if (isUuid(args.event_id) && !sameUuid(rosterRsvp.event_id, args.event_id)) {
+      if (
+        isUuid(args.event_id) && !sameUuid(rosterRsvp.event_id, args.event_id)
+      ) {
         unavailable();
       }
     }
   }
-    const guestIds = [
+  const guestIds = [
     args.guest_id,
     ...(Array.isArray(args.guest_ids) ? args.guest_ids : []),
   ]

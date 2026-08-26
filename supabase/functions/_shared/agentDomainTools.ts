@@ -950,7 +950,6 @@ async function executeRsvpWrite(
   });
 }
 
-
 const createRsvp = writeTool(
   "create_rsvp",
   "Create one private canonical RSVP draft. Dates, tickets, and public visibility are never created before publish.",
@@ -3483,7 +3482,9 @@ const listPartnerSplits = writeTool(
     if (typeof args.currency === "string" && args.currency.length === 3) {
       query = query.eq("transfer_currency", args.currency.toLowerCase());
     }
-    if (typeof args.from === "string") query = query.gte("created_at", args.from);
+    if (typeof args.from === "string") {
+      query = query.gte("created_at", args.from);
+    }
     if (typeof args.to === "string") query = query.lte("created_at", args.to);
     const { data, error } = await query;
     if (error) throw new ToolError("RPC_FAILED", error.message);
@@ -4028,7 +4029,10 @@ const manageBrandPeople = writeTool(
         ? args.display_name.trim()
         : "";
       if (displayName.length < 1) {
-        throw new ToolError("INVALID_ARGS", "display_name is required to add a person");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "display_name is required to add a person",
+        );
       }
       const clientRequestId = isUuid(args.client_request_id)
         ? args.client_request_id
@@ -4037,7 +4041,9 @@ const manageBrandPeople = writeTool(
         p_brand_id: args.brand_id,
         p_display_name: displayName,
         p_email: typeof args.email === "string" ? args.email : null,
-        p_phone_e164: typeof args.phone_e164 === "string" ? args.phone_e164 : null,
+        p_phone_e164: typeof args.phone_e164 === "string"
+          ? args.phone_e164
+          : null,
         p_phone_country_iso: typeof args.phone_country_iso === "string"
           ? args.phone_country_iso
           : null,
@@ -4088,7 +4094,9 @@ const manageEventGroupChat = writeTool(
       await assertAgentReadEvent(client, userId, eventId);
       const { data, error } = await client
         .from("conversations")
-        .select("id, name, is_broadcast_only, is_enabled, events!event_id(title)")
+        .select(
+          "id, name, is_broadcast_only, is_enabled, events!event_id(title)",
+        )
         .eq("event_id", eventId)
         .in("linked_entity_type", ["trip", "event"])
         .maybeSingle();
@@ -4139,7 +4147,9 @@ const manageEventGroupChat = writeTool(
         .order("joined_at", { ascending: true });
       if (error) throw new ToolError("RPC_FAILED", error.message);
       return {
-        participants: (data ?? []).map((row: { user_id: string; joined_at: string }) => ({
+        participants: (data ?? []).map((
+          row: { user_id: string; joined_at: string },
+        ) => ({
           user_id: row.user_id,
           joined_at: row.joined_at,
         })),
@@ -4149,9 +4159,14 @@ const manageEventGroupChat = writeTool(
       if (!isUuid(args.conversation_id)) {
         throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
       }
-      const content = typeof args.content === "string" ? args.content.trim() : "";
+      const content = typeof args.content === "string"
+        ? args.content.trim()
+        : "";
       if (content.length < 1) {
-        throw new ToolError("INVALID_ARGS", "content is required for a text post");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "content is required for a text post",
+        );
       }
       const { data, error } = await client
         .from("messages")
@@ -4189,7 +4204,10 @@ const manageEventGroupChat = writeTool(
           "Not allowed to toggle broadcast-only on this conversation.",
         );
       }
-      return { conversation_id: args.conversation_id, is_broadcast_only: args.is_broadcast_only };
+      return {
+        conversation_id: args.conversation_id,
+        is_broadcast_only: args.is_broadcast_only,
+      };
     }
     if (action === "remove_participant") {
       if (!isUuid(args.conversation_id) || !isUuid(args.participant_user_id)) {
@@ -4292,13 +4310,19 @@ const manageEventDoorSale = writeTool(
         !Number.isInteger(args.amount_cents) ||
         args.amount_cents < 0
       ) {
-        throw new ToolError("INVALID_ARGS", "amount_cents must be a non-negative integer");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "amount_cents must be a non-negative integer",
+        );
       }
       const currency = typeof args.currency === "string"
         ? args.currency.trim().toUpperCase()
         : "GBP";
       if (!/^[A-Z]{3}$/.test(currency)) {
-        throw new ToolError("INVALID_ARGS", "currency must be a 3-letter ISO code");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "currency must be a 3-letter ISO code",
+        );
       }
       const { data, error } = await client
         .from("door_sales_ledger")
@@ -4347,7 +4371,9 @@ const listEventOrders = writeTool(
       .limit(limit);
     if (error) throw new ToolError("RPC_FAILED", error.message);
     const orders = (data ?? []).map((row: Record<string, unknown>) => {
-      const lines = Array.isArray(row.order_line_items) ? row.order_line_items : [];
+      const lines = Array.isArray(row.order_line_items)
+        ? row.order_line_items
+        : [];
       return {
         id: row.id,
         event_id: row.event_id,
@@ -4435,7 +4461,10 @@ const manageEventWaitlist = writeTool(
           "Ticket type not found for this event, or you lack permission.",
         );
       }
-      return { ticket_type_id: data.id, waitlist_enabled: data.waitlist_enabled };
+      return {
+        ticket_type_id: data.id,
+        waitlist_enabled: data.waitlist_enabled,
+      };
     }
     throw new ToolError("INVALID_ARGS", "action must be list or set_enabled");
   },
@@ -4515,7 +4544,9 @@ const manageMarketingAudiences = writeTool(
     if (action === "list") {
       const { data, error } = await client
         .from("marketing_audiences")
-        .select("id, brand_id, name, query_definition, is_system_generated, created_at")
+        .select(
+          "id, brand_id, name, query_definition, is_system_generated, created_at",
+        )
         .eq("account_id", userId)
         .order("created_at", { ascending: false })
         .limit(100);
@@ -4534,8 +4565,9 @@ const manageMarketingAudiences = writeTool(
         .eq("is_system_generated", true);
       if (selErr) throw new ToolError("RPC_FAILED", selErr.message);
       for (const row of existing ?? []) {
-        const qd = (row as { query_definition?: { kind?: string; brand_id?: string } })
-          .query_definition;
+        const qd =
+          (row as { query_definition?: { kind?: string; brand_id?: string } })
+            .query_definition;
         if (qd?.kind === "brand_buyers" && qd.brand_id === args.brand_id) {
           return { audience_id: row.id, ensured: false };
         }
@@ -4572,8 +4604,9 @@ const manageMarketingAudiences = writeTool(
         .eq("is_system_generated", true);
       if (selErr) throw new ToolError("RPC_FAILED", selErr.message);
       for (const row of existing ?? []) {
-        const qd = (row as { query_definition?: { kind?: string; event_id?: string } })
-          .query_definition;
+        const qd =
+          (row as { query_definition?: { kind?: string; event_id?: string } })
+            .query_definition;
         if (qd?.kind === "event_buyers" && qd.event_id === args.event_id) {
           return { audience_id: row.id, ensured: false };
         }
@@ -4632,9 +4665,14 @@ const manageMarketingTemplates = writeTool(
     }
     if (action === "create") {
       const name = typeof args.name === "string" ? args.name.trim() : "";
-      const body = typeof args.body_template === "string" ? args.body_template : "";
+      const body = typeof args.body_template === "string"
+        ? args.body_template
+        : "";
       if (name.length < 1 || body.length < 1) {
-        throw new ToolError("INVALID_ARGS", "name and body_template are required");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "name and body_template are required",
+        );
       }
       if (args.brand_id !== undefined && args.brand_id !== null) {
         await requireBrand(args, client, userId);
@@ -4667,9 +4705,14 @@ const manageMarketingTemplates = writeTool(
         throw new ToolError("INVALID_ARGS", "template_id must be a uuid");
       }
       const name = typeof args.name === "string" ? args.name.trim() : "";
-      const body = typeof args.body_template === "string" ? args.body_template : "";
+      const body = typeof args.body_template === "string"
+        ? args.body_template
+        : "";
       if (name.length < 1 || body.length < 1) {
-        throw new ToolError("INVALID_ARGS", "name and body_template are required");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "name and body_template are required",
+        );
       }
       const { data, error } = await client
         .from("marketing_templates")
@@ -4742,10 +4785,16 @@ const getCampaignReport = writeTool(
       .maybeSingle();
     if (campaignErr) throw new ToolError("RPC_FAILED", campaignErr.message);
     if (campaign === null) {
-      throw new ToolError("INVALID_ARGS", "Campaign not found or access denied.");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Campaign not found or access denied.",
+      );
     }
     if (isUuid(args.brand_id) && args.brand_id !== campaign.brand_id) {
-      throw new ToolError("INVALID_ARGS", "brand_id does not match the campaign");
+      throw new ToolError(
+        "INVALID_ARGS",
+        "brand_id does not match the campaign",
+      );
     }
     if (isUuid(campaign.brand_id)) {
       await assertAgentReadBrand(client, userId, campaign.brand_id);
@@ -4773,15 +4822,16 @@ const getCampaignReport = writeTool(
       (sum, [status, n]) => sum + (acceptedStatuses.has(status) ? n : 0),
       0,
     );
-    const delivered = rows.filter((m) =>
-      (m as { delivered_at?: string | null }).delivered_at != null
-    ).length;
-    const opened = rows.filter((m) =>
-      (m as { opened_at?: string | null }).opened_at != null
-    ).length;
-    const clicked = rows.filter((m) =>
-      ((m as { click_count?: number }).click_count ?? 0) > 0
-    ).length;
+    const delivered =
+      rows.filter((m) =>
+        (m as { delivered_at?: string | null }).delivered_at != null
+      ).length;
+    const opened =
+      rows.filter((m) => (m as { opened_at?: string | null }).opened_at != null)
+        .length;
+    const clicked =
+      rows.filter((m) => ((m as { click_count?: number }).click_count ?? 0) > 0)
+        .length;
     const { data: clicks, error: clickErr } = await client
       .from("marketing_clicks")
       .select("destination_url, clicked_at, message_id")
@@ -4792,9 +4842,13 @@ const getCampaignReport = writeTool(
     let totalClicks = 0;
     const unique = new Set<string>();
     for (const click of clicks ?? []) {
-      if ((click as { clicked_at?: string | null }).clicked_at == null) continue;
+      if ((click as { clicked_at?: string | null }).clicked_at == null) {
+        continue;
+      }
       totalClicks += 1;
-      const url = String((click as { destination_url?: string }).destination_url ?? "");
+      const url = String(
+        (click as { destination_url?: string }).destination_url ?? "",
+      );
       linkCounts.set(url, (linkCounts.get(url) ?? 0) + 1);
       const mid = (click as { message_id?: string | null }).message_id;
       if (typeof mid === "string") unique.add(mid);
@@ -5073,7 +5127,10 @@ const manageSupportInbox = writeTool(
         .maybeSingle();
       if (error) throw new ToolError("RPC_FAILED", error.message);
       if (data === null) {
-        throw new ToolError("INVALID_ARGS", "Ticket not found or access denied.");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Ticket not found or access denied.",
+        );
       }
       return { ticket: data };
     }
@@ -5081,7 +5138,9 @@ const manageSupportInbox = writeTool(
       if (!isUuid(args.ticket_id)) {
         throw new ToolError("INVALID_ARGS", "ticket_id must be a uuid");
       }
-      const content = typeof args.content === "string" ? args.content.trim() : "";
+      const content = typeof args.content === "string"
+        ? args.content.trim()
+        : "";
       if (content.length < 1) {
         throw new ToolError("INVALID_ARGS", "content is required");
       }
@@ -5092,7 +5151,10 @@ const manageSupportInbox = writeTool(
         .maybeSingle();
       if (ticketErr) throw new ToolError("RPC_FAILED", ticketErr.message);
       if (ticket === null || !isUuid(ticket.conversation_id)) {
-        throw new ToolError("INVALID_ARGS", "Ticket not found or access denied.");
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Ticket not found or access denied.",
+        );
       }
       const { data: message, error: msgErr } = await client
         .from("messages")

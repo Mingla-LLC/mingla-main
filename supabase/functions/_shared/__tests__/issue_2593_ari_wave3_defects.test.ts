@@ -211,7 +211,12 @@ const RSVP_EVENT_ROW = { brand_id: BRAND, event_type: "rsvp" };
 Deno.test("#2593 D2a a matching event_id / rsvp_id pair is authorized", async () => {
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
-    { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] },
+    {
+      event_id: EVENT,
+      decision: "approve",
+      scope: "selected",
+      roster_keys: [`rsvp:${RSVP}`],
+    },
     approvalClient(EVENT, { [EVENT]: RSVP_EVENT_ROW }),
     CALLER,
   );
@@ -223,7 +228,12 @@ Deno.test("#2593 D2b a same-brand pair naming DIFFERENT events fails closed", as
     () =>
       authorizeAgentTool(
         securedTool("set_rsvp_guest_status"),
-        { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] },
+        {
+          event_id: EVENT,
+          decision: "approve",
+          scope: "selected",
+          roster_keys: [`rsvp:${RSVP}`],
+        },
         // The RSVP belongs to OTHER_EVENT — same brand, different event.
         approvalClient(OTHER_EVENT, {
           [EVENT]: RSVP_EVENT_ROW,
@@ -241,7 +251,12 @@ Deno.test("#2593 D2c an rsvp_id from a FOREIGN brand fails closed", async () => 
     () =>
       authorizeAgentTool(
         securedTool("set_rsvp_guest_status"),
-        { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] },
+        {
+          event_id: EVENT,
+          decision: "approve",
+          scope: "selected",
+          roster_keys: [`rsvp:${RSVP}`],
+        },
         approvalClient(OTHER_EVENT, {
           [EVENT]: RSVP_EVENT_ROW,
           [OTHER_EVENT]: { brand_id: OTHER_BRAND, event_type: "rsvp" },
@@ -267,7 +282,12 @@ Deno.test("#2593 D2d the guest two-hop chain enforces the same containment", asy
       },
       rpc: () => 40,
     }).client;
-  const args = { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] };
+  const args = {
+    event_id: EVENT,
+    decision: "approve",
+    scope: "selected",
+    roster_keys: [`rsvp:${RSVP}`],
+  };
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
     args,
@@ -305,7 +325,12 @@ Deno.test("#2593 D2e an uppercase event_id that MATCHES the rsvp is accepted", a
   assert(UPPER_EVENT !== CASED_EVENT, "fixture is not actually uppercase");
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
-    { event_id: UPPER_EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] },
+    {
+      event_id: UPPER_EVENT,
+      decision: "approve",
+      scope: "selected",
+      roster_keys: [`rsvp:${RSVP}`],
+    },
     approvalClient(CASED_EVENT, { [CASED_EVENT]: RSVP_EVENT_ROW }),
     CALLER,
   );
@@ -317,7 +342,12 @@ Deno.test("#2593 D2f an uppercase event_id from a DIFFERENT event is still refus
     () =>
       authorizeAgentTool(
         securedTool("set_rsvp_guest_status"),
-        { event_id: UPPER_EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP}`] },
+        {
+          event_id: UPPER_EVENT,
+          decision: "approve",
+          scope: "selected",
+          roster_keys: [`rsvp:${RSVP}`],
+        },
         // Same brand, different event — case-insensitivity must not become a
         // hole in the containment guard.
         approvalClient(OTHER_EVENT, {
@@ -711,4 +741,3 @@ Deno.test("#2593 D8 an off-domain filter refuses before the RPC is called", asyn
     "an unconstrained filter still reached the RPC",
   );
 });
-

@@ -466,7 +466,12 @@ Deno.test("#2593 T-D3 an RSVP with no resolvable parent event fails CLOSED on bo
       () =>
         authorizeAgentTool(
           securedTool("set_rsvp_guest_status"),
-          { event_id: EVENT, decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+          {
+            event_id: EVENT,
+            decision: "approve",
+            scope: "selected",
+            roster_keys: [`rsvp:${RSVP_A}`],
+          },
           makeClient({
             rows: {
               events: { [EVENT]: RSVP_EVENT_ROW },
@@ -585,14 +590,24 @@ Deno.test("#2593 T-E1 an uppercase or MIXED-case event_id that matches is accept
   for (const form of [upper, mixed]) {
     const bare = await authorizeAgentTool(
       securedTool("set_rsvp_guest_status"),
-      { event_id: form(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+      {
+        event_id: form(CASE_EVENT),
+        decision: "approve",
+        scope: "selected",
+        roster_keys: [`rsvp:${RSVP_A}`],
+      },
       caseHarness(CASE_EVENT),
       CALLER,
     );
     assertEquals(bare.brandId, BRAND);
     const guest = await authorizeAgentTool(
       securedTool("set_rsvp_guest_status"),
-      { event_id: form(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+      {
+        event_id: form(CASE_EVENT),
+        decision: "approve",
+        scope: "selected",
+        roster_keys: [`rsvp:${RSVP_A}`],
+      },
       caseHarness(CASE_EVENT),
       CALLER,
     );
@@ -605,8 +620,16 @@ Deno.test("#2593 T-E2 case-insensitivity did NOT become a hole: a different even
   for (const form of [upper, mixed, (value: string) => value]) {
     for (
       const [tool, args] of [
-        ["set_rsvp_guest_status", { decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] }],
-        ["set_rsvp_guest_status", { decision: "deny", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] }],
+        ["set_rsvp_guest_status", {
+          decision: "approve",
+          scope: "selected",
+          roster_keys: [`rsvp:${RSVP_A}`],
+        }],
+        ["set_rsvp_guest_status", {
+          decision: "deny",
+          scope: "selected",
+          roster_keys: [`rsvp:${RSVP_A}`],
+        }],
       ] as Array<[string, Row]>
     ) {
       const error = await assertRejects(
@@ -654,7 +677,12 @@ Deno.test("#2593 T-E3 the compare is WHOLE-STRING: a uuid differing only in the 
   // ...and the genuine match still passes, so this is not just a blanket deny.
   const context = await authorizeAgentTool(
     securedTool("set_rsvp_guest_status"),
-    { event_id: upper(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+    {
+      event_id: upper(CASE_EVENT),
+      decision: "approve",
+      scope: "selected",
+      roster_keys: [`rsvp:${RSVP_A}`],
+    },
     caseHarness(CASE_EVENT),
     CALLER,
   );
@@ -713,7 +741,12 @@ Deno.test("#2593 T-E5 a non-string event_id on the database side still fails CLO
       () =>
         authorizeAgentTool(
           securedTool("set_rsvp_guest_status"),
-          { event_id: upper(CASE_EVENT), decision: "approve", scope: "selected", roster_keys: [`rsvp:${RSVP_A}`] },
+          {
+            event_id: upper(CASE_EVENT),
+            decision: "approve",
+            scope: "selected",
+            roster_keys: [`rsvp:${RSVP_A}`],
+          },
           caseHarness(value),
           CALLER,
         ),
@@ -723,4 +756,3 @@ Deno.test("#2593 T-E5 a non-string event_id on the database side still fails CLO
     );
   }
 });
-
