@@ -89,15 +89,16 @@ export interface MessageListProps {
 
 /**
  * #2649 — `gapAbove` is the gap that renders ABOVE this row, stamped during the
- * grouping pass. It exists on EVERY variant, not just the message one, because
- * the separator reads `lead?.gapAbove` off a `ListItem` union and TypeScript
- * will not narrow a property that only one member carries. Non-bubble rows
- * (tool ribbons, `pending`, `thinking`) are stamped with the full turn gap.
+ * grouping pass. Why a stamped value rather than a flag: this list is
+ * `inverted`, so the item FlatList hands the separator is the row rendered
+ * BELOW the gap, and a flag whose meaning is relative to data order lands every
+ * cluster gap one boundary off. #2649 F-8 measured that happening.
  *
- * Why a stamped value rather than a flag: this list is `inverted`, so the item
- * FlatList hands the separator is the row rendered BELOW the gap, and a flag
- * whose meaning is relative to data order lands every cluster gap one boundary
- * off. #2649 F-8 measured that happening.
+ * It is declared (optional) on the non-bubble variants too, because the
+ * separator reads `lead?.gapAbove` off the `ListItem` union and TypeScript will
+ * not narrow a property that only one member carries. Nothing stamps it there:
+ * `pending`, `thinking` and tool ribbons take the full turn gap via the
+ * separator's `?? ariThread.gapTurn` fallback.
  */
 type ListItem =
   | {
@@ -108,8 +109,8 @@ type ListItem =
       tail: boolean;
       gapAbove: number;
     }
-  | { kind: "pending"; pendingAction: PendingActionView; gapAbove: number }
-  | { kind: "thinking"; gapAbove: number };
+  | { kind: "pending"; pendingAction: PendingActionView; gapAbove?: number }
+  | { kind: "thinking"; gapAbove?: number };
 
 /** The speaker lane of a rendered row, or null for non-bubble rows (ribbons,
  *  cards, thinking) — those always take the full turn gap. */
@@ -242,8 +243,8 @@ export const MessageList: React.FC<MessageListProps> = ({
   }
 
   const items: ListItem[] = [...raw];
-  if (pendingAction) items.push({ kind: "pending", pendingAction, gapAbove: ariThread.gapTurn });
-  if (isThinking) items.push({ kind: "thinking", gapAbove: ariThread.gapTurn });
+  if (pendingAction) items.push({ kind: "pending", pendingAction });
+  if (isThinking) items.push({ kind: "thinking" });
 
   // #2649 — the thread is bottom-anchored by construction: an `inverted`
   // FlatList paints data[0] at the BOTTOM of the frame, so the newest message
