@@ -11,30 +11,40 @@ const {
   surfaceSliverBoundary,
   selectSharedCardFacts,
 } = require("@mingla/card-identity");
-const { selectPreviewFacts, statusLabel } = require("../../packages/sharing");
+const { isPublicShareMediaUrl, selectPreviewFacts, statusLabel } = require("../../packages/sharing");
 
 const cssGradient = (ramp) => `linear-gradient(180deg,${ramp.colors.map((color, index) => `${color} ${Math.round(ramp.locations[index] * 100)}%`).join(",")})`;
 
 const safeText = (value) => typeof value === "string" ? value.trim() : "";
-const MINGLA_STORAGE_HOST = "gqnoajqerqhnvulmnyvv.supabase.co";
-const MINGLA_BUNNY_DELIVERY_HOST = "vz-a16fce08-6c6.b-cdn.net";
 const MAX_COVER_BYTES = 8 * 1024 * 1024;
 const MAX_RENDERED_PNG_BYTES = 5 * 1024 * 1024;
 const MAX_CONTENT_SHARE_JPEG_BYTES = 200_000;
 const CONTENT_SHARE_JPEG_QUALITIES = Object.freeze([82, 78, 74, 70, 66]);
-const PUBLIC_IMAGE_MIME = /^image\/(?:avif|jpeg|png|webp)(?:;|$)/i;
+/**
+ * #2589 — GIF is an accepted cover content type.
+ *
+ * It was absent, so a GIF cover was rejected on content type even once its host
+ * was allowed: the two gates had to BOTH be wrong for the symptom to look like
+ * "Giphy covers do nothing", and both were. sharp decodes page 0 of an animated
+ * GIF, so what gets composed is the STILL FIRST FRAME — which is correct and
+ * expected: no social platform animates an og:image. Video is deliberately still
+ * absent; it has no path through this renderer and must not acquire one here.
+ */
+const PUBLIC_IMAGE_MIME = /^image\/(?:avif|gif|jpeg|png|webp)(?:;|$)/i;
+/**
+ * #2589 — was a third hand-copy of the share host allowlist and had already
+ * drifted from the other two (it rejected `videos.pexels.com`, which the edge
+ * can persist — so the edge could store a poster this renderer would then refuse
+ * and emit no og:image at all). It now delegates to the one CommonJS owner in
+ * `packages/sharing`. Do not restate the list here again.
+ *
+ * The env-var Bunny host is threaded through rather than read inside the shared
+ * predicate: `packages/sharing` is also bundled into two React Native apps and
+ * must not read `process.env` at module scope.
+ */
 const isAllowedPublicPoster = (value) => {
-  try {
-    const url = new URL(value);
-    const hasUserInfo = !url.href.startsWith(`${url.protocol}//${url.host}`);
-    if (url.protocol !== "https:" || hasUserInfo || url.port) return false;
-    const host = url.hostname.toLowerCase();
-    const bunnyHost = safeText(process.env.BUNNY_STREAM_CDN_HOSTNAME).toLowerCase();
-    return ["usemingla.com", "www.usemingla.com", "host.usemingla.com"].includes(host)
-      || host === "images.pexels.com" || host === "i.giphy.com" || host === "media.giphy.com"
-      || host === MINGLA_BUNNY_DELIVERY_HOST || (bunnyHost && host === bunnyHost)
-      || (host === MINGLA_STORAGE_HOST && url.pathname.startsWith("/storage/v1/object/public/"));
-  } catch { return false; }
+  const bunnyHost = safeText(process.env.BUNNY_STREAM_CDN_HOSTNAME).toLowerCase();
+  return isPublicShareMediaUrl(value, bunnyHost ? [bunnyHost] : []);
 };
 async function prepareCoverForOg(cover, fetchImpl = fetch, sharpImpl) {
   const source = safeText(cover);

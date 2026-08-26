@@ -56,7 +56,8 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
-import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
+import type { ShareEntityKind } from "@mingla/sharing";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
@@ -167,9 +168,36 @@ export default function EventDetailScreen(): React.ReactElement {
     }
   }, [router]);
 
+  // #2589 — Share is offered only for an offering the public can actually
+  // resolve. Creating a share for a private or unpublished one 404s, and that
+  // 404 reached the sheet as a generic failure with a Retry that could never
+  // work. Refuse the tap and say what to do instead.
+  const shareability = useMemo(
+    () => offeringShareability({
+      visibility: resolvedLiveEvent?.visibility ?? null,
+      publishedAt: resolvedLiveEvent?.publishedAt ?? null,
+      status: resolvedLiveEvent?.status ?? null,
+    }),
+    [resolvedLiveEvent?.visibility, resolvedLiveEvent?.publishedAt, resolvedLiveEvent?.status],
+  );
+  // #2589 — the sheet's kind was hardcoded to "event". An RSVP offering shared
+  // under that kind makes the share edge query `event_type = 'event'`, find
+  // nothing, and return the SAME 404 as an unpublished offering. Derive it.
+  const shareContentKind: ShareEntityKind = resolvedLiveEvent?.event_type === "rsvp"
+    ? "rsvp_event"
+    : resolvedLiveEvent?.event_type === "trip"
+      ? "trip"
+      : resolvedLiveEvent?.event_type === "experience"
+        ? "experience"
+        : "event";
+
   const handleShareOpen = useCallback((): void => {
+    if (!shareability.shareable) {
+      setToast({ visible: true, message: shareability.reason });
+      return;
+    }
     setShareModalVisible(true);
-  }, []);
+  }, [shareability]);
 
   const handleManageOpen = useCallback((): void => {
     // ORCH-1136 F-2: never a silent dead tap (Const #1). EventManageMenu
@@ -910,19 +938,25 @@ export default function EventDetailScreen(): React.ReactElement {
         ) : null}
       </ScrollView>
 
-      {/* Share modal — Cycle 7 reuse */}
-      <ShareModal
-        preloadContent
-        visible={shareModalVisible}
-        onClose={() => setShareModalVisible(false)}
-        url={eventPublicUrl({
-          brandSlug: event.brandSlug,
-          eventSlug: event.eventSlug,
-        })}
-        contentKind="event"
-        title={`${event.name} on Mingla`}
-        description={event.description.slice(0, 200) || event.name}
-      />
+      {/* Share modal — Cycle 7 reuse.
+          #2589: mounted only when the offering is publicly resolvable, and with
+          a derived contentKind. Both halves of the same defect — an unshareable
+          offering, or the right offering under the wrong kind, produced one
+          indistinguishable 404 at the sheet. */}
+      {shareability.shareable ? (
+        <ShareModal
+          preloadContent
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={eventPublicUrl({
+            brandSlug: event.brandSlug,
+            eventSlug: event.eventSlug,
+          })}
+          contentKind={shareContentKind}
+          title={`${event.name} on Mingla`}
+          description={event.description.slice(0, 200) || event.name}
+        />
+      ) : null}
 
       {/* Manage menu — Sheet primitive.
           ORCH-0862 / F-6 (Symptom A real root cause): gate mount on
@@ -949,7 +983,7 @@ export default function EventDetailScreen(): React.ReactElement {
           brand={brand}
           onShare={() => {
             setManageMenuVisible(false);
-            setShareModalVisible(true);
+            handleShareOpen();
           }}
           onEdit={() => {
             setManageMenuVisible(false);

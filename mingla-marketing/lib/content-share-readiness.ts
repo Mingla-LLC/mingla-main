@@ -1,4 +1,5 @@
 import { proxySharedCard } from './shared-card-proxy'
+import { readinessVerdict } from './content-share-readiness-verdict'
 
 const INTERNAL_PROXY_HEADER = 'x-mingla-internal-share-route'
 const CODE = /^[0-9A-Za-z]{16}$/
@@ -35,33 +36,64 @@ async function timeout<T>(promise: Promise<T>, milliseconds: number): Promise<T>
   ])
 }
 
+/**
+ * #2589 — readiness is MONOTONIC, not an identity check.
+ *
+ * WHAT IT USED TO DO, and why it could never converge. It asserted that the
+ * served page advertised EXACTLY the version the client was holding. But the
+ * page fetch two lines above re-derives the offering and can mint version N+1
+ * on its way past. So "is v1 ready?" fetched the page, the fetch minted v2, the
+ * comparison of v1 against v2 failed, it slept 200 ms, ran the byte-identical
+ * comparison, failed identically, and returned a transient error that greys out
+ * the Share button. Deterministic, never converging, never timing out.
+ * Reproduced live in a single call on 2026-08-25 with a before/after row
+ * snapshot: `current_version` moved 1 -> 2 half a second before that same call
+ * declared v1 unready.
+ *
+ * WHAT IT DOES NOW. A share is ready when the page advertises version M and
+ * M >= N. Moving forward is the normal, healthy state of a live offering; it is
+ * not a failure. The response carries M so the caller can adopt it. Only
+ * M < N — a page BEHIND the version the client holds, which is genuinely
+ * mid-write — remains transient.
+ *
+ * AND IT NO LONGER RETRIES ITSELF INTO A WALL. A 502 here is a settled verdict
+ * about a comparison that cannot change between two attempts 200 ms apart, and
+ * the retry's own page fetch could push the version further away. Retry is now
+ * reserved for 503 and for a thrown/timed-out attempt, which are the only
+ * results a second attempt can actually improve.
+ */
 async function verify(request: Request, code: string, version: string): Promise<Response> {
-  const canonical = new URL(`/s/${code}`, 'https://usemingla.com').toString()
-  const image = new URL(`/og/s/${code}/v${version}-r2.jpg`, 'https://usemingla.com').toString()
+  const requested = Number(version)
   const attempt = async () => {
     const [pageResponse, imageResponse] = await timeout(Promise.all([
       proxySharedCard(request, code, 'content-page'),
       proxySharedCard(request, code, 'content-image', fetch, version),
     ]), 4_000)
-    if (pageResponse.status === 410 || imageResponse.status === 410) return json({ state: 'terminal' }, 410)
-    if (pageResponse.status === 404 || imageResponse.status === 404) return json({ state: 'absent' }, 404)
-    if (pageResponse.status !== 200 || imageResponse.status !== 200) return json({ state: 'transient' }, 503)
-    const html = await pageResponse.text()
-    const exactIdentity = html.includes(`<link rel="canonical" href="${canonical}" />`)
-      && html.includes(`<meta property="og:image" content="${image}" />`)
-      && html.includes(`<meta property="og:image:secure_url" content="${image}" />`)
-    if (!exactIdentity) return json({ state: 'transient' }, 502)
-    await imageResponse.arrayBuffer()
-    return json({ state: 'ready' }, 200)
+    const html = pageResponse.status === 200 ? await pageResponse.text() : ''
+    const verdict = readinessVerdict({
+      code, requested, pageStatus: pageResponse.status, imageStatus: imageResponse.status, html,
+    })
+    if (verdict.state === 'ready') await imageResponse.arrayBuffer()
+    return {
+      verdict,
+      response: json(
+        verdict.version === null ? { state: verdict.state } : { state: verdict.state, version: verdict.version },
+        verdict.status,
+      ),
+    }
   }
   const started = Date.now()
   let result: Response
   try {
-    result = await attempt()
-    if (result.status === 502 || result.status === 503) {
+    let attempted = await attempt()
+    // #2589 — retry ONLY what a second attempt can change. The old code retried
+    // its own settled comparison, which doubled the wall clock of a verdict
+    // already decided and whose retry could push the version further away.
+    if (attempted.verdict.retryable) {
       await new Promise((resolve) => setTimeout(resolve, 200))
-      result = await attempt()
+      attempted = await attempt()
     }
+    result = attempted.response
   } catch {
     result = json({ state: 'transient' }, 503)
   }

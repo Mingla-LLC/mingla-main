@@ -2,12 +2,13 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { AccessibilityInfo, AppState, Clipboard, findNodeHandle, Image, Platform, Pressable, StyleSheet, Text, View, useColorScheme, useWindowDimensions, ActivityIndicator } from 'react-native';
 import { useNetInfo } from '@react-native-community/netinfo';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { checkContentShareReadiness, normalizeContentShareNote, selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
+import { checkContentShareReadinessDetailed, normalizeContentShareNote, selectCompactPreviewFacts, shareKindLabel, statusLabel } from '@mingla/sharing';
 import { BaseBottomSheet, BottomSheetTextInput } from '../ui/BaseBottomSheet';
 import { Icon } from '../ui/Icon';
 import { colors } from '../../constants/colors';
 import {
-  prepareContentShare, sharePreparedContent, type PreparedContentShare,
+  adoptContentShareVersion, prepareContentShare, sharePreparedContent,
+  type ContentShareFailureReason, type PreparedContentShare,
   trackContentShareEvent,
 } from '../../services/contentShareAdapter';
 import {
@@ -16,6 +17,32 @@ import {
 } from '../../services/contentShareDeliveryService';
 import { registerContentShareHandler, type ContentShareProducerSurface, type OpenContentShareInput } from '../../services/contentShareController';
 import { HapticFeedback } from '../../utils/hapticFeedback';
+
+/**
+ * #2589 — one string per cause. Byte-mirrored in
+ * `mingla-business/src/components/ui/ShareModalContent.tsx`; the generic string
+ * survives only for a genuinely unknown failure, and the two causes a Retry
+ * cannot fix no longer offer one.
+ */
+const SHARE_FAILURE_COPY: Record<ContentShareFailureReason, string> = {
+  not_public: "This isn't public yet. Publish it, then share.",
+  unauthorized: 'Sign in to share this.',
+  unavailable: "Sharing is briefly unavailable. Try again in a moment.",
+  unknown: "Couldn't prepare this share",
+};
+/** Only these two can change on a second attempt. */
+const RETRYABLE_SHARE_FAILURES = new Set<ContentShareFailureReason>(['unavailable', 'unknown']);
+
+/**
+ * Reads the reason the adapter attached to the rejection. Local and pure, and
+ * byte-mirrored in `mingla-business/src/components/ui/ShareModalContent.tsx`:
+ * the failure path must not depend on loading another module. Anything
+ * unrecognised is `unknown`, which keeps the original generic copy and Retry.
+ */
+function shareFailureReasonOf(error: unknown): ContentShareFailureReason {
+  const reason = (error as { reason?: unknown } | null | undefined)?.reason;
+  return reason === 'not_public' || reason === 'unauthorized' || reason === 'unavailable' ? reason : 'unknown';
+}
 
 export type SharePresentationFailureClass =
   | 'parent_modal_still_presented'
@@ -111,7 +138,8 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
   const [nativeCycleId, setNativeCycleId] = useState<string | null>(null);
   const [input, setInput] = useState<OpenContentShareInput | null>(null);
   const [prepared, setPrepared] = useState<PreparedContentShare | null>(null);
-  const [prepError, setPrepError] = useState(false);
+  // #2589 — WHY it failed, not just THAT it failed. `null` = no failure.
+  const [prepFailure, setPrepFailure] = useState<ContentShareFailureReason | null>(null);
   const [recipients, setRecipients] = useState<ContentShareRecipient[]>([]);
   const [recipientsLoading, setRecipientsLoading] = useState(false);
   const [recipientsReady, setRecipientsReady] = useState(false);
@@ -135,7 +163,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
 
   const loadShare = useCallback((nextInput: OpenContentShareInput, token: number): void => {
     const startedAt = Date.now();
-    setPrepError(false);
+    setPrepFailure(null);
     void prepareContentShare(nextInput.kind, nextInput.identity, 'generic', nextInput.messageContext)
       .then((value) => {
         if (generation.current === token) {
@@ -144,10 +172,11 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
         }
         console.info('[content-share] preparation', { result: 'ready', durationMs: Date.now() - startedAt });
       })
-      .catch(() => {
-        if (generation.current === token) setPrepError(true);
-        trackContentShareEvent('share_failure', { kind: nextInput.kind, failure_type: 'prepare', duration_ms: Date.now() - startedAt });
-        console.info('[content-share] preparation', { result: 'failed', durationMs: Date.now() - startedAt });
+      .catch((error: unknown) => {
+        const reason = shareFailureReasonOf(error);
+        if (generation.current === token) setPrepFailure(reason);
+        trackContentShareEvent('share_failure', { kind: nextInput.kind, failure_type: 'prepare', failure_reason: reason, duration_ms: Date.now() - startedAt });
+        console.info('[content-share] preparation', { result: 'failed', failureReason: reason, durationMs: Date.now() - startedAt });
       });
   }, []);
 
@@ -273,7 +302,7 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     activePresentationAttempt.current = attempt;
     inputRef.current = nextInput;
     setNativeCycleId(attempt.correlationId);
-    setInput(nextInput); setPrepared(null); setPrepError(false); setRecipients([]);
+    setInput(nextInput); setPrepared(null); setPrepFailure(null); setRecipients([]);
     setRecipientError(false); setRecipientsReady(false); setSelected(new Set()); setNote(''); setNoteExpanded(false);
     setSearch(''); setCopied(false); setSending(false);
     setDeliveryState({}); setPosterFailed(false); setExternalError(null);
@@ -319,9 +348,23 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     if (isOffline) { setReadiness('offline'); return; }
     const token = generation.current;
     setReadiness(retrying ? 'retrying' : 'pending');
-    void checkContentShareReadiness(prepared.shortCode, prepared.version).then((result) => {
+    void checkContentShareReadinessDetailed(prepared.shortCode, prepared.version).then((result) => {
       if (generation.current !== token || AppState.currentState !== 'active') return;
-      setReadiness(result);
+      // #2589 — the share page re-derives on read, so it can legitimately have
+      // moved past the version create handed us. That is ready, not broken, and
+      // the prepared share follows the server's version rather than pinning a
+      // number the page has left behind. This is also what stops the
+      // AppState-'active' re-check greying out Share AFTER a successful share.
+      //
+      // The adoption itself belongs to the adapter: this sheet previews the
+      // COVER and must never handle the generated portrait card's URL.
+      const served = result.version;
+      if (result.state === 'ready' && served !== null) {
+        setPrepared((current) => (current && current.shortCode === prepared.shortCode
+          ? adoptContentShareVersion(current, served)
+          : current));
+      }
+      setReadiness(result.state);
     });
   }, [isOffline, prepared]);
 
@@ -521,10 +564,10 @@ export function UnifiedShareProvider({ children }: { children: React.ReactNode }
     <BaseBottomSheet accessibilityLabel={`Share ${prepared?.title ?? input?.kind ?? ''}`} visible={visible} onClose={close} onNativeShow={() => handleNativeShow(nativeCycleId)} onNativeDismiss={() => handleNativeDismiss(nativeCycleId)} theme={dark ? 'dark' : 'light'} snapPoints={['90%']} enablePanDownToClose={!sending} scrollMode="scroll" wrapInRNModal keyboardBehavior="interactive" keyboardBlurBehavior="restore" android_keyboardInputMode="adjustResize" header={header} stickyFooter={footer} scrollProps={{ keyboardShouldPersistTaps: 'handled', contentContainerStyle: styles.body }}>
       {outcome.kind === 'success' ? <View style={styles.successState} accessibilityLiveRegion="polite"><View style={styles.successCheck}><Text style={styles.successCheckText}>✓</Text></View><Text style={styles.successTitle}>Sent to {outcome.sent} {outcome.sent === 1 ? 'chat' : 'chats'}</Text></View> : <>
       <View style={styles.summary}>
-        {!prepared && !prepError ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'ready', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) })} onError={() => { setPosterFailed(true); trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'failed', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.mediaTag}><Text style={styles.mediaTagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.posterFallback}><Text style={styles.posterFallbackText}>{prepared ? shareKindLabel(prepared.kind).slice(0, 1) : 'M'}</Text></View>}
+        {!prepared && prepFailure === null ? <View accessibilityLabel="Preparing cover" style={styles.posterSkeleton} /> : prepared?.media?.posterUrl && !posterFailed ? <View style={styles.posterWrap}><Image source={{ uri: prepared.media.posterUrl }} style={styles.poster} onLoad={() => trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'ready', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) })} onError={() => { setPosterFailed(true); trackContentShareEvent('share_poster_result', { kind: prepared.kind, result_class: 'failed', duration_ms: Math.max(0, Date.now() - posterStartedAt.current) }); }} />{prepared.media.kind === 'gif' || prepared.media.kind === 'video' ? <View style={styles.mediaTag}><Text style={styles.mediaTagText}>{prepared.media.kind === 'gif' ? 'GIF' : 'Video'}</Text></View> : null}</View> : <View accessibilityLabel="No cover" style={styles.posterFallback}><Text style={styles.posterFallbackText}>{prepared ? shareKindLabel(prepared.kind).slice(0, 1) : 'M'}</Text></View>}
         <View style={styles.summaryCopy}><Text numberOfLines={1} style={styles.summaryMeta}>{prepared ? `${shareKindLabel(prepared.kind)}${statusLabel(prepared.facts.status) ? ` · ${statusLabel(prepared.facts.status)}` : ''}` : input ? shareKindLabel(input.kind) : 'Mingla'}</Text><Text numberOfLines={2} style={styles.title}>{prepared?.title ?? 'Preparing share…'}</Text>{facts ? <Text numberOfLines={2} style={styles.subtitle}>{facts}</Text> : null}</View>
       </View>
-      {prepError ? <View style={styles.errorRow}><Text style={styles.errorText}>{"Couldn't prepare this share"}</Text><Pressable accessibilityRole="button" onPress={() => input && loadShare(input, generation.current)}><Text style={styles.retry}>Retry share</Text></Pressable></View> : null}
+      {prepFailure !== null ? <View style={styles.errorRow} accessibilityLiveRegion="polite"><Text style={styles.errorText}>{SHARE_FAILURE_COPY[prepFailure]}</Text>{RETRYABLE_SHARE_FAILURES.has(prepFailure) ? <Pressable accessibilityRole="button" onPress={() => input && loadShare(input, generation.current)}><Text style={styles.retry}>Retry share</Text></Pressable> : null}</View> : null}
       <Text style={styles.sectionTitle}>Share elsewhere</Text>
       <View style={styles.actionRow}>
         <Pressable accessibilityRole="button" accessibilityLabel="Share elsewhere" accessibilityHint={!shareReady && prepared?.media ? 'Preview is preparing. Copy link is available.' : undefined} accessibilityState={{ disabled: !shareReady || sending }} disabled={!shareReady || sending} onPress={() => void nativeShare()} style={[styles.action, (!shareReady || sending) && styles.disabled]}><Text style={styles.actionText}>Share</Text></Pressable>

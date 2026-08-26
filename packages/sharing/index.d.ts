@@ -64,6 +64,13 @@ export function validateNativeContentCardDescriptorV1(value: unknown): NativeCon
 export function nativeContentCardCacheKey(userId: string, messageId: string): string;
 export function createNativeContentCardSessionCache<T>(): { clear(): void; set(userId: string, messageId: string, fingerprint: string, card: T): void; get(userId: string, messageId: string, fingerprint: string): T | null };
 export function createContentShareSingleFlight(): <T>(key: string, load: () => Promise<T>) => Promise<T>;
-export function checkContentShareReadiness(code: string, version: number, fetchImpl?: typeof fetch): Promise<'ready' | 'waiting' | 'transient' | 'terminal'>;
+export type ShareReadinessState = 'ready' | 'waiting' | 'transient' | 'terminal';
+export function checkContentShareReadiness(code: string, version: number, fetchImpl?: typeof fetch): Promise<ShareReadinessState>;
+/**
+ * #2589 — the same call, plus the version the server says is live. `version` is
+ * non-null only for a `ready` result from a server that named one, and is never
+ * lower than the version asked for.
+ */
+export function checkContentShareReadinessDetailed(code: string, version: number, fetchImpl?: typeof fetch): Promise<{ state: ShareReadinessState; version: number | null }>;
 export function weekdayForShareTimezone(timezone: string, now?: Date): string;
 export function openStateForHours(hours: ShareHoursRow[], timezone: string, now?: Date): '' | 'Open now' | 'Closed';

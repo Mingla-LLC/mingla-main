@@ -23,7 +23,12 @@ const consumer = read('app-mobile/src/components/share/UnifiedShareProvider.tsx'
 const business = read('mingla-business/src/components/ui/ShareModalContent.tsx');
 const businessNetworkNative = read('mingla-business/src/components/ui/useShareNetworkState.native.ts');
 const businessNetworkWeb = read('mingla-business/src/components/ui/useShareNetworkState.web.ts');
-const readiness = read('mingla-marketing/lib/content-share-readiness.ts');
+// [TEST-MOD-APPROVED #2589] The readiness route and the readiness DECISION are now
+// two files: the decision was extracted so it can be asserted without the native
+// image toolchain the route drags in. Every assertion is unchanged in meaning — the
+// same contract, read across both halves.
+const readiness = read('mingla-marketing/lib/content-share-readiness.ts')
+  + read('mingla-marketing/lib/content-share-readiness-verdict.ts');
 
 test('A-H1 lifecycle is server-owned, private to authenticated callers, and migrated once without invented deletes', () => {
   // [TEST-MOD-APPROVED #1719] Fresh full-history PG17 testing proved that placing

@@ -49,7 +49,7 @@ import { EmptyState } from "../../../src/components/ui/EmptyState";
 import { EventCoverMedia } from "../../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../../src/components/ui/GlassCard";
 import { IconChrome } from "../../../src/components/ui/IconChrome";
-import { ShareModal } from "../../../src/components/ui/ShareModal";
+import { ShareModal, offeringShareability } from "../../../src/components/ui/ShareModal";
 import { Toast } from "../../../src/components/ui/Toast";
 import { TopBar } from "../../../src/components/ui/TopBar";
 
@@ -145,9 +145,25 @@ export default function RsvpDetailScreen(): React.ReactElement {
     }
   }, [router]);
 
+  // #2589 — Share is offered only for an RSVP the public can actually resolve.
+  // Creating a share for a private or unpublished one 404s, and that 404 reached
+  // the sheet as a generic failure beside a Retry that could never work.
+  const shareability = useMemo(
+    () => offeringShareability({
+      visibility: resolvedLiveEvent?.visibility ?? null,
+      publishedAt: resolvedLiveEvent?.publishedAt ?? null,
+      status: resolvedLiveEvent?.status ?? null,
+    }),
+    [resolvedLiveEvent?.visibility, resolvedLiveEvent?.publishedAt, resolvedLiveEvent?.status],
+  );
+
   const handleShareOpen = useCallback((): void => {
+    if (!shareability.shareable) {
+      setToast({ visible: true, message: shareability.reason });
+      return;
+    }
     setShareModalVisible(true);
-  }, []);
+  }, [shareability]);
 
   const handleEdit = useCallback((): void => {
     if (id !== null) {
@@ -409,19 +425,23 @@ export default function RsvpDetailScreen(): React.ReactElement {
         </View>
       </ScrollView>
 
-      {/* Share modal */}
-      <ShareModal
-        preloadContent
-        visible={shareModalVisible}
-        onClose={() => setShareModalVisible(false)}
-        url={eventPublicUrl({
-          brandSlug: event.brandSlug,
-          eventSlug: event.eventSlug,
-        })}
-        title={`${event.name} on Mingla`}
-        description={event.description.slice(0, 200) || event.name}
-        contentKind="rsvp_event"
-      />
+      {/* Share modal — #2589: mounted only when the offering is publicly
+          resolvable, so the sheet is never offered for something that provably
+          cannot be shared. `contentKind` is already correct on this route. */}
+      {shareability.shareable ? (
+        <ShareModal
+          preloadContent
+          visible={shareModalVisible}
+          onClose={() => setShareModalVisible(false)}
+          url={eventPublicUrl({
+            brandSlug: event.brandSlug,
+            eventSlug: event.eventSlug,
+          })}
+          title={`${event.name} on Mingla`}
+          description={event.description.slice(0, 200) || event.name}
+          contentKind="rsvp_event"
+        />
+      ) : null}
 
       {/* Toast wrap — top-anchored per memory rule */}
       <View style={styles.toastWrap} pointerEvents="box-none">

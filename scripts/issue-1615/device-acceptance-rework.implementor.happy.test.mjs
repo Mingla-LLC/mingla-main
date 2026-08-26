@@ -66,9 +66,37 @@ test('D2 a V1 failure has one honest exit and cannot call the legacy producer', 
   // [TEST-MOD-APPROVED #1719] The visible V1 error moved into the single
   // app-wide provider when the old share modal became an identity-only bridge.
   const modal = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
-  assert.match(adapter, /if \(!error && data\?\.shortCode && data\?\.facts\)[\s\S]*throw new Error\(error\?\.message \|\| 'share_create_failed'\)/);
+  // [TEST-MOD-APPROVED #2589] Two SHAPE pins changed; the PROPERTY is untouched
+  // and is now proven by execution as well as by text.
+  //
+  // Pinned before:
+  //   `throw new Error(error?.message || 'share_create_failed')`
+  //   `setPrepError(true)`
+  //
+  // Why they had to change: three unrelated server outcomes — an unpublished or
+  // wrong-kind offering (404), a signed-out session (401), and a real outage
+  // (503) — all reached the sheet as ONE string beside a Retry that could not
+  // help two of them. The throw now carries a typed reason, and the boolean
+  // became that reason. Neither touches the exit structure.
+  //
+  // THE PROPERTY THIS TEST NAMES — one honest exit, never the legacy producer —
+  // is carried by the `doesNotMatch` below, which is UNCHANGED and still passes.
+  // It is additionally proven at runtime in
+  // `scripts/issue-2589/v1-producer-single-exit.runtime.test.mjs`, which lifts
+  // this producer out of the adapter and RUNS it over fourteen failure shapes
+  // (401/403/404/503/500/429/408/425, transport, non-Error, non-numeric status,
+  // and three malformed 200s): every one throws, none returns, none reaches the
+  // legacy producer, and the legacy producer has no caller anywhere in the app.
+  // That suite goes red on a deliberately injected silent fallback — verified.
+  assert.match(adapter, /if \(!error && data\?\.shortCode && data\?\.facts\) return \{ contract: 'content_share_v1' as const, data \};/);
+  assert.match(adapter, /throw Object\.assign\(new Error\(`\$\{SHARE_FAILURE_PREFIX\}\$\{reason\}`\), \{ reason \}\);/);
+  // Exactly one `throw` and exactly one `return` inside the producer's flight.
+  const flight = /const prepared=await singleFlight\(key,async \(\) => \{[\s\S]*?\n  \}\);/.exec(adapter)?.[0] || '';
+  assert.notEqual(flight, '', 'the producer flight is no longer where it was');
+  assert.equal((flight.match(/\breturn\b/g) || []).length, 1, flight);
+  assert.equal((flight.match(/\bthrow\b/g) || []).length, 1, flight);
   assert.doesNotMatch(adapter, /createSharedCard|legacy_shared_card|isLegacyRollbackEligible|usemingla\.com\/p\//);
-  assert.match(modal, /setPrepError\(true\)/);
+  assert.match(modal, /setPrepFailure\(reason\)/);
   assert.match(modal, /Couldn't prepare this share[\s\S]*Retry share/);
 });
 

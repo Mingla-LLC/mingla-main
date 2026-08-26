@@ -38,9 +38,72 @@ export function trackContentShareEvent(
   try { logAppsFlyerEvent(event, properties); } catch { /* telemetry never owns sharing */ }
 }
 
+/**
+ * #2589 — adopt the version the readiness check reports, keeping the prepared
+ * share internally consistent.
+ *
+ * WHY IT LIVES HERE AND NOT IN THE SHEET. The portrait-card URL is this
+ * adapter's to build (it is the only place that calls `buildSharePortraitUrl`
+ * for a prepared share), and the share sheet is a presentation surface that
+ * previews the COVER — `prepared.media.posterUrl` — never the generated card.
+ * Three separate suites pin that boundary by forbidding the portrait URL inside
+ * `UnifiedShareProvider.tsx`, alongside `Share.share`, `Linking.openURL` and the
+ * per-channel intents: the list is "things the sheet must not do itself". An
+ * earlier draft of #2589 recomputed the URL inside the sheet, which is exactly
+ * the boundary those suites exist to hold.
+ *
+ * Returns the SAME object when there is nothing to adopt, so a caller can use
+ * the result as a state update without forcing a re-render.
+ */
+export function adoptContentShareVersion(
+  prepared: PreparedContentShare,
+  version: number,
+): PreparedContentShare {
+  if (!Number.isSafeInteger(version) || version <= prepared.version) return prepared;
+  return {
+    ...prepared,
+    version,
+    s4Url: prepared.media === null ? null : buildSharePortraitUrl(prepared.shortCode, version),
+  };
+}
+
 export type ShareMessageContext = {
   planningPreference?: string | { dayOfWeek?: string; timeOfDay?: string; planningTimeframe?: string };
   senderNote?: string;
+};
+
+/**
+ * #2589 — WHY a share could not be prepared, not merely THAT it could not.
+ *
+ * Byte-mirrored from `mingla-business/src/services/contentShareAdapter.ts`: the
+ * two sheets are a pair and their failure vocabulary must not diverge. Three
+ * unrelated server outcomes used to reach the sheet as one string beside a Retry
+ * that could not help two of them — an unpublished offering (404), a signed-out
+ * session (401), and a real outage (503). The consumer app's own runtime capture
+ * on 2026-08-25 showed the 401 case wearing the 404 case's copy.
+ */
+export type ContentShareFailureReason = 'not_public' | 'unauthorized' | 'unavailable' | 'unknown';
+
+// The human-readable half of a preparation failure. The MACHINE-readable half
+// is the `reason` property attached beside it — a message is for a log, and a
+// sheet that had to parse one to decide what to render would be one string
+// edit away from showing the wrong thing.
+const SHARE_FAILURE_PREFIX = 'share_create_failed:';
+
+const reasonForStatus = (status: number | null): ContentShareFailureReason =>
+  status === 401 || status === 403 ? 'unauthorized'
+    : status === 404 ? 'not_public'
+    : status === 503 ? 'unavailable'
+    : 'unknown';
+
+/**
+ * supabase-js wraps a non-2xx edge response in a FunctionsHttpError whose
+ * `context` IS the Response. Read defensively: a network failure carries no
+ * context, and a thrown plain object is not an Error instance.
+ */
+const invokeStatus = (error: unknown): number | null => {
+  const status = (error as { context?: { status?: unknown } } | null | undefined)?.context?.status;
+  return typeof status === 'number' ? status : null;
 };
 
 export async function prepareContentShare(kind: ShareEntityKind, identity: ContentShareIdentity, channel = 'generic', messageContext: ShareMessageContext = {}): Promise<PreparedContentShare> {
@@ -50,7 +113,10 @@ export async function prepareContentShare(kind: ShareEntityKind, identity: Conte
       body: { contract:'content_share_v1', kind, identity, attribution:{ channel }, messageContext },
     });
     if (!error && data?.shortCode && data?.facts) return { contract: 'content_share_v1' as const, data };
-    throw new Error(error?.message || 'share_create_failed');
+    // The reason travels as a PROPERTY as well as in the message: the sheet reads
+    // it with a local pure helper and imports nothing to describe a failure.
+    const reason = reasonForStatus(error ? invokeStatus(error) : null);
+    throw Object.assign(new Error(`${SHARE_FAILURE_PREFIX}${reason}`), { reason });
   });
   const data=prepared.data;
   const canonicalUrl=buildShortShareUrl(data.shortCode);
