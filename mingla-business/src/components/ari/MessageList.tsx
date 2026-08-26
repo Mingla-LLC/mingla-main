@@ -87,10 +87,29 @@ export interface MessageListProps {
   attachedCovers?: Record<string, { url: string | null; type: string | null }>;
 }
 
+/**
+ * #2649 — `gapAbove` is the gap that renders ABOVE this row, stamped during the
+ * grouping pass. It exists on EVERY variant, not just the message one, because
+ * the separator reads `lead?.gapAbove` off a `ListItem` union and TypeScript
+ * will not narrow a property that only one member carries. Non-bubble rows
+ * (tool ribbons, `pending`, `thinking`) are stamped with the full turn gap.
+ *
+ * Why a stamped value rather than a flag: this list is `inverted`, so the item
+ * FlatList hands the separator is the row rendered BELOW the gap, and a flag
+ * whose meaning is relative to data order lands every cluster gap one boundary
+ * off. #2649 F-8 measured that happening.
+ */
 type ListItem =
-  | { kind: "message"; message: AgentMessage; speaker: "user" | "ari"; hideOrb: boolean; tail: boolean }
-  | { kind: "pending"; pendingAction: PendingActionView }
-  | { kind: "thinking" };
+  | {
+      kind: "message";
+      message: AgentMessage;
+      speaker: "user" | "ari";
+      hideOrb: boolean;
+      tail: boolean;
+      gapAbove: number;
+    }
+  | { kind: "pending"; pendingAction: PendingActionView; gapAbove: number }
+  | { kind: "thinking"; gapAbove: number };
 
 /** The speaker lane of a rendered row, or null for non-bubble rows (ribbons,
  *  cards, thinking) — those always take the full turn gap. */
@@ -177,7 +196,14 @@ export const MessageList: React.FC<MessageListProps> = ({
     }
     if (m.role === "tool") {
       // Tool-result ribbon — not a bubble, never grouped.
-      raw.push({ kind: "message", message: m, speaker: "ari", hideOrb: false, tail: true });
+      raw.push({
+        kind: "message",
+        message: m,
+        speaker: "ari",
+        hideOrb: false,
+        tail: true,
+        gapAbove: ariThread.gapTurn,
+      });
       continue;
     }
     const text = (m.content as any)?.text ?? "";
@@ -188,6 +214,7 @@ export const MessageList: React.FC<MessageListProps> = ({
       speaker: m.role === "user" ? "user" : "ari",
       hideOrb: false,
       tail: true,
+      gapAbove: ariThread.gapTurn,
     });
   }
 
@@ -207,11 +234,29 @@ export const MessageList: React.FC<MessageListProps> = ({
       !!next && isBubble(next) && speakerOf(next) === cur.speaker;
     if (groupedWithPrev && cur.speaker === "ari") cur.hideOrb = true;
     if (groupedWithNext) cur.tail = false; // interior bubble — smooth column
+    // #2649 — the gap ABOVE this bubble is the tight cluster gap when it
+    // continues the previous speaker's run, the turn gap otherwise. Stamping it
+    // here (rather than deriving it in the separator from a neighbour-relative
+    // flag) is what survives inversion.
+    cur.gapAbove = groupedWithPrev ? ariThread.gapGroup : ariThread.gapTurn;
   }
 
   const items: ListItem[] = [...raw];
-  if (pendingAction) items.push({ kind: "pending", pendingAction });
-  if (isThinking) items.push({ kind: "thinking" });
+  if (pendingAction) items.push({ kind: "pending", pendingAction, gapAbove: ariThread.gapTurn });
+  if (isThinking) items.push({ kind: "thinking", gapAbove: ariThread.gapTurn });
+
+  // #2649 — the thread is bottom-anchored by construction: an `inverted`
+  // FlatList paints data[0] at the BOTTOM of the frame, so the newest message
+  // rides up with the composer instead of being squeezed off the bottom when
+  // the keyboard opens. `items` stays in visual order (oldest first) for the
+  // grouping pass above; the list gets it newest-first.
+  //
+  // Not memoised on purpose: `raw`/`items` are rebuilt on every render (they
+  // always were — `data={items}` was already a fresh array each time), so a
+  // useMemo keyed on `items` would never hit. This allocates no more than the
+  // code it replaces, and it is a named const rather than an inline
+  // `[...items].reverse()` in the JSX so the identity is at least readable.
+  const invertedItems: ListItem[] = [...items].reverse();
 
   // ORCH-1103 REWORK 2 — single-live-at-tail for choices: only the LATEST
   // assistant message carrying a choices payload renders interactive chips. Any
@@ -227,7 +272,11 @@ export const MessageList: React.FC<MessageListProps> = ({
   useEffect(() => {
     if (items.length === 0) return;
     requestAnimationFrame(() => {
-      listRef.current?.scrollToEnd({ animated: true });
+      // #2649 — the newest row lives at offset 0 in an inverted list, so
+      // "scroll to newest" is scrollToOffset(0), not scrollToEnd (which would
+      // now run to the OLDEST message). Behaviour is otherwise unchanged: a new
+      // message still brings the thread to the newest row.
+      listRef.current?.scrollToOffset({ offset: 0, animated: true });
     });
   }, [items.length, pendingAction?.pending_action_id, isThinking]);
 
@@ -249,10 +298,22 @@ export const MessageList: React.FC<MessageListProps> = ({
      * There is no container to migrate to. react-native-keyboard-controller
      * exports exactly one keyboard-aware container, KeyboardAwareScrollView;
      * there is no KeyboardAware FlatList or SectionList, and a virtualised chat
-     * list must not become a ScrollView. Inverting the FlatList — the
-     * conventional chat shape — changes real behaviour on a live tab and
-     * changes this gate's verdict not at all, because the container is still a
-     * bare FlatList whose span renders an input.
+     * list must not become a ScrollView.
+     *
+     * #2649 UPDATE — this block used to end by citing inversion as an open risk
+     * ("changes real behaviour on a live tab"). That objection is RESOLVED, not
+     * outstanding. #2649 measured exactly which behaviour it changes: the
+     * ORCH-1101 speaker-grouping rhythm, because `ItemSeparatorComponent` gets
+     * only the item preceding the gap in DATA order, whose meaning flips when
+     * the list inverts. That is repaired in this same file by stamping
+     * `gapAbove` during the grouping pass, and it is pinned behaviourally by
+     * the #2649 suites (rendered separator heights, not source text). The list
+     * is now inverted because a top-anchored thread loses its newest message
+     * the moment the composer grows — 300.33pt below the fold on iPhone 16.
+     *
+     * What has NOT changed is this gate's verdict: the container is still a
+     * bare FlatList whose span renders the proposal card's TextInput, so the
+     * marker below stays and EXPECTED_ALLOWLISTED_FILES is untouched.
      *
      * Follow-up: #1873 (move the proposal card's edit affordance into the Sheet
      * primitive, which owns its own KeyboardAwareScrollView). Delete this marker
@@ -261,7 +322,13 @@ export const MessageList: React.FC<MessageListProps> = ({
     // orch-strict-grep-allow orch-0892 — no keyboard-aware virtualised container exists: the library ships KeyboardAwareScrollView only, and a chat thread must stay a FlatList. The composer's keyboard handling lives in AriChatScreen; the residual in-row edit field is tracked by #1873.
     <FlatList
       ref={listRef}
-      data={items}
+      // #2649 — bottom-anchored by construction. `inverted` paints data[0] at
+      // the frame's bottom edge, which is the edge the composer is attached to,
+      // so the thread rides up with the keyboard instead of being clipped by
+      // the viewport shrinking underneath a frozen scroll offset. No keyboard
+      // height, no listener and no scroll call is involved in holding it there.
+      inverted
+      data={invertedItems}
       keyExtractor={(item, idx) => {
         if (item.kind === "message") return `m-${item.message.id}`;
         if (item.kind === "pending") return `p-${item.pendingAction.pending_action_id}`;
@@ -269,18 +336,18 @@ export const MessageList: React.FC<MessageListProps> = ({
       }}
       contentContainerStyle={styles.content}
       ItemSeparatorComponent={({ leadingItem }) => {
-        // FlatList only provides leadingItem (trailingItem is a SectionList
-        // prop and is always undefined here). The grouping pass already marked
-        // an interior bubble with tail === false, which means it groups with
-        // the next row — so the gap after it is the tight group gap (4);
-        // everything else takes the turn gap (10).
+        // FlatList supplies only leadingItem — the item BEFORE this separator in
+        // DATA order (the SectionList-only trailingItem prop is never read here,
+        // and reading it crashed the thread on send in ORCH-1101).
+        //
+        // #2649 — the list is inverted, so data order runs newest-first and the
+        // leading item is the row rendered BELOW this gap. The quantity we want
+        // is therefore that row's own `gapAbove`, stamped during the grouping
+        // pass. The predicate this replaced derived the gap from a
+        // neighbour-relative flag, which under inversion put every 4pt cluster
+        // gap one boundary off (measured, #2649 F-8).
         const lead = leadingItem as ListItem | undefined;
-        const grouped =
-          !!lead &&
-          lead.kind === "message" &&
-          lead.message.role !== "tool" &&
-          lead.tail === false;
-        return <View style={{ height: grouped ? ariThread.gapGroup : ariThread.gapTurn }} />;
+        return <View style={{ height: lead?.gapAbove ?? ariThread.gapTurn }} />;
       }}
       keyboardShouldPersistTaps="handled"
       keyboardDismissMode="on-drag"
@@ -546,8 +613,16 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: spacing.md,
     // ORCH-1101: tighter top; bottom keeps scroll clearance above the composer.
-    paddingTop: spacing.sm,
-    paddingBottom: spacing.xl,
+    //
+    // #2649 — THESE VALUES ARE PRE-TRANSFORM AND ARE DELIBERATELY SWAPPED. The
+    // list is `inverted`, so the content container is flipped: paddingTop here
+    // renders at the visual BOTTOM and paddingBottom at the visual TOP. The
+    // rendered result is unchanged from ORCH-1101 — 8 at the visual top, 32 of
+    // scroll clearance above the composer. Leaving them "the right way round"
+    // collapses the visual bottom clearance from 32 to 8 (measured). Do not
+    // "fix" this back.
+    paddingTop: spacing.xl,
+    paddingBottom: spacing.sm,
   },
   // ORCH-1103 REWORK 2 — chips sit under the Ari bubble, indented past the orb
   // gutter (24px orb + orbGap, matching ChatBubble's orbWrap) so they align with
