@@ -352,12 +352,28 @@ test('TA7 loading, covered, coverless, and error are exclusive; retry clears onl
   // must not clear recipients, note, selection, or any content persistence.
   const modal = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
   const retry = /const loadShare = useCallback\(\(nextInput[\s\S]*?\n  \}, \[\]\);/.exec(modal)?.[0] || '';
-  assert.match(retry, /setPrepError\(false\)/);
+  // [TEST-MOD-APPROVED #2589] SHAPE pins only — the boolean `prepError` became a
+  // typed reason, so `setPrepError(false)` is now `setPrepFailure(null)` and the
+  // render guard is `prepFailure !== null`. Pinned before:
+  //   `assert.match(retry, /setPrepError\(false\)/)`
+  //   `assert.match(modal, /prepError ? [\s\S]*Retry share/)`
+  //   `assert.doesNotMatch(modal, /prepError[\s\S]{0,180}<ActivityIndicator/)`
+  //
+  // THE PROPERTIES THIS TEST NAMES ARE UNTOUCHED and all still pass unchanged:
+  // retry restarts preparation, retry clears NOTHING else (selection, note,
+  // recipients survive), and there is exactly one retry owner.
+  //
+  // NOTE THE THIRD ONE. Left as written, `/prepError…<ActivityIndicator/` would
+  // have gone SILENTLY VACUOUS under the rename — the token no longer exists, so
+  // it could never fail again and would have carried no information at all. It
+  // is restated against the live name so it keeps biting: an error is not
+  // "still loading" and its row must never show a spinner.
+  assert.match(retry, /setPrepFailure\(null\)/);
   assert.match(retry, /prepareContentShare\(/);
   assert.doesNotMatch(retry, /setSelected|setNote|setRecipients|onClose|saveCard|saved_card|board|calendar|like/i);
   assert.equal((modal.match(/Retry share/g) || []).length, 1);
-  assert.match(modal, /prepError \? [\s\S]*Retry share/);
-  assert.doesNotMatch(modal, /prepError[\s\S]{0,180}<ActivityIndicator/);
+  assert.match(modal, /prepFailure !== null \? [\s\S]*Retry share/);
+  assert.doesNotMatch(modal, /prepFailure[\s\S]{0,180}<ActivityIndicator/);
 
   const identitySource = read('app-mobile/src/services/contentShareIdentity.ts');
   for (const forbidden of ['title', 'category', 'address', 'description', 'rating', 'price', 'hours', 'media', 'duration', 'estimate', 'savedCardId']) {

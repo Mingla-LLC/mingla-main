@@ -764,6 +764,18 @@ jobs:
       - name: "Issue #2589 — the consumer sheet still opens synchronously"
         run: node --experimental-strip-types --test scripts/issue-2589/consumer-sheet-open.runtime.test.mjs
 
+      # Issue #2589 — the other property the error-mapping work put at risk, and
+      # the older of the two. When the current share producer fails it must fail
+      # VISIBLY, exactly once, and must never quietly fall back to the pre-#1615
+      # producer: a silent downgrade is how a failure stops being visible and
+      # starts shipping subtly wrong artwork instead. That regression was caught
+      # on a physical Samsung. The suites guarding it match regexes over the
+      # adapter's source; this one lifts the real producer out and RUNS it over
+      # fourteen failure shapes, asserting that every one throws, none returns,
+      # and none reaches the legacy producer — which has no caller at all.
+      - name: "Issue #2589 — a V1 failure has one exit and cannot reach the legacy producer"
+        run: node --experimental-strip-types --test scripts/issue-2589/v1-producer-single-exit.runtime.test.mjs
+
       # Issue #2589 — the share host allowlist named `media.giphy.com`, which
       # Giphy's API never returns, so it matched ZERO real Giphy URLs; and the
       # content-type gate omitted GIF, so even a host-allowed GIF was refused.

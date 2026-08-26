@@ -235,7 +235,18 @@ test('C6 preview terminal state is exclusive and the production UI has one creat
   // lives in UnifiedShareProvider while this bridge owns curated identity only.
   const provider = read('app-mobile/src/components/share/UnifiedShareProvider.tsx');
   const bridge = read('app-mobile/src/components/ShareModal.tsx');
-  assert.match(provider, /prepError \? [\s\S]*Retry share/);
+  // [TEST-MOD-APPROVED #2589] SHAPE pin only. Pinned before:
+  //   `assert.match(provider, /prepError ? [\s\S]*Retry share/)`
+  // `prepError` was a BOOLEAN — it could record THAT preparation failed but
+  // never WHY, which is how one runtime screenshot got attributed to the wrong
+  // cause during #2589's investigation. It is now a reason.
+  //
+  // THE PROPERTY THIS TEST NAMES — ONE creation-error retry owner — is the
+  // `Retry share` count below, which is UNCHANGED and still passes. The
+  // replacement asserts more than the original: the error row must render its
+  // cause-specific copy AND still own the single Retry.
+  assert.match(provider, /prepFailure !== null \? [\s\S]*Retry share/);
+  assert.match(provider, /SHARE_FAILURE_COPY\[prepFailure\]/);
   assert.equal((provider.match(/Retry share/g) || []).length, 1);
   assert.doesNotMatch(provider, /catch\(\(\) => undefined\)/);
   assert.match(bridge, /kind === 'curated'[\s\S]*curated \?\? \{ stopPlaceIds: \[\] \}/);
