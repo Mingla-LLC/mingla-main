@@ -503,10 +503,15 @@ jobs:
       # terminal-class assertion messages — and passes unmutated.
       #
       # The earlier phrasing ("its LAST labelled RAISE EXCEPTION") was never
-      # expressible: only 1 of the 17 files ends on a labelled one. And in
-      # M-1173-02c the terminal assertion is SUBSUMED by an earlier one that
-      # asserts the same invariant more strongly, so it can never be the first
-      # failure — which is not the same as being unable to fail.
+      # expressible: only 1 of the 17 files ends on a labelled one.
+      #
+      # This paragraph once continued that M-1173-02c's terminal assertion was
+      # SUBSUMED by an earlier one. V-1 retired that grant: the earlier assertion
+      # reads has_table_privilege, which a COLUMN-level grant leaves false while
+      # the runtime UPDATE succeeds, so (f) is independently falsifiable and now
+      # proves on its own message. The sentence is struck rather than left
+      # standing, because a stale subsumption claim in the repo is the thing V-1
+      # warned would later be cited as fact.
       #
       # For each of the SEVENTEEN assertion-bearing files: copy the migrated
       # template into one throwaway database, run the UNMODIFIED file and require
@@ -538,7 +543,23 @@ jobs:
           restore_template_connections() {
             psql_admin -q -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS true" >/dev/null 2>&1 || true
           }
-          trap restore_template_connections EXIT
+          # RUN 12 died with `exit 123` and NOT ONE line of verdict output — no
+          # subject, no phase, no summary. A step that dies silently is the exact
+          # shape this whole change exists to eliminate, so L-5 now names where it
+          # was when it stopped. This is the G-3a readability lesson applied to the
+          # step as a whole: "I could not look" and "I looked and it is wrong" must
+          # never be the same silence.
+          l5_phase="startup"
+          l5_done=0
+          l5_finish() {
+            local rc=$?
+            if [ "$rc" -ne 0 ] && [ "$l5_done" -ne 1 ]; then
+              echo "::error::L-5 terminated during phase [$l5_phase] with exit $rc BEFORE reaching a verdict. No subject was adjudicated — this is not a statement about any suite file."
+            fi
+            restore_template_connections
+          }
+          trap l5_finish EXIT
+          l5_phase="closing the template for the copy window"
           psql_admin -q -v ON_ERROR_STOP=1 -c "ALTER DATABASE $PG_CONTRACT_TEMPLATE WITH ALLOW_CONNECTIONS false"
           psql_admin -At -c "SELECT count(*) FROM (SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '$PG_CONTRACT_TEMPLATE' AND pid <> pg_backend_pid()) t" >/dev/null
           template_owner="$(psql_admin -At -v ON_ERROR_STOP=1 -c "SELECT datdba::regrole::text FROM pg_database WHERE datname = '$PG_CONTRACT_TEMPLATE'")"
@@ -590,6 +611,7 @@ jobs:
           # RAISE EXCEPTION, so there is nothing to falsify in them.
           echo "psql call sites in the workflow: $call_sites (L-5 subjects: 17; race_a and race_b are call sites but carry no assertion)"
 
+          l5_phase="splitting the mutation table"
           mkdir -p "$RUNNER_TEMP/l5"
           # The id is captured by PATTERN, not by field position. It used to read
           # `$4` on `-- ===== M-1172-02a =====`, where $3 is the id and $4 is the
@@ -616,7 +638,11 @@ jobs:
           # Set equality, not just a count: the seventeen sections must be exactly
           # the seventeen subjects, so a renamed section cannot be absorbed by a
           # matching total.
-          ls -1 "$RUNNER_TEMP/l5"/*.sql | xargs -n1 basename | sed 's/\.sql$//' | sort > "$RUNNER_TEMP/l5_sections.txt"
+          : > "$RUNNER_TEMP/l5_sections.txt"
+          for sec in "$RUNNER_TEMP/l5"/*.sql; do
+            basename "$sec" .sql >> "$RUNNER_TEMP/l5_sections.txt"
+          done
+          sort -o "$RUNNER_TEMP/l5_sections.txt" "$RUNNER_TEMP/l5_sections.txt"
           awk -F'\t' '{print $1}' "$RUNNER_TEMP/l5_map.tsv" | grep -vE '^(M-1173-02e|M-1173-02g)$' | sort > "$RUNNER_TEMP/l5_subjects.txt"
           if ! diff -q "$RUNNER_TEMP/l5_sections.txt" "$RUNNER_TEMP/l5_subjects.txt" >/dev/null; then
             echo "::error::L-5: the mutation sections and the workflow's L-5 subjects are not the same set."
@@ -630,8 +656,20 @@ jobs:
           # not. Shrinking this list is not a violation; adding to it needs a
           # ruling, and an undeclared id is refused either way.
           L5_PERMITTED_SUBSUMPTIONS=""   # none permitted: both earlier grants retired (V-1, V-2)
-          declared_ids="$(grep -l '^-- @l5-subsumed-by: ' "$RUNNER_TEMP/l5"/*.sql 2>/dev/null \
-            | xargs -n1 basename 2>/dev/null | sed 's/\.sql$//' | sort | tr '\n' ' ')"
+          # A plain loop, not `grep -l | xargs`. That pipeline was fine while a
+          # subsumption existed and DIED the moment none did — `grep -l` exits 1
+          # on no match, and GNU xargs then runs `basename` with no operand and
+          # reports 123. Zero declared subsumptions is the CORRECT state after
+          # V-1, so the validation broke on exactly the state it was meant to
+          # certify, and took the whole step with it before any subject ran.
+          l5_phase="validating declared subsumptions"
+          declared_ids=""
+          for sec in "$RUNNER_TEMP/l5"/*.sql; do
+            if grep -q '^-- @l5-subsumed-by: ' "$sec"; then
+              declared_ids="$declared_ids $(basename "$sec" .sql)"
+            fi
+          done
+          declared_ids="$(printf '%s' "$declared_ids" | sed 's/^ *//')"
           for did in $declared_ids; do
             case " $L5_PERMITTED_SUBSUMPTIONS " in
               *" $did "*) ;;
@@ -648,8 +686,10 @@ jobs:
           failures=0
           proven_terminal=0
           proven_subsumed=0
+          l5_phase="adjudicating subjects"
           for mutation_file in "$RUNNER_TEMP/l5"/*.sql; do
             id="$(basename "$mutation_file" .sql)"
+            l5_phase="subject $id"
             file="$(awk -v i="$id" -F'\t' '$1==i {print $2}' "$RUNNER_TEMP/l5_map.tsv")"
             if [ -z "$file" ]; then
               echo "::error::L-5: $id has a mutation but no call site in $workflow. The mutation table and the job have diverged."
@@ -727,6 +767,7 @@ jobs:
           # The two race fixtures carry ZERO RAISE EXCEPTION and are not L-5
           # subjects. Accounted for explicitly rather than quietly dropped: their
           # verdict is rendered by the assert file, which must still read them.
+          l5_phase="race-fixture accounting"
           for race in issue_1807_tester_adversarial_race_a issue_1807_tester_adversarial_race_b; do
             if node .github/scripts/parity/l5-terminal-message.mjs "supabase/migrations/__tests__/$race.sql" >/dev/null 2>&1; then
               echo "::error::L-5: $race.sql now carries a RAISE EXCEPTION and must become an L-5 subject in its own right."
@@ -742,10 +783,12 @@ jobs:
           done
           echo "race fixtures: 0 RAISE EXCEPTION each, verdict rendered by M-1173-02i, which reads both fixture brands."
 
+          l5_phase="verdict"
           psql_admin -q -c "DROP DATABASE IF EXISTS $scratch" >/dev/null
           restore_template_connections
           trap - EXIT
           if [ "$failures" -ne 0 ]; then
+            l5_done=1
             echo "::error::L-5: $failures of 17 terminal assertions could not be proven to have teeth."
             exit 1
           fi
@@ -753,6 +796,7 @@ jobs:
             echo "── declared subsumptions, for the ledger ──"
             cat "$RUNNER_TEMP/parity/l5-subsumptions.txt"
           fi
+          l5_done=1
           echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 17 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
 
       # ── Guard G-9 — the trigger union is a superset of every member ──────
