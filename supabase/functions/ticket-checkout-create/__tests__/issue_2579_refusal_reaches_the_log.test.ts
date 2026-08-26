@@ -39,12 +39,81 @@ import {
 
 type RpcCall = { name: string; args: Record<string, unknown> };
 
-/** Captures RPC traffic and answers the few reads an early refusal performs. */
-const makeDb = (calls: RpcCall[]) => {
+const makeDeps = (db: unknown): TicketCheckoutCreateDeps => ({
+  userIdFromAuthHeader: () => Promise.resolve(null),
+  serviceClient: () => db as never,
+  paystackInitializeTransaction: (() => {
+    throw new Error("PROVIDER CALLED during a refusal");
+  }) as never,
+});
+
+/**
+ * Trips `event_id_required` — a `refuse()` site that fires BEFORE the access
+ * lookup, so it exercises the CHOKE POINT itself rather than the handler's
+ * error path. Without this case the suite passes with `refuse()` reverted to
+ * fire-and-forget, which is a test that cannot see the defect it names.
+ */
+const chokePointRequest = (): Request =>
+  new Request("https://edge.test/ticket-checkout-create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      lines: [{
+        ticketTypeId: "00000000-0000-0000-0000-000000000000",
+        quantity: 1,
+      }],
+      buyer: {
+        name: "Choke Point",
+        email: "choke@example.invalid",
+        phone: "+2348012345678",
+      },
+    }),
+  });
+
+const pastEventRequest = (): Request =>
+  new Request("https://edge.test/ticket-checkout-create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      eventId: "459a73b3-d303-44fa-806b-4f85038b566f",
+      lines: [{
+        ticketTypeId: "00000000-0000-0000-0000-000000000000",
+        quantity: 1,
+      }],
+      buyer: {
+        name: "Regression Proof",
+        email: "proof@example.invalid",
+        phone: "+2348012345678",
+      },
+    }),
+  });
+
+/**
+ * issue #2579 — the harness asserts ORDERING, which is the whole defect.
+ *
+ * `waitUntil` was tried first and did NOT work on this runtime: six real
+ * refusals at the deployed endpoint still recorded zero rows, and the platform
+ * logs showed a fresh isolate booted and shut down per request without ever
+ * opening an HTTP call to the RPC. So the property under test is not "the
+ * promise was handed somewhere" — it is "the write had already happened by the
+ * time the response existed". Nothing outliving the response is relied upon.
+ */
+const runRefusal = async (
+  calls: RpcCall[],
+  request: Request = pastEventRequest(),
+): Promise<{ response: Response; recordedBeforeResponse: boolean }> => {
+  let recordedAt = -1;
+  let tick = 0;
   const db = {
     rpc: (name: string, args: Record<string, unknown>) => {
       calls.push({ name, args });
-      return Promise.resolve({ data: null, error: null });
+      if (name === "issue_2579_record_checkout_refusal") recordedAt = ++tick;
+      // A real network round-trip is not instantaneous. Yielding here is what
+      // makes the test able to FAIL: a fire-and-forget caller returns its
+      // response during this gap.
+      return new Promise((resolve) =>
+        setTimeout(() => resolve({ data: null, error: null }), 5)
+      );
     },
     from: (_table: string) => {
       const chain: Record<string, unknown> = {};
@@ -69,74 +138,25 @@ const makeDb = (calls: RpcCall[]) => {
       return chain;
     },
   };
-  return db;
+  const handler = createTicketCheckoutCreateHandler(makeDeps(db));
+  const response = await handler(request);
+  const responseAt = ++tick;
+  return {
+    response,
+    recordedBeforeResponse: recordedAt > 0 && recordedAt < responseAt,
+  };
 };
 
-const makeDeps = (db: unknown): TicketCheckoutCreateDeps => ({
-  userIdFromAuthHeader: () => Promise.resolve(null),
-  serviceClient: () => db as never,
-  paystackInitializeTransaction: (() => {
-    throw new Error("PROVIDER CALLED during a refusal");
-  }) as never,
-});
-
-const pastEventRequest = (): Request =>
-  new Request("https://edge.test/ticket-checkout-create", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      eventId: "459a73b3-d303-44fa-806b-4f85038b566f",
-      lines: [{
-        ticketTypeId: "00000000-0000-0000-0000-000000000000",
-        quantity: 1,
-      }],
-      buyer: {
-        name: "Regression Proof",
-        email: "proof@example.invalid",
-        phone: "+2348012345678",
-      },
-    }),
-  });
-
-/**
- * Installs a `waitUntil`-bearing runtime and returns a drain function. This is
- * the shape Supabase's edge runtime provides; without it the recording promise
- * is abandoned when the response returns, which is defect (1).
- */
-const withEdgeRuntime = async (
-  run: () => Promise<Response>,
-): Promise<{ response: Response; drained: number }> => {
-  const held: Promise<unknown>[] = [];
-  const g = globalThis as { EdgeRuntime?: unknown };
-  const prior = g.EdgeRuntime;
-  g.EdgeRuntime = { waitUntil: (p: Promise<unknown>) => void held.push(p) };
-  try {
-    const response = await run();
-    await Promise.all(held);
-    return { response, drained: held.length };
-  } finally {
-    if (prior === undefined) delete g.EdgeRuntime;
-    else g.EdgeRuntime = prior;
-  }
-};
-
-Deno.test("#2579 the refusal is HANDED TO THE RUNTIME, not abandoned at response", async () => {
+Deno.test("#2579 the refusal is RECORDED BEFORE the response is returned", async () => {
   const calls: RpcCall[] = [];
-  const handler = createTicketCheckoutCreateHandler(makeDeps(makeDb(calls)));
+  const { response, recordedBeforeResponse } = await runRefusal(calls);
 
-  const { response, drained } = await withEdgeRuntime(() =>
-    handler(pastEventRequest())
-  );
-
+  assert(response.status >= 400, `expected a refusal, got ${response.status}`);
   assert(
-    response.status >= 400,
-    `expected a refusal, got ${response.status}`,
-  );
-  assert(
-    drained > 0,
-    "the recording was never handed to waitUntil — it would be abandoned the " +
-      "moment the response returns, which is exactly the zero-rows-from-six-" +
-      "real-refusals defect",
+    recordedBeforeResponse,
+    "the response was produced before the recording completed — a fire-and-forget " +
+      "write, which is exactly the defect where six real refusals at the deployed " +
+      "endpoint recorded zero rows",
   );
   assertEquals(
     calls.filter((c) => c.name === "issue_2579_record_checkout_refusal").length,
@@ -145,13 +165,30 @@ Deno.test("#2579 the refusal is HANDED TO THE RUNTIME, not abandoned at response
   );
 });
 
+Deno.test("#2579 the refuse() CHOKE POINT itself records before responding", async () => {
+  const calls: RpcCall[] = [];
+  const { response, recordedBeforeResponse } = await runRefusal(
+    calls,
+    chokePointRequest(),
+  );
+  const body = await response.json() as { error?: string };
+
+  assertEquals(
+    body.error,
+    "event_id_required",
+    "this case must land on a refuse() site, not the handler error path — " +
+      "otherwise it cannot see a fire-and-forget regression in refuse() itself",
+  );
+  assert(
+    recordedBeforeResponse,
+    "refuse() produced its response before the recording completed: the " +
+      "seventeen refusals routed through the choke point would go unlogged",
+  );
+});
+
 Deno.test("#2579 the RAW reason reaches the RPC, not a collapsed token", async () => {
   const calls: RpcCall[] = [];
-  const handler = createTicketCheckoutCreateHandler(makeDeps(makeDb(calls)));
-
-  const { response } = await withEdgeRuntime(() =>
-    handler(pastEventRequest())
-  );
+  const { response } = await runRefusal(calls);
   const body = await response.json() as { error?: string };
   const recorded = calls.find((c) =>
     c.name === "issue_2579_record_checkout_refusal"
@@ -204,10 +241,7 @@ Deno.test("#2579 REVERT GUARD — the deleted collapse disagrees on a real arm",
   };
 
   const calls: RpcCall[] = [];
-  const handler = createTicketCheckoutCreateHandler(makeDeps(makeDb(calls)));
-  const { response } = await withEdgeRuntime(() =>
-    handler(pastEventRequest())
-  );
+  const { response } = await runRefusal(calls);
   const body = await response.json() as { error?: string };
   const recorded = calls.find((c) =>
     c.name === "issue_2579_record_checkout_refusal"
