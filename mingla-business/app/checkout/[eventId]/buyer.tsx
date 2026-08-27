@@ -28,6 +28,7 @@ import React, {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -273,6 +274,17 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
   } = useCart();
   const totals = useCartTotals();
   const [submitting, setSubmitting] = useState<boolean>(false);
+  /**
+   * issue #2689 — SYNCHRONOUS re-entry guard, not a second copy of `submitting`.
+   *
+   * `setSubmitting` is a state update: React batches it, so two taps inside the
+   * same tick both read the OLD value and both proceed. A ref changes on the
+   * assignment itself, which is what makes the second tap a no-op rather than a
+   * second checkout. Explorer already does exactly this
+   * (`app-mobile/src/payments/nativeCheckoutFlow.ts` `activeCheckoutFingerprint`),
+   * and Explorer is the surface that CANNOT produce this bug.
+   */
+  const submitInFlight = useRef<boolean>(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
   // META-ORCH-1161 Sub-A.2 (DEC-186) — bundled-mandatory consent gate state.
@@ -449,6 +461,22 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
       return;
     }
     if (eventId === null) return;
+    // issue #2689 — CLAIM THE SUBMIT BEFORE ANY AWAIT. This is the whole bug.
+    //
+    // `setSubmitting(true)` used to live below the consent write, which is a
+    // network round trip. For its full duration — measured at 2.0s and 2.7s in
+    // production — the button stayed enabled, unspinnered and re-entrant, so the
+    // screen carried NO evidence that the first tap had registered. People tapped
+    // again, exactly as anyone would. Every buyer shown a failure had tapped
+    // twice; every buyer shown success had tapped once. 5 of 8, all holding a
+    // valid ticket they were told they did not have.
+    //
+    // The consent write is documented as non-blocking, and it is — for
+    // CORRECTNESS. It was fully blocking for FEEDBACK. Someone reasoned about
+    // the failure case and never about the waiting case.
+    if (submitInFlight.current) return;
+    submitInFlight.current = true;
+    setSubmitting(true);
     setSubmitError(null);
 
     // META-ORCH-1161 Sub-A.2 — record the bundled consent grant (transactional +
@@ -478,7 +506,6 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
 
     if (totals.isFree) {
       try {
-        setSubmitting(true);
         // issue #2135 — forward the chosen occurrence ONLY when present, the
         // same shape the paid path uses. Without this a free multi-date guest
         // picks a day, sees it on the page and in the cart, and still lands an
@@ -524,6 +551,15 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
           eventId,
           buyer,
           lines,
+          // issue #2689 — SAY WHICH SURFACE THIS IS. Omitting it made the edge
+          // apply its back-compat fallback, which labels anything unrecognised
+          // "native" — so every free WEB claim was recorded as native. That is
+          // what sent the first triage of this issue to Explorer, the one app
+          // that CANNOT produce the bug, while the real defect sat in this file.
+          // The user agents said mobile Safari all along; our own telemetry
+          // disagreed. The fallback stays for older builds; this build stops
+          // relying on it.
+          surface: Platform.OS === "web" ? "web" : "native",
           ...(heldToken.length > 0 ? { buyerStatusToken: heldToken } : {}),
           ...(eventDateId !== null ? { eventDateId } : {}),
         // issue #2160 — forward the chosen day SET. Empty => byte-identical
@@ -628,11 +664,26 @@ export default function CheckoutBuyerScreen(): React.ReactElement {
         // something true and non-specific rather than "sold out".
         setSubmitError(freeCheckoutErrorMessage(error));
       } finally {
+        submitInFlight.current = false;
         setSubmitting(false);
       }
       return;
     }
+    // issue #2689 — the PAID rail had no guard at all: it awaited the consent
+    // write and then navigated, so a second tap during that same dead window ran
+    // a second consent write and a second push. The guard above now covers both
+    // rails.
+    //
+    // RELEASED IMMEDIATELY AFTER THE PUSH, deliberately. The whole defect lives
+    // in the window BEFORE navigation — the seconds when the screen looks idle
+    // and the guest taps again. Once /payment is on screen there is no button
+    // here to press. Holding the guard past this point would only strand a guest
+    // who navigates back on a permanently dead button, which is a worse bug than
+    // the one being fixed: a stack push leaves this screen MOUNTED, so the ref
+    // would survive the return.
     router.push(`/checkout/${eventId}/payment` as never);
+    submitInFlight.current = false;
+    setSubmitting(false);
   }, [
     validation.isValid,
     termsAccepted,

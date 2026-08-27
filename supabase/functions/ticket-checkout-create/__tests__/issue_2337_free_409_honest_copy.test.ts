@@ -133,6 +133,13 @@ class FakeQuery implements PromiseLike<DbResult> {
   in(): this {
     return this;
   }
+  // issue #2689 — the status-token UPDATE now carries `.is("order_id", null)`,
+  // so a session that already completed never has its possession proof re-minted
+  // by a duplicate that is about to refuse. Without this stub the chain returns
+  // undefined and every arm below answers 500 instead of its real 409.
+  is(): this {
+    return this;
+  }
   order(): this {
     return this;
   }
