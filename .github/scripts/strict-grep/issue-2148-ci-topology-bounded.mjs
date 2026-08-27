@@ -294,8 +294,17 @@ function registryAt(repoRoot, revision, required) {
 
 export function inspectRepository({ repoRoot = REPO_ROOT, base, head, event = {} }) {
   ensureComparisonHistory(event, base, head, repoRoot);
+  // Issue #2681: THREE dots, deliberately. `git diff A B` compares two tips;
+  // `git diff A...B` compares the MERGE BASE of A and B against B — the same
+  // question `git log A..B` below already asks when it attributes tokens.
+  // With two dots a branch cut before a workflow was deleted on the base branch
+  // is reported as having ADDED that file (nine phantom violations on PR #2677),
+  // and, in the other direction, a workflow added at a path the base branch
+  // already has is invisible to --diff-filter=A and passes. ensureComparisonHistory
+  // above has already proven the merge base is computable or exited 2, so this
+  // adds no history requirement. Do NOT "simplify" this back to two dots.
   const raw = git(
-    ["diff", "--diff-filter=A", "--name-only", base, head, "--", WORKFLOW_PREFIX],
+    ["diff", "--diff-filter=A", "--name-only", `${base}...${head}`, "--", WORKFLOW_PREFIX],
     { cwd: repoRoot },
   );
   const addedWorkflows = raw

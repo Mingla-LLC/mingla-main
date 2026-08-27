@@ -6,6 +6,12 @@
 
 - **Rule:** Ordinary issue work adds tests and gates to stable shared registries; it never adds a new `.github/workflows/issue-*`, `orch-*`, or `meta-*` pull-request wrapper. A new capability-named workflow requires an issue-cited approval in a commit touching that file and must prove a unique runner/runtime, trust, production-operation, service-container, or required-context boundary that existing profiles cannot supply. Existing workflow modification and deletion remain allowed; test deletion does not.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2148-ci-topology-bounded.mjs` runs self-test then live in strict-grep class A, its committed issue #2431 happy-path proof executes in the same batch, and `.github/workflows/strict-grep-mingla-business.yml` triggers on every workflow-only diff.
+- **Comparison (DRAFT, issue #2681):** the added-workflow set is computed against the MERGE BASE of the
+  base branch and the head (`git diff --diff-filter=A A...B`), never against the base branch tip. Token
+  attribution (`git log A..B`) and the base-registry lookup (`registryAt(base)`) are deliberately NOT
+  merge-base-rebased: authorization is a property of the branch being merged INTO. A tip-to-tip added
+  set both blames a stale branch for deletions it never made and hides an addition at a path the base
+  branch already carries.
 - **Status:** DRAFT until the full #2148 consolidation programme reaches its final topology, completeness, required-context, and performance budgets. Phase 0 prevents new wrappers without deleting any existing workflow or test.
 
 ## DRAFT — issue #2148 / Phase 1 issue #2435 (CI execution registry is complete)
