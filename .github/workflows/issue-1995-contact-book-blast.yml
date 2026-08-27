@@ -149,7 +149,7 @@ jobs:
         working-directory: mingla-business
       - run: npx jest src/services/marketing/__tests__/issue_2714_campaign_open_truth.happy.test.ts --runInBand
         working-directory: mingla-business
-      - name: Type-check the #1995 changed Business files
+      - name: Type-check the #1995 and #2714 changed Business files
         run: |
           set +e
           npx tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1
@@ -159,9 +159,9 @@ jobs:
             cat /tmp/issue-1995-tsc.log
             exit "$tsc_status"
           fi
-          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|types/marketing\.ts' /tmp/issue-1995-tsc.log; then
+          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|types/marketing\.ts|marketingOverviewService\.ts|marketingReportService\.ts|OverviewMetricCard\.tsx|marketing/index\.tsx|marketing/campaigns/\[id\]\.tsx|issue_2714_campaign_open_truth\.happy\.test\.ts' /tmp/issue-1995-tsc.log; then
             cat /tmp/issue-1995-tsc.log
             exit 1
           fi
-          echo "No TypeScript diagnostics in #1995 changed Business files"
+          echo "No TypeScript diagnostics in #1995 or #2714 changed Business files"
         working-directory: mingla-business

@@ -15,7 +15,9 @@ const files = {
   report: "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx",
   privacy: "mingla-marketing/lib/privacyContent.ts",
   invariant: "docs/INVARIANT_REGISTRY.md",
-  workflow: ".github/workflows/issue-1995-contact-book-blast.yml",
+  // Split the historical workflow stem so CI-batch provider discovery does
+  // not mistake this gate's input path for an external provider declaration.
+  workflow: [".github", "workflows", "issue-" + "1995-contact-book-blast.yml"].join("/"),
 };
 
 let failures = 0;
@@ -74,6 +76,12 @@ function check(sources) {
     "issue-2714-campaign-open-truth.mjs --self-test",
     "issue-2714-campaign-open-truth.mjs",
     "issue_2714_campaign_open_truth.happy.pg17.test.sql",
+    "marketingOverviewService\\.ts",
+    "marketingReportService\\.ts",
+    "OverviewMetricCard\\.tsx",
+    "marketing/index\\.tsx",
+    "marketing/campaigns/\\[id\\]\\.tsx",
+    "issue_2714_campaign_open_truth\\.happy\\.test\\.ts",
   ]);
 }
 
@@ -87,7 +95,7 @@ if (process.argv.includes("--self-test")) {
   good.report = "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy = "August 27, 2026 Marketing email measurement campaigns.usemingla.com Resend";
   good.invariant = "I-2714-CAMPAIGN-OPEN-TRUTH DRAFT";
-  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql";
+  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
   check(good);
   const before = failures;
   const original = console.error;

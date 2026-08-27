@@ -16662,7 +16662,7 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2f8ee2d53c37d89e28cdf3a0127dd8325bf9182530c2981246eecae3881099dd",
+        "sourceSha256": "14921ef14c3cc47825dfedc3f30cfac56810ba818124cf14700be144f3870b1d",
         "triggers": [
           "pull_request"
         ],
