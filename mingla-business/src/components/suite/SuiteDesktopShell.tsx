@@ -33,8 +33,9 @@
  * HOOK). It never gates itself, so it stays free of platform checks.
  */
 
-import React, { useCallback, useRef } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  AccessibilityInfo,
   Platform,
   Pressable,
   ScrollView,
@@ -42,6 +43,7 @@ import {
   Text,
   View,
 } from "react-native";
+import type { PressableStateCallbackType, ViewStyle } from "react-native";
 
 import {
   accent,
@@ -51,12 +53,16 @@ import {
   text as textTokens,
   typography,
   venueRailWidth,
+  durations,
+  easings,
 } from "../../constants/designSystem";
 
 /** One rail entry. `key` is the caller's module id; `label` is what renders. */
 export interface SuiteDesktopModule {
   key: string;
   label: string;
+  /** Optional visual group. Venue supplies this; ungrouped suites stay unchanged. */
+  group?: string;
 }
 
 export interface SuiteDesktopShellProps {
@@ -88,6 +94,20 @@ function hasFocusCapability(value: unknown): value is FocusCapable {
   );
 }
 
+type RailWebTransitionStyle = ViewStyle & {
+  transitionProperty: "opacity";
+  transitionDuration: string;
+  transitionTimingFunction: typeof easings.out;
+};
+
+function railWebTransitionStyle(reduceMotion: boolean): RailWebTransitionStyle {
+  return {
+    transitionProperty: "opacity",
+    transitionDuration: reduceMotion ? "0ms" : `${durations.normal}ms`,
+    transitionTimingFunction: easings.out,
+  };
+}
+
 export function SuiteDesktopShell({
   modules,
   activeModule,
@@ -98,10 +118,15 @@ export function SuiteDesktopShell({
   railTestIdPrefix,
   testID,
 }: SuiteDesktopShellProps): React.ReactElement {
+  const grouped = modules.some((module) => module.group !== undefined);
   return (
     <View style={styles.desktopHost} testID={testID}>
       <View style={styles.desktopCentered}>
-        <View style={styles.desktopRail} accessibilityRole="tablist">
+        <View
+          style={[styles.desktopRail, grouped ? styles.desktopRailGrouped : null]}
+          accessibilityRole="tablist"
+          accessibilityLabel="Restaurant Hub sections"
+        >
           <SuiteDesktopRail
             modules={modules}
             activeModule={activeModule}
@@ -143,44 +168,138 @@ function SuiteDesktopRail({
   testIdPrefix,
 }: SuiteDesktopRailProps): React.ReactElement {
   const controlRefs = useRef<Record<string, View | null>>({});
+  const [reduceMotion, setReduceMotion] = useState(false);
+  useEffect(() => {
+    let mounted = true;
+    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
+      if (mounted) setReduceMotion(enabled);
+    });
+    const subscription = AccessibilityInfo.addEventListener(
+      "reduceMotionChanged",
+      setReduceMotion,
+    );
+    return () => {
+      mounted = false;
+      subscription.remove();
+    };
+  }, []);
   const focusControl = useCallback((control: View | null): void => {
     if (hasFocusCapability(control)) control.focus();
   }, []);
-  // ORCH-1184 — no grey uppercase section captions: the rail reads as ONE
-  // clean, uniformly-spaced list. Ordering/grouping is the caller's job.
+  const groups = useMemo(() => {
+    const result: { label: string | null; modules: SuiteDesktopModule[] }[] = [];
+    for (const module of modules) {
+      const label = module.group ?? null;
+      const current = result[result.length - 1];
+      if (current === undefined || current.label !== label) {
+        result.push({ label, modules: [module] });
+      } else {
+        current.modules.push(module);
+      }
+    }
+    return result;
+  }, [modules]);
+
+  const selectAndFocus = useCallback(
+    (index: number): void => {
+      const module = modules[index];
+      if (module === undefined) return;
+      onSelect(module.key, () => focusControl(controlRefs.current[module.key] ?? null));
+      requestAnimationFrame(() => focusControl(controlRefs.current[module.key] ?? null));
+    },
+    [focusControl, modules, onSelect],
+  );
+
   return (
     <View style={styles.railInner}>
-      {modules.map((module) => {
-        const isActive = module.key === activeModule;
-        return (
-          <Pressable
-            ref={(instance) => {
-              controlRefs.current[module.key] = instance;
-            }}
-            key={module.key}
-            accessibilityRole="tab"
-            accessibilityState={{ selected: isActive }}
-            accessibilityLabel={`${module.label} module`}
-            onPress={() =>
-              onSelect(module.key, () =>
-                focusControl(controlRefs.current[module.key] ?? null)
-              )
-            }
-            style={[styles.railRow, isActive ? styles.railRowActive : null]}
-            testID={`${testIdPrefix}${module.key}`}
-          >
-            {isActive ? <View style={styles.railActiveBar} /> : null}
-            <Text
-              style={[
-                styles.railLabel,
-                isActive ? styles.railLabelActive : null,
-              ]}
-            >
-              {module.label}
-            </Text>
-          </Pressable>
-        );
-      })}
+      {groups.map((group, groupIndex) => (
+        <View
+          key={`${group.label ?? "ungrouped"}-${groupIndex}`}
+          style={[styles.railGroup, groupIndex > 0 ? styles.railGroupAfterFirst : null]}
+        >
+          {group.label !== null ? (
+            <View style={styles.railGroupHeadingBox}>
+              <Text accessible={false} style={styles.railGroupHeading}>
+                {group.label}
+              </Text>
+            </View>
+          ) : null}
+          <View style={styles.railGroupTabs}>
+            {group.modules.map((module) => {
+              const moduleIndex = modules.findIndex((candidate) => candidate.key === module.key);
+              const isActive = module.key === activeModule;
+              const webProps = Platform.OS === "web"
+                ? {
+                    tabIndex: isActive ? (0 as const) : (-1 as const),
+                    onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
+                      let nextIndex: number | null = null;
+                      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
+                        nextIndex = (moduleIndex + 1) % modules.length;
+                      } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
+                        nextIndex = (moduleIndex - 1 + modules.length) % modules.length;
+                      } else if (event.key === "Home") {
+                        nextIndex = 0;
+                      } else if (event.key === "End") {
+                        nextIndex = modules.length - 1;
+                      } else if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
+                        nextIndex = moduleIndex;
+                      }
+                      if (nextIndex !== null) {
+                        event.preventDefault();
+                        selectAndFocus(nextIndex);
+                      }
+                    },
+                  }
+                : {};
+              return (
+                <Pressable
+                  {...webProps}
+                  ref={(instance) => { controlRefs.current[module.key] = instance; }}
+                  key={module.key}
+                  accessibilityRole="tab"
+                  accessibilityState={{ selected: isActive }}
+                  accessibilityLabel={
+                    module.group !== undefined
+                      ? `${module.group}, ${module.label} module`
+                      : `${module.label} module`
+                  }
+                  onPress={() => onSelect(
+                    module.key,
+                    () => focusControl(controlRefs.current[module.key] ?? null),
+                  )}
+                  style={(state: PressableStateCallbackType) => {
+                    const webState = state as PressableStateCallbackType & {
+                      hovered?: boolean;
+                      focused?: boolean;
+                    };
+                    return [
+                      styles.railRow,
+                      module.group !== undefined ? styles.railRowGrouped : null,
+                      webState.hovered === true && !isActive ? styles.railRowHover : null,
+                      webState.focused === true ? styles.railRowFocus : null,
+                    ];
+                  }}
+                  testID={`${testIdPrefix}${module.key}`}
+                >
+                  <View
+                    style={[
+                      styles.railSelectionLayer,
+                      isActive ? styles.railSelectionLayerActive : null,
+                      Platform.OS === "web" ? railWebTransitionStyle(reduceMotion) : null,
+                    ]}
+                    testID={`${testIdPrefix}${module.key}-selection`}
+                  >
+                    <View style={styles.railActiveBar} />
+                  </View>
+                  <Text style={[styles.railLabel, isActive ? styles.railLabelActive : null]}>
+                    {module.label}
+                  </Text>
+                </Pressable>
+              );
+            })}
+          </View>
+        </View>
+      ))}
     </View>
   );
 }
@@ -216,9 +335,26 @@ const styles = StyleSheet.create({
     borderRightColor: glass.border.profileBase,
     paddingRight: spacing.sm,
   },
+  desktopRailGrouped: {
+    paddingTop: 0,
+  },
   railInner: {
-    // ORCH-1184 — the Command/Booking captions were removed, so the rail is one
-    // uniformly-spaced list. `gap` applies evenly between every item.
+    gap: spacing.xxs,
+  },
+  railGroup: {},
+  railGroupAfterFirst: {
+    marginTop: 12,
+  },
+  railGroupHeadingBox: {
+    height: 20,
+    justifyContent: "center",
+    marginBottom: spacing.xs,
+  },
+  railGroupHeading: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+  },
+  railGroupTabs: {
     gap: spacing.xxs,
   },
   railRow: {
@@ -230,13 +366,31 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     ...Platform.select({ web: { cursor: "pointer" }, default: {} }),
   },
-  railRowActive: {
-    // 2.0.1 polish — sleeker selected state. The old `accent.tint` (warm @0.28
-    // alpha) read as a heavy brown fill. The app's restrained convention is a
-    // faint neutral surface + the warm accent reserved for the edge bar + label,
-    // so the active row uses the elevated glass surface (opaque-safe rgba) and
-    // the warm signal lives in `railActiveBar` + `railLabelActive`.
+  railSelectionLayer: {
+    ...StyleSheet.absoluteFillObject,
+    pointerEvents: "none",
+    borderRadius: radius.md,
     backgroundColor: glass.tint.profileElevated,
+    opacity: 0,
+  },
+  railSelectionLayerActive: {
+    // #2726: keep both old/new selection layers mounted so the approved 200ms
+    // opacity crossfade is real; mounting an already-opaque bar was instant.
+    opacity: 1,
+  },
+  railRowGrouped: {
+    // #2726: compact visual rhythm must never shrink the actual pointer,
+    // keyboard, or assistive-technology target below the 44px floor.
+    minHeight: 44,
+  },
+  railRowHover: {
+    backgroundColor: glass.tint.profileBase,
+  },
+  railRowFocus: {
+    outlineColor: accent.warm,
+    outlineWidth: 2,
+    outlineStyle: "solid",
+    outlineOffset: 2,
   },
   railActiveBar: {
     position: "absolute",

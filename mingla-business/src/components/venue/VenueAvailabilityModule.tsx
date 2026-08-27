@@ -28,13 +28,14 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
+import type { LayoutChangeEvent } from "react-native";
 import { useNavigation } from "expo-router";
 
 import {
   accent,
+  restaurantHubLayout,
   semantic,
   spacing,
-  suiteFormMaxWidth,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
@@ -227,6 +228,22 @@ function periodSummary(p: ServicePeriod): string {
   return `${days} · ${p.start}–${p.end}`;
 }
 
+export function availabilityColumnCount(contentWidth: number): 1 | 2 | 3 {
+  // #2726: measure the leaf card content, not the viewport. The old 720px host
+  // cap made the full-width shell irrelevant and prevented desktop reflow.
+  if (contentWidth >= restaurantHubLayout.availabilityThreeColumnMinWidth) return 3;
+  if (contentWidth >= restaurantHubLayout.availabilityTwoColumnMinWidth) return 2;
+  return 1;
+}
+
+function rowsOf<T>(items: readonly T[], columns: number): readonly T[][] {
+  const rows: T[][] = [];
+  for (let index = 0; index < items.length; index += columns) {
+    rows.push(items.slice(index, index + columns));
+  }
+  return rows;
+}
+
 interface NumericFieldDefinition {
   key: AvailabilityFieldKey;
   label: string;
@@ -364,6 +381,7 @@ export const VenueAvailabilityModule = forwardRef<
     message: string;
   } | null>(null);
   const [discardDialogVisible, setDiscardDialogVisible] = useState(false);
+  const [contentWidth, setContentWidth] = useState(0);
   const inputRefs = useRef<(TextInput | null)[]>([]);
   const activeFieldIndexRef = useRef<number | null>(null);
   const initiallySelectedRef = useRef<Set<AvailabilityFieldKey>>(new Set());
@@ -373,6 +391,8 @@ export const VenueAvailabilityModule = forwardRef<
   const draftRef = useRef(draft);
 
   const errors = useMemo(() => validateAvailabilityDraft(draft), [draft]);
+  const serviceColumns = availabilityColumnCount(contentWidth);
+  const controlColumns = serviceColumns === 1 ? 1 : 2;
   const isValid = useMemo(
     () => Object.values(errors).every((error) => error === null),
     [errors],
@@ -595,6 +615,11 @@ export const VenueAvailabilityModule = forwardRef<
     leave?.();
   }, [baseline]);
 
+  const handleContentLayout = useCallback((event: LayoutChangeEvent): void => {
+    const nextWidth = Math.round(event.nativeEvent.layout.width);
+    setContentWidth((current) => (current === nextWidth ? current : nextWidth));
+  }, []);
+
   /* ----- blackouts ----- */
   const openAddBlackout = useCallback((): void => {
     setEditBlackout(null);
@@ -698,9 +723,36 @@ export const VenueAvailabilityModule = forwardRef<
     ],
   );
 
+  const renderNumericGrid = useCallback(
+    (
+      fields: readonly NumericFieldDefinition[],
+      startIndex: number,
+      columns: 1 | 2,
+      testID: string,
+    ): React.ReactElement => (
+      <View
+        style={styles.numericGrid}
+        accessibilityLabel={`${testID}, ${columns} ${columns === 1 ? "column" : "columns"}`}
+        testID={testID}
+      >
+        {rowsOf(fields, columns).map((row, rowIndex) => (
+          <View key={`${testID}-row-${rowIndex}`} style={styles.numericGridRow}>
+            {row.map((field, columnIndex) => (
+              <View key={field.key} style={styles.numericGridCell}>
+                {renderNumericField(field, startIndex + rowIndex * columns + columnIndex)}
+              </View>
+            ))}
+            {columns === 2 && row.length === 1 ? <View style={styles.numericGridCell} /> : null}
+          </View>
+        ))}
+      </View>
+    ),
+    [renderNumericField],
+  );
+
   return (
     <View style={styles.host} testID={testID ?? "venue-availability-module"}>
-      <View style={styles.headerText}>
+      <View style={styles.headerText} testID="venue-avail-heading-copy">
         <Text style={styles.title}>Availability</Text>
         <Text style={styles.subtitle}>
           Set when guests can book, how long a table turns, and any closures.
@@ -808,27 +860,44 @@ export const VenueAvailabilityModule = forwardRef<
           Pulled from your opening hours. Guests can reserve during the times
           your venue is open.
         </Text>
-        {servicePeriods.length === 0 ? (
-          <Text style={styles.emptyLine}>
-            No service periods yet. Set your opening hours in Settings and they
-            show up here automatically.
-          </Text>
-        ) : (
-          servicePeriods.map((p, idx) => (
-            <View
-              key={`${p.name}-${idx}`}
-              accessibilityRole="text"
-              accessibilityLabel={`Service period ${p.name}, ${periodSummary(p)}`}
-              style={styles.periodRow}
-              testID={`venue-avail-period-${idx}`}
-            >
-              <View style={styles.flex1}>
-                <Text style={styles.periodName}>{p.name}</Text>
-                <Text style={styles.periodMeta}>{periodSummary(p)}</Text>
+        <View
+          onLayout={handleContentLayout}
+          style={styles.serviceGrid}
+          accessibilityLabel={`Service periods, ${serviceColumns} ${serviceColumns === 1 ? "column" : "columns"}`}
+          testID="venue-avail-service-grid"
+        >
+          {servicePeriods.length === 0 ? (
+            <Text style={styles.emptyLine}>
+              No service periods yet. Set your opening hours in Settings and they
+              show up here automatically.
+            </Text>
+          ) : (
+            rowsOf(servicePeriods, serviceColumns).map((row, rowIndex) => (
+              <View key={`service-row-${rowIndex}`} style={styles.serviceGridRow}>
+                {row.map((p, columnIndex) => {
+                  const index = rowIndex * serviceColumns + columnIndex;
+                  return (
+                    <View
+                      key={`${p.name}-${index}`}
+                      accessibilityRole="text"
+                      accessibilityLabel={`Service period ${p.name}, ${periodSummary(p)}`}
+                      style={styles.serviceGridCell}
+                      testID={`venue-avail-period-${index}`}
+                    >
+                      <View style={styles.flex1}>
+                        <Text style={styles.periodName}>{p.name}</Text>
+                        <Text style={styles.periodMeta}>{periodSummary(p)}</Text>
+                      </View>
+                    </View>
+                  );
+                })}
+                {Array.from({ length: serviceColumns - row.length }, (_, index) => (
+                  <View key={`service-spacer-${index}`} style={styles.serviceGridCell} />
+                ))}
               </View>
-            </View>
-          ))
-        )}
+            ))
+          )}
+        </View>
         {canMutate ? (
           <Button
             label="Edit hours in Settings"
@@ -887,17 +956,13 @@ export const VenueAvailabilityModule = forwardRef<
               How long a seating lasts, in minutes. Leave blank to skip a
               bucket.
             </Text>
-            {TURN_FIELDS.map((field, index) =>
-              renderNumericField(field, index),
-            )}
+            {renderNumericGrid(TURN_FIELDS, 0, controlColumns, "Turn times")}
           </GlassCard>
 
           {/* Booking controls */}
           <GlassCard variant="base" contentStyle={styles.section}>
             <Text style={styles.sectionTitle}>Booking controls</Text>
-            {BOOKING_FIELDS.map((field, index) =>
-              renderNumericField(field, TURN_FIELDS.length + index),
-            )}
+            {renderNumericGrid(BOOKING_FIELDS, TURN_FIELDS.length, controlColumns, "Booking controls")}
             {canMutate ? (
               <View style={styles.saveBlock}>
                 {!isValid && (submitted || touched.size > 0) ? (
@@ -1053,15 +1118,14 @@ export const VenueAvailabilityModule = forwardRef<
 
 const styles = StyleSheet.create({
   host: {
-    alignSelf: "flex-start",
     width: "100%",
-    maxWidth: suiteFormMaxWidth,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: spacing.md,
   },
   headerText: {
     gap: spacing.xxs,
+    maxWidth: restaurantHubLayout.proseMaxWidth,
   },
   title: {
     ...typography.h3,
@@ -1101,6 +1165,17 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
+  serviceGrid: {
+    gap: spacing.sm,
+  },
+  serviceGridRow: {
+    flexDirection: "row",
+    columnGap: spacing.lg,
+  },
+  serviceGridCell: {
+    flex: 1,
+    minWidth: 0,
+  },
   flex1: {
     flex: 1,
     gap: spacing.xxs,
@@ -1131,6 +1206,17 @@ const styles = StyleSheet.create({
   },
   numericFieldGroup: {
     gap: spacing.xs,
+  },
+  numericGrid: {
+    gap: spacing.md,
+  },
+  numericGridRow: {
+    flexDirection: "row",
+    columnGap: spacing.lg,
+  },
+  numericGridCell: {
+    flex: 1,
+    minWidth: 0,
   },
   turnLabel: {
     ...typography.bodySm,

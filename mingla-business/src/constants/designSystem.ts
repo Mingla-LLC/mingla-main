@@ -95,6 +95,17 @@ export const venueSettingsMaxWidth = 720 as const;
 // to `VenueSettingsModule`.
 export const suiteFormMaxWidth = 720 as const;
 
+// Issue #2726 — one scoped owner for the Restaurant Hub's approved responsive
+// measures. These values belong together: the Availability grids and the three
+// empty modules must not drift back into locally guessed widths.
+export const restaurantHubLayout = {
+  proseMaxWidth: 720,
+  emptyContentMaxWidth: 560,
+  compactCtaMaxWidth: 240,
+  availabilityTwoColumnMinWidth: 960,
+  availabilityThreeColumnMinWidth: 1440,
+} as const;
+
 // ── #2262 [composer-responsive-layout] — composer layout tokens ────────────
 //
 // THREE tokens, each justified in the DESIGN contract on #2262 §1.2. They are

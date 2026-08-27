@@ -161,6 +161,9 @@ jobs:
       - name: "#1890 — Ari composer keyboard clearance"
         if: always()
         run: npx jest --config jest.issue1890.render.cjs --runInBand --ci
+      - name: "#2726 — Restaurant Hub responsive system (native happy path)"
+        if: always()
+        run: npx jest --config jest.issue2726.render.cjs --runInBand --ci
 
       # ---- WEB render proofs -------------------------------------------------
       # react-test-renderer is structurally blind to react-native-web's atomic
@@ -191,3 +194,6 @@ jobs:
       - name: "ORCH-1211 — notification row web render safety"
         if: always()
         run: npx jest --config jest.orch1211.notifweb.render.cjs --runInBand --ci
+      - name: "#2726 — Restaurant Hub responsive system (web happy path)"
+        if: always()
+        run: npx jest --config jest.issue2726.web.render.cjs --runInBand --ci
