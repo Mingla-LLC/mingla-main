@@ -58,6 +58,14 @@ function check(sources) {
     ]);
     requireAbsent(`${key}-legacy`, sources[key], ["hasEventCoverage"]);
   }
+  requireAll("independent-coverage-formulas", compact.overviewService, [
+    "hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0",
+    "hasOpenCoverage: health.open_healthy && trackedDelivered > 0",
+  ]);
+  requireAll("report-independent-coverage-formulas", compact.reportService, [
+    "hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0",
+    "hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0",
+  ]);
   requireAll("overview-ui", compact.overview, [
     "snap.funnel.opened / snap.funnel.trackedDelivered",
     '? "degraded"', ': "notMeasured"',
@@ -78,6 +86,7 @@ function check(sources) {
     "issue_2714_campaign_open_truth.happy.pg17.test.sql",
     "issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql",
     "issue_2714_campaign_open_truth.tester_adversarial.test.ts",
+    "src/services/marketing/__tests__/marketingOverviewService.test.ts",
     "marketingOverviewService\\.ts",
     "marketingReportService\\.ts",
     "OverviewMetricCard\\.tsx",
@@ -92,12 +101,13 @@ if (process.argv.includes("--self-test")) {
   good.migration = "delivery_tracking_eligible_at open_tracking_eligible_at tracking_sender_domain = 'campaigns.usemingla.com' mkt_reconcile_email_event issue_2714_reconcile_provider_events mkt_campaign_email_event_health campaign_unmatched_stale";
   good.send = '@campaigns.usemingla.com delivery_tracking_eligible_at: eligibleAt open_tracking_eligible_at: eligibleAt tracking_sender_domain: "campaigns.usemingla.com"';
   good.webhook = 'data === "campaign_unmatched" data === "campaign_unmatched_stale" status: 500 correlationHash';
-  good.overviewService = good.reportService = 'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range(';
+  good.overviewService = 'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0';
+  good.reportService = 'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0 hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0';
   good.overview = 'snap.funnel.opened / snap.funnel.trackedDelivered ? "degraded" : "notMeasured"';
   good.report = "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy = "August 27, 2026 Marketing email measurement campaigns.usemingla.com Resend";
   good.invariant = "I-2714-CAMPAIGN-OPEN-TRUTH DRAFT";
-  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
+  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts src/services/marketing/__tests__/marketingOverviewService.test.ts marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
   check(good);
   const before = failures;
   const original = console.error;
