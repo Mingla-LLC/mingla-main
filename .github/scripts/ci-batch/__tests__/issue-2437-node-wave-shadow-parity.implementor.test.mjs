@@ -27,7 +27,22 @@ const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
 const WORKFLOW_PATH = path.join(ROOT, ".github/workflows/ci-batch.yml");
 const STRICT_WORKFLOW_PATH = path.join(ROOT, ".github/workflows/strict-grep-mingla-business.yml");
 const ISSUE_1593_REFERENCE_PATH = path.join(ROOT, "app-mobile/src/components/swipeDeck/__tests__/issue_1593_poster_hole_geometry.adversarial.test.mjs");
-const STATIC_CLASS_A_STEP_SHA256 = "d89bf9920ba031d7f4243f3d36772376af753427bcabe1a289b1b781b871b6eb";
+// [TEST-MOD-APPROVED #2594] SC-14 — the seal is RE-CUT, deliberately, and this is
+// not a discovered drift. #2594 removes two steps from the static-gates job: the
+// `setup-cli` provisioning action and the Dockerised PostgreSQL replay whose four
+// SQL suites now run in the Postgres contract-suites lane, proven there by G-1 (9 of 9),
+// G-2/G-5 (35 of 35 rows, 112/112 DO blocks) and L-5 (22 of 22) before this line
+// moved. Nine steps became seven.
+//
+//   old (9 steps) d89bf9920ba031d7f4243f3d36772376af753427bcabe1a289b1b781b871b6eb
+//   new (7 steps) 982cd17671b3452b6d24bc56fb237327c4b0d2b4b4620be89af14ce6b196c83d
+//
+// RECOMPUTED from the file, through the same ruby YAML.safe_load this test uses,
+// never copied from a projection. It agrees with the #2594 SPEC's projected value,
+// and the agreement is expected rather than lucky: deliverable 1 added a SIBLING
+// JOB, not a step, so the static-gates step array was untouched between the
+// projection and this cut.
+const STATIC_CLASS_A_STEP_SHA256 = "982cd17671b3452b6d24bc56fb237327c4b0d2b4b4620be89af14ce6b196c83d";
 const manifest = () => JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
 const clone = (value) => structuredClone(value);
 const digest = (value) => crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
@@ -52,6 +67,43 @@ const parseRealYaml = (source) => JSON.parse(execFileSync(
   { input: source, encoding: "utf8" },
 ));
 
+// [TEST-MOD-APPROVED #2594] SC-11 / I-PROPOSED-2594-STATIC-GATES-IS-CONTAINERLESS.
+//
+// The job is named "static gates" and, until #2594, 19.5 % of it was a Docker
+// bring-up replaying all 533 migrations from zero. That work now lives in the
+// Postgres contract-suites lane, which already holds an unconditional from-zero
+// replay. This assertion is what stops it coming back: the job runs no container
+// and provisions no database.
+//
+// EVERY FORBIDDEN LITERAL IS ASSEMBLED FROM FRAGMENTS. A guard that carries the
+// string it forbids can be matched by anything that greps the corpus for that
+// string — including itself — and the repo has now hit that class five times.
+// G-4 in the Postgres contract-suites lane is the working precedent this copies.
+const staticClassAContainerErrors = (job) => {
+  const cli = ["supa", "base"].join("");
+  const container = ["doc", "ker"].join("");
+  const setupAction = [cli, "/setup-", "cli"].join("");
+  const forbiddenRun = [container, `${cli} init`, `${cli} start`, `${cli} stop`, `${cli} db `];
+  const errors = [];
+  if (job.services !== undefined) {
+    errors.push("Strict Class A must declare no job services; it is containerless");
+  }
+  if (!Array.isArray(job.steps)) return errors;
+  for (const [index, step] of job.steps.entries()) {
+    const uses = typeof step?.uses === "string" ? step.uses : "";
+    const run = typeof step?.run === "string" ? step.run : "";
+    if (uses.includes(setupAction)) {
+      errors.push(`Strict Class A step ${index} provisions the ${cli} CLI; the job is containerless`);
+    }
+    for (const needle of forbiddenRun) {
+      if (run.includes(needle)) {
+        errors.push(`Strict Class A step ${index} runs [${needle}]; the job is containerless and provisions no database`);
+      }
+    }
+  }
+  return errors;
+};
+
 const validateStaticClassAJob = (source) => {
   const errors = [];
   let document;
@@ -69,6 +121,7 @@ const validateStaticClassAJob = (source) => {
   if (!Array.isArray(job.steps) || digest(job.steps) !== STATIC_CLASS_A_STEP_SHA256) {
     errors.push("Strict Class A protected step sequence must remain byte-semantically exact");
   }
+  errors.push(...staticClassAContainerErrors(job));
   return errors;
 };
 
@@ -336,6 +389,46 @@ test("Strict static Class A has the exact bounded 15-minute timeout and unchange
     "node .github/scripts/strict-grep/run-batch.mjs --class B",
   );
   assert.ok(validateStaticClassAJob(stepSubstitution).some((error) => /protected step sequence/.test(error)));
+
+  // [TEST-MOD-APPROVED #2594] SC-11 mutants. The container fragments are built
+  // the same way the guard builds them, so this test does not carry the literal
+  // it forbids either.
+  const cli = ["supa", "base"].join("");
+  const container = ["doc", "ker"].join("");
+  const adminStep = '      - name: "Issue #1384: Admin reason and revision-CAS suites"\n';
+  assert.equal(source.split(adminStep).length - 1, 1, "the #1384 admin step must anchor the mutants exactly once");
+
+  // Mutant A — the replay step comes back. This is the one the invariant exists
+  // for: it must red on BOTH the container verbs and the re-cut step seal.
+  const replayRestored = source.replace(adminStep, [
+    '      - name: "Issues #1384/#1397: disposable PostgreSQL 17 replay and SQL matrix"',
+    "        shell: bash",
+    "        run: |",
+    "          set -euo pipefail",
+    `          ${cli} init --workdir "$sql_root" --yes`,
+    `          ${cli} start --workdir "$sql_root" --yes`,
+    `          ${container} exec -i pg_db psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -`,
+    adminStep,
+  ].join("\n"));
+  const replayErrors = validateStaticClassAJob(replayRestored);
+  assert.ok(replayErrors.some((error) => /is containerless and provisions no database/.test(error)));
+  assert.ok(replayErrors.some((error) => /protected step sequence/.test(error)));
+
+  // Mutant B — only the CLI provisioning action comes back.
+  const setupRestored = source.replace(adminStep, [
+    `      - uses: ${cli}/setup-cli@v1`,
+    "        with:",
+    '          version: 2.98.2',
+    adminStep,
+  ].join("\n"));
+  assert.ok(validateStaticClassAJob(setupRestored).some((error) => /provisions the .* CLI; the job is containerless/.test(error)));
+
+  // Mutant C — a job-level service container.
+  const servicesRestored = source.replace(
+    "  static-gates:\n    name: \"Strict grep — static gates (class A)\"\n",
+    "  static-gates:\n    name: \"Strict grep — static gates (class A)\"\n    services:\n      db:\n        image: postgres:17\n",
+  );
+  assert.ok(validateStaticClassAJob(servicesRestored).some((error) => /declare no job services/.test(error)));
 });
 
 // [TEST-MOD-APPROVED #2594] SC-7 — new test, no existing assertion weakened or

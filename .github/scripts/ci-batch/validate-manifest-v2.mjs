@@ -167,7 +167,21 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // than left to report `no such workflow` for every lane forever. The
     // subtraction is by exact content, so dropping the file here is not optional
     // bookkeeping — leaving it listed fails this closed.
+    //
+    // [#2594] A FOURTH file joins, and it lands at index 0 because discovery
+    // sorts plain lexicographically. issue-1397-fx-refresh-eol-cron.mjs asserted
+    // that the #1397 migration and its SQL suite are wired into the class-A
+    // workflow; #2594 moved both into this lane, so the gate now names BOTH
+    // workflows — it keeps the class-A filename (dropping it would remove the
+    // file from that workflow's frozen record and red the seal) and adds this
+    // one. Naming this workflow is exactly what makes it a reference file here.
+    // The subtraction is by exact content, so this list and MANIFEST.json's
+    // workflowProviders entry move together or both fail closed.
+    //
+    // This adds a referenceFile to an EXISTING record. The provider count stays
+    // 91 + 1 = 92; no provider is added.
     referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
       "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
