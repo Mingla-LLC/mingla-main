@@ -123,6 +123,12 @@ jobs:
           deno test --allow-read \
             supabase/functions/marketing-send/issue_2714_campaign_open_truth.happy.test.ts \
             supabase/functions/resend-webhook/issue_2714_campaign_open_truth.happy.test.ts
+      - name: "#1821 durable terminal readback compatibility"
+        run: |
+          deno fmt --check \
+            supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts
+          deno test --allow-env --allow-read \
+            supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts
       - name: "#2714 campaign open truth (tester adversarial boundaries)"
         run: |
           deno fmt --check \

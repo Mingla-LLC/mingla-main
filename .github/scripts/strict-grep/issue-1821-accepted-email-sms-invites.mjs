@@ -4,7 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
+const ROOT = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../../..",
+);
 const PATHS = {
   migration:
     "supabase/migrations/20270314001821_issue_1821_accepted_email_sms_invites.sql",
@@ -36,29 +39,31 @@ export function violations(files) {
   const denoTest = files.denoTest ?? "";
   const invariant = files.invariant ?? "";
 
-  for (const token of [
-    "CREATE OR REPLACE FUNCTION public.issue_1821_project_offering_send_group(",
-    "CREATE OR REPLACE FUNCTION public.issue_1770_project_offering_push_delivery(",
-    "CREATE OR REPLACE FUNCTION public.issue_1770_reconcile_marketing_message()",
-    "RAISE EXCEPTION 'offering_send_group_not_found'",
-    "count(*) FILTER(WHERE status IN ('queued','sending'))",
-    "count(*) FILTER(WHERE status IN ('sent','delivered'))",
-    "WHEN v_failed=(v_total-v_suppressed) THEN 'failed'",
-    "PERFORM public.issue_1821_project_offering_send_group(",
-    "RAISE EXCEPTION 'offering_marketing_message_attempt_ambiguous'",
-    "RAISE EXCEPTION 'offering_marketing_message_tuple_mismatch'",
-    "RAISE EXCEPTION 'offering_marketing_message_provider_mismatch'",
-    "IF NEW.provider_message_id IS NOT NULL\n    AND btrim(NEW.provider_message_id)=''",
-    "provider_accepted_at=COALESCE(",
-    "WHEN status='delivered' OR NEW.status='delivered' THEN 'delivered'",
-    "ELSE 'sent'",
-    "THEN 'provider_partial_failure'",
-    "THEN 'provider_outcome_unknown'",
-    "THEN 'campaign_delivery_failed'",
-    "THEN 'provider_io_disabled'",
-    "REVOKE ALL ON FUNCTION public.issue_1821_project_offering_send_group(uuid)",
-    "GRANT EXECUTE ON FUNCTION public.issue_1770_reconcile_marketing_message()",
-  ]) need(migration, token, "migration contract", failures);
+  for (
+    const token of [
+      "CREATE OR REPLACE FUNCTION public.issue_1821_project_offering_send_group(",
+      "CREATE OR REPLACE FUNCTION public.issue_1770_project_offering_push_delivery(",
+      "CREATE OR REPLACE FUNCTION public.issue_1770_reconcile_marketing_message()",
+      "RAISE EXCEPTION 'offering_send_group_not_found'",
+      "count(*) FILTER(WHERE status IN ('queued','sending'))",
+      "count(*) FILTER(WHERE status IN ('sent','delivered'))",
+      "WHEN v_failed=(v_total-v_suppressed) THEN 'failed'",
+      "PERFORM public.issue_1821_project_offering_send_group(",
+      "RAISE EXCEPTION 'offering_marketing_message_attempt_ambiguous'",
+      "RAISE EXCEPTION 'offering_marketing_message_tuple_mismatch'",
+      "RAISE EXCEPTION 'offering_marketing_message_provider_mismatch'",
+      "IF NEW.provider_message_id IS NOT NULL\n    AND btrim(NEW.provider_message_id)=''",
+      "provider_accepted_at=COALESCE(",
+      "WHEN status='delivered' OR NEW.status='delivered' THEN 'delivered'",
+      "ELSE 'sent'",
+      "THEN 'provider_partial_failure'",
+      "THEN 'provider_outcome_unknown'",
+      "THEN 'campaign_delivery_failed'",
+      "THEN 'provider_io_disabled'",
+      "REVOKE ALL ON FUNCTION public.issue_1821_project_offering_send_group(uuid)",
+      "GRANT EXECUTE ON FUNCTION public.issue_1770_reconcile_marketing_message()",
+    ]
+  ) need(migration, token, "migration contract", failures);
   if (count(migration, "CREATE OR REPLACE FUNCTION public.") !== 3) {
     failures.push("migration scope: exactly three approved functions required");
   }
@@ -70,15 +75,26 @@ export function violations(files) {
     "FROM public.brand_offering_invite_delivery_attempts",
     projectorStart,
   );
-  if (projectorStart < 0 || groupLock < projectorStart || recount < 0 || groupLock > recount) {
-    failures.push("serialization: group row lock must precede the all-attempt recount");
+  if (
+    projectorStart < 0 || groupLock < projectorStart || recount < 0 ||
+    groupLock > recount
+  ) {
+    failures.push(
+      "serialization: group row lock must precede the all-attempt recount",
+    );
   }
   const matchedTupleCheck = migration.indexOf(
     "IF v_attempt.provider_message_id IS NOT NULL\n    AND v_attempt.provider_message_id IS DISTINCT FROM NEW.provider_message_id",
   );
-  const stateBranch = migration.indexOf("IF NEW.status IN ('sent','delivered') THEN");
-  if (matchedTupleCheck < 0 || stateBranch < 0 || matchedTupleCheck > stateBranch) {
-    failures.push("provider identity: cross-state tuple check must precede every matched state branch");
+  const stateBranch = migration.indexOf(
+    "IF NEW.status IN ('sent','delivered') THEN",
+  );
+  if (
+    matchedTupleCheck < 0 || stateBranch < 0 || matchedTupleCheck > stateBranch
+  ) {
+    failures.push(
+      "provider identity: cross-state tuple check must precede every matched state branch",
+    );
   }
   forbid(
     migration,
@@ -89,25 +105,103 @@ export function violations(files) {
   forbid(migration, "actual_cost_minor=", "cost authority", failures);
   forbid(migration, "DROP TRIGGER", "trigger identity", failures);
   forbid(migration, "CREATE TRIGGER", "trigger identity", failures);
-  forbid(migration, "mingla.issue1770_push_result_rpc", "push transition bypass", failures);
+  forbid(
+    migration,
+    "mingla.issue1770_push_result_rpc",
+    "push transition bypass",
+    failures,
+  );
 
-  for (const token of [
-    "export async function persistEmailSentTerminal(",
-    '.select("id,status,provider_message_id")',
-    "for (let attempt = 0; attempt < 2; attempt += 1)",
-    "row.status === \"sent\" && row.provider_message_id === providerMessageId",
-    "email_sent_terminal_update_lost:${messageId}:${safeError}",
-    "await persistEmailSentTerminal(",
-    "sent += 1;",
-    'error: "resend_success_response_invalid"',
-    "(value as { id: string }).id.trim().length > 0",
-  ]) need(sender, token, "Resend/terminal-write boundary", failures);
+  for (
+    const token of [
+      "export async function persistEmailSentTerminal(",
+      '"id,status,provider_message_id,sent_at,delivery_tracking_eligible_at,open_tracking_eligible_at,tracking_sender_domain",',
+      "for (let attempt = 0; attempt < 2; attempt += 1)",
+      "row.id === messageId",
+      "publicEmailAcceptedStatus(row.status)",
+      "row.provider_message_id === providerMessageId",
+      "row.sent_at !== null",
+      "row.delivery_tracking_eligible_at !== null",
+      "row.open_tracking_eligible_at !== null",
+      'row.tracking_sender_domain === "campaigns.usemingla.com"',
+      "email_sent_terminal_update_lost:${messageId}:${safeError}",
+      "await persistEmailSentTerminal(",
+      "sent += 1;",
+      'error: "resend_success_response_invalid"',
+      "(value as { id: string }).id.trim().length > 0",
+    ]
+  ) need(sender, token, "Resend/terminal-write boundary", failures);
+  const acceptedStart = sender.indexOf("function publicEmailAcceptedStatus(");
+  const acceptedEnd = sender.indexOf(
+    "function safeTerminalUpdateError(",
+    acceptedStart,
+  );
+  const acceptedPredicate = acceptedStart < 0 || acceptedEnd < 0
+    ? ""
+    : sender.slice(acceptedStart, acceptedEnd);
+  for (
+    const status of [
+      "sent",
+      "delivered",
+      "opened",
+      "clicked",
+      "bounced",
+      "complained",
+      "unsubscribed",
+    ]
+  ) {
+    need(
+      acceptedPredicate,
+      `"${status}"`,
+      "explicit provider-accepted status",
+      failures,
+    );
+  }
+  need(
+    acceptedPredicate,
+    "].includes(status);",
+    "explicit provider-accepted predicate",
+    failures,
+  );
+  for (
+    const status of [
+      "queued",
+      "sending",
+      "deferred",
+      "failed",
+      "suppressed",
+      "",
+      "unknown",
+    ]
+  ) {
+    forbid(
+      acceptedPredicate,
+      `"${status}"`,
+      "non-accepted provider status",
+      failures,
+    );
+  }
+  forbid(
+    sender,
+    'row.status === "sent"',
+    "obsolete exact-sent terminal readback",
+    failures,
+  );
   const caller = sender.slice(
     sender.indexOf("if (sendOutcome.ok)"),
-    sender.indexOf("} else if (providerClaimed", sender.indexOf("if (sendOutcome.ok)")),
+    sender.indexOf(
+      "} else if (providerClaimed",
+      sender.indexOf("if (sendOutcome.ok)"),
+    ),
   );
-  if (!/await persistEmailSentTerminal\([\s\S]*?\);[\s\S]*?sent \+= 1;/.test(caller)) {
-    failures.push("email count: sent may advance only after verified persistence");
+  if (
+    !/await persistEmailSentTerminal\([\s\S]*?\);[\s\S]*?sent \+= 1;/.test(
+      caller,
+    )
+  ) {
+    failures.push(
+      "email count: sent may advance only after verified persistence",
+    );
   }
   forbid(
     sender,
@@ -116,52 +210,60 @@ export function violations(files) {
     failures,
   );
 
-  for (const token of [
-    "T-1821-01 FAIL: email accepted did not settle Sent/group completion",
-    "T-1821-02 FAIL: SMS provider % did not settle Sent",
-    "T-1821-03 FAIL: conflicting provider tuple was accepted",
-    "T-1821-03 FAIL: failed provider tuple conflict was accepted",
-    "T-1821-03 FAIL: bounced provider tuple conflict was accepted",
-    "T-1821-03 FAIL: failed provider conflict did not roll back all rows",
-    "T-1821-03 FAIL: bounced provider conflict did not roll back all rows",
-    "T-1821-03 FAIL: failed provider null erasure was accepted",
-    "T-1821-03 FAIL: null provider erasure did not roll back all rows",
-    "T-1821-03 FAIL: present blank provider id was accepted",
-    "T-1821-04 FAIL: accepted then failed downgraded Sent",
-    "T-1821-05 FAIL: post-claim ambiguity fabricated acceptance or retry",
-    "T-1821-06 FAIL: accepted + failed was not partial",
-    "T-1821-07 FAIL: group lock does not precede attempt recount",
-    "T-1821-07 FAIL: concurrent email/SMS/push projection published stale totals",
-    "T-1821-07 PASS: concurrent email/SMS/push completion serialized to Sent=3",
-    "dblink_send_query(",
-    "T-1821-08 FAIL: duplicate correlation did not fail closed",
-    "T-1821-09 FAIL: function grants/search path or RLS drifted",
-  ]) need(sqlTest, token, "PG17 state matrix", failures);
+  for (
+    const token of [
+      "T-1821-01 FAIL: email accepted did not settle Sent/group completion",
+      "T-1821-02 FAIL: SMS provider % did not settle Sent",
+      "T-1821-03 FAIL: conflicting provider tuple was accepted",
+      "T-1821-03 FAIL: failed provider tuple conflict was accepted",
+      "T-1821-03 FAIL: bounced provider tuple conflict was accepted",
+      "T-1821-03 FAIL: failed provider conflict did not roll back all rows",
+      "T-1821-03 FAIL: bounced provider conflict did not roll back all rows",
+      "T-1821-03 FAIL: failed provider null erasure was accepted",
+      "T-1821-03 FAIL: null provider erasure did not roll back all rows",
+      "T-1821-03 FAIL: present blank provider id was accepted",
+      "T-1821-04 FAIL: accepted then failed downgraded Sent",
+      "T-1821-05 FAIL: post-claim ambiguity fabricated acceptance or retry",
+      "T-1821-06 FAIL: accepted + failed was not partial",
+      "T-1821-07 FAIL: group lock does not precede attempt recount",
+      "T-1821-07 FAIL: concurrent email/SMS/push projection published stale totals",
+      "T-1821-07 PASS: concurrent email/SMS/push completion serialized to Sent=3",
+      "dblink_send_query(",
+      "T-1821-08 FAIL: duplicate correlation did not fail closed",
+      "T-1821-09 FAIL: function grants/search path or RLS drifted",
+    ]
+  ) need(sqlTest, token, "PG17 state matrix", failures);
 
-  for (const token of [
-    "#1821 Resend success requires a nonblank canonical id",
-    "#1821 Resend 2xx without canonical id is ambiguous, never accepted",
-    "#1821 email terminal write retries once and accepts only exact readback",
-    "#1821 zero-row or mismatched readback retries then fails loud",
-    "#1821 two database failures expose only the safe error code",
-  ]) need(denoTest, token, "Deno acceptance/write matrix", failures);
+  for (
+    const token of [
+      "#1821 Resend success requires a nonblank canonical id",
+      "#1821 Resend 2xx without canonical id is ambiguous, never accepted",
+      "#1821 email terminal write retries once and accepts only exact readback",
+      "#1821 zero-row or mismatched readback retries then fails loud",
+      "#1821 two database failures expose only the safe error code",
+    ]
+  ) need(denoTest, token, "Deno acceptance/write matrix", failures);
 
-  for (const token of [
-    "I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (ACTIVE)",
-    "documented successful Resend/Twilio/Termii send response",
-    "serialized group rollup",
-    "may never erase acceptance",
-    "depend on a paid receipt feature",
-  ]) need(invariant, token, "ACTIVE invariant", failures);
+  for (
+    const token of [
+      "I-PROPOSED-OFFERING-EMAIL-SMS-ACCEPTANCE-1 (ACTIVE)",
+      "documented successful Resend/Twilio/Termii send response",
+      "serialized group rollup",
+      "may never erase acceptance",
+      "depend on a paid receipt feature",
+    ]
+  ) need(invariant, token, "ACTIVE invariant", failures);
 
   const runtime = `${migration}\n${sender}`.toLowerCase();
-  for (const token of [
-    "cron.schedule",
-    "onesignal_event_stream",
-    "confirmed receipt",
-    "setinterval(",
-    "actual_cost_minor=",
-  ]) forbid(runtime, token, "no paid/polling/accounting expansion", failures);
+  for (
+    const token of [
+      "cron.schedule",
+      "onesignal_event_stream",
+      "confirmed receipt",
+      "setinterval(",
+      "actual_cost_minor=",
+    ]
+  ) forbid(runtime, token, "no paid/polling/accounting expansion", failures);
 
   return failures;
 }
@@ -178,7 +280,9 @@ function readFiles() {
 function selfTest() {
   const clean = readFiles();
   const baseline = violations(clean);
-  if (baseline.length) throw new Error(`baseline invalid:\n${baseline.join("\n")}`);
+  if (baseline.length) {
+    throw new Error(`baseline invalid:\n${baseline.join("\n")}`);
+  }
   const mutations = [
     [
       "migration",
@@ -206,9 +310,57 @@ function selfTest() {
     ],
     [
       "sender",
-      '.select("id,status,provider_message_id")',
-      '.select("id")',
-      "terminal write readback weakened",
+      "provider_message_id,sent_at,delivery_tracking_eligible_at",
+      "provider_message_id,delivery_tracking_eligible_at",
+      "terminal readback sent_at column removed",
+    ],
+    [
+      "sender",
+      "].includes(status);",
+      '].includes(status) || status === "queued";',
+      "accepted-status predicate broadened",
+    ],
+    [
+      "sender",
+      "row.provider_message_id === providerMessageId",
+      "true",
+      "provider equality removed",
+    ],
+    [
+      "sender",
+      "row.sent_at !== null",
+      "true",
+      "durable sent_at check removed",
+    ],
+    [
+      "sender",
+      "row.delivery_tracking_eligible_at !== null",
+      "true",
+      "delivery eligibility check removed",
+    ],
+    [
+      "sender",
+      "row.open_tracking_eligible_at !== null",
+      "true",
+      "open eligibility check removed",
+    ],
+    [
+      "sender",
+      'row.tracking_sender_domain === "campaigns.usemingla.com"',
+      'row.tracking_sender_domain === "usemingla.com"',
+      "apex tracking domain accepted",
+    ],
+    [
+      "sender",
+      'row.tracking_sender_domain === "campaigns.usemingla.com"',
+      'row.tracking_sender_domain === "campaigns.usemingla.com.evil.test"',
+      "lookalike tracking domain accepted",
+    ],
+    [
+      "sender",
+      "await persistEmailSentTerminal(\n        supabase,\n        messageId,\n        sendOutcome.providerId,\n      );\n      sent += 1;",
+      "sent += 1;\n      await persistEmailSentTerminal(\n        supabase,\n        messageId,\n        sendOutcome.providerId,\n      );",
+      "sent count moved before persistence",
     ],
     [
       "sqlTest",
@@ -224,11 +376,20 @@ function selfTest() {
     ],
   ];
   for (const [key, before, after, label] of mutations) {
-    if (!clean[key].includes(before)) throw new Error(`self-test fixture missing: ${label}`);
+    if (!clean[key].includes(before)) {
+      throw new Error(`self-test fixture missing: ${label}`);
+    }
     const broken = { ...clean, [key]: clean[key].replace(before, after) };
-    if (violations(broken).length === 0) throw new Error(`mutation survived: ${label}`);
+    if (broken[key] === clean[key]) {
+      throw new Error(`mutation was vacuous: ${label}`);
+    }
+    if (violations(broken).length === 0) {
+      throw new Error(`mutation survived: ${label}`);
+    }
   }
-  console.log("#1821 accepted email/SMS invite self-test PASS (7 true mutations)");
+  console.log(
+    `#1821 accepted email/SMS invite self-test PASS (${mutations.length} true mutations)`,
+  );
 }
 
 if (process.argv.includes("--self-test")) selfTest();
