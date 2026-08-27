@@ -12,6 +12,12 @@
   merge-base-rebased: authorization is a property of the branch being merged INTO. A tip-to-tip added
   set both blames a stale branch for deletions it never made and hides an addition at a path the base
   branch already carries.
+  **Caveat, measured under #2681 and NOT a structural guarantee:** the safety of this on a shallow
+  clone rests on `git merge-base` returning the exact fork point or nothing. That holds while the base
+  branch is LINEAR — which `main` is, being squash-only. With merge commits on both sides, a truncated
+  window can return an older ancestor, and the gate then reports a clean added-set for a branch that
+  genuinely adds a wrapper. Not reachable today; recorded so nobody reads the guarantee as unconditional
+  if `main`'s history model ever changes.
 - **Status:** DRAFT until the full #2148 consolidation programme reaches its final topology, completeness, required-context, and performance budgets. Phase 0 prevents new wrappers without deleting any existing workflow or test.
 
 ## DRAFT — issue #2148 / Phase 1 issue #2435 (CI execution registry is complete)
