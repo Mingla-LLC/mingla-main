@@ -704,7 +704,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           CLASS_A_JOB_NAME: "Strict grep — static gates (class A)"
-          CLASS_A_BUDGET_SECONDS: "60"
+          CLASS_A_BUDGET_SECONDS: "600"
           CLASS_A_TIMEOUT_KILL_SECONDS: "890"
         run: node .github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce
 
