@@ -2,7 +2,7 @@
  * Ve3 — Venue claims queue (physical brands pending_review).
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, MessageSquarePlus, X } from "lucide-react";
 import { supabase } from "../lib/supabase";
 import { SectionCard } from "../components/ui/Card";
@@ -32,6 +32,7 @@ import {
 import { ScoreTunerPanel } from "../components/ScoreTunerPanel";
 import { getActiveSignals } from "../services/deckTunerService";
 import { collectClaimPhotos } from "../lib/claimPhotos";
+import { formatDateTime } from "../lib/formatters";
 
 const CAT_LABELS = {
   restaurant: "Restaurant",
@@ -75,15 +76,37 @@ const EMPTY_COPY = {
   rejected: "No rejected claims.",
 };
 
+const ACTION_FAILURE_COPY = {
+  approve: "Could not approve venue",
+  mark_called: "Could not mark venue as called",
+  need_more_info: "Could not request more info",
+  reject: "Could not reject venue",
+};
+
+function safeReviewErrorDetail(error) {
+  const message = typeof error?.message === "string" ? error.message.trim() : "";
+  if (
+    message.length === 0 ||
+    /bearer|\bjwt\b|\btoken\b|payload|stack|\bat\s+\S+|@/i.test(message)
+  ) {
+    return "Try again. If this keeps happening, check the Admin activity log.";
+  }
+  return message.replace(/\s+/g, " ").slice(0, 240);
+}
+
 export function ClaimsPage() {
   const { addToast } = useToast();
   const [rows, setRows] = useState([]);
   const [activeTab, setActiveTab] = useState("pending");
   const [loading, setLoading] = useState(true);
+  const [listError, setListError] = useState(null);
+  const [approvalRefreshVenue, setApprovalRefreshVenue] = useState(null);
   const [detail, setDetail] = useState(null);
   const [hours, setHours] = useState([]);
   const [hoursLoading, setHoursLoading] = useState(false);
   const [acting, setActing] = useState(false);
+  const [reviewingAction, setReviewingAction] = useState(null);
+  const [reviewError, setReviewError] = useState(null);
   const [rejectOpen, setRejectOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   // META-ORCH-1062 — claim-review bundle (photos + scores + missing fields).
@@ -104,35 +127,47 @@ export function ClaimsPage() {
   const [feedbackCat, setFeedbackCat] = useState("photos");
   const [feedbackNote, setFeedbackNote] = useState("");
   const [feedbackMessage, setFeedbackMessage] = useState("");
+  const actionRefs = useRef({});
+  const reviewErrorRef = useRef(null);
+  const resultsRef = useRef(null);
+  const rejectReasonRef = useRef(null);
+  const skipNextTabLoadRef = useRef(false);
 
   const duplicateGroups = useMemo(
     () => groupClaimsByGooglePlaceId(rows),
     [rows],
   );
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (tab = activeTab) => {
     setLoading(true);
+    setListError(null);
     try {
       const data =
-        activeTab === "verified"
+        tab === "verified"
           ? await listVerifiedClaims()
-          : activeTab === "rejected"
+          : tab === "rejected"
             ? await listRejectedClaims()
             : await listPendingClaims();
       setRows(data);
-    } catch (e) {
+      return data;
+    } catch {
+      setListError("Claims couldn’t refresh. Try again.");
       addToast({
         variant: "error",
         title: "Couldn't load claims",
-        description: e?.message ?? String(e),
+        description: "Check your connection and try again.",
       });
-      setRows([]);
+      return null;
     } finally {
       setLoading(false);
     }
   }, [activeTab, addToast]);
 
   useEffect(() => {
+    if (skipNextTabLoadRef.current) {
+      skipNextTabLoadRef.current = false;
+      return;
+    }
     void load();
   }, [load]);
 
@@ -216,6 +251,7 @@ export function ClaimsPage() {
 
   const closeDetail = () => {
     setDetail(null);
+    setReviewError(null);
     setHours([]);
     setBundle(null);
     setBundleError(null);
@@ -278,35 +314,111 @@ export function ClaimsPage() {
     }
   };
 
+  const focusVerifiedResults = () => {
+    requestAnimationFrame(() => resultsRef.current?.focus());
+  };
+
+  const retryVerified = async (venueId = approvalRefreshVenue?.id) => {
+    setLoading(true);
+    setListError(null);
+    try {
+      const verifiedRows = await listVerifiedClaims();
+      if (venueId && !verifiedRows.some((row) => row.id === venueId)) {
+        setListError("Verified could not refresh.");
+        return false;
+      }
+      setRows(verifiedRows);
+      setApprovalRefreshVenue(null);
+      focusVerifiedResults();
+      return true;
+    } catch {
+      setListError("Verified could not refresh.");
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const refreshAfterApproval = async (venueId, venueName) => {
+    if (activeTab !== "verified") skipNextTabLoadRef.current = true;
+    setActiveTab("verified");
+    setLoading(true);
+    setListError(null);
+    setApprovalRefreshVenue({ id: venueId, name: venueName });
+
+    const [pendingResult, verifiedResult] = await Promise.allSettled([
+      listPendingClaims(),
+      listVerifiedClaims(),
+    ]);
+
+    if (pendingResult.status === "rejected") {
+      addToast({
+        variant: "warning",
+        title: "Pending claims could not refresh",
+        description: "Refresh Pending before reviewing another venue.",
+      });
+    }
+
+    if (
+      verifiedResult.status === "fulfilled" &&
+      verifiedResult.value.some((row) => row.id === venueId)
+    ) {
+      setRows(verifiedResult.value);
+      setApprovalRefreshVenue(null);
+      setLoading(false);
+      focusVerifiedResults();
+      return;
+    }
+
+    setLoading(false);
+    await retryVerified(venueId);
+  };
+
+  const focusReviewError = () => {
+    requestAnimationFrame(() => reviewErrorRef.current?.focus());
+  };
+
   const runReview = async (action, opts = {}) => {
-    if (!detail) return;
+    if (!detail || acting) return;
+
+    const venueId = detail.id;
+    const venueName = detail.name;
+    setReviewError(null);
+    setReviewingAction(action);
     setActing(true);
     try {
-      const data = await reviewClaim(detail.id, action, opts);
-      await logAdminAction(`claim.${action}`, "venue_claim", detail.id, {
-        result: data?.result ?? null,
-      });
+      const data = await reviewClaim(venueId, action, opts);
+      try {
+        await logAdminAction(`claim.${action}`, "venue_claim", venueId, {
+          result: data?.result ?? null,
+        });
+      } catch {
+        addToast({
+          variant: "warning",
+          title: "Review saved, but the Admin activity view could not refresh",
+        });
+      }
+
       if (action === "mark_called") {
         addToast({ variant: "info", title: "Marked as called" });
-        setDetail((d) =>
-          d ? { ...d, marked_called_at: new Date().toISOString() } : d,
+        setDetail((current) =>
+          current
+            ? { ...current, marked_called_at: new Date().toISOString() }
+            : current,
         );
+        requestAnimationFrame(() => actionRefs.current.approve?.focus());
       } else if (action === "need_more_info") {
         addToast({ variant: "info", title: "Follow-up flagged" });
         closeDetail();
         await load();
       } else if (action === "approve") {
-        const dup = data?.result?.duplicate_flagged_count ?? 0;
         addToast({
           variant: "info",
           title: "Venue approved",
-          description:
-            dup > 0
-              ? `${dup} duplicate claim(s) flagged for review`
-              : undefined,
+          description: `${venueName} is now under Verified.`,
         });
         closeDetail();
-        await load();
+        await refreshAfterApproval(venueId, venueName);
       } else if (action === "reject") {
         addToast({ variant: "info", title: "Venue rejected" });
         setRejectOpen(false);
@@ -314,19 +426,23 @@ export function ClaimsPage() {
         await load();
       }
     } catch (e) {
-      addToast({
-        variant: "error",
-        title: "Action failed",
-        description: e?.message ?? String(e),
+      setReviewError({
+        action,
+        title: ACTION_FAILURE_COPY[action],
+        detail: safeReviewErrorDetail(e),
       });
+      focusReviewError();
     } finally {
+      setReviewingAction(null);
       setActing(false);
     }
   };
 
   const openReject = () => {
+    setReviewError(null);
     setRejectReason("");
     setRejectOpen(true);
+    requestAnimationFrame(() => rejectReasonRef.current?.focus());
   };
 
   const confirmReject = async () => {
@@ -402,8 +518,7 @@ export function ClaimsPage() {
   // META-ORCH-1255(C): the duplicate pointer is venue-keyed (M4 sets
   // duplicate_of_venue_id on the venue row).
   const isDuplicateOfApproved = Boolean(detail?.duplicate_of_venue_id);
-  const canApprove =
-    Boolean(detail?.marked_called_at) && !isDuplicateOfApproved;
+  const canApprove = !isDuplicateOfApproved;
 
   // META-ORCH-1062 — derived bundle views for the modal.
   const pp = bundle?.place_pool ?? null;
@@ -480,17 +595,40 @@ export function ClaimsPage() {
         ))}
       </div>
 
-      <SectionCard
-        title={`${CLAIM_TABS.find((tab) => tab.id === activeTab)?.label ?? "Pending review"} (${rows.length})`}
-        subtitle={
-          activeTab === "pending"
-            ? "Oldest first · call venue then approve"
-            : "Reviewed venue claims"
-        }
-      >
+      <div ref={resultsRef} tabIndex={-1} aria-live="polite">
+        <SectionCard
+          title={`${CLAIM_TABS.find((tab) => tab.id === activeTab)?.label ?? "Pending review"} (${rows.length})`}
+          subtitle={
+            activeTab === "pending"
+              ? "Oldest first · review pending venue claims"
+              : "Reviewed venue claims"
+          }
+        >
         {loading ? (
           <div className="flex justify-center py-12">
             <Spinner />
+          </div>
+        ) : listError ? (
+          <div
+            className="rounded-lg border border-[var(--color-error-600)] bg-[var(--color-error-50)] p-4 text-sm text-[var(--color-error-700)]"
+            role="alert"
+          >
+            <p>{listError}</p>
+            <Button
+              variant="secondary"
+              className="mt-3 min-h-11"
+              onClick={() => {
+                if (activeTab === "verified" && approvalRefreshVenue) {
+                  void retryVerified(approvalRefreshVenue.id);
+                } else {
+                  void load(activeTab);
+                }
+              }}
+            >
+              {activeTab === "verified" && approvalRefreshVenue
+                ? "Retry Verified"
+                : "Retry"}
+            </Button>
           </div>
         ) : rows.length === 0 ? (
           <p className="text-sm text-[var(--color-text-secondary)] py-8 text-center">
@@ -527,7 +665,8 @@ export function ClaimsPage() {
             </table>
           </div>
         )}
-      </SectionCard>
+        </SectionCard>
+      </div>
 
       <Modal
         open={!!detail}
@@ -554,7 +693,12 @@ export function ClaimsPage() {
                   <Badge variant="brand">Pool match</Badge>
                 ) : null}
                 {detail.marked_called_at ? (
-                  <Badge variant="success">Called</Badge>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="success">Called</Badge>
+                    <span className="text-xs text-[var(--color-text-secondary)]">
+                      Called {formatDateTime(detail.marked_called_at)}
+                    </span>
+                  </div>
                 ) : null}
                 {detail.claim_follow_up_at ? (
                   <Badge variant="warning">Follow-up requested</Badge>
@@ -1123,42 +1267,94 @@ export function ClaimsPage() {
             </div>
           )}
         </ModalBody>
-        <ModalFooter>
-          <Button variant="secondary" onClick={closeDetail} disabled={acting}>
+        <ModalFooter className="!grid grid-cols-2 gap-2 max-md:!px-4 md:!flex md:flex-wrap md:justify-end">
+          {reviewError && reviewError.action !== "reject" ? (
+            <div
+              ref={reviewErrorRef}
+              role="alert"
+              tabIndex={-1}
+              className="col-span-2 w-full rounded-lg border border-[var(--color-error-500)] bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-700)] md:basis-full"
+            >
+              <p className="font-semibold">{reviewError.title}</p>
+              <p className="mt-1">{reviewError.detail}</p>
+            </div>
+          ) : null}
+          {isDuplicateOfApproved ? (
+            <p
+              id="claim-duplicate-approve-help"
+              className="col-span-2 w-full text-xs text-[var(--color-warning-700)] md:basis-full"
+            >
+              Resolve duplicate — reject this claim first.
+            </p>
+          ) : null}
+          <Button
+            variant="secondary"
+            className="min-h-11 h-auto w-full whitespace-normal md:mr-auto md:w-auto"
+            onClick={closeDetail}
+            disabled={acting}
+          >
             Close
           </Button>
           <Button
+            ref={(node) => { actionRefs.current.need_more_info = node; }}
             variant="secondary"
+            className="min-h-11 h-auto w-full whitespace-normal md:w-auto"
             onClick={() => void runReview("need_more_info")}
             disabled={acting}
+            loading={reviewingAction === "need_more_info"}
+            aria-busy={reviewingAction === "need_more_info"}
           >
-            Need more info
+            {reviewingAction === "need_more_info"
+              ? "Requesting info…"
+              : "Need more info"}
           </Button>
-          <Button variant="danger" onClick={openReject} disabled={acting}>
+          <Button
+            ref={(node) => { actionRefs.current.reject = node; }}
+            variant="danger"
+            className="min-h-11 h-auto w-full whitespace-normal md:w-auto"
+            onClick={openReject}
+            disabled={acting}
+          >
             Reject
           </Button>
-          {!detail?.marked_called_at ? (
-            <Button
-              variant="secondary"
-              onClick={() => void runReview("mark_called")}
-              disabled={acting}
-            >
-              Mark as called
-            </Button>
+          {detail?.marked_called_at ? (
+            <span className="flex min-h-11 w-full items-center justify-center text-sm text-[var(--color-text-secondary)] md:w-auto">
+              Called {formatDateTime(detail.marked_called_at)}
+            </span>
           ) : (
             <Button
-              variant="primary"
-              onClick={() => void runReview("approve")}
-              disabled={acting || !canApprove}
-              title={
-                isDuplicateOfApproved
-                  ? "Resolve duplicate — reject this claim first"
-                  : undefined
-              }
+              ref={(node) => { actionRefs.current.mark_called = node; }}
+              variant="secondary"
+              className="min-h-11 h-auto w-full whitespace-normal md:w-auto"
+              onClick={() => void runReview("mark_called")}
+              disabled={acting}
+              loading={reviewingAction === "mark_called"}
+              aria-busy={reviewingAction === "mark_called"}
             >
-              Approve
+              {reviewingAction === "mark_called"
+                ? "Marking called…"
+                : "Mark as called"}
             </Button>
           )}
+          <Button
+            ref={(node) => { actionRefs.current.approve = node; }}
+            variant="primary"
+            className={`col-span-2 min-h-11 h-auto w-full whitespace-normal md:w-auto ${
+              !canApprove && !acting ? "opacity-50 cursor-not-allowed" : ""
+            }`}
+            onClick={() => {
+              if (canApprove) void runReview("approve");
+            }}
+            disabled={acting}
+            loading={reviewingAction === "approve"}
+            aria-busy={reviewingAction === "approve"}
+            aria-disabled={!canApprove || undefined}
+            aria-describedby={
+              isDuplicateOfApproved ? "claim-duplicate-approve-help" : undefined
+            }
+          >
+            {reviewingAction === "approve" ? "Approving…" : "Approve"}
+          </Button>
         </ModalFooter>
       </Modal>
 
@@ -1168,10 +1364,22 @@ export function ClaimsPage() {
         title="Why is this claim being declined?"
       >
         <ModalBody>
+          {reviewError?.action === "reject" ? (
+            <div
+              ref={reviewErrorRef}
+              role="alert"
+              tabIndex={-1}
+              className="mb-3 rounded-lg border border-[var(--color-error-500)] bg-[var(--color-error-50)] p-3 text-sm text-[var(--color-error-700)]"
+            >
+              <p className="font-semibold">{reviewError.title}</p>
+              <p className="mt-1">{reviewError.detail}</p>
+            </div>
+          ) : null}
           <p className="text-sm text-[var(--color-text-secondary)] mb-3">
             This is emailed to the operator. They can submit again after rejection.
           </p>
           <textarea
+            ref={rejectReasonRef}
             className="w-full min-h-[100px] rounded-lg border border-white/10 bg-white/5 p-3 text-sm text-[var(--color-text-primary)]"
             placeholder="Why is this claim being declined?"
             value={rejectReason}
@@ -1187,8 +1395,16 @@ export function ClaimsPage() {
           >
             Cancel
           </Button>
-          <Button variant="danger" onClick={() => void confirmReject()} disabled={acting}>
-            Confirm reject
+          <Button
+            ref={(node) => { actionRefs.current.reject = node; }}
+            variant="danger"
+            className="min-h-11 h-auto whitespace-normal"
+            onClick={() => void confirmReject()}
+            disabled={acting}
+            loading={reviewingAction === "reject"}
+            aria-busy={reviewingAction === "reject"}
+          >
+            {reviewingAction === "reject" ? "Rejecting…" : "Confirm reject"}
           </Button>
         </ModalFooter>
       </Modal>
