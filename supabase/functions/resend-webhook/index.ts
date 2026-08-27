@@ -125,6 +125,15 @@ export function eventTypeOf(payload: unknown): string | null {
   return typeof t === "string" && t.length > 0 ? t : null;
 }
 
+async function correlationHash(value: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(value),
+  );
+  return Array.from(new Uint8Array(digest)).slice(0, 12)
+    .map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
 export async function handleResendWebhook(req: Request): Promise<Response> {
   if (req.method !== "POST") {
     return new Response(JSON.stringify({ error: "method_not_allowed" }), {
@@ -221,6 +230,24 @@ export async function handleResendWebhook(req: Request): Promise<Response> {
     // and the ingest is idempotent on svix_id so a retry cannot double-count.
     console.error(`[resend-webhook] ingest failed: ${error.message}`);
     return new Response(JSON.stringify({ error: "ingest_failed" }), {
+      status: 500,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  if (data === "campaign_unmatched" || data === "campaign_unmatched_stale") {
+    const ageBucket = data === "campaign_unmatched_stale"
+      ? "at_least_5m"
+      : "under_5m";
+    const safeLog = JSON.stringify({
+      event: "campaign_email_event_unmatched",
+      event_type: eventType,
+      age_bucket: ageBucket,
+      correlation_hash: await correlationHash(svixId),
+    });
+    if (data === "campaign_unmatched_stale") console.error(safeLog);
+    else console.warn(safeLog);
+    return new Response(JSON.stringify({ error: "campaign_event_unmatched" }), {
       status: 500,
       headers: { "Content-Type": "application/json" },
     });

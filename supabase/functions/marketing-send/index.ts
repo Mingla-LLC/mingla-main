@@ -585,11 +585,11 @@ export async function handleMarketingSendRequest(
         ? "biz_confirm_marketing_people_send_v2"
         : "biz_confirm_marketing_book_send_v1",
       {
-      p_actor_id: actor.user.id,
-      p_campaign_id: body.campaign_id,
-      p_client_request_id: body.client_request_id,
-      p_quote_snapshot: quote,
-      p_scheduled_for: body.scheduledFor ?? null,
+        p_actor_id: actor.user.id,
+        p_campaign_id: body.campaign_id,
+        p_client_request_id: body.client_request_id,
+        p_quote_snapshot: quote,
+        p_scheduled_for: body.scheduledFor ?? null,
       },
     );
     if (confirmed.error) {
@@ -1065,19 +1065,21 @@ async function sendEmail(
       ? brandRowTyped.cover_media_url
       : null;
 
-  // Per-brand sender address: `<brandSlug>@usemingla.com`. Falls back to a
-  // slugified version of the brand name when the brand has no slug, and
-  // ultimately to `team@usemingla.com` if the slug is unrecoverable.
+  // Per-brand sender address on the dedicated campaign domain. Transactional
+  // mail remains isolated on the untracked apex domain.
   // Display name is the actual brand name (Resend accepts the standard
-  // `Name <addr>` From header). usemingla.com is already verified at
-  // Resend — no per-address verification is needed.
-  const brandEmailLocal = slugifyBrandForEmail(brandSlug ?? brandName);
+  // `Name <addr>` From header).
+  const brandEmailLocal = campaignSenderLocalPart(brandSlug ?? brandName);
+  if (brandEmailLocal.length === 0) {
+    throw new Error("campaign_sender_local_part_empty");
+  }
   // The angle brackets here are RFC 5322 From-header syntax (`Name <addr>`),
   // not HTML. Local aliases avoid the ORCH-0785-C `brand*` prefix heuristic
   // which would otherwise (falsely) demand escapeHtml on a non-HTML string.
   const fromDisplay = brandName;
   const fromLocal = brandEmailLocal;
-  const brandFromHeader = `${fromDisplay} <${fromLocal}@usemingla.com>`;
+  const brandFromHeader =
+    `${fromDisplay} <${fromLocal}@campaigns.usemingla.com>`;
 
   const embedded = await loadEmbeddedEvents(
     supabase,
@@ -2507,12 +2509,12 @@ function buildEndsAtLabel(
   }
 }
 
-function slugifyBrandForEmail(input: string | null | undefined): string {
+function campaignSenderLocalPart(input: string | null | undefined): string {
   const raw = (input ?? "").toLowerCase().trim();
   // Replace non-alphanumeric runs with nothing (collapses spaces, accents,
   // and punctuation into a single tight slug).
   const slug = raw.replace(/[^a-z0-9]+/g, "").slice(0, 32);
-  return slug.length === 0 ? "team" : slug;
+  return slug;
 }
 
 /**
@@ -2590,6 +2592,22 @@ interface EmailTerminalRow {
   id: string;
   status: string;
   provider_message_id: string | null;
+  sent_at: string | null;
+  delivery_tracking_eligible_at: string | null;
+  open_tracking_eligible_at: string | null;
+  tracking_sender_domain: string | null;
+}
+
+function publicEmailAcceptedStatus(status: string): boolean {
+  return [
+    "sent",
+    "delivered",
+    "opened",
+    "clicked",
+    "bounced",
+    "complained",
+    "unsubscribed",
+  ].includes(status);
 }
 
 function safeTerminalUpdateError(
@@ -2610,10 +2628,14 @@ export async function persistEmailSentTerminal(
   messageId: string,
   providerMessageId: string,
 ): Promise<void> {
+  const eligibleAt = new Date().toISOString();
   const sentPatch = {
     status: "sent",
-    sent_at: new Date().toISOString(),
+    sent_at: eligibleAt,
     provider_message_id: providerMessageId,
+    delivery_tracking_eligible_at: eligibleAt,
+    open_tracking_eligible_at: eligibleAt,
+    tracking_sender_domain: "campaigns.usemingla.com",
   };
   let safeError = "write_not_persisted";
 
@@ -2622,12 +2644,19 @@ export async function persistEmailSentTerminal(
       .from("marketing_messages")
       .update(sentPatch)
       .eq("id", messageId)
-      .select("id,status,provider_message_id")
+      .select(
+        "id,status,provider_message_id,sent_at,delivery_tracking_eligible_at,open_tracking_eligible_at,tracking_sender_domain",
+      )
       .maybeSingle();
     const row = data as EmailTerminalRow | null;
     if (
       error === null && row !== null && row.id === messageId &&
-      row.status === "sent" && row.provider_message_id === providerMessageId
+      publicEmailAcceptedStatus(row.status) &&
+      row.provider_message_id === providerMessageId &&
+      row.sent_at !== null &&
+      row.delivery_tracking_eligible_at !== null &&
+      row.open_tracking_eligible_at !== null &&
+      row.tracking_sender_domain === "campaigns.usemingla.com"
     ) {
       return;
     }
@@ -2642,7 +2671,7 @@ export async function persistEmailSentTerminal(
 /**
  * #2485 — where a reply goes when the From address has no mailbox.
  *
- * Brand blasts are sent From `<brandSlug>@usemingla.com`, which is a display
+ * Brand blasts are sent From `<brandSlug>@campaigns.usemingla.com`, which is a display
  * identity, not a mailbox: the domain's MX is Google Workspace and these
  * aliases do not exist there. Until now nothing set Reply-To, so every reply to
  * every brand blast bounced. That is bad for the brand, and a From nobody can
@@ -2736,8 +2765,9 @@ export async function postToResend(input: {
         const body = await response.clone().json() as { name?: string } | null;
         const name = typeof body?.name === "string" ? body.name : "";
         if (name.includes("daily_quota")) kind = "daily_quota_exceeded";
-        else if (name.includes("monthly_quota")) kind = "monthly_quota_exceeded";
-        else if (name.length > 0) kind = name;
+        else if (name.includes("monthly_quota")) {
+          kind = "monthly_quota_exceeded";
+        } else if (name.length > 0) kind = name;
       } catch { /* body unreadable — the header data below still stands */ }
       const daily = response.headers.get("x-resend-daily-quota");
       const monthly = response.headers.get("x-resend-monthly-quota");

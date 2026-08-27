@@ -171,19 +171,19 @@ function checkOverviewNoOpened(source) {
       `${OVERVIEW_ROUTE} has no OPENED card at all — #2510 shipped one; did it get dropped?`,
     );
   } else if (
-    !/label="OPENED"[\s\S]{0,240}hasEventCoverage \? snap\.funnel\.opened : null/
+    !/label="OPENED"[\s\S]{0,300}hasOpenCoverage \? snap\.funnel\.opened : null/
       .test(source) ||
-    !/label="OPENED"[\s\S]{0,300}hasEventCoverage \? openedPct : undefined/
+    !/label="OPENED"[\s\S]{0,420}hasOpenCoverage \? openedPct : undefined/
       .test(source)
   ) {
     fail(
       "C3: overview-opened-needs-coverage",
-      `${OVERVIEW_ROUTE} shows an open rate without gating on hasEventCoverage — an unmeasured campaign would read 0%`,
+      `${OVERVIEW_ROUTE} shows an open rate without independent hasOpenCoverage — an unmeasured campaign would read 0%`,
     );
   } else {
     ok(
       "C3: overview-opened-needs-coverage",
-      "OPENED card is gated on real event coverage (value AND percent)",
+      "OPENED card is gated on independent open coverage (value AND percent)",
     );
   }
 }

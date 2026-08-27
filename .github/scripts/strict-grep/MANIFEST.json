@@ -4075,6 +4075,20 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-1995-contact-book-blast"
+      ]
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-1999-ari-provider-schema-ci-wiring.mjs",
       "kind": "file",
       "enforcement": "batch:A",
