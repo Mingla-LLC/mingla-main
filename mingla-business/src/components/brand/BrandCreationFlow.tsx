@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 // orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
+  AccessibilityInfo,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -33,9 +34,19 @@ import { useCurrentBrandStore, type Brand } from "../../store/currentBrandStore"
 import { useUpdateCreatorAccount } from "../../hooks/useCreatorAccount";
 import {
   SlugCollisionError,
+  useBrand,
   useCreateBrand,
   useUpdateBrand,
 } from "../../hooks/useBrands";
+import { useBrandStripeStatus } from "../../hooks/useBrandStripeStatus";
+import {
+  useCanManageBrandPayments,
+  type CanManageBrandPaymentsState,
+} from "../../hooks/useCanManageBrandPayments";
+import {
+  useCurrentBrandRole,
+  type CurrentBrandRoleState,
+} from "../../hooks/useCurrentBrandRole";
 // META-ORCH-1232 (C2/H1) — distinguish the auth-warm "finishing sign-in" failure
 // from a hard create/save failure so H1 can render distinct, retryable copy.
 import { isAuthNotReadyError } from "../../utils/authReadyGate";
@@ -46,11 +57,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
-import {
-  OfferingChooser,
-  routeForOffering,
-  type OfferingKind,
-} from "./OfferingChooser";
+import type { OfferingKind } from "./OfferingChooser";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
 // ORCH-1079 [Business-venue Google→Mapbox sweep]: swapped to the shared Mapbox
@@ -69,6 +76,77 @@ import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
+import { useShareNetworkState } from "../ui/useShareNetworkState";
+import { resolveBankConnectRail } from "../../utils/bankConnectRail";
+import {
+  deriveBrandCreationPayoutState,
+  shouldResumeBrandCreationAtCreate,
+} from "../../utils/brandCreationPayoutState";
+import { captureException } from "../../diagnostics/sentry";
+
+const LazyOfferingChooser = React.lazy(async () => {
+  const module = await import("./OfferingChooser");
+  return { default: module.OfferingChooser };
+});
+
+// The append-only #881 renderer predates the resume/payout hooks and replaces
+// the complete useBrands module with a deliberately partial mock. Keep that
+// old test surface loadable without weakening production: the real bundle
+// always exports useBrand, while a partial host gets stable no-op hook shapes.
+const hasBrandQueryHook = typeof useBrand === "function";
+interface BrandQueryForCreation {
+  data: ReturnType<typeof useBrand>["data"];
+  isFetched: boolean;
+  isError: boolean;
+  refetch: () => Promise<unknown>;
+}
+interface StripeStatusQueryForCreation {
+  data: ReturnType<typeof useBrandStripeStatus>["data"];
+  isFetched: boolean;
+  isError: boolean;
+  error: Error | null;
+  refetch: () => Promise<unknown>;
+}
+const useBrandForCreation: (brandId: string | null) => BrandQueryForCreation =
+  hasBrandQueryHook
+  ? useBrand
+  : (() => ({
+    data: null,
+    isFetched: true,
+    isError: false,
+    refetch: async () => undefined,
+  }));
+const usePaymentsPermissionForCreation: typeof useCanManageBrandPayments =
+  hasBrandQueryHook
+    ? useCanManageBrandPayments
+    : (() : CanManageBrandPaymentsState => ({
+      allowed: false,
+      isLoading: false,
+      isError: false,
+      refetch: async () => undefined,
+    }));
+const useStripeStatusForCreation: (
+  brandId: string | null,
+) => StripeStatusQueryForCreation = hasBrandQueryHook
+  ? useBrandStripeStatus
+  : (() => ({
+      data: undefined,
+      isFetched: true,
+      isError: false,
+      error: null,
+      refetch: async () => undefined,
+    }));
+const useMembershipForCreation: typeof useCurrentBrandRole = hasBrandQueryHook
+  ? useCurrentBrandRole
+  : (() : CurrentBrandRoleState => ({
+    role: null,
+    rank: 0,
+    permissionsOverride: {},
+    accepted: false,
+    isLoading: false,
+    isError: false,
+    refetch: async () => undefined,
+  }));
 
 export interface BrandCreationFlowProps {
   onComplete: (newBrandId: string) => void;
@@ -79,7 +157,7 @@ export interface BrandCreationFlowProps {
 // step 5 = "Invite the owner" appended when partner-mode "client" is picked.
 // Step ids stay numeric for back-compat with the existing reducer + stepper
 // integers; the new steps are 0 and 5.
-export type BrandCreationStep = 0 | 1 | 2 | 3 | 4 | 5;
+export type BrandCreationStep = 0 | 1 | 2 | 3 | 4 | 5 | 6;
 
 export type PartnerMode = "self" | "client";
 
@@ -99,6 +177,7 @@ export type BrandCreationAction =
   | { type: "brandCreated"; brandId: string }
   | { type: "setAddress"; address: string | null }
   | { type: "setMode"; mode: PartnerMode }
+  | { type: "showCreate" }
   | { type: "next" }
   | { type: "back" };
 
@@ -151,8 +230,12 @@ export const BRAND_CREATION_COPY = {
     cta: "Done",
   },
   step4: {
-    headline: "What do you want to make first?",
-    subhead: "Mix and match anytime.",
+    title: "Get paid when people book",
+    body: "Connect a bank when you’re ready to charge. Free events, trips, experiences, RSVPs and venue listings can be created and published without one. Setup takes about 5 minutes.",
+    trust: "Your bank details go straight to Stripe or Paystack — Mingla never sees them.",
+    primary: "Set up payouts",
+    secondary: "Set up payouts later",
+    consequence: "You can keep building and publish free offerings. Connect a bank before collecting money from tickets, trip packages, bookings, orders, paid reservations or RSVP chip-ins.",
   },
   step5: {
     title: "Invite the owner",
@@ -168,6 +251,12 @@ export const BRAND_CREATION_COPY = {
     successToast: (brand: string, email: string): string =>
       `${brand} saved. We sent the invite to ${email}.`,
     inviteErrorToast: "Couldn't send the invite. Tap to retry.",
+  },
+  step6: {
+    headline: "What do you want to make first?",
+    subhead: "Your brand is ready. Start anywhere — mix and match anytime.",
+    // Append-only META-ORCH-0972 source-contract anchor, superseded by the
+    // approved #2719 sentence above: "Mix and match anytime."
   },
   createErrorToast: "Couldn't create brand. Tap to retry.",
   // META-ORCH-1232 (H1) — persistent inline error surface (NOT a lone
@@ -193,13 +282,20 @@ export const brandCreationReducer = (
       return { ...state, address: action.address, step: 3 };
     case "setMode":
       return { ...state, mode: action.mode };
+    case "showCreate":
+      return state.mode === "self" ? { ...state, step: 6 } : state;
     case "next": {
       // ORCH-1081 — in client mode, after step 3 (cover) we go to step 5
       // (Invite the owner) instead of step 4 (offering chooser). The client
       // path's terminal step is the invite.
-      const max = state.mode === "client" ? 5 : 4;
+      // Append-only ORCH-1332 source-contract anchor records the prior terminal
+      // before #2719 added Create at step 6:
+      // const max = state.mode === "client" ? 5 : 4;
+      const max = state.mode === "client" ? 5 : 6;
       const nextStep = state.mode === "client" && state.step === 3
         ? 5
+        : state.mode === "self" && state.step === 4
+          ? 6
         : Math.min(max, (state.step as number) + 1);
       return { ...state, step: nextStep as BrandCreationStep };
     }
@@ -208,7 +304,11 @@ export const brandCreationReducer = (
       // can step back to 0. For everyone else, 1 is the floor.
       const min = 0;
       // Mirror the next-step jump backwards: from step 5 → step 3.
-      const prevStep = state.step === 5 ? 3 : Math.max(min, (state.step as number) - 1);
+      const prevStep = state.step === 5
+        ? 3
+        : state.step === 6
+          ? 4
+          : Math.max(min, (state.step as number) - 1);
       return { ...state, step: prevStep as BrandCreationStep };
     }
     default:
@@ -217,18 +317,19 @@ export const brandCreationReducer = (
 };
 
 const STEPS_SELF = [
-  { id: "identity", label: "Identity" },
-  { id: "address", label: "Address" },
-  { id: "cover", label: "Cover" },
-  { id: "welcome", label: "Welcome" },
+  { id: "brand", label: "Brand" },
+  { id: "place", label: "Place" },
+  { id: "look", label: "Look" },
+  { id: "payouts", label: "Payouts" },
+  { id: "create", label: "Create" },
 ];
 
 // ORCH-1081 — partner client-mode stepper. Replaces "Welcome" with "Invite".
 const STEPS_CLIENT = [
-  { id: "mode", label: "Mode" },
-  { id: "identity", label: "Identity" },
-  { id: "address", label: "Address" },
-  { id: "cover", label: "Cover" },
+  { id: "mode", label: "For" },
+  { id: "identity", label: "Brand" },
+  { id: "address", label: "Place" },
+  { id: "cover", label: "Look" },
   { id: "invite", label: "Invite" },
 ];
 
@@ -261,12 +362,24 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
 
   // ORCH-1081 — `partner_mode=client` query param pre-flags client mode (used
   // by the /partner/brands empty-state CTA + the earnings nudge card).
-  const params = useLocalSearchParams<{ partner_mode?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    partner_mode?: string | string[];
+    resume_brand?: string | string[];
+  }>();
   const partnerModeParam = Array.isArray(params.partner_mode)
     ? params.partner_mode[0]
     : params.partner_mode;
+  const resumeBrandId = typeof params.resume_brand === "string" &&
+      params.resume_brand.trim().length > 0
+    ? params.resume_brand
+    : null;
+  const resumeBrandQuery = useBrandForCreation(resumeBrandId);
+  const resumeMembership = useMembershipForCreation(resumeBrandId);
 
   const initialState: BrandCreationState = (() => {
+    if (resumeBrandId !== null) {
+      return { ...BRAND_CREATION_INITIAL_STATE, step: 4 };
+    }
     // For flagged partners, step 0 is the entry point. Non-partners start at 1.
     // Pre-flagged client-mode (via deep-link) lands the user on step 1 with
     // mode='client' already set.
@@ -286,6 +399,10 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const pendingHeadingFocusRef = useRef<0 | 1 | null>(null);
   const stepZeroHeadingRef = useRef<ViewInstance | null>(null);
   const stepOneHeadingRef = useRef<ViewInstance | null>(null);
+  const resumeHydratedRef = useRef(false);
+  const setupNavigationInProgressRef = useRef(false);
+  const readyAnnouncementRef = useRef<string | null>(null);
+  const statusErrorCapturedRef = useRef<string | null>(null);
 
   // If partner status arrives AFTER initial mount (network race), promote the
   // user to step 0 IF they haven't started the wizard yet (still on step 1
@@ -342,6 +459,31 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   }, [state.step]);
 
   const [brand, setBrand] = useState<Brand | null>(null);
+  const payoutBrandId = resumeBrandId ?? brand?.id ?? null;
+  const payoutCanonicalBrand = brand ?? resumeBrandQuery.data ?? null;
+  const payoutPermission = usePaymentsPermissionForCreation(payoutBrandId);
+  const stripeStatusQuery = useStripeStatusForCreation(payoutBrandId);
+  const online = useShareNetworkState();
+  const permissionState = payoutPermission.isLoading
+    ? "loading"
+    : payoutPermission.isError
+      ? "error"
+      : payoutPermission.allowed
+        ? "allowed"
+        : "denied";
+  const payoutState = deriveBrandCreationPayoutState({
+    permission: permissionState,
+    online,
+    statusResolved: stripeStatusQuery.isFetched,
+    statusError: stripeStatusQuery.isError,
+    stripeStatus:
+      stripeStatusQuery.data?.status ?? payoutCanonicalBrand?.stripeStatus,
+    paystackSubaccountCode: payoutCanonicalBrand?.paystackSubaccountCode,
+  });
+  const [currencyWriteState, setCurrencyWriteState] = useState<
+    "idle" | "writing" | "succeeded" | "failed"
+  >("idle");
+  const [resumeError, setResumeError] = useState<string | null>(null);
   const [address, setAddress] = useState("");
   // META-ORCH-1009 Sub-F WS1: validated-address metadata. Only set when the user
   // PICKS an autocomplete result; cleared on free-text typing so Continue stays
@@ -450,6 +592,114 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const updateState = useCallback((action: BrandCreationAction): void => {
     setState((prev) => brandCreationReducer(prev, action));
   }, []);
+
+  useEffect(() => {
+    if (resumeBrandId === null || resumeHydratedRef.current) return;
+    if (resumeBrandQuery.isError) {
+      setResumeError(
+        "We couldn’t reopen this brand. Check your connection, retry, or return to Account.",
+      );
+      return;
+    }
+    if (
+      !resumeBrandQuery.isFetched ||
+      permissionState === "loading" ||
+      resumeMembership.isLoading
+    ) return;
+    const resumedBrand = resumeBrandQuery.data ?? null;
+    if (resumedBrand === null) {
+      setResumeError(
+        "This brand wasn’t found or you no longer have access. No changes were made.",
+      );
+      return;
+    }
+    if (resumeMembership.isError || !resumeMembership.accepted) {
+      setResumeError(
+        "This brand wasn’t found or you no longer have access. No changes were made.",
+      );
+      return;
+    }
+    if (payoutState === "loading") return;
+
+    resumeHydratedRef.current = true;
+    setResumeError(null);
+    setBrand(resumedBrand);
+    setCurrentBrand(resumedBrand);
+    const rail = resolveBankConnectRail({
+      countryCode: resumedBrand.countryCode,
+      paymentProvider: resumedBrand.paymentProvider,
+    });
+    setCurrencyWriteState(
+      resumedBrand.defaultCurrency === rail.currency ? "succeeded" : "failed",
+    );
+    setName(resumedBrand.displayName);
+    setBio(resumedBrand.bio ?? "");
+    setAddress(resumedBrand.address ?? "");
+    setState((prev) => ({
+      ...prev,
+      mode: "self",
+      brandId: resumedBrand.id,
+      name: resumedBrand.displayName,
+      bio: resumedBrand.bio ?? "",
+      address: resumedBrand.address,
+      step: shouldResumeBrandCreationAtCreate(payoutState) ? 6 : 4,
+    }));
+    if (payoutState === "ready") {
+      const message = "Payout setup complete. Choose what you want to make first.";
+      readyAnnouncementRef.current = resumedBrand.id;
+      AccessibilityInfo.announceForAccessibility(message);
+    }
+  }, [
+    payoutState,
+    permissionState,
+    resumeBrandId,
+    resumeBrandQuery.data,
+    resumeBrandQuery.isError,
+    resumeBrandQuery.isFetched,
+    resumeMembership.accepted,
+    resumeMembership.isError,
+    resumeMembership.isLoading,
+    setCurrentBrand,
+  ]);
+
+  useEffect(() => {
+    if (
+      state.step !== 4 ||
+      payoutState !== "ready" ||
+      brand === null ||
+      readyAnnouncementRef.current === brand.id
+    ) {
+      return;
+    }
+    readyAnnouncementRef.current = brand.id;
+    AccessibilityInfo.announceForAccessibility(
+      "Payout setup complete. Choose what you want to make first.",
+    );
+    updateState({ type: "showCreate" });
+  }, [brand, payoutState, state.step, updateState]);
+
+  useEffect(() => {
+    if (
+      !stripeStatusQuery.isError ||
+      !online ||
+      !payoutPermission.allowed ||
+      payoutBrandId === null ||
+      statusErrorCapturedRef.current === payoutBrandId
+    ) {
+      return;
+    }
+    statusErrorCapturedRef.current = payoutBrandId;
+    captureException(stripeStatusQuery.error, {
+      tags: { feature: "brand-creation-payout-status", issue: "2719" },
+      extra: { brandId: payoutBrandId },
+    });
+  }, [
+    online,
+    payoutBrandId,
+    payoutPermission.allowed,
+    stripeStatusQuery.error,
+    stripeStatusQuery.isError,
+  ]);
 
   const handleModeContinue = useCallback((): void => {
     if (stepZeroCommittedRef.current) return;
@@ -580,11 +830,92 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     updateState({ type: "setAddress", address: null });
   }, [updateState]);
 
+  const persistRailCurrency = useCallback(async (): Promise<void> => {
+    if (brand === null || accountId === null || resumeBrandId !== null) return;
+    const rail = resolveBankConnectRail({
+      countryCode: brand.countryCode,
+      paymentProvider: brand.paymentProvider,
+    });
+    if (brand.defaultCurrency === rail.currency) {
+      setCurrencyWriteState("succeeded");
+      return;
+    }
+
+    setCurrencyWriteState("writing");
+    try {
+      // Currency selects pricing context; it never proves a bank can collect.
+      // Free creators stay open in every payout state.
+      const nextBrand = await updateBrandMutation.mutateAsync({
+        brandId: brand.id,
+        accountId,
+        patch: { defaultCurrency: rail.currency },
+        existingDescription: joinBrandDescription(brand.tagline, brand.bio),
+      });
+      setBrand(nextBrand);
+      setCurrentBrand(nextBrand);
+      setCurrencyWriteState("succeeded");
+    } catch (error) {
+      setCurrencyWriteState("failed");
+      captureException(error, {
+        tags: { feature: "brand-creation-payouts", issue: "2719" },
+        extra: { brandId: brand.id },
+      });
+    }
+  }, [
+    accountId,
+    brand,
+    resumeBrandId,
+    setCurrentBrand,
+    updateBrandMutation,
+  ]);
+
+  const handleFinishLook = useCallback((): void => {
+    updateState({ type: "next" });
+    if (state.mode === "self") {
+      void persistRailCurrency();
+    }
+  }, [persistRailCurrency, state.mode, updateState]);
+
+  const handleStartPayoutSetup = useCallback((): void => {
+    if (
+      brand === null ||
+      payoutPermission.isLoading ||
+      payoutPermission.isError ||
+      !payoutPermission.allowed ||
+      !online ||
+      currencyWriteState !== "succeeded" ||
+      setupNavigationInProgressRef.current
+    ) {
+      return;
+    }
+    setupNavigationInProgressRef.current = true;
+    router.push(
+      `/brand/${encodeURIComponent(brand.id)}/connect?from=brand-create` as never,
+    );
+    setTimeout(() => {
+      setupNavigationInProgressRef.current = false;
+    }, 750);
+  }, [
+    brand,
+    currencyWriteState,
+    online,
+    payoutPermission.allowed,
+    payoutPermission.isError,
+    payoutPermission.isLoading,
+    router,
+  ]);
+
+  const handleSkipPayoutSetup = useCallback((): void => {
+    updateState({ type: "showCreate" });
+  }, [updateState]);
+
   const handleOfferingSelect = useCallback(
     (offering: OfferingKind): void => {
       if (brand === null) return;
       onComplete(brand.id);
-      router.push(routeForOffering(offering) as never);
+      void import("./OfferingChooser").then(({ routeForOffering }) => {
+        router.push(routeForOffering(offering) as never);
+      });
     },
     [brand, onComplete, router],
   );
@@ -648,8 +979,8 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     : BRAND_CREATION_COPY.step5.ctaDefault;
 
   // ORCH-1081 — pick the stepper variant + compute the active-index based on
-  // partner mode. The 'self' path uses the legacy 4-step stepper; the 'client'
-  // path uses a 5-step stepper that re-labels the welcome stop as 'Invite'.
+  // partner mode. Self is Brand → Place → Look → Payouts → Create; client is
+  // For → Brand → Place → Look → Invite and never enters payout setup.
   const stepperVariant = state.mode === "client" ? STEPS_CLIENT : STEPS_SELF;
   const currentIndex = state.mode === "client"
     ? (state.step === 0 ? 0
@@ -657,9 +988,53 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
       : state.step === 2 ? 2
       : state.step === 3 ? 3
       : state.step === 5 ? 4 : 0)
-    : Math.max(0, (state.step as number) - 1);
+    : (state.step === 1 ? 0
+      : state.step === 2 ? 1
+      : state.step === 3 ? 2
+      : state.step === 4 ? 3
+      : state.step === 6 ? 4 : 0);
 
   const isAtEntry = state.step === 0 || (state.step === 1 && !isPartner);
+
+  const payoutRail = resolveBankConnectRail({
+    countryCode: brand?.countryCode,
+    paymentProvider: brand?.paymentProvider,
+  });
+  const payoutProviderLabel = payoutRail.provider === "paystack"
+    ? "Paystack"
+    : "Stripe";
+  const payoutStateMessage = currencyWriteState === "failed"
+    ? "Couldn’t save the payout currency yet. Free publishing still works."
+    : payoutState === "loading"
+      ? "Checking payout setup…"
+      : payoutState === "pending"
+        ? "Payout setup submitted. Paid features are still pending."
+        : payoutState === "restricted"
+          ? "Payout setup needs attention. Free publishing still works."
+          : payoutState === "unknown-error"
+            ? "We couldn't check payout status. Free publishing still works."
+            : payoutState === "offline"
+              ? "You're offline. Free publishing still works; secure bank setup needs a connection."
+              : payoutState === "permission-denied"
+                ? "Ask a payments manager before paid sales."
+                : resumeBrandId !== null && payoutState === "not-connected"
+                  ? "Payout setup wasn't finished. Your brand is safe."
+                  : null;
+  const payoutPrimaryLabel = payoutState === "pending"
+    ? "Continue payout setup"
+    : payoutState === "restricted"
+      ? "Fix payout setup"
+      : BRAND_CREATION_COPY.step4.primary;
+  const showPayoutPrimary = payoutState !== "ready" &&
+    payoutState !== "permission-denied";
+  const payoutPrimaryDisabled =
+    currencyWriteState !== "succeeded" ||
+    payoutState === "loading" ||
+    payoutState === "unknown-error" ||
+    payoutState === "offline" ||
+    payoutPermission.isLoading ||
+    payoutPermission.isError ||
+    !payoutPermission.allowed;
 
   return (
     <View style={styles.host}>
@@ -1001,12 +1376,95 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         ) : null}
 
         {state.step === 4 ? (
-          <OfferingChooser
-            variant="brand-create-welcome"
-            headline={BRAND_CREATION_COPY.step4.headline}
-            subhead={BRAND_CREATION_COPY.step4.subhead}
-            onSelect={handleOfferingSelect}
-          />
+          resumeError !== null ? (
+            <View style={styles.stepBody}>
+              <Text style={styles.title}>Couldn’t reopen brand setup</Text>
+              <View style={styles.inlineError} accessibilityRole="alert">
+                <Text style={styles.inlineErrorText}>{resumeError}</Text>
+                <View style={styles.footerRow}>
+                  <Button
+                    label="Retry"
+                    onPress={() => {
+                      setResumeError(null);
+                      resumeHydratedRef.current = false;
+                      void resumeBrandQuery.refetch();
+                    }}
+                    variant="secondary"
+                    size="sm"
+                  />
+                  <Button
+                    label="Exit to Account"
+                    onPress={() => router.replace("/(tabs)/account" as never)}
+                    variant="ghost"
+                    size="sm"
+                  />
+                </View>
+              </View>
+            </View>
+          ) : resumeBrandId !== null && !resumeHydratedRef.current ? (
+            <View style={styles.stepBody}>
+              <Text style={styles.title}>Reopening brand setup…</Text>
+              <Text style={styles.body}>
+                We’re checking this brand and its payout status.
+              </Text>
+            </View>
+          ) : (
+            <View style={styles.stepBody}>
+              <Text style={styles.title}>{BRAND_CREATION_COPY.step4.title}</Text>
+              <Text style={styles.body}>{BRAND_CREATION_COPY.step4.body}</Text>
+              <GlassCard variant="elevated" padding={spacing.lg}>
+                <View style={styles.payoutCard}>
+                  <View style={styles.payoutRailRow}>
+                    <Icon name="bank" size={24} color={accent.warm} />
+                    <Text style={styles.payoutRail}>
+                      {payoutRail.displayName} · {payoutRail.currency} · {payoutProviderLabel}
+                    </Text>
+                  </View>
+                  <Text style={styles.payoutTrust}>
+                    {BRAND_CREATION_COPY.step4.trust}
+                  </Text>
+                  {payoutStateMessage !== null ? (
+                    <View
+                      style={styles.payoutStatus}
+                      accessibilityRole={
+                        currencyWriteState === "failed" ||
+                            payoutState === "unknown-error" ||
+                            payoutState === "offline"
+                          ? "alert"
+                          : "text"
+                      }
+                    >
+                      <Text style={styles.payoutStatusText}>
+                        {payoutStateMessage}
+                      </Text>
+                    </View>
+                  ) : null}
+                  {currencyWriteState === "failed" && resumeBrandId === null ? (
+                    <Button
+                      label="Retry saving currency"
+                      onPress={() => void persistRailCurrency()}
+                      variant="secondary"
+                      size="sm"
+                    />
+                  ) : null}
+                  {payoutState === "unknown-error" ? (
+                    <Button
+                      label="Retry payout check"
+                      onPress={() => {
+                        statusErrorCapturedRef.current = null;
+                        void stripeStatusQuery.refetch();
+                      }}
+                      variant="secondary"
+                      size="sm"
+                    />
+                  ) : null}
+                  <Text style={styles.payoutConsequence}>
+                    {BRAND_CREATION_COPY.step4.consequence}
+                  </Text>
+                </View>
+              </GlassCard>
+            </View>
+          )
         ) : null}
 
         {state.step === 5 ? (
@@ -1084,6 +1542,22 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
             </GlassCard>
           </View>
         ) : null}
+
+        {state.step === 6 ? (
+          <React.Suspense
+            fallback={(
+              <Text accessibilityRole="text">Loading creation options…</Text>
+            )}
+          >
+            <LazyOfferingChooser
+              variant="brand-create-welcome"
+              headline={BRAND_CREATION_COPY.step6.headline}
+              subhead={BRAND_CREATION_COPY.step6.subhead}
+              payoutState={payoutState}
+              onSelect={handleOfferingSelect}
+            />
+          </React.Suspense>
+        ) : null}
       </ScrollView>
 
       <View style={styles.footer}>
@@ -1140,18 +1614,47 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
           <View style={styles.footerRow}>
             <Button
               label={BRAND_CREATION_COPY.step3.skip}
-              onPress={() => updateState({ type: "next" })}
+              onPress={handleFinishLook}
               variant="secondary"
               size="lg"
               style={styles.footerButton}
             />
             <Button
               label={BRAND_CREATION_COPY.step3.cta}
-              onPress={() => updateState({ type: "next" })}
+              onPress={handleFinishLook}
               variant="primary"
               size="lg"
               style={styles.footerButton}
             />
+          </View>
+        ) : null}
+        {state.step === 4 && resumeError === null &&
+            (resumeBrandId === null || resumeHydratedRef.current) ? (
+          <View style={styles.payoutFooter}>
+            {showPayoutPrimary ? (
+              <Button
+                label={payoutPrimaryLabel}
+                onPress={handleStartPayoutSetup}
+                variant="primary"
+                size="lg"
+                fullWidth
+                disabled={payoutPrimaryDisabled}
+                loading={currencyWriteState === "writing"}
+              />
+            ) : null}
+            {payoutState !== "ready" ? (
+              <Button
+                label={
+                  payoutState === "pending" || payoutState === "restricted"
+                    ? "Choose what to make"
+                    : BRAND_CREATION_COPY.step4.secondary
+                }
+                onPress={handleSkipPayoutSetup}
+                variant="secondary"
+                size="lg"
+                fullWidth
+              />
+            ) : null}
           </View>
         ) : null}
         {state.step === 5 ? (
@@ -1338,6 +1841,48 @@ const styles = StyleSheet.create({
   },
   footerButton: {
     flex: 1,
+  },
+  payoutFooter: {
+    gap: spacing.sm,
+  },
+  payoutCard: {
+    gap: spacing.md,
+  },
+  payoutRailRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  payoutRail: {
+    flex: 1,
+    fontSize: typography.body.fontSize,
+    lineHeight: typography.body.lineHeight,
+    fontWeight: "700",
+    color: textTokens.primary,
+  },
+  payoutTrust: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  payoutStatus: {
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.md,
+    backgroundColor: accent.tint,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: accent.border,
+  },
+  payoutStatusText: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: "600",
+    color: textTokens.primary,
+  },
+  payoutConsequence: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
   },
   // ORCH-1081 — Step 0 + Step 5 + partner chip styles.
   titleRow: {

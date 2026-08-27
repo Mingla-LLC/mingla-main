@@ -9633,3 +9633,17 @@ independent tester returns PASS.
 - **Declared limits:** the gate requires the **positive** `Platform.OS === "ios"` form. A hypothetical `Platform.OS === "android" ? X : <Picker mode="datetime"/>` is genuinely iOS+web-only but is still flagged; that shape does not exist in the repo, and requiring the positive form keeps the guard readable at the call site. The gate reasons lexically about enclosing JSX conditions and does not follow a platform decision through a variable or a helper function.
 - **Fails on revert:** restoring `mode="datetime"` at either call site turns the gate red naming that file and line, and turns the two happy-path suites red on the rendered `mode` prop.
 - **Established:** DRAFT at #2664; flip to ACTIVE at CLOSE once the independent tester's adversarial suite passes and the fix is verified on a physical Android device.
+
+## ACTIVE — issue #2719 (payout-first brand creation keeps free publishing open)
+
+### I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (ACTIVE)
+
+- **Rule:** Rail-derived `default_currency` selects the brand's pricing context only. It never proves that Stripe or Paystack can collect money; only canonical Stripe active state or a canonical Paystack subaccount enables collection.
+- **Enforcement:** `brandCreationPayoutState.ts` excludes currency from its input, `BrandCreationFlow.tsx` writes resolver output only through the authenticated brand mutation and mapper, the new mounted happy-path proof keeps a currency-bearing brand not-connected, and `.github/scripts/strict-grep/issue-2719-brand-payout-first.mjs` is self-tested and wired in class A.
+- **Established:** ACTIVE at #2719 after independent tester PASS on 2026-08-27.
+
+### I-2719-FREE-CREATORS-ALWAYS-OPEN (ACTIVE)
+
+- **Rule:** Free Event, Trip, Experience, RSVP, and Venue creation and publishing never requires a bank. Every creator choice remains enabled in every payout state; bank readiness gates only money collection.
+- **Enforcement:** the exhaustive five-member `OfferingChooser`, the self/client creation state machine, the mounted #2719 happy-path suite, existing server money-path guards, and `.github/scripts/strict-grep/issue-2719-brand-payout-first.mjs`; the guard reserves the independent tester filename and enforces it as non-skipped as soon as the tester stages it.
+- **Established:** ACTIVE at #2719 after independent tester PASS on 2026-08-27.

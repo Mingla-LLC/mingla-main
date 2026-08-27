@@ -27,16 +27,24 @@ import { useBrand } from "../../../../src/hooks/useBrands";
 export default function BrandOnboardRoute(): React.ReactElement {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const params = useLocalSearchParams<{ id: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id: string | string[];
+    from?: string | string[];
+  }>();
   const idParam = Array.isArray(params.id) ? params.id[0] : params.id;
   const brandId = typeof idParam === "string" && idParam.length > 0
     ? idParam
     : null;
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
+  const isBrandCreateFunnel = params.from === "brand-create";
 
   const handleBack = (): void => {
-    if (router.canGoBack()) {
+    if (isBrandCreateFunnel && brandId !== null) {
+      router.replace(
+        `/brand/new?resume_brand=${encodeURIComponent(brandId)}` as never,
+      );
+    } else if (router.canGoBack()) {
       router.back();
     } else if (brand !== null) {
       router.replace(`/brand/${brand.id}/payments` as never);

@@ -9,7 +9,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — redirect-only route (<Redirect>), no visible surface
 import React from "react";
-import { Redirect, useLocalSearchParams } from "expo-router";
+import { Redirect, useLocalSearchParams, type Href } from "expo-router";
 
 function firstParam(value: string | string[] | undefined): string | null {
   const first = Array.isArray(value) ? value[0] : value;
@@ -17,14 +17,20 @@ function firstParam(value: string | string[] | undefined): string | null {
 }
 
 export default function BrandBankConnectNativeAlias(): React.ReactElement {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id?: string | string[];
+    from?: string | string[];
+  }>();
   const brandId = firstParam(params.id);
 
   if (brandId === null) {
     return <Redirect href="/(tabs)/account" />;
   }
 
-  return (
-    <Redirect href={`/brand/${encodeURIComponent(brandId)}/payments/onboard`} />
-  );
+  const onboardHref = (
+    params.from === "brand-create"
+      ? `/brand/${encodeURIComponent(brandId)}/payments/onboard?from=brand-create`
+      : `/brand/${encodeURIComponent(brandId)}/payments/onboard`
+  ) as Href;
+  return <Redirect href={onboardHref} />;
 }
