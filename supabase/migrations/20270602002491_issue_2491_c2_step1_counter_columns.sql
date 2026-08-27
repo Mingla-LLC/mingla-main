@@ -179,42 +179,81 @@ UPDATE public.ticket_types tt
    SET sold_count = public.issue_2491_derived_sold(tt.id),
        held_count = public.issue_2491_derived_held(tt.id);
 
+-- ── grants ─────────────────────────────────────────────────────────────────
+-- These are SECURITY DEFINER, so PostgreSQL's default EXECUTE-to-PUBLIC would
+-- hand anon a definer-rights function. Internal machinery: nobody outside the
+-- database calls any of them.
+REVOKE ALL ON FUNCTION public.issue_2491_derived_sold(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_2491_derived_held(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_2491_refresh_counters(uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.issue_2491_reconcile_ticket_type_counters(boolean) FROM PUBLIC, anon, authenticated;
+
 DO $probe$
 DECLARE v_r jsonb; v_tt uuid; v_before int; v_after int;
+        v_types int; v_tickets int; v_trg int;
 BEGIN
-  -- 1. after backfill, drift must be zero across every live ticket type
+  -- ── ARM 1 (always runs, any database) — the triggers EXIST and are attached
+  -- to the right tables. A CREATE TRIGGER naming a table that does not exist,
+  -- or a wrong event mask, produces exactly the same green migration as a
+  -- correct one; only pg_catalog can tell them apart.
+  SELECT count(*) INTO v_trg FROM pg_trigger
+   WHERE NOT tgisinternal
+     AND tgname IN ('issue_2491_tickets_counters',
+                    'issue_2491_session_items_counters',
+                    'issue_2491_sessions_counters');
+  IF v_trg <> 3 THEN
+    RAISE EXCEPTION 'issue #2491 C2: expected 3 counter triggers, found %', v_trg;
+  END IF;
+
+  -- ── ARM 2 (always runs) — after backfill, drift is zero. Reported WITH its
+  -- denominator: "0 drifting" is only a pass alongside how many were examined.
+  SELECT count(*) INTO v_types FROM public.ticket_types WHERE deleted_at IS NULL;
   v_r := public.issue_2491_reconcile_ticket_type_counters(false);
   IF (v_r->>'driftCount')::int <> 0 THEN
-    RAISE EXCEPTION 'issue #2491 C2: backfill left % ticket types drifting: %',
-      v_r->>'driftCount', v_r->>'drift';
+    RAISE EXCEPTION 'issue #2491 C2: backfill left % of % ticket types drifting: %',
+      v_r->>'driftCount', v_types, v_r->>'drift';
+  END IF;
+  RAISE NOTICE 'issue #2491 C2: 0 drifting out of % ticket types examined', v_types;
+
+  -- ── ARM 3 — the trigger actually MOVES the number. A counter nothing
+  -- maintains is worse than no counter, because step 3 switches a reader onto
+  -- it.
+  --
+  -- This arm needs a real ticket to move. On a from-zero CI replay the database
+  -- is empty, so it cannot run — and a skip that quietly reports success is the
+  -- exact defect this migration exists to avoid. So the skip is GUARDED: it is
+  -- permitted only when the tickets table is provably empty. On any database
+  -- holding tickets — production included — failing to find a subject is a hard
+  -- error, not a shrug.
+  SELECT count(*) INTO v_tickets FROM public.tickets;
+  IF v_tickets = 0 THEN
+    RAISE NOTICE 'issue #2491 C2: 0 tickets in this database (from-zero replay); trigger behaviour proven at apply time against real rows';
+  ELSE
+    SELECT tt.id INTO v_tt FROM public.ticket_types tt
+      JOIN public.tickets t ON t.ticket_type_id = tt.id
+     WHERE tt.deleted_at IS NULL LIMIT 1;
+    IF v_tt IS NULL THEN
+      RAISE EXCEPTION 'issue #2491 C2: % tickets exist but none reachable from a live ticket type — probe cannot prove the trigger', v_tickets;
+    END IF;
+
+    SELECT sold_count INTO v_before FROM public.ticket_types WHERE id = v_tt;
+    INSERT INTO public.tickets (order_id, ticket_type_id, event_id, status, qr_code)
+    SELECT t.order_id, t.ticket_type_id, t.event_id, 'valid', 'i2491-probe-' || gen_random_uuid()::text
+      FROM public.tickets t WHERE t.ticket_type_id = v_tt LIMIT 1;
+    SELECT sold_count INTO v_after FROM public.ticket_types WHERE id = v_tt;
+    IF v_after <> v_before + 1 THEN
+      RAISE EXCEPTION 'issue #2491 C2: sold_count did not move on INSERT (% -> %)', v_before, v_after;
+    END IF;
+
+    DELETE FROM public.tickets WHERE qr_code LIKE 'i2491-probe-%';
+    SELECT sold_count INTO v_after FROM public.ticket_types WHERE id = v_tt;
+    IF v_after <> v_before THEN
+      RAISE EXCEPTION 'issue #2491 C2: sold_count did not return on DELETE (% -> %)', v_before, v_after;
+    END IF;
+    RAISE NOTICE 'issue #2491 C2: trigger proven on live data (% -> % -> %)', v_before, v_before+1, v_after;
   END IF;
 
-  -- 2. the trigger must actually fire. Insert a ticket, watch sold_count move,
-  --    remove it, watch it move back. A counter nothing maintains is worse than
-  --    no counter, because step 3 would switch a reader onto it.
-  SELECT tt.id INTO v_tt FROM public.ticket_types tt
-    JOIN public.tickets t ON t.ticket_type_id = tt.id
-   WHERE tt.deleted_at IS NULL LIMIT 1;
-  IF v_tt IS NULL THEN
-    RAISE EXCEPTION 'issue #2491 C2: no ticket type with tickets — probe cannot prove the trigger';
-  END IF;
-
-  SELECT sold_count INTO v_before FROM public.ticket_types WHERE id = v_tt;
-  INSERT INTO public.tickets (order_id, ticket_type_id, event_id, status, qr_code)
-  SELECT t.order_id, t.ticket_type_id, t.event_id, 'valid', 'i2491-probe-' || gen_random_uuid()::text
-    FROM public.tickets t WHERE t.ticket_type_id = v_tt LIMIT 1;
-  SELECT sold_count INTO v_after FROM public.ticket_types WHERE id = v_tt;
-  IF v_after <> v_before + 1 THEN
-    RAISE EXCEPTION 'issue #2491 C2: sold_count did not move on INSERT (% -> %)', v_before, v_after;
-  END IF;
-
-  DELETE FROM public.tickets WHERE qr_code LIKE 'i2491-probe-%';
-  SELECT sold_count INTO v_after FROM public.ticket_types WHERE id = v_tt;
-  IF v_after <> v_before THEN
-    RAISE EXCEPTION 'issue #2491 C2: sold_count did not return on DELETE (% -> %)', v_before, v_after;
-  END IF;
-
-  -- 3. no reader may have been switched by this migration
+  -- ── ARM 4 (always runs) — no reader may have been switched by this migration
   IF position('sold_count' IN pg_get_functiondef(
        'public.issue_1930_ticket_checkout_create_session_base'::regproc)) > 0 THEN
     RAISE EXCEPTION 'issue #2491 C2 step 1: a reader was switched — that is step 3, after 72h of shadow';

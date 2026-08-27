@@ -112,11 +112,16 @@ BEGIN
   SELECT count(*) INTO v_rows FROM public.ticket_type_counter_shadow_runs;
   IF v_rows < 1 THEN RAISE EXCEPTION 'PROBE FAIL: observer wrote no row'; END IF;
 
-  -- 2. the denominator is real, not zero-over-zero
+  -- 2. the recorded denominator must equal the real one. On a from-zero CI
+  --    replay both are 0, which is honest; what must never happen is the
+  --    observer reporting 0 while ticket types exist.
   SELECT checked_count INTO v_rows FROM public.ticket_type_counter_shadow_runs
    ORDER BY id DESC LIMIT 1;
-  IF v_rows < 1 THEN RAISE EXCEPTION 'PROBE FAIL: checked_count=0, a pass with no denominator'; END IF;
-  RAISE NOTICE 'PROBE: observer checked % ticket types', v_rows;
+  SELECT count(*) INTO v_sched FROM public.ticket_types WHERE deleted_at IS NULL;
+  IF v_rows <> v_sched THEN
+    RAISE EXCEPTION 'PROBE FAIL: observer recorded checked_count=% but % live ticket types exist', v_rows, v_sched;
+  END IF;
+  RAISE NOTICE 'PROBE: observer checked % ticket types (denominator matches)', v_rows;
 
   -- 3. THE CALLER EXISTS. This is the whole point of the migration.
   SELECT count(*) INTO v_sched FROM cron.job WHERE jobname='issue_2491_counter_shadow_observer';
