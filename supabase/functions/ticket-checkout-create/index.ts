@@ -641,6 +641,17 @@ export const createTicketCheckoutCreateHandler = (
       : [];
     refusal.lines = lines;
 
+    // issue #2694 — hoisted out of the #2150 branch. TWO possession checks now
+    // read it: that branch, and the replay arm after finalize. One derivation,
+    // one source of truth — two copies would be two things to keep in step, and
+    // the one that drifted would be a disclosure gate that stopped matching.
+    const presentedStatusToken = typeof body.buyerStatusToken === "string"
+      ? body.buyerStatusToken.trim()
+      : "";
+    const presentedStatusTokenHash = presentedStatusToken.length > 0
+      ? await sha256Hex(presentedStatusToken)
+      : "";
+
     // issue #2579 — THE ONE PLACE A REFUSAL LEAVES THIS FUNCTION.
     //
     // The first cut recorded only refusals raised by the session RPC. Fired at
@@ -1176,12 +1187,6 @@ export const createTicketCheckoutCreateHandler = (
       // present the buyer status token — the same secret that already gates
       // `ticket-checkout-status`. The database owns the decision so it is
       // provable against real rows rather than only against a fake.
-      const presentedStatusToken = typeof body.buyerStatusToken === "string"
-        ? body.buyerStatusToken.trim()
-        : "";
-      const presentedStatusTokenHash = presentedStatusToken.length > 0
-        ? await sha256Hex(presentedStatusToken)
-        : "";
       const { data: replayAuthorized, error: replayAuthError } = await supabase
         .rpc("issue_2150_free_replay_disclosure_authorized", {
           p_session_id: checkoutSessionId,
@@ -1376,6 +1381,30 @@ export const createTicketCheckoutCreateHandler = (
       session.installmentSchedule !== undefined;
 
     if (totalCents === 0) {
+      // issue #2694 — THE PRE-GATE STAYS, and this comment is why.
+      //
+      // It looks redundant: `biz_ticket_checkout_finalize` already handles an
+      // already-finalized session correctly, above its own sale-truth gate. So
+      // the obvious change is to delete this call and branch on finalize's
+      // outcome instead — which is exactly what was first proposed here.
+      //
+      // THAT WOULD HAVE BEEN THE WORST POSSIBLE CHANGE. On a concurrent
+      // duplicate the session RPC's in-flight arm returns a stale
+      // `pending_free`, so the #2150 possession branch above is skipped — by
+      // design; that path is documented as needing no token. This gate is then
+      // the ONLY thing between the caller and finalize's already-finalized arm,
+      // and it decides by timing: pass, and the edge reads the winner's tickets
+      // and renders their QR images for whoever asked; fail, and the guest who
+      // owns them is told the sale is gone.
+      //
+      // A coin flip between disclosing a stranger's pass and lying to its
+      // owner. Deleting the gate removes the coin and always discloses. Nothing
+      // else stands behind it — no JWT is required, no code is sent to the
+      // buyer, and the targeting key is taken verbatim from the request body.
+      //
+      // So the gate stays, and the replay case is now handled properly below:
+      // finalize reports `replayed`, and a replay must PROVE POSSESSION exactly
+      // as the #2150 branch does before anything is disclosed.
       const { data: freeAuthorized, error: freeAuthError } = await supabase.rpc(
         "issue_1930_ticket_session_authorized",
         { p_session_id: checkoutSessionId, p_event_id: eventId },
@@ -1424,6 +1453,46 @@ export const createTicketCheckoutCreateHandler = (
       const finalizeOutcome = typeof finalizedRecord.outcome === "string"
         ? finalizedRecord.outcome
         : "";
+      // issue #2694 — A REPLAY MUST PROVE POSSESSION BEFORE ANYTHING IS SHOWN.
+      //
+      // `replayed === true` means this call minted NOTHING: the order already
+      // existed and finalize simply handed it back. That is the arm a
+      // concurrent duplicate lands on, and it is reached WITHOUT the #2150
+      // possession branch above, because the session still read `pending_free`
+      // when it was loaded.
+      //
+      // So the same proof #2150 demands is demanded here, from the same
+      // function, with the same fail-closed shape. An honest guest re-submitting
+      // holds their token and is served; anyone else is refused, and the refusal
+      // discloses nothing — not the order id, not a ticket, not a QR payload.
+      //
+      // Checked on the BOOLEAN, never on the absence of a `tickets` key. The two
+      // arms did already differ in shape, but hanging a disclosure decision on a
+      // missing field is exactly the kind of implicit contract that stops being
+      // true without anybody noticing.
+      if (finalizedRecord.replayed === true) {
+        const { data: replayOk, error: replayErr } = await supabase.rpc(
+          "issue_2150_free_replay_disclosure_authorized",
+          {
+            p_session_id: checkoutSessionId,
+            p_buyer_user_id: userId,
+            p_buyer_status_token_hash: presentedStatusTokenHash,
+          },
+        );
+        if (replayErr || replayOk !== true) {
+          if (replayErr) {
+            console.error(
+              "[ticket-checkout-create] replay authorization failed",
+              checkoutSessionId,
+              replayErr.message,
+            );
+          }
+          // FAIL CLOSED ON DISCLOSURE, FAIL SAFE ON STATE — the #2150 shape.
+          // Nothing was minted by this call, so nothing is undone; the caller is
+          // simply told the reservation exists without being shown it.
+          return refuse({ error: "free_reservation_already_exists" }, 409);
+        }
+      }
       if (finalizeOutcome === "unavailable") {
         // The sale lost current truth between session-create and finalize (or
         // the session vanished). Nothing was minted and nothing was charged.
@@ -1503,13 +1572,22 @@ export const createTicketCheckoutCreateHandler = (
           409,
         );
       }
-      await dispatchTicketConfirmation(orderId);
+      // issue #2694 — NOT ON A REPLAY. The order, its tickets, its two
+      // `ticket_order_notifications` rows and its ad conversion were all created
+      // by the FIRST submit. Re-dispatching would send the guest a second
+      // confirmation for one reservation, and re-firing the conversion would
+      // double-count it. This is the same rule the #2150 replay branch already
+      // states; it now also holds on the path that reaches finalize.
+      if (finalizedRecord.replayed !== true) {
+        await dispatchTicketConfirmation(orderId);
+      }
       // ISSUE-865 WP-B — ad-conversion CAPI send for the FREE-order path (its own
       // finalize; no webhook backup). FIRE-AND-FORGET (NOT awaited) so the buyer's
       // create response is never delayed — this path is on the buyer's tap→confirm
       // wait. Idempotent + fail-open; value_cents = 0 for a free RSVP. event_id
       // = orderId.
-      void fireAdConversion(supabase as never, { orderId, surface: "web" })
+      if (finalizedRecord.replayed !== true) {
+        void fireAdConversion(supabase as never, { orderId, surface: "web" })
         .catch(
           (adConvErr) => {
             console.warn(
@@ -1520,6 +1598,7 @@ export const createTicketCheckoutCreateHandler = (
             );
           },
         );
+      }
       // issue #2136 — the envelope is spread FIRST and every field the buyer
       // contract (`TicketCheckoutFreeCompleted`) declares is then written
       // explicitly, so the idempotent-replay arm — which answers only
@@ -1539,7 +1618,20 @@ export const createTicketCheckoutCreateHandler = (
         ),
         tickets: freeTickets,
         buyerPhoneE164,
-        buyerStatusToken,
+        // issue #2694 — ON A REPLAY, ECHO WHAT THEY PROVED WITH.
+        //
+        // `buyerStatusToken` here is freshly minted every request, but the
+        // status-token UPDATE carries `.is("order_id", null)` (#2689), so on a
+        // completed session it no-ops and this token's hash was NEVER STORED.
+        // Returning it would hand the guest a key that opens nothing: status
+        // polling, the attendance claim and any future replay would all fail
+        // against a hash that does not exist.
+        //
+        // They reached this line by presenting a token that matched, so echo
+        // that one back. It is the one the row actually holds.
+        buyerStatusToken: finalizedRecord.replayed === true
+          ? presentedStatusToken
+          : buyerStatusToken,
       });
     }
 
