@@ -5,7 +5,15 @@
 // Every constant these pinned was moved from `index.ts` into `logic.ts` by
 // #2218. The assertions kept grepping `index.ts`, found nothing, and went red —
 // so the guard on the sweeper has been failing continuously, in NO CI lane
-// (`supabase-migrations-and-stripe-deno.yml` runs only `issue2218.deferred.test.ts`).
+// (the deno lane ran only `issue2218.deferred.test.ts`).
+//
+// NOTE ON WORDING: that lane is referred to by description, not by filename, on
+// purpose. `discoverWorkflowProviders()` mints a provider record for ANY tracked
+// file that merely CONTAINS a workflow's filename — so naming it here in prose
+// added a phantom provider, broke the frozen 73-provider seal, and reded the
+// class-A gates on a comment. That is #2653; this file simply declines to trip
+// it. The remedy the failure invites — re-pinning the digest — would have
+// dissolved the seal to accommodate a sentence.
 // Nothing was broken; the test was reading the wrong file.
 //
 // That matters more than usual right now: #2695 moves the confirmation email off
