@@ -103,6 +103,9 @@ const GUARDED_DEFINER_FNS = [
   // 20270119001354_issue_1354_tool_leads_admin_rpc.sql removes these fns → FAIL.
   "admin_tool_leads_list",
   "admin_tool_lead_get",
+  // ISSUE-2725: safe competitor operations list + audited bounded actions.
+  "admin_competitor_intel_list",
+  "admin_competitor_intel_action",
 ];
 
 function fnBody(src, name) {
@@ -259,8 +262,18 @@ if (process.argv.includes("--self-test")) {
         `create or replace function public.${n}() returns jsonb language plpgsql stable security definer as $$ declare v jsonb; begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n`,
     )
     .join("");
+  // ISSUE-2725: safe competitor-ops read + audited action RPCs. Amendment 3
+  // authorizes these exact guard-first GOOD fixtures so the appended registry
+  // names remain covered by the existing missing/guard-order mutant checks.
+  const competitorIntel2725 = ["admin_competitor_intel_list", "admin_competitor_intel_action"]
+    .map(
+      (n) =>
+        `create or replace function public.${n}() returns jsonb language plpgsql security definer as $$ ` +
+        "begin if not public.is_admin_user() then raise exception 'not_authorized'; end if; return '{}'::jsonb; end; $$;\n",
+    )
+    .join("");
   const reads = getPerson + offerings1273 + moneyFns + identity1276 + money1278 + offerings1277 +
-    toolLeads1354;
+    toolLeads1354 + competitorIntel2725;
 
   // GOOD: all guard-first.
   let f = [];

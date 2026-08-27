@@ -70,6 +70,11 @@ export const growthToolsKeys = {
     venueListingId: string,
   ): readonly ["growth-tools", string, "watch", string] =>
     ["growth-tools", brandId, "watch", venueListingId] as const,
+  brief: (
+    brandId: string,
+    watchId: string,
+  ): readonly ["growth-tools", string, "brief", string] =>
+    ["growth-tools", brandId, "brief", watchId] as const,
   /** #1735 G-10 — the add-sheet place-pool typeahead (P-46 app-lane search). */
   search: (
     brandId: string,

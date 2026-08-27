@@ -192,3 +192,29 @@ export const captureIntelCompetitorGraded = (
   postHogService.capture("intel_competitor_graded", properties);
   captureWeb("intel_competitor_graded", properties);
 };
+
+export type CompetitorIntelligenceEvent =
+  | "competitor_source_added" | "competitor_source_edited"
+  | "competitor_refresh_due" | "competitor_refresh_started"
+  | "competitor_refresh_succeeded" | "competitor_refresh_partial"
+  | "competitor_refresh_failed" | "competitor_refresh_skipped_unchanged"
+  | "competitor_refresh_budget_deferred" | "competitor_brief_opened"
+  | "competitor_evidence_opened" | "competitor_recommendation_saved"
+  | "competitor_recommendation_started" | "competitor_recommendation_dismissed"
+  | "competitor_usefulness_submitted" | "competitor_capability_seen";
+
+type CompetitorAnalyticsProperties = Partial<{
+  brand_id: string; venue_id: string; watch_id: string; source_kind: string;
+  status: string; source_count: number; schema_version: number; trigger: string;
+  latency_bucket: string; cost_unit_bucket: string;
+}>;
+
+/** Issue #2725 privacy boundary: the type structurally excludes content/URLs/PII. */
+export const captureCompetitorIntelligenceEvent = (
+  event: CompetitorIntelligenceEvent,
+  properties: CompetitorAnalyticsProperties,
+): void => {
+  const safe = { ...properties, platform: platform() } as const;
+  postHogService.capture(event, safe);
+  captureWeb(event, safe);
+};

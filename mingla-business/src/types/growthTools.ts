@@ -127,3 +127,143 @@ export interface TurnoutReport {
     schema_version?: number;
   };
 }
+
+// Issue #2725 — server-owned competitor intelligence v2. Unknown enum/schema
+// values are rejected by the service mapper; clients never invent freshness.
+export type CompetitorSourceKind = "website" | "instagram" | "tiktok";
+export type CompetitorCapability = "analyzed_weekly" | "link_only" | "disabled";
+export type CompetitorSourceHealth =
+  | "pending"
+  | "current"
+  | "private"
+  | "removed"
+  | "invalid"
+  | "rate_limited"
+  | "unreachable"
+  | "unsupported"
+  | "disabled";
+export type CompetitorFreshness =
+  | "current"
+  | "refreshing"
+  | "partial"
+  | "stale"
+  | "needs_attention"
+  | "link_only"
+  | "budget_delayed";
+export type CompetitorManualRefreshState =
+  | "available"
+  | "joined"
+  | "cached"
+  | "quota_limited"
+  | "edit_required"
+  | "exhausted"
+  | "not_applicable";
+
+export interface CompetitorSourceInput {
+  kind: CompetitorSourceKind;
+  url: string;
+}
+
+export interface CompetitorSourceState {
+  id?: string;
+  kind: CompetitorSourceKind;
+  url: string;
+  capability: CompetitorCapability;
+  availability: "enabled" | "paused";
+  availabilityGeneration: number;
+  health: CompetitorSourceHealth;
+  lastCheckedAt: string | null;
+  safeReason: string | null;
+}
+
+export interface CompetitorActiveJob {
+  id: string;
+  state: "due" | "leased" | "retry_wait" | "budget_deferred";
+  fundingLane: "scheduled" | "manual";
+  memberRetryCount: number;
+}
+
+export interface CompetitorWatchRow {
+  /** Legacy one-release structural adapter; service reads always return v2. */
+  schemaVersion?: 2;
+  id: string;
+  name: string;
+  city: string | null;
+  website: string | null;
+  placePoolId: string | null;
+  createdAt: string;
+  updatedAt?: string;
+  freshness?: CompetitorFreshness;
+  lastBriefUpdatedAt?: string | null;
+  checkedAt?: string | null;
+  nextRefreshAt?: string | null;
+  noMeaningfulChange?: boolean;
+  manualRefreshState?: CompetitorManualRefreshState;
+  sources?: CompetitorSourceState[];
+  summary?: { whatChanged: string | null; primaryAction: string | null };
+  activeJob?: CompetitorActiveJob | null;
+  /** One-release compatibility evidence only; never the row hierarchy. */
+  latest: { runId: string; grade: string | null; overall: number | null; checkedAt: string; schemaVersion: number | null } | null;
+}
+
+export interface CompetitorWatchV2Row extends CompetitorWatchRow {
+  schemaVersion: 2;
+  updatedAt: string;
+  freshness: CompetitorFreshness;
+  lastBriefUpdatedAt: string | null;
+  checkedAt: string | null;
+  nextRefreshAt: string | null;
+  noMeaningfulChange: boolean;
+  manualRefreshState: CompetitorManualRefreshState;
+  sources: CompetitorSourceState[];
+  summary: { whatChanged: string | null; primaryAction: string | null };
+  activeJob: CompetitorActiveJob | null;
+}
+
+export interface CompetitorBriefFact {
+  id: string;
+  text: string;
+  sourceId: string;
+  evidenceId: string;
+  confidence: "observed";
+}
+export interface CompetitorBriefInterpretation {
+  text: string;
+  evidenceIds: string[];
+  confidence: "interpretation";
+}
+export interface CompetitorBriefAction {
+  id: string;
+  text: string;
+  kind: string;
+  targetId?: string;
+  confidence: "suggested_action";
+  isPrimary: boolean;
+}
+export interface CompetitorBriefEvidence {
+  id: string;
+  sourceId: string;
+  publicUrl: string;
+  observedAt?: string;
+  checkedAt: string;
+  observation: string;
+}
+export interface CompetitorBriefResult {
+  schemaVersion: 2;
+  watchId: string;
+  freshness: CompetitorFreshness;
+  updatedAt: string | null;
+  checkedAt: string | null;
+  nextRefreshAt: string | null;
+  noMeaningfulChange: boolean;
+  manualRefreshState: CompetitorManualRefreshState;
+  sources: CompetitorSourceState[];
+  brief: {
+    status: "current" | "partial";
+    whatChanged: CompetitorBriefFact[];
+    whyItMatters: CompetitorBriefInterpretation[];
+    worthDoing: CompetitorBriefAction[];
+    evidence: CompetitorBriefEvidence[];
+    websiteHealth?: { grade: string | null; changes: unknown[] };
+  } | null;
+}

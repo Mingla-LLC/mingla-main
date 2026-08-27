@@ -87,7 +87,11 @@ interface AppRow {
 // caller has already passed the brand-equality check (P-5).
 function rowStatusResponse(row: AppRow): Response {
   if (row.status === "report_ready") {
-    return json({ status: "report_ready", report: row.report, input: row.input }, 200);
+    return json({
+      status: "report_ready",
+      report: row.report,
+      input: row.input,
+    }, 200);
   }
   if (row.status === "failed") {
     return json({ status: "failed", reason: "failed", input: row.input }, 200);
@@ -112,11 +116,156 @@ async function handleAppRead(
   const auth = await authenticateAppLane(req, body, supabase);
   if (auth instanceof Response) return auth;
 
+  if (body.action === "competitor_brief") {
+    if (!isUuidValue(body.watch_id)) {
+      return json({ error: "validation", fields: ["watch_id"] }, 400);
+    }
+    const { data: watch, error: watchError } = await supabase.from(
+      "tool_competitors",
+    ).select("id,brand_id,next_due_at,last_success_at,current_brief_id").eq(
+      "id",
+      body.watch_id,
+    ).maybeSingle();
+    if (watchError) {
+      console.error(
+        "[growth-tools-report] competitor watch failed",
+        watchError.message,
+      );
+      return json({ error: "server" }, 500);
+    }
+    if (!watch) return json({ error: "not_found" }, 404);
+    if (watch.brand_id !== auth.brandId) {
+      return json({ error: "forbidden" }, 403);
+    }
+    const { data: sourceRows } = await supabase.from("tool_competitor_sources")
+      .select(
+        "id,kind,normalized_url,capability,health,last_checked_at,last_safe_error_code",
+      ).eq("competitor_id", watch.id).order("kind");
+    const { data: capabilities } = await supabase.from(
+      "tool_competitor_provider_capabilities",
+    ).select("kind,enabled,availability_generation,safe_reason");
+    const capMap = new Map((capabilities ?? []).map((cap) => [cap.kind, cap]));
+    const sources = (sourceRows ?? []).map((source) => {
+      const cap = capMap.get(source.kind) as {
+        enabled?: boolean;
+        availability_generation?: number;
+        safe_reason?: string | null;
+      } | undefined;
+      const paused = source.capability === "analyzed_weekly" &&
+        cap?.enabled !== true;
+      return {
+        kind: source.kind,
+        url: source.normalized_url,
+        capability: source.capability,
+        availability: paused ? "paused" : "enabled",
+        availability_generation: cap?.availability_generation ?? 1,
+        health: source.health,
+        last_checked_at: source.last_checked_at,
+        safe_reason: paused
+          ? "automatic_checking_paused"
+          : source.last_safe_error_code ?? null,
+      };
+    });
+    const { data: jobs } = await supabase.from("tool_competitor_refresh_jobs")
+      .select("state,finished_at,member_retry_count").eq(
+        "competitor_id",
+        watch.id,
+      ).order("created_at", { ascending: false }).limit(1);
+    const job = (jobs ?? [])[0] as {
+      state?: string;
+      finished_at?: string;
+      member_retry_count?: number;
+    } | undefined;
+    let brief: Record<string, unknown> | null = null;
+    if (watch.current_brief_id) {
+      const { data } = await supabase.from("tool_competitor_briefs").select(
+        "status,updated_at,checked_at,what_changed,why_it_matters,worth_doing,evidence",
+      ).eq("id", watch.current_brief_id).maybeSingle();
+      brief = data as Record<string, unknown> | null;
+    }
+    const hasAnalyzable = sources.some((source) =>
+      source.capability === "analyzed_weekly" &&
+      source.availability === "enabled"
+    );
+    const analyzedSources = sources.filter((source) =>
+      source.capability === "analyzed_weekly"
+    );
+    const hasPausedAnalyzed = analyzedSources.some((source) =>
+      source.availability === "paused"
+    );
+    const providerPaused = analyzedSources.length > 0 &&
+      analyzedSources.every((source) => source.availability === "paused");
+    const health = sources.map((source) => source.health);
+    let freshness = "stale";
+    if (
+      !hasAnalyzable &&
+      sources.every((source) => source.capability === "link_only")
+    ) freshness = "link_only";
+    else if (providerPaused || job?.state === "budget_deferred") {
+      freshness = "budget_delayed";
+    } else if (["due", "leased", "retry_wait"].includes(job?.state ?? "")) {
+      freshness = "refreshing";
+    } else if (hasPausedAnalyzed || brief?.status === "partial") {
+      freshness = "partial";
+    } else if (
+      typeof watch.last_success_at === "string" &&
+      Date.now() - Date.parse(watch.last_success_at) <= 8 * 86_400_000
+    ) freshness = "current";
+    else if (
+      !hasAnalyzable ||
+      health.every((value) =>
+        ["private", "removed", "invalid", "unsupported", "disabled"].includes(
+          value,
+        )
+      )
+    ) freshness = "needs_attention";
+    const manual = providerPaused
+      ? "not_applicable"
+      : !hasAnalyzable
+      ? (freshness === "link_only" ? "not_applicable" : "edit_required")
+      : ["due", "leased", "retry_wait"].includes(job?.state ?? "")
+      ? "joined"
+      : (job?.member_retry_count ?? 0) >= 1
+      ? "exhausted"
+      : ["stale", "needs_attention", "budget_delayed"].includes(freshness) ||
+          health.some((value) =>
+            ["rate_limited", "unreachable"].includes(value)
+          )
+      ? "available"
+      : "not_applicable";
+    return json({
+      schema_version: 2,
+      watch_id: watch.id,
+      freshness,
+      updated_at: brief?.updated_at ?? null,
+      checked_at: job?.state === "no_change"
+        ? job.finished_at ?? brief?.checked_at ?? null
+        : brief?.checked_at ?? null,
+      next_refresh_at: providerPaused ? null : watch.next_due_at,
+      no_meaningful_change: job?.state === "no_change",
+      manual_refresh_state: manual,
+      sources,
+      brief: brief
+        ? {
+          status: brief.status,
+          what_changed: brief.what_changed,
+          why_it_matters: brief.why_it_matters,
+          worth_doing: brief.worth_doing,
+          evidence: brief.evidence,
+          website_health: { grade: null, changes: [] },
+        }
+        : null,
+    }, 200);
+  }
+
   // Exactly ONE of the three selectors (P-43).
   const hasRunId = body.run_id !== undefined && body.run_id !== null;
-  const hasClientRef = body.client_ref !== undefined && body.client_ref !== null;
-  const hasSubject = body.subject_ref !== undefined && body.subject_ref !== null;
-  const selectorCount = [hasRunId, hasClientRef, hasSubject].filter(Boolean).length;
+  const hasClientRef = body.client_ref !== undefined &&
+    body.client_ref !== null;
+  const hasSubject = body.subject_ref !== undefined &&
+    body.subject_ref !== null;
+  const selectorCount =
+    [hasRunId, hasClientRef, hasSubject].filter(Boolean).length;
   if (selectorCount !== 1) {
     return json({ error: "validation", fields: ["selector"] }, 400);
   }
@@ -283,9 +432,10 @@ export async function handler(req: Request): Promise<Response> {
       return json({ error: "server" }, 500);
     }
     if (!lead) return json({ error: "not_found" }, 404);
-    const storedToken = typeof (lead as { report_token?: unknown }).report_token === "string"
-      ? (lead as { report_token: string }).report_token
-      : "";
+    const storedToken =
+      typeof (lead as { report_token?: unknown }).report_token === "string"
+        ? (lead as { report_token: string }).report_token
+        : "";
     const report = (lead as { report: unknown }).report;
     if (storedToken.length < 16 || !safeEqual(storedToken, token)) {
       return json({ error: "forbidden" }, 403);

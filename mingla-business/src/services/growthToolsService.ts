@@ -31,6 +31,17 @@ import {
   toGrowthToolsAppError,
 } from "./growthToolsReads";
 import type { GraderReport } from "./growthToolsReads";
+import type {
+  CompetitorBriefResult,
+  CompetitorCapability,
+  CompetitorFreshness,
+  CompetitorManualRefreshState,
+  CompetitorSourceHealth,
+  CompetitorSourceInput,
+  CompetitorSourceKind,
+  CompetitorWatchRow,
+  CompetitorWatchV2Row,
+} from "../types/growthTools";
 
 export {
   GrowthToolsAppError,
@@ -232,23 +243,26 @@ export interface CompetitorWatchLatest {
   schemaVersion: number | null;
 }
 
-export interface CompetitorWatchRow {
-  id: string;
-  name: string;
-  city: string | null;
-  website: string | null;
-  placePoolId: string | null;
-  createdAt: string;
-  latest: CompetitorWatchLatest | null;
-}
+export type { CompetitorWatchRow, CompetitorWatchV2Row, CompetitorSourceInput, CompetitorBriefResult };
 
 interface RawWatchRow {
+  schema_version?: number;
   id?: string;
   name?: string;
   city?: string | null;
   website?: string | null;
   place_pool_id?: string | null;
   created_at?: string;
+  updated_at?: string;
+  freshness?: string;
+  last_brief_updated_at?: string | null;
+  checked_at?: string | null;
+  next_refresh_at?: string | null;
+  no_meaningful_change?: boolean;
+  manual_refresh_state?: string;
+  sources?: Record<string, unknown>[];
+  summary?: { what_changed?: unknown; primary_action?: unknown };
+  active_job?: Record<string, unknown> | null;
   latest?: {
     run_id?: string;
     grade?: string | null;
@@ -259,6 +273,41 @@ interface RawWatchRow {
 }
 
 function mapWatchRow(raw: RawWatchRow): CompetitorWatchRow {
+  const sourceKinds = new Set<CompetitorSourceKind>(["website", "instagram", "tiktok"]);
+  const capabilities = new Set<CompetitorCapability>(["analyzed_weekly", "link_only", "disabled"]);
+  const healths = new Set<CompetitorSourceHealth>(["pending", "current", "private", "removed", "invalid", "rate_limited", "unreachable", "unsupported", "disabled"]);
+  const freshnesses = new Set<CompetitorFreshness>(["current", "refreshing", "partial", "stale", "needs_attention", "link_only", "budget_delayed"]);
+  const manualStates = new Set<CompetitorManualRefreshState>(["available", "joined", "cached", "quota_limited", "edit_required", "exhausted", "not_applicable"]);
+  if (raw.schema_version === undefined) {
+    return {
+      id: raw.id ?? "",
+      name: raw.name ?? "",
+      city: raw.city ?? null,
+      website: raw.website ?? null,
+      placePoolId: raw.place_pool_id ?? null,
+      createdAt: raw.created_at ?? "",
+      latest: raw.latest !== null && raw.latest !== undefined && typeof raw.latest.run_id === "string" && typeof raw.latest.checked_at === "string" ? { runId: raw.latest.run_id, grade: typeof raw.latest.grade === "string" ? raw.latest.grade : null, overall: typeof raw.latest.overall === "number" ? raw.latest.overall : null, checkedAt: raw.latest.checked_at, schemaVersion: typeof raw.latest.schema_version === "number" ? raw.latest.schema_version : null } : null,
+    };
+  }
+  if (raw.schema_version !== 2 || !freshnesses.has(raw.freshness as CompetitorFreshness) || !manualStates.has(raw.manual_refresh_state as CompetitorManualRefreshState)) {
+    throw new GrowthToolsAppError("server", { reason: "malformed_watch_v2" });
+  }
+  const sources = (raw.sources ?? []).map((source) => {
+    if (!sourceKinds.has(source.kind as CompetitorSourceKind) || !capabilities.has(source.capability as CompetitorCapability) || !healths.has(source.health as CompetitorSourceHealth) || (source.availability !== "enabled" && source.availability !== "paused") || typeof source.url !== "string") {
+      throw new GrowthToolsAppError("server", { reason: "malformed_watch_source" });
+    }
+    return {
+      id: typeof source.id === "string" ? source.id : undefined,
+      kind: source.kind as CompetitorSourceKind,
+      url: source.url,
+      capability: source.capability as CompetitorCapability,
+      availability: source.availability as "enabled" | "paused",
+      availabilityGeneration: typeof source.availability_generation === "number" ? source.availability_generation : 1,
+      health: source.health as CompetitorSourceHealth,
+      lastCheckedAt: typeof source.last_checked_at === "string" ? source.last_checked_at : null,
+      safeReason: typeof source.safe_reason === "string" ? source.safe_reason : null,
+    };
+  });
   const latest = raw.latest !== null && raw.latest !== undefined &&
       typeof raw.latest.run_id === "string" &&
       typeof raw.latest.checked_at === "string"
@@ -273,12 +322,33 @@ function mapWatchRow(raw: RawWatchRow): CompetitorWatchRow {
     }
     : null;
   return {
+    schemaVersion: 2,
     id: raw.id ?? "",
     name: raw.name ?? "",
     city: raw.city ?? null,
     website: raw.website ?? null,
     placePoolId: raw.place_pool_id ?? null,
     createdAt: raw.created_at ?? "",
+    updatedAt: raw.updated_at ?? "",
+    freshness: raw.freshness as CompetitorFreshness,
+    lastBriefUpdatedAt: typeof raw.last_brief_updated_at === "string" ? raw.last_brief_updated_at : null,
+    checkedAt: typeof raw.checked_at === "string" ? raw.checked_at : null,
+    nextRefreshAt: typeof raw.next_refresh_at === "string" ? raw.next_refresh_at : null,
+    noMeaningfulChange: raw.no_meaningful_change === true,
+    manualRefreshState: raw.manual_refresh_state as CompetitorManualRefreshState,
+    sources,
+    summary: {
+      whatChanged: typeof raw.summary?.what_changed === "string" ? raw.summary.what_changed : null,
+      primaryAction: typeof raw.summary?.primary_action === "string" ? raw.summary.primary_action : null,
+    },
+    activeJob: raw.active_job !== null && raw.active_job !== undefined && typeof raw.active_job.id === "string" && typeof raw.active_job.state === "string"
+      ? {
+        id: raw.active_job.id,
+        state: raw.active_job.state as "due" | "leased" | "retry_wait" | "budget_deferred",
+        fundingLane: raw.active_job.funding_lane === "manual" ? "manual" : "scheduled",
+        memberRetryCount: typeof raw.active_job.member_retry_count === "number" ? raw.active_job.member_retry_count : 0,
+      }
+      : null,
     latest,
   };
 }
@@ -306,7 +376,7 @@ export async function listCompetitors(
 export async function addCompetitor(
   brandId: string,
   venueListingId: string,
-  competitor: { name: string; city: string; website: string; placePoolId?: string | null },
+  competitor: { name: string; city: string; sources?: CompetitorSourceInput[]; website?: string; placePoolId?: string | null },
 ): Promise<CompetitorWatchRow> {
   const { data, error } = await supabase.functions.invoke("growth-tools-run", {
     body: {
@@ -317,7 +387,9 @@ export async function addCompetitor(
       competitor: {
         name: competitor.name.trim(),
         city: competitor.city.trim(),
-        website: competitor.website.trim(),
+        ...(competitor.sources !== undefined
+          ? { sources: competitor.sources.map((source) => ({ kind: source.kind, url: source.url.trim() })) }
+          : competitor.website !== undefined ? { website: competitor.website.trim() } : {}),
         ...(competitor.placePoolId !== undefined && competitor.placePoolId !== null
           ? { place_pool_id: competitor.placePoolId }
           : {}),
@@ -332,9 +404,35 @@ export async function addCompetitor(
   return mapWatchRow(body.competitor);
 }
 
+export async function updateCompetitor(
+  brandId: string,
+  competitorId: string,
+  expectedUpdatedAt: string,
+  competitor: { name: string; city: string; sources: CompetitorSourceInput[] },
+): Promise<CompetitorWatchRow> {
+  const { data, error } = await supabase.functions.invoke("growth-tools-run", { body: {
+    action: "watch_update", lane: "app", brand_id: brandId, id: competitorId,
+    expected_updated_at: expectedUpdatedAt,
+    competitor: { name: competitor.name.trim(), city: competitor.city.trim(), sources: competitor.sources.map((s) => ({ kind: s.kind, url: s.url.trim() })) },
+  } });
+  if (error !== null) throw await toGrowthToolsAppError(error);
+  const body = data as { competitor?: RawWatchRow };
+  if (body.competitor === undefined) throw new GrowthToolsAppError("server", { reason: "malformed_watch_response" });
+  return mapWatchRow(body.competitor);
+}
+
+export async function refreshCompetitor(brandId: string, competitorId: string): Promise<"cached" | "joined" | "queued"> {
+  const { data, error } = await supabase.functions.invoke("growth-tools-run", { body: { action: "watch_refresh", lane: "app", brand_id: brandId, id: competitorId } });
+  if (error !== null) throw await toGrowthToolsAppError(error);
+  const result = (data as { result?: unknown }).result;
+  if (result !== "cached" && result !== "joined" && result !== "queued") throw new GrowthToolsAppError("server", { reason: "malformed_refresh_response" });
+  return result;
+}
+
 export async function removeCompetitor(
   brandId: string,
   competitorId: string,
+  expectedUpdatedAt?: string,
 ): Promise<void> {
   const { data, error } = await supabase.functions.invoke("growth-tools-run", {
     body: {
@@ -342,6 +440,7 @@ export async function removeCompetitor(
       lane: "app",
       brand_id: brandId,
       id: competitorId,
+      ...(expectedUpdatedAt !== undefined ? { expected_updated_at: expectedUpdatedAt } : {}),
     },
   });
   if (error !== null) throw await toGrowthToolsAppError(error);
@@ -349,6 +448,25 @@ export async function removeCompetitor(
   if (body?.ok !== true) {
     throw new GrowthToolsAppError("server", { reason: "malformed_watch_response" });
   }
+}
+
+export async function getCompetitorBrief(brandId: string, watchId: string): Promise<CompetitorBriefResult> {
+  const { data, error } = await supabase.functions.invoke("growth-tools-report", { body: { action: "competitor_brief", lane: "app", brand_id: brandId, watch_id: watchId } });
+  if (error !== null) throw await toGrowthToolsAppError(error);
+  const body = data as Record<string, unknown>;
+  if (body.schema_version !== 2 || body.watch_id !== watchId) throw new GrowthToolsAppError("server", { reason: "malformed_brief_response" });
+  return {
+    schemaVersion: 2,
+    watchId,
+    freshness: body.freshness as CompetitorFreshness,
+    updatedAt: typeof body.updated_at === "string" ? body.updated_at : null,
+    checkedAt: typeof body.checked_at === "string" ? body.checked_at : null,
+    nextRefreshAt: typeof body.next_refresh_at === "string" ? body.next_refresh_at : null,
+    noMeaningfulChange: body.no_meaningful_change === true,
+    manualRefreshState: body.manual_refresh_state as CompetitorManualRefreshState,
+    sources: mapWatchRow({ ...body, schema_version: 2, id: watchId, name: "brief", created_at: "", updated_at: "", summary: {}, latest: null } as RawWatchRow).sources ?? [],
+    brief: body.brief as CompetitorBriefResult["brief"],
+  };
 }
 
 export interface PlaceSearchResult {

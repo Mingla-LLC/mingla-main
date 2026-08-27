@@ -25,6 +25,13 @@ export type GrowthToolsAppErrorCode =
   | "not_found"
   | "watch_limit"
   | "duplicate_competitor"
+  | "duplicate_source"
+  | "watch_conflict"
+  | "provider_disabled"
+  | "budget_deferred"
+  | "temporarily_unavailable"
+  | "edit_required"
+  | "retry_exhausted"
   | "server"
   | "network";
 
@@ -58,6 +65,13 @@ const KNOWN_CODES: readonly GrowthToolsAppErrorCode[] = [
   "not_found",
   "watch_limit",
   "duplicate_competitor",
+  "duplicate_source",
+  "watch_conflict",
+  "provider_disabled",
+  "budget_deferred",
+  "temporarily_unavailable",
+  "edit_required",
+  "retry_exhausted",
   "server",
 ];
 
@@ -273,4 +287,3 @@ export async function readLatestBySubject(
     previous,
   };
 }
-

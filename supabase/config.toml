@@ -639,6 +639,12 @@ verify_jwt = false
 [functions.growth-tools-report]
 verify_jwt = false
 
+# ISSUE-2725 — machine-only competitor weekly worker. Gateway verification is
+# disabled because it accepts the service-role/CRON secret and performs its
+# own constant-time authorization before parsing or claiming work.
+[functions.competitor-intel-worker]
+verify_jwt = false
+
 # ISSUE-1078 — real Google Calendar booking. POST {action:"slots"} returns free
 # 20-min slots on seth@usemingla.com's calendar; POST {action:"book"} creates the
 # event with a Meet link + report context. OAuth refresh token (calendar scope),

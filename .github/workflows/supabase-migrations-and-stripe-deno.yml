@@ -26,6 +26,9 @@ on:
       - "supabase/functions/_shared/**"
       - "supabase/functions/_shared/__tests__/**"
       - "supabase/functions/__tests__/**"
+      - "supabase/functions/competitor-intel-worker/**"
+      - "supabase/functions/growth-tools-run/**"
+      - "supabase/functions/growth-tools-report/**"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
@@ -140,6 +143,9 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/_shared/**"
       - "supabase/functions/__tests__/**"
+      - "supabase/functions/competitor-intel-worker/**"
+      - "supabase/functions/growth-tools-run/**"
+      - "supabase/functions/growth-tools-report/**"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
@@ -1969,6 +1975,7 @@ jobs:
             supabase/functions/_shared/__tests__/issue927_wp5_hasown_guards.test.ts
             supabase/functions/_shared/__tests__/issue927_create_fn_tiktok_reddit_branches.test.ts
             supabase/functions/_shared/__tests__/issue927_tester_origin_runtime.test.ts
+            supabase/functions/competitor-intel-worker/__tests__/issue_2725_worker_happy.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

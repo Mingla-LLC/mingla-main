@@ -1,395 +1,52 @@
-/**
- * Issue #1735 G-10 — the "+ Watch a competitor" add flow (house sheet chrome).
- *
- * Search-first typeahead on the P-46 app-lane `search` action (≤5 place_pool
- * rows, city-biased to the venue) — a result tap prefills
- * name/city/website/placePoolId; manual fallback ("Can't find them? Enter
- * their website") takes name + city + URL, the engine's exact requireds.
- * A result or manual entry WITHOUT a website cannot be submitted — the sheet
- * says so honestly ("We can only grade sites we can reach…") instead of
- * accepting a dead row.
- *
- * 409s map to the two DISTINCT copies: `duplicate_competitor` → "You're
- * already watching this site." · `watch_limit` → the cap copy. Success →
- * list invalidated (mutation hook) + sheet closes. Failures on this
- * explicit-tap surface always SPEAK.
- */
-
-import React, { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
-
-import {
-  glass,
-  radius,
-  semantic,
-  spacing,
-  text as textTokens,
-  typography,
-} from "../../../constants/designSystem";
-import { captureIntelCompetitorAdded } from "../../../analytics/businessAnalyticsEvents";
+import { spacing, semantic, text as textTokens, typography } from "../../../constants/designSystem";
+import { captureCompetitorIntelligenceEvent, captureIntelCompetitorAdded } from "../../../analytics/businessAnalyticsEvents";
 import { useAuth } from "../../../context/AuthContext";
 import { growthToolsKeys } from "../../../hooks/growthToolsKeys";
 import { useAddCompetitor } from "../../../hooks/useGrowthTools";
-import {
-  searchPlaces,
-  type PlaceSearchResult,
-} from "../../../services/growthToolsService";
+import { searchPlaces, type CompetitorWatchRow, type PlaceSearchResult } from "../../../services/growthToolsService";
+import type { CompetitorSourceInput, CompetitorSourceKind } from "../../../types/growthTools";
 import { Button } from "../../ui/Button";
 import { Input } from "../../ui/Input";
 import { Sheet } from "../../ui/Sheet";
-import {
-  graderInputsValid,
-  websiteLooksValid,
-} from "./insightsInstruments";
+import { ScrollView } from "../../../wrappers/SmartScrollView";
 
-const SEARCH_DEBOUNCE_MS = 300;
-const SEARCH_MIN_CHARS = 2;
+const PROFILE = { website: /^https?:\/\/[^\s]+$/i, instagram: /^https?:\/\/(?:www\.)?instagram\.com\/[A-Za-z0-9._]{1,30}\/?$/i, tiktok: /^https?:\/\/(?:www\.)?tiktok\.com\/@[A-Za-z0-9._]{2,24}\/?$/i } as const;
 
-export interface CompetitorAddSheetProps {
-  visible: boolean;
-  onClose: () => void;
-  brandId: string | null;
-  venueListingId: string | null;
-  /** City bias for the typeahead (venue.city; null → unbiased). */
-  venueCity: string | null;
-  testID?: string;
+export interface CompetitorAddSheetProps { visible: boolean; onClose: () => void; brandId: string | null; venueListingId: string | null; venueCity: string | null; initialRow?: CompetitorWatchRow | null; testID?: string; }
+
+function canonicalPreview(kind: CompetitorSourceKind, raw: string): string | null {
+  if (!PROFILE[kind].test(raw.trim())) return null;
+  try { const url = new URL(raw.trim()); if (kind === "instagram") return `https://www.instagram.com/${url.pathname.split("/").filter(Boolean)[0]?.toLowerCase()}/`; if (kind === "tiktok") return `https://www.tiktok.com/${url.pathname.split("/").filter(Boolean)[0]?.toLowerCase()}`; url.hash = ""; return url.toString().replace(/\/$/, ""); } catch { return null; }
 }
 
-export function CompetitorAddSheet({
-  visible,
-  onClose,
-  brandId,
-  venueListingId,
-  venueCity,
-  testID = "competitor-add-sheet",
-}: CompetitorAddSheetProps): React.ReactElement {
+export function CompetitorAddSheet({ visible, onClose, brandId, venueListingId, venueCity, initialRow = null, testID = "competitor-source-sheet" }: CompetitorAddSheetProps): React.ReactElement {
   const { loading, session } = useAuth();
-  const addMutation = useAddCompetitor(brandId, venueListingId);
-
-  const [query, setQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [manualMode, setManualMode] = useState(false);
-  const [name, setName] = useState("");
-  const [city, setCity] = useState("");
-  const [website, setWebsite] = useState("");
-  const [placePoolId, setPlacePoolId] = useState<string | null>(null);
-  const [prefilledNoWebsite, setPrefilledNoWebsite] = useState(false);
-
-  useEffect(() => {
-    const timer = setTimeout(
-      () => setDebouncedQuery(query.trim()),
-      SEARCH_DEBOUNCE_MS,
-    );
-    return () => clearTimeout(timer);
-  }, [query]);
-
-  // Reset per open so a previous add never leaks into the next one.
-  useEffect(() => {
-    if (visible) {
-      setQuery("");
-      setDebouncedQuery("");
-      setManualMode(false);
-      setName("");
-      setCity("");
-      setWebsite("");
-      setPlacePoolId(null);
-      setPrefilledNoWebsite(false);
-      addMutation.reset();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reset on open only
-  }, [visible]);
-
-  const searchEnabled = visible &&
-    !manualMode &&
-    !loading &&
-    session !== null &&
-    brandId !== null &&
-    debouncedQuery.length >= SEARCH_MIN_CHARS;
-  const searchQuery = useQuery<PlaceSearchResult[]>({
-    queryKey: searchEnabled && brandId !== null
-      ? growthToolsKeys.search(brandId, debouncedQuery, venueCity ?? "")
-      : (["growth-tools-disabled", "search"] as const),
-    enabled: searchEnabled,
-    staleTime: 60_000,
-    queryFn: async () => {
-      if (brandId === null) throw new Error("search disabled");
-      return searchPlaces(brandId, debouncedQuery, venueCity ?? undefined);
-    },
-  });
-
-  const pickResult = useCallback((result: PlaceSearchResult): void => {
-    setName(result.name);
-    setCity(result.city ?? "");
-    setWebsite(result.website ?? "");
-    setPlacePoolId(result.id);
-    setPrefilledNoWebsite(result.website === null || result.website.length === 0);
-    setManualMode(true);
-  }, []);
-
-  const websiteValid = websiteLooksValid(website);
-  const canSubmit = graderInputsValid(name, city) &&
-    websiteValid &&
-    !addMutation.isPending;
-
-  const errorCopy = useMemo((): string | null => {
-    if (addMutation.error === null) return null;
-    if (addMutation.error.code === "duplicate_competitor") {
-      return "You're already watching this site.";
-    }
-    if (addMutation.error.code === "watch_limit") {
-      return "Watching 5 of 5 — remove one to add another.";
-    }
-    if (addMutation.error.code === "validation") {
-      return "Check the name, city and website — one of them isn't valid.";
-    }
-    return "Couldn't add them — try again.";
-  }, [addMutation.error]);
-
-  const submit = useCallback((): void => {
-    if (!canSubmit) return;
-    addMutation.mutate(
-      { name, city, website, placePoolId },
-      {
-        onSuccess: () => {
-          captureIntelCompetitorAdded();
-          onClose();
-        },
-        onError: (error) => {
-          // Spoken via `errorCopy` above — logged with context, never silent.
-          console.error("[CompetitorAddSheet] add failed", error.code);
-        },
-      },
-    );
-  }, [canSubmit, addMutation, name, city, website, placePoolId, onClose]);
-
-  return (
-    // #1735 rework P2-4 — the GlobalSearchSheet typeahead idiom: FULL-height,
-    // TOP-anchored sheet so the input + results live ABOVE the keyboard, with
-    // the results in a keyboard-aware ScrollView (persist taps so a result
-    // row is tappable with the keyboard up; drag or a blank-area tap
-    // dismisses it). Height-stable: the scroll region bounds, cards don't move.
-    <Sheet
-      visible={visible}
-      onClose={onClose}
-      snapPoint="full"
-      verticalAlign="top"
-      testID={testID}
-    >
-      <View style={styles.body}>
-        <Text style={styles.title}>Watch a competitor</Text>
-
-        {!manualMode ? (
-          <Input
-            value={query}
-            onChangeText={setQuery}
-            placeholder="Search venues near you"
-            leadingIcon="search"
-            clearable
-            accessibilityLabel="Search for a competitor"
-            testID={`${testID}-search-input`}
-          />
-        ) : null}
-
-        <ScrollView
-          style={styles.scrollRegion}
-          contentContainerStyle={styles.scrollContent}
-          keyboardShouldPersistTaps="handled"
-          keyboardDismissMode="on-drag"
-          showsVerticalScrollIndicator={false}
-          testID={`${testID}-scroll`}
-        >
-        {!manualMode ? (
-          <>
-            {searchQuery.isFetching ? (
-              <ActivityIndicator size="small" color={textTokens.tertiary} />
-            ) : null}
-            {searchQuery.isError ? (
-              <View style={styles.errorRow}>
-                <Text style={styles.errorLine}>
-                  Search didn&apos;t finish — try again.
-                </Text>
-                <Button
-                  label="Retry"
-                  variant="ghost"
-                  size="sm"
-                  onPress={() => {
-                    void searchQuery.refetch();
-                  }}
-                />
-              </View>
-            ) : null}
-            {(searchQuery.data ?? []).map((result) => (
-              <Pressable
-                key={result.id}
-                style={styles.resultRow}
-                onPress={() => pickResult(result)}
-                accessibilityRole="button"
-                accessibilityLabel={`Watch ${result.name}${
-                  result.city !== null ? `, ${result.city}` : ""
-                }`}
-                testID={`${testID}-result-${result.id}`}
-              >
-                <View style={styles.resultTextWrap}>
-                  <Text style={styles.resultName} numberOfLines={1}>
-                    {result.name}
-                  </Text>
-                  <Text style={styles.resultMeta} numberOfLines={1}>
-                    {[result.city, result.website].filter(
-                      (v): v is string => typeof v === "string" && v.length > 0,
-                    ).join(" · ")}
-                  </Text>
-                </View>
-              </Pressable>
-            ))}
-            {searchEnabled &&
-                searchQuery.isFetched &&
-                !searchQuery.isError &&
-                (searchQuery.data ?? []).length === 0
-              ? (
-                <Text style={styles.quiet}>
-                  Nothing in our directory for that.
-                </Text>
-              )
-              : null}
-            <Button
-              label="Can't find them? Enter their website"
-              variant="ghost"
-              size="sm"
-              onPress={() => setManualMode(true)}
-              testID={`${testID}-manual-toggle`}
-            />
-          </>
-        ) : (
-          <>
-            <Input
-              value={name}
-              onChangeText={setName}
-              placeholder="Their name"
-              accessibilityLabel="Competitor name"
-              testID={`${testID}-name-input`}
-            />
-            <Input
-              value={city}
-              onChangeText={setCity}
-              placeholder="City"
-              accessibilityLabel="Competitor city"
-              testID={`${testID}-city-input`}
-            />
-            <Input
-              value={website}
-              onChangeText={(next) => {
-                setWebsite(next);
-                setPrefilledNoWebsite(false);
-              }}
-              placeholder="Their website (https://…)"
-              accessibilityLabel="Competitor website"
-              testID={`${testID}-website-input`}
-            />
-            {prefilledNoWebsite || (website.trim().length > 0 && !websiteValid)
-              ? (
-                <Text style={styles.quiet} testID={`${testID}-no-website`}>
-                  We can only grade sites we can reach — no website found for
-                  them.
-                </Text>
-              )
-              : null}
-            {errorCopy !== null ? (
-              <Text style={styles.errorLine} testID={`${testID}-error`}>
-                {errorCopy}
-              </Text>
-            ) : null}
-            <Button
-              label="Watch them"
-              variant="primary"
-              size="md"
-              fullWidth
-              disabled={!canSubmit}
-              loading={addMutation.isPending}
-              onPress={submit}
-              accessibilityLabel="Watch this competitor"
-              testID={`${testID}-submit`}
-            />
-            <Button
-              label="Back to search"
-              variant="ghost"
-              size="sm"
-              onPress={() => setManualMode(false)}
-              testID={`${testID}-back-to-search`}
-            />
-          </>
-        )}
-        </ScrollView>
-      </View>
-    </Sheet>
-  );
+  const mutation = useAddCompetitor(brandId, venueListingId); const editing = initialRow !== null;
+  const resetMutationRef = useRef(mutation.reset); resetMutationRef.current = mutation.reset;
+  const [searchMode, setSearchMode] = useState(!editing); const [query, setQuery] = useState(""); const [debounced, setDebounced] = useState("");
+  const [name, setName] = useState(""); const [city, setCity] = useState(""); const [website, setWebsite] = useState(""); const [instagram, setInstagram] = useState(""); const [tiktok, setTiktok] = useState(""); const [placePoolId, setPlacePoolId] = useState<string | null>(null);
+  useEffect(() => { const timer = setTimeout(() => setDebounced(query.trim()), 300); return () => clearTimeout(timer); }, [query]);
+  useEffect(() => { if (!visible) return; setQuery(""); setSearchMode(!editing); setName(initialRow?.name ?? ""); setCity(initialRow?.city ?? venueCity ?? ""); setWebsite(initialRow?.sources?.find((s) => s.kind === "website")?.url ?? initialRow?.website ?? ""); setInstagram(initialRow?.sources?.find((s) => s.kind === "instagram")?.url ?? ""); setTiktok(initialRow?.sources?.find((s) => s.kind === "tiktok")?.url ?? ""); setPlacePoolId(initialRow?.placePoolId ?? null); resetMutationRef.current(); }, [visible, editing, initialRow?.id, initialRow?.name, initialRow?.city, initialRow?.website, initialRow?.sources, initialRow?.placePoolId, venueCity]);
+  const searchEnabled = visible && searchMode && !loading && session !== null && brandId !== null && debounced.length >= 2;
+  const search = useQuery({ queryKey: searchEnabled && brandId ? growthToolsKeys.search(brandId, debounced, venueCity ?? "") : ["growth-tools-disabled", "search"], enabled: searchEnabled, queryFn: () => searchPlaces(brandId as string, debounced, venueCity ?? undefined), staleTime: 60_000 });
+  const selectPlace = useCallback((result: PlaceSearchResult) => { setName(result.name); setCity(result.city ?? venueCity ?? ""); setWebsite(result.website ?? ""); setPlacePoolId(result.id); setSearchMode(false); }, [venueCity]);
+  const previews = useMemo(() => ({ website: canonicalPreview("website", website), instagram: canonicalPreview("instagram", instagram), tiktok: canonicalPreview("tiktok", tiktok) }), [website, instagram, tiktok]);
+  const sources = useMemo<CompetitorSourceInput[]>(() => ([...(website.trim() ? [{ kind: "website" as const, url: website.trim() }] : []), ...(instagram.trim() ? [{ kind: "instagram" as const, url: instagram.trim() }] : []), ...(tiktok.trim() ? [{ kind: "tiktok" as const, url: tiktok.trim() }] : [])]), [website, instagram, tiktok]);
+  const invalid = name.trim().length < 2 || city.trim().length < 2 || sources.length === 0 || (website.trim() !== "" && !previews.website) || (instagram.trim() !== "" && !previews.instagram) || (tiktok.trim() !== "" && !previews.tiktok);
+  const errorCopy = mutation.error?.code === "duplicate_source" ? "You're already watching this source for this venue." : mutation.error?.code === "duplicate_competitor" ? "You're already watching this site." : mutation.error?.code === "watch_limit" ? "Watching 5 of 5 — remove one to add another." : mutation.error?.code === "watch_conflict" ? "This competitor changed somewhere else. Review the latest links, then save again." : mutation.isError ? "Couldn't save this competitor. Your edits are still here — try again." : null;
+  const submit = (): void => { if (invalid || mutation.isPending) return; const callbacks = { onSuccess: (row: CompetitorWatchRow) => { captureCompetitorIntelligenceEvent(editing ? "competitor_source_edited" : "competitor_source_added", { watch_id: row.id, source_count: row.sources?.length ?? sources.length, schema_version: 2 }); if (!editing) captureIntelCompetitorAdded(); onClose(); }, onError: (error: { code: string }) => console.error("[CompetitorSourceSheet] save failed", error.code) }; mutation.mutate({ name, city, sources, placePoolId, ...(editing && initialRow ? { competitorId: initialRow.id, expectedUpdatedAt: initialRow.updatedAt ?? "" } : {}) }, callbacks); };
+  return <Sheet visible={visible} onClose={onClose} snapPoint="full" verticalAlign="top" testID={testID}><View style={styles.body} testID={`${testID}-${editing ? "mode-edit" : "mode-add"}`}><Text style={styles.title}>{editing ? "Edit competitor sources" : "Watch a competitor"}</Text>{errorCopy ? <Text accessibilityLiveRegion="polite" style={styles.error} testID={`${testID}-form-error`}>{errorCopy}</Text> : null}<ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+    {searchMode ? <><Input value={query} onChangeText={setQuery} placeholder="Search nearby venues" leadingIcon="search" accessibilityLabel="Search nearby venues" />{search.isFetching ? <ActivityIndicator color={textTokens.secondary} /> : null}{(search.data ?? []).map((result) => <Pressable key={result.id} onPress={() => selectPlace(result)} style={styles.result}><Text style={styles.label}>{result.name}</Text><Text style={styles.help}>{result.city ?? ""}</Text></Pressable>)}{search.isFetched && (search.data ?? []).length === 0 ? <Text style={styles.help}>Nothing in our directory for that. You can still enter their details.</Text> : null}<Button label="Enter details instead" variant="ghost" size="sm" onPress={() => setSearchMode(false)} /></> : <>
+      <Text style={styles.cap}>COMPETITOR</Text><Text style={styles.label}>Competitor name</Text><Input value={name} onChangeText={setName} placeholder="e.g. The Lantern Room" accessibilityLabel="Competitor name" testID={`${testID}-name-input`} /><Text style={styles.label}>City</Text><Input value={city} onChangeText={setCity} placeholder="e.g. Atlanta" accessibilityLabel="City" testID={`${testID}-city-input`} />
+      <Text style={styles.cap}>PUBLIC SOURCES</Text><Text style={styles.help}>Add at least one source. Mingla only checks public business information.</Text>
+      <SourceField kind="website" label="Website" copy="Analyzed weekly" value={website} setValue={setWebsite} preview={previews.website} testID={testID} /><SourceField kind="instagram" label="Instagram profile" copy="Analyzed weekly when the profile is an eligible professional account" value={instagram} setValue={setInstagram} preview={previews.instagram} testID={testID} /><SourceField kind="tiktok" label="TikTok profile" copy="Saved as a link — weekly analysis isn't available" value={tiktok} setValue={setTiktok} preview={previews.tiktok} testID={testID} />
+      {sources.length === 0 ? <Text style={styles.error}>Add at least one website or social profile.</Text> : null}<Button label={editing ? "Save changes" : "Watch them"} variant="primary" size="md" fullWidth disabled={invalid || mutation.isPending || session === null} loading={mutation.isPending} onPress={submit} testID={`${testID}-submit`} /><Button label="Cancel" variant="ghost" size="md" fullWidth onPress={onClose} />
+    </>}</ScrollView></View></Sheet>;
 }
 
-const styles = StyleSheet.create({
-  body: {
-    // P2-4 — flex-bound so the results ScrollView gets a real height inside
-    // the full-height sheet panel (the orch1193 bounded-body contract).
-    flex: 1,
-    padding: spacing.md,
-    gap: spacing.sm,
-  },
-  scrollRegion: {
-    flex: 1,
-  },
-  scrollContent: {
-    gap: spacing.sm,
-    paddingBottom: spacing.xl,
-  },
-  title: {
-    ...typography.h3,
-    color: textTokens.primary,
-  },
-  resultRow: {
-    minHeight: 44,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    paddingVertical: spacing.xs,
-    paddingHorizontal: spacing.sm,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-  },
-  resultTextWrap: {
-    flex: 1,
-    gap: 2,
-  },
-  resultName: {
-    ...typography.bodySm,
-    fontWeight: "600",
-    color: textTokens.primary,
-  },
-  resultMeta: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-  },
-  quiet: {
-    ...typography.caption,
-    color: textTokens.tertiary,
-  },
-  errorRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  errorLine: {
-    ...typography.bodySm,
-    color: semantic.error,
-    flexShrink: 1,
-  },
-});
-
+function SourceField({ kind, label, copy, value, setValue, preview, testID }: { kind: CompetitorSourceKind; label: string; copy: string; value: string; setValue: (value: string) => void; preview: string | null; testID: string }): React.ReactElement { const invalid = value.trim() !== "" && preview === null; const error = kind === "website" ? "Use a website link that starts with http:// or https://." : kind === "instagram" ? "Paste an Instagram profile link, like instagram.com/competitor." : "Paste a TikTok profile link, like tiktok.com/@competitor."; return <View style={styles.source}><Text style={styles.label}>{label}</Text><Text style={styles.help}>{copy}</Text><Input value={value} onChangeText={setValue} placeholder={kind === "website" ? "https://competitor.com" : kind === "instagram" ? "https://instagram.com/competitor" : "https://tiktok.com/@competitor"} accessibilityLabel={label} testID={`${testID}-${kind}-input`} />{preview ? <Text style={styles.preview} testID={`${testID}-${kind}-preview`}>WE&apos;LL SAVE {preview}</Text> : null}{invalid ? <Text style={styles.error} testID={`${testID}-${kind}-error`}>{error}</Text> : null}</View>; }
+const styles = StyleSheet.create({ body: { flex: 1, gap: spacing.md }, scroll: { gap: spacing.sm, paddingBottom: spacing.xl }, title: { ...typography.h3, color: textTokens.primary }, cap: { ...typography.labelCap, color: textTokens.tertiary, marginTop: spacing.sm }, label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" }, help: { ...typography.caption, color: textTokens.secondary }, source: { gap: spacing.xs, marginTop: spacing.sm }, preview: { ...typography.caption, color: textTokens.secondary }, error: { ...typography.bodySm, color: semantic.error }, result: { minHeight: 44, justifyContent: "center", gap: spacing.xs } });
 export default CompetitorAddSheet;
