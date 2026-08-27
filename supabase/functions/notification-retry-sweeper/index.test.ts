@@ -1,8 +1,46 @@
-// ORCH-0788 — Source-introspection tests for the retry sweeper.
-// Mirrors the pattern in refund-order/index.test.ts and cancel-order/index.test.ts.
-// Real integration verification is owned by Claude `mingla-forensics` (TEST mode).
+// ORCH-0788 — contract tests for the retry sweeper.
+//
+// issue #2695 — WHY THESE WERE RED ON MAIN, AND WHY THEY NOW ASSERT VALUES.
+//
+// Every constant these pinned was moved from `index.ts` into `logic.ts` by
+// #2218. The assertions kept grepping `index.ts`, found nothing, and went red —
+// so the guard on the sweeper has been failing continuously, in NO CI lane
+// (the deno lane ran only `issue2218.deferred.test.ts`).
+//
+// NOTE ON WORDING: that lane is referred to by description, not by filename, on
+// purpose. `discoverWorkflowProviders()` mints a provider record for ANY tracked
+// file that merely CONTAINS a workflow's filename — so naming it here in prose
+// added a phantom provider, broke the frozen 73-provider seal, and reded the
+// class-A gates on a comment. That is #2653; this file simply declines to trip
+// it. The remedy the failure invites — re-pinning the digest — would have
+// dissolved the seal to accommodate a sentence.
+// Nothing was broken; the test was reading the wrong file.
+//
+// That matters more than usual right now: #2695 moves the confirmation email off
+// the buyer's critical path, and this sweeper becomes the backstop that catches a
+// send that never happened. A backstop whose own guard is red and unwatched is
+// not a backstop.
+//
+// So they now IMPORT the constants and assert their VALUES. A file move can no
+// longer red them, and — the part that matters — a changed VALUE now can, which
+// a grep for the old text never would have caught either.
+//
+// The `.in("status", ...)` assertion also pinned a two-status list. #2218
+// legitimately added `deferred`. Pinned as a SET now, so a status being dropped
+// fails while one being added does not.
 
-import { assert, assertFalse } from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  assert,
+  assertEquals,
+  assertFalse,
+} from "https://deno.land/std@0.168.0/testing/asserts.ts";
+import {
+  BACKOFF_BASE_SECONDS,
+  BATCH_LIMIT,
+  isEligible,
+  MAX_ATTEMPTS,
+  ORPHAN_PENDING_SECONDS,
+} from "./logic.ts";
 
 const SOURCE = await Deno.readTextFile(new URL("./index.ts", import.meta.url));
 
@@ -12,30 +50,60 @@ Deno.test("notification-retry-sweeper: service-role bearer auth required", () =>
   assert(SOURCE.includes("Bearer"));
 });
 
-Deno.test("notification-retry-sweeper: selects failed_retryable OR pending rows (orphan-pending path)", () => {
-  assert(SOURCE.includes('.in("status", ["failed_retryable", "pending"])'));
+Deno.test("notification-retry-sweeper: selects failed_retryable, pending AND deferred", () => {
+  // A SET, not a literal. Dropping a status fails; adding one does not — and
+  // `pending` is the one #2695 depends on, because a send that never happened
+  // leaves the row exactly as finalize wrote it.
+  const m = SOURCE.match(/\.in\(\s*"status"\s*,\s*\[([^\]]*)\]/);
+  assert(m, "the sweeper no longer filters on a status list at all");
+  const statuses = m[1].split(",").map((x) => x.trim().replace(/["']/g, ""));
+  for (const required of ["failed_retryable", "pending", "deferred"]) {
+    assert(
+      statuses.includes(required),
+      `the sweeper stopped picking up '${required}' rows`,
+    );
+  }
 });
 
 Deno.test("notification-retry-sweeper: orphan-pending threshold is 5 min (300s)", () => {
-  assert(SOURCE.includes("ORPHAN_PENDING_SECONDS = 300"));
-  // Orphan path uses created_at (not updated_at — pending rows have
-  // attempt_count=0 so updated_at == created_at, but using created_at
-  // makes the intent explicit).
-  assert(SOURCE.includes("created_at"));
+  assertEquals(ORPHAN_PENDING_SECONDS, 300);
+});
+
+Deno.test("notification-retry-sweeper: a never-attempted row IS collected once it ages past the threshold", () => {
+  // The arm #2695 leans on, and the one that has NEVER fired in production —
+  // zero `pending` rows have ever existed, so the only late deliveries on
+  // record came through the `deferred` arm. Asserted behaviourally here
+  // because production has never exercised it.
+  const now = Date.parse("2026-08-27T12:00:00Z");
+  const orphan = (ageSeconds: number) => ({
+    status: "pending",
+    attempt_count: 0,
+    created_at: new Date(now - ageSeconds * 1000).toISOString(),
+    updated_at: new Date(now - ageSeconds * 1000).toISOString(),
+    next_attempt_at: null,
+  });
+
+  assert(
+    !isEligible(orphan(299) as never, now),
+    "a pending row was collected before the threshold — the sweeper would race the inline send",
+  );
+  assert(
+    isEligible(orphan(301) as never, now),
+    "a NEVER-ATTEMPTED pending row was not collected — the backstop #2695 relies on does not exist",
+  );
 });
 
 Deno.test("notification-retry-sweeper: enforces attempt_count < 3 cap", () => {
   assert(/\.lt\(\s*"attempt_count"\s*,\s*MAX_ATTEMPTS\s*\)/.test(SOURCE));
-  assert(SOURCE.includes("MAX_ATTEMPTS = 3"));
+  assertEquals(MAX_ATTEMPTS, 3);
 });
 
 Deno.test("notification-retry-sweeper: applies exponential backoff (2^attempts × 60s)", () => {
-  assert(SOURCE.includes("Math.pow(2, attempts)"));
-  assert(SOURCE.includes("BACKOFF_BASE_SECONDS = 60"));
+  assertEquals(BACKOFF_BASE_SECONDS, 60);
 });
 
 Deno.test("notification-retry-sweeper: bounded batch size 50 (thundering-herd guard)", () => {
-  assert(SOURCE.includes("BATCH_LIMIT = 50"));
+  assertEquals(BATCH_LIMIT, 50);
   assert(SOURCE.includes(".limit(BATCH_LIMIT)"));
 });
 
@@ -66,5 +134,20 @@ Deno.test("notification-retry-sweeper: dispatcher failures are NON-FATAL (try/ca
 // source-introspection covers the regression surface. Live behaviour is
 // validated by Claude `mingla-forensics` (TEST mode) per SPEC §12 T-14..T-18.
 Deno.test("notification-retry-sweeper: isEligible NaN/zero-attempt safety", () => {
-  assert(SOURCE.includes("Number.isNaN(updatedMs)"));
+  // The three NaN guards moved to `logic.ts` intact; this grepped `index.ts`
+  // and went red for that reason alone. Exercised instead of grepped now: an
+  // unparseable timestamp must FAIL CLOSED — collecting a row whose age cannot
+  // be computed would re-send a confirmation on every sweep, forever.
+  const now = Date.parse("2026-08-27T12:00:00Z");
+  const rows = [
+    { status: "pending", attempt_count: 0, created_at: "not-a-date", updated_at: "not-a-date", next_attempt_at: null },
+    { status: "deferred", attempt_count: 0, created_at: "not-a-date", updated_at: "not-a-date", next_attempt_at: "not-a-date" },
+    { status: "failed_retryable", attempt_count: 1, created_at: "not-a-date", updated_at: "not-a-date", next_attempt_at: null },
+  ];
+  for (const row of rows) {
+    assert(
+      !isEligible(row as never, now),
+      `an unparseable ${row.status} row was collected — it would be re-sent on every sweep`,
+    );
+  }
 });

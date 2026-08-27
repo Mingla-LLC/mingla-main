@@ -1235,6 +1235,14 @@ jobs:
             supabase/functions/_shared/ngSmsEmbargo.issue2218.test.ts
             supabase/functions/_shared/adapters/smsAdapter.issue2218.test.ts
             supabase/functions/notification-retry-sweeper/issue2218.deferred.test.ts
+            # issue #2695 — the sweeper's OWN contract suite, which ran in no lane
+            # at all and had therefore been red on main since #2218 moved its
+            # constants into `logic.ts`. Nothing was broken; the assertions were
+            # reading the wrong file, and nobody was watching. Registered here
+            # because #2695 moves the confirmation email off the buyer's critical
+            # path and makes this sweeper the backstop that catches a send which
+            # never happened — a backstop whose own guard is unwatched is not one.
+            supabase/functions/notification-retry-sweeper/index.test.ts
             supabase/functions/termii-delivery-status/issue2218.ticket_ledger_parity.test.ts
             # Issue #2218 — `sent` stops being a resting state: the deadline
             # arithmetic, the "Message Sent is NOT a delivery" rule, the two

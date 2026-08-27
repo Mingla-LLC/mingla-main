@@ -624,15 +624,32 @@ serve(async (req) => {
 
     // META-ORCH-1074 Sub-A: fire business.order_paid (+ sold_out / low_inventory
     // when capacity warrants). Idempotency-keyed on orderId/eventId so the
-    // webhook's parallel fire collapses to one row per recipient. Non-fatal —
-    // never blocks the buyer's confirmation.
-    await fireOrderFinalizeNotifications(supabase as never, {
+    // webhook's parallel fire collapses to one row per recipient.
+    //
+    // issue #2695 — NOT AWAITED, and the line above used to say "never blocks
+    // the buyer's confirmation" while this call was awaited. It blocked. The
+    // buyer, standing on the confirmation screen after paying, waited on two
+    // database reads and an HTTP fetch that exist to notify the ORGANISER.
+    //
+    // Same shape as the free rail's email: a comment asserting a property the
+    // code did not have. The property is now true.
+    //
+    // Non-fatal was always the intent and is unchanged — every recipient row is
+    // idempotency-keyed, and the Stripe webhook fires the same notifications
+    // independently, so a dropped call here costs nothing. The buyer's own
+    // confirmation is the response below, which no longer waits for it.
+    void fireOrderFinalizeNotifications(supabase as never, {
       brandId: (refreshedSession.brand_id as string | null) ?? null,
       eventId: refreshedSession.event_id,
       orderId: refreshedSession.order_id,
       totalCents: Number(refreshedSession.total_cents ?? 0),
       currency: refreshedSession.currency,
       qty: order?.tickets?.length ?? 0,
+    }).catch((notifyErr) => {
+      console.warn(
+        "[ticket-checkout-confirm] finalize notifications failed (non-fatal)",
+        notifyErr instanceof Error ? notifyErr.message : String(notifyErr),
+      );
     });
 
     // ISSUE-865 WP-B — best-effort ad-conversion CAPI send from the confirm
