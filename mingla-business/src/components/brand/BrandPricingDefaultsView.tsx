@@ -20,6 +20,7 @@ import {
   View,
 } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 
 import {
   canvas,
@@ -33,6 +34,9 @@ import {
 import { DEFAULT_TAKE_RATE_BPS } from "../../constants/pricing";
 import { formatCurrencyRound, currencyCodeOrNull } from "../../utils/currency";
 import { useBrand, brandKeys } from "../../hooks/useBrands";
+import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { useBrandTaxRegistration } from "../../hooks/useBrandTaxRegistration";
+import { canPerformAction, gateCaptionFor } from "../../utils/permissionGates";
 import {
   setBrandPricingDefaults,
   type BrandPricingDefaults,
@@ -52,6 +56,10 @@ export const BrandPricingDefaultsView: React.FC<
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const rqClient = useQueryClient();
+  const router = useRouter();
+  const role = useCurrentBrandRole(brandId);
+  const taxRegistration = useBrandTaxRegistration(brandId);
+  const canEdit = !role.isLoading && !role.isError && canPerformAction(role.rank, "EDIT_TICKET_PRICE");
 
   const [defaults, setDefaults] = useState<BrandPricingDefaults | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -68,6 +76,8 @@ export const BrandPricingDefaultsView: React.FC<
 
   const handleChange = useCallback(
     (next: PricingSwitchOverrides): void => {
+      if (!canEdit) return;
+      const previous = defaults;
       const resolved: BrandPricingDefaults = {
         passTax: next.passTax ?? false,
         passMinglaFee: next.passMinglaFee ?? false,
@@ -76,20 +86,25 @@ export const BrandPricingDefaultsView: React.FC<
       setDefaults(resolved);
       setSaveError(null);
       void setBrandPricingDefaults(brandId, resolved)
-        .then(() => {
+        .then((saved) => {
+          setDefaults(saved);
           void rqClient.invalidateQueries({
             queryKey: brandKeys.detail(brandId),
           });
         })
         .catch((err: unknown) => {
+          setDefaults(previous);
+          const message = err instanceof Error ? err.message : "";
           setSaveError(
-            err instanceof Error
-              ? err.message
+            message.includes("tax_registration_required")
+              ? "Set up an active tax registration in Payments before passing tax to buyers."
+              : message.length > 0
+              ? message
               : "Couldn't save — check your connection and try again.",
           );
         });
     },
-    [brandId, rqClient],
+    [brandId, canEdit, defaults, rqClient],
   );
 
   if (brand === null || defaults === null) {
@@ -131,6 +146,16 @@ export const BrandPricingDefaultsView: React.FC<
         previewBaseCents={EXAMPLE_ORDER_CENTS}
         currency={displayCurrency}
         effectiveTakeRateBps={brand.takeRateBpsOverride ?? DEFAULT_TAKE_RATE_BPS}
+        vatRegistered={taxRegistration.data?.hasActiveRegistration === true}
+        onSetupVat={() => router.push(`/brand/${brandId}/payments` as never)}
+        disabled={!canEdit || taxRegistration.isLoading}
+        disabledReason={
+          role.isLoading || taxRegistration.isLoading
+            ? "Checking your access and tax registration…"
+            : role.isError
+              ? "We couldn't verify your role. Refresh and try again."
+              : gateCaptionFor("EDIT_TICKET_PRICE")
+        }
         footerOverride={
           <View style={styles.regionChip}>
             <Text style={styles.regionText}>

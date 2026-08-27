@@ -23,6 +23,31 @@ import {
   serviceRoleClient,
 } from "../_shared/stripeEdgeAuth.ts";
 
+async function persistRegistrationAttestation(
+  supabase: ReturnType<typeof serviceRoleClient>,
+  brandId: string,
+  stripeAccountId: string | null,
+  hasActiveRegistration: boolean,
+): Promise<boolean> {
+  const { error } = await supabase.from("brand_tax_registration_attestations")
+    .upsert({
+      brand_id: brandId,
+      stripe_account_id: stripeAccountId,
+      has_active_registration: hasActiveRegistration,
+      observed_at: new Date().toISOString(),
+      source: "brand-tax-registrations-list",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "brand_id" });
+  if (error) {
+    console.error(
+      "[brand-tax-registrations-list] attestation persist failed",
+      error.code ?? "database_error",
+    );
+    return false;
+  }
+  return true;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeaders });
@@ -68,6 +93,7 @@ serve(async (req) => {
   // No connected account (or detached) → cannot have a tax registration.
   // Return a clean negative (200), NOT an error — the UI just wants the boolean.
   if (!account?.stripe_account_id || account.detached_at !== null) {
+    await persistRegistrationAttestation(supabase, brandId, null, false);
     return jsonResponse({
       hasActiveRegistration: false,
       reason: "not_connected",
@@ -81,8 +107,20 @@ serve(async (req) => {
       { status: "active" },
       { stripeAccount: account.stripe_account_id },
     );
-    const hasActiveRegistration =
-      Array.isArray(regs?.data) && regs.data.length > 0;
+    const hasActiveRegistration = Array.isArray(regs?.data) &&
+      regs.data.length > 0;
+    const attested = await persistRegistrationAttestation(
+      supabase,
+      brandId,
+      account.stripe_account_id,
+      hasActiveRegistration,
+    );
+    if (!attested) {
+      return jsonResponse({
+        hasActiveRegistration: false,
+        reason: "attestation_failed",
+      });
+    }
     return jsonResponse({ hasActiveRegistration });
   } catch (err) {
     // Fail-closed: probe failure → treat as unregistered (non-fatal). The
@@ -91,6 +129,12 @@ serve(async (req) => {
     console.error(
       "[brand-tax-registrations-list] registrations.list failed (degrade):",
       err instanceof Error ? err.message : err,
+    );
+    await persistRegistrationAttestation(
+      supabase,
+      brandId,
+      account.stripe_account_id,
+      false,
     );
     return jsonResponse({
       hasActiveRegistration: false,

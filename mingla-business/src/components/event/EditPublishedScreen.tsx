@@ -134,6 +134,7 @@ import {
   patchPublishedEventAtomically,
   patchPublishedEventTheme,
 } from "../../services/businessEvents";
+import { refreshBrandTaxRegistrationAttestation } from "../../services/pricingSwitchesService";
 import { updateLiveRsvp } from "../../services/rsvpEvents";
 import { buildRsvpUpdatePayloadDiff } from "../../utils/serverDraftEventMapper";
 import { RsvpStep5Setup } from "../rsvp/RsvpStep5Setup";
@@ -1192,6 +1193,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
       }
 
       try {
+        if (patch.pricingSwitches?.passTax === true) {
+          await refreshBrandTaxRegistrationAttestation(liveEvent.brandId);
+        }
         if (explicitCoverClear) {
           atomicPatch.cover = { clear: true };
         } else if (explicitCoverSet) {
@@ -1256,7 +1260,9 @@ export const EditPublishedScreen: React.FC<EditPublishedScreenProps> = ({
           return;
         }
         const message =
-          code.includes("ticket_change_with_sales") ||
+          code.includes("tax_registration_required")
+            ? "Set up an active tax registration in Brand > Payments before passing tax to buyers."
+            : code.includes("ticket_change_with_sales") ||
           code.includes("ticket_delete_with_sales")
             ? "Refund affected buyers before changing or removing that ticket."
             : code.includes("city_required")
