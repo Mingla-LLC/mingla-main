@@ -12,6 +12,7 @@ import {
 import type { Reservation } from "../../types/venueReservation";
 import { GlassCard } from "../ui/GlassCard";
 import { ReservationCard } from "./ReservationCard";
+import type { FocusableReservationEntry } from "./ReservationCard";
 import { formatCalendarDay } from "./reservationCalendarModel";
 import type { ReservationCalendarDay } from "./reservationCalendarModel";
 
@@ -22,6 +23,9 @@ export interface ReservationWeekViewProps {
   timeZone: string;
   tableDisplayFor: (reservation: Reservation) => string | null;
   onSelect: (reservation: Reservation) => void;
+  entryRefFor?: (
+    reservationId: string,
+  ) => (node: FocusableReservationEntry | null) => void;
 }
 
 export function ReservationWeekView({
@@ -31,6 +35,7 @@ export function ReservationWeekView({
   timeZone,
   tableDisplayFor,
   onSelect,
+  entryRefFor,
 }: ReservationWeekViewProps): React.ReactElement {
   return (
     <GlassCard variant="base" radius="lg" padding={0} style={styles.surface}>
@@ -70,6 +75,7 @@ export function ReservationWeekView({
                       onPress={onSelect}
                       density="calendar"
                       testID={`reservation-week-entry-${reservation.id}`}
+                      entryRef={entryRefFor?.(reservation.id)}
                     />
                   ))
                 )}

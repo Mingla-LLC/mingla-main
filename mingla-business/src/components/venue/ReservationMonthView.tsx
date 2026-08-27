@@ -13,6 +13,7 @@ import {
 import type { Reservation } from "../../types/venueReservation";
 import { GlassCard } from "../ui/GlassCard";
 import { ReservationCard } from "./ReservationCard";
+import type { FocusableReservationEntry } from "./ReservationCard";
 import {
   formatCalendarDay,
   projectMonthDay,
@@ -27,6 +28,9 @@ export interface ReservationMonthViewProps {
   tableDisplayFor: (reservation: Reservation) => string | null;
   onSelect: (reservation: Reservation) => void;
   onOverflow: (dayKey: string) => void;
+  entryRefFor?: (
+    reservationId: string,
+  ) => (node: FocusableReservationEntry | null) => void;
 }
 
 const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"] as const;
@@ -39,6 +43,7 @@ export function ReservationMonthView({
   tableDisplayFor,
   onSelect,
   onOverflow,
+  entryRefFor,
 }: ReservationMonthViewProps): React.ReactElement {
   return (
     <GlassCard variant="base" radius="lg" padding={0} style={styles.surface}>
@@ -90,6 +95,7 @@ export function ReservationMonthView({
                     onPress={onSelect}
                     density="month"
                     testID={`reservation-month-entry-${reservation.id}`}
+                    entryRef={entryRefFor?.(reservation.id)}
                   />
                 ))}
                 {projection.overflowCount > 0 ? (

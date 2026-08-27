@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
@@ -20,6 +20,10 @@ import {
   formatReservationTime,
 } from "./reservationCalendarModel";
 import type { Reservation } from "../../types/venueReservation";
+
+export interface FocusableReservationEntry {
+  focus?: () => void;
+}
 
 export type ReservationCardDensity = "agenda" | "calendar" | "month";
 
@@ -49,6 +53,7 @@ export interface ReservationCardProps {
   onPress: (reservation: Reservation) => void;
   density?: ReservationCardDensity;
   testID?: string;
+  entryRef?: (node: FocusableReservationEntry | null) => void;
 }
 
 export function ReservationCard({
@@ -58,7 +63,9 @@ export function ReservationCard({
   onPress,
   density = "agenda",
   testID,
+  entryRef,
 }: ReservationCardProps): React.ReactElement {
+  const [focused, setFocused] = useState(false);
   const presentation = STATUS_PRESENTATION[reservation.status];
   const toneColor = TONE_COLOR[presentation.tone] ?? textTokens.secondary;
   const toneBackground =
@@ -89,13 +96,17 @@ export function ReservationCard({
       ]}
     >
       <Pressable
+        ref={(node) => entryRef?.(node as unknown as FocusableReservationEntry | null)}
         onPress={() => onPress(reservation)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         accessibilityRole="button"
         accessibilityLabel={accessibilityLabel}
         style={({ pressed }) => [
           styles.pressable,
           density === "agenda" ? styles.agendaPressable : styles.calendarPressable,
           density === "month" ? styles.monthPressable : null,
+          focused && Platform.OS === "web" ? webFocusOutline : null,
           pressed ? styles.pressed : null,
         ]}
         testID={testID ?? `reservation-card-${reservation.id}`}
@@ -159,6 +170,13 @@ export function ReservationCard({
     </GlassCard>
   );
 }
+
+const webFocusOutline = {
+  outlineColor: accent.warm,
+  outlineOffset: 2,
+  outlineStyle: "solid",
+  outlineWidth: 2,
+} as const;
 
 const styles = StyleSheet.create({
   card: {

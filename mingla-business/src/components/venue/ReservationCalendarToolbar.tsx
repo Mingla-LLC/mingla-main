@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useRef, useState } from "react";
 import {
   Platform,
   Pressable,
@@ -7,7 +7,7 @@ import {
   Text,
   View,
 } from "react-native";
-import type { PressableProps } from "react-native";
+import type { PressableProps, ViewStyle } from "react-native";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react-native";
 
 import {
@@ -72,12 +72,41 @@ interface CalendarKeyboardEvent {
 
 interface KeyboardPressableProps extends PressableProps {
   onKeyDown?: (event: CalendarKeyboardEvent) => void;
+  tabIndex?: 0 | -1;
 }
+
+interface FocusableControl {
+  focus?: () => void;
+}
+
+export const moveRovingFocus = (
+  target: number | null,
+  values: readonly { id?: string; key?: string }[],
+  refs: React.MutableRefObject<Record<string, FocusableControl | null>>,
+  select: (key: string) => void,
+): void => {
+  if (target === null) return;
+  const key = values[target].id ?? values[target].key;
+  if (key === undefined) return;
+  select(key);
+  refs.current[key]?.focus?.();
+};
 
 // React Native Web forwards onKeyDown, while the installed native Pressable
 // types intentionally omit that web-only prop. This one typed seam keeps the
 // platform delta local instead of weakening every call site.
-const KeyboardPressable = Pressable as React.ComponentType<KeyboardPressableProps>;
+const KeyboardPressable = Pressable as React.ComponentType<
+  KeyboardPressableProps & React.RefAttributes<FocusableControl>
+>;
+
+const webFocusOutline = Platform.select<ViewStyle>({
+  web: {
+    outlineColor: accent.warm,
+    outlineOffset: 2,
+    outlineStyle: "solid",
+    outlineWidth: 2,
+  } as unknown as ViewStyle,
+});
 
 const keyboardTarget = (
   event: CalendarKeyboardEvent,
@@ -117,6 +146,11 @@ export function ReservationCalendarToolbar({
   onDaySelect,
   onScopeChange,
 }: ReservationCalendarToolbarProps): React.ReactElement {
+  const modeRefs = useRef<Record<string, FocusableControl | null>>({});
+  const dayRefs = useRef<Record<string, FocusableControl | null>>({});
+  const scopeRefs = useRef<Record<string, FocusableControl | null>>({});
+  const [focusedControl, setFocusedControl] = useState<string | null>(null);
+
   return (
     <View style={styles.host}>
       <View style={[styles.controlBand, isWideDesktop ? styles.controlBandWide : null]}>
@@ -131,18 +165,26 @@ export function ReservationCalendarToolbar({
               return (
                 <KeyboardPressable
                   key={item.id}
+                  ref={(node) => {
+                    modeRefs.current[item.id] = node;
+                  }}
                   accessibilityRole="tab"
                   accessibilityState={{ selected }}
                   accessibilityLabel={`${item.label} calendar view`}
                   tabIndex={selected ? 0 : -1}
                   onKeyDown={(event) => {
                     const target = keyboardTarget(event, index, MODES.length);
-                    if (target !== null) onModeChange(MODES[target].id);
+                    moveRovingFocus(target, MODES, modeRefs, (key) =>
+                      onModeChange(key as ReservationCalendarMode),
+                    );
                   }}
+                  onFocus={() => setFocusedControl(`mode:${item.id}`)}
+                  onBlur={() => setFocusedControl(null)}
                   onPress={() => onModeChange(item.id)}
                   style={({ pressed }) => [
                     styles.tab,
                     selected ? styles.tabSelected : null,
+                    focusedControl === `mode:${item.id}` ? webFocusOutline : null,
                     pressed ? styles.pressed : null,
                   ]}
                   testID={`reservation-calendar-mode-${item.id}`}
@@ -204,6 +246,9 @@ export function ReservationCalendarToolbar({
             return (
               <KeyboardPressable
                 key={day.key}
+                ref={(node) => {
+                  dayRefs.current[day.key] = node;
+                }}
                 onPress={() => onDaySelect(day.key)}
                 accessibilityRole="tab"
                 accessibilityState={{ selected }}
@@ -215,12 +260,15 @@ export function ReservationCalendarToolbar({
                 tabIndex={selected ? 0 : -1}
                 onKeyDown={(event) => {
                   const target = keyboardTarget(event, index, days.length);
-                  if (target !== null) onDaySelect(days[target].key);
+                  moveRovingFocus(target, days, dayRefs, onDaySelect);
                 }}
+                onFocus={() => setFocusedControl(`day:${day.key}`)}
+                onBlur={() => setFocusedControl(null)}
                 style={({ pressed }) => [
                   styles.dateCell,
                   day.isToday && !selected ? styles.dateCellToday : null,
                   selected ? styles.dateCellSelected : null,
+                  focusedControl === `day:${day.key}` ? webFocusOutline : null,
                   pressed ? styles.pressed : null,
                 ]}
                 testID={`reservation-calendar-date-${day.key}`}
@@ -255,6 +303,9 @@ export function ReservationCalendarToolbar({
           return (
             <KeyboardPressable
               key={item.id}
+              ref={(node) => {
+                scopeRefs.current[item.id] = node;
+              }}
               onPress={() => onScopeChange(item.id)}
               accessibilityRole="tab"
               accessibilityState={{ selected }}
@@ -262,11 +313,16 @@ export function ReservationCalendarToolbar({
               tabIndex={selected ? 0 : -1}
               onKeyDown={(event) => {
                 const target = keyboardTarget(event, index, SCOPES.length);
-                if (target !== null) onScopeChange(SCOPES[target].id);
+                moveRovingFocus(target, SCOPES, scopeRefs, (key) =>
+                  onScopeChange(key as ReservationStatusScope),
+                );
               }}
+              onFocus={() => setFocusedControl(`scope:${item.id}`)}
+              onBlur={() => setFocusedControl(null)}
               style={({ pressed }) => [
                 styles.scopeChip,
                 selected ? styles.scopeChipSelected : null,
+                focusedControl === `scope:${item.id}` ? webFocusOutline : null,
                 pressed ? styles.pressed : null,
               ]}
               testID={`reservation-calendar-scope-${item.id}`}
