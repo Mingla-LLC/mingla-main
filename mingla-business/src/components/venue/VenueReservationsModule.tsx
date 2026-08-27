@@ -4,6 +4,7 @@ import {
   findNodeHandle,
   Platform,
   SectionList,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -86,12 +87,14 @@ interface FocusableAgendaHeader {
 export interface VenueReservationsModuleProps {
   brandId: string | null;
   venueId?: string | null;
+  scrollBottomPad?: number;
   testID?: string;
 }
 
 export function VenueReservationsModule({
   brandId,
   venueId = null,
+  scrollBottomPad = 0,
   testID,
 }: VenueReservationsModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
@@ -394,81 +397,17 @@ export function VenueReservationsModule({
         </View>
       ) : null}
 
-      {showInitialSkeleton ? (
-        <CalendarSkeleton mode={effectiveMode} />
-      ) : hasBlockingError ? (
-        <GlassCard
-          variant="base"
-          style={styles.stateCard}
-          contentStyle={styles.stateCardContent}
-          testID="reservation-calendar-error"
-        >
-          <AlertTriangle size={28} color={semantic.error} />
-          <Text style={styles.stateTitle}>Couldn&apos;t load reservations.</Text>
-          <Button
-            label="Try again"
-            onPress={handleRetry}
-            variant="secondary"
-            size="md"
-            loading={reservationsQuery.isFetching || retrying}
-            testID="reservation-calendar-error-retry"
-          />
-        </GlassCard>
-      ) : visible.length === 0 ? (
-        <GlassCard
-          variant="base"
-          style={styles.stateCard}
-          contentStyle={styles.stateCardContent}
-          testID="reservation-calendar-empty"
-        >
-          <Calendar size={28} color={textTokens.primary} />
-          <Text style={styles.stateTitle}>
-            No {SCOPE_COPY[scope]} {effectiveMode === "month" ? "this month" : "this week"}.
-          </Text>
-          <Text style={styles.stateBody}>
-            Try another date{canMutate ? " or add a reservation" : ""}.
-          </Text>
-          {canMutate ? (
-            <Button
-              label="New reservation"
-              onPress={() => setCreateOpen(true)}
-              variant="primary"
-              size="md"
-              leadingIcon="plus"
-              testID="reservation-calendar-empty-add"
-            />
-          ) : null}
-        </GlassCard>
-      ) : effectiveMode === "week" ? (
-        <ReservationWeekView
-          days={range.days}
-          grouped={grouped}
-          todayKey={todayKey}
-          timeZone={resolvedZone.timeZone}
-          tableDisplayFor={tableDisplayFor}
-          onSelect={selectReservation}
-          entryRefFor={entryRefFor}
-        />
-      ) : effectiveMode === "month" ? (
-        <ReservationMonthView
-          days={range.days}
-          grouped={grouped}
-          todayKey={todayKey}
-          timeZone={resolvedZone.timeZone}
-          tableDisplayFor={tableDisplayFor}
-          onSelect={selectReservation}
-          onOverflow={selectOverflowDay}
-          entryRefFor={entryRefFor}
-        />
-      ) : (
+      {!showInitialSkeleton && !hasBlockingError && visible.length > 0 && effectiveMode === "agenda" ? (
         <SectionList
           ref={agendaRef}
           sections={agendaSections}
           keyExtractor={(reservation) => reservation.id}
           stickySectionHeadersEnabled
-          nestedScrollEnabled
-          style={[styles.agenda, isWideDesktop ? styles.agendaWide : null]}
-          contentContainerStyle={styles.agendaContent}
+          style={[styles.scrollBody, isWideDesktop ? styles.agendaWide : null]}
+          contentContainerStyle={[
+            styles.agendaContent,
+            { paddingBottom: spacing.lg + scrollBottomPad },
+          ]}
           testID="reservation-calendar-agenda"
           renderSectionHeader={({ section }) => (
             <View
@@ -516,6 +455,84 @@ export function VenueReservationsModule({
             pendingAgendaFocusRef.current = effectiveSelectedDay;
           }}
         />
+      ) : (
+        <ScrollView
+          style={styles.scrollBody}
+          contentContainerStyle={[
+            styles.modeScrollContent,
+            { paddingBottom: spacing.lg + scrollBottomPad },
+          ]}
+          showsVerticalScrollIndicator={false}
+          testID="reservation-calendar-mode-scroll"
+        >
+          {showInitialSkeleton ? (
+            <CalendarSkeleton mode={effectiveMode} />
+          ) : hasBlockingError ? (
+            <GlassCard
+              variant="base"
+              style={styles.stateCard}
+              contentStyle={styles.stateCardContent}
+              testID="reservation-calendar-error"
+            >
+              <AlertTriangle size={28} color={semantic.error} />
+              <Text style={styles.stateTitle}>Couldn&apos;t load reservations.</Text>
+              <Button
+                label="Try again"
+                onPress={handleRetry}
+                variant="secondary"
+                size="md"
+                loading={reservationsQuery.isFetching || retrying}
+                testID="reservation-calendar-error-retry"
+              />
+            </GlassCard>
+          ) : visible.length === 0 ? (
+            <GlassCard
+              variant="base"
+              style={styles.stateCard}
+              contentStyle={styles.stateCardContent}
+              testID="reservation-calendar-empty"
+            >
+              <Calendar size={28} color={textTokens.primary} />
+              <Text style={styles.stateTitle}>
+                No {SCOPE_COPY[scope]} {effectiveMode === "month" ? "this month" : "this week"}.
+              </Text>
+              <Text style={styles.stateBody}>
+                Try another date{canMutate ? " or add a reservation" : ""}.
+              </Text>
+              {canMutate ? (
+                <Button
+                  label="New reservation"
+                  onPress={() => setCreateOpen(true)}
+                  variant="primary"
+                  size="md"
+                  leadingIcon="plus"
+                  testID="reservation-calendar-empty-add"
+                />
+              ) : null}
+            </GlassCard>
+          ) : effectiveMode === "week" ? (
+            <ReservationWeekView
+              days={range.days}
+              grouped={grouped}
+              todayKey={todayKey}
+              timeZone={resolvedZone.timeZone}
+              tableDisplayFor={tableDisplayFor}
+              onSelect={selectReservation}
+              entryRefFor={entryRefFor}
+            />
+          ) : effectiveMode === "month" ? (
+            <ReservationMonthView
+              days={range.days}
+              grouped={grouped}
+              todayKey={todayKey}
+              timeZone={resolvedZone.timeZone}
+              tableDisplayFor={tableDisplayFor}
+              onSelect={selectReservation}
+              onOverflow={selectOverflowDay}
+              entryRefFor={entryRefFor}
+            />
+          ) : null}
+        </ScrollView>
       )}
 
       <ReservationCreateSheet
@@ -561,6 +578,8 @@ const errorFill =
 
 const styles = StyleSheet.create({
   host: {
+    flex: 1,
+    minHeight: 0,
     paddingHorizontal: spacing.md,
     paddingTop: spacing.md,
     gap: spacing.md,
@@ -647,17 +666,20 @@ const styles = StyleSheet.create({
     color: textTokens.secondary,
     textAlign: "center",
   },
-  agenda: {
+  scrollBody: {
+    flex: 1,
+    minHeight: 0,
     width: "100%",
-    maxWidth: reservationCalendarLayout.agendaMaxWidth,
     alignSelf: "flex-start",
-    maxHeight: 560,
   },
   agendaWide: {
-    maxHeight: 680,
+    maxWidth: reservationCalendarLayout.agendaMaxWidth,
   },
   agendaContent: {
-    paddingBottom: spacing.lg,
+    flexGrow: 1,
+  },
+  modeScrollContent: {
+    flexGrow: 1,
   },
   dayHeader: {
     minHeight: 36,

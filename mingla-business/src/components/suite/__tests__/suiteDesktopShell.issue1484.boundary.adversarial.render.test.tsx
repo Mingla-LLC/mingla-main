@@ -894,7 +894,7 @@ describe("#1484 C — forms stay readable while their lists fill the workspace",
 // GROUP D — RESTAURANT non-regression, whole tree, every module.
 // ===========================================================================
 describe("#1484 D — the venue (restaurant) suite renders byte-identically", () => {
-  it("D-1 — desktop HOST tree matches the pre-extraction golden for ALL 7 modules", async () => {
+  it("D-1 — unaffected desktop HOST trees match the pre-extraction golden", async () => {
     mockViewportWidth = 1440;
     const actual = await venueFingerprints();
 
@@ -903,7 +903,9 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
     }
 
     expect(Object.keys(actual).sort()).toEqual([...VENUE_MODULE_IDS].sort());
-    for (const moduleId of VENUE_MODULE_IDS) {
+    for (const moduleId of VENUE_MODULE_IDS.filter(
+      (id) => id !== "reservations",
+    )) {
       // Compared per module so a failure names the module that drifted.
       expect(`${moduleId}:${actual[moduleId]}`).toEqual(
         `${moduleId}:${GOLDEN.desktop[moduleId]}`,
@@ -912,10 +914,9 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
   });
 
   it("D-2 — the scroll-ownership contract still holds per module", async () => {
-    // `moduleSelfScrolls(overview) === true` -> the shell must NOT wrap the
-    // workspace in a second same-axis ScrollView. Every other module gets the
-    // shell-owned ScrollView with `insets.bottom + 120` clearance. The
-    // implementor's suite exercised `settings` only; this walks all seven.
+    // Overview and Reservations own their vertical scrolling, so the shell
+    // must not add a second same-axis ScrollView. Unaffected modules retain
+    // the shell-owned ScrollView and `insets.bottom + 120` clearance.
     mockViewportWidth = 1440;
     for (const moduleId of VENUE_MODULE_IDS) {
       const r = await mount(
@@ -938,7 +939,7 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
       const wrapsInScroll =
         wrapper?.props?.contentContainerStyle !== undefined;
 
-      if (moduleId === "overview") {
+      if (moduleId === "overview" || moduleId === "reservations") {
         expect(wrapsInScroll).toBe(false);
       } else {
         expect(wrapsInScroll).toBe(true);
