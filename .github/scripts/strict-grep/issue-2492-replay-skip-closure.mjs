@@ -72,7 +72,7 @@
 //
 //   lane    loop spelling                              case subject                       globs
 //   #1931   for f in $(find supabase/migrations …)     case "$f" in            full path  8
-//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  1
+//   #2117   for f in $(find supabase/migrations …)     case "$f" in            full path  3
 //   #1644   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   1
 //   #1647   for migration in supabase/migrations/*.sql case "$(basename …)" in basename   3 (alternation)
 //
@@ -787,13 +787,15 @@ function selfTest() {
   // SEVEN skips to EIGHT. The old count became false because #2723 adds the
   // valid exact #2696 skip required when #2160 is absent; the assertion remains
   // binding and the generalized signature/overload limit remains unchanged.
+  // #2728 adds the third exact #2117 skip: its fix-forward definition is kept
+  // out of the pre-#2117 baseline and applied only after corrected phase 2.
   // M-6 replaces one branch's single glob with an alternation of three (8 -> 10),
   // M-10 adds one two-line branch (8 -> 9), M-9 leaves one branch unread (8).
   const expectedInventory = {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
     "issue-1931-private-event-access.yml": 8,
-    "issue-2117-offering-visibility-gate-tests.yml": 2,
+    "issue-2117-offering-visibility-gate-tests.yml": 3,
   };
   if (JSON.stringify(inventory) !== JSON.stringify(expectedInventory)) {
     record("GOOD", `lane inventory is ${JSON.stringify(inventory)}, expected ${JSON.stringify(expectedInventory)}`);
@@ -932,7 +934,7 @@ function selfTest() {
     console.error(`#2492 SELF-TEST FAILED:\n  - ${failures.join("\n  - ")}`);
     process.exit(1);
   }
-  console.log("#2492 self-test PASS (1 good tree with the 8/1/3/2 lane inventory, 10 mutants M-1…M-10 all behaving).");
+  console.log("#2492 self-test PASS (1 good tree with the 8/1/3/3 lane inventory, 10 mutants M-1…M-10 all behaving).");
 }
 
 // ---------------------------------------------------------------------------

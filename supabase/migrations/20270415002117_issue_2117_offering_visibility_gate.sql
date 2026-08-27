@@ -862,7 +862,7 @@ AS $function$
   SELECT CASE
     WHEN public.biz_is_event_manager_plus(p_event_id, auth.uid()) THEN (
       SELECT COALESCE(
-        jsonb_object_agg(tt.id::text, sold_count),
+        jsonb_object_agg(tt.id::text, c.sold_count),
         '{}'::jsonb
       )
       FROM public.ticket_types tt

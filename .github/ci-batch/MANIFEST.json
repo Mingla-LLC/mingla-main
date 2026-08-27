@@ -17700,7 +17700,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c159e2c21bc97980fe56c602e7287c9585d8e1eba9ad4e1779db897b22b9ab29",
+        "sourceSha256": "fd9451c3c740636cd65d208724c55de55cb39f589e08041c14df0ac777c7f920",
         "triggers": [
           "pull_request",
           "push"
@@ -17711,8 +17711,10 @@
           "supabase/functions/_shared/businessNotifyTriggers.ts",
           "supabase/functions/_shared/contentShare.ts",
           "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql",
+          "supabase/migrations/20270605002728_issue_2728_ticket_sold_count_namespace.sql",
           "supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql",
           "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*",
+          "supabase/migrations/__tests__/issue_2728_*",
           "supabase/security/anon_executable_definer_allowlist.txt"
         ],
         "jobKeys": [
