@@ -56,7 +56,13 @@ test('ST3 mapper keeps free truthful, maps Google price enums and versions sanit
 
 test('ST4 coverless S6 claims only the version-addressed fallback card, never motion or a transaction it cannot honour',()=>{
   const {renderContentShareHtml}=require(path.join(ROOT,'mingla-business/server/socialPreview.js'));
-  const base={shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:2,facts:{schemaVersion:1,kind:'event',title:'Truth'},destination:{brandSlug:'b',eventSlug:'e'},publicDetails:{kind:'event',actionEligible:false}};
+  // [TEST-MOD-APPROVED #2656] `destination` gains the `kind` and `webPath` it
+  // always needed. `contentShareBusinessDestination` fails closed unless
+  // `destination.kind` equals `facts.kind` AND `destination.webPath` equals the
+  // path it derives from the slugs, so the previous `{brandSlug,eventSlug}` shape
+  // resolved to null and this page rendered no offering CTA at any eligibility.
+  // See the falsifiability note on the `>Buy tickets<` guard below.
+  const base={shortCode:'Aa0Bb1Cc2Dd3Ee4F',version:2,facts:{schemaVersion:1,kind:'event',title:'Truth'},destination:{kind:'event',brandSlug:'b',eventSlug:'e',webPath:'/e/b/e'},publicDetails:{kind:'event',actionEligible:false}};
   const coverless=renderContentShareHtml({...base,media:null});
   // [TEST-MOD-APPROVED #2589] BEHAVIOUR INVERSION, not a narrowing. The former
   // single guard `doesNotMatch(/og:image|twitter:image|class="portrait"|>Buy
@@ -80,7 +86,38 @@ test('ST4 coverless S6 claims only the version-addressed fallback card, never mo
   //       poster gate; the MOTION layer is still gated on a real poster, so a
   //       coverless share must not mount one. This is the assertion that
   //       carries ST4's original meaning forward.
+  // [TEST-MOD-APPROVED #2656] Clause (1) above was UNFALSIFIABLE, so the thing it
+  // claimed to keep forbidden was never actually guarded. With the pre-#2656
+  // fixture the destination gate failed closed, `offeringHref` was "" and
+  // `action` was null, so this document contained NO offering CTA at all —
+  // `>Buy tickets<` could not appear whatever the eligibility said. Proven by
+  // real line replacement, not by reasoning: rewriting
+  // `mingla-business/server/socialPreview.js` line 420 to
+  // `const offeringActionEligible = true;` — deleting the eligibility gate from
+  // the product outright — left all 19 tests in this file GREEN. The clause only
+  // bit when the DESTINATION gate and the ELIGIBILITY gate failed together,
+  // which means it guarded neither.
+  //
+  // The fixture now carries a real, self-consistent destination, so a CTA
+  // genuinely renders, and the guard is asserted in BOTH directions against that
+  // same destination. The ONLY difference between the two documents is
+  // `publicDetails.actionEligible`:
+  //   not eligible -> the transaction CTA is ABSENT, and the non-transactional
+  //                   "View event" CTA is PRESENT. That positive control is the
+  //                   load-bearing half: it proves the CTA machinery is live in
+  //                   THIS document, so the absence can only be the eligibility
+  //                   gate's doing and not a CTA that could never render.
+  //   eligible     -> the transaction CTA is PRESENT.
+  // Deleting or inverting the eligibility gate now turns these RED.
+  //
+  // Hrefs are compared as origin-relative paths because `PUBLIC_ORIGIN` is
+  // env-overridable; the path, the action code and the label are the contract.
+  const eligible=renderContentShareHtml({...base,media:null,publicDetails:{kind:'event',actionEligible:true}});
+  const ctaOf=(html)=>[...html.matchAll(/<a class="cta" data-share-destination="([^"]*)" href="([^"]*)">([^<]*)<\/a>/g)].map(([,code,href,label])=>({code,label,path:href.replace(/^https?:\/\/[^/]+/,'')}));
+  assert.deepEqual(ctaOf(coverless),[{code:'view_event',label:'View event',path:'/e/b/e'}],'not eligible still renders a real CTA, so the absence below is the eligibility gate');
   assert.doesNotMatch(coverless,/>Buy tickets</);
+  assert.deepEqual(ctaOf(eligible),[{code:'buy_tickets',label:'Buy tickets',path:'/e/b/e'}],'eligible turns the very same CTA transactional');
+  assert.match(eligible,/>Buy tickets</);
   const ogImage=coverless.match(/<meta property="og:image" content="([^"]*)" \/>/)?.[1];
   assert.match(String(ogImage),/^https:\/\/usemingla\.com\/og\/s\/Aa0Bb1Cc2Dd3Ee4F\/v2-r\d+\.jpg$/);
   assert.ok(coverless.includes(`<meta name="twitter:image" content="${ogImage}" />`),'twitter:image carries the same fallback card');
