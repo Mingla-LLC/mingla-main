@@ -119,9 +119,16 @@ jobs:
     # copies ~5.6 s, eight suites' own work ~152 s of which #1173's pg_sleep(6)
     # is the critical path, checkout + one setup-deno ~15 s). The origins ran
     # 10-15 min caps over ~130 s each; 20 min keeps that ratio at ~4.2x while
-    # covering the two known tail risks — one job now carries all eight suite
+    # covering the two known tail risks — one job now carries all the suite
     # databases, and the unconditional from-zero replay grows with every
     # migration landed.
+    #
+    # [#2594] The #1384/#1397 subjects rehomed out of the class-A static-gates
+    # job add a ninth template copy, one migration re-apply, four suite runs and
+    # five L-5 subjects. MEASURED destination median before the rehome: 209 s
+    # over the last six completed runs. PROJECTED after: ~235-250 s, i.e. ~20 %
+    # of the cap. The cap itself is NOT raised — A7-SC9(6) forbids it and the
+    # ratio it was chosen to preserve is untouched.
     timeout-minutes: 20
     defaults:
       run:
@@ -217,7 +224,7 @@ jobs:
 
       # ── Step 4 — provision one database per suite, up front ──────────────
       #
-      # Eight databases, created BEFORE any suite opens a connection. An open
+      # Nine databases, created BEFORE any suite opens a connection. An open
       # connection to the template aborts the copy with SQLSTATE 55006, and a
       # suite's session is not short-lived.
       #
@@ -342,7 +349,8 @@ jobs:
             exit 1
           }
           for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
-                       suite_1217a suite_1217t suite_1612 suite_1840; do
+                       suite_1217a suite_1217t suite_1612 suite_1840 \
+                       suite_1384_1397; do
             create_suite_db "$suite"
           done
           docker exec "$PG_CONTRACT_CONTAINER" \
@@ -474,7 +482,8 @@ jobs:
           echo "template_fingerprint=$template_fp" >> "$GITHUB_OUTPUT"
           broken=0
           for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
-                       suite_1217a suite_1217t suite_1612 suite_1840; do
+                       suite_1217a suite_1217t suite_1612 suite_1840 \
+                       suite_1384_1397; do
             suite_fp="$(fingerprint_of "$suite")"
             suite_counts="$(counts_of "$suite")"
             echo "$suite fingerprint=$suite_fp counts=$suite_counts"
@@ -490,7 +499,7 @@ jobs:
           if [ "$broken" -ne 0 ]; then
             exit 1
           fi
-          echo "G-1 PASS: 8 of 8 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
+          echo "G-1 PASS: 9 of 9 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
 
       # ── L-5 — the terminal-assertion RED proof ───────────────────────────
       #
@@ -507,7 +516,7 @@ jobs:
       # terminal-class assertion messages — and passes unmutated.
       #
       # The earlier phrasing ("its LAST labelled RAISE EXCEPTION") was never
-      # expressible: only 1 of the 17 files ends on a labelled one.
+      # expressible: only 1 of the 22 files ends on a labelled one.
       #
       # This paragraph once continued that M-1173-02c's terminal assertion was
       # SUBSUMED by an earlier one. V-1 retired that grant: the earlier assertion
@@ -517,7 +526,7 @@ jobs:
       # standing, because a stale subsumption claim in the repo is the thing V-1
       # warned would later be cited as fact.
       #
-      # For each of the SEVENTEEN assertion-bearing files: copy the migrated
+      # For each of the TWENTY-TWO assertion-bearing files: copy the migrated
       # template into one throwaway database, run the UNMODIFIED file and require
       # exit 0; then copy again, apply the file's mutation from
       # .github/scripts/parity/l5-terminal-mutations.sql, run the same unmodified
@@ -534,7 +543,7 @@ jobs:
       # refused; a file that stopped asserting passes the control and exits 0
       # under mutation, and is refused.
       #
-      # The template stays closed to connections for the whole phase, so the 34
+      # The template stays closed to connections for the whole phase, so the 44
       # copies cannot lose the 55006 race, and it is reopened from a trap.
       - name: "L-5 · every suite file's terminal assertion still has teeth"
         id: l5
@@ -584,7 +593,7 @@ jobs:
           # fixtures and refused to pass vacuously rather than reporting a false
           # green. L-5's "one file against a fresh copy" model does not fit it, so
           # the model is corrected for this one subject and deliberately NOT
-          # generalised to the other sixteen, which have no predecessors.
+          # generalised to the other twenty-one, which have no predecessors.
           run_prerequisites() { # command-id
             [ "$1" = "M-1173-02i" ] || return 0
             local base=supabase/migrations/__tests__
@@ -610,16 +619,16 @@ jobs:
             "$workflow" > "$RUNNER_TEMP/l5_map.tsv"
           call_sites=$(wc -l < "$RUNNER_TEMP/l5_map.tsv" | tr -d ' ')
           # TWO different denominators, named so a reader is never left guessing
-          # which one a mismatch is about: 19 psql call sites exist, but only 17
+          # which one a mismatch is about: 24 psql call sites exist, but only 22
           # are L-5 SUBJECTS. race_a and race_b are call sites carrying zero
           # RAISE EXCEPTION, so there is nothing to falsify in them.
-          echo "psql call sites in the workflow: $call_sites (L-5 subjects: 17; race_a and race_b are call sites but carry no assertion)"
+          echo "psql call sites in the workflow: $call_sites (L-5 subjects: 22; race_a and race_b are call sites but carry no assertion)"
 
           l5_phase="splitting the mutation table"
           mkdir -p "$RUNNER_TEMP/l5"
           # The id is captured by PATTERN, not by field position. It used to read
           # `$4` on `-- ===== M-1172-02a =====`, where $3 is the id and $4 is the
-          # trailing `=====` — so all seventeen sections were written to one file
+          # trailing `=====` — so all twenty-two sections were written to one file
           # called `=====.sql` and the totality check correctly refused to run.
           # A positional read of a delimiter is one respacing away from doing that
           # again; a capture is not.
@@ -634,13 +643,13 @@ jobs:
           ' "$mutations"
           sections=$(ls -1 "$RUNNER_TEMP/l5"/*.sql 2>/dev/null | wc -l | tr -d ' ')
           echo "mutation sections split out: $sections"
-          if [ "$sections" != "17" ]; then
-            echo "::error::L-5: expected 17 mutation sections, split out $sections. The mutation table and the splitter disagree, so nothing can be proven."
+          if [ "$sections" != "22" ]; then
+            echo "::error::L-5: expected 22 mutation sections, split out $sections. The mutation table and the splitter disagree, so nothing can be proven."
             ls -1 "$RUNNER_TEMP/l5" 2>/dev/null | sed 's/^/  section file: /'
             exit 1
           fi
-          # Set equality, not just a count: the seventeen sections must be exactly
-          # the seventeen subjects, so a renamed section cannot be absorbed by a
+          # Set equality, not just a count: the twenty-two sections must be exactly
+          # the twenty-two subjects, so a renamed section cannot be absorbed by a
           # matching total.
           : > "$RUNNER_TEMP/l5_sections.txt"
           for sec in "$RUNNER_TEMP/l5"/*.sql; do
@@ -715,9 +724,43 @@ jobs:
             fi
 
             fresh_scratch
+            # [#2594] THE ROLE THE MUTATION IS APPLIED AS, declared per section.
+            #
+            # Default `postgres` — the role all twenty of the already-proven
+            # subjects were proven under, and it does not move for any of them.
+            #
+            # One subject cannot be falsified by that role AT ALL, and this is
+            # MEASURED rather than argued: in run 98413780618 a plain
+            # `UPDATE cron.job` was refused with `permission denied for table
+            # job`, and has_table_privilege(...,'TRIGGER') on the same table was
+            # false. supabase/postgres deliberately de-superusers `postgres`, so
+            # a contract about a CRON REGISTRATION has no falsification available
+            # to it — the write path cannot be reached from that role.
+            #
+            # The escape is the one this job already relies on everywhere else:
+            # `supabase_admin` over the container's loopback, where the image's
+            # pg_hba carries `host all all 127.0.0.1/32 trust`. It is the same
+            # connection `psql_admin` above uses to close the template and cut
+            # every scratch copy, so it is not a new mechanism — only a new
+            # caller.
+            #
+            # It is a DECLARED LIST, not a free field: an unrecognised value is
+            # refused rather than handed to psql. Escalation is per section,
+            # visible in the mutation file, and reviewable on its own.
+            apply_as="$(sed -n 's/^-- @l5-apply-as: //p' "$mutation_file" | head -1)"
+            apply_as="${apply_as:-postgres}"
+            case "$apply_as" in
+              postgres)       apply_args=(-U postgres) ;;
+              supabase_admin) apply_args=(-h 127.0.0.1 -U supabase_admin) ;;
+              *) echo "::error::L-5 $id: declares @l5-apply-as [$apply_as], which is not one of [postgres|supabase_admin]. The applying role is a declared list, so an unknown value is refused rather than passed to psql."
+                 failures=$((failures + 1)); continue ;;
+            esac
+            if [ "$apply_as" != "postgres" ]; then
+              echo "  L-5 $id: mutation applied as $apply_as (declared escalation)"
+            fi
             docker exec -i "$PG_CONTRACT_CONTAINER" \
-              psql -v ON_ERROR_STOP=1 -U postgres -d "$scratch" < "$mutation_file" > "$RUNNER_TEMP/l5/$id.mutation.log" 2>&1 || {
-                echo "::error::L-5 $id: the mutation itself would not apply."
+              psql "${apply_args[@]}" -v ON_ERROR_STOP=1 -d "$scratch" < "$mutation_file" > "$RUNNER_TEMP/l5/$id.mutation.log" 2>&1 || {
+                echo "::error::L-5 $id: the mutation itself would not apply (applied as $apply_as)."
                 tail -5 "$RUNNER_TEMP/l5/$id.mutation.log"
                 failures=$((failures + 1)); continue
               }
@@ -793,7 +836,7 @@ jobs:
           trap - EXIT
           if [ "$failures" -ne 0 ]; then
             l5_done=1
-            echo "::error::L-5: $failures of 17 terminal assertions could not be proven to have teeth."
+            echo "::error::L-5: $failures of 22 terminal assertions could not be proven to have teeth."
             exit 1
           fi
           if [ -s "$RUNNER_TEMP/parity/l5-subsumptions.txt" ]; then
@@ -801,7 +844,7 @@ jobs:
             cat "$RUNNER_TEMP/parity/l5-subsumptions.txt"
           fi
           l5_done=1
-          echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 17 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
+          echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 22 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
 
       # ── Guard G-9 — the trigger union is a superset of every member ──────
       #
@@ -928,6 +971,11 @@ jobs:
           M-1173-02g	psql	suite_1173
           M-1173-02i	psql	suite_1173
           M-1173-03	deno	-
+          M-1397-01	psql	suite_1384_1397
+          M-1384-02a	psql	suite_1384_1397
+          M-1384-02b	psql	suite_1384_1397
+          M-1384-02c	psql	suite_1384_1397
+          M-1397-02	psql	suite_1384_1397
           INVENTORY
           : > "$RUNNER_TEMP/parity/index.tsv"
           echo "inventory rows: $(wc -l < "$RUNNER_TEMP/parity/inventory.tsv" | tr -d ' ')"
@@ -1377,9 +1425,12 @@ jobs:
       # assert file depend on, so a different database for any one of them
       # silently voids the proof.
       #
-      # Last in the job because `race_a` holds its FOR UPDATE lock through
-      # pg_sleep(6): this sequence carries a ~8 s serial floor and is the
-      # critical path.
+      # Last of the nine origin-lane suites because `race_a` holds its FOR
+      # UPDATE lock through pg_sleep(6): this sequence carries a ~8 s serial
+      # floor and is the critical path. [#2594] It is no longer the last step in
+      # the job — the rehomed #1384/#1397 subjects follow it — and the sentence
+      # is corrected rather than left standing, because a stale "last in the
+      # job" is exactly the kind of claim a later reader cites as fact.
       - name: "#1173 · Apply every migration to clean PostgreSQL 17 + run the RPC SQL test"
         if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
         run: |
@@ -1438,6 +1489,137 @@ jobs:
             exit 1
           fi
           echo "suite_1177 databases: $suite_1177_present"
+
+      # ══ #1384/#1397 — rehomed out of the class-A static-gates job (#2594) ═
+      #
+      # These five subjects used to run inside `strict-grep-mingla-business.yml`'s
+      # `static-gates` job, behind a `supabase start` bring-up that booted a
+      # container and replayed the whole migration chain a SECOND time inside a
+      # job named "static gates". 19.5 % of that job was this work. The bring-up
+      # is retired with its subject; the destination already holds an
+      # unconditional from-zero replay, and G-4 asserts it covers the whole tree.
+      #
+      # This is NOT a consolidation origin. G-9's nine members and the registry's
+      # `legacyOrigins` are untouched — nothing here adds one. The trigger for
+      # these five subjects therefore narrows to this workflow's `on:` paths,
+      # which is a stated judgement and not a silent one: every file they read or
+      # assert about lives under `supabase/migrations/**`, and the `\i` / `\ir` /
+      # pg_read_file / `COPY … FROM '` scan over all four suites returns zero
+      # hits. Widening this workflow's trigger to class A's fifteen path groups
+      # is the opposite move and is explicitly refused — it would make every
+      # docs-only PR pay a full replay.
+      - name: "#1384/#1397 · PostgreSQL 17 server assertion and migration-prefix normality"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          # (f) THE SERVER REPORTS 17 — carried across from the retired class-A
+          # step unchanged. Here the image tag is the pinned literal
+          # supabase/postgres:17.4.1.075, so this assertion has a weaker subject
+          # than it did behind the CLI. It is rehomed anyway: "the image tag says
+          # so" and "the server reports so" are not the same statement, and it
+          # costs milliseconds.
+          #
+          # NOT a `run_psql` call site by design — it registers no ledger row and
+          # is not an L-5 subject, because it carries no suite file. It names
+          # suite_1384_1397, never the migrated template, so G-3a's single-mention
+          # rule for the template is untouched.
+          docker exec -i "$PG_CONTRACT_CONTAINER" \
+            psql -v ON_ERROR_STOP=1 -U postgres -d suite_1384_1397 \
+            -c "DO \$\$ DECLARE v int := current_setting('server_version_num')::int; BEGIN IF v < 170000 OR v >= 180000 THEN RAISE EXCEPTION 'PostgreSQL 17 required, got server_version_num=%', v; END IF; END \$\$;"
+          echo "server version assertion: PostgreSQL 17 confirmed by the server, not by the image tag."
+
+          # (d) NO UN-NORMALISED DUPLICATE 14-CHARACTER MIGRATION PREFIXES.
+          #
+          # PROVEN unique in the repository: the only other duplicate-prefix
+          # matcher, issue-1902-rsvp-backend-safety.mjs, is scoped to one literal
+          # prefix rather than to the tree. Dropping this with its host step would
+          # have been a silent coverage loss, so it moves.
+          #
+          # The retired step could normalise the collisions by renaming, because
+          # `supabase start` requires unique prefixes. This job replays with a
+          # plain `for f in supabase/migrations/*.sql` glob and does not, so the
+          # renames are retired and the eight rename SOURCES become an explicit,
+          # reviewable exclusion list instead. An unlisted ninth collision is RED.
+          #
+          # The list fails CLOSED in the other direction too: a name that no
+          # longer exists aborts the step rather than silently widening what is
+          # tolerated.
+          known_collisions=(
+            "20260612000001_tr4_revoke_rpc_anon_grants.sql"
+            "20260612000000_tr4_refund_tiers_booking_deadline.sql"
+            "20260615000000_orch_426_discover_cache_gzip.sql"
+            "20261012000000_orch_1150_rsvp_maybe.sql"
+            "20261113000000_orch_1172_rsvp_edit_privacy_settings.sql"
+            "20261116000000_orch_1187_reconcile_stuck_checkouts_cron.sql"
+            "20261117000001_orch_1188_finalize_persist_event_date_id.sql"
+            "20261117000000_orch_1188_orders_event_date_id.sql"
+          )
+          stale=0
+          for known in "${known_collisions[@]}"; do
+            if [ ! -f "supabase/migrations/$known" ]; then
+              echo "::error::#2594: the duplicate-prefix exclusion list names supabase/migrations/$known, which does not exist. A stale exclusion silently widens what this check tolerates, so it is refused rather than ignored."
+              stale=1
+            fi
+          done
+          if [ "$stale" -ne 0 ]; then
+            exit 1
+          fi
+          duplicate_prefixes="$(
+            for sql_file in supabase/migrations/*.sql; do
+              name="$(basename "$sql_file")"
+              excluded=0
+              for known in "${known_collisions[@]}"; do
+                if [ "$name" = "$known" ]; then
+                  excluded=1
+                  break
+                fi
+              done
+              if [ "$excluded" -eq 0 ]; then
+                printf '%s\n' "$name" | cut -c1-14
+              fi
+            done | LC_ALL=C sort | uniq -d
+          )"
+          if [ -n "$duplicate_prefixes" ]; then
+            echo "::error::#2594: duplicate 14-character migration prefixes remain outside the ${#known_collisions[@]} known collision pairs. A version prefix that two files share can only ever stamp one of them; the loser is skipped as applied and the ledger reads clean."
+            printf '%s\n' "$duplicate_prefixes" >&2
+            exit 1
+          fi
+          echo "migration prefix normality: no duplicate 14-character prefix outside the ${#known_collisions[@]} excluded names, across $(ls -1 supabase/migrations/*.sql | wc -l | tr -d ' ') migrations."
+
+      # M-1397-01 MUST PRECEDE THE FOUR SUITES. It is the only DURABLE mutation
+      # of the five — it unschedules and re-registers the FX cron — and the
+      # retired class-A step ran it first, against the same database, before any
+      # suite opened. One shared database is what reproduces that ordering; four
+      # would not. The four suites themselves are `BEGIN;` … `ROLLBACK;` and
+      # leave no residue, so they cannot leak into one another.
+      - name: "#1397 · re-apply the FX EOL cron migration on top of the full chain (replay-safety)"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1397-01 suite_1384_1397 supabase/migrations/20270130001397_issue_1397_fx_refresh_eol_cron.sql
+
+      - name: "#1384 · discovery price/currency contract suite"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1384-02a suite_1384_1397 supabase/migrations/__tests__/issue_1384_discovery_price_currency.test.sql
+
+      - name: "#1384 · tester adversarial discovery price/currency suite"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1384-02b suite_1384_1397 supabase/migrations/__tests__/issue_1384_discovery_price_currency.tester_adversarial.test.sql
+
+      - name: "#1384 · executable discovery price/currency suite"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1384-02c suite_1384_1397 supabase/migrations/__tests__/issue_1384_discovery_price_currency_executable.test.sql
+
+      - name: "#1397 · FX refresh EOL cron suite"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1397-02 suite_1384_1397 supabase/migrations/__tests__/issue_1397_fx_refresh_eol_cron.test.sql
 
       # ── The same-SHA parity ledger, and guards G-2 and G-5 ───────────────
       #

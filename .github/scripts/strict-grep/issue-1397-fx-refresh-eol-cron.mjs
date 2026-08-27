@@ -16,7 +16,19 @@ const paths = {
   sqlTest:
     "supabase/migrations/__tests__/issue_1397_fx_refresh_eol_cron.test.sql",
   config: "supabase/config.toml",
+  // [#2594] TWO workflow subjects, and the split is FORCED rather than tidy.
+  //
+  // The four #1384/#1397 SQL suites moved out of the class-A static-gates job
+  // into the Postgres contract-suites lane, taking the two SQL tokens below with
+  // them. Re-pointing `workflow` at the new lane would have been the obvious
+  // edit and it is the wrong one: this file naming a workflow is what puts it in
+  // that workflow's FROZEN provider record, so dropping the class-A filename
+  // would remove this file from that record and red the seal with no declared
+  // escape. `workflow` therefore keeps naming the class-A lane and keeps the two
+  // DENO tokens, which never left it; `pgWorkflow` is new and carries the two SQL
+  // tokens to where they now run. Both halves stay independently enforced.
   workflow: ".github/workflows/strict-grep-mingla-business.yml",
+  pgWorkflow: ".github/workflows/postgres-contract-suites.yml",
 };
 
 function includesAll(source, tokens, label, failures) {
@@ -111,9 +123,11 @@ export function violations(files) {
   includesAll(files.workflow ?? "", [
     "supabase/functions/_shared/fxRates.issue1397.test.ts",
     "supabase/functions/refresh-fx-rates/index.issue1397.test.ts",
+  ], "workflow", failures);
+  includesAll(files.pgWorkflow ?? "", [
     "supabase/migrations/20270130001397_issue_1397_fx_refresh_eol_cron.sql",
     "supabase/migrations/__tests__/issue_1397_fx_refresh_eol_cron.test.sql",
-  ], "workflow", failures);
+  ], "pgWorkflow", failures);
 
   const config = files.config ?? "";
   const refreshBlock = config.match(
@@ -214,6 +228,25 @@ function selfTest() {
         "supabase/functions/_shared/disconnected.issue1397.test.ts",
       ),
       expected: "fxRates.issue1397.test.ts",
+    },
+    // [#2594] One reversion per SQL token, mirroring the `workflow` one above, so
+    // neither can be dropped from the lane that now runs it without this gate
+    // saying so.
+    {
+      key: "pgWorkflow",
+      value: valid.pgWorkflow.replaceAll(
+        "supabase/migrations/20270130001397_issue_1397_fx_refresh_eol_cron.sql",
+        "supabase/migrations/20270130001397_disconnected.sql",
+      ),
+      expected: "20270130001397_issue_1397_fx_refresh_eol_cron.sql",
+    },
+    {
+      key: "pgWorkflow",
+      value: valid.pgWorkflow.replaceAll(
+        "supabase/migrations/__tests__/issue_1397_fx_refresh_eol_cron.test.sql",
+        "supabase/migrations/__tests__/disconnected.test.sql",
+      ),
+      expected: "issue_1397_fx_refresh_eol_cron.test.sql",
     },
   ];
 

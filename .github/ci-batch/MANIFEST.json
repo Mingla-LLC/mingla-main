@@ -22424,6 +22424,7 @@
       "transition": "retained-live-provider",
       "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
       "referenceFiles": [
+        ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
         "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts"
