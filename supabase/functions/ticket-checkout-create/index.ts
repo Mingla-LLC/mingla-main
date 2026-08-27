@@ -1,6 +1,7 @@
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
+import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTriggers.ts";
 // ISSUE-865 WP-B — post-finalize ad-conversion hook (idempotent + fail-open).
 // persistAttributionClickId (WP-C, P2-1): the DECOUPLED, fail-open threading
 // write — attribution capture is never on the fatal checkout-creation path.
@@ -1579,7 +1580,75 @@ export const createTicketCheckoutCreateHandler = (
       // double-count it. This is the same rule the #2150 replay branch already
       // states; it now also holds on the path that reaches finalize.
       if (finalizedRecord.replayed !== true) {
-        await dispatchTicketConfirmation(orderId);
+        // issue #2695 — NOT AWAITED. The buyer is told they are in as soon as
+        // the ticket exists; the email and SMS follow on their own.
+        //
+        // Measured over 34 real purchases: the buyer waited 5 670 ms at p50, of
+        // which 3 774 ms — 66% — was this call rendering and sending an email TO
+        // THEM. They watched a spinner while a message about the thing that had
+        // already succeeded went out. That dead time is also what made people tap
+        // twice, which is #2689.
+        //
+        // SAFE BECAUSE THE WORK IS ALREADY DURABLE, not because the fetch is
+        // reliable. `issue_1930_ticket_checkout_finalize_base` inserts both
+        // `ticket_order_notifications` rows INSIDE its own transaction, before
+        // this call exists. Dispatch consumes rows; it does not create them. The
+        // worst case is a LATE email, never a lost one:
+        // `orch_0788_notification_retry_sweeper` runs every 5 minutes and
+        // collects a `pending` row once it is 5 minutes old.
+        //
+        // That backstop had NEVER fired in production — no `pending` row has ever
+        // existed — and its own contract suite was red on main and registered in
+        // no CI lane. #2695 repaired and registered it FIRST, and added the
+        // behavioural case for the never-attempted arm this now depends on.
+        // Leaning on an unguarded backstop would have been the same mistake in a
+        // new place.
+        //
+        // Un-awaited work does complete on this runtime: 145 of 145 orders in ten
+        // days carry an `ad_conversions` row written by the `void`ed call below,
+        // landing seconds AFTER the response was emitted.
+        void dispatchTicketConfirmation(orderId).catch((dispatchErr) => {
+          // Never silent. The #2579 lesson: a swallowed error is a decision not
+          // to FAIL, not a decision not to TELL ANYONE.
+          console.error(
+            "[ticket-checkout-create] confirmation dispatch failed (sweeper will retry)",
+            orderId,
+            dispatchErr instanceof Error
+              ? dispatchErr.message
+              : String(dispatchErr),
+          );
+        });
+
+        // issue #2695 — the buyer's PUSH, which the free rail never fired. The
+        // paid rail gets it via `fireOrderFinalizeNotifications`; the free rail
+        // called nothing, so a signed-in guest reserving a free ticket got no
+        // push and no in-app row.
+        //
+        // SCOPED to the buyer's push rather than calling
+        // `fireOrderFinalizeNotifications` wholesale, which would ALSO start
+        // firing the organiser's `business.order_paid` and the capacity alerts —
+        // none of which have ever fired for a free order (2 rows lifetime against
+        // 147). Notifying organisers about every free RSVP is a product decision,
+        // not a side effect of a latency fix. Filed, not smuggled.
+        //
+        // HONEST SCOPE: this reaches 9 of 142 free buyers. The other 133 are
+        // ANONYMOUS and have no account to push to — the helper returns early for
+        // them. For those buyers the confirmation SCREEN is the immediate
+        // notification, which is precisely what the change above makes ~3.8s
+        // faster, and the email remains their durable copy.
+        void fireBuyerPurchaseConfirmationPush(supabase as never, {
+          orderId,
+          eventId,
+          brandId: typeof session.brandId === "string" ? session.brandId : null,
+          eventTitle: typeof session.eventTitle === "string"
+            ? session.eventTitle
+            : "",
+        }).catch((pushErr) => {
+          console.warn(
+            "[ticket-checkout-create] buyer confirmation push failed (non-fatal)",
+            pushErr instanceof Error ? pushErr.message : String(pushErr),
+          );
+        });
       }
       // ISSUE-865 WP-B — ad-conversion CAPI send for the FREE-order path (its own
       // finalize; no webhook backup). FIRE-AND-FORGET (NOT awaited) so the buyer's
