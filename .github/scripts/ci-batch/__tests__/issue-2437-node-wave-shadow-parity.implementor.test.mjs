@@ -20,6 +20,7 @@ import {
   validateShadowParityMarkers,
 } from "../validate-manifest-v2.mjs";
 import { commandFingerprint } from "../run-suite-batch.mjs";
+import { SELF_JOB_NAME as CLASS_A_BUDGET_JOB_NAME } from "../../strict-grep/issue-2594-class-a-budget.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../../..");
 const MANIFEST_PATH = path.join(ROOT, ".github/ci-batch/MANIFEST.json");
@@ -68,6 +69,103 @@ const validateStaticClassAJob = (source) => {
   if (!Array.isArray(job.steps) || digest(job.steps) !== STATIC_CLASS_A_STEP_SHA256) {
     errors.push("Strict Class A protected step sequence must remain byte-semantically exact");
   }
+  return errors;
+};
+
+// [TEST-MOD-APPROVED #2594] SC-7 — the wiring proof for the out-of-band class-A
+// elapsed-time adjudicator.
+//
+// It lands HERE and nowhere else, and that is forced rather than chosen. The
+// frozen provider seal in validate-manifest-v2.mjs derives, for every workflow
+// filename, the sorted set of tracked source files containing that filename as a
+// literal. The strict-grep host workflow's record is INSIDE that seal with no
+// declared-mutation mechanism, so any NEW file naming it reds the seal with no
+// escape. This file is already on that record, already parses the workflow's
+// YAML, and already holds the class-A step seal.
+//
+// The adjudicator module itself carries no workflow filename at all — asserted
+// below from fragments, because a check that greps its own source for the string
+// it forbids matches itself and can never pass.
+const CLASS_A_BUDGET_MODULE_REL = ".github/scripts/strict-grep/issue-2594-class-a-budget.mjs";
+const CLASS_A_BUDGET_ENFORCE_RUN = `node ${CLASS_A_BUDGET_MODULE_REL} --enforce`;
+// Assembled from fragments, NOT written as a literal. META-1383 P6 reads a source
+// containing the self-test flag as a claim that the FILE supports that flag, and
+// this file's manifest row says selfTest:"none" — a bare literal here reds the
+// parity gate on a string that is about a different file entirely. Same
+// self-matching trap as the workflow-extension assertion below.
+const SELF_TEST_FLAG = ["--self", "test"].join("-");
+
+const validateClassABudgetJob = (source) => {
+  const errors = [];
+  let document;
+  try {
+    document = parseRealYaml(source);
+  } catch (error) {
+    return [`#2594 host workflow must parse as real YAML: ${error.message}`];
+  }
+
+  // SC-2 — the token every other job inherits must not move. A workflow-level
+  // permissions block would rewrite all eleven of them to buy this one job a read.
+  if (Object.prototype.hasOwnProperty.call(document ?? {}, "permissions")) {
+    errors.push("#2594 workflow-level permissions must stay ABSENT so no other job's token moves");
+  }
+
+  const job = document?.jobs?.["class-a-budget"];
+  if (!job || typeof job !== "object" || Array.isArray(job)) {
+    errors.push("#2594 class-a-budget adjudication job must exist");
+    return errors;
+  }
+
+  if (job.name !== CLASS_A_BUDGET_JOB_NAME) {
+    errors.push("#2594 class-a-budget job name must stay in lockstep with the adjudicator's own SELF_JOB_NAME");
+  }
+  if (!Array.isArray(job.needs) || job.needs.length !== 1 || job.needs[0] !== "static-gates") {
+    errors.push("#2594 class-a-budget must depend on exactly [static-gates]; without that edge it can conclude before the job it measures");
+  }
+  if (job.if !== "always()") {
+    errors.push("#2594 class-a-budget must carry if: always(); without it a timeout kill of class A skips the only check that can see it");
+  }
+  if (!Number.isInteger(job["timeout-minutes"]) || job["timeout-minutes"] !== 5) {
+    errors.push("#2594 class-a-budget timeout-minutes must be the exact bounded integer 5");
+  }
+  const permissions = job.permissions;
+  const permissionPairs = permissions && typeof permissions === "object" && !Array.isArray(permissions)
+    ? Object.entries(permissions).sort(([a], [b]) => a.localeCompare(b))
+    : null;
+  if (JSON.stringify(permissionPairs) !== JSON.stringify([["actions", "read"], ["contents", "read"]])) {
+    errors.push("#2594 class-a-budget permissions must be JOB-level and exactly {actions: read, contents: read}");
+  }
+
+  const steps = Array.isArray(job.steps) ? job.steps : [];
+  const adjudicationStep = steps[steps.length - 1];
+  if (adjudicationStep?.run !== CLASS_A_BUDGET_ENFORCE_RUN) {
+    errors.push("#2594 class-a-budget final step must run the adjudicator in --enforce mode");
+  }
+
+  const env = adjudicationStep?.env ?? {};
+  if (typeof env.GITHUB_TOKEN !== "string" || !env.GITHUB_TOKEN.includes("secrets.GITHUB_TOKEN")) {
+    errors.push("#2594 class-a-budget must thread the default token; with no token it cannot read the timing it exists to read");
+  }
+  // The subject is named by VALUE, not by convention: a rename of class A would
+  // otherwise leave the adjudicator hunting a job that no longer exists, and D0
+  // would fire on every run forever.
+  if (env.CLASS_A_JOB_NAME !== document?.jobs?.["static-gates"]?.name) {
+    errors.push("#2594 class-a-budget must name the class-A job by its exact current display name");
+  }
+  // A CEILING, deliberately not an equality. A7-SC1(1) is a maximum, so a value
+  // ABOVE it cannot be honest and is refused; a value BELOW it is exactly how the
+  // SC/D1-7 real-head mutant is driven, and pinning equality here would red class
+  // A during that mutant, flipping the adjudicator to D2 pass-through and
+  // destroying the very RED the mutant exists to produce.
+  const budgetSeconds = Number(env.CLASS_A_BUDGET_SECONDS);
+  if (!Number.isInteger(budgetSeconds) || budgetSeconds <= 0 || budgetSeconds > 600) {
+    errors.push("#2594 class-a-budget CLASS_A_BUDGET_SECONDS must be a positive integer at or under the 600 s A7-SC1(1) bound");
+  }
+  const timeoutKillSeconds = Number(env.CLASS_A_TIMEOUT_KILL_SECONDS);
+  if (!Number.isInteger(timeoutKillSeconds) || timeoutKillSeconds <= budgetSeconds || timeoutKillSeconds >= 900) {
+    errors.push("#2594 class-a-budget CLASS_A_TIMEOUT_KILL_SECONDS must sit strictly between the bound and the 900 s cap");
+  }
+
   return errors;
 };
 
@@ -238,6 +336,63 @@ test("Strict static Class A has the exact bounded 15-minute timeout and unchange
     "node .github/scripts/strict-grep/run-batch.mjs --class B",
   );
   assert.ok(validateStaticClassAJob(stepSubstitution).some((error) => /protected step sequence/.test(error)));
+});
+
+// [TEST-MOD-APPROVED #2594] SC-7 — new test, no existing assertion weakened or
+// removed. The four mutants below are the fails-on-revert contract for
+// deliverable 1: each disarms the adjudicator in a different, plausible way, and
+// each must turn this RED.
+test("#2594 the class-A elapsed-time bound is adjudicated out-of-band, and the wiring cannot be quietly removed", () => {
+  const source = fs.readFileSync(STRICT_WORKFLOW_PATH, "utf8");
+  assert.deepEqual(validateClassABudgetJob(source), []);
+
+  // SC-3 — deliverable 1 adds a SIBLING job. The class-A step seal covers
+  // jobs["static-gates"].steps only, so adding a job must not move it. Asserted
+  // here as well as above because "I added a job and something else moved" is
+  // exactly the kind of drift that gets discovered in CI rather than locally.
+  assert.deepEqual(validateStaticClassAJob(source), []);
+
+  // SC-5 — the adjudicator module carries NO workflow filename, and therefore no
+  // workflow file extension. Both forbidden literals are assembled from fragments
+  // so this assertion does not match its own source, which is the trap that has
+  // now bitten this programme five times.
+  const shortExtension = [".", "y", "m", "l"].join("");
+  const longExtension = [".", "y", "a", "m", "l"].join("");
+  const moduleSource = fs.readFileSync(path.join(ROOT, CLASS_A_BUDGET_MODULE_REL), "utf8");
+  assert.equal(moduleSource.includes(shortExtension), false,
+    "the adjudicator must name no workflow file: one literal makes it a referenceFile of the sealed record");
+  assert.equal(moduleSource.includes(longExtension), false,
+    "the adjudicator must name no workflow file: one literal makes it a referenceFile of the sealed record");
+
+  // Mutant 1 — the job is deleted (renamed out from under its key).
+  const jobDeleted = source.replace("  class-a-budget:\n", "  class-a-budget-removed:\n");
+  assert.notEqual(jobDeleted, source);
+  assert.ok(validateClassABudgetJob(jobDeleted).some((error) => /adjudication job must exist/.test(error)));
+
+  // Mutant 2 — `needs:` is dropped, so the adjudicator can conclude before the
+  // job it measures and read timestamps that are not there yet.
+  const needsDropped = source.replace("    needs: [static-gates]\n", "");
+  assert.notEqual(needsDropped, source);
+  assert.ok(validateClassABudgetJob(needsDropped).some((error) => /exactly \[static-gates\]/.test(error)));
+
+  // Mutant 3 — `if: always()` is removed, which silently disarms the check in the
+  // ONE case that matters most: a timeout kill of class A skips every dependent.
+  const alwaysRemoved = source.replace("    needs: [static-gates]\n    if: always()\n", "    needs: [static-gates]\n");
+  assert.notEqual(alwaysRemoved, source);
+  assert.ok(validateClassABudgetJob(alwaysRemoved).some((error) => /if: always\(\)/.test(error)));
+
+  // Mutant 4 — the enforcing step is substituted for the harmless self-test, so
+  // the job stays green while adjudicating nothing at all.
+  const enforceSubstituted = source.replace(
+    `${CLASS_A_BUDGET_MODULE_REL} --enforce`,
+    `${CLASS_A_BUDGET_MODULE_REL} ${SELF_TEST_FLAG}`,
+  );
+  assert.notEqual(enforceSubstituted, source);
+  assert.ok(validateClassABudgetJob(enforceSubstituted).some((error) => /--enforce mode/.test(error)));
+
+  // The adjudicator's own decision table, driven end to end. A wiring proof that
+  // never executes the thing it wires is a check that carries no information.
+  execFileSync(process.execPath, [CLASS_A_BUDGET_MODULE_REL, SELF_TEST_FLAG], { cwd: ROOT, stdio: "pipe" });
 });
 
 test("#2062 repository audit cannot be contaminated by losslessly stored #994 provenance", () => {
