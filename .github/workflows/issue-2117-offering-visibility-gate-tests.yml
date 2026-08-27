@@ -4,7 +4,9 @@ on:
   pull_request:
     paths:
       - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
+      - "supabase/migrations/20270605002728_issue_2728_ticket_sold_count_namespace.sql"
       - "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*"
+      - "supabase/migrations/__tests__/issue_2728_*"
       - "supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql"
       - "supabase/functions/_shared/contentShare.ts"
       - "supabase/functions/_shared/businessNotifyTriggers.ts"
@@ -15,7 +17,9 @@ on:
     branches: [main]
     paths:
       - "supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql"
+      - "supabase/migrations/20270605002728_issue_2728_ticket_sold_count_namespace.sql"
       - "supabase/migrations/__tests__/issue_2117_offering_visibility_gate*"
+      - "supabase/migrations/__tests__/issue_2728_*"
       - "supabase/migrations/__tests__/issue_2117_asc9_baseline_capture.sql"
       - "supabase/functions/_shared/contentShare.ts"
       - "supabase/functions/_shared/businessNotifyTriggers.ts"
@@ -79,6 +83,9 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20270523002489_issue_2489_address_privacy_server_gate.sql) continue ;;
+              # issue #2728 -- the fix-forward definition must not land before
+              # the pre-#2117 baseline; doing so contaminates the before-state.
+              *20270605002728_issue_2728_ticket_sold_count_namespace.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done
@@ -96,6 +103,22 @@ jobs:
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
             -f supabase/migrations/20270415002117_issue_2117_offering_visibility_gate.sql
+
+      - name: "#2728 forward repair migration"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q \
+            -f supabase/migrations/20270605002728_issue_2728_ticket_sold_count_namespace.sql
+
+      - name: "#2728 namespace-collision executable suites"
+        env:
+          PGPASSWORD: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for suite in supabase/migrations/__tests__/issue_2728_*.pg17.test.sql; do
+            psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -f "$suite"
+          done
 
       # Every assertion in this suite EXECUTES an object against real rows.
       # Per #2113, nothing here is satisfiable by source text. The suite also
