@@ -10,6 +10,7 @@ import {
 import {
   applySlotUpdates,
   assertCreateEventProposal,
+  assertCreateRsvpProposal,
   cancelActiveTask,
   createEventTaskState,
   EventBrief,
@@ -53,7 +54,10 @@ export interface PlannerResult {
   state: TaskStateV1;
   text: string;
   choices?: AgentChoicesV2;
-  proposal?: { tool_name: "create_event"; tool_args: Record<string, unknown> };
+  proposal?: {
+    tool_name: "create_event" | "create_rsvp";
+    tool_args: Record<string, unknown>;
+  };
   handoffRoute?: string;
 }
 
@@ -64,9 +68,21 @@ export function isCreateEventPlanningRequest(text: string): boolean {
       .test(text);
 }
 
+export function isCreateRsvpPlanningRequest(text: string): boolean {
+  return /\b(?:create|make|set up|setup|schedule|host|plan|start)\b[\s\S]{0,80}\b(?:rsvp|guest[- ]?list event)\b/i
+    .test(text) ||
+    /\b(?:rsvp|guest[- ]?list event)\b[\s\S]{0,80}\b(?:create|make|set up|setup|schedule|host|plan|start)\b/i
+      .test(text);
+}
+
+function isCreateOfferingPlanningRequest(text: string): boolean {
+  return isCreateRsvpPlanningRequest(text) ||
+    isCreateEventPlanningRequest(text);
+}
+
 export function isExplicitReplacementTaskRequest(text: string): boolean {
-  return isCreateEventPlanningRequest(text) &&
-    /\b(?:another|new|different|second)\b[\s\S]{0,80}\b(?:event|gathering|party|show)\b/i
+  return isCreateOfferingPlanningRequest(text) &&
+    /\b(?:another|new|different|second)\b[\s\S]{0,80}\b(?:event|gathering|party|show|rsvp)\b/i
       .test(text);
 }
 
@@ -316,7 +332,8 @@ function proposalText(state: TaskStateV1, brandName: string): string {
     minute: "2-digit",
     timeZoneName: "short",
   }).format(new Date(startAt));
-  return `Ready to create “${title}” as a draft for ${brandName} on ${display}. The draft will write the brand, title, and start time; your creative ideas stay in this plan for later refinement.`;
+  const kind = state.active_task.intent === "create_rsvp" ? "RSVP" : "event";
+  return `Ready to create “${title}” as a draft ${kind} for ${brandName} on ${display}. The draft will write the brand, title, and start time; your creative ideas stay in this plan for later refinement.`;
 }
 
 function finalizeResult(
@@ -327,13 +344,16 @@ function finalizeResult(
   choices?: AgentChoicesV2,
 ): PlannerResult {
   if (state.status === "ready_to_propose") {
+    const isRsvp = state.active_task?.intent === "create_rsvp";
     return {
       classification,
       state,
       text: proposalText(state, context.activeBrand.name),
       proposal: {
-        tool_name: "create_event",
-        tool_args: assertCreateEventProposal(state),
+        tool_name: isRsvp ? "create_rsvp" : "create_event",
+        tool_args: isRsvp
+          ? assertCreateRsvpProposal(state)
+          : assertCreateEventProposal(state),
       },
     };
   }
@@ -406,7 +426,9 @@ export function planEventTurn(
   }
 
   if (
-    current.active_task?.intent === "create_event" &&
+    ["create_event", "create_rsvp"].includes(
+      current.active_task?.intent ?? "",
+    ) &&
     !["completed", "cancelled"].includes(current.status) &&
     isExplicitReplacementTaskRequest(userText)
   ) {
@@ -426,7 +448,7 @@ export function planEventTurn(
   let classification: PlannerClassification = "event_plan_continue";
   let intro = "I’ve updated the event plan.";
   if (!state.active_task) {
-    if (!isCreateEventPlanningRequest(userText)) {
+    if (!isCreateOfferingPlanningRequest(userText)) {
       return { classification: "general", state, text: "" };
     }
     classification = "event_plan_start";
@@ -438,10 +460,16 @@ export function planEventTurn(
       nowIso: context.now.toISOString(),
       brief,
       title: extractTitle(userText),
+      intent: isCreateRsvpPlanningRequest(userText)
+        ? "create_rsvp"
+        : "create_event",
     });
     intro = usefulBrief(context.activeBrand.name, brief);
   }
-  if (state.active_task?.intent !== "create_event") {
+  if (
+    !state.active_task ||
+    !["create_event", "create_rsvp"].includes(state.active_task.intent)
+  ) {
     return { classification: "general", state, text: "" };
   }
 
