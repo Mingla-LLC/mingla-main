@@ -8944,6 +8944,18 @@ App-download readiness is server-owned by the exact `(app_key, os, provider)` ce
 
 ---
 
+## ACTIVE — issue #2594 (the class-A budget is checked, and static gates run no containers)
+
+### I-PROPOSED-2594-CLASS-A-BUDGET-ADJUDICATED (ACTIVE)
+
+- **Rule:** Every conclusion of `Strict grep — static gates (class A)` is adjudicated out-of-band against Amendment 7's A7-SC1(1) bound of 600 seconds, by a check that never returns green for "could not look". A `success` over the bound fails. A lone `cancelled` at the 900-second cap is a timeout kill and fails; a `cancelled` alongside simultaneously-cancelled peers is a concurrency eviction and is neutral; anything unclassified is INCONCLUSIVE and exits non-zero. The adjudicator lives outside the job it measures, because A7-SC4 forbids a wall-clock threshold inside a gate and a timeout kill terminates class A before any step of its own can report.
+- **Enforcement:** the `class-a-budget` job in `.github/workflows/strict-grep-mingla-business.yml` (`needs: [static-gates]`, `if: always()`) running `.github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce`; its `--self-test` covering all nine decision rows with 16 fixtures, checking row, verdict and exit code independently; and the wiring assertions in `issue-2437-node-wave-shadow-parity.implementor.test.mjs`, whose four mutants red on the job being deleted, `needs` dropped, `if: always()` removed, or the `--enforce` step substituted. Demonstrated failing at a real head on PR #2690: bound lowered to 60s produced `D3 FAIL … the measured job reported success but took 532s`, restored to 600s produced `D4 PASS … 79s of headroom`. This is a reporting check, not a required status context.
+
+### I-PROPOSED-2594-STATIC-GATES-IS-CONTAINERLESS (ACTIVE)
+
+- **Rule:** The `static-gates` job runs no container and provisions no database. It declares no `services:`, invokes no `docker`, and installs no Supabase CLI. Database-backed contract proofs belong in `postgres-contract-suites.yml`, which owns the sole `supabase/postgres` service container and replays every migration from zero unconditionally.
+- **Enforcement:** the SC-11 assertion in `issue-2437-node-wave-shadow-parity.implementor.test.mjs`, scanning every `static-gates` step for container and CLI verbs with each forbidden literal assembled from fragments so the guard cannot match its own source; plus `STATIC_CLASS_A_STEP_SHA256`, deliberately re-cut at #2594 from the 9-step `d89bf992…` to the 7-step `982cd176…`, so any step returning to that job moves the seal and must be declared. Mutants proven: restoring the replay step reds both the container scan and the seal; restoring the CLI action reds; adding a job-level service container reds.
+
 ## ACTIVE — issue #1795 (venue order intelligence)
 
 ### I-PROPOSED-1795-VENUE-ORDER-METRICS-ONE-TRUTH (ACTIVE)
