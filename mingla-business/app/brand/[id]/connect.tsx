@@ -27,14 +27,10 @@ export default function BrandBankConnectNativeAlias(): React.ReactElement {
     return <Redirect href="/(tabs)/account" />;
   }
 
-  const onboardHref: Href = params.from === "brand-create"
-    ? {
-        pathname: "/brand/[id]/payments/onboard",
-        params: { id: brandId, from: "brand-create" },
-      }
-    : {
-        pathname: "/brand/[id]/payments/onboard",
-        params: { id: brandId },
-      };
+  const onboardHref = (
+    params.from === "brand-create"
+      ? `/brand/${encodeURIComponent(brandId)}/payments/onboard?from=brand-create`
+      : `/brand/${encodeURIComponent(brandId)}/payments/onboard`
+  ) as Href;
   return <Redirect href={onboardHref} />;
 }

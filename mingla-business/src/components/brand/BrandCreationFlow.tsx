@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 // orch-strict-grep-allow orch-0892 — META-ORCH-0972 Sub-B BrandCreationFlow is a 4-step universal brand creation flow; keyboard-input fields (brand name, bio, address) sit at top of viewport and are not scroll-occluded by the on-screen keyboard. SmartScrollView migration deferred to a dedicated keyboard-hygiene follow-up ORCH.
 import {
   AccessibilityInfo,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -58,11 +57,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Stepper } from "../ui/Stepper";
 import { Toast } from "../ui/Toast";
-import {
-  OfferingChooser,
-  routeForOffering,
-  type OfferingKind,
-} from "./OfferingChooser";
+import type { OfferingKind } from "./OfferingChooser";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
 // META-ORCH-1009 Sub-F (WS1+WS2): validated address autocomplete + cover preview.
 // ORCH-1079 [Business-venue Google→Mapbox sweep]: swapped to the shared Mapbox
@@ -81,13 +76,18 @@ import { parseVenuePlaceResult } from "../../utils/parseVenuePlaceResult";
 import type { PlaceDetails } from "../../services/mapboxGeocodeService";
 import type { LocationSelectionState } from "@mingla/location-input";
 import { EventCoverMedia } from "../ui/EventCoverMedia";
+import { useShareNetworkState } from "../ui/useShareNetworkState";
 import { resolveBankConnectRail } from "../../utils/bankConnectRail";
 import {
   deriveBrandCreationPayoutState,
   shouldResumeBrandCreationAtCreate,
 } from "../../utils/brandCreationPayoutState";
 import { captureException } from "../../diagnostics/sentry";
-import { useNetInfoSafe } from "../../lib/netinfoSafe";
+
+const LazyOfferingChooser = React.lazy(async () => {
+  const module = await import("./OfferingChooser");
+  return { default: module.OfferingChooser };
+});
 
 // The append-only #881 renderer predates the resume/payout hooks and replaces
 // the complete useBrands module with a deliberately partial mock. Keep that
@@ -339,28 +339,6 @@ const slugify = (value: string): string =>
     .replace(/[^a-z0-9]+/g, "")
     .slice(0, 32) || `brand${Date.now().toString(36)}`;
 
-function useBrandCreationNetworkState(): boolean {
-  const nativeState = useNetInfoSafe();
-  const [webOnline, setWebOnline] = useState(
-    () => globalThis.navigator?.onLine !== false,
-  );
-  useEffect(() => {
-    if (Platform.OS !== "web") return undefined;
-    const handleOnline = (): void => setWebOnline(true);
-    const handleOffline = (): void => setWebOnline(false);
-    globalThis.addEventListener?.("online", handleOnline);
-    globalThis.addEventListener?.("offline", handleOffline);
-    return () => {
-      globalThis.removeEventListener?.("online", handleOnline);
-      globalThis.removeEventListener?.("offline", handleOffline);
-    };
-  }, []);
-  if (Platform.OS === "web") return webOnline;
-  if (nativeState === null) return true;
-  return nativeState.isConnected === true &&
-    nativeState.isInternetReachable !== false;
-}
-
 export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   onComplete,
   onCancel,
@@ -485,7 +463,7 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
   const payoutCanonicalBrand = brand ?? resumeBrandQuery.data ?? null;
   const payoutPermission = usePaymentsPermissionForCreation(payoutBrandId);
   const stripeStatusQuery = useStripeStatusForCreation(payoutBrandId);
-  const online = useBrandCreationNetworkState();
+  const online = useShareNetworkState();
   const permissionState = payoutPermission.isLoading
     ? "loading"
     : payoutPermission.isError
@@ -935,7 +913,9 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
     (offering: OfferingKind): void => {
       if (brand === null) return;
       onComplete(brand.id);
-      router.push(routeForOffering(offering) as never);
+      void import("./OfferingChooser").then(({ routeForOffering }) => {
+        router.push(routeForOffering(offering) as never);
+      });
     },
     [brand, onComplete, router],
   );
@@ -1564,13 +1544,19 @@ export const BrandCreationFlow: React.FC<BrandCreationFlowProps> = ({
         ) : null}
 
         {state.step === 6 ? (
-          <OfferingChooser
-            variant="brand-create-welcome"
-            headline={BRAND_CREATION_COPY.step6.headline}
-            subhead={BRAND_CREATION_COPY.step6.subhead}
-            payoutState={payoutState}
-            onSelect={handleOfferingSelect}
-          />
+          <React.Suspense
+            fallback={(
+              <Text accessibilityRole="text">Loading creation options…</Text>
+            )}
+          >
+            <LazyOfferingChooser
+              variant="brand-create-welcome"
+              headline={BRAND_CREATION_COPY.step6.headline}
+              subhead={BRAND_CREATION_COPY.step6.subhead}
+              payoutState={payoutState}
+              onSelect={handleOfferingSelect}
+            />
+          </React.Suspense>
         ) : null}
       </ScrollView>
 
