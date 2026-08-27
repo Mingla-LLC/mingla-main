@@ -26,8 +26,22 @@
 --     but the mutated run also exits 0, and that is RED.
 --
 -- Sections are delimited by `-- ===== <command-id> =====` and split at run time.
--- 17 sections: the 19 consolidated SQL files minus the two race fixtures, which
--- carry ZERO `RAISE EXCEPTION` and whose verdict is rendered by M-1173-02i.
+-- 22 sections: the 24 consolidated SQL call sites minus the two race fixtures,
+-- which carry ZERO `RAISE EXCEPTION` and whose verdict is rendered by M-1173-02i.
+--
+-- [#2594] Five of the 22 arrived with the #1384/#1397 subjects rehomed out of the
+-- class-A static-gates job. Their terminal predicates are of two shapes and the
+-- distinction matters when reading the mutations below:
+--
+--   * RUNTIME predicates (M-1384-02a, M-1384-02c) are falsified by changing DATA
+--     on the write path, exactly like the seventeen before them.
+--   * DEFINITION predicates (M-1384-02b, M-1397-01, M-1397-02) assert over
+--     catalog TEXT — a function body, a registered cron command. Their subject IS
+--     the text, so the only falsification available is a text falsification, and
+--     each is chosen to be a change a real regression would actually make (an RPC
+--     that stops limiting; a cron registration that loses its authenticated
+--     header; a cron command whose timeout contract is gone) rather than a
+--     cosmetic respacing that would prove only that `position()` works.
 
 -- RUN 8 CORRECTION — THE WITNESS ASSERTS THE POST-CONDITION, NOT THE ATTEMPT.
 --
@@ -453,3 +467,279 @@ ALTER TABLE public.brands ENABLE ALWAYS TRIGGER l5_mutant;
 -- COMMITs its cleanup, so the post-condition is checkable directly after the run
 -- rather than through a witness. That is the strongest form available here.
 -- @l5-verify: SELECT EXISTS (SELECT 1 FROM public.brands WHERE id = '18079999-0000-4000-8000-000000000011')
+-- ===== M-1384-02a =====
+-- [#2594] terminal: an unsupported viewer currency degrades to EXACT SOURCE
+-- MONEY — source_currency_code NGN, source_min_minor 100, no display leg, not
+-- approximate. Falsified by moving the stored source floor off 100 on the write
+-- path, which is the value the terminal assertion names and nothing earlier in
+-- the file reads.
+--
+-- WHY THE EARLIER ASSERTIONS SURVIVE IT, stated rather than hoped: the only
+-- earlier consumer of this fixture is the pre-order/pre-limit price filter,
+-- which selects on the band 0..500 NGN. 101..200 still overlaps and 1000..2000
+-- (the expensive fixture, deliberately untouched) still does not, so the
+-- rank/limit assertion is unmoved. The first two DO blocks read catalog text and
+-- FX arithmetic only.
+CREATE OR REPLACE FUNCTION public.l5_mutant() RETURNS trigger LANGUAGE plpgsql AS $l5$
+BEGIN
+  IF NEW.source_min_minor = 100
+     AND NEW.source_max_minor = 200
+     AND NEW.source_currency_code = 'NGN' THEN
+    NEW.source_min_minor := 101;
+  END IF;
+  RETURN NEW;
+END $l5$;
+CREATE TRIGGER l5_mutant BEFORE INSERT OR UPDATE ON public.place_discovery_price_ranges
+  FOR EACH ROW EXECUTE FUNCTION public.l5_mutant();
+ALTER TABLE public.place_discovery_price_ranges ENABLE ALWAYS TRIGGER l5_mutant;
+CREATE OR REPLACE FUNCTION public.l5_witness() RETURNS trigger LANGUAGE plpgsql AS $w$
+BEGIN PERFORM nextval('public.l5_fired'); RETURN NULL; END $w$;
+CREATE TRIGGER l5_verify AFTER INSERT OR UPDATE ON public.place_discovery_price_ranges
+  FOR EACH ROW WHEN (NEW.source_min_minor = 101 AND NEW.source_max_minor = 200 AND NEW.source_currency_code = 'NGN') EXECUTE FUNCTION public.l5_witness();
+ALTER TABLE public.place_discovery_price_ranges ENABLE ALWAYS TRIGGER l5_verify;
+-- @l5-verify: SELECT is_called FROM public.l5_fired
+
+-- ===== M-1384-02b =====
+-- [#2594] terminal: the price filter lives INSIDE the serving RPC, ahead of the
+-- rank and ahead of the limit — asserted as four properties of the RPC's own
+-- catalog text: `p_price_filter_currency` present, `ORDER BY ps.score` present,
+-- `LIMIT p_limit` present, and the filter token ahead of the ORDER BY.
+--
+-- The subject of a definition assertion is the definition, so the mutation is a
+-- definition mutation. It is the SEMANTICALLY REAL one rather than a respacing:
+-- the RPC stops limiting, which is precisely the regression "the filter is not
+-- inside the pre-order/pre-limit RPC" is written against — a caller-side LIMIT
+-- applied after the RPC has already ranked and truncated.
+--
+-- Re-emitted from pg_get_functiondef rather than retyped, so nothing else about
+-- the function — its security context, its pinned search_path, its ACL — can
+-- drift as a side effect of the mutation. The three earlier assertions in the
+-- file read pg_policies, table privileges and FOUR OTHER functions' definitions;
+-- none of them reads this one.
+DO $l5$
+DECLARE
+  v_def text;
+BEGIN
+  v_def := pg_get_functiondef(
+    'public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure
+  );
+  v_def := replace(v_def, 'LIMIT p_limit', '');
+  EXECUTE v_def;
+END $l5$;
+-- Catalog state, which is already a post-condition: the token the terminal
+-- assertion requires is gone from the live definition.
+-- @l5-verify: SELECT position('LIMIT p_limit' IN pg_get_functiondef('public.issue_1384_query_servable_places_by_signal(text,numeric,double precision,double precision,double precision,uuid[],integer,bigint,bigint,character,uuid)'::regprocedure)) = 0
+
+-- ===== M-1384-02c =====
+-- [#2594] terminal: after the Paystack brand's reconciliation RESOLVES, the
+-- state RPC stops advertising a block — canAcceptPaidReservations true and
+-- `reconciliation` back to JSON null.
+--
+-- THE HARD ONE. 1,028 lines, 45 RAISE EXCEPTION sites, and the terminal one is
+-- R25's last. The mutation has to falsify it without tripping any of the 44
+-- ahead of it, and the assertion immediately before it pins
+-- pg_brand_can_collect(…102) TRUE, which rules out every mutation that works by
+-- leaving a pending reconciliation behind — pg_brand_can_collect and the RPC
+-- read the SAME `status = 'pending'` predicate, so anything that falsifies the
+-- RPC's `reconciliation` leg falsifies the helper first.
+--
+-- What survives that constraint is exactly one lever, and it is the one term the
+-- RPC reads that the helper does not:
+--
+--   canAcceptPaidReservations = pg_brand_can_collect(brand) AND brands.default_currency IS NOT NULL
+--
+-- pg_brand_can_collect reads stripe_connect_accounts, brands.paystack_subaccount_code
+-- and brand_currency_reconciliations. It does NOT read brands.default_currency.
+-- So nulling default_currency for …102 leaves every can_charge/can_collect
+-- assertion in the file untouched and falsifies the terminal predicate alone.
+--
+-- TIMING is the other half. The RPC is called exactly three times in the file —
+-- twice for brand …101 and once, terminally, for …102 — so a mutation scoped to
+-- …102 cannot reach the other two. It is scoped in TIME as well, to the R25
+-- resolution rather than the earlier $convert$ one, by the presence of R25's own
+-- marker Connect account: firing during $convert$ would null the currency while
+-- issue_1384_resolve_reconciliation is still converting ranges into it, and the
+-- earlier `convert resolution/readiness failed` assertion would trip instead.
+--
+-- Nulling default_currency is SAFE against every trigger on public.brands, and
+-- that is checked rather than assumed: issue_1384_reconcile_bank_currency returns
+-- early on `NEW.default_currency IS NULL` (so no new pending row is created, which
+-- would have tripped the assertion ahead of the terminal one), and both
+-- issue_1384_bump_brand_currency_state and tg_brands_derive_pricing_from_default
+-- are no-ops or column bumps on NULL. The suite itself nulls …101's currency the
+-- same way earlier in R25.
+CREATE OR REPLACE FUNCTION public.l5_mutant() RETURNS trigger LANGUAGE plpgsql AS $l5$
+BEGIN
+  IF NEW.brand_id = '13840000-0000-4000-8000-000000000102'
+     AND NEW.status = 'converted'
+     AND EXISTS (
+       SELECT 1 FROM public.stripe_connect_accounts
+       WHERE stripe_account_id = 'acct_issue_1384_r25'
+     ) THEN
+    UPDATE public.brands
+       SET default_currency = NULL
+     WHERE id = '13840000-0000-4000-8000-000000000102';
+  END IF;
+  RETURN NULL;
+END $l5$;
+CREATE TRIGGER l5_mutant AFTER UPDATE ON public.brand_currency_reconciliations
+  FOR EACH ROW EXECUTE FUNCTION public.l5_mutant();
+ALTER TABLE public.brand_currency_reconciliations ENABLE ALWAYS TRIGGER l5_mutant;
+CREATE OR REPLACE FUNCTION public.l5_witness() RETURNS trigger LANGUAGE plpgsql AS $w$
+BEGIN PERFORM nextval('public.l5_fired'); RETURN NULL; END $w$;
+CREATE TRIGGER l5_verify AFTER UPDATE ON public.brands
+  FOR EACH ROW WHEN (NEW.id = '13840000-0000-4000-8000-000000000102' AND NEW.default_currency IS NULL AND OLD.default_currency IS NOT NULL) EXECUTE FUNCTION public.l5_witness();
+ALTER TABLE public.brands ENABLE ALWAYS TRIGGER l5_verify;
+-- @l5-verify: SELECT is_called FROM public.l5_fired
+
+-- ===== M-1397-01 =====
+-- @l5-apply-as: supabase_admin
+-- [#2594] terminal: the FX cron this migration registers is SERVICE-ROLE
+-- AUTHORIZED — its command names the function route, the Vault service-role key
+-- and the Authorization header.
+--
+-- WHY THIS ONE NEEDS A DECLARED ROLE, and it is measured rather than argued.
+-- This subject WRITES ITS OWN SUBJECT: the migration unschedules and re-registers
+-- the job in the same file, so a pre-applied UPDATE is overwritten before the
+-- probe reads it. The falsification must therefore sit on the WRITE PATH. Run
+-- 98413780618 measured what `postgres` may do to cron.job: a plain
+-- `UPDATE cron.job` was refused with `permission denied for table job`, and
+-- has_table_privilege(...,'TRIGGER') was false. supabase/postgres deliberately
+-- de-superusers `postgres`, so from that role this predicate has NO falsification
+-- at all — not a weaker one, none.
+--
+-- `supabase_admin` over the container's loopback is the escape this job already
+-- uses to close the template and cut every scratch copy. Same connection, new
+-- caller. The declaration is visible here rather than buried in the harness.
+--
+-- TWO ROUTES ARE INSTALLED, because ONE UNKNOWN REMAINS after the privilege one
+-- is solved: whether pg_cron's registration reaches cron.job through the executor
+-- (where a trigger fires) or through a direct catalog insert (where it does not).
+-- I could not settle that without booting the image, so the mutation does not
+-- depend on the answer:
+--
+--   * the REGISTRATION WRAPPER is executor-independent — it wraps cron.schedule
+--     itself and fixes the row up afterwards, whatever the original did;
+--   * the WRITE-PATH TRIGGER covers the case where the wrapper cannot be
+--     installed at all.
+--
+-- They are idempotent together: if the trigger already stripped the header, the
+-- wrapper's rewrite matches nothing.
+DO $l5_precheck$
+DECLARE
+  v_owner text;
+  v_admin_bits text := 'role absent';
+  v_member text := 'n/a';
+  v_report text;
+BEGIN
+  SELECT relowner::regrole::text INTO v_owner FROM pg_class WHERE oid = 'cron.job'::regclass;
+  IF EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'supabase_admin') THEN
+    v_admin_bits := format('SELECT=%s UPDATE=%s INSERT=%s TRIGGER=%s',
+      has_table_privilege('supabase_admin', 'cron.job', 'SELECT'),
+      has_table_privilege('supabase_admin', 'cron.job', 'UPDATE'),
+      has_table_privilege('supabase_admin', 'cron.job', 'INSERT'),
+      has_table_privilege('supabase_admin', 'cron.job', 'TRIGGER'));
+    v_member := pg_has_role('postgres', 'supabase_admin', 'MEMBER')::text;
+  END IF;
+  v_report := format(
+    'MEASURED — cron.job owner=%s; applying role=%s superuser=%s; postgres: SELECT=%s UPDATE=%s INSERT=%s TRIGGER=%s; supabase_admin: %s; postgres-in-supabase_admin=%s',
+    v_owner, current_user,
+    (SELECT rolsuper FROM pg_roles WHERE rolname = current_user),
+    has_table_privilege('postgres', 'cron.job', 'SELECT'),
+    has_table_privilege('postgres', 'cron.job', 'UPDATE'),
+    has_table_privilege('postgres', 'cron.job', 'INSERT'),
+    has_table_privilege('postgres', 'cron.job', 'TRIGGER'),
+    v_admin_bits, v_member);
+  RAISE NOTICE '%', v_report;
+  IF NOT has_table_privilege('cron.job', 'TRIGGER') THEN
+    RAISE EXCEPTION 'L-5 M-1397-01: the applying role cannot install a write-path interception on cron.job, so this terminal predicate has no falsification available to it. This is a statement about the ENVIRONMENT, NOT about the assertion, and it must not be read as one. %', v_report;
+  END IF;
+END $l5_precheck$;
+-- Route 1 — the registration wrapper. SECURITY DEFINER because the migration
+-- calls cron.schedule as `postgres`, which cannot write cron.job; the definer is
+-- the applying role. Installed inside a subtransaction, so a refused rename
+-- leaves cron.schedule exactly as it was and route 2 still stands.
+DO $l5_wrapper$
+BEGIN
+  ALTER FUNCTION cron.schedule(text, text, text) RENAME TO l5_schedule_original;
+  EXECUTE $w$
+    CREATE FUNCTION cron.schedule(p_name text, p_schedule text, p_command text)
+    RETURNS bigint
+    LANGUAGE plpgsql
+    SECURITY DEFINER
+    AS $f$
+    DECLARE
+      v_id bigint;
+    BEGIN
+      v_id := cron.l5_schedule_original(p_name, p_schedule, p_command);
+      UPDATE cron.job
+         SET command = replace(command, 'Authorization', 'X-L5-Mutant')
+       WHERE jobid = v_id;
+      RETURN v_id;
+    END
+    $f$
+  $w$;
+  RAISE NOTICE 'L-5 M-1397-01: registration wrapper installed; the falsification no longer depends on whether pg_cron writes cron.job through the executor.';
+EXCEPTION WHEN OTHERS THEN
+  RAISE NOTICE 'L-5 M-1397-01: registration wrapper NOT installed (%); falling back to the write-path trigger alone.', SQLERRM;
+END $l5_wrapper$;
+-- Route 2 — the write-path trigger.
+CREATE OR REPLACE FUNCTION public.l5_mutant() RETURNS trigger LANGUAGE plpgsql AS $l5$
+BEGIN
+  IF NEW.jobname = 'issue_1397_fx_refresh_daily' THEN
+    NEW.command := replace(NEW.command, 'Authorization', 'X-L5-Mutant');
+  END IF;
+  RETURN NEW;
+END $l5$;
+CREATE TRIGGER l5_mutant BEFORE INSERT OR UPDATE ON cron.job
+  FOR EACH ROW EXECUTE FUNCTION public.l5_mutant();
+ALTER TABLE cron.job ENABLE ALWAYS TRIGGER l5_mutant;
+-- The migration does not wrap itself in a transaction, so the registration this
+-- mutation rewrites is COMMITTED before the probe runs and survives the probe's
+-- own failure. The post-condition is therefore checkable directly.
+-- @l5-verify: SELECT bool_and(command NOT LIKE '%Authorization%') FROM cron.job WHERE jobname = 'issue_1397_fx_refresh_daily'
+
+-- ===== M-1397-02 =====
+-- [#2594] terminal: the registered FX cron still carries its authenticated
+-- Vault/pg_net contract, of which the 30 s pg_net timeout is one named term.
+--
+-- NO ESCALATION, and the first attempt showed why one looked necessary and is
+-- not. This section used to mutate the registration with a plain
+-- `UPDATE cron.job`; run 98413780618 refused it with `permission denied for
+-- table job`. But the migration in M-1397-01 CONTROLS CLEAN in the same run,
+-- exit 0, and it calls cron.unschedule and cron.schedule as `postgres` — so the
+-- registration IS writable from that role, just never through the table. The
+-- mutation goes through the same two functions the subject itself uses.
+--
+-- Unlike M-1397-01 this file only READS the registration (the job arrives from
+-- the migration chain already applied to the template), so re-registering it
+-- before the file runs is enough.
+--
+-- The schedule and every other token are READ BACK from the live row and passed
+-- through unchanged, so the earlier assertion — exactly one job, at 15 1 * * * —
+-- stays true by construction rather than by a retyped literal that could drift.
+-- The timeout term is chosen deliberately: it is the ONE token of the six this
+-- file names that the migration's own probe does not, so the two subjects cannot
+-- prove each other by accident.
+DO $l5$
+DECLARE
+  v_sched text;
+  v_cmd text;
+  v_schedule regprocedure := to_regprocedure('cron.schedule(text,text,text)');
+  v_unschedule regprocedure := to_regprocedure('cron.unschedule(text)');
+BEGIN
+  IF v_schedule IS NULL OR v_unschedule IS NULL
+     OR NOT has_function_privilege(v_schedule::oid, 'EXECUTE')
+     OR NOT has_function_privilege(v_unschedule::oid, 'EXECUTE') THEN
+    RAISE EXCEPTION 'L-5 M-1397-02: the applying role cannot execute cron.schedule/cron.unschedule, so the registration cannot be rewritten. This is a statement about the ENVIRONMENT, NOT about the assertion.';
+  END IF;
+  SELECT schedule, command INTO v_sched, v_cmd
+    FROM cron.job WHERE jobname = 'issue_1397_fx_refresh_daily';
+  IF v_cmd IS NULL THEN
+    RAISE EXCEPTION 'L-5 M-1397-02: no FX cron registration exists in this database to rewrite. This is a statement about the ENVIRONMENT, NOT about the assertion.';
+  END IF;
+  v_cmd := replace(v_cmd, 'timeout_milliseconds := 30000', 'timeout_milliseconds := 250');
+  PERFORM cron.unschedule('issue_1397_fx_refresh_daily');
+  PERFORM cron.schedule('issue_1397_fx_refresh_daily', v_sched, v_cmd);
+END $l5$;
+-- @l5-verify: SELECT bool_and(command NOT LIKE '%timeout_milliseconds := 30000%') FROM cron.job WHERE jobname = 'issue_1397_fx_refresh_daily'
