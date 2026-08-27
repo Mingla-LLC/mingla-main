@@ -12,6 +12,9 @@ const TestRenderer = require("react-test-renderer") as {
   create: (element: React.ReactElement) => RenderTree;
   act: (callback: () => void | Promise<void>) => void | Promise<void>;
 };
+const ReactDOMServer = require("react-dom/server") as {
+  renderToStaticMarkup: (element: React.ReactElement) => string;
+};
 
 jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
 
@@ -39,6 +42,18 @@ describe("#2726 tester adversarial web rail", () => {
       (callback) => { callback(); return 1; };
     jest.spyOn(AccessibilityInfo, "isReduceMotionEnabled").mockResolvedValue(false);
     jest.spyOn(AccessibilityInfo, "addEventListener").mockReturnValue({ remove: jest.fn() });
+  });
+
+  it("emits the selected state into the real RNW DOM for every tab", () => {
+    const html = ReactDOMServer.renderToStaticMarkup(
+      <SuiteDesktopShell modules={modules} activeModule="availability" onSelect={jest.fn()}
+        workspaceSelfScrolls scrollBottomPad={0} railTestIdPrefix="test-rail-">
+        <span>Workspace</span>
+      </SuiteDesktopShell>,
+    );
+    expect(html.match(/role="tab"/g)).toHaveLength(4);
+    expect(html.match(/aria-selected="true"/g)).toHaveLength(1);
+    expect(html.match(/aria-selected="false"/g)).toHaveLength(3);
   });
 
   it("uses one tablist, non-accessible group labels, and one roving tab stop", async () => {
