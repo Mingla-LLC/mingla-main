@@ -33,6 +33,10 @@ class FakeQuery implements PromiseLike<DbResult> {
   eq(_column: string, _value: unknown): this { return this; }
   gt(_column: string, _value: unknown): this { return this; }
   in(_column: string, _value: unknown[]): this { return this; }
+  // issue #2689 — the status-token UPDATE now carries `.is("order_id", null)`,
+  // so a duplicate that is about to refuse can no longer re-mint the possession
+  // proof of a session that already completed.
+  is(_column: string, _value: unknown): this { return this; }
   maybeSingle(): Promise<DbResult> { return Promise.resolve(this.execute(true)); }
   then<TResult1 = DbResult, TResult2 = never>(
     onfulfilled?: ((value: DbResult) => TResult1 | PromiseLike<TResult1>) | null,

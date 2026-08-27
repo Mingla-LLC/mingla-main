@@ -1295,10 +1295,36 @@ export const createTicketCheckoutCreateHandler = (
         event_date_ids: orderedEventDateIds,
       };
     }
+    // issue #2689 — NEVER RE-MINT THE TOKEN OF A SESSION THAT ALREADY HAS AN
+    // ORDER. `.is("order_id", null)` is the whole fix, and it is load-bearing.
+    //
+    // The note above says a concurrent double-tap "does NOT arrive here" and is
+    // harmless because finalize is idempotent. Production disproved the second
+    // half. When a duplicate enters the in-flight arm, this UPDATE blocks on the
+    // session row lock that finalize holds, and lands AFTER finalize committed —
+    // overwriting `buyer_status_token_hash` with a token that request is about to
+    // throw away, because it goes on to refuse. The winner's token, already
+    // returned to their browser, is silently dead.
+    //
+    // PROVEN on order c3f481a5: `attendance_identity_claim_armed_at` is NULL —
+    // alone among five — so that guest's pass never reached the app and even
+    // their email lacked its claim link. The row keeps the fingerprint: an
+    // `updated_at` EARLIER than its own `completed_at`, which only a second
+    // create can produce. Two such rows exist.
+    //
+    // The paid rail loses more: the overwritten hash makes
+    // `ticket-checkout-confirm` answer 403 `buyer_status_token_invalid` when the
+    // buyer returns from Stripe. Money and tickets are correct; the buyer simply
+    // cannot be shown them.
+    //
+    // A session with an `order_id` is finished. Its token is the guest's
+    // possession proof and belongs to whoever completed it. Nobody else re-mints
+    // it — not a duplicate, not a retry, not a second tab.
     const { error: statusTokenError } = await supabase
       .from("ticket_checkout_sessions")
       .update(sessionUpdate)
-      .eq("id", checkoutSessionId);
+      .eq("id", checkoutSessionId)
+      .is("order_id", null);
     if (statusTokenError) {
       console.error(
         "[ticket-checkout-create] buyer status token persist failed",
