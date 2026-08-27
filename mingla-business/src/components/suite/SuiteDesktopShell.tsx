@@ -100,6 +100,12 @@ type RailWebTransitionStyle = ViewStyle & {
   transitionTimingFunction: typeof easings.out;
 };
 
+type RailWebTabProps = {
+  "aria-selected": boolean;
+  tabIndex: 0 | -1;
+  onKeyDown: React.KeyboardEventHandler<HTMLElement>;
+};
+
 function railWebTransitionStyle(reduceMotion: boolean): RailWebTransitionStyle {
   return {
     transitionProperty: "opacity",
@@ -228,9 +234,10 @@ function SuiteDesktopRail({
             {group.modules.map((module) => {
               const moduleIndex = modules.findIndex((candidate) => candidate.key === module.key);
               const isActive = module.key === activeModule;
-              const webProps = Platform.OS === "web"
+              const webProps: RailWebTabProps | undefined = Platform.OS === "web"
                 ? {
-                    tabIndex: isActive ? (0 as const) : (-1 as const),
+                    "aria-selected": isActive,
+                    tabIndex: isActive ? 0 : -1,
                     onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
                       let nextIndex: number | null = null;
                       if (event.key === "ArrowDown" || event.key === "ArrowRight") {
@@ -250,7 +257,7 @@ function SuiteDesktopRail({
                       }
                     },
                   }
-                : {};
+                : undefined;
               return (
                 <Pressable
                   {...webProps}
