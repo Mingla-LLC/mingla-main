@@ -1,0 +1,70 @@
+name: "Issue #1973 — Ari experience lifecycle"
+
+on:
+  pull_request:
+    paths:
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/*1973*"
+      - "supabase/functions/parse-restaurant-menu/**"
+      - "supabase/functions/parse-play-activities/**"
+      - "supabase/migrations/20270408001973_issue_1973_ari_experience_lifecycle.sql"
+      - "mingla-business/app/experience/**"
+      - "mingla-business/src/services/experienceDetailService.ts"
+      - "mingla-business/src/services/__tests__/issue1973ExperienceLifecycle.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs"
+      - ".github/workflows/issue-1973-ari-experience-lifecycle.yml"
+  push:
+    branches: ["**"]
+    paths:
+      - "supabase/functions/_shared/agentTools.ts"
+      - "supabase/functions/_shared/agentDomainTools.ts"
+      - "supabase/functions/_shared/agentToolAuthorization.ts"
+      - "supabase/functions/_shared/agentSystemPrompt.ts"
+      - "supabase/functions/_shared/__tests__/*1973*"
+      - "supabase/functions/parse-restaurant-menu/**"
+      - "supabase/functions/parse-play-activities/**"
+      - "supabase/migrations/20270408001973_issue_1973_ari_experience_lifecycle.sql"
+      - "mingla-business/app/experience/**"
+      - "mingla-business/src/services/experienceDetailService.ts"
+      - "mingla-business/src/services/__tests__/issue1973ExperienceLifecycle.test.ts"
+      - "docs/contracts/ari-capability-ledger.json"
+      - ".github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs"
+      - ".github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs"
+      - ".github/workflows/issue-1973-ari-experience-lifecycle.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  lifecycle-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-business/package-lock.json
+      - name: Ari lifecycle, prior authorization, and tester attacks
+        run: |
+          deno fmt --check supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts supabase/functions/_shared/__tests__/issue_1973_lifecycle_integrity.tester.adversarial.test.ts
+          deno check supabase/functions/_shared/agentTools.ts supabase/functions/_shared/agentDomainTools.ts supabase/functions/parse-restaurant-menu/index.ts supabase/functions/parse-play-activities/index.ts
+          deno test --allow-read supabase/functions/_shared/__tests__/issue_1973_ari_experience_lifecycle.test.ts supabase/functions/_shared/__tests__/issue_1973_lifecycle_integrity.tester.adversarial.test.ts supabase/functions/_shared/__tests__/issue_2019_agent_authorization.test.ts supabase/functions/_shared/__tests__/issue_2019_agent_authorization.tester-adversarial.test.ts
+      - name: Ledger denominator, mapping, and mutation proof
+        run: |
+          node .github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs
+          node --test .github/scripts/strict-grep/__tests__/issue-2000-ari-capability-ledger.tester.test.mjs
+      - name: Shared Business lifecycle surface
+        working-directory: mingla-business
+        run: |
+          npm ci
+          npx jest --runInBand src/services/__tests__/issue1973ExperienceLifecycle.test.ts
