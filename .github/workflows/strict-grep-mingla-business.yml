@@ -667,6 +667,47 @@ jobs:
           path: gate-results-A.json
           if-no-files-found: error
 
+  # issue #2594 — OUT-OF-BAND adjudication of the class-A elapsed-time bound.
+  #
+  # A7-SC1(1) says class A must conclude `success` within 600 s. Until #2594 that
+  # was prose on #2438 with NOTHING behind it: a breach reported `success` and no
+  # check turned red. The one mechanism that did fire — the `timeout-minutes` kill
+  # — surfaces as conclusion `cancelled`, not `failure`, and was misread as noise
+  # four separate times on #2148.
+  #
+  # It has to be adjudicated from OUTSIDE the job it measures, for two independent
+  # reasons: A7-SC4 forbids a wall-clock threshold inside any gate, and a cap kill
+  # terminates class A before any step of its own can report. `needs:` plus
+  # `if: always()` is what keeps this reachable in exactly that case.
+  #
+  # `permissions:` is JOB-level on purpose. This workflow declares no workflow-level
+  # `permissions:` key, so every other job inherits the repository default; adding
+  # one here at workflow level would change every one of their tokens.
+  #
+  # This is a REPORTING check with the same strength class A itself has. It is in
+  # no ruleset, and putting it in one is out of scope for #2594.
+  class-a-budget:
+    name: "Strict grep — class A elapsed-time budget (out-of-band)"
+    needs: [static-gates]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: "Adjudicate class A against the A7-SC1(1) 600 s bound"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLASS_A_JOB_NAME: "Strict grep — static gates (class A)"
+          CLASS_A_BUDGET_SECONDS: "600"
+          CLASS_A_TIMEOUT_KILL_SECONDS: "890"
+        run: node .github/scripts/strict-grep/issue-2594-class-a-budget.mjs --enforce
+
   dep-gates:
     name: "Strict grep — dependency gates (class B)"
     runs-on: ubuntu-latest
