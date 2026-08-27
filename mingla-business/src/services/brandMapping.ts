@@ -442,6 +442,9 @@ export function mapUiToBrandUpdatePatch(
   if (patch.displayAttendeeCount !== undefined) {
     out.display_attendee_count = patch.displayAttendeeCount;
   }
+  if (patch.defaultCurrency !== undefined) {
+    out.default_currency = patch.defaultCurrency;
+  }
   // NEW Cycle 17e-A — patches brand profile columns when present.
   // NB: slug NOT included in patch handling — trigger trg_brands_immutable_slug
   // forbids slug change per I-17. UI must not patch slug; if `patch.slug` is

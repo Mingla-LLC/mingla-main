@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 613,
-  "selfTestWiredFloor": 390,
+  "expectedStrictGrepMjsFiles": 614,
+  "selfTestWiredFloor": 391,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -4831,6 +4831,18 @@
     },
     {
       "script": ".github/scripts/strict-grep/issue-2664-android-no-datetime-picker-mode.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2719-brand-payout-first.mjs",
       "kind": "file",
       "enforcement": "batch:A",
       "invocation": "node",

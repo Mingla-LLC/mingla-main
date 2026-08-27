@@ -17,14 +17,18 @@ function firstParam(value: string | string[] | undefined): string | null {
 }
 
 export default function BrandBankConnectNativeAlias(): React.ReactElement {
-  const params = useLocalSearchParams<{ id?: string | string[] }>();
+  const params = useLocalSearchParams<{
+    id?: string | string[];
+    from?: string | string[];
+  }>();
   const brandId = firstParam(params.id);
 
   if (brandId === null) {
     return <Redirect href="/(tabs)/account" />;
   }
 
-  return (
-    <Redirect href={`/brand/${encodeURIComponent(brandId)}/payments/onboard`} />
-  );
+  const onboardHref = params.from === "brand-create"
+    ? `/brand/${encodeURIComponent(brandId)}/payments/onboard?from=brand-create`
+    : `/brand/${encodeURIComponent(brandId)}/payments/onboard`;
+  return <Redirect href={onboardHref} />;
 }

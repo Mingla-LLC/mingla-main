@@ -142,6 +142,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
   // #948 W4 [web-skip-download] — invite-funnel phase gates the Back-hide + Skip
   // reveal. Exact-match on `?from=invite`; absent/other values keep Back + no Skip.
   const isInviteFunnel = isInviteFunnelValue(params.from);
+  const isBrandCreateFunnel = params.from === "brand-create";
   const brandQuery = useBrand(brandId);
   const brand = brandQuery.data ?? null;
   const { user } = useAuth();
@@ -176,6 +177,12 @@ export default function BrandBankConnectBody(): React.ReactElement {
   ]);
 
   const handleBack = useCallback((): void => {
+    if (isBrandCreateFunnel && brandId !== null) {
+      router.replace(
+        `/brand/new?resume_brand=${encodeURIComponent(brandId)}` as never,
+      );
+      return;
+    }
     if (router.canGoBack()) {
       router.back();
       return;
@@ -185,7 +192,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
       return;
     }
     router.replace("/(tabs)/account" as never);
-  }, [brandId, router]);
+  }, [brandId, isBrandCreateFunnel, router]);
 
   // #948 W4 [web-skip-download] — ORCH-1401 [continue-web-home]: "Continue on
   // web" lands on the top-level web-app home (`/(tabs)/home`) rather than the
@@ -216,8 +223,14 @@ export default function BrandBankConnectBody(): React.ReactElement {
 
   const handlePaystackConnected = useCallback((): void => {
     if (brandId === null) return;
+    if (isBrandCreateFunnel) {
+      router.replace(
+        `/brand/new?resume_brand=${encodeURIComponent(brandId)}` as never,
+      );
+      return;
+    }
     router.replace(`/brand/${brandId}/payments` as never);
-  }, [brandId, router]);
+  }, [brandId, isBrandCreateFunnel, router]);
 
   const handleStartStripe = useCallback(async (): Promise<void> => {
     if (
@@ -240,6 +253,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
         acceptTerms: (input) => acceptTermsMutation.mutateAsync(input),
         mintOnboarding: (input) => onboardMutation.mutateAsync(input),
         assign: (url) => window.location.assign(url),
+        destination: isBrandCreateFunnel ? "brand-create" : "payments",
       });
     } catch (error) {
       const message =
@@ -253,6 +267,7 @@ export default function BrandBankConnectBody(): React.ReactElement {
   }, [
     acceptTermsMutation,
     brand,
+    isBrandCreateFunnel,
     onboardMutation,
     selectedCountry,
     user,

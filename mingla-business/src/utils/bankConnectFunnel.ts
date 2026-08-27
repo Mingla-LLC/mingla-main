@@ -15,20 +15,29 @@ interface StartStripeWebBankConnectInput {
     country: string;
   }) => Promise<{ onboarding_url: string }>;
   assign: (url: string) => void;
+  destination?: BankConnectReturnDestination;
 }
+
+export type BankConnectReturnDestination = "payments" | "brand-create";
 
 export function buildBankConnectWebReturnUrl(
   origin: string,
   brandId: string,
+  destination: BankConnectReturnDestination = "payments",
 ): string {
   const parsedOrigin = new URL(origin);
   if (parsedOrigin.protocol !== "https:") {
     throw new Error("Bank setup requires a secure HTTPS page.");
   }
-  const returnUrl = new URL(
-    `/brand/${encodeURIComponent(brandId)}/payments`,
-    parsedOrigin.origin,
-  );
+  const returnUrl = destination === "brand-create"
+    ? new URL("/brand/new", parsedOrigin.origin)
+    : new URL(
+      `/brand/${encodeURIComponent(brandId)}/payments`,
+      parsedOrigin.origin,
+    );
+  if (destination === "brand-create") {
+    returnUrl.searchParams.set("resume_brand", brandId);
+  }
   return returnUrl.toString();
 }
 
@@ -69,6 +78,7 @@ export async function startStripeWebBankConnect(
   const returnUrl = buildBankConnectWebReturnUrl(
     input.origin,
     input.brandId,
+    input.destination,
   );
   const result = await input.mintOnboarding({
     brandId: input.brandId,
