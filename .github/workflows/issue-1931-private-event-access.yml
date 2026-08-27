@@ -170,6 +170,18 @@ jobs:
               #
               # Matched by EXACT filename, never an issue-number infix.
               *20270525002562_issue_2562_past_event_guard.sql) continue ;;
+              # issue #2696 — SKIPPED because this deliberately pre-#1931 lane
+              # also skips #2160. Without #2160's 11-to-12-argument transition,
+              # the 11-argument `biz_ticket_checkout_create_session` wrapper
+              # survives and #2696's 12-argument `CREATE OR REPLACE` creates a
+              # second overload instead of replacing it. #2696's name-only
+              # probe then reads the unscoped survivor and correctly aborts.
+              #
+              # The probe and its `AND event_id=p_event_id` conjunct are correct
+              # and remain untouched. The unfiltered canonical migration replay
+              # is the execution authority for #2696 in true filename order.
+              # Matched by EXACT filename, never an issue-number infix.
+              *20270601002696_issue_2696_event_scoped_session_lookup.sql) continue ;;
               # issue #2489 — SKIPPED under the standing instruction above ("any
               # future migration that re-emits a #1931-defined object belongs on
               # this list too").

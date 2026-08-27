@@ -6,7 +6,7 @@
 // T-3  error      synthetic migration reading a skipped column from
 //                 a `LANGUAGE sql` body                              -> non-zero
 // T-5  negative   the SAME reference inside a plpgsql body           -> exit 0
-// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 7/1/3/2,
+// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 8/1/3/2,
 //                 zero violations
 //
 // T-10 is the non-vacuous one. "Real chain -> exit 0" passes just as happily
@@ -46,6 +46,8 @@ const GUARD = path.join(HERE, "issue-2492-replay-skip-closure.mjs");
 
 const LANE = "issue-1931-private-event-access.yml";
 const SKIPPED_MIGRATION = "20270522002462_issue_2462_checkout_determinism.sql";
+const ISSUE_2723_MIGRATION = "20270601002696_issue_2696_event_scoped_session_lookup.sql";
+const ISSUE_2723_EXACT_GLOB = `*${ISSUE_2723_MIGRATION}`;
 /** A column added ONLY by 20270420002160, which the #1931 lane skips. */
 const SKIPPED_COLUMN = "multi_date_pricing_mode";
 /** Sorts after every real migration, so it replays last on every lane. */
@@ -147,7 +149,11 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // entry was added, clean after. The #2117 lane was simulated with phase 2 present
 // and needs no entry, so only this lane's count moves.
 // Again ONLY counts move; every assertion, parser case and scenario is unchanged.
-test("T-10 — lane inventory is exactly 4 lanes at 7/1/3/2 (a blind parser reds here)", () => {
+//
+// [TEST-MOD-APPROVED #2723] THIRD MOVE: SEVEN to EIGHT. The old count became
+// false because #2723 adds one valid exact skip for #2696 when #2160 is absent;
+// the inventory assertion remains binding and no parser scenario is relaxed.
+test("T-10 — lane inventory is exactly 4 lanes at 8/1/3/2 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -155,7 +161,7 @@ test("T-10 — lane inventory is exactly 4 lanes at 7/1/3/2 (a blind parser reds
   assert.deepEqual(inventory, {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    [LANE]: 7,
+    [LANE]: 8,
     "issue-2117-offering-visibility-gate-tests.yml": 2,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
@@ -172,9 +178,9 @@ test("T-10 — lane inventory is exactly 4 lanes at 7/1/3/2 (a blind parser reds
   assert.equal(alternation.branchCount, 1);
   assert.equal(alternation.globs.length, 3);
 
-  // SC-2: the #1931 lane skips exactly seven files, and ...002463 is NOT one.
+  // SC-2: the #1931 lane skips exactly eight files, and ...002463 is NOT one.
   const pinned = lanes.find((l) => l.workflow === LANE);
-  assert.equal(pinned.skipped.length, 7);
+  assert.equal(pinned.skipped.length, 8);
   assert.ok(pinned.skipped.includes(SKIPPED_MIGRATION));
   assert.equal(
     pinned.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
@@ -283,8 +289,8 @@ test("T-23 — the two-line branch form is read, and its skip actually takes eff
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 8, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
-  assert.equal(lane.globs.length, 8);
+  assert.equal(lane.branchCount, 9, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
+  assert.equal(lane.globs.length, 9);
   assert.ok(
     lane.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
     "reading the branch is not enough — the glob must actually resolve and skip the file",
@@ -313,7 +319,7 @@ test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cann
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 7, "precondition: the 3-line branch really is unread");
+  assert.equal(lane.branchCount, 8, "precondition: the 3-line branch really is unread");
   assert.ok(lane.globs.length > 0, "precondition: sibling branches still yield globs, so C-4(b) cannot fire");
   assert.equal(
     violations.some((v) => v.check === "C-4b"),
@@ -367,5 +373,40 @@ test("T-25 — a real closure break hidden behind a two-line branch is now named
   assert.ok(
     violations.some((v) => v.check === "C-1" && v.message.includes(Y) && v.message.includes("issue_2492_demo_only_here")),
     "C-1 must name the migration and the object the filtered chain cannot supply",
+  );
+});
+
+// #2723 implementor-owned regression proof. This pins the real repository's
+// exact skip and independently proves C-3 fails when only that branch is
+// removed from a full-copy fixture. The fixture helper's digest assertion
+// verifies both real directories remain byte-identical after teardown.
+test("T-2723-I1/I2/I3 — exact #2696 skip is present and C-3 fails on its revert", (t) => {
+  const real = analyseLanes();
+  assert.deepEqual(real.violations, [], "the real repository must be clean before the revert fixture runs");
+
+  const lane = real.lanes.find((candidate) => candidate.workflow === LANE);
+  assert.ok(lane, "the #1931 filtered replay lane must exist");
+  assert.equal(lane.globs.length, 8, "the #1931 lane must expose exactly eight skip globs");
+  assert.equal(lane.skipped.length, 8, "those eight globs must resolve exactly eight skipped migrations");
+  assert.ok(lane.globs.includes(ISSUE_2723_EXACT_GLOB), "the exact #2696 filename glob must be present");
+  assert.ok(lane.skipped.includes(ISSUE_2723_MIGRATION), "the exact #2696 migration must resolve as skipped");
+  assert.equal(
+    lane.globs.some((glob) => glob.includes("_issue_2696_") && glob !== ISSUE_2723_EXACT_GLOB),
+    false,
+    "a broad issue-number #2696 glob must never replace the exact filename",
+  );
+
+  const { workflowsDir, migrationsDir } = fullCopyFixture(t, {
+    editWorkflow: [
+      LANE,
+      (src) => src.replace(new RegExp(`^.*${ISSUE_2723_MIGRATION.replace(/\./g, "\\.")}\\) continue ;;\\n`, "m"), ""),
+    ],
+  });
+  const reverted = analyseLanes({ workflowsDir, migrationsDir });
+  const c3 = reverted.violations.filter((violation) => violation.check === "C-3");
+  assert.ok(c3.length >= 1, "C-3 must fail when only the exact #2696 skip is reverted");
+  assert.ok(
+    c3.some((violation) => violation.message.includes(ISSUE_2723_EXACT_GLOB)),
+    "C-3 must name the missing exact #2696 pattern",
   );
 });
