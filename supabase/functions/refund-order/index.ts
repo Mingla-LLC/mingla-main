@@ -34,7 +34,11 @@
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
-import { executeTicketRefundWithFeeTruth, type ExecuteTicketRefundResult } from "../_shared/issue2097TicketRefundTruth.ts";
+import {
+  type ExecuteTicketRefundResult,
+  executeTicketRefundWithFeeTruth,
+  isFeeTruthTerminalSuccess,
+} from "../_shared/issue2097TicketRefundTruth.ts";
 import {
   createPaystackRefund,
   isPaystackRefundBelowMinimumError,
@@ -406,24 +410,31 @@ serve(async (req: Request): Promise<Response> => {
         expectedApplicationFeeAmount: applicationFeeAmountCents,
         requestedRefundAmount: amountCents,
         requestFingerprint: idempotencyKey,
-        createBuyerRefund: () => stripe.refunds.create(
-          {
-            payment_intent: paymentIntentId,
-            amount: amountCents,
-            reason: "requested_by_customer",
-            refund_application_fee: applicationFeeAmountCents > 0,
-            metadata: {
-              mingla_refund_id: refundId,
-              mingla_order_id: orderId,
-              mingla_idempotency_key: idempotencyKey,
+        createBuyerRefund: () =>
+          stripe.refunds.create(
+            {
+              payment_intent: paymentIntentId,
+              amount: amountCents,
+              reason: "requested_by_customer",
+              refund_application_fee: applicationFeeAmountCents > 0,
+              metadata: {
+                mingla_refund_id: refundId,
+                mingla_order_id: orderId,
+                mingla_idempotency_key: idempotencyKey,
+              },
             },
-          },
-          { idempotencyKey: `ticket_refund:${refundId}`, stripeAccount: connectedAccountId },
-        ),
+            {
+              idempotencyKey: `ticket_refund:${refundId}`,
+              stripeAccount: connectedAccountId,
+            },
+          ),
       });
       stripeRefund = {
         id: stripeFeeTruth.buyerRefundId ?? "",
-        status: stripeFeeTruth.status === "succeeded_positive" || stripeFeeTruth.status === "not_applicable" ? "succeeded" : "pending",
+        status: stripeFeeTruth.status === "succeeded_positive" ||
+            stripeFeeTruth.status === "not_applicable"
+          ? "succeeded"
+          : "pending",
         amount: amountCents,
       };
     } catch (err) {
@@ -431,6 +442,23 @@ serve(async (req: Request): Promise<Response> => {
       console.error("[refund-order] stripe.refunds.create failed", detail);
       return jsonResponse({ error: "stripe_declined", detail }, 502);
     }
+  }
+
+  if (stripeFeeTruth && !isFeeTruthTerminalSuccess(stripeFeeTruth)) {
+    return jsonResponse({
+      error: stripeFeeTruth.status === "evidence_conflict" ||
+          stripeFeeTruth.status === "application_fee_conflict"
+        ? "refund_evidence_conflict"
+        : "refund_reconciliation_pending",
+      refund_id: refundId,
+      order_id: orderId,
+      buyer_refund_id: stripeFeeTruth.buyerRefundId,
+      buyer_refund_status: stripeFeeTruth.buyerRefundId
+        ? "succeeded"
+        : "not_started",
+      application_fee_refund_status: stripeFeeTruth.status,
+      application_fee_refunded_cents: null,
+    }, stripeFeeTruth.httpStatus);
   }
 
   if (stripeRefund.status === "failed" || stripeRefund.status === "canceled") {
@@ -527,17 +555,20 @@ serve(async (req: Request): Promise<Response> => {
     }
   }
 
-  const applicationFeeRefundedCents = paymentProvider === "paystack" ? 0 : stripeFeeTruth?.applicationFeeRefundedCents ?? null;
+  const applicationFeeRefundedCents = paymentProvider === "paystack"
+    ? 0
+    : stripeFeeTruth?.applicationFeeRefundedCents ?? null;
   // Legacy #1175 ordering sentinel: const { data: commitResult, error: commitError } = await supabaseAsUser.rpc(
-  const { data: commitResult, error: commitError } = await (paymentProvider === "paystack"
-    ? supabaseAsUser.rpc("biz_refund_order_commit", {
-      p_refund_id: refundId,
-      p_stripe_refund_id: stripeRefund.id,
-      p_application_fee_refunded_cents: 0,
-      p_status: "succeeded",
-      p_stripe_tax_transaction_id: reversalTaxTransactionId,
-    })
-    : Promise.resolve({ data: { new_payment_status: null }, error: null }));
+  const { data: commitResult, error: commitError } =
+    await (paymentProvider === "paystack"
+      ? supabaseAsUser.rpc("biz_refund_order_commit", {
+        p_refund_id: refundId,
+        p_stripe_refund_id: stripeRefund.id,
+        p_application_fee_refunded_cents: 0,
+        p_status: "succeeded",
+        p_stripe_tax_transaction_id: reversalTaxTransactionId,
+      })
+      : Promise.resolve({ data: { new_payment_status: null }, error: null }));
 
   if (paymentProvider === "paystack" && !commitError) {
     await supabase.rpc("issue_2097_finalize_not_applicable", {
@@ -648,11 +679,15 @@ serve(async (req: Request): Promise<Response> => {
     order_id: orderId,
     amount_cents: amountCents,
     currency,
-    status: paymentProvider === "paystack" ? "not_applicable" : stripeFeeTruth?.status,
+    status: paymentProvider === "paystack"
+      ? "not_applicable"
+      : stripeFeeTruth?.status,
     stripe_refund_id: stripeRefund.id,
     payment_provider: paymentProvider,
     application_fee_refunded_cents: applicationFeeRefundedCents,
-    application_fee_refund_status: paymentProvider === "paystack" ? "not_applicable" : stripeFeeTruth?.status,
+    application_fee_refund_status: paymentProvider === "paystack"
+      ? "not_applicable"
+      : stripeFeeTruth?.status,
     new_payment_status: commit.new_payment_status,
     processed_at: new Date().toISOString(),
     idempotent_replay: false,

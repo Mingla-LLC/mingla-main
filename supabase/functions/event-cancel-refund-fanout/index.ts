@@ -36,7 +36,11 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 // @ts-ignore — Deno ESM import; types resolved at runtime.
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { stripeTicketRefund } from "../_shared/stripe.ts";
-import { executeTicketRefundWithFeeTruth, type ExecuteTicketRefundResult } from "../_shared/issue2097TicketRefundTruth.ts";
+import {
+  type ExecuteTicketRefundResult,
+  executeTicketRefundWithFeeTruth,
+  isFeeTruthTerminalSuccess,
+} from "../_shared/issue2097TicketRefundTruth.ts";
 import {
   createPaystackRefund,
   isPaystackRefundBelowMinimumError,
@@ -407,7 +411,11 @@ async function refundOneOrder(
     try {
       const stripe = stripeTicketRefund();
       stripeFeeTruth = await executeTicketRefundWithFeeTruth({
-        supabase, stripe, refundId, orderId, paymentIntentId,
+        supabase,
+        stripe,
+        refundId,
+        orderId,
+        paymentIntentId,
         knownChargeId: chargeId,
         connectedAccountId: connectedAccountId!,
         expectedCurrency: currency,
@@ -415,25 +423,32 @@ async function refundOneOrder(
         requestedRefundAmount: amountCents,
         requestFingerprint: idemKey,
         providerIdempotencyKey: `cancel_refund:${refundId}`,
-        createBuyerRefund: () => stripe.refunds.create(
-          {
-            payment_intent: paymentIntentId,
-            amount: amountCents,
-            reason: "requested_by_customer",
-            refund_application_fee: applicationFeeAmountCents > 0,
-            metadata: {
-              mingla_refund_id: refundId,
-              mingla_order_id: orderId,
-              mingla_event_id: eventId,
-              mingla_cancel_refund: "true",
+        createBuyerRefund: () =>
+          stripe.refunds.create(
+            {
+              payment_intent: paymentIntentId,
+              amount: amountCents,
+              reason: "requested_by_customer",
+              refund_application_fee: applicationFeeAmountCents > 0,
+              metadata: {
+                mingla_refund_id: refundId,
+                mingla_order_id: orderId,
+                mingla_event_id: eventId,
+                mingla_cancel_refund: "true",
+              },
             },
-          },
-          { idempotencyKey: `cancel_refund:${refundId}`, stripeAccount: connectedAccountId },
-        ),
+            {
+              idempotencyKey: `cancel_refund:${refundId}`,
+              stripeAccount: connectedAccountId,
+            },
+          ),
       });
       providerRefund = {
         id: stripeFeeTruth.buyerRefundId ?? "",
-        status: stripeFeeTruth.status === "succeeded_positive" || stripeFeeTruth.status === "not_applicable" ? "succeeded" : "pending",
+        status: stripeFeeTruth.status === "succeeded_positive" ||
+            stripeFeeTruth.status === "not_applicable"
+          ? "succeeded"
+          : "pending",
         amount: amountCents,
       };
     } catch (err) {
@@ -448,6 +463,14 @@ async function refundOneOrder(
         refundId,
       };
     }
+  }
+
+  if (stripeFeeTruth && !isFeeTruthTerminalSuccess(stripeFeeTruth)) {
+    return {
+      result: "failed_retryable",
+      error: stripeFeeTruth.status,
+      refundId,
+    };
   }
 
   if (
@@ -523,17 +546,28 @@ async function refundOneOrder(
   }
 
   // ── Step 5: commit the refund (service_role twin). ──────────────────────────
-  const { data: commitResult, error: commitError } = paymentProvider === "paystack"
-    ? await supabase.rpc("admin_refund_order_commit", {
-      p_refund_id: refundId,
-      p_stripe_refund_id: providerRefund.id,
-      p_application_fee_refunded_cents: 0,
-      p_status: "succeeded",
-      p_stripe_tax_transaction_id: reversalTaxTransactionId,
-    })
-    : { data: { ok: stripeFeeTruth?.status === "succeeded_positive" || stripeFeeTruth?.status === "not_applicable" }, error: null };
+  const { data: commitResult, error: commitError } =
+    paymentProvider === "paystack"
+      ? await supabase.rpc("admin_refund_order_commit", {
+        p_refund_id: refundId,
+        p_stripe_refund_id: providerRefund.id,
+        p_application_fee_refunded_cents: 0,
+        p_status: "succeeded",
+        p_stripe_tax_transaction_id: reversalTaxTransactionId,
+      })
+      : {
+        data: {
+          ok: stripeFeeTruth?.status === "succeeded_positive" ||
+            stripeFeeTruth?.status === "not_applicable",
+        },
+        error: null,
+      };
   if (paymentProvider === "paystack" && !commitError) {
-    await supabase.rpc("issue_2097_finalize_not_applicable", { p_refund_id: refundId, p_provider: "paystack", p_provider_refund_id: providerRefund.id });
+    await supabase.rpc("issue_2097_finalize_not_applicable", {
+      p_refund_id: refundId,
+      p_provider: "paystack",
+      p_provider_refund_id: providerRefund.id,
+    });
   }
   if (commitError || !commitResult) {
     // Provider refund succeeded but our commit failed — the webhook reconciles and
@@ -547,7 +581,8 @@ async function refundOneOrder(
     };
   }
 
-  return stripeFeeTruth && stripeFeeTruth.status !== "succeeded_positive" && stripeFeeTruth.status !== "not_applicable"
+  return stripeFeeTruth && stripeFeeTruth.status !== "succeeded_positive" &&
+      stripeFeeTruth.status !== "not_applicable"
     ? { result: "failed_retryable", error: stripeFeeTruth.status, refundId }
     : { result: "refunded", refundId };
 }
