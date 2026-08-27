@@ -1,152 +1,230 @@
-/**
- * META-ORCH-1148 sub-ORCH 2.1b — reservation list card.
- *
- * The Design IA §4.4 exemplar: time (lead) · guest · status pill · party ·
- * table · occasion · source/tags row. Reuses the OfferingListCard structural DNA
- * (status pill → title → subline → metric), recolored — NOT a parallel card.
- * Color is never the only signal (pill pairs label + tone). a11y label on the
- * pressable. Android glass via GlassCard (opaque fallback automatic).
- */
-
 import React from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 
 import {
+  accent,
+  androidOpaque,
+  glass,
   radius,
+  reservationCalendarLayout,
   semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { ChevronRight } from "lucide-react-native";
+import { AlertTriangle, ChevronRight } from "lucide-react-native";
 import { GlassCard } from "../ui/GlassCard";
 import { STATUS_PRESENTATION } from "./reservationViews";
+import {
+  formatReservationDateTime,
+  formatReservationTime,
+} from "./reservationCalendarModel";
 import type { Reservation } from "../../types/venueReservation";
-import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 
-const SOURCE_LABEL: Record<Reservation["source"], string> = {
-  mingla: "From Mingla",
-  phone: "Phone",
-  walk_in: "Walk-in",
-  website: "Website",
-  instagram: "Instagram",
-};
-
-const TAG_LABEL: Record<string, string> = {
-  vip: "VIP",
-  birthday: "Birthday",
-  first_time: "First-time",
-  regular: "Regular",
-  high_risk_no_show: "High no-show risk",
-};
+export type ReservationCardDensity = "agenda" | "calendar" | "month";
 
 const TONE_COLOR: Record<string, string> = {
   neutral: textTokens.secondary,
   success: semantic.success,
-  warm: "#eb7825",
+  warm: accent.warm,
   muted: textTokens.tertiary,
   error: semantic.error,
   faded: textTokens.tertiary,
 };
 
-function localTimeLabel(iso: string): string {
-  const d = new Date(iso);
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12;
-  if (h === 0) h = 12;
-  return `${h}:${m.toString().padStart(2, "0")} ${ampm}`;
-}
+const TONE_BACKGROUND: Record<string, string> = {
+  neutral: glass.tint.profileElevated,
+  success:
+    Platform.OS === "android" ? androidOpaque.successFill : semantic.successTint,
+  warm: Platform.OS === "android" ? androidOpaque.accentFill : accent.tint,
+  muted: glass.tint.profileBase,
+  error: Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+  faded: glass.tint.profileBase,
+};
 
 export interface ReservationCardProps {
   reservation: Reservation;
-  tableName: string | null;
-  onPress: (r: Reservation) => void;
+  tableDisplay: string | null;
+  timeZone: string;
+  onPress: (reservation: Reservation) => void;
+  density?: ReservationCardDensity;
   testID?: string;
 }
 
 export function ReservationCard({
   reservation,
-  tableName,
+  tableDisplay,
+  timeZone,
   onPress,
+  density = "agenda",
   testID,
 }: ReservationCardProps): React.ReactElement {
-  const pres = STATUS_PRESENTATION[reservation.status];
-  const toneColor = TONE_COLOR[pres.tone] ?? textTokens.secondary;
-  const subParts: string[] = [`Party of ${reservation.partySize}`];
-  if (tableName != null) subParts.push(`Table ${tableName}`);
-  if (reservation.occasion != null) subParts.push(reservation.occasion);
+  const presentation = STATUS_PRESENTATION[reservation.status];
+  const toneColor = TONE_COLOR[presentation.tone] ?? textTokens.secondary;
+  const toneBackground =
+    TONE_BACKGROUND[presentation.tone] ?? glass.tint.profileElevated;
+  const guest = reservation.guestName?.trim() || "Guest";
+  const metadata = [`Party of ${reservation.partySize}`];
+  if (tableDisplay !== null) metadata.push(tableDisplay);
+  const refundNeedsAttention =
+    reservation.refund?.financialState === "needs_attention" ||
+    reservation.refund?.financialState === "failed_terminal";
+  const dateTimeLabel = formatReservationDateTime(
+    reservation.reservedFor,
+    timeZone,
+  );
+  const accessibilityLabel = `${dateTimeLabel}, ${guest}, party of ${reservation.partySize}${
+    tableDisplay === null ? "" : `, ${tableDisplay}`
+  }, ${presentation.label}${refundNeedsAttention ? ", refund needs attention" : ""}.`;
+  const compact = density !== "agenda";
 
   return (
-    <GlassCard variant="base" style={styles.card}>
+    <GlassCard
+      variant="base"
+      radius={density === "agenda" ? "md" : "sm"}
+      padding={0}
+      style={[
+        styles.card,
+        density === "agenda" ? styles.agendaCard : styles.calendarCard,
+      ]}
+    >
       <Pressable
         onPress={() => onPress(reservation)}
         accessibilityRole="button"
-        accessibilityLabel={`Reservation for ${reservation.guestName ?? "guest"}, ${pres.label}, party of ${reservation.partySize}`}
-        style={styles.pressable}
+        accessibilityLabel={accessibilityLabel}
+        style={({ pressed }) => [
+          styles.pressable,
+          density === "agenda" ? styles.agendaPressable : styles.calendarPressable,
+          density === "month" ? styles.monthPressable : null,
+          pressed ? styles.pressed : null,
+        ]}
         testID={testID ?? `reservation-card-${reservation.id}`}
       >
-        <View style={styles.topRow}>
-          <Text style={styles.time}>{localTimeLabel(reservation.reservedFor)}</Text>
-          <Text style={styles.guest} numberOfLines={1}>
-            {reservation.guestName ?? "Guest"}
-          </Text>
-          <View style={styles.pill}>
-            <View style={[styles.pillDot, { backgroundColor: toneColor }]} />
-            <Text style={[styles.pillLabel, { color: toneColor }]}>
-              {pres.label}
+        {compact ? (
+          <View style={styles.compactContent}>
+            <View style={styles.compactLeadRow}>
+              <Text style={styles.compactTime}>
+                {formatReservationTime(reservation.reservedFor, timeZone)}
+              </Text>
+              <View style={[styles.pill, { backgroundColor: toneBackground }]}>
+                <View style={[styles.pillDot, { backgroundColor: toneColor }]} />
+                <Text style={[styles.pillLabel, { color: toneColor }]}>
+                  {presentation.label}
+                </Text>
+              </View>
+            </View>
+            <Text style={styles.compactGuest} numberOfLines={2}>
+              {guest}
             </Text>
+            <Text style={styles.compactMetadata}>{metadata.join(" · ")}</Text>
           </View>
-        </View>
-        {reservation.refund ? (
-          <SourceRefundStatusChip refund={reservation.refund} />
-        ) : null}
-        <Text style={styles.subline} numberOfLines={1}>
-          {subParts.join(" · ")}
-        </Text>
-        <View style={styles.metaRow}>
-          <Text style={styles.source}>{SOURCE_LABEL[reservation.source]}</Text>
-          {reservation.paymentStatus === "paid" ? (
-            <Text style={styles.metaChip}>Deposit paid</Text>
-          ) : null}
-          {reservation.tags.map((t) => (
-            <Text key={t} style={styles.tagChip}>
-              {TAG_LABEL[t] ?? t}
-            </Text>
-          ))}
-        </View>
+        ) : (
+          <>
+            <View style={styles.timeColumn}>
+              <Text style={styles.time}>
+                {formatReservationTime(reservation.reservedFor, timeZone)}
+              </Text>
+            </View>
+            <View style={styles.mainColumn}>
+              <Text style={styles.guest} numberOfLines={2}>
+                {guest}
+              </Text>
+              <Text style={styles.metadata}>{metadata.join(" · ")}</Text>
+            </View>
+            <View style={styles.trailingColumn}>
+              <View style={[styles.pill, { backgroundColor: toneBackground }]}>
+                <View style={[styles.pillDot, { backgroundColor: toneColor }]} />
+                <Text style={[styles.pillLabel, { color: toneColor }]}>
+                  {presentation.label}
+                </Text>
+              </View>
+              {refundNeedsAttention ? (
+                <AlertTriangle
+                  size={14}
+                  color={semantic.warning}
+                  accessibilityElementsHidden
+                  importantForAccessibility="no-hide-descendants"
+                />
+              ) : null}
+              <ChevronRight
+                size={18}
+                color={textTokens.tertiary}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+              />
+            </View>
+          </>
+        )}
       </Pressable>
-      <ChevronRight size={18} color={textTokens.tertiary} />
     </GlassCard>
   );
 }
 
 const styles = StyleSheet.create({
   card: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
+    width: "100%",
+    alignSelf: "stretch",
+    overflow: "hidden",
+  },
+  agendaCard: {
+    minHeight: reservationCalendarLayout.agendaRowMinHeight,
+  },
+  calendarCard: {
+    minHeight: reservationCalendarLayout.entryMinTarget,
   },
   pressable: {
-    flex: 1,
-    gap: spacing.xxs,
-  },
-  topRow: {
+    width: "100%",
     flexDirection: "row",
     alignItems: "center",
+  },
+  agendaPressable: {
+    minHeight: reservationCalendarLayout.agendaRowMinHeight,
+    paddingHorizontal: 12,
+    paddingVertical: spacing.sm,
     gap: spacing.sm,
   },
+  calendarPressable: {
+    minHeight: reservationCalendarLayout.entryMinTarget,
+    padding: spacing.sm,
+  },
+  monthPressable: {
+    padding: spacing.xs,
+  },
+  pressed: {
+    opacity: 0.72,
+  },
+  timeColumn: {
+    width: 64,
+    alignSelf: "flex-start",
+  },
   time: {
-    ...typography.bodyLg,
+    ...typography.bodySm,
     color: textTokens.primary,
     fontWeight: "700",
     fontVariant: ["tabular-nums"],
   },
+  mainColumn: {
+    flex: 1,
+    minWidth: 0,
+    gap: spacing.xxs,
+  },
   guest: {
     ...typography.body,
     color: textTokens.primary,
-    flex: 1,
+    fontWeight: "600",
+  },
+  metadata: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    flexShrink: 1,
+  },
+  trailingColumn: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "flex-end",
+    gap: spacing.xs,
+    maxWidth: "42%",
   },
   pill: {
     flexDirection: "row",
@@ -155,7 +233,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xxs,
     borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.05)",
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
   },
   pillDot: {
     width: 7,
@@ -166,34 +245,31 @@ const styles = StyleSheet.create({
     ...typography.caption,
     fontWeight: "700",
   },
-  subline: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
+  compactContent: {
+    flex: 1,
+    gap: spacing.xxs,
   },
-  metaRow: {
+  compactLeadRow: {
     flexDirection: "row",
     flexWrap: "wrap",
     alignItems: "center",
+    justifyContent: "space-between",
     gap: spacing.xs,
-    marginTop: spacing.xxs,
   },
-  source: {
+  compactTime: {
     ...typography.caption,
-    color: textTokens.tertiary,
+    color: textTokens.primary,
+    fontWeight: "700",
+    fontVariant: ["tabular-nums"],
+  },
+  compactGuest: {
+    ...typography.bodySm,
+    color: textTokens.primary,
     fontWeight: "600",
   },
-  metaChip: {
-    ...typography.caption,
-    color: semantic.success,
-    fontWeight: "600",
-  },
-  tagChip: {
-    ...typography.caption,
+  compactMetadata: {
+    ...typography.micro,
     color: textTokens.secondary,
-    paddingHorizontal: spacing.xs,
-    paddingVertical: 1,
-    borderRadius: radius.sm,
-    backgroundColor: "rgba(255,255,255,0.05)",
   },
 });
 

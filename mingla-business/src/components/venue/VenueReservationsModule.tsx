@@ -1,26 +1,20 @@
-/**
- * META-ORCH-1148 sub-ORCH 2.1b — Reservations module (real operator UI).
- *
- * Replaces the Reservations ComingSoon slot. Segmented views (Today / Upcoming /
- * Waitlist / Completed / No-shows / Canceled — a control INSIDE the module, not a
- * 3rd nav level), a live list of ReservationCards (realtime via useVenueReservations),
- * a detail sheet with guarded lifecycle actions, and manual create. Manager-plus
- * gates the controls in the UI (the RPCs re-enforce server-side). a11y labels on
- * every Pressable. Android glass via GlassCard.
- */
-
 import React, { useCallback, useMemo, useState } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, StyleSheet, Text, View } from "react-native";
+import { AlertTriangle, Calendar } from "lucide-react-native";
 
 import {
-  accent,
+  androidOpaque,
+  glass,
   radius,
+  reservationCalendarLayout,
   semantic,
   spacing,
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
 import { useCurrentBrandRole } from "../../hooks/useCurrentBrandRole";
+import { useResponsiveLayout } from "../../hooks/useResponsiveLayout";
+import { useVenueAvailabilityConfig } from "../../hooks/useVenueAvailability";
 import {
   useCreateReservation,
   useTransitionReservation,
@@ -28,38 +22,50 @@ import {
 } from "../../hooks/useVenueReservations";
 import { useVenueTables } from "../../hooks/useVenueTables";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { Calendar } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
+import { ReservationCalendarToolbar } from "./ReservationCalendarToolbar";
 import { ReservationCard } from "./ReservationCard";
 import { ReservationCreateSheet } from "./ReservationCreateSheet";
 import { ReservationDetailSheet } from "./ReservationDetailSheet";
+import { ReservationMonthView } from "./ReservationMonthView";
+import { ReservationWeekView } from "./ReservationWeekView";
+import { ACTION_TARGET } from "./reservationViews";
 import {
-  ACTION_TARGET,
-  RESERVATION_VIEWS,
-  filterReservationsForView,
-} from "./reservationViews";
+  addCalendarDays,
+  calendarRange,
+  calendarWeek,
+  formatCalendarDay,
+  formatCalendarPeriod,
+  groupReservationsByVenueDay,
+  moveCalendarPeriod,
+  projectReservations,
+  reservationScopeCounts,
+  resolveVenueTimeZone,
+  venueTodayKey,
+} from "./reservationCalendarModel";
+import type {
+  ReservationCalendarMode,
+  ReservationStatusScope,
+} from "./reservationCalendarModel";
 import type {
   Reservation,
   ReservationAction,
   ReservationCreateInput,
-  ReservationView,
 } from "../../types/venueReservation";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager;
 
-const VIEW_EMPTY: Record<ReservationView, string> = {
-  today: "No reservations today yet.",
-  upcoming: "No upcoming reservations yet.",
-  waitlist: "No waitlisted reservations.",
-  completed: "No completed reservations yet.",
-  no_shows: "No no-shows. Nice.",
-  canceled: "No canceled reservations.",
+const SCOPE_COPY: Record<ReservationStatusScope, string> = {
+  active: "active reservations",
+  waitlist: "waitlisted reservations",
+  completed: "completed reservations",
+  no_shows: "no-shows",
+  canceled: "canceled reservations",
 };
 
 export interface VenueReservationsModuleProps {
   brandId: string | null;
-  /** META-ORCH-1255 — the venue this module is scoped to. */
   venueId?: string | null;
   testID?: string;
 }
@@ -71,52 +77,150 @@ export function VenueReservationsModule({
 }: VenueReservationsModuleProps): React.ReactElement {
   const { rank } = useCurrentBrandRole(brandId);
   const canMutate = rank >= MANAGER_PLUS_RANK;
+  const { isWideDesktop } = useResponsiveLayout();
 
   const reservationsQuery = useVenueReservations(brandId, venueId);
   const tablesQuery = useVenueTables(brandId, venueId);
+  const availabilityQuery = useVenueAvailabilityConfig(brandId, venueId);
   const create = useCreateReservation(brandId, venueId);
   const transition = useTransitionReservation(brandId, venueId);
 
-  const [view, setView] = useState<ReservationView>("today");
+  const resolvedZone = useMemo(
+    () => resolveVenueTimeZone(availabilityQuery.data?.ianaTimezone),
+    [availabilityQuery.data?.ianaTimezone],
+  );
+  const todayKey = venueTodayKey(resolvedZone.timeZone);
+  const [anchorDate, setAnchorDate] = useState<string | null>(null);
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [desktopMode, setDesktopMode] = useState<ReservationCalendarMode>("week");
+  const [scope, setScope] = useState<ReservationStatusScope>("active");
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
 
+  const effectiveMode: ReservationCalendarMode = isWideDesktop
+    ? desktopMode
+    : "agenda";
+  const effectiveAnchor = anchorDate ?? todayKey;
+  const effectiveSelectedDay = selectedDay ?? todayKey;
+  const range = useMemo(
+    () => calendarRange(effectiveAnchor, effectiveMode),
+    [effectiveAnchor, effectiveMode],
+  );
+
   const tableNameById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const t of tablesQuery.data ?? []) map.set(t.id, t.name);
+    for (const table of tablesQuery.data ?? []) map.set(table.id, table.name);
     return map;
   }, [tablesQuery.data]);
 
-  const reservations = reservationsQuery.data;
-  const visible = useMemo(
-    () => filterReservationsForView(reservations ?? [], view),
-    [reservations, view],
+  const tableDisplayFor = useCallback(
+    (reservation: Reservation): string | null => {
+      if (reservation.tableId === null) return null;
+      if (tablesQuery.isLoading) return "Loading table…";
+      if (tablesQuery.isError) return "Table unavailable";
+      const tableName = tableNameById.get(reservation.tableId);
+      return tableName === undefined ? "Table unavailable" : `Table ${tableName}`;
+    },
+    [tableNameById, tablesQuery.isError, tablesQuery.isLoading],
   );
+
+  const reservations = useMemo(
+    () => reservationsQuery.data ?? [],
+    [reservationsQuery.data],
+  );
+  const visible = useMemo(
+    () =>
+      projectReservations(
+        reservations,
+        range,
+        scope,
+        resolvedZone.timeZone,
+      ),
+    [range, reservations, resolvedZone.timeZone, scope],
+  );
+  const grouped = useMemo(
+    () => groupReservationsByVenueDay(visible, resolvedZone.timeZone),
+    [resolvedZone.timeZone, visible],
+  );
+  const counts = useMemo(
+    () => reservationScopeCounts(reservations, range, resolvedZone.timeZone),
+    [range, reservations, resolvedZone.timeZone],
+  );
+  const stripDays = useMemo(() => {
+    const week = calendarWeek(effectiveAnchor);
+    return week.days.map((day) => ({
+      key: day.key,
+      weekday: formatCalendarDay(day.key, { weekday: "short" }),
+      dayNumber: formatCalendarDay(day.key, { day: "numeric" }),
+      count: grouped.get(day.key)?.length ?? 0,
+      fullLabel: formatCalendarDay(day.key, {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+      }),
+      isToday: day.key === todayKey,
+    }));
+  }, [effectiveAnchor, grouped, todayKey]);
 
   const handleSave = useCallback(
     (input: ReservationCreateInput): void => {
-      create.mutate(input, {
-        onSuccess: () => setCreateOpen(false),
-      });
+      create.mutate(input, { onSuccess: () => setCreateOpen(false) });
     },
     [create],
   );
 
   const handleAction = useCallback(
-    (r: Reservation, action: ReservationAction): void => {
+    (reservation: Reservation, action: ReservationAction): void => {
       transition.mutate(
-        { reservationId: r.id, toStatus: ACTION_TARGET[action] },
+        { reservationId: reservation.id, toStatus: ACTION_TARGET[action] },
         { onSuccess: () => setSelected(null) },
       );
     },
     [transition],
   );
 
+  const movePeriod = useCallback(
+    (direction: -1 | 1): void => {
+      const nextAnchor = moveCalendarPeriod(effectiveAnchor, effectiveMode, direction);
+      setAnchorDate(nextAnchor);
+      setSelectedDay(
+        effectiveMode === "month"
+          ? nextAnchor
+          : addCalendarDays(effectiveSelectedDay, direction * 7),
+      );
+    },
+    [effectiveAnchor, effectiveMode, effectiveSelectedDay],
+  );
+
+  const showInitialSkeleton =
+    reservationsQuery.isLoading ||
+    (availabilityQuery.isLoading && availabilityQuery.data === undefined);
+  const hasStaleData = reservationsQuery.isError && reservations.length > 0;
+  const hasBlockingError = reservationsQuery.isError && reservations.length === 0;
+  const timezoneDegraded =
+    availabilityQuery.isError ||
+    availabilityQuery.data === null ||
+    resolvedZone.degraded;
+
+  const selectOverflowDay = useCallback((dayKey: string): void => {
+    setAnchorDate(dayKey);
+    setSelectedDay(dayKey);
+    setDesktopMode("agenda");
+  }, []);
+
+  const periodLabel = formatCalendarPeriod(effectiveAnchor, effectiveMode);
+  const selectedTableName =
+    selected?.tableId === null || selected?.tableId === undefined
+      ? null
+      : (tableNameById.get(selected.tableId) ?? null);
+
   return (
     <View style={styles.host} testID={testID ?? "venue-reservations-module"}>
       <View style={styles.headerRow}>
         <View style={styles.headerText}>
-          <Text style={styles.title}>Reservations</Text>
+          <Text style={styles.title} accessibilityRole="header">
+            Reservations
+          </Text>
           <Text style={styles.subtitle}>
             Bookings from Mingla and your own — all in one list.
           </Text>
@@ -128,79 +232,174 @@ export function VenueReservationsModule({
             variant="primary"
             size="sm"
             leadingIcon="plus"
+            style={styles.newButtonTarget}
             testID="venue-reservations-new"
           />
         ) : null}
       </View>
 
-      {/* Segmented views (inside the module — not a 3rd nav level). */}
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        contentContainerStyle={styles.segRow}
-        accessibilityRole="tablist"
-      >
-        {RESERVATION_VIEWS.map((v) => {
-          const active = v.id === view;
-          return (
-            <Pressable
-              key={v.id}
-              onPress={() => setView(v.id)}
-              accessibilityRole="tab"
-              accessibilityState={{ selected: active }}
-              accessibilityLabel={`${v.label} reservations`}
-              style={[styles.seg, active ? styles.segActive : null]}
-              testID={`venue-reservations-view-${v.id}`}
-            >
-              <Text style={[styles.segLabel, active ? styles.segLabelActive : null]}>
-                {v.label}
-              </Text>
-            </Pressable>
-          );
-        })}
-      </ScrollView>
+      <ReservationCalendarToolbar
+        isWideDesktop={isWideDesktop}
+        mode={effectiveMode}
+        periodLabel={periodLabel}
+        selectedDayKey={effectiveSelectedDay}
+        days={stripDays}
+        scope={scope}
+        scopeCounts={counts}
+        onModeChange={setDesktopMode}
+        onPrevious={() => movePeriod(-1)}
+        onNext={() => movePeriod(1)}
+        onToday={() => {
+          setAnchorDate(todayKey);
+          setSelectedDay(todayKey);
+        }}
+        onDaySelect={(dayKey) => {
+          setAnchorDate(dayKey);
+          setSelectedDay(dayKey);
+        }}
+        onScopeChange={setScope}
+      />
 
-      {reservationsQuery.isLoading ? (
-        <Text style={styles.helper}>Loading reservations…</Text>
-      ) : visible.length === 0 ? (
-        <View style={styles.emptyWrap} testID="venue-reservations-empty-wrap">
-          <GlassCard variant="elevated" style={styles.emptyCard}>
-            <Calendar size={26} color={textTokens.primary} />
-            <Text style={styles.emptyTitle}>{VIEW_EMPTY[view]}</Text>
-            {view === "today" || view === "upcoming" ? (
-              <Text style={styles.emptyBody}>
-                When guests book — from Mingla or here — they land in this list.
-              </Text>
-            ) : null}
-            {canMutate && (view === "today" || view === "upcoming") ? (
-              <Button
-                label="Add one to test"
-                onPress={() => setCreateOpen(true)}
-                variant="secondary"
-                size="md"
-                testID="venue-reservations-empty-add"
-              />
-            ) : null}
-          </GlassCard>
+      {timezoneDegraded ? (
+        <View
+          style={styles.warningBanner}
+          accessibilityRole="alert"
+          testID="reservation-calendar-timezone-warning"
+        >
+          <AlertTriangle size={18} color={semantic.warning} />
+          <Text style={styles.warningText}>
+            Venue timezone unavailable — showing UTC.
+          </Text>
         </View>
-      ) : (
-        <View style={styles.list}>
-          {visible.map((r) => (
-            <ReservationCard
-              key={r.id}
-              reservation={r}
-              tableName={r.tableId != null ? (tableNameById.get(r.tableId) ?? null) : null}
-              onPress={setSelected}
+      ) : null}
+
+      {hasStaleData ? (
+        <View style={styles.errorBanner} accessibilityRole="alert">
+          <Text style={styles.errorBannerText}>
+            Couldn&apos;t refresh. Showing the last update.
+          </Text>
+          <Button
+            label="Retry"
+            onPress={async () => {
+              await reservationsQuery.refetch();
+            }}
+            variant="secondary"
+            size="md"
+            loading={reservationsQuery.isFetching}
+            testID="reservation-calendar-stale-retry"
+          />
+        </View>
+      ) : null}
+
+      {showInitialSkeleton ? (
+        <CalendarSkeleton mode={effectiveMode} />
+      ) : hasBlockingError ? (
+        <GlassCard
+          variant="base"
+          style={styles.stateCard}
+          contentStyle={styles.stateCardContent}
+          testID="reservation-calendar-error"
+        >
+          <AlertTriangle size={28} color={semantic.error} />
+          <Text style={styles.stateTitle}>Couldn&apos;t load reservations.</Text>
+          <Button
+            label="Try again"
+            onPress={async () => {
+              await reservationsQuery.refetch();
+            }}
+            variant="secondary"
+            size="md"
+            loading={reservationsQuery.isFetching}
+            testID="reservation-calendar-error-retry"
+          />
+        </GlassCard>
+      ) : visible.length === 0 ? (
+        <GlassCard
+          variant="base"
+          style={styles.stateCard}
+          contentStyle={styles.stateCardContent}
+          testID="reservation-calendar-empty"
+        >
+          <Calendar size={28} color={textTokens.primary} />
+          <Text style={styles.stateTitle}>
+            No {SCOPE_COPY[scope]} {effectiveMode === "month" ? "this month" : "this week"}.
+          </Text>
+          <Text style={styles.stateBody}>
+            Try another date{canMutate ? " or add a reservation" : ""}.
+          </Text>
+          {canMutate ? (
+            <Button
+              label="New reservation"
+              onPress={() => setCreateOpen(true)}
+              variant="primary"
+              size="md"
+              leadingIcon="plus"
+              testID="reservation-calendar-empty-add"
             />
-          ))}
+          ) : null}
+        </GlassCard>
+      ) : effectiveMode === "week" ? (
+        <ReservationWeekView
+          days={range.days}
+          grouped={grouped}
+          todayKey={todayKey}
+          timeZone={resolvedZone.timeZone}
+          tableDisplayFor={tableDisplayFor}
+          onSelect={setSelected}
+        />
+      ) : effectiveMode === "month" ? (
+        <ReservationMonthView
+          days={range.days}
+          grouped={grouped}
+          todayKey={todayKey}
+          timeZone={resolvedZone.timeZone}
+          tableDisplayFor={tableDisplayFor}
+          onSelect={setSelected}
+          onOverflow={selectOverflowDay}
+        />
+      ) : (
+        <View style={styles.agenda} testID="reservation-calendar-agenda">
+          {range.days.map((day) => {
+            const dayReservations = grouped.get(day.key) ?? [];
+            if (dayReservations.length === 0 && day.key !== effectiveSelectedDay) {
+              return null;
+            }
+            return (
+              <View key={day.key} style={styles.agendaGroup}>
+                <View style={styles.dayHeader}>
+                  <Text style={styles.dayHeaderTitle} accessibilityRole="header">
+                    {formatCalendarDay(day.key, {
+                      weekday: "long",
+                      month: "long",
+                      day: "numeric",
+                    })}
+                  </Text>
+                  <Text style={styles.dayHeaderCount}>
+                    {dayReservations.length} booking{dayReservations.length === 1 ? "" : "s"}
+                  </Text>
+                </View>
+                {dayReservations.length === 0 ? (
+                  <Text style={styles.dayEmpty}>
+                    No {SCOPE_COPY[scope]} on this day.
+                  </Text>
+                ) : (
+                  <View style={styles.agendaRows}>
+                    {dayReservations.map((reservation) => (
+                      <ReservationCard
+                        key={reservation.id}
+                        reservation={reservation}
+                        tableDisplay={tableDisplayFor(reservation)}
+                        timeZone={resolvedZone.timeZone}
+                        onPress={setSelected}
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
+            );
+          })}
         </View>
       )}
-
-      {reservationsQuery.isError ? (
-        <Text style={styles.errorNote}>
-          Couldn&apos;t load reservations. Pull to refresh.
-        </Text>
-      ) : null}
 
       <ReservationCreateSheet
         venueId={venueId}
@@ -214,17 +413,34 @@ export function VenueReservationsModule({
         visible={selected !== null}
         onClose={() => setSelected(null)}
         reservation={selected}
-        tableName={
-          selected?.tableId != null
-            ? (tableNameById.get(selected.tableId) ?? null)
-            : null
-        }
+        tableName={selectedTableName}
         onAction={handleAction}
         acting={transition.isPending}
       />
     </View>
   );
 }
+
+function CalendarSkeleton({
+  mode,
+}: {
+  mode: ReservationCalendarMode;
+}): React.ReactElement {
+  const rowCount = mode === "month" ? 12 : mode === "week" ? 7 : 4;
+  return (
+    <View style={styles.skeleton} accessibilityLabel="Loading reservations">
+      <View style={styles.skeletonHeader} />
+      {Array.from({ length: rowCount }, (_, index) => (
+        <View key={index} style={styles.skeletonRow} />
+      ))}
+    </View>
+  );
+}
+
+const warningFill =
+  Platform.OS === "android" ? androidOpaque.warningFill : semantic.warningTint;
+const errorFill =
+  Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint;
 
 const styles = StyleSheet.create({
   host: {
@@ -234,12 +450,14 @@ const styles = StyleSheet.create({
   },
   headerRow: {
     flexDirection: "row",
+    flexWrap: "wrap",
     alignItems: "flex-start",
     justifyContent: "space-between",
     gap: spacing.md,
   },
   headerText: {
     flex: 1,
+    minWidth: 220,
     gap: spacing.xxs,
   },
   title: {
@@ -250,65 +468,119 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     color: textTokens.secondary,
   },
-  segRow: {
-    flexDirection: "row",
-    gap: spacing.xs,
-    paddingVertical: spacing.xxs,
+  newButtonTarget: {
+    minHeight: reservationCalendarLayout.entryMinTarget,
+    justifyContent: "center",
   },
-  seg: {
+  warningBanner: {
+    minHeight: reservationCalendarLayout.entryMinTarget,
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.xs,
-    borderRadius: radius.full,
-    backgroundColor: "rgba(255,255,255,0.04)",
+    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: semantic.warning,
+    backgroundColor: warningFill,
   },
-  segActive: {
-    backgroundColor: accent.warm,
-  },
-  segLabel: {
+  warningText: {
     ...typography.bodySm,
-    color: textTokens.secondary,
-    fontWeight: "600",
+    color: textTokens.primary,
+    flex: 1,
   },
-  segLabelActive: {
-    color: "#0c0e12",
+  errorBanner: {
+    minHeight: reservationCalendarLayout.entryMinTarget,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: semantic.error,
+    backgroundColor: errorFill,
   },
-  helper: {
+  errorBannerText: {
     ...typography.bodySm,
-    color: textTokens.secondary,
+    color: textTokens.primary,
+    flex: 1,
+    minWidth: 200,
   },
-  // ORCH-1190 R4 — full-width empty card on WEB, matching the PROVEN-working
-  // VenueTablesModule.tableCard pattern (Seth-confirmed full-width in this exact
-  // shell): BOTH width:"100%" AND alignSelf:"stretch", together. R3 dropped
-  // width:"100%" (alignSelf alone) and that REGRESSED to narrow/centered on live
-  // desktop. The sibling tableCard proves width:"100%"+alignSelf:"stretch" renders
-  // edge-to-edge in this shell; neither property alone covers every container, so
-  // both are kept on the wrapper AND the card.
-  emptyWrap: {
+  stateCard: {
     width: "100%",
     alignSelf: "stretch",
   },
-  emptyCard: {
+  stateCardContent: {
+    maxWidth: 560,
     width: "100%",
-    alignSelf: "stretch",
+    alignSelf: "center",
     alignItems: "center",
     gap: spacing.sm,
   },
-  emptyTitle: {
+  stateTitle: {
     ...typography.h3,
     color: textTokens.primary,
     textAlign: "center",
   },
-  emptyBody: {
-    ...typography.body,
+  stateBody: {
+    ...typography.bodySm,
     color: textTokens.secondary,
     textAlign: "center",
   },
-  list: {
+  agenda: {
+    width: "100%",
+    maxWidth: reservationCalendarLayout.agendaMaxWidth,
+    alignSelf: "flex-start",
+    gap: spacing.lg,
+  },
+  agendaGroup: {
     gap: spacing.sm,
   },
-  errorNote: {
+  dayHeader: {
+    minHeight: 36,
+    paddingHorizontal: spacing.xs,
+    paddingVertical: spacing.sm,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+    backgroundColor: "rgba(12,14,18,0.94)",
+  },
+  dayHeaderTitle: {
     ...typography.bodySm,
-    color: semantic.error,
+    color: textTokens.primary,
+    fontWeight: "600",
+  },
+  dayHeaderCount: {
+    ...typography.caption,
+    color: textTokens.secondary,
+  },
+  dayEmpty: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    paddingHorizontal: spacing.xs,
+  },
+  agendaRows: {
+    gap: spacing.sm,
+  },
+  skeleton: {
+    gap: spacing.sm,
+  },
+  skeletonHeader: {
+    height: 36,
+    borderRadius: radius.sm,
+    backgroundColor: glass.tint.profileElevated,
+  },
+  skeletonRow: {
+    minHeight: reservationCalendarLayout.agendaRowMinHeight,
+    borderRadius: radius.md,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
   },
 });
 

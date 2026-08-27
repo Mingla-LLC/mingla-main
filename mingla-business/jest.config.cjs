@@ -132,6 +132,8 @@ module.exports = {
     // they run under THIS stock config inside ci-batch:orch-0976-draft-promotion-tests
     // (which installs react-test-renderer --no-save), and the nightly suite
     // installs it too — excluding them would break that per-issue workflow.
+    // #2737 reservation calendar happy render-proof runs under
+    // jest.issue2737.render.cjs in the #1486 batched workflow.
     "\\.render\\.test\\.tsx$", // every web + RN render-proof (subsumes the explicit render entries above)
     // #1486 — these six files now run NOWHERE, and that is a deliberate,
     // recorded decision rather than the silent hole this line used to be.
