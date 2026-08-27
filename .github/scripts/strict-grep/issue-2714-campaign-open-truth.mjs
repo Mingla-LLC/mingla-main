@@ -13,6 +13,8 @@ const files = {
   reportService: "mingla-business/src/services/marketing/marketingReportService.ts",
   overview: "mingla-business/app/(tabs)/marketing/index.tsx",
   report: "mingla-business/app/(tabs)/marketing/campaigns/[id].tsx",
+  overviewNoRevenueTest: "mingla-business/app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts",
+  brandScopeTest: "mingla-business/src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts",
   privacy: "mingla-marketing/lib/privacyContent.ts",
   invariant: "docs/INVARIANT_REGISTRY.md",
   // Split the historical workflow stem so CI-batch provider discovery does
@@ -30,6 +32,11 @@ const requireAll = (name, source, needles) => {
 const requireAbsent = (name, source, needles) => {
   const found = needles.filter((needle) => source.includes(needle));
   if (found.length) fail(name, `forbidden: ${found.join(", ")}`); else pass(name);
+};
+const requireExactCount = (name, source, needle, expected) => {
+  const count = source.split(needle).length - 1;
+  if (count !== expected) fail(name, `expected ${expected} occurrence(s) of ${needle}, found ${count}`);
+  else pass(name);
 };
 
 function check(sources) {
@@ -62,6 +69,12 @@ function check(sources) {
     "hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0",
     "hasOpenCoverage: health.open_healthy && trackedDelivered > 0",
   ]);
+  requireExactCount(
+    "overview-brand-scoped-whitelists",
+    sources.overviewService,
+    '.in("campaign_id", ids)',
+    2,
+  );
   requireAll("report-independent-coverage-formulas", compact.reportService, [
     "hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0",
     "hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0",
@@ -80,6 +93,19 @@ function check(sources) {
     "campaigns.usemingla.com", "Resend",
   ]);
   requireAll("draft-invariant", sources.invariant, ["I-2714-CAMPAIGN-OPEN-TRUTH", "DRAFT"]);
+  requireAll("overview-test-independent-truth", sources.overviewNoRevenueTest, [
+    "hasDeliveryCoverage", "hasOpenCoverage", "trackedDelivered", "openHealthy",
+  ]);
+  requireAbsent("overview-test-discovery", sources.overviewNoRevenueTest, [
+    "describe.skip(", "describe.only(", "it.skip(", "it.only(", "test.skip(", "test.only(",
+  ]);
+  requireAll("brand-test-whitelist-truth", sources.brandScopeTest, [
+    '.eq("brand_id", brandId)', "const windowCampaignIds = windowCampaigns.map((c) => c.id)",
+    '.in("campaign_id", ids)', "loadWindowMessages", "loadClickedMessageIds",
+  ]);
+  requireAbsent("brand-test-discovery", sources.brandScopeTest, [
+    "describe.skip(", "describe.only(", "it.skip(", "it.only(", "test.skip(", "test.only(",
+  ]);
   requireAll("workflow", sources.workflow, [
     "issue-2714-campaign-open-truth.mjs --self-test",
     "issue-2714-campaign-open-truth.mjs",
@@ -87,6 +113,9 @@ function check(sources) {
     "issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql",
     "issue_2714_campaign_open_truth.tester_adversarial.test.ts",
     "src/services/marketing/__tests__/marketingOverviewService.test.ts",
+    "app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts",
+    "src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts",
+    "npx jest --runTestsByPath",
     "marketingOverviewService\\.ts",
     "marketingReportService\\.ts",
     "OverviewMetricCard\\.tsx",
@@ -94,6 +123,18 @@ function check(sources) {
     "marketing/campaigns/\\[id\\]\\.tsx",
     "issue_2714_campaign_open_truth\\.happy\\.test\\.ts",
   ]);
+  requireExactCount(
+    "workflow-overview-no-revenue-once",
+    sources.workflow,
+    "app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts",
+    1,
+  );
+  requireExactCount(
+    "workflow-brand-scope-once",
+    sources.workflow,
+    "src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts",
+    1,
+  );
 }
 
 if (process.argv.includes("--self-test")) {
@@ -101,13 +142,15 @@ if (process.argv.includes("--self-test")) {
   good.migration = "delivery_tracking_eligible_at open_tracking_eligible_at tracking_sender_domain = 'campaigns.usemingla.com' mkt_reconcile_email_event issue_2714_reconcile_provider_events mkt_campaign_email_event_health campaign_unmatched_stale";
   good.send = '@campaigns.usemingla.com delivery_tracking_eligible_at: eligibleAt open_tracking_eligible_at: eligibleAt tracking_sender_domain: "campaigns.usemingla.com"';
   good.webhook = 'data === "campaign_unmatched" data === "campaign_unmatched_stale" status: 500 correlationHash';
-  good.overviewService = 'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0';
+  good.overviewService = 'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible > 0 hasOpenCoverage: health.open_healthy && trackedDelivered > 0 .in("campaign_id", ids) .in("campaign_id", ids)';
   good.reportService = 'trackedDelivered hasDeliveryCoverage hasOpenCoverage mkt_campaign_email_event_health .order("id" .range( hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0 hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0';
   good.overview = 'snap.funnel.opened / snap.funnel.trackedDelivered ? "degraded" : "notMeasured"';
   good.report = "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy = "August 27, 2026 Marketing email measurement campaigns.usemingla.com Resend";
   good.invariant = "I-2714-CAMPAIGN-OPEN-TRUTH DRAFT";
-  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts src/services/marketing/__tests__/marketingOverviewService.test.ts marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
+  good.overviewNoRevenueTest = "hasDeliveryCoverage hasOpenCoverage trackedDelivered openHealthy";
+  good.brandScopeTest = '.eq("brand_id", brandId) const windowCampaignIds = windowCampaigns.map((c) => c.id) .in("campaign_id", ids) loadWindowMessages loadClickedMessageIds';
+  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts src/services/marketing/__tests__/marketingOverviewService.test.ts app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts npx jest --runTestsByPath marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
   check(good);
   const before = failures;
   const original = console.error;

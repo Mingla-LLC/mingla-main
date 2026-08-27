@@ -160,7 +160,9 @@ jobs:
         working-directory: mingla-business
       - name: "#2714 complete overview regression suite"
         run: >-
-          npx jest
+          npx jest --runTestsByPath
+          'app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts'
+          src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts
           src/services/marketing/__tests__/marketingOverviewService.test.ts
           src/services/marketing/__tests__/issue_2714_campaign_open_truth.happy.test.ts
           src/services/marketing/__tests__/issue_2714_campaign_open_truth.tester_adversarial.test.ts
