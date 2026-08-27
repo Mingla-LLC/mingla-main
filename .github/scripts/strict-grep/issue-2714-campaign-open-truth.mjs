@@ -76,6 +76,8 @@ function check(sources) {
     "issue-2714-campaign-open-truth.mjs --self-test",
     "issue-2714-campaign-open-truth.mjs",
     "issue_2714_campaign_open_truth.happy.pg17.test.sql",
+    "issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql",
+    "issue_2714_campaign_open_truth.tester_adversarial.test.ts",
     "marketingOverviewService\\.ts",
     "marketingReportService\\.ts",
     "OverviewMetricCard\\.tsx",
@@ -95,7 +97,7 @@ if (process.argv.includes("--self-test")) {
   good.report = "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy = "August 27, 2026 Marketing email measurement campaigns.usemingla.com Resend";
   good.invariant = "I-2714-CAMPAIGN-OPEN-TRUTH DRAFT";
-  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
+  good.workflow = "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts";
   check(good);
   const before = failures;
   const original = console.error;

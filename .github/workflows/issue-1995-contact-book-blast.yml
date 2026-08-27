@@ -27,6 +27,7 @@ on:
       # #2714 — truthful campaign open measurement and early-event repair.
       - "supabase/migrations/20270605002714_issue_2714_campaign_open_tracking_truth.sql"
       - "supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql"
       - "mingla-marketing/lib/privacyContent.ts"
       - "mingla-business/**"
       - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
@@ -122,6 +123,14 @@ jobs:
           deno test --allow-read \
             supabase/functions/marketing-send/issue_2714_campaign_open_truth.happy.test.ts \
             supabase/functions/resend-webhook/issue_2714_campaign_open_truth.happy.test.ts
+      - name: "#2714 campaign open truth (tester adversarial boundaries)"
+        run: |
+          deno fmt --check \
+            supabase/functions/marketing-send/issue_2714_campaign_open_truth.tester_adversarial.test.ts \
+            supabase/functions/resend-webhook/issue_2714_campaign_open_truth.tester_adversarial.test.ts
+          deno test --allow-read \
+            supabase/functions/marketing-send/issue_2714_campaign_open_truth.tester_adversarial.test.ts \
+            supabase/functions/resend-webhook/issue_2714_campaign_open_truth.tester_adversarial.test.ts
       - name: "#2510 event ingest is idempotent, monotonic, and suppresses correctly"
         env:
           PGPASSWORD: ${{ github.run_id }}
@@ -134,6 +143,8 @@ jobs:
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql
       - name: "#2509 migration is idempotent and the uniqueness actually bites"
         env:
           PGPASSWORD: ${{ github.run_id }}
@@ -148,6 +159,8 @@ jobs:
       - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx --runInBand
         working-directory: mingla-business
       - run: npx jest src/services/marketing/__tests__/issue_2714_campaign_open_truth.happy.test.ts --runInBand
+        working-directory: mingla-business
+      - run: npx jest src/services/marketing/__tests__/issue_2714_campaign_open_truth.tester_adversarial.test.ts --runInBand
         working-directory: mingla-business
       - name: Type-check the #1995 and #2714 changed Business files
         run: |
