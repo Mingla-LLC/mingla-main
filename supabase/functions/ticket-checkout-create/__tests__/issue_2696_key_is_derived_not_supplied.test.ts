@@ -1,31 +1,31 @@
 /**
- * issue #2695 [the buyer waits on their own confirmation email] — the ordering
- * proof, driven through the REAL handler on the REAL #2150 harness.
+ * issue #2696 [a caller-supplied idempotency key could resolve another event's
+ * session] — the edge half.
  *
- * MEASURED, 34 real purchases: the buyer waited 5 670 ms at p50, of which
- * 3 774 ms — 66% — was `dispatchTicketConfirmation` rendering and sending an
- * email TO THEM. They watched a spinner while a message about the thing that
- * had already succeeded went out. That dead time is also what made people tap
- * twice, which is #2689.
+ * WHAT WAS TRUE. `ticket-checkout-create` accepted `body.idempotencyKey`
+ * VERBATIM with no validation — no prefix, no length, no relationship to the
+ * event being bought — and that key is the sole lookup for an existing session
+ * (`WHERE idempotency_key=p_idempotency_key`, with no event conjunct). So a
+ * request naming event B could be answered with event A's session, after which
+ * every decision — the #2101 access mode, the named-buyer cross-check, the
+ * status-token write — was made against B's rules on A's row.
  *
- * WHY MOVING IT IS SAFE, and it is not "the fetch usually works". Both
- * `ticket_order_notifications` rows are inserted INSIDE
- * `issue_1930_ticket_checkout_finalize_base`'s transaction, before the dispatch
- * exists. The dispatch CONSUMES rows; it does not create them. Worst case is a
- * LATE email, never a lost one — `orch_0788_notification_retry_sweeper` collects
- * a `pending` row five minutes on.
+ * WHAT IT WAS NOT. Not a route to somebody's pass. Disclosure still required the
+ * victim's 256-bit `buyer_status_token`, and 0 of 142 disclosable sessions lack
+ * one. I called this a live hole first and withdrew that; it is a cross-event
+ * existence ORACLE (does this person hold a reservation — answerable even for
+ * private events and events outside their sale window) and a way to overwrite a
+ * stranger's token mid-checkout on an event the caller cannot otherwise touch.
  *
- * That backstop had never once fired in production and its own suite was red on
- * main in no CI lane. #2695 repaired and registered it FIRST.
+ * NO CLIENT EVER SENT IT. Both native flows forward an optional field nothing
+ * populates; the web service passes none. The branch was dead for honest traffic
+ * and live only for someone probing it — and the service's own comment already
+ * described the intended model: "the server derives the idempotency key from the
+ * request body alone." This makes that comment true.
  *
- * WHY THIS FILE REUSES THE #2150 HARNESS. My first attempt hand-rolled a fake db
- * and got a 500 before finalize — I would have been debugging my own stub, and
- * any assertion that eventually passed would have been about the stub rather
- * than the handler. The harness below already drives the real free path.
- *
- * THE MECHANISM: the dispatch fetch is held open FOREVER. If the handler awaits
- * it, nothing here completes and the test times out — which is the truthful
- * signal, because a buyer whose spinner never stops is exactly what that means.
+ * The DERIVED key embeds the event id, so deriving it always is the fix. The
+ * paired migration adds `AND event_id=p_event_id` to the lookup so the scoping
+ * is ENFORCED rather than implied — 179 of 179 live rows already satisfy it.
  */
 import {
   assert,
@@ -141,6 +141,8 @@ class FakeResubmitDb {
   storedStatusTokenHash: string | null = null;
   /** Every hash the Edge asked the DB to authorize, in order. */
   readonly presentedHashes: string[] = [];
+  /** issue #2696 — the key the lookup actually receives, which is the subject. */
+  readonly idempotencyKeys: string[] = [];
   readonly tickets: TicketRow[] = [{
     id: TICKET_ID,
     order_id: ORDER_ID,
@@ -162,6 +164,7 @@ class FakeResubmitDb {
       case "issue_2101_ticket_checkout_access_decision":
         return { data: "allowed_unrestricted", error: null };
       case "biz_ticket_checkout_create_session":
+        this.idempotencyKeys.push(String(_args.p_idempotency_key ?? ""));
         return {
           data: this.alreadyCompleted
             ? {
@@ -208,7 +211,6 @@ class FakeResubmitDb {
         return {
           data: {
             outcome: "finalized",
-            replayed: false,
             orderId: ORDER_ID,
             checkoutSessionId: SESSION_ID,
             eventId: EVENT_ID,
@@ -261,79 +263,67 @@ const freeRequest = (buyerStatusToken?: string): Request =>
   });
 
 
-/**
- * Holds every outbound confirmation fetch open forever.
- *
- * THE ENV LINES ARE LOAD-BEARING, and their absence is why the first version of
- * this test was worthless. `dispatchTicketConfirmation` opens with
- * `if (!url || !key) return;` — with those unset, as they are in a bare test
- * run, it returns INSTANTLY without ever calling fetch. The hung-fetch trick
- * could never fire, so the suite passed identically with the `await` restored
- * and proved nothing at all. Setting them puts the real fetch on the path,
- * which is the only thing that makes awaiting distinguishable from not.
- */
-const withHungDispatch = async <T>(run: () => Promise<T>): Promise<T> => {
-  // issue #2696 — RESTORE THE ENV. The first version of this helper SET these
-  // and never put them back, so every later file in the same `deno test` run
-  // inherited `SUPABASE_URL=https://edge.test` and attempted a real DNS lookup:
-  // "dns error: failed to lookup address information", then "Leaks detected".
-  // The file passed alone and failed in the directory — my own pollution, found
-  // while writing #2696 rather than by the suite that should have caught it.
-  const priorUrl = Deno.env.get("SUPABASE_URL");
-  const priorKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  Deno.env.set("SUPABASE_URL", "https://edge.test");
-  Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", "test-service-role-key");
-  const realFetch = globalThis.fetch;
-  globalThis.fetch = ((input: RequestInfo | URL) => {
-    const url = String(input instanceof Request ? input.url : input);
-    if (
-      url.includes("ticket-confirmation-dispatch") ||
-      url.includes("notify-dispatch")
-    ) {
-      return new Promise<Response>(() => {});
-    }
-    return realFetch(input as never);
-  }) as typeof fetch;
-  try {
-    return await run();
-  } finally {
-    globalThis.fetch = realFetch;
-    if (priorUrl === undefined) Deno.env.delete("SUPABASE_URL");
-    else Deno.env.set("SUPABASE_URL", priorUrl);
-    if (priorKey === undefined) Deno.env.delete("SUPABASE_SERVICE_ROLE_KEY");
-    else Deno.env.set("SUPABASE_SERVICE_ROLE_KEY", priorKey);
-  }
+const FOREIGN_KEY = "ticket_checkout:11111111-2222-3333-4444-555555555555:victim@example.invalid:+2348010000000:tier:1";
+
+/** A free request carrying a caller-chosen idempotency key. */
+const requestWithSuppliedKey = (key: string): Request =>
+  new Request("https://edge.test/ticket-checkout-create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      eventId: EVENT_ID,
+      surface: "web",
+      returnContract: "host_v1",
+      idempotencyKey: key,
+      lines: [{ ticketTypeId: TIER_ID, quantity: 1 }],
+      buyer: {
+        name: "Probing Caller",
+        email: "prober@example.invalid",
+        phone: "+2348012345678",
+      },
+    }),
+  });
+
+const keyPassedToRpc = (db: FakeResubmitDb): string => {
+  const key = db.idempotencyKeys.at(-1);
+  if (key === undefined) throw new Error("create_session was never called");
+  return key;
 };
 
-Deno.test("#2695 the buyer is answered without waiting on the confirmation send", async () => {
+Deno.test("#2696 a caller-supplied key is IGNORED — the server derives its own", async () => {
   const db = new FakeResubmitDb();
   db.alreadyCompleted = false;
   const handler = createTicketCheckoutCreateHandler(makeDeps(db));
 
-  const res = await withHungDispatch(() => handler(freeRequest()));
-  const body = await res.json() as Record<string, unknown>;
+  await handler(requestWithSuppliedKey(FOREIGN_KEY));
 
-  assertEquals(res.status, 200);
-  assertEquals(body.kind, "free_completed");
+  const used = keyPassedToRpc(db);
   assert(
-    db.finalizeCalls === 1,
-    "the reservation was not actually finalized, so this proves nothing about ordering",
+    used !== FOREIGN_KEY,
+    "the caller's key reached the lookup — a request for one event could be " +
+      "answered with another event's session",
+  );
+  assert(
+    used.includes(EVENT_ID),
+    `the derived key must name the event being bought; got ${used}`,
   );
 });
 
-Deno.test("#2695 the durable rows come from FINALIZE, not from the send", async () => {
-  // The safety argument, pinned. If a future change moved the
-  // `ticket_order_notifications` insert out of finalize and into the dispatch,
-  // an un-awaited send would become a LOST email rather than a late one — and
-  // this file's entire premise would be false with nothing else going red.
+Deno.test("#2696 the derived key names the requested event, not one the caller chose", async () => {
+  // The property that makes the whole scoping work: whatever the caller sends,
+  // the key handed to the lookup is composed from the event THIS request is for.
   const db = new FakeResubmitDb();
   db.alreadyCompleted = false;
   const handler = createTicketCheckoutCreateHandler(makeDeps(db));
 
-  await withHungDispatch(() => handler(freeRequest()));
+  await handler(requestWithSuppliedKey("1"));
 
+  const used = keyPassedToRpc(db);
   assert(
-    db.operations.includes("rpc:biz_ticket_checkout_finalize"),
-    "finalize was never called, so no durable notification rows exist",
+    used !== "1",
+    "a one-character key reached the lookup — that value collides across every " +
+      "brand on the platform",
   );
+  assert(used.startsWith("ticket_checkout:"), `unexpected key shape: ${used}`);
+  assert(used.includes(EVENT_ID), "the derived key does not name the event");
 });

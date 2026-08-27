@@ -1048,18 +1048,44 @@ export const createTicketCheckoutCreateHandler = (
       }
     }
 
-    const idempotencyKey =
-      typeof body.idempotencyKey === "string" && body.idempotencyKey.length > 0
-        ? body.idempotencyKey
-        : checkoutIdempotencyKey({
-          eventId,
-          buyerEmail,
-          buyerPhoneE164,
-          lines,
-          paymentPlanChoice,
-          // issue #2160 — day-aware. Empty => string-identical to today's key.
-          eventDateIds: orderedEventDateIds,
-        });
+    // issue #2696 — DERIVED ONLY. The caller no longer supplies this.
+    //
+    // The edge used to accept `body.idempotencyKey` verbatim, with no
+    // validation of any kind — not a prefix, not a length, not a relationship
+    // to the event being bought. That key is the sole lookup for an existing
+    // session (`WHERE idempotency_key=p_idempotency_key`, unscoped), so a
+    // caller-supplied string could resolve a session belonging to a DIFFERENT
+    // event, and to a different person.
+    //
+    // NO CLIENT HAS EVER SENT IT. Both native flows only forward an optional
+    // field nothing populates, and the web service does not pass one at all —
+    // verified across `mingla-business` and `app-mobile`. The branch was dead
+    // for honest traffic and live only for someone probing it. The service's own
+    // comment already described the intended model: "the server derives the
+    // idempotency key from the request body alone."
+    //
+    // WHAT IT ENABLED, with no secret required. Disclosure still needs the
+    // victim's 256-bit token, so this was never a route to someone's pass. But
+    // naming any sellable public event, a caller could learn whether a completed
+    // free reservation existed for a given email+phone+cart — INCLUDING on
+    // private events and events outside their sale window, which would have
+    // refused them outright if named honestly. And on an in-flight session it
+    // reached far enough to overwrite a stranger's `buyer_status_token_hash`,
+    // killing their checkout on an event the caller could not otherwise touch.
+    //
+    // The derived key embeds the event id, so deriving it always is the fix: a
+    // request for event B can no longer be answered with event A's session. All
+    // 179 live sessions already satisfy that relationship, so nothing legitimate
+    // changes.
+    const idempotencyKey = checkoutIdempotencyKey({
+      eventId,
+      buyerEmail,
+      buyerPhoneE164,
+      lines,
+      paymentPlanChoice,
+      // issue #2160 — day-aware. Empty => string-identical to today's key.
+      eventDateIds: orderedEventDateIds,
+    });
     const buyerStatusToken = randomBuyerStatusToken();
 
     const { data: sessionResult, error: sessionError } = await supabase.rpc(
