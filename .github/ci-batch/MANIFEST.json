@@ -14921,7 +14921,7 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "435b105247a2c0c784fb9f37871db19191d39310484e9bc36e039610d33f602a",
+        "sourceSha256": "ed0a888321ca851788996c05322e08a67d010ff015803026d4bc700716e1fc55",
         "triggers": [
           "pull_request",
           "push"
