@@ -122,11 +122,11 @@ export function checkSnapshot(snapshot) {
     failures.push("CI: the existing full-suite wiring guard is absent or fail-open");
   }
   for (const invariant of [
-    "I-PROPOSED-2719-CURRENCY-IS-NOT-PAYOUT-READINESS",
-    "I-PROPOSED-2719-FREE-CREATORS-ALWAYS-OPEN",
+    "I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (ACTIVE)",
+    "I-2719-FREE-CREATORS-ALWAYS-OPEN (ACTIVE)",
   ]) {
-    if (!invariants.includes(invariant) || !invariants.includes("DRAFT")) {
-      failures.push(`INVARIANT: missing DRAFT ${invariant}`);
+    if (!invariants.includes(invariant)) {
+      failures.push(`INVARIANT: missing ${invariant}`);
     }
   }
 
@@ -142,7 +142,7 @@ function selfTest() {
     ["happy", '// Currency selects pricing context; it never proves a bank can collect.\n// Free creators stay open in every payout state.\ntest("issue 2719", () => {})'],
     ["tester", null],
     ["fullSuiteGuard", "const invokesSuite = true; process.exit(1); runs the whole jest suite"],
-    ["invariants", "DRAFT I-PROPOSED-2719-CURRENCY-IS-NOT-PAYOUT-READINESS\nDRAFT I-PROPOSED-2719-FREE-CREATORS-ALWAYS-OPEN"],
+    ["invariants", "I-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (ACTIVE)\nI-2719-FREE-CREATORS-ALWAYS-OPEN (ACTIVE)"],
   ]);
   if (checkSnapshot(clean).length !== 0) throw new Error(`clean fixture failed: ${checkSnapshot(clean).join("; ")}`);
 
@@ -153,13 +153,14 @@ function selfTest() {
     ["client enters payouts", "flow", clean.get("flow").replace('state.mode === "client" && state.step === 3 ? 5', 'state.mode === "client" && state.step === 3 ? 4')],
     ["tester skipped after staging", "tester", 'test.skip("issue 2719", () => {})'],
     ["full suite guard weakened", "fullSuiteGuard", "const invokesSuite = true"],
+    ["invariant downgraded", "invariants", "I-PROPOSED-2719-CURRENCY-IS-NOT-PAYOUT-READINESS (DRAFT)\nI-PROPOSED-2719-FREE-CREATORS-ALWAYS-OPEN (DRAFT)"],
   ];
   for (const [label, key, value] of mutations) {
     const planted = new Map(clean);
     planted.set(key, value);
     if (checkSnapshot(planted).length === 0) throw new Error(`${label}: mutation escaped`);
   }
-  process.stdout.write("[issue-2719-brand-payout-first] SELF-TEST PASS — 6 hostile mutations detected, including true deletion and staged tester skip.\n");
+  process.stdout.write("[issue-2719-brand-payout-first] SELF-TEST PASS — 7 hostile mutations detected, including true deletion, staged tester skip, and invariant downgrade.\n");
 }
 
 if (process.argv.includes("--self-test")) {
