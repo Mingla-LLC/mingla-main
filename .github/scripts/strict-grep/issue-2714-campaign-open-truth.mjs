@@ -2,6 +2,7 @@
 /* eslint-disable no-console */
 import fs from "node:fs";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(
@@ -10,7 +11,7 @@ const root = path.resolve(
 );
 const files = {
   migration:
-    "supabase/migrations/20270605002714_issue_2714_campaign_open_tracking_truth.sql",
+    "supabase/migrations/20270606002714_issue_2714_campaign_open_tracking_truth.sql",
   send: "supabase/functions/marketing-send/index.ts",
   webhook: "supabase/functions/resend-webhook/index.ts",
   overviewService:
@@ -27,11 +28,20 @@ const files = {
     "supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts",
   privacy: "mingla-marketing/lib/privacyContent.ts",
   invariant: "docs/INVARIANT_REGISTRY.md",
+  ciManifest: ".github/ci-batch/MANIFEST.json",
   // Split the historical workflow stem so CI-batch provider discovery does
   // not mistake this gate's input path for an external provider declaration.
   workflow: [".github", "workflows", "issue-" + "1995-contact-book-blast.yml"]
     .join("/"),
 };
+
+const migrationPath = files.migration;
+const migrationName = path.basename(migrationPath);
+const migrationPrefix = migrationName.slice(0, 14);
+const supersededMigrationName =
+  "20270605002714_issue_2714_campaign_open_tracking_truth.sql";
+const expectedMigrationSha =
+  "8f92c35319c91a16b45b5afbaa2ee5e8b2557b33fd337fb8f16e67f5441ee6e5";
 
 let failures = 0;
 const fail = (name, message) => {
@@ -59,7 +69,69 @@ const requireExactCount = (name, source, needle, expected) => {
   } else pass(name);
 };
 
-function check(sources) {
+function checkMigrationContract(
+  sources,
+  migrationEntries,
+  migrationSha,
+  targetMigrationName = migrationName,
+) {
+  const targetPrefix = targetMigrationName.slice(0, 14);
+  const canonical = migrationEntries.filter((entry) =>
+    /^\d{14}_.+\.sql$/.test(entry)
+  );
+  const targetCount = canonical.filter((entry) =>
+    entry === targetMigrationName
+  ).length;
+  const prefixMatches = canonical.filter((entry) =>
+    entry.startsWith(`${targetPrefix}_`)
+  );
+  const otherPrefixes = canonical
+    .filter((entry) => entry !== targetMigrationName)
+    .map((entry) => entry.slice(0, 14));
+  const maxOther = otherPrefixes.sort().at(-1) ?? "00000000000000";
+
+  if (targetCount !== 1) {
+    fail(
+      "migration-target",
+      `expected one ${targetMigrationName}, found ${targetCount}`,
+    );
+  } else pass("migration-target");
+  if (prefixMatches.length !== 1) {
+    fail(
+      "migration-prefix-unique",
+      `expected one ${targetPrefix} prefix, found ${prefixMatches.length}`,
+    );
+  } else pass("migration-prefix-unique");
+  if (targetPrefix <= maxOther) {
+    fail(
+      "migration-prefix-order",
+      `${targetPrefix} must be greater than maximum other prefix ${maxOther}`,
+    );
+  } else pass("migration-prefix-order");
+  if (migrationSha !== expectedMigrationSha) {
+    fail(
+      "migration-sha",
+      `expected ${expectedMigrationSha}, found ${migrationSha}`,
+    );
+  } else pass("migration-sha");
+
+  for (const [key, needle] of [
+    ["workflow-migration-reference", migrationPath],
+    ["ci-manifest-migration-reference", migrationPath],
+    ["invariant-migration-reference", migrationName],
+  ]) {
+    let sourceKey = "invariant";
+    if (key.startsWith("workflow")) sourceKey = "workflow";
+    else if (key.startsWith("ci-")) sourceKey = "ciManifest";
+    requireExactCount(key, sources[sourceKey], needle, 1);
+    requireAbsent(`${key}-superseded`, sources[sourceKey], [
+      supersededMigrationName,
+    ]);
+  }
+}
+
+function check(sources, migrationEntries, migrationSha) {
+  checkMigrationContract(sources, migrationEntries, migrationSha);
   const compact = Object.fromEntries(
     Object.entries(sources).map((
       [key, source],
@@ -240,7 +312,8 @@ if (process.argv.includes("--self-test")) {
     "recipientStats.opened / recipientStats.trackedDelivered What these numbers mean Opened is an estimate based on a tiny image in the email. Emails sent before open tracking was enabled show — because those opens were never measured.";
   good.privacy =
     "August 27, 2026 Marketing email measurement campaigns.usemingla.com Resend";
-  good.invariant = "I-2714-CAMPAIGN-OPEN-TRUTH DRAFT";
+  good.invariant = `I-2714-CAMPAIGN-OPEN-TRUTH DRAFT ${migrationName}`;
+  good.ciManifest = migrationPath;
   good.overviewNoRevenueTest =
     "hasDeliveryCoverage hasOpenCoverage trackedDelivered openHealthy";
   good.brandScopeTest =
@@ -248,8 +321,12 @@ if (process.argv.includes("--self-test")) {
   good.issue1821DenoTest =
     'id,status,provider_message_id,sent_at,delivery_tracking_eligible_at,open_tracking_eligible_at,tracking_sender_domain #1821 every explicit provider-accepted status preserves durable tracking truth tracking_sender_domain: "campaigns.usemingla.com"';
   good.workflow =
-    "issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts src/services/marketing/__tests__/marketingOverviewService.test.ts app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts npx jest --runTestsByPath marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts deno test --allow-env --allow-read supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts";
-  check(good);
+    `${migrationPath} issue-2714-campaign-open-truth.mjs --self-test issue-2714-campaign-open-truth.mjs issue_2714_campaign_open_truth.happy.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql issue_2714_campaign_open_truth.tester_adversarial.test.ts src/services/marketing/__tests__/marketingOverviewService.test.ts app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts npx jest --runTestsByPath marketingOverviewService\\.ts marketingReportService\\.ts OverviewMetricCard\\.tsx marketing/index\\.tsx marketing/campaigns/\\[id\\]\\.tsx issue_2714_campaign_open_truth\\.happy\\.test\\.ts deno test --allow-env --allow-read supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts`;
+  const goodEntries = [
+    "20270605002728_issue_2728_ticket_sold_count_namespace.sql",
+    migrationName,
+  ];
+  check(good, goodEntries, expectedMigrationSha);
   const before = failures;
   const original = console.error;
   console.error = () => {};
@@ -263,6 +340,56 @@ if (process.argv.includes("--self-test")) {
     fail("self-test", "functional sender revert was not rejected");
   }
   failures = before;
+  const proveMutation = (name, mutate) => {
+    const fixture = {
+      sources: structuredClone(good),
+      entries: [...goodEntries],
+      sha: expectedMigrationSha,
+      targetName: migrationName,
+    };
+    const serializedBefore = JSON.stringify(fixture);
+    mutate(fixture);
+    if (JSON.stringify(fixture) === serializedBefore) {
+      fail(name, "mutation did not alter its fixture");
+      return;
+    }
+    const mutationBefore = failures;
+    checkMigrationContract(
+      fixture.sources,
+      fixture.entries,
+      fixture.sha,
+      fixture.targetName,
+    );
+    if (failures === mutationBefore) fail(name, "mutation was not rejected");
+    else pass(name);
+    failures = mutationBefore;
+  };
+  console.error = () => {};
+  proveMutation("self-test-superseded-prefix", (fixture) => {
+    fixture.entries = [
+      "20270605002728_issue_2728_ticket_sold_count_namespace.sql",
+      supersededMigrationName,
+    ];
+    fixture.targetName = supersededMigrationName;
+  });
+  proveMutation("self-test-prefix-collision", (fixture) => {
+    fixture.entries.push(`${migrationPrefix}_collision.sql`);
+  });
+  proveMutation("self-test-missing-target", (fixture) => {
+    fixture.entries = fixture.entries.filter((entry) => entry !== migrationName);
+  });
+  for (const sourceKey of ["workflow", "ciManifest", "invariant"]) {
+    proveMutation(`self-test-stale-${sourceKey}-reference`, (fixture) => {
+      fixture.sources[sourceKey] = fixture.sources[sourceKey].replace(
+        migrationName,
+        supersededMigrationName,
+      );
+    });
+  }
+  proveMutation("self-test-migration-sha", (fixture) => {
+    fixture.sha = "0".repeat(64);
+  });
+  console.error = original;
   if (failures === 0) pass("self-test");
 } else {
   const sources = {};
@@ -274,7 +401,17 @@ if (process.argv.includes("--self-test")) {
       sources[key] = "";
     }
   }
-  check(sources);
+  const migrationDir = path.join(root, "supabase/migrations");
+  let migrationEntries = [];
+  try {
+    migrationEntries = fs.readdirSync(migrationDir);
+  } catch (error) {
+    fail("migration-list", error.message);
+  }
+  const migrationSha = sources.migration
+    ? crypto.createHash("sha256").update(sources.migration).digest("hex")
+    : "missing";
+  check(sources, migrationEntries, migrationSha);
 }
 
 process.exitCode = failures === 0 ? 0 : 1;

@@ -25,7 +25,7 @@ on:
       - "supabase/migrations/20270526002510_issue_2510_email_event_ingest.sql"
       - "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql"
       # #2714 — truthful campaign open measurement and early-event repair.
-      - "supabase/migrations/20270605002714_issue_2714_campaign_open_tracking_truth.sql"
+      - "supabase/migrations/20270606002714_issue_2714_campaign_open_tracking_truth.sql"
       - "supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql"
       - "supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql"
       - "mingla-marketing/lib/privacyContent.ts"
