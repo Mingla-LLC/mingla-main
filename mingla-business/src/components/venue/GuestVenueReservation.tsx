@@ -170,10 +170,16 @@ export function GuestVenueReservation({
   const submissionTruthRef = useRef<{
     canSubmit: boolean;
     reservedForUtc: string | null;
-  }>({ canSubmit: false, reservedForUtc: null });
+    selectableSlotUtcValues: readonly string[];
+  }>({ canSubmit: false, reservedForUtc: null, selectableSlotUtcValues: [] });
   submissionTruthRef.current = {
     canSubmit: availabilitySettled && selectedSlot !== undefined && !submitting,
     reservedForUtc: selectedSlot?.slotStartUtc ?? null,
+    selectableSlotUtcValues: availabilitySettled
+      ? slots
+          .filter((slot) => !slot.isFull)
+          .map((slot) => slot.slotStartUtc)
+      : [],
   };
   const phoneDialCode = getCountryByCode(phoneCountry)?.dialCode ?? "+1";
   const normalizedPhone = composeE164(phoneDialCode, phoneLocal);
@@ -215,6 +221,7 @@ export function GuestVenueReservation({
     submissionTruthRef.current = {
       canSubmit: false,
       reservedForUtc: submissionTruth.reservedForUtc,
+      selectableSlotUtcValues: submissionTruth.selectableSlotUtcValues,
     };
     setSubmitting(true);
     setError(null);
@@ -397,6 +404,13 @@ export function GuestVenueReservation({
               key={slot.slotStartUtc}
               disabled={slot.isFull}
               onPress={() => {
+                if (
+                  !submissionTruthRef.current.selectableSlotUtcValues.includes(
+                    slot.slotStartUtc,
+                  )
+                ) {
+                  return;
+                }
                 setSelectedUtc(slot.slotStartUtc);
                 captureWeb("venue_reservation_slot_selected", {
                   surface: analyticsSurface,
