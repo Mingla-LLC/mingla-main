@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-28 — Fully booked venue times remain visible as Full and cannot be selected, while stale availability can no longer revive a sold-out reservation action (#2734, PR #2749)
 - 2026-08-28 — Public venue menus remain visible after the ordering experience loads, across buyer web and both Mingla apps (#2735, PR #2747)
 - 2026-08-28 — Public venue reservations now keep one truthful availability result from brand browsing through venue booking, so enabled restaurants no longer appear unavailable after navigation (#2730, PR #2750)
 - 2026-08-27 — Venue reservations now open as a compact, calendar-first workspace with Agenda, Week, and Month views, glanceable booking details, responsive mobile navigation, and accessible keyboard and focus behavior (#2737, PR #2746)
