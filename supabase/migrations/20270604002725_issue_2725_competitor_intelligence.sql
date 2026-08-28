@@ -127,16 +127,39 @@ CREATE OR REPLACE FUNCTION public.issue_2725_sha256(p_value text) RETURNS char(6
 CREATE OR REPLACE FUNCTION public.issue_2725_due_week(p_now timestamptz DEFAULT now()) RETURNS date LANGUAGE sql STABLE SET search_path='public' AS $$ SELECT date_trunc('week',p_now AT TIME ZONE 'UTC')::date $$;
 CREATE OR REPLACE FUNCTION public.issue_2725_jitter(p_watch uuid) RETURNS interval LANGUAGE sql IMMUTABLE SET search_path='public' AS $$ SELECT make_interval(secs => (('x'||substr(md5(p_watch::text),1,8))::bit(32)::bigint % 21601)::int) $$;
 
+CREATE OR REPLACE FUNCTION public.issue_2725_query_decode(p_value text) RETURNS text LANGUAGE plpgsql IMMUTABLE SET search_path='public' AS $$
+DECLARE output bytea:=''::bytea; cursor int:=1; current text;
+BEGIN
+ WHILE cursor<=length(p_value) LOOP current:=substr(p_value,cursor,1); IF current='+' THEN output:=output||decode('20','hex'); cursor:=cursor+1; ELSIF current='%' THEN IF cursor+2>length(p_value) OR substr(p_value,cursor+1,2)!~'^[0-9A-Fa-f]{2}$' THEN RAISE EXCEPTION 'invalid_source'; END IF; output:=output||decode(substr(p_value,cursor+1,2),'hex'); cursor:=cursor+3; ELSE output:=output||convert_to(current,'UTF8'); cursor:=cursor+1; END IF; END LOOP; RETURN convert_from(output,'UTF8');
+EXCEPTION WHEN OTHERS THEN RAISE EXCEPTION 'invalid_source'; END $$;
+CREATE OR REPLACE FUNCTION public.issue_2725_query_encode(p_value text) RETURNS text LANGUAGE plpgsql IMMUTABLE SET search_path='public' AS $$
+DECLARE input bytea:=convert_to(p_value,'UTF8'); output text:=''; cursor int; current int;
+BEGIN
+ FOR cursor IN 0..length(input)-1 LOOP current:=get_byte(input,cursor); IF (current BETWEEN 48 AND 57) OR (current BETWEEN 65 AND 90) OR (current BETWEEN 97 AND 122) OR current IN (42,45,46,95) THEN output:=output||chr(current); ELSIF current=32 THEN output:=output||'+'; ELSE output:=output||'%'||upper(lpad(to_hex(current),2,'0')); END IF; END LOOP; RETURN output;
+END $$;
+
 -- SQL is the persisted identity arbiter. The Edge pure helper mirrors this for friendly errors.
 CREATE OR REPLACE FUNCTION public.issue_2725_normalize_source(p_kind text,p_url text) RETURNS jsonb LANGUAGE plpgsql IMMUTABLE SET search_path='public' AS $$
-DECLARE u text:=btrim(p_url); host text; path text; handle text; identity text; canonical text; capability text;
+DECLARE u text:=btrim(p_url); scheme text; authority text; host text; port_text text; normalized_authority text; path text; raw_query text; canonical_query text; handle text; identity text; canonical text; capability text;
 BEGIN
- IF p_kind NOT IN ('website','instagram','tiktok') OR length(u)=0 OR length(u)>2048 OR u !~* '^https?://' OR u ~ '://' || '[^/]*@' OR u LIKE '%#%' THEN RAISE EXCEPTION 'invalid_source'; END IF;
- host:=lower(substring(u from '^https?://([^/:?#]+)')); path:=coalesce(substring(u from '^https?://[^/]+(/[^?#]*)'),'/');
- IF host IS NULL OR host IN ('localhost','::1') OR host ~ '^(127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2[0-9]|3[01])\.|0\.)' THEN RAISE EXCEPTION 'invalid_source'; END IF;
+ IF p_kind NOT IN ('website','instagram','tiktok') OR length(u)=0 OR length(u)>2048 OR u !~* '^https?://' OR u ~ '://[^/]*@' OR u LIKE '%#%' OR strpos(u,E'\\')>0 THEN RAISE EXCEPTION 'invalid_source'; END IF;
+ scheme:=substring(lower(u) from '^(https?)://'); authority:=substring(u from '(?i)^https?://([^/?#]+)');
+ IF authority IS NULL OR authority ~ '^\[' THEN RAISE EXCEPTION 'invalid_source'; END IF;
+ port_text:=substring(authority from ':([0-9]+)$'); host:=lower(CASE WHEN port_text IS NULL THEN authority ELSE left(authority,length(authority)-length(port_text)-1) END);
+ IF host='' OR host !~ '^[a-z0-9.-]+$' OR host IN ('localhost','localhost.') OR host ~* '(^|\.)(local|internal)\.?$' OR host ~ '^[0-9]+$' OR host ~ '^[0-9]+(\.[0-9]+){1,3}\.?$' OR host ~ '^0x[0-9a-f]+(\.(0x)?[0-9a-f]+)*\.?$' THEN RAISE EXCEPTION 'invalid_source'; END IF;
+ IF port_text IS NOT NULL THEN IF port_text::numeric NOT BETWEEN 1 AND 65535 THEN RAISE EXCEPTION 'invalid_source'; END IF; port_text:=port_text::numeric::text; END IF;
+ IF (scheme='http' AND port_text='80') OR (scheme='https' AND port_text='443') THEN port_text:=NULL; END IF;
+ normalized_authority:=host||CASE WHEN port_text IS NULL THEN '' ELSE ':'||port_text END;
+ path:=coalesce(substring(u from '(?i)^https?://[^/]+(/[^?#]*)'),'/'); raw_query:=substring(u from '\?([^#]*)$');
+ IF path<>'/' THEN path:=regexp_replace(path,'/$',''); END IF;
+ IF raw_query IS NOT NULL AND raw_query<>'' THEN
+   SELECT string_agg(public.issue_2725_query_encode(decoded_key)||'='||public.issue_2725_query_encode(decoded_value),'&' ORDER BY decoded_key COLLATE "C",decoded_value COLLATE "C") INTO canonical_query
+   FROM (SELECT public.issue_2725_query_decode(split_part(pair,'=',1)) decoded_key,public.issue_2725_query_decode(CASE WHEN strpos(pair,'=')>0 THEN substring(pair from strpos(pair,'=')+1) ELSE '' END) decoded_value FROM unnest(string_to_array(raw_query,'&')) AS query_pair(pair) WHERE pair<>'') decoded
+   WHERE lower(decoded_key) NOT IN ('gclid','fbclid') AND lower(decoded_key) NOT LIKE 'utm\_%' ESCAPE '\';
+ END IF;
  IF p_kind='instagram' THEN handle:=lower(trim(both '/' from path)); IF host NOT IN ('instagram.com','www.instagram.com') OR handle !~ '^[a-z0-9._]{1,30}$' OR handle IN ('p','reel','reels','stories','explore','accounts','direct','tv') OR u ~ '[?]' THEN RAISE EXCEPTION 'invalid_source'; END IF; canonical:='https://www.instagram.com/'||handle||'/'; identity:='instagram:'||handle; capability:='analyzed_weekly';
  ELSIF p_kind='tiktok' THEN handle:=lower(trim(both '/' from path)); IF host NOT IN ('tiktok.com','www.tiktok.com') OR handle !~ '^@[a-z0-9._]{2,24}$' OR u ~ '[?]' THEN RAISE EXCEPTION 'invalid_source'; END IF; canonical:='https://www.tiktok.com/'||handle; identity:='tiktok:'||substr(handle,2); capability:='link_only';
- ELSE canonical:=regexp_replace(u,'/$',''); identity:='website:'||host||CASE WHEN path='/' THEN '' ELSE regexp_replace(path,'/$','') END; capability:='analyzed_weekly'; END IF;
+ ELSE canonical:=scheme||'://'||normalized_authority||CASE WHEN path='/' AND canonical_query IS NULL THEN '' ELSE path END||CASE WHEN canonical_query IS NULL THEN '' ELSE '?'||canonical_query END; identity:='website:'||normalized_authority||path||CASE WHEN canonical_query IS NULL THEN '' ELSE '?'||canonical_query END; capability:='analyzed_weekly'; END IF;
  RETURN jsonb_build_object('kind',p_kind,'normalized_url',canonical,'normalized_identity',identity,'capability',capability,'source_fingerprint',public.issue_2725_sha256(p_kind||E'\n'||identity||E'\n1'));
 END $$;
 
@@ -268,6 +291,8 @@ REVOKE ALL ON FUNCTION public.issue_2725_one_primary_action(jsonb) FROM public,a
 REVOKE ALL ON FUNCTION public.issue_2725_sha256(text) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_due_week(timestamptz) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_jitter(uuid) FROM public,anon,authenticated;
+REVOKE ALL ON FUNCTION public.issue_2725_query_decode(text) FROM public,anon,authenticated;
+REVOKE ALL ON FUNCTION public.issue_2725_query_encode(text) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_normalize_source(text,text) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_source_set_fingerprint(uuid) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_capability_snapshot(uuid) FROM public,anon,authenticated;
@@ -278,7 +303,7 @@ REVOKE ALL ON FUNCTION public.issue_2725_claim_jobs(uuid,int) FROM public,anon,a
 REVOKE ALL ON FUNCTION public.issue_2725_reserve_budget(uuid,bigint) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_finish_job(uuid,uuid,text,text,char(64),jsonb,jsonb) FROM public,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_2725_member_refresh(uuid,uuid,uuid) FROM public,anon,authenticated;
-GRANT EXECUTE ON FUNCTION public.issue_2725_one_primary_action(jsonb), public.issue_2725_sha256(text), public.issue_2725_due_week(timestamptz), public.issue_2725_jitter(uuid), public.issue_2725_normalize_source(text,text), public.issue_2725_source_set_fingerprint(uuid), public.issue_2725_capability_snapshot(uuid), public.issue_2725_enqueue(uuid,text,timestamptz,text), public.issue_2725_watch_upsert(uuid,uuid,uuid,uuid,timestamptz,text,text,jsonb,uuid), public.issue_2725_watch_remove(uuid,uuid,timestamptz), public.issue_2725_claim_jobs(uuid,int), public.issue_2725_reserve_budget(uuid,bigint), public.issue_2725_finish_job(uuid,uuid,text,text,char(64),jsonb,jsonb), public.issue_2725_member_refresh(uuid,uuid,uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_2725_one_primary_action(jsonb), public.issue_2725_sha256(text), public.issue_2725_due_week(timestamptz), public.issue_2725_jitter(uuid), public.issue_2725_query_decode(text), public.issue_2725_query_encode(text), public.issue_2725_normalize_source(text,text), public.issue_2725_source_set_fingerprint(uuid), public.issue_2725_capability_snapshot(uuid), public.issue_2725_enqueue(uuid,text,timestamptz,text), public.issue_2725_watch_upsert(uuid,uuid,uuid,uuid,timestamptz,text,text,jsonb,uuid), public.issue_2725_watch_remove(uuid,uuid,timestamptz), public.issue_2725_claim_jobs(uuid,int), public.issue_2725_reserve_budget(uuid,bigint), public.issue_2725_finish_job(uuid,uuid,text,text,char(64),jsonb,jsonb), public.issue_2725_member_refresh(uuid,uuid,uuid) TO service_role;
 
 -- Legacy rows become website-source watches without changing ids/history.
 INSERT INTO public.tool_competitor_sources(competitor_id,brand_id,venue_listing_id,kind,normalized_url,normalized_identity,source_fingerprint,capability,health,last_checked_at,last_success_at)

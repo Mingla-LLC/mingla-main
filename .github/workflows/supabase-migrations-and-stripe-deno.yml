@@ -1976,6 +1976,7 @@ jobs:
             supabase/functions/_shared/__tests__/issue927_create_fn_tiktok_reddit_branches.test.ts
             supabase/functions/_shared/__tests__/issue927_tester_origin_runtime.test.ts
             supabase/functions/competitor-intel-worker/__tests__/issue_2725_worker_happy.test.ts
+            supabase/functions/growth-tools-report/__tests__/issue_2725_competitor_brief_errors.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

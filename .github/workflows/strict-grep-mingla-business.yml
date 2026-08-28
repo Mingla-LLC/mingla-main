@@ -627,6 +627,7 @@ jobs:
           npx jest --runInBand
           src/components/venue/insights/__tests__/competitorIntelligence.issue2725.happy.test.ts
           src/services/__tests__/competitorBriefValidation.issue2725.tester.adversarial.test.ts
+          src/services/__tests__/competitorBriefValidation.issue2725.rework.test.ts
       - name: Run expo export -p web (capture stderr)
         working-directory: mingla-business
         env:

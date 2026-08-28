@@ -450,11 +450,167 @@ export async function removeCompetitor(
   }
 }
 
+const COMPETITOR_FRESHNESSES = new Set<CompetitorFreshness>([
+  "current", "refreshing", "partial", "stale", "needs_attention",
+  "link_only", "budget_delayed",
+]);
+const COMPETITOR_MANUAL_STATES = new Set<CompetitorManualRefreshState>([
+  "available", "joined", "cached", "quota_limited", "edit_required",
+  "exhausted", "not_applicable",
+]);
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+function hasExactKeys(value: Record<string, unknown>, required: string[], optional: string[] = []): boolean {
+  const allowed = new Set([...required, ...optional]);
+  return required.every((key) => Object.prototype.hasOwnProperty.call(value, key)) &&
+    Object.keys(value).every((key) => allowed.has(key));
+}
+
+function isTimestamp(value: unknown): value is string {
+  return typeof value === "string" && Number.isFinite(Date.parse(value));
+}
+
+function isNullableTimestamp(value: unknown): value is string | null {
+  return value === null || isTimestamp(value);
+}
+
+function isHttpUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function malformedBriefResponse(): never {
+  throw new GrowthToolsAppError("server", { reason: "malformed_brief_response" });
+}
+
+function mapCompetitorBrief(raw: unknown): CompetitorBriefResult["brief"] {
+  if (raw === null) return null;
+  if (!isRecord(raw) || !hasExactKeys(raw, ["status", "what_changed", "why_it_matters", "worth_doing", "evidence"], ["website_health"]) ||
+    (raw.status !== "current" && raw.status !== "partial") ||
+    !Array.isArray(raw.what_changed) || raw.what_changed.length < 1 || raw.what_changed.length > 3 ||
+    !Array.isArray(raw.why_it_matters) || raw.why_it_matters.length < 1 || raw.why_it_matters.length > 2 ||
+    !Array.isArray(raw.worth_doing) || raw.worth_doing.length < 1 || raw.worth_doing.length > 3 ||
+    !Array.isArray(raw.evidence) || raw.evidence.length < 1) {
+    return malformedBriefResponse();
+  }
+
+  const evidenceIds = new Set<string>();
+  const evidenceSources = new Map<string, string>();
+  const evidence = raw.evidence.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "source_id", "public_url", "checked_at", "observation"], ["observed_at"]) ||
+      typeof item.id !== "string" || item.id.trim() === "" || evidenceIds.has(item.id) ||
+      typeof item.source_id !== "string" || item.source_id.trim() === "" ||
+      !isHttpUrl(item.public_url) ||
+      !isTimestamp(item.checked_at) ||
+      (item.observed_at !== undefined && !isTimestamp(item.observed_at)) ||
+      typeof item.observation !== "string" || item.observation.trim() === "") {
+      return malformedBriefResponse();
+    }
+    evidenceIds.add(item.id);
+    evidenceSources.set(item.id, item.source_id);
+    return {
+      id: item.id,
+      sourceId: item.source_id,
+      publicUrl: item.public_url,
+      ...(typeof item.observed_at === "string" ? { observedAt: item.observed_at } : {}),
+      checkedAt: item.checked_at,
+      observation: item.observation,
+    };
+  });
+
+  const factIds = new Set<string>();
+  const whatChanged = raw.what_changed.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "text", "source_id", "evidence_id", "confidence"]) ||
+      typeof item.id !== "string" || item.id.trim() === "" || factIds.has(item.id) ||
+      typeof item.text !== "string" || item.text.trim() === "" ||
+      typeof item.source_id !== "string" || item.source_id.trim() === "" ||
+      typeof item.evidence_id !== "string" || !evidenceIds.has(item.evidence_id) ||
+      evidenceSources.get(item.evidence_id) !== item.source_id || item.confidence !== "observed") {
+      return malformedBriefResponse();
+    }
+    factIds.add(item.id);
+    return { id: item.id, text: item.text, sourceId: item.source_id, evidenceId: item.evidence_id, confidence: "observed" as const };
+  });
+
+  const whyItMatters = raw.why_it_matters.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["text", "evidence_ids", "confidence"]) ||
+      typeof item.text !== "string" || item.text.trim() === "" ||
+      item.confidence !== "interpretation" || !Array.isArray(item.evidence_ids) ||
+      item.evidence_ids.length < 1 || item.evidence_ids.some((id) => typeof id !== "string" || !evidenceIds.has(id))) {
+      return malformedBriefResponse();
+    }
+    return { text: item.text, evidenceIds: item.evidence_ids as string[], confidence: "interpretation" as const };
+  });
+
+  const actionIds = new Set<string>();
+  let primaryActions = 0;
+  const worthDoing = raw.worth_doing.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "text", "kind", "confidence", "is_primary"], ["target_id"]) ||
+      typeof item.id !== "string" || item.id.trim() === "" || actionIds.has(item.id) ||
+      typeof item.text !== "string" || item.text.trim() === "" ||
+      typeof item.kind !== "string" || item.kind.trim() === "" ||
+      item.confidence !== "suggested_action" || typeof item.is_primary !== "boolean" ||
+      (item.target_id !== undefined && (typeof item.target_id !== "string" || item.target_id.trim() === ""))) {
+      return malformedBriefResponse();
+    }
+    actionIds.add(item.id);
+    if (item.is_primary) primaryActions += 1;
+    return {
+      id: item.id,
+      text: item.text,
+      kind: item.kind,
+      ...(typeof item.target_id === "string" ? { targetId: item.target_id } : {}),
+      confidence: "suggested_action" as const,
+      isPrimary: item.is_primary,
+    };
+  });
+  if (primaryActions !== 1) return malformedBriefResponse();
+
+  let websiteHealth: { grade: string | null; changes: unknown[] } | undefined;
+  if (raw.website_health !== undefined) {
+    if (!isRecord(raw.website_health) || !hasExactKeys(raw.website_health, ["grade", "changes"]) ||
+      (raw.website_health.grade !== null && typeof raw.website_health.grade !== "string") ||
+      !Array.isArray(raw.website_health.changes)) {
+      return malformedBriefResponse();
+    }
+    websiteHealth = { grade: raw.website_health.grade as string | null, changes: raw.website_health.changes };
+  }
+  return { status: raw.status, whatChanged, whyItMatters, worthDoing, evidence, ...(websiteHealth ? { websiteHealth } : {}) };
+}
+
 export async function getCompetitorBrief(brandId: string, watchId: string): Promise<CompetitorBriefResult> {
   const { data, error } = await supabase.functions.invoke("growth-tools-report", { body: { action: "competitor_brief", lane: "app", brand_id: brandId, watch_id: watchId } });
   if (error !== null) throw await toGrowthToolsAppError(error);
-  const body = data as Record<string, unknown>;
-  if (body.schema_version !== 2 || body.watch_id !== watchId) throw new GrowthToolsAppError("server", { reason: "malformed_brief_response" });
+  if (!isRecord(data) || !hasExactKeys(data, ["schema_version", "watch_id", "freshness", "updated_at", "checked_at", "next_refresh_at", "no_meaningful_change", "manual_refresh_state", "sources", "brief"])) return malformedBriefResponse();
+  const body = data;
+  if (body.schema_version !== 2 || body.watch_id !== watchId ||
+    !COMPETITOR_FRESHNESSES.has(body.freshness as CompetitorFreshness) ||
+    !COMPETITOR_MANUAL_STATES.has(body.manual_refresh_state as CompetitorManualRefreshState) ||
+    !isNullableTimestamp(body.updated_at) || !isNullableTimestamp(body.checked_at) ||
+    !isNullableTimestamp(body.next_refresh_at) || typeof body.no_meaningful_change !== "boolean" ||
+    !Array.isArray(body.sources)) return malformedBriefResponse();
+  for (const source of body.sources) {
+    if (!isRecord(source) || !hasExactKeys(source, ["kind", "url", "capability", "availability", "availability_generation", "health", "last_checked_at", "safe_reason"], ["id"]) ||
+      !isHttpUrl(source.url) || !Number.isInteger(source.availability_generation) || (source.availability_generation as number) < 1 ||
+      (source.safe_reason !== null && typeof source.safe_reason !== "string") ||
+      (source.last_checked_at !== null && !isTimestamp(source.last_checked_at))) {
+      return malformedBriefResponse();
+    }
+  }
+  let sources: NonNullable<CompetitorWatchRow["sources"]>;
+  try {
+    sources = mapWatchRow({ ...body, schema_version: 2, id: watchId, name: "brief", created_at: "", updated_at: "", summary: {}, latest: null } as RawWatchRow).sources ?? [];
+  } catch {
+    return malformedBriefResponse();
+  }
   return {
     schemaVersion: 2,
     watchId,
@@ -464,8 +620,8 @@ export async function getCompetitorBrief(brandId: string, watchId: string): Prom
     nextRefreshAt: typeof body.next_refresh_at === "string" ? body.next_refresh_at : null,
     noMeaningfulChange: body.no_meaningful_change === true,
     manualRefreshState: body.manual_refresh_state as CompetitorManualRefreshState,
-    sources: mapWatchRow({ ...body, schema_version: 2, id: watchId, name: "brief", created_at: "", updated_at: "", summary: {}, latest: null } as RawWatchRow).sources ?? [],
-    brief: body.brief as CompetitorBriefResult["brief"],
+    sources,
+    brief: mapCompetitorBrief(body.brief),
   };
 }
 

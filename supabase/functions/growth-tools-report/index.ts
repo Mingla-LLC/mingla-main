@@ -137,13 +137,21 @@ async function handleAppRead(
     if (watch.brand_id !== auth.brandId) {
       return json({ error: "forbidden" }, 403);
     }
-    const { data: sourceRows } = await supabase.from("tool_competitor_sources")
+    const { data: sourceRows, error: sourcesError } = await supabase.from("tool_competitor_sources")
       .select(
         "id,kind,normalized_url,capability,health,last_checked_at,last_safe_error_code",
       ).eq("competitor_id", watch.id).order("kind");
-    const { data: capabilities } = await supabase.from(
+    if (sourcesError) {
+      console.error("[growth-tools-report] competitor sources failed", sourcesError.message);
+      return json({ error: "server" }, 500);
+    }
+    const { data: capabilities, error: capabilitiesError } = await supabase.from(
       "tool_competitor_provider_capabilities",
     ).select("kind,enabled,availability_generation,safe_reason");
+    if (capabilitiesError) {
+      console.error("[growth-tools-report] competitor capabilities failed", capabilitiesError.message);
+      return json({ error: "server" }, 500);
+    }
     const capMap = new Map((capabilities ?? []).map((cap) => [cap.kind, cap]));
     const sources = (sourceRows ?? []).map((source) => {
       const cap = capMap.get(source.kind) as {
@@ -166,11 +174,15 @@ async function handleAppRead(
           : source.last_safe_error_code ?? null,
       };
     });
-    const { data: jobs } = await supabase.from("tool_competitor_refresh_jobs")
+    const { data: jobs, error: jobsError } = await supabase.from("tool_competitor_refresh_jobs")
       .select("state,finished_at,member_retry_count").eq(
         "competitor_id",
         watch.id,
       ).order("created_at", { ascending: false }).limit(1);
+    if (jobsError) {
+      console.error("[growth-tools-report] competitor job failed", jobsError.message);
+      return json({ error: "server" }, 500);
+    }
     const job = (jobs ?? [])[0] as {
       state?: string;
       finished_at?: string;
@@ -178,9 +190,13 @@ async function handleAppRead(
     } | undefined;
     let brief: Record<string, unknown> | null = null;
     if (watch.current_brief_id) {
-      const { data } = await supabase.from("tool_competitor_briefs").select(
+      const { data, error: briefError } = await supabase.from("tool_competitor_briefs").select(
         "status,updated_at,checked_at,what_changed,why_it_matters,worth_doing,evidence",
       ).eq("id", watch.current_brief_id).maybeSingle();
+      if (briefError) {
+        console.error("[growth-tools-report] competitor brief failed", briefError.message);
+        return json({ error: "server" }, 500);
+      }
       brief = data as Record<string, unknown> | null;
     }
     const hasAnalyzable = sources.some((source) =>
