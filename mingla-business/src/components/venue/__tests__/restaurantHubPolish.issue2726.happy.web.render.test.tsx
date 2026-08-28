@@ -24,8 +24,12 @@ jest.mock("../../ui/Button", () => {
     );
   return { Button, default: Button };
 });
-jest.mock("react-native-safe-area-context", () => ({ useSafeAreaInsets: () => ({ bottom: 0 }) }));
-jest.mock("../../../hooks/useResponsiveLayout", () => ({ useResponsiveLayout: () => ({ isWideDesktop: true }) }));
+jest.mock("react-native-safe-area-context", () => ({
+  useSafeAreaInsets: () => ({ bottom: 0 }),
+}));
+jest.mock("../../../hooks/useResponsiveLayout", () => ({
+  useResponsiveLayout: () => ({ isWideDesktop: true }),
+}));
 jest.mock("../../../hooks/useVenueReservationSettings", () => ({
   useVenueReservationSettings: () => ({ data: { reservationsEnabled: true } }),
   useSetReservationsEnabled: () => ({ mutate: jest.fn(), isPending: false }),
@@ -38,7 +42,10 @@ jest.mock("../../../wrappers/SmartScrollView", () => {
   return { ScrollView };
 });
 jest.mock("expo-router", () => ({
-  useNavigation: () => ({ addListener: () => () => undefined, dispatch: jest.fn() }),
+  useNavigation: () => ({
+    addListener: () => () => undefined,
+    dispatch: jest.fn(),
+  }),
 }));
 jest.mock("../../../hooks/useCurrentBrandRole", () => ({
   useCurrentBrandRole: () => ({ rank: 100 }),
@@ -46,28 +53,46 @@ jest.mock("../../../hooks/useCurrentBrandRole", () => ({
 jest.mock("../../../hooks/useVenueAvailability", () => ({
   useVenueAvailabilityConfig: () => ({
     data: {
-      servicePeriods: [{ name: "Dinner", days: [5, 6], start: "17:00", end: "23:00" }],
-      turnTimes: {}, bufferMinutes: 0, maxReservationsPerSlot: null,
-      slotGranularityMinutes: 15, advanceWindowDays: 30, minNoticeMinutes: 0,
-      ianaTimezone: "Africa/Lagos", ianaTimezoneSource: "operator",
+      servicePeriods: [
+        { name: "Dinner", days: [5, 6], start: "17:00", end: "23:00" },
+      ],
+      turnTimes: {},
+      bufferMinutes: 0,
+      maxReservationsPerSlot: null,
+      slotGranularityMinutes: 15,
+      advanceWindowDays: 30,
+      minNoticeMinutes: 0,
+      ianaTimezone: "Africa/Lagos",
+      ianaTimezoneSource: "operator",
     },
-    isLoading: false, isError: false, isSuccess: true, refetch: jest.fn(),
+    isLoading: false,
+    isError: false,
+    isSuccess: true,
+    refetch: jest.fn(),
   }),
   useVenueBlackouts: () => ({ data: [] }),
-  useUpsertVenueAvailabilityConfig: () => ({ mutate: jest.fn(), isPending: false }),
+  useUpsertVenueAvailabilityConfig: () => ({
+    mutate: jest.fn(),
+    isPending: false,
+  }),
   useUpsertVenueBlackout: () => ({ mutate: jest.fn(), isPending: false }),
   useDeleteVenueBlackout: () => ({ mutate: jest.fn(), isPending: false }),
 }));
-jest.mock("../../../hooks/useVenueTables", () => ({ useVenueTables: () => ({ data: [] }) }));
-jest.mock("../../ui/useShareNetworkState", () => ({ useShareNetworkState: () => true }));
+jest.mock("../../../hooks/useVenueTables", () => ({
+  useVenueTables: () => ({ data: [] }),
+}));
+jest.mock("../../ui/useShareNetworkState", () => ({
+  useShareNetworkState: () => true,
+}));
 jest.mock("../../../wrappers/KeyboardToolbarRoot", () => ({
   setAvailabilityNumericToolbarState: jest.fn(),
 }));
 jest.mock("../../ui/Input", () => {
   const React = require("react");
   const { View } = require("react-native");
-  const Input = React.forwardRef((props: Record<string, unknown>, _ref: unknown) =>
-    React.createElement(View, props),
+  const Input = React.forwardRef(
+    (props: Record<string, unknown>, _ref: unknown) =>
+      React.createElement(View, props),
   );
   Input.displayName = "InputMock";
   return { Input, default: Input };
@@ -76,12 +101,20 @@ jest.mock("../../ui/Skeleton", () => ({ Skeleton: () => null }));
 jest.mock("../VenueBlackoutSheet", () => ({ VenueBlackoutSheet: () => null }));
 jest.mock("../../ui/ConfirmDialog", () => ({ ConfirmDialog: () => null }));
 jest.mock("../../ui/Toast", () => ({ Toast: () => null }));
-jest.mock("../VenueIntelligenceModule", () => ({ VenueIntelligenceModule: () => null }));
+jest.mock("../VenueIntelligenceModule", () => ({
+  VenueIntelligenceModule: () => null,
+}));
 jest.mock("../VenueMenuModule", () => ({ VenueMenuModule: () => null }));
-jest.mock("../VenueReservationsModule", () => ({ VenueReservationsModule: () => null }));
-jest.mock("../VenueSettingsModule", () => ({ VenueSettingsModule: () => null }));
+jest.mock("../VenueReservationsModule", () => ({
+  VenueReservationsModule: () => null,
+}));
+jest.mock("../VenueSettingsModule", () => ({
+  VenueSettingsModule: () => null,
+}));
 jest.mock("../VenueTablesModule", () => ({ VenueTablesModule: () => null }));
-jest.mock("../VenueWaitlistModule", () => ({ VenueWaitlistModule: () => null }));
+jest.mock("../VenueWaitlistModule", () => ({
+  VenueWaitlistModule: () => null,
+}));
 
 import { SuiteDesktopShell } from "../../suite/SuiteDesktopShell";
 import { StyleSheet, View } from "react-native";
@@ -112,15 +145,17 @@ describe("#2726 web happy path", () => {
       width: { width: "100%" },
       cap: { maxWidth: restaurantHubLayout.proseMaxWidth },
     });
-    const widthReference = render(<View style={referenceStyles.width} testID="width-ref" />);
+    const widthReference = render(
+      <View style={referenceStyles.width} testID="width-ref" />,
+    );
     const capReference = render(
       <View style={referenceStyles.cap} testID="cap-ref" />,
     );
-    const widthAtom = classTokens(openingTag(widthReference, "width-ref")).find((token) =>
-      token.startsWith("r-width-"),
+    const widthAtom = classTokens(openingTag(widthReference, "width-ref")).find(
+      (token) => token.startsWith("r-width-"),
     );
-    const capAtom = classTokens(openingTag(capReference, "cap-ref")).find((token) =>
-      token.startsWith("r-maxWidth-"),
+    const capAtom = classTokens(openingTag(capReference, "cap-ref")).find(
+      (token) => token.startsWith("r-maxWidth-"),
     );
     const hostTag = openingTag(html, "venue-availability-module");
     const proseTag = openingTag(html, "venue-avail-heading-copy");
@@ -171,11 +206,17 @@ describe("#2726 web happy path", () => {
       </>,
     );
     const atom = (id: string, prefix: string): string | undefined =>
-      classTokens(openingTag(rhythmHtml, id)).find((token) => token.startsWith(prefix));
-    expect(classTokens(anatomy)).toContain(atom("rhythm-anatomy", "r-paddingBlock-"));
+      classTokens(openingTag(rhythmHtml, id)).find((token) =>
+        token.startsWith(prefix),
+      );
+    expect(classTokens(anatomy)).toContain(
+      atom("rhythm-anatomy", "r-paddingBlock-"),
+    );
     expect(classTokens(icon)).toContain(atom("rhythm-icon", "r-marginBottom-"));
     expect(classTokens(body)).toContain(atom("rhythm-body", "r-marginTop-"));
-    expect(classTokens(action)).toContain(atom("rhythm-action", "r-marginTop-"));
+    expect(classTokens(action)).toContain(
+      atom("rhythm-action", "r-marginTop-"),
+    );
   });
 
   it("renders exact grouped order, accessible context, and 44px rail targets", () => {
@@ -193,19 +234,33 @@ describe("#2726 web happy path", () => {
       </SuiteDesktopShell>,
     );
     expect(modules.map(({ group, label }) => `${group}:${label}`)).toEqual([
-      "Venue:Overview", "Bookings:Tables", "Bookings:Availability",
-      "Bookings:Reservations", "Bookings:Waitlist", "Operations:Menu",
-      "Operations:Insights", "Operations:Orders", "Operations:Settings",
+      "Venue:Overview",
+      "Bookings:Tables",
+      "Bookings:Availability",
+      "Bookings:Reservations",
+      "Bookings:Waitlist",
+      "Operations:Menu",
+      "Operations:Insights",
+      "Operations:Orders",
+      "Operations:Settings",
     ]);
     expect(html.match(/>Venue<|>Bookings<|>Operations</g)).toHaveLength(3);
     expect(html).toContain('aria-label="Bookings, Availability module"');
     expect(html).toContain("r-minHeight-peo1c");
-    const opacityOneReference = render(<View style={{ opacity: 1 }} testID="opacity-one" />);
-    const opacityZeroReference = render(<View style={{ opacity: 0 }} testID="opacity-zero" />);
-    const opacityOneAtom = classTokens(openingTag(opacityOneReference, "opacity-one")).at(-1);
-    const opacityZeroAtom = classTokens(openingTag(opacityZeroReference, "opacity-zero")).at(-1);
-    const activeSelection = openingTag(html, "venue-rail-availability-selection");
-    const inactiveSelection = openingTag(html, "venue-rail-tables-selection");
+    const opacityOneReference = render(
+      <View style={{ opacity: 1 }} testID="opacity-one" />,
+    );
+    const opacityZeroReference = render(
+      <View style={{ opacity: 0 }} testID="opacity-zero" />,
+    );
+    const opacityOneAtom = classTokens(
+      openingTag(opacityOneReference, "opacity-one"),
+    ).at(-1);
+    const opacityZeroAtom = classTokens(
+      openingTag(opacityZeroReference, "opacity-zero"),
+    ).at(-1);
+    const activeSelection = openingTag(html, "venue-selection-availability");
+    const inactiveSelection = openingTag(html, "venue-selection-tables");
     expect(classTokens(activeSelection)).toContain(opacityOneAtom);
     expect(classTokens(inactiveSelection)).toContain(opacityZeroAtom);
     expect(activeSelection).toContain("transition-duration:200ms");
@@ -216,8 +271,14 @@ describe("#2726 web happy path", () => {
     const modules = deriveVenueRailModules(deriveVenueModules(false));
     expect(modules.some((module) => module.group === "Bookings")).toBe(false);
     const html = render(
-      <SuiteDesktopShell modules={modules} activeModule="overview" onSelect={jest.fn()}
-        workspaceSelfScrolls scrollBottomPad={120} railTestIdPrefix="venue-rail-">
+      <SuiteDesktopShell
+        modules={modules}
+        activeModule="overview"
+        onSelect={jest.fn()}
+        workspaceSelfScrolls
+        scrollBottomPad={120}
+        railTestIdPrefix="venue-rail-"
+      >
         <span>Workspace</span>
       </SuiteDesktopShell>,
     );

@@ -33,7 +33,13 @@
  * HOOK). It never gates itself, so it stays free of platform checks.
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AccessibilityInfo,
   Platform,
@@ -129,9 +135,12 @@ export function SuiteDesktopShell({
     <View style={styles.desktopHost} testID={testID}>
       <View style={styles.desktopCentered}>
         <View
-          style={[styles.desktopRail, grouped ? styles.desktopRailGrouped : null]}
+          style={[
+            styles.desktopRail,
+            grouped ? styles.desktopRailGrouped : null,
+          ]}
           accessibilityRole="tablist"
-          accessibilityLabel="Restaurant Hub sections"
+          accessibilityLabel={grouped ? "Restaurant Hub sections" : undefined}
         >
           <SuiteDesktopRail
             modules={modules}
@@ -173,6 +182,80 @@ function SuiteDesktopRail({
   onSelect,
   testIdPrefix,
 }: SuiteDesktopRailProps): React.ReactElement {
+  if (!modules.some((module) => module.group !== undefined)) {
+    return (
+      <UngroupedSuiteDesktopRail
+        modules={modules}
+        activeModule={activeModule}
+        onSelect={onSelect}
+        testIdPrefix={testIdPrefix}
+      />
+    );
+  }
+  return (
+    <GroupedSuiteDesktopRail
+      modules={modules}
+      activeModule={activeModule}
+      onSelect={onSelect}
+      testIdPrefix={testIdPrefix}
+    />
+  );
+}
+
+/** Keep the pre-#2726 shared-shell contract byte-compatible for Stay. */
+function UngroupedSuiteDesktopRail({
+  modules,
+  activeModule,
+  onSelect,
+  testIdPrefix,
+}: SuiteDesktopRailProps): React.ReactElement {
+  const controlRefs = useRef<Record<string, View | null>>({});
+  const focusControl = useCallback((control: View | null): void => {
+    if (hasFocusCapability(control)) control.focus();
+  }, []);
+  return (
+    <View style={styles.railInner}>
+      {modules.map((module) => {
+        const isActive = module.key === activeModule;
+        return (
+          <Pressable
+            ref={(instance) => {
+              controlRefs.current[module.key] = instance;
+            }}
+            key={module.key}
+            accessibilityRole="tab"
+            accessibilityState={{ selected: isActive }}
+            accessibilityLabel={`${module.label} module`}
+            onPress={() =>
+              onSelect(module.key, () =>
+                focusControl(controlRefs.current[module.key] ?? null),
+              )
+            }
+            style={[styles.railRow, isActive ? styles.railRowActive : null]}
+            testID={`${testIdPrefix}${module.key}`}
+          >
+            {isActive ? <View style={styles.railActiveBar} /> : null}
+            <Text
+              style={[
+                styles.railLabel,
+                isActive ? styles.railLabelActive : null,
+              ]}
+            >
+              {module.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
+function GroupedSuiteDesktopRail({
+  modules,
+  activeModule,
+  onSelect,
+  testIdPrefix,
+}: SuiteDesktopRailProps): React.ReactElement {
   const controlRefs = useRef<Record<string, View | null>>({});
   const [reduceMotion, setReduceMotion] = useState(false);
   useEffect(() => {
@@ -193,7 +276,8 @@ function SuiteDesktopRail({
     if (hasFocusCapability(control)) control.focus();
   }, []);
   const groups = useMemo(() => {
-    const result: { label: string | null; modules: SuiteDesktopModule[] }[] = [];
+    const result: { label: string | null; modules: SuiteDesktopModule[] }[] =
+      [];
     for (const module of modules) {
       const label = module.group ?? null;
       const current = result[result.length - 1];
@@ -210,8 +294,12 @@ function SuiteDesktopRail({
     (index: number): void => {
       const module = modules[index];
       if (module === undefined) return;
-      onSelect(module.key, () => focusControl(controlRefs.current[module.key] ?? null));
-      requestAnimationFrame(() => focusControl(controlRefs.current[module.key] ?? null));
+      onSelect(module.key, () =>
+        focusControl(controlRefs.current[module.key] ?? null),
+      );
+      requestAnimationFrame(() =>
+        focusControl(controlRefs.current[module.key] ?? null),
+      );
     },
     [focusControl, modules, onSelect],
   );
@@ -221,7 +309,10 @@ function SuiteDesktopRail({
       {groups.map((group, groupIndex) => (
         <View
           key={`${group.label ?? "ungrouped"}-${groupIndex}`}
-          style={[styles.railGroup, groupIndex > 0 ? styles.railGroupAfterFirst : null]}
+          style={[
+            styles.railGroup,
+            groupIndex > 0 ? styles.railGroupAfterFirst : null,
+          ]}
         >
           {group.label !== null ? (
             <View style={styles.railGroupHeadingBox}>
@@ -232,36 +323,54 @@ function SuiteDesktopRail({
           ) : null}
           <View style={styles.railGroupTabs}>
             {group.modules.map((module) => {
-              const moduleIndex = modules.findIndex((candidate) => candidate.key === module.key);
+              const moduleIndex = modules.findIndex(
+                (candidate) => candidate.key === module.key,
+              );
               const isActive = module.key === activeModule;
-              const webProps: RailWebTabProps | undefined = Platform.OS === "web"
-                ? {
-                    "aria-selected": isActive,
-                    tabIndex: isActive ? 0 : -1,
-                    onKeyDown: (event: React.KeyboardEvent<HTMLElement>): void => {
-                      let nextIndex: number | null = null;
-                      if (event.key === "ArrowDown" || event.key === "ArrowRight") {
-                        nextIndex = (moduleIndex + 1) % modules.length;
-                      } else if (event.key === "ArrowUp" || event.key === "ArrowLeft") {
-                        nextIndex = (moduleIndex - 1 + modules.length) % modules.length;
-                      } else if (event.key === "Home") {
-                        nextIndex = 0;
-                      } else if (event.key === "End") {
-                        nextIndex = modules.length - 1;
-                      } else if (event.key === "Enter" || event.key === " " || event.key === "Spacebar") {
-                        nextIndex = moduleIndex;
-                      }
-                      if (nextIndex !== null) {
-                        event.preventDefault();
-                        selectAndFocus(nextIndex);
-                      }
-                    },
-                  }
-                : undefined;
+              const webProps: RailWebTabProps | undefined =
+                Platform.OS === "web"
+                  ? {
+                      "aria-selected": isActive,
+                      tabIndex: isActive ? 0 : -1,
+                      onKeyDown: (
+                        event: React.KeyboardEvent<HTMLElement>,
+                      ): void => {
+                        let nextIndex: number | null = null;
+                        if (
+                          event.key === "ArrowDown" ||
+                          event.key === "ArrowRight"
+                        ) {
+                          nextIndex = (moduleIndex + 1) % modules.length;
+                        } else if (
+                          event.key === "ArrowUp" ||
+                          event.key === "ArrowLeft"
+                        ) {
+                          nextIndex =
+                            (moduleIndex - 1 + modules.length) % modules.length;
+                        } else if (event.key === "Home") {
+                          nextIndex = 0;
+                        } else if (event.key === "End") {
+                          nextIndex = modules.length - 1;
+                        } else if (
+                          event.key === "Enter" ||
+                          event.key === " " ||
+                          event.key === "Spacebar"
+                        ) {
+                          nextIndex = moduleIndex;
+                        }
+                        if (nextIndex !== null) {
+                          event.preventDefault();
+                          selectAndFocus(nextIndex);
+                        }
+                      },
+                    }
+                  : undefined;
               return (
                 <Pressable
                   {...webProps}
-                  ref={(instance) => { controlRefs.current[module.key] = instance; }}
+                  ref={(instance) => {
+                    controlRefs.current[module.key] = instance;
+                  }}
                   key={module.key}
                   accessibilityRole="tab"
                   accessibilityState={{ selected: isActive }}
@@ -270,10 +379,11 @@ function SuiteDesktopRail({
                       ? `${module.group}, ${module.label} module`
                       : `${module.label} module`
                   }
-                  onPress={() => onSelect(
-                    module.key,
-                    () => focusControl(controlRefs.current[module.key] ?? null),
-                  )}
+                  onPress={() =>
+                    onSelect(module.key, () =>
+                      focusControl(controlRefs.current[module.key] ?? null),
+                    )
+                  }
                   style={(state: PressableStateCallbackType) => {
                     const webState = state as PressableStateCallbackType & {
                       hovered?: boolean;
@@ -282,7 +392,9 @@ function SuiteDesktopRail({
                     return [
                       styles.railRow,
                       module.group !== undefined ? styles.railRowGrouped : null,
-                      webState.hovered === true && !isActive ? styles.railRowHover : null,
+                      webState.hovered === true && !isActive
+                        ? styles.railRowHover
+                        : null,
                       webState.focused === true ? styles.railRowFocus : null,
                     ];
                   }}
@@ -292,13 +404,20 @@ function SuiteDesktopRail({
                     style={[
                       styles.railSelectionLayer,
                       isActive ? styles.railSelectionLayerActive : null,
-                      Platform.OS === "web" ? railWebTransitionStyle(reduceMotion) : null,
+                      Platform.OS === "web"
+                        ? railWebTransitionStyle(reduceMotion)
+                        : null,
                     ]}
-                    testID={`${testIdPrefix}${module.key}-selection`}
+                    testID={`${testIdPrefix.replace(/rail-$/, "selection-")}${module.key}`}
                   >
                     <View style={styles.railActiveBar} />
                   </View>
-                  <Text style={[styles.railLabel, isActive ? styles.railLabelActive : null]}>
+                  <Text
+                    style={[
+                      styles.railLabel,
+                      isActive ? styles.railLabelActive : null,
+                    ]}
+                  >
                     {module.label}
                   </Text>
                 </Pressable>
@@ -372,6 +491,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.sm,
     borderRadius: radius.md,
     ...Platform.select({ web: { cursor: "pointer" }, default: {} }),
+  },
+  railRowActive: {
+    backgroundColor: glass.tint.profileElevated,
   },
   railSelectionLayer: {
     ...StyleSheet.absoluteFillObject,
