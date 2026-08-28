@@ -1,6 +1,7 @@
 import React, {
   forwardRef,
   useEffect,
+  useId,
   useImperativeHandle,
   useMemo,
   useRef,
@@ -13,6 +14,12 @@ import {
   StyleSheet,
   Text,
   View,
+} from "react-native";
+import type {
+  PressableProps,
+  ScrollViewProps,
+  ViewProps,
+  ViewStyle,
 } from "react-native";
 import type {
   offeringSurfaceStyles,
@@ -57,6 +64,85 @@ export interface PublicVenueTabsHandle {
   focusTab: (tab: PublicVenueTab) => void;
 }
 
+interface VenueTabKeyboardEvent {
+  nativeEvent: {
+    altKey?: boolean;
+    ctrlKey?: boolean;
+    key: string;
+    metaKey?: boolean;
+    shiftKey?: boolean;
+  };
+  altKey?: boolean;
+  ctrlKey?: boolean;
+  metaKey?: boolean;
+  shiftKey?: boolean;
+  preventDefault: () => void;
+}
+
+interface VenueTabFocusEvent {
+  currentTarget?: {
+    matches?: (selector: string) => boolean;
+  };
+}
+
+type FocusableVenueTab = React.ElementRef<typeof Pressable> & {
+  focus: () => void;
+  scrollIntoView?: (options: {
+    block: "nearest";
+    inline: "nearest";
+  }) => void;
+};
+
+interface WebVenueTabProps
+  extends Omit<PressableProps, "onBlur" | "onFocus"> {
+  "aria-controls"?: string;
+  "aria-selected"?: boolean;
+  id?: string;
+  onBlur?: () => void;
+  onFocus?: (event: VenueTabFocusEvent) => void;
+  onKeyDown?: (event: VenueTabKeyboardEvent) => void;
+  tabIndex?: 0 | -1;
+}
+
+interface WebVenueTabListProps extends ScrollViewProps {
+  "aria-label"?: string;
+}
+
+interface WebVenuePanelProps extends ViewProps {
+  "aria-hidden"?: boolean;
+  "aria-labelledby"?: string;
+  id?: string;
+  role?: "tabpanel";
+  tabIndex?: 0 | -1;
+}
+
+interface WebFocusOutline extends ViewStyle {
+  outlineColor: string;
+  outlineOffset: number;
+  outlineStyle: "solid";
+  outlineWidth: number;
+}
+
+// React Native Web forwards these DOM-only properties, while the installed
+// native component types intentionally omit them. Keeping the typed seams here
+// prevents web semantics from leaking into either native render branch.
+const WebVenueTab = Pressable as React.ComponentType<
+  WebVenueTabProps & React.RefAttributes<FocusableVenueTab>
+>;
+const WebVenueTabList = ScrollView as React.ComponentType<WebVenueTabListProps>;
+const WebVenuePanel = View as React.ComponentType<WebVenuePanelProps>;
+
+const isWebFocusVisible = (event: VenueTabFocusEvent): boolean => {
+  if (event.currentTarget?.matches === undefined) return true;
+  try {
+    return event.currentTarget.matches(":focus-visible");
+  } catch {
+    // Older engines can expose Element.matches without supporting this
+    // selector. The approved accessible fallback is to show focus, never hide it.
+    return true;
+  }
+};
+
 const LABELS: Record<PublicVenueTab, string> = {
   overview: "Overview",
   menu: "Menu",
@@ -99,18 +185,35 @@ export const PublicVenueTabs = forwardRef<
       ? controlledActiveTab
       : isControlled
         ? "overview"
-        : uncontrolledActiveTab;
+        : tabs.includes(uncontrolledActiveTab)
+          ? uncontrolledActiveTab
+          : "overview";
+  const instanceId = useId();
   const lastInitialViewed = useRef<PublicVenueTab | null>(null);
   const onTabViewedRef = useRef(onTabViewed);
-  const tabRefs = useRef<
-    Partial<Record<PublicVenueTab, React.ElementRef<typeof Pressable>>>
-  >({});
+  const tabRefs = useRef<Partial<Record<PublicVenueTab, FocusableVenueTab>>>({});
+  const focusedTabRef = useRef<PublicVenueTab | null>(null);
+  const [focusVisibleTab, setFocusVisibleTab] =
+    useState<PublicVenueTab | null>(null);
+
+  const tabId = (tab: PublicVenueTab): string =>
+    `${instanceId}-public-venue-${tab}-tab`;
+  const panelId = (tab: PublicVenueTab): string =>
+    `${instanceId}-public-venue-${tab}-panel`;
+
+  const revealAndFocus = (tab: PublicVenueTab): void => {
+    const target = tabRefs.current[tab];
+    if (target === undefined) return;
+    focusedTabRef.current = tab;
+    target.focus();
+    target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+  };
 
   useImperativeHandle(
     ref,
     () => ({
       focusTab: (tab: PublicVenueTab): void => {
-        tabRefs.current[tab]?.focus();
+        revealAndFocus(tab);
       },
     }),
     [],
@@ -129,6 +232,14 @@ export const PublicVenueTabs = forwardRef<
       setUncontrolledActiveTab("overview");
     }
   }, [hasMenu, isControlled, uncontrolledActiveTab]);
+
+  useEffect(() => {
+    if (!hasMenu && focusedTabRef.current === "menu") {
+      focusedTabRef.current = activeTab;
+      setFocusVisibleTab(null);
+      revealAndFocus(activeTab);
+    }
+  }, [activeTab, hasMenu]);
 
   useEffect(() => {
     const transition = reconcileInitialVenueTab(
@@ -156,20 +267,98 @@ export const PublicVenueTabs = forwardRef<
     onTabViewed?.(tab);
   };
 
+  const moveFocus = (
+    event: VenueTabKeyboardEvent,
+    currentIndex: number,
+  ): void => {
+    const modified =
+      event.altKey === true ||
+      event.ctrlKey === true ||
+      event.metaKey === true ||
+      event.shiftKey === true ||
+      event.nativeEvent.altKey === true ||
+      event.nativeEvent.ctrlKey === true ||
+      event.nativeEvent.metaKey === true ||
+      event.nativeEvent.shiftKey === true;
+    if (modified) return;
+
+    let targetIndex: number;
+    switch (event.nativeEvent.key) {
+      case "ArrowLeft":
+        targetIndex = (currentIndex - 1 + tabs.length) % tabs.length;
+        break;
+      case "ArrowRight":
+        targetIndex = (currentIndex + 1) % tabs.length;
+        break;
+      case "Home":
+        targetIndex = 0;
+        break;
+      case "End":
+        targetIndex = tabs.length - 1;
+        break;
+      default:
+        return;
+    }
+    event.preventDefault();
+    revealAndFocus(tabs[targetIndex]);
+  };
+
+  const contentByTab: Record<PublicVenueTab, React.ReactNode> = {
+    overview,
+    menu,
+    reservations,
+  };
+
   return (
     <View>
-      <ScrollView
+      <WebVenueTabList
         horizontal
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.tabs}
         accessibilityRole="tablist"
+        {...(Platform.OS === "web"
+          ? { "aria-label": "Venue sections" }
+          : {})}
       >
-        {tabs.map((tab) => {
+        {tabs.map((tab, index) => {
           const active = tab === activeTab;
-          const webAriaSelected =
-            Platform.OS === "web" ? { "aria-selected": active } : {};
+          const webTabProps =
+            Platform.OS === "web"
+              ? {
+                  "aria-controls": panelId(tab),
+                  "aria-selected": active,
+                  id: tabId(tab),
+                  onBlur: (): void => {
+                    if (focusedTabRef.current === tab) {
+                      focusedTabRef.current = null;
+                    }
+                    setFocusVisibleTab((current) =>
+                      current === tab ? null : current,
+                    );
+                  },
+                  onFocus: (event: VenueTabFocusEvent): void => {
+                    focusedTabRef.current = tab;
+                    setFocusVisibleTab(isWebFocusVisible(event) ? tab : null);
+                  },
+                  onKeyDown: (event: VenueTabKeyboardEvent): void => {
+                    moveFocus(event, index);
+                  },
+                  tabIndex: active ? (0 as const) : (-1 as const),
+                }
+              : {};
+          const focusOutline: WebFocusOutline | null =
+            Platform.OS === "web" && focusVisibleTab === tab
+              ? {
+                  outlineColor: active
+                    ? palette.accentText
+                    : palette.primaryText,
+                  outlineOffset: -4,
+                  outlineStyle: "solid",
+                  outlineWidth: 3,
+                }
+              : null;
           return (
-            <Pressable
+            <WebVenueTab
               key={tab}
               ref={(node) => {
                 tabRefs.current[tab] = node ?? undefined;
@@ -178,7 +367,7 @@ export const PublicVenueTabs = forwardRef<
               accessibilityRole="tab"
               accessibilityLabel={LABELS[tab]}
               accessibilityState={{ selected: active }}
-              {...webAriaSelected}
+              {...webTabProps}
               style={[
                 styles.chip,
                 surface.card,
@@ -186,6 +375,7 @@ export const PublicVenueTabs = forwardRef<
                   backgroundColor: palette.accent,
                   borderColor: palette.accent,
                 },
+                focusOutline,
               ]}
             >
               <Text
@@ -199,17 +389,30 @@ export const PublicVenueTabs = forwardRef<
               >
                 {LABELS[tab]}
               </Text>
-            </Pressable>
+            </WebVenueTab>
           );
         })}
-      </ScrollView>
-      <View style={styles.pane}>
-        {activeTab === "menu"
-          ? menu
-          : activeTab === "reservations"
-            ? reservations
-            : overview}
-      </View>
+      </WebVenueTabList>
+      {Platform.OS === "web" ? (
+        tabs.map((tab) => {
+          const active = tab === activeTab;
+          return (
+            <WebVenuePanel
+              key={tab}
+              id={panelId(tab)}
+              role="tabpanel"
+              aria-hidden={!active}
+              aria-labelledby={tabId(tab)}
+              tabIndex={active ? 0 : -1}
+              style={[styles.pane, !active && styles.hiddenPanel]}
+            >
+              {active ? contentByTab[tab] : null}
+            </WebVenuePanel>
+          );
+        })
+      ) : (
+        <View style={styles.pane}>{contentByTab[activeTab]}</View>
+      )}
     </View>
   );
 });
@@ -237,5 +440,8 @@ const styles = StyleSheet.create({
   },
   pane: {
     marginTop: 20,
+  },
+  hiddenPanel: {
+    display: "none",
   },
 });
