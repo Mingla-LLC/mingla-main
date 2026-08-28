@@ -395,8 +395,8 @@ export interface PublicVenueScreenProps {
   discoveryPrice: PublicVenueDiscoveryPriceView | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
-  /** #2755 — transport truth stays separate from the menu data it describes. */
-  menuLifecycle?: PublicVenueMenuLifecycle;
+  /** #2755 — required transport truth; an empty array cannot impersonate failure. */
+  menuLifecycle: PublicVenueMenuLifecycle;
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
   reservable: PublicVenueReservableView | null;
   reservabilityState?: PublicVenueReservabilityState;
@@ -986,7 +986,7 @@ export const PublicVenueScreen = ({
   useDirectionCIdentity = false,
   discoveryPrice,
   menu,
-  menuLifecycle = { state: "ready", isFetching: false, onRetry: () => {} },
+  menuLifecycle,
   reservable,
   reservabilityState = "ready",
   initialTab = "overview",
@@ -1052,11 +1052,14 @@ export const PublicVenueScreen = ({
   );
   const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
   const retryInFlightRef = React.useRef<boolean>(false);
-  const retryOwnedFocusRef = React.useRef<boolean>(false);
-  const retryHadFocusAtRequestRef = React.useRef<boolean>(false);
+  const retryOwnsFocusRef = React.useRef<boolean>(false);
+  const retryHadFocusRef = React.useRef<boolean>(false);
   const retryRequestedRef = React.useRef<boolean>(false);
-  const previousMenuStateRef = React.useRef(menuLifecycle.state);
-  const previousMenuFetchingRef = React.useRef(menuLifecycle.isFetching);
+  const retryStartedOnMenuRef = React.useRef<boolean>(false);
+  const previousMenuStateRef = React.useRef<PublicVenueMenuRequestState | null>(
+    null,
+  );
+  const previousMenuFetchingRef = React.useRef<boolean>(false);
   const [retryLocallyBusy, setRetryLocallyBusy] = useState<boolean>(false);
   const [retryFocusVisible, setRetryFocusVisible] = useState<boolean>(false);
   const [retryHovered, setRetryHovered] = useState<boolean>(false);
@@ -1078,40 +1081,45 @@ export const PublicVenueScreen = ({
     });
   }, [reservationUiContext]);
 
+  // #2755 — one announcement owner. The visible state container is NOT also
+  // a live region, so first failure, repeat failure, and recovery each speak
+  // exactly once while passive rerenders speak nothing.
   React.useEffect(() => {
-    const settled =
-      previousMenuFetchingRef.current && !menuLifecycle.isFetching;
     const stateChanged = previousMenuStateRef.current !== menuLifecycle.state;
-    if (settled || stateChanged) {
-      if (menuLifecycle.state === "error") {
-        AccessibilityInfo.announceForAccessibility(
-          menuItemCount > 0 ? "Menu may be out of date." : "Menu couldn’t load",
-        );
-      } else if (menuLifecycle.state === "ready" && retryRequestedRef.current) {
-        if (
-          retryHadFocusAtRequestRef.current &&
-          normalizedReservationUiState.activeTab === "menu"
-        ) {
-          publicVenueTabsRef.current?.focusTab(
-            menuItemCount > 0 ? "menu" : "overview",
-          );
+    const fetchingChanged =
+      previousMenuFetchingRef.current !== menuLifecycle.isFetching;
+    if (stateChanged || fetchingChanged) {
+      if (menuLifecycle.isFetching) {
+        if (menuLifecycle.state !== "error") {
+          AccessibilityInfo.announceForAccessibility(menuPresentation.copy);
         }
+      } else if (menuLifecycle.state === "error") {
+        AccessibilityInfo.announceForAccessibility(menuPresentation.copy);
+      } else if (retryRequestedRef.current) {
         AccessibilityInfo.announceForAccessibility("Menu loaded.");
+        if (
+          retryHadFocusRef.current &&
+          retryStartedOnMenuRef.current &&
+          (normalizedReservationUiState.activeTab === "menu" || !hasMenu)
+        ) {
+          publicVenueTabsRef.current?.focusTab(hasMenu ? "menu" : "overview");
+        }
       }
     }
     if (!menuLifecycle.isFetching) {
       retryRequestedRef.current = false;
-      retryOwnedFocusRef.current = false;
-      retryHadFocusAtRequestRef.current = false;
+      retryHadFocusRef.current = false;
+      retryStartedOnMenuRef.current = false;
       retryInFlightRef.current = false;
       setRetryLocallyBusy(false);
     }
     previousMenuStateRef.current = menuLifecycle.state;
     previousMenuFetchingRef.current = menuLifecycle.isFetching;
   }, [
-    menuItemCount,
+    hasMenu,
     menuLifecycle.isFetching,
     menuLifecycle.state,
+    menuPresentation.copy,
     normalizedReservationUiState.activeTab,
   ]);
 
@@ -1119,7 +1127,9 @@ export const PublicVenueScreen = ({
     if (retryInFlightRef.current || menuLifecycle.isFetching) return;
     retryInFlightRef.current = true;
     retryRequestedRef.current = true;
-    retryHadFocusAtRequestRef.current = retryOwnedFocusRef.current;
+    retryHadFocusRef.current = retryOwnsFocusRef.current;
+    retryStartedOnMenuRef.current =
+      normalizedReservationUiState.activeTab === "menu";
     setRetryLocallyBusy(true);
     try {
       const result = menuLifecycle.onRetry();
@@ -1131,7 +1141,7 @@ export const PublicVenueScreen = ({
       retryInFlightRef.current = false;
       setRetryLocallyBusy(false);
     }
-  }, [menuLifecycle]);
+  }, [menuLifecycle, normalizedReservationUiState.activeTab]);
 
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => resolveTheme(venue.theme, null),
@@ -1549,7 +1559,6 @@ export const PublicVenueScreen = ({
       </Text>
       {showMenuState ? (
         <View
-          accessibilityLiveRegion="polite"
           style={[
             menuHasStaleItems ? styles.menuStaleState : styles.menuColdState,
             { backgroundColor: palette.page, borderColor: palette.panelBorder },
@@ -1568,14 +1577,31 @@ export const PublicVenueScreen = ({
             ) : null}
             <View style={styles.menuStateTextWrap}>
               <Text
-                style={[styles.menuStateTitle, { color: palette.primaryText }]}
+                accessibilityRole={
+                  !menuHasStaleItems && menuLifecycle.state === "error"
+                    ? "header"
+                    : undefined
+                }
+                style={[
+                  !menuHasStaleItems && menuLifecycle.state === "error"
+                    ? styles.menuColdErrorTitle
+                    : menuHasStaleItems
+                      ? styles.menuStaleText
+                      : styles.menuColdLoadingText,
+                  {
+                    color:
+                      !menuHasStaleItems && menuLifecycle.state === "error"
+                        ? palette.primaryText
+                        : palette.secondaryText,
+                  },
+                ]}
               >
                 {menuStateCopy}
               </Text>
               {!menuHasStaleItems && menuLifecycle.state === "error" ? (
                 <Text
                   style={[
-                    styles.menuStateBody,
+                    styles.menuColdErrorBody,
                     { color: palette.secondaryText },
                   ]}
                 >
@@ -1591,17 +1617,20 @@ export const PublicVenueScreen = ({
               accessibilityState={{ disabled: menuBusy, busy: menuBusy }}
               disabled={menuBusy}
               onFocus={(event) => {
-                retryOwnedFocusRef.current = true;
+                retryOwnsFocusRef.current = true;
+                if (Platform.OS !== "web") {
+                  setRetryFocusVisible(false);
+                  return;
+                }
                 const target = event.currentTarget as unknown as {
                   matches?: (selector: string) => boolean;
                 };
                 setRetryFocusVisible(
-                  Platform.OS !== "web" ||
-                    target.matches?.(":focus-visible") === true,
+                  target.matches?.(":focus-visible") === true,
                 );
               }}
               onBlur={() => {
-                retryOwnedFocusRef.current = false;
+                retryOwnsFocusRef.current = false;
                 setRetryFocusVisible(false);
               }}
               onHoverIn={() => setRetryHovered(true)}
@@ -1615,7 +1644,7 @@ export const PublicVenueScreen = ({
                   : null,
                 pressed && !menuBusy ? styles.menuRetryPressed : null,
                 menuBusy ? styles.menuRetryDisabled : null,
-                retryFocusVisible
+                Platform.OS === "web" && retryFocusVisible
                   ? ({
                       outlineColor: palette.accent,
                       outlineOffset: -4,
@@ -2279,14 +2308,25 @@ const styles = StyleSheet.create({
     gap: 2,
     flexShrink: 1,
   },
-  menuStateTitle: {
+  menuColdLoadingText: {
     fontSize: 15,
-    lineHeight: 20,
+    lineHeight: 23,
+    fontWeight: "400",
+  },
+  menuColdErrorTitle: {
+    fontSize: 17,
+    lineHeight: 21,
     fontWeight: "800",
   },
-  menuStateBody: {
+  menuColdErrorBody: {
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: "400",
+  },
+  menuStaleText: {
     fontSize: 14,
     lineHeight: 20,
+    fontWeight: "400",
   },
   menuRetry: {
     minHeight: 44,

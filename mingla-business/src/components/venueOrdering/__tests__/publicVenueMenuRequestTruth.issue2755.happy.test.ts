@@ -66,4 +66,33 @@ describe("#2755 public venue Menu request truth", () => {
       'menuState: menuResult.error === null ? "ready" : "error"',
     );
   });
+
+  test("the shared boundary requires lifecycle truth and both adapters supply it", () => {
+    const screen = readFileSync(
+      resolve(
+        process.cwd(),
+        "../packages/brand-rendering/PublicVenueScreen.tsx",
+      ),
+      "utf8",
+    );
+    const buyer = readFileSync(
+      resolve(
+        process.cwd(),
+        "app/b/[brandSlug]/v/[venueSlug].tsx",
+      ),
+      "utf8",
+    );
+    const consumer = readFileSync(
+      resolve(
+        process.cwd(),
+        "../app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx",
+      ),
+      "utf8",
+    );
+    expect(screen).toContain("menuLifecycle: PublicVenueMenuLifecycle;");
+    expect(screen).not.toContain("menuLifecycle?:");
+    expect(screen).not.toContain('menuLifecycle = { state: "ready"');
+    expect(buyer).toContain("menuLifecycle={{");
+    expect(consumer).toContain("menuLifecycle={{");
+  });
 });

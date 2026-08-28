@@ -214,6 +214,7 @@ test("Buyer never commits a blank menu through rapid activation and off-on-off t
       venue={VENUE}
       discoveryPrice={null}
       menu={MENU}
+      menuLifecycle={{ state: "ready", isFetching: false, onRetry: () => {} }}
       reservable={null}
       reservabilityState="ready"
       initialTab="overview"

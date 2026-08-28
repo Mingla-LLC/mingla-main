@@ -1,4 +1,9 @@
 import React from "react";
+import { AccessibilityInfo, Platform, StyleSheet } from "react-native";
+import {
+  createThemePalette,
+  resolveTheme,
+} from "@mingla/offering-rendering";
 import {
   PublicVenueScreen,
   type PublicVenueMenuLifecycle,
@@ -9,6 +14,16 @@ import type { PublicMenuGroup } from "@mingla/brand-rendering";
 (
   globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }
 ).IS_REACT_ACT_ENVIRONMENT = true;
+
+jest.mock("react-native", () => {
+  const actual = jest.requireActual("react-native") as typeof import("react-native");
+  return {
+    ...actual,
+    AccessibilityInfo: {
+      announceForAccessibility: jest.fn(),
+    },
+  };
+});
 
 jest.mock("@mingla/offering-rendering", () => {
   const ReactLocal = require("react") as typeof React;
@@ -37,7 +52,11 @@ jest.mock("@mingla/offering-rendering", () => {
 
 interface Node {
   type: unknown;
-  props: Record<string, unknown> & { children?: unknown; onPress?: () => void };
+  props: Record<string, unknown> & {
+    children?: unknown;
+    onPress?: () => void;
+    onFocus?: (event: { currentTarget: unknown }) => void;
+  };
 }
 interface Tree {
   root: { findAll: (predicate: (node: Node) => boolean) => Node[] };
@@ -90,6 +109,27 @@ const countText = (tree: Tree, text: string): number =>
   tree.root.findAll(
     (node) => typeof node.type === "string" && node.props.children === text,
   ).length;
+
+const textNode = (tree: Tree, text: string): Node =>
+  tree.root.findAll(
+    (node) => typeof node.type === "string" && node.props.children === text,
+  )[0];
+
+const retryButton = (tree: Tree): Node =>
+  tree.root.findAll(
+    (node) =>
+      typeof node.type === "string" &&
+      node.props.accessibilityLabel === "Try loading the menu again",
+  )[0];
+
+const flatStyle = (node: Node): Record<string, unknown> =>
+  StyleSheet.flatten(
+    typeof node.props.style === "function"
+      ? (node.props.style as (state: { pressed: boolean }) => unknown)({
+          pressed: false,
+        })
+      : node.props.style,
+  ) as Record<string, unknown>;
 
 const page = (
   menu: PublicMenuGroup[],
@@ -169,5 +209,156 @@ test("stale failure and refresh retain the exact ordering child mount", async ()
   expect(countText(tree, "Updating menu…")).toBe(1);
   expect(countText(tree, "cached-ordering-tree")).toBe(1);
   expect(mounts).toBe(1);
+  await TestRenderer.act(async () => tree.unmount());
+});
+
+test("every state owns its approved typography, color, and heading role", async () => {
+  const palette = createThemePalette(resolveTheme(VENUE.theme, null));
+  const retry = () => undefined;
+  let tree!: Tree;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      page([], { state: "loading", isFetching: true, onRetry: retry }),
+    );
+  });
+  expect(flatStyle(textNode(tree, "Loading menu…"))).toMatchObject({
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: "400",
+    color: palette.secondaryText,
+  });
+
+  await TestRenderer.act(async () => {
+    tree.update(page([], { state: "error", isFetching: false, onRetry: retry }));
+  });
+  const coldError = textNode(tree, "Menu couldn’t load");
+  expect(coldError.props.accessibilityRole).toBe("header");
+  expect(flatStyle(coldError)).toMatchObject({
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: "800",
+    color: palette.primaryText,
+  });
+  expect(flatStyle(textNode(tree, "Try again in a moment."))).toMatchObject({
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: "400",
+    color: palette.secondaryText,
+  });
+
+  await TestRenderer.act(async () => {
+    tree.update(
+      page(MENU, { state: "ready", isFetching: true, onRetry: retry }),
+    );
+  });
+  expect(flatStyle(textNode(tree, "Updating menu…"))).toMatchObject({
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "400",
+    color: palette.secondaryText,
+  });
+
+  await TestRenderer.act(async () => {
+    tree.update(
+      page(MENU, { state: "error", isFetching: false, onRetry: retry }),
+    );
+  });
+  const staleError = textNode(tree, "Menu may be out of date.");
+  expect(staleError.props.accessibilityRole).toBeUndefined();
+  expect(flatStyle(staleError)).toMatchObject({
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "400",
+    color: palette.secondaryText,
+  });
+  await TestRenderer.act(async () => tree.unmount());
+});
+
+test("the custom retry ring is keyboard-only on web and never reaches native", async () => {
+  const platformDescriptor = Object.getOwnPropertyDescriptor(Platform, "OS");
+  const retry = () => undefined;
+  let tree!: Tree;
+  try {
+    Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        page([], { state: "error", isFetching: false, onRetry: retry }),
+      );
+    });
+    await TestRenderer.act(async () => {
+      retryButton(tree).props.onFocus?.({
+        currentTarget: { matches: () => true },
+      });
+    });
+    expect(flatStyle(retryButton(tree)).outlineWidth).toBeUndefined();
+
+    Object.defineProperty(Platform, "OS", { configurable: true, value: "web" });
+    await TestRenderer.act(async () => {
+      tree.update(page([], { state: "error", isFetching: false, onRetry: retry }));
+      retryButton(tree).props.onFocus?.({
+        currentTarget: { matches: () => false },
+      });
+    });
+    expect(flatStyle(retryButton(tree)).outlineWidth).toBeUndefined();
+    await TestRenderer.act(async () => {
+      retryButton(tree).props.onFocus?.({
+        currentTarget: { matches: (selector: string) => selector === ":focus-visible" },
+      });
+    });
+    expect(flatStyle(retryButton(tree))).toMatchObject({
+      outlineWidth: 3,
+      outlineOffset: -4,
+    });
+  } finally {
+    if (platformDescriptor !== undefined) {
+      Object.defineProperty(Platform, "OS", platformDescriptor);
+    }
+    if (tree !== undefined) {
+      await TestRenderer.act(async () => tree.unmount());
+    }
+  }
+});
+
+test("announces first failure, repeat failure, and recovery once each", async () => {
+  const announce = AccessibilityInfo.announceForAccessibility as jest.Mock;
+  announce.mockClear();
+  const retry = jest.fn(() => undefined);
+  let tree!: Tree;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      page([], { state: "error", isFetching: false, onRetry: retry }),
+    );
+  });
+  expect(announce.mock.calls).toEqual([["Menu couldn’t load"]]);
+
+  await TestRenderer.act(async () => {
+    tree.update(page([], { state: "error", isFetching: false, onRetry: retry }));
+  });
+  expect(announce).toHaveBeenCalledTimes(1);
+
+  await TestRenderer.act(async () => retryButton(tree).props.onPress?.());
+  await TestRenderer.act(async () => {
+    tree.update(page([], { state: "error", isFetching: true, onRetry: retry }));
+  });
+  await TestRenderer.act(async () => {
+    tree.update(page([], { state: "error", isFetching: false, onRetry: retry }));
+  });
+  expect(announce.mock.calls).toEqual([
+    ["Menu couldn’t load"],
+    ["Menu couldn’t load"],
+  ]);
+
+  await TestRenderer.act(async () => retryButton(tree).props.onPress?.());
+  await TestRenderer.act(async () => {
+    tree.update(page([], { state: "error", isFetching: true, onRetry: retry }));
+  });
+  await TestRenderer.act(async () => {
+    tree.update(page(MENU, { state: "ready", isFetching: false, onRetry: retry }));
+  });
+  expect(announce.mock.calls).toEqual([
+    ["Menu couldn’t load"],
+    ["Menu couldn’t load"],
+    ["Menu loaded."],
+  ]);
   await TestRenderer.act(async () => tree.unmount());
 });

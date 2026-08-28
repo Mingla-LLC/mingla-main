@@ -251,6 +251,7 @@ test("Buyer ordering-off Menu remains populated after the actual lazy surface re
         venue={VENUE}
         discoveryPrice={null}
         menu={MENU}
+        menuLifecycle={{ state: "ready", isFetching: false, onRetry: () => {} }}
         reservable={null}
         reservabilityState="ready"
         initialTab="menu"

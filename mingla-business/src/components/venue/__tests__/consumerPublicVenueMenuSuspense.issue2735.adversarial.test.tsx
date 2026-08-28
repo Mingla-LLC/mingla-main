@@ -241,6 +241,7 @@ test("Consumer never loses or duplicates items when resolved truth toggles off-o
       venue={VENUE}
       discoveryPrice={null}
       menu={MENU}
+      menuLifecycle={{ state: "ready", isFetching: false, onRetry: () => {} }}
       reservable={null}
       reservabilityState="ready"
       initialTab="menu"
