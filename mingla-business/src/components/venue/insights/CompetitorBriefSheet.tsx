@@ -1,6 +1,6 @@
 import React from "react";
 import { ActivityIndicator, Linking, Platform, ScrollView, StyleSheet, Text, View } from "react-native";
-import { captureCompetitorIntelligenceEvent } from "../../../analytics/businessAnalyticsEvents";
+import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
 import { spacing, semantic, text as textTokens, typography } from "../../../constants/designSystem";
 import { useCompetitorBrief } from "../../../hooks/useCompetitorIntelligence";
 import { openExternal } from "../../../services/guestFunnelLink";

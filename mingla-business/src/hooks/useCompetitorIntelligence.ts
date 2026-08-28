@@ -5,6 +5,8 @@ import { addCompetitor, getCompetitorBrief, listCompetitors, refreshCompetitor, 
 import type { CompetitorSourceInput, CompetitorWatchRow } from "../types/growthTools";
 import { growthToolsKeys } from "./growthToolsKeys";
 const DISABLED_KEY = ["growth-tools-disabled"] as const;
+const competitorBriefKey = (brandId: string, watchId: string) =>
+  ["growth-tools", brandId, "brief", watchId] as const;
 
 // ── Competitor watch (G-9..G-13 / P-46) ──────────────────────────────────────
 
@@ -63,7 +65,7 @@ export function useAddCompetitor(
         void queryClient.invalidateQueries({
           queryKey: growthToolsKeys.watch(brandId, venueListingId),
         });
-        void queryClient.invalidateQueries({ queryKey: growthToolsKeys.brief(brandId, row.id) });
+        void queryClient.invalidateQueries({ queryKey: competitorBriefKey(brandId, row.id) });
       }
     },
   });
@@ -82,7 +84,7 @@ export function useUpdateCompetitor(
     onSuccess: (row) => {
       if (brandId !== null && venueListingId !== null) {
         void queryClient.invalidateQueries({ queryKey: growthToolsKeys.watch(brandId, venueListingId) });
-        void queryClient.invalidateQueries({ queryKey: growthToolsKeys.brief(brandId, row.id) });
+        void queryClient.invalidateQueries({ queryKey: competitorBriefKey(brandId, row.id) });
       }
     },
   });
@@ -101,7 +103,7 @@ export function useRefreshCompetitor(
     onSuccess: (_result, { competitorId }) => {
       if (brandId !== null && venueListingId !== null) {
         void queryClient.invalidateQueries({ queryKey: growthToolsKeys.watch(brandId, venueListingId) });
-        void queryClient.invalidateQueries({ queryKey: growthToolsKeys.brief(brandId, competitorId) });
+        void queryClient.invalidateQueries({ queryKey: competitorBriefKey(brandId, competitorId) });
       }
     },
   });
@@ -111,7 +113,7 @@ export function useCompetitorBrief(brandId: string | null, watchId: string | nul
   const { loading, session } = useAuth();
   const active = enabled && !loading && session !== null && brandId !== null && watchId !== null;
   return useQuery({
-    queryKey: active && brandId !== null && watchId !== null ? growthToolsKeys.brief(brandId, watchId) : DISABLED_KEY,
+    queryKey: active && brandId !== null && watchId !== null ? competitorBriefKey(brandId, watchId) : DISABLED_KEY,
     enabled: active,
     staleTime: 60_000,
     refetchInterval: (query) => {
@@ -144,4 +146,3 @@ export function useRemoveCompetitor(
     },
   });
 }
-

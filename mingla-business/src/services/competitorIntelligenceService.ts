@@ -11,6 +11,10 @@ import type {
   CompetitorWatchRow,
   CompetitorWatchV2Row,
 } from "../types/growthTools";
+const COMPETITOR_ERROR_CODES = [
+  "duplicate_source", "watch_conflict", "provider_disabled", "budget_deferred",
+  "temporarily_unavailable", "edit_required", "retry_exhausted",
+] as const;
 // ── Competitor watch CRUD + search (P-46) ────────────────────────────────────
 
 export interface CompetitorWatchLatest {
@@ -143,7 +147,7 @@ export async function listCompetitors(
       venue_listing_id: venueListingId,
     },
   });
-  if (error !== null) throw await toGrowthToolsAppError(error);
+  if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
   const body = data as { competitors?: RawWatchRow[] };
   if (!Array.isArray(body?.competitors)) {
     throw new GrowthToolsAppError("server", { reason: "malformed_watch_response" });
@@ -174,7 +178,7 @@ export async function addCompetitor(
       },
     },
   });
-  if (error !== null) throw await toGrowthToolsAppError(error);
+  if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
   const body = data as { competitor?: RawWatchRow };
   if (body?.competitor === undefined) {
     throw new GrowthToolsAppError("server", { reason: "malformed_watch_response" });
@@ -193,7 +197,7 @@ export async function updateCompetitor(
     expected_updated_at: expectedUpdatedAt,
     competitor: { name: competitor.name.trim(), city: competitor.city.trim(), sources: competitor.sources.map((s) => ({ kind: s.kind, url: s.url.trim() })) },
   } });
-  if (error !== null) throw await toGrowthToolsAppError(error);
+  if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
   const body = data as { competitor?: RawWatchRow };
   if (body.competitor === undefined) throw new GrowthToolsAppError("server", { reason: "malformed_watch_response" });
   return mapWatchRow(body.competitor);
@@ -201,7 +205,7 @@ export async function updateCompetitor(
 
 export async function refreshCompetitor(brandId: string, competitorId: string): Promise<"cached" | "joined" | "queued"> {
   const { data, error } = await supabase.functions.invoke("growth-tools-run", { body: { action: "watch_refresh", lane: "app", brand_id: brandId, id: competitorId } });
-  if (error !== null) throw await toGrowthToolsAppError(error);
+  if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
   const result = (data as { result?: unknown }).result;
   if (result !== "cached" && result !== "joined" && result !== "queued") throw new GrowthToolsAppError("server", { reason: "malformed_refresh_response" });
   return result;
@@ -221,7 +225,7 @@ export async function removeCompetitor(
       ...(expectedUpdatedAt !== undefined ? { expected_updated_at: expectedUpdatedAt } : {}),
     },
   });
-  if (error !== null) throw await toGrowthToolsAppError(error);
+  if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
   const body = data as { ok?: boolean };
   if (body?.ok !== true) {
     throw new GrowthToolsAppError("server", { reason: "malformed_watch_response" });
@@ -366,7 +370,7 @@ function mapCompetitorBrief(raw: unknown): CompetitorBriefResult["brief"] {
 
 export async function getCompetitorBrief(brandId: string, watchId: string): Promise<CompetitorBriefResult> {
   const { data, error } = await supabase.functions.invoke("growth-tools-report", { body: { action: "competitor_brief", lane: "app", brand_id: brandId, watch_id: watchId } });
-  if (error !== null) throw await toGrowthToolsAppError(error);
+  if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
   if (!isRecord(data) || !hasExactKeys(data, ["schema_version", "watch_id", "freshness", "updated_at", "checked_at", "next_refresh_at", "no_meaningful_change", "manual_refresh_state", "sources", "brief"])) return malformedBriefResponse();
   const body = data;
   if (body.schema_version !== 2 || body.watch_id !== watchId ||

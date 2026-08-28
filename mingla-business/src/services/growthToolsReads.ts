@@ -65,13 +65,6 @@ const KNOWN_CODES: readonly GrowthToolsAppErrorCode[] = [
   "not_found",
   "watch_limit",
   "duplicate_competitor",
-  "duplicate_source",
-  "watch_conflict",
-  "provider_disabled",
-  "budget_deferred",
-  "temporarily_unavailable",
-  "edit_required",
-  "retry_exhausted",
   "server",
 ];
 
@@ -90,7 +83,7 @@ interface EngineErrorBody {
 export async function toGrowthToolsAppError(error: {
   message?: string;
   context?: unknown;
-}): Promise<GrowthToolsAppError> {
+}, additionalCodes: readonly GrowthToolsAppErrorCode[] = []): Promise<GrowthToolsAppError> {
   const ctx = error.context;
   if (
     ctx !== null &&
@@ -114,7 +107,8 @@ export async function toGrowthToolsAppError(error: {
       return new GrowthToolsAppError("server", { status });
     }
     const rawCode = typeof body?.error === "string" ? body.error : null;
-    const code = (KNOWN_CODES as readonly string[]).includes(rawCode ?? "")
+    const code = (KNOWN_CODES as readonly string[]).includes(rawCode ?? "") ||
+        (additionalCodes as readonly string[]).includes(rawCode ?? "")
       ? (rawCode as GrowthToolsAppErrorCode)
       : "server";
     return new GrowthToolsAppError(code, {

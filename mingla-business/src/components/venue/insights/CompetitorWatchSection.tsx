@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
-import { captureCompetitorIntelligenceEvent } from "../../../analytics/businessAnalyticsEvents";
+import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
 import { glass, radius, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
 import { useCompetitorWatch, useRefreshCompetitor, useRemoveCompetitor } from "../../../hooks/useCompetitorIntelligence";
 import type { CompetitorSourceState, CompetitorWatchRow } from "../../../types/growthTools";

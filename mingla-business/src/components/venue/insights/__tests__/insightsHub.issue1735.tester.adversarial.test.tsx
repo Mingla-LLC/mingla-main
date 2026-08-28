@@ -78,15 +78,13 @@ jest.mock("../GraderReportSections", () => ({
   GraderReportSections: (props: Record<string, unknown>) =>
     ReactLocal.createElement("GraderReportSections", props),
 }));
-jest.mock("../../../../analytics/businessAnalyticsEvents", () => ({
+jest.mock("../../../../analytics/venueInsightsAnalytics", () => ({
   __esModule: true,
   captureIntelCardShown: jest.fn(),
   captureIntelRunStarted: jest.fn(),
   captureIntelRunCompleted: jest.fn(),
   captureIntelRunFailed: jest.fn(),
   captureIntelReportOpened: jest.fn(),
-  captureIntelCompetitorAdded: jest.fn(),
-  captureIntelCompetitorGraded: jest.fn(),
 }));
 jest.mock("../../../../context/AuthContext", () => ({
   __esModule: true,

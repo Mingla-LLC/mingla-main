@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import { spacing, semantic, text as textTokens, typography } from "../../../constants/designSystem";
-import { captureCompetitorIntelligenceEvent, captureIntelCompetitorAdded } from "../../../analytics/businessAnalyticsEvents";
+import { captureCompetitorIntelligenceEvent, captureIntelCompetitorAdded } from "../../../analytics/competitorIntelligenceAnalytics";
 import { useAuth } from "../../../context/AuthContext";
 import { growthToolsKeys } from "../../../hooks/growthToolsKeys";
 import { useAddCompetitor } from "../../../hooks/useCompetitorIntelligence";

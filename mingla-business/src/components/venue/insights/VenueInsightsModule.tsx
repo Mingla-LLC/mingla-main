@@ -48,7 +48,7 @@ import {
   captureIntelRunCompleted,
   captureIntelRunFailed,
   captureIntelRunStarted,
-} from "../../../analytics/businessAnalyticsEvents";
+} from "../../../analytics/venueInsightsAnalytics";
 import { useBrandPlaceAuthoringContext } from "../../../hooks/useBrandPlacePipelineState";
 import { useAuth } from "../../../context/AuthContext";
 import { useIntelRun, useIntelSubjectLatest } from "../../../hooks/useGrowthTools";

@@ -7,7 +7,7 @@ jest.mock("../../../../hooks/useCompetitorIntelligence",()=>({useCompetitorWatch
 jest.mock("../../../../context/AuthContext",()=>({useAuth:()=>({loading:false,session:{user:{id:"u1"}}})}));
 jest.mock("../../../ui/useShareNetworkState",()=>({useShareNetworkState:()=>true}));
 jest.mock("@tanstack/react-query",()=>({useQuery:()=>({data:[],isFetching:false,isFetched:false,isError:false,refetch:jest.fn()})}));
-jest.mock("../../../../analytics/businessAnalyticsEvents",()=>({captureCompetitorIntelligenceEvent:jest.fn(),captureIntelCompetitorAdded:jest.fn()}));
+jest.mock("../../../../analytics/competitorIntelligenceAnalytics",()=>({captureCompetitorIntelligenceEvent:jest.fn(),captureIntelCompetitorAdded:jest.fn()}));
 jest.mock("../../../../services/guestFunnelLink",()=>({openExternal:jest.fn()}));
 jest.mock("../../../ui/Button",()=>({Button:(props:Record<string,unknown>)=>ReactLocal.createElement("Button",props)}));
 jest.mock("../../../ui/GlassCard",()=>({GlassCard:(props:Record<string,unknown>&{children?:unknown})=>ReactLocal.createElement("GlassCard",props,props.children as never)}));
