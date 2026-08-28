@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-28 — Public venue reservations now keep one truthful availability result from brand browsing through venue booking, so enabled restaurants no longer appear unavailable after navigation (#2730, PR #2750)
 - 2026-08-27 — Venue reservations now open as a compact, calendar-first workspace with Agenda, Week, and Month views, glanceable booking details, responsive mobile navigation, and accessible keyboard and focus behavior (#2737, PR #2746)
 - 2026-08-27 — Admins can approve pending venue claims without first marking them called; the optional call audit remains available and independent (#2724, PR #2740)
 - 2026-08-27 — Brand creation now offers payout setup before a five-choice creator, while Event, Trip, Experience, RSVP, and Venue creation and free publishing remain open without a bank; only collecting money requires one (#2719, PR #2727)
