@@ -75,6 +75,56 @@ const WEB_BUTTON_BASE_STYLE: React.CSSProperties = {
   zIndex: 0,
 };
 
+type WebInlineRect = { left: number; right: number };
+type WebGalleryScrollOwner = {
+  getBoundingClientRect: () => WebInlineRect;
+  scrollLeft: number;
+};
+type WebGalleryFocusTarget = {
+  closest?: (selector: string) => WebGalleryScrollOwner | null;
+  getBoundingClientRect?: () => WebInlineRect;
+};
+type WebGalleryFocusEvent = { currentTarget: WebGalleryFocusTarget };
+
+const WEB_GALLERY_SELECTOR =
+  '[role="group"][aria-label="Choose cover photo"]';
+// Chromium's native focus outline paints one pixel beyond the button box. The
+// extra pixel also closes fractional-layout rounding without changing row
+// padding, gaps, thumbnail geometry, or the visible unfocused state.
+const WEB_FOCUS_HALO_PX = 2;
+
+const keepFocusedGalleryButtonInlineVisible = (
+  event: WebGalleryFocusEvent,
+): void => {
+  const target = event.currentTarget;
+  const buttonRect = target.getBoundingClientRect?.();
+  const scrollOwner = target.closest?.(WEB_GALLERY_SELECTOR);
+  if (
+    buttonRect === undefined ||
+    scrollOwner === null ||
+    scrollOwner === undefined
+  ) {
+    return;
+  }
+
+  const ownerRect = scrollOwner.getBoundingClientRect();
+  const rightOverrun = buttonRect.right + WEB_FOCUS_HALO_PX - ownerRect.right;
+  const leftOverrun = ownerRect.left - (buttonRect.left - WEB_FOCUS_HALO_PX);
+
+  // Own only the inline axis. scrollIntoView would also move the public page
+  // vertically, which is outside this horizontal gallery's responsibility.
+  if (rightOverrun > 0) {
+    scrollOwner.scrollLeft += Math.ceil(rightOverrun);
+    return;
+  }
+  if (leftOverrun > 0) {
+    scrollOwner.scrollLeft = Math.max(
+      0,
+      scrollOwner.scrollLeft - Math.ceil(leftOverrun),
+    );
+  }
+};
+
 const opaqueTileBg = (palette: ThemePalette): string =>
   Platform.select({ android: "#1A1A1C", default: palette.card }) ??
   palette.card;
@@ -170,6 +220,7 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
               "aria-disabled": active ? true : undefined,
               "aria-label": a11yLabel,
               tabIndex: 0,
+              onFocus: keepFocusedGalleryButtonInlineVisible,
               "data-testid":
                 testID !== undefined ? `${testID}-card-${index}` : undefined,
               style: {
@@ -241,6 +292,13 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
           false,
         ),
       )}
+      {Platform.OS === "web" ? (
+        <View
+          aria-hidden
+          pointerEvents="none"
+          style={styles.webFocusScrollExtent}
+        />
+      ) : null}
     </ScrollView>
   );
 };
@@ -256,6 +314,15 @@ const styles = StyleSheet.create({
   },
   webPressTarget: {
     flexShrink: 0,
+  },
+  // Positive overflow extends only the horizontal scroll range. It gives the
+  // final browser-native focus halo room to enter the viewport without adding
+  // a flex item, padding, gap, or any visible/layout geometry.
+  webFocusScrollExtent: {
+    position: "absolute",
+    right: -WEB_FOCUS_HALO_PX,
+    width: WEB_FOCUS_HALO_PX,
+    height: 1,
   },
   card: {
     borderRadius: 12,

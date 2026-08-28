@@ -209,6 +209,74 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
     expect(onSelect).not.toHaveBeenCalled();
   });
 
+  it("H-5a reveals the full focus halo through local horizontal movement only", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const [first, middle, , , last] = hostButtons(tree.root);
+    const pagePosition = { x: 0, y: 417 };
+    const scrollOwner = {
+      getBoundingClientRect: jest.fn(() => ({ left: 20, right: 300 })),
+      scrollLeft: 180,
+    };
+    const focus = (
+      button: ReactTestInstance | undefined,
+      rect: { left: number; right: number },
+    ): void => {
+      if (button === undefined) throw new Error("issue_2739_button_missing");
+      button.props.onFocus({
+        currentTarget: {
+          closest: jest.fn((selector: string) =>
+            selector ===
+            '[role="group"][aria-label="Choose cover photo"]'
+              ? scrollOwner
+              : null,
+          ),
+          getBoundingClientRect: jest.fn(() => rect),
+        },
+      });
+    };
+
+    focus(middle, { left: 80, right: 144 });
+    expect(scrollOwner.scrollLeft).toBe(180);
+
+    focus(last, { left: 272, right: 336 });
+    expect(scrollOwner.scrollLeft).toBe(218);
+    expect(336 - (218 - 180) + 2).toBeLessThanOrEqual(300);
+
+    focus(first, { left: 17.25, right: 81.25 });
+    expect(scrollOwner.scrollLeft).toBe(213);
+    expect(17.25 + (218 - 213) - 2).toBeGreaterThanOrEqual(20);
+
+    expect(pagePosition).toEqual({ x: 0, y: 417 });
+    expect(scrollOwner.getBoundingClientRect).toHaveBeenCalledTimes(3);
+
+    const focusExtents = tree.root.findAll(
+      (node: ReactTestInstance) =>
+        node.props["aria-hidden"] === true &&
+        ((Array.isArray(node.props.style) &&
+          node.props.style.some(
+            (style: unknown) =>
+              typeof style === "object" &&
+              style !== null &&
+              "right" in style &&
+              style.right === -2,
+          )) ||
+          node.props.style?.right === -2),
+    );
+    expect(focusExtents).toHaveLength(1);
+    const focusExtentStyle = Array.isArray(focusExtents[0]?.props.style)
+      ? Object.assign({}, ...focusExtents[0].props.style)
+      : focusExtents[0]?.props.style;
+    expect(focusExtentStyle).toEqual(
+      expect.objectContaining({
+        height: 1,
+        position: "absolute",
+        right: -2,
+        width: 2,
+      }),
+    );
+  });
+
   it("H-6 preserves the native imagebutton, selected-state, and selected-name contract", async () => {
     setPlatform("ios");
     const tree = await mountRow({ activeIndex: 1 });
