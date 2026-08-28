@@ -49,8 +49,35 @@ const CARD = {
   desktop: { width: 88, height: 56 },
 } as const;
 
+// RNW promotes aria-disabled on its semantic <button> host to the native
+// disabled attribute. Keep Pressable as the single activation owner, but let a
+// real child button own web focus and ARIA so current-item state never drops
+// the browser focus that selected it.
+const WEB_BUTTON_BASE_STYLE: React.CSSProperties = {
+  alignContent: "flex-start",
+  alignItems: "stretch",
+  appearance: "none",
+  borderStyle: "solid",
+  boxSizing: "border-box",
+  cursor: "pointer",
+  display: "flex",
+  flexBasis: "auto",
+  flexDirection: "column",
+  flexShrink: 0,
+  listStyle: "none",
+  margin: 0,
+  minHeight: 0,
+  minWidth: 0,
+  padding: 0,
+  position: "relative",
+  textDecoration: "none",
+  touchAction: "manipulation",
+  zIndex: 0,
+};
+
 const opaqueTileBg = (palette: ThemePalette): string =>
-  Platform.select({ android: "#1A1A1C", default: palette.card }) ?? palette.card;
+  Platform.select({ android: "#1A1A1C", default: palette.card }) ??
+  palette.card;
 
 const PlayBadge: React.FC = () => (
   <View style={styles.playBadge} pointerEvents="none" testID="cover-play-badge">
@@ -106,33 +133,69 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
     showPlay: boolean,
   ): React.ReactNode => {
     const active = index === activeIndex;
-    // RNW's Pressable overwrites a direct `aria-disabled` prop with its own
-    // `disabled` value, and `disabled` would remove the current card from the
-    // Tab order. Its typed compatibility input reaches createDOMProps without
-    // changing native props, which gives web the APG current-item marker while
-    // keeping the control focusable.
-    const webCurrentState =
-      Platform.OS === "web"
-        ? {
-            accessibilityDisabled: active,
-            ...(active ? { onPress: undefined } : {}),
-          }
-        : {};
+    const cardContents = (
+      <>
+        {thumbUrl !== null ? (
+          <Image
+            source={{ uri: thumbUrl }}
+            style={styles.cardImage}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : null}
+        {showPlay ? <PlayBadge /> : null}
+        {active ? <CheckBadge palette={palette} /> : null}
+      </>
+    );
+    const selectCard = active ? undefined : () => onSelect(index);
+
+    if (Platform.OS === "web") {
+      return (
+        <Pressable
+          key={`cover-gallery-card-${index}`}
+          onPress={selectCard}
+          {...{ accessibilityDisabled: active }}
+          accessibilityState={undefined}
+          tabIndex={-1}
+          style={[
+            styles.webPressTarget,
+            { width: size.width, height: size.height },
+          ]}
+        >
+          {React.createElement(
+            "button",
+            {
+              type: "button",
+              role: "button",
+              "aria-disabled": active ? true : undefined,
+              "aria-label": a11yLabel,
+              tabIndex: 0,
+              "data-testid":
+                testID !== undefined ? `${testID}-card-${index}` : undefined,
+              style: {
+                ...WEB_BUTTON_BASE_STYLE,
+                width: "100%",
+                height: "100%",
+                overflow: "hidden",
+                borderRadius: 12,
+                backgroundColor: opaqueTileBg(palette),
+                borderColor: active ? palette.accent : palette.panelBorder,
+                borderWidth: active ? 2 : 1,
+              },
+            },
+            cardContents,
+          )}
+        </Pressable>
+      );
+    }
+
     return (
       <Pressable
         key={`cover-gallery-card-${index}`}
         onPress={() => onSelect(index)}
-        {...webCurrentState}
-        role={Platform.OS === "web" ? "button" : undefined}
-        accessibilityRole={Platform.OS === "web" ? undefined : "imagebutton"}
-        accessibilityState={
-          Platform.OS === "web" ? undefined : { selected: active }
-        }
-        accessibilityLabel={
-          Platform.OS === "web"
-            ? a11yLabel
-            : a11yLabel + (active ? ", selected" : "")
-        }
+        accessibilityRole="imagebutton"
+        accessibilityState={{ selected: active }}
+        accessibilityLabel={a11yLabel + (active ? ", selected" : "")}
         testID={testID !== undefined ? `${testID}-card-${index}` : undefined}
         style={[
           styles.card,
@@ -145,16 +208,7 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
           },
         ]}
       >
-        {thumbUrl !== null ? (
-          <Image
-            source={{ uri: thumbUrl }}
-            style={styles.cardImage}
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
-        ) : null}
-        {showPlay ? <PlayBadge /> : null}
-        {active ? <CheckBadge palette={palette} /> : null}
+        {cardContents}
       </Pressable>
     );
   };
@@ -199,6 +253,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     paddingVertical: 2,
+  },
+  webPressTarget: {
+    flexShrink: 0,
   },
   card: {
     borderRadius: 12,

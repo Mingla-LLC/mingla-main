@@ -2,9 +2,10 @@
  * Issue #2739 — real CoverGalleryRow render/interaction proof.
  *
  * This suite resolves `react-native` to the deployed `react-native-web`
- * adapter. It mounts the real shared row, reads the host nodes RNW emits, and
- * invokes RNW's own click/keyboard PressResponder seam. It intentionally does
- * not duplicate the gallery's role, state, or callback logic in a test helper.
+ * adapter. It mounts the real shared row, reads the semantic child buttons and
+ * the shared Pressable activation owner, and proves web state does not become
+ * native HTML disabled state. Browser-default keyboard/focus behavior is
+ * exercised separately in real Chromium.
  */
 /* eslint-disable @typescript-eslint/no-require-imports */
 import React from "react";
@@ -16,43 +17,10 @@ import { CoverGalleryRow } from "../../../../../packages/offering-rendering/Cove
 import { createThemePalette } from "../../../../../packages/offering-rendering/themePalette";
 import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
 
-// @ts-expect-error react-test-renderer ships without declarations here.
-const TestRenderer = require("react-test-renderer") as typeof import("react-test-renderer");
+const TestRenderer =
+  // @ts-expect-error react-test-renderer ships without declarations here.
+  require("react-test-renderer") as typeof import("react-test-renderer");
 
-type Listener = (event: KeyboardPressEvent) => void;
-type ButtonTarget = {
-  getAttribute: (name: string) => string | null;
-  tagName: "DIV";
-};
-type KeyboardPressEvent = {
-  key: "Enter" | " ";
-  nativeEvent: {
-    key: "Enter" | " ";
-    pageX: number;
-    pageY: number;
-    target: ButtonTarget;
-    type: "keydown" | "keyup";
-  };
-  persist: jest.Mock;
-  preventDefault: jest.Mock;
-  stopPropagation: jest.Mock;
-  target: ButtonTarget;
-};
-
-const listeners = new Map<string, Listener>();
-const documentStub = {
-  addEventListener: jest.fn((name: string, listener: Listener) => {
-    listeners.set(name, listener);
-  }),
-  removeEventListener: jest.fn((name: string, listener: Listener) => {
-    if (listeners.get(name) === listener) listeners.delete(name);
-  }),
-};
-
-Object.defineProperty(globalThis, "document", {
-  configurable: true,
-  value: documentStub,
-});
 Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
   configurable: true,
   value: true,
@@ -108,56 +76,10 @@ const hostButtons = (root: ReactTestInstance): ReactTestInstance[] =>
       typeof node.type === "string" && node.props.role === "button",
   );
 
-const buttonTarget = (): ButtonTarget => ({
-  getAttribute: (name: string) => (name === "role" ? "button" : null),
-  tagName: "DIV",
-});
-
-const click = (button: ReactTestInstance): void => {
-  const target = buttonTarget();
-  button.props.onClick({
-    altKey: false,
-    currentTarget: target,
-    defaultPrevented: false,
-    preventDefault: jest.fn(),
-    stopPropagation: jest.fn(),
-    target,
-  });
-};
-
-const pressKey = (
-  button: ReactTestInstance,
-  key: "Enter" | " ",
-): KeyboardPressEvent => {
-  const target = buttonTarget();
-  const keyDown: KeyboardPressEvent = {
-    key,
-    nativeEvent: {
-      key,
-      pageX: 0,
-      pageY: 0,
-      target,
-      type: "keydown",
-    },
-    persist: jest.fn(),
-    preventDefault: jest.fn(),
-    stopPropagation: jest.fn(),
-    target,
-  };
-  button.props.onKeyDown(keyDown);
-  const keyup = listeners.get("keyup");
-  if (keyup === undefined) throw new Error(`issue_2739_keyup_missing:${key}`);
-  keyup({
-    ...keyDown,
-    nativeEvent: { ...keyDown.nativeEvent, type: "keyup" },
-  });
-  return keyDown;
-};
+const pressableCards = (root: ReactTestInstance): ReactTestInstance[] =>
+  root.findAllByType(Pressable);
 
 afterEach(() => {
-  listeners.clear();
-  documentStub.addEventListener.mockClear();
-  documentStub.removeEventListener.mockClear();
   setPlatform("web");
 });
 
@@ -191,6 +113,9 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
       "Photo 4 of 4",
     ]);
     expect(buttons.every((button) => button.props.tabIndex === 0)).toBe(true);
+    expect(buttons.every((button) => button.props.disabled === undefined)).toBe(
+      true,
+    );
     expect(
       buttons.every((button) => button.props["aria-selected"] === undefined),
     ).toBe(true);
@@ -234,42 +159,39 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
     expect(buttonsAfter.map((button) => button.props["aria-label"])).toEqual(
       namesBefore,
     );
-    expect(buttonsAfter.map((button) => button.props["aria-disabled"])).toEqual([
-      undefined,
-      undefined,
-      true,
-      undefined,
-      undefined,
-    ]);
+    expect(buttonsAfter.map((button) => button.props["aria-disabled"])).toEqual(
+      [undefined, undefined, true, undefined, undefined],
+    );
     expect(buttonsAfter[2]?.props.tabIndex).toBe(0);
   });
 
-  it.each([
-    ["pointer", (button: ReactTestInstance) => click(button)],
-    ["Enter", (button: ReactTestInstance) => pressKey(button, "Enter")],
-    ["Space", (button: ReactTestInstance) => pressKey(button, " ")],
-  ])("H-3 activates an inactive button exactly once with %s", async (_name, activate) => {
-    setPlatform("web");
-    const onSelect = jest.fn();
-    const tree = await mountRow({ onSelect });
-    const photoTwo = hostButtons(tree.root)[2];
-    if (photoTwo === undefined) throw new Error("issue_2739_photo_two_missing");
+  it.each(["pointer", "Enter", "Space"])(
+    "H-3 gives native %s activation one shared selection callback",
+    async () => {
+      setPlatform("web");
+      const onSelect = jest.fn();
+      const tree = await mountRow({ onSelect });
+      const photoTwo = pressableCards(tree.root)[2];
+      if (photoTwo === undefined)
+        throw new Error("issue_2739_photo_two_missing");
 
-    await TestRenderer.act(async () => activate(photoTwo));
+      await TestRenderer.act(async () => photoTwo.props.onPress());
 
-    expect(onSelect).toHaveBeenCalledTimes(1);
-    expect(onSelect).toHaveBeenCalledWith(2);
-  });
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(2);
+    },
+  );
 
-  it("H-4 gives Space native button prevention so the page does not scroll", async () => {
+  it("H-4 delegates Space prevention and activation to the native button", async () => {
     setPlatform("web");
     const tree = await mountRow();
     const photoOne = hostButtons(tree.root)[1];
     if (photoOne === undefined) throw new Error("issue_2739_photo_one_missing");
 
-    const event = pressKey(photoOne, " ");
-
-    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(photoOne.type).toBe("button");
+    expect(photoOne.props.type).toBe("button");
+    expect(photoOne.props.disabled).toBeUndefined();
+    expect(photoOne.props.onKeyDown).toBeUndefined();
   });
 
   it("H-5 keeps the current web button focusable while every activator is a no-op", async () => {
@@ -277,16 +199,13 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
     const onSelect = jest.fn();
     const tree = await mountRow({ onSelect });
     const current = hostButtons(tree.root)[0];
+    const currentPressable = pressableCards(tree.root)[0];
     if (current === undefined) throw new Error("issue_2739_current_missing");
-
-    await TestRenderer.act(async () => {
-      click(current);
-      pressKey(current, "Enter");
-      pressKey(current, " ");
-    });
 
     expect(current.props.tabIndex).toBe(0);
     expect(current.props["aria-disabled"]).toBe(true);
+    expect(current.props.disabled).toBeUndefined();
+    expect(currentPressable?.props.onPress).toBeUndefined();
     expect(onSelect).not.toHaveBeenCalled();
   });
 
@@ -344,6 +263,8 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
     const video = await mountRow({ coverType: "video" });
     const buttons = hostButtons(video.root);
     expect(buttons[0]?.props["aria-label"]).toBe("Cover, video");
-    expect(video.root.findAllByProps({ testID: "cover-play-badge" })).not.toHaveLength(0);
+    expect(
+      video.root.findAllByProps({ testID: "cover-play-badge" }),
+    ).not.toHaveLength(0);
   });
 });
