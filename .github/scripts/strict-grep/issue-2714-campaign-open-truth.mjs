@@ -40,6 +40,11 @@ const migrationName = path.basename(migrationPath);
 const migrationPrefix = migrationName.slice(0, 14);
 const supersededMigrationName =
   "20270605002714_issue_2714_campaign_open_tracking_truth.sql";
+// #2714 was applied after this exact then-current production predecessor. Seal
+// that boundary instead of requiring #2714 to remain the newest migration
+// forever: future forward-only migrations must sort after the applied receipt,
+// while any later backfill inserted into this closed interval stays forbidden.
+const expectedPredecessorPrefix = "20270605002728";
 const expectedMigrationSha =
   "8f92c35319c91a16b45b5afbaa2ee5e8b2557b33fd337fb8f16e67f5441ee6e5";
 
@@ -88,7 +93,10 @@ function checkMigrationContract(
   const otherPrefixes = canonical
     .filter((entry) => entry !== targetMigrationName)
     .map((entry) => entry.slice(0, 14));
-  const maxOther = otherPrefixes.sort().at(-1) ?? "00000000000000";
+  const maxPredecessor = otherPrefixes
+    .filter((prefix) => prefix < targetPrefix)
+    .sort()
+    .at(-1) ?? "00000000000000";
 
   if (targetCount !== 1) {
     fail(
@@ -102,10 +110,13 @@ function checkMigrationContract(
       `expected one ${targetPrefix} prefix, found ${prefixMatches.length}`,
     );
   } else pass("migration-prefix-unique");
-  if (targetPrefix <= maxOther) {
+  if (
+    targetPrefix <= expectedPredecessorPrefix ||
+    maxPredecessor !== expectedPredecessorPrefix
+  ) {
     fail(
       "migration-prefix-order",
-      `${targetPrefix} must be greater than maximum other prefix ${maxOther}`,
+      `${targetPrefix} must immediately follow sealed predecessor ${expectedPredecessorPrefix}; found ${maxPredecessor}`,
     );
   } else pass("migration-prefix-order");
   if (migrationSha !== expectedMigrationSha) {
@@ -325,6 +336,8 @@ if (process.argv.includes("--self-test")) {
   const goodEntries = [
     "20270605002728_issue_2728_ticket_sold_count_namespace.sql",
     migrationName,
+    "20270606002725_issue_2725_competitor_intelligence.sql",
+    "20270606002726_issue_2725_amendment_8_budget.sql",
   ];
   check(good, goodEntries, expectedMigrationSha);
   const before = failures;
@@ -377,6 +390,14 @@ if (process.argv.includes("--self-test")) {
   });
   proveMutation("self-test-missing-target", (fixture) => {
     fixture.entries = fixture.entries.filter((entry) => entry !== migrationName);
+  });
+  proveMutation("self-test-forbidden-between-prefix", (fixture) => {
+    fixture.entries.push("20270605595959_forbidden_backfill.sql");
+  });
+  proveMutation("self-test-missing-sealed-predecessor", (fixture) => {
+    fixture.entries = fixture.entries.filter((entry) =>
+      !entry.startsWith(`${expectedPredecessorPrefix}_`)
+    );
   });
   for (const sourceKey of ["workflow", "ciManifest", "invariant"]) {
     proveMutation(`self-test-stale-${sourceKey}-reference`, (fixture) => {
