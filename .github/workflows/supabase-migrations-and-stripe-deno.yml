@@ -26,6 +26,9 @@ on:
       - "supabase/functions/_shared/**"
       - "supabase/functions/_shared/__tests__/**"
       - "supabase/functions/__tests__/**"
+      - "supabase/functions/competitor-intel-worker/**"
+      - "supabase/functions/growth-tools-run/**"
+      - "supabase/functions/growth-tools-report/**"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
@@ -140,6 +143,9 @@ on:
       - "supabase/migrations/**"
       - "supabase/functions/_shared/**"
       - "supabase/functions/__tests__/**"
+      - "supabase/functions/competitor-intel-worker/**"
+      - "supabase/functions/growth-tools-run/**"
+      - "supabase/functions/growth-tools-report/**"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
@@ -707,6 +713,19 @@ jobs:
           # by the authorized admin. The tester adds the append-only subject.
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2724_non_admin_approval_blocked.tester.adversarial.pg17.test.sql
+
+          # Issue #2725 Amendment 8 — executable hard-cap proof on the fully
+          # replayed PG17 schema. All funding lanes share one serialized $1.00
+          # venue/ISO-week boundary; the 21st 50,000-microusd reservation is
+          # deferred while another venue remains independently eligible.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2725_amendment8_budget.implementor.pg17.test.sql
+
+          # Issue #2725 Amendment 8 independent tester proof — an exhausted
+          # venue gets a fresh next-week ceiling; usage receipts redact on
+          # watch removal; identical synthesis remains first-writer-wins.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2725_amendment8_rollover_redaction_reuse.tester.adversarial.pg17.test.sql
 
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
@@ -1969,6 +1988,9 @@ jobs:
             supabase/functions/_shared/__tests__/issue927_wp5_hasown_guards.test.ts
             supabase/functions/_shared/__tests__/issue927_create_fn_tiktok_reddit_branches.test.ts
             supabase/functions/_shared/__tests__/issue927_tester_origin_runtime.test.ts
+            supabase/functions/competitor-intel-worker/__tests__/issue_2725_worker_happy.test.ts
+            supabase/functions/competitor-intel-worker/__tests__/issue_2725_amendment8_io_reuse.tester.adversarial.test.ts
+            supabase/functions/growth-tools-report/__tests__/issue_2725_competitor_brief_errors.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

@@ -128,7 +128,7 @@ const PHASE3C_AUTHORISED_ENV = Object.freeze([
     PAYSTACK_SECRET_KEY_TEST: "sk_test_issue1326_confirm_secret",
   }),
 ]);
-const LOCKED_PROVIDER_DISCOVERY_SHA256 = "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158";
+const LOCKED_PROVIDER_DISCOVERY_SHA256 = "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";
 const LOCKED_PHASE3B_PROVIDER_DISCOVERY_SHA256 = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
 // [#2591] Providers that have legitimately appeared SINCE the seal, each
 // declared by name and by exact content and each reviewed on its own issue.

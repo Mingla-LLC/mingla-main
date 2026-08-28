@@ -9680,3 +9680,39 @@ independent tester returns PASS.
 - **Rule:** On web, the one shared public-venue tab owner implements one named, horizontal, manual-activation tabs composite. Exactly one visible tab is in sequential focus order and selected; Left/Right/Home/End move focus only; Enter/Space/click activate through one callback path; every visible tab and panel has a stable bidirectional ID relationship; only the active child subtree mounts; focus remains visible in the horizontal strip. Native retains supported React Native tab roles/state and does not receive web DOM behavior by inference.
 - **Enforcement:** The issue #2738 happy and adversarial append-only render suites invoked by the existing dormant-render CI workflow, plus live browser evidence on both public hosts.
 - **Established:** ACTIVE at #2738 after independent tester PASS across Buyer web and Business/Consumer iOS and Android on 2026-08-28.
+
+## ACTIVE — issue #2725 (smarter weekly competitor intelligence)
+
+### I-PROPOSED-2725-SOURCE-IDENTITY-ONE-OWNER (ACTIVE)
+- **Rule:** Competitor normalization, identity, fingerprinting and venue dedup are server-owned and DB-enforced; clients only preview.
+- **Enforcement:** migration `20270606002725`; #2725 contract gate.
+
+### I-PROPOSED-2725-WEEKLY-WORK-SINGLE-SPEND (ACTIVE)
+- **Rule:** One watch/source-set/week has one job, funding lane, observation per source and brief across every trigger race.
+- **Enforcement:** DB arbiters, lease/publish guards and #2725 contract gate.
+
+### I-PROPOSED-2725-SCHEDULED-BUDGET-ISOLATED (ACTIVE)
+- **Rule:** Scheduled/admin work never enters manual quota; budget refusal causes zero external I/O.
+- **Enforcement:** funding-lane SQL/worker guards and #2725 contract gate.
+
+### I-PROPOSED-2725-PROVIDER-CAPABILITY-FAIL-CLOSED (ACTIVE)
+- **Rule:** Persisted capability generation and compiled `website|instagram` allowlist both authorize retrieval; TikTok is link-only.
+- **Enforcement:** provider seeds, dual worker checks and #2725 contract gate.
+
+### I-PROPOSED-2725-LAST-GOOD-NEVER-OVERWRITTEN (ACTIVE)
+- **Rule:** Failure, cancellation and budget delay cannot replace current brief or falsely advance Updated.
+- **Enforcement:** worker publish/finish paths and Updated-vs-Checked UI.
+
+### I-PROPOSED-2725-EVIDENCE-NO-FABRICATION (ACTIVE)
+- **Rule:** Every fact has evidence/check time; unknown is omitted and raw provider bodies never persist or enter analytics.
+- **Enforcement:** schema/worker validation, analytics allowlist and #2725 contract gate.
+
+### I-PROPOSED-2725-WORKER-HAS-CALLER (ACTIVE)
+- **Rule:** The machine worker has a named repository caller and `SKIP LOCKED` claim ledger.
+- **Enforcement:** migration caller and #2725 caller gate.
+
+### I-PROPOSED-2725-LIVE-CONTENT-DELETES-WITH-WATCH (ACTIVE)
+- **Rule:** Removal stops work/deletes live sources, observations and briefs while retaining only bounded redacted receipts.
+- **Enforcement:** FK/redaction/postcondition/purge contract and #2725 gate.
+
+All eight #2725 rules were established ACTIVE after independent final integration PASS on 2026-08-28.

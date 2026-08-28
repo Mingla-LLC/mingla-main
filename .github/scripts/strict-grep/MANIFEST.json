@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 615,
-  "selfTestWiredFloor": 392,
+  "expectedStrictGrepMjsFiles": 617,
+  "selfTestWiredFloor": 394,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -9249,6 +9249,42 @@
         "--prefix",
         "app-mobile"
       ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2725-competitor-intelligence-contract.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": ["plain", "self-test"],
+      "selfTest": "wired",
+      "jobKeys": ["issue-2725-competitor-intelligence-contract"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2725-competitor-worker-has-caller.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": ["plain", "self-test"],
+      "selfTest": "wired",
+      "jobKeys": ["issue-2725-competitor-worker-has-caller"]
+    },
+    {
+      "script": "mingla-admin/src/pages/__tests__/ToolLeadsPage.issue2725.happy.test.js",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": ["issue-2725-admin-competitor-ops"]
+    },
+    {
+      "script": "supabase/migrations/__tests__/issue_2725_competitor_intelligence_happy.test.js",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": ["issue-2725-migration-contract"]
     },
     {
       "script": "workflow-job:orch-1387-wallet-type-contract",

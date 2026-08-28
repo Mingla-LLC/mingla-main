@@ -15846,7 +15846,7 @@
       "providerWorkflow": ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9cc3f13ebc887144bb977662148627f7e52620d7c2bfd0abf9ae4e7072e7ed9f",
+        "sourceSha256": "b958f41593b427e0d666da1ea68d5d7da266e5ddc925c6875c71702aa1c9f125",
         "triggers": [
           "pull_request",
           "push"
@@ -22511,7 +22511,8 @@
         "mingla-business/src/utils/routeForEventRow.ts",
         "packages/payments-native/tsconfig.orch1387.typetest.json",
         "supabase/functions/_shared/eventTaxonomy.ts",
-        "supabase/migrations/20260605000002_orch_0829b_d1_checkout_expiry_tombstone.sql"
+        "supabase/migrations/20260605000002_orch_0829b_d1_checkout_expiry_tombstone.sql",
+        "supabase/migrations/__tests__/issue_2725_competitor_intelligence_happy.test.js"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },
@@ -22529,6 +22530,7 @@
         ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
         "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs",
         "supabase/functions/__tests__/orch_1289_stop_footer_wire_preview_parity.tester.test.ts",
+        "supabase/migrations/__tests__/issue_2725_competitor_intelligence_happy.test.js",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",
         "supabase/migrations/__tests__/issue_855_pr2_source_tracking.test.sql",
         "supabase/migrations/__tests__/issue_865_attribution_conversion_schema.test.sql",

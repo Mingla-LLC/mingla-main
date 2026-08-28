@@ -194,7 +194,8 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
     "every declared provider addition must be present in discovery and byte-equal to its declaration");
   const reconstructed = [...sealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
   assert.equal(reconstructed.length, 73);
-  assert.equal(sha(reconstructed), "aac3d8cf7221b6795628d3ffe181c805b92611db06f09a847677e21f38ca3158");
+  // #2725: Amendment 8 adds the PG17 competitor-budget workflow covered by this refreshed seal.
+  assert.equal(sha(reconstructed), "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f");
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.

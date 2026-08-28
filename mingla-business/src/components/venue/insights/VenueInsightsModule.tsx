@@ -28,7 +28,6 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AccessibilityInfo,
-  ActivityIndicator,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -49,20 +48,15 @@ import {
   captureIntelRunCompleted,
   captureIntelRunFailed,
   captureIntelRunStarted,
-} from "../../../analytics/businessAnalyticsEvents";
+} from "../../../analytics/venueInsightsAnalytics";
 import { useBrandPlaceAuthoringContext } from "../../../hooks/useBrandPlacePipelineState";
 import { useAuth } from "../../../context/AuthContext";
 import { useIntelRun, useIntelSubjectLatest } from "../../../hooks/useGrowthTools";
 import { useVenueOrderMetrics } from "../../../hooks/useVenueOrderMetrics";
 import { useVenueListing } from "../../../hooks/useVenueListings";
-import type { CompetitorWatchRow } from "../../../services/growthToolsService";
 import { useShareNetworkState } from "../../ui/useShareNetworkState";
 import { Button } from "../../ui/Button";
 import { GlassCard } from "../../ui/GlassCard";
-import { Sheet } from "../../ui/Sheet";
-import { CompetitorAddSheet } from "./CompetitorAddSheet";
-import { CompetitorWatchSection } from "./CompetitorWatchSection";
-import { GraderReportSections } from "./GraderReportSections";
 import { OrderInsightsInstrument } from "./OrderInsightsInstrument";
 import {
   SiteCheckInstrument,
@@ -70,85 +64,18 @@ import {
   type SiteCheckWebsiteState,
 } from "./SiteCheckInstrument";
 import { VENUE_SCROLL_NAV_CLEARANCE } from "../venueShellScroll";
-import {
-  INSIGHT_INSTRUMENTS,
-  formatCheckedDate,
-} from "./insightsInstruments";
+import { INSIGHT_INSTRUMENTS } from "./insightsInstruments";
+
+const CompetitorWatchSection = React.lazy(async () => {
+  const module = await import("./CompetitorWatchSection");
+  return { default: module.CompetitorWatchSection };
+});
 
 type InsightsView = "home" | "site" | "orders" | "pricing";
 
 export interface VenueInsightsModuleProps {
   brandId: string | null;
   venueId?: string | null;
-}
-
-/** The competitor full-report sheet — same G-8 renderers, same report shape. */
-function CompetitorReportSheet({
-  brandId,
-  row,
-  onClose,
-}: {
-  brandId: string | null;
-  row: CompetitorWatchRow | null;
-  onClose: () => void;
-}): React.ReactElement {
-  const latestQuery = useIntelSubjectLatest(
-    brandId,
-    "venues",
-    row !== null ? `competitor:${row.id}` : null,
-    { includePrevious: true, enabled: row !== null },
-  );
-  const data = latestQuery.data;
-  return (
-    <Sheet
-      visible={row !== null}
-      onClose={onClose}
-      testID="competitor-report-sheet"
-    >
-      <ScrollView
-        contentContainerStyle={styles.sheetScroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {row !== null ? (
-          <Text style={styles.sheetTitle}>{row.name}</Text>
-        ) : null}
-        {latestQuery.isLoading ? (
-          <ActivityIndicator size="small" color={textTokens.tertiary} />
-        ) : latestQuery.isError ? (
-          <View style={styles.sheetErrorWrap}>
-            <Text style={styles.sheetError}>
-              Couldn&apos;t load their report — try again.
-            </Text>
-            <Button
-              label="Try again"
-              variant="secondary"
-              size="sm"
-              onPress={() => {
-                void latestQuery.refetch();
-              }}
-            />
-          </View>
-        ) : data !== undefined && data.status === "report_ready" ? (
-          <>
-            <GraderReportSections
-              report={data.latest.report}
-              testID="competitor-report"
-            />
-            {/* G-9 honesty rail — verbatim, dated. */}
-            <Text style={styles.sheetHonesty}>
-              {`A read of their public website on ${
-                formatCheckedDate(data.latest.createdAt) ?? "the dated check"
-              } — their site, not their business.`}
-            </Text>
-          </>
-        ) : (
-          <Text style={styles.sheetHonesty}>
-            No report yet — grade their site first.
-          </Text>
-        )}
-      </ScrollView>
-    </Sheet>
-  );
 }
 
 export function VenueInsightsModule({
@@ -184,8 +111,6 @@ export function VenueInsightsModule({
   const [view, setView] = useState<InsightsView>(
     params.instrument === "orders" ? "orders" : "home",
   );
-  const [addSheetOpen, setAddSheetOpen] = useState(false);
-  const [reportRow, setReportRow] = useState<CompetitorWatchRow | null>(null);
 
   // ── website state (G-6: error is NEVER reported as absence) ─────────────
   const websiteState = useMemo((): SiteCheckWebsiteState => {
@@ -381,15 +306,14 @@ export function VenueInsightsModule({
               }
               return null;
             })}
-            <CompetitorWatchSection
-              brandId={brandId}
-              venueListingId={venueId}
-              offline={offline}
-              onRequestAdd={(atCap) => {
-                if (!atCap) setAddSheetOpen(true);
-              }}
-              onOpenReport={(row) => setReportRow(row)}
-            />
+            <React.Suspense fallback={null}>
+              <CompetitorWatchSection
+                brandId={brandId}
+                venueListingId={venueId}
+                venueCity={venue?.city ?? null}
+                offline={offline}
+              />
+            </React.Suspense>
             {/* Design §4.6 — text only, no nav. Copy verbatim per G-2. */}
             <Text style={styles.ariFooter}>
               Or just ask Ari — &apos;check my site&apos;
@@ -453,19 +377,6 @@ export function VenueInsightsModule({
         )}
       </ScrollView>
 
-      {/* Sheets at the module root (I-13) — never inside the scroll. */}
-      <CompetitorAddSheet
-        visible={addSheetOpen}
-        onClose={() => setAddSheetOpen(false)}
-        brandId={brandId}
-        venueListingId={venueId}
-        venueCity={venue?.city ?? null}
-      />
-      <CompetitorReportSheet
-        brandId={brandId}
-        row={reportRow}
-        onClose={() => setReportRow(null)}
-      />
     </View>
   );
 }
@@ -516,26 +427,6 @@ const styles = StyleSheet.create({
     ...typography.bodySm,
     fontWeight: "600",
     color: textTokens.secondary,
-  },
-  // competitor report sheet
-  sheetScroll: {
-    padding: spacing.md,
-    gap: spacing.md,
-  },
-  sheetTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-  },
-  sheetErrorWrap: {
-    gap: spacing.sm,
-  },
-  sheetError: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-  },
-  sheetHonesty: {
-    ...typography.caption,
-    color: textTokens.tertiary,
   },
 });
 

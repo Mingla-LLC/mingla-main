@@ -240,7 +240,10 @@ export function validateRunInput(raw: unknown): RunValidation {
   }
 
   if (fields.length > 0) return { ok: false, fields };
-  return { ok: true, input: { name, city, website: website as string, place_id } };
+  return {
+    ok: true,
+    input: { name, city, website: website as string, place_id },
+  };
 }
 
 // ── Site fetch + extraction ──────────────────────────────────────────────────
@@ -277,7 +280,8 @@ const FAILED_SITE: SiteContent = {
 // AI is told to cite.
 const BOOKING_HOSTS =
   /(opentable|resy|sevenrooms|tock|toasttab|ubereats|door\s*dash|doordash|grubhub|squareup|bookatable|quandoo|yelp\.com\/reservations|\/reserve|\/book|order\.)/i;
-const SOCIAL_HOSTS = /(instagram\.com|facebook\.com|tiktok\.com|x\.com|twitter\.com)/i;
+const SOCIAL_HOSTS =
+  /(instagram\.com|facebook\.com|tiktok\.com|x\.com|twitter\.com)/i;
 
 export function computeSiteSignals(
   html: string,
@@ -298,7 +302,9 @@ export function computeSiteSignals(
     "https",
     "Secure connection (HTTPS)",
     isHttps ? "pass" : "fail",
-    isHttps ? "Your site loads over a secure connection." : "Your site is not served over HTTPS — browsers flag it as ‘Not secure’.",
+    isHttps
+      ? "Your site loads over a secure connection."
+      : "Your site is not served over HTTPS — browsers flag it as ‘Not secure’.",
   );
 
   // 2. Title tag.
@@ -355,8 +361,12 @@ export function computeSiteSignals(
   );
 
   // 6. Structured data (JSON-LD).
-  const jsonLd = /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i.exec(html);
-  const localBiz = jsonLd && /"@type"\s*:\s*["'](Restaurant|Bar|CafeOrCoffeeShop|Cafe|FoodEstablishment|LocalBusiness|NightClub|BarOrPub)["']/i.test(jsonLd[1]);
+  const jsonLd =
+    /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/i
+      .exec(html);
+  const localBiz = jsonLd &&
+    /"@type"\s*:\s*["'](Restaurant|Bar|CafeOrCoffeeShop|Cafe|FoodEstablishment|LocalBusiness|NightClub|BarOrPub)["']/i
+      .test(jsonLd[1]);
   push(
     "structured_data",
     "Google rich results",
@@ -475,7 +485,10 @@ export function extractVisibleText(html: string): string {
     .slice(0, SITE_TEXT_CAP_CHARS);
 }
 
-export function extractSiteContent(html: string, finalUrl: string): SiteContent {
+export function extractSiteContent(
+  html: string,
+  finalUrl: string,
+): SiteContent {
   const titleMatch = html.match(/<title[^>]*>([\s\S]*?)<\/title\s*>/i);
   const title = titleMatch
     ? decodeEntities(titleMatch[1]).replace(/\s+/g, " ").trim().slice(0, 300) ||
@@ -1237,7 +1250,9 @@ export function buildGeminiUserPrompt(
         "your reasons and fixes; each is pass/warn/fail):",
       );
       for (const sig of site.signals) {
-        lines.push(`- [${sig.status.toUpperCase()}] ${sig.label}: ${sig.detail}`);
+        lines.push(
+          `- [${sig.status.toUpperCase()}] ${sig.label}: ${sig.detail}`,
+        );
       }
     }
     lines.push(
@@ -1536,7 +1551,9 @@ export function normalizeCompetition(
   const cleanStrings = (v: unknown, max: number, cap: number): string[] =>
     Array.isArray(v)
       ? v
-        .filter((s): s is string => typeof s === "string" && s.trim().length > 0)
+        .filter((s): s is string =>
+          typeof s === "string" && s.trim().length > 0
+        )
         .map((s) => s.trim().slice(0, cap))
         .slice(0, max)
       : [];
@@ -1749,7 +1766,9 @@ async function callCompetitionOnce(
     });
   } catch (err) {
     if (isAbortError(err)) {
-      console.error("[growth-tools-run] grounded Gemini call timed out", { timeoutMs });
+      console.error("[growth-tools-run] grounded Gemini call timed out", {
+        timeoutMs,
+      });
       return null;
     }
     throw err;
@@ -1872,8 +1891,8 @@ export function buildPoolOnlyCompetition(
       move: f.title,
       why_it_works: f.why || f.change ||
         "It closes a gap competitors are already exploiting.",
-      effort: (i <= 1 ? "this_week" : i === 2 ? "this_month" : "project") as
-        Effort,
+      effort:
+        (i <= 1 ? "this_week" : i === 2 ? "this_month" : "project") as Effort,
     }));
   const staples: CompetitionBlock["outrank_playbook"] = [
     {
@@ -1992,7 +2011,12 @@ async function handleRun(
     // P-40/P-41: optional subject — resolved + ownership-proven server-side.
     // A client-sent `subject_ref` STRING is ignored (server-derived only,
     // I-PROPOSED-1734-SUBJECT-REF-APP-LANE-ONLY).
-    const subject = await resolveRunSubject(supabase, auth, "venues", body.subject);
+    const subject = await resolveRunSubject(
+      supabase,
+      auth,
+      "venues",
+      body.subject,
+    );
     if (subject instanceof Response) return subject;
     subjectRef = subject.subjectRef;
     if (subject.competitorInput) {
@@ -2013,7 +2037,9 @@ async function handleRun(
 
     // P-27: optional client-minted resume ref.
     const rawClientRef = body.client_ref;
-    if (rawClientRef !== undefined && rawClientRef !== null && rawClientRef !== "") {
+    if (
+      rawClientRef !== undefined && rawClientRef !== null && rawClientRef !== ""
+    ) {
       if (!isUuidValue(rawClientRef)) {
         return json({ error: "validation", fields: ["client_ref"] }, 400);
       }
@@ -2031,14 +2057,17 @@ async function handleRun(
   // runs are product usage, not attribution — pid/utm are NOT persisted on the
   // app lane; `origin` is ignored there and the "after" screenshot targets the
   // default prod origin. Web-lane handling unchanged.
-  const pid = appLane ? null : (typeof body.pid === "string" && body.pid.trim().length > 0
-    ? body.pid.trim().slice(0, 120)
-    : null);
+  const pid = appLane
+    ? null
+    : (typeof body.pid === "string" && body.pid.trim().length > 0
+      ? body.pid.trim().slice(0, 120)
+      : null);
   const utm = appLane ? null : (
     body.utm !== null && typeof body.utm === "object" &&
       !Array.isArray(body.utm)
       ? body.utm as Record<string, unknown>
-      : null);
+      : null
+  );
   // Origin of the marketing surface — where the /tools/venues/preview page that
   // becomes the "after" screenshot lives. Validated (usemingla / vercel only).
   const toolsOrigin = appLane
@@ -2074,7 +2103,10 @@ async function handleRun(
       subjectRef,
     );
     if (cached) {
-      return json({ run_id: cached.runId, report: cached.report, cached: true }, 200);
+      return json(
+        { run_id: cached.runId, report: cached.report, cached: true },
+        200,
+      );
     }
 
     // P-19 brand-keyed quota (cap 10/brand/24h; fail-open observably, P-23).
@@ -2089,7 +2121,8 @@ async function handleRun(
     const ip = firstForwardedHop(req.headers.get("x-forwarded-for"));
     ipHash = ip ? await hashIp(ip) : null;
     if (ipHash) {
-      const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS).toISOString();
+      const sinceIso = new Date(Date.now() - RATE_LIMIT_WINDOW_MS)
+        .toISOString();
       const { count, error: countErr } = await supabase
         .from("tool_leads")
         .select("id", { count: "exact", head: true })
@@ -2192,7 +2225,9 @@ async function handleRun(
     await markFailed();
     return json({
       error: "generation_failed",
-      reason: pass1.timedOut || budget.exhausted() ? "timeout" : "upstream_failed",
+      reason: pass1.timedOut || budget.exhausted()
+        ? "timeout"
+        : "upstream_failed",
     }, 502);
   }
   const gemini = pass1.value;
@@ -2216,7 +2251,14 @@ async function handleRun(
       : [];
     const grounded = await generateCompetition(
       apiKey,
-      buildCompetitionPrompt(input, match, gemini, poolCompetitors, peeks, site),
+      buildCompetitionPrompt(
+        input,
+        match,
+        gemini,
+        poolCompetitors,
+        peeks,
+        site,
+      ),
       budget,
     );
     if (grounded !== null) {
@@ -2354,7 +2396,10 @@ async function assertVenueOwned(
     .eq("id", venueListingId)
     .maybeSingle();
   if (error) {
-    console.error("[growth-tools-run] watch venue lookup failed", error.message);
+    console.error(
+      "[growth-tools-run] watch venue lookup failed",
+      error.message,
+    );
     return json({ error: "server" }, 500);
   }
   if (!data || (data as { brand_id?: unknown }).brand_id !== auth.brandId) {
@@ -2473,7 +2518,10 @@ async function handleWatchAdd(
   if (city.length < 2 || city.length > 60) fields.push("city");
   if (website.length < 1) fields.push("website");
   let placePoolId: string | null = null;
-  if (comp.place_pool_id !== undefined && comp.place_pool_id !== null && comp.place_pool_id !== "") {
+  if (
+    comp.place_pool_id !== undefined && comp.place_pool_id !== null &&
+    comp.place_pool_id !== ""
+  ) {
     if (isUuidValue(comp.place_pool_id)) placePoolId = comp.place_pool_id;
     else fields.push("place_pool_id");
   }
@@ -2545,7 +2593,10 @@ async function handleWatchRemove(
     .eq("id", id)
     .maybeSingle();
   if (error) {
-    console.error("[growth-tools-run] watch remove lookup failed", error.message);
+    console.error(
+      "[growth-tools-run] watch remove lookup failed",
+      error.message,
+    );
     return json({ error: "server" }, 500);
   }
   if (!data) return json({ error: "not_found" }, 404);
@@ -2560,6 +2611,358 @@ async function handleWatchRemove(
     .eq("id", id);
   if (delErr) {
     console.error("[growth-tools-run] watch remove failed", delErr.message);
+    return json({ error: "server" }, 500);
+  }
+  return json({ ok: true }, 200);
+}
+
+// ISSUE-2725 v2 watch domain. These helpers deliberately keep the anonymous
+// web run/search branches above untouched.
+function manualRefreshState(row: {
+  freshness: string;
+  activeState: string | null;
+  memberRetryCount: number;
+  sourceHealth: string[];
+  hasAnalyzable: boolean;
+  providerPaused: boolean;
+}): string {
+  if (row.providerPaused) return "not_applicable";
+  if (!row.hasAnalyzable) {
+    return row.sourceHealth.includes("disabled")
+      ? "not_applicable"
+      : row.sourceHealth.some((h) =>
+          ["private", "removed", "invalid", "unsupported"].includes(h)
+        )
+      ? "edit_required"
+      : "not_applicable";
+  }
+  if (["due", "leased", "retry_wait"].includes(row.activeState ?? "")) {
+    return "joined";
+  }
+  if (row.memberRetryCount >= 1) return "exhausted";
+  if (
+    ["stale", "needs_attention", "budget_delayed"].includes(row.freshness) ||
+    row.sourceHealth.some((h) => ["rate_limited", "unreachable"].includes(h))
+  ) return "available";
+  return "not_applicable";
+}
+
+async function mapWatchV2(
+  supabase: ServiceClient,
+  watch: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const id = String(watch.id);
+  const { data: sourceRows, error: sourceError } = await supabase.from(
+    "tool_competitor_sources",
+  ).select(
+    "id,kind,normalized_url,capability,health,last_checked_at,last_safe_error_code",
+  ).eq("competitor_id", id).order("kind");
+  if (sourceError) throw new Error(`watch_sources:${sourceError.message}`);
+  const { data: caps } = await supabase.from(
+    "tool_competitor_provider_capabilities",
+  ).select("kind,enabled,availability_generation,safe_reason");
+  const capByKind = new Map(
+    (caps ?? []).map((cap: Record<string, any>) => [cap.kind, cap]),
+  );
+  const { data: jobRows } = await supabase.from("tool_competitor_refresh_jobs")
+    .select(
+      "id,state,funding_lane,member_retry_count,last_safe_error_code,finished_at",
+    ).eq("competitor_id", id).order("created_at", { ascending: false }).limit(
+      1,
+    );
+  const activeJob = (jobRows ?? [])[0] as Record<string, unknown> | undefined;
+  let brief: Record<string, unknown> | null = null;
+  if (typeof watch.current_brief_id === "string") {
+    const { data } = await supabase.from("tool_competitor_briefs").select(
+      "id,status,updated_at,checked_at,what_changed,worth_doing",
+    ).eq("id", watch.current_brief_id).maybeSingle();
+    brief = data as Record<string, unknown> | null;
+  }
+  const sources = (sourceRows ?? []).map((source: Record<string, any>) => {
+    const cap = capByKind.get(source.kind) as {
+      enabled?: boolean;
+      availability_generation?: number;
+      safe_reason?: string | null;
+    } | undefined;
+    const paused = source.capability === "analyzed_weekly" &&
+      cap?.enabled !== true;
+    return {
+      id: source.id,
+      kind: source.kind,
+      url: source.normalized_url,
+      capability: source.capability,
+      availability: paused ? "paused" : "enabled",
+      availability_generation: cap?.availability_generation ?? 1,
+      health: source.health,
+      last_checked_at: source.last_checked_at,
+      safe_reason: paused
+        ? "automatic_checking_paused"
+        : source.last_safe_error_code ?? null,
+    };
+  });
+  const now = Date.now();
+  const lastSuccess = typeof watch.last_success_at === "string"
+    ? Date.parse(watch.last_success_at)
+    : NaN;
+  const hasAnalyzable = sources.some((source: Record<string, any>) =>
+    source.capability === "analyzed_weekly" && source.availability === "enabled"
+  );
+  const analyzedSources = sources.filter((source: Record<string, any>) =>
+    source.capability === "analyzed_weekly"
+  );
+  const hasPausedAnalyzed = analyzedSources.some((
+    source: Record<string, any>,
+  ) => source.availability === "paused");
+  const providerPaused = analyzedSources.length > 0 &&
+    analyzedSources.every((source: Record<string, any>) =>
+      source.availability === "paused"
+    );
+  const sourceHealth = sources.map((source: Record<string, any>) =>
+    String(source.health)
+  );
+  let freshness = "stale";
+  if (
+    !hasAnalyzable &&
+    sources.every((source: Record<string, any>) =>
+      source.capability === "link_only"
+    )
+  ) freshness = "link_only";
+  else if (providerPaused || activeJob?.state === "budget_deferred") {
+    freshness = "budget_delayed";
+  } else if (
+    ["due", "leased", "retry_wait"].includes(String(activeJob?.state ?? ""))
+  ) freshness = "refreshing";
+  else if (hasPausedAnalyzed) freshness = "partial";
+  else if (brief?.status === "partial") freshness = "partial";
+  else if (
+    Number.isFinite(lastSuccess) && now - lastSuccess <= 8 * 86_400_000
+  ) freshness = "current";
+  else if (
+    !hasAnalyzable ||
+    sourceHealth.every((health: string) =>
+      ["private", "removed", "invalid", "unsupported", "disabled"].includes(
+        health,
+      )
+    )
+  ) freshness = "needs_attention";
+  const noChange = activeJob?.state === "no_change";
+  const facts = Array.isArray(brief?.what_changed)
+    ? brief.what_changed as Array<Record<string, unknown>>
+    : [];
+  const actions = Array.isArray(brief?.worth_doing)
+    ? brief.worth_doing as Array<Record<string, unknown>>
+    : [];
+  const state = manualRefreshState({
+    freshness,
+    activeState: typeof activeJob?.state === "string" ? activeJob.state : null,
+    memberRetryCount: typeof activeJob?.member_retry_count === "number"
+      ? activeJob.member_retry_count
+      : 0,
+    sourceHealth,
+    hasAnalyzable,
+    providerPaused,
+  });
+  return {
+    schema_version: 2,
+    id,
+    name: watch.name,
+    city: watch.city,
+    website: watch.website,
+    place_pool_id: watch.place_pool_id,
+    created_at: watch.created_at,
+    updated_at: watch.updated_at,
+    freshness,
+    last_brief_updated_at: brief?.updated_at ?? null,
+    checked_at: noChange
+      ? activeJob?.finished_at ?? brief?.checked_at ?? null
+      : brief?.checked_at ?? null,
+    next_refresh_at: providerPaused ? null : watch.next_due_at ?? null,
+    no_meaningful_change: noChange,
+    manual_refresh_state: state,
+    sources,
+    summary: {
+      what_changed: noChange
+        ? "No meaningful public change this week"
+        : typeof facts[0]?.text === "string"
+        ? facts[0].text
+        : providerPaused
+        ? "Automatic checking is temporarily paused."
+        : null,
+      primary_action:
+        typeof actions.find((action) => action.is_primary === true)?.text ===
+            "string"
+          ? actions.find((action) => action.is_primary === true)?.text
+          : null,
+    },
+    active_job: ["due", "leased", "retry_wait", "budget_deferred"].includes(
+        String(activeJob?.state ?? ""),
+      )
+      ? {
+        id: activeJob?.id,
+        state: activeJob?.state,
+        funding_lane: activeJob?.funding_lane,
+        member_retry_count: activeJob?.member_retry_count,
+      }
+      : null,
+    latest: null,
+  };
+}
+
+async function handleWatchListV2(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  const venueId = await assertVenueOwned(supabase, auth, body.venue_listing_id);
+  if (venueId instanceof Response) return venueId;
+  const { data, error } = await supabase.from("tool_competitors").select(
+    "id,name,city,website,place_pool_id,created_at,updated_at,next_due_at,last_attempt_at,last_success_at,current_brief_id",
+  ).eq("venue_listing_id", venueId).order("created_at", { ascending: true });
+  if (error) {
+    console.error("[growth-tools-run] v2 watch list failed", error.message);
+    return json({ error: "server" }, 500);
+  }
+  return json({
+    competitors: await Promise.all(
+      (data ?? []).map((row: Record<string, any>) =>
+        mapWatchV2(supabase, row as Record<string, unknown>)
+      ),
+    ),
+  }, 200);
+}
+
+async function handleWatchUpsertV2(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+  updating: boolean,
+): Promise<Response> {
+  const comp = body.competitor && typeof body.competitor === "object"
+    ? body.competitor as Record<string, unknown>
+    : {};
+  let venueId: string;
+  let watchId: string | null = null;
+  if (updating) {
+    if (!isUuidValue(body.id) || typeof body.expected_updated_at !== "string") {
+      return json({
+        error: "validation",
+        fields: ["id", "expected_updated_at"],
+      }, 400);
+    }
+    const { data: existing } = await supabase.from("tool_competitors").select(
+      "id,brand_id,venue_listing_id",
+    ).eq("id", body.id).maybeSingle();
+    if (!existing) return json({ error: "not_found" }, 404);
+    if (existing.brand_id !== auth.brandId) {
+      return json({ error: "forbidden" }, 403);
+    }
+    venueId = existing.venue_listing_id;
+    watchId = existing.id;
+  } else {
+    const owned = await assertVenueOwned(supabase, auth, body.venue_listing_id);
+    if (owned instanceof Response) return owned;
+    venueId = owned;
+    // One-release website-only adapter; all v2 clients send sources.
+    if (!Array.isArray(comp.sources) && typeof comp.website === "string") {
+      comp.sources = [{ kind: "website", url: comp.website }];
+    }
+  }
+  const sources = Array.isArray(comp.sources) ? comp.sources : [];
+  const { data, error } = await supabase.rpc("issue_2725_watch_upsert", {
+    p_brand: auth.brandId,
+    p_venue: venueId,
+    p_user: auth.userId,
+    p_watch: watchId,
+    p_expected: updating ? body.expected_updated_at : null,
+    p_name: comp.name,
+    p_city: comp.city,
+    p_sources: sources,
+    p_place: comp.place_pool_id ?? null,
+  });
+  if (error) {
+    const message = error.message;
+    if (message.includes("watch_limit")) {
+      return json({ error: "watch_limit" }, 409);
+    }
+    if (message.includes("duplicate_source")) {
+      return json({ error: "duplicate_source" }, 409);
+    }
+    if (message.includes("watch_conflict")) {
+      return json({ error: "watch_conflict" }, 409);
+    }
+    if (message.includes("invalid_source") || message.includes("validation")) {
+      return json({ error: "validation", fields: ["sources"] }, 400);
+    }
+    console.error("[growth-tools-run] v2 watch upsert failed", message);
+    return json({ error: "server" }, 500);
+  }
+  const { data: row } = await supabase.from("tool_competitors").select(
+    "id,name,city,website,place_pool_id,created_at,updated_at,next_due_at,last_attempt_at,last_success_at,current_brief_id",
+  ).eq("id", data).single();
+  return json({
+    competitor: await mapWatchV2(supabase, row as Record<string, unknown>),
+  }, 200);
+}
+
+async function handleWatchRefreshV2(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  if (!isUuidValue(body.id)) {
+    return json({ error: "validation", fields: ["id"] }, 400);
+  }
+  const { data, error } = await supabase.rpc("issue_2725_member_refresh", {
+    p_brand: auth.brandId,
+    p_user: auth.userId,
+    p_watch: body.id,
+  });
+  if (error) {
+    if (error.message.includes("quota")) return json({ error: "quota" }, 429);
+    if (error.message.includes("edit_required")) {
+      return json({ error: "edit_required" }, 409);
+    }
+    if (error.message.includes("retry_exhausted")) {
+      return json({ error: "retry_exhausted" }, 409);
+    }
+    if (error.message.includes("not_found")) {
+      return json({ error: "not_found" }, 404);
+    }
+    console.error("[growth-tools-run] v2 refresh failed", error.message);
+    return json({ error: "server" }, 500);
+  }
+  const result = (data as { result?: string })?.result;
+  return json(data, result === "cached" ? 200 : 202);
+}
+
+async function handleWatchRemoveV2(
+  supabase: ServiceClient,
+  auth: AppLaneAuth,
+  body: Record<string, unknown>,
+): Promise<Response> {
+  if (!isUuidValue(body.id) || typeof body.expected_updated_at !== "string") {
+    return json(
+      { error: "validation", fields: ["id", "expected_updated_at"] },
+      400,
+    );
+  }
+  const { data: existing } = await supabase.from("tool_competitors").select(
+    "brand_id",
+  ).eq("id", body.id).maybeSingle();
+  if (!existing) return json({ error: "not_found" }, 404);
+  if (existing.brand_id !== auth.brandId) {
+    return json({ error: "forbidden" }, 403);
+  }
+  const { error } = await supabase.rpc("issue_2725_watch_remove", {
+    p_brand: auth.brandId,
+    p_watch: body.id,
+    p_expected: body.expected_updated_at,
+  });
+  if (error) {
+    if (error.message.includes("watch_conflict")) {
+      return json({ error: "watch_conflict" }, 409);
+    }
+    console.error("[growth-tools-run] v2 remove failed", error.message);
     return json({ error: "server" }, 500);
   }
   return json({ ok: true }, 200);
@@ -2609,14 +3012,25 @@ export async function handler(req: Request): Promise<Response> {
     if (
       isAppLane(body) &&
       (body.action === "watch_list" || body.action === "watch_add" ||
+        body.action === "watch_update" || body.action === "watch_refresh" ||
         body.action === "watch_remove")
     ) {
       // §S11: every watch action requires lane:"app" + the full P-3 chain.
       const auth = await authenticateAppLane(req, body, supabase);
       if (auth instanceof Response) return auth;
-      if (body.action === "watch_list") return await handleWatchList(supabase, auth, body);
-      if (body.action === "watch_add") return await handleWatchAdd(supabase, auth, body);
-      return await handleWatchRemove(supabase, auth, body);
+      if (body.action === "watch_list") {
+        return await handleWatchListV2(supabase, auth, body);
+      }
+      if (body.action === "watch_add") {
+        return await handleWatchUpsertV2(supabase, auth, body, false);
+      }
+      if (body.action === "watch_update") {
+        return await handleWatchUpsertV2(supabase, auth, body, true);
+      }
+      if (body.action === "watch_refresh") {
+        return await handleWatchRefreshV2(supabase, auth, body);
+      }
+      return await handleWatchRemoveV2(supabase, auth, body);
     }
     return json({ error: "validation", fields: ["action"] }, 400);
   } catch (err) {

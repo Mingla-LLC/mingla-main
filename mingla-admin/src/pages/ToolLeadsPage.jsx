@@ -33,6 +33,7 @@ import { DataTable } from "../components/ui/Table";
 import { Skeleton } from "../components/ui/Skeleton";
 import { Modal, ModalBody, ModalFooter } from "../components/ui/Modal";
 import { SearchInput } from "../components/ui/SearchInput";
+import { Tabs } from "../components/ui/Tabs";
 import { useToast } from "../context/ToastContext";
 import { supabase } from "../lib/supabase";
 
@@ -153,6 +154,7 @@ export function ToolLeadsPage() {
   }, []);
 
   const [rows, setRows] = useState([]);
+  const [activeTab, setActiveTab] = useState("leads");
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
@@ -368,6 +370,14 @@ export function ToolLeadsPage() {
         )}
       </div>
 
+      <Tabs
+        tabs={[{ id: "leads", label: "Tool leads" }, { id: "competitor-ops", label: "Competitor Ops" }]}
+        activeTab={activeTab}
+        onChange={setActiveTab}
+      />
+
+      {activeTab === "leads" ? <div id="tabpanel-tool-leads" role="tabpanel" className="contents">
+
       {/* Load error */}
       {loadError && (
         <AlertCard
@@ -546,6 +556,35 @@ export function ToolLeadsPage() {
           <Button variant="secondary" size="sm" onClick={closeDetail}>Close</Button>
         </ModalFooter>
       </Modal>
+      </div> : <CompetitorOpsPanel addToast={addToast} />}
     </div>
   );
+}
+
+const OPS_STATES = ["", "due", "leased", "retry_wait", "succeeded", "partial", "no_change", "failed_terminal", "budget_deferred", "cancelled"];
+
+function CompetitorOpsPanel({ addToast }) {
+  const [data, setData] = useState({ capabilities: [], jobs: [] });
+  const [loading, setLoading] = useState(true); const [error, setError] = useState(null);
+  const [provider, setProvider] = useState(""); const [state, setState] = useState(""); const [due, setDue] = useState("any"); const [brand, setBrand] = useState(""); const [safeError, setSafeError] = useState("");
+  const [providerModal, setProviderModal] = useState(null); const [retryJob, setRetryJob] = useState(null); const [reason, setReason] = useState(""); const [mutationError, setMutationError] = useState(null); const [pending, setPending] = useState(false);
+  const load = useCallback(async () => { setLoading(true); setError(null); const { data: result, error: rpcError } = await supabase.rpc("admin_competitor_intel_list", { p_provider: provider || null, p_state: state || null, p_due: due, p_brand: brand || null, p_error: safeError || null }); if (rpcError) setError(rpcError.message); else setData(result || { capabilities: [], jobs: [] }); setLoading(false); }, [provider, state, due, brand, safeError]);
+  useEffect(() => { const timer = window.setTimeout(() => { void load(); }, 0); return () => window.clearTimeout(timer); }, [load]);
+  const action = useCallback(async () => { const target = providerModal?.kind || retryJob?.id; if (!target) return; if (!reason.trim()) { setMutationError("Add a reason before continuing."); return; } setPending(true); setMutationError(null); const pAction = providerModal ? (providerModal.enabled ? "pause_provider" : "resume_provider") : "retry_job"; const { error: rpcError } = await supabase.rpc("admin_competitor_intel_action", { p_action: pAction, p_target: target, p_expected_generation: providerModal?.generation ?? null, p_reason: reason.trim() }); if (rpcError) setMutationError(rpcError.message.includes("generation") ? "Provider state changed. Reload before trying again." : rpcError.message.includes("retry") ? "This job can’t be retried now. Refresh the table." : `Couldn't ${providerModal ? "update provider" : "queue the retry"} — try again.`); else { addToast({ variant: "success", title: providerModal ? `${providerModal.kind} checking ${providerModal.enabled ? "paused" : "resumed"}.` : "Retry queued." }); setProviderModal(null); setRetryJob(null); setReason(""); await load(); } setPending(false); }, [providerModal, retryJob, reason, addToast, load]);
+  const columns = useMemo(() => [
+    { key: "state", label: "State", render: (v) => <Badge variant={v === "failed_terminal" ? "error" : v === "succeeded" ? "success" : "default"}>{String(v).replaceAll("_", " ")}</Badge> },
+    { key: "provider", label: "Provider" }, { key: "watch_id", label: "Watch ID" }, { key: "brand_id", label: "Brand ID" }, { key: "attempts", label: "Attempts" },
+    { key: "last_attempt", label: "Last attempt", render: (v) => v ? relativeTime(v) : "—" }, { key: "last_success", label: "Last success", render: (v) => v ? relativeTime(v) : "—" }, { key: "next_due", label: "Next due", render: (v) => v ? relativeTime(v) : "—" },
+    { key: "budget", label: "Weekly spend / remaining", render: (_v, row) => `${row.budget_week_start ?? "—"}: ${row.weekly_actual_cents == null ? "measurement unavailable" : `${row.weekly_actual_cents}¢ actual`} · ${row.weekly_reserved_cents ?? 0}¢ reserved · ${row.weekly_remaining_cents ?? 0}¢ remaining` }, { key: "safe_reason", label: "Safe reason", render: (v) => v || "—" },
+    { key: "action", label: "", render: (_v, row) => row.state === "failed_terminal" && row.admin_retry_count < 1 ? <Button variant="secondary" size="sm" onClick={() => { setRetryJob(row); setReason(""); }} data-testid={`competitor-ops-job-${row.id}-retry`}>Retry once</Button> : null },
+  ], []);
+  return <div id="tabpanel-competitor-ops" role="tabpanel" aria-labelledby="tool-leads-tab-competitor-ops" className="flex flex-col gap-6">
+    {error ? <AlertCard variant="error" title="Couldn't load competitor operations" action={<Button variant="secondary" size="sm" onClick={load}>Retry</Button>}>{error}</AlertCard> : null}
+    <div className="flex flex-wrap gap-3">{loading ? [0, 1].map((i) => <Skeleton key={i} width={240} height={110} />) : data.capabilities.map((cap) => <SectionCard key={cap.kind} title={cap.kind} data-testid={`competitor-ops-provider-${cap.kind}`}><Badge variant={cap.enabled ? "success" : "default"}>{cap.enabled ? "Enabled" : "Paused"}</Badge><p className="text-sm text-[var(--color-text-secondary)]">Generation {cap.generation}</p>{cap.safe_reason ? <p className="text-sm text-[var(--color-text-secondary)]">{cap.safe_reason}</p> : null}<Button variant="secondary" size="sm" onClick={() => { setProviderModal(cap); setReason(""); }}>{cap.enabled ? `Pause ${cap.kind}` : `Resume ${cap.kind}`}</Button></SectionCard>)}</div>
+    <p className="text-sm text-[var(--color-text-secondary)]">TikTok is link only and cannot be enabled here.</p>
+    <div className="flex flex-wrap gap-3"><select value={provider} onChange={(e) => setProvider(e.target.value)} className={SELECT_CLASS} data-testid="competitor-ops-filter-provider"><option value="">All providers</option><option value="website">Website</option><option value="instagram">Instagram</option></select><select value={state} onChange={(e) => setState(e.target.value)} className={SELECT_CLASS} data-testid="competitor-ops-filter-state">{OPS_STATES.map((v) => <option key={v || "all"} value={v}>{v ? v.replaceAll("_", " ") : "All states"}</option>)}</select><select value={due} onChange={(e) => setDue(e.target.value)} className={SELECT_CLASS} data-testid="competitor-ops-filter-due"><option value="any">Any due time</option><option value="due">Due now</option><option value="overdue">Overdue</option></select><SearchInput value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand internal id" data-testid="competitor-ops-filter-brand" /><SearchInput value={safeError} onChange={(e) => setSafeError(e.target.value)} placeholder="Safe error" data-testid="competitor-ops-filter-error" /></div>
+    <SectionCard title="Competitor jobs" noPadding><DataTable columns={columns} rows={data.jobs} loading={loading} emptyMessage="No competitor jobs match these filters." getRowId={(row) => row.id} data-testid="competitor-ops-table" /></SectionCard>
+    <Modal open={providerModal !== null} onClose={() => setProviderModal(null)} title={`${providerModal?.enabled ? "Pause" : "Resume"} ${providerModal?.kind ?? "provider"} checking?`} size="md"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">{providerModal?.enabled ? "New checks will stop. Existing venue briefs stay visible and affected watches will show the source as paused." : "Eligible watches will be queued once under the new provider generation."}</p><label className="text-sm font-semibold">Reason</label><SearchInput value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why are you changing this provider?" />{mutationError ? <p className="text-sm text-[var(--color-error-700)]">{mutationError}</p> : null}</ModalBody><ModalFooter><Button variant="secondary" size="sm" onClick={() => setProviderModal(null)}>Cancel</Button><Button size="sm" loading={pending} onClick={action}>{providerModal?.enabled ? "Pause checking" : "Resume checking"}</Button></ModalFooter></Modal>
+    <Modal open={retryJob !== null} onClose={() => setRetryJob(null)} title="Retry this failed competitor job?" size="md"><ModalBody><p className="text-sm text-[var(--color-text-secondary)]">This uses the scheduled budget and can run once. It does not use the venue's manual refresh allowance.</p><label className="text-sm font-semibold">Reason</label><SearchInput value={reason} onChange={(e) => setReason(e.target.value)} />{mutationError ? <p className="text-sm text-[var(--color-error-700)]">{mutationError}</p> : null}</ModalBody><ModalFooter><Button variant="secondary" size="sm" onClick={() => setRetryJob(null)}>Cancel</Button><Button size="sm" loading={pending} onClick={action}>Retry once</Button></ModalFooter></Modal>
+  </div>;
 }

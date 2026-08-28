@@ -78,15 +78,13 @@ jest.mock("../GraderReportSections", () => ({
   GraderReportSections: (props: Record<string, unknown>) =>
     ReactLocal.createElement("GraderReportSections", props),
 }));
-jest.mock("../../../../analytics/businessAnalyticsEvents", () => ({
+jest.mock("../../../../analytics/venueInsightsAnalytics", () => ({
   __esModule: true,
   captureIntelCardShown: jest.fn(),
   captureIntelRunStarted: jest.fn(),
   captureIntelRunCompleted: jest.fn(),
   captureIntelRunFailed: jest.fn(),
   captureIntelReportOpened: jest.fn(),
-  captureIntelCompetitorAdded: jest.fn(),
-  captureIntelCompetitorGraded: jest.fn(),
 }));
 jest.mock("../../../../context/AuthContext", () => ({
   __esModule: true,
@@ -108,6 +106,14 @@ jest.mock("../../../../hooks/useGrowthTools", () => ({
   useIntelSubjectLatest: (...args: unknown[]) =>
     mockUseIntelSubjectLatest(...args),
   useAddCompetitor: (...args: unknown[]) => mockUseAddCompetitor(...args),
+}));
+jest.mock("../../../../hooks/useCompetitorIntelligence", () => ({
+  __esModule: true,
+  useCompetitorWatch: (...args: unknown[]) => mockUseCompetitorWatch(...args),
+  useRemoveCompetitor: (...args: unknown[]) => mockUseRemoveCompetitor(...args),
+  useAddCompetitor: (...args: unknown[]) => mockUseAddCompetitor(...args),
+  useRefreshCompetitor: () => ({ mutate: jest.fn(), isPending: false }),
+  useCompetitorBrief: () => ({ data: undefined, isLoading: false, isError: false }),
 }));
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
