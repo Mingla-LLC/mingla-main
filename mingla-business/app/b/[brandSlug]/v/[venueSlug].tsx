@@ -43,6 +43,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
 import {
+  classifyPublicVenueRouteState,
+  publicVenueRefreshErrorClass,
+  PublicVenueRetryAction,
+} from "@mingla/brand-rendering/publicVenueRefreshState";
+import {
   publicVenueMeta,
   type PublicVenueAnalyticsEvent,
   type PublicVenueBookingSlotContext,
@@ -63,9 +68,11 @@ import { openMapsTarget } from "../../../../src/utils/openMapsTarget";
 import { copyAddressText } from "../../../../src/utils/copyAddressText";
 
 import {
+  colors,
   spacing,
   text as textTokens,
 } from "../../../../src/constants/designSystem";
+import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 // META-ORCH-1187 LEG 2 — buyer-web public-offering view capture (web-only).
 import {
   captureAdClickIds,
@@ -208,6 +215,63 @@ export default function PublicVenueRoute(): React.ReactElement {
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = venueQuery.data ?? null;
+  const routeState = classifyPublicVenueRouteState({
+    hasData: venue !== null,
+    isLoading: venueQuery.isLoading,
+    isFetching: venueQuery.isFetching,
+    isError: venueQuery.isError,
+  });
+  const [coldRetryBusy, setColdRetryBusy] = React.useState(false);
+  const coldRetryGuardRef = useRef(false);
+  const refetchVenue = venueQuery.refetch;
+  const handleRetryVenue = useCallback(async (): Promise<void> => {
+    if (coldRetryGuardRef.current) return;
+    coldRetryGuardRef.current = true;
+    setColdRetryBusy(true);
+    try {
+      await refetchVenue();
+    } catch {
+      // TanStack Query owns the visible error state; retry rejection must not
+      // escape a press handler as an unhandled promise.
+    } finally {
+      coldRetryGuardRef.current = false;
+      setColdRetryBusy(false);
+    }
+  }, [refetchVenue]);
+  const reportedRefreshErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      routeState !== "populated-error" ||
+      venue === null ||
+      typeof brandSlug !== "string" ||
+      typeof venueSlug !== "string" ||
+      venueQuery.errorUpdatedAt <= 0
+    ) {
+      return;
+    }
+    const transitionKey =
+      `${brandSlug}:${venueSlug}:${venueQuery.errorUpdatedAt}`;
+    if (reportedRefreshErrorRef.current === transitionKey) return;
+    reportedRefreshErrorRef.current = transitionKey;
+    reportNonFatal(
+      "publicVenue.backgroundRefresh",
+      venueQuery.error,
+      {
+        surface: analyticsSurface,
+        brand_slug: brandSlug,
+        venue_slug: venueSlug,
+        error_class: publicVenueRefreshErrorClass(venueQuery.error),
+      },
+      ["publicVenue.backgroundRefresh", analyticsSurface],
+    );
+  }, [
+    brandSlug,
+    routeState,
+    venue,
+    venueQuery.error,
+    venueQuery.errorUpdatedAt,
+    venueSlug,
+  ]);
   const stayQuery = usePublicStayDetail(
     venue?.id ?? null,
     venue?.venueCategory === "stay",
@@ -265,7 +329,7 @@ export default function PublicVenueRoute(): React.ReactElement {
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
   const venueMissing =
-    !venueQuery.isLoading && !venueQuery.isError && venue === null;
+    routeState === "not-found";
   const brandProbeQuery = usePublicBrandBySlug(
     venueMissing && typeof brandSlug === "string" ? brandSlug : null,
   );
@@ -453,7 +517,7 @@ export default function PublicVenueRoute(): React.ReactElement {
     [],
   );
 
-  if (venueQuery.isLoading || venueQuery.isFetching) {
+  if (routeState === "cold-loading") {
     return (
       <View style={styles.stateWrap}>
         <ActivityIndicator />
@@ -462,13 +526,27 @@ export default function PublicVenueRoute(): React.ReactElement {
     );
   }
 
-  if (venueQuery.isError) {
+  if (routeState === "cold-error") {
     return (
       <View style={styles.stateWrap}>
         <Text style={styles.stateTitle}>This venue could not load</Text>
-        <Text style={styles.stateText}>
-          Refresh this page or try the link again.
+        <Text style={styles.stateBody}>
+          {Platform.OS === "web"
+            ? "Refresh this page or try the link again."
+            : "Try the link again in a moment."}
         </Text>
+        <View style={styles.coldRetryWrap}>
+          <PublicVenueRetryAction
+            busy={coldRetryBusy}
+            accessibleLabel="Try loading the venue again"
+            backgroundColor={colors.primary[700]}
+            textColor={colors.text.inverse}
+            focusColor={colors.text.inverse}
+            focusOffset={3}
+            fontWeight="700"
+            onPress={handleRetryVenue}
+          />
+        </View>
       </View>
     );
   }
@@ -530,6 +608,15 @@ export default function PublicVenueRoute(): React.ReactElement {
             ? "reservations"
             : "overview"
       }
+      refreshState={
+        routeState === "populated-error"
+          ? "error"
+          : routeState === "populated-refreshing"
+            ? "refreshing"
+            : "ready"
+      }
+      refreshErrorVersion={venueQuery.errorUpdatedAt}
+      onRetryRefresh={handleRetryVenue}
       onRetryReservability={() => {
         void reservableQuery.refetch();
       }}
@@ -647,6 +734,16 @@ const styles = StyleSheet.create({
   stateText: {
     color: textTokens.secondary,
     fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
+  },
+  stateBody: {
+    color: textTokens.secondary,
+    fontSize: 14,
+    lineHeight: 20,
+    textAlign: "center",
+  },
+  coldRetryWrap: {
+    marginTop: 16,
   },
 });

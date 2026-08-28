@@ -67,6 +67,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 // .github/scripts/strict-grep/issue-1550-venue-page-single-owner.mjs.
 import { PublicVenueScreen } from "@mingla/brand-rendering/PublicVenueScreen";
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
+import {
+  classifyPublicVenueRouteState,
+  publicVenueRefreshErrorClass,
+  PublicVenueRetryAction,
+} from "@mingla/brand-rendering/publicVenueRefreshState";
 import type {
   PublicVenueAnalyticsEvent,
   PublicVenueBookingSlotContext,
@@ -93,6 +98,7 @@ import { captureNativeStayRouteAttribution } from "../../../../src/services/nati
 import { shareContent } from "../../../../src/services/contentShareAdapter";
 import { useConsumerThemeFont } from "../../../../src/theme/useConsumerThemeFont";
 import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueService";
+import { colors } from "../../../../src/constants/designSystem";
 import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 
 /** This app's ONE analytics surface tag for the public venue page. */
@@ -190,6 +196,30 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = query.data ?? null;
+  const routeState = classifyPublicVenueRouteState({
+    hasData: venue !== null,
+    isLoading: query.isLoading,
+    isFetching: query.isFetching,
+    isError: query.isError,
+  });
+  const [coldRetryBusy, setColdRetryBusy] = useState(false);
+  const coldRetryGuardRef = useRef(false);
+  const refetchVenue = query.refetch;
+  const handleRetryVenue = useCallback(async (): Promise<void> => {
+    if (coldRetryGuardRef.current) return;
+    coldRetryGuardRef.current = true;
+    setColdRetryBusy(true);
+    try {
+      await refetchVenue();
+    } catch {
+      // TanStack Query owns the visible error state; retry rejection must not
+      // escape a press handler as an unhandled promise.
+    } finally {
+      coldRetryGuardRef.current = false;
+      setColdRetryBusy(false);
+    }
+  }, [refetchVenue]);
+
   const menuDiagnosticReportedRef = useRef<boolean>(false);
   useEffect(() => {
     if (query.isFetching || venue?.menuState !== "error") {
@@ -209,6 +239,40 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       ["public-venue-menu-read", ANALYTICS_SURFACE],
     );
   }, [brandSlug, query.isFetching, venue?.menuState, venueSlug]);
+
+  const reportedRefreshErrorRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (
+      routeState !== "populated-error" ||
+      venue === null ||
+      typeof brandSlug !== "string" ||
+      typeof venueSlug !== "string" ||
+      query.errorUpdatedAt <= 0
+    ) {
+      return;
+    }
+    const transitionKey = `${brandSlug}:${venueSlug}:${query.errorUpdatedAt}`;
+    if (reportedRefreshErrorRef.current === transitionKey) return;
+    reportedRefreshErrorRef.current = transitionKey;
+    reportNonFatal(
+      "publicVenue.backgroundRefresh",
+      query.error,
+      {
+        surface: ANALYTICS_SURFACE,
+        brand_slug: brandSlug,
+        venue_slug: venueSlug,
+        error_class: publicVenueRefreshErrorClass(query.error),
+      },
+      ["publicVenue.backgroundRefresh", ANALYTICS_SURFACE],
+    );
+  }, [
+    brandSlug,
+    query.error,
+    query.errorUpdatedAt,
+    routeState,
+    venue,
+    venueSlug,
+  ]);
   // The Stay branch is DATA off `venue_public_view`, not a re-derived guess;
   // which booking body actually mounts is decided by the category profile
   // inside the shared screen (#1558), never by this compare.
@@ -463,14 +527,26 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   );
 
 
-  if (query.isLoading) {
+  if (routeState === "cold-loading") {
     return <StateView title="Loading venue…" loading />;
   }
-  if (query.isError) {
+  if (routeState === "cold-error") {
     return (
       <StateView
         title="This venue could not load"
         body="Try the link again in a moment."
+        retry={
+          <PublicVenueRetryAction
+            busy={coldRetryBusy}
+            accessibleLabel="Try loading the venue again"
+            backgroundColor={colors.primary[700]}
+            textColor={colors.text.inverse}
+            focusColor={colors.text.inverse}
+            focusOffset={3}
+            fontWeight="700"
+            onPress={handleRetryVenue}
+          />
+        }
       />
     );
   }
@@ -519,6 +595,15 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
             ? "reservations"
             : "overview"
       }
+      refreshState={
+        routeState === "populated-error"
+          ? "error"
+          : routeState === "populated-refreshing"
+            ? "refreshing"
+            : "ready"
+      }
+      refreshErrorVersion={query.errorUpdatedAt}
+      onRetryRefresh={handleRetryVenue}
       onRetryReservability={() => {
         void query.refetch();
       }}
@@ -587,16 +672,21 @@ function StateView({
   title,
   body,
   loading = false,
+  retry,
 }: {
   title: string;
   body?: string;
   loading?: boolean;
+  retry?: React.ReactNode;
 }): React.ReactElement {
   return (
     <View style={styles.state}>
       {loading ? <ActivityIndicator /> : null}
       <Text style={styles.stateTitle}>{title}</Text>
       {body !== undefined ? <Text style={styles.stateBody}>{body}</Text> : null}
+      {retry === undefined ? null : (
+        <View style={styles.coldRetryWrap}>{retry}</View>
+      )}
     </View>
   );
 }
@@ -629,6 +719,10 @@ const styles = StyleSheet.create({
   stateBody: {
     color: "rgba(255,255,255,0.72)",
     fontSize: 14,
+    lineHeight: 20,
     textAlign: "center",
+  },
+  coldRetryWrap: {
+    marginTop: 6,
   },
 });
