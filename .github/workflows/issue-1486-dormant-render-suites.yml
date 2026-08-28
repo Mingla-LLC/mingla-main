@@ -111,6 +111,9 @@ jobs:
       - name: "#2737 — responsive reservation calendar happy render proof"
         if: always()
         run: npx jest --config jest.issue2737.render.cjs --runInBand --ci
+      - name: "#2738 — public venue tab keyboard + semantic render proofs"
+        if: always()
+        run: npx jest --config jest.issue2738.render.cjs --runInBand --ci
       # ORCH-1331 guards the LIVE Nigeria partner Paystack onboarding form. Its
       # only other coverage (orch_1331_partner_paystack_ui.test.ts, 21 green) is a
       # SOURCE-TEXT pin — `expect(form).toContain('testID="…"')` — which proves the

@@ -9664,3 +9664,11 @@ independent tester returns PASS.
 - **Rule:** When a persistent public-venue action overlays a phone-web page whose document scroll is disabled, every pixel of that action's interactive subtree stays within the page's sole native vertical scroll-owner ancestry. A vertical pan that starts over the action cancels activation and remains reversible at both scroll boundaries.
 - **Enforcement:** the #2729 real-touch happy and independent adversarial Playwright suites exercise short, standard, and wide phone viewports from content, wrapper, and button origins; the #1559 render-parity fixture pins the CTA inside `ShellBody`; focused and full Jest suites preserve tab, sheet, native, and desktop behavior.
 - **Established:** ACTIVE at #2729 after independent tester PASS across Buyer web and Business/Consumer iOS and Android on 2026-08-28.
+
+## ACTIVE — issue #2738 (public venue tab semantics)
+
+### I-2738-PUBLIC-VENUE-TABS-COMPLETE (ACTIVE)
+
+- **Rule:** On web, the one shared public-venue tab owner implements one named, horizontal, manual-activation tabs composite. Exactly one visible tab is in sequential focus order and selected; Left/Right/Home/End move focus only; Enter/Space/click activate through one callback path; every visible tab and panel has a stable bidirectional ID relationship; only the active child subtree mounts; focus remains visible in the horizontal strip. Native retains supported React Native tab roles/state and does not receive web DOM behavior by inference.
+- **Enforcement:** The issue #2738 happy and adversarial append-only render suites invoked by the existing dormant-render CI workflow, plus live browser evidence on both public hosts.
+- **Established:** ACTIVE at #2738 after independent tester PASS across Buyer web and Business/Consumer iOS and Android on 2026-08-28.
