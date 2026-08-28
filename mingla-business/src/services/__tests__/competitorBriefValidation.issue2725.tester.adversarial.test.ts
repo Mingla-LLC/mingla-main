@@ -45,4 +45,56 @@ describe("issue #2725 malformed competitor brief responses", () => {
       reason: "malformed_brief_response",
     });
   });
+
+  it("maps the report edge's snake-case brief into the renderer's typed shape", async () => {
+    mockInvoke.mockResolvedValue({
+      data: {
+        ...responseEnvelope,
+        brief: {
+          status: "current",
+          what_changed: [{
+            id: "fact-1",
+            text: "A new menu appeared.",
+            source_id: "source-1",
+            evidence_id: "evidence-1",
+            confidence: "observed",
+          }],
+          why_it_matters: [{
+            text: "Guests may compare the offers.",
+            evidence_ids: ["evidence-1"],
+            confidence: "interpretation",
+          }],
+          worth_doing: [{
+            id: "action-1",
+            text: "Review your weekday offer.",
+            kind: "review_offer",
+            confidence: "suggested_action",
+            is_primary: true,
+          }],
+          evidence: [{
+            id: "evidence-1",
+            source_id: "source-1",
+            public_url: "https://competitor.example/menu",
+            checked_at: "2026-08-27T12:00:00Z",
+            observation: "The public menu was checked.",
+          }],
+        },
+      },
+      error: null,
+    });
+
+    const result = await getCompetitorBrief("brand-1", "watch-1");
+
+    expect(result.brief).toMatchObject({
+      status: "current",
+      whatChanged: [{ sourceId: "source-1", evidenceId: "evidence-1" }],
+      whyItMatters: [{ evidenceIds: ["evidence-1"] }],
+      worthDoing: [{ isPrimary: true }],
+      evidence: [{
+        sourceId: "source-1",
+        publicUrl: "https://competitor.example/menu",
+        checkedAt: "2026-08-27T12:00:00Z",
+      }],
+    });
+  });
 });
