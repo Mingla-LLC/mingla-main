@@ -13,9 +13,10 @@ describe("issue #1380 accessibility and clean-install rework", () => {
     const tabs = readRepo("packages/brand-rendering/PublicVenueTabs.tsx");
 
     expect(tabs).toContain('Platform.OS === "web"');
-    expect(tabs).toContain('{ "aria-selected": active }');
+    expect(tabs).toContain('"aria-selected"?: boolean;');
+    expect(tabs).toContain('"aria-selected": active,');
     expect(tabs).toContain("accessibilityState={{ selected: active }}");
-    expect(tabs).toContain("{...webAriaSelected}");
+    expect(tabs).toContain("{...webTabProps}");
   });
 
   test("focus returns only after the maximum Sheet unmount window and next frame", () => {

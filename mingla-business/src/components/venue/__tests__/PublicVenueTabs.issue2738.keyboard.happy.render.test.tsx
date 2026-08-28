@@ -260,6 +260,17 @@ describe("issue #2738 public venue tabs complete web contract", () => {
         (panel) => panel.props["aria-hidden"] === false,
       ),
     ).toHaveLength(1);
+
+    onTabChange.mockClear();
+    onTabViewed.mockClear();
+    const space = keyboardEvent(" ");
+    await TestRenderer.act(async () => {
+      tabNamed(tree.root, "Reservations").props.onKeyDown(space);
+    });
+    expect(space.preventDefault).toHaveBeenCalledTimes(1);
+    expect(onTabChange).toHaveBeenCalledTimes(1);
+    expect(onTabChange).toHaveBeenCalledWith("reservations");
+    expect(onTabViewed).toHaveBeenCalledTimes(1);
   });
 
   it("H-3 wraps, supports Home/End, ignores unowned keys, and renders the exact focus ring", async () => {
@@ -281,9 +292,11 @@ describe("issue #2738 public venue tabs complete web contract", () => {
     expect(end.preventDefault).toHaveBeenCalledTimes(1);
     expect(focusMocks.Reservations.focus).toHaveBeenCalledTimes(2);
 
-    for (const key of ["ArrowUp", "ArrowDown", "Enter", " ", "Tab", "Escape"]) {
+    for (const key of ["ArrowUp", "ArrowDown", "Enter", "Tab", "Escape"]) {
       const event = keyboardEvent(key);
-      tabNamed(tree.root, "Overview").props.onKeyDown(event);
+      await TestRenderer.act(async () => {
+        tabNamed(tree.root, "Overview").props.onKeyDown(event);
+      });
       expect(event.preventDefault).not.toHaveBeenCalled();
     }
     const modified = keyboardEvent("ArrowRight", { metaKey: true });
@@ -304,6 +317,22 @@ describe("issue #2738 public venue tabs complete web contract", () => {
           outlineWidth: 3,
         }),
       ]),
+    );
+    await TestRenderer.act(async () => {
+      tabNamed(tree.root, "Overview").props.onPointerDown();
+      tabNamed(tree.root, "Overview").props.onFocus({
+        currentTarget: { matches: () => true },
+      });
+    });
+    expect(tabNamed(tree.root, "Overview").props.style).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ outlineWidth: 3 })]),
+    );
+    const keyboardRestore = keyboardEvent("Home");
+    await TestRenderer.act(async () => {
+      tabNamed(tree.root, "Overview").props.onKeyDown(keyboardRestore);
+    });
+    expect(tabNamed(tree.root, "Overview").props.style).toEqual(
+      expect.arrayContaining([expect.objectContaining({ outlineWidth: 3 })]),
     );
     await TestRenderer.act(async () => {
       tabNamed(tree.root, "Overview").props.onFocus({

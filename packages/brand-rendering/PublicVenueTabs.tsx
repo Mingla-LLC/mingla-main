@@ -101,6 +101,7 @@ interface WebVenueTabProps
   onBlur?: () => void;
   onFocus?: (event: VenueTabFocusEvent) => void;
   onKeyDown?: (event: VenueTabKeyboardEvent) => void;
+  onPointerDown?: () => void;
   tabIndex?: 0 | -1;
 }
 
@@ -193,6 +194,8 @@ export const PublicVenueTabs = forwardRef<
   const onTabViewedRef = useRef(onTabViewed);
   const tabRefs = useRef<Partial<Record<PublicVenueTab, FocusableVenueTab>>>({});
   const focusedTabRef = useRef<PublicVenueTab | null>(null);
+  const pointerFocusPendingRef = useRef(false);
+  const keyboardFocusPendingRef = useRef(false);
   const [focusVisibleTab, setFocusVisibleTab] =
     useState<PublicVenueTab | null>(null);
 
@@ -267,9 +270,10 @@ export const PublicVenueTabs = forwardRef<
     onTabViewed?.(tab);
   };
 
-  const moveFocus = (
+  const handleWebKeyDown = (
     event: VenueTabKeyboardEvent,
     currentIndex: number,
+    currentTab: PublicVenueTab,
   ): void => {
     const modified =
       event.altKey === true ||
@@ -281,6 +285,27 @@ export const PublicVenueTabs = forwardRef<
       event.nativeEvent.metaKey === true ||
       event.nativeEvent.shiftKey === true;
     if (modified) return;
+
+    pointerFocusPendingRef.current = false;
+
+    if (
+      event.nativeEvent.key === " " ||
+      event.nativeEvent.key === "Spacebar"
+    ) {
+      event.preventDefault();
+      keyboardFocusPendingRef.current = false;
+      setFocusVisibleTab(currentTab);
+      select(currentTab);
+      return;
+    }
+
+    // Enter remains owned by React Native Web's existing Pressable path. Mark
+    // the modality here, but do not activate a second time from onKeyDown.
+    if (event.nativeEvent.key === "Enter") {
+      keyboardFocusPendingRef.current = false;
+      setFocusVisibleTab(currentTab);
+      return;
+    }
 
     let targetIndex: number;
     switch (event.nativeEvent.key) {
@@ -300,7 +325,13 @@ export const PublicVenueTabs = forwardRef<
         return;
     }
     event.preventDefault();
-    revealAndFocus(tabs[targetIndex]);
+    const targetTab: PublicVenueTab = tabs[targetIndex];
+    const focusStaysOnCurrentTab = targetTab === currentTab;
+    keyboardFocusPendingRef.current = !focusStaysOnCurrentTab;
+    // focus() does not dispatch another focus event when Home/End resolves to
+    // the tab that already owns focus, so restore keyboard modality directly.
+    if (focusStaysOnCurrentTab) setFocusVisibleTab(targetTab);
+    revealAndFocus(targetTab);
   };
 
   const contentByTab: Record<PublicVenueTab, React.ReactNode> = {
@@ -320,7 +351,7 @@ export const PublicVenueTabs = forwardRef<
           ? { "aria-label": "Venue sections" }
           : {})}
       >
-        {tabs.map((tab, index) => {
+        {tabs.map((tab: PublicVenueTab, index: number) => {
           const active = tab === activeTab;
           const webTabProps =
             Platform.OS === "web"
@@ -332,16 +363,30 @@ export const PublicVenueTabs = forwardRef<
                     if (focusedTabRef.current === tab) {
                       focusedTabRef.current = null;
                     }
-                    setFocusVisibleTab((current) =>
+                    setFocusVisibleTab((current: PublicVenueTab | null) =>
                       current === tab ? null : current,
                     );
                   },
                   onFocus: (event: VenueTabFocusEvent): void => {
                     focusedTabRef.current = tab;
-                    setFocusVisibleTab(isWebFocusVisible(event) ? tab : null);
+                    const pointerFocused = pointerFocusPendingRef.current;
+                    const keyboardFocused = keyboardFocusPendingRef.current;
+                    pointerFocusPendingRef.current = false;
+                    keyboardFocusPendingRef.current = false;
+                    setFocusVisibleTab(
+                      !pointerFocused &&
+                        (keyboardFocused || isWebFocusVisible(event))
+                        ? tab
+                        : null,
+                    );
                   },
                   onKeyDown: (event: VenueTabKeyboardEvent): void => {
-                    moveFocus(event, index);
+                    handleWebKeyDown(event, index, tab);
+                  },
+                  onPointerDown: (): void => {
+                    pointerFocusPendingRef.current = true;
+                    keyboardFocusPendingRef.current = false;
+                    setFocusVisibleTab(null);
                   },
                   tabIndex: active ? (0 as const) : (-1 as const),
                 }
@@ -360,7 +405,7 @@ export const PublicVenueTabs = forwardRef<
           return (
             <WebVenueTab
               key={tab}
-              ref={(node) => {
+              ref={(node: FocusableVenueTab | null) => {
                 tabRefs.current[tab] = node ?? undefined;
               }}
               onPress={() => select(tab)}
@@ -394,7 +439,7 @@ export const PublicVenueTabs = forwardRef<
         })}
       </WebVenueTabList>
       {Platform.OS === "web" ? (
-        tabs.map((tab) => {
+        tabs.map((tab: PublicVenueTab) => {
           const active = tab === activeTab;
           return (
             <WebVenuePanel
@@ -411,7 +456,13 @@ export const PublicVenueTabs = forwardRef<
           );
         })
       ) : (
-        <View style={styles.pane}>{contentByTab[activeTab]}</View>
+        <View style={styles.pane}>
+          {activeTab === "menu"
+            ? menu
+            : activeTab === "reservations"
+              ? reservations
+              : overview}
+        </View>
       )}
     </View>
   );
