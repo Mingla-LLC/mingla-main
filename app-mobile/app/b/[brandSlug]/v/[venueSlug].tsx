@@ -93,6 +93,7 @@ import { captureNativeStayRouteAttribution } from "../../../../src/services/nati
 import { shareContent } from "../../../../src/services/contentShareAdapter";
 import { useConsumerThemeFont } from "../../../../src/theme/useConsumerThemeFont";
 import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueService";
+import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -189,6 +190,25 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = query.data ?? null;
+  const menuDiagnosticReportedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (query.isFetching || venue?.menuState !== "error") {
+      if (query.isFetching) menuDiagnosticReportedRef.current = false;
+      return;
+    }
+    if (menuDiagnosticReportedRef.current) return;
+    menuDiagnosticReportedRef.current = true;
+    reportNonFatal(
+      "public-venue.menu-read",
+      new Error("public_menu_request_failed"),
+      {
+        surface: ANALYTICS_SURFACE,
+        brand_slug: brandSlug,
+        venue_slug: venueSlug,
+      },
+      ["public-venue-menu-read", ANALYTICS_SURFACE],
+    );
+  }, [brandSlug, query.isFetching, venue?.menuState, venueSlug]);
   // The Stay branch is DATA off `venue_public_view`, not a re-derived guess;
   // which booking body actually mounts is decided by the category profile
   // inside the shared screen (#1558), never by this compare.
@@ -443,7 +463,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   );
 
 
-  if (query.isLoading || query.isFetching) {
+  if (query.isLoading) {
     return <StateView title="Loading venue…" loading />;
   }
   if (query.isError) {
@@ -465,6 +485,15 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       venue={venueViewModel}
       discoveryPrice={venue.discoveryPrice}
       menu={venue.menu}
+      menuLifecycle={{
+        state: query.isFetching
+          ? venue.menu.length > 0
+            ? venue.menuState
+            : "loading"
+          : venue.menuState,
+        isFetching: query.isFetching,
+        onRetry: () => query.refetch(),
+      }}
       reservable={
         venue.reservability.state === "available"
           ? {

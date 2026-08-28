@@ -45,6 +45,7 @@ on:
       - "app-mobile/src/components/venueOrdering/**"
       - "app-mobile/src/services/venueOrderingService.ts"
       - "app-mobile/src/services/publicVenueService.ts"
+      - "app-mobile/src/hooks/usePublicVenue.ts"
       - "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx"
       - "app-mobile/package.json"
       - "supabase/functions/venue-order-create/**"
@@ -69,6 +70,7 @@ on:
       - "app-mobile/src/components/venueOrdering/**"
       - "app-mobile/src/services/venueOrderingService.ts"
       - "app-mobile/src/services/publicVenueService.ts"
+      - "app-mobile/src/hooks/usePublicVenue.ts"
       - "app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx"
       - "app-mobile/package.json"
       - "supabase/functions/venue-order-create/**"
@@ -143,6 +145,11 @@ jobs:
           src/components/venueOrdering/__tests__/venueOrderReviewMoneyGate.issue1793.adversarial.test.tsx
           src/components/venueOrdering/__tests__/publicVenueMenuSuspense.issue2735.happy.test.tsx
           src/components/venueOrdering/__tests__/publicVenueMenuSuspense.issue2735.adversarial.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.happy.test.ts
+          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.render.happy.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.adversarial.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.webFocus.adversarial.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.webDom.adversarial.test.tsx
           src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.happy.test.tsx
           src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.adversarial.test.tsx
           src/components/venue/__tests__/venueOrders.issue1791.test.ts

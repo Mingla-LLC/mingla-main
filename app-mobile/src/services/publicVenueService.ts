@@ -71,6 +71,8 @@ export interface ConsumerPublicVenue {
   timezone: string | null;
   galleryPhotoUrls: string[];
   menu: PublicMenuGroup[];
+  /** #2755 — menu request truth is independent of core venue availability. */
+  menuState: "ready" | "error";
   /**
    * Issue #1793 — each menu's SERVICE WINDOW, keyed by menu id, from the columns
    * #1789 appended to `public_menus_view` (SPEC #1788 P-14).
@@ -301,8 +303,6 @@ export async function fetchConsumerPublicVenue(
         ? supabase.rpc("issue_1384_supported_currencies")
         : Promise.resolve({ data: null, error: null }),
     ]);
-  if (menuResult.error !== null) throw menuResult.error;
-
   const resolved = (
     Array.isArray(reservableResult.data)
       ? reservableResult.data[0]
@@ -365,8 +365,15 @@ export async function fetchConsumerPublicVenue(
       profilePhotoUrl: null,
       poolPhotoUrls: row.pool_photo_urls,
     }),
-    menu: groupMenus((menuResult.data ?? []) as MenuRow[]),
-    menuWindows: collectMenuWindows((menuResult.data ?? []) as MenuRow[]),
+    menu:
+      menuResult.error === null
+        ? groupMenus((menuResult.data ?? []) as MenuRow[])
+        : [],
+    menuState: menuResult.error === null ? "ready" : "error",
+    menuWindows:
+      menuResult.error === null
+        ? collectMenuWindows((menuResult.data ?? []) as MenuRow[])
+        : {},
     // A price RPC failure is NOT a page failure — the lede is omitted and the
     // rest of the venue renders (the buyer page throws here; on a native page
     // with one query that would blank the whole screen over a missing band).

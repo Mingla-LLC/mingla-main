@@ -69,6 +69,11 @@ function Harness(): React.ReactElement {
           ],
         },
       ]}
+      menuLifecycle={{
+        state: "ready",
+        isFetching: false,
+        onRetry: () => undefined,
+      }}
       reservable={{ reservable: true, venueId: venue.id, currency: "NGN" }}
       reservabilityState="ready"
       safeAreaInsets={{ top: 0, bottom: 0 }}

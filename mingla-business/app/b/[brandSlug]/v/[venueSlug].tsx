@@ -79,6 +79,7 @@ import {
 } from "../../../../src/hooks/usePublicEvents";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
+import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";
@@ -235,6 +236,28 @@ export default function PublicVenueRoute(): React.ReactElement {
   );
 
   const menuGroups = menusQuery.data ?? EMPTY_MENU_GROUPS;
+  const menuDiagnosticReportedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (menusQuery.isFetching || !menusQuery.isError) {
+      if (menusQuery.isFetching) menuDiagnosticReportedRef.current = false;
+      return;
+    }
+    if (menuDiagnosticReportedRef.current) return;
+    menuDiagnosticReportedRef.current = true;
+    reportNonFatal(
+      "public-venue.menu-read",
+      new Error("public_menu_request_failed"),
+      {
+        surface: Platform.OS === "web" ? "buyer_web" : "business_native",
+        brand_slug: typeof brandSlug === "string" ? brandSlug : null,
+        venue_slug: typeof venueSlug === "string" ? venueSlug : null,
+      },
+      [
+        "public-venue-menu-read",
+        Platform.OS === "web" ? "buyer_web" : "business_native",
+      ],
+    );
+  }, [brandSlug, menusQuery.isError, menusQuery.isFetching, venueSlug]);
 
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
@@ -468,6 +491,15 @@ export default function PublicVenueRoute(): React.ReactElement {
       venue={venueViewModel}
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menuGroups}
+      menuLifecycle={{
+        state: menusQuery.isError
+          ? "error"
+          : menusQuery.isLoading
+            ? "loading"
+            : "ready",
+        isFetching: menusQuery.isFetching,
+        onRetry: () => menusQuery.refetch(),
+      }}
       reservable={
         reservableQuery.isError || reservableQuery.isLoading
           ? null

@@ -401,6 +401,16 @@ module.exports = {
     // suite installs Business dependencies only, so resolve the bare package to
     // the identical real version Business already owns.
     "^@supabase/supabase-js$": "<rootDir>/node_modules/@supabase/supabase-js",
+    // #2755 — the Consumer venue route now reaches its real native-only
+    // reportNonFatal adapter. CI intentionally installs Business dependencies
+    // only, so resolving the adapter's @sentry/react-native import from
+    // app-mobile fails before the cross-app adoption suite can mount the route.
+    // Replace only that native SDK leaf with the existing platform-neutral
+    // Business Sentry boundary, matching the dedicated #1834/#1863 render
+    // configs. The Consumer adapter and its once-per-error call site still run;
+    // production Metro remains on the real @sentry/react-native SDK because
+    // this mapping exists only in the node/ts-jest configuration.
+    "^@sentry/react-native$": "<rootDir>/src/diagnostics/sentry.ts",
     // #1560 — resolution repair, NOT a mock, and the IDENTITY for every file in
     // this app. `consumerVenueAdoption.issue1560.happy.test.tsx` mounts the REAL
     // consumer venue route (`app-mobile/app/b/[brandSlug]/v/[venueSlug].tsx`) to

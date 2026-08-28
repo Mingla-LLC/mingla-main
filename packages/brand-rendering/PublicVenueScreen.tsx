@@ -59,6 +59,8 @@
  */
 
 import {
+  AccessibilityInfo,
+  ActivityIndicator,
   Image,
   Platform,
   Pressable,
@@ -156,6 +158,11 @@ type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
 };
 const webVenueStyle = (style: WebVenueViewStyle): StyleProp<ViewStyle> =>
   style as StyleProp<ViewStyle>;
+
+interface WebRetryAriaHost {
+  removeAttribute: (name: string) => void;
+  setAttribute: (name: string, value: string) => void;
+}
 
 // ═══════════════════════════════════════════════════════════════════════════
 // The read model — ONE shape, both apps
@@ -359,6 +366,41 @@ export type PublicVenueAnalyticsEvent =
   | "public_venue_menu_viewed"
   | "public_venue_reservation_started";
 
+export type PublicVenueMenuRequestState = "loading" | "ready" | "error";
+
+export interface PublicVenueMenuLifecycle {
+  state: PublicVenueMenuRequestState;
+  isFetching: boolean;
+  onRetry: () => void | Promise<unknown>;
+}
+
+/** #2755 — total six-state reduction, exported so state truth is regression-testable. */
+export function resolvePublicVenueMenuPresentation(
+  state: PublicVenueMenuRequestState,
+  isFetching: boolean,
+  itemCount: number,
+  categoryHasMenu: boolean,
+): {
+  hasMenu: boolean;
+  hasStaleItems: boolean;
+  showState: boolean;
+  copy: string;
+} {
+  const hasStaleItems = itemCount > 0;
+  return {
+    hasMenu: categoryHasMenu && (state !== "ready" || hasStaleItems),
+    hasStaleItems,
+    showState: state !== "ready" || isFetching,
+    copy: hasStaleItems
+      ? state === "error"
+        ? "Menu may be out of date."
+        : "Updating menu…"
+      : state === "error"
+        ? "Menu couldn’t load"
+        : "Loading menu…",
+  };
+}
+
 export interface PublicVenueScreenProps {
   venue: PublicVenueViewModel;
   /** Business public-web #1615 identity overlay; absent preserves consumer/native hosts. */
@@ -366,6 +408,8 @@ export interface PublicVenueScreenProps {
   discoveryPrice: PublicVenueDiscoveryPriceView | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
+  /** #2755 — required transport truth; an empty array cannot impersonate failure. */
+  menuLifecycle: PublicVenueMenuLifecycle;
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
   reservable: PublicVenueReservableView | null;
   reservabilityState?: PublicVenueReservabilityState;
@@ -952,6 +996,7 @@ export const PublicVenueScreen = ({
   useDirectionCIdentity = false,
   discoveryPrice,
   menu,
+  menuLifecycle,
   reservable,
   reservabilityState = "ready",
   initialTab = "overview",
@@ -983,7 +1028,16 @@ export const PublicVenueScreen = ({
   const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
   // #1536 flips this by editing `tabs` in VENUE_CATEGORY_PROFILES — one array
   // element, one file, all five surfaces.
-  const hasMenu = venueMenuTabVisible(profile, menuItemCount);
+  const categoryHasMenu = venueMenuTabVisible(profile, 1);
+  // #2755: an unconfirmed request is not an empty menu. Only a successful
+  // empty response may remove the tab.
+  const menuPresentation = resolvePublicVenueMenuPresentation(
+    menuLifecycle.state,
+    menuLifecycle.isFetching,
+    menuItemCount,
+    categoryHasMenu,
+  );
+  const hasMenu = menuPresentation.hasMenu;
   const canOpenReservationSheet = RESERVATION_READY[profile.bookingBody]({
     stayState,
     reservabilityState,
@@ -1005,6 +1059,24 @@ export const PublicVenueScreen = ({
       reservationUiContext,
     );
   const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
+  const retryWebHostRef = React.useRef<React.ElementRef<typeof Pressable> | null>(
+    null,
+  );
+  const retryInFlightRef = React.useRef<boolean>(false);
+  const retryOwnsFocusRef = React.useRef<boolean>(false);
+  const retryHadFocusRef = React.useRef<boolean>(false);
+  const retryRequestedRef = React.useRef<boolean>(false);
+  const retryStartedOnMenuRef = React.useRef<boolean>(false);
+  const retryPresentationStateRef = React.useRef<PublicVenueMenuRequestState | null>(
+    null,
+  );
+  const previousMenuStateRef = React.useRef<PublicVenueMenuRequestState | null>(
+    null,
+  );
+  const previousMenuFetchingRef = React.useRef<boolean>(false);
+  const [retryLocallyBusy, setRetryLocallyBusy] = useState<boolean>(false);
+  const [retryFocusVisible, setRetryFocusVisible] = useState<boolean>(false);
+  const [retryHovered, setRetryHovered] = useState<boolean>(false);
   React.useEffect(() => {
     dispatchReservationUi({
       type: "INITIAL_TAB_CHANGED",
@@ -1022,6 +1094,73 @@ export const PublicVenueScreen = ({
       context: reservationUiContext,
     });
   }, [reservationUiContext]);
+
+  // #2755 — one announcement owner. The visible state container is NOT also
+  // a live region, so first failure, repeat failure, and recovery each speak
+  // exactly once while passive rerenders speak nothing.
+  React.useEffect(() => {
+    const stateChanged = previousMenuStateRef.current !== menuLifecycle.state;
+    const fetchingChanged =
+      previousMenuFetchingRef.current !== menuLifecycle.isFetching;
+    if (stateChanged || fetchingChanged) {
+      if (menuLifecycle.isFetching) {
+        if (
+          !retryRequestedRef.current &&
+          menuLifecycle.state !== "error"
+        ) {
+          AccessibilityInfo.announceForAccessibility(menuPresentation.copy);
+        }
+      } else if (menuLifecycle.state === "error") {
+        AccessibilityInfo.announceForAccessibility(menuPresentation.copy);
+      } else if (retryRequestedRef.current) {
+        AccessibilityInfo.announceForAccessibility("Menu loaded.");
+        if (
+          retryHadFocusRef.current &&
+          retryStartedOnMenuRef.current &&
+          (normalizedReservationUiState.activeTab === "menu" || !hasMenu)
+        ) {
+          publicVenueTabsRef.current?.focusTab(hasMenu ? "menu" : "overview");
+        }
+      }
+    }
+    if (!menuLifecycle.isFetching) {
+      retryRequestedRef.current = false;
+      retryHadFocusRef.current = false;
+      retryStartedOnMenuRef.current = false;
+      retryPresentationStateRef.current = null;
+      retryInFlightRef.current = false;
+      setRetryLocallyBusy(false);
+    }
+    previousMenuStateRef.current = menuLifecycle.state;
+    previousMenuFetchingRef.current = menuLifecycle.isFetching;
+  }, [
+    hasMenu,
+    menuLifecycle.isFetching,
+    menuLifecycle.state,
+    menuPresentation.copy,
+    normalizedReservationUiState.activeTab,
+  ]);
+
+  const handleRetryMenu = React.useCallback((): void => {
+    if (retryInFlightRef.current || menuLifecycle.isFetching) return;
+    retryInFlightRef.current = true;
+    retryRequestedRef.current = true;
+    retryHadFocusRef.current = retryOwnsFocusRef.current;
+    retryStartedOnMenuRef.current =
+      normalizedReservationUiState.activeTab === "menu";
+    retryPresentationStateRef.current = menuLifecycle.state;
+    setRetryLocallyBusy(true);
+    try {
+      const result = menuLifecycle.onRetry();
+      void Promise.resolve(result).finally(() => {
+        retryInFlightRef.current = false;
+        setRetryLocallyBusy(false);
+      });
+    } catch {
+      retryInFlightRef.current = false;
+      setRetryLocallyBusy(false);
+    }
+  }, [menuLifecycle, normalizedReservationUiState.activeTab]);
 
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => resolveTheme(venue.theme, null),
@@ -1423,19 +1562,176 @@ export const PublicVenueScreen = ({
   // the section heading — and, at a venue with ordering off, the menu with it.
   // The slot renders the LIST (orderable or display-only); the heading is the
   // page's, always.
-  const menuBlock = menuItemCount === 0 ? null : (
+  const menuBusy = menuLifecycle.isFetching || retryLocallyBusy;
+  // A manual retry is a busy version of the error the guest chose to retry,
+  // not a new cold load. Freeze that presentation until the request settles so
+  // the focused retry control and its explanation stay mounted in place.
+  const retryPresentationState =
+    retryRequestedRef.current &&
+    (menuLifecycle.isFetching ||
+      (retryLocallyBusy && menuLifecycle.state === "error"))
+      ? retryPresentationStateRef.current
+      : null;
+  const visibleMenuState = retryPresentationState ?? menuLifecycle.state;
+  const visibleMenuPresentation = resolvePublicVenueMenuPresentation(
+    visibleMenuState,
+    menuBusy,
+    menuItemCount,
+    categoryHasMenu,
+  );
+  React.useLayoutEffect(() => {
+    const retryWebHost = retryWebHostRef.current as unknown as
+      | WebRetryAriaHost
+      | null;
+    if (Platform.OS !== "web" || retryWebHost === null) {
+      return;
+    }
+    // RN Web's Pressable writes aria-disabled from its native `disabled` prop
+    // after spreading direct ARIA props. Reassert both busy semantics on the
+    // committed host without setting HTML `disabled`, which would evict this
+    // same control from keyboard focus during a retry.
+    if (menuBusy) {
+      retryWebHost.setAttribute("aria-disabled", "true");
+      retryWebHost.setAttribute("aria-busy", "true");
+      return;
+    }
+    retryWebHost.removeAttribute("aria-disabled");
+    retryWebHost.removeAttribute("aria-busy");
+  }, [menuBusy, visibleMenuState]);
+  const menuHasStaleItems = visibleMenuPresentation.hasStaleItems;
+  const showMenuState = visibleMenuPresentation.showState;
+  const menuStateCopy = visibleMenuPresentation.copy;
+  const menuBlock = !hasMenu ? null : (
     <View style={styles.menuWrap}>
-      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionLabel, { color: palette.tertiaryText }]}
+      >
         MENU
       </Text>
-      {orderingMenuBody !== null ? orderingMenuBody : (
-        <PublicMenuSections
-          groups={menu}
-          palette={palette}
-          surface={surface}
-          theme={resolvedTheme}
-        />
-      )}
+      {showMenuState ? (
+        <View
+          style={[
+            menuHasStaleItems ? styles.menuStaleState : styles.menuColdState,
+            { backgroundColor: palette.page, borderColor: palette.panelBorder },
+          ]}
+          testID={menuHasStaleItems ? "menu-stale-state" : "menu-cold-state"}
+        >
+          <View style={styles.menuStateCopy}>
+            {visibleMenuState === "loading" || menuBusy ? (
+              <ActivityIndicator
+                accessible={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                color={palette.accent}
+                size="small"
+              />
+            ) : null}
+            <View style={styles.menuStateTextWrap}>
+              <Text
+                accessibilityRole={
+                  !menuHasStaleItems && visibleMenuState === "error"
+                    ? "header"
+                    : undefined
+                }
+                style={[
+                  !menuHasStaleItems && visibleMenuState === "error"
+                    ? styles.menuColdErrorTitle
+                    : menuHasStaleItems
+                      ? styles.menuStaleText
+                      : styles.menuColdLoadingText,
+                  {
+                    color:
+                      !menuHasStaleItems && visibleMenuState === "error"
+                        ? palette.primaryText
+                        : palette.secondaryText,
+                  },
+                ]}
+              >
+                {menuStateCopy}
+              </Text>
+              {!menuHasStaleItems && visibleMenuState === "error" ? (
+                <Text
+                  style={[
+                    styles.menuColdErrorBody,
+                    { color: palette.secondaryText },
+                  ]}
+                >
+                  Try again in a moment.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          {visibleMenuState === "error" ? (
+            <Pressable
+              ref={Platform.OS === "web" ? retryWebHostRef : undefined}
+              accessibilityRole="button"
+              accessibilityLabel="Try loading the menu again"
+              accessibilityState={{ disabled: menuBusy, busy: menuBusy }}
+              aria-disabled={Platform.OS === "web" ? menuBusy : undefined}
+              aria-busy={Platform.OS === "web" ? menuBusy : undefined}
+              disabled={Platform.OS === "web" ? undefined : menuBusy}
+              onFocus={(event) => {
+                retryOwnsFocusRef.current = true;
+                if (Platform.OS !== "web") {
+                  setRetryFocusVisible(false);
+                  return;
+                }
+                const target = event.currentTarget as unknown as {
+                  matches?: (selector: string) => boolean;
+                };
+                setRetryFocusVisible(
+                  target.matches?.(":focus-visible") === true,
+                );
+              }}
+              onBlur={() => {
+                retryOwnsFocusRef.current = false;
+                setRetryFocusVisible(false);
+              }}
+              onHoverIn={() => setRetryHovered(true)}
+              onHoverOut={() => setRetryHovered(false)}
+              onPress={handleRetryMenu}
+              style={({ pressed }) => [
+                styles.menuRetry,
+                { backgroundColor: palette.accent },
+                retryHovered && !pressed && !menuBusy
+                  ? styles.menuRetryHovered
+                  : null,
+                pressed && !menuBusy ? styles.menuRetryPressed : null,
+                menuBusy ? styles.menuRetryDisabled : null,
+                Platform.OS === "web" && retryFocusVisible
+                  ? ({
+                      outlineColor: palette.accent,
+                      outlineOffset: -4,
+                      outlineStyle: "solid",
+                      outlineWidth: 3,
+                    } as never)
+                  : null,
+              ]}
+            >
+              <Text
+                style={[styles.menuRetryText, { color: palette.accentText }]}
+              >
+                Try again
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {menuHasStaleItems ? (
+        <View key="menu-content">
+          {orderingMenuBody !== null ? (
+            orderingMenuBody
+          ) : (
+            <PublicMenuSections
+              groups={menu}
+              palette={palette}
+              surface={surface}
+              theme={resolvedTheme}
+            />
+          )}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -2023,6 +2319,79 @@ const styles = StyleSheet.create({
   // height: 180` is the "240x180 at every width" Leg C measured.
   menuWrap: {
     gap: 0,
+  },
+  menuColdState: {
+    minHeight: 132,
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
+  menuStaleState: {
+    minHeight: 52,
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    gap: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  menuStateCopy: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 1,
+  },
+  menuStateTextWrap: {
+    gap: 2,
+    flexShrink: 1,
+  },
+  menuColdLoadingText: {
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: "400",
+  },
+  menuColdErrorTitle: {
+    fontSize: 17,
+    lineHeight: 21,
+    fontWeight: "800",
+  },
+  menuColdErrorBody: {
+    fontSize: 15,
+    lineHeight: 23,
+    fontWeight: "400",
+  },
+  menuStaleText: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "400",
+  },
+  menuRetry: {
+    minHeight: 44,
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+  },
+  menuRetryHovered: {
+    opacity: 0.92,
+  },
+  menuRetryPressed: {
+    opacity: 0.85,
+  },
+  menuRetryDisabled: {
+    opacity: 0.55,
+  },
+  menuRetryText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   // ---- reserve (§6.7) ----
   reserveBarWrap: {
