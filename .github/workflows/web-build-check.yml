@@ -163,3 +163,12 @@ jobs:
           test -f playwright/issue2771-preconsent-analytics.tester.adversarial.spec.ts
           test -f playwright/issue2795-posthog-alias-consent.spec.ts
           npx playwright test -c playwright.issue2771.config.ts
+      # issue #2768 — complement #2729's isolated component proof with the real
+      # app-shell consent owner. A named CTA touch must hit-test to the CTA
+      # immediately before dispatch; a visible overlay is reported as its own
+      # origin and transitioned through its real Reject control.
+      - name: "#2768 public venue hit-target fidelity"
+        working-directory: mingla-business
+        run: |
+          test -f playwright/issue2768/public-venue-hit-target-fidelity.happy.spec.ts
+          npx playwright test -c playwright.issue2768.config.ts
