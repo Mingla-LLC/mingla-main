@@ -93,6 +93,7 @@ const iconOf = (mod) => (mod && mod.__esModule ? mod.default : mod) || null;
 //   Check            src/components/ari/{QuickReplyChips,MessageList,ClarifyingCard}.tsx
 //   CheckSquare      src/components/ari/MultiSelectPrompt.tsx
 //   ChevronDown      src/components/venue/* (ORCH-1196)
+//   ChevronLeft      src/components/venue/ReservationCalendarToolbar.tsx (#2737)
 //   ChevronRight     src/components/venue/* (ORCH-1196)
 //   ChevronUp        src/components/venue/* (ORCH-1196)
 //   Circle           src/components/stay/StaySuiteShell.tsx
@@ -151,6 +152,7 @@ const USED_ICONS = {
   Check: iconOf(require("lucide-react/dist/esm/icons/check.js")),
   CheckSquare: iconOf(require("lucide-react/dist/esm/icons/check-square.js")),
   ChevronDown: iconOf(require("lucide-react/dist/esm/icons/chevron-down.js")),
+  ChevronLeft: iconOf(require("lucide-react/dist/esm/icons/chevron-left.js")),
   ChevronRight: iconOf(require("lucide-react/dist/esm/icons/chevron-right.js")),
   ChevronUp: iconOf(require("lucide-react/dist/esm/icons/chevron-up.js")),
   // Issue #1791 — the Orders queue's empty state (VenueOrdersModule).

@@ -9,7 +9,8 @@
  *    OWNS its own ScrollView (with its own clearance), so the shell must NOT wrap
  *    it in a second outer ScrollView (nested same-axis scroll = the broken
  *    "doesn't scroll" symptom). Settings + the booking ComingSoon render plain
- *    Views, so the shell supplies the scroll container for them.
+ *    Views, so the shell supplies the scroll container for them. Reservations
+ *    owns mode-specific scrolling so its Agenda SectionList is never nested.
  *  - `venueScrollBottomPad(insetsBottom)` — the floating BottomNav clearance:
  *    `insets.bottom + 120`, the shared nav-lock companion-pin pattern used by
  *    every Hub tab (app/(tabs)/hub/events.tsx) and by VenueListingContent in tab
@@ -22,13 +23,16 @@ import type { VenueModule } from "../../types/venueReservation";
 export const VENUE_SCROLL_NAV_CLEARANCE = 120;
 
 /**
- * True iff the module brings its own ScrollView (Overview =
- * VenueIntelligenceModule; Insights = VenueInsightsModule, issue #1735) and
+ * True iff the module brings its own vertical scroll owner (Overview =
+ * VenueIntelligenceModule; Insights = VenueInsightsModule, issue #1735;
+ * Reservations = its mode-specific SectionList/ScrollView, issue #2737) and
  * therefore the shell must NOT add an outer ScrollView around it (nested
  * same-axis scroll = the broken "doesn't scroll" symptom).
  */
 export function moduleSelfScrolls(module: VenueModule): boolean {
-  return module === "overview" || module === "insights";
+  return (
+    module === "overview" || module === "insights" || module === "reservations"
+  );
 }
 
 /**

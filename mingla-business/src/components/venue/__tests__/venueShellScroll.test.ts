@@ -10,7 +10,8 @@
  * <VenueListingContent> for Overview (which owns its own ScrollView + clearance).
  * Wrapping Overview in a second outer ScrollView is the nested same-axis scroll
  * bug that broke scrolling on native — so `moduleSelfScrolls('overview')` MUST be
- * true (no outer wrap) and false for every other module (shell wraps + pads).
+ * true. Issue #2737 adds Reservations to that same single-owner contract so
+ * its Agenda SectionList is never nested in the shell ScrollView.
  *
  * Fails-on-revert: pinned against the venue-suite-foundation shell fix commit.
  *  - Revert `moduleSelfScrolls` to always-false → Overview double-wraps → T-A red.
@@ -29,7 +30,7 @@ import type { VenueModule } from "../../../types/venueReservation";
 const ALL_MODULES = Object.keys(VENUE_MODULES) as VenueModule[];
 
 describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
-  test("T-A: ONLY Overview + Insights self-scroll (so the shell never double-wraps a module's own ScrollView)", () => {
+  test("T-A: ONLY Overview + Insights + Reservations self-scroll (so the shell never double-wraps a module's own vertical owner)", () => {
     // Issue #1735 [TEST-MOD-APPROVED #1735]: `insights` joins `overview` as a
     // self-scrolling module (VenueInsightsModule owns its ScrollView +
     // clearance — G-1 binding; same delegation contract, second member). The
@@ -37,19 +38,25 @@ describe("META-ORCH-1148 — venue shell scroll + bottom-nav clearance", () => {
     // shell-scrolled, and a self-scrolling module must never be double-wrapped.
     expect(moduleSelfScrolls("overview")).toBe(true);
     expect(moduleSelfScrolls("insights")).toBe(true);
+    expect(moduleSelfScrolls("reservations")).toBe(true);
     for (
-      const m of ALL_MODULES.filter((x) => x !== "overview" && x !== "insights")
+      const m of ALL_MODULES.filter(
+        (x) => x !== "overview" && x !== "insights" && x !== "reservations",
+      )
     ) {
       expect(moduleSelfScrolls(m)).toBe(false);
     }
   });
 
-  test("T-B: Settings + every booking module are shell-scrolled (NOT self-scrolling) — guarantees the shell supplies a scroll container", () => {
-    // Settings + booking band render plain Views → must NOT claim self-scroll,
-    // else they would render with no scroll container and be unscrollable.
+  test("T-B: Settings + non-Reservation booking modules remain shell-scrolled", () => {
+    // Reservations owns its mode scroll. Every other plain-view booking module
+    // stays shell-owned so it cannot become vertically unreachable.
     const shellOwned = ALL_MODULES.filter((m) => !moduleSelfScrolls(m));
     expect(shellOwned).toContain("settings");
-    // At least the booking band must be present + shell-owned.
+    expect(shellOwned).toContain("tables");
+    expect(shellOwned).toContain("availability");
+    expect(shellOwned).toContain("waitlist");
+    expect(shellOwned).not.toContain("reservations");
     expect(shellOwned.length).toBeGreaterThanOrEqual(2);
   });
 

@@ -306,7 +306,13 @@ export function VenueSuiteShell({
       );
     }
     if (activeModule === "reservations") {
-      return <VenueReservationsModule brandId={brandId} venueId={venueId} />;
+      return (
+        <VenueReservationsModule
+          brandId={brandId}
+          venueId={venueId}
+          scrollBottomPad={scrollBottomPad}
+        />
+      );
     }
     // The remaining booking module: waitlist.
     return <VenueWaitlistModule brandId={brandId} venueId={venueId} />;

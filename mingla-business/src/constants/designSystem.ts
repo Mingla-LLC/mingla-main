@@ -61,6 +61,20 @@ export const radius = {
 // cap left dead right-side canvas / a "black bar" on wide monitors).
 export const venueRailWidth = 220 as const;
 
+// Issue #2737 — reservation calendar geometry. This is deliberately scoped to
+// the operator calendar so responsive density never becomes a second global
+// page-layout system.
+export const reservationCalendarLayout = {
+  agendaMaxWidth: 920,
+  agendaRowMinHeight: 68,
+  entryMinTarget: 44,
+  dateCellMinWidth: 48,
+  dateCellMinHeight: 56,
+  weekDayMinWidth: 112,
+  monthCellMinHeight: 152,
+  monthVisibleEntryLimit: 2,
+} as const;
+
 // ORCH-1186-A: the venue Settings content column readable-measure cap on wide
 // desktop. The ORCH-1184 workspace fills the full page width, so an editable
 // form would stretch to an unreadable line length on a wide monitor — cap the
