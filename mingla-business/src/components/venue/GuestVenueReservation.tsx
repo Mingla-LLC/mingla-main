@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Linking,
@@ -156,7 +156,25 @@ export function GuestVenueReservation({
 
   const availability = usePublicVenueAvailability(venueId, date, partySize);
   const slots = availability.data ?? [];
-  const selectedSlot = slots.find((slot) => slot.slotStartUtc === selectedUtc);
+  const availabilitySettled =
+    !availability.isLoading &&
+    !availability.isFetching &&
+    !availability.isError;
+  const currentSelectedSlot = slots.find(
+    (slot) => slot.slotStartUtc === selectedUtc,
+  );
+  const selectedSlot =
+    !availability.isError && currentSelectedSlot?.isFull === false
+      ? currentSelectedSlot
+      : undefined;
+  const submissionTruthRef = useRef<{
+    canSubmit: boolean;
+    reservedForUtc: string | null;
+  }>({ canSubmit: false, reservedForUtc: null });
+  submissionTruthRef.current = {
+    canSubmit: availabilitySettled && selectedSlot !== undefined && !submitting,
+    reservedForUtc: selectedSlot?.slotStartUtc ?? null,
+  };
   const phoneDialCode = getCountryByCode(phoneCountry)?.dialCode ?? "+1";
   const normalizedPhone = composeE164(phoneDialCode, phoneLocal);
   const normalizedName = name.trim();
@@ -166,6 +184,11 @@ export function GuestVenueReservation({
   const contactInvalid = nameInvalid || emailInvalid;
 
   useEffect(() => {
+    if (!availabilitySettled || selectedUtc === null) return;
+    if (currentSelectedSlot?.isFull !== false) setSelectedUtc(null);
+  }, [availabilitySettled, currentSelectedSlot?.isFull, selectedUtc]);
+
+  useEffect(() => {
     if (availability.data === undefined) return;
     captureWeb("venue_availability_result_viewed", {
       surface: analyticsSurface,
@@ -173,25 +196,26 @@ export function GuestVenueReservation({
       venue_id: venueId,
     });
     runBuyerVenueOrganicCapture(analyticsSurface, () => {
-      void captureVenueOrganicEvent(
-        { brandId, venueId },
-        "availability_shown",
-      );
+      void captureVenueOrganicEvent({ brandId, venueId }, "availability_shown");
     });
   }, [analyticsSurface, availability.data, brandId, venueId]);
 
   const submit = async (): Promise<void> => {
+    const submissionTruth = submissionTruthRef.current;
+    if (!submissionTruth.canSubmit || submissionTruth.reservedForUtc === null) {
+      return;
+    }
     if (nameInvalid) setNameTouched(true);
     if (emailInvalid) setEmailTouched(true);
-    if (
-      selectedUtc === null ||
-      contactInvalid ||
-      normalizedPhone === null
-    ) {
+    if (selectedUtc === null || contactInvalid || normalizedPhone === null) {
       setPhoneTouched(true);
       setError(normalizedPhone === null ? INVALID_PHONE_COPY : null);
       return;
     }
+    submissionTruthRef.current = {
+      canSubmit: false,
+      reservedForUtc: submissionTruth.reservedForUtc,
+    };
     setSubmitting(true);
     setError(null);
     captureWeb("public_venue_reservation_submitted", {
@@ -204,7 +228,7 @@ export function GuestVenueReservation({
       const result = await createGuestVenueReservation({
         venueId,
         brandId,
-        reservedForUtc: selectedUtc,
+        reservedForUtc: submissionTruth.reservedForUtc,
         partySize,
         buyer: {
           name: normalizedName,
@@ -277,8 +301,12 @@ export function GuestVenueReservation({
 
   return (
     <View style={styles.host}>
-      <Text style={[styles.title, { color: palette.primaryText }]}>Find a table</Text>
-      <Text style={[styles.label, { color: palette.tertiaryText }]}>PARTY SIZE</Text>
+      <Text style={[styles.title, { color: palette.primaryText }]}>
+        Find a table
+      </Text>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>
+        PARTY SIZE
+      </Text>
       <View style={styles.stepper}>
         <Button
           label="−"
@@ -291,7 +319,9 @@ export function GuestVenueReservation({
           }}
           accessibilityLabel="Decrease party size"
         />
-        <Text style={[styles.party, { color: palette.primaryText }]}>{partySize}</Text>
+        <Text style={[styles.party, { color: palette.primaryText }]}>
+          {partySize}
+        </Text>
         <Button
           label="+"
           variant="secondary"
@@ -328,7 +358,9 @@ export function GuestVenueReservation({
           </Pressable>
         ))}
       </View>
-      <Text style={[styles.label, { color: palette.tertiaryText }]}>AVAILABLE TIMES</Text>
+      <Text style={[styles.label, { color: palette.tertiaryText }]}>
+        AVAILABLE TIMES
+      </Text>
       {availability.isLoading || availability.isFetching ? (
         <View style={styles.loading}>
           <ActivityIndicator color={palette.accent} />
@@ -349,7 +381,7 @@ export function GuestVenueReservation({
             }}
           />
         </View>
-      ) : slots.filter((slot) => !slot.isFull).length === 0 ? (
+      ) : slots.length === 0 ? (
         <View style={[styles.stateCard, { borderColor: palette.panelBorder }]}>
           <Text style={[styles.body, { color: palette.secondaryText }]}>
             No tables for this day.
@@ -373,21 +405,35 @@ export function GuestVenueReservation({
                 });
               }}
               accessibilityRole="button"
-              accessibilityLabel={`Select ${slot.slotLocalLabel}${
-                slot.isFull ? ", full" : ""
-              }`}
+              accessibilityLabel={
+                slot.isFull
+                  ? `${slot.slotLocalLabel}, full`
+                  : `Select ${slot.slotLocalLabel}`
+              }
               accessibilityState={{
                 disabled: slot.isFull,
-                selected: selectedUtc === slot.slotStartUtc,
+                selected:
+                  !slot.isFull &&
+                  selectedSlot?.slotStartUtc === slot.slotStartUtc,
               }}
               style={[
                 styles.chip,
                 chipTheme.chip,
-                selectedUtc === slot.slotStartUtc && chipTheme.chipSelected,
-                slot.isFull && styles.disabled,
+                !slot.isFull &&
+                  selectedSlot?.slotStartUtc === slot.slotStartUtc &&
+                  chipTheme.chipSelected,
               ]}
             >
-              <Text style={[styles.chipText, { color: palette.primaryText }]}>
+              <Text
+                style={[
+                  styles.chipText,
+                  {
+                    color: slot.isFull
+                      ? palette.secondaryText
+                      : palette.primaryText,
+                  },
+                ]}
+              >
                 {slot.slotLocalLabel}
                 {slot.isFull ? " · Full" : ""}
               </Text>
@@ -397,7 +443,9 @@ export function GuestVenueReservation({
       )}
       {selectedSlot !== undefined ? (
         <View style={styles.form}>
-          <Text style={[styles.label, { color: palette.tertiaryText }]}>NAME · REQUIRED</Text>
+          <Text style={[styles.label, { color: palette.tertiaryText }]}>
+            NAME · REQUIRED
+          </Text>
           <Input
             value={name}
             onChangeText={(next: string) => {
@@ -418,7 +466,9 @@ export function GuestVenueReservation({
               {INVALID_NAME_COPY}
             </Text>
           ) : null}
-          <Text style={[styles.label, { color: palette.tertiaryText }]}>EMAIL · REQUIRED</Text>
+          <Text style={[styles.label, { color: palette.tertiaryText }]}>
+            EMAIL · REQUIRED
+          </Text>
           <Input
             value={email}
             onChangeText={(next: string) => {
@@ -520,7 +570,7 @@ export function GuestVenueReservation({
             size="lg"
             fullWidth
             loading={submitting}
-            disabled={submitting || contactInvalid}
+            disabled={submitting || contactInvalid || !availabilitySettled}
             onPress={() => void submit()}
           />
         </View>
@@ -564,7 +614,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     padding: spacing.md,
   },
-  disabled: { opacity: 0.4 },
   form: { gap: spacing.sm, marginTop: spacing.md },
   fieldError: { ...typography.bodySm, color: semantic.error },
   optIn: {
