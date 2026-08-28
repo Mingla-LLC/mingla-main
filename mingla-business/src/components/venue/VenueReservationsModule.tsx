@@ -403,7 +403,7 @@ export function VenueReservationsModule({
       activeAgendaAttemptRef.current = requestId;
       list.scrollToLocation({
         animated: false,
-        itemIndex: 0,
+        itemIndex: 1,
         sectionIndex: pending.sectionIndex,
         viewOffset: 0,
         viewPosition: 0,
@@ -436,7 +436,6 @@ export function VenueReservationsModule({
   const handleAgendaHeaderLayout = useCallback(
     (dayKey: string): void => {
       agendaProgressSequenceRef.current += 1;
-      readyAgendaHeadersRef.current.add(dayKey);
       const pending = pendingAgendaNavigationRef.current;
       if (pending?.dayKey !== dayKey || pending.sectionIndex === null) return;
       if (
@@ -450,6 +449,22 @@ export function VenueReservationsModule({
       completeAgendaNavigationIfReady(pending.requestId);
     },
     [completeAgendaNavigationIfReady, requestExactAgendaNavigation],
+  );
+
+  const handleAgendaHeaderRef = useCallback(
+    (dayKey: string, node: FocusableAgendaHeader | null): void => {
+      agendaHeaderRefs.current[dayKey] = node;
+      if (node === null) {
+        readyAgendaHeadersRef.current.delete(dayKey);
+        return;
+      }
+      readyAgendaHeadersRef.current.add(dayKey);
+      const pending = pendingAgendaNavigationRef.current;
+      if (pending?.dayKey === dayKey) {
+        completeAgendaNavigationIfReady(pending.requestId);
+      }
+    },
+    [completeAgendaNavigationIfReady],
   );
 
   const handleAgendaScrollFailure = useCallback(
@@ -686,9 +701,10 @@ export function VenueReservationsModule({
           renderSectionHeader={({ section }) => (
             <View
               ref={(node) => {
-                agendaHeaderRefs.current[section.dayKey] =
-                  node as unknown as FocusableAgendaHeader | null;
-                if (node === null) readyAgendaHeadersRef.current.delete(section.dayKey);
+                handleAgendaHeaderRef(
+                  section.dayKey,
+                  node as unknown as FocusableAgendaHeader | null,
+                );
               }}
               onLayout={() => handleAgendaHeaderLayout(section.dayKey)}
               accessible

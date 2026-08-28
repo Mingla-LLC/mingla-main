@@ -13,6 +13,15 @@ interface MockFailurePayload {
 }
 
 const mockScrollOrder: string[] = [];
+const mockExactCalls: {
+  animated: boolean;
+  itemIndex: number;
+  sectionIndex: number;
+  viewOffset: number;
+  viewPosition: number;
+  dayKey: string;
+  dataLength: number;
+}[] = [];
 let mockExactFailures: MockFailurePayload[] = [];
 let mockViewportDays: string[] = [];
 let mockEmitNativeScroll: (offsetY: number) => void = () => undefined;
@@ -27,6 +36,7 @@ jest.mock("react-native", () => {
     testID?: string;
     renderSectionHeader: (input: { section: MockSection }) => React.ReactElement<{
       onLayout?: () => void;
+      ref?: (node: { nativeTag: string } | null) => void;
     }>;
     onScroll: (event: { nativeEvent: { contentOffset: { y: number } } }) => void;
     onViewableItemsChanged: (input: {
@@ -59,12 +69,16 @@ jest.mock("react-native", () => {
     element,
   }: {
     dayKey: string;
-    element: React.ReactElement<{ onLayout?: () => void }>;
+    element: React.ReactElement<{
+      onLayout?: () => void;
+      ref?: (node: { nativeTag: string } | null) => void;
+    }>;
   }): React.ReactElement => {
     ReactRuntime.useEffect(() => {
-      element.props.onLayout?.();
-    }, [dayKey, element.props]);
-    return element;
+      element.props.ref?.({ nativeTag: dayKey });
+      return () => element.props.ref?.(null);
+    }, [dayKey, element.props.ref]);
+    return ReactRuntime.cloneElement(element, { ref: undefined });
   };
 
   const MockSectionList = ReactRuntime.forwardRef(
@@ -95,8 +109,20 @@ jest.mock("react-native", () => {
       }, []);
 
       ReactRuntime.useImperativeHandle(ref, () => ({
-        scrollToLocation: ({ sectionIndex }: { sectionIndex: number }) => {
-          const dayKey = propsRef.current.sections[sectionIndex]?.dayKey ?? "missing";
+        scrollToLocation: (input: {
+          animated: boolean;
+          itemIndex: number;
+          sectionIndex: number;
+          viewOffset: number;
+          viewPosition: number;
+        }) => {
+          const section = propsRef.current.sections[input.sectionIndex];
+          const dayKey = section?.dayKey ?? "missing";
+          mockExactCalls.push({
+            ...input,
+            dayKey,
+            dataLength: section?.data.length ?? -1,
+          });
           mockScrollOrder.push(`exact:${dayKey}`);
           const failure = mockExactFailures.shift();
           if (failure !== undefined) {
@@ -279,14 +305,6 @@ async function renderModule(): Promise<ReactTestRenderer> {
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
       <VenueReservationsModule brandId="brand" venueId="venue" />,
-      {
-        createNodeMock: (element: { props?: { testID?: string } }) => {
-          const nativeTag = element.props?.testID;
-          return nativeTag?.startsWith("reservation-agenda-header-")
-            ? { nativeTag }
-            : null;
-        },
-      },
     );
   });
   if (tree === null) throw new Error("offscreen_agenda_render_missing");
@@ -302,6 +320,7 @@ async function flushInitialRequest(): Promise<void> {
 describe("issue #2737 native-event-driven off-screen agenda navigation", () => {
   beforeEach(() => {
     mockScrollOrder.length = 0;
+    mockExactCalls.length = 0;
     mockExactFailures = [];
     mockViewportDays = [];
     mockEmitNativeScroll = () => undefined;
@@ -314,8 +333,7 @@ describe("issue #2737 native-event-driven off-screen agenda navigation", () => {
     jest.useRealTimers();
   });
 
-  it("waits for changed native scroll and later viewability before revealing Sunday", async () => {
-    mockExactFailures = [{ ...FAILURE }];
+  it("targets Sunday's first card and completes only after the native viewport reports it", async () => {
     const tree = await renderModule();
 
     await TestRenderer.act(async () => {
@@ -323,17 +341,26 @@ describe("issue #2737 native-event-driven off-screen agenda navigation", () => {
     });
     await flushInitialRequest();
 
-    expect(mockScrollOrder).toEqual(["exact:2026-08-30", "coarse:720"]);
+    expect(mockScrollOrder).toEqual(["exact:2026-08-30"]);
+    expect(mockExactCalls[0]).toEqual({
+      animated: false,
+      itemIndex: 1,
+      sectionIndex: 2,
+      viewOffset: 0,
+      viewPosition: 0,
+      dayKey: "2026-08-30",
+      dataLength: 1,
+    });
     expect(mockViewportDays).toEqual(["2026-08-28", "2026-08-29"]);
     expect(
       tree.root.findAllByProps({ testID: "reservation-agenda-header-2026-08-30" }),
     ).toHaveLength(0);
 
     await flushInitialRequest();
-    expect(mockScrollOrder).toEqual(["exact:2026-08-30", "coarse:720"]);
+    expect(mockScrollOrder).toEqual(["exact:2026-08-30"]);
 
-    await TestRenderer.act(async () => mockEmitNativeScroll(600));
-    expect(mockScrollOrder).toEqual(["exact:2026-08-30", "coarse:720"]);
+    await TestRenderer.act(async () => mockEmitNativeScroll(340));
+    expect(mockScrollOrder).toEqual(["exact:2026-08-30"]);
 
     await TestRenderer.act(async () => mockEmitViewability(["2026-08-30"]));
     expect(mockViewportDays).toEqual(["2026-08-30"]);
@@ -342,9 +369,41 @@ describe("issue #2737 native-event-driven off-screen agenda navigation", () => {
     ).not.toHaveLength(0);
     expect(mockScrollOrder).toEqual([
       "exact:2026-08-30",
-      "coarse:720",
-      "exact:2026-08-30",
       "focus:2026-08-30",
+    ]);
+  });
+
+  it("uses the empty selected day's footer anchor and still completes sticky focus", async () => {
+    const tree = await renderModule();
+
+    await TestRenderer.act(async () => {
+      interactive(tree.root, "reservation-calendar-date-2026-08-27").props.onPress();
+    });
+    await flushInitialRequest();
+
+    expect(mockExactCalls[0]).toEqual({
+      animated: false,
+      itemIndex: 1,
+      sectionIndex: 0,
+      viewOffset: 0,
+      viewPosition: 0,
+      dayKey: "2026-08-27",
+      dataLength: 0,
+    });
+    expect(mockScrollOrder).toEqual(["exact:2026-08-27"]);
+    expect(
+      tree.root.findAllByProps({ testID: "reservation-agenda-header-2026-08-27" }),
+    ).toHaveLength(0);
+
+    await TestRenderer.act(async () => mockEmitNativeScroll(72));
+    await TestRenderer.act(async () => mockEmitViewability(["2026-08-27"]));
+    expect(mockViewportDays).toEqual(["2026-08-27"]);
+    expect(
+      tree.root.findAllByProps({ testID: "reservation-agenda-header-2026-08-27" }),
+    ).not.toHaveLength(0);
+    expect(mockScrollOrder).toEqual([
+      "exact:2026-08-27",
+      "focus:2026-08-27",
     ]);
   });
 
