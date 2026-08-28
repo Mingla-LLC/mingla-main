@@ -322,9 +322,11 @@ export interface PublicVenueOrderingSlotContext
 
 export interface PublicVenueOrderingSlots {
   /**
-   * The ONE ordering slot. It replaces the display-only menu list when it
-   * returns non-null, and hands the pane back when it returns null — which is
-   * what a venue with ordering switched off gets: the page it already had.
+   * The ONE ordering slot. When supplied for a populated menu it is TOTAL:
+   * after its host-owned lazy boundary resolves, it always returns either the
+   * orderable menu or the same display-only menu. A resolved child returning
+   * null cannot hand control back across Suspense — React would remove the
+   * fallback and leave the shared MENU heading above an empty body (#2735).
    *
    * ONE slot rather than four, and the reason is worth keeping. The first cut
    * had separate notice / menu / sticky-bar / overlay slots so the bar could
@@ -340,7 +342,7 @@ export interface PublicVenueOrderingSlots {
    */
   menuBody?: (
     context: PublicVenueOrderingSlotContext,
-  ) => BrandRenderingReactNode | null;
+  ) => BrandRenderingReactElement;
 }
 
 /** The three events this page emits. The host adds its own surface tag. */
