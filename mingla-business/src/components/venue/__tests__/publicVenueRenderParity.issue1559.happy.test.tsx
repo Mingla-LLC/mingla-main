@@ -147,6 +147,25 @@
  * behaviour — a withheld street exposing NEITHER control — lives on the
  * event/RSVP pages and is pinned by
  * packages/offering-rendering/__tests__/issue_2508_maps_app_chooser.test.ts T-6.
+ *
+ * ---------------------------------------------------------------------------
+ * [TEST-MOD-APPROVED #2729] — MOBILE WEB CTA JOINS THE SOLE SCROLL OWNER
+ * ---------------------------------------------------------------------------
+ * #2729 deliberately moves the phone-only reservation CTA from a sibling of
+ * the parallax shell into that shell's scroll-body ancestry. The old baseline
+ * therefore encoded the scroll trap itself: the body was the only overflow
+ * owner while the CTA sat outside it and could intercept the gesture that was
+ * meant to reverse the page.
+ *
+ * Regenerated with `MINGLA_1559_WRITE_BASELINE=1 npx jest
+ * publicVenueRenderParity.issue1559 --runInBand`. The fixture remains the same
+ * seven cases. Exactly four change: the three phone cases that render a CTA
+ * (`restaurant-phone-full`, `stay-phone-full`, and
+ * `restaurant-phone-menu-tab`) move that existing CTA subtree into `ShellBody`,
+ * change `contentBottomInset` from 110 to 0, and record the sticky/testID props;
+ * `restaurant-desktop-full` gains only the shared CTA testID. The other three
+ * cases are byte-identical. The reservation sheet, share modal, anchors, size
+ * floor, case roster, and assertion counts are not removed or weakened.
  */
 import React from "react";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
