@@ -227,9 +227,15 @@ export interface PublicVenueReservableView {
 }
 
 export type PublicVenueReservabilityState =
-  "loading" | "ready" | "error" | "invalid";
+  | "loading"
+  | "ready"
+  | "error"
+  | "invalid";
 export type PublicVenueStayState =
-  "loading" | "ready" | "unavailable" | "error";
+  | "loading"
+  | "ready"
+  | "unavailable"
+  | "error";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Host capabilities
@@ -292,7 +298,8 @@ export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
   );
 
 /** The modal the Reserve CTA opens. Chrome is app-owned; its state is not. */
-export interface PublicVenueReservationSheetContext extends PublicVenueThemedContext {
+export interface PublicVenueReservationSheetContext
+  extends PublicVenueThemedContext {
   visible: boolean;
   title: string;
   onClose: () => void;
@@ -317,7 +324,8 @@ export interface PublicVenueReservationSheetContext extends PublicVenueThemedCon
  * into the eager chunk of every venue page on the web, ordering venue or not.
  * With slots this file gains exactly one type import, which is erased.
  */
-export interface PublicVenueOrderingSlotContext extends PublicVenueThemedContext {
+export interface PublicVenueOrderingSlotContext
+  extends PublicVenueThemedContext {
   /** The venue's menu, so the ordering renderer draws from the SAME payload. */
   menu: PublicMenuGroup[];
 }
@@ -422,9 +430,7 @@ export interface PublicVenueScreenProps {
    * month with no brand font at all because nothing forced the decision.
    */
   loadThemeFont: (family: string | null) => void;
-  bookingBody: (
-    context: PublicVenueBookingSlotContext,
-  ) => BrandRenderingReactNode;
+  bookingBody: (context: PublicVenueBookingSlotContext) => BrandRenderingReactNode;
   reservationSheet: (
     context: PublicVenueReservationSheetContext,
   ) => BrandRenderingReactNode;
@@ -636,11 +642,8 @@ const VenuePriceLedeSection: VenueSectionRenderer = ({
     return null;
   }
   return (
-    <Text
-      style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
-    >
-      Typical spend ·{" "}
-      {formatSourceRange({
+    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
+      Typical spend · {formatSourceRange({
         minMinor: discoveryPrice.minMinor,
         maxMinor: discoveryPrice.maxMinor,
         currencyCode: discoveryPrice.currencyCode,
@@ -909,7 +912,9 @@ const VenueStayPolicySection: VenueSectionRenderer = ({
         </Text>
       </View>
       {houseRules !== null ? (
-        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
+        <Text
+          style={[styles.aboutBody, { color: palette.secondaryText }]}
+        >
           {houseRules}
         </Text>
       ) : null}
@@ -1015,10 +1020,7 @@ export const PublicVenueScreen = ({
   // on `isStay` now reads a field of this profile, so `play`, `creative_and_arts`
   // and a NULL category stop inheriting the restaurant's page by accident.
   const profile = venueCategoryProfile(venue.venueCategory);
-  const menuItemCount = menu.reduce(
-    (sum, group) => sum + group.items.length,
-    0,
-  );
+  const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
   // #1536 flips this by editing `tabs` in VENUE_CATEGORY_PROFILES — one array
   // element, one file, all five surfaces.
   const categoryHasMenu = venueMenuTabVisible(profile, 1);
@@ -1046,10 +1048,11 @@ export const PublicVenueScreen = ({
     (tab: PublicVenueTab) =>
       createPublicVenueReservationUiState(tab, reservationUiContext),
   );
-  const normalizedReservationUiState = normalizePublicVenueReservationUiState(
-    reservationUiState,
-    reservationUiContext,
-  );
+  const normalizedReservationUiState =
+    normalizePublicVenueReservationUiState(
+      reservationUiState,
+      reservationUiContext,
+    );
   const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
   const retryInFlightRef = React.useRef<boolean>(false);
   const retryOwnsFocusRef = React.useRef<boolean>(false);
@@ -1399,9 +1402,7 @@ export const PublicVenueScreen = ({
     canBook: canOpenReservationSheet,
   });
 
-  const renderAnswerCell = (
-    cell: VenueAnswerCell,
-  ): BrandRenderingReactElement => (
+  const renderAnswerCell = (cell: VenueAnswerCell): BrandRenderingReactElement => (
     <View
       key={cell.id}
       style={[styles.answerCell, { borderColor: palette.cutoutBorder }]}
@@ -1671,8 +1672,8 @@ export const PublicVenueScreen = ({
             <PublicMenuSections
               groups={menu}
               palette={palette}
-          surface={surface}
-          theme={resolvedTheme}
+              surface={surface}
+              theme={resolvedTheme}
             />
           )}
         </View>
@@ -1697,10 +1698,7 @@ export const PublicVenueScreen = ({
     openReservationSheet: handleOpenReservationSheetFromBody,
     reserveAction: profile.reserveAction,
   };
-  const reservationBodies: Record<
-    VenueBookingBody,
-    () => BrandRenderingReactNode
-  > = {
+  const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
     stay: () => (
       <React.Suspense
         fallback={
@@ -1739,9 +1737,7 @@ export const PublicVenueScreen = ({
             accessibilityLabel="Try checking reservations again"
             style={[styles.stateRetry, { backgroundColor: palette.accent }]}
           >
-            <Text
-              style={[styles.stateRetryText, { color: palette.accentText }]}
-            >
+            <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
               Try again
             </Text>
           </Pressable>
@@ -2010,14 +2006,10 @@ export const PublicVenueScreen = ({
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
-        directionCIdentity={
-          useDirectionCIdentity
-            ? {
-                title: venue.name,
-                meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
-              }
-            : undefined
-        }
+        directionCIdentity={useDirectionCIdentity ? {
+          title: venue.name,
+          meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
+        } : undefined}
         // #1561 — the venue's actual photographs, as the shell's first-class
         // cover pager. Empty ⇒ single cover, byte-identical to the old mount.
         galleryImages={heroCover.additional}

@@ -31,13 +31,7 @@
 
 // orch-strict-grep-allow safearea-on-fullscreen-routes — anon public route; PublicVenueScreen/PublicVenueNotFound apply insets.top; state views center-anchored
 import React, { useCallback, useEffect, useMemo, useRef } from "react";
-import {
-  ActivityIndicator,
-  Platform,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
+import { ActivityIndicator, Platform, StyleSheet, Text, View } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import Head from "expo-router/head";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -134,9 +128,8 @@ const BuyerStayGuestExperience = React.lazy(() =>
  * first time a guest can actually order.
  */
 const LazyOrderingSurface = React.lazy(() =>
-  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots").then(
-    (module) => ({ default: module.BuyerVenueOrderingSurface }),
-  ),
+  import("../../../../src/components/venueOrdering/BuyerVenueOrderingSlots")
+    .then((module) => ({ default: module.BuyerVenueOrderingSurface })),
 );
 
 /**
@@ -200,13 +193,13 @@ export default function PublicVenueRoute(): React.ReactElement {
   // fact about a table, the other is attribution, and conflating them is how a
   // venue's zone revenue comes to include people who were never in the zone.
   const rawSpot = Array.isArray(params.spot) ? params.spot[0] : params.spot;
-  const spotCode =
-    typeof rawSpot === "string" && rawSpot.trim() !== ""
-      ? rawSpot.trim()
-      : null;
+  const spotCode = typeof rawSpot === "string" && rawSpot.trim() !== ""
+    ? rawSpot.trim()
+    : null;
   const rawSrc = Array.isArray(params.src) ? params.src[0] : params.src;
-  const entrySource =
-    typeof rawSrc === "string" && rawSrc.trim() !== "" ? rawSrc.trim() : null;
+  const entrySource = typeof rawSrc === "string" && rawSrc.trim() !== ""
+    ? rawSrc.trim()
+    : null;
 
   const venueQuery = usePublicVenueBySlug(
     typeof brandSlug === "string" ? brandSlug : null,
@@ -236,10 +229,10 @@ export default function PublicVenueRoute(): React.ReactElement {
   // §6.7 reserve display gate — place-keyed, anon-safe. Disabled without a
   // linked place; error → not reservable (fail closed, no dead CTA).
   const reservableQuery = usePublicVenueReservable(
-    venue?.venueCategory === "stay" ? null : (venue?.placePoolId ?? null),
+    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
   );
   const discoveryPriceQuery = usePublicVenueDiscoveryPrice(
-    venue?.venueCategory === "stay" ? null : (venue?.placePoolId ?? null),
+    venue?.venueCategory === "stay" ? null : venue?.placePoolId ?? null,
   );
 
   const menuGroups = menusQuery.data ?? EMPTY_MENU_GROUPS;
@@ -265,6 +258,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       ],
     );
   }, [brandSlug, menusQuery.isError, menusQuery.isFetching, venueSlug]);
+
 
   // §6.8 — the secondary "See {brand} →" link renders only when the PARENT
   // brand resolves publicly. Fetched ONLY on the not-found path.
@@ -319,7 +313,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       settleVenueOrganicJourneyOnConsent({
         brandId: settleBrandId,
         venueId: settleVenueId,
-      }),
+      })
     );
   }, [settleBrandId, settleVenueId]);
 
@@ -411,10 +405,9 @@ export default function PublicVenueRoute(): React.ReactElement {
   // the Reservations tab's booking body. It replaces the "from" rate in the
   // answer bar's SAME price slot, at the same size, the moment dates are
   // chosen; `null` (no quote, expired, consumed) restores the from-rate.
-  const [stayQuote, setStayQuote] = React.useState<{
-    totalMinor: string;
-    currencyCode: string;
-  } | null>(null);
+  const [stayQuote, setStayQuote] = React.useState<
+    { totalMinor: string; currencyCode: string } | null
+  >(null);
 
   const renderBookingBody = useCallback(
     (context: PublicVenueBookingSlotContext): React.ReactNode =>
@@ -510,7 +503,7 @@ export default function PublicVenueRoute(): React.ReactElement {
       reservable={
         reservableQuery.isError || reservableQuery.isLoading
           ? null
-          : (reservableQuery.data ?? null)
+          : reservableQuery.data ?? null
       }
       reservabilityState={
         isPublicVenueReservableContractError(reservableQuery.error)
@@ -562,12 +555,14 @@ export default function PublicVenueRoute(): React.ReactElement {
             <meta property="og:url" content={canonicalUrl} />
             <meta
               property="og:image"
-              content={venueOgImageUrl({
-                brandSlug: venue.brandSlug,
-                venueSlug: venue.slug,
-                coverMediaUrl:
-                  venue.coverMediaType !== "video" ? venue.coverMediaUrl : null,
-              })}
+              content={
+                venueOgImageUrl({
+                  brandSlug: venue.brandSlug,
+                  venueSlug: venue.slug,
+                  coverMediaUrl:
+                    venue.coverMediaType !== "video" ? venue.coverMediaUrl : null,
+                })
+              }
             />
             <meta property="og:type" content="place" />
             <meta name="twitter:card" content="summary_large_image" />

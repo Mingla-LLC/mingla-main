@@ -101,7 +101,12 @@ interface VenueRow {
   brand_name: string;
   slug: string;
   name: string;
-  venue_category: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
+  venue_category:
+    | "restaurant"
+    | "play"
+    | "creative_and_arts"
+    | "stay"
+    | null;
   address: string | null;
   city: string | null;
   lat: number;
@@ -197,9 +202,7 @@ const collectMenuWindows = (
     windows[row.menu_id] = {
       start: row.service_window_start ?? null,
       end: row.service_window_end ?? null,
-      days: Array.isArray(row.service_days)
-        ? row.service_days.map(Number)
-        : null,
+      days: Array.isArray(row.service_days) ? row.service_days.map(Number) : null,
     };
   }
   return windows;
@@ -218,7 +221,9 @@ const asDiscoveryPrice = (
   currencies: unknown,
 ): ConsumerVenueDiscoveryPrice | null => {
   const row = (Array.isArray(projected) ? projected[0] : projected) as
-    Record<string, unknown> | null | undefined;
+    | Record<string, unknown>
+    | null
+    | undefined;
   if (row === null || row === undefined) return null;
   if (row.price_range_status !== "active") return null;
   const minMinor = Number(row.source_min_minor);
@@ -242,8 +247,9 @@ const asDiscoveryPrice = (
     rawMax === null || rawMax === undefined ? null : Number(rawMax);
   return {
     minMinor,
-    maxMinor:
-      maxMinor !== null && Number.isSafeInteger(maxMinor) ? maxMinor : null,
+    maxMinor: maxMinor !== null && Number.isSafeInteger(maxMinor)
+      ? maxMinor
+      : null,
     currencyCode,
     minorUnitExponent: metadata.minor_unit_exponent as number,
   };
@@ -348,8 +354,7 @@ export async function fetchConsumerPublicVenue(
     // issue #1562 — the clock those hours belong to. Blank folds to null so an
     // empty string can never reach `Intl` and raise where "unknown" belongs.
     timezone:
-      typeof row.iana_timezone === "string" &&
-      row.iana_timezone.trim().length > 0
+      typeof row.iana_timezone === "string" && row.iana_timezone.trim().length > 0
         ? row.iana_timezone
         : null,
     // #1560 — the SHARED cascade (operator cover + profile first, place-pool
