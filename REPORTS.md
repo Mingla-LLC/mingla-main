@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-28 — Campaign analytics now distinguish measured delivery and opens from unknown history, send campaigns through an isolated tracked subdomain while leaving transactional email untracked, reconcile early provider events instead of losing them, and show a real production Gmail delivery and open without inventing a zero (#2714, PR #2722)
 - 2026-08-28 — Fully booked venue times remain visible as Full and cannot be selected, while stale availability can no longer revive a sold-out reservation action (#2734, PR #2749)
 - 2026-08-28 — Public venue menus remain visible after the ordering experience loads, across buyer web and both Mingla apps (#2735, PR #2747)
 - 2026-08-28 — Public venue reservations now keep one truthful availability result from brand browsing through venue booking, so enabled restaurants no longer appear unavailable after navigation (#2730, PR #2750)
