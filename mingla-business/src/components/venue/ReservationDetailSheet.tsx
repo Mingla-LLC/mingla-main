@@ -25,32 +25,19 @@ import {
   STATUS_PRESENTATION,
   legalActionsFor,
 } from "./reservationViews";
+import { formatReservationDateTime } from "./reservationCalendarModel";
 import type {
   Reservation,
   ReservationAction,
 } from "../../types/venueReservation";
 import { SourceRefundStatusChip } from "../refunds/SourceRefundStatusChip";
 
-function localLabel(iso: string): string {
-  const d = new Date(iso);
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ampm = h >= 12 ? "PM" : "AM";
-  h = h % 12;
-  if (h === 0) h = 12;
-  const day = d.toLocaleDateString(undefined, {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
-  return `${day} · ${h}:${m.toString().padStart(2, "0")} ${ampm}`;
-}
-
 export interface ReservationDetailSheetProps {
   visible: boolean;
   onClose: () => void;
   reservation: Reservation | null;
   tableName: string | null;
+  timeZone: string;
   /** Apply a lifecycle action (maps to a server transition). */
   onAction: (r: Reservation, action: ReservationAction) => void;
   acting: boolean;
@@ -62,6 +49,7 @@ export function ReservationDetailSheet({
   onClose,
   reservation,
   tableName,
+  timeZone,
   onAction,
   acting,
   testID,
@@ -103,7 +91,9 @@ export function ReservationDetailSheet({
     >
       <View style={styles.body}>
         <Text style={styles.guest}>{reservation.guestName ?? "Guest"}</Text>
-        <Text style={styles.when}>{localLabel(reservation.reservedFor)}</Text>
+        <Text style={styles.when} testID="reservation-detail-date-time">
+          {formatReservationDateTime(reservation.reservedFor, timeZone)}
+        </Text>
         <Text style={styles.summary}>{summaryParts.join(" · ")}</Text>
         <View style={styles.statusRow}>
           <Text style={styles.statusLabel}>Status:</Text>

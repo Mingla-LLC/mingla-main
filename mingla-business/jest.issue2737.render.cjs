@@ -8,5 +8,7 @@ module.exports = {
     "**/__tests__/reservationCalendar.issue2737.states.render.test.tsx",
     "**/__tests__/reservationCalendar.issue2737.a11y.render.test.tsx",
     "**/__tests__/reservationCalendar.issue2737.shellScroll.render.test.tsx",
+    "**/__tests__/reservationCalendar.issue2737.offscreenDay.render.test.tsx",
+    "**/__tests__/reservationCalendar.issue2737.detailVenueTime.render.test.tsx",
   ],
 };

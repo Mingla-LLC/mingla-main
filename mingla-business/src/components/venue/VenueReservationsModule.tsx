@@ -84,6 +84,21 @@ interface FocusableAgendaHeader {
   focus?: () => void;
 }
 
+interface PendingAgendaNavigation {
+  requestId: number;
+  dayKey: string;
+  sectionIndex: number | null;
+  retryCount: number;
+}
+
+interface AgendaScrollFailure {
+  index: number;
+  highestMeasuredFrameIndex: number;
+  averageItemLength: number;
+}
+
+const MAX_AGENDA_SCROLL_RETRIES = 2;
+
 export interface VenueReservationsModuleProps {
   brandId: string | null;
   venueId?: string | null;
@@ -119,6 +134,7 @@ export function VenueReservationsModule({
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
   const [retrying, setRetrying] = useState(false);
+  const [agendaNavigationVersion, setAgendaNavigationVersion] = useState(0);
   const retryInFlightRef = useRef(false);
   const agendaRef = useRef<SectionListType<Reservation, AgendaSection> | null>(null);
   const agendaHeaderRefs = useRef<Record<string, FocusableAgendaHeader | null>>({});
@@ -126,7 +142,11 @@ export function VenueReservationsModule({
     Record<string, FocusableReservationEntry | null>
   >({});
   const selectedInvokerIdRef = useRef<string | null>(null);
-  const pendingAgendaFocusRef = useRef<string | null>(null);
+  const pendingAgendaNavigationRef = useRef<PendingAgendaNavigation | null>(null);
+  const agendaNavigationSequenceRef = useRef(0);
+  const activeAgendaAttemptRef = useRef<number | null>(null);
+  const readyAgendaHeadersRef = useRef<Set<string>>(new Set());
+  const agendaMountedRef = useRef(true);
 
   const effectiveMode: ReservationCalendarMode = isWideDesktop
     ? desktopMode
@@ -266,18 +286,31 @@ export function VenueReservationsModule({
     availabilityQuery.data === null ||
     resolvedZone.degraded;
 
+  const beginAgendaNavigation = useCallback((dayKey: string): void => {
+    const requestId = agendaNavigationSequenceRef.current + 1;
+    agendaNavigationSequenceRef.current = requestId;
+    pendingAgendaNavigationRef.current = {
+      requestId,
+      dayKey,
+      sectionIndex: null,
+      retryCount: 0,
+    };
+    activeAgendaAttemptRef.current = null;
+    setAgendaNavigationVersion((version) => version + 1);
+  }, []);
+
   const selectOverflowDay = useCallback((dayKey: string): void => {
-    pendingAgendaFocusRef.current = dayKey;
+    beginAgendaNavigation(dayKey);
     setAnchorDate(dayKey);
     setSelectedDay(dayKey);
     setDesktopMode("agenda");
-  }, []);
+  }, [beginAgendaNavigation]);
 
   const selectAgendaDay = useCallback((dayKey: string): void => {
-    pendingAgendaFocusRef.current = dayKey;
+    beginAgendaNavigation(dayKey);
     setAnchorDate(dayKey);
     setSelectedDay(dayKey);
-  }, []);
+  }, [beginAgendaNavigation]);
 
   const selectReservation = useCallback((reservation: Reservation): void => {
     selectedInvokerIdRef.current = reservation.id;
@@ -292,32 +325,119 @@ export function VenueReservationsModule({
     [],
   );
 
-  useEffect(() => {
-    const targetDay = pendingAgendaFocusRef.current;
-    if (effectiveMode !== "agenda" || targetDay === null) return;
-    const sectionIndex = agendaSections.findIndex(
-      (section) => section.dayKey === targetDay,
-    );
-    if (sectionIndex < 0) return;
-    pendingAgendaFocusRef.current = null;
-    const revealAndFocus = (): void => {
+  const focusAgendaHeader = useCallback((dayKey: string): void => {
+    const header = agendaHeaderRefs.current[dayKey];
+    if (Platform.OS === "web") header?.focus?.();
+    else {
+      const handle = findNodeHandle(header as never);
+      if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+    }
+  }, []);
+
+  const requestExactAgendaNavigation = useCallback(
+    (requestId: number): void => {
+      if (!agendaMountedRef.current) return;
+      const pending = pendingAgendaNavigationRef.current;
+      if (
+        pending === null ||
+        pending.requestId !== requestId ||
+        pending.sectionIndex === null
+      ) {
+        return;
+      }
+      activeAgendaAttemptRef.current = requestId;
       agendaRef.current?.scrollToLocation({
         animated: false,
         itemIndex: 0,
-        sectionIndex,
+        sectionIndex: pending.sectionIndex,
         viewOffset: 0,
         viewPosition: 0,
       });
-      const header = agendaHeaderRefs.current[targetDay];
-      if (Platform.OS === "web") header?.focus?.();
-      else {
-        const handle = findNodeHandle(header as never);
-        if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+      if (!readyAgendaHeadersRef.current.has(pending.dayKey)) return;
+      focusAgendaHeader(pending.dayKey);
+      activeAgendaAttemptRef.current = null;
+      pendingAgendaNavigationRef.current = null;
+    },
+    [focusAgendaHeader],
+  );
+
+  const scheduleExactAgendaNavigation = useCallback(
+    (requestId: number): void => {
+      const run = (): void => requestExactAgendaNavigation(requestId);
+      if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+      else setTimeout(run, 0);
+    },
+    [requestExactAgendaNavigation],
+  );
+
+  const handleAgendaHeaderLayout = useCallback(
+    (dayKey: string): void => {
+      readyAgendaHeadersRef.current.add(dayKey);
+      const pending = pendingAgendaNavigationRef.current;
+      if (pending?.dayKey === dayKey && pending.sectionIndex !== null) {
+        scheduleExactAgendaNavigation(pending.requestId);
       }
-    };
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(revealAndFocus);
-    else setTimeout(revealAndFocus, 0);
-  }, [agendaSections, effectiveMode]);
+    },
+    [scheduleExactAgendaNavigation],
+  );
+
+  const handleAgendaScrollFailure = useCallback(
+    ({ index, averageItemLength }: AgendaScrollFailure): void => {
+      const pending = pendingAgendaNavigationRef.current;
+      if (
+        pending === null ||
+        pending.sectionIndex === null ||
+        activeAgendaAttemptRef.current !== pending.requestId
+      ) {
+        return;
+      }
+      if (pending.retryCount >= MAX_AGENDA_SCROLL_RETRIES) return;
+
+      activeAgendaAttemptRef.current = null;
+      pending.retryCount += 1;
+      const responder = agendaRef.current?.getScrollResponder();
+      if (responder === undefined) return;
+      responder.scrollTo({
+        animated: false,
+        x: 0,
+        y: Math.max(0, index * averageItemLength),
+      });
+      scheduleExactAgendaNavigation(pending.requestId);
+    },
+    [scheduleExactAgendaNavigation],
+  );
+
+  useEffect(() => {
+    const pending = pendingAgendaNavigationRef.current;
+    if (pending === null) return;
+    if (effectiveMode !== "agenda") {
+      activeAgendaAttemptRef.current = null;
+      pendingAgendaNavigationRef.current = null;
+      return;
+    }
+    const sectionIndex = agendaSections.findIndex(
+      (section) => section.dayKey === pending.dayKey,
+    );
+    if (sectionIndex < 0) {
+      activeAgendaAttemptRef.current = null;
+      pendingAgendaNavigationRef.current = null;
+      return;
+    }
+    pending.sectionIndex = sectionIndex;
+    scheduleExactAgendaNavigation(pending.requestId);
+  }, [agendaNavigationVersion, agendaSections, effectiveMode, scheduleExactAgendaNavigation]);
+
+  useEffect(
+    () => {
+      agendaMountedRef.current = true;
+      return () => {
+        agendaMountedRef.current = false;
+        activeAgendaAttemptRef.current = null;
+        pendingAgendaNavigationRef.current = null;
+      };
+    },
+    [],
+  );
 
   const periodLabel = formatCalendarPeriod(effectiveAnchor, effectiveMode);
   const selectedTableName =
@@ -361,6 +481,7 @@ export function VenueReservationsModule({
         onPrevious={() => movePeriod(-1)}
         onNext={() => movePeriod(1)}
         onToday={() => {
+          beginAgendaNavigation(todayKey);
           setAnchorDate(todayKey);
           setSelectedDay(todayKey);
         }}
@@ -414,7 +535,9 @@ export function VenueReservationsModule({
               ref={(node) => {
                 agendaHeaderRefs.current[section.dayKey] =
                   node as unknown as FocusableAgendaHeader | null;
+                if (node === null) readyAgendaHeadersRef.current.delete(section.dayKey);
               }}
+              onLayout={() => handleAgendaHeaderLayout(section.dayKey)}
               accessible
               accessibilityRole="header"
               tabIndex={Platform.OS === "web" ? -1 : undefined}
@@ -451,9 +574,7 @@ export function VenueReservationsModule({
           }
           ItemSeparatorComponent={() => <View style={styles.agendaRowSeparator} />}
           SectionSeparatorComponent={() => <View style={styles.agendaGroupSeparator} />}
-          onScrollToIndexFailed={() => {
-            pendingAgendaFocusRef.current = effectiveSelectedDay;
-          }}
+          onScrollToIndexFailed={handleAgendaScrollFailure}
         />
       ) : (
         <ScrollView
@@ -548,6 +669,7 @@ export function VenueReservationsModule({
         onClose={closeDetail}
         reservation={selected}
         tableName={selectedTableName}
+        timeZone={resolvedZone.timeZone}
         onAction={handleAction}
         acting={transition.isPending}
       />
