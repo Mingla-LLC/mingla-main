@@ -9675,7 +9675,7 @@ independent tester returns PASS.
 
 ### I-PROPOSED-2725-SOURCE-IDENTITY-ONE-OWNER (DRAFT)
 - **Rule:** Competitor normalization, identity, fingerprinting and venue dedup are server-owned and DB-enforced; clients only preview.
-- **Enforcement:** migration `20270604002725`; #2725 contract gate.
+- **Enforcement:** migration `20270606002725`; #2725 contract gate.
 
 ### I-PROPOSED-2725-WEEKLY-WORK-SINGLE-SPEND (DRAFT)
 - **Rule:** One watch/source-set/week has one job, funding lane, observation per source and brief across every trigger race.

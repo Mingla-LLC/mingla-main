@@ -165,6 +165,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   //    the proven `!loading && session !== null` template (the useEventOrders/
   //    useVenueIntelligence idiom) + brand/subject completeness.
   "useGrowthTools.ts",
+  // #2725 — the lazy competitor-intelligence slice uses the same authenticated
+  // growth-tools doors and preserves the proven session-ready query template.
+  "useCompetitorIntelligence.ts",
   //    #1735 CI rework — the eager read slice (latest-read + nudge fan-out),
   //    same auth-scoped growth-tools reads, same gating template.
   "useGrowthToolsReads.ts",

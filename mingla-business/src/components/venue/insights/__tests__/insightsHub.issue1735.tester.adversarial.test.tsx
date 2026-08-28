@@ -109,6 +109,14 @@ jest.mock("../../../../hooks/useGrowthTools", () => ({
     mockUseIntelSubjectLatest(...args),
   useAddCompetitor: (...args: unknown[]) => mockUseAddCompetitor(...args),
 }));
+jest.mock("../../../../hooks/useCompetitorIntelligence", () => ({
+  __esModule: true,
+  useCompetitorWatch: (...args: unknown[]) => mockUseCompetitorWatch(...args),
+  useRemoveCompetitor: (...args: unknown[]) => mockUseRemoveCompetitor(...args),
+  useAddCompetitor: (...args: unknown[]) => mockUseAddCompetitor(...args),
+  useRefreshCompetitor: () => ({ mutate: jest.fn(), isPending: false }),
+  useCompetitorBrief: () => ({ data: undefined, isLoading: false, isError: false }),
+}));
 
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 

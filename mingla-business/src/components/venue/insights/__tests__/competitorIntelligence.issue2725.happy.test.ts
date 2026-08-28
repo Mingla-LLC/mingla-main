@@ -3,7 +3,7 @@ import React from "react";
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 const ReactLocal=require("react") as typeof React;
 const mockWatch=jest.fn();const mockBrief=jest.fn();const mockMutation={mutate:jest.fn(),reset:jest.fn(),isPending:false,isError:false,error:null};
-jest.mock("../../../../hooks/useGrowthTools",()=>({useCompetitorWatch:(...args:unknown[])=>mockWatch(...args),useCompetitorBrief:(...args:unknown[])=>mockBrief(...args),useAddCompetitor:()=>mockMutation,useRefreshCompetitor:()=>mockMutation,useRemoveCompetitor:()=>mockMutation}));
+jest.mock("../../../../hooks/useCompetitorIntelligence",()=>({useCompetitorWatch:(...args:unknown[])=>mockWatch(...args),useCompetitorBrief:(...args:unknown[])=>mockBrief(...args),useAddCompetitor:()=>mockMutation,useRefreshCompetitor:()=>mockMutation,useRemoveCompetitor:()=>mockMutation}));
 jest.mock("../../../../context/AuthContext",()=>({useAuth:()=>({loading:false,session:{user:{id:"u1"}}})}));
 jest.mock("../../../ui/useShareNetworkState",()=>({useShareNetworkState:()=>true}));
 jest.mock("@tanstack/react-query",()=>({useQuery:()=>({data:[],isFetching:false,isFetched:false,isError:false,refetch:jest.fn()})}));

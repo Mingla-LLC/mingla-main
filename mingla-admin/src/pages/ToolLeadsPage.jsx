@@ -575,7 +575,7 @@ function CompetitorOpsPanel({ addToast }) {
     { key: "state", label: "State", render: (v) => <Badge variant={v === "failed_terminal" ? "error" : v === "succeeded" ? "success" : "default"}>{String(v).replaceAll("_", " ")}</Badge> },
     { key: "provider", label: "Provider" }, { key: "watch_id", label: "Watch ID" }, { key: "brand_id", label: "Brand ID" }, { key: "attempts", label: "Attempts" },
     { key: "last_attempt", label: "Last attempt", render: (v) => v ? relativeTime(v) : "—" }, { key: "last_success", label: "Last success", render: (v) => v ? relativeTime(v) : "—" }, { key: "next_due", label: "Next due", render: (v) => v ? relativeTime(v) : "—" },
-    { key: "budget", label: "Budget reserved / actual", render: (_v, row) => `${row.budget_reserved ?? 0} / ${row.budget_actual ?? "—"}` }, { key: "safe_reason", label: "Safe reason", render: (v) => v || "—" },
+    { key: "budget", label: "Weekly spend / remaining", render: (_v, row) => `${row.budget_week_start ?? "—"}: ${row.weekly_actual_cents == null ? "measurement unavailable" : `${row.weekly_actual_cents}¢ actual`} · ${row.weekly_reserved_cents ?? 0}¢ reserved · ${row.weekly_remaining_cents ?? 0}¢ remaining` }, { key: "safe_reason", label: "Safe reason", render: (v) => v || "—" },
     { key: "action", label: "", render: (_v, row) => row.state === "failed_terminal" && row.admin_retry_count < 1 ? <Button variant="secondary" size="sm" onClick={() => { setRetryJob(row); setReason(""); }} data-testid={`competitor-ops-job-${row.id}-retry`}>Retry once</Button> : null },
   ], []);
   return <div id="tabpanel-competitor-ops" role="tabpanel" aria-labelledby="tool-leads-tab-competitor-ops" className="flex flex-col gap-6">

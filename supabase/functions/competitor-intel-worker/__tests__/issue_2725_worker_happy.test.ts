@@ -7,6 +7,7 @@ import {
   ANALYZED_PROVIDER_ALLOWLIST,
   buildObservationComparisons,
   fetchWithTimeout,
+  geminiCostMicrousd,
   handler,
   leaseStillOwned,
   nextWeeklyDue,
@@ -21,6 +22,11 @@ import {
 } from "../index.ts";
 import { normalizeCompetitorSource } from "../../_shared/competitorSourceIdentity.ts";
 import { observeCompetitorWebsite } from "../../_shared/competitorWebsiteObservation.ts";
+Deno.test("issue 2725 amendment 8 pricing is exact and rejects invented usage", () => {
+  assertEquals(geminiCostMicrousd(350, 500, 0), 1355);
+  assertThrows(() => geminiCostMicrousd(1, Number.NaN, 0));
+  assertThrows(() => geminiCostMicrousd(-1, 0, 0));
+});
 Deno.test("issue 2725 canonical social identities and TikTok link-only", async () => {
   const ig = await normalizeCompetitorSource(
     "instagram",
@@ -199,6 +205,7 @@ Deno.test("issue 2725 first check synthesizes relevance but cannot invent histor
       return new Response(
         JSON.stringify({
           candidates: [{
+            finishReason: "STOP",
             content: {
               parts: [{
                 text: JSON.stringify({
@@ -225,6 +232,13 @@ Deno.test("issue 2725 first check synthesizes relevance but cannot invent histor
               }],
             },
           }],
+          usageMetadata: {
+            promptTokenCount: 350,
+            candidatesTokenCount: 500,
+            thoughtsTokenCount: 0,
+            totalTokenCount: 850,
+          },
+          modelVersion: "gemini-2.5-flash",
         }),
         { headers: { "content-type": "application/json" } },
       );
@@ -239,6 +253,10 @@ Deno.test("issue 2725 first check synthesizes relevance but cannot invent histor
     );
     assertEquals(prompt.includes('\\"first_check\\":true'), true);
     assertEquals(prompt.includes('\\"must_not_claim_change\\":true'), true);
+    assertEquals(prompt.includes('"temperature":0'), true);
+    assertEquals(prompt.includes('"thinkingBudget":0'), true);
+    assertEquals(prompt.includes('"candidateCount":1'), true);
+    assertEquals(prompt.includes('"responseJsonSchema"'), true);
     assertEquals(
       String((brief.what_changed[0] as { text: string }).text).includes(
         "changed",

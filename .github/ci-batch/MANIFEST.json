@@ -15845,7 +15845,7 @@
       "providerWorkflow": ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9cc3f13ebc887144bb977662148627f7e52620d7c2bfd0abf9ae4e7072e7ed9f",
+        "sourceSha256": "b958f41593b427e0d666da1ea68d5d7da266e5ddc925c6875c71702aa1c9f125",
         "triggers": [
           "pull_request",
           "push"

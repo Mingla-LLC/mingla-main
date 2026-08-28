@@ -11,6 +11,11 @@ export const ANALYZED_PROVIDER_ALLOWLIST = new Set(
 const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
+export const GEMINI_MODEL_ID = "gemini-2.5-flash";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v2.8";
+export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
+export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
+const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
 const PROVIDER_TIMEOUT_MS = 12_000;
 const SYNTHESIS_TIMEOUT_MS = 15_000;
 const WORKER_CLAIM_LIMIT = 3;
@@ -43,6 +48,17 @@ function canonical(value: unknown): string {
       `${JSON.stringify(k)}:${canonical(record[k])}`
     ).join(",")
   }}`;
+}
+export function geminiCostMicrousd(
+  prompt: number,
+  candidate: number,
+  thinking: number,
+): number {
+  if (
+    ![prompt, candidate, thinking].every(Number.isSafeInteger) || prompt < 0 ||
+    candidate < 0 || thinking < 0
+  ) throw new Error("invalid_usage_metadata");
+  return Math.ceil(prompt * 0.3 + (candidate + thinking) * 2.5);
 }
 export async function fetchWithTimeout(
   fetcher: typeof fetch,
@@ -286,13 +302,11 @@ export async function processCompetitorJob(
       capMap.get(s.kind)?.availability_generation
   );
   if (effective.length === 0) return cancel(db, job, "provider_disabled");
-  if (job.funding_lane === "scheduled") {
-    const { data: reservation, error } = await db.rpc(
-      "issue_2725_reserve_budget",
-      { p_job: job.id, p_amount: RESERVED_MICROUSD },
-    );
-    if (error || !reservation) return;
-  }
+  const { data: reservation, error: reservationError } = await db.rpc(
+    "issue_2725_reserve_budget",
+    { p_job: job.id, p_owner: job.lease_owner, p_amount: RESERVED_MICROUSD },
+  );
+  if (reservationError || !reservation) return;
   const observations: CurrentObservation[] = [];
   const failures: Array<{ sourceId: string; kind: string; code: string }> = [];
   for (const source of effective) {
@@ -402,6 +416,7 @@ export async function processCompetitorJob(
   const checkedAt = observations.map((o) => o.checkedAt).sort().at(-1) ??
     new Date().toISOString();
   if (current?.observation_set_fingerprint === obsSet) {
+    await settleZeroCost(db, job, "no_change");
     const finished = await finishJob(db, job, "no_change", null, {
       checked_at: checkedAt,
     });
@@ -433,8 +448,12 @@ export async function processCompetitorJob(
     comparisons,
     venueContext,
     fetcher,
+    { db, job },
   );
   validateBrief(brief, observations);
+  // No-key deterministic fallback is known zero model cost; metered attempts
+  // have already settled their reservation and this RPC is then a no-op.
+  await settleZeroCost(db, job, "deterministic_fallback");
   // Generation + source fingerprint recheck immediately before publish.
   const { data: publishJob, error: publishJobError } = await db.from(
     "tool_competitor_refresh_jobs",
@@ -560,6 +579,7 @@ export async function synthesizeBrief(
   comparisons: ObservationComparison[],
   venueContext: VenueContext,
   fetcher: typeof fetch,
+  context?: { db: Db; job: ClaimedJob },
 ): Promise<
   {
     what_changed: unknown[];
@@ -640,8 +660,120 @@ export async function synthesizeBrief(
         true,
     },
   };
+  const fingerprint = await sha256(canonical(prompt));
+  if (context) {
+    const { data: cached, error: cacheError } = await context.db.from(
+      "tool_competitor_synthesis_results",
+    )
+      .select("result").eq("competitor_id", context.job.competitor_id).eq(
+        "model_id",
+        GEMINI_MODEL_ID,
+      )
+      .eq("prompt_contract_version", PROMPT_CONTRACT_VERSION).eq(
+        "canonical_input_fingerprint",
+        fingerprint,
+      ).maybeSingle();
+    if (cacheError) throw new Error("synthesis_cache_read_failed");
+    if (cached?.result) {
+      const reused = {
+        ...cached.result,
+        what_changed: firstCheck ? baselineFacts : cached.result.what_changed,
+        evidence,
+      };
+      validateBrief(reused, observations);
+      await settleZeroCost(context.db, context.job, "accepted_reuse");
+      return reused;
+    }
+  }
+  const responseSchema = {
+    type: "object",
+    additionalProperties: false,
+    required: ["what_changed", "why_it_matters", "worth_doing"],
+    properties: {
+      what_changed: {
+        type: "array",
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "text", "source_id", "evidence_id", "confidence"],
+          properties: {
+            id: { type: "string" },
+            text: { type: "string" },
+            source_id: { type: "string" },
+            evidence_id: { type: "string" },
+            confidence: { type: "string", enum: ["observed"] },
+          },
+        },
+      },
+      why_it_matters: {
+        type: "array",
+        minItems: 1,
+        maxItems: 2,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["text", "evidence_ids", "confidence"],
+          properties: {
+            text: { type: "string" },
+            evidence_ids: {
+              type: "array",
+              minItems: 1,
+              items: { type: "string" },
+            },
+            confidence: { type: "string", enum: ["interpretation"] },
+          },
+        },
+      },
+      worth_doing: {
+        type: "array",
+        minItems: 1,
+        maxItems: 3,
+        items: {
+          type: "object",
+          additionalProperties: false,
+          required: ["id", "text", "kind", "confidence", "is_primary"],
+          properties: {
+            id: { type: "string" },
+            text: { type: "string" },
+            kind: { type: "string" },
+            confidence: { type: "string", enum: ["suggested_action"] },
+            is_primary: { type: "boolean" },
+            target_id: { type: "string" },
+          },
+        },
+      },
+    },
+  };
+  const requestBody = {
+    contents: [{
+      parts: [{
+        text:
+          `Return JSON only. Contract ${PROMPT_CONTRACT_VERSION}. Build a sourced venue-relevant competitor brief from this bounded before/after input: ${
+            JSON.stringify(prompt)
+          }`,
+      }],
+    }],
+    generationConfig: {
+      responseMimeType: "application/json",
+      responseJsonSchema: responseSchema,
+      temperature: 0,
+      seed: parseInt(fingerprint.slice(0, 8), 16) % 2147483647,
+      thinkingConfig: { thinkingBudget: 0 },
+      candidateCount: 1,
+      maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS,
+    },
+  };
+  const serializedRequest = JSON.stringify(requestBody);
+  const requestBytes = new TextEncoder().encode(serializedRequest).byteLength;
+  if (requestBytes > MAX_SYNTHESIS_REQUEST_BYTES) {
+    throw new Error("synthesis_request_too_large");
+  }
+  const started = Date.now();
+  let response: Response;
   try {
-    const response = await fetchWithTimeout(
+    response = await fetchWithTimeout(
       fetcher,
       `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${
         encodeURIComponent(key)
@@ -649,35 +781,142 @@ export async function synthesizeBrief(
       {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{
-              text:
-                `Return JSON only. Build a sourced venue-relevant competitor brief from this bounded before/after input: ${
-                  JSON.stringify(prompt)
-                }`,
-            }],
-          }],
-          generationConfig: { responseMimeType: "application/json" },
-        }),
+        body: serializedRequest,
       },
       SYNTHESIS_TIMEOUT_MS,
     );
-    if (!response.ok) throw new Error("synthesis_failed");
-    const result = await response.json() as {
-      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    };
-    const parsed = JSON.parse(
-      result.candidates?.[0]?.content?.parts?.[0]?.text ?? "{}",
-    );
-    return {
-      ...parsed,
-      what_changed: firstCheck ? baselineFacts : parsed.what_changed,
-      evidence,
-    };
   } catch {
-    return fallback;
+    if (context) {
+      const { error } = await context.db.rpc("issue_2725_record_model_usage", {
+        p_job: context.job.id,
+        p_owner: context.job.lease_owner,
+        p_receipt: {
+          model_id: GEMINI_MODEL_ID,
+          prompt_contract_version: PROMPT_CONTRACT_VERSION,
+          canonical_input_fingerprint: fingerprint,
+          request_bytes: requestBytes,
+          prompt_tokens: null,
+          candidate_tokens: null,
+          thinking_tokens: null,
+          total_tokens: null,
+          provider_model_version: null,
+          latency_ms: Date.now() - started,
+          finish_reason: null,
+          result_class: "usage_missing",
+          pricing_version: PRICING_VERSION,
+          reserved_microusd: RESERVED_MICROUSD,
+          actual_microusd: null,
+          usage_complete: false,
+        },
+      });
+      if (error) throw new Error("usage_receipt_write_failed");
+    }
+    throw new Error("usage_metadata_missing");
   }
+  const result = await response.json().catch(() => ({})) as {
+    candidates?: Array<
+      { finishReason?: string; content?: { parts?: Array<{ text?: string }> } }
+    >;
+    usageMetadata?: {
+      promptTokenCount?: number;
+      candidatesTokenCount?: number;
+      thoughtsTokenCount?: number;
+      totalTokenCount?: number;
+    };
+    modelVersion?: string;
+  };
+  const u = result.usageMetadata;
+  const promptTokens = u?.promptTokenCount,
+    candidateTokens = u?.candidatesTokenCount,
+    thinkingTokens = u?.thoughtsTokenCount ?? 0,
+    totalTokens = u?.totalTokenCount;
+  const usageComplete =
+    [promptTokens, candidateTokens, thinkingTokens, totalTokens].every((v) =>
+      Number.isSafeInteger(v) && Number(v) >= 0
+    ) &&
+    totalTokens ===
+      Number(promptTokens) + Number(candidateTokens) + Number(thinkingTokens);
+  const actual = usageComplete
+    ? geminiCostMicrousd(
+      Number(promptTokens),
+      Number(candidateTokens),
+      Number(thinkingTokens),
+    )
+    : null;
+  let parsed: Record<string, unknown> | null = null;
+  if (response.ok) {
+    try {
+      parsed = JSON.parse(
+        result.candidates?.[0]?.content?.parts?.[0]?.text ?? "",
+      );
+    } catch {
+      parsed = null;
+    }
+  }
+  const candidate = {
+    ...(parsed ?? {}),
+    what_changed: firstCheck ? baselineFacts : parsed?.what_changed,
+    evidence,
+  };
+  let resultClass = response.ok && parsed ? "accepted" : "provider_error";
+  if (usageComplete && parsed) {
+    try {
+      validateBrief(candidate as any, observations);
+    } catch {
+      resultClass = "invalid_result";
+    }
+  }
+  let receiptId: string | null = null;
+  if (context) {
+    const { data, error } = await context.db.rpc(
+      "issue_2725_record_model_usage",
+      {
+        p_job: context.job.id,
+        p_owner: context.job.lease_owner,
+        p_receipt: {
+          model_id: GEMINI_MODEL_ID,
+          prompt_contract_version: PROMPT_CONTRACT_VERSION,
+          canonical_input_fingerprint: fingerprint,
+          request_bytes: requestBytes,
+          prompt_tokens: promptTokens ?? null,
+          candidate_tokens: candidateTokens ?? null,
+          thinking_tokens: thinkingTokens,
+          total_tokens: totalTokens ?? null,
+          provider_model_version: result.modelVersion ?? null,
+          latency_ms: Date.now() - started,
+          finish_reason: result.candidates?.[0]?.finishReason ?? null,
+          result_class: usageComplete ? resultClass : "usage_missing",
+          pricing_version: PRICING_VERSION,
+          reserved_microusd: RESERVED_MICROUSD,
+          actual_microusd: actual,
+          usage_complete: usageComplete,
+        },
+      },
+    );
+    if (error) throw new Error("usage_receipt_write_failed");
+    receiptId = data;
+  }
+  if (!usageComplete) throw new Error("usage_metadata_missing");
+  if (!response.ok || !parsed) throw new Error("synthesis_failed");
+  validateBrief(candidate as any, observations);
+  if (context) {
+    const { data, error } = await context.db.rpc(
+      "issue_2725_accept_synthesis",
+      {
+        p_job: context.job.id,
+        p_owner: context.job.lease_owner,
+        p_model: GEMINI_MODEL_ID,
+        p_prompt_version: PROMPT_CONTRACT_VERSION,
+        p_fingerprint: fingerprint,
+        p_result: candidate,
+        p_receipt: receiptId,
+      },
+    );
+    if (error || !data) throw new Error("synthesis_accept_failed");
+    validateBrief(data, observations);
+    return data;
+  }
+  return candidate as any;
 }
 function exactKeys(
   value: unknown,
@@ -830,6 +1069,18 @@ async function finishJob(
     brief_id?: string | null;
   };
 }
+async function settleZeroCost(
+  db: Db,
+  job: ClaimedJob,
+  resultClass: string,
+): Promise<void> {
+  const { error } = await db.rpc("issue_2725_settle_zero_cost", {
+    p_job: job.id,
+    p_owner: job.lease_owner,
+    p_result_class: resultClass,
+  });
+  if (error) throw new Error("budget_settlement_failed");
+}
 async function cancel(db: Db, job: ClaimedJob, code: string): Promise<void> {
   await finishJob(db, job, "cancel", code);
 }
@@ -928,6 +1179,10 @@ async function housekeeping(db: Db): Promise<void> {
     table: "tool_competitor_admin_actions",
     column: "created_at",
     days: 400,
+  }, {
+    table: "tool_competitor_model_usage_receipts",
+    column: "created_at",
+    days: 400,
   }];
   for (const item of limits) {
     const { data } = await db.from(item.table).select("id").lt(
@@ -973,12 +1228,26 @@ export async function handler(req: Request): Promise<Response> {
     try {
       await processCompetitorJob(db, job);
     } catch (error) {
+      const message = error instanceof Error ? error.message : "unknown";
+      const safeCode = [
+          "usage_metadata_missing",
+          "usage_receipt_write_failed",
+        ].includes(message)
+        ? "model_usage_missing"
+        : [
+            "synthesis_failed",
+            "synthesis_accept_failed",
+            "invalid_synthesis",
+            "prohibited_metric",
+          ].includes(message)
+        ? "model_response_invalid"
+        : "unreachable";
       console.error(
         "[competitor-intel-worker] job failed",
         job.id,
-        error instanceof Error ? error.message : "unknown",
+        message,
       );
-      await finishFailure(db, job, "unreachable");
+      await finishFailure(db, job, safeCode);
     }
   }));
   await housekeeping(db);

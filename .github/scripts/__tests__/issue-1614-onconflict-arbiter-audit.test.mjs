@@ -31,7 +31,9 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //            (same ORCH-1255 venue_id PK already used by Business hooks)
   //   -  1  #1971 trip_intake_schemas (event_id,ticket_type_id) call site
   //          — mingla-business/src/services/intakeSchemaService.ts:415, REMOVED
-  //   = 87
+  //   +  1  #2725 tool_competitor_observations (job_id,source_id)
+  //          — supabase/functions/competitor-intel-worker/index.ts
+  //   = 88
   //
   // [TEST-MOD-APPROVED #1789] Both #1789 sites resolve to a real, non-partial
   // arbiter — `PRIMARY KEY (id)` on each table, created at
@@ -62,11 +64,18 @@ test("discovers the post-#1614 runtime bootstrap and excludes comments/tests", (
   //
   // Every behavioural assertion below is untouched; only the census moves, and
   // the derivation comment above moves with it so the figure stays checkable.
-  assert.equal(sites.length, 87);
+  assert.equal(sites.length, 88);
   assert.equal(sites.some((site) => site.table === "user_stats"), false);
   assert.equal(sites.some((site) => site.table === "saved_experience_privacy"), false);
   assert.equal(sites.some((site) => site.table === "business_notification_type_preferences"), true);
   assert.equal(sites.some((site) => site.table === "brand_follows"), true);
+  assert.equal(
+    sites.some((site) =>
+      site.table === "tool_competitor_observations" &&
+      site.columns.join(",") === "job_id,source_id"
+    ),
+    true,
+  );
   assert.equal(
     sites.some((site) =>
       site.table === "brand_tax_registration_attestations" &&

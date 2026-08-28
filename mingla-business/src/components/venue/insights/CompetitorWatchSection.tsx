@@ -2,25 +2,21 @@ import React, { useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/businessAnalyticsEvents";
 import { glass, radius, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
-import { useCompetitorWatch, useRefreshCompetitor, useRemoveCompetitor } from "../../../hooks/useGrowthTools";
+import { useCompetitorWatch, useRefreshCompetitor, useRemoveCompetitor } from "../../../hooks/useCompetitorIntelligence";
 import type { CompetitorSourceState, CompetitorWatchRow } from "../../../types/growthTools";
 import { Button } from "../../ui/Button";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
 import { GlassCard } from "../../ui/GlassCard";
+import { CompetitorAddSheet } from "./CompetitorAddSheet";
 import { CompetitorBriefSheet, openCompetitorPublicUrl } from "./CompetitorBriefSheet";
 
-const CompetitorAddSheet = React.lazy(async () => {
-  const module = await import("./CompetitorAddSheet");
-  return { default: module.CompetitorAddSheet };
-});
-
 export const COMPETITOR_WATCH_CAP = 5;
-export interface CompetitorWatchSectionProps { brandId: string | null; venueListingId: string | null; offline: boolean; onRequestAdd: (atCap: boolean) => void; onOpenReport: (row: CompetitorWatchRow) => void; testID?: string; }
+export interface CompetitorWatchSectionProps { brandId: string | null; venueListingId: string | null; venueCity?: string | null; offline: boolean; onRequestAdd?: (atCap: boolean) => void; onOpenReport?: (row: CompetitorWatchRow) => void; testID?: string; }
 
-export function CompetitorWatchSection({ brandId, venueListingId, offline, onRequestAdd, testID = "competitor-watch" }: CompetitorWatchSectionProps): React.ReactElement {
+export function CompetitorWatchSection({ brandId, venueListingId, venueCity = null, offline, testID = "competitor-watch" }: CompetitorWatchSectionProps): React.ReactElement {
   const watch = useCompetitorWatch(brandId, venueListingId); const rows = watch.data ?? [];
   const remove = useRemoveCompetitor(brandId, venueListingId);
-  const [briefRow, setBriefRow] = useState<CompetitorWatchRow | null>(null); const [editRow, setEditRow] = useState<CompetitorWatchRow | null>(null); const [menuId, setMenuId] = useState<string | null>(null); const [removeRow, setRemoveRow] = useState<CompetitorWatchRow | null>(null); const [feedback, setFeedback] = useState<string | null>(null);
+  const [briefRow, setBriefRow] = useState<CompetitorWatchRow | null>(null); const [editRow, setEditRow] = useState<CompetitorWatchRow | null>(null); const [addOpen, setAddOpen] = useState(false); const [menuId, setMenuId] = useState<string | null>(null); const [removeRow, setRemoveRow] = useState<CompetitorWatchRow | null>(null); const [feedback, setFeedback] = useState<string | null>(null);
   const atCap = rows.length >= COMPETITOR_WATCH_CAP;
   return <View style={styles.section} testID={testID}>
     <View style={styles.header}><View style={styles.headerCopy}><Text style={styles.cap}>COMPETITION</Text><Text style={styles.support}>Weekly public changes, translated into useful next moves.</Text></View><Text style={styles.count}>{`Watching ${rows.length} of 5`}</Text></View>
@@ -28,11 +24,12 @@ export function CompetitorWatchSection({ brandId, venueListingId, offline, onReq
     {feedback ? <Text accessibilityLiveRegion="polite" style={styles.banner}>{feedback}</Text> : null}
     {watch.isLoading ? <View testID={`${testID}-loading`} accessibilityLabel="Loading competitor insights">{[0, 1, 2].map((v) => <GlassCard key={v} variant="base" contentStyle={styles.skeleton}><ActivityIndicator color={textTokens.tertiary} /></GlassCard>)}</View> : null}
     {watch.isError ? <GlassCard variant="base"><Text style={styles.error}>{rows.length ? "Couldn't refresh competitor status. Try again." : "Couldn't load competitor insights."}</Text><Button label="Try again" variant="secondary" size="md" disabled={offline} onPress={() => void watch.refetch()} /></GlassCard> : null}
-    {!watch.isLoading && !watch.isError && rows.length === 0 ? <GlassCard variant="base" testID={`${testID}-empty`}><Text style={styles.rowName}>Watch nearby venues</Text><Text style={styles.support}>Add a competitor to get a sourced weekly brief about public changes.</Text><Button label="Watch a competitor" variant="primary" size="md" disabled={offline} onPress={() => onRequestAdd(false)} /></GlassCard> : null}
+    {!watch.isLoading && !watch.isError && rows.length === 0 ? <GlassCard variant="base" testID={`${testID}-empty`}><Text style={styles.rowName}>Watch nearby venues</Text><Text style={styles.support}>Add a competitor to get a sourced weekly brief about public changes.</Text><Button label="Watch a competitor" variant="primary" size="md" disabled={offline} onPress={() => setAddOpen(true)} /></GlassCard> : null}
     {rows.map((row) => <CompetitorRow key={row.id} row={row} brandId={brandId} venueListingId={venueListingId} menuOpen={menuId === row.id} offline={offline} onOpen={() => { setBriefRow(row); captureCompetitorIntelligenceEvent("competitor_brief_opened", { watch_id: row.id, schema_version: 2 }); }} onMenu={() => setMenuId(menuId === row.id ? null : row.id)} onEdit={() => { setMenuId(null); setEditRow(row); }} onRemove={() => { setMenuId(null); setRemoveRow(row); }} onFeedback={setFeedback} testID={`${testID}-row-${row.id}`} />)}
-    <View style={styles.add}><Button label="Watch a competitor" variant="secondary" size="md" fullWidth disabled={atCap || watch.isLoading || watch.isError || offline} onPress={() => onRequestAdd(atCap)} testID={`${testID}-add`} />{atCap ? <Text style={styles.count} testID={`${testID}-cap`}>Watching 5 of 5 — remove one to add another.</Text> : null}</View>
+    <View style={styles.add}><Button label="Watch a competitor" variant="secondary" size="md" fullWidth disabled={atCap || watch.isLoading || watch.isError || offline} onPress={() => setAddOpen(true)} testID={`${testID}-add`} />{atCap ? <Text style={styles.count} testID={`${testID}-cap`}>Watching 5 of 5 — remove one to add another.</Text> : null}</View>
     {briefRow ? <CompetitorBriefSheet visible onClose={() => setBriefRow(null)} brandId={brandId} row={briefRow} /> : null}
-    {editRow ? <React.Suspense fallback={null}><CompetitorAddSheet visible onClose={() => setEditRow(null)} brandId={brandId} venueListingId={venueListingId} venueCity={editRow.city ?? null} initialRow={editRow} offline={offline} /></React.Suspense> : null}
+    {editRow ? <CompetitorAddSheet visible onClose={() => setEditRow(null)} brandId={brandId} venueListingId={venueListingId} venueCity={editRow.city ?? null} initialRow={editRow} offline={offline} /> : null}
+    {addOpen ? <CompetitorAddSheet visible onClose={() => setAddOpen(false)} brandId={brandId} venueListingId={venueListingId} venueCity={venueCity} offline={offline} /> : null}
     <ConfirmDialog visible={removeRow !== null} onClose={() => setRemoveRow(null)} title={`Stop watching ${removeRow?.name ?? "this competitor"}?`} description="This removes saved sources and live competitor briefs. Any check in progress will stop. Re-adding starts fresh." confirmLabel="Stop watching" destructive confirmLoading={remove.isPending} errorMessage={remove.isError ? "Couldn't stop watching — try again." : null} onConfirm={() => { if (!removeRow) return; if (offline) { const copy = "You're offline. Reconnect to stop watching this competitor."; setFeedback(copy); setRemoveRow(null); AccessibilityInfo.announceForAccessibility(copy); return; } remove.mutate({ competitorId: removeRow.id, expectedUpdatedAt: removeRow.updatedAt ?? "" }, { onSuccess: () => { const copy = `Stopped watching ${removeRow.name}.`; setRemoveRow(null); AccessibilityInfo.announceForAccessibility(copy); } }); }} testID="competitor-remove-confirm" />
   </View>;
 }

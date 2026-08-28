@@ -6,7 +6,7 @@ jest.mock("../supabase", () => ({
   },
 }));
 
-import { getCompetitorBrief } from "../growthToolsService";
+import { getCompetitorBrief } from "../competitorIntelligenceService";
 
 const responseEnvelope = {
   schema_version: 2,

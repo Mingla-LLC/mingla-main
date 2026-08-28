@@ -42,6 +42,8 @@ jobs:
         run: deno test --allow-read supabase/migrations/__tests__/issue_1902_public_event_lifecycle.test.ts
       - name: Run implementor shipped Edge mapping proof
         run: deno test --allow-read supabase/functions/public-submit-rsvp/__tests__/issue_1902_rsvp_end_guard.test.ts
+      - name: Cache the real handler before the bounded child-process proof
+        run: deno cache supabase/functions/public-submit-rsvp/index.ts
       - name: Run independent tester migration proof when present
         run: |
           test_file="supabase/migrations/__tests__/issue_1902_public_event_lifecycle.tester_adversarial.test.ts"

@@ -34,11 +34,16 @@ jest.mock("../../../ui/Input", () => ({
   Input: (props: Record<string, unknown>) =>
     ReactLocal.createElement("Input", props),
 }));
+jest.mock("../../../ui/ConfirmDialog", () => ({
+  __esModule: true,
+  ConfirmDialog: (props: Record<string, unknown>) =>
+    ReactLocal.createElement("ConfirmDialog", props),
+}));
 jest.mock("../../../../context/AuthContext", () => ({
   __esModule: true,
   useAuth: () => ({ loading: false, session: { user: { id: "u1" } } }),
 }));
-jest.mock("../../../../hooks/useGrowthTools", () => ({
+jest.mock("../../../../hooks/useCompetitorIntelligence", () => ({
   __esModule: true,
   useAddCompetitor: () => ({
     mutate: jest.fn(),

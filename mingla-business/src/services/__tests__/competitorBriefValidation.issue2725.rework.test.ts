@@ -4,7 +4,7 @@ jest.mock("../supabase", () => ({
   supabase: { functions: { invoke: mockInvoke } },
 }));
 
-import { getCompetitorBrief } from "../growthToolsService";
+import { getCompetitorBrief } from "../competitorIntelligenceService";
 
 const valid = {
   schema_version: 2,

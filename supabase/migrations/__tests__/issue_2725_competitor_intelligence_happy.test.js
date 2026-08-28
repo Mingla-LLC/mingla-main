@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import fs from "node:fs";
-const sql=fs.readFileSync(new URL("../20270604002725_issue_2725_competitor_intelligence.sql",import.meta.url),"utf8");
+const sql=fs.readFileSync(new URL("../20270606002725_issue_2725_competitor_intelligence.sql",import.meta.url),"utf8");
 const read=(path)=>fs.readFileSync(new URL(`../../../${path}`,import.meta.url),"utf8");
 const worker=read("supabase/functions/competitor-intel-worker/index.ts");const compactWorker=worker.replace(/\s+/g,"");const websiteObserver=read("supabase/functions/_shared/competitorWebsiteObservation.ts");const run=read("supabase/functions/growth-tools-run/index.ts");const report=read("supabase/functions/growth-tools-report/index.ts");const compactReport=report.replace(/\s+/g,"");const ui=read("mingla-business/src/components/venue/insights/CompetitorWatchSection.tsx");const brief=read("mingla-business/src/components/venue/insights/CompetitorBriefSheet.tsx");const analytics=read("mingla-business/src/analytics/businessAnalyticsEvents.ts");const workflow=read(".github/workflows/supabase-migrations-and-stripe-deno.yml")+read(".github/workflows/strict-grep-mingla-business.yml");
 test("issue 2725 owns normalized sources and single weekly spend",()=>{for(const value of ["tool_competitor_sources","uq_tool_competitor_one_active_job","uq_tool_competitor_job_idempotency","job_id uuid UNIQUE","revision integer NOT NULL DEFAULT 1","FOR UPDATE OF j SKIP LOCKED","funding_lane IN ('scheduled','manual')","member_retry_count BETWEEN 0 AND 1"])assert.match(sql,new RegExp(value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));});
