@@ -2071,6 +2071,14 @@ is assigned to that exact verified venue. Unassigned legacy menus stay private.
 - **Enforcement:** exact venue-keyed public view, write guards, and append-only PostgreSQL isolation regression.
 - **Established:** ACTIVE after the production menu mapped to its sole verified venue with zero pending-venue exposure.
 
+### I-PROPOSED-2755-PUBLIC-VENUE-MENU-REQUEST-TRUTH (DRAFT — issue #2755)
+**Rule:** A public venue Menu tab is removed only after a successful empty
+response. Cold loading or failure keeps the venue and Menu pane available;
+refresh loading or failure retains the exact last successful menu item order
+and ordering subtree while presenting the request state and retry in place.
+- **Enforcement:** shared six-state reducer and append-only #2755 lifecycle/cache regression suite in the existing guest-ordering CI lane.
+- **Established:** DRAFT at implementation; the orchestrator may activate only after independent tester PASS and production close evidence.
+
 ### I-PROPOSED-1365-PUBLIC-SAFE-AREA-CLEARANCE (ACTIVE — issue #1365 CLOSE 2026-07-29, PR #1375)
 **Rule:** Public Brand and venue final content plus sticky controls clear the
 measured browser/device bottom inset; no fixed zero-inset fallback is allowed.

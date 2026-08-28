@@ -71,6 +71,8 @@ export interface ConsumerPublicVenue {
   timezone: string | null;
   galleryPhotoUrls: string[];
   menu: PublicMenuGroup[];
+  /** #2755 — menu request truth is independent of core venue availability. */
+  menuState: "ready" | "error";
   /**
    * Issue #1793 — each menu's SERVICE WINDOW, keyed by menu id, from the columns
    * #1789 appended to `public_menus_view` (SPEC #1788 P-14).
@@ -99,12 +101,7 @@ interface VenueRow {
   brand_name: string;
   slug: string;
   name: string;
-  venue_category:
-    | "restaurant"
-    | "play"
-    | "creative_and_arts"
-    | "stay"
-    | null;
+  venue_category: "restaurant" | "play" | "creative_and_arts" | "stay" | null;
   address: string | null;
   city: string | null;
   lat: number;
@@ -200,7 +197,9 @@ const collectMenuWindows = (
     windows[row.menu_id] = {
       start: row.service_window_start ?? null,
       end: row.service_window_end ?? null,
-      days: Array.isArray(row.service_days) ? row.service_days.map(Number) : null,
+      days: Array.isArray(row.service_days)
+        ? row.service_days.map(Number)
+        : null,
     };
   }
   return windows;
@@ -219,9 +218,7 @@ const asDiscoveryPrice = (
   currencies: unknown,
 ): ConsumerVenueDiscoveryPrice | null => {
   const row = (Array.isArray(projected) ? projected[0] : projected) as
-    | Record<string, unknown>
-    | null
-    | undefined;
+    Record<string, unknown> | null | undefined;
   if (row === null || row === undefined) return null;
   if (row.price_range_status !== "active") return null;
   const minMinor = Number(row.source_min_minor);
@@ -245,9 +242,8 @@ const asDiscoveryPrice = (
     rawMax === null || rawMax === undefined ? null : Number(rawMax);
   return {
     minMinor,
-    maxMinor: maxMinor !== null && Number.isSafeInteger(maxMinor)
-      ? maxMinor
-      : null,
+    maxMinor:
+      maxMinor !== null && Number.isSafeInteger(maxMinor) ? maxMinor : null,
     currencyCode,
     minorUnitExponent: metadata.minor_unit_exponent as number,
   };
@@ -301,8 +297,6 @@ export async function fetchConsumerPublicVenue(
         ? supabase.rpc("issue_1384_supported_currencies")
         : Promise.resolve({ data: null, error: null }),
     ]);
-  if (menuResult.error !== null) throw menuResult.error;
-
   const resolved = (
     Array.isArray(reservableResult.data)
       ? reservableResult.data[0]
@@ -354,7 +348,8 @@ export async function fetchConsumerPublicVenue(
     // issue #1562 — the clock those hours belong to. Blank folds to null so an
     // empty string can never reach `Intl` and raise where "unknown" belongs.
     timezone:
-      typeof row.iana_timezone === "string" && row.iana_timezone.trim().length > 0
+      typeof row.iana_timezone === "string" &&
+      row.iana_timezone.trim().length > 0
         ? row.iana_timezone
         : null,
     // #1560 — the SHARED cascade (operator cover + profile first, place-pool
@@ -365,8 +360,15 @@ export async function fetchConsumerPublicVenue(
       profilePhotoUrl: null,
       poolPhotoUrls: row.pool_photo_urls,
     }),
-    menu: groupMenus((menuResult.data ?? []) as MenuRow[]),
-    menuWindows: collectMenuWindows((menuResult.data ?? []) as MenuRow[]),
+    menu:
+      menuResult.error === null
+        ? groupMenus((menuResult.data ?? []) as MenuRow[])
+        : [],
+    menuState: menuResult.error === null ? "ready" : "error",
+    menuWindows:
+      menuResult.error === null
+        ? collectMenuWindows((menuResult.data ?? []) as MenuRow[])
+        : {},
     // A price RPC failure is NOT a page failure — the lede is omitted and the
     // rest of the venue renders (the buyer page throws here; on a native page
     // with one query that would blank the whole screen over a missing band).

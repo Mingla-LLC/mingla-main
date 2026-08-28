@@ -93,6 +93,7 @@ import { captureNativeStayRouteAttribution } from "../../../../src/services/nati
 import { shareContent } from "../../../../src/services/contentShareAdapter";
 import { useConsumerThemeFont } from "../../../../src/theme/useConsumerThemeFont";
 import type { ConsumerPublicVenue } from "../../../../src/services/publicVenueService";
+import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 
 /** This app's ONE analytics surface tag for the public venue page. */
 const ANALYTICS_SURFACE = "consumer_native";
@@ -121,9 +122,8 @@ const BUYER_WEB_ORIGIN = "https://host.usemingla.com";
  * the first time a guest can actually order.
  */
 const LazyOrderingSurface = React.lazy(async () => {
-  const mod = await import(
-    "../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots"
-  );
+  const mod =
+    await import("../../../../src/components/venueOrdering/ConsumerVenueOrderingSlots");
   return { default: mod.ConsumerVenueOrderingSurface };
 });
 
@@ -176,19 +176,38 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   // about a table, the other is attribution, and conflating them is how a
   // venue's zone revenue comes to include people who were never in the zone.
   const rawSpot = Array.isArray(params.spot) ? params.spot[0] : params.spot;
-  const spotCode = typeof rawSpot === "string" && rawSpot.trim() !== ""
-    ? rawSpot.trim()
-    : null;
+  const spotCode =
+    typeof rawSpot === "string" && rawSpot.trim() !== ""
+      ? rawSpot.trim()
+      : null;
   const rawSrc = Array.isArray(params.src) ? params.src[0] : params.src;
-  const entrySource = typeof rawSrc === "string" && rawSrc.trim() !== ""
-    ? rawSrc.trim()
-    : null;
+  const entrySource =
+    typeof rawSrc === "string" && rawSrc.trim() !== "" ? rawSrc.trim() : null;
 
   const query = usePublicVenue(
     typeof brandSlug === "string" ? brandSlug : null,
     typeof venueSlug === "string" ? venueSlug : null,
   );
   const venue = query.data ?? null;
+  const menuDiagnosticReportedRef = useRef<boolean>(false);
+  useEffect(() => {
+    if (query.isFetching || venue?.menuState !== "error") {
+      if (query.isFetching) menuDiagnosticReportedRef.current = false;
+      return;
+    }
+    if (menuDiagnosticReportedRef.current) return;
+    menuDiagnosticReportedRef.current = true;
+    reportNonFatal(
+      "public-venue.menu-read",
+      new Error("public_menu_request_failed"),
+      {
+        surface: ANALYTICS_SURFACE,
+        brand_slug: brandSlug,
+        venue_slug: venueSlug,
+      },
+      ["public-venue-menu-read", ANALYTICS_SURFACE],
+    );
+  }, [brandSlug, query.isFetching, venue?.menuState, venueSlug]);
   // The Stay branch is DATA off `venue_public_view`, not a re-derived guess;
   // which booking body actually mounts is decided by the category profile
   // inside the shared screen (#1558), never by this compare.
@@ -203,9 +222,10 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
   // the Reservations tab's booking body. It replaces the "from" rate in the
   // answer bar's SAME price slot, at the same size, the moment dates are
   // chosen; `null` (no quote, expired, consumed) restores the from-rate.
-  const [stayQuote, setStayQuote] = useState<
-    { totalMinor: string; currencyCode: string } | null
-  >(null);
+  const [stayQuote, setStayQuote] = useState<{
+    totalMinor: string;
+    currencyCode: string;
+  } | null>(null);
   const stayViewFired = useRef(false);
   const attributionFired = useRef(false);
 
@@ -241,7 +261,10 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
    * carried, now at the one seam that survives.
    */
   const handleAnalytics = useCallback(
-    (event: PublicVenueAnalyticsEvent, props: Record<string, unknown>): void => {
+    (
+      event: PublicVenueAnalyticsEvent,
+      props: Record<string, unknown>,
+    ): void => {
       if (brandId === null || venueId === null) return;
       postHogService.capture(event, {
         surface: ANALYTICS_SURFACE,
@@ -338,7 +361,11 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       : `${BUYER_WEB_ORIGIN}/b/${venue.brandSlug}/v/${venue.slug}`;
   const handleShare = useCallback((): void => {
     if (shareUrl === null) return;
-    if (venue !== null) void shareContent("venue", { brandSlug:venue.brandSlug, venueSlug:venue.slug });
+    if (venue !== null)
+      void shareContent("venue", {
+        brandSlug: venue.brandSlug,
+        venueSlug: venue.slug,
+      });
   }, [shareUrl, venue]);
 
   const venueName = venue?.name ?? "";
@@ -381,7 +408,10 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       return (
         <View style={styles.bookingPrompt}>
           <Text
-            style={[styles.promptBody, { color: context.palette.secondaryText }]}
+            style={[
+              styles.promptBody,
+              { color: context.palette.secondaryText },
+            ]}
           >
             Choose your party, date, and a real available time.
           </Text>
@@ -389,10 +419,16 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
             onPress={context.openReservationSheet}
             accessibilityRole="button"
             accessibilityLabel={context.reserveAction}
-            style={[styles.promptCta, { backgroundColor: context.palette.accent }]}
+            style={[
+              styles.promptCta,
+              { backgroundColor: context.palette.accent },
+            ]}
           >
             <Text
-              style={[styles.promptCtaLabel, { color: context.palette.accentText }]}
+              style={[
+                styles.promptCtaLabel,
+                { color: context.palette.accentText },
+              ]}
             >
               {context.reserveAction}
             </Text>
@@ -442,8 +478,7 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
     [onAvailabilityResultViewed, onReservationFailed, onSlotSelected, venue],
   );
 
-
-  if (query.isLoading || query.isFetching) {
+  if (query.isLoading) {
     return <StateView title="Loading venue…" loading />;
   }
   if (query.isError) {
@@ -465,6 +500,15 @@ export default function ConsumerPublicVenueRoute(): React.ReactElement {
       venue={venueViewModel}
       discoveryPrice={venue.discoveryPrice}
       menu={venue.menu}
+      menuLifecycle={{
+        state: query.isFetching
+          ? venue.menu.length > 0
+            ? venue.menuState
+            : "loading"
+          : venue.menuState,
+        isFetching: query.isFetching,
+        onRetry: () => query.refetch(),
+      }}
       reservable={
         venue.reservability.state === "available"
           ? {

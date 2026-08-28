@@ -59,6 +59,8 @@
  */
 
 import {
+  AccessibilityInfo,
+  ActivityIndicator,
   Image,
   Platform,
   Pressable,
@@ -225,15 +227,9 @@ export interface PublicVenueReservableView {
 }
 
 export type PublicVenueReservabilityState =
-  | "loading"
-  | "ready"
-  | "error"
-  | "invalid";
+  "loading" | "ready" | "error" | "invalid";
 export type PublicVenueStayState =
-  | "loading"
-  | "ready"
-  | "unavailable"
-  | "error";
+  "loading" | "ready" | "unavailable" | "error";
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Host capabilities
@@ -296,8 +292,7 @@ export type PublicVenueBookingSlotContext = PublicVenueThemedContext & {
   );
 
 /** The modal the Reserve CTA opens. Chrome is app-owned; its state is not. */
-export interface PublicVenueReservationSheetContext
-  extends PublicVenueThemedContext {
+export interface PublicVenueReservationSheetContext extends PublicVenueThemedContext {
   visible: boolean;
   title: string;
   onClose: () => void;
@@ -322,8 +317,7 @@ export interface PublicVenueReservationSheetContext
  * into the eager chunk of every venue page on the web, ordering venue or not.
  * With slots this file gains exactly one type import, which is erased.
  */
-export interface PublicVenueOrderingSlotContext
-  extends PublicVenueThemedContext {
+export interface PublicVenueOrderingSlotContext extends PublicVenueThemedContext {
   /** The venue's menu, so the ordering renderer draws from the SAME payload. */
   menu: PublicMenuGroup[];
 }
@@ -359,6 +353,41 @@ export type PublicVenueAnalyticsEvent =
   | "public_venue_menu_viewed"
   | "public_venue_reservation_started";
 
+export type PublicVenueMenuRequestState = "loading" | "ready" | "error";
+
+export interface PublicVenueMenuLifecycle {
+  state: PublicVenueMenuRequestState;
+  isFetching: boolean;
+  onRetry: () => void | Promise<unknown>;
+}
+
+/** #2755 — total six-state reduction, exported so state truth is regression-testable. */
+export function resolvePublicVenueMenuPresentation(
+  state: PublicVenueMenuRequestState,
+  isFetching: boolean,
+  itemCount: number,
+  categoryHasMenu: boolean,
+): {
+  hasMenu: boolean;
+  hasStaleItems: boolean;
+  showState: boolean;
+  copy: string;
+} {
+  const hasStaleItems = itemCount > 0;
+  return {
+    hasMenu: categoryHasMenu && (state !== "ready" || hasStaleItems),
+    hasStaleItems,
+    showState: state !== "ready" || isFetching,
+    copy: hasStaleItems
+      ? state === "error"
+        ? "Menu may be out of date."
+        : "Updating menu…"
+      : state === "error"
+        ? "Menu couldn’t load"
+        : "Loading menu…",
+  };
+}
+
 export interface PublicVenueScreenProps {
   venue: PublicVenueViewModel;
   /** Business public-web #1615 identity overlay; absent preserves consumer/native hosts. */
@@ -366,6 +395,8 @@ export interface PublicVenueScreenProps {
   discoveryPrice: PublicVenueDiscoveryPriceView | null;
   /** ORCH-1186-C shared shape — the BRAND's menu ([TRANSITIONAL-3]). */
   menu: PublicMenuGroup[];
+  /** #2755 — transport truth stays separate from the menu data it describes. */
+  menuLifecycle?: PublicVenueMenuLifecycle;
   /** Anon display gate; not-reservable / unknown → NO reserve bar. */
   reservable: PublicVenueReservableView | null;
   reservabilityState?: PublicVenueReservabilityState;
@@ -391,7 +422,9 @@ export interface PublicVenueScreenProps {
    * month with no brand font at all because nothing forced the decision.
    */
   loadThemeFont: (family: string | null) => void;
-  bookingBody: (context: PublicVenueBookingSlotContext) => BrandRenderingReactNode;
+  bookingBody: (
+    context: PublicVenueBookingSlotContext,
+  ) => BrandRenderingReactNode;
   reservationSheet: (
     context: PublicVenueReservationSheetContext,
   ) => BrandRenderingReactNode;
@@ -603,8 +636,11 @@ const VenuePriceLedeSection: VenueSectionRenderer = ({
     return null;
   }
   return (
-    <Text style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}>
-      Typical spend · {formatSourceRange({
+    <Text
+      style={[styles.aboutBody, themedFont, { color: palette.secondaryText }]}
+    >
+      Typical spend ·{" "}
+      {formatSourceRange({
         minMinor: discoveryPrice.minMinor,
         maxMinor: discoveryPrice.maxMinor,
         currencyCode: discoveryPrice.currencyCode,
@@ -873,9 +909,7 @@ const VenueStayPolicySection: VenueSectionRenderer = ({
         </Text>
       </View>
       {houseRules !== null ? (
-        <Text
-          style={[styles.aboutBody, { color: palette.secondaryText }]}
-        >
+        <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
           {houseRules}
         </Text>
       ) : null}
@@ -952,6 +986,7 @@ export const PublicVenueScreen = ({
   useDirectionCIdentity = false,
   discoveryPrice,
   menu,
+  menuLifecycle = { state: "ready", isFetching: false, onRetry: () => {} },
   reservable,
   reservabilityState = "ready",
   initialTab = "overview",
@@ -980,10 +1015,22 @@ export const PublicVenueScreen = ({
   // on `isStay` now reads a field of this profile, so `play`, `creative_and_arts`
   // and a NULL category stop inheriting the restaurant's page by accident.
   const profile = venueCategoryProfile(venue.venueCategory);
-  const menuItemCount = menu.reduce((sum, group) => sum + group.items.length, 0);
+  const menuItemCount = menu.reduce(
+    (sum, group) => sum + group.items.length,
+    0,
+  );
   // #1536 flips this by editing `tabs` in VENUE_CATEGORY_PROFILES — one array
   // element, one file, all five surfaces.
-  const hasMenu = venueMenuTabVisible(profile, menuItemCount);
+  const categoryHasMenu = venueMenuTabVisible(profile, 1);
+  // #2755: an unconfirmed request is not an empty menu. Only a successful
+  // empty response may remove the tab.
+  const menuPresentation = resolvePublicVenueMenuPresentation(
+    menuLifecycle.state,
+    menuLifecycle.isFetching,
+    menuItemCount,
+    categoryHasMenu,
+  );
+  const hasMenu = menuPresentation.hasMenu;
   const canOpenReservationSheet = RESERVATION_READY[profile.bookingBody]({
     stayState,
     reservabilityState,
@@ -999,12 +1046,20 @@ export const PublicVenueScreen = ({
     (tab: PublicVenueTab) =>
       createPublicVenueReservationUiState(tab, reservationUiContext),
   );
-  const normalizedReservationUiState =
-    normalizePublicVenueReservationUiState(
-      reservationUiState,
-      reservationUiContext,
-    );
+  const normalizedReservationUiState = normalizePublicVenueReservationUiState(
+    reservationUiState,
+    reservationUiContext,
+  );
   const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
+  const retryInFlightRef = React.useRef<boolean>(false);
+  const retryOwnedFocusRef = React.useRef<boolean>(false);
+  const retryHadFocusAtRequestRef = React.useRef<boolean>(false);
+  const retryRequestedRef = React.useRef<boolean>(false);
+  const previousMenuStateRef = React.useRef(menuLifecycle.state);
+  const previousMenuFetchingRef = React.useRef(menuLifecycle.isFetching);
+  const [retryLocallyBusy, setRetryLocallyBusy] = useState<boolean>(false);
+  const [retryFocusVisible, setRetryFocusVisible] = useState<boolean>(false);
+  const [retryHovered, setRetryHovered] = useState<boolean>(false);
   React.useEffect(() => {
     dispatchReservationUi({
       type: "INITIAL_TAB_CHANGED",
@@ -1022,6 +1077,61 @@ export const PublicVenueScreen = ({
       context: reservationUiContext,
     });
   }, [reservationUiContext]);
+
+  React.useEffect(() => {
+    const settled =
+      previousMenuFetchingRef.current && !menuLifecycle.isFetching;
+    const stateChanged = previousMenuStateRef.current !== menuLifecycle.state;
+    if (settled || stateChanged) {
+      if (menuLifecycle.state === "error") {
+        AccessibilityInfo.announceForAccessibility(
+          menuItemCount > 0 ? "Menu may be out of date." : "Menu couldn’t load",
+        );
+      } else if (menuLifecycle.state === "ready" && retryRequestedRef.current) {
+        if (
+          retryHadFocusAtRequestRef.current &&
+          normalizedReservationUiState.activeTab === "menu"
+        ) {
+          publicVenueTabsRef.current?.focusTab(
+            menuItemCount > 0 ? "menu" : "overview",
+          );
+        }
+        AccessibilityInfo.announceForAccessibility("Menu loaded.");
+      }
+    }
+    if (!menuLifecycle.isFetching) {
+      retryRequestedRef.current = false;
+      retryOwnedFocusRef.current = false;
+      retryHadFocusAtRequestRef.current = false;
+      retryInFlightRef.current = false;
+      setRetryLocallyBusy(false);
+    }
+    previousMenuStateRef.current = menuLifecycle.state;
+    previousMenuFetchingRef.current = menuLifecycle.isFetching;
+  }, [
+    menuItemCount,
+    menuLifecycle.isFetching,
+    menuLifecycle.state,
+    normalizedReservationUiState.activeTab,
+  ]);
+
+  const handleRetryMenu = React.useCallback((): void => {
+    if (retryInFlightRef.current || menuLifecycle.isFetching) return;
+    retryInFlightRef.current = true;
+    retryRequestedRef.current = true;
+    retryHadFocusAtRequestRef.current = retryOwnedFocusRef.current;
+    setRetryLocallyBusy(true);
+    try {
+      const result = menuLifecycle.onRetry();
+      void Promise.resolve(result).finally(() => {
+        retryInFlightRef.current = false;
+        setRetryLocallyBusy(false);
+      });
+    } catch {
+      retryInFlightRef.current = false;
+      setRetryLocallyBusy(false);
+    }
+  }, [menuLifecycle]);
 
   const resolvedTheme = useMemo<ResolvedTheme>(
     () => resolveTheme(venue.theme, null),
@@ -1279,7 +1389,9 @@ export const PublicVenueScreen = ({
     canBook: canOpenReservationSheet,
   });
 
-  const renderAnswerCell = (cell: VenueAnswerCell): BrandRenderingReactElement => (
+  const renderAnswerCell = (
+    cell: VenueAnswerCell,
+  ): BrandRenderingReactElement => (
     <View
       key={cell.id}
       style={[styles.answerCell, { borderColor: palette.cutoutBorder }]}
@@ -1423,19 +1535,119 @@ export const PublicVenueScreen = ({
   // the section heading — and, at a venue with ordering off, the menu with it.
   // The slot renders the LIST (orderable or display-only); the heading is the
   // page's, always.
-  const menuBlock = menuItemCount === 0 ? null : (
+  const menuBusy = menuLifecycle.isFetching || retryLocallyBusy;
+  const menuHasStaleItems = menuPresentation.hasStaleItems;
+  const showMenuState = menuPresentation.showState;
+  const menuStateCopy = menuPresentation.copy;
+  const menuBlock = !hasMenu ? null : (
     <View style={styles.menuWrap}>
-      <Text style={[styles.sectionLabel, { color: palette.tertiaryText }]}>
+      <Text
+        accessibilityRole="header"
+        style={[styles.sectionLabel, { color: palette.tertiaryText }]}
+      >
         MENU
       </Text>
-      {orderingMenuBody !== null ? orderingMenuBody : (
-        <PublicMenuSections
-          groups={menu}
-          palette={palette}
+      {showMenuState ? (
+        <View
+          accessibilityLiveRegion="polite"
+          style={[
+            menuHasStaleItems ? styles.menuStaleState : styles.menuColdState,
+            { backgroundColor: palette.page, borderColor: palette.panelBorder },
+          ]}
+          testID={menuHasStaleItems ? "menu-stale-state" : "menu-cold-state"}
+        >
+          <View style={styles.menuStateCopy}>
+            {menuLifecycle.state === "loading" || menuBusy ? (
+              <ActivityIndicator
+                accessible={false}
+                accessibilityElementsHidden
+                importantForAccessibility="no-hide-descendants"
+                color={palette.accent}
+                size="small"
+              />
+            ) : null}
+            <View style={styles.menuStateTextWrap}>
+              <Text
+                style={[styles.menuStateTitle, { color: palette.primaryText }]}
+              >
+                {menuStateCopy}
+              </Text>
+              {!menuHasStaleItems && menuLifecycle.state === "error" ? (
+                <Text
+                  style={[
+                    styles.menuStateBody,
+                    { color: palette.secondaryText },
+                  ]}
+                >
+                  Try again in a moment.
+                </Text>
+              ) : null}
+            </View>
+          </View>
+          {menuLifecycle.state === "error" ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Try loading the menu again"
+              accessibilityState={{ disabled: menuBusy, busy: menuBusy }}
+              disabled={menuBusy}
+              onFocus={(event) => {
+                retryOwnedFocusRef.current = true;
+                const target = event.currentTarget as unknown as {
+                  matches?: (selector: string) => boolean;
+                };
+                setRetryFocusVisible(
+                  Platform.OS !== "web" ||
+                    target.matches?.(":focus-visible") === true,
+                );
+              }}
+              onBlur={() => {
+                retryOwnedFocusRef.current = false;
+                setRetryFocusVisible(false);
+              }}
+              onHoverIn={() => setRetryHovered(true)}
+              onHoverOut={() => setRetryHovered(false)}
+              onPress={handleRetryMenu}
+              style={({ pressed }) => [
+                styles.menuRetry,
+                { backgroundColor: palette.accent },
+                retryHovered && !pressed && !menuBusy
+                  ? styles.menuRetryHovered
+                  : null,
+                pressed && !menuBusy ? styles.menuRetryPressed : null,
+                menuBusy ? styles.menuRetryDisabled : null,
+                retryFocusVisible
+                  ? ({
+                      outlineColor: palette.accent,
+                      outlineOffset: -4,
+                      outlineStyle: "solid",
+                      outlineWidth: 3,
+                    } as never)
+                  : null,
+              ]}
+            >
+              <Text
+                style={[styles.menuRetryText, { color: palette.accentText }]}
+              >
+                Try again
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {menuHasStaleItems ? (
+        <View key="menu-content">
+          {orderingMenuBody !== null ? (
+            orderingMenuBody
+          ) : (
+            <PublicMenuSections
+              groups={menu}
+              palette={palette}
           surface={surface}
           theme={resolvedTheme}
-        />
-      )}
+            />
+          )}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -1456,7 +1668,10 @@ export const PublicVenueScreen = ({
     openReservationSheet: handleOpenReservationSheetFromBody,
     reserveAction: profile.reserveAction,
   };
-  const reservationBodies: Record<VenueBookingBody, () => BrandRenderingReactNode> = {
+  const reservationBodies: Record<
+    VenueBookingBody,
+    () => BrandRenderingReactNode
+  > = {
     stay: () => (
       <React.Suspense
         fallback={
@@ -1495,7 +1710,9 @@ export const PublicVenueScreen = ({
             accessibilityLabel="Try checking reservations again"
             style={[styles.stateRetry, { backgroundColor: palette.accent }]}
           >
-            <Text style={[styles.stateRetryText, { color: palette.accentText }]}>
+            <Text
+              style={[styles.stateRetryText, { color: palette.accentText }]}
+            >
               Try again
             </Text>
           </Pressable>
@@ -1764,10 +1981,14 @@ export const PublicVenueScreen = ({
         onClose={onClose}
         onShare={onShare}
         hideCloseOnWeb
-        directionCIdentity={useDirectionCIdentity ? {
-          title: venue.name,
-          meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
-        } : undefined}
+        directionCIdentity={
+          useDirectionCIdentity
+            ? {
+                title: venue.name,
+                meta: [profile.noun, venue.city].filter(Boolean).join(" · "),
+              }
+            : undefined
+        }
         // #1561 — the venue's actual photographs, as the shell's first-class
         // cover pager. Empty ⇒ single cover, byte-identical to the old mount.
         galleryImages={heroCover.additional}
@@ -2023,6 +2244,68 @@ const styles = StyleSheet.create({
   // height: 180` is the "240x180 at every width" Leg C measured.
   menuWrap: {
     gap: 0,
+  },
+  menuColdState: {
+    minHeight: 132,
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 16,
+    gap: 12,
+    justifyContent: "center",
+    alignItems: "flex-start",
+  },
+  menuStaleState: {
+    minHeight: 52,
+    width: "100%",
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 16,
+    gap: 8,
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  menuStateCopy: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    flexShrink: 1,
+  },
+  menuStateTextWrap: {
+    gap: 2,
+    flexShrink: 1,
+  },
+  menuStateTitle: {
+    fontSize: 15,
+    lineHeight: 20,
+    fontWeight: "800",
+  },
+  menuStateBody: {
+    fontSize: 14,
+    lineHeight: 20,
+  },
+  menuRetry: {
+    minHeight: 44,
+    justifyContent: "center",
+    borderRadius: 12,
+    paddingHorizontal: 18,
+  },
+  menuRetryHovered: {
+    opacity: 0.92,
+  },
+  menuRetryPressed: {
+    opacity: 0.85,
+  },
+  menuRetryDisabled: {
+    opacity: 0.55,
+  },
+  menuRetryText: {
+    fontSize: 14,
+    fontWeight: "800",
   },
   // ---- reserve (§6.7) ----
   reserveBarWrap: {
