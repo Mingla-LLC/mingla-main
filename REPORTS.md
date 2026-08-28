@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-28 — Public venue pages now scroll back up reliably on mobile browsers even when a gesture starts over the persistent reservation action, without changing native or desktop behavior (#2729, PR #2759)
 - 2026-08-28 — Ticket counts no longer break database replay after the counter schema lands; the repaired production function still derives truthful sold totals from issued tickets without trusting shadow counters (#2728, PR #2733)
 - 2026-08-28 — Campaign analytics now distinguish measured delivery and opens from unknown history, send campaigns through an isolated tracked subdomain while leaving transactional email untracked, reconcile early provider events instead of losing them, and show a real production Gmail delivery and open without inventing a zero (#2714, PR #2722)
 - 2026-08-28 — Fully booked venue times remain visible as Full and cannot be selected, while stale availability can no longer revive a sold-out reservation action (#2734, PR #2749)
