@@ -2061,12 +2061,12 @@ export const PublicVenueScreen = ({
               borderColor: palette.panelBorder,
             },
           ]}
-          accessibilityRole="alert"
-          accessibilityLiveRegion="polite"
           testID="issue-2756-stale-refresh-notice"
         >
           <Text
             key={`public-venue-refresh-error-${refreshErrorVersion}`}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
             style={[
               styles.refreshMessage,
               themedFont,
