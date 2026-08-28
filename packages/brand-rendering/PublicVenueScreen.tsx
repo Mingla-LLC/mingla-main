@@ -216,7 +216,11 @@ export interface PublicVenueReservableView {
   currency: string | null;
 }
 
-export type PublicVenueReservabilityState = "loading" | "ready" | "error";
+export type PublicVenueReservabilityState =
+  | "loading"
+  | "ready"
+  | "error"
+  | "invalid";
 export type PublicVenueStayState =
   | "loading"
   | "ready"
@@ -1465,13 +1469,13 @@ export const PublicVenueScreen = ({
     ),
     table: () =>
       reservabilityState === "loading" ? (
-        <View style={styles.reservationState}>
+        <View style={styles.reservationState} accessibilityLiveRegion="polite">
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
             Finding open tables…
           </Text>
         </View>
-      ) : reservabilityState === "error" ? (
-        <View style={styles.reservationState}>
+      ) : reservabilityState === "error" || reservabilityState === "invalid" ? (
+        <View style={styles.reservationState} accessibilityLiveRegion="polite">
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
             We couldn’t check reservations right now.
           </Text>
@@ -1495,7 +1499,7 @@ export const PublicVenueScreen = ({
           currency: reservable.currency,
         })
       ) : (
-        <View style={styles.reservationState}>
+        <View style={styles.reservationState} accessibilityLiveRegion="polite">
           <Text style={[styles.aboutBody, { color: palette.secondaryText }]}>
             {venueNotTakingReservationsCopy(profile)}
           </Text>

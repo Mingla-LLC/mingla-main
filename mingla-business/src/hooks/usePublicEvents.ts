@@ -1,8 +1,10 @@
 import {
+  queryOptions,
   useQueries,
   useQuery,
   type UseQueryResult,
 } from "@tanstack/react-query";
+import { useEffect, useMemo, useRef } from "react";
 
 import {
   fetchPublicBrandVenueStates,
@@ -12,6 +14,9 @@ import {
   getPublicVenueBySlug,
   getPublicVenueDiscoveryPrice,
   getPublicVenueReservable,
+  isPublicVenueReservableContractError,
+  PUBLIC_VENUE_RESERVABLE_INVALID_RESPONSE,
+  validatePublicVenueReservable,
   type PublicBrandDetail,
   type PublicEventDetail,
   type PublicVenue,
@@ -19,6 +24,7 @@ import {
   type PublicVenueReservable,
   type PublicVenueSummary,
 } from "../services/publicEventsService";
+import { reportNonFatal } from "../diagnostics/reportNonFatal";
 
 const PUBLIC_STALE_TIME_MS = 45 * 1000;
 
@@ -65,6 +71,48 @@ export const publicEventKeys = {
 };
 
 const DISABLED_KEY = ["public-events-disabled"] as const;
+
+/**
+ * #2730 — the ONE options owner for the place-keyed reservability entity.
+ * Brand cards project labels after this full object leaves the cache; no
+ * observer may write a status string under the shared key again.
+ */
+const publicVenueReservableQueryOptions = (placePoolId: string | null) => {
+  const enabled = placePoolId !== null && placePoolId.length > 0;
+  return queryOptions({
+    queryKey: enabled
+      ? publicEventKeys.venueReservable(placePoolId)
+      : DISABLED_KEY,
+    enabled,
+    staleTime: PUBLIC_STALE_TIME_MS,
+    queryFn: async (): Promise<PublicVenueReservable> => {
+      if (!enabled || placePoolId === null) {
+        return { reservable: false, venueId: null, currency: null };
+      }
+      return getPublicVenueReservable(placePoolId);
+    },
+    // Selectors also run for fresh cache hits, so historical string values are
+    // rejected before a route can mistake them for operator-disabled truth.
+    select: validatePublicVenueReservable,
+  });
+};
+
+const reportInvalidReservability = (
+  placePoolId: string,
+  observer: "brand" | "venue",
+  error: unknown,
+): void => {
+  reportNonFatal(
+    "publicVenue.reservability.invalidShape",
+    error,
+    {
+      place_pool_id: placePoolId,
+      observer,
+      error_code: PUBLIC_VENUE_RESERVABLE_INVALID_RESPONSE,
+    },
+    ["publicVenue.reservability.invalidShape"],
+  );
+};
 
 export const usePublicEventBySlug = (
   brandSlug: string | null,
@@ -160,20 +208,16 @@ export const usePublicVenueBySlug = (
 export const usePublicVenueReservable = (
   placePoolId: string | null,
 ): UseQueryResult<PublicVenueReservable> => {
-  const enabled = placePoolId !== null && placePoolId.length > 0;
-  return useQuery<PublicVenueReservable>({
-    queryKey: enabled
-      ? publicEventKeys.venueReservable(placePoolId)
-      : DISABLED_KEY,
-    enabled,
-    staleTime: PUBLIC_STALE_TIME_MS,
-    queryFn: async (): Promise<PublicVenueReservable> => {
-      if (!enabled || placePoolId === null) {
-        return { reservable: false, venueId: null, currency: null };
-      }
-      return getPublicVenueReservable(placePoolId);
-    },
-  });
+  const query = useQuery(publicVenueReservableQueryOptions(placePoolId));
+  const wasInvalidRef = useRef<boolean>(false);
+  const invalid = isPublicVenueReservableContractError(query.error);
+  useEffect(() => {
+    if (invalid && !wasInvalidRef.current && placePoolId !== null) {
+      reportInvalidReservability(placePoolId, "venue", query.error);
+    }
+    wasInvalidRef.current = invalid;
+  }, [invalid, placePoolId, query.error]);
+  return query;
 };
 
 export const usePublicVenueDiscoveryPrice = (
@@ -213,33 +257,55 @@ export const usePublicBrandVenues = (
       return fetchPublicBrandVenueStates(brandSlug);
     },
   });
-  const venues = venuesQuery.data ?? [];
+  const venues = useMemo(() => venuesQuery.data ?? [], [venuesQuery.data]);
   const reservabilityQueries = useQueries({
-    queries: venues.map((venue) => ({
-      queryKey:
-        typeof venue.placePoolId === "string"
-          ? publicEventKeys.venueReservable(venue.placePoolId)
-          : DISABLED_KEY,
-      enabled: typeof venue.placePoolId === "string",
-      staleTime: PUBLIC_STALE_TIME_MS,
-      queryFn: async (): Promise<PublicVenueSummary["reservationState"]> => {
-        if (typeof venue.placePoolId !== "string") return "unavailable";
-        try {
-          const resolved = await getPublicVenueReservable(venue.placePoolId);
-          return resolved.reservable ? "available" : "unavailable";
-        } catch {
-          return "error";
-        }
-      },
-    })),
+    queries: venues.map((venue) =>
+      publicVenueReservableQueryOptions(
+        typeof venue.placePoolId === "string" ? venue.placePoolId : null,
+      ),
+    ),
   });
-  const data: PublicVenueSummary[] = venues.map((venue, index) => ({
-    ...venue,
-    reservationState:
-      typeof venue.placePoolId !== "string"
-        ? "unavailable"
-        : (reservabilityQueries[index]?.data ?? "loading"),
-  }));
+  const invalidObservations = useMemo(
+    () =>
+      reservabilityQueries.flatMap((query, index) => {
+        const placePoolId = venues[index]?.placePoolId;
+        return typeof placePoolId === "string" &&
+          isPublicVenueReservableContractError(query.error)
+          ? [{ placePoolId, error: query.error }]
+          : [];
+      }),
+    [reservabilityQueries, venues],
+  );
+  const previousInvalidPlacesRef = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const nextInvalidPlaces = new Set(
+      invalidObservations.map(({ placePoolId }) => placePoolId),
+    );
+    for (const { placePoolId, error } of invalidObservations) {
+      if (!previousInvalidPlacesRef.current.has(placePoolId)) {
+        reportInvalidReservability(placePoolId, "brand", error);
+      }
+    }
+    previousInvalidPlacesRef.current = nextInvalidPlaces;
+  }, [invalidObservations]);
+  const data: PublicVenueSummary[] = venues.map((venue, index) => {
+    const query = reservabilityQueries[index];
+    const resolvedState: PublicVenueSummary["reservationState"] =
+      query?.data === undefined
+        ? undefined
+        : query.data.reservable
+          ? "available"
+          : "unavailable";
+    return {
+      ...venue,
+      reservationState:
+        typeof venue.placePoolId !== "string"
+          ? "unavailable"
+          : query?.isError
+            ? "error"
+            : (resolvedState ?? "loading"),
+    };
+  });
 
   return {
     data,

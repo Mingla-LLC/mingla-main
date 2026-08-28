@@ -89,7 +89,10 @@ import {
   venueOgImageUrl,
   venuePublicUrl,
 } from "../../../../src/constants/publicUrls";
-import type { PublicVenue } from "../../../../src/services/publicEventsService";
+import {
+  isPublicVenueReservableContractError,
+  type PublicVenue,
+} from "../../../../src/services/publicEventsService";
 import { shareCanonicalPublicPageOnWeb } from "../../../../src/utils/shareCanonicalPublicPageOnWeb";
 import {
   captureVenueOrganicEvent,
@@ -465,10 +468,16 @@ export default function PublicVenueRoute(): React.ReactElement {
       venue={venueViewModel}
       discoveryPrice={discoveryPriceQuery.data ?? null}
       menu={menuGroups}
-      reservable={reservableQuery.data ?? null}
+      reservable={
+        reservableQuery.isError || reservableQuery.isLoading
+          ? null
+          : reservableQuery.data ?? null
+      }
       reservabilityState={
-        reservableQuery.isError
-          ? "error"
+        isPublicVenueReservableContractError(reservableQuery.error)
+          ? "invalid"
+          : reservableQuery.isError
+            ? "error"
           : reservableQuery.isLoading
             ? "loading"
             : "ready"
