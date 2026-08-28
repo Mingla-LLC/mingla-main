@@ -125,6 +125,9 @@ describe("issue #2739 tester adversarial gallery contract", () => {
       undefined,
     ]);
     expect(buttons.every((button) => button.props.tabIndex === 0)).toBe(true);
+    // `tabIndex=0` cannot rescue a real HTML button carrying `disabled`: the
+    // browser still removes it from focus and drops focus on selection.
+    expect(buttons.every((button) => button.props.disabled !== true)).toBe(true);
     expect(
       buttons.every(
         (button) =>
