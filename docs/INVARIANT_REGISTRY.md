@@ -9656,3 +9656,11 @@ independent tester returns PASS.
 - **Rule:** Free Event, Trip, Experience, RSVP, and Venue creation and publishing never requires a bank. Every creator choice remains enabled in every payout state; bank readiness gates only money collection.
 - **Enforcement:** the exhaustive five-member `OfferingChooser`, the self/client creation state machine, the mounted #2719 happy-path suite, existing server money-path guards, and `.github/scripts/strict-grep/issue-2719-brand-payout-first.mjs`; the guard reserves the independent tester filename and enforces it as non-skipped as soon as the tester stages it.
 - **Established:** ACTIVE at #2719 after independent tester PASS on 2026-08-27.
+
+## ACTIVE — issue #2729 (public venue mobile-web scroll ownership)
+
+### I-2729-PUBLIC-VENUE-MOBILE-WEB-PAN-OWNERSHIP (ACTIVE)
+
+- **Rule:** When a persistent public-venue action overlays a phone-web page whose document scroll is disabled, every pixel of that action's interactive subtree stays within the page's sole native vertical scroll-owner ancestry. A vertical pan that starts over the action cancels activation and remains reversible at both scroll boundaries.
+- **Enforcement:** the #2729 real-touch happy and independent adversarial Playwright suites exercise short, standard, and wide phone viewports from content, wrapper, and button origins; the #1559 render-parity fixture pins the CTA inside `ShellBody`; focused and full Jest suites preserve tab, sheet, native, and desktop behavior.
+- **Established:** ACTIVE at #2729 after independent tester PASS across Buyer web and Business/Consumer iOS and Android on 2026-08-28.

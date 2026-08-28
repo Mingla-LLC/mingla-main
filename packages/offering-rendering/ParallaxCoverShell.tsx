@@ -402,6 +402,18 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
 
   // ===================== WEB PHONE (<1024px) — parallax =====================
   if (isWeb) {
+    // issue #2729 — a keyed child remains ordinary `children` to shell mocks
+    // and the native/desktop branches, while the real phone-web shell lifts it
+    // out of the padded content column but leaves it inside the sole Scroll.
+    const phoneChildren = React.Children.toArray(children);
+    const isWebPhoneAction = (child: React.ReactNode): boolean =>
+      React.isValidElement(child) &&
+      String(child.key ?? "").endsWith("issue-2729-web-phone-action");
+    const webPhoneActions = phoneChildren.filter(isWebPhoneAction);
+    const webPhoneBody = phoneChildren.filter(
+      (child: React.ReactNode) => !isWebPhoneAction(child),
+    );
+
     return (
       <View style={[styles.webPhoneHost, { backgroundColor: palette.page }]} testID={testID}>
         {/* pinned cover (lowest layer). issue #868 — pointerEvents becomes "auto"
@@ -492,8 +504,9 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
             ) : null}
             {/* issue #868 — the beneath-cover card row is the body's FIRST row. */}
             {galleryRow}
-            {children}
+            {webPhoneBody}
           </View>
+          {webPhoneActions}
         </Scroll>
       </View>
     );

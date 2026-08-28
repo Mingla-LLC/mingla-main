@@ -121,3 +121,13 @@ jobs:
             echo "ORCH-1137 render-proof FAIL: lucide Plus glyph path signature (M5 12h14 / M12 5v14) NOT found in the exported web bundle. The biz-web lucide shim must render REAL lucide-react icons (no null-stub)." >&2
             exit 1
           fi
+      # issue #2729 — the public venue's persistent phone action must stay in
+      # the sole native browser scroller's ancestry. The implementor and tester
+      # own different real-touch angles; both files are required before merge.
+      - name: "#2729 public venue real-touch scroll ownership"
+        working-directory: mingla-business
+        run: |
+          test -f playwright/issue2729/public-venue-scroll-owner.happy.spec.ts
+          test -f playwright/issue2729/public-venue-scroll-owner.adversarial.spec.ts
+          npx playwright install chromium-headless-shell
+          npx playwright test -c playwright.issue2729.config.ts

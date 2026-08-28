@@ -65,6 +65,8 @@ import {
   StyleSheet,
   Text,
   View,
+  type StyleProp,
+  type ViewStyle,
 } from "react-native";
 import {
   ParallaxCoverShell,
@@ -148,6 +150,12 @@ import {
   normalizePublicVenueReservationUiState,
   publicVenueReservationUiReducer,
 } from "./publicVenueReservationUiState";
+
+type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
+  position?: ViewStyle["position"] | "sticky";
+};
+const webVenueStyle = (style: WebVenueViewStyle): StyleProp<ViewStyle> =>
+  style as StyleProp<ViewStyle>;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // The read model — ONE shape, both apps
@@ -1513,6 +1521,7 @@ export const PublicVenueScreen = ({
   // ── §6.7 sticky reserve bar (phone) / §6.10 panel CTA (desktop) ──────────
   const reserveCta = (
     <Pressable
+      testID="issue-2729-reserve-cta"
       onPress={handleReserve}
       accessibilityRole="button"
       // #1532 D7 / #1558 — the CTA, the accessibility label and the sheet
@@ -1534,8 +1543,12 @@ export const PublicVenueScreen = ({
   const reserveBar =
     showReserveCta && !isDesktop ? (
       <View
+        testID="issue-2729-reserve-bar"
         style={[
           styles.reserveBarWrap,
+          Platform.OS === "web"
+            ? webVenueStyle({ position: "sticky", marginTop: 8 })
+            : null,
           {
             backgroundColor: palette.page,
             paddingBottom: insets.bottom + 8,
@@ -1546,9 +1559,12 @@ export const PublicVenueScreen = ({
       </View>
     ) : null;
 
-  const reserveBarClearance = showReserveCta && !isDesktop
-    ? 52 + 16 + insets.bottom + 8
-    : insets.bottom + 24;
+  const reserveBarClearance =
+    showReserveCta && !isDesktop
+      ? Platform.OS === "web"
+        ? 0
+        : 52 + 16 + insets.bottom + 8
+      : insets.bottom + 24;
 
   // ── §6.10 desktop sticky panel ────────────────────────────────────────────
   const stickyPanel = isDesktop ? (
@@ -1770,8 +1786,16 @@ export const PublicVenueScreen = ({
         testID="orch-1255-public-venue"
       >
         {bodyContent}
+        {Platform.OS === "web" ? (
+          <React.Fragment key="issue-2729-web-phone-action">
+            {reserveBar}
+          </React.Fragment>
+        ) : null}
       </ParallaxCoverShell>
-      {reserveBar}
+      {/* issue #2729 — web owns the same bar INSIDE ParallaxCoverShell's sole
+          scroll ancestry. Native retains the pre-existing absolute sibling
+          byte-for-byte, and desktop has no phone bar. */}
+      {Platform.OS !== "web" ? reserveBar : null}
       {reservationSheet({
         ...themedSlotContext,
         visible: normalizedReservationUiState.reservationSheetOpen,
