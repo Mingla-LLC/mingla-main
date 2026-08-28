@@ -141,6 +141,10 @@ jobs:
           src/components/venueOrdering/__tests__/buyerVenueOrdering.issue1793.test.ts
           src/components/venueOrdering/__tests__/paymentRetry.issue1793.test.ts
           src/components/venueOrdering/__tests__/venueOrderReviewMoneyGate.issue1793.adversarial.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuSuspense.issue2735.happy.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuSuspense.issue2735.adversarial.test.tsx
+          src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.happy.test.tsx
+          src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.adversarial.test.tsx
           src/components/venue/__tests__/venueOrders.issue1791.test.ts
           src/components/venue/__tests__/venueOrderPad.issue1792.test.ts
           src/components/venue/__tests__/qrSpots.issue1789.test.ts

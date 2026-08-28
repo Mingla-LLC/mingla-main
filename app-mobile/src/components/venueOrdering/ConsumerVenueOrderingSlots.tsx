@@ -141,9 +141,22 @@ export const ConsumerVenueOrderingSurface: React.FC<{
     scanned: ordering.scanned,
   });
   const canOrder = venueOrderingCanOrder(ordering.config);
-  // Nothing honest to say and nothing to sell: hand the pane back to the shared
-  // screen's display-only renderer, which is the page this venue already had.
-  if (notice === null && !canOrder) return null;
+  // #2735 — this lazy surface is a TOTAL menu renderer. Returning null here
+  // cannot hand control back across the route's Suspense boundary: React would
+  // remove the display-menu fallback and commit an empty body. An ordinary
+  // ordering-off visit therefore settles to the same real display menu.
+  if (notice === null && !canOrder) {
+    return (
+      <View style={styles.surface}>
+        <PublicMenuSections
+          groups={menu}
+          palette={palette}
+          surface={surface}
+          theme={theme}
+        />
+      </View>
+    );
+  }
 
   return (
     <View style={styles.surface}>
