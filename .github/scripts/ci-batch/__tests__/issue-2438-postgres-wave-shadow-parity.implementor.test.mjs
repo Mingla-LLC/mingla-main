@@ -36,6 +36,7 @@ const WRAPPERS = {
 };
 const MARKER = "# #2438 SHADOW-PARITY-TRIGGER — remove before cutover";
 const RESERVED_TESTER = ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs";
+// #2725: Amendment 8 adds the PG17 competitor-budget workflow covered by this refreshed seal.
 const PROVIDER_DIGEST = "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";
 const PHASE3B_PROVIDER_NAMES = new Set(["issue-1022-theme-control-tests.yml","issue-1902-public-event-lifecycle-tests.yml","issue-2013-ari-tenant-containment.yml","issue-885-scanner-invite-loader-tests.yml","issue-948-w1-enablers-tests.yml","orch-0976-draft-promotion-tests.yml"]);
 const PHASE3B_PROVIDER_DIGEST = "1676cbe80860ee0181cf95fcbd70dcb95a9d535066161e25f11348212264abc1";
