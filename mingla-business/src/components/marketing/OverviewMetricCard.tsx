@@ -8,10 +8,17 @@
  */
 
 import React from "react";
-import { StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 
 import {
   glass,
+  androidOpaque,
   radius,
   semantic,
   spacing,
@@ -20,6 +27,7 @@ import {
 } from "../../constants/designSystem";
 
 export type OverviewMetricTone = "default" | "warning";
+export type MetricMeasurementState = "measured" | "notMeasured" | "degraded";
 
 export interface OverviewMetricCardProps {
   label: string;
@@ -35,6 +43,9 @@ export interface OverviewMetricCardProps {
   /** Warning tone tints value + percentage when value > 0. */
   tone?: OverviewMetricTone;
   testID?: string;
+  measurementState?: MetricMeasurementState;
+  helper?: string;
+  accessibilityLabel?: string;
 }
 
 export const OverviewMetricCard: React.FC<OverviewMetricCardProps> = ({
@@ -43,7 +54,12 @@ export const OverviewMetricCard: React.FC<OverviewMetricCardProps> = ({
   percent,
   tone = "default",
   testID,
+  measurementState = value === null ? "notMeasured" : "measured",
+  helper,
+  accessibilityLabel,
 }) => {
+  const { width, fontScale } = useWindowDimensions();
+  const useOneColumn = fontScale >= 1.6 || width - spacing.md * 2 < 320;
   const applyWarning = tone === "warning" && value !== null && value > 0;
   const shownValue = value === null ? "—" : value.toLocaleString();
   const a11yValue = value === null ? "not tracked" : String(value);
@@ -57,23 +73,34 @@ export const OverviewMetricCard: React.FC<OverviewMetricCardProps> = ({
 
   return (
     <View
-      style={styles.host}
+      style={[
+        styles.host,
+        Platform.OS === "android" ? styles.hostAndroid : null,
+        useOneColumn ? styles.hostOneColumn : null,
+      ]}
       testID={testID}
+      accessible
       accessibilityLabel={
-        pctLabel !== null
-          ? `${label}: ${a11yValue}, ${pctLabel}${applyWarning ? ", warning" : ""}`
-          : `${label}: ${a11yValue}${applyWarning ? ", warning" : ""}`
+        accessibilityLabel ??
+        (measurementState === "degraded"
+          ? `${label}: temporarily unavailable while tracking catches up`
+          : pctLabel !== null
+            ? `${label}: ${a11yValue}, ${pctLabel}${applyWarning ? ", warning" : ""}`
+            : `${label}: ${a11yValue}${applyWarning ? ", warning" : ""}`)
       }
     >
       <Text style={styles.label}>{label}</Text>
       <View style={styles.valueRow}>
-        <Text style={[styles.value, { color: valueColor }]}>
-          {shownValue}
-        </Text>
+        <Text style={[styles.value, { color: valueColor }]}>{shownValue}</Text>
         {pctLabel !== null ? (
-          <Text style={[styles.percent, { color: percentColor }]}>{pctLabel}</Text>
+          <Text style={[styles.percent, { color: percentColor }]}>
+            {pctLabel}
+          </Text>
         ) : null}
       </View>
+      {helper !== undefined ? (
+        <Text style={styles.helper}>{helper}</Text>
+      ) : null}
     </View>
   );
 };
@@ -91,6 +118,14 @@ const styles = StyleSheet.create({
     backgroundColor: glass.tint.profileBase,
     gap: 2,
   },
+  hostAndroid: {
+    backgroundColor: androidOpaque.rowFill,
+    borderColor: androidOpaque.rowBorder,
+    elevation: 0,
+  },
+  hostOneColumn: {
+    flexBasis: "100%",
+  },
   label: {
     ...typography.labelCap,
     color: textTokens.tertiary,
@@ -105,5 +140,10 @@ const styles = StyleSheet.create({
   },
   percent: {
     ...typography.bodySm,
+  },
+  helper: {
+    ...typography.caption,
+    color: textTokens.tertiary,
+    marginTop: spacing.xs,
   },
 });

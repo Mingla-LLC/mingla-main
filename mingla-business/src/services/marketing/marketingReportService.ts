@@ -21,13 +21,16 @@
  *   clicked   — our own `/m/<tracking_id>` redirect fired.
  *
  * A campaign sent before the webhook existed has no delivery events, and its
- * delivered/opened figures are UNKNOWN — not zero. `hasEventCoverage` carries
+ * delivered/opened figures are UNKNOWN — not zero. Independent coverage flags carry
  * that distinction so the screen can render an em-dash instead of a "0%" that
  * would read as "nobody opened it".
  */
 
 import { supabase } from "../supabase";
-import type { MarketingCampaignRow, MessageStatus } from "../../types/marketing";
+import type {
+  MarketingCampaignRow,
+  MessageStatus,
+} from "../../types/marketing";
 
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -45,6 +48,7 @@ export interface RecipientStats {
   accepted: number;
   delivered: number;
   opened: number;
+  trackedDelivered: number;
   preview_skipped: number;
   failed: number;
   bounced: number;
@@ -56,7 +60,10 @@ export interface RecipientStats {
    * every campaign sent before the webhook existed. The screen must render
    * delivered/opened as unknown in that case, never as 0.
    */
-  hasEventCoverage: boolean;
+  hasDeliveryCoverage: boolean;
+  hasOpenCoverage: boolean;
+  deliveryHealthy: boolean;
+  openHealthy: boolean;
 }
 
 export interface TopLink {
@@ -81,6 +88,68 @@ export interface PerRecipientRow {
   delivered_at: string | null;
   /** #2510 — null until `email.opened` arrives. */
   opened_at: string | null;
+}
+
+interface MetricMessageRow extends PerRecipientRow {
+  delivery_tracking_eligible_at: string | null;
+  open_tracking_eligible_at: string | null;
+}
+
+interface CampaignEmailHealth {
+  delivery_healthy: boolean;
+  open_healthy: boolean;
+}
+
+const METRIC_PAGE_SIZE = 500;
+
+async function loadAllMetricMessages(
+  campaignId: string,
+): Promise<MetricMessageRow[]> {
+  const rows: MetricMessageRow[] = [];
+  for (let from = 0; ; from += METRIC_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("marketing_messages")
+      .select(
+        "id, recipient_email, status, sent_at, click_count, failure_reason, delivered_at, opened_at, delivery_tracking_eligible_at, open_tracking_eligible_at",
+      )
+      .eq("campaign_id", campaignId)
+      .order("id", { ascending: true })
+      .range(from, from + METRIC_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as MetricMessageRow[];
+    rows.push(...page);
+    if (page.length < METRIC_PAGE_SIZE) return rows;
+  }
+}
+
+async function loadAllClicks(campaignId: string): Promise<
+  Array<{
+    destination_url: string;
+    clicked_at: string | null;
+    message_id: string | null;
+  }>
+> {
+  const rows: Array<{
+    destination_url: string;
+    clicked_at: string | null;
+    message_id: string | null;
+  }> = [];
+  for (let from = 0; ; from += METRIC_PAGE_SIZE) {
+    const { data, error } = await supabase
+      .from("marketing_clicks")
+      .select("id, destination_url, clicked_at, message_id")
+      .eq("campaign_id", campaignId)
+      .order("id", { ascending: true })
+      .range(from, from + METRIC_PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data ?? []) as unknown as Array<{
+      destination_url: string;
+      clicked_at: string | null;
+      message_id: string | null;
+    }>;
+    rows.push(...page);
+    if (page.length < METRIC_PAGE_SIZE) return rows;
+  }
 }
 
 export interface CampaignReport {
@@ -132,8 +201,9 @@ export async function getCampaignReport(
     throw new Error("Campaign not found or access denied.");
   }
 
-  // 2) All marketing_messages for this campaign.
-  const { data: messageData, error: messageErr } = await supabase
+  // 2) Complete metric rows, then a separate bounded presentation list.
+  const messages = await loadAllMetricMessages(campaignId);
+  const { data: recipientData, error: recipientErr } = await supabase
     .from("marketing_messages")
     .select(
       "id, recipient_email, status, sent_at, click_count, failure_reason, delivered_at, opened_at",
@@ -141,26 +211,24 @@ export async function getCampaignReport(
     .eq("campaign_id", campaignId)
     .order("sent_at", { ascending: false, nullsFirst: false })
     .limit(500);
-  if (messageErr) throw messageErr;
-  const messages = (messageData ?? []) as unknown as PerRecipientRow[];
+  if (recipientErr) throw recipientErr;
+  const recipients = (recipientData ?? []) as unknown as PerRecipientRow[];
 
-  // 3) All marketing_clicks for this campaign.
-  const { data: clickData, error: clickErr } = await supabase
-    .from("marketing_clicks")
-    .select("destination_url, clicked_at, message_id")
-    .eq("campaign_id", campaignId)
-    .limit(2000);
-  if (clickErr) throw clickErr;
-  const clicks = (clickData ?? []) as unknown as Array<{
-    destination_url: string;
-    clicked_at: string | null;
-    message_id: string | null;
-  }>;
+  // 3) Complete click metrics and aggregate reconciliation health.
+  const clicks = await loadAllClicks(campaignId);
+  const { data: healthData, error: healthErr } = await supabase.rpc(
+    "mkt_campaign_email_event_health",
+  );
+  if (healthErr) throw healthErr;
+  const health = ((healthData ?? []) as unknown as CampaignEmailHealth[])[0];
+  if (health === undefined)
+    throw new Error("Campaign email health unavailable.");
 
   // Recipient stats aggregation.
   const counts: Record<string, number> = {};
   for (const key of STATUS_KEYS) counts[key] = 0;
-  for (const msg of messages) counts[msg.status] = (counts[msg.status] ?? 0) + 1;
+  for (const msg of messages)
+    counts[msg.status] = (counts[msg.status] ?? 0) + 1;
 
   // ACCEPTED is every row the provider took, whatever happened after. A row
   // that went on to be delivered/opened/clicked was accepted first, so summing
@@ -169,8 +237,18 @@ export async function getCampaignReport(
     (sum, key) => sum + (counts[key] ?? 0),
     0,
   );
-  const delivered = messages.filter((m) => m.delivered_at !== null).length;
-  const opened = messages.filter((m) => m.opened_at !== null).length;
+  const deliveryEligible = messages.filter(
+    (m) => m.delivery_tracking_eligible_at !== null,
+  );
+  const trackedDeliveredRows = messages.filter(
+    (m) => m.open_tracking_eligible_at !== null && m.delivered_at !== null,
+  );
+  const delivered = deliveryEligible.filter(
+    (m) => m.delivered_at !== null,
+  ).length;
+  const opened = trackedDeliveredRows.filter(
+    (m) => m.opened_at !== null,
+  ).length;
 
   const recipientStats: RecipientStats = {
     total: messages.length,
@@ -178,14 +256,17 @@ export async function getCampaignReport(
     accepted,
     delivered,
     opened,
+    trackedDelivered: trackedDeliveredRows.length,
     preview_skipped: counts.preview_skipped ?? 0,
     failed: counts.failed ?? 0,
     bounced: counts.bounced ?? 0,
     complained: counts.complained ?? 0,
     unsubscribed: counts.unsubscribed ?? 0,
     clicked: messages.filter((m) => m.click_count > 0).length,
-    hasEventCoverage: delivered > 0 || opened > 0 ||
-      (counts.bounced ?? 0) > 0 || (counts.complained ?? 0) > 0,
+    hasDeliveryCoverage: health.delivery_healthy && deliveryEligible.length > 0,
+    hasOpenCoverage: health.open_healthy && trackedDeliveredRows.length > 0,
+    deliveryHealthy: health.delivery_healthy,
+    openHealthy: health.open_healthy,
   };
 
   // Click stats aggregation.
@@ -199,7 +280,8 @@ export async function getCampaignReport(
       click.destination_url,
       (linkCounts.get(click.destination_url) ?? 0) + 1,
     );
-    if (click.message_id !== null) uniqueClickerMessageIds.add(click.message_id);
+    if (click.message_id !== null)
+      uniqueClickerMessageIds.add(click.message_id);
   }
   const topLinks: TopLink[] = Array.from(linkCounts.entries())
     .map(([destination_url, count]) => ({ destination_url, clicks: count }))
@@ -216,6 +298,6 @@ export async function getCampaignReport(
     campaign: campaignData as unknown as MarketingCampaignRow,
     recipientStats,
     clickStats,
-    recipients: messages,
+    recipients,
   };
 }

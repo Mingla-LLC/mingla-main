@@ -73,24 +73,43 @@ describe("Marketing Overview tab (ORCH-0863) — Constitution #9 enforcement", (
    * The revenue half of T-06 is UNTOUCHED — no attribution exists, so `$` and
    * "revenue" stay banned.
    */
-  it("(T-06) renders 'Opened' ONLY behind real event coverage (#2510)", () => {
+  /**
+   * [TEST-MOD-APPROVED #2714]
+   *
+   * The shared `hasEventCoverage` contract was superseded. Delivery and open
+   * coverage are independent, and an open is measurable only over the tracked
+   * delivered cohort while reconciliation is healthy.
+   */
+  it("(T-06) renders 'Opened' ONLY behind independent open coverage (#2510)", () => {
     // The label is allowed now...
     expect(source.includes('label="OPENED"')).toBe(true);
-    // ...but only guarded by hasEventCoverage, and only with an unknown
+    // ...but only guarded by hasOpenCoverage, and only with an unknown
     // fallback. Both halves must be present, or an unmeasured campaign would
     // be shown a fabricated 0%.
-    expect(source.includes("snap.funnel.hasEventCoverage")).toBe(true);
+    expect(source.includes("snap.funnel.hasEventCoverage")).toBe(false);
     expect(
-      /label="OPENED"[\s\S]{0,240}hasEventCoverage \? snap\.funnel\.opened : null/
+      /label="OPENED"[\s\S]{0,240}hasOpenCoverage \? snap\.funnel\.opened : null/
         .test(source),
     ).toBe(true);
+    expect(
+      /label="DELIVERED"[\s\S]{0,240}hasDeliveryCoverage \? snap\.funnel\.delivered : null/
+        .test(source),
+    ).toBe(true);
+    expect(source).toContain("snap.funnel.opened / snap.funnel.trackedDelivered");
   });
 
   it("(T-06b) an unmeasured campaign can never be shown a 0% open rate (#2510)", () => {
     // The percent prop must be gated too. A `null` value with a live percent
     // would still render "0%" beside the em-dash.
     expect(
-      /label="OPENED"[\s\S]{0,300}hasEventCoverage \? openedPct : undefined/
+      /label="OPENED"[\s\S]{0,300}hasOpenCoverage \? openedPct : undefined/
+        .test(source),
+    ).toBe(true);
+    // Healthy measured coverage may truthfully expose the numeric value even
+    // when it is zero; unhealthy or absent coverage selects a named nonnumeric
+    // state instead.
+    expect(
+      /measurementState=\{[\s\S]{0,180}!snap\.funnel\.openHealthy[\s\S]{0,80}"degraded"[\s\S]{0,120}snap\.funnel\.hasOpenCoverage[\s\S]{0,80}"measured"[\s\S]{0,80}"notMeasured"/
         .test(source),
     ).toBe(true);
   });

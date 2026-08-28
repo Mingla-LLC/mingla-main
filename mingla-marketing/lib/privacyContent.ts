@@ -1,4 +1,4 @@
-export const PRIVACY_EFFECTIVE_DATE = 'May 27, 2026'
+export const PRIVACY_EFFECTIVE_DATE = 'August 27, 2026'
 
 export const PRIVACY_SECTIONS = [
   {
@@ -38,7 +38,13 @@ export const PRIVACY_SECTIONS = [
     ],
   },
   {
-    title: '2.3 Information from Third Parties',
+    title: '2.3 Marketing email measurement',
+    paragraphs: [
+      'When you receive a consented marketing email sent through Mingla, we may use an invisible image on messages sent from campaigns.usemingla.com to estimate whether the email was opened and tracked links to understand whether a link was selected. Email apps, privacy protections, caching, and automated security tools may block or load images without a person reading the message, so open data can be incomplete or automated. We use this information to report aggregate campaign performance and improve delivery; an open signal is not proof that a named person read an email, and link clicks are a stronger engagement signal. Transactional emails such as sign-in codes, receipts, and account notifications are not open-tracked. You can unsubscribe from marketing email at any time using the link in the message.',
+    ],
+  },
+  {
+    title: '2.4 Information from Third Parties',
     paragraphs: [
       'If you choose to sign in with a third-party identity provider, we receive limited profile information from that provider:',
     ],
@@ -99,7 +105,7 @@ export const PRIVACY_SECTIONS = [
       'Supabase — backend infrastructure (authentication, database, file storage, realtime sync, server-side edge functions)',
       'Cloudinary — storage and delivery of user-uploaded photos and audio recordings',
       'Twilio — SMS delivery for OTP verification and friend-invite messages',
-      'Resend — transactional email delivery (welcome messages, receipts, account notifications)',
+      'Resend — transactional email delivery without open tracking (welcome messages, receipts, account notifications), plus delivery and measurement of consented marketing campaigns, including estimated open signals',
       'Google — Sign-In authentication, and location services including Places search, Distance Matrix travel-time estimates, and reverse geocoding (converting coordinates to city/country)',
       'Apple — Sign-In authentication',
       'Mapbox — map rendering inside the app',

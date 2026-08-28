@@ -18,6 +18,8 @@ jest.mock("../../supabase", () => ({
 import { rollupFunnel } from "../marketingOverviewService";
 import type { MessageStatus } from "../../../types/marketing";
 
+const trackingEligibleAt = "2026-08-27T12:00:00.000Z";
+
 /** #2510 — rollupFunnel takes rows now; delivery is an event, not a status. */
 const rows = (statuses: MessageStatus[]) => statuses.map((status) => ({ status }));
 
@@ -54,7 +56,11 @@ describe("rollupFunnel (T-01 binding formulas pinning, ORCH-0863)", () => {
   it("counts delivered from delivery EVENTS, not from status (#2510)", () => {
     const out = rollupFunnel(
       [
-        { status: "sent", delivered_at: "2026-08-25T00:00:00Z" },
+        {
+          status: "sent",
+          delivery_tracking_eligible_at: trackingEligibleAt,
+          delivered_at: "2026-08-25T00:00:00Z",
+        },
         { status: "clicked", delivered_at: null },
         { status: "delivered", delivered_at: null },
         { status: "preview_skipped" },
@@ -66,21 +72,61 @@ describe("rollupFunnel (T-01 binding formulas pinning, ORCH-0863)", () => {
     expect(out.delivered).toBe(1);
   });
 
+  /**
+   * [TEST-MOD-APPROVED #2714]
+   *
+   * `hasEventCoverage` was the obsolete shared flag. Delivery eligibility can
+   * exist without open eligibility, so the replacement pins both independent
+   * coverage states and keeps historical evidence outside either cohort.
+   */
   it("opens are counted from opened_at, and coverage is honest (#2510)", () => {
     const none = rollupFunnel([{ status: "sent" }, { status: "sent" }], 0);
+    expect(none.delivered).toBe(0);
     expect(none.opened).toBe(0);
     // No event ever arrived — the screen must render unknown, not 0%.
-    expect(none.hasEventCoverage).toBe(false);
+    expect(none.hasDeliveryCoverage).toBe(false);
+    expect(none.hasOpenCoverage).toBe(false);
 
-    const some = rollupFunnel(
+    const deliveryOnly = rollupFunnel(
       [
-        { status: "sent", delivered_at: "2026-08-25T00:00:00Z", opened_at: "2026-08-25T00:01:00Z" },
-        { status: "sent", delivered_at: "2026-08-25T00:00:00Z", opened_at: null },
+        {
+          status: "delivered",
+          delivery_tracking_eligible_at: trackingEligibleAt,
+          delivered_at: "2026-08-25T00:00:00Z",
+        },
       ],
       0,
     );
+    expect(deliveryOnly.delivered).toBe(1);
+    expect(deliveryOnly.opened).toBe(0);
+    expect(deliveryOnly.trackedDelivered).toBe(0);
+    expect(deliveryOnly.hasDeliveryCoverage).toBe(true);
+    expect(deliveryOnly.hasOpenCoverage).toBe(false);
+
+    const some = rollupFunnel(
+      [
+        {
+          status: "sent",
+          delivery_tracking_eligible_at: trackingEligibleAt,
+          open_tracking_eligible_at: trackingEligibleAt,
+          delivered_at: "2026-08-25T00:00:00Z",
+          opened_at: "2026-08-25T00:01:00Z",
+        },
+        {
+          status: "sent",
+          delivery_tracking_eligible_at: trackingEligibleAt,
+          open_tracking_eligible_at: trackingEligibleAt,
+          delivered_at: "2026-08-25T00:00:00Z",
+          opened_at: null,
+        },
+      ],
+      0,
+    );
+    expect(some.delivered).toBe(2);
     expect(some.opened).toBe(1);
-    expect(some.hasEventCoverage).toBe(true);
+    expect(some.trackedDelivered).toBe(2);
+    expect(some.hasDeliveryCoverage).toBe(true);
+    expect(some.hasOpenCoverage).toBe(true);
   });
 
   it("sums failed across (failed, bounced)", () => {

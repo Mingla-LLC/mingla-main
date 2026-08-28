@@ -24,8 +24,14 @@ on:
       - "supabase/functions/resend-webhook/**"
       - "supabase/migrations/20270526002510_issue_2510_email_event_ingest.sql"
       - "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql"
+      # #2714 — truthful campaign open measurement and early-event repair.
+      - "supabase/migrations/20270606002714_issue_2714_campaign_open_tracking_truth.sql"
+      - "supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql"
+      - "supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql"
+      - "mingla-marketing/lib/privacyContent.ts"
       - "mingla-business/**"
       - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
+      - ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs"
       - ".github/workflows/issue-1995-contact-book-blast.yml"
 jobs:
   issue-1995-contact-book-blast:
@@ -52,6 +58,8 @@ jobs:
           }
       - run: node .github/scripts/strict-grep/issue-1995-contact-book-blast.mjs --self-test
       - run: node .github/scripts/strict-grep/issue-1995-contact-book-blast.mjs
+      - run: node .github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs --self-test
+      - run: node .github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.happy.test.ts
       - run: deno test supabase/functions/marketing-send/issue_1995_contact_book_blast.adversarial.test.ts
       - run: deno check supabase/functions/marketing-send/index.ts
@@ -107,12 +115,42 @@ jobs:
           deno check supabase/functions/resend-webhook/index.ts
           deno test --allow-env --allow-read \
             supabase/functions/resend-webhook/issue_2510_resend_webhook.test.ts
+      - name: "#2714 campaign open truth (sender + webhook happy paths)"
+        run: |
+          deno fmt --check \
+            supabase/functions/marketing-send/issue_2714_campaign_open_truth.happy.test.ts \
+            supabase/functions/resend-webhook/issue_2714_campaign_open_truth.happy.test.ts
+          deno test --allow-read \
+            supabase/functions/marketing-send/issue_2714_campaign_open_truth.happy.test.ts \
+            supabase/functions/resend-webhook/issue_2714_campaign_open_truth.happy.test.ts
+      - name: "#1821 durable terminal readback compatibility"
+        run: |
+          deno fmt --check \
+            supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts
+          deno test --allow-env --allow-read \
+            supabase/functions/marketing-send/issue-1821-accepted-email-sms-invites.test.ts
+      - name: "#2714 campaign open truth (tester adversarial boundaries)"
+        run: |
+          deno fmt --check \
+            supabase/functions/marketing-send/issue_2714_campaign_open_truth.tester_adversarial.test.ts \
+            supabase/functions/resend-webhook/issue_2714_campaign_open_truth.tester_adversarial.test.ts
+          deno test --allow-read \
+            supabase/functions/marketing-send/issue_2714_campaign_open_truth.tester_adversarial.test.ts \
+            supabase/functions/resend-webhook/issue_2714_campaign_open_truth.tester_adversarial.test.ts
       - name: "#2510 event ingest is idempotent, monotonic, and suppresses correctly"
         env:
           PGPASSWORD: ${{ github.run_id }}
         run: |
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql
+      - name: "#2714 early events reconcile exactly once and health stays private"
+        env:
+          PGPASSWORD: ${{ github.run_id }}
+        run: |
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql
       - name: "#2509 migration is idempotent and the uniqueness actually bites"
         env:
           PGPASSWORD: ${{ github.run_id }}
@@ -126,7 +164,17 @@ jobs:
         working-directory: mingla-business
       - run: npx jest src/components/marketing/__tests__/issue_1995_contact_book_blast.happy.test.tsx --runInBand
         working-directory: mingla-business
-      - name: Type-check the #1995 changed Business files
+      - name: "#2714 complete overview regression suite"
+        run: >-
+          npx jest --runTestsByPath
+          'app/(tabs)/marketing/__tests__/overview-no-revenue.test.ts'
+          src/services/marketing/__tests__/issue2514BrandScopedCampaigns.test.ts
+          src/services/marketing/__tests__/marketingOverviewService.test.ts
+          src/services/marketing/__tests__/issue_2714_campaign_open_truth.happy.test.ts
+          src/services/marketing/__tests__/issue_2714_campaign_open_truth.tester_adversarial.test.ts
+          --runInBand --no-cache
+        working-directory: mingla-business
+      - name: Type-check the #1995 and #2714 changed Business files
         run: |
           set +e
           npx tsc --noEmit --pretty false > /tmp/issue-1995-tsc.log 2>&1
@@ -136,9 +184,9 @@ jobs:
             cat /tmp/issue-1995-tsc.log
             exit "$tsc_status"
           fi
-          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|types/marketing\.ts' /tmp/issue-1995-tsc.log; then
+          if grep -E 'compose\.tsx|AudiencePickerSheet\.tsx|ComposerReviewSheet\.tsx|marketingCampaignService\.ts|useBookBlastPreview\.ts|issue_1995_contact_book_blast\.happy\.test\.tsx|types/marketing\.ts|marketingOverviewService\.ts|marketingReportService\.ts|OverviewMetricCard\.tsx|marketing/index\.tsx|marketing/campaigns/\[id\]\.tsx|issue_2714_campaign_open_truth\.happy\.test\.ts' /tmp/issue-1995-tsc.log; then
             cat /tmp/issue-1995-tsc.log
             exit 1
           fi
-          echo "No TypeScript diagnostics in #1995 changed Business files"
+          echo "No TypeScript diagnostics in #1995 or #2714 changed Business files"
         working-directory: mingla-business

@@ -49,9 +49,35 @@ describe("#2514 listCampaigns", () => {
 });
 
 describe("#2514 getMarketingOverview", () => {
-  it("scopes both windowed reads to the brand", () => {
-    const matches = OVERVIEW_SVC.split('.eq("brand_id", input.brand_id)').length - 1;
-    expect(matches).toBe(2);
+  /**
+   * [TEST-MOD-APPROVED #2714]
+   *
+   * The campaign read is the brand authority. Its IDs form the whitelist for
+   * both downstream relations; marketing_messages/marketing_clicks do not own
+   * a redundant direct brand_id filter in the canonical schema.
+   */
+  it("scopes downstream message and click reads through brand-filtered campaign ids", () => {
+    expect(OVERVIEW_SVC).toContain('.eq("brand_id", brandId)');
+    expect(OVERVIEW_SVC).toContain(
+      "const windowCampaignIds = windowCampaigns.map((c) => c.id)",
+    );
+    expect(OVERVIEW_SVC).toContain(
+      "loadWindowMessages(\n    windowCampaignIds,",
+    );
+    expect(OVERVIEW_SVC).toContain(
+      "loadClickedMessageIds(windowCampaignIds)",
+    );
+
+    const messageLoader = OVERVIEW_SVC.slice(
+      OVERVIEW_SVC.indexOf("async function loadWindowMessages"),
+      OVERVIEW_SVC.indexOf("async function loadClickedMessageIds"),
+    );
+    const clickLoader = OVERVIEW_SVC.slice(
+      OVERVIEW_SVC.indexOf("async function loadClickedMessageIds"),
+      OVERVIEW_SVC.indexOf("export interface GetMarketingOverviewInput"),
+    );
+    expect(messageLoader).toContain('.in("campaign_id", ids)');
+    expect(clickLoader).toContain('.in("campaign_id", ids)');
   });
 
   it("no longer sums the funnel across every brand you belong to", () => {

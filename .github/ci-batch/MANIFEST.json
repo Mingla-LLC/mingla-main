@@ -16662,14 +16662,16 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b01c8e926151415614fafa8b3d0e4f0dc1c1cc243203db547f6508350bc9ffb6",
+        "sourceSha256": "2169f5a3afebdf3244674fd9ac2c1c18f74021cc8b7ce06605aeccf7c6d80376",
         "triggers": [
           "pull_request"
         ],
         "pathScope": [
           ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs",
+          ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs",
           ".github/workflows/issue-1995-contact-book-blast.yml",
           "mingla-business/**",
+          "mingla-marketing/lib/privacyContent.ts",
           "supabase/functions/_shared/email/shell.ts",
           "supabase/functions/_shared/issue_2509_blast_durability.test.ts",
           "supabase/functions/_shared/issue_2509_blast_durability.tester_adversarial.test.ts",
@@ -16685,7 +16687,10 @@
           "supabase/migrations/20270401001995_issue_1995_contact_book_blast.sql",
           "supabase/migrations/20270525002509_issue_2509_blast_durability.sql",
           "supabase/migrations/20270526002510_issue_2510_email_event_ingest.sql",
-          "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql"
+          "supabase/migrations/20270606002714_issue_2714_campaign_open_tracking_truth.sql",
+          "supabase/migrations/__tests__/issue_2510_email_event_ingest.tester_adversarial.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2714_campaign_open_truth.happy.pg17.test.sql",
+          "supabase/migrations/__tests__/issue_2714_campaign_open_truth.tester_adversarial.pg17.test.sql"
         ],
         "jobKeys": [
           "issue-1995-contact-book-blast"

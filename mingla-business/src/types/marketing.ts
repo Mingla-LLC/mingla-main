@@ -278,6 +278,8 @@ export interface MarketingOverviewFunnel {
   delivered: number;
   /** #2510 — from `email.opened`. Meaningless unless `hasEventCoverage`. */
   opened: number;
+  /** Eligible delivered cohort used as the open-rate denominator. */
+  trackedDelivered: number;
   clicked: number;
   failed: number;
   /**
@@ -285,7 +287,10 @@ export interface MarketingOverviewFunnel {
    * must render delivered/opened as unknown, never as 0: "0% opened" is a
    * claim we cannot make about a campaign we never measured.
    */
-  hasEventCoverage: boolean;
+  hasDeliveryCoverage: boolean;
+  hasOpenCoverage: boolean;
+  deliveryHealthy: boolean;
+  openHealthy: boolean;
 }
 
 export interface MarketingOverviewRecentCampaign {

@@ -105,17 +105,20 @@ export default function MarketingOverviewRoute(): React.ReactElement {
 
   const snap = overviewQuery.data;
   const sent = snap.funnel.sent;
-  const deliveredPct = sent > 0 ? (snap.funnel.delivered / sent) * 100 : undefined;
+  const deliveredPct =
+    sent > 0 ? (snap.funnel.delivered / sent) * 100 : undefined;
   // #2510 — open rate is measured against DELIVERED, not accepted: an email
   // that never arrived cannot be opened, and dividing by accepted would
   // understate every campaign that had bounces.
-  const openedPct = snap.funnel.delivered > 0
-    ? (snap.funnel.opened / snap.funnel.delivered) * 100
-    : undefined;
+  const openedPct =
+    snap.funnel.trackedDelivered > 0
+      ? (snap.funnel.opened / snap.funnel.trackedDelivered) * 100
+      : undefined;
   const clickedPct = sent > 0 ? (snap.funnel.clicked / sent) * 100 : undefined;
   const failedPct = sent > 0 ? (snap.funnel.failed / sent) * 100 : undefined;
 
-  const isEmpty = snap.campaigns_sent_count === 0 && snap.recent_campaigns.length === 0;
+  const isEmpty =
+    snap.campaigns_sent_count === 0 && snap.recent_campaigns.length === 0;
   const caption = isEmpty
     ? "Your first blast is one tap away. Tap + below."
     : "in the last 30 days";
@@ -145,13 +148,44 @@ export default function MarketingOverviewRoute(): React.ReactElement {
           <OverviewMetricCard label="ACCEPTED" value={snap.funnel.sent} />
           <OverviewMetricCard
             label="DELIVERED"
-            value={snap.funnel.hasEventCoverage ? snap.funnel.delivered : null}
-            percent={snap.funnel.hasEventCoverage ? deliveredPct : undefined}
+            value={
+              snap.funnel.hasDeliveryCoverage ? snap.funnel.delivered : null
+            }
+            percent={snap.funnel.hasDeliveryCoverage ? deliveredPct : undefined}
+            measurementState={
+              !snap.funnel.deliveryHealthy
+                ? "degraded"
+                : snap.funnel.hasDeliveryCoverage
+                  ? "measured"
+                  : "notMeasured"
+            }
+            accessibilityLabel={
+              !snap.funnel.deliveryHealthy
+                ? "Delivered: temporarily unavailable while tracking catches up"
+                : snap.funnel.hasDeliveryCoverage
+                  ? `Delivered: ${snap.funnel.delivered}`
+                  : "Delivered: not measured"
+            }
           />
           <OverviewMetricCard
             label="OPENED"
-            value={snap.funnel.hasEventCoverage ? snap.funnel.opened : null}
-            percent={snap.funnel.hasEventCoverage ? openedPct : undefined}
+            value={snap.funnel.hasOpenCoverage ? snap.funnel.opened : null}
+            percent={snap.funnel.hasOpenCoverage ? openedPct : undefined}
+            measurementState={
+              !snap.funnel.openHealthy
+                ? "degraded"
+                : snap.funnel.hasOpenCoverage
+                  ? "measured"
+                  : "notMeasured"
+            }
+            helper="Tracked emails only."
+            accessibilityLabel={
+              !snap.funnel.openHealthy
+                ? "Opened: temporarily unavailable while tracking catches up. Tracked emails only."
+                : snap.funnel.hasOpenCoverage
+                  ? `Opened: ${snap.funnel.opened} tracked email${snap.funnel.opened === 1 ? "" : "s"} opened, ${Math.round(openedPct ?? 0)} percent. Tracked emails only.`
+                  : "Opened: not measured. Tracked emails only."
+            }
           />
           <OverviewMetricCard
             label="CLICKED"
@@ -165,6 +199,12 @@ export default function MarketingOverviewRoute(): React.ReactElement {
             tone="warning"
           />
         </View>
+
+        {!snap.funnel.deliveryHealthy || !snap.funnel.openHealthy ? (
+          <Text style={styles.trackingDegraded}>
+            Tracking data is catching up. Check back in a few minutes.
+          </Text>
+        ) : null}
 
         {snap.recent_campaigns.length > 0 ? (
           <>
@@ -267,6 +307,11 @@ const styles = StyleSheet.create({
   sectionLabel: {
     ...typography.labelCap,
     color: textTokens.tertiary,
+  },
+  trackingDegraded: {
+    ...typography.bodySm,
+    color: textTokens.secondary,
+    marginTop: -spacing.md,
   },
   recentList: {
     borderRadius: radius.lg,
