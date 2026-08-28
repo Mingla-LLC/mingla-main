@@ -54,9 +54,10 @@ const SESSION_REPLAY_SAMPLE_RATE = 0.2;
 
 // localStorage key — the banner's own source of truth for whether to re-show.
 // Shared shape with the marketing surface ("granted" | "denied" + ts).
-const CONSENT_STORAGE_KEY = "mingla_consent_v1";
+export const CONSENT_STORAGE_KEY = "mingla_consent_v1";
 
-type ConsentChoice = "granted" | "denied";
+export type ConsentChoice = "granted" | "denied";
+export type StoredConsentSnapshot = ConsentChoice | "unresolved";
 
 const extra = Constants.expoConfig?.extra as
   | Record<string, string | undefined>
@@ -103,6 +104,8 @@ function readEnv(name: string): string | undefined {
 let posthogClient: PostHog | null = null;
 let initialized = false;
 let gaMeasurementId: string | null = null;
+let pageConsentChoice: ConsentChoice | null | undefined;
+const consentSubscribers = new Set<() => void>();
 
 // ISSUE-865 WP-C — ad-conversion pixel state. Resolved in initWebAnalytics;
 // bootstrapped ONLY on consent grant. `null` id ⇒ that pixel never loads.
@@ -138,8 +141,19 @@ function hasWindow(): boolean {
   return typeof window !== "undefined";
 }
 
-/** The banner's stored choice, or null if the visitor has not chosen yet. */
-export function readStoredConsent(): ConsentChoice | null {
+function parseConsentRecord(raw: string | null): ConsentChoice | null {
+  if (raw === null) return null;
+  try {
+    const parsed = JSON.parse(raw) as { choice?: string };
+    return parsed.choice === "granted" || parsed.choice === "denied"
+      ? parsed.choice
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function readPersistedConsent(): ConsentChoice | null {
   if (!hasWindow()) return null;
   // Issue #922: the zero-JS invitation shell can record a first choice before
   // this canonical analytics module loads. Keep the validated choice for this
@@ -151,20 +165,67 @@ export function readStoredConsent(): ConsentChoice | null {
     return prebootChoice;
   }
   try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as { choice?: string };
-    if (parsed.choice === "granted" || parsed.choice === "denied") {
-      return parsed.choice;
-    }
-    return null;
+    return parseConsentRecord(window.localStorage.getItem(CONSENT_STORAGE_KEY));
   } catch {
     return null;
   }
 }
 
+/** The canonical same-page choice, or null while the visitor has not chosen. */
+export function readStoredConsent(): ConsentChoice | null {
+  if (!hasWindow()) return null;
+  if (pageConsentChoice === undefined) {
+    pageConsentChoice = readPersistedConsent();
+  }
+  return pageConsentChoice;
+}
+
+/** Stable snapshot consumed by React's external-store bridge. */
+export function getStoredConsentSnapshot(): StoredConsentSnapshot {
+  return readStoredConsent() ?? "unresolved";
+}
+
+function notifyConsentSubscribers(): void {
+  for (const subscriber of [...consentSubscribers]) subscriber();
+}
+
+function reconcileStoredConsent(event: StorageEvent): void {
+  if (event.key !== null && event.key !== CONSENT_STORAGE_KEY) return;
+  const next =
+    event.key === CONSENT_STORAGE_KEY
+      ? parseConsentRecord(event.newValue)
+      : (() => {
+          try {
+            return parseConsentRecord(
+              window.localStorage.getItem(CONSENT_STORAGE_KEY),
+            );
+          } catch {
+            return null;
+          }
+        })();
+  if (next === pageConsentChoice) return;
+  pageConsentChoice = next;
+  notifyConsentSubscribers();
+}
+
+/** Subscribe without initializing analytics or changing consent side effects. */
+export function subscribeStoredConsent(subscriber: () => void): () => void {
+  consentSubscribers.add(subscriber);
+  if (hasWindow() && consentSubscribers.size === 1) {
+    window.addEventListener("storage", reconcileStoredConsent);
+  }
+  return () => {
+    consentSubscribers.delete(subscriber);
+    if (hasWindow() && consentSubscribers.size === 0) {
+      window.removeEventListener("storage", reconcileStoredConsent);
+    }
+  };
+}
+
 function writeStoredConsent(choice: ConsentChoice): void {
   if (!hasWindow()) return;
+  const previous = readStoredConsent();
+  pageConsentChoice = choice;
   try {
     window.localStorage.setItem(
       CONSENT_STORAGE_KEY,
@@ -174,6 +235,7 @@ function writeStoredConsent(choice: ConsentChoice): void {
     // Storage unavailable (private mode quota) — non-fatal; the choice still
     // applies for this session via the PostHog/GA opt-in calls below.
   }
+  if (previous !== choice) notifyConsentSubscribers();
 }
 
 /**
