@@ -108,7 +108,7 @@ test("CONSENT GATE — fireAdReservation is a NO-OP before grantConsent (SC-8 / 
 test("grantConsent → fireAdReservation fires the LEAD Meta event 'Schedule' with the shared eventID (not 'Purchase')", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
-  wa.grantConsent();
+  await wa.grantConsent();
   wa.fireAdReservation("resv-xyz");
 
   const fbq = getFbq();
@@ -124,7 +124,7 @@ test("grantConsent → fireAdReservation fires the LEAD Meta event 'Schedule' wi
 test("free RSVP with no value — 'Schedule' still fires (£0 lead), no throw", async () => {
   const { wa, getFbq } = loadHarness(META_EXTRA);
   await wa.initWebAnalytics();
-  wa.grantConsent();
+  await wa.grantConsent();
   expect(() => wa.fireAdReservation("resv-free")).not.toThrow();
   const queued = ((getFbq() as unknown as { queue?: unknown[][] }).queue ?? []) as unknown[][];
   expect(queued.some((a) => a[0] === "track" && a[1] === "Schedule")).toBe(true);
@@ -136,7 +136,7 @@ test("NO-OP when the pixel id is absent (silent, never throws)", async () => {
     EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon",
   });
   await wa.initWebAnalytics();
-  wa.grantConsent();
+  await wa.grantConsent();
   expect(() => wa.fireAdReservation("resv-1")).not.toThrow();
   expect(getFbq()).toBeUndefined();
 });

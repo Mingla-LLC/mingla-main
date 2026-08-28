@@ -5,17 +5,14 @@
 // NOT a new design system — built from the existing marketing tokens/components
 // (Button, glass-strong surface, framer-motion, reduced-motion).
 //
-// THE REAL GATE (I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES):
-//   • PostHog inits with opt_out_capturing_by_default:true (posthog-provider.tsx)
-//     → stores nothing / captures nothing until Accept calls opt_in.
-//   • GA4 Consent Mode v2: the default-DENIED snippet runs in app/layout.tsx
-//     BEFORE <GoogleAnalytics> loads. Accept here fires gtag('consent','update',
-//     {all granted}); Reject leaves defaults denied (cookieless consent mode).
+// THE REAL GATE (I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT):
+//   • Neither PostHog nor Google Analytics mounts before a valid grant.
+//   • Accept persists first, then starts one shared boot. Reject only persists.
 //
 // Source of truth for re-show = localStorage key `mingla_consent_v1`:
-//   absent  → show banner, analytics stay denied/opted-out
-//   granted → opt in PostHog + GA consent granted, do not show
-//   denied  → opt out PostHog + GA stays denied, do not show
+//   absent  → show banner, analytics remain uninitialized
+//   granted → initialize once, do not show
+//   denied  → remain uninitialized, do not show
 
 import { useEffect, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
@@ -25,74 +22,16 @@ import { Button } from '@/components/ui/button'
 import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 import { shouldRenderConsentBanner } from '@/lib/consent-banner-visibility'
 import {
-  captureMarketing,
+  captureMarketingConsentGrantOnce,
+  persistMarketingConsent,
   posthogOptIn,
-  posthogOptOut,
+  readMarketingConsent,
+  type MarketingConsentValue,
 } from '@/components/marketing/posthog-provider'
 
+// Storage ownership is canonical in posthog-provider.tsx. This compatibility
+// export preserves the established key contract: mingla_consent_v1.
 export const CONSENT_STORAGE_KEY = 'mingla_consent_v1'
-type ConsentValue = 'granted' | 'denied'
-
-interface StoredConsent {
-  value: ConsentValue
-  ts: number
-}
-
-// Minimal typing for gtag without pulling a global types package.
-type Gtag = (...args: unknown[]) => void
-function getGtag(): Gtag | undefined {
-  if (typeof window === 'undefined') return undefined
-  return (window as unknown as { gtag?: Gtag }).gtag
-}
-
-function readStoredConsent(): ConsentValue | null {
-  if (typeof window === 'undefined') return null
-  try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY)
-    if (!raw) return null
-    const parsed = JSON.parse(raw) as Partial<StoredConsent>
-    return parsed.value === 'granted' || parsed.value === 'denied'
-      ? parsed.value
-      : null
-  } catch {
-    return null
-  }
-}
-
-function writeStoredConsent(value: ConsentValue): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      CONSENT_STORAGE_KEY,
-      JSON.stringify({ value, ts: Date.now() } satisfies StoredConsent),
-    )
-  } catch {
-    // Storage may be unavailable (private mode quota) — degrade to a session
-    // decision; the banner simply re-shows next load. No crash.
-  }
-}
-
-/** Apply a stored/just-made decision to PostHog + GA4 Consent Mode v2. */
-function applyConsent(value: ConsentValue): void {
-  if (value === 'granted') {
-    posthogOptIn()
-    getGtag()?.('consent', 'update', {
-      ad_storage: 'granted',
-      analytics_storage: 'granted',
-      ad_user_data: 'granted',
-      ad_personalization: 'granted',
-    })
-  } else {
-    posthogOptOut()
-    // Leave GA defaults denied (cookieless consent mode). Explicit re-assert.
-    getGtag()?.('consent', 'update', {
-      ad_storage: 'denied',
-      analytics_storage: 'denied',
-      ad_user_data: 'denied',
-      ad_personalization: 'denied',
-    })
-  }
-}
 
 const EASE_OUT_QUART = [0.16, 1, 0.3, 1] as const
 
@@ -103,36 +42,26 @@ export function ConsentBanner(): React.ReactElement | null {
   // so no hook is ever conditionally skipped.
   const pathname = usePathname()
   // null = undecided (mount); once resolved we either show the banner or not.
-  const [decision, setDecision] = useState<ConsentValue | 'pending'>('pending')
+  const [decision, setDecision] = useState<MarketingConsentValue | 'pending'>('pending')
 
   // On mount: re-apply any prior decision; otherwise show the banner.
   useEffect(() => {
-    const stored = readStoredConsent()
+    const stored = readMarketingConsent()
     if (stored) {
-      applyConsent(stored)
       setDecision(stored)
     } else {
       setDecision('pending')
     }
   }, [])
 
-  const choose = (value: ConsentValue): void => {
-    writeStoredConsent(value)
-    applyConsent(value)
-    // META-ORCH-1187 P2 — consent-rate measurement. Fire AFTER applyConsent()
-    // above (which calls posthogOptIn on grant): while still opted-out PostHog
-    // drops captures, so an earlier fire would be silently lost. Only the active
-    // grant is captured. NO `consent_denied` PostHog capture on Reject — PostHog
-    // stays opted-out there so a capture cannot send; deny-rate is derived
-    // downstream as sessions-without-a `consent_granted`. (GA4 still records a
-    // cookieless `consent_denied` ping below for symmetry, since gtag is loaded.)
-    if (value === 'granted') {
-      captureMarketing('consent_granted')
-      getGtag()?.('event', 'consent_granted')
-    } else {
-      getGtag()?.('event', 'consent_denied')
-    }
+  const choose = (value: MarketingConsentValue): void => {
+    persistMarketingConsent(value)
     setDecision(value)
+    // Consent-rate measurement is grant-only and runs after the one-flight boot.
+    // Reject has no analytics-side effect; deny rate remains derived downstream.
+    if (value === 'granted') {
+      void posthogOptIn().then(() => captureMarketingConsentGrantOnce())
+    }
   }
 
   // Show only while a fresh visitor has not yet decided AND the route allows the

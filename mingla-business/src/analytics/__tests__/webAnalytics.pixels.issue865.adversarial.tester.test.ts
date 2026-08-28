@@ -108,7 +108,7 @@ const ORDER_ID = "order-dedup-865";
 test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct names (browser half of SC-15)", async () => {
   const { wa, win } = loadHarness(ALL_PIXELS);
   await wa.initWebAnalytics();
-  wa.grantConsent(); // bootstraps all four
+  await wa.grantConsent(); // bootstraps all four
   expect(wa.adPixelsReady()).toBe(true);
 
   wa.fireAdPurchase(ORDER_ID, { value: 35, currency: "GBP" });
@@ -143,7 +143,7 @@ test("B1 fireAdPurchase fires ALL FOUR pixels with the shared event_id + correct
 test("B2 postAttributionConversion sends event_id/value/currency/click_id ONLY — never email/phone (SC-8/SC-9)", async () => {
   const { wa, fetchCalls } = loadHarness(ALL_PIXELS);
   await wa.initWebAnalytics();
-  wa.grantConsent();
+  await wa.grantConsent();
 
   wa.postAttributionConversion({ eventId: ORDER_ID, valueCents: 3500, currency: "GBP" });
 
@@ -164,24 +164,34 @@ test("B2 postAttributionConversion sends event_id/value/currency/click_id ONLY �
 
 // ═══ B3 — click capture forwards click-id + UTM only; no-op with no ad signal ═
 test("B3 captureAdClickIds forwards click-id/UTM only (no PII) and no-ops with no ad signal", async () => {
-  // (a) With an fbclid + utm → a touch POST carrying the click-id + utm, no PII.
+  // (a) With an fbclid + utm, pre-consent capture stays entirely dark.
   const withSignal = loadHarness(ALL_PIXELS, "?fbclid=ABC123&utm_source=meta&utm_campaign=summer");
   await withSignal.wa.initWebAnalytics();
   withSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
-  const touch = withSignal.fetchCalls.find((c) => c.url.includes("/attribution-capture") && c.body.includes("touch"));
+  expect(withSignal.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
+  const preConsentStore = (withSignal.win.sessionStorage as { getItem(k: string): string | null });
+  expect(preConsentStore.getItem("mingla_ad_click_v1")).toBeNull();
+
+  // (b) The same harness sends exactly one touch only after explicit grant.
+  await withSignal.wa.grantConsent();
+  withSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
+  const touches = withSignal.fetchCalls.filter((c) => c.url.includes("/attribution-capture") && c.body.includes("touch"));
+  expect(touches).toHaveLength(1);
+  const touch = touches[0];
   expect(touch).toBeDefined();
-  const tp = JSON.parse(touch!.body);
+  const tp = JSON.parse(touch.body);
   expect(tp.kind).toBe("touch");
   expect(tp.external_click_id).toBe("ABC123");
   expect(tp.network).toBe("meta");
   expect(tp.utm.utm_source).toBe("meta");
-  const tbLower = touch!.body.toLowerCase();
+  const tbLower = touch.body.toLowerCase();
   expect(tbLower).not.toContain("email");
   expect(tbLower).not.toContain("phone");
 
-  // (b) With NO ad signal on the URL → NOTHING is posted (byte-identical no-op).
+  // (c) With NO ad signal on the URL → NOTHING is posted (byte-identical no-op).
   const noSignal = loadHarness(ALL_PIXELS, "");
   await noSignal.wa.initWebAnalytics();
+  await noSignal.wa.grantConsent();
   noSignal.fetchCalls.length = 0; // ignore any init-time calls
   noSignal.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   expect(noSignal.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);

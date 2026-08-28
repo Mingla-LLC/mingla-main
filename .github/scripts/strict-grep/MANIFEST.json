@@ -15,8 +15,8 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 618,
-  "selfTestWiredFloor": 395,
+  "expectedStrictGrepMjsFiles": 620,
+  "selfTestWiredFloor": 396,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -4086,6 +4086,33 @@
       "selfTest": "wired",
       "jobKeys": [
         "issue-1995-contact-book-blast"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2771-no-web-analytics-before-grant.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": [
+        "issue-2771-no-web-analytics-before-grant"
+      ]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2771-no-web-analytics-before-grant.tester.adversarial.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": [
+        "plain"
+      ],
+      "selfTest": "none",
+      "jobKeys": [
+        "issue-2771-no-web-analytics-before-grant"
       ]
     },
     {

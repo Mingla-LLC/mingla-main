@@ -100,8 +100,14 @@ const cases: ReadonlyArray<[string, () => void]> = [
         'consent-banner.tsx lost the AnimatePresence animation wrapper',
       )
       assert(
-        /\(\s*['"]consent['"]\s*,\s*['"]update['"]/.test(bannerSrc),
-        'consent-banner.tsx lost the GA4 Consent Mode consent/update calls',
+        !/gtag|\(\s*['"]consent['"]\s*,\s*['"]update['"]/.test(bannerSrc),
+        'consent-banner.tsx must not directly own or invoke a gtag consent/update command',
+      )
+      assert(
+        /persistMarketingConsent\(value\)[\s\S]*posthogOptIn\(\)\.then\(\(\) => captureMarketingConsentGrantOnce\(\)\)/.test(
+          bannerSrc,
+        ),
+        'Accept must persist first, then delegate to the grant-only analytics facade and capture once',
       )
       assert(
         /const pathname = usePathname\(\)/.test(bannerSrc),
