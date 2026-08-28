@@ -9716,3 +9716,11 @@ independent tester returns PASS.
 - **Enforcement:** FK/redaction/postcondition/purge contract and #2725 gate.
 
 All eight #2725 rules were established ACTIVE after independent final integration PASS on 2026-08-28.
+
+## DRAFT — issue #2739 (public gallery thumbnail web controls are named)
+
+### I-PROPOSED-2739-COVER-GALLERY-WEB-CONTROLS-NAMED (DRAFT)
+
+- **Rule:** Whenever `CoverGalleryRow` renders on web, it exposes one named group and one standards-valid button per `[cover] ++ gallery` item; exactly the displayed item is marked current through the grouped-carousel disabled-button contract; Enter, Space, and pointer activate inactive items once; native retains its imagebutton/selected contract.
+- **Enforcement:** The committed implementor and tester render suites, their explicit invocation by the issue #1486 dormant-render workflow, product-only fail-on-revert receipts, live production browser evidence, and four native preservation legs.
+- **Status:** DRAFT until independent tester PASS, every PR check is green, and merged production web plus all four served native bundles are verified.

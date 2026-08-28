@@ -106,13 +106,31 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
     showPlay: boolean,
   ): React.ReactNode => {
     const active = index === activeIndex;
+    // RNW's Pressable overwrites a direct `aria-disabled` prop with its own
+    // `disabled` value, and `disabled` would remove the current card from the
+    // Tab order. Its typed compatibility input reaches createDOMProps without
+    // changing native props, which gives web the APG current-item marker while
+    // keeping the control focusable.
+    const webCurrentState =
+      Platform.OS === "web"
+        ? {
+            accessibilityDisabled: active,
+            ...(active ? { onPress: undefined } : {}),
+          }
+        : {};
     return (
       <Pressable
         key={`cover-gallery-card-${index}`}
         onPress={() => onSelect(index)}
-        accessibilityRole="imagebutton"
+        {...webCurrentState}
+        role={Platform.OS === "web" ? "button" : undefined}
+        accessibilityRole={Platform.OS === "web" ? undefined : "imagebutton"}
         accessibilityState={{ selected: active }}
-        accessibilityLabel={a11yLabel + (active ? ", selected" : "")}
+        accessibilityLabel={
+          Platform.OS === "web"
+            ? a11yLabel
+            : a11yLabel + (active ? ", selected" : "")
+        }
         testID={testID !== undefined ? `${testID}-card-${index}` : undefined}
         style={[
           styles.card,
@@ -145,7 +163,10 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.rowContent}
       style={styles.row}
-      accessibilityLabel="Cover photos"
+      role={Platform.OS === "web" ? "group" : undefined}
+      accessibilityLabel={
+        Platform.OS === "web" ? "Choose cover photo" : "Cover photos"
+      }
       testID={testID}
     >
       {/* Card 0 — the primary cover (▶ only when it is a video). */}
