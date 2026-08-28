@@ -23,8 +23,9 @@ import type { CompetitorWatchV2Row } from "../../../../types/growthTools";
 interface Node{type?:unknown;props:Record<string,unknown>&{children?:unknown;testID?:string}}
 interface Tree{root:{findAll:(predicate:(node:Node)=>boolean)=>Node[]};unmount:()=>void}
 const Renderer=require("react-test-renderer") as {create:(element:React.ReactElement)=>Tree;act:(callback:()=>Promise<void>|void)=>Promise<void>};
+const TEST_NOW=Date.parse("2026-08-27T12:00:00Z");
 const row:CompetitorWatchV2Row={schemaVersion:2,id:"watch-1",name:"Lantern Room",city:"Atlanta",website:"https://lantern.example",placePoolId:null,createdAt:"2026-08-01T00:00:00Z",updatedAt:"2026-08-27T00:00:00Z",freshness:"current",lastBriefUpdatedAt:"2026-08-27T00:00:00Z",checkedAt:"2026-08-27T00:00:00Z",nextRefreshAt:"2026-09-03T00:00:00Z",noMeaningfulChange:false,manualRefreshState:"available",sources:[{kind:"website",url:"https://lantern.example",capability:"analyzed_weekly",availability:"enabled",availabilityGeneration:1,health:"current",lastCheckedAt:"2026-08-27T00:00:00Z",safeReason:null},{kind:"tiktok",url:"https://www.tiktok.com/@lantern",capability:"link_only",availability:"enabled",availabilityGeneration:1,health:"current",lastCheckedAt:null,safeReason:null}],summary:{whatChanged:"A Friday tasting menu appeared.",primaryAction:"Test a weekday tasting offer."},activeJob:null,latest:null};
-const trees:Tree[]=[];afterEach(()=>{trees.splice(0).forEach((tree)=>tree.unmount());jest.clearAllMocks();});
+const trees:Tree[]=[];beforeEach(()=>{jest.spyOn(Date,"now").mockReturnValue(TEST_NOW);});afterEach(()=>{trees.splice(0).forEach((tree)=>tree.unmount());jest.clearAllMocks();jest.restoreAllMocks();});
 async function render(element:React.ReactElement):Promise<Tree>{let tree:Tree|null=null;await Renderer.act(async()=>{tree=Renderer.create(element);});trees.push(tree!);return tree!;}
 const text=(tree:Tree)=>tree.root.findAll((node)=>typeof node.props.children==="string").map((node)=>String(node.props.children)).join(" ");
 const byId=(tree:Tree,id:string)=>tree.root.findAll((node)=>typeof node.type==="string"&&node.props.testID===id);
