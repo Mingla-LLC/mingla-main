@@ -184,6 +184,12 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
     ]);
     expect(buttons.every((button) => button.props.tabIndex === 0)).toBe(true);
     expect(
+      buttons.every((button) => button.props["aria-selected"] === undefined),
+    ).toBe(true);
+    expect(
+      buttons.every((button) => button.props["aria-pressed"] === undefined),
+    ).toBe(true);
+    expect(
       tree.root.findAll(
         (node: ReactTestInstance) =>
           typeof node.type === "string" &&
