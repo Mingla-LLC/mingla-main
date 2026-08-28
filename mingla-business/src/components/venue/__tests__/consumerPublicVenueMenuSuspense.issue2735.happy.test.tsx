@@ -253,7 +253,9 @@ test("Consumer ordering-off Menu remains populated after the actual lazy surface
   }>((resolve) => {
     resolveLazy = resolve;
   });
-  const LazyConsumerSurface = React.lazy(() => lazyModule);
+  const LazyConsumerSurface = React.lazy<typeof ConsumerVenueOrderingSurface>(
+    () => lazyModule,
+  );
   let tree!: RenderTree;
 
   await TestRenderer.act(async () => {
