@@ -172,9 +172,17 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
         node.props["aria-label"] === "Choose cover photo",
     );
     const buttons = hostButtons(tree.root);
+    const pressableInputs = tree.root.findAllByType(Pressable);
 
     expect(groups).toHaveLength(1);
     expect(buttons).toHaveLength(5);
+    expect(pressableInputs).toHaveLength(5);
+    expect(
+      pressableInputs.every(
+        (card: ReactTestInstance) =>
+          card.props.accessibilityState === undefined,
+      ),
+    ).toBe(true);
     expect(buttons.map((button) => button.props["aria-label"])).toEqual([
       "Cover",
       "Photo 1 of 4",

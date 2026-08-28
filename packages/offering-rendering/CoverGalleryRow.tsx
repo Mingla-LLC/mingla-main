@@ -115,8 +115,6 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
       Platform.OS === "web"
         ? {
             accessibilityDisabled: active,
-            // Native selected state is forbidden on the web button pattern.
-            accessibilityState: undefined,
             ...(active ? { onPress: undefined } : {}),
           }
         : {};
@@ -127,7 +125,9 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
         {...webCurrentState}
         role={Platform.OS === "web" ? "button" : undefined}
         accessibilityRole={Platform.OS === "web" ? undefined : "imagebutton"}
-        accessibilityState={{ selected: active }}
+        accessibilityState={
+          Platform.OS === "web" ? undefined : { selected: active }
+        }
         accessibilityLabel={
           Platform.OS === "web"
             ? a11yLabel
