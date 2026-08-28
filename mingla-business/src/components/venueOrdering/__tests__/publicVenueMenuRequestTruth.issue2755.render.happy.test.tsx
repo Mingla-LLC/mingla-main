@@ -362,3 +362,50 @@ test("announces first failure, repeat failure, and recovery once each", async ()
   ]);
   await TestRenderer.act(async () => tree.unmount());
 });
+
+test("manual stale retry retains copy, child identity, and the focused control", async () => {
+  let mounts = 0;
+  const Probe = (): React.ReactElement => {
+    React.useEffect(() => {
+      mounts += 1;
+    }, []);
+    return <span>stale-retry-tree</span>;
+  };
+  const body = (): React.ReactElement => <Probe />;
+  const retry = jest.fn(() => new Promise<never>(() => undefined));
+  let tree!: Tree;
+
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      page(MENU, { state: "error", isFetching: false, onRetry: retry }, body),
+    );
+  });
+  const control = retryButton(tree);
+  await TestRenderer.act(async () => {
+    control.props.onFocus?.({
+      currentTarget: { matches: (selector: string) => selector === ":focus-visible" },
+    });
+    control.props.onPress?.();
+  });
+  await TestRenderer.act(async () => {
+    tree.update(
+      page(MENU, { state: "ready", isFetching: true, onRetry: retry }, body),
+    );
+  });
+
+  expect(retry).toHaveBeenCalledTimes(1);
+  expect(retryButton(tree)).toBe(control);
+  expect(retryButton(tree).props.accessibilityState).toEqual({
+    disabled: true,
+    busy: true,
+  });
+  expect(flatStyle(retryButton(tree))).toMatchObject({
+    outlineWidth: 3,
+    outlineOffset: -4,
+  });
+  expect(countText(tree, "Menu may be out of date.")).toBe(1);
+  expect(countText(tree, "Updating menu…")).toBe(0);
+  expect(countText(tree, "stale-retry-tree")).toBe(1);
+  expect(mounts).toBe(1);
+  await TestRenderer.act(async () => tree.unmount());
+});

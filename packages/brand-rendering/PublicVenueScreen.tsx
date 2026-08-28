@@ -1059,6 +1059,9 @@ export const PublicVenueScreen = ({
   const retryHadFocusRef = React.useRef<boolean>(false);
   const retryRequestedRef = React.useRef<boolean>(false);
   const retryStartedOnMenuRef = React.useRef<boolean>(false);
+  const retryPresentationStateRef = React.useRef<PublicVenueMenuRequestState | null>(
+    null,
+  );
   const previousMenuStateRef = React.useRef<PublicVenueMenuRequestState | null>(
     null,
   );
@@ -1093,7 +1096,10 @@ export const PublicVenueScreen = ({
       previousMenuFetchingRef.current !== menuLifecycle.isFetching;
     if (stateChanged || fetchingChanged) {
       if (menuLifecycle.isFetching) {
-        if (menuLifecycle.state !== "error") {
+        if (
+          !retryRequestedRef.current &&
+          menuLifecycle.state !== "error"
+        ) {
           AccessibilityInfo.announceForAccessibility(menuPresentation.copy);
         }
       } else if (menuLifecycle.state === "error") {
@@ -1113,6 +1119,7 @@ export const PublicVenueScreen = ({
       retryRequestedRef.current = false;
       retryHadFocusRef.current = false;
       retryStartedOnMenuRef.current = false;
+      retryPresentationStateRef.current = null;
       retryInFlightRef.current = false;
       setRetryLocallyBusy(false);
     }
@@ -1133,6 +1140,7 @@ export const PublicVenueScreen = ({
     retryHadFocusRef.current = retryOwnsFocusRef.current;
     retryStartedOnMenuRef.current =
       normalizedReservationUiState.activeTab === "menu";
+    retryPresentationStateRef.current = menuLifecycle.state;
     setRetryLocallyBusy(true);
     try {
       const result = menuLifecycle.onRetry();
@@ -1547,9 +1555,25 @@ export const PublicVenueScreen = ({
   // The slot renders the LIST (orderable or display-only); the heading is the
   // page's, always.
   const menuBusy = menuLifecycle.isFetching || retryLocallyBusy;
-  const menuHasStaleItems = menuPresentation.hasStaleItems;
-  const showMenuState = menuPresentation.showState;
-  const menuStateCopy = menuPresentation.copy;
+  // A manual retry is a busy version of the error the guest chose to retry,
+  // not a new cold load. Freeze that presentation until the request settles so
+  // the focused retry control and its explanation stay mounted in place.
+  const retryPresentationState =
+    retryRequestedRef.current &&
+    (menuLifecycle.isFetching ||
+      (retryLocallyBusy && menuLifecycle.state === "error"))
+      ? retryPresentationStateRef.current
+      : null;
+  const visibleMenuState = retryPresentationState ?? menuLifecycle.state;
+  const visibleMenuPresentation = resolvePublicVenueMenuPresentation(
+    visibleMenuState,
+    menuBusy,
+    menuItemCount,
+    categoryHasMenu,
+  );
+  const menuHasStaleItems = visibleMenuPresentation.hasStaleItems;
+  const showMenuState = visibleMenuPresentation.showState;
+  const menuStateCopy = visibleMenuPresentation.copy;
   const menuBlock = !hasMenu ? null : (
     <View style={styles.menuWrap}>
       <Text
@@ -1567,7 +1591,7 @@ export const PublicVenueScreen = ({
           testID={menuHasStaleItems ? "menu-stale-state" : "menu-cold-state"}
         >
           <View style={styles.menuStateCopy}>
-            {menuLifecycle.state === "loading" || menuBusy ? (
+            {visibleMenuState === "loading" || menuBusy ? (
               <ActivityIndicator
                 accessible={false}
                 accessibilityElementsHidden
@@ -1579,19 +1603,19 @@ export const PublicVenueScreen = ({
             <View style={styles.menuStateTextWrap}>
               <Text
                 accessibilityRole={
-                  !menuHasStaleItems && menuLifecycle.state === "error"
+                  !menuHasStaleItems && visibleMenuState === "error"
                     ? "header"
                     : undefined
                 }
                 style={[
-                  !menuHasStaleItems && menuLifecycle.state === "error"
+                  !menuHasStaleItems && visibleMenuState === "error"
                     ? styles.menuColdErrorTitle
                     : menuHasStaleItems
                       ? styles.menuStaleText
                       : styles.menuColdLoadingText,
                   {
                     color:
-                      !menuHasStaleItems && menuLifecycle.state === "error"
+                      !menuHasStaleItems && visibleMenuState === "error"
                         ? palette.primaryText
                         : palette.secondaryText,
                   },
@@ -1599,7 +1623,7 @@ export const PublicVenueScreen = ({
               >
                 {menuStateCopy}
               </Text>
-              {!menuHasStaleItems && menuLifecycle.state === "error" ? (
+              {!menuHasStaleItems && visibleMenuState === "error" ? (
                 <Text
                   style={[
                     styles.menuColdErrorBody,
@@ -1611,7 +1635,7 @@ export const PublicVenueScreen = ({
               ) : null}
             </View>
           </View>
-          {menuLifecycle.state === "error" ? (
+          {visibleMenuState === "error" ? (
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Try loading the menu again"
