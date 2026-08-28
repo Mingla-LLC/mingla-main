@@ -943,6 +943,102 @@ export interface PublicVenueReservable {
   currency: string | null;
 }
 
+export const PUBLIC_VENUE_RESERVABLE_INVALID_RESPONSE =
+  "public_venue_reservable_invalid_response" as const;
+
+/**
+ * #2730 — stable, payload-free contract failure for malformed public
+ * reservability truth. The raw response is deliberately excluded from this
+ * error so diagnostics cannot leak or fragment on provider payload details.
+ */
+export class PublicVenueReservableContractError extends Error {
+  readonly code = PUBLIC_VENUE_RESERVABLE_INVALID_RESPONSE;
+
+  constructor() {
+    super("The public venue reservability response was invalid.");
+    this.name = "PublicVenueReservableContractError";
+  }
+}
+
+export const isPublicVenueReservableContractError = (
+  error: unknown,
+): error is PublicVenueReservableContractError =>
+  error !== null &&
+  typeof error === "object" &&
+  "code" in error &&
+  error.code === PUBLIC_VENUE_RESERVABLE_INVALID_RESPONSE;
+
+const invalidPublicVenueReservable = (): never => {
+  throw new PublicVenueReservableContractError();
+};
+
+/**
+ * #2730 — validate the camel-cased cache contract as well as the RPC result.
+ * React Query selectors call this even for fresh pre-seeded values, preventing
+ * the historical status string from becoming a false operator-disabled claim.
+ */
+export const validatePublicVenueReservable = (
+  value: unknown,
+): PublicVenueReservable => {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    return invalidPublicVenueReservable();
+  }
+  const row = value as JsonRecord;
+  const keys = Object.keys(row);
+  if (
+    keys.length !== 3 ||
+    keys.some(
+      (key) => key !== "reservable" && key !== "venueId" && key !== "currency",
+    ) ||
+    typeof row.reservable !== "boolean" ||
+    (typeof row.venueId !== "string" && row.venueId !== null) ||
+    (typeof row.currency !== "string" && row.currency !== null)
+  ) {
+    return invalidPublicVenueReservable();
+  }
+  if (
+    (row.reservable &&
+      (row.venueId === null || row.venueId.trim().length === 0)) ||
+    (!row.reservable && (row.venueId !== null || row.currency !== null))
+  ) {
+    return invalidPublicVenueReservable();
+  }
+  return {
+    reservable: row.reservable,
+    venueId: row.venueId,
+    currency: row.currency,
+  };
+};
+
+const parsePublicVenueReservableRpcResponse = (
+  value: unknown,
+): PublicVenueReservable => {
+  if (!Array.isArray(value) || value.length !== 1) {
+    return invalidPublicVenueReservable();
+  }
+  const candidate: unknown = value[0];
+  if (
+    candidate === null ||
+    typeof candidate !== "object" ||
+    Array.isArray(candidate)
+  ) {
+    return invalidPublicVenueReservable();
+  }
+  const row = candidate as JsonRecord;
+  if (
+    typeof row.reservable !== "boolean" ||
+    (typeof row.venue_id !== "string" && row.venue_id !== null) ||
+    (typeof row.currency !== "string" && row.currency !== null)
+  ) {
+    return invalidPublicVenueReservable();
+  }
+  return validatePublicVenueReservable({
+    reservable: row.reservable,
+    venueId: row.venue_id,
+    currency: row.currency,
+  });
+};
+
 /**
  * META-ORCH-1255(C) — the anon-safe reserve DISPLAY GATE (§6.7). Wraps the
  * place-keyed `pg_venue_reservable_for_place` (definer, anon EXECUTE,
@@ -957,14 +1053,7 @@ export const getPublicVenueReservable = async (
     p_place_pool_id: placePoolId,
   });
   if (error !== null) throw error;
-  const row = (Array.isArray(data) ? data[0] : data) as
-    | { reservable: boolean; venue_id: string | null; currency: string | null }
-    | undefined;
-  return {
-    reservable: row?.reservable === true,
-    venueId: row?.venue_id ?? null,
-    currency: row?.currency ?? null,
-  };
+  return parsePublicVenueReservableRpcResponse(data);
 };
 
 /**
