@@ -2053,7 +2053,6 @@ export const PublicVenueScreen = ({
       {identityBlock}
       {refreshNoticeVisible ? (
         <View
-          key={`public-venue-refresh-error-${refreshErrorVersion}`}
           style={[
             styles.refreshNotice,
             isDesktop && styles.refreshNoticeDesktop,
@@ -2067,6 +2066,7 @@ export const PublicVenueScreen = ({
           testID="issue-2756-stale-refresh-notice"
         >
           <Text
+            key={`public-venue-refresh-error-${refreshErrorVersion}`}
             style={[
               styles.refreshMessage,
               themedFont,

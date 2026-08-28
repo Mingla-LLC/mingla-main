@@ -80,6 +80,74 @@ export interface PublicVenueRetryActionProps {
   onFocusChange?: (focused: boolean) => void;
 }
 
+interface PublicVenueWebRetryHostProps {
+  accessibleLabel: string;
+  /** Renderer-only compatibility seam; the raw DOM child uses aria-label. */
+  accessibilityLabel: string;
+  busy: boolean;
+  label: BrandRenderingReactElement;
+  style: object;
+  onPress: () => void;
+  onFocus: () => void;
+  onBlur: () => void;
+  onMouseEnter: () => void;
+  onMouseLeave: () => void;
+  onPointerDown: (event: { preventDefault: () => void }) => void;
+  onPointerUp: () => void;
+  onPointerCancel: () => void;
+  onClick: (event: {
+    preventDefault: () => void;
+    stopPropagation: () => void;
+  }) => void;
+  onKeyDown: (event: {
+    key: string;
+    repeat: boolean;
+    preventDefault: () => void;
+  }) => void;
+  onKeyUp: (event: { key: string; preventDefault: () => void }) => void;
+}
+
+/** Raw web host: RNW promotes aria-disabled buttons to HTML disabled. */
+const PublicVenueWebRetryHost = ({
+  accessibleLabel,
+  busy,
+  label,
+  style,
+  onFocus,
+  onBlur,
+  onMouseEnter,
+  onMouseLeave,
+  onPointerDown,
+  onPointerUp,
+  onPointerCancel,
+  onClick,
+  onKeyDown,
+  onKeyUp,
+}: PublicVenueWebRetryHostProps): BrandRenderingReactElement =>
+  React.createElement(
+    "button",
+    {
+      type: "button",
+      role: "button",
+      "aria-label": accessibleLabel,
+      "aria-disabled": busy,
+      "aria-busy": busy,
+      tabIndex: 0,
+      onFocus,
+      onBlur,
+      onMouseEnter,
+      onMouseLeave,
+      onPointerDown,
+      onPointerUp,
+      onPointerCancel,
+      onClick,
+      onKeyDown,
+      onKeyUp,
+      style,
+    },
+    label,
+  );
+
 /** Shared 44-point retry action for the populated and cold route states. */
 export const PublicVenueRetryAction = ({
   busy,
@@ -97,7 +165,9 @@ export const PublicVenueRetryAction = ({
 }: PublicVenueRetryActionProps): BrandRenderingReactElement => {
   const [keyboardFocused, setKeyboardFocused] = useState<boolean>(false);
   const [hovered, setHovered] = useState<boolean>(false);
+  const [pressed, setPressed] = useState<boolean>(false);
   const keyboardModalityRef = React.useRef<boolean>(false);
+  const spaceKeyArmedRef = React.useRef<boolean>(false);
 
   React.useEffect((): (() => void) => {
     if (Platform.OS !== "web") return () => undefined;
@@ -124,6 +194,132 @@ export const PublicVenueRetryAction = ({
     };
   }, []);
 
+  const handleFocus = (): void => {
+    onFocusChange?.(true);
+    if (Platform.OS === "web" && keyboardModalityRef.current) {
+      setKeyboardFocused(true);
+    }
+  };
+  const handleBlur = (): void => {
+    onFocusChange?.(false);
+    setKeyboardFocused(false);
+    setPressed(false);
+    spaceKeyArmedRef.current = false;
+  };
+  const actionStyle = [
+    styles.action,
+    { backgroundColor },
+    pressed && !busy && styles.pressed,
+    busy && styles.busy,
+    Platform.OS === "web"
+      ? ({ cursor: busy ? "default" : "pointer" } as object)
+      : null,
+    Platform.OS === "web" && keyboardFocused
+      ? ({
+          outlineWidth: 3,
+          outlineStyle: "solid",
+          outlineColor: focusColor,
+          outlineOffset: focusOffset,
+        } as object)
+      : null,
+  ];
+  const label = React.createElement(
+    Text,
+    {
+      style: [
+        styles.label,
+        fontFamily === null || fontFamily === undefined
+          ? null
+          : { fontFamily },
+        { fontWeight },
+        { color: textColor },
+        Platform.OS === "web" && hovered
+          ? styles.hoveredLabel
+          : null,
+      ],
+    },
+    busy ? busyLabel : readyLabel,
+  );
+
+  if (Platform.OS === "web") {
+    // #2756 — RNW Pressable derives `tabIndex=-1` from `disabled` and writes
+    // its own aria-disabled after caller props. A focused retry must remain the
+    // same focusable host while busy so successful disappearance can restore
+    // the selected tab. This web host owns truthful ARIA and suppresses every
+    // activation path synchronously without using the HTML/RNW disabled bit.
+    const webProps: PublicVenueWebRetryHostProps = {
+      accessibilityLabel: accessibleLabel,
+      accessibleLabel,
+      busy,
+      label,
+      // Retained on the wrapper for the mounted renderer regression seam; the
+      // raw browser child activates exclusively through the handlers below.
+      onPress: () => {
+        if (!busy) onPress();
+      },
+      onFocus: handleFocus,
+      onBlur: handleBlur,
+      onMouseEnter: () => setHovered(true),
+      onMouseLeave: () => {
+        setHovered(false);
+        setPressed(false);
+      },
+      onPointerDown: (event: { preventDefault: () => void }) => {
+        keyboardModalityRef.current = false;
+        setKeyboardFocused(false);
+        if (busy) {
+          event.preventDefault();
+          return;
+        }
+        setPressed(true);
+      },
+      onPointerUp: () => setPressed(false),
+      onPointerCancel: () => setPressed(false),
+      onClick: (event: {
+        preventDefault: () => void;
+        stopPropagation: () => void;
+      }) => {
+        if (busy) {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        onPress();
+      },
+      onKeyDown: (event: {
+        key: string;
+        repeat: boolean;
+        preventDefault: () => void;
+      }) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        if (busy || event.repeat) return;
+        if (event.key === "Enter") {
+          onPress();
+          return;
+        }
+        spaceKeyArmedRef.current = true;
+        setPressed(true);
+      },
+      onKeyUp: (event: { key: string; preventDefault: () => void }) => {
+        if (event.key !== " ") return;
+        event.preventDefault();
+        setPressed(false);
+        if (!busy && spaceKeyArmedRef.current) onPress();
+        spaceKeyArmedRef.current = false;
+      },
+      style: {
+        ...StyleSheet.flatten(actionStyle),
+        appearance: "none",
+        border: "none",
+        boxSizing: "border-box",
+        display: "flex",
+        font: "inherit",
+      },
+    };
+    return React.createElement(PublicVenueWebRetryHost, webProps);
+  }
+
   return React.createElement(
     Pressable,
     {
@@ -132,55 +328,16 @@ export const PublicVenueRetryAction = ({
       accessibilityRole: "button",
       accessibilityLabel: accessibleLabel,
       accessibilityState: { disabled: busy, busy },
-      onFocus: () => {
-        onFocusChange?.(true);
-        if (Platform.OS === "web" && keyboardModalityRef.current) {
-          setKeyboardFocused(true);
-        }
-      },
-      onBlur: () => {
-        onFocusChange?.(false);
-        setKeyboardFocused(false);
-      },
-      onHoverIn: () => {
-        if (Platform.OS === "web") setHovered(true);
-      },
-      onHoverOut: () => setHovered(false),
+      onFocus: handleFocus,
+      onBlur: handleBlur,
       style: ({ pressed }: { pressed: boolean }) => [
         styles.action,
         { backgroundColor },
         pressed && !busy && styles.pressed,
         busy && styles.busy,
-        Platform.OS === "web"
-          ? ({ cursor: busy ? "default" : "pointer" } as object)
-          : null,
-        Platform.OS === "web" && keyboardFocused
-          ? ({
-              outlineWidth: 3,
-              outlineStyle: "solid",
-              outlineColor: focusColor,
-              outlineOffset: focusOffset,
-            } as object)
-          : null,
       ],
     },
-    React.createElement(
-      Text,
-      {
-        style: [
-          styles.label,
-          fontFamily === null || fontFamily === undefined
-            ? null
-            : { fontFamily },
-          { fontWeight },
-          { color: textColor },
-          Platform.OS === "web" && hovered
-            ? styles.hoveredLabel
-            : null,
-        ],
-      },
-      busy ? busyLabel : readyLabel,
-    ),
+    label,
   );
 };
 

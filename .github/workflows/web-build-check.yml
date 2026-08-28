@@ -41,6 +41,15 @@ jobs:
       - name: Build web bundle (fails on duplicate import/export + syntax errors)
         working-directory: mingla-business
         run: npx expo export -p web --output-dir /tmp/web-build-check
+      # #2756 — RNW promotes aria-disabled role=button hosts to HTML disabled,
+      # so renderer-only assertions cannot prove the busy retry keeps focus.
+      # Mount the real production venue screen in Chromium and exercise the DOM.
+      - name: Install Chromium for public-venue focus semantics
+        working-directory: mingla-business
+        run: npx playwright install --with-deps chromium-headless-shell
+      - name: "#2756 public venue refresh retry focus semantics"
+        working-directory: mingla-business
+        run: npx playwright test -c playwright.issue2756.config.ts
       # ORCH-1083: initial-web-bundle budget guard (M-3 / I-PROPOSED-1083-A).
       # Fails if any deferred heavy dep (Stripe Connect web SDK, QR renderer, the
       # 14 theme fonts) reappears in the main entry chunk, the eager __common
