@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import { Text, View } from "react-native";
 import type {
   PublicVenueAnalyticsEvent,
+  PublicVenueReservationSheetContext,
   PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
 // @ts-expect-error -- aliases are declared by bundle.mjs for this harness only.
@@ -69,6 +70,11 @@ function Harness(): React.ReactElement {
             currency: "NGN",
           }],
         }]}
+        menuLifecycle={{
+          state: "ready",
+          isFetching: false,
+          onRetry: () => undefined,
+        }}
         reservable={{ reservable: true, venueId: venue.id, currency: "NGN" }}
         reservabilityState="ready"
         initialTab={
@@ -79,10 +85,10 @@ function Harness(): React.ReactElement {
         safeAreaInsets={{ top: 0, bottom: 0 }}
         loadThemeFont={() => undefined}
         bookingBody={() => <View><Text>Booking body</Text></View>}
-        reservationSheet={({ visible }) =>
+        reservationSheet={({ visible }: PublicVenueReservationSheetContext) =>
           visible ? <View testID="issue-2769-sheet"><Text>Reservation sheet</Text></View> : null
         }
-        onAnalytics={(event) => window.__issue2769Analytics.push(event)}
+        onAnalytics={(event: PublicVenueAnalyticsEvent) => window.__issue2769Analytics.push(event)}
         onShare={() => undefined}
         onClose={() => undefined}
         onOpenBrand={() => undefined}
