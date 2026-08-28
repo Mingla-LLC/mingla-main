@@ -22,6 +22,7 @@ parentheses for traceability.
 - 2026-08-28 — Public venue pages now scroll back up reliably on mobile browsers even when a gesture starts over the persistent reservation action, without changing native or desktop behavior (#2729, PR #2759)
 - 2026-08-28 — Ticket counts no longer break database replay after the counter schema lands; the repaired production function still derives truthful sold totals from issued tickets without trusting shadow counters (#2728, PR #2733)
 - 2026-08-28 — Campaign analytics now distinguish measured delivery and opens from unknown history, send campaigns through an isolated tracked subdomain while leaving transactional email untracked, reconcile early provider events instead of losing them, and show a real production Gmail delivery and open without inventing a zero (#2714, PR #2722)
+- 2026-08-28 — Public venue Menu failures now leave the venue and cached dishes visible with a truthful retry, and only a confirmed empty Menu removes the tab across web and both apps (#2755, PR #2761)
 - 2026-08-28 — Fully booked venue times remain visible as Full and cannot be selected, while stale availability can no longer revive a sold-out reservation action (#2734, PR #2749)
 - 2026-08-28 — Public venue menus remain visible after the ordering experience loads, across buyer web and both Mingla apps (#2735, PR #2747)
 - 2026-08-28 — Public venue reservations now keep one truthful availability result from brand browsing through venue booking, so enabled restaurants no longer appear unavailable after navigation (#2730, PR #2750)
