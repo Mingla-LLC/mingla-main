@@ -9,7 +9,12 @@ import {
   Text,
   View,
 } from "react-native";
-import type { SectionList as SectionListType } from "react-native";
+import type {
+  NativeScrollEvent,
+  NativeSyntheticEvent,
+  SectionList as SectionListType,
+  ViewToken,
+} from "react-native";
 import { AlertTriangle, Calendar } from "lucide-react-native";
 
 import {
@@ -89,6 +94,22 @@ interface PendingAgendaNavigation {
   dayKey: string;
   sectionIndex: number | null;
   retryCount: number;
+  phase:
+    | "initial"
+    | "exact-attempt"
+    | "awaiting-native-scroll"
+    | "awaiting-list-progress"
+    | "awaiting-target-viewability"
+    | "stalled";
+  exactAttemptFailed: boolean;
+  exactAttemptSucceeded: boolean;
+  coarseOriginOffset: number | null;
+  nativeScrollSequence: number | null;
+  viewabilitySignatureAtCoarse: string;
+  lastFailure: {
+    highestMeasuredFrameIndex: number;
+    contentOffsetY: number;
+  } | null;
 }
 
 interface AgendaScrollFailure {
@@ -146,6 +167,9 @@ export function VenueReservationsModule({
   const agendaNavigationSequenceRef = useRef(0);
   const activeAgendaAttemptRef = useRef<number | null>(null);
   const readyAgendaHeadersRef = useRef<Set<string>>(new Set());
+  const viewableAgendaDaysRef = useRef<Set<string>>(new Set());
+  const agendaContentOffsetRef = useRef(0);
+  const agendaProgressSequenceRef = useRef(0);
   const agendaMountedRef = useRef(true);
 
   const effectiveMode: ReservationCalendarMode = isWideDesktop
@@ -294,6 +318,13 @@ export function VenueReservationsModule({
       dayKey,
       sectionIndex: null,
       retryCount: 0,
+      phase: "initial",
+      exactAttemptFailed: false,
+      exactAttemptSucceeded: false,
+      coarseOriginOffset: null,
+      nativeScrollSequence: null,
+      viewabilitySignatureAtCoarse: "",
+      lastFailure: null,
     };
     activeAgendaAttemptRef.current = null;
     setAgendaNavigationVersion((version) => version + 1);
@@ -334,6 +365,25 @@ export function VenueReservationsModule({
     }
   }, []);
 
+  const completeAgendaNavigationIfReady = useCallback(
+    (requestId: number): void => {
+      const pending = pendingAgendaNavigationRef.current;
+      if (
+        pending === null ||
+        pending.requestId !== requestId ||
+        !pending.exactAttemptSucceeded ||
+        !viewableAgendaDaysRef.current.has(pending.dayKey) ||
+        !readyAgendaHeadersRef.current.has(pending.dayKey)
+      ) {
+        return;
+      }
+      focusAgendaHeader(pending.dayKey);
+      activeAgendaAttemptRef.current = null;
+      pendingAgendaNavigationRef.current = null;
+    },
+    [focusAgendaHeader],
+  );
+
   const requestExactAgendaNavigation = useCallback(
     (requestId: number): void => {
       if (!agendaMountedRef.current) return;
@@ -345,23 +395,36 @@ export function VenueReservationsModule({
       ) {
         return;
       }
+      const list = agendaRef.current;
+      if (list === null) return;
+      pending.phase = "exact-attempt";
+      pending.exactAttemptFailed = false;
+      pending.exactAttemptSucceeded = false;
       activeAgendaAttemptRef.current = requestId;
-      agendaRef.current?.scrollToLocation({
+      list.scrollToLocation({
         animated: false,
         itemIndex: 0,
         sectionIndex: pending.sectionIndex,
         viewOffset: 0,
         viewPosition: 0,
       });
-      if (!readyAgendaHeadersRef.current.has(pending.dayKey)) return;
-      focusAgendaHeader(pending.dayKey);
+      const current = pendingAgendaNavigationRef.current;
+      if (
+        current === null ||
+        current.requestId !== requestId ||
+        current.exactAttemptFailed
+      ) {
+        return;
+      }
+      current.exactAttemptSucceeded = true;
+      current.phase = "awaiting-target-viewability";
       activeAgendaAttemptRef.current = null;
-      pendingAgendaNavigationRef.current = null;
+      completeAgendaNavigationIfReady(requestId);
     },
-    [focusAgendaHeader],
+    [completeAgendaNavigationIfReady],
   );
 
-  const scheduleExactAgendaNavigation = useCallback(
+  const scheduleInitialAgendaNavigation = useCallback(
     (requestId: number): void => {
       const run = (): void => requestExactAgendaNavigation(requestId);
       if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
@@ -372,17 +435,29 @@ export function VenueReservationsModule({
 
   const handleAgendaHeaderLayout = useCallback(
     (dayKey: string): void => {
+      agendaProgressSequenceRef.current += 1;
       readyAgendaHeadersRef.current.add(dayKey);
       const pending = pendingAgendaNavigationRef.current;
-      if (pending?.dayKey === dayKey && pending.sectionIndex !== null) {
-        scheduleExactAgendaNavigation(pending.requestId);
+      if (pending?.dayKey !== dayKey || pending.sectionIndex === null) return;
+      if (
+        pending.phase === "awaiting-list-progress" &&
+        pending.nativeScrollSequence !== null &&
+        agendaProgressSequenceRef.current > pending.nativeScrollSequence
+      ) {
+        requestExactAgendaNavigation(pending.requestId);
+        return;
       }
+      completeAgendaNavigationIfReady(pending.requestId);
     },
-    [scheduleExactAgendaNavigation],
+    [completeAgendaNavigationIfReady, requestExactAgendaNavigation],
   );
 
   const handleAgendaScrollFailure = useCallback(
-    ({ index, averageItemLength }: AgendaScrollFailure): void => {
+    ({
+      index,
+      averageItemLength,
+      highestMeasuredFrameIndex,
+    }: AgendaScrollFailure): void => {
       const pending = pendingAgendaNavigationRef.current;
       if (
         pending === null ||
@@ -391,20 +466,93 @@ export function VenueReservationsModule({
       ) {
         return;
       }
-      if (pending.retryCount >= MAX_AGENDA_SCROLL_RETRIES) return;
-
+      pending.exactAttemptFailed = true;
+      pending.exactAttemptSucceeded = false;
       activeAgendaAttemptRef.current = null;
+
+      const contentOffsetY = agendaContentOffsetRef.current;
+      if (
+        pending.lastFailure !== null &&
+        highestMeasuredFrameIndex <=
+          pending.lastFailure.highestMeasuredFrameIndex &&
+        contentOffsetY === pending.lastFailure.contentOffsetY
+      ) {
+        pending.phase = "stalled";
+        return;
+      }
+      pending.lastFailure = { highestMeasuredFrameIndex, contentOffsetY };
+      if (pending.retryCount >= MAX_AGENDA_SCROLL_RETRIES) {
+        pending.phase = "stalled";
+        return;
+      }
+
       pending.retryCount += 1;
       const responder = agendaRef.current?.getScrollResponder();
-      if (responder === undefined) return;
+      if (responder === undefined) {
+        pending.phase = "stalled";
+        return;
+      }
+      pending.coarseOriginOffset = contentOffsetY;
+      pending.nativeScrollSequence = null;
+      pending.viewabilitySignatureAtCoarse = [...viewableAgendaDaysRef.current]
+        .sort()
+        .join("|");
+      pending.phase = "awaiting-native-scroll";
       responder.scrollTo({
         animated: false,
         x: 0,
         y: Math.max(0, index * averageItemLength),
       });
-      scheduleExactAgendaNavigation(pending.requestId);
     },
-    [scheduleExactAgendaNavigation],
+    [],
+  );
+
+  const handleAgendaScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>): void => {
+      agendaProgressSequenceRef.current += 1;
+      const nextOffset = event.nativeEvent.contentOffset.y;
+      agendaContentOffsetRef.current = nextOffset;
+      const pending = pendingAgendaNavigationRef.current;
+      if (
+        pending === null ||
+        pending.phase !== "awaiting-native-scroll" ||
+        pending.coarseOriginOffset === null ||
+        nextOffset === pending.coarseOriginOffset
+      ) {
+        return;
+      }
+      pending.nativeScrollSequence = agendaProgressSequenceRef.current;
+      pending.phase = "awaiting-list-progress";
+    },
+    [],
+  );
+
+  const handleAgendaViewableItemsChanged = useCallback(
+    ({ viewableItems }: { viewableItems: ViewToken[] }): void => {
+      agendaProgressSequenceRef.current += 1;
+      const nextViewableDays = new Set<string>();
+      for (const token of viewableItems) {
+        if (token.isViewable === false) continue;
+        const section = (token as ViewToken & { section?: AgendaSection }).section;
+        if (section !== undefined) nextViewableDays.add(section.dayKey);
+      }
+      viewableAgendaDaysRef.current = nextViewableDays;
+
+      const pending = pendingAgendaNavigationRef.current;
+      if (pending === null) return;
+      if (
+        pending.phase === "awaiting-list-progress" &&
+        pending.nativeScrollSequence !== null &&
+        agendaProgressSequenceRef.current > pending.nativeScrollSequence &&
+        [...nextViewableDays].sort().join("|") !==
+          pending.viewabilitySignatureAtCoarse
+      ) {
+        requestExactAgendaNavigation(pending.requestId);
+        return;
+      }
+      completeAgendaNavigationIfReady(pending.requestId);
+    },
+    [completeAgendaNavigationIfReady, requestExactAgendaNavigation],
   );
 
   useEffect(() => {
@@ -424,8 +572,13 @@ export function VenueReservationsModule({
       return;
     }
     pending.sectionIndex = sectionIndex;
-    scheduleExactAgendaNavigation(pending.requestId);
-  }, [agendaNavigationVersion, agendaSections, effectiveMode, scheduleExactAgendaNavigation]);
+    scheduleInitialAgendaNavigation(pending.requestId);
+  }, [
+    agendaNavigationVersion,
+    agendaSections,
+    effectiveMode,
+    scheduleInitialAgendaNavigation,
+  ]);
 
   useEffect(
     () => {
@@ -574,6 +727,9 @@ export function VenueReservationsModule({
           }
           ItemSeparatorComponent={() => <View style={styles.agendaRowSeparator} />}
           SectionSeparatorComponent={() => <View style={styles.agendaGroupSeparator} />}
+          onScroll={handleAgendaScroll}
+          scrollEventThrottle={16}
+          onViewableItemsChanged={handleAgendaViewableItemsChanged}
           onScrollToIndexFailed={handleAgendaScrollFailure}
         />
       ) : (

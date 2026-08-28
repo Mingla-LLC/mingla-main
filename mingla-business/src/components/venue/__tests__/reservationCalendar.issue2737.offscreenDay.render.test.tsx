@@ -6,8 +6,17 @@ import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
 import type { Reservation } from "../../../types/venueReservation";
 import { VenueReservationsModule } from "../VenueReservationsModule";
 
+interface MockFailurePayload {
+  index: number;
+  highestMeasuredFrameIndex: number;
+  averageItemLength: number;
+}
+
 const mockScrollOrder: string[] = [];
-let mockFailureCount = 0;
+let mockExactFailures: MockFailurePayload[] = [];
+let mockViewportDays: string[] = [];
+let mockEmitNativeScroll: (offsetY: number) => void = () => undefined;
+let mockEmitViewability: (dayKeys: string[]) => void = () => undefined;
 
 jest.mock("react-native", () => {
   const ReactRuntime = require("react") as typeof React;
@@ -19,12 +28,31 @@ jest.mock("react-native", () => {
     renderSectionHeader: (input: { section: MockSection }) => React.ReactElement<{
       onLayout?: () => void;
     }>;
-    onScrollToIndexFailed: (input: {
-      index: number;
-      highestMeasuredFrameIndex: number;
-      averageItemLength: number;
+    onScroll: (event: { nativeEvent: { contentOffset: { y: number } } }) => void;
+    onViewableItemsChanged: (input: {
+      viewableItems: {
+        isViewable: boolean;
+        item: unknown;
+        key: string;
+        section: MockSection;
+      }[];
+      changed: unknown[];
     }) => void;
+    onScrollToIndexFailed: (input: MockFailurePayload) => void;
   };
+
+  const viewabilityPayload = (
+    props: MockSectionListProps,
+    dayKeys: string[],
+  ): Parameters<MockSectionListProps["onViewableItemsChanged"]>[0] => ({
+    viewableItems: dayKeys.flatMap((dayKey) => {
+      const section = props.sections.find((candidate) => candidate.dayKey === dayKey);
+      return section === undefined
+        ? []
+        : [{ isViewable: true, item: section.data[0] ?? section, key: dayKey, section }];
+    }),
+    changed: [],
+  });
 
   const HeaderMount = ({
     dayKey,
@@ -41,31 +69,51 @@ jest.mock("react-native", () => {
 
   const MockSectionList = ReactRuntime.forwardRef(
     (props: MockSectionListProps, ref: React.ForwardedRef<unknown>) => {
-      const [expanded, setExpanded] = ReactRuntime.useState(false);
+      const [visibleDayKeys, setVisibleDayKeys] = ReactRuntime.useState([
+        "2026-08-28",
+        "2026-08-29",
+      ]);
       const propsRef = ReactRuntime.useRef(props);
       propsRef.current = props;
+      mockViewportDays = visibleDayKeys;
+
+      mockEmitNativeScroll = (offsetY: number): void => {
+        propsRef.current.onScroll({ nativeEvent: { contentOffset: { y: offsetY } } });
+      };
+      mockEmitViewability = (dayKeys: string[]): void => {
+        setVisibleDayKeys(dayKeys);
+        propsRef.current.onViewableItemsChanged(
+          viewabilityPayload(propsRef.current, dayKeys),
+        );
+      };
+
+      ReactRuntime.useEffect(() => {
+        propsRef.current.onViewableItemsChanged(
+          viewabilityPayload(propsRef.current, visibleDayKeys),
+        );
+        // The initial native visibility report occurs once after mount.
+      }, []);
+
       ReactRuntime.useImperativeHandle(ref, () => ({
         scrollToLocation: ({ sectionIndex }: { sectionIndex: number }) => {
-          mockScrollOrder.push(`exact:${sectionIndex}`);
-          if (mockFailureCount === 0) {
-            mockFailureCount += 1;
-            propsRef.current.onScrollToIndexFailed({
-              index: 9,
-              highestMeasuredFrameIndex: 4,
-              averageItemLength: 80,
-            });
+          const dayKey = propsRef.current.sections[sectionIndex]?.dayKey ?? "missing";
+          mockScrollOrder.push(`exact:${dayKey}`);
+          const failure = mockExactFailures.shift();
+          if (failure !== undefined) {
+            propsRef.current.onScrollToIndexFailed(failure);
           }
         },
         getScrollResponder: () => ({
           scrollTo: ({ y }: { y: number }) => {
             mockScrollOrder.push(`coarse:${y}`);
-            setExpanded(true);
           },
         }),
       }));
 
-      const sections = props.sections;
-      const renderedSections = expanded ? sections : sections.slice(0, 2);
+      const renderedSections = visibleDayKeys.flatMap((dayKey) => {
+        const section = props.sections.find((candidate) => candidate.dayKey === dayKey);
+        return section === undefined ? [] : [section];
+      });
       return ReactRuntime.createElement(
         actual.View,
         { testID: props.testID },
@@ -84,12 +132,13 @@ jest.mock("react-native", () => {
     configurable: true,
     value: {
       ...actual.AccessibilityInfo,
-      setAccessibilityFocus: () => mockScrollOrder.push("focus"),
+      setAccessibilityFocus: (handle: string) =>
+        mockScrollOrder.push(`focus:${handle}`),
     },
   });
   Object.defineProperty(actual, "findNodeHandle", {
     configurable: true,
-    value: () => 2737,
+    value: () => mockViewportDays[0] ?? null,
   });
   Object.defineProperty(actual, "SectionList", {
     configurable: true,
@@ -132,9 +181,11 @@ jest.mock("../../../hooks/useVenueAvailability", () => ({
 jest.mock("../ReservationCalendarToolbar", () => ({
   ReservationCalendarToolbar: ({
     days,
+    selectedDayKey,
     onDaySelect,
   }: {
     days: { key: string }[];
+    selectedDayKey: string;
     onDaySelect: (dayKey: string) => void;
   }) => {
     const ReactRuntime = require("react") as typeof React;
@@ -146,6 +197,7 @@ jest.mock("../ReservationCalendarToolbar", () => ({
         ReactRuntime.createElement(RN.Pressable, {
           key: day.key,
           testID: `reservation-calendar-date-${day.key}`,
+          accessibilityState: { selected: day.key === selectedDayKey },
           onPress: () => onDaySelect(day.key),
         }),
       ),
@@ -180,6 +232,12 @@ jest.mock("lucide-react-native", () => {
 
 // @ts-expect-error react-test-renderer ships without declarations in this workspace.
 const TestRenderer = require("react-test-renderer") as typeof import("react-test-renderer");
+
+const FAILURE: MockFailurePayload = {
+  index: 9,
+  highestMeasuredFrameIndex: 4,
+  averageItemLength: 80,
+};
 
 function mockReservation(id: string, reservedFor: string): Reservation {
   return {
@@ -216,10 +274,38 @@ function interactive(root: ReactTestInstance, testID: string): ReactTestInstance
   return node;
 }
 
-describe("issue #2737 off-screen agenda day navigation", () => {
+async function renderModule(): Promise<ReactTestRenderer> {
+  let tree: ReactTestRenderer | null = null;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      <VenueReservationsModule brandId="brand" venueId="venue" />,
+      {
+        createNodeMock: (element: { props?: { testID?: string } }) => {
+          const nativeTag = element.props?.testID;
+          return nativeTag?.startsWith("reservation-agenda-header-")
+            ? { nativeTag }
+            : null;
+        },
+      },
+    );
+  });
+  if (tree === null) throw new Error("offscreen_agenda_render_missing");
+  return tree;
+}
+
+async function flushInitialRequest(): Promise<void> {
+  await TestRenderer.act(async () => {
+    jest.runOnlyPendingTimers();
+  });
+}
+
+describe("issue #2737 native-event-driven off-screen agenda navigation", () => {
   beforeEach(() => {
     mockScrollOrder.length = 0;
-    mockFailureCount = 0;
+    mockExactFailures = [];
+    mockViewportDays = [];
+    mockEmitNativeScroll = () => undefined;
+    mockEmitViewability = () => undefined;
     jest.useFakeTimers();
     jest.setSystemTime(new Date("2026-08-28T12:00:00.000Z"));
   });
@@ -228,39 +314,87 @@ describe("issue #2737 off-screen agenda day navigation", () => {
     jest.useRealTimers();
   });
 
-  it("coarse-scrolls after measurement failure, then exactly reveals and focuses Sunday", async () => {
-    let tree: ReactTestRenderer | null = null;
-    await TestRenderer.act(async () => {
-      tree = TestRenderer.create(
-        <VenueReservationsModule brandId="brand" venueId="venue" />,
-        {
-          createNodeMock: (element: { props?: { testID?: string } }) =>
-            element.props?.testID?.startsWith("reservation-agenda-header-")
-              ? { focus: jest.fn() }
-              : null,
-        },
-      );
-    });
-    if (tree === null) throw new Error("offscreen_agenda_render_missing");
+  it("waits for changed native scroll and later viewability before revealing Sunday", async () => {
+    mockExactFailures = [{ ...FAILURE }];
+    const tree = await renderModule();
 
     await TestRenderer.act(async () => {
       interactive(tree.root, "reservation-calendar-date-2026-08-30").props.onPress();
     });
-    await TestRenderer.act(async () => {
-      jest.runAllTimers();
-    });
-    await TestRenderer.act(async () => {
-      jest.runAllTimers();
-    });
+    await flushInitialRequest();
 
-    const firstExact = mockScrollOrder.indexOf("exact:2");
-    const coarse = mockScrollOrder.indexOf("coarse:720");
-    const finalExact = mockScrollOrder.lastIndexOf("exact:2");
-    const focus = mockScrollOrder.indexOf("focus");
-    expect(firstExact).toBeGreaterThanOrEqual(0);
-    expect(coarse).toBeGreaterThan(firstExact);
-    expect(finalExact).toBeGreaterThan(coarse);
-    expect(focus).toBeGreaterThan(finalExact);
-    expect(mockFailureCount).toBe(1);
+    expect(mockScrollOrder).toEqual(["exact:2026-08-30", "coarse:720"]);
+    expect(mockViewportDays).toEqual(["2026-08-28", "2026-08-29"]);
+    expect(
+      tree.root.findAllByProps({ testID: "reservation-agenda-header-2026-08-30" }),
+    ).toHaveLength(0);
+
+    await flushInitialRequest();
+    expect(mockScrollOrder).toEqual(["exact:2026-08-30", "coarse:720"]);
+
+    await TestRenderer.act(async () => mockEmitNativeScroll(600));
+    expect(mockScrollOrder).toEqual(["exact:2026-08-30", "coarse:720"]);
+
+    await TestRenderer.act(async () => mockEmitViewability(["2026-08-30"]));
+    expect(mockViewportDays).toEqual(["2026-08-30"]);
+    expect(
+      tree.root.findAllByProps({ testID: "reservation-agenda-header-2026-08-30" }),
+    ).not.toHaveLength(0);
+    expect(mockScrollOrder).toEqual([
+      "exact:2026-08-30",
+      "coarse:720",
+      "exact:2026-08-30",
+      "focus:2026-08-30",
+    ]);
+  });
+
+  it("does not spin on identical progress and lets only the superseding Saturday win", async () => {
+    mockExactFailures = [{ ...FAILURE }, { ...FAILURE }];
+    const tree = await renderModule();
+
+    await TestRenderer.act(async () => {
+      interactive(tree.root, "reservation-calendar-date-2026-08-30").props.onPress();
+    });
+    await flushInitialRequest();
+    await TestRenderer.act(async () => mockEmitNativeScroll(120));
+    await TestRenderer.act(async () => mockEmitNativeScroll(0));
+    await TestRenderer.act(async () => mockEmitViewability(["2026-08-30"]));
+
+    expect(mockScrollOrder).toEqual([
+      "exact:2026-08-30",
+      "coarse:720",
+      "exact:2026-08-30",
+    ]);
+    await TestRenderer.act(async () => mockEmitNativeScroll(720));
+    await TestRenderer.act(async () => mockEmitViewability(["2026-08-30"]));
+    await flushInitialRequest();
+    expect(mockScrollOrder).toEqual([
+      "exact:2026-08-30",
+      "coarse:720",
+      "exact:2026-08-30",
+    ]);
+
+    await TestRenderer.act(async () => {
+      interactive(tree.root, "reservation-calendar-date-2026-08-29").props.onPress();
+    });
+    await flushInitialRequest();
+    expect(
+      interactive(tree.root, "reservation-calendar-date-2026-08-29").props
+        .accessibilityState.selected,
+    ).toBe(true);
+
+    const afterSaturdayExact = [...mockScrollOrder];
+    await TestRenderer.act(async () => mockEmitNativeScroll(700));
+    await TestRenderer.act(async () => mockEmitViewability(["2026-08-30"]));
+    expect(mockScrollOrder).toEqual(afterSaturdayExact);
+
+    await TestRenderer.act(async () => mockEmitViewability(["2026-08-29"]));
+    expect(mockViewportDays).toEqual(["2026-08-29"]);
+    expect(mockScrollOrder.at(-1)).toBe(
+      "focus:2026-08-29",
+    );
+    expect(
+      mockScrollOrder.filter((event) => event.startsWith("focus:")),
+    ).toEqual(["focus:2026-08-29"]);
   });
 });
