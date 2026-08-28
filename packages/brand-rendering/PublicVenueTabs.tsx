@@ -86,12 +86,24 @@ interface VenueTabFocusEvent {
 }
 
 type FocusableVenueTab = React.ElementRef<typeof Pressable> & {
+  closest?: (selector: string) => InlineScrollOwner | null;
   focus: () => void;
+  getBoundingClientRect?: () => InlineRect;
   scrollIntoView?: (options: {
     block: "nearest";
     inline: "nearest";
   }) => void;
 };
+
+interface InlineRect {
+  left: number;
+  right: number;
+}
+
+interface InlineScrollOwner {
+  getBoundingClientRect: () => InlineRect;
+  scrollLeft: number;
+}
 
 interface WebVenueTabProps
   extends Omit<PressableProps, "onBlur" | "onFocus"> {
@@ -148,6 +160,38 @@ const LABELS: Record<PublicVenueTab, string> = {
   overview: "Overview",
   menu: "Menu",
   reservations: "Reservations",
+};
+
+const WEB_TABLIST_SELECTOR =
+  '[role="tablist"][aria-label="Venue sections"]';
+const INLINE_VISIBILITY_SAFETY_PX = 1;
+
+const keepFocusedTabInlineVisible = (target: FocusableVenueTab): void => {
+  const tabRect = target.getBoundingClientRect?.();
+  const scrollOwner = target.closest?.(WEB_TABLIST_SELECTOR);
+  if (
+    tabRect === undefined ||
+    scrollOwner === null ||
+    scrollOwner === undefined
+  ) {
+    return;
+  }
+  const ownerRect = scrollOwner.getBoundingClientRect();
+  const rightOverrun = tabRect.right - ownerRect.right;
+  const leftOverrun = ownerRect.left - tabRect.left;
+
+  if (rightOverrun > 0) {
+    scrollOwner.scrollLeft +=
+      Math.ceil(rightOverrun) + INLINE_VISIBILITY_SAFETY_PX;
+    return;
+  }
+  if (leftOverrun > 0) {
+    scrollOwner.scrollLeft = Math.max(
+      0,
+      scrollOwner.scrollLeft -
+        (Math.ceil(leftOverrun) + INLINE_VISIBILITY_SAFETY_PX),
+    );
+  }
 };
 
 /**
@@ -210,6 +254,7 @@ export const PublicVenueTabs = forwardRef<
     focusedTabRef.current = tab;
     target.focus();
     target.scrollIntoView?.({ block: "nearest", inline: "nearest" });
+    if (Platform.OS === "web") keepFocusedTabInlineVisible(target);
   };
 
   useImperativeHandle(

@@ -11,26 +11,48 @@ import {
 import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
 import {
   PublicVenueTabs,
+  type PublicVenueTabsHandle,
   type PublicVenueTab,
 } from "../../../../../packages/brand-rendering/PublicVenueTabs";
 
-const mockFocusNodes: Record<
-  string,
-  { focus: jest.Mock; scrollIntoView: jest.Mock }
-> = {};
+type InlineRect = { left: number; right: number };
+type ScrollOwnerMock = {
+  getBoundingClientRect: jest.Mock<InlineRect, []>;
+  scrollLeft: number;
+};
+type FocusMock = {
+  closest: jest.Mock<ScrollOwnerMock | null, [string]>;
+  focus: jest.Mock;
+  getBoundingClientRect: jest.Mock<InlineRect, []>;
+  scrollIntoView: jest.Mock;
+  scrollOwner: ScrollOwnerMock;
+};
+
+const mockFocusNodes: Record<string, FocusMock> = {};
 
 jest.mock("react-native", () => {
   const actual = jest.requireActual("react-native") as typeof import("react-native");
   const ReactRuntime = require("react") as typeof React;
   const RefInjectingPressable = ReactRuntime.forwardRef<
-    { focus: jest.Mock; scrollIntoView: jest.Mock },
+    FocusMock,
     React.ComponentProps<typeof actual.Pressable>
   >((props, ref) => {
     const label = props.accessibilityLabel ?? "unlabelled";
+    const scrollOwner: ScrollOwnerMock = {
+      getBoundingClientRect: jest.fn(() => ({ left: 0, right: 299 })),
+      scrollLeft: 11,
+    };
     const node =
       mockFocusNodes[label] ?? {
+        closest: jest.fn((selector: string) =>
+          selector === '[role="tablist"][aria-label="Venue sections"]'
+            ? scrollOwner
+            : null,
+        ),
         focus: jest.fn(),
+        getBoundingClientRect: jest.fn(() => ({ left: 40, right: 140 })),
         scrollIntoView: jest.fn(),
+        scrollOwner,
       };
     mockFocusNodes[label] = node;
     ReactRuntime.useImperativeHandle(ref, () => node, [node]);
@@ -46,11 +68,6 @@ jest.mock("react-native", () => {
 
 // @ts-expect-error react-test-renderer ships without declarations in this workspace.
 const TestRenderer = require("react-test-renderer") as typeof import("react-test-renderer");
-
-type FocusMock = {
-  focus: jest.Mock;
-  scrollIntoView: jest.Mock;
-};
 
 const theme = resolveTheme(null, null);
 const palette = createThemePalette(theme);
@@ -117,6 +134,7 @@ const mountTabs = async ({
   overview = <Text>Overview child</Text>,
   menu = <Text>Menu child</Text>,
   reservations = <Text>Reservations child</Text>,
+  tabsRef,
 }: {
   activeTab?: PublicVenueTab;
   hasMenu?: boolean;
@@ -125,6 +143,7 @@ const mountTabs = async ({
   overview?: React.ReactNode;
   menu?: React.ReactNode;
   reservations?: React.ReactNode;
+  tabsRef?: React.Ref<PublicVenueTabsHandle>;
 } = {}): Promise<{
   focusMocks: Record<string, FocusMock>;
   tree: ReactTestRenderer;
@@ -134,6 +153,7 @@ const mountTabs = async ({
   await TestRenderer.act(async () => {
     tree = TestRenderer.create(
       <PublicVenueTabs
+        ref={tabsRef}
         activeTab={activeTab}
         hasMenu={hasMenu}
         overview={overview}
@@ -360,6 +380,36 @@ describe("issue #2738 public venue tabs complete web contract", () => {
     );
   });
 
+  it("H-3a corrects fractional clipping toward only the nearest inline edge", async () => {
+    setPlatform("web");
+    const { focusMocks, tree } = await mountTabs({ activeTab: "overview" });
+    focusMocks.Reservations.getBoundingClientRect.mockReturnValue({
+      left: 180,
+      right: 299.046875,
+    });
+
+    tabNamed(tree.root, "Overview").props.onKeyDown(keyboardEvent("End"));
+
+    expect(focusMocks.Reservations.closest).toHaveBeenCalledWith(
+      '[role="tablist"][aria-label="Venue sections"]',
+    );
+    expect(focusMocks.Reservations.scrollOwner.scrollLeft).toBe(13);
+    expect(299.046875 - (13 - 11)).toBeLessThanOrEqual(299 - 1);
+
+    focusMocks.Overview.getBoundingClientRect.mockReturnValue({
+      left: -0.25,
+      right: 100,
+    });
+    focusMocks.Overview.scrollOwner.scrollLeft = 11;
+    tabNamed(tree.root, "Reservations").props.onKeyDown(keyboardEvent("Home"));
+    expect(focusMocks.Overview.scrollOwner.scrollLeft).toBe(9);
+    expect(-0.25 + (11 - 9)).toBeGreaterThanOrEqual(0 + 1);
+
+    focusMocks.Menu.scrollOwner.scrollLeft = 7;
+    tabNamed(tree.root, "Overview").props.onKeyDown(keyboardEvent("ArrowRight"));
+    expect(focusMocks.Menu.scrollOwner.scrollLeft).toBe(7);
+  });
+
   it("H-4 keeps the two-tab order free of a phantom Menu target", async () => {
     setPlatform("web");
     const { focusMocks, tree } = await mountTabs({
@@ -420,7 +470,11 @@ describe("issue #2738 public venue tabs complete web contract", () => {
 
   it("H-6 preserves the native single pane without DOM key, ID, or panel props", async () => {
     setPlatform("ios");
-    const { tree } = await mountTabs({ activeTab: "reservations" });
+    const tabsRef = React.createRef<PublicVenueTabsHandle>();
+    const { tree } = await mountTabs({
+      activeTab: "reservations",
+      tabsRef,
+    });
     const renderedTabs = tabs(tree.root);
     expect(renderedTabs).toHaveLength(3);
     for (const tab of renderedTabs) {
@@ -439,5 +493,8 @@ describe("issue #2738 public venue tabs complete web contract", () => {
     expect(childText).toContain("Reservations child");
     expect(childText).not.toContain("Overview child");
     expect(childText).not.toContain("Menu child");
+    tabsRef.current?.focusTab("reservations");
+    expect(mockFocusNodes.Reservations.focus).toHaveBeenCalledTimes(1);
+    expect(mockFocusNodes.Reservations.closest).not.toHaveBeenCalled();
   });
 });
