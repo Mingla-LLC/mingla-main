@@ -19,7 +19,6 @@ import {
   type PublicVenueViewModel,
 } from "@mingla/brand-rendering/PublicVenueScreen";
 import { PublicMenuSections } from "@mingla/brand-rendering/PublicMenuSections";
-import type { ConsumerVenueOrdering } from "../../../../../app-mobile/src/components/venueOrdering/useConsumerVenueOrdering";
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -63,7 +62,7 @@ const ORDERING_OFF = {
   prepTimeMinutes: null,
 };
 
-const EMPTY_CART: ConsumerVenueOrdering["cart"] = {
+const EMPTY_CART = {
   state: {
     lines: [],
     view: "browse",
@@ -87,9 +86,11 @@ const EMPTY_CART: ConsumerVenueOrdering["cart"] = {
   roundSettled: jest.fn(),
 };
 
-const mockConsumerOrdering: { current: ConsumerVenueOrdering } = {
+const mockConsumerOrdering = {
   current: {
-    config: ORDERING_OFF,
+    config: ORDERING_OFF as Omit<typeof ORDERING_OFF, "state"> & {
+      state: "off" | "on";
+    },
     configReady: true,
     scanned: false,
     modifiersByItemId: {},
@@ -129,7 +130,28 @@ jest.mock(
   }),
 );
 
-import { ConsumerVenueOrderingSurface } from "../../../../../app-mobile/src/components/venueOrdering/ConsumerVenueOrderingSlots";
+interface ConsumerVenueOrderingSurfaceTestProps {
+  palette: PublicVenueOrderingSlotContext["palette"];
+  surface: PublicVenueOrderingSlotContext["surface"];
+  theme: PublicVenueOrderingSlotContext["theme"];
+  brandSlug: string;
+  venueSlug: string;
+  spotCode: string | null;
+  entrySource: string | null;
+  menu: PublicMenuGroup[];
+  menuWindows: Record<
+    string,
+    { start: string | null; end: string | null; days: number[] | null }
+  >;
+  timezone: string | null;
+}
+
+type ConsumerVenueOrderingSurfaceTestComponent =
+  React.ComponentType<ConsumerVenueOrderingSurfaceTestProps>;
+
+const { ConsumerVenueOrderingSurface } = require("../../../../../app-mobile/src/components/venueOrdering/ConsumerVenueOrderingSlots") as {
+  ConsumerVenueOrderingSurface: ConsumerVenueOrderingSurfaceTestComponent;
+};
 
 interface RenderNode {
   type: unknown;
@@ -246,16 +268,14 @@ const renderConsumerSurface = async (): Promise<RenderTree> => {
 
 test("Consumer ordering-off Menu remains populated after the actual lazy surface resolves", async () => {
   let resolveLazy!: (
-    module: { default: typeof ConsumerVenueOrderingSurface },
+    module: { default: ConsumerVenueOrderingSurfaceTestComponent },
   ) => void;
   const lazyModule = new Promise<{
-    default: typeof ConsumerVenueOrderingSurface;
+    default: ConsumerVenueOrderingSurfaceTestComponent;
   }>((resolve) => {
     resolveLazy = resolve;
   });
-  const LazyConsumerSurface = React.lazy<typeof ConsumerVenueOrderingSurface>(
-    () => lazyModule,
-  );
+  const LazyConsumerSurface = React.lazy(() => lazyModule);
   let tree!: RenderTree;
 
   await TestRenderer.act(async () => {
@@ -314,7 +334,9 @@ test("Consumer ordering-off Menu remains populated after the actual lazy surface
   ).toHaveLength(0);
 
   await TestRenderer.act(async () => {
-    resolveLazy({ default: ConsumerVenueOrderingSurface });
+    resolveLazy({
+      default: ConsumerVenueOrderingSurface,
+    });
     await lazyModule;
   });
 
