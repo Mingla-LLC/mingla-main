@@ -15349,7 +15349,7 @@
       "providerWorkflow": ".github/workflows/issue-1793-guest-ordering-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "80ef31590e9336b5367ee395ef14977d97f2a9602626d1730a44b0b308649b58",
+        "sourceSha256": "51e871ac46a02199532f9634e98343a34acadc200c03495925d06826eac1d0f8",
         "triggers": [
           "pull_request",
           "push"
