@@ -399,6 +399,9 @@ test("manual stale retry retains copy, child identity, and the focused control",
     disabled: true,
     busy: true,
   });
+  expect(retryButton(tree).props["aria-disabled"]).toBe(true);
+  expect(retryButton(tree).props["aria-busy"]).toBe(true);
+  expect(retryButton(tree).props.disabled).toBeUndefined();
   expect(flatStyle(retryButton(tree))).toMatchObject({
     outlineWidth: 3,
     outlineOffset: -4,
@@ -408,4 +411,40 @@ test("manual stale retry retains copy, child identity, and the focused control",
   expect(countText(tree, "stale-retry-tree")).toBe(1);
   expect(mounts).toBe(1);
   await TestRenderer.act(async () => tree.unmount());
+});
+
+test("native retry keeps Pressable disabled semantics without web ARIA props", async () => {
+  const platformDescriptor = Object.getOwnPropertyDescriptor(Platform, "OS");
+  const retry = jest.fn(() => new Promise<never>(() => undefined));
+  let tree!: Tree;
+  try {
+    Object.defineProperty(Platform, "OS", { configurable: true, value: "ios" });
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        page([], { state: "error", isFetching: false, onRetry: retry }),
+      );
+    });
+    await TestRenderer.act(async () => {
+      retryButton(tree).props.onPress?.();
+    });
+    await TestRenderer.act(async () => {
+      tree.update(page([], { state: "loading", isFetching: true, onRetry: retry }));
+    });
+
+    expect(retryButton(tree).props.accessibilityState).toEqual({
+      disabled: true,
+      busy: true,
+    });
+    expect(retryButton(tree).props.disabled).toBe(true);
+    expect(retryButton(tree).props["aria-disabled"]).toBeUndefined();
+    expect(retryButton(tree).props["aria-busy"]).toBeUndefined();
+    expect(flatStyle(retryButton(tree)).outlineWidth).toBeUndefined();
+  } finally {
+    if (platformDescriptor !== undefined) {
+      Object.defineProperty(Platform, "OS", platformDescriptor);
+    }
+    if (tree !== undefined) {
+      await TestRenderer.act(async () => tree.unmount());
+    }
+  }
 });

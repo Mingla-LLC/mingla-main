@@ -1640,7 +1640,9 @@ export const PublicVenueScreen = ({
               accessibilityRole="button"
               accessibilityLabel="Try loading the menu again"
               accessibilityState={{ disabled: menuBusy, busy: menuBusy }}
-              disabled={menuBusy}
+              aria-disabled={Platform.OS === "web" ? menuBusy : undefined}
+              aria-busy={Platform.OS === "web" ? menuBusy : undefined}
+              disabled={Platform.OS === "web" ? undefined : menuBusy}
               onFocus={(event) => {
                 retryOwnsFocusRef.current = true;
                 if (Platform.OS !== "web") {
