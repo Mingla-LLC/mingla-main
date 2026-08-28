@@ -64,7 +64,10 @@ interface Tree {
   unmount: () => void;
 }
 const TestRenderer = require("react-test-renderer") as {
-  create: (element: React.ReactElement) => Tree;
+  create: (
+    element: React.ReactElement,
+    options?: { createNodeMock?: (element: Node) => unknown },
+  ) => Tree;
   act: (callback: () => Promise<void> | void) => Promise<void>;
 };
 
@@ -439,6 +442,87 @@ test("native retry keeps Pressable disabled semantics without web ARIA props", a
     expect(retryButton(tree).props["aria-disabled"]).toBeUndefined();
     expect(retryButton(tree).props["aria-busy"]).toBeUndefined();
     expect(flatStyle(retryButton(tree)).outlineWidth).toBeUndefined();
+  } finally {
+    if (platformDescriptor !== undefined) {
+      Object.defineProperty(Platform, "OS", platformDescriptor);
+    }
+    if (tree !== undefined) {
+      await TestRenderer.act(async () => tree.unmount());
+    }
+  }
+});
+
+test("web retry corrects the committed host semantics without replacing the focused control", async () => {
+  const platformDescriptor = Object.getOwnPropertyDescriptor(Platform, "OS");
+  const retry = jest.fn(() => new Promise<never>(() => undefined));
+  const attributes = new Map<string, string>();
+  const retryHost = {
+    removeAttribute: jest.fn((name: string) => attributes.delete(name)),
+    setAttribute: jest.fn((name: string, value: string) => {
+      attributes.set(name, value);
+    }),
+  };
+  let retryHostMounts = 0;
+  let tree!: Tree;
+  try {
+    Object.defineProperty(Platform, "OS", { configurable: true, value: "web" });
+    await TestRenderer.act(async () => {
+      tree = TestRenderer.create(
+        page([], { state: "error", isFetching: false, onRetry: retry }),
+        {
+          createNodeMock: (element) => {
+            if (
+              element.props.accessibilityLabel ===
+              "Try loading the menu again"
+            ) {
+              retryHostMounts += 1;
+              return retryHost;
+            }
+            return null;
+          },
+        },
+      );
+    });
+    const control = retryButton(tree);
+    expect(attributes.size).toBe(0);
+
+    await TestRenderer.act(async () => {
+      control.props.onFocus?.({
+        currentTarget: { matches: () => true },
+      });
+      control.props.onPress?.();
+      control.props.onPress?.();
+    });
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(retryButton(tree)).toBe(control);
+    expect(retryHostMounts).toBe(1);
+    expect(attributes).toEqual(
+      new Map([
+        ["aria-disabled", "true"],
+        ["aria-busy", "true"],
+      ]),
+    );
+    expect(retryButton(tree).props.disabled).toBeUndefined();
+
+    await TestRenderer.act(async () => {
+      tree.update(
+        page([], { state: "error", isFetching: true, onRetry: retry }),
+      );
+    });
+    expect(retryButton(tree)).toBe(control);
+    expect(attributes.get("aria-disabled")).toBe("true");
+    expect(attributes.get("aria-busy")).toBe("true");
+
+    await TestRenderer.act(async () => {
+      tree.update(
+        page([], { state: "error", isFetching: false, onRetry: retry }),
+      );
+    });
+    expect(retryButton(tree)).toBe(control);
+    expect(retryHostMounts).toBe(1);
+    expect(attributes.size).toBe(0);
+    expect(retryHost.removeAttribute).toHaveBeenCalledWith("aria-disabled");
+    expect(retryHost.removeAttribute).toHaveBeenCalledWith("aria-busy");
   } finally {
     if (platformDescriptor !== undefined) {
       Object.defineProperty(Platform, "OS", platformDescriptor);

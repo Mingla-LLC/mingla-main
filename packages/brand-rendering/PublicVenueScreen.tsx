@@ -159,6 +159,11 @@ type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
 const webVenueStyle = (style: WebVenueViewStyle): StyleProp<ViewStyle> =>
   style as StyleProp<ViewStyle>;
 
+interface WebRetryAriaHost {
+  removeAttribute: (name: string) => void;
+  setAttribute: (name: string, value: string) => void;
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // The read model — ONE shape, both apps
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1054,6 +1059,9 @@ export const PublicVenueScreen = ({
       reservationUiContext,
     );
   const publicVenueTabsRef = React.useRef<PublicVenueTabsHandle | null>(null);
+  const retryWebHostRef = React.useRef<React.ElementRef<typeof Pressable> | null>(
+    null,
+  );
   const retryInFlightRef = React.useRef<boolean>(false);
   const retryOwnsFocusRef = React.useRef<boolean>(false);
   const retryHadFocusRef = React.useRef<boolean>(false);
@@ -1571,6 +1579,25 @@ export const PublicVenueScreen = ({
     menuItemCount,
     categoryHasMenu,
   );
+  React.useLayoutEffect(() => {
+    const retryWebHost = retryWebHostRef.current as unknown as
+      | WebRetryAriaHost
+      | null;
+    if (Platform.OS !== "web" || retryWebHost === null) {
+      return;
+    }
+    // RN Web's Pressable writes aria-disabled from its native `disabled` prop
+    // after spreading direct ARIA props. Reassert both busy semantics on the
+    // committed host without setting HTML `disabled`, which would evict this
+    // same control from keyboard focus during a retry.
+    if (menuBusy) {
+      retryWebHost.setAttribute("aria-disabled", "true");
+      retryWebHost.setAttribute("aria-busy", "true");
+      return;
+    }
+    retryWebHost.removeAttribute("aria-disabled");
+    retryWebHost.removeAttribute("aria-busy");
+  }, [menuBusy, visibleMenuState]);
   const menuHasStaleItems = visibleMenuPresentation.hasStaleItems;
   const showMenuState = visibleMenuPresentation.showState;
   const menuStateCopy = visibleMenuPresentation.copy;
@@ -1637,6 +1664,7 @@ export const PublicVenueScreen = ({
           </View>
           {visibleMenuState === "error" ? (
             <Pressable
+              ref={Platform.OS === "web" ? retryWebHostRef : undefined}
               accessibilityRole="button"
               accessibilityLabel="Try loading the menu again"
               accessibilityState={{ disabled: menuBusy, busy: menuBusy }}

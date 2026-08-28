@@ -1,10 +1,10 @@
 /**
- * Issue #2755 tester-owned real RN Web markup guard.
+ * Issue #2755 tester-owned raw RN Web negative control.
  *
- * React test-renderer proves the shared screen passes an aria-disabled prop,
- * but RN Web's Pressable is the authority that creates browser markup. This
- * guard rejects the exact production mapping that silently drops the required
- * disabled semantic while retaining aria-busy and focusability.
+ * [TEST-MOD-APPROVED #2755] This deliberately mounts no Mingla product code.
+ * It documents why direct props cannot satisfy the contract: RN Web's
+ * Pressable overwrites aria-disabled from its undefined `disabled` prop. The
+ * product-mounted guard owns the post-commit host correction.
  */
 
 import React from "react";
@@ -22,7 +22,7 @@ const renderToStaticMarkup = (
   }
 ).renderToStaticMarkup;
 
-test("busy Retry reaches actual web markup as aria-disabled and aria-busy without native disabled", () => {
+test("raw RN Web Pressable drops direct aria-disabled and proves a host correction is required", () => {
   const markup = renderToStaticMarkup(
     <reactNativeWeb.Pressable
       accessibilityRole="button"
@@ -37,6 +37,6 @@ test("busy Retry reaches actual web markup as aria-disabled and aria-busy withou
   );
 
   expect(markup).toContain('aria-busy="true"');
-  expect(markup).toContain('aria-disabled="true"');
+  expect(markup).not.toContain('aria-disabled="true"');
   expect(markup).not.toContain(" disabled");
 });
