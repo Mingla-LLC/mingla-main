@@ -60,6 +60,13 @@ jest.mock("../../../hooks/useVenueReservations", () => ({
 jest.mock("../../../hooks/useVenueTables", () => ({
   useVenueTables: () => ({ data: [], isLoading: false, isError: false }),
 }));
+jest.mock("../../../hooks/useVenueAvailability", () => ({
+  useVenueAvailabilityConfig: () => ({
+    data: { ianaTimezone: "UTC" },
+    isLoading: false,
+    isError: false,
+  }),
+}));
 jest.mock("../../../hooks/useVenueWaitlist", () => ({
   useVenueWaitlist: () => ({ data: [], isLoading: false, isError: false }),
   useAddToWaitlist: () => ({ mutate: () => undefined, isPending: false, isError: false }),
@@ -118,7 +125,7 @@ function countClass(html: string, cls: string): number {
 describe("ORCH-1190 R4 — venue empty-state cards full-width on WEB (width:100% + alignSelf:stretch, matching tableCard)", () => {
   it("Reservations empty state: card+wrapper carry BOTH width:100% and alignSelf:stretch", () => {
     const html = renderHtml(<VenueReservationsModule brandId="b1" />);
-    expect(html).toContain("No reservations today yet.");
+    expect(html).toContain("No active reservations this week.");
     // emptyWrap + emptyCard both carry alignSelf:"stretch" — at least 2.
     expect(countClass(html, ALIGN_SELF_STRETCH)).toBeGreaterThanOrEqual(2);
     // R4: width:"100%" RESTORED on emptyWrap + emptyCard — at least 2 (the R3

@@ -63,6 +63,13 @@ jest.mock("../../../hooks/useVenueReservations", () => ({
 jest.mock("../../../hooks/useVenueTables", () => ({
   useVenueTables: () => ({ data: [], isLoading: false, isError: false }),
 }));
+jest.mock("../../../hooks/useVenueAvailability", () => ({
+  useVenueAvailabilityConfig: () => ({
+    data: { ianaTimezone: "UTC" },
+    isLoading: false,
+    isError: false,
+  }),
+}));
 
 // Waitlist module deps.
 jest.mock("../../../hooks/useVenueWaitlist", () => ({
@@ -144,7 +151,7 @@ function countClass(html: string, cls: string): number {
 describe("ORCH-1190 R4 — venue empty-state cards full width on WEB (width:100% + alignSelf:stretch)", () => {
   it("Reservations empty state: carries width:100% (and alignSelf:stretch)", () => {
     const html = renderHtml(<VenueReservationsModule brandId="b1" />);
-    expect(html).toContain("No reservations today yet.");
+    expect(html).toContain("No active reservations this week.");
     expect(countClass(html, ALIGN_SELF_STRETCH)).toBeGreaterThanOrEqual(2);
     expect(countClass(html, WIDTH_100)).toBeGreaterThanOrEqual(2);
   });
