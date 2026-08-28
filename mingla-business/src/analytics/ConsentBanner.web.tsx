@@ -1,15 +1,13 @@
 /** Buyer-web cookie consent, composed as one viewport-bounded persistent action. */
 
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Linking,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   View,
-  useWindowDimensions,
   type PressableStateCallbackType,
   type StyleProp,
   type ViewStyle,
@@ -46,9 +44,6 @@ type WebConsentStyle = Omit<
   cursor?: "pointer";
 };
 
-const webConsentStyle = (style: WebConsentStyle): StyleProp<ViewStyle> =>
-  style as StyleProp<ViewStyle>;
-
 type WebPressableState = PressableStateCallbackType & {
   focused?: boolean;
   hovered?: boolean;
@@ -60,8 +55,17 @@ const safeTop = "max(16px, env(safe-area-inset-top, 0px))";
 export function ConsentBanner(): React.ReactElement | null {
   const consentState = useWebConsentState();
   const [manageOpen, setManageOpen] = useState<boolean>(false);
-  const { width } = useWindowDimensions();
-  const compact = width < 320;
+  const [compact, setCompact] = useState<boolean>(
+    () => typeof window !== "undefined" && window.innerWidth < 320,
+  );
+
+  useEffect(() => {
+    const query = window.matchMedia("(max-width: 319px)");
+    const sync = (): void => setCompact(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
 
   if (Platform.OS !== "web" || consentState !== "unresolved") return null;
 
@@ -72,11 +76,11 @@ export function ConsentBanner(): React.ReactElement | null {
       {...phNoCaptureProps()}
       style={[
         styles.host,
-        webConsentStyle({
+        ({
           left: "max(16px, env(safe-area-inset-left, 0px))",
           right: "max(16px, env(safe-area-inset-right, 0px))",
           bottom: safeBottom,
-        }),
+        } as WebConsentStyle as StyleProp<ViewStyle>),
       ]}
       pointerEvents="box-none"
     >
@@ -84,22 +88,20 @@ export function ConsentBanner(): React.ReactElement | null {
         style={[
           styles.panel,
           compact ? styles.panelCompact : null,
-          webConsentStyle({
+          ({
             maxHeight: `calc(100dvh - ${safeTop} - ${safeBottom})`,
-          }),
+          } as WebConsentStyle as StyleProp<ViewStyle>),
         ]}
       >
-        <ScrollView
+        <View
           style={[
             styles.readingBand,
-            webConsentStyle({
+            ({
               overflowY: "auto",
               overscrollBehaviorY: "contain",
               WebkitOverflowScrolling: "touch",
-            }),
+            } as WebConsentStyle as StyleProp<ViewStyle>),
           ]}
-          contentContainerStyle={styles.readingContent}
-          showsVerticalScrollIndicator
         >
           <Text style={styles.title}>Cookies &amp; analytics</Text>
           <Text style={styles.body}>
@@ -110,10 +112,8 @@ export function ConsentBanner(): React.ReactElement | null {
             onPress={() => void Linking.openURL(PRIVACY_POLICY_URL)}
             accessibilityRole="link"
             accessibilityLabel="Privacy Policy"
-            style={({ pressed, focused, hovered }: WebPressableState) => [
+            style={({ focused }: WebPressableState) => [
               styles.privacyLink,
-              pressed ? styles.pressed : null,
-              hovered ? styles.linkHovered : null,
               focused ? styles.focusRing : null,
             ]}
           >
@@ -141,7 +141,7 @@ export function ConsentBanner(): React.ReactElement | null {
               data.
             </Text>
           ) : null}
-        </ScrollView>
+        </View>
 
         <View style={styles.decisionBand}>
           <View style={[styles.actions, compact ? styles.actionsCompact : null]}>
@@ -177,9 +177,8 @@ export function ConsentBanner(): React.ReactElement | null {
             accessibilityState={{ expanded: manageOpen }}
             aria-controls="issue-2769-consent-details"
             testID="issue-2769-consent-manage"
-            style={({ pressed, focused, hovered }: WebPressableState) => [
+            style={({ focused, hovered }: WebPressableState) => [
               styles.manageBtn,
-              pressed ? styles.pressed : null,
               hovered ? styles.manageHovered : null,
               focused ? styles.focusRing : null,
             ]}
@@ -221,8 +220,6 @@ const styles = StyleSheet.create({
   readingBand: {
     flexShrink: 1,
     minHeight: 0,
-  },
-  readingContent: {
     gap: spacing.sm,
   },
   decisionBand: {
@@ -253,9 +250,6 @@ const styles = StyleSheet.create({
   },
   linkActive: {
     textDecorationLine: "underline",
-  },
-  linkHovered: {
-    cursor: "pointer",
   },
   manageNote: {
     fontSize: 12,
@@ -296,8 +290,5 @@ const styles = StyleSheet.create({
     outlineStyle: "solid",
     outlineColor: accent.warm,
     outlineOffset: 2,
-  },
-  pressed: {
-    opacity: 0.85,
   },
 });

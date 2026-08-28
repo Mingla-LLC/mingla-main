@@ -109,6 +109,17 @@ test("an accepted choice resolves the page even when persistence is unavailable"
   await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
 });
 
+test("the canonical storage event reconciles another open venue page", async ({ browser }) => {
+  const context = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const first = await context.newPage();
+  const second = await context.newPage();
+  await Promise.all([first.goto(harness), second.goto(harness)]);
+  await first.getByTestId("issue-2769-consent-reject").click();
+  await expect(second.getByRole("region", { name: "Cookie consent" })).toHaveCount(0);
+  await expect(second.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
+  await context.close();
+});
+
 test("keyboard focus reaches Manage, Reject, and Accept with visible focus treatment", async ({ page }) => {
   await page.goto(harness);
   const privacy = page.getByRole("link", { name: "Privacy Policy" });

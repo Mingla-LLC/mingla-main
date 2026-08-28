@@ -54,7 +54,7 @@ const SESSION_REPLAY_SAMPLE_RATE = 0.2;
 
 // localStorage key — the banner's own source of truth for whether to re-show.
 // Shared shape with the marketing surface ("granted" | "denied" + ts).
-export const CONSENT_STORAGE_KEY = "mingla_consent_v1";
+const CONSENT_STORAGE_KEY = "mingla_consent_v1";
 
 export type ConsentChoice = "granted" | "denied";
 export type StoredConsentSnapshot = ConsentChoice | "unresolved";
@@ -143,39 +143,29 @@ function hasWindow(): boolean {
 
 function parseConsentRecord(raw: string | null): ConsentChoice | null {
   if (raw === null) return null;
-  try {
-    const parsed = JSON.parse(raw) as { choice?: string };
-    return parsed.choice === "granted" || parsed.choice === "denied"
-      ? parsed.choice
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-function readPersistedConsent(): ConsentChoice | null {
-  if (!hasWindow()) return null;
-  // Issue #922: the zero-JS invitation shell can record a first choice before
-  // this canonical analytics module loads. Keep the validated choice for this
-  // page lifetime so ConsentBanner, analytics init, and later same-page readers
-  // all see it if localStorage persistence fails. Navigation/reload is the
-  // natural ephemeral boundary; persistence and side effects remain owned below.
-  const prebootChoice = window.__minglaPrebootConsentChoice;
-  if (prebootChoice === "granted" || prebootChoice === "denied") {
-    return prebootChoice;
-  }
-  try {
-    return parseConsentRecord(window.localStorage.getItem(CONSENT_STORAGE_KEY));
-  } catch {
-    return null;
-  }
+  const parsed = JSON.parse(raw) as { choice?: string };
+  return parsed.choice === "granted" || parsed.choice === "denied"
+    ? parsed.choice
+    : null;
 }
 
 /** The canonical same-page choice, or null while the visitor has not chosen. */
 export function readStoredConsent(): ConsentChoice | null {
   if (!hasWindow()) return null;
-  if (pageConsentChoice === undefined) {
-    pageConsentChoice = readPersistedConsent();
+  if (pageConsentChoice !== undefined) return pageConsentChoice;
+  // Issue #922 preboot keeps precedence for this page lifetime, including when
+  // localStorage is unavailable. All later explicit choices update this cache.
+  const prebootChoice = window.__minglaPrebootConsentChoice;
+  if (prebootChoice === "granted" || prebootChoice === "denied") {
+    pageConsentChoice = prebootChoice;
+  } else {
+    try {
+      pageConsentChoice = parseConsentRecord(
+        window.localStorage.getItem(CONSENT_STORAGE_KEY),
+      );
+    } catch {
+      pageConsentChoice = null;
+    }
   }
   return pageConsentChoice;
 }
@@ -191,18 +181,16 @@ function notifyConsentSubscribers(): void {
 
 function reconcileStoredConsent(event: StorageEvent): void {
   if (event.key !== null && event.key !== CONSENT_STORAGE_KEY) return;
-  const next =
-    event.key === CONSENT_STORAGE_KEY
-      ? parseConsentRecord(event.newValue)
-      : (() => {
-          try {
-            return parseConsentRecord(
-              window.localStorage.getItem(CONSENT_STORAGE_KEY),
-            );
-          } catch {
-            return null;
-          }
-        })();
+  let next: ConsentChoice | null;
+  try {
+    next = parseConsentRecord(
+      event.key === CONSENT_STORAGE_KEY
+        ? event.newValue
+        : window.localStorage.getItem(CONSENT_STORAGE_KEY),
+    );
+  } catch {
+    next = null;
+  }
   if (next === pageConsentChoice) return;
   pageConsentChoice = next;
   notifyConsentSubscribers();
@@ -211,16 +199,12 @@ function reconcileStoredConsent(event: StorageEvent): void {
 /** Subscribe without initializing analytics or changing consent side effects. */
 export function subscribeStoredConsent(subscriber: () => void): () => void {
   consentSubscribers.add(subscriber);
-  if (hasWindow() && consentSubscribers.size === 1) {
-    window.addEventListener("storage", reconcileStoredConsent);
-  }
   return () => {
     consentSubscribers.delete(subscriber);
-    if (hasWindow() && consentSubscribers.size === 0) {
-      window.removeEventListener("storage", reconcileStoredConsent);
-    }
   };
 }
+
+if (hasWindow()) window.addEventListener("storage", reconcileStoredConsent);
 
 function writeStoredConsent(choice: ConsentChoice): void {
   if (!hasWindow()) return;
