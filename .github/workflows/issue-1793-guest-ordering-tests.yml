@@ -148,6 +148,7 @@ jobs:
           src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.happy.test.ts
           src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.render.happy.test.tsx
           src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.adversarial.test.tsx
+          src/components/venueOrdering/__tests__/publicVenueMenuRequestTruth.issue2755.webFocus.adversarial.test.tsx
           src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.happy.test.tsx
           src/components/venue/__tests__/consumerPublicVenueMenuSuspense.issue2735.adversarial.test.tsx
           src/components/venue/__tests__/venueOrders.issue1791.test.ts
