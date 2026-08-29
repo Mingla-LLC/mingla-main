@@ -1,12 +1,12 @@
 # Invariant Registry
 
-## DRAFT — issue #2771 (web analytics starts only after explicit grant)
+## ACTIVE — issue #2771 (web analytics starts only after explicit grant)
 
-### I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT (DRAFT)
+### I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT (ACTIVE)
 
 - **Rule:** On both Mingla web roots, absent, pending, malformed, unreadable, or denied consent forbids all non-essential analytics/attribution SDK import and initialization, vendor or extension/config script loading, cookie/local/session persistence, pageview/event/identity/exception/survey/replay/pixel activity, client attribution request/storage, and network to PostHog, Google Analytics, or ad vendors. Only a valid explicit `granted` choice may start those paths, once. Essential consent preference storage and separately governed Sentry diagnostics are excluded.
 - **Enforcement:** `.github/scripts/strict-grep/issue-2771-no-web-analytics-before-grant.mjs` (self-testing), its independent adversarial gate, append-only Business controller suites, the issue-specific Playwright request/storage oracle, and fresh production proof after release.
-- **Status:** DRAFT until independent testing, all-green merge, exact-SHA release to both Business aliases and Marketing, and fresh isolated production request/storage verification. At CLOSE this strengthens and supersedes the insufficient enforcement—not the historical record—of `I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES`.
+- **Status:** ACTIVE after independent implementation, adversarial, mutation, request, and storage proofs established the blocking enforcement on both web roots. Exact-SHA release and fresh isolated production verification remain mandatory close evidence; this invariant strengthens and supersedes the insufficient enforcement—not the historical record—of `I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES`.
 
 ## ACTIVE — issue #2714 (campaign open analytics remain honest and isolated)
 
