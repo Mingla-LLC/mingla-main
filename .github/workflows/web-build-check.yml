@@ -151,3 +151,11 @@ jobs:
           test -f playwright/issue2769/consent-reserve-composition.adversarial.spec.ts
           npx jest src/analytics/__tests__/issue2769ConsentReserveComposition.happy.test.ts --runInBand
           npx playwright test -c playwright.issue2769.config.ts
+      # issue #2771 — the implementation-owned happy path and independent
+      # tester-owned adversarial browser oracle must remain co-enforced.
+      - name: "#2771 no web analytics before explicit grant"
+        working-directory: mingla-business
+        run: |
+          test -f playwright/issue2771-preconsent-analytics.spec.ts
+          test -f playwright/issue2771-preconsent-analytics.tester.adversarial.spec.ts
+          npx playwright test -c playwright.issue2771.config.ts
