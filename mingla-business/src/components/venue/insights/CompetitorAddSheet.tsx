@@ -27,6 +27,10 @@ import {
   typography,
 } from "../../../constants/designSystem";
 import {
+  BUTTON_MAX_FONT_SCALE,
+  isLargeText,
+} from "../../../constants/dynamicType";
+import {
   captureCompetitorIntelligenceEvent,
   captureIntelCompetitorAdded,
 } from "../../../analytics/competitorIntelligenceAnalytics";
@@ -93,12 +97,13 @@ export function CompetitorAddSheet({
   offline = false,
   testID = "competitor-source-sheet",
 }: CompetitorAddSheetProps): React.ReactElement {
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const contentInsetStyle = width >= 1024
     ? styles.insetWide
     : width >= 360
       ? styles.insetRegular
       : styles.insetCompact;
+  const accessibilityHeader = isLargeText(fontScale);
   const { loading, session } = useAuth();
   const isOffline = offline;
   const mutation = useAddCompetitor(brandId, venueListingId);
@@ -296,8 +301,19 @@ export function CompetitorAddSheet({
         testID={`${testID}-${editing ? "mode-edit" : "mode-add"}`}
       >
         <View style={styles.sheetHeader}>
-          <View style={styles.headerTop}>
-            <Text accessibilityRole="header" style={styles.title}>
+          <View
+            style={[
+              styles.headerTop,
+              accessibilityHeader ? styles.headerTopAccessible : null,
+            ]}
+            testID={`${testID}-header`}
+          >
+            <Text
+              accessibilityRole="header"
+              maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE}
+              style={styles.title}
+              testID={`${testID}-title`}
+            >
               {editing ? "Edit competitor sources" : "Watch a competitor"}
             </Text>
             <Button
@@ -307,6 +323,8 @@ export function CompetitorAddSheet({
               size="md"
               disabled={mutation.isPending}
               onPress={requestClose}
+              style={accessibilityHeader ? styles.closeAccessible : undefined}
+              testID={`${testID}-close`}
             />
           </View>
           <Text style={styles.help}>
@@ -633,6 +651,18 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "space-between",
     gap: spacing.md,
+  },
+  headerTopAccessible: {
+    flexDirection: "column",
+    alignItems: "stretch",
+    justifyContent: "flex-start",
+    gap: spacing.sm,
+  },
+  closeAccessible: {
+    alignSelf: "flex-end",
+    minWidth: 44,
+    minHeight: 44,
+    flexShrink: 0,
   },
   scroll: { gap: spacing.md, paddingBottom: spacing.xl },
   footer: {

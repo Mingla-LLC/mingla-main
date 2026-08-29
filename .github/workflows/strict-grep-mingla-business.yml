@@ -635,6 +635,7 @@ jobs:
           src/services/__tests__/competitorDecisionReport.issue2796.happy.test.ts
           src/components/venue/insights/__tests__/competitorPremiumReportFocus.issue2796.tester.adversarial.test.tsx
           src/components/venue/insights/__tests__/competitorPremiumReport.issue2796.happy.test.ts
+          src/components/venue/insights/__tests__/competitorAddSheetAccessibilityHeader.issue2796.happy.test.tsx
       - name: "Issue #2796: strict contract gate"
         run: node .github/scripts/strict-grep/issue-2796-competitor-decision-report.mjs
       - name: Run expo export -p web (capture stderr)
