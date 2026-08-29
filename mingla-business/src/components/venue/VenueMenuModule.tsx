@@ -27,7 +27,6 @@
 
 import React, { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { UtensilsCrossed } from "lucide-react-native";
 
 import {
   glass,
@@ -61,6 +60,7 @@ import { MenuCategorySheet } from "./MenuCategorySheet";
 import type { MenuCategorySheetSaveInput } from "./MenuCategorySheet";
 import { MenuItemSheet } from "./MenuItemSheet";
 import type { MenuItemSheetSaveInput } from "./MenuItemSheet";
+import { VenueHubEmptyState } from "./VenueHubEmptyState";
 
 const MANAGER_PLUS_RANK = BRAND_ROLE_RANK.event_manager; // 40
 
@@ -397,30 +397,17 @@ export function VenueMenuModule({
   if (menus.length === 0) {
     return (
       <View style={styles.host} testID={testID ?? "venue-menu-module"}>
-        <View style={styles.emptyWrap} testID="venue-menu-empty-wrap">
-          <GlassCard variant="base" style={styles.emptyCard}>
-            <View style={styles.emptyEmoji} accessibilityElementsHidden>
-              <UtensilsCrossed size={34} color={textTokens.primary} />
-            </View>
-            <Text style={styles.emptyTitle}>Build your menu</Text>
-            <Text style={styles.emptyBody} testID="venue-menu-empty-body">
-              {canMutate
-                ? visibilityCopy.emptyBody
-                : "No menu yet. Ask a manager or owner to add one."}
-            </Text>
-            {canMutate ? (
-              <Button
-                label="Add a category"
-                onPress={openAddCategory}
-                variant="primary"
-                size="lg"
-                fullWidth
-                style={styles.emptyCta}
-                testID="venue-menu-add-category"
-              />
-            ) : null}
-          </GlassCard>
-        </View>
+        <VenueHubEmptyState
+          icon="menu"
+          title="Build your menu"
+          body={canMutate ? visibilityCopy.emptyBody : "No menu yet. Ask a manager or owner to add one."}
+          actionLabel={canMutate ? "Add a category" : undefined}
+          onAction={canMutate ? openAddCategory : undefined}
+          testID="venue-menu-empty"
+          wrapTestID="venue-menu-empty-wrap"
+          bodyTestID="venue-menu-empty-body"
+          actionTestID="venue-menu-add-category"
+        />
 
         <MenuCategorySheet
           visible={categorySheetOpen}
@@ -912,40 +899,6 @@ const styles = StyleSheet.create({
   },
   addCategoryBtn: {
     alignSelf: "stretch",
-  },
-  // ---- empty ----
-  // ORCH-1190 R4 — full-width empty "Build your menu" card on WEB, matching the
-  // PROVEN-working VenueTablesModule.tableCard pattern (BOTH width:"100%" AND
-  // alignSelf:"stretch", together). R3 dropped width:"100%" and regressed to a
-  // narrow centered card while the header read full width; the sibling tableCard
-  // proves both-together renders edge-to-edge in this exact shell.
-  emptyWrap: {
-    width: "100%",
-    alignSelf: "stretch",
-  },
-  emptyCard: {
-    width: "100%",
-    alignSelf: "stretch",
-    alignItems: "center",
-    paddingVertical: spacing.xl,
-    gap: spacing.sm,
-  },
-  emptyEmoji: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  emptyTitle: {
-    ...typography.bodyLg,
-    color: textTokens.primary,
-    textAlign: "center",
-  },
-  emptyBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
-    textAlign: "center",
-  },
-  emptyCta: {
-    marginTop: spacing.sm,
   },
   // ---- read-only ----
   readOnlyNote: {

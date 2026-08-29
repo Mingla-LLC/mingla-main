@@ -13515,7 +13515,7 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f6ad5626772be19e40f12c3a1f553d8f83bd9cf29a0f2de480f3ada23ba27abe",
+        "sourceSha256": "9eb4060664485232f87558a67bd5c3c09786f717057cedde853209533fe42b28",
         "triggers": [
           "pull_request",
           "workflow_dispatch"

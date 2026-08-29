@@ -1,4 +1,10 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AccessibilityInfo,
   findNodeHandle,
@@ -15,7 +21,7 @@ import type {
   SectionList as SectionListType,
   ViewToken,
 } from "react-native";
-import { AlertTriangle, Calendar } from "lucide-react-native";
+import { AlertTriangle } from "lucide-react-native";
 
 import {
   androidOpaque,
@@ -47,6 +53,7 @@ import { ReservationDetailSheet } from "./ReservationDetailSheet";
 import { ReservationMonthView } from "./ReservationMonthView";
 import { ReservationWeekView } from "./ReservationWeekView";
 import { ACTION_TARGET } from "./reservationViews";
+import { VenueHubEmptyState } from "./VenueHubEmptyState";
 import {
   addCalendarDays,
   calendarRange,
@@ -150,20 +157,27 @@ export function VenueReservationsModule({
   const todayKey = venueTodayKey(resolvedZone.timeZone);
   const [anchorDate, setAnchorDate] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
-  const [desktopMode, setDesktopMode] = useState<ReservationCalendarMode>("week");
+  const [desktopMode, setDesktopMode] =
+    useState<ReservationCalendarMode>("week");
   const [scope, setScope] = useState<ReservationStatusScope>("active");
   const [createOpen, setCreateOpen] = useState<boolean>(false);
   const [selected, setSelected] = useState<Reservation | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [agendaNavigationVersion, setAgendaNavigationVersion] = useState(0);
   const retryInFlightRef = useRef(false);
-  const agendaRef = useRef<SectionListType<Reservation, AgendaSection> | null>(null);
-  const agendaHeaderRefs = useRef<Record<string, FocusableAgendaHeader | null>>({});
+  const agendaRef = useRef<SectionListType<Reservation, AgendaSection> | null>(
+    null,
+  );
+  const agendaHeaderRefs = useRef<Record<string, FocusableAgendaHeader | null>>(
+    {},
+  );
   const reservationEntryRefs = useRef<
     Record<string, FocusableReservationEntry | null>
   >({});
   const selectedInvokerIdRef = useRef<string | null>(null);
-  const pendingAgendaNavigationRef = useRef<PendingAgendaNavigation | null>(null);
+  const pendingAgendaNavigationRef = useRef<PendingAgendaNavigation | null>(
+    null,
+  );
   const agendaNavigationSequenceRef = useRef(0);
   const activeAgendaAttemptRef = useRef<number | null>(null);
   const readyAgendaHeadersRef = useRef<Set<string>>(new Set());
@@ -194,7 +208,9 @@ export function VenueReservationsModule({
       if (tablesQuery.isLoading) return "Loading table…";
       if (tablesQuery.isError) return "Table unavailable";
       const tableName = tableNameById.get(reservation.tableId);
-      return tableName === undefined ? "Table unavailable" : `Table ${tableName}`;
+      return tableName === undefined
+        ? "Table unavailable"
+        : `Table ${tableName}`;
     },
     [tableNameById, tablesQuery.isError, tablesQuery.isLoading],
   );
@@ -205,12 +221,7 @@ export function VenueReservationsModule({
   );
   const visible = useMemo(
     () =>
-      projectReservations(
-        reservations,
-        range,
-        scope,
-        resolvedZone.timeZone,
-      ),
+      projectReservations(reservations, range, scope, resolvedZone.timeZone),
     [range, reservations, resolvedZone.timeZone, scope],
   );
   const grouped = useMemo(
@@ -261,7 +272,8 @@ export function VenueReservationsModule({
     const restore = (): void => {
       reservationEntryRefs.current[invokingId]?.focus?.();
     };
-    if (typeof requestAnimationFrame === "function") requestAnimationFrame(restore);
+    if (typeof requestAnimationFrame === "function")
+      requestAnimationFrame(restore);
     else setTimeout(restore, 0);
   }, []);
 
@@ -289,7 +301,11 @@ export function VenueReservationsModule({
 
   const movePeriod = useCallback(
     (direction: -1 | 1): void => {
-      const nextAnchor = moveCalendarPeriod(effectiveAnchor, effectiveMode, direction);
+      const nextAnchor = moveCalendarPeriod(
+        effectiveAnchor,
+        effectiveMode,
+        direction,
+      );
       setAnchorDate(nextAnchor);
       setSelectedDay(
         effectiveMode === "month"
@@ -304,7 +320,8 @@ export function VenueReservationsModule({
     reservationsQuery.isLoading ||
     (availabilityQuery.isLoading && availabilityQuery.data === undefined);
   const hasStaleData = reservationsQuery.isError && reservations.length > 0;
-  const hasBlockingError = reservationsQuery.isError && reservations.length === 0;
+  const hasBlockingError =
+    reservationsQuery.isError && reservations.length === 0;
   const timezoneDegraded =
     availabilityQuery.isError ||
     availabilityQuery.data === null ||
@@ -330,18 +347,24 @@ export function VenueReservationsModule({
     setAgendaNavigationVersion((version) => version + 1);
   }, []);
 
-  const selectOverflowDay = useCallback((dayKey: string): void => {
-    beginAgendaNavigation(dayKey);
-    setAnchorDate(dayKey);
-    setSelectedDay(dayKey);
-    setDesktopMode("agenda");
-  }, [beginAgendaNavigation]);
+  const selectOverflowDay = useCallback(
+    (dayKey: string): void => {
+      beginAgendaNavigation(dayKey);
+      setAnchorDate(dayKey);
+      setSelectedDay(dayKey);
+      setDesktopMode("agenda");
+    },
+    [beginAgendaNavigation],
+  );
 
-  const selectAgendaDay = useCallback((dayKey: string): void => {
-    beginAgendaNavigation(dayKey);
-    setAnchorDate(dayKey);
-    setSelectedDay(dayKey);
-  }, [beginAgendaNavigation]);
+  const selectAgendaDay = useCallback(
+    (dayKey: string): void => {
+      beginAgendaNavigation(dayKey);
+      setAnchorDate(dayKey);
+      setSelectedDay(dayKey);
+    },
+    [beginAgendaNavigation],
+  );
 
   const selectReservation = useCallback((reservation: Reservation): void => {
     selectedInvokerIdRef.current = reservation.id;
@@ -427,7 +450,8 @@ export function VenueReservationsModule({
   const scheduleInitialAgendaNavigation = useCallback(
     (requestId: number): void => {
       const run = (): void => requestExactAgendaNavigation(requestId);
-      if (typeof requestAnimationFrame === "function") requestAnimationFrame(run);
+      if (typeof requestAnimationFrame === "function")
+        requestAnimationFrame(run);
       else setTimeout(run, 0);
     },
     [requestExactAgendaNavigation],
@@ -548,7 +572,8 @@ export function VenueReservationsModule({
       const nextViewableDays = new Set<string>();
       for (const token of viewableItems) {
         if (token.isViewable === false) continue;
-        const section = (token as ViewToken & { section?: AgendaSection }).section;
+        const section = (token as ViewToken & { section?: AgendaSection })
+          .section;
         if (section !== undefined) nextViewableDays.add(section.dayKey);
       }
       viewableAgendaDaysRef.current = nextViewableDays;
@@ -595,17 +620,14 @@ export function VenueReservationsModule({
     scheduleInitialAgendaNavigation,
   ]);
 
-  useEffect(
-    () => {
-      agendaMountedRef.current = true;
-      return () => {
-        agendaMountedRef.current = false;
-        activeAgendaAttemptRef.current = null;
-        pendingAgendaNavigationRef.current = null;
-      };
-    },
-    [],
-  );
+  useEffect(() => {
+    agendaMountedRef.current = true;
+    return () => {
+      agendaMountedRef.current = false;
+      activeAgendaAttemptRef.current = null;
+      pendingAgendaNavigationRef.current = null;
+    };
+  }, []);
 
   const periodLabel = formatCalendarPeriod(effectiveAnchor, effectiveMode);
   const selectedTableName =
@@ -686,7 +708,10 @@ export function VenueReservationsModule({
         </View>
       ) : null}
 
-      {!showInitialSkeleton && !hasBlockingError && visible.length > 0 && effectiveMode === "agenda" ? (
+      {!showInitialSkeleton &&
+      !hasBlockingError &&
+      visible.length > 0 &&
+      effectiveMode === "agenda" ? (
         <SectionList
           ref={agendaRef}
           sections={agendaSections}
@@ -721,7 +746,8 @@ export function VenueReservationsModule({
                 })}
               </Text>
               <Text style={styles.dayHeaderCount}>
-                {section.data.length} booking{section.data.length === 1 ? "" : "s"}
+                {section.data.length} booking
+                {section.data.length === 1 ? "" : "s"}
               </Text>
             </View>
           )}
@@ -741,8 +767,12 @@ export function VenueReservationsModule({
               </Text>
             ) : null
           }
-          ItemSeparatorComponent={() => <View style={styles.agendaRowSeparator} />}
-          SectionSeparatorComponent={() => <View style={styles.agendaGroupSeparator} />}
+          ItemSeparatorComponent={() => (
+            <View style={styles.agendaRowSeparator} />
+          )}
+          SectionSeparatorComponent={() => (
+            <View style={styles.agendaGroupSeparator} />
+          )}
           onScroll={handleAgendaScroll}
           scrollEventThrottle={16}
           onViewableItemsChanged={handleAgendaViewableItemsChanged}
@@ -768,7 +798,9 @@ export function VenueReservationsModule({
               testID="reservation-calendar-error"
             >
               <AlertTriangle size={28} color={semantic.error} />
-              <Text style={styles.stateTitle}>Couldn&apos;t load reservations.</Text>
+              <Text style={styles.stateTitle}>
+                Couldn&apos;t load reservations.
+              </Text>
               <Button
                 label="Try again"
                 onPress={handleRetry}
@@ -779,30 +811,17 @@ export function VenueReservationsModule({
               />
             </GlassCard>
           ) : visible.length === 0 ? (
-            <GlassCard
-              variant="base"
-              style={styles.stateCard}
-              contentStyle={styles.stateCardContent}
+            <VenueHubEmptyState
+              icon="reservations"
+              title={`No ${SCOPE_COPY[scope]} ${
+                effectiveMode === "month" ? "this month" : "this week"
+              }.`}
+              body={`Try another date${canMutate ? " or add a reservation" : ""}.`}
+              actionLabel={canMutate ? "New reservation" : undefined}
+              onAction={canMutate ? () => setCreateOpen(true) : undefined}
               testID="reservation-calendar-empty"
-            >
-              <Calendar size={28} color={textTokens.primary} />
-              <Text style={styles.stateTitle}>
-                No {SCOPE_COPY[scope]} {effectiveMode === "month" ? "this month" : "this week"}.
-              </Text>
-              <Text style={styles.stateBody}>
-                Try another date{canMutate ? " or add a reservation" : ""}.
-              </Text>
-              {canMutate ? (
-                <Button
-                  label="New reservation"
-                  onPress={() => setCreateOpen(true)}
-                  variant="primary"
-                  size="md"
-                  leadingIcon="plus"
-                  testID="reservation-calendar-empty-add"
-                />
-              ) : null}
-            </GlassCard>
+              actionTestID="reservation-calendar-empty-add"
+            />
           ) : effectiveMode === "week" ? (
             <ReservationWeekView
               days={range.days}
@@ -953,11 +972,6 @@ const styles = StyleSheet.create({
   stateTitle: {
     ...typography.h3,
     color: textTokens.primary,
-    textAlign: "center",
-  },
-  stateBody: {
-    ...typography.bodySm,
-    color: textTokens.secondary,
     textAlign: "center",
   },
   scrollBody: {
