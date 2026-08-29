@@ -117,6 +117,12 @@ jobs:
       - name: "#2739 — public gallery thumbnail web control proofs"
         if: always()
         run: npx jest --config jest.issue2739.render.cjs --runInBand --ci
+      - name: "#2774 — public hero content equivalence happy proofs"
+        if: always()
+        run: |
+          npx jest --config jest.issue2774.render.cjs --runInBand --ci
+          cd ../app-mobile
+          npx jest --config jest.issue2774.render.cjs --runInBand --ci
       # ORCH-1331 guards the LIVE Nigeria partner Paystack onboarding form. Its
       # only other coverage (orch_1331_partner_paystack_ui.test.ts, 21 green) is a
       # SOURCE-TEXT pin — `expect(form).toContain('testID="…"')` — which proves the

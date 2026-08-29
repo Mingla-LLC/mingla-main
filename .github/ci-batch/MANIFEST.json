@@ -13515,7 +13515,7 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "f7707cd0dbfd7204f8c571640450fead40c3a33b2e5368242c8a25e02104b81d",
+        "sourceSha256": "f6ad5626772be19e40f12c3a1f553d8f83bd9cf29a0f2de480f3ada23ba27abe",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16074,7 +16074,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "66562908daf8f680ac44862597dbbdb5fa76de4b4c99869dcd0721c93df09e16",
+        "sourceSha256": "0f9c578731d48b119b314cb59c8f1b21f8279581dc62b768fd745f5c707fd4a2",
         "triggers": [
           "pull_request",
           "push"
@@ -17706,7 +17706,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "fd9451c3c740636cd65d208724c55de55cb39f589e08041c14df0ac777c7f920",
+        "sourceSha256": "5338ac577e3bb294b026927f4a58e84c9c3d60e19a1f99c2d9534dfc35fa9e2d",
         "triggers": [
           "pull_request",
           "push"
@@ -21699,6 +21699,7 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1863-payments-permission-gate.mjs",
+        ".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs",
         "mingla-business/jest.config.cjs",
         "mingla-business/jest.issue1834.render.cjs",
         "mingla-business/jest.issue1863.render.cjs",

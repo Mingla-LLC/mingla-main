@@ -309,6 +309,7 @@ const mapLiveEventToPublicEvent = (
     cityGeo: event.cityGeo ?? null,
     coverHue: event.coverHue,
     coverMediaUrl: safeCoverMediaUrl,
+    coverMediaAlt: coverVideoUnsafe ? null : (event.coverMediaAlt ?? null),
     coverMediaType:
       safeCoverMediaType === "image" ||
       safeCoverMediaType === "video" ||

@@ -294,6 +294,7 @@ export const mapRpcPayloadToPublicEvent = (
     cityGeo: asLatLng(payload.cityGeo),
     coverHue: 0,
     coverMediaUrl: asString(payload.coverMediaUrl),
+    coverMediaAlt: asString(payload.coverMediaAlt),
     coverMediaType: asCoverType(payload.coverMediaType),
     coverCredit: asString(payload.coverMediaCredit),
     tickets: Array.isArray(payload.tickets)

@@ -94,6 +94,7 @@ export const mapRsvpRpcPayload = (
     cityGeo: asLatLng(payload.cityGeo),
     coverHue: 0,
     coverMediaUrl: asString(payload.coverMediaUrl),
+    coverMediaAlt: asString(payload.coverMediaAlt),
     coverMediaType: asCoverType(payload.coverMediaType),
     coverCredit: asString(payload.coverMediaCredit),
     // RSVP is ticketless.

@@ -65,6 +65,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import {
   boldFontFamily,
+  buildHeroMediaAccessibleLabel,
   computeOfferingVariant,
   CoverGalleryPager,
   CoverGalleryRow,
@@ -1357,6 +1358,13 @@ export default function ConsumerEventDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  const primaryHeroAccessibleLabel = buildHeroMediaAccessibleLabel({
+    subject: fnd.name,
+    mediaType: fnd.coverMediaType,
+    position: 1,
+    total: coverGallery.length + 1,
+    description: fnd.coverMediaAlt,
+  });
   // issue #868 Pass 3 — the pager OWNS scrolling (it drives scrollTo from
   // activeIndex with a settle-guard, BUG 1). The row just sets the shown index.
   const selectCoverIndex = (index: number): void => {
@@ -1366,6 +1374,7 @@ export default function ConsumerEventDetailScreen({
   // of the pager in gallery mode, or rendered alone when the gallery is empty.
   const coverMediaNode = (
     <EventCoverMedia
+      accessibleLabel={primaryHeroAccessibleLabel}
       mediaUrl={fnd.coverMediaUrl}
       mediaType={fnd.coverMediaType}
       hue={fnd.coverHue}
@@ -1521,6 +1530,9 @@ export default function ConsumerEventDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
+              heroAccessibilitySubject={fnd.name}
+              coverMediaAlt={fnd.coverMediaAlt}
+              coverMediaType={fnd.coverMediaType}
             />
           ) : (
             coverMediaNode

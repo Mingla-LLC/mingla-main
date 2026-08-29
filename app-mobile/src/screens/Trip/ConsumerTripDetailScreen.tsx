@@ -73,6 +73,7 @@ import { useRouter } from "expo-router";
 import {
   boldFontFamily,
   CoverGalleryPager,
+  buildHeroMediaAccessibleLabel,
   CoverGalleryRow,
   createThemePalette,
   EventCoverMedia,
@@ -965,12 +966,20 @@ export default function ConsumerTripDetailScreen({
     (g) => typeof g?.url === "string" && g.url.length > 0,
   );
   const galleryActive = coverGallery.length >= 1;
+  const primaryHeroAccessibleLabel = buildHeroMediaAccessibleLabel({
+    subject: detail.title,
+    mediaType: detail.coverMediaType,
+    position: 1,
+    total: coverGallery.length + 1,
+    description: detail.coverMediaAlt,
+  });
   // issue #868 Pass 3 — the pager OWNS scrolling (settle-guard, BUG 1).
   const selectCoverIndex = (index: number): void => {
     setCoverIndex(index);
   };
   const coverMediaNode = (
     <EventCoverMedia
+      accessibleLabel={primaryHeroAccessibleLabel}
       mediaUrl={detail.coverMediaUrl}
       mediaType={detail.coverMediaType}
       hue={hueFromId(detail.tripId)}
@@ -1072,6 +1081,9 @@ export default function ConsumerTripDetailScreen({
               gallery={coverGallery}
               activeIndex={coverIndex}
               onActiveIndexChange={setCoverIndex}
+              heroAccessibilitySubject={detail.title}
+              coverMediaAlt={detail.coverMediaAlt}
+              coverMediaType={detail.coverMediaType}
             />
           ) : (
             coverMediaNode

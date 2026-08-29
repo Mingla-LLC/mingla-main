@@ -184,6 +184,7 @@ export interface ConsumerTripDetail {
   destinationLat: number | null;
   destinationLng: number | null;
   coverMediaUrl: string | null;
+  coverMediaAlt: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items (hero indices
@@ -335,6 +336,7 @@ interface RpcTripPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  coverMediaAlt: string | null;
   // issue #868 [cover-gallery] — RPC coverGallery json key (default []).
   coverGallery?: OfferingGalleryImage[] | null;
   refundPolicy: unknown;
@@ -445,6 +447,7 @@ async function fetchTripDetail(
     destinationLat: numOrNull(p.destinationLat),
     destinationLng: numOrNull(p.destinationLng),
     coverMediaUrl: p.coverMediaUrl,
+    coverMediaAlt: p.coverMediaAlt ?? null,
     coverMediaType: coerceCoverType(p.coverMediaType),
     // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
     coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],

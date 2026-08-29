@@ -29,7 +29,11 @@ import React from "react";
 import { StyleSheet, View } from "react-native";
 
 import { EventCoverMedia } from "./EventCoverMedia";
-import { type OfferingGalleryImage } from "./types";
+import {
+  buildHeroMediaAccessibleLabel,
+  HeroMediaChangeAnnouncer,
+} from "./heroMediaAccessibility";
+import { type EventCoverMediaType, type OfferingGalleryImage } from "./types";
 
 export interface CoverGalleryPagerProps {
   /** sequence index 0 — the screen's EXISTING <EventCoverMedia> (unchanged, video-capable). */
@@ -39,6 +43,9 @@ export interface CoverGalleryPagerProps {
   /** shown item: 0 = cover, i = gallery[i-1]. Owned by the screen (driven by the row). */
   activeIndex: number;
   onActiveIndexChange: (index: number) => void;
+  heroAccessibilitySubject?: string | null;
+  coverMediaAlt?: string | null;
+  coverMediaType?: EventCoverMediaType | null;
   testID?: string;
 }
 
@@ -49,6 +56,9 @@ export const CoverGalleryPager: React.FC<CoverGalleryPagerProps> = ({
   // onActiveIndexChange is part of the controlled contract (the CoverGalleryRow
   // drives activeIndex); this deterministic renderer only READS activeIndex.
   onActiveIndexChange: _onActiveIndexChange,
+  heroAccessibilitySubject = null,
+  coverMediaAlt = null,
+  coverMediaType = null,
   testID,
 }) => {
   const lastIndex = gallery.length; // sequence indices are 0..gallery.length
@@ -56,6 +66,13 @@ export const CoverGalleryPager: React.FC<CoverGalleryPagerProps> = ({
   const clamped =
     activeIndex < 0 ? 0 : activeIndex > lastIndex ? lastIndex : activeIndex;
   const item = clamped === 0 ? undefined : gallery[clamped - 1];
+  const accessibleLabel = buildHeroMediaAccessibleLabel({
+    subject: heroAccessibilitySubject,
+    mediaType: clamped === 0 ? coverMediaType : (item?.type ?? "image"),
+    position: clamped + 1,
+    total: gallery.length + 1,
+    description: clamped === 0 ? coverMediaAlt : item?.alt,
+  });
 
   return (
     <View style={styles.pager} testID={testID}>
@@ -77,11 +94,17 @@ export const CoverGalleryPager: React.FC<CoverGalleryPagerProps> = ({
           <EventCoverMedia
             mediaUrl={item.url}
             mediaType={item.type ?? "image"}
+            accessibleLabel={accessibleLabel}
             height="100%"
             width="100%"
           />
         </View>
       )}
+      <HeroMediaChangeAnnouncer
+        activeIndex={clamped}
+        accessibleLabel={accessibleLabel}
+        testID={testID !== undefined ? `${testID}-announcement` : undefined}
+      />
     </View>
   );
 };

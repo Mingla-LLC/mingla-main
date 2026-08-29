@@ -26,6 +26,26 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const manifest = () => JSON.parse(read(".github/ci-batch/MANIFEST.json"));
 const sha = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
+const PARTIAL_REFERENCE_DELTAS = [{
+  workflow: "issue-1486-dormant-render-suites.yml",
+  referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
+}];
+const independentlyNormalizePartialReferences = (discovered, declarations = PARTIAL_REFERENCE_DELTAS) => {
+  const normalized = structuredClone(discovered);
+  for (const declaration of declarations) {
+    const records = normalized.filter((item) => item.workflow === declaration.workflow);
+    assert.equal(records.length, 1, `partial-reference workflow must appear once: ${declaration.workflow}`);
+    assert.equal(new Set(declaration.referenceFiles).size, declaration.referenceFiles.length, "partial-reference declaration must not duplicate paths");
+    const current = records[0].referenceFiles;
+    assert.equal(new Set(current).size, current.length, "discovered provider references must not duplicate paths");
+    for (const referenceFile of declaration.referenceFiles) {
+      assert.equal(current.includes(referenceFile), true, `partial-reference declaration must exist: ${referenceFile}`);
+    }
+    records[0].referenceFiles = current.filter((item) => !declaration.referenceFiles.includes(item));
+    assert.ok(records[0].referenceFiles.length > 0, "partial-reference normalization must preserve the historical record");
+  }
+  return normalized;
+};
 const WAVE = "phase3b-postgres-wave";
 const independentErrors = (value) => {
   const errors = validateRegistry(value, { root: ROOT });
@@ -189,13 +209,30 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // Subtracting by exact content, not by name, is what keeps a drifted declaration
   // red; an undeclared new provider still lands in `sealed` and still breaks it.
   const declared = new Map(PROVIDERS_ADDED_SINCE_SEAL.map((item) => [item.workflow, JSON.stringify([...item.referenceFiles])]));
-  const sealed = providers.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
-  assert.equal(providers.length - sealed.length, PROVIDERS_ADDED_SINCE_SEAL.length,
+  const referenceNormalized = independentlyNormalizePartialReferences(providers);
+  const sealed = referenceNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+  assert.equal(referenceNormalized.length - sealed.length, PROVIDERS_ADDED_SINCE_SEAL.length,
     "every declared provider addition must be present in discovery and byte-equal to its declaration");
   const reconstructed = [...sealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow));
   assert.equal(reconstructed.length, 73);
   // #2725: Amendment 8 adds the PG17 competitor-budget workflow covered by this refreshed seal.
   assert.equal(sha(reconstructed), "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f");
+
+  const partial = PARTIAL_REFERENCE_DELTAS[0];
+  const missing = structuredClone(providers);
+  missing.find((item) => item.workflow === partial.workflow).referenceFiles = missing
+    .find((item) => item.workflow === partial.workflow).referenceFiles
+    .filter((item) => !partial.referenceFiles.includes(item));
+  assert.throws(() => independentlyNormalizePartialReferences(missing), /must exist/,
+    "missing reviewed partial reference must be RED");
+  const undeclared = structuredClone(providers);
+  undeclared.find((item) => item.workflow === partial.workflow).referenceFiles.push("undeclared/provider-reference.mjs");
+  undeclared.find((item) => item.workflow === partial.workflow).referenceFiles.sort();
+  const undeclaredNormalized = independentlyNormalizePartialReferences(undeclared);
+  const undeclaredSealed = undeclaredNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+  assert.notEqual(sha([...undeclaredSealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow))),
+    "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f",
+    "undeclared partial reference must remain RED against the frozen seal");
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.

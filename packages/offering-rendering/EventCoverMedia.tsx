@@ -19,6 +19,9 @@ import Svg, { Path, Line } from "react-native-svg";
 
 import type { EventCoverMediaType } from "./types";
 import {
+  normalizeHeroMediaText,
+} from "./heroMediaAccessibility";
+import {
   deriveCoverPosterUrl,
   resolveEventCoverMediaPresentation,
   shouldFreezeCoverForReduceMotion,
@@ -36,6 +39,7 @@ export interface EventCoverMediaProps {
   hue?: number;
   mediaUrl?: string | null;
   mediaType?: EventCoverMediaType | null;
+  accessibleLabel?: string | null;
   // ORCH-1209 — explicit still poster for a video cover. When omitted, a
   // poster is auto-derived from a Cloudinary video URL (deriveCoverPosterUrl).
   // Callers that already have a real still (e.g. the venue deck `image`) pass
@@ -358,6 +362,7 @@ const EventCoverWebVideo: React.FC<{
   // React owns ONLY this container <div>; it never owns/reconciles the <video>.
   return React.createElement("div", {
     ref: containerRef,
+    "aria-hidden": true,
     style: WEB_VIDEO_CONTAINER_STYLE,
   });
 };
@@ -509,12 +514,18 @@ const EventCoverNativeVideo: React.FC<{
     <View style={StyleSheet.absoluteFill}>
       {typeof posterUrl === "string" && posterUrl.length > 0 ? (
         <Image
+          accessible={false}
+          accessibilityElementsHidden={true}
+          importantForAccessibility="no-hide-descendants"
           source={{ uri: posterUrl }}
           style={StyleSheet.absoluteFill}
           resizeMode={contentFit}
         />
       ) : null}
       <VideoView
+        accessible={false}
+        accessibilityElementsHidden={true}
+        importantForAccessibility="no-hide-descendants"
         player={player}
         style={StyleSheet.absoluteFill}
         contentFit={contentFit}
@@ -586,6 +597,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   hue = 25,
   mediaUrl = null,
   mediaType = null,
+  accessibleLabel = null,
   posterUrl,
   radius = 16,
   label = "Cover",
@@ -618,6 +630,7 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
   const [isMuted, setIsMuted] = useState(initialMuted);
   const containerRef = useRef<View | null>(null);
   const inView = useInViewport(containerRef);
+  const normalizedAccessibleLabel = normalizeHeroMediaText(accessibleLabel);
 
   useEffect(() => {
     let mounted = true;
@@ -721,16 +734,27 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
         collapsable={false}
         style={[{ height, width }, style]}
       >
-        <EventCover
-          hue={hue}
-          radius={radius}
-          label={label}
-          height="100%"
-          width="100%"
-          testID={testID}
+        <View
+          accessible={mediaUrl !== null && normalizedAccessibleLabel !== null}
+          accessibilityRole={
+            mediaUrl !== null && normalizedAccessibleLabel !== null ? "image" : undefined
+          }
+          accessibilityLabel={
+            mediaUrl !== null ? (normalizedAccessibleLabel ?? undefined) : undefined
+          }
+          style={StyleSheet.absoluteFill}
         >
-          {children}
-        </EventCover>
+          <EventCover
+            hue={hue}
+            radius={radius}
+            label={label}
+            height="100%"
+            width="100%"
+            testID={testID}
+          >
+            {children}
+          </EventCover>
+        </View>
       </View>
     );
   }
@@ -742,44 +766,58 @@ export const EventCoverMedia: React.FC<EventCoverMediaProps> = ({
       testID={testID}
       style={[styles.container, { height, width, borderRadius: radius }, style]}
     >
-      {presentation === "video" || presentation === "video_still" ? (
-        <EventCoverVideo
-          uri={mediaUrl}
-          posterUrl={resolvedPosterUrl}
-          autoplay={presentation === "video" ? autoplay : false}
-          playbackActive={playbackActive}
-          muted={isMuted}
-          loop={presentation === "video" ? loop : false}
-          contentFit={videoContentFit}
-          onAspectRatio={onAspectRatio}
-          onError={() => handleMediaError("video")}
-        />
-      ) : (
-        <Image
-          source={{ uri: mediaUrl }}
-          style={StyleSheet.absoluteFill}
-          resizeMode="cover"
-          // ORCH-0992: report image aspect ratio so an adaptive hero fits
-          // square / vertical image covers the same way it fits videos.
-          onLoad={
-            onAspectRatio === undefined
-              ? undefined
-              : (event) => {
-                  const src = event.nativeEvent?.source;
-                  if (
-                    src !== undefined &&
-                    src.width > 0 &&
-                    src.height > 0
-                  ) {
-                    onAspectRatio(src.width / src.height);
+      {/* Keep the media's image semantic on a dedicated sibling of the mute
+          control. On native, an accessible parent groups/hides its descendants;
+          putting the button inside that parent would make the independently
+          operable audio control disappear from VoiceOver/TalkBack. */}
+      <View
+        accessible={normalizedAccessibleLabel !== null}
+        accessibilityRole={normalizedAccessibleLabel !== null ? "image" : undefined}
+        accessibilityLabel={normalizedAccessibleLabel ?? undefined}
+        style={StyleSheet.absoluteFill}
+      >
+        {presentation === "video" || presentation === "video_still" ? (
+          <EventCoverVideo
+            uri={mediaUrl}
+            posterUrl={resolvedPosterUrl}
+            autoplay={presentation === "video" ? autoplay : false}
+            playbackActive={playbackActive}
+            muted={isMuted}
+            loop={presentation === "video" ? loop : false}
+            contentFit={videoContentFit}
+            onAspectRatio={onAspectRatio}
+            onError={() => handleMediaError("video")}
+          />
+        ) : (
+          <Image
+            accessible={false}
+            accessibilityElementsHidden={true}
+            importantForAccessibility="no-hide-descendants"
+            source={{ uri: mediaUrl }}
+            style={StyleSheet.absoluteFill}
+            resizeMode="cover"
+            // ORCH-0992: report image aspect ratio so an adaptive hero fits
+            // square / vertical image covers the same way it fits videos.
+            onLoad={
+              onAspectRatio === undefined
+                ? undefined
+                : (event) => {
+                    const src = event.nativeEvent?.source;
+                    if (
+                      src !== undefined &&
+                      src.width > 0 &&
+                      src.height > 0
+                    ) {
+                      onAspectRatio(src.width / src.height);
+                    }
                   }
-                }
-          }
-          onError={(event: NativeSyntheticEvent<ImageErrorEventData>) =>
-            handleMediaError("image", event.nativeEvent)
-          }
-        />
-      )}
+            }
+            onError={(event: NativeSyntheticEvent<ImageErrorEventData>) =>
+              handleMediaError("image", event.nativeEvent)
+            }
+          />
+        )}
+      </View>
       {showAudioControl &&
       mediaType === "video" &&
       presentation === "video" ? (

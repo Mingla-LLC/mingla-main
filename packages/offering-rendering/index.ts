@@ -22,6 +22,16 @@ export type { CoverGalleryRowProps } from "./CoverGalleryRow";
 export { CoverGalleryPager } from "./CoverGalleryPager";
 export type { CoverGalleryPagerProps } from "./CoverGalleryPager";
 
+export {
+  buildHeroMediaAccessibleLabel,
+  HeroMediaChangeAnnouncer,
+  normalizeHeroMediaText,
+} from "./heroMediaAccessibility";
+export type {
+  HeroMediaAccessibleLabelInput,
+  HeroMediaChangeAnnouncerProps,
+} from "./heroMediaAccessibility";
+
 export { OfferingChrome } from "./OfferingChrome";
 export type { OfferingChromeProps } from "./OfferingChrome";
 

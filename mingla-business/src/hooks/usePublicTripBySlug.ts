@@ -29,6 +29,7 @@ import {
   isThemeAnimationSlug,
   isThemeColor,
   isThemeFontSlug,
+  type OfferingGalleryImage,
   type ThemeInput,
 } from "@mingla/offering-rendering";
 
@@ -142,6 +143,8 @@ interface RpcTripPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  coverMediaAlt: string | null;
+  coverGallery?: OfferingGalleryImage[] | null;
   refundPolicy: unknown;
   bookingDeadline: string | null;
   bookingsClosed: boolean;
@@ -287,7 +290,9 @@ export const usePublicTripBySlug = (
         publishedAt: null,
         timezone: p.timezone ?? "",
         coverMediaUrl: p.coverMediaUrl,
+        coverMediaAlt: p.coverMediaAlt ?? null,
         coverMediaType: p.coverMediaType,
+        coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],
         businessTrip: {
           startAt: tripStartAt,
           endAt: tripEndAt,

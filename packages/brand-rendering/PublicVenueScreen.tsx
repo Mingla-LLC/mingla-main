@@ -2090,6 +2090,8 @@ export const PublicVenueScreen = ({
         // #1561 — the venue's actual photographs, as the shell's first-class
         // cover pager. Empty ⇒ single cover, byte-identical to the old mount.
         galleryImages={heroCover.additional}
+        heroAccessibilitySubject={venue.name}
+        coverMediaAlt={null}
         coverAspectRatio={heroAspectRatio}
         // #1561 — a coverless PUBLIC page printed the literal word `COVER` at
         // full hero size (#1550 Leg C, plate P12). It now reads as what the
