@@ -6,14 +6,10 @@
  * a GLOBAL `indexOf('captureWeb("consent_granted"')`. That global-index proof is
  * BRITTLE and has real blind spots this test attacks on a different angle:
  *
- *   ANGLE 1 — SCOPE-BOUNDED ordering. A global indexOf passes even if the opt-in
- *     and the capture live in DIFFERENT functions, or if a SECOND opt-in were
- *     added after the capture, or if the capture were hoisted above the opt-in
- *     INSIDE grantConsent while an UNRELATED earlier opt_in_capturing reference
- *     (e.g. in a comment-stripped denyConsent or a doc string) kept the global
- *     index happy. We extract the `grantConsent` function body ONLY and assert
- *     the opt-in precedes the capture WITHIN that single scope — the property the
- *     PostHog drop-while-opted-out semantics actually require.
+ *   ANGLE 1 — SCOPE-BOUNDED async ordering. `grantConsent` must await the
+ *     one-flight granted boot before capture; that private boot must opt in
+ *     before exposing the PostHog client. Marketing must persist first and put
+ *     its event facade only inside the boot promise continuation.
  *
  *   ANGLE 2 — DENY PATH emits nothing to PostHog. Not just "no
  *     consent_denied capture string" (implementor) — we assert the ENTIRE
@@ -38,9 +34,9 @@
  * is not possible in this worktree; CI runtime is the authoritative check). This
  * is a structural invariant proof strictly STRONGER than the global-index proof.
  *
- * fails-on-revert: deleting the `checkoutStartedRef` latch, moving the
- * `captureWeb("consent_granted")` above `opt_in_capturing()` inside grantConsent,
- * or leaking a capture into denyConsent each FAILS a distinct assertion below.
+ * fails-on-revert: deleting the `checkoutStartedRef` latch, moving the consent
+ * capture before the awaited boot, exposing PostHog before opt-in, or leaking a
+ * vendor call into a deny path each FAILS a distinct assertion below.
  */
 
 import { readFileSync } from "node:fs";
@@ -89,30 +85,58 @@ describe("META-ORCH-1187 P2 ADVERSARIAL — consent ordering is SCOPE-BOUNDED", 
   const marketingBanner = readRepo(
     "mingla-marketing/components/marketing/consent-banner.tsx",
   );
+  const marketingProvider = readRepo(
+    "mingla-marketing/components/marketing/posthog-provider.tsx",
+  );
 
-  // --- ANGLE 1: ordering proven INSIDE grantConsent, not globally ---
-  it("buyer-web: opt_in_capturing precedes the consent_granted capture WITHIN grantConsent's own body", () => {
-    const body = extractFnBody(
+  // --- ANGLE 1: ordering proven across the explicit async owner boundary ---
+  it("buyer-web: grantConsent awaits boot before capture, and boot opts in before exposing the client", () => {
+    const grantBody = extractFnBody(
       buyerAnalytics,
-      /export\s+function\s+grantConsent\s*\(/,
+      /export\s+async\s+function\s+grantConsent\s*\(/,
     );
-    expect(body.length).toBeGreaterThan(0); // grantConsent must still exist
-    const optInIdx = body.indexOf("opt_in_capturing");
-    const captureIdx = body.indexOf('captureWeb("consent_granted"');
+    expect(grantBody.length).toBeGreaterThan(0);
+    const awaitIdx = grantBody.indexOf("await ensureGrantedAnalyticsBoot()");
+    const captureIdx = grantBody.indexOf('captureWeb("consent_granted"');
+    expect(awaitIdx).toBeGreaterThan(-1);
+    expect(captureIdx).toBeGreaterThan(awaitIdx);
+
+    const bootBody = extractFnBody(
+      buyerAnalytics,
+      /async\s+function\s+bootGrantedAnalytics\s*\(/,
+    );
+    expect(bootBody.length).toBeGreaterThan(0);
+    const optInIdx = bootBody.indexOf("posthog.opt_in_capturing()");
+    const exposeIdx = bootBody.indexOf("posthogClient = posthog");
     expect(optInIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(-1);
-    // The drop-while-opted-out invariant: capture AFTER opt-in, in THIS scope.
-    expect(captureIdx).toBeGreaterThan(optInIdx);
+    expect(exposeIdx).toBeGreaterThan(optInIdx);
   });
 
-  it("marketing: applyConsent (opt-in) precedes the consent_granted capture WITHIN choose's own body", () => {
+  it("marketing: choose persists first and captures only in the grant boot continuation", () => {
     const body = extractFnBody(marketingBanner, /const\s+choose\s*=\s*\(/);
-    expect(body.length).toBeGreaterThan(0); // choose handler must still exist
-    const applyIdx = body.indexOf("applyConsent(value)");
-    const captureIdx = body.indexOf("captureMarketing('consent_granted')");
-    expect(applyIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(applyIdx);
+    expect(body.length).toBeGreaterThan(0);
+    const persistIdx = body.indexOf("persistMarketingConsent(value)");
+    const bootIdx = body.indexOf("posthogOptIn().then");
+    const captureIdx = body.indexOf("captureMarketingConsentGrantOnce()");
+    expect(persistIdx).toBeGreaterThan(-1);
+    expect(bootIdx).toBeGreaterThan(persistIdx);
+    expect(captureIdx).toBeGreaterThan(bootIdx);
+    expect(body).toMatch(
+      /posthogOptIn\(\)\.then\(\(\) => captureMarketingConsentGrantOnce\(\)\)/,
+    );
+
+    const facadeBody = extractFnBody(
+      marketingProvider,
+      /export\s+function\s+captureMarketingConsentGrantOnce\s*\(/,
+    );
+    expect(facadeBody).toContain("readMarketingConsent() !== 'granted'");
+    expect(facadeBody).toContain("captureMarketing('consent_granted')");
+    const eventFacadeBody = extractFnBody(
+      marketingProvider,
+      /export\s+function\s+captureMarketing\s*\(/,
+    );
+    expect(eventFacadeBody).toContain("readMarketingConsent() !== 'granted'");
+    expect(eventFacadeBody).toContain("posthogClient === null");
   });
 
   // --- ANGLE 2: deny path leaks NOTHING to PostHog ---
@@ -126,14 +150,14 @@ describe("META-ORCH-1187 P2 ADVERSARIAL — consent ordering is SCOPE-BOUNDED", 
     expect(body).not.toMatch(/posthogClient\??\.capture\s*\(/);
   });
 
-  it("marketing: choose's deny branch fires NO PostHog capture (only the cookieless GA ping)", () => {
+  it("marketing: choose's deny path makes no PostHog or GA/vendor call", () => {
     const body = extractFnBody(marketingBanner, /const\s+choose\s*=\s*\(/);
-    // The only captureMarketing in choose must be the GRANT one; a deny-branch
-    // captureMarketing would mean a capture attempted while opted-out.
-    const captureCount = (body.match(/captureMarketing\s*\(/g) ?? []).length;
-    expect(captureCount).toBe(1);
-    expect(body).toContain("captureMarketing('consent_granted')");
-    expect(body).not.toContain("captureMarketing('consent_denied')");
+    expect(body.length).toBeGreaterThan(0);
+    expect(body).toMatch(
+      /if\s*\(value === 'granted'\)\s*\{\s*void posthogOptIn\(\)\.then\(\(\) => captureMarketingConsentGrantOnce\(\)\)\s*;?\s*\}/,
+    );
+    expect(body).not.toMatch(/\belse\b/);
+    expect(body).not.toMatch(/posthogOptOut|\bgtag\b|consent_denied|captureMarketing\s*\(/);
   });
 });
 

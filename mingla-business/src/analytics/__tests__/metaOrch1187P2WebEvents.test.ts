@@ -9,9 +9,9 @@
  *   FIX 1 — checkout-funnel parity: the TRIP and EXPERIENCE checkout cart screens
  *     fire `web_checkout_started` (+ GA4 `begin_checkout`) on mount, just like the
  *     event checkout. Without these the web funnel undercounts started checkouts.
- *   FIX 2 — consent measurement: both consent banners fire `consent_granted` AFTER
- *     the PostHog opt-in (so it is not dropped while opted-out). No `consent_denied`
- *     PostHog capture is fired (PostHog stays opted-out on Reject).
+ *   FIX 2 — consent measurement: both roots fire `consent_granted` only after
+ *     their asynchronous grant-only boot completes. No `consent_denied` capture
+ *     is fired and Reject has no analytics-side effect.
  *
  * Implementor-owned happy-path test; fails-on-revert proven by deleting the
  * guarded lines and re-running (see IMPLEMENTATION report). The tester writes a
@@ -64,28 +64,52 @@ describe("META-ORCH-1187 P2 FIX 2 — consent banners fire consent_granted (not 
   const marketingBanner = readRepo(
     "mingla-marketing/components/marketing/consent-banner.tsx",
   );
+  const marketingProvider = readRepo(
+    "mingla-marketing/components/marketing/posthog-provider.tsx",
+  );
 
-  it("buyer-web grantConsent fires consent_granted AFTER the PostHog opt-in", () => {
-    const optInIdx = buyerAnalytics.indexOf("opt_in_capturing");
-    const captureIdx = buyerAnalytics.indexOf('captureWeb("consent_granted"');
-    expect(optInIdx).toBeGreaterThan(-1);
+  it("buyer-web awaits the one-flight grant boot before consent_granted, and boot opts in before exposing PostHog", () => {
+    const grantStart = buyerAnalytics.indexOf("export async function grantConsent");
+    const grantEnd = buyerAnalytics.indexOf("export function denyConsent", grantStart);
+    const grantBody = buyerAnalytics.slice(grantStart, grantEnd);
+    const awaitIdx = grantBody.indexOf("await ensureGrantedAnalyticsBoot()");
+    const captureIdx = grantBody.indexOf('captureWeb("consent_granted"');
+    expect(awaitIdx).toBeGreaterThan(-1);
     expect(captureIdx).toBeGreaterThan(-1);
-    // Ordering: capture must come after the opt-in call (else dropped while opted-out).
-    expect(captureIdx).toBeGreaterThan(optInIdx);
+    expect(captureIdx).toBeGreaterThan(awaitIdx);
+
+    const bootStart = buyerAnalytics.indexOf("async function bootGrantedAnalytics");
+    const bootEnd = buyerAnalytics.indexOf("function ensureGrantedAnalyticsBoot", bootStart);
+    const bootBody = buyerAnalytics.slice(bootStart, bootEnd);
+    const optInIdx = bootBody.indexOf("posthog.opt_in_capturing()");
+    const exposeIdx = bootBody.indexOf("posthogClient = posthog");
+    expect(optInIdx).toBeGreaterThan(-1);
+    expect(exposeIdx).toBeGreaterThan(optInIdx);
   });
 
   it("buyer-web does NOT fire a consent_denied PostHog capture", () => {
     expect(buyerAnalytics).not.toContain('captureWeb("consent_denied"');
   });
 
-  it("marketing banner fires consent_granted AFTER applyConsent (which opts in)", () => {
-    const applyIdx = marketingBanner.indexOf("applyConsent(value)");
-    const captureIdx = marketingBanner.indexOf(
-      "captureMarketing('consent_granted')",
-    );
-    expect(applyIdx).toBeGreaterThan(-1);
+  it("marketing persists first and captures consent_granted only from the grant boot continuation", () => {
+    const chooseStart = marketingBanner.indexOf("const choose =");
+    const chooseEnd = marketingBanner.indexOf("const visible =", chooseStart);
+    const chooseBody = marketingBanner.slice(chooseStart, chooseEnd);
+    const persistIdx = chooseBody.indexOf("persistMarketingConsent(value)");
+    const optInIdx = chooseBody.indexOf("posthogOptIn().then");
+    const captureIdx = chooseBody.indexOf("captureMarketingConsentGrantOnce()");
+    expect(persistIdx).toBeGreaterThan(-1);
+    expect(optInIdx).toBeGreaterThan(persistIdx);
     expect(captureIdx).toBeGreaterThan(-1);
-    expect(captureIdx).toBeGreaterThan(applyIdx);
+    expect(captureIdx).toBeGreaterThan(optInIdx);
+
+    const facadeStart = marketingProvider.indexOf(
+      "export function captureMarketingConsentGrantOnce",
+    );
+    const facadeEnd = marketingProvider.indexOf("interface PostHogProviderProps", facadeStart);
+    const facadeBody = marketingProvider.slice(facadeStart, facadeEnd);
+    expect(facadeBody).toContain("readMarketingConsent() !== 'granted'");
+    expect(facadeBody).toContain("captureMarketing('consent_granted')");
   });
 
   it("marketing banner does NOT fire a consent_denied PostHog capture", () => {
