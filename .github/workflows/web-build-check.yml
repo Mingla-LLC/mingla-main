@@ -131,3 +131,14 @@ jobs:
           test -f playwright/issue2729/public-venue-scroll-owner.adversarial.spec.ts
           npx playwright install chromium-headless-shell
           npx playwright test -c playwright.issue2729.config.ts
+      # issue #2769 — buyer-web consent and the public venue reservation CTA
+      # share one persistent-action edge below 1280 CSS px. The implementor and
+      # independent tester own different real-source browser proofs; both files
+      # are mandatory before merge, so a missing/reverted leg fails closed.
+      - name: "#2769 public venue consent/reserve composition"
+        working-directory: mingla-business
+        run: |
+          test -f playwright/issue2769/consent-reserve-composition.happy.spec.ts
+          test -f playwright/issue2769/consent-reserve-composition.adversarial.spec.ts
+          npx jest src/analytics/__tests__/issue2769ConsentReserveComposition.happy.test.ts --runInBand
+          npx playwright test -c playwright.issue2769.config.ts

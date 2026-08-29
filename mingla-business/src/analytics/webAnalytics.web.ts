@@ -56,7 +56,8 @@ const SESSION_REPLAY_SAMPLE_RATE = 0.2;
 // Shared shape with the marketing surface ("granted" | "denied" + ts).
 const CONSENT_STORAGE_KEY = "mingla_consent_v1";
 
-type ConsentChoice = "granted" | "denied";
+export type ConsentChoice = "granted" | "denied";
+export type StoredConsentSnapshot = ConsentChoice | "unresolved";
 
 const extra = Constants.expoConfig?.extra as
   | Record<string, string | undefined>
@@ -103,6 +104,8 @@ function readEnv(name: string): string | undefined {
 let posthogClient: PostHog | null = null;
 let initialized = false;
 let gaMeasurementId: string | null = null;
+let pageConsentChoice: ConsentChoice | null | undefined;
+const consentSubscribers = new Set<() => void>();
 
 // ISSUE-865 WP-C — ad-conversion pixel state. Resolved in initWebAnalytics;
 // bootstrapped ONLY on consent grant. `null` id ⇒ that pixel never loads.
@@ -138,33 +141,77 @@ function hasWindow(): boolean {
   return typeof window !== "undefined";
 }
 
-/** The banner's stored choice, or null if the visitor has not chosen yet. */
+function parseConsentRecord(raw: string | null): ConsentChoice | null {
+  if (raw === null) return null;
+  const parsed = JSON.parse(raw) as { choice?: string };
+  return parsed.choice === "granted" || parsed.choice === "denied"
+    ? parsed.choice
+    : null;
+}
+
+/** The canonical same-page choice, or null while the visitor has not chosen. */
 export function readStoredConsent(): ConsentChoice | null {
   if (!hasWindow()) return null;
-  // Issue #922: the zero-JS invitation shell can record a first choice before
-  // this canonical analytics module loads. Keep the validated choice for this
-  // page lifetime so ConsentBanner, analytics init, and later same-page readers
-  // all see it if localStorage persistence fails. Navigation/reload is the
-  // natural ephemeral boundary; persistence and side effects remain owned below.
+  if (pageConsentChoice !== undefined) return pageConsentChoice;
+  // Issue #922 preboot keeps precedence for this page lifetime, including when
+  // localStorage is unavailable. All later explicit choices update this cache.
   const prebootChoice = window.__minglaPrebootConsentChoice;
   if (prebootChoice === "granted" || prebootChoice === "denied") {
-    return prebootChoice;
-  }
-  try {
-    const raw = window.localStorage.getItem(CONSENT_STORAGE_KEY);
-    if (raw === null) return null;
-    const parsed = JSON.parse(raw) as { choice?: string };
-    if (parsed.choice === "granted" || parsed.choice === "denied") {
-      return parsed.choice;
+    pageConsentChoice = prebootChoice;
+  } else {
+    try {
+      pageConsentChoice = parseConsentRecord(
+        window.localStorage.getItem(CONSENT_STORAGE_KEY),
+      );
+    } catch {
+      pageConsentChoice = null;
     }
-    return null;
-  } catch {
-    return null;
   }
+  return pageConsentChoice;
+}
+
+/** Stable snapshot consumed by React's external-store bridge. */
+export function getStoredConsentSnapshot(): StoredConsentSnapshot {
+  return readStoredConsent() ?? "unresolved";
+}
+
+function notifyConsentSubscribers(): void {
+  for (const subscriber of [...consentSubscribers]) subscriber();
+}
+
+function reconcileStoredConsent(event: StorageEvent): void {
+  if (event.key !== null && event.key !== CONSENT_STORAGE_KEY) return;
+  let next: ConsentChoice | null;
+  try {
+    next = parseConsentRecord(
+      event.key === CONSENT_STORAGE_KEY
+        ? event.newValue
+        : window.localStorage.getItem(CONSENT_STORAGE_KEY),
+    );
+  } catch {
+    next = null;
+  }
+  if (next === pageConsentChoice) return;
+  pageConsentChoice = next;
+  notifyConsentSubscribers();
+}
+
+/** Subscribe without initializing analytics or changing consent side effects. */
+export function subscribeStoredConsent(subscriber: () => void): () => void {
+  consentSubscribers.add(subscriber);
+  return () => {
+    consentSubscribers.delete(subscriber);
+  };
+}
+
+if (hasWindow() && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", reconcileStoredConsent);
 }
 
 function writeStoredConsent(choice: ConsentChoice): void {
   if (!hasWindow()) return;
+  const previous = readStoredConsent();
+  pageConsentChoice = choice;
   try {
     window.localStorage.setItem(
       CONSENT_STORAGE_KEY,
@@ -174,6 +221,7 @@ function writeStoredConsent(choice: ConsentChoice): void {
     // Storage unavailable (private mode quota) — non-fatal; the choice still
     // applies for this session via the PostHog/GA opt-in calls below.
   }
+  if (previous !== choice) notifyConsentSubscribers();
 }
 
 /**
@@ -431,17 +479,24 @@ function definedProps(obj: Record<string, unknown>): Record<string, unknown> {
   return out;
 }
 
+type QueuedPixel = ((...args: unknown[]) => void) & Record<string, unknown>;
+
+/** Build the common vendor queue shim while preserving each vendor's handoff key. */
+function createQueuedPixel(handlerKey: string, queueKey: string): QueuedPixel {
+  const pixel = function queuedPixel(...args: unknown[]): void {
+    const handler = pixel[handlerKey];
+    if (typeof handler === "function") handler(...args);
+    else (pixel[queueKey] as unknown[][]).push(args);
+  } as QueuedPixel;
+  pixel[queueKey] = [];
+  return pixel;
+}
+
 function bootstrapMetaPixel(pixelId: string): void {
   if (!hasWindow()) return;
   if (window.fbq === undefined) {
     // Canonical fbq stub — queues calls until fbevents.js loads + sets callMethod.
-    const n = function fbq(): void {
-      const self = n as unknown as { callMethod?: (...a: unknown[]) => void; queue: unknown[] };
-      // eslint-disable-next-line prefer-rest-params
-      const args = Array.prototype.slice.call(arguments) as unknown[];
-      if (self.callMethod) self.callMethod(...args);
-      else self.queue.push(args);
-    };
+    const n = createQueuedPixel("callMethod", "queue");
     const stub = n as unknown as { push: unknown; loaded: boolean; version: string; queue: unknown[] };
     stub.push = n;
     stub.loaded = true;
@@ -501,15 +556,7 @@ function bootstrapTikTokPixel(pixelCode: string): void {
 function bootstrapSnapPixel(pixelId: string): void {
   if (!hasWindow()) return;
   if (window.snaptr === undefined) {
-    const snaptr = function snaptr(): void {
-      const self = snaptr as unknown as { handleRequest?: (...a: unknown[]) => void; queue: unknown[] };
-      // eslint-disable-next-line prefer-rest-params
-      const args = Array.prototype.slice.call(arguments) as unknown[];
-      if (self.handleRequest) self.handleRequest(...args);
-      else self.queue.push(args);
-    };
-    (snaptr as unknown as { queue: unknown[] }).queue = [];
-    window.snaptr = snaptr as unknown as Window["snaptr"];
+    window.snaptr = createQueuedPixel("handleRequest", "queue") as Window["snaptr"];
   }
   injectPixelScriptOnce("https://sc-static.net/scevent.min.js", "snap");
   window.snaptr?.("init", pixelId);
@@ -519,15 +566,7 @@ function bootstrapSnapPixel(pixelId: string): void {
 function bootstrapRedditPixel(pixelId: string): void {
   if (!hasWindow()) return;
   if (window.rdt === undefined) {
-    const rdt = function rdt(): void {
-      const self = rdt as unknown as { sendEvent?: (...a: unknown[]) => void; callQueue: unknown[] };
-      // eslint-disable-next-line prefer-rest-params
-      const args = Array.prototype.slice.call(arguments) as unknown[];
-      if (self.sendEvent) self.sendEvent(...args);
-      else self.callQueue.push(args);
-    };
-    (rdt as unknown as { callQueue: unknown[] }).callQueue = [];
-    window.rdt = rdt as unknown as Window["rdt"];
+    window.rdt = createQueuedPixel("sendEvent", "callQueue") as Window["rdt"];
   }
   injectPixelScriptOnce("https://www.redditstatic.com/ads/pixel.js", "reddit");
   window.rdt?.("init", pixelId);
@@ -596,21 +635,29 @@ export function fireAdPurchase(
   eventId: string,
   props: { value?: number; currency?: string },
 ): void {
+  fireAdConversion(eventId, props, true);
+}
+
+function fireAdConversion(
+  eventId: string,
+  props: { value?: number; currency?: string },
+  purchase: boolean,
+): void {
   if (!adPixelsBootstrapped || !eventId) return;
   const value = props.value;
   const currency = props.currency;
   safePixel(() =>
-    window.fbq?.("track", "Purchase", definedProps({ value, currency }), { eventID: eventId })
+    window.fbq?.("track", purchase ? "Purchase" : "Schedule", definedProps({ value, currency }), { eventID: eventId })
   );
   safePixel(() =>
     window.ttq?.track?.(
-      "CompletePayment",
+      purchase ? "CompletePayment" : "CompleteRegistration",
       definedProps({ value, currency, content_type: "product" }),
       { event_id: eventId },
     )
   );
   safePixel(() =>
-    window.snaptr?.("track", "PURCHASE", definedProps({
+    window.snaptr?.("track", purchase ? "PURCHASE" : "SAVE", definedProps({
       price: value,
       currency,
       transaction_id: eventId,
@@ -618,7 +665,7 @@ export function fireAdPurchase(
     }))
   );
   safePixel(() =>
-    window.rdt?.("track", "Purchase", definedProps({ value, currency, conversion_id: eventId }))
+    window.rdt?.("track", purchase ? "Purchase" : "Lead", definedProps({ value, currency, conversion_id: eventId }))
   );
 }
 
@@ -635,30 +682,7 @@ export function fireAdReservation(
   eventId: string,
   props: { value?: number; currency?: string } = {},
 ): void {
-  if (!adPixelsBootstrapped || !eventId) return;
-  const value = props.value;
-  const currency = props.currency;
-  safePixel(() =>
-    window.fbq?.("track", "Schedule", definedProps({ value, currency }), { eventID: eventId })
-  );
-  safePixel(() =>
-    window.ttq?.track?.(
-      "CompleteRegistration",
-      definedProps({ value, currency, content_type: "product" }),
-      { event_id: eventId },
-    )
-  );
-  safePixel(() =>
-    window.snaptr?.("track", "SAVE", definedProps({
-      price: value,
-      currency,
-      transaction_id: eventId,
-      client_dedup_id: eventId,
-    }))
-  );
-  safePixel(() =>
-    window.rdt?.("track", "Lead", definedProps({ value, currency, conversion_id: eventId }))
-  );
+  fireAdConversion(eventId, props, false);
 }
 
 // ── Click-id capture + first-party threading storage ──────────────────────────
@@ -687,6 +711,20 @@ function storeClickId(clickId: string): void {
   } catch {
     // sessionStorage unavailable (private mode) — non-fatal; threading is skipped.
   }
+}
+
+function postAttribution(
+  base: string,
+  anon: string,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+): Promise<Response> {
+  return fetch(`${base}/functions/v1/attribution-capture`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon },
+    body: JSON.stringify(body),
+    signal,
+  });
 }
 
 export interface CaptureAdClickDest {
@@ -813,10 +851,10 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ATTR_POST_TIMEOUT_MS);
   try {
-    const res = await fetch(`${base}/functions/v1/attribution-capture`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon },
-      body: JSON.stringify({
+    const res = await postAttribution(
+      base,
+      anon,
+      {
         kind: "touch",
         surface: "web",
         lane: "consumer",
@@ -834,9 +872,9 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
             event_id: input.dest.eventId ?? undefined,
           }
           : undefined,
-      }),
-      signal: controller.signal,
-    });
+      },
+      controller.signal,
+    );
     if (!res.ok) return null;
     const data = (await res.json()) as { click_id?: string };
     return typeof data.click_id === "string" ? data.click_id : null;
@@ -867,10 +905,10 @@ export function postAttributionConversion(input: {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), ATTR_POST_TIMEOUT_MS);
   try {
-    void fetch(`${base}/functions/v1/attribution-capture`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${anon}`, apikey: anon },
-      body: JSON.stringify({
+    void postAttribution(
+      base,
+      anon,
+      {
         kind: "conversion",
         surface: "web",
         lane: "consumer",
@@ -881,9 +919,9 @@ export function postAttributionConversion(input: {
         currency: input.currency ?? null,
         click_id: clickId,
         event_source_url: input.eventSourceUrl ?? window.location.href,
-      }),
-      signal: controller.signal,
-    })
+      },
+      controller.signal,
+    )
       .catch(() => {
         // Fire-and-forget: a failed early record is harmless — the server fire
         // helper (WP-B) writes the authoritative conversion post-finalize.
