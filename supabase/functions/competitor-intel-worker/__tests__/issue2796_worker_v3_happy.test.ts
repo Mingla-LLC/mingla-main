@@ -3,6 +3,7 @@ import {
   buildDecisionFoundation,
   buildObservationComparisons,
   canFinishAsNoChange,
+  primaryActionFirst,
   PROMPT_CONTRACT_VERSION,
   PROVIDER_RESPONSE_SCHEMA,
   synthesizeBrief,
@@ -105,7 +106,7 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
   const previous = Deno.env.get("GEMINI_API_KEY");
   try {
     Deno.env.set("GEMINI_API_KEY", "test");
-    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.2");
+    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.3");
     const serializedSchema = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
     for (const forbidden of [
       "minItems",
@@ -137,6 +138,12 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
                   confidence: "interpretation",
                 }],
                 worth_doing: [{
+                  id: "a2",
+                  text: "Prepare a longer-term menu update.",
+                  kind: "menu",
+                  confidence: "suggested_action",
+                  is_primary: false,
+                }, {
                   id: "a1",
                   text: "Publish one specific event offer this week.",
                   kind: "event",
@@ -215,6 +222,12 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
       3,
     );
     assertEquals(brief.decision_report.interpretation_meta[0].index, 0);
+    assertEquals(
+      (brief.worth_doing as Array<Record<string, unknown>>).map((action) =>
+        action.id
+      ),
+      ["a1", "a2"],
+    );
     assertEquals(brief.decision_report.action_plan[0].action_id, "a1");
     assertEquals(brief.decision_report.action_plan[0].is_primary, true);
     assertEquals(brief.decision_report.action_plan[0].owner_fact_ids, []);
@@ -433,4 +446,32 @@ Deno.test("issue 2817 grounds every malformed theme and comparison field before 
       ? Deno.env.delete("GEMINI_API_KEY")
       : Deno.env.set("GEMINI_API_KEY", previous);
   }
+});
+
+Deno.test("issue 2820 makes the sole primary action first before report bindings", () => {
+  const actions = primaryActionFirst([{
+    id: "a-secondary",
+    text: "Prepare a longer-term menu update.",
+    kind: "menu",
+    confidence: "suggested_action",
+    is_primary: false,
+  }, {
+    id: "a-primary",
+    text: "Publish one specific offer this week.",
+    kind: "offer",
+    confidence: "suggested_action",
+    is_primary: true,
+  }, {
+    id: "a-third",
+    text: "Review future event positioning.",
+    kind: "event",
+    confidence: "suggested_action",
+    is_primary: false,
+  }]) as Array<Record<string, unknown>>;
+  assertEquals(actions.map((action) => action.id), [
+    "a-primary",
+    "a-secondary",
+    "a-third",
+  ]);
+  assertEquals(actions.map((action) => action.is_primary), [true, false, false]);
 });

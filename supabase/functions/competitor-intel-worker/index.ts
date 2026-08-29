@@ -12,7 +12,7 @@ const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
 export const GEMINI_MODEL_ID = "gemini-2.5-flash";
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.2";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.3";
 export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
@@ -1295,6 +1295,23 @@ export function groundedDecisionBindings(
   return { decision, interpretation_meta, action_plan };
 }
 
+export function primaryActionFirst(
+  value: unknown,
+): Array<Record<string, unknown>> {
+  const actions = Array.isArray(value)
+    ? value as Array<Record<string, unknown>>
+    : [];
+  const primary = actions.filter((item) =>
+    item && typeof item === "object" && !Array.isArray(item) &&
+    (item as Record<string, unknown>).is_primary === true
+  );
+  if (primary.length !== 1) return actions.slice(0, 3);
+  return [
+    primary[0],
+    ...actions.filter((item) => item !== primary[0]).slice(0, 2),
+  ];
+}
+
 export async function synthesizeBrief(
   name: string,
   city: string | null,
@@ -1543,9 +1560,7 @@ export async function synthesizeBrief(
   const whyItMatters = Array.isArray(parsed?.why_it_matters)
     ? parsed.why_it_matters.slice(0, 2)
     : [];
-  const worthDoing = Array.isArray(parsed?.worth_doing)
-    ? parsed.worth_doing.slice(0, 3)
-    : [];
+  const worthDoing = primaryActionFirst(parsed?.worth_doing);
   const bindings = groundedDecisionBindings(
     parsed,
     decisionSignals,

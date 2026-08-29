@@ -14,7 +14,7 @@ const legacyHappy = read("mingla-business/src/components/venue/insights/__tests_
 
 for (const [source, values] of [
   [migration, ["issue_2796_valid_decision_report", "schema_version IN (2,3)", "decision_report"]],
-  [worker, ["competitor-brief-v3.2", "MAX_SYNTHESIS_REQUEST_BYTES = 65_536", "MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200", "RESERVED_MICROUSD = 50_000", "groundedThemeSignals", "groundedDecisionComparisons", "groundedDecisionBindings", "validateDecisionReport"]],
+  [worker, ["competitor-brief-v3.3", "MAX_SYNTHESIS_REQUEST_BYTES = 65_536", "MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200", "RESERVED_MICROUSD = 50_000", "groundedThemeSignals", "groundedDecisionComparisons", "groundedDecisionBindings", "primaryActionFirst", "validateDecisionReport"]],
   [report, ["max_schema_version", "wantsV3", "decision_report"]],
   [service, ["max_schema_version: 3", "authorizedEvidence", "schemaVersion: 3"]],
   [tokens, ["contentInsetCompact: 16", "contentInsetRegular: 24", "contentInsetWide: 32", "readableCopyMaxWidth: 600"]],

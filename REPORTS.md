@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Competitor reports now place the one primary recommendation first before decision-plan validation, so a valid model suggestion cannot be rejected merely because Gemini returned it second (#2820, PR #2821)
 - 2026-08-29 — Premium competitor reports now deterministically clean and ground every Gemini-owned theme and comparison field before strict validation, so malformed model output cannot waste a measured refresh or replace the last good report (#2817, PR #2818)
 - 2026-08-29 — Premium competitor reports now use a Gemini-accepted structured request while Mingla deterministically grounds references, refuses mismatched comparisons, and preserves strict v3 validation and measured weekly spend (#2814, PR #2815)
 - 2026-08-29 — Existing competitor watches now upgrade unchanged legacy briefs to the premium decision report once, while later unchanged premium checks remain free (#2811, PR #2812)
