@@ -9742,11 +9742,11 @@ All eight #2725 rules were established ACTIVE after independent final integratio
 - **Enforcement:** Shared implementor and tester render/interaction guards, four-RPC SQL proof, the issue #2774 strict gate, two-web-host production verification, and Consumer/Business VoiceOver/TalkBack legs.
 - **Established:** ACTIVE after independent tester PASS with P0/P1/P2 all zero at exact candidate head `bfe5e4dc9d44194ab98bba07d0deae07d64bb6ea` on 2026-08-29.
 
-## DRAFT — issue #2756 (public venue refresh preserves the visitor's page state)
+## ACTIVE — issue #2756 (public venue refresh preserves the visitor's page state)
 
-### I-PROPOSED-2756-PUBLIC-VENUE-REFRESH-NON-DESTRUCTIVE (DRAFT)
+### I-PROPOSED-2756-PUBLIC-VENUE-REFRESH-NON-DESTRUCTIVE (ACTIVE)
 
 - **Rule:** When usable public venue data exists, background fetching or error may not replace or remount the venue screen or reset interaction state; only cold no-data states may block the page.
 - **Enforcement:** `classifyPublicVenueRouteState` is data-presence-first in both real public venue adapters; the shared screen owns the non-blocking stale notice and guarded retry; `publicVenueRefreshPreservation.issue2756.happy.test.tsx` mounts both real routes and preserves the selected Reservations tab, open sheet, child identity, refreshed props, and analytics counts through fetch, error, retry, and recovery; `playwright.issue2756.config.ts` mounts the production screen in Chromium and proves truthful busy ARIA, retained retry focus/identity, duplicate-activation suppression, conditional selected-tab recovery, and no focus theft. The independent tester adds the distinct native adversarial guard before activation.
 - **Fails on revert:** Restoring either route's `isLoading || isFetching` blocking gate replaces the route tree during the test's populated background fetch, so the Reservations tab and sheet assertions fail before retry.
-- **Established:** DRAFT at #2756 implementation; activate only after independent runtime PASS, all-green merge, and verified web plus applicable iOS/Android release.
+- **Established:** ACTIVE after independent exact-head PASS with P0–P4 all zero across Consumer and Business iOS/Android, both web adapters, Menu/Reservations/scroll/consent/accessibility preservation, destructive mutation proof, and terminal all-green CI at candidate `cfc54b9e459d1f510d68dcba4a77f5d1ab113dc4` on 2026-08-29; exact-merge release receipts and production verification are recorded on #2756.
