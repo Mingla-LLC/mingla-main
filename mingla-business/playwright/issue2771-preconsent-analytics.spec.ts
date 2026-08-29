@@ -44,7 +44,7 @@ test.describe('#2771 actual network and storage boundary', () => {
     { name: 'Business/Buyer', url: BUSINESS, accept: 'Accept cookies and analytics', reject: 'Reject cookies and analytics', waitsForNetworkIdle: false },
     { name: 'Marketing', url: MARKETING, accept: 'Accept all', reject: 'Reject', waitsForNetworkIdle: true },
   ]) {
-    test(`${surface.name}: pending and Reject stay dark; Accept begins analytics`, async ({ browser }) => {
+    test(`${surface.name}: pending stays dark`, async ({ browser }) => {
       const pendingContext = await browser.newContext()
       const pendingPage = await pendingContext.newPage()
       const pendingRequests = await observe(pendingPage)
@@ -55,7 +55,9 @@ test.describe('#2771 actual network and storage boundary', () => {
       expect(await vendorScripts(pendingPage)).toEqual([])
       expect(await analyticsStorage(pendingContext, pendingPage)).toEqual([])
       await pendingContext.close()
+    })
 
+    test(`${surface.name}: Reject stays dark and persists after reload`, async ({ browser }) => {
       const rejectContext = await browser.newContext()
       const rejectPage = await rejectContext.newPage()
       const rejectRequests = await observe(rejectPage)
@@ -70,7 +72,9 @@ test.describe('#2771 actual network and storage boundary', () => {
       expect(await vendorScripts(rejectPage)).toEqual([])
       expect(await analyticsStorage(rejectContext, rejectPage)).toEqual([])
       await rejectContext.close()
+    })
 
+    test(`${surface.name}: Accept begins analytics after stored grant`, async ({ browser }) => {
       const acceptContext = await browser.newContext()
       const acceptPage = await acceptContext.newPage()
       const acceptedRequests = await observe(acceptPage)
