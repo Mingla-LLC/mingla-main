@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Existing competitor watches now upgrade unchanged legacy briefs to the premium decision report once, while later unchanged premium checks remain free (#2811, PR #2812)
 - 2026-08-29 — Venue Insights now presents each watched competitor as a premium, decision-first weekly brief with grounded comparisons, compact evidence, practical next actions, responsive accessible sheets, negotiated legacy compatibility, and a measured $1-per-venue weekly AI ceiling (#2796, PR #2804)
 - 2026-08-29 — Web privacy browser proofs now run against one keyed production build per public surface, so cold development startup can no longer consume the test budget or turn a healthy consent boundary red; sibling-cookie and consent-event assertions measure the exact origin and event they claim (#2799, PR #2801)
 - 2026-08-29 — PostHog consent now stays local to the exact Mingla web address where a visitor chose it, so accepting analytics on one public alias cannot place analytics storage on an undecided sibling alias (#2795, PR #2797)
