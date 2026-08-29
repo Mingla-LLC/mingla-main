@@ -1,0 +1,395 @@
+/**
+ * Issue #2739 — real CoverGalleryRow render/interaction proof.
+ *
+ * This suite resolves `react-native` to the deployed `react-native-web`
+ * adapter. It mounts the real shared row, reads the semantic child buttons and
+ * the shared Pressable activation owner, and proves web state does not become
+ * native HTML disabled state. Browser-default keyboard/focus behavior is
+ * exercised separately in real Chromium.
+ */
+/* eslint-disable @typescript-eslint/no-require-imports */
+import React from "react";
+import { Platform, Pressable } from "react-native";
+// @ts-expect-error react-test-renderer ships without declarations here.
+import type { ReactTestInstance, ReactTestRenderer } from "react-test-renderer";
+
+import { CoverGalleryRow } from "../../../../../packages/offering-rendering/CoverGalleryRow";
+import { createThemePalette } from "../../../../../packages/offering-rendering/themePalette";
+import { resolveTheme } from "../../../../../packages/offering-rendering/themeResolver";
+
+const TestRenderer =
+  // @ts-expect-error react-test-renderer ships without declarations here.
+  require("react-test-renderer") as typeof import("react-test-renderer");
+
+Object.defineProperty(globalThis, "IS_REACT_ACT_ENVIRONMENT", {
+  configurable: true,
+  value: true,
+});
+
+const theme = resolveTheme(null, null);
+const palette = createThemePalette(theme);
+const gallery = [
+  { url: "", type: "image" as const },
+  { url: "", type: "image" as const },
+  { url: "", type: "gif" as const },
+  { url: "", type: "image" as const },
+];
+
+const setPlatform = (os: "ios" | "web"): void => {
+  Object.defineProperty(Platform, "OS", { configurable: true, value: os });
+};
+
+const mountRow = async ({
+  activeIndex = 0,
+  coverType = "image",
+  items = gallery,
+  onSelect = jest.fn(),
+}: {
+  activeIndex?: number;
+  coverType?: "image" | "video";
+  items?: typeof gallery;
+  onSelect?: (index: number) => void;
+} = {}): Promise<ReactTestRenderer> => {
+  let tree: ReactTestRenderer | null = null;
+  await TestRenderer.act(async () => {
+    tree = TestRenderer.create(
+      <CoverGalleryRow
+        cover={{
+          url: null,
+          type: coverType,
+        }}
+        gallery={items}
+        activeIndex={activeIndex}
+        onSelect={onSelect}
+        palette={palette}
+        testID="issue-2739-gallery"
+      />,
+    );
+  });
+  if (tree === null) throw new Error("issue_2739_row_render_missing");
+  return tree;
+};
+
+const hostButtons = (root: ReactTestInstance): ReactTestInstance[] =>
+  root.findAll(
+    (node: ReactTestInstance) =>
+      typeof node.type === "string" && node.props.role === "button",
+  );
+
+const pressableCards = (root: ReactTestInstance): ReactTestInstance[] =>
+  root.findAllByType(Pressable);
+
+afterEach(() => {
+  setPlatform("web");
+});
+
+describe("issue #2739 CoverGalleryRow web semantics", () => {
+  it("H-1 emits one named group and five real button hosts", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const groups = tree.root.findAll(
+      (node: ReactTestInstance) =>
+        typeof node.type === "string" &&
+        node.props.role === "group" &&
+        node.props["aria-label"] === "Choose cover photo",
+    );
+    const buttons = hostButtons(tree.root);
+    const pressableInputs = tree.root.findAllByType(Pressable);
+
+    expect(groups).toHaveLength(1);
+    expect(buttons).toHaveLength(5);
+    expect(pressableInputs).toHaveLength(5);
+    expect(
+      pressableInputs.every(
+        (card: ReactTestInstance) =>
+          card.props.accessibilityState === undefined,
+      ),
+    ).toBe(true);
+    expect(buttons.map((button) => button.props["aria-label"])).toEqual([
+      "Cover",
+      "Photo 1 of 4",
+      "Photo 2 of 4",
+      "Photo 3 of 4",
+      "Photo 4 of 4",
+    ]);
+    expect(buttons.every((button) => button.props.tabIndex === 0)).toBe(true);
+    expect(buttons.every((button) => button.props.disabled === undefined)).toBe(
+      true,
+    );
+    expect(
+      buttons.every((button) => button.props["aria-selected"] === undefined),
+    ).toBe(true);
+    expect(
+      buttons.every((button) => button.props["aria-pressed"] === undefined),
+    ).toBe(true);
+    expect(
+      tree.root.findAll(
+        (node: ReactTestInstance) =>
+          typeof node.type === "string" &&
+          node.props.tabIndex === 0 &&
+          node.props.role !== "button",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("H-2 moves the sole current marker without changing control names", async () => {
+    setPlatform("web");
+    const tree = await mountRow({ activeIndex: 0 });
+    const namesBefore = hostButtons(tree.root).map(
+      (button) => button.props["aria-label"],
+    );
+    expect(
+      hostButtons(tree.root).map((button) => button.props["aria-disabled"]),
+    ).toEqual([true, undefined, undefined, undefined, undefined]);
+
+    await TestRenderer.act(async () => {
+      tree.update(
+        <CoverGalleryRow
+          cover={{ url: null, type: "image" }}
+          gallery={gallery}
+          activeIndex={2}
+          onSelect={jest.fn()}
+          palette={palette}
+          testID="issue-2739-gallery"
+        />,
+      );
+    });
+
+    const buttonsAfter = hostButtons(tree.root);
+    expect(buttonsAfter.map((button) => button.props["aria-label"])).toEqual(
+      namesBefore,
+    );
+    expect(buttonsAfter.map((button) => button.props["aria-disabled"])).toEqual(
+      [undefined, undefined, true, undefined, undefined],
+    );
+    expect(buttonsAfter[2]?.props.tabIndex).toBe(0);
+  });
+
+  it.each(["pointer", "Enter", "Space"])(
+    "H-3 gives native %s activation one shared selection callback",
+    async () => {
+      setPlatform("web");
+      const onSelect = jest.fn();
+      const tree = await mountRow({ onSelect });
+      const photoTwo = pressableCards(tree.root)[2];
+      if (photoTwo === undefined)
+        throw new Error("issue_2739_photo_two_missing");
+
+      await TestRenderer.act(async () => photoTwo.props.onPress());
+
+      expect(onSelect).toHaveBeenCalledTimes(1);
+      expect(onSelect).toHaveBeenCalledWith(2);
+    },
+  );
+
+  it("H-4 delegates Space prevention and activation to the native button", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const photoOne = hostButtons(tree.root)[1];
+    if (photoOne === undefined) throw new Error("issue_2739_photo_one_missing");
+
+    expect(photoOne.type).toBe("button");
+    expect(photoOne.props.type).toBe("button");
+    expect(photoOne.props.disabled).toBeUndefined();
+    expect(photoOne.props.onKeyDown).toBeUndefined();
+  });
+
+  it("H-5 keeps the current web button focusable while every activator is a no-op", async () => {
+    setPlatform("web");
+    const onSelect = jest.fn();
+    const tree = await mountRow({ onSelect });
+    const current = hostButtons(tree.root)[0];
+    const currentPressable = pressableCards(tree.root)[0];
+    if (current === undefined) throw new Error("issue_2739_current_missing");
+
+    expect(current.props.tabIndex).toBe(0);
+    expect(current.props["aria-disabled"]).toBe(true);
+    expect(current.props.disabled).toBeUndefined();
+    expect(currentPressable?.props.onPress).toBeUndefined();
+    expect(onSelect).not.toHaveBeenCalled();
+  });
+
+  it("H-5a reveals the full focus halo through local horizontal movement only", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const [first, middle, , , last] = hostButtons(tree.root);
+    const pagePosition = { x: 0, y: 417 };
+    const scrollOwner = {
+      getBoundingClientRect: jest.fn(() => ({ left: 20, right: 300 })),
+      scrollLeft: 180,
+    };
+    const focus = (
+      button: ReactTestInstance | undefined,
+      rect: { left: number; right: number },
+    ): void => {
+      if (button === undefined) throw new Error("issue_2739_button_missing");
+      button.props.onFocus({
+        currentTarget: {
+          closest: jest.fn((selector: string) =>
+            selector ===
+            '[role="group"][aria-label="Choose cover photo"]'
+              ? scrollOwner
+              : null,
+          ),
+          getBoundingClientRect: jest.fn(() => rect),
+        },
+      });
+    };
+
+    focus(middle, { left: 80, right: 144 });
+    expect(scrollOwner.scrollLeft).toBe(180);
+
+    focus(last, { left: 272, right: 336 });
+    expect(scrollOwner.scrollLeft).toBe(218);
+    expect(336 - (218 - 180) + 2).toBeLessThanOrEqual(300);
+
+    focus(first, { left: 17.25, right: 81.25 });
+    expect(scrollOwner.scrollLeft).toBe(213);
+    expect(17.25 + (218 - 213) - 2).toBeGreaterThanOrEqual(20);
+
+    expect(pagePosition).toEqual({ x: 0, y: 417 });
+    expect(scrollOwner.getBoundingClientRect).toHaveBeenCalledTimes(3);
+
+    const focusExtents = tree.root.findAll(
+      (node: ReactTestInstance) =>
+        node.props["aria-hidden"] === true &&
+        ((Array.isArray(node.props.style) &&
+          node.props.style.some(
+            (style: unknown) =>
+              typeof style === "object" &&
+              style !== null &&
+              "right" in style &&
+              style.right === -2,
+          )) ||
+          node.props.style?.right === -2),
+    );
+    expect(focusExtents).toHaveLength(1);
+    const focusExtentStyle = Array.isArray(focusExtents[0]?.props.style)
+      ? Object.assign({}, ...focusExtents[0].props.style)
+      : focusExtents[0]?.props.style;
+    expect(focusExtentStyle).toEqual(
+      expect.objectContaining({
+        height: 1,
+        position: "absolute",
+        right: -2,
+        width: 2,
+      }),
+    );
+  });
+
+  it("H-5b binds a complete keyboard-only inset focus treatment and forced-colors fallback", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const buttons = hostButtons(tree.root);
+    const styleHosts = tree.root.findAll(
+      (node: ReactTestInstance) =>
+        typeof node.type === "string" && node.type === "style",
+    );
+
+    expect(
+      buttons.every(
+        (button) =>
+          button.props["data-mingla-cover-gallery-button"] === "true",
+      ),
+    ).toBe(true);
+    expect(styleHosts).toHaveLength(1);
+
+    const css = String(styleHosts[0]?.props.children ?? "");
+    const normalRule = css.match(
+      /button\[data-mingla-cover-gallery-button="true"\]:focus-visible\s*\{([^}]*)\}/,
+    )?.[1];
+    const forcedRule = css.match(
+      /@media\s*\(forced-colors:\s*active\)\s*\{[\s\S]*?button\[data-mingla-cover-gallery-button="true"\]:focus-visible\s*\{([^}]*)\}/,
+    )?.[1];
+
+    expect(normalRule).toContain("outline: none");
+    expect(normalRule).toContain("inset 0 0 0 2px #FFFFFF");
+    expect(normalRule).toContain("inset 0 0 0 4px #000000");
+    expect(css.match(/outline:\s*none/g)).toHaveLength(1);
+    expect(css).not.toMatch(/:focus(?!-visible)/);
+    expect(forcedRule).toContain("box-shadow: none");
+    expect(forcedRule).toContain("outline: 2px solid Highlight");
+    expect(forcedRule).toContain("outline-offset: -2px");
+    expect(forcedRule).toContain("forced-color-adjust: auto");
+  });
+
+  it("H-5c keeps first-edge focus at local scrollLeft zero", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const first = hostButtons(tree.root)[0];
+    const scrollOwner = {
+      getBoundingClientRect: jest.fn(() => ({ left: 20, right: 300 })),
+      scrollLeft: 0,
+    };
+    if (first === undefined) throw new Error("issue_2739_first_missing");
+
+    first.props.onFocus({
+      currentTarget: {
+        closest: jest.fn(() => scrollOwner),
+        getBoundingClientRect: jest.fn(() => ({ left: 20, right: 84 })),
+      },
+    });
+
+    expect(scrollOwner.scrollLeft).toBe(0);
+    expect(scrollOwner.getBoundingClientRect).toHaveBeenCalledTimes(1);
+  });
+
+  it("H-6 preserves the native imagebutton, selected-state, and selected-name contract", async () => {
+    setPlatform("ios");
+    const tree = await mountRow({ activeIndex: 1 });
+    const nativeCards = tree.root.findAllByType(Pressable);
+
+    expect(nativeCards).toHaveLength(5);
+    expect(
+      nativeCards.map(
+        (card: ReactTestInstance) => card.props.accessibilityRole,
+      ),
+    ).toEqual([
+      "imagebutton",
+      "imagebutton",
+      "imagebutton",
+      "imagebutton",
+      "imagebutton",
+    ]);
+    expect(
+      nativeCards.map(
+        (card: ReactTestInstance) => card.props.accessibilityState,
+      ),
+    ).toEqual([
+      { selected: false },
+      { selected: true },
+      { selected: false },
+      { selected: false },
+      { selected: false },
+    ]);
+    expect(
+      nativeCards.map(
+        (card: ReactTestInstance) => card.props.accessibilityLabel,
+      ),
+    ).toEqual([
+      "Cover",
+      "Photo 1 of 4, selected",
+      "Photo 2 of 4",
+      "Photo 3 of 4",
+      "Photo 4 of 4",
+    ]);
+    expect(
+      nativeCards.every(
+        (card: ReactTestInstance) => card.props.role === undefined,
+      ),
+    ).toBe(true);
+  });
+
+  it("H-7 keeps empty and video-cover behavior unchanged", async () => {
+    setPlatform("web");
+    const empty = await mountRow({ items: [] });
+    expect(empty.toJSON()).toBeNull();
+
+    const video = await mountRow({ coverType: "video" });
+    const buttons = hostButtons(video.root);
+    expect(buttons[0]?.props["aria-label"]).toBe("Cover, video");
+    expect(
+      video.root.findAllByProps({ testID: "cover-play-badge" }),
+    ).not.toHaveLength(0);
+  });
+});

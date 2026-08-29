@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-28 — Public venue gallery thumbnails are now real, named controls with reliable keyboard activation, unclipped focus visibility, and preserved native selection behavior across web and both Mingla apps (#2739, PR #2775)
 - 2026-08-28 — Venue Insights now turns weekly public competitor changes into sourced, venue-relevant actions while enforcing and measuring a $1-per-venue weekly AI-spend cap, with missing usage failing closed instead of inventing cost (#2725, PR #2762)
 - 2026-08-28 — Public venue Overview, Menu, and Reservations tabs now expose complete accessible relationships, support standard keyboard navigation without changing content until activation, and keep the focused tab visible on narrow screens across web and both Mingla apps (#2738, PR #2754)
 - 2026-08-28 — Public venue pages now scroll back up reliably on mobile browsers even when a gesture starts over the persistent reservation action, without changing native or desktop behavior (#2729, PR #2759)

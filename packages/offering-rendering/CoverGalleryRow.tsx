@@ -49,8 +49,101 @@ const CARD = {
   desktop: { width: 88, height: 56 },
 } as const;
 
+// RNW promotes aria-disabled on its semantic <button> host to the native
+// disabled attribute. Keep Pressable as the single activation owner, but let a
+// real child button own web focus and ARIA so current-item state never drops
+// the browser focus that selected it.
+const WEB_BUTTON_BASE_STYLE: React.CSSProperties = {
+  alignContent: "flex-start",
+  alignItems: "stretch",
+  appearance: "none",
+  borderStyle: "solid",
+  boxSizing: "border-box",
+  cursor: "pointer",
+  display: "flex",
+  flexBasis: "auto",
+  flexDirection: "column",
+  flexShrink: 0,
+  listStyle: "none",
+  margin: 0,
+  minHeight: 0,
+  minWidth: 0,
+  padding: 0,
+  position: "relative",
+  textDecoration: "none",
+  touchAction: "manipulation",
+  zIndex: 0,
+};
+
+type WebInlineRect = { left: number; right: number };
+type WebGalleryScrollOwner = {
+  getBoundingClientRect: () => WebInlineRect;
+  scrollLeft: number;
+};
+type WebGalleryFocusTarget = {
+  closest?: (selector: string) => WebGalleryScrollOwner | null;
+  getBoundingClientRect?: () => WebInlineRect;
+};
+type WebGalleryFocusEvent = { currentTarget: WebGalleryFocusTarget };
+
+const WEB_GALLERY_SELECTOR =
+  '[role="group"][aria-label="Choose cover photo"]';
+const WEB_GALLERY_BUTTON_SELECTOR =
+  'button[data-mingla-cover-gallery-button="true"]';
+const WEB_GALLERY_FOCUS_CSS = `
+${WEB_GALLERY_BUTTON_SELECTOR}:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px #FFFFFF, inset 0 0 0 4px #000000;
+}
+@media (forced-colors: active) {
+  ${WEB_GALLERY_BUTTON_SELECTOR}:focus-visible {
+    box-shadow: none;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+    forced-color-adjust: auto;
+  }
+}
+`;
+// Keep the established two-pixel local reveal margin for right-edge focus and
+// fractional-layout rounding. The inset indicator itself consumes no layout
+// space and first-edge focus remains valid at scrollLeft zero.
+const WEB_FOCUS_HALO_PX = 2;
+
+const keepFocusedGalleryButtonInlineVisible = (
+  event: WebGalleryFocusEvent,
+): void => {
+  const target = event.currentTarget;
+  const buttonRect = target.getBoundingClientRect?.();
+  const scrollOwner = target.closest?.(WEB_GALLERY_SELECTOR);
+  if (
+    buttonRect === undefined ||
+    scrollOwner === null ||
+    scrollOwner === undefined
+  ) {
+    return;
+  }
+
+  const ownerRect = scrollOwner.getBoundingClientRect();
+  const rightOverrun = buttonRect.right + WEB_FOCUS_HALO_PX - ownerRect.right;
+  const leftOverrun = ownerRect.left - (buttonRect.left - WEB_FOCUS_HALO_PX);
+
+  // Own only the inline axis. scrollIntoView would also move the public page
+  // vertically, which is outside this horizontal gallery's responsibility.
+  if (rightOverrun > 0) {
+    scrollOwner.scrollLeft += Math.ceil(rightOverrun);
+    return;
+  }
+  if (leftOverrun > 0) {
+    scrollOwner.scrollLeft = Math.max(
+      0,
+      scrollOwner.scrollLeft - Math.ceil(leftOverrun),
+    );
+  }
+};
+
 const opaqueTileBg = (palette: ThemePalette): string =>
-  Platform.select({ android: "#1A1A1C", default: palette.card }) ?? palette.card;
+  Platform.select({ android: "#1A1A1C", default: palette.card }) ??
+  palette.card;
 
 const PlayBadge: React.FC = () => (
   <View style={styles.playBadge} pointerEvents="none" testID="cover-play-badge">
@@ -106,6 +199,64 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
     showPlay: boolean,
   ): React.ReactNode => {
     const active = index === activeIndex;
+    const cardContents = (
+      <>
+        {thumbUrl !== null ? (
+          <Image
+            source={{ uri: thumbUrl }}
+            style={styles.cardImage}
+            resizeMode="cover"
+            accessibilityIgnoresInvertColors
+          />
+        ) : null}
+        {showPlay ? <PlayBadge /> : null}
+        {active ? <CheckBadge palette={palette} /> : null}
+      </>
+    );
+    const selectCard = active ? undefined : () => onSelect(index);
+
+    if (Platform.OS === "web") {
+      return (
+        <Pressable
+          key={`cover-gallery-card-${index}`}
+          onPress={selectCard}
+          {...{ accessibilityDisabled: active }}
+          accessibilityState={undefined}
+          tabIndex={-1}
+          style={[
+            styles.webPressTarget,
+            { width: size.width, height: size.height },
+          ]}
+        >
+          {React.createElement(
+            "button",
+            {
+              type: "button",
+              role: "button",
+              "aria-disabled": active ? true : undefined,
+              "aria-label": a11yLabel,
+              "data-mingla-cover-gallery-button": "true",
+              tabIndex: 0,
+              onFocus: keepFocusedGalleryButtonInlineVisible,
+              "data-testid":
+                testID !== undefined ? `${testID}-card-${index}` : undefined,
+              style: {
+                ...WEB_BUTTON_BASE_STYLE,
+                width: "100%",
+                height: "100%",
+                overflow: "hidden",
+                borderRadius: 12,
+                backgroundColor: opaqueTileBg(palette),
+                borderColor: active ? palette.accent : palette.panelBorder,
+                borderWidth: active ? 2 : 1,
+              },
+            },
+            cardContents,
+          )}
+        </Pressable>
+      );
+    }
+
     return (
       <Pressable
         key={`cover-gallery-card-${index}`}
@@ -125,16 +276,7 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
           },
         ]}
       >
-        {thumbUrl !== null ? (
-          <Image
-            source={{ uri: thumbUrl }}
-            style={styles.cardImage}
-            resizeMode="cover"
-            accessibilityIgnoresInvertColors
-          />
-        ) : null}
-        {showPlay ? <PlayBadge /> : null}
-        {active ? <CheckBadge palette={palette} /> : null}
+        {cardContents}
       </Pressable>
     );
   };
@@ -145,9 +287,15 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
       showsHorizontalScrollIndicator={false}
       contentContainerStyle={styles.rowContent}
       style={styles.row}
-      accessibilityLabel="Cover photos"
+      role={Platform.OS === "web" ? "group" : undefined}
+      accessibilityLabel={
+        Platform.OS === "web" ? "Choose cover photo" : "Cover photos"
+      }
       testID={testID}
     >
+      {Platform.OS === "web"
+        ? React.createElement("style", null, WEB_GALLERY_FOCUS_CSS)
+        : null}
       {/* Card 0 — the primary cover (▶ only when it is a video). */}
       {renderCard(
         0,
@@ -164,6 +312,13 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
           false,
         ),
       )}
+      {Platform.OS === "web" ? (
+        <View
+          aria-hidden
+          pointerEvents="none"
+          style={styles.webFocusScrollExtent}
+        />
+      ) : null}
     </ScrollView>
   );
 };
@@ -176,6 +331,18 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 8,
     paddingVertical: 2,
+  },
+  webPressTarget: {
+    flexShrink: 0,
+  },
+  // Positive overflow extends only the horizontal scroll range. It gives the
+  // final focused button the established two-pixel local reveal margin without
+  // adding a flex item, padding, gap, or any visible/layout geometry.
+  webFocusScrollExtent: {
+    position: "absolute",
+    right: -WEB_FOCUS_HALO_PX,
+    width: WEB_FOCUS_HALO_PX,
+    height: 1,
   },
   card: {
     borderRadius: 12,

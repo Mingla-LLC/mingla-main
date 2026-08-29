@@ -9716,3 +9716,11 @@ independent tester returns PASS.
 - **Enforcement:** FK/redaction/postcondition/purge contract and #2725 gate.
 
 All eight #2725 rules were established ACTIVE after independent final integration PASS on 2026-08-28.
+
+## ACTIVE — issue #2739 (public gallery thumbnail controls are operable and visibly focused)
+
+### I-2739-COVER-GALLERY-WEB-CONTROLS-NAMED (ACTIVE)
+
+- **Rule:** Whenever `CoverGalleryRow` renders on web, it exposes one named group and one real, focusable button per `[cover] ++ gallery` item. The displayed item is truthfully `aria-disabled` without becoming an HTML-disabled control; inactive click, Enter, and Space select exactly once and retain focus. Every keyboard-focused thumbnail paints the complete two-colour inset focus indicator without changing card, gap, row, or page geometry, including the first and last item in a clipped horizontal row. Native retains its imagebutton/selected contract.
+- **Enforcement:** The committed implementor and tester render suites, their explicit invocation by the issue #1486 dormant-render workflow, the #1403 changed-file type gate, product-only fail-on-revert and twelve named mutation receipts, real Chromium five-/ten-control matrices at 320/390/402/1280, and all four native preservation legs.
+- **Status:** ACTIVE after independent PASS at exact tested product head `ec690c71e5b804b1ac5ea3cd771608f81b0b5894`, followed by a type-only tester amendment whose transpiled runtime stayed byte-identical and fresh-main integration with zero added diagnostics.
