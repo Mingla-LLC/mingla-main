@@ -9,14 +9,14 @@ describe("#2306 secureRandomSafe", () => {
   });
 
   it("reports success when the polyfill loads", () => {
-    jest.doMock("react-native-get-random-values", () => ({}), { virtual: true });
+    jest.doMock("react-native-get-random-values", () => ({}));
     expect(require("../secureRandomSafe").ensureSecureRandom()).toBe(true);
   });
 
   it("returns false instead of throwing when the native module is missing", () => {
     jest.doMock("react-native-get-random-values", () => {
       throw new Error("NativeModule.RNGetRandomValues is null");
-    }, { virtual: true });
+    });
     const mod = require("../secureRandomSafe");
     expect(() => mod.ensureSecureRandom()).not.toThrow();
     expect(mod.ensureSecureRandom()).toBe(false);
