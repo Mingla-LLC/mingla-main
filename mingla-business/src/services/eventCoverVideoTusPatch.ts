@@ -18,6 +18,14 @@ export const readEventCoverVideoBytes = async (
   throw new Error("Native video byte reads are unavailable on web.");
 };
 
+export const readEventCoverVideoChunk = async (
+  _uri: string,
+  _offset: number,
+  _length: number,
+): Promise<Uint8Array<ArrayBuffer>> => {
+  throw new Error("Native video chunk reads are unavailable on web.");
+};
+
 export const patchBunnyTusNative = async (_input: {
   url: string;
   body: Uint8Array<ArrayBuffer>;

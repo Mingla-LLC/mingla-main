@@ -14,14 +14,15 @@ import { beforeEach, describe, expect, jest, test } from "@jest/globals";
 // These `mock`-prefixed fns + the jest.mock MUST be declared BEFORE the service
 // import so they are initialized when the service's transitive require pulls the
 // mocked module in (jest hoists the jest.mock, not the const).
-const mockReadBytes = jest.fn<(uri: string) => Promise<Uint8Array>>();
+const mockReadChunk = jest.fn<(uri: string, offset: number, length: number) => Promise<Uint8Array>>();
 const mockPatchBunny =
   jest.fn<
     (input: { url: string; headers: Record<string, string>; body: Uint8Array; signal?: AbortSignal }) =>
       Promise<{ status: number; bodyText: string }>
   >();
 jest.mock("../../src/services/eventCoverVideoTusPatch", () => ({
-  readEventCoverVideoBytes: mockReadBytes,
+  // [TEST-MOD-APPROVED #2715] Native transport reads bounded slices.
+  readEventCoverVideoChunk: mockReadChunk,
   patchBunnyTusNative: mockPatchBunny,
 }));
 
@@ -123,18 +124,18 @@ describe("ORCH-0978 event cover video compression happy path", () => {
       data: { session: { access_token: "user-session-jwt" } },
       error: null,
     });
-    mockReadBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mockReadChunk.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockPatchBunny.mockResolvedValue({ status: 204, bodyText: "" });
-    // Only the TUS CREATE (POST) hits global fetch → 201 + Location.
+    // [TEST-MOD-APPROVED #2715] The server already created the resource; the
+    // client recovers and advances only from authoritative HEAD offsets.
+    const offsets = [0, 5 * 1024 * 1024, 6_270_000];
     global.fetch = jest.fn(
       async (_url: unknown, init?: { method?: string }): Promise<unknown> => {
-        if (init?.method === "POST") {
+        if (init?.method === "HEAD") {
+          const offset = offsets.shift() ?? 6_270_000;
           return {
-            status: 201,
-            headers: {
-              get: (name: string): string | null =>
-                name.toLowerCase() === "location" ? RESUMABLE_URL : null,
-            },
+            ok: true,
+            headers: { get: (name: string): string | null => name === "Upload-Offset" ? String(offset) : null },
           };
         }
         throw new Error("unexpected fetch call");
@@ -200,7 +201,8 @@ describe("ORCH-0978 event cover video compression happy path", () => {
           isTerminal: false,
           jobId: "job_1",
           progressKind: "indeterminate",
-          progressPercent: 45,
+          // [TEST-MOD-APPROVED #2715] No provider percent means no fabricated percent.
+          progressPercent: null,
           stageLabel: "Upload complete. Preparing processing...",
           status: "source_uploaded",
         },
@@ -217,7 +219,7 @@ describe("ORCH-0978 event cover video compression happy path", () => {
           isTerminal: false,
           jobId: "job_1",
           progressKind: "indeterminate",
-          progressPercent: 70,
+          progressPercent: null,
           stageLabel: "Processing browser-safe video...",
           status: "processing",
         },
@@ -242,9 +244,11 @@ describe("ORCH-0978 event cover video compression happy path", () => {
         error: null,
       });
 
+    // [TEST-MOD-APPROVED #2715] Keep the large-byte compression proof within
+    // the exact 15-second source-duration contract.
     const compressed = await compressVideoLocally({
       bytes: 389_150_000,
-      durationMs: 30_000,
+      durationMs: 15_000,
       uri: "file:///raw.mov",
     });
     const intent = await createEventCoverVideoUploadIntent({
@@ -285,13 +289,16 @@ describe("ORCH-0978 event cover video compression happy path", () => {
       expect.objectContaining({
         body: expect.objectContaining({
           sourceBytes: 6_270_000,
-          sourceDurationMs: 30_000,
+          sourceDurationMs: 15_000,
         }),
       }),
     );
     // #966 — the compressed bytes upload via the live Bunny TUS PATCH leg (the
     // Cloudinary multipart createUploadTask path was removed).
-    expect(mockPatchBunny).toHaveBeenCalledTimes(1);
+    // [TEST-MOD-APPROVED #2715] 6.27 MB crosses the bounded 5 MiB chunk boundary.
+    expect(mockPatchBunny).toHaveBeenCalledTimes(2);
+    expect(mockPatchBunny.mock.calls.map(([call]) => call.headers["Upload-Offset"]))
+      .toEqual(["0", String(5 * 1024 * 1024)]);
     expect(providerUploadResponse).toBeNull();
   });
 });

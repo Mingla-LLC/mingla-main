@@ -66,8 +66,9 @@ describe("CoverPicker dedicated trimmer wiring", () => {
       "if (isNative && trimResult === null) return;",
     );
     expect(picker).toContain("if (needsNativeTrim) {");
+    // [TEST-MOD-APPROVED #2715] Cancel copy follows the exact 15-second ceiling.
     const cancelNoticeIndex = picker.indexOf(
-      "No video added — trim to 29 seconds or pick a shorter clip.",
+      "No video added — trim to 15 seconds or pick a shorter clip.",
     );
     const uploadStartIndex = picker.indexOf("await videoUpload.start(uploadFile);");
     expect(cancelNoticeIndex).toBeGreaterThan(-1);

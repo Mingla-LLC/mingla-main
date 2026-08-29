@@ -305,9 +305,9 @@ export function VenueDeckReadinessSetup({
   }, []);
 
   const handleCoverChange = useCallback(
-    (patch: CoverPatch): void => {
+    async (patch: CoverPatch): Promise<void> => {
       setCover(patch);
-      void syncHeroMedia({
+      await syncHeroMedia({
         brandId,
         venueId,
         placePoolId,
@@ -321,6 +321,7 @@ export function VenueDeckReadinessSetup({
             "Cover saved, but deck readiness did not sync yet.",
           ),
         );
+        throw error;
       });
     },
     [brandId, venueId, placePoolId],

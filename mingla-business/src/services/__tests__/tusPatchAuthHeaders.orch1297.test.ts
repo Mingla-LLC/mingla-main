@@ -33,13 +33,13 @@ interface PatchInput {
   signal?: AbortSignal;
 }
 
-const mockReadBytes = jest.fn<(uri: string) => Promise<Uint8Array>>();
+const mockReadChunk = jest.fn<(uri: string, offset: number, length: number) => Promise<Uint8Array>>();
 const mockPatchBunny =
   jest.fn<(input: PatchInput) => Promise<{ status: number; bodyText: string }>>();
 
 // Mock the native transport module the service imports — captures the headers.
 jest.mock("../eventCoverVideoTusPatch", () => ({
-  readEventCoverVideoBytes: mockReadBytes,
+  readEventCoverVideoChunk: mockReadChunk,
   patchBunnyTusNative: mockPatchBunny,
 }));
 
@@ -65,18 +65,16 @@ describe("ORCH-1297 — TUS PATCH re-sends Bunny auth headers", () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockReadBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mockReadChunk.mockResolvedValue(new Uint8Array([2, 3]));
     mockPatchBunny.mockResolvedValue({ status: 204, bodyText: "" });
-    // Only the TUS CREATE (POST) hits global fetch here → 201 + Location.
+    // [TEST-MOD-APPROVED #2715] HEAD returns the durable resource's resume offset.
+    const offsets = [1, 3];
     global.fetch = jest.fn(
       async (_url: unknown, init?: { method?: string }): Promise<unknown> => {
-        if (init?.method === "POST") {
+        if (init?.method === "HEAD") {
           return {
-            status: 201,
-            headers: {
-              get: (name: string): string | null =>
-                name.toLowerCase() === "location" ? RESUMABLE_URL : null,
-            },
+            ok: true,
+            headers: { get: (name: string): string | null => name === "Upload-Offset" ? String(offsets.shift() ?? 3) : null },
           };
         }
         throw new Error("unexpected fetch call");
@@ -91,7 +89,7 @@ describe("ORCH-1297 — TUS PATCH re-sends Bunny auth headers", () => {
   it("carries LibraryId + AuthorizationSignature alongside the TUS headers on the PATCH", async () => {
     await uploadEventCoverVideoSourceViaTus({
       upload: {
-        url: "https://video.bunnycdn.com/tusupload",
+        url: RESUMABLE_URL,
         fields: {
           AuthorizationSignature: "sig-abc",
           AuthorizationExpire: "1750000000",
@@ -115,7 +113,7 @@ describe("ORCH-1297 — TUS PATCH re-sends Bunny auth headers", () => {
     expect(headers.VideoId).toBe("vid-1");
 
     // The explicit TUS headers still present (and win on any key collision).
-    expect(headers["Upload-Offset"]).toBe("0");
+    expect(headers["Upload-Offset"]).toBe("1");
     expect(headers["Tus-Resumable"]).toBe("1.0.0");
     expect(headers["Content-Type"]).toBe("application/offset+octet-stream");
   });

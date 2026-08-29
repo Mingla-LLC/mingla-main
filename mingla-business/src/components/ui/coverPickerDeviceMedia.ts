@@ -137,7 +137,7 @@ export const launchCoverImagePicker = async (): Promise<CoverPickerResult> => {
 
 export const launchCoverVideoPicker = async (): Promise<CoverPickerResult> => {
   const result = await pickBrowserFiles({
-    accept: "video/mp4,video/quicktime,video/*",
+    accept: "video/mp4,video/quicktime,video/x-m4v,video/webm,.mp4,.mov,.m4v,.webm",
     maxFiles: 1,
   });
   const assets = await Promise.all(

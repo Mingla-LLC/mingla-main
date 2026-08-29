@@ -159,7 +159,8 @@ describe("event cover video processing service", () => {
       code: "validation_error",
       edgeDetail: "source_duration_out_of_range",
       edgeError: "validation_error",
-      message: "Video duration metadata was missing or out of range. Try another 30-second clip.",
+      // [TEST-MOD-APPROVED #2715] Validation copy follows the binding 15-second ceiling.
+      message: "Choose another 15-second clip and try again.",
       phase: "upload_intent",
       requestId: expect.any(String),
     });
@@ -440,7 +441,8 @@ describe("event cover video processing service", () => {
         processedMimeType: null,
         processedUrl: null,
         progressKind: "indeterminate",
-        progressPercent: 45,
+        // [TEST-MOD-APPROVED #2715] Unknown provider progress stays indeterminate.
+        progressPercent: null,
         sourceUploadedAt: "2026-05-10T00:00:00.000Z",
         stageLabel: "Upload complete. Preparing processing...",
         status: "source_uploaded",
@@ -464,7 +466,7 @@ describe("event cover video processing service", () => {
       }),
     ).resolves.toMatchObject({
       jobId: "job_1",
-      progressPercent: 45,
+      progressPercent: null,
       stageLabel: "Upload complete. Preparing processing...",
       status: "source_uploaded",
     });
@@ -485,50 +487,40 @@ describe("event cover video processing service", () => {
     );
   });
 
-  test("waits with status callbacks and carries last status on timeout", async () => {
-    // #1664 [event-cover-timing-flake] — real 1 ms/2 ms timing plus two
-    // one-shot replies previously admitted a third-poll TypeError.
+  test("keeps the same processing job alive beyond the former deadline and later resolves", async () => {
+    // [TEST-MOD-APPROVED #2715] A client clock or transient status failure cannot
+    // terminate authoritative provider work; later server truth settles the job.
     jest.useFakeTimers({ now: 0 });
+    const random = jest.spyOn(Math, "random").mockReturnValue(0);
     try {
-      invoke.mockResolvedValue({
-        data: {
-          applyMode: "draft_auto",
-          brandId: "brand_1",
-          canCancel: true,
-          canCheckAgain: true,
-          canRetry: false,
-          eventId: "event_1",
-          isTerminal: false,
-          jobId: "job_1",
-          progressKind: "indeterminate",
-          progressPercent: 70,
-          stageLabel: "Processing browser-safe video...",
-          status: "processing",
-        },
-        error: null,
-      });
+      const processing = {
+        applyMode: "draft_auto", brandId: "brand_1", canCancel: true,
+        canCheckAgain: true, canRetry: false, eventId: "event_1",
+        isTerminal: false, jobId: "job_1", progressKind: "indeterminate",
+        progressPercent: null, stageLabel: "Processing video", status: "processing",
+      };
+      const ready = {
+        ...processing, canCancel: false, canCheckAgain: false, isTerminal: true,
+        processedUrl: "https://cdn.example.com/final.mp4", progressKind: "terminal",
+        progressPercent: 100, stageLabel: "Video ready.", status: "ready",
+      };
+      invoke
+        .mockResolvedValueOnce({ data: processing, error: null })
+        .mockRejectedValueOnce(new Error("offline"))
+        .mockResolvedValueOnce({ data: ready, error: null });
 
       const seen: string[] = [];
       const waitPromise = waitForEventCoverVideoReady("job_1", {
         onStatus: (status) => seen.push(status.status),
         pollIntervalMs: 1,
-        timeoutMs: 2,
+        timeoutMs: 2, // deprecated input is intentionally ignored
       });
-      const rejection = expect(waitPromise).rejects.toMatchObject({
-        code: "processing_timeout",
-        lastStatus: expect.objectContaining({
-          jobId: "job_1",
-          status: "processing",
-        }),
-        message: "Your video is still processing. You can check again in a moment.",
-      });
-
-      await jest.advanceTimersByTimeAsync(2);
-      await rejection;
-      expect(seen.length).toBeGreaterThanOrEqual(1);
-      expect(seen).toEqual(["processing", "processing"]);
-      expect(invoke).toHaveBeenCalledTimes(2);
+      await jest.advanceTimersByTimeAsync(1_105_000);
+      await expect(waitPromise).resolves.toMatchObject({ jobId: "job_1", status: "ready" });
+      expect(seen).toEqual(["processing", "ready"]);
+      expect(invoke).toHaveBeenCalledTimes(3);
     } finally {
+      random.mockRestore();
       jest.useRealTimers();
     }
   });

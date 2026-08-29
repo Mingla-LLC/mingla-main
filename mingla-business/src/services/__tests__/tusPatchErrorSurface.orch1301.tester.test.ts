@@ -39,14 +39,14 @@ interface PatchInput {
   signal?: AbortSignal;
 }
 
-const mockReadBytes = jest.fn<(uri: string) => Promise<Uint8Array>>();
+const mockReadChunk = jest.fn<(uri: string, offset: number, length: number) => Promise<Uint8Array>>();
 const mockPatchBunny =
   jest.fn<(input: PatchInput) => Promise<{ status: number; bodyText: string }>>();
 
 // Mock the native transport module the service imports — captures headers + lets
 // us drive the PATCH status/body.
 jest.mock("../eventCoverVideoTusPatch", () => ({
-  readEventCoverVideoBytes: mockReadBytes,
+  readEventCoverVideoChunk: mockReadChunk,
   patchBunnyTusNative: mockPatchBunny,
 }));
 
@@ -83,7 +83,7 @@ const runTus = (
 ): Promise<unknown> =>
   uploadEventCoverVideoSourceViaTus({
     upload: {
-      url: "https://video.bunnycdn.com/tusupload",
+      url: RESUMABLE_URL,
       fields,
       protocol: "tus",
       metadata: { filetype: "video/mp4", title: "job-1301" },
@@ -97,19 +97,17 @@ describe("ORCH-1301 — TUS PATCH failure surfacing + spread integrity (adversar
 
   beforeEach(() => {
     jest.clearAllMocks();
-    mockReadBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mockReadChunk.mockResolvedValue(new Uint8Array([2, 3]));
     // Default: success. Individual tests override the PATCH result.
     mockPatchBunny.mockResolvedValue({ status: 204, bodyText: "" });
-    // Only the TUS CREATE (POST) hits global fetch here → 201 + Location.
+    // [TEST-MOD-APPROVED #2715] Every attempt trusts HEAD, never a client CREATE.
+    const offsets = [1, 3];
     global.fetch = jest.fn(
       async (_url: unknown, init?: { method?: string }): Promise<unknown> => {
-        if (init?.method === "POST") {
+        if (init?.method === "HEAD") {
           return {
-            status: 201,
-            headers: {
-              get: (name: string): string | null =>
-                name.toLowerCase() === "location" ? RESUMABLE_URL : null,
-            },
+            ok: true,
+            headers: { get: (name: string): string | null => name === "Upload-Offset" ? String(offsets.shift() ?? 3) : null },
           };
         }
         throw new Error("unexpected fetch call");
@@ -121,7 +119,8 @@ describe("ORCH-1301 — TUS PATCH failure surfacing + spread integrity (adversar
     global.fetch = originalFetch;
   });
 
-  it("(1) a non-2xx PATCH surfaces Bunny's response BODY TEXT (not just the status) in the thrown error", async () => {
+  it("(1) a non-2xx PATCH keeps redacted diagnostics without rendering Bunny body text", async () => {
+    // [TEST-MOD-APPROVED #2715] Provider strings are never user-facing.
     mockPatchBunny.mockResolvedValue({
       status: 400,
       bodyText: "Library ID missing or invalid",
@@ -136,10 +135,10 @@ describe("ORCH-1301 — TUS PATCH failure surfacing + spread integrity (adversar
 
     expect(caught).toBeInstanceOf(EventCoverVideoProcessingError);
     const err = caught as EventCoverVideoProcessingError;
-    expect(err.code).toBe("source_upload_failed");
-    // The whole point of ORCH-1295's fix: a future 400 is NOT blind.
-    expect(err.message).toContain("Library ID missing or invalid");
-    expect(err.message).toContain("400");
+    expect(err.code).toBe("transport_integrity_failed");
+    expect(err.message).toBe("We couldn't resume this upload. Choose the original video again.");
+    expect(err.message).not.toContain("Library ID missing or invalid");
+    expect(err.edgeDetail).toBe("tus_patch_http_400");
   });
 
   it("(2) the auth headers flow via a `...fields` SPREAD — an UNEXPECTED extra field is forwarded (proves it is not a hardcoded 4-key allowlist)", async () => {
@@ -158,7 +157,8 @@ describe("ORCH-1301 — TUS PATCH failure surfacing + spread integrity (adversar
     expect(headers.AuthorizationSignature).toBe("sig-1301");
   });
 
-  it("(3) the explicit TUS headers WIN a key collision — a hostile Upload-Offset in fields is overridden to \"0\"", async () => {
+  it("(3) the explicit TUS headers WIN a key collision using the HEAD-derived offset", async () => {
+    // [TEST-MOD-APPROVED #2715] Trusted server offset replaces the hostile field.
     await runTus({
       ...AUTH_FIELDS,
       // The server should never send this, but if it did the byte write must
@@ -169,12 +169,12 @@ describe("ORCH-1301 — TUS PATCH failure surfacing + spread integrity (adversar
 
     expect(mockPatchBunny).toHaveBeenCalledTimes(1);
     const { headers } = mockPatchBunny.mock.calls[0][0];
-    expect(headers["Upload-Offset"]).toBe("0");
+    expect(headers["Upload-Offset"]).toBe("1");
     expect(headers["Content-Type"]).toBe("application/offset+octet-stream");
     expect(headers["Tus-Resumable"]).toBe("1.0.0");
   });
 
-  it("(4) a non-2xx PATCH with an EMPTY body still surfaces the status (no dangling body separator)", async () => {
+  it("(4) a non-2xx PATCH with an EMPTY body still has finite safe diagnostics", async () => {
     mockPatchBunny.mockResolvedValue({ status: 500, bodyText: "   " });
 
     let caught: unknown;
@@ -186,9 +186,9 @@ describe("ORCH-1301 — TUS PATCH failure surfacing + spread integrity (adversar
 
     expect(caught).toBeInstanceOf(EventCoverVideoProcessingError);
     const err = caught as EventCoverVideoProcessingError;
-    expect(err.message).toContain("500");
-    // Whitespace-only body → trimmed to empty → status-only message, no "): " tail.
-    expect(err.message).not.toMatch(/\):\s*$/);
+    expect(err.code).toBe("transport_integrity_failed");
+    expect(err.edgeDetail).toBe("tus_patch_http_500");
+    expect(err.message).not.toContain("500");
   });
 
   it("(5) the CREATE + PATCH both go through ONE patchHeaders object — success path stays 204-clean with all headers", async () => {

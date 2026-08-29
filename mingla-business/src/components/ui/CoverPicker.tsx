@@ -58,6 +58,8 @@ import { trimVideoWithDedicatedEditor } from "./coverPickerVideoTrimEditor";
 
 import {
   accent,
+  androidOpaque,
+  ariThread,
   glass,
   radius as radiusTokens,
   semantic,
@@ -74,6 +76,8 @@ import {
   EVENT_COVER_MAX_VIDEO_DURATION_MS,
   EVENT_COVER_SOURCE_CEILING_MS,
   EVENT_COVER_VIDEO_PROCESSING_COPY,
+  type EventCoverVideoStatus,
+  type EventCoverVideoUploadStage,
 } from "../../services/eventCoverVideoProcessingService";
 import {
   useEventCoverVideoUpload,
@@ -186,7 +190,7 @@ export interface CoverPickerProps {
   initialAlt: string | null;
   /** issue #868 [cover-gallery] — the ADDITIONAL image/GIF items (default []). */
   initialCoverGallery?: OfferingGalleryImage[];
-  onCoverChange: (patch: CoverPatch) => void;
+  onCoverChange: (patch: CoverPatch) => void | Promise<void>;
   onShowToast: (msg: string) => void;
   disabled?: boolean;
   /** Override default 3-column desktop / 2-column phone masonry. */
@@ -254,7 +258,7 @@ const friendlyVideoCoverError = (error: unknown): string => {
 // dismiss transition finishes on iOS; presenting the trim modal in that window
 // is refused by iOS New Arch ("already presenting"). Drain RN interactions,
 // then settle past the ~250ms iOS modal dismiss animation.
-const PICKER_DISMISS_SETTLE_MS = 350;
+const PICKER_DISMISS_SETTLE_MS = 300;
 const waitForPickerDismissal = (): Promise<void> =>
   new Promise((resolve) => {
     InteractionManager.runAfterInteractions(() => {
@@ -284,7 +288,10 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const isBrand = target.kind === "brand";
   // META-ORCH-1255(C) D-C: venue-listing hero target — brand-like storage +
   // video pipeline, ZERO brands-row writes (host persists the emitted patch).
-  const isVenue = target.kind === "venue";
+  const isVenue = target.kind === "venue" || target.kind === "venue_draft";
+  const eventRowId = target.kind === "event" || target.kind === "trip" || target.kind === "experience"
+    ? target.eventRowId
+    : "";
   const isNative = Platform.OS !== "web";
 
   const [activeTab, setActiveTab] = useState<CoverTabId>("library");
@@ -302,7 +309,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   // brands.cover_media_url (via the apply step on ready). For brand, eventRowId
   // is unused server-side (sentinel passed for the hook's signature).
   const videoUpload = useEventCoverVideoUpload(
-    isBrand || isVenue ? "" : target.eventRowId,
+    eventRowId,
     target.brandId,
     isBrand || isVenue ? "published_manual" : target.coverMediaApplyMode,
     // META-ORCH-1059 Sub-B: experiences ride the event-cover video pipeline
@@ -315,13 +322,19 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     isBrand
       ? "brand"
       : isVenue
-        ? "venue"
+        ? target.kind
         : target.kind === "experience"
           ? "experience"
           : "event",
+    target.kind === "venue"
+      ? { venueId: target.venueId }
+      : target.kind === "venue_draft"
+        ? { draftOwnerKey: target.draftOwnerKey }
+        : {},
   );
   const lastVideoUploadFileRef = useRef<EventCoverVideoUploadFile | null>(null);
   const lastEmittedProcessedVideoUrlRef = useRef<string | null>(null);
+  const savingProcessedVideoUrlRef = useRef<string | null>(null);
   // ORCH-1308: hold the picked video blob assets across a retry. On web the
   // upload reads the clip via fetch(blob:uri); revoking the blob in the pick's
   // finally killed the "try again" path (retry re-fetched a dead blob →
@@ -405,15 +418,18 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   const [providerAddTarget, setProviderAddTarget] = useState<"cover" | "gallery">(
     "cover",
   );
+  const [readyPersistenceFailed, setReadyPersistenceFailed] = useState(false);
   const GALLERY_MAX = 8;
+
+  const projectedVideoStage: EventCoverVideoUploadStage = readyPersistenceFailed && videoUpload.status?.status === "ready"
+    ? { phase: "ready" as const, percent: 100 }
+    : videoUpload.stage;
 
   useEffect(() => {
     onCoverVideoProcessingChange?.(
-      videoUpload.stage.phase === "compressing" ||
-        videoUpload.stage.phase === "uploading" ||
-        videoUpload.stage.phase === "processing",
+      !["idle", "ready", "applied", "error"].includes(projectedVideoStage.phase),
     );
-  }, [onCoverVideoProcessingChange, videoUpload.stage.phase]);
+  }, [onCoverVideoProcessingChange, projectedVideoStage.phase]);
 
   // ----- Browse state (GIF + Stock tabs) ---------------------------------
   const [query, setQuery] = useState("");
@@ -430,10 +446,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     provider: localCover.coverMediaProvider,
     credit: localCover.coverMediaCredit,
   });
-  const activeVideoUpload =
-    videoUpload.stage.phase === "compressing" ||
-    videoUpload.stage.phase === "uploading" ||
-    videoUpload.stage.phase === "processing";
+  const activeVideoUpload = !["idle", "ready", "applied", "error"].includes(videoUpload.stage.phase);
+  const lockedVideoOperation = activeVideoUpload || projectedVideoStage.phase === "ready";
   const activeMediaUrl =
     videoUpload.localPreviewUri ??
     videoUpload.processedUrl ??
@@ -442,49 +456,60 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     videoUpload.localPreviewUri !== null || videoUpload.processedUrl !== null
       ? "video"
       : localCover.coverMediaType;
-  const videoStageCopy =
-    videoUpload.stage.phase === "compressing"
-      ? "Compressing on your phone..."
-      : videoUpload.stage.phase === "uploading"
-        ? "Uploading..."
-        : videoUpload.stage.phase === "processing"
-          ? "Almost ready..."
-          : null;
 
   const emitChange = useCallback(
-    (patch: CoverPatch): void => {
+    async (patch: CoverPatch): Promise<void> => {
       setLocalCover(patch);
       // issue #868 — always carry the current gallery so a cover change never
       // drops the additional photos (they are INDEPENDENT of the cover).
-      onCoverChange({ ...patch, coverGallery: galleryRef.current });
+      await onCoverChange({ ...patch, coverGallery: galleryRef.current });
     },
     [onCoverChange],
   );
 
-  // Video ready → emit the upload-provider patch (events) OR rely on the brand
-  // apply (brand). Both surface the processed Cloudinary URL in the preview.
-  useEffect(() => {
-    if (videoUpload.stage.phase !== "ready" || videoUpload.processedUrl === null) {
-      return;
-    }
-    if (lastEmittedProcessedVideoUrlRef.current === videoUpload.processedUrl) {
-      return;
-    }
-    lastEmittedProcessedVideoUrlRef.current = videoUpload.processedUrl;
+  const persistReadyVideo = useCallback(async (): Promise<void> => {
+    const readyUrl = videoUpload.processedUrl;
+    if (readyUrl === null || lastEmittedProcessedVideoUrlRef.current === readyUrl || savingProcessedVideoUrlRef.current === readyUrl) return;
+    savingProcessedVideoUrlRef.current = readyUrl;
+    setReadyPersistenceFailed(false);
     setMediaDisplayError(null);
-    emitChange({
-      coverMediaUrl: videoUpload.processedUrl,
-      coverMediaPosterUrl: videoUpload.processedPosterUrl,
-      coverMediaType: "video",
-      coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
-      coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
-      coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
-      coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
-      coverMediaAlt: "Uploaded video cover",
-    });
-    // issue #1338 — success feedback renders in-sheet, never via the root Toast.
-    setVideoPickNotice({ tone: "info", text: "Video cover added." });
-  }, [emitChange, videoUpload.processedPosterUrl, videoUpload.processedUrl, videoUpload.stage.phase]);
+    try {
+      await emitChange({
+        coverMediaUrl: readyUrl,
+        coverMediaPosterUrl: videoUpload.processedPosterUrl,
+        coverMediaType: "video",
+        coverMediaProvider: UPLOAD_EVENT_COVER_PROVIDER_METADATA.provider,
+        coverMediaSourceUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.sourceUrl,
+        coverMediaCredit: UPLOAD_EVENT_COVER_PROVIDER_METADATA.credit,
+        coverMediaCreditUrl: UPLOAD_EVENT_COVER_PROVIDER_METADATA.creditUrl,
+        coverMediaAlt: "Uploaded video cover",
+      });
+      if (isVenue) await videoUpload.acknowledgeApplied();
+      lastEmittedProcessedVideoUrlRef.current = readyUrl;
+      setVideoPickNotice({ tone: "info", text: "Video cover added." });
+    } catch {
+      lastEmittedProcessedVideoUrlRef.current = null;
+      setReadyPersistenceFailed(true);
+      setVideoPickNotice({ tone: "error", text: "The video is ready, but the cover could not be saved. Retry saving it." });
+    } finally {
+      savingProcessedVideoUrlRef.current = null;
+    }
+  }, [
+    emitChange,
+    isVenue,
+    videoUpload.acknowledgeApplied,
+    videoUpload.processedPosterUrl,
+    videoUpload.processedUrl,
+  ]);
+
+  // Venue owners must persist first and acknowledge second. Event/brand jobs
+  // emit only after the server projects authoritative `applied` truth.
+  useEffect(() => {
+    const shouldPersist = isVenue
+      ? videoUpload.status?.status === "ready" && !readyPersistenceFailed
+      : videoUpload.stage.phase === "applied";
+    if (shouldPersist) void persistReadyVideo();
+  }, [isVenue, persistReadyVideo, readyPersistenceFailed, videoUpload.stage.phase, videoUpload.status?.status]);
 
   // ----- Device image/GIF + video pickers --------------------------------
 
@@ -533,15 +558,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
   }, [showUploadError]);
 
   const validateEventRowId = useCallback((): boolean => {
-    if (target.kind === "brand" || target.kind === "venue") return true;
-    if (target.eventRowId.trim().length === 0) {
+    if (isBrand || isVenue) return true;
+    if (eventRowId.trim().length === 0) {
       showUploadError(
         new EventCoverMediaError("missing_server_event_id", "Missing server row id."),
       );
       return false;
     }
     return true;
-  }, [target, showUploadError]);
+  }, [eventRowId, isBrand, isVenue, showUploadError]);
 
   // issue #868 — commit a gallery mutation: update state + ref, re-emit the
   // UNCHANGED cover fields plus the new gallery (the cover is never touched here).
@@ -596,7 +621,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       // brand_covers bucket) so the gallery item is a durable public URL.
       let publicUrl: string;
       let mediaType: "image" | "gif";
-      if (target.kind === "brand" || target.kind === "venue") {
+      if (isBrand || isVenue) {
         const uploaded = await uploadBrandCover(
           target.brandId,
           {
@@ -613,7 +638,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         const uploaded = await uploadEventCoverMedia({
           uri: asset.uri,
           brandId: target.brandId,
-          eventId: target.eventRowId,
+          eventId: eventRowId,
           mimeType: asset.mimeType,
           fileName: asset.fileName,
           fileSize: asset.fileSize,
@@ -627,7 +652,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       if (mediaType === "gif") {
         const extracted = await extractCoverGifPoster(asset);
         try {
-          if (target.kind === "brand" || target.kind === "venue") {
+          if (isBrand || isVenue) {
             const poster = await uploadBrandCover(target.brandId, extracted.asset, {
               previousPublicUrl: null,
             });
@@ -636,7 +661,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
             const poster = await uploadEventCoverMedia({
               ...extracted.asset,
               brandId: target.brandId,
-              eventId: target.eventRowId,
+              eventId: eventRowId,
               durationMs: null,
               pickerType: "image",
             });
@@ -869,7 +894,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       const upload = await uploadEventCoverMedia({
         uri: asset.uri,
         brandId: target.brandId,
-        eventId: target.eventRowId,
+        eventId: eventRowId,
         mimeType: asset.mimeType,
         fileName: asset.fileName,
         fileSize: asset.fileSize,
@@ -883,7 +908,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           const poster = await uploadEventCoverMedia({
             ...extracted.asset,
             brandId: target.brandId,
-            eventId: target.eventRowId,
+            eventId: eventRowId,
             durationMs: null,
             pickerType: "image",
           });
@@ -928,8 +953,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     validateEventRowId,
   ]);
 
-  const pickVideoCover = useCallback(async (): Promise<void> => {
-    if (uploading || disabled || activeVideoUpload) return;
+  const pickVideoCover = useCallback(async (replacing = false): Promise<void> => {
+    const resumingDetachedWeb = Platform.OS === "web" && videoUpload.stage.phase === "detached";
+    if (uploading || disabled || (lockedVideoOperation && !replacing && !resumingDetachedWeb)) return;
     // ORCH-1307: mobile web is no longer gated out of video covers. The web has
     // no trimmer (native-only react-native-video-trim), so a raw clip flows
     // straight to the duration guard below; clips within the ceiling upload
@@ -948,14 +974,20 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
     setUploading(true);
     // issue #1338 — clear any stale notice from a prior attempt.
     setVideoPickNotice(null);
+    const previousPickedVideoAssets = pickedVideoAssetsRef.current;
+    let selectedReplacementAssets: Parameters<typeof revokeCoverPickedAssets>[0] | null = null;
     try {
       const result = await launchCoverVideoPicker();
       if (result.canceled || result.assets.length === 0) return;
       // ORCH-1308: free the PREVIOUS pick's blob, then retain THIS one so the
       // "try again" retry (web fetch(blob:uri)) can re-read it. It is freed on
       // the next pick or on unmount (effect above), NOT in the finally below.
-      revokeCoverPickedAssets(pickedVideoAssetsRef.current);
+      // A replacement keeps the old browser blob alive until the server has
+      // accepted the new immutable operation. A rejected replacement can then
+      // resume the old upload instead of having its last readable bytes revoked.
+      if (!replacing) revokeCoverPickedAssets(previousPickedVideoAssets);
       pickedVideoAssetsRef.current = result.assets;
+      if (replacing) selectedReplacementAssets = result.assets;
       const asset = result.assets[0];
       // issue #1338 — trim ONLY when a native clip is over the source ceiling.
       // Within-ceiling native clips and ALL web clips upload RAW (mirrors the
@@ -979,7 +1011,7 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           // Genuine user cancel (Back). NEVER silent (issue #1338).
           setVideoPickNotice({
             tone: "info",
-            text: "No video added — trim to 29 seconds or pick a shorter clip.",
+            text: "No video added — trim to 15 seconds or pick a shorter clip.",
           });
           return;
         }
@@ -1028,8 +1060,8 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         setVideoPickNotice({
           tone: "error",
           text: isNative
-            ? "Please trim to 29 seconds first."
-            : "This video is over 30 seconds. Pick a shorter clip, or trim it in the Mingla Host app.",
+            ? "Trim it to 15 seconds or less, then choose it again."
+            : "Choose a video that is 15 seconds or shorter.",
         });
         return;
       }
@@ -1042,8 +1074,15 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
         return;
       }
       lastVideoUploadFileRef.current = uploadFile;
-      await videoUpload.start(uploadFile);
+      if (replacing) {
+        await videoUpload.replace(uploadFile);
+        revokeCoverPickedAssets(previousPickedVideoAssets);
+      } else await videoUpload.start(uploadFile);
     } catch (error) {
+      if (replacing && selectedReplacementAssets !== null) {
+        revokeCoverPickedAssets(selectedReplacementAssets);
+        pickedVideoAssetsRef.current = previousPickedVideoAssets;
+      }
       // issue #1338 — in-sheet, never a root Toast.
       // issue #1348 — friendly copy, never the raw system message.
       setVideoPickNotice({
@@ -1057,21 +1096,19 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
       setUploading(false);
     }
   }, [
-    activeVideoUpload,
     disabled,
     ensureMediaPermission,
     isAuthReady,
     isNative,
+    lockedVideoOperation,
     uploading,
     validateEventRowId,
     videoUpload,
   ]);
 
   const cancelVideoCoverUpload = useCallback((): void => {
-    void videoUpload.cancel().catch((error) => {
-      onShowToast(
-        error instanceof Error ? error.message : "Could not cancel video upload.",
-      );
+    void videoUpload.cancel().catch(() => {
+      onShowToast("Could not cancel video upload. Try again.");
     });
   }, [onShowToast, videoUpload]);
 
@@ -1499,9 +1536,9 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           alt={localCover.coverMediaAlt}
           credit={selectedCredit}
           uploading={uploading}
-          activeVideoUpload={activeVideoUpload}
-          videoStageCopy={videoStageCopy}
-          videoPercent={videoUpload.stage.percent}
+          activeVideoUpload={lockedVideoOperation}
+          videoStage={projectedVideoStage}
+          videoStatus={videoUpload.status}
           videoErrorMessage={
             videoUpload.stage.phase === "error" ? videoUpload.stage.message : null
           }
@@ -1513,7 +1550,11 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
           }}
           onRemove={handleRemoveCover}
           onCancelVideo={cancelVideoCoverUpload}
+          onReplaceVideo={() => { void pickVideoCover(true); }}
           onRetryVideo={retryVideoCoverUpload}
+          onResumeVideo={() => { if (Platform.OS === "web") void pickVideoCover(); else void videoUpload.resume(); }}
+          onCheckVideo={() => { void videoUpload.checkNow(); }}
+          onRetryReadyVideo={() => { void persistReadyVideo(); }}
           onMediaError={handleMediaRenderError}
           mediaDisplayError={mediaDisplayError}
           videoPickNotice={videoPickNotice}
@@ -1616,6 +1657,99 @@ export const CoverPicker: React.FC<CoverPickerProps> = ({
 
 // ----- Library tab (preview + action row + video affordance) -------------
 
+const videoProjectionCopy = (
+  stage: EventCoverVideoUploadStage,
+  status: EventCoverVideoStatus | null,
+): { title: string; body: string; percent: number | null; tone: "neutral" | "warning" | "error" | "success" } => {
+  switch (stage.phase) {
+    case "preparing": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
+    case "validating": return { title: "Checking video…", body: "Confirming the format, length, and file size.", percent: null, tone: "neutral" };
+    case "compressing": return { title: stage.percent === null ? "Optimizing video…" : "Optimizing video", body: "Preparing a browser-safe upload.", percent: stage.percent, tone: "neutral" };
+    case "intent_pending": return { title: "Starting upload…", body: "Creating a secure, resumable upload.", percent: null, tone: "neutral" };
+    case "uploading": return { title: "Uploading video", body: "You can close this sheet. Mingla will continue or resume when you return.", percent: stage.percent, tone: "neutral" };
+    case "ack_pending": return { title: "Finishing upload…", body: "The video is uploaded. Confirming it arrived safely.", percent: null, tone: "neutral" };
+    case "processing": return status?.status === "source_uploaded" || status?.status === "processing_queued"
+      ? { title: "Video uploaded", body: "Waiting for processing to begin. You can close this sheet.", percent: null, tone: "neutral" }
+      : { title: stage.percent === null ? "Processing video…" : "Processing video", body: stage.percent === null ? "This can take a while. You can close this sheet—we’ll finish automatically." : "You can close this sheet—we’ll finish automatically.", percent: stage.percent, tone: "neutral" };
+    case "reattaching": return { title: "Reconnecting to your video…", body: "Checking the latest progress without starting over.", percent: null, tone: "neutral" };
+    case "detached": return stage.sourceAcknowledged
+      ? { title: "Still working in the background", body: "We can’t refresh the status right now. Your video is safe, and Mingla will check again when you’re connected.", percent: null, tone: "warning" }
+      : { title: "Upload paused — you’re offline", body: "Reconnect to continue this video from where it stopped.", percent: null, tone: "warning" };
+    case "ready": return { title: "Video ready", body: "The video is ready, but the cover could not be saved. Retry saving it.", percent: null, tone: "warning" };
+    case "applying": return { title: "Applying cover…", body: "The video is ready. Saving it to the right cover now.", percent: null, tone: "neutral" };
+    case "applied": return { title: "Video cover added", body: "Your new cover is ready.", percent: null, tone: "success" };
+    case "error": return { title: "We couldn’t finish this video", body: stage.message, percent: null, tone: "error" };
+    case "picking": return { title: "Preparing video…", body: "Making a secure copy so the upload can resume if you leave.", percent: null, tone: "neutral" };
+    case "idle": return { title: "", body: "", percent: null, tone: "neutral" };
+  }
+};
+
+const VideoStatusCard: React.FC<{
+  stage: EventCoverVideoUploadStage;
+  status: EventCoverVideoStatus | null;
+  hasExistingCover: boolean;
+  onCancel: () => void;
+  onReplace: () => void;
+  onRetry: () => void;
+  onRetryReady: () => void;
+  onResume: () => void;
+  onCheck: () => void;
+}> = ({ stage, status, hasExistingCover, onCancel, onReplace, onRetry, onRetryReady, onResume, onCheck }) => {
+  const [confirming, setConfirming] = useState<"cancel" | "replace" | null>(null);
+  const copy = videoProjectionCopy(stage, status);
+  const active = !["idle", "applied", "error"].includes(stage.phase);
+  if (confirming !== null) {
+    const replacing = confirming === "replace";
+    return (
+      <View style={styles.videoStatusCard} accessibilityLiveRegion="polite">
+        <Text style={styles.videoStatusTitle}>{replacing ? "Replace this video?" : "Cancel this video?"}</Text>
+        <Text style={styles.videoStatusBody}>{replacing ? "Your current upload keeps going unless a new video is accepted." : hasExistingCover ? "We’ll stop this job and keep your current cover." : "We’ll stop this job. No cover will be added."}</Text>
+        <View style={styles.videoStatusActions}>
+          <Button label="Keep current" accessibilityLabel="Keep current video upload" variant="secondary" size="md" onPress={() => setConfirming(null)} />
+          <Button label={replacing ? "Choose replacement" : "Cancel video"} accessibilityLabel={replacing ? "Choose replacement video" : "Cancel video upload"} variant={replacing ? "primary" : "destructive"} size="md" onPress={replacing ? onReplace : onCancel} />
+        </View>
+      </View>
+    );
+  }
+  const color = copy.tone === "warning" ? semantic.warning : copy.tone === "error" ? semantic.error : copy.tone === "success" ? semantic.success : textTokens.primary;
+  const isIndeterminate = copy.percent === null && [
+    "picking",
+    "preparing",
+    "validating",
+    "compressing",
+    "intent_pending",
+    "ack_pending",
+    "processing",
+    "reattaching",
+    "applying",
+  ].includes(stage.phase);
+  return (
+    <View style={[styles.videoStatusCard, Platform.OS === "android" && styles.videoStatusCardAndroid]} accessible accessibilityLiveRegion="polite" accessibilityRole={copy.tone === "error" ? "alert" : undefined}>
+      <View style={styles.videoStatusHeader}>
+        {copy.tone === "success" ? <Icon name="check" size={20} color={color} /> : null}
+        {copy.tone === "warning" ? <Icon name="shield" size={20} color={color} /> : null}
+        {copy.tone === "error" ? <Icon name="x" size={20} color={color} /> : null}
+        {isIndeterminate ? <ActivityIndicator color={color} accessibilityLabel={copy.title} /> : null}
+        <Text style={[styles.videoStatusTitle, { color }]}>{copy.title}</Text>
+        {copy.percent !== null ? <Text style={styles.videoStatusPercent}>{Math.round(copy.percent)}%</Text> : null}
+      </View>
+      <Text style={styles.videoStatusBody}>{copy.body}</Text>
+      {copy.percent !== null ? (
+        <View accessibilityRole="progressbar" accessibilityLabel={stage.phase === "processing" ? "Video processing progress" : "Video upload progress"} accessibilityValue={{ min: 0, now: Math.round(copy.percent), max: 100, text: `${Math.round(copy.percent)} percent` }} style={styles.progressTrack}>
+          <View style={[styles.progressFill, { transform: [{ scaleX: copy.percent / 100 }] }]} />
+        </View>
+      ) : null}
+      <View style={styles.videoStatusActions}>
+        {stage.phase === "detached" ? <Button label={stage.sourceAcknowledged ? "Check now" : "Resume upload"} accessibilityLabel={stage.sourceAcknowledged ? "Check video status now" : "Resume video upload"} variant="secondary" size="md" onPress={stage.sourceAcknowledged ? onCheck : onResume} /> : null}
+        {stage.phase === "ready" ? <Button label="Retry saving" accessibilityLabel="Retry saving ready video cover" variant="secondary" size="md" onPress={onRetryReady} /> : null}
+        {stage.phase === "error" ? <Button label="Try again" variant="secondary" size="md" onPress={onRetry} /> : null}
+        {active && stage.phase !== "reattaching" && stage.phase !== "applying" ? <Button label="Replace" accessibilityLabel="Replace video upload" variant="secondary" size="md" onPress={() => setConfirming("replace")} /> : null}
+        {active && stage.phase !== "reattaching" && stage.phase !== "ready" && stage.phase !== "applying" ? <Button label="Cancel" accessibilityLabel="Cancel video upload" variant="ghost" size="md" onPress={() => setConfirming("cancel")} /> : null}
+      </View>
+    </View>
+  );
+};
+
 const LibraryTab: React.FC<{
   hasCover: boolean;
   hue: number;
@@ -1625,8 +1759,8 @@ const LibraryTab: React.FC<{
   credit: string | null;
   uploading: boolean;
   activeVideoUpload: boolean;
-  videoStageCopy: string | null;
-  videoPercent: number;
+  videoStage: EventCoverVideoUploadStage;
+  videoStatus: EventCoverVideoStatus | null;
   videoErrorMessage: string | null;
   canRetryVideo: boolean;
   disabled: boolean;
@@ -1634,7 +1768,11 @@ const LibraryTab: React.FC<{
   onPickVideo: () => void;
   onRemove: () => void;
   onCancelVideo: () => void;
+  onReplaceVideo: () => void;
   onRetryVideo: () => void;
+  onRetryReadyVideo: () => void;
+  onResumeVideo: () => void;
+  onCheckVideo: () => void;
   onMediaError: (e: EventCoverMediaErrorEvent) => void;
   mediaDisplayError: string | null;
   // issue #1338 — in-sheet feedback for the cover-VIDEO flow (never a root Toast).
@@ -1648,8 +1786,8 @@ const LibraryTab: React.FC<{
   credit,
   uploading,
   activeVideoUpload,
-  videoStageCopy,
-  videoPercent,
+  videoStage,
+  videoStatus,
   videoErrorMessage,
   canRetryVideo,
   disabled,
@@ -1657,7 +1795,11 @@ const LibraryTab: React.FC<{
   onPickVideo,
   onRemove,
   onCancelVideo,
+  onReplaceVideo,
   onRetryVideo,
+  onRetryReadyVideo,
+  onResumeVideo,
+  onCheckVideo,
   onMediaError,
   mediaDisplayError,
   videoPickNotice,
@@ -1675,14 +1817,6 @@ const LibraryTab: React.FC<{
         muted={true}
         showAudioControl={activeMediaType === "video"}
       >
-        {activeVideoUpload && videoStageCopy !== null ? (
-          <View style={styles.videoProgressOverlay}>
-            <Text style={styles.videoProgressText}>{videoStageCopy}</Text>
-            <View style={styles.progressTrack}>
-              <View style={[styles.progressFill, { width: `${videoPercent}%` }]} />
-            </View>
-          </View>
-        ) : null}
       </EventCoverMedia>
       {/* META-ORCH-1059: a check badge on the live preview signals the current
           cover is applied (parity with the GIF/Stock tile selected state). */}
@@ -1694,21 +1828,21 @@ const LibraryTab: React.FC<{
     </View>
     {credit !== null ? <Text style={styles.creditText}>{credit}</Text> : null}
 
-    {activeVideoUpload ? (
-      // META-ORCH-1009 Sub-F: while a video processes, show ONLY the progress
-      // (spinner/percent overlay sits on the preview above) + Cancel. Hide all
-      // other controls so the operator isn't tempted to act mid-process.
-      <View style={styles.actionRow}>
-        <Button
-          label="Cancel upload"
-          variant="ghost"
-          size="md"
-          shape="square"
-          onPress={onCancelVideo}
-          style={styles.actionButton}
-        />
-      </View>
-    ) : (
+    {videoStage.phase !== "idle" ? (
+      <VideoStatusCard
+        stage={videoStage}
+        status={videoStatus}
+        hasExistingCover={hasCover}
+        onCancel={onCancelVideo}
+        onReplace={onReplaceVideo}
+        onRetry={onRetryVideo}
+        onRetryReady={onRetryReadyVideo}
+        onResume={onResumeVideo}
+        onCheck={onCheckVideo}
+      />
+    ) : null}
+
+    {activeVideoUpload ? null : (
       <>
         <View style={styles.actionRow}>
           <Button
@@ -1745,13 +1879,6 @@ const LibraryTab: React.FC<{
             />
           ) : null}
         </View>
-
-        {Platform.OS === "web" ? (
-          <Text style={styles.helperText}>
-            On the web, video covers upload the clip as-is, up to 30 seconds. To
-            trim a longer clip, use the Mingla Host app.
-          </Text>
-        ) : null}
 
         {videoErrorMessage !== null ? (
           <View style={styles.videoErrorRow}>
@@ -1791,6 +1918,12 @@ const LibraryTab: React.FC<{
         ) : null}
 
         <Text style={styles.uploadLimitText}>{EVENT_COVER_UPLOAD_LIMIT_COPY}</Text>
+        {Platform.OS === "web" ? (
+          <Text style={styles.helperText}>
+            On the web, video covers upload the clip as-is into Mingla&apos;s
+            deterministic preparation step.
+          </Text>
+        ) : null}
         <Text style={styles.uploadLimitText}>{EVENT_COVER_VIDEO_PROCESSING_COPY}</Text>
 
         {mediaDisplayError !== null ? (
@@ -2342,6 +2475,49 @@ const styles = StyleSheet.create({
     lineHeight: typography.caption.lineHeight,
     fontWeight: "700",
   },
+  videoStatusCard: {
+    minHeight: 88,
+    padding: spacing.md,
+    gap: spacing.sm,
+    marginBottom: spacing.sm,
+    borderRadius: radiusTokens.md,
+    borderWidth: 1,
+    borderColor: glass.border.profileElevated,
+    backgroundColor: glass.tint.profileElevated,
+    overflow: "hidden",
+  },
+  videoStatusCardAndroid: {
+    backgroundColor: ariThread.ariBubbleAndroid,
+    borderColor: androidOpaque.rowBorder,
+    elevation: 0,
+  },
+  videoStatusHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+  },
+  videoStatusTitle: {
+    flex: 1,
+    fontSize: typography.bodyLg.fontSize,
+    lineHeight: typography.bodyLg.lineHeight,
+    fontWeight: typography.bodyLg.fontWeight,
+    color: textTokens.primary,
+  },
+  videoStatusBody: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    color: textTokens.secondary,
+  },
+  videoStatusPercent: {
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    color: textTokens.secondary,
+  },
+  videoStatusActions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: spacing.sm,
+  },
   progressTrack: {
     height: 4,
     borderRadius: 999,
@@ -2349,7 +2525,9 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(255, 255, 255, 0.24)",
   },
   progressFill: {
+    width: "100%",
     height: "100%",
+    transformOrigin: "left",
     borderRadius: 999,
     backgroundColor: accent.warm,
   },

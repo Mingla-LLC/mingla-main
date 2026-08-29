@@ -19,6 +19,7 @@ const requiredFiles = [
   "supabase/functions/event-cover-video-webhook/index.ts",
   "supabase/functions/event-cover-video-cancel/index.ts",
   "supabase/functions/_shared/eventCoverVideo.ts",
+  "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql",
   "mingla-business/src/services/eventCoverVideoProcessingService.ts",
   "mingla-business/src/components/event/CreatorStep4Cover.tsx",
 ];
@@ -33,6 +34,7 @@ const status = read("supabase/functions/event-cover-video-status/index.ts");
 const sourceUploaded = read("supabase/functions/event-cover-video-source-uploaded/index.ts");
 const webhook = read("supabase/functions/event-cover-video-webhook/index.ts");
 const cancel = read("supabase/functions/event-cover-video-cancel/index.ts");
+const deterministicJobs = read("supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql");
 
 if (!service.includes("acknowledgeEventCoverVideoSourceUploaded")) {
   fail("service must expose source-upload acknowledgement.");
@@ -55,8 +57,13 @@ if (!sourceUploaded.includes("status: \"source_uploaded\"")) {
 if (!sourceUploaded.includes("provider_payload") || sourceUploaded.includes("secure_url")) {
   fail("source-uploaded function must store sanitized provider metadata without source URL.");
 }
-if (!webhook.includes("provider_failed") || !webhook.includes("completed_at")) {
-  fail("webhook must persist provider/validation failures as terminal job state.");
+if (!webhook.includes('failure_code: "provider_failed"') ||
+    !webhook.includes("cover_video_transition_job")) {
+  fail("webhook must send provider failures through the canonical transition RPC.");
+}
+if (!deterministicJobs.includes("completed_at=CASE WHEN p_to_status IN") ||
+    !deterministicJobs.includes("failure_code=coalesce(p_patch->>'failure_code'")) {
+  fail("canonical transition RPC must persist terminal completion and failure state.");
 }
 // #966 (SPEC AMENDMENT 1): re-pointed from the removed Cloudinary tail's
 // `late_webhook_ignored_cancelled` log stage to the Bunny terminal guard that
@@ -64,7 +71,9 @@ if (!webhook.includes("provider_failed") || !webhook.includes("completed_at")) {
 // idempotently ignore a late callback for a cancelled job. Re-point, not weaken:
 // removing the cancelled-status ignore (or the `ignored: "cancelled"` response)
 // still fails this gate.
-if (!webhook.includes('status === "cancelled"') || !webhook.includes('ignored: "cancelled"')) {
+if (!webhook.includes('existingJob.status === "cancelled"') ||
+    !webhook.includes('existingJob.status === "superseded"') ||
+    !webhook.includes("ignored: existingJob.status")) {
   fail("webhook must ignore late callbacks for cancelled/superseded jobs.");
 }
 if (!cancel.includes("source_uploaded") && !cancel.includes("mapEventCoverVideoStatus")) {

@@ -5,9 +5,9 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
-const TEST_NAME = "waits with status callbacks and carries last status on timeout";
-const EXACT_MESSAGE =
-  "Your video is still processing. You can check again in a moment.";
+// [TEST-MOD-APPROVED #2715] Historical filename retained; contract now proves
+// durable processing beyond the removed client deadline.
+const TEST_NAME = "keeps the same processing job alive beyond the former deadline and later resolves";
 const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
 const testPath = path.resolve(
   scriptDirectory,
@@ -155,39 +155,25 @@ function inspectContract(source) {
     "fake timers must start at an explicit zero clock",
     /jest\.useFakeTimers\s*\(\s*\{[\s\S]*?\bnow\s*:\s*0\b[\s\S]*?\}\s*\)/,
   );
-  requirePattern(
-    "the clock must advance asynchronously by exactly 2 ms",
-    /await\s+jest\.advanceTimersByTimeAsync\s*\(\s*2\s*\)/,
-  );
+  requirePattern("the clock must advance beyond the historical 120-second deadline", /await\s+jest\.advanceTimersByTimeAsync\s*\(\s*1_105_000\s*\)/);
   requirePattern(
     "real timers must be restored from a finally block",
     /finally\s*\{[\s\S]*?jest\.useRealTimers\s*\(\s*\)\s*;?[\s\S]*?\}/,
   );
   requirePattern(
-    "the status response must use a stable invoke.mockResolvedValue",
-    /\binvoke\.mockResolvedValue\s*\(/,
+    "the test must include a transient status failure",
+    /\binvoke[\s\S]*?\.mockRejectedValueOnce\s*\(/,
   );
   requirePattern("pollIntervalMs must remain exactly 1", /\bpollIntervalMs\s*:\s*1\b/);
-  requirePattern("timeoutMs must remain exactly 2", /\btimeoutMs\s*:\s*2\b/);
-  requirePattern("processing_timeout assertion is required", /\bcode\s*:\s*["']processing_timeout["']/);
+  requirePattern("unknown processing progress must be null", /\bprogressPercent\s*:\s*null\b/);
+  requirePattern("later server truth must resolve ready", /expect\s*\(\s*waitPromise\s*\)\.resolves\.toMatchObject\s*\([\s\S]*?status\s*:\s*["']ready["']/);
   requirePattern(
-    "the exact timeout message assertion is required",
-    new RegExp(`\\bmessage\\s*:\\s*["']${EXACT_MESSAGE.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}["']`),
+    "callback evidence must retain processing then observe ready",
+    /expect\s*\(\s*seen\s*\)\.toEqual\s*\(\s*\[\s*["']processing["']\s*,\s*["']ready["']\s*\]\s*\)/,
   );
-  requirePattern("lastStatus.jobId assertion is required", /\blastStatus\s*:\s*expect\.objectContaining\s*\([\s\S]*?\bjobId\s*:\s*["']job_1["']/);
-  requirePattern("lastStatus.status assertion is required", /\blastStatus\s*:\s*expect\.objectContaining\s*\([\s\S]*?\bstatus\s*:\s*["']processing["']/);
-  requirePattern(
-    "callback evidence must assert at least one processing entry",
-    /expect\s*\(\s*seen\.length\s*\)\.toBeGreaterThanOrEqual\s*\(\s*1\s*\)[\s\S]*?expect\s*\(\s*seen\s*\)\.toEqual\s*\(\s*\[\s*["']processing["']\s*,\s*["']processing["']\s*\]\s*\)/,
-  );
-  requirePattern(
-    "invoke must be asserted exactly twice",
-    /expect\s*\(\s*invoke\s*\)\.toHaveBeenCalledTimes\s*\(\s*2\s*\)/,
-  );
+  requirePattern("the same three status attempts must be asserted", /expect\s*\(\s*invoke\s*\)\.toHaveBeenCalledTimes\s*\(\s*3\s*\)/);
 
-  if (/\binvoke\.mockResolvedValueOnce\s*\(/.test(block)) {
-    errors.push("one-shot invoke responses are forbidden in the target test");
-  }
+  if (/processing_timeout|\.rejects\b|progressPercent\s*:\s*70\b/.test(block)) errors.push("terminal client timeout/fabricated progress is forbidden");
   if (/\b(?:test|it)\s*\.\s*(?:skip|only)\b|\bjest\.retryTimes\s*\(/.test(block)) {
     errors.push("skip, only, and retry APIs are forbidden in the target test");
   }
@@ -197,47 +183,27 @@ function inspectContract(source) {
   if (countMatches(block, /\bpollIntervalMs\s*:/g) !== 1) {
     errors.push("the target test must contain exactly one pollIntervalMs input");
   }
-  if (countMatches(block, /\btimeoutMs\s*:/g) !== 1) {
-    errors.push("the target test must contain exactly one timeoutMs input");
-  }
-
-  const rejectionAssertionIndex = block.indexOf("const rejection = expect(waitPromise).rejects");
-  const advanceIndex = block.indexOf("await jest.advanceTimersByTimeAsync(2)");
-  const awaitRejectionIndex = block.indexOf("await rejection");
-  if (
-    rejectionAssertionIndex === -1 ||
-    advanceIndex === -1 ||
-    awaitRejectionIndex === -1 ||
-    !(rejectionAssertionIndex < advanceIndex && advanceIndex < awaitRejectionIndex)
-  ) {
-    errors.push("the rejection assertion must attach before advancing time and be awaited afterward");
-  }
-
   return errors;
 }
 
 const canonicalFixture = String.raw`
 test("${TEST_NAME}", async () => {
-  // #1664 protection
+  // [TEST-MOD-APPROVED #2715]
   jest.useFakeTimers({ now: 0 });
   try {
-    invoke.mockResolvedValue({ data: { status: "processing" }, error: null });
+    invoke
+      .mockResolvedValueOnce({ data: { status: "processing", progressPercent: null }, error: null })
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({ data: { status: "ready" }, error: null });
     const seen = [];
     const waitPromise = waitForEventCoverVideoReady("job_1", {
       onStatus: (status) => seen.push(status.status),
       pollIntervalMs: 1,
-      timeoutMs: 2,
     });
-    const rejection = expect(waitPromise).rejects.toMatchObject({
-      code: "processing_timeout",
-      lastStatus: expect.objectContaining({ jobId: "job_1", status: "processing" }),
-      message: "${EXACT_MESSAGE}",
-    });
-    await jest.advanceTimersByTimeAsync(2);
-    await rejection;
-    expect(seen.length).toBeGreaterThanOrEqual(1);
-    expect(seen).toEqual(["processing", "processing"]);
-    expect(invoke).toHaveBeenCalledTimes(2);
+    await jest.advanceTimersByTimeAsync(1_105_000);
+    await expect(waitPromise).resolves.toMatchObject({ status: "ready" });
+    expect(seen).toEqual(["processing", "ready"]);
+    expect(invoke).toHaveBeenCalledTimes(3);
   } finally {
     jest.useRealTimers();
   }
@@ -245,55 +211,12 @@ test("${TEST_NAME}", async () => {
 
 const historicalFixture = String.raw`
 test("${TEST_NAME}", async () => {
-  const snapshots = [
-    {
-      applyMode: "draft_auto",
-      brandId: "brand_1",
-      canCancel: true,
-      canCheckAgain: true,
-      canRetry: false,
-      eventId: "event_1",
-      isTerminal: false,
-      jobId: "job_1",
-      progressKind: "indeterminate",
-      progressPercent: 70,
-      stageLabel: "Processing browser-safe video...",
-      status: "processing",
-    },
-    {
-      applyMode: "draft_auto",
-      brandId: "brand_1",
-      canCancel: true,
-      canCheckAgain: true,
-      canRetry: false,
-      eventId: "event_1",
-      isTerminal: false,
-      jobId: "job_1",
-      progressKind: "indeterminate",
-      progressPercent: 70,
-      stageLabel: "Processing browser-safe video...",
-      status: "processing",
-    },
-  ];
-  invoke
-    .mockResolvedValueOnce({ data: snapshots[0], error: null })
-    .mockResolvedValueOnce({ data: snapshots[1], error: null });
-
-  const seen: string[] = [];
-  await expect(waitForEventCoverVideoReady("job_1", {
-    onStatus: (status) => seen.push(status.status),
-    pollIntervalMs: 1,
-    timeoutMs: 2,
-  })).rejects.toMatchObject({
-    code: "processing_timeout",
-    lastStatus: expect.objectContaining({
-      jobId: "job_1",
-      status: "processing",
-    }),
-    message: "${EXACT_MESSAGE}",
-  });
-  expect(seen.length).toBeGreaterThanOrEqual(1);
-  expect(seen[0]).toBe("processing");
+  jest.useFakeTimers({ now: 0 });
+  invoke.mockResolvedValue({ data: { status: "processing", progressPercent: 70 }, error: null });
+  const waitPromise = waitForEventCoverVideoReady("job_1", { pollIntervalMs: 1, timeoutMs: 2 });
+  await jest.advanceTimersByTimeAsync(2);
+  await expect(waitPromise).rejects.toMatchObject({ code: "processing_timeout" });
+  jest.useRealTimers();
 });`;
 
 function runSelfTest() {
@@ -306,8 +229,8 @@ function runSelfTest() {
       shouldPass: false,
     },
     {
-      name: "fake clock without async advancement",
-      source: canonicalFixture.replace("await jest.advanceTimersByTimeAsync(2);", ""),
+      name: "fake clock without long async advancement",
+      source: canonicalFixture.replace("await jest.advanceTimersByTimeAsync(1_105_000);", ""),
       shouldPass: false,
     },
     {
@@ -316,15 +239,15 @@ function runSelfTest() {
       shouldPass: false,
     },
     {
-      name: "widened timeout",
-      source: canonicalFixture.replace("timeoutMs: 2", "timeoutMs: 20"),
+      name: "fabricated progress",
+      source: canonicalFixture.replace("progressPercent: null", "progressPercent: 70"),
       shouldPass: false,
     },
     {
       name: "one-shot replies with superficial comment tokens",
       source: historicalFixture.replace(
         `test("${TEST_NAME}", async () => {`,
-        `test("${TEST_NAME}", async () => {\n  // jest.useFakeTimers({ now: 0 }); await jest.advanceTimersByTimeAsync(2); finally { jest.useRealTimers(); } invoke.mockResolvedValue({}); expect(invoke).toHaveBeenCalledTimes(2);`,
+        `test("${TEST_NAME}", async () => {\n  // jest.useFakeTimers({ now: 0 }); await jest.advanceTimersByTimeAsync(1_105_000); finally { jest.useRealTimers(); } mockRejectedValueOnce(); expect(invoke).toHaveBeenCalledTimes(3);`,
       ),
       shouldPass: false,
     },
@@ -335,7 +258,7 @@ function runSelfTest() {
     },
     {
       name: "required invocation-count assertion removed",
-      source: canonicalFixture.replace("    expect(invoke).toHaveBeenCalledTimes(2);\n", ""),
+      source: canonicalFixture.replace("    expect(invoke).toHaveBeenCalledTimes(3);\n", ""),
       shouldPass: false,
     },
   ];
@@ -353,7 +276,7 @@ function runSelfTest() {
   }
 
   if (failed) process.exit(1);
-  console.log(`PASS #1664 contract self-test (${cases.length} fixtures)`);
+  console.log(`PASS #2715 durable-processing contract self-test (${cases.length} fixtures)`);
 }
 
 if (process.argv.includes("--self-test")) {
@@ -362,9 +285,9 @@ if (process.argv.includes("--self-test")) {
   const source = fs.readFileSync(testPath, "utf8");
   const errors = inspectContract(source);
   if (errors.length > 0) {
-    console.error("FAIL #1664 event-cover timeout determinism contract:");
+    console.error("FAIL #2715 event-cover durable-processing determinism contract:");
     for (const error of errors) console.error(`- ${error}`);
     process.exit(1);
   }
-  console.log("PASS #1664 event-cover timeout determinism contract");
+  console.log("PASS #2715 event-cover durable-processing determinism contract");
 }

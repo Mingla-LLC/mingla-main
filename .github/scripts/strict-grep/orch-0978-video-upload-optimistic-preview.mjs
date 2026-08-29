@@ -15,8 +15,21 @@ if (!source.includes("videoUpload.localPreviewUri")) {
 if (!source.includes("<EventCoverMedia") || !source.includes("activeMediaUrl")) {
   failures.push("CoverPicker must mount EventCoverMedia using the active local/final source.");
 }
-if (!source.includes("Compressing on your phone") || !source.includes("Uploading...") || !source.includes("Almost ready")) {
-  failures.push("Video upload UI must expose the three labeled optimistic-preview phases.");
+const truthfulProjectionCopy = [
+  "Making a secure copy so the upload can resume if you leave.",
+  "Creating a secure, resumable upload.",
+  "Uploading video",
+  "The video is uploaded. Confirming it arrived safely.",
+  "Processing video",
+  "Reconnecting to your video…",
+  "Still working in the background",
+  "Applying cover…",
+];
+for (const copy of truthfulProjectionCopy) {
+  if (!source.includes(copy)) failures.push(`Video upload UI is missing truthful state copy: ${copy}`);
+}
+if (source.includes("Almost ready")) {
+  failures.push("Video upload UI must not restore the fabricated hardcoded processing state.");
 }
 
 if (failures.length > 0) {

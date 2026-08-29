@@ -268,16 +268,14 @@ describe("eventCoverMediaService", () => {
   });
 
   test("rejects over-duration video covers", () => {
-    // [TEST-MOD-APPROVED ORCH-1062] B2 drift — the cover-video cap was raised
-    // 15s→29s (EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000, utils/
-    // eventCoverMediaRules.ts:4). The threshold assertion already uses the
-    // constant; only the human copy string drifted (15→29). Same strength.
+    // [TEST-MOD-APPROVED #2715] The direct validator shares the exact 15-second
+    // owner with the processed cover-video pipeline.
     expect(() =>
       validateEventCoverAsset({
         mimeType: "video/mp4",
         durationMs: EVENT_COVER_MAX_VIDEO_DURATION_MS + 1,
       }),
-    ).toThrow("Cover videos must be 29 seconds or shorter.");
+    ).toThrow("Choose a video that is 15 seconds or shorter.");
   });
 
   test("rejects videos with missing duration using a precise error", () => {
@@ -292,13 +290,16 @@ describe("eventCoverMediaService", () => {
       expect((error as EventCoverMediaError).code).toBe(
         "video_duration_unknown",
       );
-      expect((error as Error).message).toContain(
-        "couldn't read this video's duration",
+      // [TEST-MOD-APPROVED #2715] Exact actionable copy preserves fail-safe
+      // missing-duration rejection without exposing implementation detail.
+      expect((error as Error).message).toBe(
+        "Choose a 15-second MP4, MOV, or WebM video.",
       );
     }
   });
 
-  test("accepts iOS MOV or QuickTime videos when they are within the 29-second cover limit", () => {
+  // [TEST-MOD-APPROVED #2715] Title follows the shared 15-second owner.
+  test("accepts iOS MOV or QuickTime videos when they are within the 15-second cover limit", () => {
     expect(
       validateEventCoverAsset({
         mimeType: "video/quicktime",
@@ -462,7 +463,8 @@ describe("eventCoverMediaService", () => {
     expect(storageUpload).not.toHaveBeenCalled();
   });
 
-  test("keeps 29-second enforcement for iOS MOV videos before upload", async () => {
+  // [TEST-MOD-APPROVED #2715] Title follows the shared 15-second owner.
+  test("keeps 15-second enforcement for iOS MOV videos before upload", async () => {
     mockReadEventCoverFileBytes.mockResolvedValueOnce(
       fileBytes([
         0x00, 0x00, 0x00, 0x14, 0x66, 0x74, 0x79, 0x70, 0x71, 0x74, 0x20,

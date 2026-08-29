@@ -6,11 +6,11 @@
  *      (no `q`) client-direct and normalizes to GiphyCoverSearchResult[].
  *   2. gallery-first Stock browse — curatedPexelsCovers invokes the
  *      event-cover-pexels-curated edge fn (key stays server-side).
- *   3. brand-video apply target — event-cover-video-apply writes
- *      brands.cover_media_url + cover_media_type='video' for target_kind='brand'.
+ *   3. brand-video apply target — event-cover-video-apply delegates to the
+ *      atomic cover_video_apply_once owner for target_kind='brand'.
  *
  * fails-on-revert: deleting coverProviderBrowseService (revert) breaks (1)+(2);
- * reverting the brand apply branch breaks (3).
+ * reverting atomic brand/event branch ownership breaks (3).
  */
 
 import { readFileSync } from "fs";
@@ -125,12 +125,35 @@ describe("ORCH-0989 coverProviderBrowseService — gallery-first browse", () => 
 });
 
 describe("ORCH-0989 brand-video apply target", () => {
-  test("event-cover-video-apply writes brands.cover_media_url for target_kind='brand'", () => {
+  // [TEST-MOD-APPROVED #2715] The edge authorizes the exact target; the locked
+  // SQL RPC owns the idempotent brand/event write and application receipt.
+  test("event-cover-video-apply atomically applies target_kind='brand' through cover_video_apply_once", () => {
     const applySrc = repoFile("../supabase/functions/event-cover-video-apply/index.ts");
-    // The brand branch must UPDATE brands SET cover_media_url + type='video'.
-    expect(applySrc).toMatch(/target_kind === "brand"/);
-    expect(applySrc).toMatch(/\.from\("brands"\)/);
-    expect(applySrc).toMatch(/cover_media_url: job\.processed_url/);
-    expect(applySrc).toMatch(/cover_media_type: "video"/);
+    const migration = repoFile(
+      "../supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql",
+    ).replace(/\s+/g, " ");
+    expect(applySrc).toContain('supabase.rpc(\n    "cover_video_apply_once"');
+    expect(applySrc).toContain("p_job_id: job.id");
+    expect(applySrc).toContain("p_expected_version:");
+    expect(applySrc).toContain("p_expected_url:");
+    expect(applySrc).not.toMatch(/\.from\("(?:brands|events)"\)/);
+
+    const eventBranch = migration.slice(
+      migration.indexOf("IF v_job.target_kind='event'"),
+      migration.indexOf("ELSIF v_job.target_kind='brand'"),
+    );
+    const brandBranch = migration.slice(
+      migration.indexOf("ELSIF v_job.target_kind='brand'"),
+      migration.indexOf("UPDATE public.event_cover_video_jobs SET status='applied'"),
+    );
+    expect(eventBranch).toMatch(/UPDATE public\.events[\s\S]*WHERE id=v_job\.event_id/);
+    expect(brandBranch).toMatch(/UPDATE public\.brands[\s\S]*WHERE id=v_job\.brand_id/);
+    expect(brandBranch).toContain("cover_media_type='video'");
+    expect(brandBranch).toContain("cover_media_url=v_job.processed_url");
+    expect(brandBranch).toContain("cover_media_poster_url=v_job.processed_poster_url");
+    expect(migration).toContain("WHERE id=p_job_id FOR UPDATE");
+    expect(migration).toContain("IF v_job.status='applied' THEN RETURN v_job");
+    expect(migration).toContain("application_version=application_version+1");
+    expect(migration).toContain("application_receipt=jsonb_build_object");
   });
 });

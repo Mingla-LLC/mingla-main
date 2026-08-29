@@ -7,12 +7,16 @@ import {
   mapEventCoverVideoStatus,
   MAX_SOURCE_VIDEO_BYTES,
   requireBrandCoverManager,
+  requireCoverVideoTargetManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
 } from "../_shared/eventCoverVideo.ts";
 // #966 — Bunny is the sole cover-video provider (Cloudinary ack path removed).
-import { bunnyGetVideo } from "../_shared/bunnyStream.ts";
+import {
+  bunnyGetVideo,
+  bunnyPresignTusUpload,
+} from "../_shared/bunnyStream.ts";
 
 type ProviderUploadResponse = {
   asset_id?: unknown;
@@ -38,8 +42,10 @@ const mergeProviderPayload = (
 
 const defaultDeps = {
   bunnyGetVideo,
+  bunnyPresignTusUpload,
   destroyCoverVideoAsset,
   requireBrandCoverManager,
+  requireCoverVideoTargetManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -49,8 +55,12 @@ export const handleEventCoverVideoSourceUploaded = async (
   req: Request,
   deps: typeof defaultDeps = defaultDeps,
 ): Promise<Response> => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   const userIdOrResponse = await deps.requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;
@@ -67,56 +77,70 @@ export const handleEventCoverVideoSourceUploaded = async (
   try {
     body = await req.json();
   } catch {
-    return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
+    return jsonResponse(
+      { error: "validation_error", detail: "invalid_json" },
+      400,
+    );
   }
 
   const requestId = safeString(body.clientRequestId) ?? crypto.randomUUID();
-  const targetKind = body.target === "brand" ? "brand" : "event";
+  const targetKind = body.target === "brand" || body.target === "venue" ||
+      body.target === "venue_draft"
+    ? body.target
+    : "event";
   if (!isValidUuid(body.jobId)) {
-    return jsonResponse({ error: "validation_error", detail: "job_id_invalid_uuid" }, 400);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "job_id_invalid_uuid",
+    }, 400);
   }
-  // ORCH-0989: event-target requires eventId; brand-target has none.
-  if (targetKind === "event" && !isValidUuid(body.eventId)) {
-    return jsonResponse({ error: "validation_error", detail: "event_id_invalid_uuid" }, 400);
-  }
-  if (!isValidUuid(body.brandId)) {
-    return jsonResponse({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
-  }
-
   const supabase = deps.serviceRoleClient();
-  const allowed =
-    targetKind === "brand"
-      ? await deps.requireBrandCoverManager(supabase, body.brandId as string, userId)
-      : await deps.requireEventManager(supabase, body.eventId as string, body.brandId as string, userId);
-  if (allowed instanceof Response) return allowed;
-
   const { data: job, error: jobError } = await supabase
     .from("event_cover_video_jobs")
     .select("*")
     .eq("id", body.jobId)
     .maybeSingle();
   if (jobError) {
-    console.error("[event-cover-video-source-uploaded]", JSON.stringify({
-      code: jobError.code,
-      details: jobError.details,
-      hint: jobError.hint,
-      message: jobError.message,
-      requestId,
-      stage: "job_read_failed",
-    }));
-    return jsonResponse({ error: "internal_error", detail: "job_read_failed" }, 500);
+    console.error(
+      "[event-cover-video-source-uploaded]",
+      JSON.stringify({
+        code: jobError.code,
+        requestId,
+        stage: "job_read_failed",
+      }),
+    );
+    return jsonResponse(
+      { error: "internal_error", detail: "job_read_failed" },
+      500,
+    );
   }
-  if (!job) return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
+  if (!job) {
+    return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
+  }
+  const allowed = await deps.requireCoverVideoTargetManager(supabase, {
+    targetKind: job.target_kind,
+    eventId: job.event_id,
+    brandId: job.brand_id,
+    venueId: job.venue_id,
+    draftOwnerKey: job.draft_owner_key,
+    requestedBy: job.requested_by,
+  }, userId);
+  if (allowed instanceof Response) return allowed;
   // ORCH-0989: context match. Brand-target verifies brand_id + target_kind
   // (event_id is NULL); event-target verifies the event_id + brand_id pair.
-  const contextMismatch =
-    targetKind === "brand"
-      ? job.target_kind !== "brand" || job.brand_id !== body.brandId
-      : job.event_id !== body.eventId || job.brand_id !== body.brandId;
+  const contextMismatch = job.target_kind !== targetKind ||
+    (body.brandId !== undefined && job.brand_id !== body.brandId) ||
+    (body.eventId !== undefined && job.event_id !== body.eventId);
   if (contextMismatch) {
-    return jsonResponse({ error: "forbidden", detail: "job_context_mismatch" }, 403);
+    return jsonResponse(
+      { error: "forbidden", detail: "job_context_mismatch" },
+      403,
+    );
   }
-  if (job.status === "failed" || job.status === "cancelled") {
+  if (
+    job.status === "failed" || job.status === "cancelled" ||
+    job.status === "superseded"
+  ) {
     return jsonResponse({
       error: "job_not_active",
       detail: job.status,
@@ -138,36 +162,73 @@ export const handleEventCoverVideoSourceUploaded = async (
   if (!video.ok) {
     // The video may not be registered yet — keep the job at source_uploading
     // and return its mapped status so the client re-acks / polls.
-    console.log("[event-cover-video-source-uploaded]", JSON.stringify({
-      jobId: job.id,
-      reason: video.reason,
-      requestId,
-      stage: "bunny_get_pending",
-    }));
+    console.log(
+      "[event-cover-video-source-uploaded]",
+      JSON.stringify({
+        jobId: job.id,
+        reason: video.reason,
+        requestId,
+        stage: "bunny_get_pending",
+      }),
+    );
     return jsonResponse(mapEventCoverVideoStatus(job));
   }
-  const storageSize =
-    typeof video.video.storageSize === "number" ? video.video.storageSize : 0;
+  const storageSize = typeof video.video.storageSize === "number"
+    ? video.video.storageSize
+    : 0;
+  const presign = await deps.bunnyPresignTusUpload(guid ?? "");
+  let tusHead: Response;
+  try {
+    tusHead = await fetch(String(job.tus_resource_url ?? ""), {
+      method: "HEAD",
+      headers: {
+        AuthorizationSignature: presign.authorizationSignature,
+        AuthorizationExpire: String(presign.authorizationExpire),
+        LibraryId: presign.libraryId,
+        VideoId: presign.videoId,
+        "Tus-Resumable": "1.0.0",
+      },
+    });
+  } catch {
+    return jsonResponse({ error: "upload_verification_pending" }, 503);
+  }
+  const uploadOffset = Number(tusHead.headers.get("upload-offset"));
+  const uploadLength = Number(tusHead.headers.get("upload-length"));
+  if (
+    !tusHead.ok || storageSize <= 0 || uploadOffset !== job.source_bytes ||
+    uploadLength !== job.source_bytes
+  ) {
+    return jsonResponse({
+      error: "upload_incomplete",
+      detail: { uploadOffset, uploadLength },
+    }, 409);
+  }
   if (storageSize > MAX_SOURCE_VIDEO_BYTES) {
-    await deps.destroyCoverVideoAsset(job);
-    const { data: failedJob } = await supabase
-      .from("event_cover_video_jobs")
-      .update({
-        status: "failed",
-        completed_at: new Date().toISOString(),
-        failure_code: "source_over_cap",
-        failure_message: "Video source exceeded the maximum allowed size.",
-      })
-      .eq("id", job.id)
-      .select("*")
-      .maybeSingle();
-    console.warn("[event-cover-video-source-uploaded]", JSON.stringify({
-      jobId: job.id,
-      maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
-      requestId,
-      stage: "bunny_source_over_cap",
-      storageSize,
-    }));
+    const { data: failedJob } = await supabase.rpc(
+      "cover_video_transition_job",
+      {
+        p_job_id: job.id,
+        p_from_statuses: ["source_uploading"],
+        p_to_status: "failed",
+        p_provider_status: video.video.status,
+        p_provider_progress: null,
+        p_patch: {
+          failure_code: "source_over_cap",
+          failure_message: "Video source exceeded the maximum allowed size.",
+        },
+      },
+    );
+    if (failedJob?.status === "failed") await deps.destroyCoverVideoAsset(job);
+    console.warn(
+      "[event-cover-video-source-uploaded]",
+      JSON.stringify({
+        jobId: job.id,
+        maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
+        requestId,
+        stage: "bunny_source_over_cap",
+        storageSize,
+      }),
+    );
     return jsonResponse(
       {
         error: "source_over_cap",
@@ -186,32 +247,46 @@ export const handleEventCoverVideoSourceUploaded = async (
   const { data: bunnyUpdatedJob, error: bunnyUpdateError } = await supabase
     .from("event_cover_video_jobs")
     .update({
-      provider_payload: mergeProviderPayload(job.provider_payload, bunnySourceUpload),
+      provider_payload: mergeProviderPayload(
+        job.provider_payload,
+        bunnySourceUpload,
+      ),
       status: "source_uploaded",
+      tus_upload_offset: uploadOffset,
     })
     .eq("id", job.id)
     .eq("status", "source_uploading")
     .select("*")
     .maybeSingle();
   if (bunnyUpdateError || !bunnyUpdatedJob) {
-    console.error("[event-cover-video-source-uploaded]", JSON.stringify({
-      code: bunnyUpdateError?.code,
-      jobId: job.id,
-      message: bunnyUpdateError?.message,
+    // A webhook/cancel may win the source-upload CAS. Re-read and project that
+    // canonical truth instead of turning a valid race into a synthetic 500.
+    const { data: canonical, error: canonicalError } = await supabase
+      .from("event_cover_video_jobs")
+      .select("*")
+      .eq("id", job.id)
+      .maybeSingle();
+    if (!canonicalError && canonical) {
+      return jsonResponse(mapEventCoverVideoStatus(canonical));
+    }
+    console.error("[event-cover-video-source-uploaded] canonical read failed", {
+      code: canonicalError?.code ?? bunnyUpdateError?.code,
       requestId,
-      stage: "bunny_source_uploaded_update_failed",
-    }));
-    return jsonResponse(
-      { error: "internal_error", detail: "source_uploaded_update_failed" },
-      500,
-    );
+    });
+    return jsonResponse({
+      error: "internal_error",
+      detail: "source_uploaded_canonical_read_failed",
+    }, 500);
   }
-  console.log("[event-cover-video-source-uploaded]", JSON.stringify({
-    jobId: job.id,
-    requestId,
-    stage: "bunny_source_uploaded_acknowledged",
-    status: bunnyUpdatedJob.status,
-  }));
+  console.log(
+    "[event-cover-video-source-uploaded]",
+    JSON.stringify({
+      jobId: job.id,
+      requestId,
+      stage: "bunny_source_uploaded_acknowledged",
+      status: bunnyUpdatedJob.status,
+    }),
+  );
   return jsonResponse(mapEventCoverVideoStatus(bunnyUpdatedJob));
 };
 

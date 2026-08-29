@@ -19,6 +19,7 @@ const EVENT_ID = "09b4ece6-eabc-4734-8ce3-3a25d90417e4";
 const VIDEO_GUID = "bunny-video-guid-777";
 const WEBHOOK_KEY = "bunny-readonly-webhook-signing-input";
 const CDN_HOST = "vz-unit-test.b-cdn.net";
+const SOURCE_SHA256 = "a".repeat(64);
 
 const assert = (condition: boolean, message: string): void => {
   if (!condition) throw new Error(message);
@@ -48,15 +49,47 @@ const withBunnyEnv = async (fn: () => Promise<void>): Promise<void> => {
   }
 };
 
-type UpdateCall = { payload: Record<string, unknown>; eqColumn?: string; eqValue?: unknown };
+type UpdateCall = {
+  payload: Record<string, unknown>;
+  eqColumn?: string;
+  eqValue?: unknown;
+};
 
-const createSupabaseStub = (options: { existingJob: Record<string, unknown> | null }) => {
+const createSupabaseStub = (
+  options: { existingJob: Record<string, unknown> | null },
+) => {
   const updates: UpdateCall[] = [];
+  const rpcs: Array<{ name: string; args: Record<string, unknown> }> = [];
   const client = {
+    rpc: (name: string, args: Record<string, unknown>) => {
+      rpcs.push({ name, args });
+      if (name === "cover_video_transition_job") {
+        const payload = {
+          ...(args.p_patch as Record<string, unknown>),
+          status: args.p_to_status,
+        };
+        updates.push({ payload });
+        return Promise.resolve({
+          data: {
+            id: JOB_ID,
+            event_id: EVENT_ID,
+            target_kind: "event",
+            apply_mode: "published_manual",
+            ...payload,
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({
+        data: null,
+        error: new Error(`unexpected rpc ${name}`),
+      });
+    },
     from: (_table: string) => ({
       select: () => ({
         eq: (_column: string, _value: unknown) => ({
-          maybeSingle: () => Promise.resolve({ data: options.existingJob, error: null }),
+          maybeSingle: () =>
+            Promise.resolve({ data: options.existingJob, error: null }),
         }),
       }),
       update: (payload: Record<string, unknown>) => {
@@ -88,7 +121,7 @@ const createSupabaseStub = (options: { existingJob: Record<string, unknown> | nu
       },
     }),
   };
-  return { client, updates };
+  return { client, updates, rpcs };
 };
 
 const bunnyVideo = {
@@ -98,34 +131,48 @@ const bunnyVideo = {
   storageSize: 8_000_000,
   availableResolutions: "720p,480p",
   encodeProgress: 100,
+  // [TEST-MOD-APPROVED #2715 A11] Bunny reports video codecs only.
+  outputCodecs: "x264",
+  // [TEST-MOD-APPROVED #2715 A11] Realistic x264 success also proves the
+  // provider-reported original digest matches immutable source identity.
+  originalHash: SOURCE_SHA256,
 };
 
 const createDeps = (stub: ReturnType<typeof createSupabaseStub>) =>
   ({
-    bunnyGetVideo: () => Promise.resolve({ ok: true as const, video: bunnyVideo }),
+    bunnyGetVideo: () =>
+      Promise.resolve({ ok: true as const, video: bunnyVideo }),
     destroyCoverVideoAsset: () => Promise.resolve({ ok: true as const }),
     serviceRoleClient: () => stub.client,
     verifyWebhook: () => Promise.resolve({ ok: true as const }),
-  }) as never;
+  }) as unknown as Parameters<typeof handleEventCoverVideoWebhook>[1];
 
-const makeSignedRequest = async (payload: Record<string, unknown>): Promise<Request> => {
+const makeSignedRequest = async (
+  payload: Record<string, unknown>,
+): Promise<Request> => {
   const rawBody = JSON.stringify(payload);
-  return new Request("https://example.test/functions/v1/event-cover-video-webhook", {
-    body: rawBody,
-    headers: {
-      "Content-Type": "application/json",
-      "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
-      // META-ORCH-1270 — Bunny's confirmed v1 signing envelope headers.
-      "x-bunnystream-signature-version": "v1",
-      "x-bunnystream-signature-algorithm": "hmac-sha256",
+  return new Request(
+    "https://example.test/functions/v1/event-cover-video-webhook",
+    {
+      body: rawBody,
+      headers: {
+        "Content-Type": "application/json",
+        "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
+        // META-ORCH-1270 — Bunny's confirmed v1 signing envelope headers.
+        "x-bunnystream-signature-version": "v1",
+        "x-bunnystream-signature-algorithm": "hmac-sha256",
+      },
+      method: "POST",
     },
-    method: "POST",
-  });
+  );
 };
 
 // META-ORCH-1270 — build a raw-body POST with an arbitrary header set (the
 // signed-envelope cases need explicit control over the version/algorithm/sig).
-const buildRequest = (rawBody: string, headers: Record<string, string>): Request =>
+const buildRequest = (
+  rawBody: string,
+  headers: Record<string, string>,
+): Request =>
   new Request("https://example.test/functions/v1/event-cover-video-webhook", {
     body: rawBody,
     headers: { "Content-Type": "application/json", ...headers },
@@ -143,6 +190,7 @@ const processingJob = (): Record<string, unknown> => ({
   provider: "bunny",
   source_public_id: null,
   source_asset_id: VIDEO_GUID,
+  source_sha256: SOURCE_SHA256,
   provider_payload: { bunny: { videoId: VIDEO_GUID } },
 });
 
@@ -168,30 +216,108 @@ Deno.test("bunny webhook Finished (Status 3) drives the job to ready via the sha
         provider: "bunny",
         source_public_id: null,
         source_asset_id: VIDEO_GUID,
+        source_sha256: SOURCE_SHA256,
         provider_payload: { bunny: { videoId: VIDEO_GUID } },
       },
     });
     try {
       const response = await handleEventCoverVideoWebhook(
-        await makeSignedRequest({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 }),
+        await makeSignedRequest({
+          VideoLibraryId: 778899,
+          VideoGuid: VIDEO_GUID,
+          Status: 3,
+        }),
         createDeps(stub),
       );
       const body = await response.json() as Record<string, unknown>;
-      assert(response.status === 200, `expected 200, received ${response.status}`);
+      assert(
+        response.status === 200,
+        `expected 200, received ${response.status}`,
+      );
       assert(body.ok === true, "expected ok:true");
 
-      const ready = stub.updates.find((call) => call.payload.status === "ready");
-      assert(ready !== undefined, "expected a ready update via eventCoverVideoReadyUpdate");
-      assert(
-        ready?.payload.processed_url === `https://${CDN_HOST}/${VIDEO_GUID}/play_720p.mp4`,
-        `expected processed_url to be the 720p delivery MP4, got ${String(ready?.payload.processed_url)}`,
+      const ready = stub.updates.find((call) =>
+        call.payload.status === "ready"
       );
-      assert(ready?.payload.processed_bytes === 8_000_000, "expected processed_bytes from the HEAD content-length");
-      assert(ready?.payload.processed_mime_type === "video/mp4", "expected processed_mime_type video/mp4");
-      const payload = ready?.payload.provider_payload as { bunny_thumbnail?: unknown };
       assert(
-        payload?.bunny_thumbnail === `https://${CDN_HOST}/${VIDEO_GUID}/thumbnail.jpg`,
+        ready !== undefined,
+        "expected a ready update via eventCoverVideoReadyUpdate",
+      );
+      assert(
+        ready?.payload.processed_url ===
+          `https://${CDN_HOST}/${VIDEO_GUID}/play_720p.mp4`,
+        `expected processed_url to be the 720p delivery MP4, got ${
+          String(ready?.payload.processed_url)
+        }`,
+      );
+      assert(
+        ready?.payload.processed_bytes === 8_000_000,
+        "expected processed_bytes from the HEAD content-length",
+      );
+      assert(
+        ready?.payload.processed_mime_type === "video/mp4",
+        "expected processed_mime_type video/mp4",
+      );
+      const payload = ready?.payload.provider_payload as {
+        bunny_thumbnail?: unknown;
+      };
+      assert(
+        payload?.bunny_thumbnail ===
+          `https://${CDN_HOST}/${VIDEO_GUID}/thumbnail.jpg`,
         "expected the Bunny thumbnail poster in provider_payload",
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+Deno.test("#2715 terminally rejects and cleans up a real non-H.264 Bunny codec", async () => {
+  // [TEST-MOD-APPROVED #2715 A11] outputCodecs is video-only provider truth.
+  await withBunnyEnv(async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(
+        new Response(null, {
+          status: 200,
+          headers: { "content-length": "8000000" },
+        }),
+      )) as typeof fetch;
+    const stub = createSupabaseStub({ existingJob: processingJob() });
+    const deps = {
+      ...createDeps(stub),
+      bunnyGetVideo: () =>
+        Promise.resolve({
+          ok: true as const,
+          video: { ...bunnyVideo, outputCodecs: "vp9" },
+        }),
+    } as never;
+    try {
+      const response = await handleEventCoverVideoWebhook(
+        await makeSignedRequest({
+          VideoLibraryId: 778899,
+          VideoGuid: VIDEO_GUID,
+          Status: 3,
+        }),
+        deps,
+      );
+      const body = await response.json() as Record<string, unknown>;
+      assert(
+        response.status === 200,
+        `expected acknowledged terminal failure, received ${response.status}`,
+      );
+      assert(body.status === "failed", "expected authoritative codec failure");
+      assert(
+        body.failureCode === "processed_codec_invalid",
+        "expected stable codec failure code",
+      );
+      assert(
+        stub.updates.some((call) => call.payload.status === "failed"),
+        "unsupported codec did not terminally fail",
+      );
+      assert(
+        !stub.updates.some((call) => call.payload.status === "ready"),
+        "unsupported codec reached ready",
       );
     } finally {
       globalThis.fetch = originalFetch;
@@ -203,13 +329,23 @@ Deno.test("bunny webhook for an unknown VideoGuid is idempotently ignored (200, 
   await withBunnyEnv(async () => {
     const stub = createSupabaseStub({ existingJob: null });
     const response = await handleEventCoverVideoWebhook(
-      await makeSignedRequest({ VideoLibraryId: 778899, VideoGuid: "foreign-guid", Status: 3 }),
+      await makeSignedRequest({
+        VideoLibraryId: 778899,
+        VideoGuid: "foreign-guid",
+        Status: 3,
+      }),
       createDeps(stub),
     );
     const body = await response.json() as Record<string, unknown>;
-    assert(response.status === 200, `expected 200 for a foreign video, received ${response.status}`);
+    assert(
+      response.status === 200,
+      `expected 200 for a foreign video, received ${response.status}`,
+    );
     assert(body.ignored === "unknown_guid", "expected unknown_guid ignore");
-    assert(stub.updates.length === 0, "no job state change for a foreign video");
+    assert(
+      stub.updates.length === 0,
+      "no job state change for a foreign video",
+    );
   });
 });
 
@@ -231,7 +367,11 @@ Deno.test("bunny webhook with a valid v1 + hmac-sha256 envelope + correct signat
       } as unknown as Response)) as typeof fetch;
     const stub = createSupabaseStub({ existingJob: processingJob() });
     try {
-      const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+      const rawBody = JSON.stringify({
+        VideoLibraryId: 778899,
+        VideoGuid: VIDEO_GUID,
+        Status: 3,
+      });
       const response = await handleEventCoverVideoWebhook(
         buildRequest(rawBody, {
           "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
@@ -241,9 +381,15 @@ Deno.test("bunny webhook with a valid v1 + hmac-sha256 envelope + correct signat
         createDeps(stub),
       );
       const body = await response.json() as Record<string, unknown>;
-      assert(response.status === 200, `expected 200 for a valid v1 envelope, received ${response.status}`);
+      assert(
+        response.status === 200,
+        `expected 200 for a valid v1 envelope, received ${response.status}`,
+      );
       assert(body.ok === true, "expected ok:true for the valid v1 envelope");
-      assert(stub.updates.some((call) => call.payload.status === "ready"), "expected a ready update");
+      assert(
+        stub.updates.some((call) => call.payload.status === "ready"),
+        "expected a ready update",
+      );
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -253,7 +399,11 @@ Deno.test("bunny webhook with a valid v1 + hmac-sha256 envelope + correct signat
 Deno.test("bunny webhook with a correct signature but version != v1 is rejected 403", async () => {
   await withBunnyEnv(async () => {
     const stub = createSupabaseStub({ existingJob: processingJob() });
-    const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+    const rawBody = JSON.stringify({
+      VideoLibraryId: 778899,
+      VideoGuid: VIDEO_GUID,
+      Status: 3,
+    });
     const response = await handleEventCoverVideoWebhook(
       buildRequest(rawBody, {
         "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
@@ -263,19 +413,29 @@ Deno.test("bunny webhook with a correct signature but version != v1 is rejected 
       createDeps(stub),
     );
     const body = await response.json() as Record<string, unknown>;
-    assert(response.status === 403, `expected 403 for version!=v1, received ${response.status}`);
+    assert(
+      response.status === 403,
+      `expected 403 for version!=v1, received ${response.status}`,
+    );
     assert(
       body.detail === "unsupported_signature_version",
       `expected unsupported_signature_version, got ${String(body.detail)}`,
     );
-    assert(!stub.updates.some((call) => call.payload.status === "ready"), "no ready write on a rejected envelope");
+    assert(
+      !stub.updates.some((call) => call.payload.status === "ready"),
+      "no ready write on a rejected envelope",
+    );
   });
 });
 
 Deno.test("bunny webhook with a correct signature but algorithm != hmac-sha256 is rejected 403", async () => {
   await withBunnyEnv(async () => {
     const stub = createSupabaseStub({ existingJob: processingJob() });
-    const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
+    const rawBody = JSON.stringify({
+      VideoLibraryId: 778899,
+      VideoGuid: VIDEO_GUID,
+      Status: 3,
+    });
     const response = await handleEventCoverVideoWebhook(
       buildRequest(rawBody, {
         "x-bunnystream-signature": await hmacSha256Hex(WEBHOOK_KEY, rawBody),
@@ -285,38 +445,54 @@ Deno.test("bunny webhook with a correct signature but algorithm != hmac-sha256 i
       createDeps(stub),
     );
     const body = await response.json() as Record<string, unknown>;
-    assert(response.status === 403, `expected 403 for algorithm!=hmac-sha256, received ${response.status}`);
+    assert(
+      response.status === 403,
+      `expected 403 for algorithm!=hmac-sha256, received ${response.status}`,
+    );
     assert(
       body.detail === "unsupported_signature_algorithm",
       `expected unsupported_signature_algorithm, got ${String(body.detail)}`,
     );
-    assert(!stub.updates.some((call) => call.payload.status === "ready"), "no ready write on a rejected envelope");
+    assert(
+      !stub.updates.some((call) => call.payload.status === "ready"),
+      "no ready write on a rejected envelope",
+    );
   });
 });
 
-Deno.test("bunny webhook with an ABSENT signature still authenticates via the bunnyGetVideo re-fetch fallback", async () => {
+Deno.test("bunny webhook with an ABSENT signature fails closed before provider or database access", async () => {
+  // [TEST-MOD-APPROVED #2715 A8] Restoring the unsigned lookup fallback makes
+  // status change to 200 and increments provider/database access, failing here.
   await withBunnyEnv(async () => {
-    const originalFetch = globalThis.fetch;
-    globalThis.fetch = (() =>
-      Promise.resolve({
-        ok: true,
-        status: 200,
-        headers: new Headers({ "content-length": "8000000" }),
-      } as unknown as Response)) as typeof fetch;
     const stub = createSupabaseStub({ existingJob: processingJob() });
-    try {
-      const rawBody = JSON.stringify({ VideoLibraryId: 778899, VideoGuid: VIDEO_GUID, Status: 3 });
-      // No signature/version/algorithm headers at all → unsigned webhook path.
-      const response = await handleEventCoverVideoWebhook(
-        buildRequest(rawBody, {}),
-        createDeps(stub),
-      );
-      const body = await response.json() as Record<string, unknown>;
-      assert(response.status === 200, `expected 200 via the re-fetch fallback, received ${response.status}`);
-      assert(body.ok === true, "expected ok:true from the unsigned-webhook re-fetch fallback");
-      assert(stub.updates.some((call) => call.payload.status === "ready"), "expected a ready update via fallback");
-    } finally {
-      globalThis.fetch = originalFetch;
-    }
+    let providerReads = 0;
+    const deps = {
+      bunnyGetVideo: () => {
+        providerReads += 1;
+        return Promise.resolve({ ok: true as const, video: bunnyVideo });
+      },
+      destroyCoverVideoAsset: () => Promise.resolve({ ok: true as const }),
+      serviceRoleClient: () => {
+        throw new Error("database accessed before authentication");
+      },
+    } as never;
+    const rawBody = JSON.stringify({
+      VideoLibraryId: 778899,
+      VideoGuid: VIDEO_GUID,
+      Status: 3,
+    });
+    const response = await handleEventCoverVideoWebhook(
+      buildRequest(rawBody, {}),
+      deps,
+    );
+    assert(
+      response.status === 403,
+      `expected 403 for unsigned webhook, received ${response.status}`,
+    );
+    assert(providerReads === 0, "unsigned webhook reached provider lookup");
+    assert(
+      stub.updates.length === 0 && stub.rpcs.length === 0,
+      "unsigned webhook mutated durable state",
+    );
   });
 });

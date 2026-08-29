@@ -3,10 +3,10 @@
  * ORCH-0776a [video-upload-progress-honesty] — strict-grep gate, REWRITTEN for
  * issue #964 (D-4). The live event-cover upload reports REAL byte progress over
  * TUS: `emitUploadProgress` derives percent from actual bytes, and the web XHR
- * transport feeds it `event.loaded`/`event.total`. The determinate progress bar
- * moved from the retired Expo `createUploadTask` / `CreatorStep4Cover` copy to
- * `CoverPicker.tsx` (`width: `${videoPercent}%``). This gate pins that honest
- * byte-progress path and forbids a fabricated processing percentage.
+ * transport feeds it `event.loaded`/`event.total`. `CoverPicker.tsx` renders
+ * the canonical projection's nullable percent as an accessible scaleX bar.
+ * Upload percent comes from bytes; processing percent is shown only when the
+ * provider reports one. The former hardcoded "Almost ready" state is forbidden.
  *
  * NO product/edge-fn code changed by #964 — CI/gate-coverage only.
  *
@@ -20,10 +20,9 @@
  *     SV-6  `event.loaded` + `event.total`          — the real XHR byte counts.
  *     SV-CLD  `createUploadTask` ABSENT             — the dead Expo path must not return.
  *   CoverPicker.tsx (comment-stripped):
- *     CP-1  the determinate bar literal `` width: `${videoPercent}%` ``.
- *     CP-2  `videoUpload.stage.percent`             — the bar is fed real stage %.
- *     CP-NOFAB  the `videoStageCopy` block carries NO fabricated processing % —
- *               it must not bind a `%` to the "Almost ready"/processing phase.
+ *     CP-1  `videoProjectionCopy(stage, status)` owns truthful state copy.
+ *     CP-2  `copy.percent` feeds an accessible progressbar and scaleX width.
+ *     CP-NOFAB  hardcoded `Almost ready` / numeric processing progress is absent.
  *
  * Self-test: `node orch-0776a-video-upload-progress-honesty.mjs --self-test`
  * proves PASS on the live shape and FAIL on each dropped byte-progress invariant
@@ -42,23 +41,13 @@ const REPO_ROOT = join(__dirname, "..", "..", "..");
 const REL = {
   service: "mingla-business/src/services/eventCoverVideoProcessingService.ts",
   coverPicker: "mingla-business/src/components/ui/CoverPicker.tsx",
+  hook: "mingla-business/src/hooks/useEventCoverVideoUpload.ts",
 };
-
-// Written as a plain double-quoted string so the backticks and `${...}` are
-// literal chars matched verbatim against the source.
-const DETERMINATE_BAR = "width: `${videoPercent}%`";
 
 export function stripComments(src) {
   return src
     .replace(/\/\*[\s\S]*?\*\//g, "")
     .replace(/(^|[^:])\/\/.*$/gm, "$1");
-}
-
-/** Isolate the `const videoStageCopy = ... ;` assignment (up to its first `;`).
- * Returns the assignment body, or null if the site could not be located. */
-export function videoStageCopyBlock(src) {
-  const m = /const\s+videoStageCopy\s*=([\s\S]*?);/.exec(src);
-  return m === null ? null : m[1];
 }
 
 /**
@@ -69,6 +58,7 @@ export function scan(sources) {
   const failures = [];
   const svc = stripComments(sources.service ?? "");
   const cp = stripComments(sources.coverPicker ?? "");
+  const hook = stripComments(sources.hook ?? "");
 
   // ── service byte-progress ──────────────────────────────────────────────
   if (!svc.includes("EventCoverVideoUploadProgress")) {
@@ -94,22 +84,23 @@ export function scan(sources) {
   }
 
   // ── CoverPicker determinate UI ─────────────────────────────────────────
-  if (!cp.includes(DETERMINATE_BAR)) {
-    failures.push("CP-1: CoverPicker no longer renders the determinate bar literal `width: `${videoPercent}%`` — the progress bar is not byte-determinate.");
+  if (!cp.includes("videoProjectionCopy(stage, status)")) {
+    failures.push("CP-1: CoverPicker no longer derives UI from the canonical `videoProjectionCopy(stage, status)` projection.");
   }
-  if (!cp.includes("videoUpload.stage.percent")) {
-    failures.push("CP-2: CoverPicker no longer feeds the bar `videoUpload.stage.percent` — the real stage percent source is gone.");
+  if (!cp.includes('accessibilityRole="progressbar"') ||
+      !cp.includes("scaleX: copy.percent / 100") ||
+      !cp.includes("Math.round(copy.percent)")) {
+    failures.push("CP-2: CoverPicker must render nullable canonical progress as an accessible scaleX determinate bar.");
   }
-  const block = videoStageCopyBlock(cp);
-  if (block === null) {
-    failures.push("CP-NOFAB: could not locate the `const videoStageCopy = ...;` assignment — the stage-copy site moved or was removed; a fabricated processing % can no longer be ruled out.");
-  } else {
-    if (/Almost ready[^"'`]*%/.test(block)) {
-      failures.push("CP-NOFAB: the processing-phase copy (`Almost ready...`) now carries a numeric `%`. Processing progress is indeterminate — no fabricated percentage.");
-    }
-    if (/Processing[^"'`]*\$\{[^}]*percent/.test(block)) {
-      failures.push("CP-NOFAB: the processing-phase copy interpolates a `percent` value. Processing progress is indeterminate — no fabricated percentage.");
-    }
+  const processingCopy = cp.match(/case\s+["']processing["'][\s\S]*?case\s+["']reattaching["']/)?.[0] ?? "";
+  if (!processingCopy.includes("percent: stage.percent")) {
+    failures.push("CP-NOFAB: processing copy must consume the canonical nullable `stage.percent`.");
+  }
+  if (/Almost ready/i.test(cp) || /percent\s*:\s*\d+(?:\.\d+)?\b/.test(processingCopy)) {
+    failures.push("CP-NOFAB: fabricated hardcoded processing progress or the old `Almost ready` state returned.");
+  }
+  if (!hook.includes('phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null')) {
+    failures.push("HOOK-NOFAB: processing projection must expose provider progress only when progressKind is determinate.");
   }
 
   return failures;
@@ -133,20 +124,14 @@ if (process.argv.includes("--self-test")) {
       "};",
     ].join("\n"),
     coverPicker: [
-      "const videoStageCopy =",
-      '  videoUpload.stage.phase === "compressing"',
-      '    ? "Compressing on your phone..."',
-      '    : videoUpload.stage.phase === "uploading"',
-      '      ? "Uploading..."',
-      '      : videoUpload.stage.phase === "processing"',
-      '        ? "Almost ready..."',
-      "        : null;",
-      "return (",
-      "  <View style={[styles.progressFill, { width: `${videoPercent}%` }]} />",
-      ");",
-      "// videoPercent={videoUpload.stage.percent}",
-      "const x = videoUpload.stage.percent;",
+      "const copy = videoProjectionCopy(stage, status);",
+      'case "processing": return { title: "Processing video", percent: stage.percent };',
+      'case "reattaching": return { title: "Reconnecting", percent: null };',
+      '<View accessibilityRole="progressbar" accessibilityValue={{ now: Math.round(copy.percent) }}>',
+      "  <View style={{ transform: [{ scaleX: copy.percent / 100 }] }} />",
+      "</View>",
     ].join("\n"),
+    hook: 'setStage({ phase: "processing", percent: next.progressKind === "determinate" ? next.progressPercent : null });',
   };
 
   const clone = (o) => JSON.parse(JSON.stringify(o));
@@ -167,15 +152,16 @@ if (process.argv.includes("--self-test")) {
   bad("drop xhr.upload.onprogress trips SV-5", (s) => { s.service = s.service.replace("xhr.upload.onprogress", "xhr.foo"); }, "SV-5:");
   bad("drop event.loaded/total trips SV-6", (s) => { s.service = s.service.replace("event.loaded, event.total", "0, 1"); }, "SV-6:");
   bad("reintroduce createUploadTask trips SV-CLD", (s) => { s.service += "\nconst t = FileSystem.createUploadTask(url);"; }, "SV-CLD:");
-  bad("drop determinate bar trips CP-1", (s) => { s.coverPicker = s.coverPicker.replace("width: `${videoPercent}%`", "flex: 1"); }, "CP-1:");
-  bad("drop stage.percent trips CP-2", (s) => { s.coverPicker = s.coverPicker.replaceAll("videoUpload.stage.percent", "0"); }, "CP-2:");
-  bad("fabricated 'Almost ready ${percent}%' trips CP-NOFAB", (s) => { s.coverPicker = s.coverPicker.replace('"Almost ready..."', '`Almost ready ${videoPercent}%`'); }, "CP-NOFAB:");
-  bad("fabricated 'Processing ${stage.percent}%' trips CP-NOFAB", (s) => { s.coverPicker = s.coverPicker.replace('"Almost ready..."', '`Processing ${videoUpload.stage.percent}%`'); }, "CP-NOFAB:");
-  bad("removed videoStageCopy block trips CP-NOFAB", (s) => { s.coverPicker = s.coverPicker.replace(/const\s+videoStageCopy[\s\S]*?null;/, "const other = 1;"); }, "CP-NOFAB:");
+  bad("drop canonical projection trips CP-1", (s) => { s.coverPicker = s.coverPicker.replace("videoProjectionCopy(stage, status)", "legacyCopy(stage)"); }, "CP-1:");
+  bad("drop accessible determinate bar trips CP-2", (s) => { s.coverPicker = s.coverPicker.replace('accessibilityRole="progressbar"', 'accessibilityRole="none"'); }, "CP-2:");
+  bad("drop scaleX percent source trips CP-2", (s) => { s.coverPicker = s.coverPicker.replace("scaleX: copy.percent / 100", "width: 70"); }, "CP-2:");
+  bad("fabricated Almost ready trips CP-NOFAB", (s) => { s.coverPicker = s.coverPicker.replace("Processing video", "Almost ready"); }, "CP-NOFAB:");
+  for (const value of [35, 45, 69, 70]) {
+    bad(`fabricated processing ${value} trips CP-NOFAB`, (s) => { s.coverPicker = s.coverPicker.replace("percent: stage.percent", `percent: ${value}`); }, "CP-NOFAB:");
+  }
+  bad("literal hook progress trips HOOK-NOFAB", (s) => { s.hook = s.hook.replace('next.progressKind === "determinate" ? next.progressPercent : null', "45"); }, "HOOK-NOFAB:");
 
-  // The determinate upload bar (`${videoPercent}%`) must NOT be caught by
-  // CP-NOFAB — that % is honest byte progress, not a fabricated processing %.
-  // The GOOD case already contains the bar and passes; assert explicitly.
+  // Honest nullable canonical/provider progress must not be flagged as fabricated.
   const co = scan(good);
   cases.push({ name: "determinate upload % is NOT flagged as fabricated (scope proof)", ok: !co.some((m) => m.startsWith("CP-NOFAB:")), detail: co });
 
@@ -198,6 +184,7 @@ try {
   sources = {
     service: readFileSync(join(REPO_ROOT, REL.service), "utf8"),
     coverPicker: readFileSync(join(REPO_ROOT, REL.coverPicker), "utf8"),
+    hook: readFileSync(join(REPO_ROOT, REL.hook), "utf8"),
   };
 } catch (err) {
   console.error(`[orch-0776a] cannot read a target file: ${err.message}`);

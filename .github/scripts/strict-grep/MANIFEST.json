@@ -16,7 +16,7 @@
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
   "expectedStrictGrepMjsFiles": 621,
-  "selfTestWiredFloor": 396,
+  "selfTestWiredFloor": 397,
   "unenforcedCap": 2,
   "fixtureCap": 10,
   "capableUnwiredCap": 23,
@@ -6353,9 +6353,10 @@
       "enforcement": "batch:A",
       "invocation": "node",
       "modes": [
+        "self-test",
         "plain"
       ],
-      "selfTest": "none",
+      "selfTest": "wired",
       "jobKeys": [
         "orch-0978-video-cap-29s"
       ]

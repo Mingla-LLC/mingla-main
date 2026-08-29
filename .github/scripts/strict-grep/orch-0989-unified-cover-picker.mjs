@@ -107,9 +107,12 @@ for (const rel of RETIRED) {
 
 // --- Assertion 6: brand-video migration + apply writes brands ---------------
 let migrationFound = false;
+let deterministicMigration = "";
 try {
   const entries = readdirSync(join(REPO_ROOT, "supabase", "migrations"));
   migrationFound = entries.some((n) => /orch_0989.*brand_cover_video_target\.sql$/.test(n));
+  const deterministicName = entries.find((n) => /issue_2715_deterministic_cover_video_jobs\.sql$/.test(n));
+  if (deterministicName) deterministicMigration = read(`supabase/migrations/${deterministicName}`);
 } catch {
   // fall through to failure below
 }
@@ -118,8 +121,11 @@ if (!migrationFound) {
 }
 const APPLY = "supabase/functions/event-cover-video-apply/index.ts";
 const applySrc = read(APPLY);
-if (!/\.from\("brands"\)[\s\S]*?cover_media_url/.test(applySrc)) {
-  failures.push("A6 FAIL: event-cover-video-apply must UPDATE brands SET cover_media_url for brand target");
+if (!applySrc.includes("cover_video_apply_once")) {
+  failures.push("A6 FAIL: event-cover-video-apply must delegate exact-once application to cover_video_apply_once");
+}
+if (!/UPDATE public\.brands SET[\s\S]*?cover_media_url/.test(deterministicMigration)) {
+  failures.push("A6 FAIL: cover_video_apply_once migration must atomically update brand cover_media_url");
 }
 
 // --- Assertion 7: Architecture-B negative — no `so_` in any video edge fn ----

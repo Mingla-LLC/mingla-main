@@ -15,6 +15,7 @@ on:
       - "mingla-marketing/**"
       - "supabase/functions/_shared/contentShare*.ts"
       - "supabase/functions/event-cover-video-*/**"
+      - "supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts"
       - "supabase/functions/run-business-place-authoring-pipeline/**"
       - "supabase/migrations/*1719*"
       - "supabase/security/anon_executable_definer_allowlist.txt"
@@ -30,6 +31,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with: { node-version: "22" }
+      - uses: denoland/setup-deno@v1
+        with: { deno-version: "1.46.x" }
       - run: npm ci --ignore-scripts
         working-directory: mingla-business
       - run: npm ci --ignore-scripts
@@ -51,6 +54,13 @@ jobs:
       - run: node --test scripts/issue-1615/content-sharing-semantic-gate.implementor.happy.test.mjs scripts/issue-1615/content-sharing-semantic-gate.adversarial.test.mjs
       - run: node scripts/issue-1615/content-sharing-semantic-gate.mjs
       - run: node --test packages/card-identity/__tests__/card_identity_single_source.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_happy_path.test.mjs packages/card-identity/__tests__/issue_1714_contrast_tokens_adversarial.test.mjs
+      - name: "#2715 deterministic cover-video edge contracts"
+        run: >-
+          deno test --allow-env --allow-read --allow-net --no-check
+          supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts
+          supabase/functions/event-cover-video-source-uploaded/index.issue2715.test.ts
+          supabase/functions/event-cover-video-upload-intent/index.issue2715.race.test.ts
+          supabase/functions/event-cover-video-webhook/index.issue2715.races.test.ts
 
   postgres-17-adversarial:
     runs-on: ubuntu-latest

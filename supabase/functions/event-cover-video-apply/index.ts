@@ -6,6 +6,7 @@ import {
   jsonResponse,
   mapEventCoverVideoStatus,
   requireBrandCoverManager,
+  requireCoverVideoTargetManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -18,7 +19,13 @@ import {
 // deno-lint-ignore no-explicit-any
 const reapPriorAppliedBunnyCover = async (
   supabase: any,
-  job: { id: string; provider?: string | null; target_kind?: string | null; event_id?: string | null; brand_id: string },
+  job: {
+    id: string;
+    provider?: string | null;
+    target_kind?: string | null;
+    event_id?: string | null;
+    brand_id: string;
+  },
 ): Promise<void> => {
   if (job.provider !== "bunny") return;
   const base = supabase
@@ -36,7 +43,12 @@ const reapPriorAppliedBunnyCover = async (
   if (error) return;
   for (
     const row of (data ?? []) as Array<
-      { id: string; provider?: string | null; source_asset_id?: unknown; source_public_id?: unknown }
+      {
+        id: string;
+        provider?: string | null;
+        source_asset_id?: unknown;
+        source_public_id?: unknown;
+      }
     >
   ) {
     const destroyed = await destroyCoverVideoAsset(row);
@@ -46,27 +58,44 @@ const reapPriorAppliedBunnyCover = async (
         .update({ reaped_at: new Date().toISOString() })
         .eq("id", row.id);
     } else {
-      console.warn("[event-cover-video-apply] prior cover reap failed:", { jobId: row.id, reason: destroyed.reason });
+      console.warn("[event-cover-video-apply] prior cover reap failed:", {
+        jobId: row.id,
+        reason: destroyed.reason,
+      });
     }
   }
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
-  if (req.method !== "POST") return jsonResponse({ error: "method_not_allowed" }, 405);
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+  if (req.method !== "POST") {
+    return jsonResponse({ error: "method_not_allowed" }, 405);
+  }
 
   const userIdOrResponse = await requireUserId(req);
   if (userIdOrResponse instanceof Response) return userIdOrResponse;
   const userId = userIdOrResponse;
 
-  let body: { jobId?: string };
+  let body: {
+    jobId?: string;
+    expectedVersion?: number;
+    expectedProcessedUrl?: string;
+  };
   try {
     body = await req.json();
   } catch {
-    return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
+    return jsonResponse(
+      { error: "validation_error", detail: "invalid_json" },
+      400,
+    );
   }
   if (!isValidUuid(body.jobId)) {
-    return jsonResponse({ error: "validation_error", detail: "job_id_invalid_uuid" }, 400);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "job_id_invalid_uuid",
+    }, 400);
   }
 
   const supabase = serviceRoleClient();
@@ -76,68 +105,80 @@ serve(async (req) => {
     .eq("id", body.jobId)
     .maybeSingle();
   if (jobError) {
-    console.error("[event-cover-video-apply] job read failed:", jobError);
+    console.error("[event-cover-video-apply] job read failed", {
+      code: jobError.code,
+    });
     return jsonResponse({ error: "internal_error" }, 500);
   }
-  if (!job) return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
-  const isBrandTarget = job.target_kind === "brand";
-  // ORCH-0989: brand-target gates on brand_admin; event-target keeps event_manager.
-  const allowed = isBrandTarget
-    ? await requireBrandCoverManager(supabase, job.brand_id, userId)
-    : await requireEventManager(supabase, job.event_id, job.brand_id, userId);
+  if (!job) {
+    return jsonResponse({ error: "not_found", detail: "job_not_found" }, 404);
+  }
+  const allowed = await requireCoverVideoTargetManager(supabase, {
+    targetKind: job.target_kind,
+    eventId: job.event_id,
+    brandId: job.brand_id,
+    venueId: job.venue_id,
+    draftOwnerKey: job.draft_owner_key,
+    requestedBy: job.requested_by,
+  }, userId);
   if (allowed instanceof Response) return allowed;
-  if (job.status !== "ready" || !job.processed_url || !job.processed_poster_url) {
+  if (job.status === "applied") {
+    return jsonResponse({
+      ok: true,
+      replay: true,
+      processedUrl: job.processed_url,
+      posterUrl: job.processed_poster_url,
+      status: mapEventCoverVideoStatus(job),
+    });
+  }
+  if (
+    job.status !== "ready" || !job.processed_url || !job.processed_poster_url
+  ) {
     return jsonResponse({
       error: "job_not_ready",
       status: mapEventCoverVideoStatus(job),
     }, 409);
   }
 
-  // META-ORCH-1270 (Phase 2) — reclaim the prior applied Bunny cover for this
-  // target BEFORE overwriting cover_media_url, so the replaced asset is not left
-  // orphaned in the library.
-  await reapPriorAppliedBunnyCover(supabase, job);
-
-  if (isBrandTarget) {
-    // ORCH-0989: brand target writes brands.cover_media_url (not events).
-    const { error: brandUpdateError } = await supabase
-      .from("brands")
-      .update({
-        cover_media_type: "video",
-        cover_media_url: job.processed_url,
-        cover_media_poster_url: job.processed_poster_url,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job.brand_id)
-      .is("deleted_at", null);
-    if (brandUpdateError) {
-      console.error("[event-cover-video-apply] brand update failed:", brandUpdateError);
-      return jsonResponse({ error: "internal_error" }, 500);
-    }
-  } else {
-    const { error: updateError } = await supabase
-      .from("events")
-      .update({
-        cover_media_type: "video",
-        cover_media_url: job.processed_url,
-        cover_media_poster_url: job.processed_poster_url,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", job.event_id)
-      .is("deleted_at", null);
-    if (updateError) {
-      console.error("[event-cover-video-apply] event update failed:", updateError);
-      return jsonResponse({ error: "internal_error" }, 500);
-    }
+  if (
+    !Number.isInteger(body.expectedVersion) ||
+    typeof body.expectedProcessedUrl !== "string"
+  ) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "apply_precondition_required",
+    }, 400);
   }
-  await supabase
-    .from("event_cover_video_jobs")
-    .update({
-      applied_at: new Date().toISOString(),
-      completed_at: new Date().toISOString(),
-      status: "applied",
-    })
-    .eq("id", job.id);
-
-  return jsonResponse({ ok: true, processedUrl: job.processed_url, posterUrl: job.processed_poster_url });
+  const { data: applied, error: applyError } = await supabase.rpc(
+    "cover_video_apply_once",
+    {
+      p_job_id: job.id,
+      p_expected_version: typeof body.expectedVersion === "number"
+        ? body.expectedVersion
+        : null,
+      p_expected_url: typeof body.expectedProcessedUrl === "string"
+        ? body.expectedProcessedUrl
+        : null,
+      p_expected_requested_by: job.target_kind === "venue_draft"
+        ? userId
+        : null,
+    },
+  );
+  if (applyError || !applied || applied.status !== "applied") {
+    return jsonResponse({
+      error: "job_not_ready",
+      status: mapEventCoverVideoStatus(applied ?? job),
+    }, 409);
+  }
+  // The target CAS and applied receipt are durable before any prior asset is
+  // reclaimed. A stale/failed apply can therefore never delete the live cover.
+  if (job.target_kind === "event" || job.target_kind === "brand") {
+    await reapPriorAppliedBunnyCover(supabase, job);
+  }
+  return jsonResponse({
+    ok: true,
+    processedUrl: applied.processed_url,
+    posterUrl: applied.processed_poster_url,
+    status: mapEventCoverVideoStatus(applied),
+  });
 });

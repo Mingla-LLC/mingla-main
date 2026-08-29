@@ -22,7 +22,7 @@ import {
   text as textTokens,
   typography,
 } from "../../constants/designSystem";
-import { useDraftVenueStore } from "../../store/draftVenueStore";
+import { flushDraftVenuePersistence, useDraftVenueStore } from "../../store/draftVenueStore";
 import { ThemeControlRow } from "../theme/ThemeControlRow";
 import { ThemeSheet } from "../theme/ThemeSheet";
 import { CoverPickerSheet } from "../ui/CoverPickerSheet";
@@ -52,6 +52,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
   const gallery = useDraftVenueStore((s) => s.galleryUrls ?? []);
   const choice = useDraftVenueStore((s) => s.coverChoice ?? null);
   const patch = useDraftVenueStore((s) => s.patch);
+  const activeDraftId = useDraftVenueStore((s) => s.activeDraftId);
   // #1022 A/F-13 — ONE discriminated sheet state, never two booleans, so the
   // cover picker and the theme sheet cannot both be open at once.
   const [activeSheet, setActiveSheet] = useState<"none" | "cover" | "theme">(
@@ -83,7 +84,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
   );
 
   const handleCoverPatch = useCallback(
-    (p: CoverPatch): void => {
+    async (p: CoverPatch): Promise<void> => {
       if (p.coverMediaUrl === null) return; // remove → keep current choice
       const type: "image" | "video" | "gif" =
         p.coverMediaType === "video"
@@ -108,6 +109,7 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
           isNew: true,
         },
       });
+      await flushDraftVenuePersistence();
       setActiveSheet("none");
     },
     [patch],
@@ -228,11 +230,11 @@ export const VenueCoverStep: React.FC<VenueCoverStepProps> = ({ brandId }) => {
         testID="venue-cover-theme-control-row"
       />
 
-      {brandId !== null ? (
+      {brandId !== null && activeDraftId !== null ? (
         <CoverPickerSheet
           visible={pickerVisible}
           onClose={() => setActiveSheet("none")}
-          target={{ kind: "venue", brandId, venueId: "" }}
+          target={{ kind: "venue_draft", brandId, draftOwnerKey: activeDraftId }}
           initial={EMPTY_COVER}
           onCoverChange={handleCoverPatch}
           onShowToast={setToast}

@@ -3,17 +3,21 @@ export type NativeTrimmedVideoValidationCode =
   | "video_duration_unknown"
   | "video_too_long"
   | "video_size_unknown"
-  | "video_file_too_large";
+  | "video_file_too_large"
+  | "video_format_unsupported";
 
 export interface NativeTrimmedVideoAssetInput {
   duration?: number | null;
   fileSize?: number | null;
   uri?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
 }
 
 export interface NativeTrimmedVideoLimits {
   maxDurationMs: number;
   maxSourceBytes: number;
+  allowWebm?: boolean;
 }
 
 export interface NativeTrimmedVideoUploadFields {
@@ -42,7 +46,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_uri_missing",
-      message: "We couldn't read this video's file. Try another video.",
+      message: "Choose another video with a readable file, length, and size.",
     };
   }
 
@@ -51,7 +55,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_duration_unknown",
-      message: "We couldn't read this video's duration. Try another video.",
+      message: "Choose another video with a readable file, length, and size.",
     };
   }
 
@@ -59,7 +63,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_too_long",
-      message: "Please trim to 29 seconds first.",
+      message: "Trim it to 15 seconds or less, then choose it again.",
     };
   }
 
@@ -71,7 +75,7 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_size_unknown",
-      message: "We couldn't read this video's file size. Try another video.",
+      message: "Choose another video with a readable file, length, and size.",
     };
   }
 
@@ -79,7 +83,26 @@ export const validateNativeTrimmedEventCoverVideo = (
     return {
       ok: false,
       code: "video_file_too_large",
-      message: "Choose a video under 100 MB.",
+      message: "Choose a smaller video before uploading.",
+    };
+  }
+
+  const mime = asset.mimeType?.toLowerCase().split(";")[0].trim() ?? "";
+  const extension = (asset.fileName ?? asset.uri)?.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? "";
+  const allowedMime = new Set([
+    "video/mp4",
+    "video/quicktime",
+    "video/x-m4v",
+    ...(limits.allowWebm ? ["video/webm"] : []),
+  ]);
+  const allowedExtension = new Set([".mp4", ".mov", ".m4v", ...(limits.allowWebm ? [".webm"] : [])]);
+  if ((mime.length > 0 && !allowedMime.has(mime)) || (mime.length === 0 && !allowedExtension.has(extension))) {
+    return {
+      ok: false,
+      code: "video_format_unsupported",
+      message: limits.allowWebm
+        ? "Choose an MP4, MOV, M4V, or WebM video."
+        : "Choose an MP4, MOV, or M4V video.",
     };
   }
 

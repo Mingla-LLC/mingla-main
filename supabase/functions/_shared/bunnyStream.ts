@@ -34,6 +34,8 @@ export type BunnyVideo = {
   // CSV of rendered heights like "720p,480p,360p"; nullable pre-encode.
   availableResolutions: string | null;
   encodeProgress: number | null;
+  outputCodecs?: string | null;
+  originalHash?: string | null;
 };
 
 function bunnyLibraryId(): string {
@@ -60,7 +62,10 @@ export async function sha256Hex(input: string): Promise<string> {
 }
 
 // Hex-encoded HMAC-SHA256 (webhook authenticity + the exported signer tests use).
-export async function hmacSha256Hex(secret: string, message: string): Promise<string> {
+export async function hmacSha256Hex(
+  secret: string,
+  message: string,
+): Promise<string> {
   const key = await crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
@@ -68,7 +73,11 @@ export async function hmacSha256Hex(secret: string, message: string): Promise<st
     false,
     ["sign"],
   );
-  const signature = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(message));
+  const signature = await crypto.subtle.sign(
+    "HMAC",
+    key,
+    new TextEncoder().encode(message),
+  );
   return Array.from(new Uint8Array(signature))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
@@ -91,11 +100,13 @@ const networkReason = (prefix: string, error: unknown): string =>
 // https://docs.bunny.net/reference/video_createvideo
 export async function bunnyCreateVideo(
   title: string,
-): Promise<{ ok: true; guid: string } | { ok: false; reason: string }> {
+): Promise<
+  { ok: true; guid: string } | { ok: false; reason: string; retryable: boolean }
+> {
   const libraryId = bunnyLibraryId();
   const apiKey = bunnyApiKey();
   if (libraryId.length === 0 || apiKey.length === 0) {
-    return { ok: false, reason: "bunny_not_configured" };
+    return { ok: false, reason: "bunny_not_configured", retryable: false };
   }
   const startedAt = Date.now();
   let response: Response;
@@ -110,11 +121,25 @@ export async function bunnyCreateVideo(
       body: JSON.stringify({ title }),
     });
   } catch (error) {
-    return { ok: false, reason: networkReason("bunny_create_network", error) };
+    return {
+      ok: false,
+      reason: networkReason("bunny_create_network", error),
+      retryable: true,
+    };
   }
-  void recordApiCall("bunny", response.ok, Date.now() - startedAt, response.status);
+  void recordApiCall(
+    "bunny",
+    response.ok,
+    Date.now() - startedAt,
+    response.status,
+  );
   if (!response.ok) {
-    return { ok: false, reason: `bunny_create_http_${response.status}` };
+    return {
+      ok: false,
+      reason: `bunny_create_http_${response.status}`,
+      retryable: response.status >= 500 || response.status === 408 ||
+        response.status === 429,
+    };
   }
   let body: { guid?: unknown } | null = null;
   try {
@@ -124,9 +149,99 @@ export async function bunnyCreateVideo(
   }
   const guid = typeof body?.guid === "string" ? body.guid.trim() : "";
   if (guid.length === 0) {
-    return { ok: false, reason: "bunny_create_missing_guid" };
+    return { ok: false, reason: "bunny_create_missing_guid", retryable: true };
   }
   return { ok: true, guid };
+}
+
+export type BunnyVideoTitleLookup =
+  | { ok: true; guid: string | null }
+  | { ok: false; reason: string };
+
+// Resolve an ambiguous Create by the exact deterministic job title before any
+// caller is allowed to create again. Bunny search can be partial, so every page
+// is exhausted and the result is filtered by exact title. Zero exact matches is
+// authoritative absence; duplicate exact matches remain ambiguous/fail closed.
+export async function bunnyFindVideoByTitle(
+  title: string,
+): Promise<BunnyVideoTitleLookup> {
+  const libraryId = bunnyLibraryId();
+  const apiKey = bunnyApiKey();
+  const exactTitle = title.trim();
+  if (
+    libraryId.length === 0 || apiKey.length === 0 || exactTitle.length === 0
+  ) {
+    return { ok: false, reason: "bunny_lookup_not_configured" };
+  }
+  const matches = new Set<string>();
+  let page = 1;
+  while (true) {
+    const url = new URL(`${BUNNY_HOST}/library/${libraryId}/videos`);
+    url.searchParams.set("page", String(page));
+    url.searchParams.set("itemsPerPage", "100");
+    url.searchParams.set("search", exactTitle);
+    let response: Response;
+    const startedAt = Date.now();
+    try {
+      response = await fetch(url, {
+        headers: { AccessKey: apiKey, accept: "application/json" },
+      });
+    } catch (error) {
+      return {
+        ok: false,
+        reason: networkReason("bunny_lookup_network", error),
+      };
+    }
+    void recordApiCall(
+      "bunny",
+      response.ok,
+      Date.now() - startedAt,
+      response.status,
+    );
+    if (!response.ok) {
+      return {
+        ok: false,
+        reason: `bunny_lookup_http_${response.status}`,
+      };
+    }
+    let body: Record<string, unknown> | null = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    const items = Array.isArray(body?.items) ? body.items : null;
+    if (items === null) {
+      return { ok: false, reason: "bunny_lookup_malformed" };
+    }
+    for (const item of items) {
+      if (
+        typeof item === "object" && item !== null &&
+        (item as Record<string, unknown>).title === exactTitle
+      ) {
+        const guid = (item as Record<string, unknown>).guid;
+        if (typeof guid === "string" && guid.trim().length > 0) {
+          matches.add(guid.trim());
+        }
+      }
+    }
+    const totalItems = Number(body?.totalItems);
+    const itemsPerPage = Number(body?.itemsPerPage);
+    const currentPage = Number(body?.currentPage ?? page);
+    if (
+      !Number.isFinite(totalItems) || !Number.isFinite(itemsPerPage) ||
+      !Number.isFinite(currentPage) || totalItems < 0 || itemsPerPage <= 0 ||
+      currentPage < 1
+    ) {
+      return { ok: false, reason: "bunny_lookup_malformed" };
+    }
+    if (currentPage * itemsPerPage >= totalItems) break;
+    page = currentPage + 1;
+  }
+  if (matches.size > 1) {
+    return { ok: false, reason: "bunny_lookup_duplicate_identity" };
+  }
+  return { ok: true, guid: matches.values().next().value ?? null };
 }
 
 export type BunnyTusPresign = {
@@ -170,16 +285,31 @@ const toBunnyVideo = (body: Record<string, unknown>): BunnyVideo => ({
   status: typeof body.status === "number" ? body.status : Number(body.status),
   length: typeof body.length === "number" ? body.length : null,
   storageSize: typeof body.storageSize === "number" ? body.storageSize : null,
-  availableResolutions:
-    typeof body.availableResolutions === "string" ? body.availableResolutions : null,
-  encodeProgress: typeof body.encodeProgress === "number" ? body.encodeProgress : null,
+  availableResolutions: typeof body.availableResolutions === "string"
+    ? body.availableResolutions
+    : null,
+  encodeProgress: typeof body.encodeProgress === "number"
+    ? body.encodeProgress
+    : null,
+  outputCodecs: typeof body.outputCodecs === "string"
+    ? body.outputCodecs
+    : null,
+  originalHash: typeof body.originalHash === "string"
+    ? body.originalHash.toLowerCase()
+    : null,
 });
 
 // GET https://video.bunnycdn.com/library/{libraryId}/videos/{videoId}
 // https://docs.bunny.net/reference/video_getvideo
 export async function bunnyGetVideo(
   guid: string,
-): Promise<{ ok: true; video: BunnyVideo } | { ok: false; status: number; reason: string }> {
+): Promise<
+  { ok: true; video: BunnyVideo } | {
+    ok: false;
+    status: number;
+    reason: string;
+  }
+> {
   const libraryId = bunnyLibraryId();
   const apiKey = bunnyApiKey();
   if (libraryId.length === 0 || apiKey.length === 0) {
@@ -192,16 +322,32 @@ export async function bunnyGetVideo(
   const startedAt = Date.now();
   let response: Response;
   try {
-    response = await fetch(`${BUNNY_HOST}/library/${libraryId}/videos/${trimmed}`, {
-      method: "GET",
-      headers: { AccessKey: apiKey, accept: "application/json" },
-    });
+    response = await fetch(
+      `${BUNNY_HOST}/library/${libraryId}/videos/${trimmed}`,
+      {
+        method: "GET",
+        headers: { AccessKey: apiKey, accept: "application/json" },
+      },
+    );
   } catch (error) {
-    return { ok: false, status: 0, reason: networkReason("bunny_get_network", error) };
+    return {
+      ok: false,
+      status: 0,
+      reason: networkReason("bunny_get_network", error),
+    };
   }
-  void recordApiCall("bunny", response.ok, Date.now() - startedAt, response.status);
+  void recordApiCall(
+    "bunny",
+    response.ok,
+    Date.now() - startedAt,
+    response.status,
+  );
   if (!response.ok) {
-    return { ok: false, status: response.status, reason: `bunny_get_http_${response.status}` };
+    return {
+      ok: false,
+      status: response.status,
+      reason: `bunny_get_http_${response.status}`,
+    };
   }
   let body: Record<string, unknown> | null = null;
   try {
@@ -210,7 +356,11 @@ export async function bunnyGetVideo(
     body = null;
   }
   if (body === null || typeof body.guid !== "string") {
-    return { ok: false, status: response.status, reason: "bunny_get_malformed" };
+    return {
+      ok: false,
+      status: response.status,
+      reason: "bunny_get_malformed",
+    };
   }
   return { ok: true, video: toBunnyVideo(body) };
 }
@@ -234,14 +384,22 @@ export async function bunnyDeleteVideo(
   const startedAt = Date.now();
   let response: Response;
   try {
-    response = await fetch(`${BUNNY_HOST}/library/${libraryId}/videos/${trimmed}`, {
-      method: "DELETE",
-      headers: { AccessKey: apiKey, accept: "application/json" },
-    });
+    response = await fetch(
+      `${BUNNY_HOST}/library/${libraryId}/videos/${trimmed}`,
+      {
+        method: "DELETE",
+        headers: { AccessKey: apiKey, accept: "application/json" },
+      },
+    );
   } catch (error) {
     return { ok: false, reason: networkReason("bunny_delete_network", error) };
   }
-  void recordApiCall("bunny", response.ok, Date.now() - startedAt, response.status);
+  void recordApiCall(
+    "bunny",
+    response.ok,
+    Date.now() - startedAt,
+    response.status,
+  );
   if (response.ok || response.status === 404) {
     return { ok: true };
   }
@@ -262,7 +420,9 @@ export function bunnyPlayUrl(guid: string, heightP: number): string {
 
 // Highest available rendition height <= 720 from availableResolutions
 // ("720p,480p" → 720). Returns null when no <=720p rendition exists (fail closed).
-export function bunnyBestMp4(video: BunnyVideo): { url: string; heightP: number } | null {
+export function bunnyBestMp4(
+  video: BunnyVideo,
+): { url: string; heightP: number } | null {
   const raw = video.availableResolutions;
   if (typeof raw !== "string" || raw.trim().length === 0) return null;
   const heights = raw
@@ -332,7 +492,9 @@ export async function verifyBunnyWebhookSignature(input: {
       message: "Bunny webhook signing secret is not configured.",
     };
   }
-  if (input.signatureHeader === null || input.signatureHeader.trim().length === 0) {
+  if (
+    input.signatureHeader === null || input.signatureHeader.trim().length === 0
+  ) {
     return {
       ok: false,
       code: "missing_signature",
@@ -344,7 +506,10 @@ export async function verifyBunnyWebhookSignature(input: {
   // supplies both header values (string|null); a null/wrong value here means the
   // POST claimed a signature without the confirmed v1/hmac-sha256 envelope, which
   // we reject rather than trust. (Undefined = exported-helper unit test → skip.)
-  if (input.signatureVersion !== undefined || input.signatureAlgorithm !== undefined) {
+  if (
+    input.signatureVersion !== undefined ||
+    input.signatureAlgorithm !== undefined
+  ) {
     const version = (input.signatureVersion ?? "").trim().toLowerCase();
     if (version !== "v1") {
       return {
@@ -392,7 +557,11 @@ export type BunnyLibraryUsage = { storageUsage: number; trafficUsage: number };
 export async function bunnyFetchLibraryUsage(
   timeoutMs = 5000,
 ): Promise<
-  { ok: true; usage: BunnyLibraryUsage } | { ok: false; status: number; reason: string }
+  { ok: true; usage: BunnyLibraryUsage } | {
+    ok: false;
+    status: number;
+    reason: string;
+  }
 > {
   const libraryId = bunnyLibraryId();
   const accountKey = bunnyAccountApiKey();
@@ -407,10 +576,18 @@ export async function bunnyFetchLibraryUsage(
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
-    return { ok: false, status: 0, reason: networkReason("bunny_usage_network", error) };
+    return {
+      ok: false,
+      status: 0,
+      reason: networkReason("bunny_usage_network", error),
+    };
   }
   if (!response.ok) {
-    return { ok: false, status: response.status, reason: `bunny_usage_http_${response.status}` };
+    return {
+      ok: false,
+      status: response.status,
+      reason: `bunny_usage_http_${response.status}`,
+    };
   }
   let body: Record<string, unknown> | null = null;
   try {
@@ -419,16 +596,26 @@ export async function bunnyFetchLibraryUsage(
     body = null;
   }
   if (body === null) {
-    return { ok: false, status: response.status, reason: "bunny_usage_malformed" };
+    return {
+      ok: false,
+      status: response.status,
+      reason: "bunny_usage_malformed",
+    };
   }
-  const storageUsage =
-    typeof body.StorageUsage === "number" ? body.StorageUsage : Number(body.StorageUsage);
-  const trafficUsage =
-    typeof body.TrafficUsage === "number" ? body.TrafficUsage : Number(body.TrafficUsage);
+  const storageUsage = typeof body.StorageUsage === "number"
+    ? body.StorageUsage
+    : Number(body.StorageUsage);
+  const trafficUsage = typeof body.TrafficUsage === "number"
+    ? body.TrafficUsage
+    : Number(body.TrafficUsage);
   if (!Number.isFinite(storageUsage) || !Number.isFinite(trafficUsage)) {
     // Config present but the vendor returned non-numeric usage — the DANGEROUS
     // state the alarm must surface loudly, never resolve to green.
-    return { ok: false, status: response.status, reason: "bunny_usage_non_numeric" };
+    return {
+      ok: false,
+      status: response.status,
+      reason: "bunny_usage_non_numeric",
+    };
   }
   return { ok: true, usage: { storageUsage, trafficUsage } };
 }
@@ -442,11 +629,19 @@ export function bunnyUsagePct(input: {
   storageCapBytes: number;
   trafficCapBytes: number;
 }): { usedPercent: number; storagePct: number; trafficPct: number } | null {
-  const s = typeof input.storageUsage === "number" ? input.storageUsage : Number(input.storageUsage);
-  const t = typeof input.trafficUsage === "number" ? input.trafficUsage : Number(input.trafficUsage);
+  const s = typeof input.storageUsage === "number"
+    ? input.storageUsage
+    : Number(input.storageUsage);
+  const t = typeof input.trafficUsage === "number"
+    ? input.trafficUsage
+    : Number(input.trafficUsage);
   if (!Number.isFinite(s) || !Number.isFinite(t)) return null;
   if (!(input.storageCapBytes > 0) || !(input.trafficCapBytes > 0)) return null;
   const storagePct = (100 * s) / input.storageCapBytes;
   const trafficPct = (100 * t) / input.trafficCapBytes;
-  return { usedPercent: Math.max(storagePct, trafficPct), storagePct, trafficPct };
+  return {
+    usedPercent: Math.max(storagePct, trafficPct),
+    storagePct,
+    trafficPct,
+  };
 }

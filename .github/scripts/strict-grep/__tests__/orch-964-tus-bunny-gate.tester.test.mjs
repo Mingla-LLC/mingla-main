@@ -115,11 +115,42 @@ test("orch-0770b: removing verifyBunnyWebhookSignature from the webhook trips WH
   assert.ok(hasPrefix(f, "WH-1:"), `expected a WH-1 signature-authenticity failure, got: ${JSON.stringify(f)}`);
 });
 
-test("orch-0770b: removing the fail-closed processed_mp4_unavailable finalize trips WH-6", () => {
+// [TEST-MOD-APPROVED #2715 A13] Missing derivatives stay retryable and non-destructive.
+test("orch-0770b: reverting derivative lag to processed_mp4_unavailable trips WH-6", () => {
   const s = live0770b();
-  s.webhook = s.webhook.replaceAll("processed_mp4_unavailable", "processed_ok_ignore");
+  s.webhook = s.webhook.replace("derivative_not_ready", "processed_mp4_unavailable");
   const f = scan0770b(s);
-  assert.ok(hasPrefix(f, "WH-6:"), `expected a WH-6 fail-closed-finalize failure, got: ${JSON.stringify(f)}`);
+  assert.ok(hasPrefix(f, "WH-6:"), `expected a WH-6 retryability failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: acknowledging missing derivatives with 2xx trips WH-6", () => {
+  const s = live0770b();
+  s.webhook = s.webhook.replace(
+    'return jsonResponse({ error: "derivative_not_ready" }, 503);',
+    'return jsonResponse({ error: "derivative_not_ready" }, 200);',
+  );
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "WH-6:"), `expected a WH-6 HTTP-status failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: deleting the asset during derivative lag trips WH-6", () => {
+  const s = live0770b();
+  s.webhook = s.webhook.replace(
+    'return jsonResponse({ error: "derivative_not_ready" }, 503);',
+    'await deps.destroyCoverVideoAsset(existingJob); return jsonResponse({ error: "derivative_not_ready" }, 503);',
+  );
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "WH-6:"), `expected a WH-6 destructive-lag failure, got: ${JSON.stringify(f)}`);
+});
+
+test("orch-0770b: terminally failing the job during derivative lag trips WH-6", () => {
+  const s = live0770b();
+  s.webhook = s.webhook.replace(
+    'return jsonResponse({ error: "derivative_not_ready" }, 503);',
+    'await supabase.rpc("cover_video_transition_job", { p_to_status: "failed" }); return jsonResponse({ error: "derivative_not_ready" }, 503);',
+  );
+  const f = scan0770b(s);
+  assert.ok(hasPrefix(f, "WH-6:"), `expected a WH-6 terminal-lag failure, got: ${JSON.stringify(f)}`);
 });
 
 test("orch-0770b: reintroducing the x-cld-timestamp header into the webhook trips WH-CLD", () => {

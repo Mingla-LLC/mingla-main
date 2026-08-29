@@ -1,5 +1,6 @@
 import { supabase } from "./supabase";
 import { BusinessAuthNotReadyError } from "../utils/authReadiness";
+import { EVENT_COVER_MAX_VIDEO_DURATION_MS } from "../utils/eventCoverMediaRules";
 import { Platform } from "react-native";
 import {
   getFileInfoAsync,
@@ -9,7 +10,7 @@ import {
 // keeping expo-file-system / expo/fetch out of web.
 import {
   patchBunnyTusNative,
-  readEventCoverVideoBytes,
+  readEventCoverVideoChunk,
 } from "./eventCoverVideoTusPatch";
 
 declare const require: (moduleName: string) => {
@@ -22,10 +23,12 @@ declare const require: (moduleName: string) => {
   };
 };
 
-export const EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000;
-export const EVENT_COVER_SOURCE_CEILING_MS = 33_000;
+export { EVENT_COVER_MAX_VIDEO_DURATION_MS };
+export const EVENT_COVER_SOURCE_CEILING_MS = EVENT_COVER_MAX_VIDEO_DURATION_MS;
 export const EVENT_COVER_VIDEO_PROCESSING_COPY =
-  "Use your phone's trim screen to keep video covers to 29 seconds. Mingla compresses the cover to a browser-safe MP4 under 25 MB.";
+  Platform.OS === "web"
+    ? "Video covers: MP4, MOV, M4V, or WebM • up to 15 seconds • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB."
+    : "Video covers: MP4, MOV, or M4V • up to 15 seconds • under 100 MB. Mingla makes a browser-safe MP4 under 25 MB.";
 export const EVENT_COVER_VIDEO_NOT_CONFIGURED_COPY =
   "Video cover processing is not configured yet. Images and GIFs still work.";
 
@@ -38,6 +41,7 @@ export type EventCoverVideoJobStatus =
   | "ready"
   | "failed"
   | "cancelled"
+  | "superseded"
   | "applied";
 
 // #966 — Bunny/TUS is the sole cover-video transport. The Cloudinary multipart
@@ -53,7 +57,7 @@ export type EventCoverVideoUploadDescriptor = {
   fields: Record<string, string>;
   protocol?: EventCoverVideoUploadProtocol;
   videoId?: string;
-  metadata?: { filetype?: string; title?: string };
+  metadata?: { filetype?: string; title?: string; sha256?: string };
 };
 
 interface UploadIntentResponse {
@@ -65,11 +69,18 @@ interface UploadIntentResponse {
     protocol?: EventCoverVideoUploadProtocol;
     videoId?: string;
     fields?: Record<string, string>;
-    metadata?: { filetype?: string; title?: string };
+    metadata?: { filetype?: string; title?: string; sha256?: string };
   };
   error?: string;
   detail?: string;
+  initializing?: boolean;
+  retryAfterMs?: number;
+  status?: EventCoverVideoStatus;
 }
+
+export type EventCoverVideoUploadIntent =
+  | { jobId: string; upload: EventCoverVideoUploadDescriptor }
+  | { jobId: string; status: EventCoverVideoStatus; initializing: boolean; retryAfterMs: number };
 
 type EdgeErrorPayload = { error?: string; detail?: string };
 
@@ -100,10 +111,14 @@ export interface EventCoverVideoUploadProgress {
 export type EventCoverVideoUploadStage =
   | { phase: "idle"; percent: 0 }
   | { phase: "picking"; percent: 0 }
-  | { phase: "compressing"; percent: number }
+  | { phase: "preparing" | "validating" | "intent_pending" | "ack_pending" | "reattaching"; percent: 0 }
+  | { phase: "compressing"; percent: number | null }
   | { phase: "uploading"; percent: number }
-  | { phase: "processing"; percent: number }
+  | { phase: "processing"; percent: number | null }
+  | { phase: "detached"; percent: 0; sourceAcknowledged: boolean }
   | { phase: "ready"; percent: 100 }
+  | { phase: "applying"; percent: 100 }
+  | { phase: "applied"; percent: 100 }
   | { phase: "error"; percent: 0; code: string; message: string };
 
 export type CompressionProgress = { phase: "compressing"; percent: number };
@@ -114,7 +129,10 @@ export interface EventCoverVideoStatus {
   eventId: string | null;
   brandId: string;
   // ORCH-0989: "event" (default) or "brand".
-  targetKind?: "event" | "brand";
+  targetKind?: "event" | "brand" | "venue" | "venue_draft";
+  venueId: string | null;
+  draftOwnerKey: string | null;
+  clientOperationId: string | null;
   status: EventCoverVideoJobStatus;
   applyMode: EventCoverVideoApplyMode;
   stageLabel: string;
@@ -131,11 +149,14 @@ export interface EventCoverVideoStatus {
   processedDurationMs: number | null;
   failureCode: string | null;
   failureMessage: string | null;
+  safeJobCode: string;
   createdAt: string | null;
   updatedAt: string | null;
   sourceUploadedAt: string | null;
   appliedAt: string | null;
   cancelledAt: string | null;
+  applicationVersion: number;
+  applicationReceipt: Record<string, unknown> | null;
 }
 
 interface StatusResponse extends Partial<EventCoverVideoStatus> {
@@ -153,9 +174,11 @@ export type EventCoverVideoProviderUploadResponse = {
 };
 
 type WaitForEventCoverVideoReadyOptions = {
-  timeoutMs?: number;
   pollIntervalMs?: number;
   onStatus?: (status: EventCoverVideoStatus) => void;
+  /** @deprecated Processing has no client deadline; retained for old callers. */
+  timeoutMs?: number;
+  signal?: AbortSignal;
 };
 
 export class EventCoverVideoProcessingError extends Error {
@@ -259,6 +282,27 @@ const processingErrorFromPayload = (
       edgeMetadata,
     );
   }
+  if (payload?.error === "upload_temporarily_unavailable") {
+    return new EventCoverVideoProcessingError(
+      "upload_temporarily_unavailable",
+      "Video uploads are updating. Try again in a moment.",
+      edgeMetadata,
+    );
+  }
+  if (payload?.error === "upload_initializing") {
+    return new EventCoverVideoProcessingError(
+      "upload_initializing",
+      "Your resumable upload is still being prepared. Try again in a moment.",
+      edgeMetadata,
+    );
+  }
+  if (payload?.error === "upload_verification_pending") {
+    return new EventCoverVideoProcessingError(
+      "upload_verification_pending",
+      "Your upload arrived and is still being verified. Check again in a moment.",
+      edgeMetadata,
+    );
+  }
   if (payload?.error === "internal_error") {
     return new EventCoverVideoProcessingError(
       "internal_error",
@@ -269,7 +313,7 @@ const processingErrorFromPayload = (
   if (typeof payload?.error === "string") {
     return new EventCoverVideoProcessingError(
       payload.error,
-      payload.detail ?? fallback,
+      fallback,
       edgeMetadata,
     );
   }
@@ -297,11 +341,11 @@ const validationDetailMessage = (detail?: string): string => {
     case "source_size_out_of_range":
       return "Video file size was missing or over 100 MB. Try another trimmed clip.";
     case "source_duration_out_of_range":
-      return "Video duration metadata was missing or out of range. Try another 30-second clip.";
+      return "Choose another 15-second clip and try again.";
     case "trim_invalid":
     case "trim_out_of_range":
     case "trim_over_duration":
-      return "Native trim did not return a valid 30-second clip. Trim again and retry.";
+      return "Choose a valid 15-second clip and try again.";
     case "event_id_invalid_uuid":
     case "brand_id_invalid_uuid":
       return "This event is still syncing. Reopen the draft and try again.";
@@ -504,24 +548,49 @@ const edgeError = async (
   }
   return new EventCoverVideoProcessingError(
     "edge_error",
-    maybe?.message ?? fallback,
+    fallback,
     edgeMetadata,
   );
 };
 
-export const createEventCoverVideoUploadIntent = async (input: {
+type EventCoverVideoUploadIntentInput = {
   // ORCH-0989: "event" (default) or "brand". Brand-target jobs carry no eventId.
-  target?: "event" | "brand";
+  target?: "event" | "brand" | "venue" | "venue_draft";
   eventId?: string;
+  venueId?: string;
+  draftOwnerKey?: string;
+  clientOperationId?: string;
   brandId: string;
   applyMode: EventCoverVideoApplyMode;
   sourceFileName?: string | null;
   sourceMimeType?: string | null;
+  sourceExtension?: string;
+  sourceSha256?: string;
   sourceBytes: number;
   sourceDurationMs: number;
   trimStartMs?: number;
   trimEndMs?: number;
-}): Promise<{ jobId: string; upload: EventCoverVideoUploadDescriptor }> => {
+  refreshTransport?: boolean;
+};
+
+type DeterministicEventCoverVideoUploadIntentInput = EventCoverVideoUploadIntentInput & {
+  clientOperationId: string;
+  sourceExtension: string;
+  sourceSha256: string;
+};
+
+// Legacy callers cannot receive replay/status envelopes because the edge
+// rejects their missing immutable identity with 426. Preserve that truthful
+// success type while deterministic callers handle both descriptor and replay.
+export function createEventCoverVideoUploadIntent(
+  input: DeterministicEventCoverVideoUploadIntentInput,
+): Promise<EventCoverVideoUploadIntent>;
+export function createEventCoverVideoUploadIntent(
+  input: EventCoverVideoUploadIntentInput,
+): Promise<Extract<EventCoverVideoUploadIntent, { upload: EventCoverVideoUploadDescriptor }>>;
+export async function createEventCoverVideoUploadIntent(
+  input: EventCoverVideoUploadIntentInput,
+): Promise<EventCoverVideoUploadIntent> {
   const requestId = `${Date.now().toString(36)}-${Math.random()
     .toString(36)
     .slice(2, 10)}`;
@@ -532,7 +601,6 @@ export const createEventCoverVideoUploadIntent = async (input: {
     requestId,
     sourceBytes: input.sourceBytes,
     sourceDurationMs: input.sourceDurationMs,
-    sourceFileName: input.sourceFileName,
     sourceMimeType: input.sourceMimeType,
     trimEndMs: input.trimEndMs,
     trimStartMs: input.trimStartMs,
@@ -610,6 +678,19 @@ export const createEventCoverVideoUploadIntent = async (input: {
     throw preparedError;
   }
   const jobId = data?.jobId;
+  if (
+    typeof jobId === "string" && data?.status !== undefined &&
+    typeof data.status.status === "string"
+  ) {
+    return {
+      jobId,
+      status: data.status,
+      initializing: data.initializing === true,
+      retryAfterMs: typeof data.retryAfterMs === "number"
+        ? Math.max(250, Math.min(2_000, data.retryAfterMs))
+        : 1_000,
+    };
+  }
   const uploadUrl = data?.upload?.url;
   const uploadFields = data?.upload?.fields;
   if (
@@ -645,7 +726,7 @@ export const createEventCoverVideoUploadIntent = async (input: {
       metadata: data?.upload?.metadata,
     },
   };
-};
+}
 
 // META-ORCH-1270 — TUS (Bunny) transport helpers ────────────────────────────
 const cancelledUploadError = (): EventCoverVideoProcessingError =>
@@ -685,13 +766,17 @@ const toBase64 = (input: string): string => {
 };
 
 export const tusMetadata = (
-  metadata: { filetype?: string; title?: string } | undefined,
+  metadata: { filetype?: string; title?: string; sha256?: string } | undefined,
 ): string => {
   const filetype = metadata?.filetype ?? "video/mp4";
   const parts = [`filetype ${toBase64(filetype)}`];
   const title = metadata?.title;
   if (typeof title === "string" && title.length > 0) {
     parts.push(`title ${toBase64(title)}`);
+  }
+  const sha256 = metadata?.sha256;
+  if (typeof sha256 === "string" && sha256.length > 0) {
+    parts.push(`sha256 ${toBase64(sha256)}`);
   }
   return parts.join(",");
 };
@@ -744,7 +829,7 @@ const patchTusWithXhr = (input: {
       reject(
         new EventCoverVideoProcessingError(
           "source_upload_failed",
-          `Video upload failed (${xhr.status}).`,
+          "We couldn't upload this video. Check your connection and resume.",
         ),
       );
     };
@@ -776,7 +861,9 @@ const patchTusNative = async (input: {
 
   let bytes: Uint8Array<ArrayBuffer>;
   try {
-    bytes = await readEventCoverVideoBytes(input.uri);
+    const offset = Number(input.headers["Upload-Offset"] ?? 0);
+    const length = Number(input.headers["Content-Length"] ?? 0);
+    bytes = await readEventCoverVideoChunk(input.uri, offset, length);
   } catch (error) {
     if (input.signal?.aborted) throw cancelledUploadError();
     if (error instanceof EventCoverVideoProcessingError) throw error;
@@ -802,28 +889,53 @@ const patchTusNative = async (input: {
     if (error instanceof EventCoverVideoProcessingError) throw error;
     throw new EventCoverVideoProcessingError(
       "source_upload_failed",
-      error instanceof Error ? error.message : "Video upload failed.",
+      "We couldn't upload this video. Check your connection and resume.",
+      { edgeDetail: "tus_patch_transport_failed" },
     );
   }
   if (input.signal?.aborted) throw cancelledUploadError();
 
   if (result.status !== 200 && result.status !== 204) {
-    // ORCH-1295 — surface Bunny's response body on a non-2xx PATCH so a future
-    // failure is not blind (the original 400 surfaced only the status code).
-    const body = result.bodyText.trim().slice(0, 500);
     throw new EventCoverVideoProcessingError(
-      "source_upload_failed",
-      body.length > 0
-        ? `Video upload failed (${result.status}): ${body}`
-        : `Video upload failed (${result.status}).`,
+      "transport_integrity_failed",
+      "We couldn't resume this upload. Choose the original video again.",
+      { edgeDetail: `tus_patch_http_${result.status}` },
     );
   }
   emitUploadProgress(input.onProgress, 1, 1);
 };
 
-// Bunny resumable (TUS) upload: create → single-shot PATCH of the bytes. Valid
-// TUS for a <=25 MB clip. Returns null — the server reads the source truth from
-// Bunny (no provider JSON to forward to the ack).
+const EVENT_COVER_TUS_CHUNK_BYTES = 5 * 1024 * 1024;
+
+const headTusOffset = async (
+  upload: EventCoverVideoUploadDescriptor,
+  signal?: AbortSignal,
+): Promise<number> => {
+  let response: Response;
+  try {
+    response = await fetch(upload.url, {
+      method: "HEAD",
+      headers: { ...upload.fields, "Tus-Resumable": "1.0.0" },
+      signal,
+    });
+  } catch {
+    if (signal?.aborted) throw cancelledUploadError();
+    throw new EventCoverVideoProcessingError("source_upload_failed", "Connection interrupted. Resume when you're back online.", { edgeDetail: "tus_head_transport_failed" });
+  }
+  if (!response.ok) {
+    throw new EventCoverVideoProcessingError(
+      "transport_integrity_failed",
+      "We couldn't resume this upload. Choose the original video again.",
+      { edgeDetail: `tus_head_http_${response.status}` },
+    );
+  }
+  const offset = Number(response.headers.get("Upload-Offset"));
+  if (!Number.isSafeInteger(offset) || offset < 0) {
+    throw new EventCoverVideoProcessingError("transport_integrity_failed", "We couldn't resume this upload. Choose the original video again.");
+  }
+  return offset;
+};
+
 export const uploadEventCoverVideoSourceViaTus = async (input: {
   upload: EventCoverVideoUploadDescriptor;
   uri: string;
@@ -861,61 +973,34 @@ export const uploadEventCoverVideoSourceViaTus = async (input: {
     );
   }
 
-  // 1) TUS creation → Location (the resumable upload URL).
-  const createResponse = await fetch(input.upload.url, {
-    headers: {
+  let offset = await headTusOffset(input.upload, input.signal);
+  if (offset > bytes) throw new EventCoverVideoProcessingError("transport_integrity_failed", "We couldn't resume this upload. Choose the original video again.");
+  while (offset < bytes) {
+    const chunkLength = Math.min(EVENT_COVER_TUS_CHUNK_BYTES, bytes - offset);
+    const patchHeaders = {
       ...input.upload.fields,
+      "Content-Type": "application/offset+octet-stream",
+      "Content-Length": String(chunkLength),
       "Tus-Resumable": "1.0.0",
-      "Upload-Length": String(bytes),
-      "Upload-Metadata": tusMetadata(input.upload.metadata),
-    },
-    method: "POST",
-    signal: input.signal,
-  });
-  if (createResponse.status !== 201) {
-    throw new EventCoverVideoProcessingError(
-      "source_upload_failed",
-      `Video upload could not start (${createResponse.status}).`,
-    );
-  }
-  const location =
-    createResponse.headers.get("location") ?? createResponse.headers.get("Location");
-  if (location === null || location.length === 0) {
-    throw new EventCoverVideoProcessingError(
-      "source_upload_failed",
-      "Video upload endpoint was missing.",
-    );
-  }
-  const patchUrl = resolveTusLocation(input.upload.url, location);
-  const patchHeaders = {
-    // ORCH-1297 — Bunny's TUS PATCH requires the SAME auth headers as the CREATE
-    // (AuthorizationSignature / AuthorizationExpire / LibraryId / VideoId).
-    // Without them the PATCH returns 400 "Library ID missing or invalid".
-    // Spread the auth fields FIRST so the explicit TUS headers below win on any
-    // key collision. Both legs (native expo/fetch + web XHR) consume patchHeaders.
-    ...input.upload.fields,
-    "Content-Type": "application/offset+octet-stream",
-    "Tus-Resumable": "1.0.0",
-    "Upload-Offset": "0",
-  };
-
-  // 2) Single-shot PATCH of the bytes.
-  if (Platform.OS === "web") {
-    await patchTusWithXhr({
-      blob: webBlob as Blob,
-      headers: patchHeaders,
-      onProgress: input.onProgress,
-      signal: input.signal,
-      url: patchUrl,
-    });
-  } else {
-    await patchTusNative({
-      headers: patchHeaders,
-      onProgress: input.onProgress,
-      signal: input.signal,
-      uri: input.uri,
-      url: patchUrl,
-    });
+      "Upload-Offset": String(offset),
+    };
+    if (Platform.OS === "web") {
+      await patchTusWithXhr({
+        blob: (webBlob as Blob).slice(offset, offset + chunkLength),
+        headers: patchHeaders,
+        onProgress: (progress) => emitUploadProgress(input.onProgress, offset + progress.bytesSent, bytes),
+        signal: input.signal,
+        url: input.upload.url,
+      });
+    } else {
+      await patchTusNative({ headers: patchHeaders, onProgress: undefined, signal: input.signal, uri: input.uri, url: input.upload.url });
+    }
+    const serverOffset = await headTusOffset(input.upload, input.signal);
+    if (serverOffset <= offset || serverOffset > bytes) {
+      throw new EventCoverVideoProcessingError("transport_integrity_failed", "We couldn't resume this upload. Choose the original video again.");
+    }
+    offset = serverOffset;
+    emitUploadProgress(input.onProgress, offset, bytes);
   }
   emitUploadProgress(input.onProgress, 1, 1);
   return null;
@@ -946,10 +1031,11 @@ export const uploadEventCoverVideoSource = async (input: {
 
 export const fetchEventCoverVideoStatus = async (
   jobId: string,
+  signal?: AbortSignal,
 ): Promise<EventCoverVideoStatus> => {
   const { data, error } = await supabase.functions.invoke<StatusResponse>(
     "event-cover-video-status",
-    { body: { jobId } },
+    { body: { jobId }, signal },
   );
   if (error) throw await edgeError(error, "Could not check video processing status.");
   if (data?.error !== undefined) {
@@ -964,6 +1050,21 @@ export const fetchEventCoverVideoStatus = async (
   return mapStatusResponse(data as StatusResponse, "event-cover-video-status");
 };
 
+export const fetchEventCoverVideoStatusByTarget = async (input: {
+  target: "event" | "brand" | "venue" | "venue_draft"; eventId?: string; brandId: string; venueId?: string; draftOwnerKey?: string; signal?: AbortSignal;
+}): Promise<EventCoverVideoStatus | null> => {
+  const { signal, ...body } = input;
+  const { data, error } = await supabase.functions.invoke<StatusResponse>("event-cover-video-status", { body, signal });
+  if (error) {
+    const mapped = await edgeError(error, "Could not restore video processing status.");
+    if (mapped.code === "not_found") return null;
+    throw mapped;
+  }
+  if (data?.error === "not_found") return null;
+  if (data?.error) throw processingErrorFromPayload(data, "Could not restore video processing status.");
+  return data ? mapStatusResponse(data, "event-cover-video-status") : null;
+};
+
 const mapStatusResponse = (
   payload: StatusResponse,
   label: string,
@@ -973,6 +1074,7 @@ const mapStatusResponse = (
   if (typeof responseJobId !== "string" || typeof statusValue !== "string") {
     throwMalformed(label);
   }
+  const canonicalJobId = responseJobId as string;
   const status = statusValue as EventCoverVideoJobStatus;
   const stageLabel =
     typeof payload.stageLabel === "string" ? payload.stageLabel : status;
@@ -987,11 +1089,19 @@ const mapStatusResponse = (
     createdAt: payload.createdAt ?? null,
     // ORCH-0989: null for brand-target jobs (the edge fn returns null eventId).
     eventId: typeof payload.eventId === "string" ? payload.eventId : null,
-    targetKind: payload.targetKind === "brand" ? "brand" : "event",
+    targetKind: payload.targetKind === "brand" || payload.targetKind === "venue" || payload.targetKind === "venue_draft"
+      ? payload.targetKind
+      : "event",
+    venueId: typeof payload.venueId === "string" ? payload.venueId : null,
+    draftOwnerKey: typeof payload.draftOwnerKey === "string" ? payload.draftOwnerKey : null,
+    clientOperationId: typeof payload.clientOperationId === "string" ? payload.clientOperationId : null,
     failureCode: payload.failureCode ?? null,
+    // Retained as internal diagnostics for legacy callers; UI paths map only
+    // the finite failureCode and safe job code below.
     failureMessage: payload.failureMessage ?? null,
+    safeJobCode: typeof payload.safeJobCode === "string" ? payload.safeJobCode : canonicalJobId.slice(0, 8),
     isTerminal: Boolean(payload.isTerminal),
-    jobId: responseJobId as string,
+    jobId: canonicalJobId,
     processedBytes: typeof payload.processedBytes === "number" ? payload.processedBytes : null,
     processedDurationMs:
       typeof payload.processedDurationMs === "number" ? payload.processedDurationMs : null,
@@ -1005,12 +1115,16 @@ const mapStatusResponse = (
     stageLabel,
     status,
     updatedAt: payload.updatedAt ?? null,
+    applicationVersion: typeof payload.applicationVersion === "number" ? payload.applicationVersion : 0,
+    applicationReceipt: payload.applicationReceipt !== null && typeof payload.applicationReceipt === "object"
+      ? payload.applicationReceipt as Record<string, unknown>
+      : null,
   };
 };
 
 export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
   // ORCH-0989: "event" (default) or "brand". Brand-target carries no eventId.
-  target?: "event" | "brand";
+  target?: "event" | "brand" | "venue" | "venue_draft";
   jobId: string;
   eventId?: string;
   brandId: string;
@@ -1049,10 +1163,14 @@ export const acknowledgeEventCoverVideoSourceUploaded = async (input: {
   return mapStatusResponse(data as StatusResponse, "event-cover-video-source-uploaded");
 };
 
-export const applyEventCoverVideoJob = async (jobId: string): Promise<string> => {
+export const applyEventCoverVideoJob = async (
+  jobId: string,
+  expectedVersion?: number,
+  expectedProcessedUrl?: string,
+): Promise<string> => {
   const { data, error } = await supabase.functions.invoke<{ processedUrl?: string }>(
     "event-cover-video-apply",
-    { body: { jobId } },
+    { body: { jobId, expectedVersion, expectedProcessedUrl } },
   );
   if (error) throw await edgeError(error, "Could not save processed video cover.");
   if ((data as { error?: string; detail?: string } | null)?.error !== undefined) {
@@ -1097,14 +1215,31 @@ export const waitForEventCoverVideoReady = async (
   jobId: string,
   options: WaitForEventCoverVideoReadyOptions | number = {},
 ): Promise<EventCoverVideoStatus> => {
-  const timeoutMs = typeof options === "number" ? options : options.timeoutMs ?? 120_000;
   const pollIntervalMs =
     typeof options === "number" ? 1500 : options.pollIntervalMs ?? 1500;
   const onStatus = typeof options === "number" ? undefined : options.onStatus;
-  const startedAt = Date.now();
+  const signal = typeof options === "number" ? undefined : options.signal;
+  const delay = (ms: number): Promise<void> => new Promise((resolve, reject) => {
+    const timer = setTimeout(resolve, ms);
+    signal?.addEventListener("abort", () => { clearTimeout(timer); reject(cancelledUploadError()); }, { once: true });
+  });
   let lastStatus: EventCoverVideoStatus | undefined;
-  while (Date.now() - startedAt < timeoutMs) {
-    const status = await fetchEventCoverVideoStatus(jobId);
+  let failureCount = 0;
+  while (true) {
+    let status: EventCoverVideoStatus;
+    try {
+      status = await fetchEventCoverVideoStatus(jobId, signal);
+      failureCount = 0;
+    } catch (error) {
+      if (
+        error instanceof EventCoverVideoProcessingError &&
+        ["forbidden", "not_found", "validation_error", "unauthenticated"].includes(error.code)
+      ) throw error;
+      failureCount += 1;
+      const backoff = Math.min(30_000, pollIntervalMs * 2 ** Math.min(failureCount, 5));
+      await delay(backoff + Math.floor(Math.random() * 250));
+      continue;
+    }
     lastStatus = status;
     onStatus?.(status);
     if (status.status === "ready" || status.status === "applied") {
@@ -1117,18 +1252,18 @@ export const waitForEventCoverVideoReady = async (
       });
       return status;
     }
-    if (status.status === "failed" || status.status === "cancelled") {
+    if (status.status === "failed" || status.status === "cancelled" || status.status === "superseded") {
+      const safeMessage = status.status === "cancelled"
+        ? "Video upload was cancelled."
+        : status.status === "superseded"
+        ? "A newer video was selected."
+        : `We couldn't process this video. Choose another video, or contact support with job code ${status.safeJobCode}.`;
       throw new EventCoverVideoProcessingError(
         status.failureCode ?? status.status,
-        status.failureMessage ?? "Video processing failed.",
+        safeMessage,
         { lastStatus: status, phase: "status" },
       );
     }
-    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+    await delay(pollIntervalMs);
   }
-  throw new EventCoverVideoProcessingError(
-    "processing_timeout",
-    "Your video is still processing. You can check again in a moment.",
-    { lastStatus, phase: "status" },
-  );
 };
