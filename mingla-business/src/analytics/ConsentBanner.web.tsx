@@ -1,6 +1,6 @@
 /** Buyer-web cookie consent, composed as one viewport-bounded persistent action. */
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Linking,
   Platform,
@@ -55,6 +55,7 @@ const safeTop = "max(16px, env(safe-area-inset-top, 0px))";
 export function ConsentBanner(): React.ReactElement | null {
   const consentState = useWebConsentState();
   const [manageOpen, setManageOpen] = useState<boolean>(false);
+  const manageButtonRef = useRef<View | null>(null);
   const [compact, setCompact] = useState<boolean>(
     () => typeof window !== "undefined" && window.innerWidth < 320,
   );
@@ -66,6 +67,16 @@ export function ConsentBanner(): React.ReactElement | null {
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
   }, []);
+
+  // RNW does not serialize accessibilityState.expanded on this Pressable in
+  // the installed runtime. Keep the native semantic input below, and correct
+  // only the real web host so assistive technology receives the binding state.
+  useLayoutEffect(() => {
+    const manageButton = manageButtonRef.current;
+    if (manageButton instanceof HTMLElement) {
+      manageButton.setAttribute("aria-expanded", String(manageOpen));
+    }
+  }, [manageOpen]);
 
   if (Platform.OS !== "web" || consentState !== "unresolved") return null;
 
@@ -171,6 +182,7 @@ export function ConsentBanner(): React.ReactElement | null {
           </View>
 
           <Pressable
+            ref={manageButtonRef}
             onPress={() => setManageOpen((open) => !open)}
             accessibilityRole="button"
             accessibilityLabel="Manage analytics preferences"

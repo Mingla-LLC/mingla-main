@@ -134,3 +134,21 @@ test("keyboard focus reaches Manage, Reject, and Accept with visible focus treat
   await expect(manage).toBeFocused();
   expect(await manage.evaluate((node) => getComputedStyle(node).outlineWidth)).toBe("2px");
 });
+
+test("Manage exposes one focused host with explicit collapsed and expanded state", async ({ page }) => {
+  await page.goto(harness);
+  const manage = page.getByTestId("issue-2769-consent-manage");
+  await manage.evaluate((node) => {
+    node.setAttribute("data-issue-2769-manage-identity", "stable");
+  });
+  await manage.focus();
+  await expect(manage).toBeFocused();
+  await expect(manage).toHaveAttribute("aria-expanded", "false");
+  await manage.click();
+  await expect(manage).toBeFocused();
+  await expect(manage).toHaveAttribute("aria-expanded", "true");
+  await manage.click();
+  await expect(manage).toBeFocused();
+  await expect(manage).toHaveAttribute("aria-expanded", "false");
+  await expect(manage).toHaveAttribute("data-issue-2769-manage-identity", "stable");
+});

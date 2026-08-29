@@ -204,7 +204,9 @@ export function subscribeStoredConsent(subscriber: () => void): () => void {
   };
 }
 
-if (hasWindow()) window.addEventListener("storage", reconcileStoredConsent);
+if (hasWindow() && typeof window.addEventListener === "function") {
+  window.addEventListener("storage", reconcileStoredConsent);
+}
 
 function writeStoredConsent(choice: ConsentChoice): void {
   if (!hasWindow()) return;
