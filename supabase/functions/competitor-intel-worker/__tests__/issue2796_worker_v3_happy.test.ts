@@ -106,7 +106,7 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
   const previous = Deno.env.get("GEMINI_API_KEY");
   try {
     Deno.env.set("GEMINI_API_KEY", "test");
-    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.3");
+    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.4");
     const serializedSchema = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
     for (const forbidden of [
       "minItems",
@@ -183,15 +183,25 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
                   owner_fact_ids: ["of-listing-category"],
                 }],
                 action_plan: [{
-                  index: 4,
-                  action_id: "wrong-action",
-                  timeframe: "this_week",
-                  impact: "high",
-                  confidence: "medium",
-                  order: 7,
+                  index: 0,
+                  action_id: "a2",
+                  timeframe: "this_month",
+                  impact: "medium",
+                  confidence: "low",
+                  order: 1,
                   is_primary: false,
                   signal_ids: ["s-instagram-1", "unknown-signal"],
                   owner_fact_ids: ["of-listing_category"],
+                }, {
+                  index: 1,
+                  action_id: "a1",
+                  timeframe: "this_week",
+                  impact: "high",
+                  confidence: "medium",
+                  order: 2,
+                  is_primary: true,
+                  signal_ids: ["s-instagram-1"],
+                  owner_fact_ids: [],
                 }],
               }),
             }],
@@ -230,7 +240,10 @@ Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upg
     );
     assertEquals(brief.decision_report.action_plan[0].action_id, "a1");
     assertEquals(brief.decision_report.action_plan[0].is_primary, true);
+    assertEquals(brief.decision_report.action_plan[0].timeframe, "this_week");
     assertEquals(brief.decision_report.action_plan[0].owner_fact_ids, []);
+    assertEquals(brief.decision_report.action_plan[1].action_id, "a2");
+    assertEquals(brief.decision_report.action_plan[1].timeframe, "this_month");
   } finally {
     previous === undefined
       ? Deno.env.delete("GEMINI_API_KEY")

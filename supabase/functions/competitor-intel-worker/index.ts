@@ -12,7 +12,7 @@ const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
 export const GEMINI_MODEL_ID = "gemini-2.5-flash";
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.3";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.4";
 export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
@@ -1268,18 +1268,26 @@ export function groundedDecisionBindings(
     ? parsed.action_plan
     : [];
   const action_plan = actions.map((action, index) => {
-    const raw = actionInput[index] && typeof actionInput[index] === "object" &&
-        !Array.isArray(actionInput[index])
-      ? actionInput[index] as Record<string, unknown>
+    const matched = actionInput.find((item) =>
+      item && typeof item === "object" && !Array.isArray(item) &&
+      (item as Record<string, unknown>).action_id === action.id
+    );
+    const indexed = actionInput[index];
+    const raw = matched && typeof matched === "object" && !Array.isArray(matched)
+      ? matched as Record<string, unknown>
+      : indexed && typeof indexed === "object" && !Array.isArray(indexed)
+      ? indexed as Record<string, unknown>
       : {};
     return {
       index,
       action_id: action.id,
-      timeframe: ["this_week", "this_month", "bigger_project"].includes(
-          String(raw.timeframe),
-        )
+      timeframe: action.is_primary === true
+        ? "this_week"
+        : ["this_week", "this_month", "bigger_project"].includes(
+            String(raw.timeframe),
+          )
         ? raw.timeframe
-        : index === 0 ? "this_week" : "this_month",
+        : "this_month",
       impact: ["high", "medium"].includes(String(raw.impact))
         ? raw.impact
         : "medium",
