@@ -16,6 +16,9 @@ import { PublicVenueScreen } from "issue2768-real-public-venue";
 // @ts-expect-error -- declared by bundle.mjs for this browser harness only.
 // eslint-disable-next-line import/no-unresolved
 import { ConsentBanner } from "issue2768-real-consent-banner";
+// @ts-expect-error -- declared by bundle.mjs for this browser harness only.
+// eslint-disable-next-line import/no-unresolved
+import { useWebConsentState } from "issue2768-real-use-web-consent-state";
 
 type Issue2768Topology = "business-preview" | "buyer-host";
 
@@ -64,10 +67,13 @@ window.__issue2768ConsentOwnerName = ConsentBanner.name;
 window.__issue2768VenueAnalytics = [];
 
 function Harness(): React.ReactElement {
+  const webConsentState = useWebConsentState();
+
   return (
     <View style={{ flex: 1 }} testID={`issue-2768-topology-${topology}`}>
       <PublicVenueScreen
         venue={venue}
+        webConsentState={webConsentState}
         discoveryPrice={null}
         menu={[
           {
@@ -85,8 +91,16 @@ function Harness(): React.ReactElement {
             ],
           },
         ]}
+        menuLifecycle={{
+          state: "ready",
+          isFetching: false,
+          onRetry: () => undefined,
+        }}
         reservable={{ reservable: true, venueId: venue.id, currency: "NGN" }}
         reservabilityState="ready"
+        refreshState="ready"
+        refreshErrorVersion={0}
+        onRetryRefresh={() => undefined}
         safeAreaInsets={{ top: 0, bottom: 0 }}
         loadThemeFont={() => undefined}
         bookingBody={() => (

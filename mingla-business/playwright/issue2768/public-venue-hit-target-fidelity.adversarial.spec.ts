@@ -3,17 +3,6 @@ import { expect, test, type Page } from "@playwright/test";
 type Point = { x: number; y: number };
 type Activation = "pointer" | "keyboard" | "touch";
 
-interface GeometryEvidence {
-  center: Point;
-  centerHit: { insideConsent: boolean; insideCta: boolean; label: string };
-  visibleCtaPoint: Point;
-  visibleHit: { insideConsent: boolean; insideCta: boolean; label: string };
-  hostContainsVisiblePoint: boolean;
-  panelContainsVisiblePoint: boolean;
-  hostPointerEvents: string;
-  panelPointerEvents: string;
-}
-
 async function expectNoTracking(page: Page): Promise<void> {
   expect(
     await page.evaluate(() => ({
@@ -40,85 +29,37 @@ async function expectNoTracking(page: Page): Promise<void> {
   });
 }
 
-async function collectFreshGeometry(page: Page): Promise<GeometryEvidence> {
-  return page.evaluate(() => {
-    const cta = document.querySelector<HTMLElement>(
-      "[data-testid='issue-2729-reserve-cta']",
-    );
-    const consent = document.querySelector<HTMLElement>(
-      "[aria-label='Cookie consent']",
-    );
-    const panel = consent?.firstElementChild as HTMLElement | null;
-    if (cta === null || consent === null || panel === null) {
-      throw new Error("issue #2768 adversarial geometry requires real CTA and consent owners");
-    }
-    const ctaRect = cta.getBoundingClientRect();
-    const hostRect = consent.getBoundingClientRect();
-    const panelRect = panel.getBoundingClientRect();
-    const contains = (rect: DOMRect, point: Point): boolean =>
-      point.x >= rect.left &&
-      point.x <= rect.right &&
-      point.y >= rect.top &&
-      point.y <= rect.bottom;
-    const owns = (owner: HTMLElement, hit: Element | null): boolean =>
-      hit !== null && (owner === hit || owner.contains(hit));
-    const label = (hit: Element | null): string =>
-      hit instanceof HTMLElement
-        ? hit.getAttribute("data-testid") ??
-          hit.getAttribute("aria-label") ??
-          hit.tagName
-        : "none";
-
-    const center = {
-      x: ctaRect.left + ctaRect.width / 2,
-      y: ctaRect.top + ctaRect.height / 2,
-    };
-    const centerElement = document.elementFromPoint(center.x, center.y);
-
-    let visibleCtaPoint: Point | null = null;
-    for (
-      let y = Math.ceil(ctaRect.top + 1);
-      y < Math.floor(ctaRect.bottom - 1) && visibleCtaPoint === null;
-      y += 1
-    ) {
-      for (
-        let x = Math.ceil(ctaRect.left + 1);
-        x < Math.floor(ctaRect.right - 1);
-        x += 1
-      ) {
-        const hit = document.elementFromPoint(x, y);
-        if (owns(cta, hit)) {
-          visibleCtaPoint = { x, y };
-          break;
-        }
-      }
-    }
-    if (visibleCtaPoint === null) {
-      throw new Error("issue #2768 found no genuinely hit-testable CTA pixel");
-    }
-    const visibleElement = document.elementFromPoint(
-      visibleCtaPoint.x,
-      visibleCtaPoint.y,
-    );
-    return {
-      center,
-      centerHit: {
-        insideConsent: owns(consent, centerElement),
-        insideCta: owns(cta, centerElement),
-        label: label(centerElement),
-      },
-      visibleCtaPoint,
-      visibleHit: {
-        insideConsent: owns(consent, visibleElement),
-        insideCta: owns(cta, visibleElement),
-        label: label(visibleElement),
-      },
-      hostContainsVisiblePoint: contains(hostRect, visibleCtaPoint),
-      panelContainsVisiblePoint: contains(panelRect, visibleCtaPoint),
-      hostPointerEvents: getComputedStyle(consent).pointerEvents,
-      panelPointerEvents: getComputedStyle(panel).pointerEvents,
-    };
+async function expectExclusiveFreshConsent(page: Page): Promise<void> {
+  const consent = page.getByLabel("Cookie consent");
+  const reject = page.getByRole("button", {
+    name: "Reject cookies and analytics",
   });
+  await expect(consent).toHaveCount(1);
+  await expect(reject).toHaveCount(1);
+  await expect(reject).toBeVisible();
+  await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(0);
+  expect(
+    await reject.evaluate((control) => {
+      const consentOwner = document.querySelector<HTMLElement>(
+        "[aria-label='Cookie consent']",
+      );
+      const cta = document.querySelector<HTMLElement>(
+        "[data-testid='issue-2729-reserve-cta']",
+      );
+      const rect = control.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return {
+        consentOwns:
+          consentOwner !== null &&
+          hit !== null &&
+          (consentOwner === hit || consentOwner.contains(hit)),
+        ctaExists: cta !== null,
+      };
+    }),
+  ).toEqual({ consentOwns: true, ctaExists: false });
 }
 
 async function scrollOwnerTo(page: Page, boundary: "top" | "bottom"): Promise<number> {
@@ -185,6 +126,7 @@ async function assertOneActivation(page: Page, activation: Activation): Promise<
   await page.reload();
   await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
   const cta = page.getByTestId("issue-2729-reserve-cta");
+  await expect(cta).toHaveCount(1);
   await expect(cta).toBeVisible();
   expect(
     await page.evaluate(
@@ -222,7 +164,7 @@ async function assertOneActivation(page: Page, activation: Activation): Promise<
 
 for (const topology of ["business-preview", "buyer-host"] as const) {
   for (const width of [320, 402] as const) {
-    test(`${topology} at ${width}px proves covered, visible, and activated origins without duplication`, async ({
+    test(`${topology} at ${width}px proves exclusive consent then activated CTA origins without duplication`, async ({
       page,
     }) => {
       const consoleErrors: string[] = [];
@@ -236,25 +178,12 @@ for (const topology of ["business-preview", "buyer-host"] as const) {
       await page.evaluate(() => localStorage.clear());
       await page.goto(`/${topology}?width=${width}`);
       await expect(page.getByTestId(`issue-2768-topology-${topology}`)).toBeVisible();
-      await expect(page.getByLabel("Cookie consent")).toBeVisible();
-      await expect(page.getByTestId("issue-2729-reserve-cta")).toBeVisible();
+      await expectExclusiveFreshConsent(page);
       await expectNoTracking(page);
-
-      const fresh = await collectFreshGeometry(page);
-      expect(fresh.centerHit.insideConsent).toBe(true);
-      expect(fresh.centerHit.insideCta).toBe(false);
-      expect(fresh.visibleHit.insideConsent).toBe(false);
-      expect(fresh.visibleHit.insideCta).toBe(true);
-      expect(fresh.hostContainsVisiblePoint).toBe(true);
-      // The rounded panel rectangle still geometrically contains this corner
-      // pixel. Immediate hit ownership, not rectangle membership, proves the
-      // box-none host lets the genuinely visible CTA pixel receive input.
-      expect(fresh.panelContainsVisiblePoint).toBe(true);
-      expect(fresh.hostPointerEvents).toBe("none");
-      expect(fresh.panelPointerEvents).toBe("auto");
 
       await page.getByRole("button", { name: "Reject cookies and analytics" }).click();
       await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
+      await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
       expect(
         await page.evaluate(() =>
           JSON.parse(localStorage.getItem("mingla_consent_v1") ?? "null"),

@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
 type Point = { x: number; y: number };
-type OriginKind = "overlay-origin" | "cta-origin";
+type OriginKind = "cta-origin";
 type GestureKind = "pan" | "tap";
 
 interface GestureEvidence {
@@ -65,7 +65,7 @@ async function captureTouchGesture(
   end: Point,
   gesture: GestureKind = "pan",
 ): Promise<GestureEvidence> {
-  const precondition = await page.evaluate(({ origin, start }) => {
+  const precondition = await page.evaluate(({ start }) => {
     const cta = document.querySelector<HTMLElement>(
       "[data-testid='issue-2729-reserve-cta']",
     );
@@ -79,11 +79,8 @@ async function captureTouchGesture(
     const ctaOwnsHit = cta === hit || cta.contains(hit);
     const consentOwnsHit =
       consent !== null && (consent === hit || consent.contains(hit));
-    if (origin === "cta-origin" && !ctaOwnsHit) {
+    if (!ctaOwnsHit) {
       throw new Error("issue #2768 refused to name a non-CTA hit CTA-origin");
-    }
-    if (origin === "overlay-origin" && !consentOwnsHit) {
-      throw new Error("issue #2768 refused to name a non-consent hit overlay-origin");
     }
     let owner = cta.parentElement;
     while (owner !== null) {
@@ -250,8 +247,39 @@ async function assertNoAnalyticsInitialization(page: Page): Promise<void> {
   });
 }
 
+async function assertFreshConsentOwnership(page: Page): Promise<void> {
+  const consent = page.getByLabel("Cookie consent");
+  const reject = page.getByRole("button", {
+    name: "Reject cookies and analytics",
+  });
+  await expect(consent).toHaveCount(1);
+  await expect(reject).toHaveCount(1);
+  await expect(reject).toBeVisible();
+  await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(0);
+  expect(
+    await reject.evaluate((control) => {
+      const owner = document.querySelector<HTMLElement>(
+        "[aria-label='Cookie consent']",
+      );
+      const cta = document.querySelector<HTMLElement>(
+        "[data-testid='issue-2729-reserve-cta']",
+      );
+      const rect = control.getBoundingClientRect();
+      const hit = document.elementFromPoint(
+        rect.left + rect.width / 2,
+        rect.top + rect.height / 2,
+      );
+      return {
+        consentOwns:
+          owner !== null && hit !== null && (owner === hit || owner.contains(hit)),
+        ctaExists: cta !== null,
+      };
+    }),
+  ).toEqual({ consentOwns: true, ctaExists: false });
+}
+
 for (const topology of ["business-preview", "buyer-host"] as const) {
-  test(`${topology} names the overlay honestly, rejects visibly, then proves CTA pan and tap`, async ({
+  test(`${topology} proves exclusive consent, rejects visibly, then proves CTA pan and tap`, async ({
     page,
   }) => {
     const runtimeErrors: string[] = [];
@@ -264,51 +292,15 @@ for (const topology of ["business-preview", "buyer-host"] as const) {
     });
     await page.goto(`/${topology}`);
     await expect(page.getByTestId(`issue-2768-topology-${topology}`)).toBeVisible();
-    await expect(page.getByLabel("Cookie consent")).toBeVisible();
-    await expect(page.getByTestId("issue-2729-reserve-cta")).toBeVisible();
+    await assertFreshConsentOwnership(page);
     expect(await page.evaluate(() => window.__issue2768Topology)).toBe(topology);
     await assertNoAnalyticsInitialization(page);
-
-    await setVenueScrollToLowerBoundary(page);
-    const freshPoint = await ctaPoint(page);
-    const ctaRectOwnsPoint = await page
-      .getByTestId("issue-2729-reserve-cta")
-      .evaluate((cta, point) => {
-        const rect = cta.getBoundingClientRect();
-        return (
-          point.x >= rect.left &&
-          point.x <= rect.right &&
-          point.y >= rect.top &&
-          point.y <= rect.bottom
-        );
-      }, freshPoint);
-    expect(ctaRectOwnsPoint).toBe(true);
-    expect(
-      await page
-        .getByTestId("issue-2729-reserve-cta")
-        .evaluate((node) => getComputedStyle(node).touchAction),
-    ).toBe("manipulation");
-
-    const freshOverlay = await captureTouchGesture(
-      page,
-      "overlay-origin",
-      freshPoint,
-      { x: freshPoint.x, y: Math.min(842, freshPoint.y + 48) },
-    );
-    expect(freshOverlay.hit.insideConsent).toBe(true);
-    expect(freshOverlay.hit.insideCta).toBe(false);
-    expect(freshOverlay.owner.containsCta).toBe(true);
-    expect(freshOverlay.owner.before).toBeCloseTo(freshOverlay.owner.max, 0);
-    expect(freshOverlay.owner.after).toBeCloseTo(freshOverlay.owner.before, 0);
-    expect(freshOverlay.sheetCount).toBe(0);
-    expect(freshOverlay.selectedTab).toBe("Overview");
-    expect(freshOverlay.analyticsCount).toBe(0);
-    expect(freshOverlay.event?.path).toContain("Cookie consent");
 
     await page
       .getByRole("button", { name: "Reject cookies and analytics" })
       .click();
     await expect(page.getByLabel("Cookie consent")).toHaveCount(0);
+    await expect(page.getByTestId("issue-2729-reserve-cta")).toHaveCount(1);
     expect(
       await page.evaluate(() =>
         JSON.parse(localStorage.getItem("mingla_consent_v1") ?? "null"),

@@ -61,6 +61,10 @@ config.resolver.extraNodeModules = {
     business,
     "src/analytics/ConsentBanner.web.tsx",
   ),
+  "issue2768-real-use-web-consent-state": path.resolve(
+    business,
+    "src/analytics/useWebConsentState.web.ts",
+  ),
 };
 
 const previousResolveRequest = config.resolver.resolveRequest;
