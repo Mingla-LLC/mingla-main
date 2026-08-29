@@ -161,4 +161,5 @@ jobs:
         run: |
           test -f playwright/issue2771-preconsent-analytics.spec.ts
           test -f playwright/issue2771-preconsent-analytics.tester.adversarial.spec.ts
+          test -f playwright/issue2795-posthog-alias-consent.spec.ts
           npx playwright test -c playwright.issue2771.config.ts

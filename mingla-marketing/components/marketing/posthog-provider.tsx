@@ -91,6 +91,8 @@ async function bootGrantedMarketingAnalytics(): Promise<void> {
     posthog.init(key, {
       api_host: 'https://us.i.posthog.com',
       ui_host: POSTHOG_HOST,
+      // Issue #2795: each public origin owns its own consent decision.
+      cross_subdomain_cookie: false,
       person_profiles: 'identified_only',
       capture_pageview: true,
       capture_pageleave: true,

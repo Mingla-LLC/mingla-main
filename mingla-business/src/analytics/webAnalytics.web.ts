@@ -313,6 +313,9 @@ async function bootGrantedAnalytics(): Promise<void> {
       const { default: posthog } = await import("posthog-js");
       posthog.init(posthogKey, {
         api_host: posthogHost,
+        // Issue #2795: consent is origin-local. Never let a granted public
+        // alias persist PostHog identity onto sibling *.usemingla.com hosts.
+        cross_subdomain_cookie: false,
         person_profiles: "identified_only",
         capture_pageview: true,
         capture_pageleave: true,
