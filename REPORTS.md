@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Public Venue, Event, RSVP, Trip, and Experience hero images now expose truthful screen-reader names and announce user-driven image changes once without leaking media URLs or duplicating gallery controls (#2774, PR #2786)
 - 2026-08-28 — Public venue gallery thumbnails are now real, named controls with reliable keyboard activation, unclipped focus visibility, and preserved native selection behavior across web and both Mingla apps (#2739, PR #2775)
 - 2026-08-28 — Venue Insights now turns weekly public competitor changes into sourced, venue-relevant actions while enforcing and measuring a $1-per-venue weekly AI-spend cap, with missing usage failing closed instead of inventing cost (#2725, PR #2762)
 - 2026-08-28 — Public venue Overview, Menu, and Reservations tabs now expose complete accessible relationships, support standard keyboard navigation without changing content until activation, and keep the focused tab visible on narrow screens across web and both Mingla apps (#2738, PR #2754)

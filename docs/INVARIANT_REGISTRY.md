@@ -9725,10 +9725,10 @@ All eight #2725 rules were established ACTIVE after independent final integratio
 - **Enforcement:** The committed implementor and tester render suites, their explicit invocation by the issue #1486 dormant-render workflow, the #1403 changed-file type gate, product-only fail-on-revert and twelve named mutation receipts, real Chromium five-/ten-control matrices at 320/390/402/1280, and all four native preservation legs.
 - **Status:** ACTIVE after independent PASS at exact tested product head `ec690c71e5b804b1ac5ea3cd771608f81b0b5894`, followed by a type-only tester amendment whose transpiled runtime stayed byte-identical and fresh-main integration with zero added diagnostics.
 
-## DRAFT — issue #2774 (public hero content equivalence)
+## ACTIVE — issue #2774 (public hero content equivalence)
 
-### I-PROPOSED-2774-PUBLIC-HERO-CONTENT-EQUIVALENT (DRAFT)
+### I-PROPOSED-2774-PUBLIC-HERO-CONTENT-EQUIVALENT (ACTIVE)
 
 - **Rule:** Every displayed real public Venue/Event/RSVP/Trip/Experience hero is exactly one truthfully named image result. Stored media alt precedes a bounded kind/ordinal/set-size/subject fallback; a user-driven current change is announced once without focus movement or thumbnail-control duplication; no URL/storage/private/model-inferred text may enter the accessible name.
 - **Enforcement:** Shared implementor and tester render/interaction guards, four-RPC SQL proof, the issue #2774 strict gate, two-web-host production verification, and Consumer/Business VoiceOver/TalkBack legs.
-- **Status:** DRAFT during implementation. Activate only after merged migration read-back, exact-revision web/OTA verification, and independent tester PASS at CLOSE.
+- **Established:** ACTIVE after independent tester PASS with P0/P1/P2 all zero at exact candidate head `bfe5e4dc9d44194ab98bba07d0deae07d64bb6ea` on 2026-08-29.
