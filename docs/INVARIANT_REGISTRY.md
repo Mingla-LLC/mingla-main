@@ -1,5 +1,14 @@
 # Invariant Registry
 
+## ACTIVE — issue #2799 (web privacy proof runs on production artifacts)
+
+### I-2799-WEB-PRIVACY-PROOF-PRODUCTION-ARTIFACTS (ACTIVE)
+
+- **Rule:** The required #2771/#2795 browser privacy lane must measure production artifacts, not share each scenario's unchanged 45-second budget with cold development compilation. Business receives one keyed clean Expo export in `mingla-business/dist`, which the existing bundle guards and `expo serve` both reuse; Marketing receives one keyed production build and `next start`. Sibling-cookie evidence is scoped to storage visible at the page's exact URL, consent readiness waits for the exact `consent_granted` event, and the #2769 fixture generates its own bundle instead of depending on stale cache. No retry, timeout increase, sleep, skip, catch-and-pass, or assertion relaxation may substitute for readiness.
+- **Enforcement:** `playwright.issue2771.config.ts`, the implementation and independent adversarial #2771 specs, the #2795 real-SDK alias oracle, the keyed export and existing ORCH-1083/#1627/ORCH-1137 artifact guards in `web-build-check.yml`, plus two distinct exact-head fresh-runner Web Build passes.
+- **Fails on revert:** Restoring unscoped context cookies invents a sibling leak from the granted origin; restoring generic data-layer readiness observes zero `consent_granted` events; removing self-generated #2769 setup makes the cold production lane exhaust the unchanged test ceiling. Each true mutation failed independently and byte-exact restoration returned green.
+- **Established:** ACTIVE after independent P0–P4-zero PASS at candidate `f6b42c0e71b519eb7cf1088dc14c9143fdb48957` on 2026-08-29, including two cold 16/16 production-artifact lanes, #2769 16/16, two distinct fresh-runner Web Build passes, terminal CI, and zero review threads.
+
 ## ACTIVE — issue #2771 (web analytics starts only after explicit grant)
 
 ### I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT (ACTIVE)
