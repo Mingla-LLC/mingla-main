@@ -22,6 +22,10 @@ async function installOracle(page: Page): Promise<RequestOracle> {
   const oracle: RequestOracle = { urls: [], bodies: [], consentAtRequest: [] }
   await page.route('**/*', async (route) => {
     const request = route.request()
+    if (/\/functions\/v1\/stripe-mode(?:[/?#]|$)/.test(request.url())) {
+      await route.abort()
+      return
+    }
     if (FORBIDDEN_REQUEST.test(request.url())) {
       oracle.urls.push(request.url())
       oracle.bodies.push(request.postData() ?? '')
