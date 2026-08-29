@@ -10,6 +10,13 @@ describe("issue 2796 premium competition presentation", () => {
     expect(brief).toContain("useWindowDimensions");
     expect(brief).toContain("elevation: 0");
   });
+  it("keeps the accessibility-size Close action inside the safe content width", () => {
+    expect(brief).toContain("isLargeText(fontScale)");
+    expect(brief).toContain("headerTopAccessible");
+    expect(brief).toContain("closeAccessible");
+    expect(brief).toContain('alignSelf: "flex-end", minWidth: 44, minHeight: 44');
+    expect(brief.match(/maxFontSizeMultiplier=\{BUTTON_MAX_FONT_SCALE\}/g)).toHaveLength(2);
+  });
   it("renders the fixed decision-first hierarchy and one inline disclosure per signal", () => {
     for (const expected of ["WEEKLY COMPETITOR BRIEF", "WHAT HAPPENED", "WHY CARE", "DO THIS NEXT", "Signal health", "CURRENT PUBLIC SIGNALS", "COMPETITIVE READ", "YOUR MOVE", "Evidence ·"] ) expect(brief).toContain(expected);
     for (const forbidden of ["SOURCE EVIDENCE", "Open source evidence", "View evidence"]) expect(brief).not.toContain(forbidden);

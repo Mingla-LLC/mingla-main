@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
 import { androidOpaque, competition, competitorSheet, glass, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import { BUTTON_MAX_FONT_SCALE, isLargeText } from "../../../constants/dynamicType";
 import { useCompetitorBrief } from "../../../hooks/useCompetitorIntelligence";
 import { useVenueListing } from "../../../hooks/useVenueListings";
 import { openExternal } from "../../../services/guestFunnelLink";
@@ -33,8 +34,9 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
   const data = normalizeBriefSchema(query.data);
   const insufficient = Boolean(data?.brief?.whatChanged.every((fact) => /Mingla checked .*public|public information was checked/i.test(fact.text)));
   const decision = data && !insufficient ? buildCompetitorDecisionView(data) : null;
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const insetStyle = width >= 1024 ? styles.insetWide : width >= 360 ? styles.insetRegular : styles.insetCompact;
+  const accessibilityHeader = isLargeText(fontScale);
   const firstRun = !data?.updatedAt || Math.abs(Date.parse(data.updatedAt) - Date.parse(row?.createdAt ?? "")) < 86_400_000;
   const state = reportState(data?.brief?.status === "partial" ? "partial" : data?.freshness ?? row?.freshness, data?.noMeaningfulChange ?? false, Boolean(data?.brief) && !insufficient, query.isFetching, query.isError, offline);
   useEffect(() => {
@@ -45,8 +47,8 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
   return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={competition.surface} style={styles.sheet} testID="competitor-brief-sheet">
     <ScrollView ref={scrollRef} contentContainerStyle={[styles.body, insetStyle]}>
       <View style={styles.header}>
-        <View style={styles.headerTop}><Text style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button ref={closeRef} label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} testID="competitor-brief-close" /></View>
-        <Text accessibilityRole="header" style={styles.title}>{row?.name ?? "Weekly competitor brief"}</Text>
+        <View style={[styles.headerTop, accessibilityHeader ? styles.headerTopAccessible : null]}><Text maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE} style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button ref={closeRef} label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} style={accessibilityHeader ? styles.closeAccessible : undefined} testID="competitor-brief-close" /></View>
+        <Text accessibilityRole="header" maxFontSizeMultiplier={BUTTON_MAX_FONT_SCALE} style={styles.title}>{row?.name ?? "Weekly competitor brief"}</Text>
         {row?.city ? <Text style={styles.meta}>{row.city}</Text> : null}
         <View style={styles.statusRail}><Text style={styles.status} testID="competitor-brief-sheet-header-status">{state.label}</Text>{data?.checkedAt ? <Text style={styles.meta}>{`Checked ${formatDateTime(data.checkedAt)}`}</Text> : null}{(data?.nextRefreshAt ?? row?.nextRefreshAt) ? <Text style={styles.meta}>{`Next check ${formatScheduleTime(data?.nextRefreshAt ?? row?.nextRefreshAt ?? "")}`}</Text> : null}</View>
       </View>
@@ -106,7 +108,7 @@ const opaque = { backgroundColor: competitionCardSurface, borderWidth: StyleShee
 const styles = StyleSheet.create({
   sheet: { width: "100%", maxWidth: competitorSheet.briefMaxWidth, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileElevated }, body: { gap: competitorSheet.sectionGap, paddingTop: spacing.md, paddingBottom: spacing.xl },
   insetCompact: { paddingHorizontal: competitorSheet.contentInsetCompact }, insetRegular: { paddingHorizontal: competitorSheet.contentInsetRegular }, insetWide: { paddingHorizontal: competitorSheet.contentInsetWide },
-  header: { gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionBorder }, headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }, eyebrow: { ...typography.labelCap, color: textTokens.tertiary }, title: { ...typography.h3, color: textTokens.primary }, meta: { ...typography.caption, color: textTokens.tertiary }, statusRail: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, status: { ...typography.caption, color: textTokens.primary },
+  header: { gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionBorder }, headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }, headerTopAccessible: { flexDirection: "column", alignItems: "stretch", justifyContent: "flex-start", gap: spacing.sm }, closeAccessible: { alignSelf: "flex-end", minWidth: 44, minHeight: 44, flexShrink: 0 }, eyebrow: { ...typography.labelCap, color: textTokens.tertiary }, title: { ...typography.h3, color: textTokens.primary }, meta: { ...typography.caption, color: textTokens.tertiary }, statusRail: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, status: { ...typography.caption, color: textTokens.primary },
   stateBanner: { ...opaque, borderRadius: 16, padding: spacing.md }, preparing: { gap: spacing.md, alignItems: "center", paddingVertical: spacing.xl }, readCard: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.lg }, readLine: { gap: spacing.xs, maxWidth: competitorSheet.readableCopyMaxWidth }, health: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder },
   section: { gap: competitorSheet.cardGap }, sectionTitle: { ...typography.labelCap, color: textTokens.secondary }, help: { ...typography.bodySm, color: textTokens.secondary }, card: { ...opaque, borderRadius: 16, padding: spacing.md, gap: spacing.sm }, primaryAction: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.sm }, secondaryAction: { padding: spacing.md, gap: spacing.xs, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionSubtleBorder }, disclosure: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, smallControl: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }, evidence: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: competitionSubtleBorder },
   cardTitle: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" }, provenance: { ...typography.labelCap, color: textTokens.tertiary }, copy: { ...typography.body, color: textTokens.primary, maxWidth: competitorSheet.readableCopyMaxWidth }, link: { ...typography.bodySm, color: semantic.info, fontWeight: "600" },
