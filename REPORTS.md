@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Public hero render guards now run against one Business-owned React, renderer, and React Native Web runtime, so their tests detect real component regressions instead of failing from duplicate test dependencies (#2788, PR #2790)
 - 2026-08-29 — Public venue pages now keep the visitor's selected photo, tab, reservation form, open sheet, and scroll position visible and unchanged while fresh data loads in the background or a refresh fails, across web and both Mingla apps (#2756, PR #2766)
 - 2026-08-29 — Public Venue, Event, RSVP, Trip, and Experience hero images now expose truthful screen-reader names and announce user-driven image changes once without leaking media URLs or duplicating gallery controls (#2774, PR #2786)
 - 2026-08-28 — Public venue gallery thumbnails are now real, named controls with reliable keyboard activation, unclipped focus visibility, and preserved native selection behavior across web and both Mingla apps (#2739, PR #2775)
