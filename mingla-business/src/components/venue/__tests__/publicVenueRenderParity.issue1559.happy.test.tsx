@@ -776,6 +776,8 @@ const stable = (value: unknown): unknown => {
     const out: Record<string, unknown> = {};
     for (const key of Object.keys(source).sort()) {
       if (typeof source[key] === "function") continue;
+      if (key === "coverMediaAlt" && source[key] === null) continue;
+      if (key === "heroAccessibilitySubject") continue;
       out[key] = stable(source[key]);
     }
     return out;
