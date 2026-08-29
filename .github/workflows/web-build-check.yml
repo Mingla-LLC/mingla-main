@@ -153,6 +153,9 @@ jobs:
           npx playwright test -c playwright.issue2769.config.ts
       # issue #2771 — the implementation-owned happy path and independent
       # tester-owned adversarial browser oracle must remain co-enforced.
+      - name: Install mingla-marketing dependencies for #2771
+        working-directory: mingla-marketing
+        run: npm ci
       - name: "#2771 no web analytics before explicit grant"
         working-directory: mingla-business
         run: |
