@@ -6,9 +6,9 @@
 // download CTAs and the socials row with no scroll escape hatch. This pure,
 // dependency-free predicate decides whether the banner may render for a given
 // route, so `/links` (and any future no-scroll route added to the list below)
-// suppresses it. Privacy-safe: analytics are opt-out (PostHog) / GA-denied by
-// default until Accept, so suppression leaves the safe denied default and
-// solicits nothing on `/links`.
+// suppresses it. Privacy-safe: the global analytics loader remains entirely
+// unmounted unless a valid stored grant already exists, so an unresolved
+// `/links` visit stays dark without interpreting suppression as consent.
 //
 // Dependency-free BY DESIGN (no React, no `next`, no other imports) so it
 // compiles and runs standalone under the repo's `tsc + node` test pattern with

@@ -142,7 +142,7 @@ test("grantConsent BOOTSTRAPS the Meta pixel; fireAdPurchase fires with the shar
   const { wa, injected, getFbq } = loadHarness({ extra: META_EXTRA });
   await wa.initWebAnalytics();
 
-  wa.grantConsent();
+  await wa.grantConsent();
 
   // Now the pixel is live: stub created + script injected + init + PageView.
   expect(wa.adPixelsReady()).toBe(true);
@@ -166,7 +166,7 @@ test("NO-OP when the pixel id is absent — grantConsent loads no Meta pixel", a
     extra: { EXPO_PUBLIC_SUPABASE_URL: "https://x.supabase.co", EXPO_PUBLIC_SUPABASE_ANON_KEY: "anon" },
   });
   await wa.initWebAnalytics();
-  wa.grantConsent();
+  await wa.grantConsent();
 
   // No id → no fbq stub, no injected script; firing is a silent no-op.
   expect(getFbq()).toBeUndefined();
@@ -179,7 +179,7 @@ test("a simulated pixel-LOAD FAILURE does NOT throw / break the flow (fail-open)
   await wa.initWebAnalytics();
 
   // Script injection throws (CSP/adblock) — grantConsent must absorb it silently.
-  expect(() => wa.grantConsent()).not.toThrow();
+  await expect(wa.grantConsent()).resolves.toBeUndefined();
   // And the checkout Purchase fire that follows must not throw either.
   expect(() => wa.fireAdPurchase("order-xyz", { value: 20, currency: "GBP" })).not.toThrow();
   expect(() => wa.fireAdPageView()).not.toThrow();

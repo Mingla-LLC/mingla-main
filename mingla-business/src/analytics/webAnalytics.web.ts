@@ -8,13 +8,11 @@
  * pulls posthog-js / gtag: this file only ever loads in the web export.
  *
  * What it does:
- *   - initWebAnalytics(): one-time PostHog (posthog-js) + GA4 init, both gated
- *     so NO cookies / NO capture happen until the visitor accepts (§4.E).
- *       · PostHog: opt_out_capturing_by_default: true — PostHog stores nothing
- *         in cookies/local/session storage and captures nothing until
- *         opt_in_capturing() (documented PostHog behavior). US region locked.
- *       · GA4: Consent Mode v2 — gtag('consent','default', {all denied}) runs
- *         BEFORE the GA config/measurement loads.
+ *   - initWebAnalytics(): reads the canonical consent choice first. PostHog,
+ *     GA4, pixels and attribution remain wholly absent until explicit grant.
+ *       · PostHog: dynamically imported only after grant; US region locked.
+ *       · GA4: denied-default then granted-update are queued after grant and
+ *         BEFORE its config/measurement loads.
  *     Power features ON, free-tier only (§4.G): autocapture, error tracking,
  *     session replay (masked — §4.H), feature flags. Replay sampled (§4.I).
  *   - grantConsent() / denyConsent(): the consent banner Accept/Reject handlers.
@@ -31,9 +29,8 @@
  * without a deploy. Autocapture is narrowed to click/submit to protect the 1M
  * events/mo cap.
  *
- * posthog-js is loaded via a DYNAMIC import inside initWebAnalytics so its bulk
- * never enters the eager boot chunk (protects the ORCH-1083 __common budget) and
- * is fetched only once analytics actually initializes.
+ * posthog-js is loaded via a DYNAMIC import inside the private granted boot, so
+ * its bulk never enters the eager chunk or crosses the consent boundary.
  *
  * Env: keys come from app.config `extra` (reachable on web + native — mirrors
  * supabase.ts / the GIPHY pattern). The phc_ key + G-Z4W3B9900S Measurement ID
@@ -102,7 +99,8 @@ function readEnv(name: string): string | undefined {
 }
 
 let posthogClient: PostHog | null = null;
-let initialized = false;
+let bootPromise: Promise<void> | null = null;
+let consentGrantCaptured = false;
 let gaMeasurementId: string | null = null;
 let pageConsentChoice: ConsentChoice | null | undefined;
 const consentSubscribers = new Set<() => void>();
@@ -212,6 +210,9 @@ function writeStoredConsent(choice: ConsentChoice): void {
   if (!hasWindow()) return;
   const previous = readStoredConsent();
   pageConsentChoice = choice;
+  // Issue #922 same-document handoff: this remains canonical when persistence
+  // is unavailable, and is updated before any analytics boot can begin.
+  window.__minglaPrebootConsentChoice = choice;
   try {
     window.localStorage.setItem(
       CONSENT_STORAGE_KEY,
@@ -248,6 +249,12 @@ function loadGa4(measurementId: string): void {
     ad_user_data: "denied",
     ad_personalization: "denied",
   });
+  window.gtag("consent", "update", {
+    ad_storage: "granted",
+    analytics_storage: "granted",
+    ad_user_data: "granted",
+    ad_personalization: "granted",
+  });
   window.gtag("js", new Date());
   window.gtag("config", measurementId);
 
@@ -270,18 +277,17 @@ function loadGa4(measurementId: string): void {
  * Safe to call when keys are absent (no-op). Safe to call more than once
  * (guarded). Web-only — never reached on native (this file is .web.ts).
  */
-export async function initWebAnalytics(): Promise<void> {
-  if (initialized) return;
-  if (!hasWindow()) return;
-  initialized = true;
-
+async function bootGrantedAnalytics(): Promise<void> {
+  // Issue #2771: vendor opt-out/denied modes can still initialize, persist,
+  // load configuration, and transmit. Explicit Mingla grant must dominate the
+  // loader itself, including every retry/concurrent entry.
+  if (!hasWindow() || readStoredConsent() !== "granted") return;
   const posthogKey = readEnv("EXPO_PUBLIC_POSTHOG_KEY");
   const posthogHost = readEnv("EXPO_PUBLIC_POSTHOG_HOST") ?? POSTHOG_US_HOST;
   gaMeasurementId = readEnv("EXPO_PUBLIC_GA4_MEASUREMENT_ID") ?? null;
 
-  // ISSUE-865 WP-C — resolve the ad-conversion pixel IDs (no-op each when
-  // absent). The pixels are NOT loaded here: they set third-party cookies, so
-  // they are bootstrapped ONLY on consent grant (grantConsent → bootstrapAdPixels).
+  // ISSUE-865 WP-C — resolve the ad-conversion pixel IDs only inside the
+  // granted boot. Scripts remain last in the same consent-gated sequence.
   adPixelIds = {
     meta: readEnv("EXPO_PUBLIC_META_PIXEL_ID") ?? null,
     tiktok: readEnv("EXPO_PUBLIC_TIKTOK_PIXEL_CODE") ?? null,
@@ -289,7 +295,7 @@ export async function initWebAnalytics(): Promise<void> {
     reddit: readEnv("EXPO_PUBLIC_REDDIT_PIXEL_ID") ?? null,
   };
 
-  // GA4 first (cheap, sets the consent-default-denied gate immediately).
+  // GA4 first, with denied-default then granted-update queued before config.
   if (gaMeasurementId !== null && gaMeasurementId.length > 0) {
     try {
       loadGa4(gaMeasurementId);
@@ -327,51 +333,44 @@ export async function initWebAnalytics(): Promise<void> {
           sampleRate: SESSION_REPLAY_SAMPLE_RATE,
         },
       });
+      posthog.opt_in_capturing();
+      // The init-time pageview was deliberately suppressed by opt-out-default;
+      // emit exactly one only after the explicit grant opens capture.
+      posthog.capture("$pageview");
       posthogClient = posthog;
     } catch (err) {
       console.warn("[webAnalytics] PostHog init failed (non-fatal):", err);
     }
   }
 
-  // Re-apply a previously-stored choice so a returning visitor who already
-  // accepted resumes capture without re-prompting (and a prior "denied" stays
-  // denied). A fresh visitor (no stored choice) stays gated until they accept.
-  const stored = readStoredConsent();
-  if (stored === "granted") {
-    grantConsent();
-  } else if (stored === "denied") {
-    denyConsent();
+  // Pixels are last in the binding boot order: consent → GA → PostHog → pixels.
+  bootstrapAdPixels();
+}
+
+function ensureGrantedAnalyticsBoot(): Promise<void> {
+  if (!hasWindow() || readStoredConsent() !== "granted") {
+    return Promise.resolve();
   }
+  if (bootPromise === null) {
+    bootPromise = bootGrantedAnalytics();
+  }
+  return bootPromise;
+}
+
+export async function initWebAnalytics(): Promise<void> {
+  if (!hasWindow() || readStoredConsent() !== "granted") return;
+  await ensureGrantedAnalyticsBoot();
 }
 
 /** Accept handler — opens the PostHog + GA4 gates and persists the choice. */
-export function grantConsent(): void {
+export async function grantConsent(): Promise<void> {
   writeStoredConsent("granted");
-  try {
-    posthogClient?.opt_in_capturing();
-  } catch (err) {
-    console.warn("[webAnalytics] opt_in_capturing failed:", err);
-  }
-  if (hasWindow() && window.gtag) {
-    window.gtag("consent", "update", {
-      ad_storage: "granted",
-      analytics_storage: "granted",
-      ad_user_data: "granted",
-      ad_personalization: "granted",
-    });
-  }
-  // ISSUE-865 WP-C — the ad-conversion pixels (Meta/TikTok/Snap/Reddit) set
-  // third-party cookies, so they bootstrap ONLY here, on consent grant, and
-  // NEVER before (the hard consent invariant — SC-8 / RT-3; EEA/London must not
-  // be tracked pre-consent). Each pixel is wrapped so a failure is a silent
-  // no-op that never blocks the page or the other pixels.
-  bootstrapAdPixels();
+  await ensureGrantedAnalyticsBoot();
+  if (readStoredConsent() !== "granted" || consentGrantCaptured) return;
+  consentGrantCaptured = true;
 
-  // META-ORCH-1187 P2 — consent-rate measurement. Fire AFTER opt_in_capturing()
-  // above: while still opted-out PostHog drops captures, so an earlier fire would
-  // be silently lost. Deny-rate is derived as sessions-without-a-grant (no
-  // `consent_denied` PostHog capture is fired on Reject — PostHog stays opted-out
-  // there so a capture cannot send; see denyConsent below).
+  // Consent-rate measurement fires only after the grant-only boot is ready.
+  // Deny-rate remains derived as sessions without a grant.
   captureWeb("consent_granted");
   gaEvent("consent_granted");
 }
@@ -379,17 +378,8 @@ export function grantConsent(): void {
 /** Reject handler — keeps both gates closed and persists the choice. */
 export function denyConsent(): void {
   writeStoredConsent("denied");
-  try {
-    posthogClient?.opt_out_capturing();
-  } catch (err) {
-    console.warn("[webAnalytics] opt_out_capturing failed:", err);
-  }
-  // GA4: leave the defaults denied (no update). GA then runs in cookieless
-  // consent mode (pinged, no cookies).
-  // META-ORCH-1187 P2 — NO `consent_denied` PostHog capture here: PostHog stays
-  // opted-out on Reject, so a capture would be dropped. Deny-rate is derived
-  // downstream as sessions-without-a `consent_granted`. GA4 stays consent-denied
-  // (cookieless) so no gaEvent fires on deny either.
+  // Reject is persistence-only. No vendor object, command, event, or client
+  // attribution path is invoked.
 }
 
 /** Fire a custom PostHog event + (optionally) a GA4 event. No-op if gated. */
@@ -397,6 +387,7 @@ export function captureWeb(
   name: string,
   props?: Record<string, unknown>,
 ): void {
+  if (readStoredConsent() !== "granted" || posthogClient === null) return;
   try {
     posthogClient?.capture(name, props);
   } catch (err) {
@@ -406,7 +397,7 @@ export function captureWeb(
 
 /** Fire a GA4 event (e.g. purchase / begin_checkout) for the Ads conversion link. */
 export function gaEvent(name: string, params?: Record<string, unknown>): void {
-  if (hasWindow() && window.gtag) {
+  if (readStoredConsent() === "granted" && hasWindow() && window.gtag) {
     try {
       window.gtag("event", name, params ?? {});
     } catch (err) {
@@ -420,6 +411,7 @@ export function identifyWeb(
   distinctId: string,
   props?: Record<string, unknown>,
 ): void {
+  if (readStoredConsent() !== "granted" || posthogClient === null) return;
   try {
     posthogClient?.identify(distinctId, props);
   } catch (err) {
@@ -429,6 +421,7 @@ export function identifyWeb(
 
 /** Read a feature flag (free-tier power feature, §4.G). Default-safe. */
 export function getFeatureFlagWeb(key: string): boolean | string | undefined {
+  if (readStoredConsent() !== "granted" || posthogClient === null) return undefined;
   try {
     return posthogClient?.getFeatureFlag(key);
   } catch {
@@ -579,7 +572,7 @@ function bootstrapRedditPixel(pixelId: string): void {
  * block the page nor prevent the others from loading. Idempotent.
  */
 function bootstrapAdPixels(): void {
-  if (!hasWindow() || adPixelsBootstrapped) return;
+  if (!hasWindow() || readStoredConsent() !== "granted" || adPixelsBootstrapped) return;
   adPixelsBootstrapped = true; // set first so a throw can't cause a re-bootstrap loop
   if (adPixelIds.meta) safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
   if (adPixelIds.tiktok) safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
@@ -589,14 +582,14 @@ function bootstrapAdPixels(): void {
 
 /** True only after consent granted AND at least one pixel could bootstrap. */
 export function adPixelsReady(): boolean {
-  return adPixelsBootstrapped;
+  return readStoredConsent() === "granted" && adPixelsBootstrapped;
 }
 
 // ── Browser pixel fires (all no-op pre-consent / when no pixel loaded) ────────
 
 /** Public-page view — PageView across the four pixels. No-op until bootstrapped. */
 export function fireAdPageView(): void {
-  if (!adPixelsBootstrapped) return;
+  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped) return;
   safePixel(() => window.fbq?.("track", "PageView"));
   safePixel(() => window.ttq?.page?.());
   safePixel(() => window.snaptr?.("track", "PAGE_VIEW"));
@@ -609,7 +602,7 @@ export function fireAdViewContent(props?: {
   currency?: string;
   contentId?: string;
 }): void {
-  if (!adPixelsBootstrapped) return;
+  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped) return;
   const value = props?.value;
   const currency = props?.currency;
   const contentId = props?.contentId;
@@ -635,6 +628,7 @@ export function fireAdPurchase(
   eventId: string,
   props: { value?: number; currency?: string },
 ): void {
+  if (readStoredConsent() !== "granted") return;
   fireAdConversion(eventId, props, true);
 }
 
@@ -643,7 +637,7 @@ function fireAdConversion(
   props: { value?: number; currency?: string },
   purchase: boolean,
 ): void {
-  if (!adPixelsBootstrapped || !eventId) return;
+  if (readStoredConsent() !== "granted" || !adPixelsBootstrapped || !eventId) return;
   const value = props.value;
   const currency = props.currency;
   safePixel(() =>
@@ -682,6 +676,7 @@ export function fireAdReservation(
   eventId: string,
   props: { value?: number; currency?: string } = {},
 ): void {
+  if (readStoredConsent() !== "granted") return;
   fireAdConversion(eventId, props, false);
 }
 
@@ -693,7 +688,7 @@ interface StoredAdClick {
 
 /** The click_id captured on landing, for threading into checkout-create. */
 export function getStoredClickAttribution(): StoredAdClick {
-  if (!hasWindow()) return { clickId: null };
+  if (!hasWindow() || readStoredConsent() !== "granted") return { clickId: null };
   try {
     const raw = window.sessionStorage.getItem(AD_CLICK_STORAGE_KEY);
     if (raw === null) return { clickId: null };
@@ -705,7 +700,7 @@ export function getStoredClickAttribution(): StoredAdClick {
 }
 
 function storeClickId(clickId: string): void {
-  if (!hasWindow()) return;
+  if (!hasWindow() || readStoredConsent() !== "granted") return;
   try {
     window.sessionStorage.setItem(AD_CLICK_STORAGE_KEY, JSON.stringify({ clickId, ts: Date.now() }));
   } catch {
@@ -742,7 +737,9 @@ export interface CaptureAdClickDest {
  * Fire-and-forget, timeout-bounded — never delays the landing render.
  */
 export function captureAdClickIds(dest?: CaptureAdClickDest): void {
-  if (!hasWindow()) return;
+  // Issue #2771: a first-party endpoint is still analytics. Explicit grant must
+  // dominate URL/referrer parsing, network, and attribution storage.
+  if (!hasWindow() || readStoredConsent() !== "granted") return;
   try {
     const params = new URLSearchParams(window.location.search);
     const fbclid = params.get("fbclid");
@@ -819,7 +816,7 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
  * (attribution-capture) turns this host into entry_source.
  */
 export function readReferrerHost(): string | null {
-  if (!hasWindow()) return null;
+  if (!hasWindow() || readStoredConsent() !== "granted") return null;
   try {
     const ref = (window.document as { referrer?: string } | undefined)?.referrer;
     if (typeof ref !== "string" || ref.length === 0) return null;
@@ -844,7 +841,7 @@ interface PostTouchInput {
 
 /** POST a touch to attribution-capture; returns the server click_id (or null). */
 export async function postAttributionTouch(input: PostTouchInput): Promise<string | null> {
-  if (!hasWindow()) return null;
+  if (!hasWindow() || readStoredConsent() !== "granted") return null;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
   if (base === undefined || anon === undefined) return null;
@@ -897,7 +894,7 @@ export function postAttributionConversion(input: {
   currency?: string | null;
   eventSourceUrl?: string | null;
 }): void {
-  if (!hasWindow() || input.eventId.length === 0) return;
+  if (!hasWindow() || readStoredConsent() !== "granted" || input.eventId.length === 0) return;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
   if (base === undefined || anon === undefined) return;

@@ -1,129 +1,170 @@
 'use client'
-// META-ORCH-1187 [Growth Analytics Hub] Phase 1 — LEG 1 (marketing web).
-//
-// PostHog browser-SDK provider for the marketing site (usemingla.com).
-//
-// CONSENT GATE (I-PROPOSED-1187-CONSENT-GATE-BEFORE-COOKIES): PostHog is
-// initialized with `opt_out_capturing_by_default: true`. PostHog's documented
-// behavior under this flag is that it stores NOTHING in cookies / local /
-// session storage and captures NO events until `posthog.opt_in_capturing()`
-// is called — which only happens from the consent-banner Accept handler
-// (see consent-banner.tsx). Reject calls `posthog.opt_out_capturing()`.
-//
-// REPLAY MASKING (I-PROPOSED-1187-REPLAY-MASKS-PII): session replay is ON but
-// every input is masked (`maskAllInputs: true`) plus belt-and-suspenders email/
-// password masking; any element tagged `data-ph-mask` or `.ph-no-capture` is
-// masked. NEVER set `maskAllInputs: false`. The marketing beta-access modal has
-// an email field — it must be masked. A replay capturing PII is an AUTOMATIC FAIL.
-//
-// COST GUARD (§4.I): session replay is sampled (`sampleRate`) to protect the
-// free 5K-recordings/mo tier. Seth also sets a $0 PostHog billing cap (SA-1).
-//
-// US REGION (I-PROPOSED-1187-POSTHOG-HOST-US): api_host MUST be
-// `https://us.i.posthog.com` (dispatch-locked).
-//
-// CSP note: `next.config.ts` only sets `frame-ancestors` (not a full CSP), so
-// PostHog (us.i.posthog.com / us-assets.i.posthog.com) + GA hosts load fine.
-// Do NOT tighten CSP into a script-src/connect-src allowlist this phase; if a
-// future hardening adds a strict CSP it must allowlist those hosts.
-//
-// SECRET HYGIENE (I-PROPOSED-1187-NO-PHX-IN-CLIENT): only the public `phc_*`
-// client key ships here (via NEXT_PUBLIC_POSTHOG_KEY). The `phx_*` personal/MCP
-// key MUST NEVER appear in any client source.
+// Issue #2771 — one consent owner and one grant-only analytics boot for the
+// marketing root. Vendor denied/opt-out modes can still initialize, persist,
+// load configuration, and transmit; explicit Mingla grant dominates loading.
 
-import { useEffect } from 'react'
-import posthog from 'posthog-js'
+import { useEffect, useState, type ReactNode } from 'react'
+import type { PostHog } from 'posthog-js'
 
-// US ingestion host — dispatch-locked. Read from env with the US literal as the
-// fallback so the host literal is always present for the strict-grep gate.
 const POSTHOG_HOST =
   process.env.NEXT_PUBLIC_POSTHOG_HOST ?? 'https://us.i.posthog.com'
 
-let initialized = false
-
-/**
- * Session-replay sampling rate (§4.I cost guard). Records ~20% of sessions to
- * protect the free 5K-recordings/mo allowance. Seth can override server-side in
- * the PostHog UI without a deploy.
- */
 export const PH_REPLAY_SAMPLE_RATE = 0.2
+export const MARKETING_CONSENT_STORAGE_KEY = 'mingla_consent_v1'
+const MARKETING_CONSENT_EVENT = 'mingla:marketing-consent'
 
-/**
- * Initialize PostHog (idempotent). Consent-gated: with
- * opt_out_capturing_by_default:true nothing is stored / captured until the
- * consent banner calls posthog.opt_in_capturing(). No-ops (without crashing the
- * site) when the public key is missing.
- */
-export function initPostHog(): void {
-  if (initialized) return
-  if (typeof window === 'undefined') return
-  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
-  if (!key) {
-    // Graceful no-op — a missing env must never crash the live site (T-3).
-    return
+export type MarketingConsentValue = 'granted' | 'denied'
+
+interface StoredConsent {
+  value: MarketingConsentValue
+  ts: number
+}
+
+interface GtagTarget {
+  dataLayer?: unknown[]
+  gtag?: (...args: unknown[]) => void
+}
+
+let ephemeralConsent: MarketingConsentValue | null = null
+let bootPromise: Promise<void> | null = null
+let posthogClient: PostHog | null = null
+let consentGrantCaptured = false
+
+export function readMarketingConsent(): MarketingConsentValue | null {
+  if (typeof window === 'undefined') return null
+  if (ephemeralConsent !== null) return ephemeralConsent
+  try {
+    const raw = window.localStorage.getItem(MARKETING_CONSENT_STORAGE_KEY)
+    if (raw === null) return null
+    const parsed = JSON.parse(raw) as Partial<StoredConsent>
+    return parsed.value === 'granted' || parsed.value === 'denied'
+      ? parsed.value
+      : null
+  } catch {
+    return null
   }
-  posthog.init(key, {
-    api_host: 'https://us.i.posthog.com',
-    ui_host: POSTHOG_HOST,
-    person_profiles: 'identified_only',
-    capture_pageview: true,
-    capture_pageleave: true,
-    // CONSENT GATE — no cookies / no capture until opt_in (banner Accept).
-    opt_out_capturing_by_default: true,
-    // Power features (free-tier): autocapture + error tracking.
-    autocapture: true,
-    capture_exceptions: true,
-    // Session replay ON, but HARD-masked (PII security gate, §4.H).
-    disable_session_recording: false,
-    session_recording: {
-      maskAllInputs: true,
-      maskInputOptions: { password: true, email: true },
-      maskTextSelector: '[data-ph-mask]',
-      sampleRate: PH_REPLAY_SAMPLE_RATE,
-    },
+}
+
+export function persistMarketingConsent(value: MarketingConsentValue): void {
+  if (typeof window === 'undefined') return
+  ephemeralConsent = value
+  try {
+    window.localStorage.setItem(
+      MARKETING_CONSENT_STORAGE_KEY,
+      JSON.stringify({ value, ts: Date.now() } satisfies StoredConsent),
+    )
+  } catch {
+    // The direct decision remains valid for this page via ephemeralConsent.
+  }
+  window.dispatchEvent(new Event(MARKETING_CONSENT_EVENT))
+}
+
+function initializeGrantedGa(): void {
+  const target = window as unknown as GtagTarget
+  target.dataLayer = target.dataLayer ?? []
+  target.gtag = target.gtag ?? function gtag(...args: unknown[]): void {
+    target.dataLayer?.push(args)
+  }
+  target.gtag('consent', 'default', {
+    ad_storage: 'denied',
+    analytics_storage: 'denied',
+    ad_user_data: 'denied',
+    ad_personalization: 'denied',
   })
-  initialized = true
+  target.gtag('consent', 'update', {
+    ad_storage: 'granted',
+    analytics_storage: 'granted',
+    ad_user_data: 'granted',
+    ad_personalization: 'granted',
+  })
 }
 
-/** True once init has run (key present). Capture helpers guard on this. */
-export function isPostHogReady(): boolean {
-  return initialized
+async function bootGrantedMarketingAnalytics(): Promise<void> {
+  if (typeof window === 'undefined' || readMarketingConsent() !== 'granted') return
+  initializeGrantedGa()
+
+  const key = process.env.NEXT_PUBLIC_POSTHOG_KEY
+  if (!key) return
+  try {
+    const { default: posthog } = await import('posthog-js')
+    if (readMarketingConsent() !== 'granted') return
+    posthog.init(key, {
+      api_host: 'https://us.i.posthog.com',
+      ui_host: POSTHOG_HOST,
+      person_profiles: 'identified_only',
+      capture_pageview: true,
+      capture_pageleave: true,
+      opt_out_capturing_by_default: true,
+      autocapture: true,
+      capture_exceptions: true,
+      disable_session_recording: false,
+      session_recording: {
+        maskAllInputs: true,
+        maskInputOptions: { password: true, email: true },
+        maskTextSelector: '[data-ph-mask]',
+        sampleRate: PH_REPLAY_SAMPLE_RATE,
+      },
+    })
+    posthog.opt_in_capturing()
+    // Init's automatic pageview was suppressed by opt-out-default; emit one
+    // explicit post-grant pageview and never replay pre-grant activity.
+    posthog.capture('$pageview')
+    posthogClient = posthog
+  } catch (error) {
+    console.warn('[marketing analytics] PostHog init failed (non-fatal):', error)
+  }
 }
 
-/** Grant consent: opt in to capturing. Called from the banner Accept handler. */
-export function posthogOptIn(): void {
-  if (!initialized) return
-  posthog.opt_in_capturing()
+export function posthogOptIn(): Promise<void> {
+  if (readMarketingConsent() !== 'granted') return Promise.resolve()
+  if (bootPromise === null) bootPromise = bootGrantedMarketingAnalytics()
+  return bootPromise
 }
 
-/** Deny consent: explicit opt out. Called from the banner Reject handler. */
 export function posthogOptOut(): void {
-  if (!initialized) return
-  posthog.opt_out_capturing()
+  // Reject intentionally performs no analytics SDK call. This compatibility
+  // facade remains dark unless a separately-scoped revocation flow is added.
 }
 
-/**
- * Capture a marketing event. Safe to call from any client component — no-ops
- * when PostHog has not initialized (missing key) or the visitor has opted out
- * (PostHog itself drops captures while opted out). Never throws.
- */
+export function isPostHogReady(): boolean {
+  return readMarketingConsent() === 'granted' && posthogClient !== null
+}
+
 export function captureMarketing(
   event: string,
   properties?: Record<string, unknown>,
 ): void {
-  if (!initialized) return
+  if (readMarketingConsent() !== 'granted' || posthogClient === null) return
   try {
-    posthog.capture(event, properties)
-  } catch {
-    // Analytics must never break the page; swallow but do not silently lie —
-    // a failed capture is non-fatal and PostHog logs its own transport errors.
+    posthogClient.capture(event, properties)
+  } catch (error) {
+    console.warn('[marketing analytics] capture failed (non-fatal):', error)
   }
 }
 
-/** Client provider — initializes PostHog once at mount. Renders nothing. */
-export function PostHogProvider(): null {
+export function captureMarketingConsentGrantOnce(): void {
+  if (consentGrantCaptured || readMarketingConsent() !== 'granted') return
+  consentGrantCaptured = true
+  captureMarketing('consent_granted')
+  ;(window as unknown as GtagTarget).gtag?.('event', 'consent_granted')
+}
+
+interface PostHogProviderProps {
+  children: ReactNode
+}
+
+export function PostHogProvider({ children }: PostHogProviderProps): ReactNode {
+  const [enabled, setEnabled] = useState(false)
+
   useEffect(() => {
-    initPostHog()
+    const resolveGrant = (): void => {
+      if (readMarketingConsent() !== 'granted') return
+      void posthogOptIn().finally(() => setEnabled(true))
+    }
+    resolveGrant()
+    window.addEventListener(MARKETING_CONSENT_EVENT, resolveGrant)
+    return () => window.removeEventListener(MARKETING_CONSENT_EVENT, resolveGrant)
   }, [])
-  return null
+
+  return enabled ? children : null
 }

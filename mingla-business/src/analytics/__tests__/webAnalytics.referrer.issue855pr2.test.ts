@@ -100,6 +100,12 @@ afterEach(() => {
 test("P1 a NON-AD referrer visit records a touch forwarding the referrer HOST only (no PII)", async () => {
   const h = loadHarness("", "https://l.instagram.com/p/xyz?u=someone%40example.com");
   await h.wa.initWebAnalytics();
+  expect(h.wa.readReferrerHost()).toBeNull();
+  h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
+  expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
+  expect(h.wa.getStoredClickAttribution().clickId).toBeNull();
+
+  await h.wa.grantConsent();
   h.fetchCalls.length = 0;
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
 
@@ -124,14 +130,20 @@ test("P1 a NON-AD referrer visit records a touch forwarding the referrer HOST on
 test("P2 a bare visit (no ad param, no utm, no referrer) posts NOTHING (byte-identical no-op)", async () => {
   const h = loadHarness("", ""); // empty search + empty referrer
   await h.wa.initWebAnalytics();
+  h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
+  expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
+
+  await h.wa.grantConsent();
   h.fetchCalls.length = 0;
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
 });
 
 // ═══ P3 — readReferrerHost strips everything but the host ══════════════════════
-test("P3 readReferrerHost returns the host only; null for empty/absent referrer", () => {
+test("P3 readReferrerHost returns the host only after grant; null before grant and for empty referrer", async () => {
   const h = loadHarness("", "https://www.Google.com/search?q=secret#frag");
+  expect(h.wa.readReferrerHost()).toBeNull();
+  await h.wa.grantConsent();
   expect(h.wa.readReferrerHost()).toBe("google.com");
 
   // Empty referrer → null (a direct visit).
@@ -144,6 +156,11 @@ test("P4 the ad click_id is preserved when a later internal (Mingla-referrer) to
   // 1) Land via an ad (fbclid), no referrer → records + stores the ad click_id.
   const h = loadHarness("?fbclid=ADCLICK", "");
   await h.wa.initWebAnalytics();
+  h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
+  expect(h.fetchCalls.some((c) => c.url.includes("/attribution-capture"))).toBe(false);
+  expect(h.wa.getStoredClickAttribution().clickId).toBeNull();
+
+  await h.wa.grantConsent();
   h.wa.captureAdClickIds({ pageType: "event", brandSlug: "b", entitySlug: "e" });
   await flush();
   const adClick = h.wa.getStoredClickAttribution().clickId;
