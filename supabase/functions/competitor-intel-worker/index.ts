@@ -12,7 +12,7 @@ const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
 export const GEMINI_MODEL_ID = "gemini-2.5-flash";
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.1";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.2";
 export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
@@ -875,6 +875,13 @@ function numberOrNull(value: unknown): number | null {
     : null;
 }
 
+function normalizedDecisionText(value: unknown, max: number): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ")
+    .trim();
+  return text ? text.slice(0, max) : null;
+}
+
 export function buildDecisionFoundation(
   observations: CurrentObservation[],
   comparisons: ObservationComparison[],
@@ -984,6 +991,96 @@ export function buildDecisionFoundation(
   return { signals: signals.slice(0, 6), signal_evidence: signalEvidence, owner_facts: ownerFacts.slice(0, 11) };
 }
 
+export function groundedThemeSignals(
+  value: unknown,
+  existingSignals: Array<Record<string, unknown>>,
+  signalEvidence: Array<Record<string, unknown>>,
+  maxThemes: number,
+): Array<Record<string, unknown>> {
+  const dimensions = new Set<DecisionDimension>([
+    "category",
+    "positioning",
+    "event_theme",
+    "offer",
+    "content_cadence",
+    "source_presence",
+  ]);
+  const evidenceById = new Map(
+    signalEvidence.flatMap((item) =>
+      typeof item.id === "string" && typeof item.source_id === "string"
+        ? [[item.id, item] as const]
+        : []
+    ),
+  );
+  const knownSourceIds = new Set(
+    [...evidenceById.values()].map((item) => String(item.source_id)),
+  );
+  const usedIds = new Set(
+    existingSignals.flatMap((item) =>
+      typeof item.id === "string" ? [item.id] : []
+    ),
+  );
+  const result: Array<Record<string, unknown>> = [];
+  for (const item of Array.isArray(value) ? value : []) {
+    if (result.length >= Math.min(2, Math.max(0, maxThemes))) break;
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
+    const record = item as Record<string, unknown>;
+    const dimension = record.dimension as DecisionDimension;
+    const label = normalizedDecisionText(record.label, 60);
+    const summary = normalizedDecisionText(record.summary, 180);
+    if (!dimensions.has(dimension) || !label || !summary) continue;
+    const requestedEvidence = Array.isArray(record.evidence_ids)
+      ? [...new Set(record.evidence_ids.filter((id): id is string =>
+        typeof id === "string" && evidenceById.has(id)
+      ))]
+      : [];
+    const requestedSource = typeof record.source_id === "string"
+      ? record.source_id
+      : null;
+    const sourceId = requestedSource && knownSourceIds.has(requestedSource)
+      ? requestedSource
+      : requestedEvidence.length > 0
+      ? String(evidenceById.get(requestedEvidence[0])?.source_id)
+      : null;
+    if (!sourceId) continue;
+    let evidenceIds = requestedEvidence.filter((id) =>
+      evidenceById.get(id)?.source_id === sourceId
+    ).slice(0, 3);
+    if (evidenceIds.length === 0) {
+      const fallback = [...evidenceById].find(([, evidence]) =>
+        evidence.source_id === sourceId
+      )?.[0];
+      if (!fallback) continue;
+      evidenceIds = [fallback];
+    }
+    const requestedId = normalizedDecisionText(record.id, 64);
+    let id = requestedId && !usedIds.has(requestedId) ? requestedId : null;
+    if (!id) {
+      let ordinal = result.length + 1;
+      do id = `s-theme-${ordinal++}`; while (usedIds.has(id));
+    }
+    usedIds.add(id);
+    result.push({
+      id,
+      kind: "theme",
+      derivation: "synthesis",
+      dimension,
+      label,
+      summary,
+      source_id: sourceId,
+      evidence_ids: evidenceIds,
+      metrics: {
+        posts_7d: null,
+        posts_28d: null,
+        images_28d: null,
+        videos_28d: null,
+      },
+      changed_paths: [],
+    });
+  }
+  return result;
+}
+
 export function groundedDecisionComparisons(
   value: unknown,
   signals: Array<Record<string, unknown>>,
@@ -999,21 +1096,72 @@ export function groundedDecisionComparisons(
     "content_cadence",
     "source_presence",
   ]);
-  const accepted = (Array.isArray(value) ? value : []).filter((item) => {
-    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+  const accepted: Array<Record<string, unknown>> = [];
+  const usedIds = new Set<string>();
+  for (const item of Array.isArray(value) ? value : []) {
+    if (accepted.length >= 5) break;
+    if (!item || typeof item !== "object" || Array.isArray(item)) continue;
     const record = item as Record<string, unknown>;
-    const signalIds = Array.isArray(record.signal_ids)
-      ? record.signal_ids.map(String)
+    const requestedSignalIds = Array.isArray(record.signal_ids)
+      ? record.signal_ids.filter((id): id is string => typeof id === "string")
       : [];
-    const ownerIds = Array.isArray(record.owner_fact_ids)
-      ? record.owner_fact_ids.map(String)
+    const requestedOwnerIds = Array.isArray(record.owner_fact_ids)
+      ? record.owner_fact_ids.filter((id): id is string => typeof id === "string")
       : [];
-    const dimension = record.dimension as DecisionDimension;
-    return allowedDimensions.has(dimension) && signalIds.length > 0 &&
-      signalIds.every((id) => signalById.get(id)?.dimension === dimension) &&
-      ownerIds.every((id) => ownerById.get(id)?.dimension === dimension) &&
-      (record.outcome === "not_comparable" || ownerIds.length > 0);
-  }).slice(0, 5) as Array<Record<string, unknown>>;
+    const referencedDimensions = [...new Set(requestedSignalIds.flatMap((id) => {
+      const dimension = signalById.get(id)?.dimension;
+      return allowedDimensions.has(dimension as DecisionDimension)
+        ? [dimension as DecisionDimension]
+        : [];
+    }))];
+    const requestedDimension = record.dimension as DecisionDimension;
+    const dimension = allowedDimensions.has(requestedDimension)
+      ? requestedDimension
+      : referencedDimensions.length === 1 ? referencedDimensions[0] : null;
+    if (!dimension) continue;
+    const signalIds = [...new Set(requestedSignalIds.filter((id) =>
+      signalById.get(id)?.dimension === dimension
+    ))].slice(0, 3);
+    if (signalIds.length === 0) continue;
+    const ownerIds = [...new Set(requestedOwnerIds.filter((id) =>
+      ownerById.get(id)?.dimension === dimension
+    ))].slice(0, 3);
+    const signal = signalById.get(signalIds[0]);
+    const owner = ownerIds.length > 0 ? ownerById.get(ownerIds[0]) : null;
+    const ownerText = normalizedDecisionText(record.owner_text, 140) ??
+      normalizedDecisionText(owner?.text, 140) ??
+      "No comparable verified Mingla venue signal";
+    const competitorText = normalizedDecisionText(record.competitor_text, 140) ??
+      normalizedDecisionText(signal?.summary, 140);
+    if (!competitorText) continue;
+    const requestedId = normalizedDecisionText(record.id, 64);
+    let id = requestedId && !usedIds.has(requestedId) ? requestedId : null;
+    if (!id) {
+      let ordinal = accepted.length + 1;
+      do id = `c-grounded-${ordinal++}`; while (usedIds.has(id));
+    }
+    usedIds.add(id);
+    const requestedOutcome = String(record.outcome);
+    const outcome = ownerIds.length === 0
+      ? "not_comparable"
+      : ["owner_advantage", "competitor_pressure", "different", "not_comparable"]
+          .includes(requestedOutcome)
+      ? requestedOutcome
+      : "not_comparable";
+    const requestedConfidence = String(record.confidence);
+    accepted.push({
+      id,
+      dimension,
+      owner_text: ownerText,
+      competitor_text: competitorText,
+      outcome,
+      confidence: ["high", "medium", "low"].includes(requestedConfidence)
+        ? requestedConfidence
+        : "low",
+      signal_ids: signalIds,
+      owner_fact_ids: ownerIds,
+    });
+  }
   if (accepted.length > 0) return accepted;
   const signal = signals.find((item) =>
     allowedDimensions.has(item.dimension as DecisionDimension) &&
@@ -1079,12 +1227,10 @@ export function groundedDecisionBindings(
       )
       ? decisionInput.confidence
       : "low",
-    headline: String(decisionInput.headline ?? "Competitor signal reviewed")
-      .slice(0, 160),
-    rationale: String(
-      decisionInput.rationale ??
-        "The available public signal should be reviewed against the venue's current plan.",
-    ).slice(0, 240),
+    headline: normalizedDecisionText(decisionInput.headline, 160) ??
+      "Competitor signal reviewed",
+    rationale: normalizedDecisionText(decisionInput.rationale, 240) ??
+      "The available public signal should be reviewed against the venue's current plan.",
     signal_ids: boundedIds(
       decisionInput.signal_ids,
       signalIds,
@@ -1387,9 +1533,12 @@ export async function synthesizeBrief(
       parsed = null;
     }
   }
-  const themeSignals = Array.isArray(parsed?.theme_signals)
-    ? parsed.theme_signals.slice(0, Math.max(0, 6 - foundation.signals.length))
-    : [];
+  const themeSignals = groundedThemeSignals(
+    parsed?.theme_signals,
+    foundation.signals,
+    foundation.signal_evidence,
+    6 - foundation.signals.length,
+  );
   const decisionSignals = [...foundation.signals, ...themeSignals];
   const whyItMatters = Array.isArray(parsed?.why_it_matters)
     ? parsed.why_it_matters.slice(0, 2)
