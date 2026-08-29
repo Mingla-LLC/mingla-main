@@ -6,15 +6,19 @@ import React, {
   useState,
 } from "react";
 import {
+  AccessibilityInfo,
   ActivityIndicator,
   Platform,
   Pressable,
   StyleSheet,
   Text,
+  useWindowDimensions,
   View,
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
+  competition,
+  competitorSheet,
   glass,
   spacing,
   semantic,
@@ -88,6 +92,12 @@ export function CompetitorAddSheet({
   offline = false,
   testID = "competitor-source-sheet",
 }: CompetitorAddSheetProps): React.ReactElement {
+  const { width } = useWindowDimensions();
+  const contentInset = width >= 1024
+    ? competitorSheet.contentInsetWide
+    : width >= 360
+      ? competitorSheet.contentInsetRegular
+      : competitorSheet.contentInsetCompact;
   const { loading, session } = useAuth();
   const isOffline = offline;
   const mutation = useAddCompetitor(brandId, venueListingId);
@@ -177,6 +187,9 @@ export function CompetitorAddSheet({
   });
   const selectPlace = useCallback(
     (result: PlaceSearchResult) => {
+      if (Platform.OS !== "web") {
+        void import("../../../utils/hapticFeedback").then(({ HapticFeedback }) => HapticFeedback.buttonPress());
+      }
       setName(result.name);
       setCity(result.city ?? venueCity ?? "");
       setWebsite(result.website ?? "");
@@ -239,6 +252,12 @@ export function CompetitorAddSheet({
           },
         );
         if (!editing) captureIntelCompetitorAdded();
+        if (!editing) {
+          void import("../../../utils/hapticFeedback").then(({ HapticFeedback }) => HapticFeedback.success());
+          AccessibilityInfo.announceForAccessibility(
+            `Watching ${name.trim()}. Your first sourced brief is being prepared`,
+          );
+        }
         onClose();
       },
       onError: (error: { code: string }) =>
@@ -272,7 +291,7 @@ export function CompetitorAddSheet({
       testID={testID}
     >
       <View
-        style={styles.body}
+        style={[styles.body, { paddingHorizontal: contentInset }]}
         testID={`${testID}-${editing ? "mode-edit" : "mode-add"}`}
       >
         <View style={styles.sheetHeader}>
@@ -292,7 +311,7 @@ export function CompetitorAddSheet({
           <Text style={styles.help}>
             {editing
               ? "Keep each public source accurate."
-              : "Start with a nearby venue or enter it yourself."}
+              : "Find a nearby venue, or add its public links yourself."}
           </Text>
         </View>
         {isOffline ? (
@@ -324,7 +343,7 @@ export function CompetitorAddSheet({
               <Input
                 value={query}
                 onChangeText={setQuery}
-                placeholder="Search nearby venues"
+                placeholder="Search by venue name"
                 leadingIcon="search"
                 accessibilityLabel="Search nearby venues"
                 disabled={mutation.isPending}
@@ -335,13 +354,23 @@ export function CompetitorAddSheet({
                 >{`NEARBY IN ${venueCity.toUpperCase()}`}</Text>
               ) : null}
               <View style={styles.searchResults}>
+                {!debounced && !search.isFetching ? (
+                  <View style={styles.searchMessage} testID={`${testID}-search-initial`}>
+                    <Text style={styles.label}>Search by venue name</Text>
+                    <Text style={styles.help}>We’ll prefill public details when we can.</Text>
+                  </View>
+                ) : null}
                 {search.isFetching ? (
                   <View
                     accessibilityLiveRegion="polite"
-                    style={styles.searchMessage}
+                    style={styles.skeletons}
                   >
-                    <ActivityIndicator color={textTokens.secondary} />
-                    <Text style={styles.help}>Finding nearby venues…</Text>
+                    {[0, 1, 2].map((item) => (
+                      <View key={item} style={styles.skeletonRow}>
+                        <ActivityIndicator color={textTokens.secondary} />
+                        <Text style={styles.help}>Finding nearby venue…</Text>
+                      </View>
+                    ))}
                   </View>
                 ) : null}
                 {search.isError ? (
@@ -372,6 +401,7 @@ export function CompetitorAddSheet({
                   >
                     <Text style={styles.label}>{result.name}</Text>
                     <Text style={styles.help}>{result.city ?? ""}</Text>
+                    {result.website ? <Text style={styles.preview}>Website found</Text> : null}
                   </Pressable>
                 ))}
                 {search.isFetched &&
@@ -385,16 +415,13 @@ export function CompetitorAddSheet({
                   </View>
                 ) : null}
               </View>
-              <Button
-                label="Enter details instead"
-                variant="ghost"
-                size="md"
-                onPress={() => setSearchMode(false)}
-              />
             </>
           ) : (
             <>
               <Text style={styles.cap}>COMPETITOR</Text>
+              {!editing ? (
+                <Button label="Back to nearby search" variant="ghost" size="md" onPress={() => setSearchMode(true)} />
+              ) : null}
               <Text style={styles.label}>Competitor name</Text>
               <Input
                 value={name}
@@ -413,15 +440,15 @@ export function CompetitorAddSheet({
                 accessibilityLabel="City"
                 testID={`${testID}-city-input`}
               />
-              <Text style={styles.cap}>PUBLIC SOURCES</Text>
+              <Text style={styles.cap}>SOURCES MINGLA CAN WATCH</Text>
               <Text style={styles.help}>
-                Add at least one public source. We only use public business
-                information.
+                Add one source Mingla can verify each week. You can save TikTok as a quick reference.
               </Text>
               <SourceField
                 kind="website"
                 label="Website"
-                copy="Eligible for weekly analysis"
+                badge="Weekly"
+                copy="Mingla checks the public website each week."
                 value={website}
                 setValue={setWebsite}
                 preview={previews.website}
@@ -431,17 +458,20 @@ export function CompetitorAddSheet({
               <SourceField
                 kind="instagram"
                 label="Instagram profile"
-                copy="Eligible for weekly analysis when the profile is an approved professional account"
+                badge="Weekly if eligible"
+                copy="Weekly checks require an approved professional account."
                 value={instagram}
                 setValue={setInstagram}
                 preview={previews.instagram}
                 disabled={mutation.isPending}
                 testID={testID}
               />
+              <Text style={styles.cap}>SAVED REFERENCE</Text>
               <SourceField
                 kind="tiktok"
-                label="TikTok · Saved link"
-                copy="Not analyzed weekly. Saved as a link — weekly analysis isn't available"
+                label="TikTok"
+                badge="Saved link only"
+                copy="Saved as a link — weekly analysis isn't available. Use it as a quick reference."
                 value={tiktok}
                 setValue={setTiktok}
                 preview={previews.tiktok}
@@ -456,7 +486,11 @@ export function CompetitorAddSheet({
             </>
           )}
         </ScrollView>
-        {!searchMode ? (
+        {searchMode ? (
+          <View style={styles.footer} testID={`${testID}-nearby-footer`}>
+            <Button label="Enter details manually" variant="secondary" size="md" fullWidth onPress={() => setSearchMode(false)} />
+          </View>
+        ) : (
           <View style={styles.footer} testID={`${testID}-sticky-footer`}>
             <Button
               label={
@@ -476,17 +510,8 @@ export function CompetitorAddSheet({
               onPress={submit}
               testID={`${testID}-submit`}
             />
-            <Button
-              label="Cancel"
-              variant="ghost"
-              size="md"
-              fullWidth
-              disabled={mutation.isPending}
-              onPress={requestClose}
-              testID={`${testID}-cancel`}
-            />
           </View>
-        ) : null}
+        )}
       </View>
       {discardOpen ? (
         <ConfirmDialog
@@ -510,6 +535,7 @@ export function CompetitorAddSheet({
 function SourceField({
   kind,
   label,
+  badge,
   copy,
   value,
   setValue,
@@ -519,6 +545,7 @@ function SourceField({
 }: {
   kind: CompetitorSourceKind;
   label: string;
+  badge: string;
   copy: string;
   value: string;
   setValue: (value: string) => void;
@@ -535,7 +562,10 @@ function SourceField({
         : "Paste a TikTok profile link, like tiktok.com/@competitor.";
   return (
     <View style={styles.source}>
-      <Text style={styles.label}>{label}</Text>
+      <View style={styles.sourceTitle}>
+        <Text style={styles.label}>{label}</Text>
+        <Text style={styles.badge}>{badge}</Text>
+      </View>
       <Text style={styles.help}>{copy}</Text>
       <Input
         value={value}
@@ -571,7 +601,7 @@ function SourceField({
 const styles = StyleSheet.create({
   sheet: {
     width: "100%",
-    maxWidth: 640,
+    maxWidth: competitorSheet.addMaxWidth,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: glass.border.profileElevated,
     ...Platform.select({
@@ -599,12 +629,12 @@ const styles = StyleSheet.create({
   },
   scroll: { gap: spacing.md, paddingBottom: spacing.xl },
   footer: {
-    minHeight: 72,
+    minHeight: competitorSheet.stickyFooterMinHeight,
     gap: spacing.sm,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: "rgba(255,255,255,0.16)",
-    backgroundColor: "#16181b",
+    backgroundColor: competition.surface,
   },
   title: { ...typography.h3, color: textTokens.primary },
   cap: {
@@ -614,10 +644,45 @@ const styles = StyleSheet.create({
   },
   label: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" },
   help: { ...typography.bodySm, color: textTokens.secondary },
-  source: { gap: spacing.sm, marginTop: spacing.md },
+  source: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#1f2125",
+    backgroundColor: competition.surfaceRaised,
+    overflow: "hidden",
+    ...Platform.select({ android: { elevation: 0, shadowOpacity: 0 } }),
+  },
+  sourceTitle: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: spacing.sm,
+  },
+  badge: {
+    ...typography.caption,
+    color: textTokens.primary,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#1f2125",
+    borderRadius: 12,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: spacing.xs,
+  },
   preview: { ...typography.caption, color: textTokens.secondary },
   error: { ...typography.bodySm, color: semantic.error },
-  searchResults: { minHeight: 56, gap: spacing.md },
+  searchResults: { minHeight: 160, maxHeight: 360, gap: spacing.md },
+  skeletons: { gap: spacing.sm },
+  skeletonRow: {
+    minHeight: 64,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    padding: spacing.md,
+    borderRadius: 16,
+    backgroundColor: competition.surfaceRaised,
+  },
   searchMessage: { minHeight: 56, justifyContent: "center", gap: spacing.sm },
   result: {
     minHeight: 56,

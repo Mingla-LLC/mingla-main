@@ -2,6 +2,8 @@ import { supabase } from "./supabase";
 import { GrowthToolsAppError, toGrowthToolsAppError } from "./growthToolsReads";
 import type {
   CompetitorBriefResult,
+  CompetitorDecisionDimension,
+  CompetitorDecisionReport,
   CompetitorCapability,
   CompetitorFreshness,
   CompetitorManualRefreshState,
@@ -273,6 +275,151 @@ function malformedBriefResponse(): never {
   throw new GrowthToolsAppError("server", { reason: "malformed_brief_response" });
 }
 
+const DECISION_DIMENSIONS = new Set<CompetitorDecisionDimension>([
+  "category", "positioning", "event_theme", "offer", "content_cadence",
+  "source_presence",
+]);
+const DECISION_CONFIDENCES = new Set(["high", "medium", "low"] as const);
+
+function isBoundedString(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.trim().length > 0 &&
+    value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function stringIds(
+  value: unknown,
+  min: number,
+  max: number,
+  known?: Set<string>,
+): value is string[] {
+  if (!Array.isArray(value) || value.length < min || value.length > max) return false;
+  const ids = new Set<string>();
+  return value.every((item) =>
+    isBoundedString(item, 64) && !ids.has(item) &&
+    (known === undefined || known.has(item)) && Boolean(ids.add(item))
+  );
+}
+
+function mapDecisionReport(raw: unknown, brief: NonNullable<CompetitorBriefResult["brief"]>): CompetitorDecisionReport {
+  if (!isRecord(raw) || !hasExactKeys(raw, [
+    "decision", "signals", "signal_evidence", "interpretation_meta",
+    "comparisons", "action_plan", "owner_facts",
+  ]) || !Array.isArray(raw.signals) || raw.signals.length < 1 || raw.signals.length > 6 ||
+    !Array.isArray(raw.signal_evidence) || raw.signal_evidence.length < 1 || raw.signal_evidence.length > 8 ||
+    !Array.isArray(raw.owner_facts) || raw.owner_facts.length < 1 || raw.owner_facts.length > 11 ||
+    !Array.isArray(raw.interpretation_meta) || raw.interpretation_meta.length !== brief.whyItMatters.length ||
+    !Array.isArray(raw.comparisons) || raw.comparisons.length > 5 ||
+    !Array.isArray(raw.action_plan) || raw.action_plan.length !== brief.worthDoing.length) {
+    return malformedBriefResponse();
+  }
+  const evidenceIds = new Set<string>();
+  const evidenceSource = new Map<string, string>();
+  const authorizedEvidence = new Set(
+    brief.evidence.map((item) => `${item.sourceId}\n${item.publicUrl}`),
+  );
+  const signalEvidence = raw.signal_evidence.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "source_id", "source_url", "observation", "checked_at", "observed_at"]) ||
+      !isBoundedString(item.id, 64) || evidenceIds.has(item.id) || !isBoundedString(item.source_id, 64) ||
+      !isHttpUrl(item.source_url) || !authorizedEvidence.has(`${item.source_id}\n${item.source_url}`) ||
+      !isBoundedString(item.observation, 280) || !isTimestamp(item.checked_at) ||
+      (item.observed_at !== null && !isTimestamp(item.observed_at))) return malformedBriefResponse();
+    evidenceIds.add(item.id);
+    evidenceSource.set(item.id, item.source_id);
+    return { id: item.id, sourceId: item.source_id, sourceUrl: item.source_url, observation: item.observation,
+      checkedAt: item.checked_at, observedAt: item.observed_at as string | null };
+  });
+  const signalIds = new Set<string>();
+  const signalDimension = new Map<string, CompetitorDecisionDimension>();
+  const signals = raw.signals.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "kind", "derivation", "dimension", "label", "summary", "source_id", "evidence_ids", "metrics", "changed_paths"]) ||
+      !isBoundedString(item.id, 64) || signalIds.has(item.id) ||
+      !["profile", "website", "content", "theme", "cadence", "format", "delta"].includes(String(item.kind)) ||
+      (item.derivation !== "deterministic" && item.derivation !== "synthesis") ||
+      !DECISION_DIMENSIONS.has(item.dimension as CompetitorDecisionDimension) || !isBoundedString(item.label, 60) ||
+      !isBoundedString(item.summary, 180) || !isBoundedString(item.source_id, 64) ||
+      !stringIds(item.evidence_ids, 1, 3, evidenceIds) || !Array.isArray(item.changed_paths) || item.changed_paths.length > 8 ||
+      item.changed_paths.some((path) => !isBoundedString(path, 80)) || !isRecord(item.metrics) ||
+      !hasExactKeys(item.metrics, ["posts_7d", "posts_28d", "images_28d", "videos_28d"])) return malformedBriefResponse();
+    const metricValues = [item.metrics.posts_7d, item.metrics.posts_28d, item.metrics.images_28d, item.metrics.videos_28d];
+    if (metricValues.some((metric) => metric !== null && (!Number.isInteger(metric) || Number(metric) < 0 || Number(metric) > 20)) ||
+      (item.derivation === "synthesis" && (item.kind !== "theme" || metricValues.some((metric) => metric !== null) || item.changed_paths.length > 0)) ||
+      (item.derivation === "deterministic" && item.kind === "theme") ||
+      (item.evidence_ids as string[]).some((id) => evidenceSource.get(id) !== item.source_id)) return malformedBriefResponse();
+    signalIds.add(item.id);
+    signalDimension.set(item.id, item.dimension as CompetitorDecisionDimension);
+    return { id: item.id, kind: item.kind as "profile" | "website" | "content" | "theme" | "cadence" | "format" | "delta",
+      derivation: item.derivation as "deterministic" | "synthesis", dimension: item.dimension as CompetitorDecisionDimension,
+      label: item.label, summary: item.summary, sourceId: item.source_id, evidenceIds: item.evidence_ids as string[],
+      metrics: { posts7d: item.metrics.posts_7d as number | null, posts28d: item.metrics.posts_28d as number | null,
+        images28d: item.metrics.images_28d as number | null, videos28d: item.metrics.videos_28d as number | null },
+      changedPaths: item.changed_paths as string[] };
+  });
+  const ownerFactIds = new Set<string>();
+  const ownerFactDimension = new Map<string, CompetitorDecisionDimension>();
+  const ownerFacts = raw.owner_facts.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "kind", "entity_id", "dimension", "text"]) ||
+      !isBoundedString(item.id, 64) || ownerFactIds.has(item.id) ||
+      !["listing_category", "event_title", "event_description"].includes(String(item.kind)) ||
+      !isBoundedString(item.entity_id, 64) || !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(item.entity_id) ||
+      !DECISION_DIMENSIONS.has(item.dimension as CompetitorDecisionDimension) ||
+      !isBoundedString(item.text, 240)) return malformedBriefResponse();
+    ownerFactIds.add(item.id);
+    ownerFactDimension.set(item.id, item.dimension as CompetitorDecisionDimension);
+    return { id: item.id, kind: item.kind as "listing_category" | "event_title" | "event_description", entityId: item.entity_id,
+      dimension: item.dimension as CompetitorDecisionDimension, text: item.text };
+  });
+  if (!isRecord(raw.decision) || !hasExactKeys(raw.decision, ["class", "confidence", "headline", "rationale", "signal_ids", "owner_fact_ids"]) ||
+    !["watch", "opportunity", "act"].includes(String(raw.decision.class)) ||
+    !DECISION_CONFIDENCES.has(raw.decision.confidence as "high" | "medium" | "low") ||
+    !isBoundedString(raw.decision.headline, 160) || !isBoundedString(raw.decision.rationale, 240) ||
+    !stringIds(raw.decision.signal_ids, 1, 3, signalIds) || !stringIds(raw.decision.owner_fact_ids, 0, 3, ownerFactIds)) return malformedBriefResponse();
+  const interpretationMeta = raw.interpretation_meta.map((item, index) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["index", "signal_type", "confidence", "priority", "signal_ids", "owner_fact_ids"]) ||
+      item.index !== index || !["threat", "opportunity", "neutral"].includes(String(item.signal_type)) ||
+      !DECISION_CONFIDENCES.has(item.confidence as "high" | "medium" | "low") ||
+      (item.priority !== "high" && item.priority !== "medium") || !stringIds(item.signal_ids, 1, 3, signalIds) ||
+      !stringIds(item.owner_fact_ids, 0, 3, ownerFactIds)) return malformedBriefResponse();
+    return { index, signalType: item.signal_type as "threat" | "opportunity" | "neutral", confidence: item.confidence as "high" | "medium" | "low",
+      priority: item.priority as "high" | "medium", signalIds: item.signal_ids as string[], ownerFactIds: item.owner_fact_ids as string[] };
+  });
+  const comparisonIds = new Set<string>();
+  const comparisons = raw.comparisons.map((item) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["id", "dimension", "owner_text", "competitor_text", "outcome", "confidence", "signal_ids", "owner_fact_ids"]) ||
+      !isBoundedString(item.id, 64) || comparisonIds.has(item.id) || !DECISION_DIMENSIONS.has(item.dimension as CompetitorDecisionDimension) ||
+      !isBoundedString(item.owner_text, 140) || !isBoundedString(item.competitor_text, 140) ||
+      !["owner_advantage", "competitor_pressure", "different", "not_comparable"].includes(String(item.outcome)) ||
+      !DECISION_CONFIDENCES.has(item.confidence as "high" | "medium" | "low") || !stringIds(item.signal_ids, 1, 3, signalIds) ||
+      !stringIds(item.owner_fact_ids, 0, 3, ownerFactIds) ||
+      (item.signal_ids as string[]).some((id) => signalDimension.get(id) !== item.dimension) ||
+      (item.owner_fact_ids as string[]).some((id) => ownerFactDimension.get(id) !== item.dimension) ||
+      (item.outcome !== "not_comparable" && (item.owner_fact_ids as string[]).length === 0)) return malformedBriefResponse();
+    comparisonIds.add(item.id);
+    return { id: item.id, dimension: item.dimension as CompetitorDecisionDimension, ownerText: item.owner_text,
+      competitorText: item.competitor_text, outcome: item.outcome as "owner_advantage" | "competitor_pressure" | "different" | "not_comparable",
+      confidence: item.confidence as "high" | "medium" | "low", signalIds: item.signal_ids as string[], ownerFactIds: item.owner_fact_ids as string[] };
+  });
+  let primary = 0;
+  const actionIds = new Set<string>();
+  const actionPlan = raw.action_plan.map((item, index) => {
+    if (!isRecord(item) || !hasExactKeys(item, ["index", "action_id", "timeframe", "impact", "confidence", "order", "is_primary", "signal_ids", "owner_fact_ids"]) ||
+      item.index !== index || item.action_id !== brief.worthDoing[index]?.id || actionIds.has(String(item.action_id)) || item.order !== index + 1 ||
+      !["this_week", "this_month", "bigger_project"].includes(String(item.timeframe)) ||
+      (item.impact !== "high" && item.impact !== "medium") || !DECISION_CONFIDENCES.has(item.confidence as "high" | "medium" | "low") ||
+      typeof item.is_primary !== "boolean" || !stringIds(item.signal_ids, 1, 3, signalIds) ||
+      !stringIds(item.owner_fact_ids, 0, 3, ownerFactIds)) return malformedBriefResponse();
+    if (item.is_primary) primary += 1;
+    if (item.is_primary !== brief.worthDoing[index]?.isPrimary || (item.is_primary && (item.order !== 1 || item.timeframe !== "this_week"))) return malformedBriefResponse();
+    actionIds.add(item.action_id as string);
+    return { index, actionId: item.action_id, timeframe: item.timeframe as "this_week" | "this_month" | "bigger_project",
+      impact: item.impact as "high" | "medium", confidence: item.confidence as "high" | "medium" | "low", order: item.order as number,
+      isPrimary: item.is_primary, signalIds: item.signal_ids as string[], ownerFactIds: item.owner_fact_ids as string[] };
+  });
+  if (primary !== 1) return malformedBriefResponse();
+  return { decision: { class: raw.decision.class as "watch" | "opportunity" | "act", confidence: raw.decision.confidence as "high" | "medium" | "low",
+    headline: raw.decision.headline, rationale: raw.decision.rationale, signalIds: raw.decision.signal_ids as string[], ownerFactIds: raw.decision.owner_fact_ids as string[] },
+    signals, signalEvidence, interpretationMeta, comparisons, actionPlan, ownerFacts };
+}
+
 function mapCompetitorBrief(raw: unknown): CompetitorBriefResult["brief"] {
   if (raw === null) return null;
   if (!isRecord(raw) || !hasExactKeys(raw, ["status", "what_changed", "why_it_matters", "worth_doing", "evidence"], ["website_health"]) ||
@@ -369,11 +516,11 @@ function mapCompetitorBrief(raw: unknown): CompetitorBriefResult["brief"] {
 }
 
 export async function getCompetitorBrief(brandId: string, watchId: string): Promise<CompetitorBriefResult> {
-  const { data, error } = await supabase.functions.invoke("growth-tools-report", { body: { action: "competitor_brief", lane: "app", brand_id: brandId, watch_id: watchId } });
+  const { data, error } = await supabase.functions.invoke("growth-tools-report", { body: { action: "competitor_brief", lane: "app", brand_id: brandId, watch_id: watchId, max_schema_version: 3 } });
   if (error !== null) throw await toGrowthToolsAppError(error, COMPETITOR_ERROR_CODES);
-  if (!isRecord(data) || !hasExactKeys(data, ["schema_version", "watch_id", "freshness", "updated_at", "checked_at", "next_refresh_at", "no_meaningful_change", "manual_refresh_state", "sources", "brief"])) return malformedBriefResponse();
+  if (!isRecord(data) || !hasExactKeys(data, ["schema_version", "watch_id", "freshness", "updated_at", "checked_at", "next_refresh_at", "no_meaningful_change", "manual_refresh_state", "sources", "brief"], ["decision_report"])) return malformedBriefResponse();
   const body = data;
-  if (body.schema_version !== 2 || body.watch_id !== watchId ||
+  if ((body.schema_version !== 2 && body.schema_version !== 3) || body.watch_id !== watchId ||
     !COMPETITOR_FRESHNESSES.has(body.freshness as CompetitorFreshness) ||
     !COMPETITOR_MANUAL_STATES.has(body.manual_refresh_state as CompetitorManualRefreshState) ||
     !isNullableTimestamp(body.updated_at) || !isNullableTimestamp(body.checked_at) ||
@@ -393,6 +540,24 @@ export async function getCompetitorBrief(brandId: string, watchId: string): Prom
   } catch {
     return malformedBriefResponse();
   }
+  const brief = mapCompetitorBrief(body.brief);
+  if (body.schema_version === 3) {
+    if (!Object.prototype.hasOwnProperty.call(body, "decision_report")) return malformedBriefResponse();
+    return {
+      schemaVersion: 3,
+      watchId,
+      freshness: body.freshness as CompetitorFreshness,
+      updatedAt: typeof body.updated_at === "string" ? body.updated_at : null,
+      checkedAt: typeof body.checked_at === "string" ? body.checked_at : null,
+      nextRefreshAt: typeof body.next_refresh_at === "string" ? body.next_refresh_at : null,
+      noMeaningfulChange: body.no_meaningful_change === true,
+      manualRefreshState: body.manual_refresh_state as CompetitorManualRefreshState,
+      sources,
+      brief,
+      decisionReport: mapDecisionReport(body.decision_report, brief ?? malformedBriefResponse()),
+    };
+  }
+  if (Object.prototype.hasOwnProperty.call(body, "decision_report")) return malformedBriefResponse();
   return {
     schemaVersion: 2,
     watchId,
@@ -403,6 +568,6 @@ export async function getCompetitorBrief(brandId: string, watchId: string): Prom
     noMeaningfulChange: body.no_meaningful_change === true,
     manualRefreshState: body.manual_refresh_state as CompetitorManualRefreshState,
     sources,
-    brief: mapCompetitorBrief(body.brief),
+    brief,
   };
 }

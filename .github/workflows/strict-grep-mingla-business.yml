@@ -628,6 +628,14 @@ jobs:
           src/components/venue/insights/__tests__/competitorIntelligence.issue2725.happy.test.ts
           src/services/__tests__/competitorBriefValidation.issue2725.tester.adversarial.test.ts
           src/services/__tests__/competitorBriefValidation.issue2725.rework.test.ts
+      - name: "Issue #2796: premium competitor decision report"
+        working-directory: mingla-business
+        run: >-
+          npx jest --runInBand
+          src/services/__tests__/competitorDecisionReport.issue2796.happy.test.ts
+          src/components/venue/insights/__tests__/competitorPremiumReport.issue2796.happy.test.ts
+      - name: "Issue #2796: strict contract gate"
+        run: node .github/scripts/strict-grep/issue-2796-competitor-decision-report.mjs
       - name: Run expo export -p web (capture stderr)
         working-directory: mingla-business
         env:

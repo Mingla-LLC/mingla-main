@@ -248,7 +248,102 @@ export interface CompetitorBriefEvidence {
   checkedAt: string;
   observation: string;
 }
-export interface CompetitorBriefResult {
+export type CompetitorDecisionClass = "watch" | "opportunity" | "act";
+export type CompetitorDecisionConfidence = "high" | "medium" | "low";
+export type CompetitorSignalType = "threat" | "opportunity" | "neutral";
+export type CompetitorDecisionDimension =
+  | "category"
+  | "positioning"
+  | "event_theme"
+  | "offer"
+  | "content_cadence"
+  | "source_presence";
+
+export interface CompetitorDecisionSignalEvidence {
+  id: string;
+  sourceId: string;
+  sourceUrl: string;
+  observation: string;
+  checkedAt: string;
+  observedAt: string | null;
+}
+
+export interface CompetitorDecisionSignal {
+  id: string;
+  kind: "profile" | "website" | "content" | "theme" | "cadence" | "format" | "delta";
+  derivation: "deterministic" | "synthesis";
+  dimension: CompetitorDecisionDimension;
+  label: string;
+  summary: string;
+  sourceId: string;
+  evidenceIds: string[];
+  metrics: {
+    posts7d: number | null;
+    posts28d: number | null;
+    images28d: number | null;
+    videos28d: number | null;
+  };
+  changedPaths: string[];
+}
+
+export interface CompetitorOwnerFact {
+  id: string;
+  kind: "listing_category" | "event_title" | "event_description";
+  entityId: string;
+  dimension: CompetitorDecisionDimension;
+  text: string;
+}
+
+export interface CompetitorInterpretationMeta {
+  index: number;
+  signalType: CompetitorSignalType;
+  confidence: CompetitorDecisionConfidence;
+  priority: "high" | "medium";
+  signalIds: string[];
+  ownerFactIds: string[];
+}
+
+export interface CompetitorComparison {
+  id: string;
+  dimension: CompetitorDecisionDimension;
+  ownerText: string;
+  competitorText: string;
+  outcome: "owner_advantage" | "competitor_pressure" | "different" | "not_comparable";
+  confidence: CompetitorDecisionConfidence;
+  signalIds: string[];
+  ownerFactIds: string[];
+}
+
+export interface CompetitorActionMeta {
+  index: number;
+  actionId: string;
+  timeframe: "this_week" | "this_month" | "bigger_project";
+  impact: "high" | "medium";
+  confidence: CompetitorDecisionConfidence;
+  order: number;
+  isPrimary: boolean;
+  signalIds: string[];
+  ownerFactIds: string[];
+}
+
+export interface CompetitorDecisionReport {
+  decision: {
+    class: CompetitorDecisionClass;
+    confidence: CompetitorDecisionConfidence;
+    headline: string;
+    rationale: string;
+    signalIds: string[];
+    ownerFactIds: string[];
+  };
+  signals: CompetitorDecisionSignal[];
+  signalEvidence: CompetitorDecisionSignalEvidence[];
+  interpretationMeta: CompetitorInterpretationMeta[];
+  comparisons: CompetitorComparison[];
+  actionPlan: CompetitorActionMeta[];
+  ownerFacts: CompetitorOwnerFact[];
+}
+
+interface CompetitorBriefResultBase {
   schemaVersion: 2;
   watchId: string;
   freshness: CompetitorFreshness;
@@ -267,3 +362,14 @@ export interface CompetitorBriefResult {
     websiteHealth?: { grade: string | null; changes: unknown[] };
   } | null;
 }
+
+export interface CompetitorBriefV2 extends CompetitorBriefResultBase {
+  schemaVersion: 2;
+}
+
+export interface CompetitorBriefV3 extends Omit<CompetitorBriefResultBase, "schemaVersion"> {
+  schemaVersion: 3;
+  decisionReport: CompetitorDecisionReport;
+}
+
+export type CompetitorBriefResult = CompetitorBriefV2 | CompetitorBriefV3;

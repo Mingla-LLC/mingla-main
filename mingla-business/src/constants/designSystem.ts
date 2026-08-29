@@ -574,6 +574,25 @@ export const durations = {
   slowest: 800,
 } as const;
 
+/** #2796 feature-owned competition-sheet geometry. */
+export const competitorSheet = {
+  contentInsetCompact: 16,
+  contentInsetRegular: 24,
+  contentInsetWide: 32,
+  addMaxWidth: 640,
+  briefMaxWidth: 720,
+  readableCopyMaxWidth: 600,
+  sectionGap: 32,
+  cardGap: 16,
+  stickyFooterMinHeight: 76,
+} as const;
+
+/** #2796 opaque competition surfaces (including Android). */
+export const competition = {
+  surface: "#16181b",
+  surfaceRaised: "#191c21",
+} as const;
+
 export const typography = {
   display: { fontSize: 32, lineHeight: 48, fontWeight: "700" as const, letterSpacing: -0.4 },
   h1: { fontSize: 26, lineHeight: 32, fontWeight: "700" as const, letterSpacing: -0.2 },

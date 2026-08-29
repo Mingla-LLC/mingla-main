@@ -1,0 +1,62 @@
+import { assertEquals, assertThrows } from "https://deno.land/std@0.190.0/testing/asserts.ts";
+import { buildDecisionFoundation, buildObservationComparisons, validateDecisionReport } from "../index.ts";
+
+const observations = [{
+  sourceId: "11111111-1111-4111-8111-111111111111",
+  kind: "instagram",
+  facts: {
+    profile: { name: "Shiro", bio: "Pan-Asian dining" },
+    items: [{ format: "image", caption_excerpt: "Weekend tasting menu" }],
+    cadence: { posts_7d: 1, posts_28d: 1 },
+  },
+  checkedAt: "2026-08-29T00:00:00.000Z",
+  latestObservedAt: "2026-08-28T00:00:00.000Z",
+  publicUrl: "https://instagram.com/shiro",
+  fingerprint: "a".repeat(64),
+}];
+const venue = {
+  listing: { id: "22222222-2222-4222-8222-222222222222", name: "Gogi", city: "Lagos", venue_category: "restaurant" },
+  brand_published_events: [{ id: "33333333-3333-4333-8333-333333333333", title: "Korean supper", description: "A tasting event" }],
+};
+
+Deno.test("issue 2796 derives bounded evidence, cadence, format, delta and owner facts without AI", () => {
+  const comparisons = buildObservationComparisons(observations, [{ source_id: observations[0].sourceId, facts: { profile: { bio: "Old bio" } }, checked_at: "2026-08-22T00:00:00.000Z" }]);
+  const foundation = buildDecisionFoundation(observations, comparisons, venue);
+  assertEquals(foundation.signal_evidence.length, 1);
+  assertEquals(foundation.signal_evidence[0].source_url, observations[0].publicUrl);
+  assertEquals(foundation.signals.map((item) => item.kind), ["profile", "delta", "cadence", "format"]);
+  assertEquals(foundation.signals[1].changed_paths, ["cadence", "items", "profile.bio", "profile.name"]);
+  assertEquals(foundation.owner_facts.length, 3);
+});
+
+Deno.test("issue 2796 accepts one exact grounded decision report and rejects unknown keys", () => {
+  const foundation = buildDecisionFoundation(observations, buildObservationComparisons(observations, []), venue);
+  const brief = {
+    why_it_matters: [{ text: "The competitor is active.", evidence_ids: ["e1"], confidence: "interpretation" }],
+    worth_doing: [{ id: "a1", text: "Publish a clear event offer.", kind: "event", confidence: "suggested_action", is_primary: true }],
+    evidence: [{ id: "e1", source_id: observations[0].sourceId, public_url: observations[0].publicUrl, checked_at: observations[0].checkedAt, observed_at: observations[0].latestObservedAt, observation: "Instagram post" }],
+  };
+  const report = {
+    ...foundation,
+    decision: { class: "act", confidence: "medium", headline: "A clear offer is gaining visibility", rationale: "Respond with a verified event offer.", signal_ids: ["s-instagram-1"], owner_fact_ids: ["of-listing-category"] },
+    interpretation_meta: [{ index: 0, signal_type: "threat", confidence: "medium", priority: "high", signal_ids: ["s-instagram-1"], owner_fact_ids: ["of-listing-category"] }],
+    comparisons: [{ id: "c1", dimension: "event_theme", owner_text: "Korean supper", competitor_text: "Weekend tasting menu", outcome: "different", confidence: "medium", signal_ids: ["s-instagram-1"], owner_fact_ids: ["of-event-title-33333333-3333-4333-8333-333333333333"] }],
+    action_plan: [{ index: 0, action_id: "a1", timeframe: "this_week", impact: "high", confidence: "medium", order: 1, is_primary: true, signal_ids: ["s-instagram-1"], owner_fact_ids: ["of-listing-category"] }],
+  };
+  // Align the comparison with the signal's deterministic dimension.
+  report.comparisons[0].dimension = "positioning";
+  report.comparisons[0].owner_fact_ids = [];
+  report.comparisons[0].outcome = "not_comparable";
+  validateDecisionReport(report, brief, observations);
+  assertThrows(() => validateDecisionReport({ ...report, unknown: true }, brief, observations));
+});
+
+Deno.test("issue 2796 worker keeps deterministic one-call and cost bounds in source", async () => {
+  const source = await Deno.readTextFile(new URL("../index.ts", import.meta.url));
+  assertEquals(source.includes("maxOutputTokens: MAX_SYNTHESIS_OUTPUT_TOKENS"), true);
+  assertEquals(source.includes("temperature: 0"), true);
+  assertEquals(source.includes("thinkingConfig: { thinkingBudget: 0 }"), true);
+  assertEquals(source.includes("candidateCount: 1"), true);
+  assertEquals(source.includes("MAX_SYNTHESIS_REQUEST_BYTES = 65_536"), true);
+  assertEquals(source.includes("RESERVED_MICROUSD = 50_000"), true);
+});
