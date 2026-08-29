@@ -11,12 +11,14 @@ import {
 } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
 import {
+  glass,
   spacing,
   semantic,
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
 import { useCompetitorBrief } from "../../../hooks/useCompetitorIntelligence";
+import { useVenueListing } from "../../../hooks/useVenueListings";
 import { openExternal } from "../../../services/guestFunnelLink";
 import type {
   CompetitorBriefEvidence,
@@ -52,18 +54,54 @@ export function openCompetitorPublicUrl(url: string): void {
   });
 }
 
-export function CompetitorBriefSheet({
-  visible,
-  onClose,
-  brandId,
-  venueName = null,
-  row,
-}: {
+interface CompetitorBriefSheetProps {
   visible: boolean;
   onClose: () => void;
   brandId: string | null;
   venueName?: string | null;
+  venueListingId?: string | null;
   row: CompetitorWatchRow | null;
+}
+
+export function CompetitorBriefSheet(
+  props: CompetitorBriefSheetProps,
+): React.ReactElement {
+  if (props.venueName !== undefined || !props.venueListingId) {
+    return (
+      <CompetitorBriefSheetContent
+        {...props}
+        venueName={props.venueName ?? null}
+      />
+    );
+  }
+  return (
+    <CompetitorBriefSheetWithVenue
+      {...props}
+      venueListingId={props.venueListingId}
+    />
+  );
+}
+
+function CompetitorBriefSheetWithVenue(
+  props: CompetitorBriefSheetProps & { venueListingId: string },
+): React.ReactElement {
+  const venue = useVenueListing(props.venueListingId);
+  return (
+    <CompetitorBriefSheetContent
+      {...props}
+      venueName={venue.data?.name ?? null}
+    />
+  );
+}
+
+function CompetitorBriefSheetContent({
+  visible,
+  onClose,
+  brandId,
+  venueName,
+  row,
+}: Omit<CompetitorBriefSheetProps, "venueListingId" | "venueName"> & {
+  venueName: string | null;
 }): React.ReactElement {
   const query = useCompetitorBrief(brandId, row?.id ?? null, visible);
   const data = query.data;
@@ -91,6 +129,7 @@ export function CompetitorBriefSheet({
       onClose={onClose}
       snapPoint="full"
       presentation="competition"
+      panelBackground="#16181b"
       style={styles.sheet}
       testID="competitor-brief-sheet"
     >
@@ -393,7 +432,21 @@ function formatScheduleTime(iso: string, nowMs = Date.now()): string {
   return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${time}`;
 }
 const styles = StyleSheet.create({
-  sheet: { width: "100%", maxWidth: 720 },
+  sheet: {
+    width: "100%",
+    maxWidth: 720,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileElevated,
+    ...Platform.select({
+      android: { elevation: 0, shadowOpacity: 0 },
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.32,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: -8 },
+      },
+    }),
+  },
   body: { gap: spacing.lg, paddingBottom: spacing.xl },
   header: {
     gap: spacing.sm,

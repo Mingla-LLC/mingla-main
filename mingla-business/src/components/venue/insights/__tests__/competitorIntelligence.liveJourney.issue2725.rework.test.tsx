@@ -258,8 +258,12 @@ describe("issue 2725 premium Competition live journey", () => {
         offline={false}
       />,
     );
-    expect(buttons(capped, "Watch a competitor")).toHaveLength(0);
-    expect(output(capped)).toContain("Stop watching one to add another");
+    const cappedAction = buttons(capped, "Watch a competitor");
+    expect(cappedAction).toHaveLength(1);
+    expect(cappedAction[0]?.props.disabled).toBe(true);
+    expect(output(capped)).toContain(
+      "Watching 5 of 5 — remove one to add another.",
+    );
   });
 
   it("uses local calendar boundaries and never calls a future week today", () => {

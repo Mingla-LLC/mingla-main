@@ -7,6 +7,7 @@ import React, {
 } from "react";
 import {
   ActivityIndicator,
+  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -14,6 +15,7 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
+  glass,
   spacing,
   semantic,
   text as textTokens,
@@ -265,6 +267,7 @@ export function CompetitorAddSheet({
       snapPoint="full"
       verticalAlign="top"
       presentation="competition"
+      panelBackground="#16181b"
       style={styles.sheet}
       testID={testID}
     >
@@ -566,7 +569,21 @@ function SourceField({
   );
 }
 const styles = StyleSheet.create({
-  sheet: { width: "100%", maxWidth: 640 },
+  sheet: {
+    width: "100%",
+    maxWidth: 640,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileElevated,
+    ...Platform.select({
+      android: { elevation: 0, shadowOpacity: 0 },
+      default: {
+        shadowColor: "#000000",
+        shadowOpacity: 0.32,
+        shadowRadius: 24,
+        shadowOffset: { width: 0, height: -8 },
+      },
+    }),
+  },
   body: { flex: 1, gap: spacing.lg },
   sheetHeader: {
     gap: spacing.sm,

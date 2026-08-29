@@ -21,7 +21,6 @@ import {
   useRefreshCompetitor,
   useRemoveCompetitor,
 } from "../../../hooks/useCompetitorIntelligence";
-import { useVenueListing } from "../../../hooks/useVenueListings";
 import type {
   CompetitorSourceState,
   CompetitorWatchRow,
@@ -59,7 +58,6 @@ export function CompetitorWatchSection({
 }: CompetitorWatchSectionProps): React.ReactElement {
   const watch = useCompetitorWatch(brandId, venueListingId);
   const rows = watch.data ?? [];
-  const venue = useVenueListing(venueListingId);
   const remove = useRemoveCompetitor(brandId, venueListingId);
   const [briefRow, setBriefRow] = useState<CompetitorWatchRow | null>(null);
   const [editRow, setEditRow] = useState<CompetitorWatchRow | null>(null);
@@ -177,19 +175,18 @@ export function CompetitorWatchSection({
         <View style={styles.add}>
           {atCap ? (
             <Text style={styles.count} testID={`${testID}-cap`}>
-              Watching 5 of 5. Stop watching one to add another.
+              Watching 5 of 5 — remove one to add another.
             </Text>
-          ) : (
-            <Button
-              label="Watch a competitor"
-              variant="secondary"
-              size="md"
-              fullWidth
-              disabled={offline}
-              onPress={() => setAddOpen(true)}
-              testID={`${testID}-add`}
-            />
-          )}
+          ) : null}
+          <Button
+            label="Watch a competitor"
+            variant="secondary"
+            size="md"
+            fullWidth
+            disabled={offline || atCap}
+            onPress={() => setAddOpen(true)}
+            testID={`${testID}-add`}
+          />
         </View>
       ) : null}
       {briefRow ? (
@@ -197,7 +194,7 @@ export function CompetitorWatchSection({
           visible
           onClose={() => setBriefRow(null)}
           brandId={brandId}
-          venueName={venue.data?.name ?? null}
+          venueListingId={venueListingId}
           row={briefRow}
         />
       ) : null}

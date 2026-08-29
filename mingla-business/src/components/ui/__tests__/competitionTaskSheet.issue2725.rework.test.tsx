@@ -21,27 +21,21 @@ describe("issue 2725 opt-in Competition task Sheet", () => {
   it("keeps the default presentation contract and adds only the named opt-in", () => {
     expect(mobile).toContain('presentation?: "competition"');
     expect(mobileFlat).toContain(
-      'presentation === "competition" ? "rgba(0, 0, 0, 0.68)" : SCRIM_COLOR',
+      'competition ? "rgba(0, 0, 0, 0.68)" : SCRIM_COLOR',
     );
-    expect(mobileFlat).toContain(
-      'presentation === "competition" ? "#16181b" : undefined',
-    );
+    expect(mobile).toContain("panelBackground={panelBackground}");
     expect(mobile).toContain('const SCRIM_COLOR = "rgba(0, 0, 0, 0.5)"');
     expect(mobile).toContain(
       'const FALLBACK_BACKGROUND = "rgba(20, 22, 26, 0.92)"',
     );
-    expect(mobile).toContain("competitionIOSPanel");
-    expect(mobile).toContain("competitionAndroidPanel");
     expect(mobile).toContain("accessibilityViewIsModal");
   });
 
   it("owns the matching opaque responsive web branch without changing the default card", () => {
     expect(webFlat).toContain(
-      'presentation === "competition" ? "rgba(0, 0, 0, 0.68)" : SCRIM_COLOR',
+      'competition ? "rgba(0, 0, 0, 0.68)" : SCRIM_COLOR',
     );
-    expect(webFlat).toContain(
-      'presentation === "competition" ? "#16181b" : CARD_BACKGROUND',
-    );
+    expect(web).toContain("panelBackground ?? CARD_BACKGROUND");
     expect(webFlat).toContain("viewportWidth < 1280 ? 640 : 720");
     expect(web).toContain("viewportHeight - CARD_VIEWPORT_GUTTER");
     expect(web).toContain('const CARD_BACKGROUND = "rgba(20, 22, 26, 0.92)"');
@@ -51,6 +45,12 @@ describe("issue 2725 opt-in Competition task Sheet", () => {
   it("opts in only the add and brief owners with premium grid and target hooks", () => {
     for (const owner of [add, brief])
       expect(owner).toContain('presentation="competition"');
+    for (const owner of [add, brief]) {
+      expect(owner).toContain('panelBackground="#16181b"');
+      expect(owner).toContain("borderColor: glass.border.profileElevated");
+      expect(owner).toContain("shadowOpacity: 0.32");
+      expect(owner).toContain("android: { elevation: 0, shadowOpacity: 0 }");
+    }
     expect(add).toContain("minHeight: 56");
     expect(add).toContain("minHeight: 72");
     expect(add).toContain('backgroundColor: "#16181b"');

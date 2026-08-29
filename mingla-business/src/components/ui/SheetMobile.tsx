@@ -229,6 +229,24 @@ export const Sheet: React.FC<SheetProps> = (props) => {
   return <SheetNative {...props} />;
 };
 
+const useSheetMounted = (visible: boolean): boolean => {
+  const [mounted, setMounted] = useState(visible);
+  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (visible) setMounted(true);
+    else if (mounted) {
+      closeTimerRef.current = setTimeout(
+        () => setMounted(false),
+        UNMOUNT_DELAY_MS,
+      );
+    }
+    return (): void => {
+      if (closeTimerRef.current !== null) clearTimeout(closeTimerRef.current);
+    };
+  }, [mounted, visible]);
+  return mounted;
+};
+
 const SheetNative: React.FC<SheetProps> = ({
   visible,
   onClose,
@@ -240,6 +258,7 @@ const SheetNative: React.FC<SheetProps> = ({
   panelBackground,
   presentation,
 }) => {
+  const competition = presentation !== undefined;
   const screenHeight = Dimensions.get("window").height;
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -268,33 +287,11 @@ const SheetNative: React.FC<SheetProps> = ({
   // Lazy-mount: keep the Sheet out of the View tree when not visible to
   // prevent inline-render leaks (Sub-phase E.4 / ORCH-BIZ-0a-E12). Stay
   // mounted long enough for the close animation to finish, then unmount.
-  const [mounted, setMounted] = useState<boolean>(visible);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useSheetMounted(visible);
 
   const translateY = useSharedValue(closedY);
   const scrimOpacity = useSharedValue(0);
   const reduceMotion = useReducedMotion();
-
-  useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      if (closeTimerRef.current !== null) {
-        clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-    } else if (mounted) {
-      closeTimerRef.current = setTimeout(() => {
-        setMounted(false);
-        closeTimerRef.current = null;
-      }, UNMOUNT_DELAY_MS);
-    }
-    return (): void => {
-      if (closeTimerRef.current !== null) {
-        clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-    };
-  }, [mounted, visible]);
 
   useEffect(() => {
     if (visible) {
@@ -392,10 +389,9 @@ const SheetNative: React.FC<SheetProps> = ({
               style={[
                 StyleSheet.absoluteFill,
                 {
-                  backgroundColor:
-                    presentation === "competition"
-                      ? "rgba(0, 0, 0, 0.68)"
-                      : SCRIM_COLOR,
+                  backgroundColor: competition
+                    ? "rgba(0, 0, 0, 0.68)"
+                    : SCRIM_COLOR,
                 },
                 scrimStyle,
               ]}
@@ -412,38 +408,22 @@ const SheetNative: React.FC<SheetProps> = ({
                 style={[
                   styles.panel,
                   { height: sheetHeight },
-                  presentation === "competition" && Platform.OS === "android"
-                    ? null
-                    : shadows.glassCardElevated,
-                  presentation === "competition"
-                    ? styles.competitionPanel
-                    : null,
-                  presentation === "competition" && Platform.OS === "ios"
-                    ? styles.competitionIOSPanel
-                    : null,
-                  presentation === "competition" && Platform.OS === "android"
-                    ? styles.competitionAndroidPanel
-                    : null,
+                  shadows.glassCardElevated,
                   panelStyle,
                   style,
                 ]}
                 testID={
-                  presentation === "competition" && testID !== undefined
+                  competition && testID !== undefined
                     ? `${testID}-competition-panel`
                     : undefined
                 }
-                accessibilityViewIsModal={
-                  presentation === "competition" ? true : undefined
-                }
+                accessibilityViewIsModal={competition || undefined}
               >
                 <SheetMobilePanelInner
                   blurOk={blurOk}
                   blurIntensity={blurIntensity}
                   bottomInset={insets.bottom}
-                  panelBackground={
-                    panelBackground ??
-                    (presentation === "competition" ? "#16181b" : undefined)
-                  }
+                  panelBackground={panelBackground}
                 >
                   {children}
                 </SheetMobilePanelInner>
@@ -505,12 +485,10 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
   children,
   panelBackground,
   webOpaque = false,
-}) =>
-  panelBackground !== undefined ? (
-    // ORCH-1186 Fix 3 — a single solid brand fill clipped to the rounded panel
-    // (covers the handle + bottom safe-area), so the brand color reads edge-to-
-    // edge with no dark glass gaps. The handle + body sit ON TOP of it.
-    <>
+}) => (
+  <>
+    {panelBackground !== undefined ? (
+      // ORCH-1186 Fix 3 — a single solid fill clipped to the whole panel.
       <View
         style={[
           StyleSheet.absoluteFill,
@@ -518,109 +496,69 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
           { backgroundColor: panelBackground },
         ]}
       />
-      <View style={styles.handleWrap}>
-        <View style={styles.handle} />
-      </View>
-      <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
-        {children}
-      </View>
-    </>
-  ) : webOpaque ? (
-    // ORCH-1207 Bug 1 (WEB) — a single fully-opaque elevated-surface fill clipped
-    // to the rounded panel, REPLACING the see-through native glass stack (no
-    // BlurView, no translucent tint). Page content cannot bleed through. The L3
-    // top-edge highlight + L4 hairline border are decorative (do not affect
-    // opacity) and are kept for visual parity with the native glass.
-    <>
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          styles.bodyClip,
-          { backgroundColor: WEB_OPAQUE_BACKGROUND },
-        ]}
-      />
-      {/* L3 — Top edge highlight */}
-      <View
-        style={[
-          styles.topHighlight,
-          { backgroundColor: glass.highlight.profileElevated },
-        ]}
-      />
-      {/* L4 — Hairline border */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          styles.bodyClip,
-          {
-            borderColor: glass.border.profileElevated,
-            borderWidth: StyleSheet.hairlineWidth,
-          },
-        ]}
-        pointerEvents="none"
-      />
-      <View style={styles.handleWrap}>
-        <View style={styles.handle} />
-      </View>
-      <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
-        {children}
-      </View>
-    </>
-  ) : (
-    <>
-      {/* L1 — Blur base */}
-      {blurOk ? (
-        <BlurView
-          intensity={blurIntensity}
-          tint="dark"
-          style={[StyleSheet.absoluteFill, styles.bodyClip]}
+    ) : (
+      <>
+        {webOpaque ? (
+          <View
+            style={[
+              StyleSheet.absoluteFill,
+              styles.bodyClip,
+              { backgroundColor: WEB_OPAQUE_BACKGROUND },
+            ]}
+          />
+        ) : (
+          <>
+            {blurOk ? (
+              <BlurView
+                intensity={blurIntensity}
+                tint="dark"
+                style={[StyleSheet.absoluteFill, styles.bodyClip]}
+              />
+            ) : (
+              <View
+                style={[
+                  StyleSheet.absoluteFill,
+                  styles.bodyClip,
+                  { backgroundColor: FALLBACK_BACKGROUND },
+                ]}
+              />
+            )}
+            <View
+              style={[
+                StyleSheet.absoluteFill,
+                styles.bodyClip,
+                { backgroundColor: glass.tint.profileElevated },
+              ]}
+            />
+          </>
+        )}
+        <View
+          style={[
+            styles.topHighlight,
+            { backgroundColor: glass.highlight.profileElevated },
+          ]}
         />
-      ) : (
         <View
           style={[
             StyleSheet.absoluteFill,
             styles.bodyClip,
-            { backgroundColor: FALLBACK_BACKGROUND },
+            {
+              borderColor: glass.border.profileElevated,
+              borderWidth: StyleSheet.hairlineWidth,
+            },
           ]}
+          pointerEvents="none"
         />
-      )}
-      {/* L2 — Tint floor */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          styles.bodyClip,
-          { backgroundColor: glass.tint.profileElevated },
-        ]}
-      />
-      {/* L3 — Top edge highlight */}
-      <View
-        style={[
-          styles.topHighlight,
-          { backgroundColor: glass.highlight.profileElevated },
-        ]}
-      />
-      {/* L4 — Hairline border */}
-      <View
-        style={[
-          StyleSheet.absoluteFill,
-          styles.bodyClip,
-          {
-            borderColor: glass.border.profileElevated,
-            borderWidth: StyleSheet.hairlineWidth,
-          },
-        ]}
-        pointerEvents="none"
-      />
-      {/* Content layer — handle + flex:1 body, layered above visuals */}
-      <View style={styles.handleWrap}>
-        <View style={styles.handle} />
-      </View>
-      {/* ORCH-0964: pad past the bottom safe-area / nav bar so sheet
-        content doesn't bleed into the bottom edge of the screen. */}
-      <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
-        {children}
-      </View>
-    </>
-  );
+      </>
+    )}
+    <View style={styles.handleWrap}>
+      <View style={styles.handle} />
+    </View>
+    <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
+      {children}
+    </View>
+  </>
+);
 
 // ORCH-1197 / ORCH-1199: web-only VISIBLE-viewport metrics for a bottom-anchored
 // sheet. The Modal's absoluteFill fills the LAYOUT viewport (`window.innerHeight`),
@@ -797,6 +735,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   panelBackground,
   presentation,
 }) => {
+  const competition = presentation !== undefined;
   // ORCH-1197 / ORCH-1199: size + anchor the panel against the VISIBLE (visual)
   // viewport, not the LAYOUT viewport. The Modal's absoluteFill fills
   // `window.innerHeight` (the layout height); the visible band can be both shorter
@@ -820,32 +759,10 @@ const SheetWeb: React.FC<SheetProps> = ({
 
   const reduceMotion = useWebReducedMotion();
 
-  const [mounted, setMounted] = useState<boolean>(visible);
-  const closeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mounted = useSheetMounted(visible);
 
   const [animateOpen, setAnimateOpen] = useState<boolean>(false);
   const rafRef = useRef<number | null>(null);
-
-  useEffect(() => {
-    if (visible) {
-      setMounted(true);
-      if (closeTimerRef.current !== null) {
-        clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-    } else if (mounted) {
-      closeTimerRef.current = setTimeout(() => {
-        setMounted(false);
-        closeTimerRef.current = null;
-      }, UNMOUNT_DELAY_MS);
-    }
-    return (): void => {
-      if (closeTimerRef.current !== null) {
-        clearTimeout(closeTimerRef.current);
-        closeTimerRef.current = null;
-      }
-    };
-  }, [mounted, visible]);
 
   useEffect(() => {
     const cancelRaf = (): void => {
@@ -1059,10 +976,9 @@ const SheetWeb: React.FC<SheetProps> = ({
           style={[
             StyleSheet.absoluteFill,
             {
-              backgroundColor:
-                presentation === "competition"
-                  ? "rgba(0, 0, 0, 0.68)"
-                  : SCRIM_COLOR,
+              backgroundColor: competition
+                ? "rgba(0, 0, 0, 0.68)"
+                : SCRIM_COLOR,
             },
             scrimWebStyle,
           ]}
@@ -1080,27 +996,21 @@ const SheetWeb: React.FC<SheetProps> = ({
               styles.panel,
               { height: sheetHeight },
               shadows.glassCardElevated,
-              presentation === "competition" ? styles.competitionPanel : null,
               panelWebStyle,
               style,
             ]}
             testID={
-              presentation === "competition" && testID !== undefined
+              competition && testID !== undefined
                 ? `${testID}-competition-panel`
                 : undefined
             }
-            accessibilityViewIsModal={
-              presentation === "competition" ? true : undefined
-            }
+            accessibilityViewIsModal={competition || undefined}
           >
             <SheetMobilePanelInner
               blurOk={blurOk}
               blurIntensity={blurIntensity}
               bottomInset={insets.bottom}
-              panelBackground={
-                panelBackground ??
-                (presentation === "competition" ? "#16181b" : undefined)
-              }
+              panelBackground={panelBackground}
               webOpaque
             >
               {children}
@@ -1151,21 +1061,6 @@ const styles = StyleSheet.create({
     // Clip child visual layers to the rounded panel shape (top corners
     // rounded; bottom edges flush with viewport bottom).
     overflow: "hidden",
-  },
-  competitionPanel: {
-    overflow: "hidden",
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: glass.border.profileElevated,
-  },
-  competitionIOSPanel: {
-    shadowColor: "#000000",
-    shadowOpacity: 0.32,
-    shadowRadius: 24,
-    shadowOffset: { width: 0, height: -8 },
-  },
-  competitionAndroidPanel: {
-    elevation: 0,
-    shadowOpacity: 0,
   },
   bodyClip: {
     borderTopLeftRadius: radiusTokens.xl,
