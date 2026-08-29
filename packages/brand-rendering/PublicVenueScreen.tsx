@@ -152,6 +152,8 @@ import {
   normalizePublicVenueReservationUiState,
   publicVenueReservationUiReducer,
 } from "./publicVenueReservationUiState";
+import { semantic } from "../offering-rendering/designTokens";
+import { PublicVenueRetryAction } from "./publicVenueRefreshState";
 
 type WebVenueViewStyle = Omit<ViewStyle, "position"> & {
   position?: ViewStyle["position"] | "sticky";
@@ -426,6 +428,11 @@ export interface PublicVenueScreenProps {
   reservabilityState?: PublicVenueReservabilityState;
   initialTab?: PublicVenueTab;
   onRetryReservability?: () => void;
+  /** #2756 — populated query lifecycle; only `error` has visible chrome. */
+  refreshState?: "ready" | "refreshing" | "error";
+  /** Changes only when React Query records a distinct failed refresh. */
+  refreshErrorVersion?: number;
+  onRetryRefresh?: () => void | Promise<unknown>;
   stayState?: PublicVenueStayState;
   stayDetail?: PublicStayDetail | null;
   /**
@@ -1013,6 +1020,9 @@ export const PublicVenueScreen = ({
   reservabilityState = "ready",
   initialTab = "overview",
   onRetryReservability,
+  refreshState = "ready",
+  refreshErrorVersion = 0,
+  onRetryRefresh,
   stayState,
   stayDetail = null,
   stayQuote = null,
@@ -1089,6 +1099,36 @@ export const PublicVenueScreen = ({
   const [retryLocallyBusy, setRetryLocallyBusy] = useState<boolean>(false);
   const [retryFocusVisible, setRetryFocusVisible] = useState<boolean>(false);
   const [retryHovered, setRetryHovered] = useState<boolean>(false);
+  const refreshRetryGuardRef = React.useRef<boolean>(false);
+  const refreshRetryFocusedRef = React.useRef<boolean>(false);
+  const [refreshRetryBusy, setRefreshRetryBusy] = useState<boolean>(false);
+  const refreshNoticeVisible =
+    refreshState === "error" || refreshRetryBusy;
+  const previousRefreshNoticeVisibleRef = React.useRef<boolean>(false);
+
+  const handleRetryRefresh = React.useCallback((): void => {
+    if (refreshRetryGuardRef.current || onRetryRefresh === undefined) return;
+    refreshRetryGuardRef.current = true;
+    setRefreshRetryBusy(true);
+    void Promise.resolve(onRetryRefresh()).finally(() => {
+      refreshRetryGuardRef.current = false;
+      setRefreshRetryBusy(false);
+    });
+  }, [onRetryRefresh]);
+
+  React.useEffect(() => {
+    if (
+      previousRefreshNoticeVisibleRef.current &&
+      !refreshNoticeVisible &&
+      refreshRetryFocusedRef.current
+    ) {
+      publicVenueTabsRef.current?.focusTab(
+        normalizedReservationUiState.activeTab,
+      );
+    }
+    if (!refreshNoticeVisible) refreshRetryFocusedRef.current = false;
+    previousRefreshNoticeVisibleRef.current = refreshNoticeVisible;
+  }, [normalizedReservationUiState.activeTab, refreshNoticeVisible]);
   React.useEffect(() => {
     dispatchReservationUi({
       type: "INITIAL_TAB_CHANGED",
@@ -1098,7 +1138,7 @@ export const PublicVenueScreen = ({
     // Reservability changes normalize through ENVIRONMENT_CHANGED below; they
     // must not replay the route's initial tab over a user's current selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMenu, initialTab]);
+  }, [initialTab]);
 
   React.useEffect(() => {
     dispatchReservationUi({
@@ -2011,6 +2051,46 @@ export const PublicVenueScreen = ({
           time over the photograph); the name is now printed once, at the top of
           the reading column, where the answer bar can sit directly under it. */}
       {identityBlock}
+      {refreshNoticeVisible ? (
+        <View
+          style={[
+            styles.refreshNotice,
+            isDesktop && styles.refreshNoticeDesktop,
+            {
+              backgroundColor: semantic.warningTint,
+              borderColor: palette.panelBorder,
+            },
+          ]}
+          testID="issue-2756-stale-refresh-notice"
+        >
+          <Text
+            key={`public-venue-refresh-error-${refreshErrorVersion}`}
+            accessibilityRole="alert"
+            accessibilityLiveRegion="polite"
+            style={[
+              styles.refreshMessage,
+              themedFont,
+              isDesktop && styles.refreshMessageDesktop,
+              { color: palette.secondaryText },
+            ]}
+          >
+            Couldn’t refresh venue. Showing the last update.
+          </Text>
+          <PublicVenueRetryAction
+            busy={refreshRetryBusy}
+            accessibleLabel="Try refreshing venue again"
+            backgroundColor={palette.accent}
+            textColor={palette.accentText}
+            focusColor={palette.accentText}
+            focusOffset={-4}
+            fontFamily={resolvedTheme.fontFamilyValue}
+            onPress={handleRetryRefresh}
+            onFocusChange={(focused: boolean) => {
+              refreshRetryFocusedRef.current = focused;
+            }}
+          />
+        </View>
+      ) : null}
       <PublicVenueTabs
         ref={publicVenueTabsRef}
         initialTab={initialTab}
@@ -2225,6 +2305,31 @@ const styles = StyleSheet.create({
   },
   byBrandName: {
     fontWeight: "600",
+  },
+  refreshNotice: {
+    width: "100%",
+    minHeight: 128,
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderWidth: 1,
+    borderRadius: 16,
+    gap: 12,
+  },
+  refreshNoticeDesktop: {
+    minHeight: 68,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 16,
+  },
+  refreshMessage: {
+    fontSize: 14,
+    lineHeight: 20,
+    fontWeight: "600",
+  },
+  refreshMessageDesktop: {
+    flex: 1,
+    minWidth: 0,
+    maxWidth: 520,
   },
   addrLine: {
     fontSize: 13,

@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Public venue pages now keep the visitor's selected photo, tab, reservation form, open sheet, and scroll position visible and unchanged while fresh data loads in the background or a refresh fails, across web and both Mingla apps (#2756, PR #2766)
 - 2026-08-29 — Public Venue, Event, RSVP, Trip, and Experience hero images now expose truthful screen-reader names and announce user-driven image changes once without leaking media URLs or duplicating gallery controls (#2774, PR #2786)
 - 2026-08-28 — Public venue gallery thumbnails are now real, named controls with reliable keyboard activation, unclipped focus visibility, and preserved native selection behavior across web and both Mingla apps (#2739, PR #2775)
 - 2026-08-28 — First-time public venue visitors can reach cookie choices at every phone size without the reservation action covering them; their reservation action appears without a page jump as soon as the choice resolves, while wide desktop and both native apps keep their existing behavior (#2769, PR #2773)
