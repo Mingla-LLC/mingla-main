@@ -370,9 +370,10 @@ export function VenueSuiteShell({
 }
 
 /**
- * Rail ORDER (ORCH-1184 removed the Command/Booking captions, so the bands now
- * drive order ONLY): Overview (command) first, then the Booking band, then the
- * remaining command modules (Menu, Settings). Bands C/D are absent in 2.0.
+ * Issue #2726 — rail order and visible hierarchy are both preserved here:
+ * Overview is Venue, the toggle-owned booking band is Bookings, and the
+ * remaining command modules are Operations. When booking is filtered, no
+ * Bookings entry exists, so the shared renderer cannot leave an orphan heading.
  *
  * Issue #1484 — this derivation stayed in the venue shell (it is venue-band
  * specific); only the RENDERING moved to `SuiteDesktopShell`. The emitted list
@@ -386,7 +387,11 @@ export function deriveVenueRailModules(
   const orderedCommandTop = command.filter((m) => m === "overview");
   const orderedCommandBottom = command.filter((m) => m !== "overview");
   return [...orderedCommandTop, ...booking, ...orderedCommandBottom].map(
-    (m) => ({ key: m, label: VENUE_MODULES[m].label }),
+    (m) => ({
+      key: m,
+      label: VENUE_MODULES[m].label,
+      group: m === "overview" ? "Venue" : isBookingModule(m) ? "Bookings" : "Operations",
+    }),
   );
 }
 

@@ -68,7 +68,7 @@ async function newSeededPage(
 }
 
 async function forbiddenStorage(context: BrowserContext, page: Page): Promise<string[]> {
-  const cookies = (await context.cookies()).map(({ name }) => name)
+  const cookies = (await context.cookies(page.url())).map(({ name }) => name)
   const storage = await page.evaluate(() => [
     ...Object.keys(localStorage),
     ...Object.keys(sessionStorage),
@@ -210,7 +210,9 @@ test.describe('#2771 independent browser privacy boundary', () => {
         })
       }
       await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toMatch(/granted/)
-      await expect.poll(async () => (await dataLayerCommands(page)).length).toBeGreaterThan(0)
+      await expect.poll(async () =>
+        commandCount(await dataLayerCommands(page), 'event', 'consent_granted'),
+      ).toBe(1)
       expect(oracle.consentAtRequest.every((value) => value?.includes('granted'))).toBe(true)
       const commands = await dataLayerCommands(page)
       expect(commandCount(commands, 'config', 'G-ISSUE2771')).toBeLessThanOrEqual(1)
@@ -225,7 +227,7 @@ test.describe('#2771 independent browser privacy boundary', () => {
     // The fixture compiles the real PublicVenueScreen, real ConsentBanner and
     // real reservation-action composition. It avoids depending on mutable live
     // venue data while preserving the production component boundary.
-    execFileSync(process.execPath, ['playwright/issue2769/globalSetup.mjs'], { cwd: process.cwd() })
+    execFileSync(process.execPath, ['playwright/issue2769/bundle.mjs'], { cwd: process.cwd() })
     const server = spawn(process.execPath, ['playwright/issue2769/server.mjs'], {
       cwd: process.cwd(),
       stdio: 'ignore',

@@ -28,11 +28,12 @@ import {
   useVenueWaitlist,
 } from "../../hooks/useVenueWaitlist";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { Clock, MessageSquare, X } from "lucide-react-native";
+import { MessageSquare, X } from "lucide-react-native";
 import { Button } from "../ui/Button";
 import { GlassCard } from "../ui/GlassCard";
 import { WaitlistAddSheet } from "./WaitlistAddSheet";
 import { WaitlistConvertSheet } from "./WaitlistConvertSheet";
+import { VenueHubEmptyState } from "./VenueHubEmptyState";
 import type {
   VenueTableZone,
   WaitlistAddInput,
@@ -125,26 +126,21 @@ export function VenueWaitlistModule({
 
       {waitlistQuery.isLoading ? (
         <Text style={styles.helper}>Loading waitlist…</Text>
+      ) : waitlistQuery.isError ? (
+        <Text style={styles.errorNote}>
+          Couldn&apos;t load the waitlist. Pull to refresh.
+        </Text>
       ) : queue.length === 0 ? (
-        <View style={styles.emptyWrap} testID="venue-waitlist-empty-wrap">
-          <GlassCard variant="elevated" style={styles.emptyCard}>
-            <Clock size={26} color={textTokens.primary} />
-            <Text style={styles.emptyTitle}>Nobody&apos;s waiting</Text>
-            <Text style={styles.emptyBody}>
-              When you&apos;re full, add walk-ins here and notify them when a table
-              opens.
-            </Text>
-            {canMutate ? (
-              <Button
-                label="Add to waitlist"
-                onPress={() => setAddOpen(true)}
-                variant="secondary"
-                size="md"
-                testID="venue-waitlist-empty-add"
-              />
-            ) : null}
-          </GlassCard>
-        </View>
+        <VenueHubEmptyState
+          icon="waitlist"
+          title="Nobody's waiting"
+          body="When you're full, add walk-ins here and notify them when a table opens."
+          actionLabel={canMutate ? "Add to waitlist" : undefined}
+          onAction={canMutate ? () => setAddOpen(true) : undefined}
+          testID="venue-waitlist-empty"
+          wrapTestID="venue-waitlist-empty-wrap"
+          actionTestID="venue-waitlist-empty-add"
+        />
       ) : (
         <View style={styles.list}>
           {queue.map((w, i) => {
@@ -222,12 +218,6 @@ export function VenueWaitlistModule({
             : "Couldn't send the text. Check the guest's phone number."}
         </Text>
       ) : null}
-      {waitlistQuery.isError ? (
-        <Text style={styles.errorNote}>
-          Couldn&apos;t load the waitlist. Pull to refresh.
-        </Text>
-      ) : null}
-
       <WaitlistAddSheet
         visible={addOpen}
         onClose={() => setAddOpen(false)}
@@ -274,31 +264,6 @@ const styles = StyleSheet.create({
   helper: {
     ...typography.bodySm,
     color: textTokens.secondary,
-  },
-  // ORCH-1190 R4 — full-width empty card on WEB, matching the PROVEN-working
-  // VenueTablesModule.tableCard pattern (BOTH width:"100%" AND alignSelf:"stretch",
-  // together). R3 dropped width:"100%" and regressed to narrow/centered on live
-  // desktop; the sibling tableCard proves both-together renders edge-to-edge in
-  // this exact shell.
-  emptyWrap: {
-    width: "100%",
-    alignSelf: "stretch",
-  },
-  emptyCard: {
-    width: "100%",
-    alignSelf: "stretch",
-    alignItems: "center",
-    gap: spacing.sm,
-  },
-  emptyTitle: {
-    ...typography.h3,
-    color: textTokens.primary,
-    textAlign: "center",
-  },
-  emptyBody: {
-    ...typography.body,
-    color: textTokens.secondary,
-    textAlign: "center",
   },
   list: {
     gap: spacing.sm,

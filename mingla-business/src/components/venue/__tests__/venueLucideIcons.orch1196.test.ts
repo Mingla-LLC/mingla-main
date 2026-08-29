@@ -57,12 +57,16 @@ describe("ORCH-1196 — venue suite uses lucide-react-native, not the custom Ico
     },
   );
 
-  test("VenueMenuModule renders the lucide UtensilsCrossed icon, not the 🍽️ emoji", () => {
-    const src = venueFile("VenueMenuModule.tsx");
-    expect(src).toContain('from "lucide-react-native"');
-    expect(src).toContain("UtensilsCrossed");
+  test("VenueHubEmptyState renders Menu's lucide UtensilsCrossed icon, not the 🍽️ emoji", () => {
+    const sharedEmpty = venueFile("VenueHubEmptyState.tsx");
+    expect(sharedEmpty).toContain('from "lucide-react-native"');
+    expect(sharedEmpty).toContain("UtensilsCrossed");
     // The literal plate-with-cutlery emoji must be gone.
-    expect(src).not.toContain("\u{1F37D}");
+    expect(sharedEmpty).not.toContain("\u{1F37D}");
+
+    const menu = venueFile("VenueMenuModule.tsx");
+    expect(menu).toContain('icon="menu"');
+    expect(menu).not.toContain("\u{1F37D}");
   });
 
   test("VenueModuleComingSoon maps each module to a lucide component", () => {

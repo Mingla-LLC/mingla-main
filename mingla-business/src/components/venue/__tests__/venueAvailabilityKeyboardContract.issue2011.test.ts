@@ -32,7 +32,13 @@ describe("issue #2011 keyboard-safe availability contract", () => {
     expect(availability).not.toContain("setBaseline(submittedDraft)");
     expect(availability).toContain("Fix the highlighted fields before saving.");
     expect(availability).toContain("Your changes are still here — try again.");
-    expect(availability).toContain("maxWidth: suiteFormMaxWidth");
+    expect(availability).toMatch(
+      /host:\s*\{[\s\S]{0,180}width:\s*"100%"[\s\S]{0,180}\}/,
+    );
+    expect(availability).toMatch(
+      /headerText:\s*\{[\s\S]{0,180}maxWidth:\s*restaurantHubLayout\.proseMaxWidth/,
+    );
+    expect(availability).not.toContain("maxWidth: suiteFormMaxWidth");
     expect(availability).not.toContain("parseIntClamp");
     expect(availability).not.toMatch(
       /onChangeText[\s\S]{0,180}upsertConfig\.mutate/,

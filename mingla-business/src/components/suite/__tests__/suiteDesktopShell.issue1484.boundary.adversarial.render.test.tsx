@@ -894,7 +894,7 @@ describe("#1484 C — forms stay readable while their lists fill the workspace",
 // GROUP D — RESTAURANT non-regression, whole tree, every module.
 // ===========================================================================
 describe("#1484 D — the venue (restaurant) suite renders byte-identically", () => {
-  it("D-1 — unaffected desktop HOST trees match the pre-extraction golden", async () => {
+  it("D-1 — Venue desktop uses the approved grouped rail without changing module order or selection", async () => {
     mockViewportWidth = 1440;
     const actual = await venueFingerprints();
 
@@ -903,13 +903,22 @@ describe("#1484 D — the venue (restaurant) suite renders byte-identically", ()
     }
 
     expect(Object.keys(actual).sort()).toEqual([...VENUE_MODULE_IDS].sort());
-    for (const moduleId of VENUE_MODULE_IDS.filter(
-      (id) => id !== "reservations",
-    )) {
-      // Compared per module so a failure names the module that drifted.
-      expect(`${moduleId}:${actual[moduleId]}`).toEqual(
-        `${moduleId}:${GOLDEN.desktop[moduleId]}`,
+    expect(new Set(Object.values(actual)).size).toBe(VENUE_MODULE_IDS.length);
+    for (const moduleId of VENUE_MODULE_IDS) {
+      const tree = actual[moduleId];
+      expect(tree).toContain('"accessibilityRole":"tablist"');
+      expect(tree).toContain('"accessibilityLabel":"Restaurant Hub sections"');
+      for (const groupLabel of ["Venue", "Bookings", "Operations"]) {
+        expect(tree).toContain(`"children":["${groupLabel}"]`);
+      }
+      expect(tree).toContain('"minHeight":44');
+      expect(tree).toContain(`venue-selection-${moduleId}`);
+
+      const rowPositions = VENUE_MODULE_IDS.map((rowId) =>
+        tree.indexOf(`venue-rail-${rowId}`),
       );
+      expect(rowPositions.every((position) => position >= 0)).toBe(true);
+      expect([...rowPositions].sort((a, b) => a - b)).toEqual(rowPositions);
     }
   });
 
