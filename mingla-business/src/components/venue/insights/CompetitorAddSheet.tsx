@@ -17,6 +17,7 @@ import {
 } from "react-native";
 import { useQuery } from "@tanstack/react-query";
 import {
+  androidOpaque,
   competition,
   competitorSheet,
   glass,
@@ -93,11 +94,11 @@ export function CompetitorAddSheet({
   testID = "competitor-source-sheet",
 }: CompetitorAddSheetProps): React.ReactElement {
   const { width } = useWindowDimensions();
-  const contentInset = width >= 1024
-    ? competitorSheet.contentInsetWide
+  const contentInsetStyle = width >= 1024
+    ? styles.insetWide
     : width >= 360
-      ? competitorSheet.contentInsetRegular
-      : competitorSheet.contentInsetCompact;
+      ? styles.insetRegular
+      : styles.insetCompact;
   const { loading, session } = useAuth();
   const isOffline = offline;
   const mutation = useAddCompetitor(brandId, venueListingId);
@@ -286,12 +287,12 @@ export function CompetitorAddSheet({
       snapPoint="full"
       verticalAlign="top"
       presentation="competition"
-      panelBackground="#16181b"
+      panelBackground={competition.surface}
       style={styles.sheet}
       testID={testID}
     >
       <View
-        style={[styles.body, { paddingHorizontal: contentInset }]}
+        style={[styles.body, contentInsetStyle]}
         testID={`${testID}-${editing ? "mode-edit" : "mode-add"}`}
       >
         <View style={styles.sheetHeader}>
@@ -598,6 +599,9 @@ function SourceField({
     </View>
   );
 }
+const competitionCardSurface = Platform.OS === "android" ? androidOpaque.rowFill : competition.surfaceRaised;
+const competitionBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileElevated;
+const competitionSubtleBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase;
 const styles = StyleSheet.create({
   sheet: {
     width: "100%",
@@ -615,11 +619,14 @@ const styles = StyleSheet.create({
     }),
   },
   body: { flex: 1, gap: spacing.lg },
+  insetCompact: { paddingHorizontal: competitorSheet.contentInsetCompact },
+  insetRegular: { paddingHorizontal: competitorSheet.contentInsetRegular },
+  insetWide: { paddingHorizontal: competitorSheet.contentInsetWide },
   sheetHeader: {
     gap: spacing.sm,
     paddingBottom: spacing.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.16)",
+    borderBottomColor: competitionBorder,
   },
   headerTop: {
     flexDirection: "row",
@@ -633,7 +640,7 @@ const styles = StyleSheet.create({
     gap: spacing.sm,
     paddingTop: spacing.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: "rgba(255,255,255,0.16)",
+    borderTopColor: competitionBorder,
     backgroundColor: competition.surface,
   },
   title: { ...typography.h3, color: textTokens.primary },
@@ -649,8 +656,8 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     borderRadius: 16,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#1f2125",
-    backgroundColor: competition.surfaceRaised,
+    borderColor: competitionBorder,
+    backgroundColor: competitionCardSurface,
     overflow: "hidden",
     ...Platform.select({ android: { elevation: 0, shadowOpacity: 0 } }),
   },
@@ -665,7 +672,7 @@ const styles = StyleSheet.create({
     ...typography.caption,
     color: textTokens.primary,
     borderWidth: StyleSheet.hairlineWidth,
-    borderColor: "#1f2125",
+    borderColor: competitionBorder,
     borderRadius: 12,
     paddingHorizontal: spacing.sm,
     paddingVertical: spacing.xs,
@@ -681,7 +688,7 @@ const styles = StyleSheet.create({
     gap: spacing.md,
     padding: spacing.md,
     borderRadius: 16,
-    backgroundColor: competition.surfaceRaised,
+    backgroundColor: competitionCardSurface,
   },
   searchMessage: { minHeight: 56, justifyContent: "center", gap: spacing.sm },
   result: {
@@ -689,7 +696,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: spacing.xs,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: "rgba(255,255,255,0.12)",
+    borderBottomColor: competitionSubtleBorder,
   },
 });
 export default CompetitorAddSheet;

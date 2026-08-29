@@ -109,6 +109,31 @@ export interface VenueContext {
     { id: string; title: string; description: string | null }
   >;
 }
+interface VenueEventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  startTimes: string[];
+}
+function narrowVenueEventRow(value: unknown): VenueEventRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== "string" || typeof row.title !== "string") return null;
+  const dates = Array.isArray(row.event_dates) ? row.event_dates : [];
+  const startTimes = dates.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const startAt = (value as Record<string, unknown>).start_at;
+    return typeof startAt === "string" ? [startAt] : [];
+  }).sort();
+  return {
+    id: row.id,
+    title: row.title,
+    description: typeof row.description === "string"
+      ? row.description.slice(0, 500)
+      : null,
+    startTimes,
+  };
+}
 type DecisionDimension =
   | "category"
   | "positioning"
@@ -249,6 +274,7 @@ async function loadVenueContext(
     ["public", "discover"],
   ).is("deleted_at", null).limit(20);
   if (eventsError) throw new Error("venue_context_read_failed");
+  const eventRows: unknown[] = Array.isArray(events) ? events : [];
   return {
     listing: {
       id: listing.id,
@@ -256,18 +282,16 @@ async function loadVenueContext(
       city: listing.city ?? null,
       venue_category: listing.venue_category,
     },
-    brand_published_events: (events ?? []).sort((left: Record<string, any>, right: Record<string, any>) => {
-      const leftStart = (left.event_dates ?? []).map((date: Record<string, unknown>) => String(date.start_at ?? "9999")).sort()[0] ?? "9999";
-      const rightStart = (right.event_dates ?? []).map((date: Record<string, unknown>) => String(date.start_at ?? "9999")).sort()[0] ?? "9999";
-      return leftStart.localeCompare(rightStart) || String(left.id).localeCompare(String(right.id));
-    }).slice(0, 5).map((
-      event: Record<string, any>,
-    ) => ({
+    brand_published_events: eventRows.map(narrowVenueEventRow).filter(
+      (event): event is VenueEventRow => event !== null,
+    ).sort((left, right) => {
+      const leftStart = left.startTimes[0] ?? "9999";
+      const rightStart = right.startTimes[0] ?? "9999";
+      return leftStart.localeCompare(rightStart) || left.id.localeCompare(right.id);
+    }).slice(0, 5).map((event) => ({
       id: event.id,
-      title: String(event.title),
-      description: typeof event.description === "string"
-        ? event.description.slice(0, 500)
-        : null,
+      title: event.title,
+      description: event.description,
     })),
   };
 }

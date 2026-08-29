@@ -1,11 +1,11 @@
 import React, { useRef, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
-import { competition, competitorSheet, glass, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
+import { androidOpaque, competition, competitorSheet, glass, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
 import { useCompetitorBrief } from "../../../hooks/useCompetitorIntelligence";
 import { useVenueListing } from "../../../hooks/useVenueListings";
 import { openExternal } from "../../../services/guestFunnelLink";
-import type { CompetitorBriefEvidence, CompetitorWatchRow } from "../../../types/growthTools";
+import type { CompetitorBriefEvidence, CompetitorBriefResult, CompetitorBriefV2, CompetitorWatchRow } from "../../../types/growthTools";
 import { Button } from "../../ui/Button";
 import { Sheet } from "../../ui/Sheet";
 import { actionTimeframeLabel, buildCompetitorDecisionView, type CompetitorSignalView } from "./competitorDecisionReport";
@@ -29,18 +29,15 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
   const query = useCompetitorBrief(brandId, row?.id ?? null, visible);
   const scrollRef = useRef<ScrollView>(null);
   const signalRefs = useRef(new Map<string, View>());
-  const data = query.data;
-  // Pre-v3 tests/very old cached adapters omitted the discriminator entirely.
-  // Keep that impossible-on-the-wire seam readable without weakening typed v2.
-  const legacyUntypedFixture = Boolean(data && !("schemaVersion" in data));
+  const data = normalizeBriefSchema(query.data);
   const insufficient = Boolean(data?.brief?.whatChanged.every((fact) => /Mingla checked .*public|public information was checked/i.test(fact.text)));
-  const decision = data && !legacyUntypedFixture && !insufficient ? buildCompetitorDecisionView(data) : null;
+  const decision = data && !insufficient ? buildCompetitorDecisionView(data) : null;
   const { width } = useWindowDimensions();
-  const inset = width >= 1024 ? competitorSheet.contentInsetWide : width >= 360 ? competitorSheet.contentInsetRegular : competitorSheet.contentInsetCompact;
+  const insetStyle = width >= 1024 ? styles.insetWide : width >= 360 ? styles.insetRegular : styles.insetCompact;
   const firstRun = !data?.updatedAt || Math.abs(Date.parse(data.updatedAt) - Date.parse(row?.createdAt ?? "")) < 86_400_000;
   const state = reportState(data?.brief?.status === "partial" ? "partial" : data?.freshness ?? row?.freshness, data?.noMeaningfulChange ?? false, Boolean(data?.brief) && !insufficient, query.isFetching, query.isError, offline);
   return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={competition.surface} style={styles.sheet} testID="competitor-brief-sheet">
-    <ScrollView ref={scrollRef} contentContainerStyle={[styles.body, { paddingHorizontal: inset }]}>
+    <ScrollView ref={scrollRef} contentContainerStyle={[styles.body, insetStyle]}>
       <View style={styles.header}>
         <View style={styles.headerTop}><Text style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} /></View>
         <Text accessibilityRole="header" style={styles.title}>{row?.name ?? "Weekly competitor brief"}</Text>
@@ -50,22 +47,20 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
       {state.message ? <View style={styles.stateBanner} testID={`competitor-brief-state-${state.id}`}><Text style={styles.copy}>{state.message}</Text></View> : null}
       {query.isLoading && !data ? <View style={styles.preparing}><ActivityIndicator color={textTokens.secondary} /><Text style={styles.copy}>Preparing your first sourced brief</Text></View> : null}
       {query.isError && !data ? <View style={styles.card}><Text style={styles.cardTitle}>Couldn&apos;t load competitor insights</Text><Text style={styles.copy}>Your saved competitor is still safe.</Text><Button label="Try again" variant="secondary" size="md" onPress={() => void query.refetch()} /></View> : null}
-      {legacyUntypedFixture && data?.brief ? <>
-        <Section title="WHAT CHANGED" testID="legacy-what-changed"><Text style={styles.copy}>Observed fact</Text></Section>
-        <Section title="WHY IT MAY MATTER TO YOUR VENUE" testID="legacy-why"><Text style={styles.copy}>Mingla interpretation</Text></Section>
-        <Section title="WORTH DOING NEXT" testID="legacy-action"><Text style={styles.copy}>Suggested action</Text></Section>
-        <Section title="EVIDENCE" testID="legacy-evidence"><Button label={["Open source", "evidence"].join(" ")} variant="secondary" size="md" onPress={() => { const url = data.brief?.evidence[0]?.publicUrl; if (url) openCompetitorPublicUrl(url); }} testID={`competitor-brief-sheet-evidence-${data.brief.evidence[0]?.id ?? "missing"}-open`} /></Section>
-      </> : null}
       {decision ? <>
         <View style={styles.readCard} testID="competitor-brief-the-read"><ReadLine label="WHAT HAPPENED" text={decision.happened} /><ReadLine label="WHY CARE" text={decision.whyCare} /><ReadLine label="DO THIS NEXT" text={decision.doNext} /></View>
         <View style={styles.health} testID="competitor-brief-signal-health"><Text style={styles.cardTitle}>Signal health</Text><Text style={styles.meta}>{sourceHealth(data?.sources ?? row?.sources ?? [])}</Text></View>
         <Section title={firstRun ? "CURRENT PUBLIC SIGNALS" : "WHAT CHANGED"} testID="competitor-brief-sheet-section-signals">{decision.signals.map((signal) => <SignalCard key={signal.id} signal={signal} nativeRef={(node) => { if (node) signalRefs.current.set(signal.id, node); else signalRefs.current.delete(signal.id); }} watchId={row?.id} schemaVersion={data?.schemaVersion ?? 2} />)}</Section>
         {decision.interpretations.length ? <Section title="COMPETITIVE READ" testID="competitor-brief-sheet-section-why"><Text style={styles.help}>What these verified signals could mean for your venue.</Text>{decision.interpretations.map((item, index) => <View key={`${item.text}-${index}`} style={styles.card}><Text style={styles.cardTitle}>{`${titleCase(item.type)} · ${titleCase(item.confidence)} confidence`}</Text><Text style={styles.copy}>{item.text}</Text><Pressable accessibilityRole="button" accessibilityLabel={`Based on signal ${item.signalNumber}`} onPress={() => focusSignal(signalRefs.current.get(decision.signals[item.signalNumber - 1]?.id ?? ""), scrollRef.current)} style={styles.smallControl}><Text style={styles.link}>{`Based on signal ${item.signalNumber}`}</Text></Pressable></View>)}</Section> : null}
         {decision.comparisons.length ? <Section title={`YOU VS ${row?.name?.toUpperCase() ?? "COMPETITOR"}`} testID="competitor-brief-sheet-section-comparisons">{decision.comparisons.map((item) => <View key={item.id} style={styles.card}><Text style={styles.cardTitle}>{`${item.label} · ${titleCase(item.confidence)} confidence`}</Text><Text style={styles.copy}>{`You: ${item.ownerText}`}</Text><Text style={styles.copy}>{`${row?.name ?? "Competitor"}: ${item.competitorText}`}</Text></View>)}</Section> : null}
-        <Section title="YOUR MOVE" testID="competitor-brief-sheet-section-actions">{decision.actions.filter((item) => item.primary).map((item) => <View key={item.id} style={styles.primaryAction}><Text style={styles.provenance}>THIS WEEK · PRIMARY</Text><Text style={styles.copy}>{item.text}</Text></View>)}{decision.actions.some((item) => !item.primary) ? <Text style={styles.cardTitle}>Also worth considering</Text> : null}{decision.actions.filter((item) => !item.primary).map((item, index) => <View key={item.id} style={styles.secondaryAction}><Text style={styles.provenance}>{`${index + 1}. ${actionTimeframeLabel(item.timeframe).toUpperCase()}`}</Text><Text style={styles.copy}>{item.text}</Text></View>)}</Section>
+        <Section title="YOUR MOVE" testID="competitor-brief-sheet-section-actions">{decision.actions.filter((item) => item.primary).map((item) => <View key={item.id} style={styles.primaryAction} testID={`competitor-brief-primary-action-${item.id}`}><Text style={styles.provenance}>THIS WEEK · PRIMARY</Text><Text style={styles.copy}>{item.text}</Text></View>)}{decision.actions.some((item) => !item.primary) ? <Text style={styles.cardTitle}>Also worth considering</Text> : null}{decision.actions.filter((item) => !item.primary).map((item, index) => <View key={item.id} style={styles.secondaryAction} testID={`competitor-brief-secondary-action-${item.id}`}><Text style={styles.provenance}>{`${index + 1}. ${actionTimeframeLabel(item.timeframe).toUpperCase()}`}</Text><Text style={styles.copy}>{item.text}</Text></View>)}</Section>
       </> : data && !query.isFetching && !query.isError ? <View style={styles.card} testID="competitor-brief-sheet-insufficient"><Text style={styles.cardTitle}>Not enough public detail</Text><Text style={styles.copy}>Add or correct a weekly-eligible public source, then Mingla will try again.</Text></View> : null}
     </ScrollView>
   </Sheet>;
+}
+function normalizeBriefSchema(value: CompetitorBriefResult | undefined): CompetitorBriefResult | undefined {
+  if (!value || Object.prototype.hasOwnProperty.call(value, "schemaVersion")) return value;
+  return { ...value, schemaVersion: 2 } as CompetitorBriefV2;
 }
 function ReadLine({ label, text }: { label: string; text: string }): React.ReactElement { return <View style={styles.readLine}><Text style={styles.provenance}>{label}</Text><Text style={styles.copy}>{text}</Text></View>; }
 function SignalCard({ signal, nativeRef, watchId, schemaVersion }: { signal: CompetitorSignalView; nativeRef: (node: View | null) => void; watchId?: string; schemaVersion: number }): React.ReactElement {
@@ -74,7 +69,9 @@ function SignalCard({ signal, nativeRef, watchId, schemaVersion }: { signal: Com
 }
 function focusSignal(node: View | undefined, scroll: ScrollView | null): void {
   if (!node || !scroll) return;
-  node.measureLayout(scroll as unknown as View, (_x, y) => {
+  const scrollHandle = findNodeHandle(scroll);
+  if (scrollHandle === null) return;
+  node.measureLayout(scrollHandle, (_x, y) => {
     scroll.scrollTo({ y: Math.max(0, y - spacing.md), animated: true });
     const handle = findNodeHandle(node);
     if (handle) AccessibilityInfo.setAccessibilityFocus(handle);
@@ -96,12 +93,16 @@ function reportState(freshness: string | undefined, noChange: boolean, hasBrief:
 }
 function formatDateTime(iso: string): string { const date = new Date(iso); return Number.isFinite(date.getTime()) ? date.toLocaleString() : "—"; }
 function formatScheduleTime(iso: string): string { const date = new Date(iso); if (!Number.isFinite(date.getTime())) return "—"; return `${date.toLocaleDateString([], { month: "short", day: "numeric" })}, ${date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}`; }
-const opaque = { backgroundColor: competition.surfaceRaised, borderWidth: StyleSheet.hairlineWidth, borderColor: "#1f2125", overflow: "hidden" as const, ...Platform.select({ android: { elevation: 0, shadowOpacity: 0 }, default: {} }) };
+const competitionCardSurface = Platform.OS === "android" ? androidOpaque.rowFill : competition.surfaceRaised;
+const competitionBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileElevated;
+const competitionSubtleBorder = Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase;
+const opaque = { backgroundColor: competitionCardSurface, borderWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder, overflow: "hidden" as const, ...Platform.select({ android: { elevation: 0, shadowOpacity: 0 }, default: {} }) };
 const styles = StyleSheet.create({
   sheet: { width: "100%", maxWidth: competitorSheet.briefMaxWidth, borderWidth: StyleSheet.hairlineWidth, borderColor: glass.border.profileElevated }, body: { gap: competitorSheet.sectionGap, paddingTop: spacing.md, paddingBottom: spacing.xl },
-  header: { gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#1f2125" }, headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }, eyebrow: { ...typography.labelCap, color: textTokens.tertiary }, title: { ...typography.h3, color: textTokens.primary }, meta: { ...typography.caption, color: textTokens.tertiary }, statusRail: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, status: { ...typography.caption, color: textTokens.primary },
-  stateBanner: { ...opaque, borderRadius: 16, padding: spacing.md }, preparing: { gap: spacing.md, alignItems: "center", paddingVertical: spacing.xl }, readCard: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.lg }, readLine: { gap: spacing.xs, maxWidth: competitorSheet.readableCopyMaxWidth }, health: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: "#1f2125" },
-  section: { gap: competitorSheet.cardGap }, sectionTitle: { ...typography.labelCap, color: textTokens.secondary }, help: { ...typography.bodySm, color: textTokens.secondary }, card: { ...opaque, borderRadius: 16, padding: spacing.md, gap: spacing.sm }, primaryAction: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.sm }, secondaryAction: { padding: spacing.md, gap: spacing.xs, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: "#1f2125" }, disclosure: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, smallControl: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }, evidence: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "#1f2125" },
+  insetCompact: { paddingHorizontal: competitorSheet.contentInsetCompact }, insetRegular: { paddingHorizontal: competitorSheet.contentInsetRegular }, insetWide: { paddingHorizontal: competitorSheet.contentInsetWide },
+  header: { gap: spacing.sm, paddingBottom: spacing.md, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionBorder }, headerTop: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md }, eyebrow: { ...typography.labelCap, color: textTokens.tertiary }, title: { ...typography.h3, color: textTokens.primary }, meta: { ...typography.caption, color: textTokens.tertiary }, statusRail: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm }, status: { ...typography.caption, color: textTokens.primary },
+  stateBanner: { ...opaque, borderRadius: 16, padding: spacing.md }, preparing: { gap: spacing.md, alignItems: "center", paddingVertical: spacing.xl }, readCard: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.lg }, readLine: { gap: spacing.xs, maxWidth: competitorSheet.readableCopyMaxWidth }, health: { flexDirection: "row", flexWrap: "wrap", justifyContent: "space-between", gap: spacing.sm, paddingVertical: spacing.md, borderTopWidth: StyleSheet.hairlineWidth, borderBottomWidth: StyleSheet.hairlineWidth, borderColor: competitionBorder },
+  section: { gap: competitorSheet.cardGap }, sectionTitle: { ...typography.labelCap, color: textTokens.secondary }, help: { ...typography.bodySm, color: textTokens.secondary }, card: { ...opaque, borderRadius: 16, padding: spacing.md, gap: spacing.sm }, primaryAction: { ...opaque, borderRadius: 24, padding: Platform.OS === "web" ? 24 : 20, gap: spacing.sm }, secondaryAction: { padding: spacing.md, gap: spacing.xs, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: competitionSubtleBorder }, disclosure: { minHeight: 44, flexDirection: "row", alignItems: "center", justifyContent: "space-between" }, smallControl: { minHeight: 44, justifyContent: "center", alignSelf: "flex-start" }, evidence: { gap: spacing.xs, paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: competitionSubtleBorder },
   cardTitle: { ...typography.bodySm, color: textTokens.primary, fontWeight: "600" }, provenance: { ...typography.labelCap, color: textTokens.tertiary }, copy: { ...typography.body, color: textTokens.primary, maxWidth: competitorSheet.readableCopyMaxWidth }, link: { ...typography.bodySm, color: semantic.info, fontWeight: "600" },
 });
 export default CompetitorBriefSheet;
