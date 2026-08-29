@@ -40,7 +40,7 @@ jobs:
         run: npm install
       - name: Build web bundle (fails on duplicate import/export + syntax errors)
         working-directory: mingla-business
-        run: npx expo export -p web --output-dir /tmp/web-build-check
+        run: EXPO_PUBLIC_POSTHOG_KEY=phc_issue2771 EXPO_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 EXPO_PUBLIC_META_PIXEL_ID=issue2771 npx expo export -p web --clear --output-dir dist
       # #2756 — RNW promotes aria-disabled role=button hosts to HTML disabled,
       # so renderer-only assertions cannot prove the busy retry keeps focus.
       # Mount the real production venue screen in Chromium and exercise the DOM.
@@ -56,7 +56,7 @@ jobs:
       # grows past its cap, or the initial payload exceeds the ceiling.
       - name: ORCH-1083 initial-bundle budget guard
         working-directory: mingla-business
-        run: ORCH_1083_WEB_BUILD=/tmp/web-build-check node scripts/ci/orch-1083-initial-bundle-budget.mjs
+        run: ORCH_1083_WEB_BUILD=dist node scripts/ci/orch-1083-initial-bundle-budget.mjs
       # #1627 [keyboard-guard-vacuity]: the native keyboard library must not be
       # in the web bundle at all. T1 (KeyboardRoot.adversarial.test.tsx, inside
       # the required jest check) asserts the same contract on SOURCE; this is
@@ -65,15 +65,15 @@ jobs:
       #
       # It lives HERE, and not in the jest job, on purpose. The reason the
       # original guard was dark for its entire life is that it demanded an
-      # artefact nothing produced: it read a gitignored `mingla-business/dist/`,
-      # while the required jest job runs no export and all nineteen workflows
-      # that DO export write to /tmp/…. This job already exported to
-      # /tmp/web-build-check two steps up, so the assertion costs ~0s and CANNOT
+      # artefact nothing produced: it read a gitignored `mingla-business/dist/`
+      # while the required jest job runs no export. This job now creates that
+      # exact project-contained artifact two steps up, so the assertion costs
+      # ~0s and CANNOT
       # skip — if the export failed, the job is already red. There is no skip
       # branch to write. Same hosting choice as the ORCH-1137 proof below.
       - name: "#1627 no native keyboard library in the web bundle"
         run: |
-          CHUNK_DIR=/tmp/web-build-check/_expo/static/js/web
+          CHUNK_DIR=mingla-business/dist/_expo/static/js/web
           # Non-empty-input guard FIRST. A moved output path or a partial export
           # would otherwise leave the grep matching nothing and this step green
           # — the identical vacuity bug, relocated. 180 chunks today.
@@ -124,7 +124,7 @@ jobs:
       # SPEC_ORCH-1137 §9.
       - name: ORCH-1137 lucide real-glyph render-proof
         run: |
-          if grep -rqF "M5 12h14" /tmp/web-build-check && grep -rqF "M12 5v14" /tmp/web-build-check; then
+          if grep -rqF "M5 12h14" mingla-business/dist && grep -rqF "M12 5v14" mingla-business/dist; then
             echo "ORCH-1137 render-proof PASS: lucide Plus glyph path signature present in the exported web bundle."
           else
             echo "ORCH-1137 render-proof FAIL: lucide Plus glyph path signature (M5 12h14 / M12 5v14) NOT found in the exported web bundle. The biz-web lucide shim must render REAL lucide-react icons (no null-stub)." >&2

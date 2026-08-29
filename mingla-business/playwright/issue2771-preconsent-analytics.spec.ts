@@ -1,4 +1,4 @@
-import { expect, test, type Browser, type BrowserContext, type Page } from '@playwright/test'
+import { expect, test, type BrowserContext, type Page } from '@playwright/test'
 
 const BUSINESS = 'http://127.0.0.1:43172'
 const MARKETING = 'http://127.0.0.1:43171'
@@ -39,41 +39,7 @@ async function vendorScripts(page: Page): Promise<string[]> {
   }, FORBIDDEN_REQUEST.source)
 }
 
-async function warmConsentRoute(
-  browser: Browser,
-  surface: { url: string; accept: string; waitsForNetworkIdle: boolean },
-): Promise<void> {
-  const context = await browser.newContext()
-  try {
-    const page = await context.newPage()
-    const acceptedRequests = await observe(page)
-    await page.goto(surface.url, { waitUntil: 'domcontentloaded' })
-    if (surface.waitsForNetworkIdle) await page.waitForLoadState('networkidle')
-    const acceptButton = page.getByRole('button', { name: surface.accept, exact: true })
-    await expect(acceptButton).toBeVisible()
-    await acceptButton.dispatchEvent('click')
-    await expect.poll(() => acceptedRequests.length).toBeGreaterThan(0)
-    await expect.poll(() => page.evaluate((key) => window.localStorage.getItem(key), CONSENT_KEY)).toContain('granted')
-  } finally {
-    await context.close()
-  }
-}
-
 test.describe('#2771 actual network and storage boundary', () => {
-  test.beforeAll(async ({ browser }, testInfo) => {
-    testInfo.setTimeout(180_000)
-    await warmConsentRoute(browser, {
-      url: BUSINESS,
-      accept: 'Accept cookies and analytics',
-      waitsForNetworkIdle: false,
-    })
-    await warmConsentRoute(browser, {
-      url: MARKETING,
-      accept: 'Accept all',
-      waitsForNetworkIdle: true,
-    })
-  })
-
   for (const surface of [
     { name: 'Business/Buyer', url: BUSINESS, accept: 'Accept cookies and analytics', reject: 'Reject cookies and analytics', waitsForNetworkIdle: false },
     { name: 'Marketing', url: MARKETING, accept: 'Accept all', reject: 'Reject', waitsForNetworkIdle: true },

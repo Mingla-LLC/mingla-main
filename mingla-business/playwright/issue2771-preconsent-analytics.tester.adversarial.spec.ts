@@ -68,7 +68,7 @@ async function newSeededPage(
 }
 
 async function forbiddenStorage(context: BrowserContext, page: Page): Promise<string[]> {
-  const cookies = (await context.cookies()).map(({ name }) => name)
+  const cookies = (await context.cookies(page.url())).map(({ name }) => name)
   const storage = await page.evaluate(() => [
     ...Object.keys(localStorage),
     ...Object.keys(sessionStorage),
@@ -210,7 +210,9 @@ test.describe('#2771 independent browser privacy boundary', () => {
         })
       }
       await expect.poll(() => page.evaluate((key) => localStorage.getItem(key), CONSENT_KEY)).toMatch(/granted/)
-      await expect.poll(async () => (await dataLayerCommands(page)).length).toBeGreaterThan(0)
+      await expect.poll(async () =>
+        commandCount(await dataLayerCommands(page), 'event', 'consent_granted'),
+      ).toBe(1)
       expect(oracle.consentAtRequest.every((value) => value?.includes('granted'))).toBe(true)
       const commands = await dataLayerCommands(page)
       expect(commandCount(commands, 'config', 'G-ISSUE2771')).toBeLessThanOrEqual(1)
