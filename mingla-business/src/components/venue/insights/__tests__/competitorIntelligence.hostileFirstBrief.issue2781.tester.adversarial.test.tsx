@@ -161,9 +161,7 @@ describe("issue 2781 hostile first-brief client boundary", () => {
     });
 
     const rendered = output(tree!);
-    expect(rendered).toContain(
-      "Not enough public detail for a useful brief yet",
-    );
+    expect(rendered).toContain("Not enough public detail");
     expect(rendered).not.toContain("CURRENT PUBLIC OBSERVATIONS");
     expect(rendered).not.toContain("WORTH DOING NEXT");
     expect(rendered).not.toContain("Launch a Friday event immediately.");

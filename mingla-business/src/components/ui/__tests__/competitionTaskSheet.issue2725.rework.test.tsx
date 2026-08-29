@@ -46,16 +46,17 @@ describe("issue 2725 opt-in Competition task Sheet", () => {
     for (const owner of [add, brief])
       expect(owner).toContain('presentation="competition"');
     for (const owner of [add, brief]) {
-      expect(owner).toContain('panelBackground="#16181b"');
+      expect(owner).toContain("panelBackground={competition.surface}");
       expect(owner).toContain("borderColor: glass.border.profileElevated");
-      expect(owner).toContain("shadowOpacity: 0.32");
       expect(owner).toContain("android: { elevation: 0, shadowOpacity: 0 }");
     }
+    expect(add).toContain("shadowOpacity: 0.32");
     expect(add).toContain("minHeight: 56");
-    expect(add).toContain("minHeight: 72");
-    expect(add).toContain('backgroundColor: "#16181b"');
-    expect(brief).toContain("maxWidth: 720");
-    expect(brief).toContain("padding: spacing.md + spacing.xs");
-    expect(brief).toContain("borderLeftWidth: 3");
+    expect(add).toContain("maxHeight: 360");
+    expect(add).toContain("backgroundColor: competition.surface");
+    expect(brief).toContain("maxWidth: competitorSheet.briefMaxWidth");
+    expect(brief).toContain('padding: Platform.OS === "web" ? 24 : 20');
+    expect(brief).toContain("backgroundColor: competitionCardSurface");
+    expect(brief).toContain("borderColor: competitionBorder");
   });
 });

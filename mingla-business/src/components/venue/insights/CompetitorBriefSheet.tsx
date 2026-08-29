@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { AccessibilityInfo, ActivityIndicator, findNodeHandle, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { captureCompetitorIntelligenceEvent } from "../../../analytics/competitorIntelligenceAnalytics";
 import { androidOpaque, competition, competitorSheet, glass, semantic, spacing, text as textTokens, typography } from "../../../constants/designSystem";
@@ -27,6 +27,7 @@ function WithVenue(props: Props & { venueListingId: string }): React.ReactElemen
 }
 function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props, "venueListingId" | "venueName"> & { venueName: string | null }): React.ReactElement {
   const query = useCompetitorBrief(brandId, row?.id ?? null, visible);
+  const closeRef = useRef<React.ElementRef<typeof Pressable>>(null);
   const scrollRef = useRef<ScrollView>(null);
   const signalRefs = useRef(new Map<string, View>());
   const data = normalizeBriefSchema(query.data);
@@ -36,10 +37,15 @@ function Content({ visible, onClose, brandId, row, offline = false }: Omit<Props
   const insetStyle = width >= 1024 ? styles.insetWide : width >= 360 ? styles.insetRegular : styles.insetCompact;
   const firstRun = !data?.updatedAt || Math.abs(Date.parse(data.updatedAt) - Date.parse(row?.createdAt ?? "")) < 86_400_000;
   const state = reportState(data?.brief?.status === "partial" ? "partial" : data?.freshness ?? row?.freshness, data?.noMeaningfulChange ?? false, Boolean(data?.brief) && !insufficient, query.isFetching, query.isError, offline);
+  useEffect(() => {
+    if (!visible || Platform.OS !== "web") return;
+    const timer = setTimeout(() => closeRef.current?.focus(), 0);
+    return () => clearTimeout(timer);
+  }, [visible]);
   return <Sheet visible={visible} onClose={onClose} snapPoint="full" presentation="competition" panelBackground={competition.surface} style={styles.sheet} testID="competitor-brief-sheet">
     <ScrollView ref={scrollRef} contentContainerStyle={[styles.body, insetStyle]}>
       <View style={styles.header}>
-        <View style={styles.headerTop}><Text style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} /></View>
+        <View style={styles.headerTop}><Text style={styles.eyebrow}>WEEKLY COMPETITOR BRIEF</Text><Button ref={closeRef} label="Close" accessibilityLabel="Close weekly competitor brief" variant="ghost" size="md" onPress={onClose} testID="competitor-brief-close" /></View>
         <Text accessibilityRole="header" style={styles.title}>{row?.name ?? "Weekly competitor brief"}</Text>
         {row?.city ? <Text style={styles.meta}>{row.city}</Text> : null}
         <View style={styles.statusRail}><Text style={styles.status} testID="competitor-brief-sheet-header-status">{state.label}</Text>{data?.checkedAt ? <Text style={styles.meta}>{`Checked ${formatDateTime(data.checkedAt)}`}</Text> : null}{(data?.nextRefreshAt ?? row?.nextRefreshAt) ? <Text style={styles.meta}>{`Next check ${formatScheduleTime(data?.nextRefreshAt ?? row?.nextRefreshAt ?? "")}`}</Text> : null}</View>

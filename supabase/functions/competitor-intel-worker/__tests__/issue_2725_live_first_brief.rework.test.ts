@@ -40,13 +40,13 @@ const observations = [{
 }];
 const venueContext = {
   listing: {
-    id: "gogi",
+    id: "11111111-1111-4111-8111-111111111111",
     name: "Gogi Lagos",
     city: "Lagos",
     venue_category: "restaurant",
   },
   brand_published_events: [{
-    id: "event-1",
+    id: "22222222-2222-4222-8222-222222222222",
     title: "Thursday live music",
     description: "An existing Gogi event",
   }],
@@ -97,6 +97,40 @@ Deno.test("issue 2725 rework uses GEMINI_API_KEY and keeps a concrete first brie
                       kind: "publish_existing_event",
                       confidence: "suggested_action",
                       is_primary: true,
+                    }],
+                    decision: {
+                      class: "act",
+                      confidence: "medium",
+                      headline: "Friday live music is a visible competitive signal",
+                      rationale:
+                        "Gogi has a verified live-music event that can be made easier to discover.",
+                      signal_ids: ["s-instagram-2"],
+                      owner_fact_ids: ["of-listing-category"],
+                    },
+                    theme_signals: [],
+                    interpretation_meta: [{
+                      index: 0,
+                      signal_type: "opportunity",
+                      confidence: "medium",
+                      priority: "high",
+                      signal_ids: ["s-instagram-2"],
+                      owner_fact_ids: [
+                        "of-event-title-22222222-2222-4222-8222-222222222222",
+                      ],
+                    }],
+                    comparisons: [],
+                    action_plan: [{
+                      index: 0,
+                      action_id: "a1",
+                      timeframe: "this_week",
+                      impact: "high",
+                      confidence: "medium",
+                      order: 1,
+                      is_primary: true,
+                      signal_ids: ["s-instagram-2"],
+                      owner_fact_ids: [
+                        "of-event-title-22222222-2222-4222-8222-222222222222",
+                      ],
                     }],
                   }),
                 }],
