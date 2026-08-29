@@ -12,7 +12,7 @@ const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
 export const GEMINI_MODEL_ID = "gemini-2.5-flash";
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v2.8";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v2.9";
 export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
@@ -451,9 +451,6 @@ export async function processCompetitorJob(
     { db, job },
   );
   validateBrief(brief, observations);
-  // No-key deterministic fallback is known zero model cost; metered attempts
-  // have already settled their reservation and this RPC is then a no-op.
-  await settleZeroCost(db, job, "deterministic_fallback");
   // Generation + source fingerprint recheck immediately before publish.
   const { data: publishJob, error: publishJobError } = await db.from(
     "tool_competitor_refresh_jobs",
@@ -593,47 +590,18 @@ export async function synthesizeBrief(
     source_id: o.sourceId,
     public_url: o.publicUrl,
     checked_at: o.checkedAt,
-    observation: `${
-      o.kind === "website" ? "Website" : "Instagram"
-    } public information was checked.`,
+    ...(o.latestObservedAt ? { observed_at: o.latestObservedAt } : {}),
+    observation: concreteEvidenceObservation(o),
   }));
   const comparable = comparisons.filter((item) => item.before !== null);
   const firstCheck = comparable.length === 0;
-  const changed = comparable.find((item) => item.changedPaths.length > 0);
-  const newlyObserved = comparisons.find((item) => item.before === null);
-  const primary = changed ?? newlyObserved ?? observations[0];
-  const primaryEvidence = `e${
-    Math.max(
-      0,
-      observations.findIndex((item) => item.sourceId === primary.sourceId),
-    ) + 1
-  }`;
-  const baselineFacts = [{
-    id: "f1",
-    text: observedChangeText(name, comparisons),
-    source_id: primary.sourceId,
-    evidence_id: primaryEvidence,
+  const baselineFacts = observations.map((observation, index) => ({
+    id: `f${index + 1}`,
+    text: evidence[index].observation,
+    source_id: observation.sourceId,
+    evidence_id: `e${index + 1}`,
     confidence: "observed",
-  }];
-  const relevance = venueRelevantFallback(observations, venueContext);
-  const fallback = {
-    what_changed: baselineFacts,
-    why_it_matters: [{
-      text: relevance.why,
-      evidence_ids: [primaryEvidence],
-      confidence: "interpretation",
-    }],
-    worth_doing: [{
-      id: "a1",
-      text: relevance.action,
-      kind: "review_venue_context",
-      confidence: "suggested_action",
-      is_primary: true,
-    }],
-    evidence,
-  };
-  const key = Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
-  if (!key) return fallback;
+  }));
   const prompt = {
     name,
     city,
@@ -677,14 +645,34 @@ export async function synthesizeBrief(
     if (cached?.result) {
       const reused = {
         ...cached.result,
-        what_changed: firstCheck ? baselineFacts : cached.result.what_changed,
+        what_changed: firstCheck
+          ? sanitizeFirstCheckFacts(cached.result.what_changed, baselineFacts)
+          : cached.result.what_changed,
         evidence,
+        worth_doing: Array.isArray(cached.result.worth_doing)
+          ? cached.result.worth_doing.map((action: Record<string, unknown>) =>
+            typeof action?.text === "string" &&
+              /review (?:the )?evidence/i.test(action.text)
+              ? {
+                ...action,
+                text:
+                  "Use this public observation to make one small, deliverable update to an existing venue event or listing this week.",
+              }
+              : action
+          )
+          : cached.result.worth_doing,
       };
       validateBrief(reused, observations);
       await settleZeroCost(context.db, context.job, "accepted_reuse");
       return reused;
     }
   }
+  // Production's shared Gemini secret owner is GEMINI_API_KEY. The legacy
+  // name is a read-only deploy-transition bridge and must never restore the
+  // zero-cost generic publication path.
+  const key = Deno.env.get("GEMINI_API_KEY") ??
+    Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
+  if (!key) throw new Error("model_configuration_missing");
   const responseSchema = {
     type: "object",
     additionalProperties: false,
@@ -855,7 +843,9 @@ export async function synthesizeBrief(
   }
   const candidate = {
     ...(parsed ?? {}),
-    what_changed: firstCheck ? baselineFacts : parsed?.what_changed,
+    what_changed: firstCheck
+      ? sanitizeFirstCheckFacts(parsed?.what_changed, baselineFacts)
+      : parsed?.what_changed,
     evidence,
   };
   let resultClass = response.ok && parsed ? "accepted" : "provider_error";
@@ -917,6 +907,58 @@ export async function synthesizeBrief(
     return data;
   }
   return candidate as any;
+}
+
+function boundedText(value: unknown, max = 220): string | null {
+  if (typeof value !== "string") return null;
+  const text = value.replace(/\s+/g, " ").trim();
+  return text ? text.slice(0, max) : null;
+}
+
+export function concreteEvidenceObservation(
+  observation: CurrentObservation,
+): string {
+  const facts = observation.facts as {
+    profile?: { name?: unknown; bio?: unknown };
+    items?: Array<{ caption_excerpt?: unknown }>;
+  };
+  const caption = boundedText(
+    facts?.items?.find((item) => boundedText(item?.caption_excerpt))
+      ?.caption_excerpt,
+  );
+  const bio = boundedText(facts?.profile?.bio);
+  const title = boundedText(facts?.profile?.name);
+  if (observation.kind === "instagram") {
+    if (caption) return `Instagram's public post says “${caption}”`;
+    if (bio) return `Instagram's public profile says “${bio}”`;
+    if (title) return `Instagram's public profile is named “${title}”`;
+  } else {
+    if (bio) return `The public website describes the venue as “${bio}”`;
+    if (title) return `The public website title is “${title}”`;
+  }
+  throw new Error("insufficient_source_facts");
+}
+
+const HISTORICAL_FIRST_CHECK_CLAIM =
+  /\b(changed|changed since|previously|used to|no longer|increased|decreased|started|stopped|new this week)\b/i;
+
+function sanitizeFirstCheckFacts(
+  value: unknown,
+  fallback: Array<Record<string, unknown>>,
+): unknown {
+  if (!Array.isArray(value) || value.length < 1) return fallback;
+  return value.map((fact, index) => {
+    if (!fact || typeof fact !== "object") return fact;
+    const record = fact as Record<string, unknown>;
+    if (
+      typeof record.text === "string" &&
+      !HISTORICAL_FIRST_CHECK_CLAIM.test(record.text)
+    ) return record;
+    const replacement = fallback.find((candidate) =>
+      candidate.evidence_id === record.evidence_id
+    ) ?? fallback[Math.min(index, fallback.length - 1)] ?? fallback[0];
+    return { ...record, text: replacement?.text };
+  });
 }
 function exactKeys(
   value: unknown,
@@ -1025,6 +1067,10 @@ export function validateBrief(
   if (
     /revenue|market share|impressions|reach|footfall|ad spend/i.test(serialized)
   ) throw new Error("prohibited_metric");
+  if (
+    /Mingla checked .*public|public information was checked|compared (?:with )?(?:this|the) venue.*bounded|review (?:the )?evidence/i
+      .test(serialized)
+  ) throw new Error("generic_intelligence");
 }
 export function providerSafeCode(error: unknown): string {
   const code = error instanceof Error ? error.message : "unreachable";

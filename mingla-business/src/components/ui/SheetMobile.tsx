@@ -150,6 +150,8 @@ export interface SheetProps {
    * NO dark glass gaps around the brand fill. Undefined → the default glass.
    */
   panelBackground?: string;
+  /** Issue #2781: opaque task focus for the Competition workflow only. */
+  presentation?: "competition";
 }
 
 // SNAP_RATIOS / MIN_SNAP_PX / MAX_SNAP_RATIO now live in ./sheetSnapHeight
@@ -203,8 +205,14 @@ if (__DEV__ && SHEET_DRAG_BAND_HEIGHT !== HANDLE_REGION_HEIGHT) {
   );
 }
 const SPRING_CONFIG = { damping: 22, stiffness: 200, mass: 1 } as const;
-const REDUCE_MOTION_OPEN = { duration: 200, easing: Easing.out(Easing.cubic) } as const;
-const TIMING_CLOSE = { duration: 240, easing: Easing.in(Easing.cubic) } as const;
+const REDUCE_MOTION_OPEN = {
+  duration: 200,
+  easing: Easing.out(Easing.cubic),
+} as const;
+const TIMING_CLOSE = {
+  duration: 240,
+  easing: Easing.in(Easing.cubic),
+} as const;
 // #1360: exported (export-only, no behavior change) so deferAfterDismiss can
 // import the sheet's own unmount window as the single source of truth for the
 // payment-confirmation toast defer delay.
@@ -230,6 +238,7 @@ const SheetNative: React.FC<SheetProps> = ({
   testID,
   style,
   panelBackground,
+  presentation,
 }) => {
   const screenHeight = Dimensions.get("window").height;
   const { width: windowWidth } = useWindowDimensions();
@@ -369,67 +378,100 @@ const SheetNative: React.FC<SheetProps> = ({
           Identical precedent, already shipped and device-verified:
           Toast.tsx:361-366. Web resolves this to a plain passthrough. */}
       <GestureHandlerRootView style={styles.gestureRoot}>
-      {/* ORCH-1170: KeyboardProvider scoped to THIS Modal's native window so the
+        {/* ORCH-1170: KeyboardProvider scoped to THIS Modal's native window so the
           Done bar below actually receives keyboard frames here (the app-root
           provider does not reach into a separate RN Modal window). Wraps the
           whole panel so the sheet's inputs + the toolbar share one provider. */}
-      <KeyboardRoot>
-        <View
-          pointerEvents={visible ? "auto" : "none"}
-          style={StyleSheet.absoluteFill}
-          testID={testID}
-        >
-          <Animated.View
-            style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimStyle]}
+        <KeyboardRoot>
+          <View
+            pointerEvents={visible ? "auto" : "none"}
+            style={StyleSheet.absoluteFill}
+            testID={testID}
           >
-            <Pressable
-              style={styles.scrimPress}
-              onPress={handleScrimPress}
-              accessibilityLabel="Dismiss sheet"
-              accessibilityRole="button"
-            />
-          </Animated.View>
-          <View style={styles.bottomDock} pointerEvents="box-none">
             <Animated.View
               style={[
-                styles.panel,
-                { height: sheetHeight },
-                shadows.glassCardElevated,
-                panelStyle,
-                style,
+                StyleSheet.absoluteFill,
+                {
+                  backgroundColor:
+                    presentation === "competition"
+                      ? "rgba(0, 0, 0, 0.68)"
+                      : SCRIM_COLOR,
+                },
+                scrimStyle,
               ]}
             >
-              <SheetMobilePanelInner
-                blurOk={blurOk}
-                blurIntensity={blurIntensity}
-                bottomInset={insets.bottom}
-                panelBackground={panelBackground}
+              <Pressable
+                style={styles.scrimPress}
+                onPress={handleScrimPress}
+                accessibilityLabel="Dismiss sheet"
+                accessibilityRole="button"
+              />
+            </Animated.View>
+            <View style={styles.bottomDock} pointerEvents="box-none">
+              <Animated.View
+                style={[
+                  styles.panel,
+                  { height: sheetHeight },
+                  presentation === "competition" && Platform.OS === "android"
+                    ? null
+                    : shadows.glassCardElevated,
+                  presentation === "competition"
+                    ? styles.competitionPanel
+                    : null,
+                  presentation === "competition" && Platform.OS === "ios"
+                    ? styles.competitionIOSPanel
+                    : null,
+                  presentation === "competition" && Platform.OS === "android"
+                    ? styles.competitionAndroidPanel
+                    : null,
+                  panelStyle,
+                  style,
+                ]}
+                testID={
+                  presentation === "competition" && testID !== undefined
+                    ? `${testID}-competition-panel`
+                    : undefined
+                }
+                accessibilityViewIsModal={
+                  presentation === "competition" ? true : undefined
+                }
               >
-                {children}
-              </SheetMobilePanelInner>
-              {/* #1022 — the dismiss pan lives on THIS band only, never on the
+                <SheetMobilePanelInner
+                  blurOk={blurOk}
+                  blurIntensity={blurIntensity}
+                  bottomInset={insets.bottom}
+                  panelBackground={
+                    panelBackground ??
+                    (presentation === "competition" ? "#16181b" : undefined)
+                  }
+                >
+                  {children}
+                </SheetMobilePanelInner>
+                {/* #1022 — the dismiss pan lives on THIS band only, never on the
                   panel. Rendered as a sibling AFTER the panel inner (so it sits
                   above the handle) and mirroring the shipped web `webDragCatch`
                   geometry exactly. Threading a prop into SheetMobilePanelInner
                   was rejected: `handleWrap` renders in three separate branches
                   (panelBackground / webOpaque / default glass), so a prop means
                   three edits and three chances to miss one. */}
-              <WebSafeGestureDetector gesture={panGesture}>
-                <View
-                  style={styles.nativeDragCatch}
-                  testID={testID !== undefined ? `${testID}-drag-handle` : undefined}
-                  accessibilityLabel="Drag to dismiss sheet"
-                />
-              </WebSafeGestureDetector>
-            </Animated.View>
-          </View>
-          {/* ORCH-1165: Done bar for sheet-hosted inputs — last child of the
+                <WebSafeGestureDetector gesture={panGesture}>
+                  <View
+                    style={styles.nativeDragCatch}
+                    testID={
+                      testID !== undefined ? `${testID}-drag-handle` : undefined
+                    }
+                    accessibilityLabel="Drag to dismiss sheet"
+                  />
+                </WebSafeGestureDetector>
+              </Animated.View>
+            </View>
+            {/* ORCH-1165: Done bar for sheet-hosted inputs — last child of the
               Modal's root absoluteFill so it overlays the sheet and floats on
               the keyboard. KeyboardStickyView keeps it off-screen until focus.
               ORCH-1170: now inside the per-window KeyboardProvider above. */}
-          <KeyboardToolbarRoot />
-        </View>
-      </KeyboardRoot>
+            <KeyboardToolbarRoot />
+          </View>
+        </KeyboardRoot>
       </GestureHandlerRootView>
     </Modal>
   );
@@ -524,60 +566,60 @@ const SheetMobilePanelInner: React.FC<SheetMobilePanelInnerProps> = ({
       </View>
     </>
   ) : (
-  <>
-    {/* L1 — Blur base */}
-    {blurOk ? (
-      <BlurView
-        intensity={blurIntensity}
-        tint="dark"
-        style={[StyleSheet.absoluteFill, styles.bodyClip]}
-      />
-    ) : (
+    <>
+      {/* L1 — Blur base */}
+      {blurOk ? (
+        <BlurView
+          intensity={blurIntensity}
+          tint="dark"
+          style={[StyleSheet.absoluteFill, styles.bodyClip]}
+        />
+      ) : (
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            styles.bodyClip,
+            { backgroundColor: FALLBACK_BACKGROUND },
+          ]}
+        />
+      )}
+      {/* L2 — Tint floor */}
       <View
         style={[
           StyleSheet.absoluteFill,
           styles.bodyClip,
-          { backgroundColor: FALLBACK_BACKGROUND },
+          { backgroundColor: glass.tint.profileElevated },
         ]}
       />
-    )}
-    {/* L2 — Tint floor */}
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        styles.bodyClip,
-        { backgroundColor: glass.tint.profileElevated },
-      ]}
-    />
-    {/* L3 — Top edge highlight */}
-    <View
-      style={[
-        styles.topHighlight,
-        { backgroundColor: glass.highlight.profileElevated },
-      ]}
-    />
-    {/* L4 — Hairline border */}
-    <View
-      style={[
-        StyleSheet.absoluteFill,
-        styles.bodyClip,
-        {
-          borderColor: glass.border.profileElevated,
-          borderWidth: StyleSheet.hairlineWidth,
-        },
-      ]}
-      pointerEvents="none"
-    />
-    {/* Content layer — handle + flex:1 body, layered above visuals */}
-    <View style={styles.handleWrap}>
-      <View style={styles.handle} />
-    </View>
-    {/* ORCH-0964: pad past the bottom safe-area / nav bar so sheet
+      {/* L3 — Top edge highlight */}
+      <View
+        style={[
+          styles.topHighlight,
+          { backgroundColor: glass.highlight.profileElevated },
+        ]}
+      />
+      {/* L4 — Hairline border */}
+      <View
+        style={[
+          StyleSheet.absoluteFill,
+          styles.bodyClip,
+          {
+            borderColor: glass.border.profileElevated,
+            borderWidth: StyleSheet.hairlineWidth,
+          },
+        ]}
+        pointerEvents="none"
+      />
+      {/* Content layer — handle + flex:1 body, layered above visuals */}
+      <View style={styles.handleWrap}>
+        <View style={styles.handle} />
+      </View>
+      {/* ORCH-0964: pad past the bottom safe-area / nav bar so sheet
         content doesn't bleed into the bottom edge of the screen. */}
-    <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
-      {children}
-    </View>
-  </>
+      <View style={[styles.body, { paddingBottom: spacing.lg + bottomInset }]}>
+        {children}
+      </View>
+    </>
   );
 
 // ORCH-1197 / ORCH-1199: web-only VISIBLE-viewport metrics for a bottom-anchored
@@ -622,19 +664,31 @@ interface WebViewportMetrics {
 const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
   const read = (): WebViewportMetrics => {
     if (Platform.OS !== "web") {
-      return { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, offsetTop: 0, visibleBottomGap: 0 };
+      return {
+        visibleHeight: fallbackHeight,
+        layoutHeight: fallbackHeight,
+        offsetTop: 0,
+        visibleBottomGap: 0,
+      };
     }
     const g = globalThis as unknown as {
       visualViewport?: { height: number; offsetTop?: number };
       innerHeight?: number;
     };
-    const inner = typeof g.innerHeight === "number" && g.innerHeight > 0 ? g.innerHeight : fallbackHeight;
+    const inner =
+      typeof g.innerHeight === "number" && g.innerHeight > 0
+        ? g.innerHeight
+        : fallbackHeight;
     const visible =
-      g.visualViewport !== undefined && typeof g.visualViewport.height === "number" && g.visualViewport.height > 0
+      g.visualViewport !== undefined &&
+      typeof g.visualViewport.height === "number" &&
+      g.visualViewport.height > 0
         ? g.visualViewport.height
         : inner;
     const offsetTop =
-      g.visualViewport !== undefined && typeof g.visualViewport.offsetTop === "number" && g.visualViewport.offsetTop > 0
+      g.visualViewport !== undefined &&
+      typeof g.visualViewport.offsetTop === "number" &&
+      g.visualViewport.offsetTop > 0
         ? g.visualViewport.offsetTop
         : 0;
     return {
@@ -661,23 +715,30 @@ const useWebViewportMetrics = (fallbackHeight: number): WebViewportMetrics => {
     // ORCH-1199: offsetTop changes on visualViewport SCROLL (Android keyboard) — must
     // re-read or the panel keeps the stale anchor while the page scrolls under it.
     vv?.addEventListener?.("scroll", onResize);
-    (globalThis as unknown as { addEventListener?: (t: string, l: () => void) => void }).addEventListener?.(
-      "resize",
-      onResize,
-    );
+    (
+      globalThis as unknown as {
+        addEventListener?: (t: string, l: () => void) => void;
+      }
+    ).addEventListener?.("resize", onResize);
     return (): void => {
       vv?.removeEventListener?.("resize", onResize);
       vv?.removeEventListener?.("scroll", onResize);
-      (globalThis as unknown as { removeEventListener?: (t: string, l: () => void) => void }).removeEventListener?.(
-        "resize",
-        onResize,
-      );
+      (
+        globalThis as unknown as {
+          removeEventListener?: (t: string, l: () => void) => void;
+        }
+      ).removeEventListener?.("resize", onResize);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return Platform.OS === "web"
     ? metrics
-    : { visibleHeight: fallbackHeight, layoutHeight: fallbackHeight, offsetTop: 0, visibleBottomGap: 0 };
+    : {
+        visibleHeight: fallbackHeight,
+        layoutHeight: fallbackHeight,
+        offsetTop: 0,
+        visibleBottomGap: 0,
+      };
 };
 
 // ORCH-1136 R3: web reduced-motion read (no reanimated hook on the web path).
@@ -734,6 +795,7 @@ const SheetWeb: React.FC<SheetProps> = ({
   testID,
   style,
   panelBackground,
+  presentation,
 }) => {
   // ORCH-1197 / ORCH-1199: size + anchor the panel against the VISIBLE (visual)
   // viewport, not the LAYOUT viewport. The Modal's absoluteFill fills
@@ -743,9 +805,11 @@ const SheetWeb: React.FC<SheetProps> = ({
   // `visibleHeight` bounds the panel SIZE; `visibleBottomGap` lifts it so its bottom
   // aligns to the TRUE visible bottom on iOS Safari, Android Chrome AND Samsung
   // Internet (all no-ops on desktop / no toolbar / no keyboard).
-  const { visibleHeight: screenHeight, layoutHeight, visibleBottomGap } = useWebViewportMetrics(
-    Dimensions.get("window").height,
-  );
+  const {
+    visibleHeight: screenHeight,
+    layoutHeight,
+    visibleBottomGap,
+  } = useWebViewportMetrics(Dimensions.get("window").height);
   const { width: windowWidth } = useWindowDimensions();
   const insets = useSafeAreaInsets();
   // ORCH-1206: single owner of the panel-height math (see ./sheetSnapHeight).
@@ -786,16 +850,22 @@ const SheetWeb: React.FC<SheetProps> = ({
   useEffect(() => {
     const cancelRaf = (): void => {
       if (rafRef.current !== null) {
-        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
-          .cancelAnimationFrame;
+        const caf = (
+          globalThis as unknown as {
+            cancelAnimationFrame?: (h: number) => void;
+          }
+        ).cancelAnimationFrame;
         caf?.(rafRef.current);
         rafRef.current = null;
       }
     };
     if (visible && mounted) {
       setAnimateOpen(false);
-      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
-        .requestAnimationFrame;
+      const raf = (
+        globalThis as unknown as {
+          requestAnimationFrame?: (cb: () => void) => number;
+        }
+      ).requestAnimationFrame;
       if (raf !== undefined) {
         rafRef.current = raf(() => {
           rafRef.current = raf(() => setAnimateOpen(true));
@@ -878,7 +948,8 @@ const SheetWeb: React.FC<SheetProps> = ({
     const dragged = dragYRef.current;
     const velocity = velocityRef.current;
     const shouldClose =
-      dragged > sheetHeight * DRAG_CLOSE_RATIO || velocity > DRAG_CLOSE_VELOCITY;
+      dragged > sheetHeight * DRAG_CLOSE_RATIO ||
+      velocity > DRAG_CLOSE_VELOCITY;
     endDrag(shouldClose);
   };
 
@@ -906,7 +977,10 @@ const SheetWeb: React.FC<SheetProps> = ({
       }
       if (typeof y === "number") handleDragStart(y);
     },
-    onPointerMove: (e: { nativeEvent?: { clientY?: number }; clientY?: number }): void => {
+    onPointerMove: (e: {
+      nativeEvent?: { clientY?: number };
+      clientY?: number;
+    }): void => {
       if (dragStartYRef.current === null) return;
       const y = e.nativeEvent?.clientY ?? e.clientY;
       if (typeof y === "number") handleDragMove(y);
@@ -981,7 +1055,18 @@ const SheetWeb: React.FC<SheetProps> = ({
         style={StyleSheet.absoluteFill}
         testID={testID}
       >
-        <View style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimWebStyle]}>
+        <View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                presentation === "competition"
+                  ? "rgba(0, 0, 0, 0.68)"
+                  : SCRIM_COLOR,
+            },
+            scrimWebStyle,
+          ]}
+        >
           <Pressable
             style={styles.scrimPress}
             onPress={handleScrimPress}
@@ -995,15 +1080,27 @@ const SheetWeb: React.FC<SheetProps> = ({
               styles.panel,
               { height: sheetHeight },
               shadows.glassCardElevated,
+              presentation === "competition" ? styles.competitionPanel : null,
               panelWebStyle,
               style,
             ]}
+            testID={
+              presentation === "competition" && testID !== undefined
+                ? `${testID}-competition-panel`
+                : undefined
+            }
+            accessibilityViewIsModal={
+              presentation === "competition" ? true : undefined
+            }
           >
             <SheetMobilePanelInner
               blurOk={blurOk}
               blurIntensity={blurIntensity}
               bottomInset={insets.bottom}
-              panelBackground={panelBackground}
+              panelBackground={
+                panelBackground ??
+                (presentation === "competition" ? "#16181b" : undefined)
+              }
               webOpaque
             >
               {children}
@@ -1016,13 +1113,17 @@ const SheetWeb: React.FC<SheetProps> = ({
                 (desktop) + touch + pen, so scrim-tap dismissal still works
                 independently. */}
             <View
-              testID={testID !== undefined ? `${testID}-drag-handle` : undefined}
+              testID={
+                testID !== undefined ? `${testID}-drag-handle` : undefined
+              }
               accessibilityLabel="Drag to dismiss sheet"
               style={[
                 styles.webDragCatch,
                 // Web-only `cursor` (RN-web maps it; the string-style cast keeps
                 // it off the native ViewStyle surface).
-                { cursor: dragging ? "grabbing" : "grab" } as unknown as ViewStyle,
+                {
+                  cursor: dragging ? "grabbing" : "grab",
+                } as unknown as ViewStyle,
               ]}
               {...dragHandlers}
             />
@@ -1050,6 +1151,21 @@ const styles = StyleSheet.create({
     // Clip child visual layers to the rounded panel shape (top corners
     // rounded; bottom edges flush with viewport bottom).
     overflow: "hidden",
+  },
+  competitionPanel: {
+    overflow: "hidden",
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: glass.border.profileElevated,
+  },
+  competitionIOSPanel: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.32,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
+  },
+  competitionAndroidPanel: {
+    elevation: 0,
+    shadowOpacity: 0,
   },
   bodyClip: {
     borderTopLeftRadius: radiusTokens.xl,

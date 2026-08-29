@@ -136,6 +136,7 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   testID,
   style,
   panelBackground,
+  presentation,
 }) => {
   const reduceMotion = useWebReducedMotion();
 
@@ -175,16 +176,22 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   useEffect(() => {
     const cancelRaf = (): void => {
       if (rafRef.current !== null) {
-        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
-          .cancelAnimationFrame;
+        const caf = (
+          globalThis as unknown as {
+            cancelAnimationFrame?: (h: number) => void;
+          }
+        ).cancelAnimationFrame;
         caf?.(rafRef.current);
         rafRef.current = null;
       }
     };
     if (visible && mounted) {
       setAnimateOpen(false);
-      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
-        .requestAnimationFrame;
+      const raf = (
+        globalThis as unknown as {
+          requestAnimationFrame?: (cb: () => void) => number;
+        }
+      ).requestAnimationFrame;
       if (raf !== undefined) {
         rafRef.current = raf(() => {
           rafRef.current = raf(() => setAnimateOpen(true));
@@ -215,25 +222,40 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       ? `opacity ${openDur}ms ${ease}`
       : `opacity ${openDur}ms ${ease}, transform ${openDur}ms ${ease}`,
     opacity: animateOpen ? 1 : 0,
-    transform: reduceMotion ? "scale(1)" : animateOpen ? "scale(1)" : "scale(0.96)",
+    transform: reduceMotion
+      ? "scale(1)"
+      : animateOpen
+        ? "scale(1)"
+        : "scale(0.96)",
     willChange: "transform",
   } as unknown as ViewStyle;
 
   // Card width / max-height — recompute on every render so window resize
   // (which already re-renders this component via useWindowDimensions
   // upstream of useResponsiveLayout) re-clamps correctly.
-  const { width: viewportWidth, height: viewportHeight } = Dimensions.get("window");
+  const { width: viewportWidth, height: viewportHeight } =
+    Dimensions.get("window");
   const cardWidth = useMemo(
-    () => Math.min(CARD_MAX_WIDTH, Math.max(viewportWidth - CARD_VIEWPORT_GUTTER, 280)),
-    [viewportWidth],
+    () =>
+      Math.min(
+        presentation === "competition"
+          ? viewportWidth < 1280
+            ? 640
+            : 720
+          : CARD_MAX_WIDTH,
+        Math.max(viewportWidth - CARD_VIEWPORT_GUTTER, 280),
+      ),
+    [presentation, viewportWidth],
   );
   const cardMaxHeight = useMemo(
     () =>
-      Math.min(
-        viewportHeight * CARD_MAX_HEIGHT_RATIO,
-        Math.max(viewportHeight - CARD_VIEWPORT_GUTTER, 240),
-      ),
-    [viewportHeight],
+      presentation === "competition"
+        ? Math.max(viewportHeight - CARD_VIEWPORT_GUTTER, 240)
+        : Math.min(
+            viewportHeight * CARD_MAX_HEIGHT_RATIO,
+            Math.max(viewportHeight - CARD_VIEWPORT_GUTTER, 240),
+          ),
+    [presentation, viewportHeight],
   );
 
   const handleScrimPress = (): void => {
@@ -257,7 +279,16 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       >
         {/* Backdrop — dimmed canvas + tap-to-dismiss. */}
         <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimWebStyle]}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor:
+                presentation === "competition"
+                  ? "rgba(0, 0, 0, 0.68)"
+                  : SCRIM_COLOR,
+            },
+            scrimWebStyle,
+          ]}
         >
           <Pressable
             style={styles.scrimPress as StyleProp<ViewStyle>}
@@ -292,13 +323,27 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
                 width: cardWidth,
                 maxHeight: cardMaxHeight,
                 // ORCH-1186 Fix 3 — brand fill override (solid, edge-to-edge).
-                backgroundColor: panelBackground ?? CARD_BACKGROUND,
+                backgroundColor:
+                  panelBackground ??
+                  (presentation === "competition"
+                    ? "#16181b"
+                    : CARD_BACKGROUND),
                 borderColor: glass.border.profileElevated,
               },
-              shadows.glassModal,
+              presentation === "competition"
+                ? styles.competitionCard
+                : shadows.glassModal,
               cardWebStyle,
               style,
             ]}
+            testID={
+              presentation === "competition" && testID !== undefined
+                ? `${testID}-competition-panel`
+                : undefined
+            }
+            accessibilityViewIsModal={
+              presentation === "competition" ? true : undefined
+            }
           >
             <View style={styles.cardBody}>{children}</View>
           </View>
@@ -331,6 +376,12 @@ const styles = StyleSheet.create({
   },
   cardBody: {
     flexShrink: 1,
+  },
+  competitionCard: {
+    shadowColor: "#000000",
+    shadowOpacity: 0.32,
+    shadowRadius: 24,
+    shadowOffset: { width: 0, height: -8 },
   },
 });
 
