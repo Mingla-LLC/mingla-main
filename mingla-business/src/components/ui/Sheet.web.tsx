@@ -40,7 +40,7 @@
  * Per SPEC_ORCH-0885-A §5.
  */
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Dimensions,
   Modal,
@@ -136,7 +136,9 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   testID,
   style,
   panelBackground,
+  presentation,
 }) => {
+  const competition = presentation !== undefined;
   const reduceMotion = useWebReducedMotion();
 
   // Lazy-mount + delayed unmount so close animation completes.
@@ -175,16 +177,22 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
   useEffect(() => {
     const cancelRaf = (): void => {
       if (rafRef.current !== null) {
-        const caf = (globalThis as unknown as { cancelAnimationFrame?: (h: number) => void })
-          .cancelAnimationFrame;
+        const caf = (
+          globalThis as unknown as {
+            cancelAnimationFrame?: (h: number) => void;
+          }
+        ).cancelAnimationFrame;
         caf?.(rafRef.current);
         rafRef.current = null;
       }
     };
     if (visible && mounted) {
       setAnimateOpen(false);
-      const raf = (globalThis as unknown as { requestAnimationFrame?: (cb: () => void) => number })
-        .requestAnimationFrame;
+      const raf = (
+        globalThis as unknown as {
+          requestAnimationFrame?: (cb: () => void) => number;
+        }
+      ).requestAnimationFrame;
       if (raf !== undefined) {
         rafRef.current = raf(() => {
           rafRef.current = raf(() => setAnimateOpen(true));
@@ -215,26 +223,29 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       ? `opacity ${openDur}ms ${ease}`
       : `opacity ${openDur}ms ${ease}, transform ${openDur}ms ${ease}`,
     opacity: animateOpen ? 1 : 0,
-    transform: reduceMotion ? "scale(1)" : animateOpen ? "scale(1)" : "scale(0.96)",
+    transform: reduceMotion
+      ? "scale(1)"
+      : animateOpen
+        ? "scale(1)"
+        : "scale(0.96)",
     willChange: "transform",
   } as unknown as ViewStyle;
 
   // Card width / max-height — recompute on every render so window resize
   // (which already re-renders this component via useWindowDimensions
   // upstream of useResponsiveLayout) re-clamps correctly.
-  const { width: viewportWidth, height: viewportHeight } = Dimensions.get("window");
-  const cardWidth = useMemo(
-    () => Math.min(CARD_MAX_WIDTH, Math.max(viewportWidth - CARD_VIEWPORT_GUTTER, 280)),
-    [viewportWidth],
+  const { width: viewportWidth, height: viewportHeight } =
+    Dimensions.get("window");
+  const cardWidth = Math.min(
+    competition ? (viewportWidth < 1280 ? 640 : 720) : CARD_MAX_WIDTH,
+    Math.max(viewportWidth - CARD_VIEWPORT_GUTTER, 280),
   );
-  const cardMaxHeight = useMemo(
-    () =>
-      Math.min(
+  const cardMaxHeight = competition
+    ? Math.max(viewportHeight - CARD_VIEWPORT_GUTTER, 240)
+    : Math.min(
         viewportHeight * CARD_MAX_HEIGHT_RATIO,
         Math.max(viewportHeight - CARD_VIEWPORT_GUTTER, 240),
-      ),
-    [viewportHeight],
-  );
+      );
 
   const handleScrimPress = (): void => {
     if (dismissOnScrimTap) onClose();
@@ -257,7 +268,15 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
       >
         {/* Backdrop — dimmed canvas + tap-to-dismiss. */}
         <View
-          style={[StyleSheet.absoluteFill, { backgroundColor: SCRIM_COLOR }, scrimWebStyle]}
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: competition
+                ? "rgba(0, 0, 0, 0.68)"
+                : SCRIM_COLOR,
+            },
+            scrimWebStyle,
+          ]}
         >
           <Pressable
             style={styles.scrimPress as StyleProp<ViewStyle>}
@@ -299,6 +318,12 @@ const DesktopCenteredCard: React.FC<SheetProps> = ({
               cardWebStyle,
               style,
             ]}
+            testID={
+              competition && testID !== undefined
+                ? `${testID}-competition-panel`
+                : undefined
+            }
+            accessibilityViewIsModal={competition || undefined}
           >
             <View style={styles.cardBody}>{children}</View>
           </View>
