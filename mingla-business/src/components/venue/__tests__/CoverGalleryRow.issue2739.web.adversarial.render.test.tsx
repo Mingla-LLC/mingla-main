@@ -186,11 +186,11 @@ describe("issue #2739 tester adversarial gallery contract", () => {
 
     expect(images).toHaveLength(10);
     expect(hostImages).toHaveLength(10);
-    expect(hostImages.every((image) => image.props.alt === "")).toBe(true);
-    expect(hostImages.every((image) => image.props.tabIndex === undefined)).toBe(true);
+    expect(hostImages.every((image: ReactTestInstance) => image.props.alt === "")).toBe(true);
+    expect(hostImages.every((image: ReactTestInstance) => image.props.tabIndex === undefined)).toBe(true);
     expect(
       hostImages.every(
-        (image) =>
+        (image: ReactTestInstance) =>
           image.props["aria-label"] === undefined &&
           image.props.role === undefined,
       ),
