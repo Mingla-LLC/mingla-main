@@ -9673,14 +9673,14 @@ independent tester returns PASS.
 - **Enforcement:** the #2729 real-touch happy and independent adversarial Playwright suites exercise short, standard, and wide phone viewports from content, wrapper, and button origins; the #1559 render-parity fixture pins the CTA inside `ShellBody`; focused and full Jest suites preserve tab, sheet, native, and desktop behavior.
 - **Established:** ACTIVE at #2729 after independent tester PASS across Buyer web and Business/Consumer iOS and Android on 2026-08-28.
 
-## DRAFT — issue #2769 (public venue consent/reserve composition)
+## ACTIVE — issue #2769 (public venue consent/reserve composition)
 
-### I-2769-ONE-PERSISTENT-PUBLIC-VENUE-ACTION-BELOW-1280 (DRAFT)
+### I-2769-ONE-PERSISTENT-PUBLIC-VENUE-ACTION-BELOW-1280 (ACTIVE)
 
 - **Rule:** On buyer web, unresolved or server-unknown analytics consent and a public venue's persistent reservation action never occupy the same bottom edge below 1280 CSS pixels. Consent remains visible and nonmodal; the reservation action and its collision-only clearance are semantically absent until the canonical consent owner resolves. At 1280 CSS pixels and above the proven-safe desktop composition keeps both. Granted, denied, native `not_applicable`, and the Reservations tab preserve their existing reservation truth. No duplicate consent state, storage reader, visibility state, timer, animation, or analytics side effect may be introduced by the composition bridge.
 - **Enforcement:** `webAnalytics.web.ts` owns one stable external-store snapshot/subscription; the platform-resolved hook is a native no-op; the buyer route passes that snapshot to the shared renderer; the #2769 real-source happy and independent adversarial Chromium suites plus the focused source contract are both required by `web-build-check.yml`. The unchanged #2729 suite preserves the sole-scroller contract. Issue #2771 independently owns pre-consent privacy observability; this invariant may neither worsen nor mask it.
 - **Fails on revert:** restoring banner-local visibility, removing same-document notification, restoring the reservation node below 1280 while consent is unresolved, suppressing it at 1280, or deleting either required regression file makes the focused CI step red.
-- **Established:** DRAFT at #2769; flip to ACTIVE only after independent tester PASS, production verification, and close.
+- **Established:** ACTIVE after independent tester PASS at exact head `0d892ec54a60f390f104ed6edec50d23cf787b47`, including the real-host Manage semantics and legacy-window compatibility rework. Production verification remains a release-close gate, not permission to weaken this rule.
 
 ## ACTIVE — issue #2738 (public venue tab semantics)
 
