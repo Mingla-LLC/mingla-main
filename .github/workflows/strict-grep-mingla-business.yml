@@ -633,6 +633,7 @@ jobs:
         run: >-
           npx jest --runInBand
           src/services/__tests__/competitorDecisionReport.issue2796.happy.test.ts
+          src/components/venue/insights/__tests__/competitorPremiumReportFocus.issue2796.tester.adversarial.test.tsx
           src/components/venue/insights/__tests__/competitorPremiumReport.issue2796.happy.test.ts
       - name: "Issue #2796: strict contract gate"
         run: node .github/scripts/strict-grep/issue-2796-competitor-decision-report.mjs
