@@ -3,6 +3,9 @@ import {
   buildDecisionFoundation,
   buildObservationComparisons,
   canFinishAsNoChange,
+  PROMPT_CONTRACT_VERSION,
+  PROVIDER_RESPONSE_SCHEMA,
+  synthesizeBrief,
   validateDecisionReport,
 } from "../index.ts";
 
@@ -96,4 +99,128 @@ Deno.test("issue 2811 upgrades unchanged legacy briefs once and keeps unchanged 
     }, fingerprint),
     false,
   );
+});
+
+Deno.test("issue 2814 accepts the bounded provider schema and grounds legacy-upgrade references", async () => {
+  const previous = Deno.env.get("GEMINI_API_KEY");
+  try {
+    Deno.env.set("GEMINI_API_KEY", "test");
+    assertEquals(PROMPT_CONTRACT_VERSION, "competitor-brief-v3.1");
+    const serializedSchema = JSON.stringify(PROVIDER_RESPONSE_SCHEMA);
+    for (const forbidden of [
+      "minItems",
+      "maxItems",
+      "minimum",
+      "maximum",
+    ]) {
+      assertEquals(serializedSchema.includes(`\"${forbidden}\"`), false);
+    }
+    const unchanged = buildObservationComparisons(observations, [{
+      source_id: observations[0].sourceId,
+      facts: observations[0].facts,
+      checked_at: "2026-08-22T00:00:00.000Z",
+    }]);
+    let requestSchema: unknown = null;
+    const fetcher = (async (_input: RequestInfo | URL, init?: RequestInit) => {
+      requestSchema = JSON.parse(String(init?.body)).generationConfig
+        .responseJsonSchema;
+      return new Response(JSON.stringify({
+        candidates: [{
+          finishReason: "STOP",
+          content: {
+            parts: [{
+              text: JSON.stringify({
+                what_changed: [],
+                why_it_matters: [{
+                  text: "The public positioning may compete for the same dining occasion.",
+                  evidence_ids: ["e1"],
+                  confidence: "interpretation",
+                }],
+                worth_doing: [{
+                  id: "a1",
+                  text: "Publish one specific event offer this week.",
+                  kind: "event",
+                  confidence: "suggested_action",
+                  is_primary: true,
+                }],
+                decision: {
+                  class: "watch",
+                  confidence: "medium",
+                  headline: "The competitor maintains clear positioning",
+                  rationale: "Its current public profile remains consistent.",
+                  signal_ids: [
+                    "s-instagram-1",
+                    "s-cadence-1",
+                    "unknown-signal",
+                    "s-format-1",
+                  ],
+                  owner_fact_ids: ["of-listing-category"],
+                },
+                theme_signals: [],
+                interpretation_meta: [{
+                  index: 9,
+                  signal_type: "neutral",
+                  confidence: "medium",
+                  priority: "medium",
+                  signal_ids: ["s-instagram-1", "unknown-signal"],
+                  owner_fact_ids: ["of-listing-category"],
+                }],
+                comparisons: [{
+                  id: "bad-cross-dimension",
+                  dimension: "positioning",
+                  owner_text: "restaurant",
+                  competitor_text: "Pan-Asian dining",
+                  outcome: "different",
+                  confidence: "medium",
+                  signal_ids: ["s-instagram-1"],
+                  owner_fact_ids: ["of-listing-category"],
+                }],
+                action_plan: [{
+                  index: 4,
+                  action_id: "wrong-action",
+                  timeframe: "this_week",
+                  impact: "high",
+                  confidence: "medium",
+                  order: 7,
+                  is_primary: false,
+                  signal_ids: ["s-instagram-1", "unknown-signal"],
+                  owner_fact_ids: ["of-listing_category"],
+                }],
+              }),
+            }],
+          },
+        }],
+        usageMetadata: {
+          promptTokenCount: 100,
+          candidatesTokenCount: 100,
+          thoughtsTokenCount: 0,
+          totalTokenCount: 200,
+        },
+        modelVersion: "gemini-2.5-flash",
+      }), { headers: { "content-type": "application/json" } });
+    }) as typeof fetch;
+    const brief = await synthesizeBrief(
+      "Shiro",
+      "Lagos",
+      observations,
+      unchanged,
+      venue,
+      fetcher,
+    );
+    assertEquals(requestSchema, PROVIDER_RESPONSE_SCHEMA);
+    assertEquals(brief.what_changed.length, 1);
+    assertEquals(brief.decision_report.comparisons[0].outcome, "not_comparable");
+    assertEquals(
+      (brief.decision_report.decision.signal_ids as string[]).length,
+      3,
+    );
+    assertEquals(brief.decision_report.interpretation_meta[0].index, 0);
+    assertEquals(brief.decision_report.action_plan[0].action_id, "a1");
+    assertEquals(brief.decision_report.action_plan[0].is_primary, true);
+    assertEquals(brief.decision_report.action_plan[0].owner_fact_ids, []);
+  } finally {
+    previous === undefined
+      ? Deno.env.delete("GEMINI_API_KEY")
+      : Deno.env.set("GEMINI_API_KEY", previous);
+  }
 });
