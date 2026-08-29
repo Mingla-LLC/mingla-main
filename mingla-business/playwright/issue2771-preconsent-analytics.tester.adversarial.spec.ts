@@ -225,7 +225,7 @@ test.describe('#2771 independent browser privacy boundary', () => {
     // The fixture compiles the real PublicVenueScreen, real ConsentBanner and
     // real reservation-action composition. It avoids depending on mutable live
     // venue data while preserving the production component boundary.
-    execFileSync(process.execPath, ['playwright/issue2769/globalSetup.mjs'], { cwd: process.cwd() })
+    execFileSync(process.execPath, ['playwright/issue2769/bundle.mjs'], { cwd: process.cwd() })
     const server = spawn(process.execPath, ['playwright/issue2769/server.mjs'], {
       cwd: process.cwd(),
       stdio: 'ignore',
