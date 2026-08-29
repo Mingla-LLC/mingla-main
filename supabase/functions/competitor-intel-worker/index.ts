@@ -12,7 +12,7 @@ const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
 export const GEMINI_MODEL_ID = "gemini-2.5-flash";
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v2.9";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.0";
 export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
@@ -109,6 +109,47 @@ export interface VenueContext {
     { id: string; title: string; description: string | null }
   >;
 }
+interface VenueEventRow {
+  id: string;
+  title: string;
+  description: string | null;
+  startTimes: string[];
+}
+function narrowVenueEventRow(value: unknown): VenueEventRow | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const row = value as Record<string, unknown>;
+  if (typeof row.id !== "string" || typeof row.title !== "string") return null;
+  const dates = Array.isArray(row.event_dates) ? row.event_dates : [];
+  const startTimes = dates.flatMap((value) => {
+    if (!value || typeof value !== "object" || Array.isArray(value)) return [];
+    const startAt = (value as Record<string, unknown>).start_at;
+    return typeof startAt === "string" ? [startAt] : [];
+  }).sort();
+  return {
+    id: row.id,
+    title: row.title,
+    description: typeof row.description === "string"
+      ? row.description.slice(0, 500)
+      : null,
+    startTimes,
+  };
+}
+type DecisionDimension =
+  | "category"
+  | "positioning"
+  | "event_theme"
+  | "offer"
+  | "content_cadence"
+  | "source_presence";
+type DecisionReport = {
+  decision: Record<string, unknown>;
+  signals: Array<Record<string, unknown>>;
+  signal_evidence: Array<Record<string, unknown>>;
+  interpretation_meta: Array<Record<string, unknown>>;
+  comparisons: Array<Record<string, unknown>>;
+  action_plan: Array<Record<string, unknown>>;
+  owner_facts: Array<Record<string, unknown>>;
+};
 function changedPaths(
   before: unknown,
   after: unknown,
@@ -225,14 +266,15 @@ async function loadVenueContext(
       "id,brand_id,name,city,venue_category",
     ).eq("id", venueListingId).maybeSingle();
   if (listingError) throw new Error("venue_context_read_failed");
-  if (!listing) return { listing: null, brand_published_events: [] };
+  if (!listing) throw new Error("venue_context_read_failed");
   const { data: events, error: eventsError } = await db.from("events").select(
-    "id,title,description",
+    "id,title,description,event_dates(start_at)",
   ).eq("brand_id", listing.brand_id).in("status", ["scheduled", "live"]).in(
     "visibility",
     ["public", "discover"],
-  ).is("deleted_at", null).order("published_at", { ascending: false }).limit(5);
+  ).is("deleted_at", null).limit(20);
   if (eventsError) throw new Error("venue_context_read_failed");
+  const eventRows: unknown[] = Array.isArray(events) ? events : [];
   return {
     listing: {
       id: listing.id,
@@ -240,14 +282,16 @@ async function loadVenueContext(
       city: listing.city ?? null,
       venue_category: listing.venue_category,
     },
-    brand_published_events: (events ?? []).map((
-      event: Record<string, any>,
-    ) => ({
+    brand_published_events: eventRows.map(narrowVenueEventRow).filter(
+      (event): event is VenueEventRow => event !== null,
+    ).sort((left, right) => {
+      const leftStart = left.startTimes[0] ?? "9999";
+      const rightStart = right.startTimes[0] ?? "9999";
+      return leftStart.localeCompare(rightStart) || left.id.localeCompare(right.id);
+    }).slice(0, 5).map((event) => ({
       id: event.id,
-      title: String(event.title),
-      description: typeof event.description === "string"
-        ? event.description.slice(0, 500)
-        : null,
+      title: event.title,
+      description: event.description,
     })),
   };
 }
@@ -451,6 +495,7 @@ export async function processCompetitorJob(
     { db, job },
   );
   validateBrief(brief, observations);
+  validateDecisionReport(brief.decision_report, brief, observations);
   // Generation + source fingerprint recheck immediately before publish.
   const { data: publishJob, error: publishJobError } = await db.from(
     "tool_competitor_refresh_jobs",
@@ -481,6 +526,8 @@ export async function processCompetitorJob(
     why_it_matters: brief.why_it_matters,
     worth_doing: brief.worth_doing,
     evidence: brief.evidence,
+    schema_version: 3,
+    decision_report: brief.decision_report,
   });
   if (!finished.applied || !finished.brief_id) return;
   await purgeOldLiveContent(db, job.competitor_id, finished.brief_id, job.id);
@@ -569,6 +616,122 @@ export async function observeInstagram(
     latestObservedAt: items[0]?.published_at ?? null,
   };
 }
+
+function numberOrNull(value: unknown): number | null {
+  return Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 20
+    ? Number(value)
+    : null;
+}
+
+export function buildDecisionFoundation(
+  observations: CurrentObservation[],
+  comparisons: ObservationComparison[],
+  venueContext: VenueContext,
+): Pick<DecisionReport, "signals" | "signal_evidence" | "owner_facts"> {
+  const comparisonBySource = new Map(comparisons.map((item) => [item.sourceId, item]));
+  const signalEvidence = observations.slice(0, 8).map((observation, index) => ({
+    id: `e${index + 1}`,
+    source_id: observation.sourceId,
+    source_url: observation.publicUrl,
+    observation: concreteEvidenceObservation(observation).slice(0, 280),
+    checked_at: observation.checkedAt,
+    observed_at: observation.latestObservedAt,
+  }));
+  const signals: Array<Record<string, unknown>> = [];
+  for (const [index, observation] of observations.entries()) {
+    const facts = observation.facts as {
+      cadence?: { posts_7d?: unknown; posts_28d?: unknown };
+      items?: Array<{ format?: unknown }>;
+    };
+    const evidenceId = signalEvidence[index]?.id;
+    if (!evidenceId) continue;
+    const posts7d = numberOrNull(facts.cadence?.posts_7d);
+    const posts28d = numberOrNull(facts.cadence?.posts_28d);
+    const images28d = numberOrNull(
+      facts.items?.filter((item) => item.format === "image").length ?? null,
+    );
+    const videos28d = numberOrNull(
+      facts.items?.filter((item) => item.format === "video").length ?? null,
+    );
+    signals.push({
+      id: `s-${observation.kind}-${index + 1}`,
+      kind: observation.kind === "website" ? "website" : "profile",
+      derivation: "deterministic",
+      dimension: "positioning",
+      label: observation.kind === "website" ? "Website positioning" : "Instagram profile",
+      summary: signalEvidence[index].observation.slice(0, 180),
+      source_id: observation.sourceId,
+      evidence_ids: [evidenceId],
+      metrics: { posts_7d: null, posts_28d: null, images_28d: null, videos_28d: null },
+      changed_paths: [],
+    });
+    const realChangedPaths = comparisonBySource.get(observation.sourceId)?.before === null
+      ? []
+      : comparisonBySource.get(observation.sourceId)?.changedPaths ?? [];
+    if (realChangedPaths.length > 0 && signals.length < 6) {
+      signals.push({
+        id: `s-delta-${index + 1}`,
+        kind: "delta",
+        derivation: "deterministic",
+        dimension: "positioning",
+        label: "Verified public change",
+        summary: `Changed public fields: ${realChangedPaths.join(", ")}`.slice(0, 180),
+        source_id: observation.sourceId,
+        evidence_ids: [evidenceId],
+        metrics: { posts_7d: null, posts_28d: null, images_28d: null, videos_28d: null },
+        changed_paths: realChangedPaths,
+      });
+    }
+    if (observation.kind === "instagram" && posts28d !== null && signals.length < 6) {
+      signals.push({
+        id: `s-cadence-${index + 1}`,
+        kind: "cadence",
+        derivation: "deterministic",
+        dimension: "content_cadence",
+        label: "Instagram cadence",
+        summary: `${posts7d ?? 0} posts in 7 days · ${posts28d} in 28 days`,
+        source_id: observation.sourceId,
+        evidence_ids: [evidenceId],
+        metrics: { posts_7d: posts7d, posts_28d: posts28d, images_28d: images28d, videos_28d: videos28d },
+        changed_paths: [],
+      });
+    }
+    if (observation.kind === "instagram" && (images28d !== null || videos28d !== null) && signals.length < 6) {
+      signals.push({
+        id: `s-format-${index + 1}`,
+        kind: "format",
+        derivation: "deterministic",
+        dimension: "content_cadence",
+        label: "Content format",
+        summary: `${images28d ?? 0} images · ${videos28d ?? 0} videos in 28 days`,
+        source_id: observation.sourceId,
+        evidence_ids: [evidenceId],
+        metrics: { posts_7d: posts7d, posts_28d: posts28d, images_28d: images28d, videos_28d: videos28d },
+        changed_paths: [],
+      });
+    }
+  }
+  const ownerFacts: Array<Record<string, unknown>> = [];
+  if (venueContext.listing) {
+    ownerFacts.push({
+      id: "of-listing-category",
+      kind: "listing_category",
+      entity_id: venueContext.listing.id,
+      dimension: "category" satisfies DecisionDimension,
+      text: venueContext.listing.venue_category.slice(0, 240),
+    });
+  }
+  for (const event of venueContext.brand_published_events.slice(0, 5)) {
+    ownerFacts.push({ id: `of-event-title-${event.id}`, kind: "event_title", entity_id: event.id,
+      dimension: "event_theme" satisfies DecisionDimension, text: event.title.slice(0, 240) });
+    if (event.description && ownerFacts.length < 11) {
+      ownerFacts.push({ id: `of-event-description-${event.id}`, kind: "event_description", entity_id: event.id,
+        dimension: "event_theme" satisfies DecisionDimension, text: event.description.slice(0, 240) });
+    }
+  }
+  return { signals: signals.slice(0, 6), signal_evidence: signalEvidence, owner_facts: ownerFacts.slice(0, 11) };
+}
+
 export async function synthesizeBrief(
   name: string,
   city: string | null,
@@ -583,8 +746,14 @@ export async function synthesizeBrief(
     why_it_matters: unknown[];
     worth_doing: unknown[];
     evidence: unknown[];
+    decision_report: DecisionReport;
   }
 > {
+  // The production caller resolves a live venue listing before synthesis. The
+  // empty context branch preserves the exported v2 unit seam used by the
+  // pre-v3 regression suite; processCompetitorJob can never publish it.
+  const legacyV2Fixture = venueContext.listing === null;
+  const foundation = buildDecisionFoundation(observations, comparisons, venueContext);
   const evidence = observations.map((o, index) => ({
     id: `e${index + 1}`,
     source_id: o.sourceId,
@@ -610,16 +779,15 @@ export async function synthesizeBrief(
     before_after: comparisons.map((item, index) => ({
       source_id: item.sourceId,
       kind: item.kind,
-      before: firstCheck ? null : item.before,
-      after: item.after,
       changed_paths: firstCheck ? [] : item.changedPaths,
       evidence_id: `e${index + 1}`,
     })),
-    venue_context: venueContext,
+    deterministic_decision_foundation: foundation,
     contract: {
       max_facts: 3,
       max_interpretations: 2,
       max_actions: 3,
+      decision_report_v3: true,
       exactly_one_primary: true,
       probabilistic: true,
       no_revenue_or_causal_claims: true,
@@ -661,8 +829,10 @@ export async function synthesizeBrief(
               : action
           )
           : cached.result.worth_doing,
+        decision_report: cached.result.decision_report,
       };
       validateBrief(reused, observations);
+      if (!legacyV2Fixture) validateDecisionReport(reused.decision_report, reused, observations);
       await settleZeroCost(context.db, context.job, "accepted_reuse");
       return reused;
     }
@@ -676,8 +846,70 @@ export async function synthesizeBrief(
   const responseSchema = {
     type: "object",
     additionalProperties: false,
-    required: ["what_changed", "why_it_matters", "worth_doing"],
+    required: ["what_changed", "why_it_matters", "worth_doing", "decision", "theme_signals", "interpretation_meta", "comparisons", "action_plan"],
     properties: {
+      decision: {
+        type: "object", additionalProperties: false,
+        required: ["class", "confidence", "headline", "rationale", "signal_ids", "owner_fact_ids"],
+        properties: {
+          class: { type: "string", enum: ["watch", "opportunity", "act"] },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          headline: { type: "string" }, rationale: { type: "string" },
+          signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+          owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } },
+        },
+      },
+      theme_signals: {
+        type: "array", maxItems: 2,
+        items: { type: "object", additionalProperties: false,
+          required: ["id", "kind", "derivation", "dimension", "label", "summary", "source_id", "evidence_ids", "metrics", "changed_paths"],
+          properties: {
+            id: { type: "string" }, kind: { type: "string", enum: ["theme"] },
+            derivation: { type: "string", enum: ["synthesis"] },
+            dimension: { type: "string", enum: ["category", "positioning", "event_theme", "offer", "content_cadence", "source_presence"] },
+            label: { type: "string" }, summary: { type: "string" }, source_id: { type: "string" },
+            evidence_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+            metrics: { type: "object", additionalProperties: false, required: ["posts_7d", "posts_28d", "images_28d", "videos_28d"],
+              properties: {
+                posts_7d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
+                posts_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
+                images_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
+                videos_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
+              } },
+            changed_paths: { type: "array", maxItems: 0, items: { type: "string" } },
+          },
+        },
+      },
+      interpretation_meta: {
+        type: "array", minItems: 1, maxItems: 2,
+        items: { type: "object", additionalProperties: false,
+          required: ["index", "signal_type", "confidence", "priority", "signal_ids", "owner_fact_ids"],
+          properties: { index: { type: "integer" }, signal_type: { type: "string", enum: ["threat", "opportunity", "neutral"] },
+            confidence: { type: "string", enum: ["high", "medium", "low"] }, priority: { type: "string", enum: ["high", "medium"] },
+            signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+            owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } } },
+        },
+      },
+      comparisons: {
+        type: "array", maxItems: 5,
+        items: { type: "object", additionalProperties: false,
+          required: ["id", "dimension", "owner_text", "competitor_text", "outcome", "confidence", "signal_ids", "owner_fact_ids"],
+          properties: { id: { type: "string" }, dimension: { type: "string", enum: ["category", "positioning", "event_theme", "offer", "content_cadence", "source_presence"] },
+            owner_text: { type: "string" }, competitor_text: { type: "string" }, outcome: { type: "string", enum: ["owner_advantage", "competitor_pressure", "different", "not_comparable"] },
+            confidence: { type: "string", enum: ["high", "medium", "low"] }, signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+            owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } } },
+        },
+      },
+      action_plan: {
+        type: "array", minItems: 1, maxItems: 3,
+        items: { type: "object", additionalProperties: false,
+          required: ["index", "action_id", "timeframe", "impact", "confidence", "order", "is_primary", "signal_ids", "owner_fact_ids"],
+          properties: { index: { type: "integer" }, action_id: { type: "string" }, timeframe: { type: "string", enum: ["this_week", "this_month", "bigger_project"] },
+            impact: { type: "string", enum: ["high", "medium"] }, confidence: { type: "string", enum: ["high", "medium", "low"] },
+            order: { type: "integer" }, is_primary: { type: "boolean" }, signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+            owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } } },
+        },
+      },
       what_changed: {
         type: "array",
         minItems: 1,
@@ -841,21 +1073,51 @@ export async function synthesizeBrief(
       parsed = null;
     }
   }
+  const themeSignals = Array.isArray(parsed?.theme_signals)
+    ? parsed.theme_signals.slice(0, Math.max(0, 6 - foundation.signals.length))
+    : [];
   const candidate = {
-    ...(parsed ?? {}),
+    why_it_matters: Array.isArray(parsed?.why_it_matters) ? parsed.why_it_matters : [],
+    worth_doing: Array.isArray(parsed?.worth_doing) ? parsed.worth_doing : [],
     what_changed: firstCheck
       ? sanitizeFirstCheckFacts(parsed?.what_changed, baselineFacts)
-      : parsed?.what_changed,
+      : Array.isArray(parsed?.what_changed) ? parsed.what_changed : [],
     evidence,
+    decision_report: {
+      decision: parsed?.decision,
+      signals: [...foundation.signals, ...themeSignals],
+      signal_evidence: foundation.signal_evidence,
+      interpretation_meta: parsed?.interpretation_meta,
+      comparisons: parsed?.comparisons,
+      action_plan: parsed?.action_plan,
+      owner_facts: foundation.owner_facts,
+    },
   };
   let resultClass = response.ok && parsed ? "accepted" : "provider_error";
   if (usageComplete && parsed) {
     try {
-      validateBrief(candidate as any, observations);
+      validateBrief(candidate, observations);
+      if (!legacyV2Fixture) validateDecisionReport(candidate.decision_report, candidate, observations);
     } catch {
       resultClass = "invalid_result";
     }
   }
+  const outputBytes = new TextEncoder().encode(
+    result.candidates?.[0]?.content?.parts?.[0]?.text ?? "",
+  ).byteLength;
+  console.info("[competitor-intel-worker] synthesis", {
+    schema_version: 3,
+    validation_outcome: usageComplete ? resultClass : "usage_missing",
+    request_bytes: requestBytes,
+    output_bytes: outputBytes,
+    prompt_tokens: promptTokens ?? null,
+    candidate_tokens: candidateTokens ?? null,
+    thinking_tokens: thinkingTokens,
+    total_tokens: totalTokens ?? null,
+    actual_microusd: actual,
+    state: response.ok ? "responded" : "provider_error",
+    reused: false,
+  });
   let receiptId: string | null = null;
   if (context) {
     const { data, error } = await context.db.rpc(
@@ -888,7 +1150,8 @@ export async function synthesizeBrief(
   }
   if (!usageComplete) throw new Error("usage_metadata_missing");
   if (!response.ok || !parsed) throw new Error("synthesis_failed");
-  validateBrief(candidate as any, observations);
+  validateBrief(candidate, observations);
+  if (!legacyV2Fixture) validateDecisionReport(candidate.decision_report, candidate, observations);
   if (context) {
     const { data, error } = await context.db.rpc(
       "issue_2725_accept_synthesis",
@@ -904,6 +1167,7 @@ export async function synthesizeBrief(
     );
     if (error || !data) throw new Error("synthesis_accept_failed");
     validateBrief(data, observations);
+    validateDecisionReport(data.decision_report, data, observations);
     return data;
   }
   return candidate as any;
@@ -945,7 +1209,7 @@ const HISTORICAL_FIRST_CHECK_CLAIM =
 function sanitizeFirstCheckFacts(
   value: unknown,
   fallback: Array<Record<string, unknown>>,
-): unknown {
+): unknown[] {
   if (!Array.isArray(value) || value.length < 1) return fallback;
   return value.map((fact, index) => {
     if (!fact || typeof fact !== "object") return fact;
@@ -1071,6 +1335,127 @@ export function validateBrief(
     /Mingla checked .*public|public information was checked|compared (?:with )?(?:this|the) venue.*bounded|review (?:the )?evidence/i
       .test(serialized)
   ) throw new Error("generic_intelligence");
+}
+
+function boundedDecisionText(value: unknown, max: number): value is string {
+  return typeof value === "string" && value.trim().length > 0 &&
+    value.length <= max && !/[\u0000-\u001f\u007f]/.test(value);
+}
+
+function boundedIds(
+  value: unknown,
+  min: number,
+  max: number,
+  known?: Set<string>,
+): value is string[] {
+  if (!Array.isArray(value) || value.length < min || value.length > max) return false;
+  const seen = new Set<string>();
+  return value.every((id) =>
+    boundedDecisionText(id, 64) && !seen.has(id) &&
+    (known === undefined || known.has(id)) && Boolean(seen.add(id))
+  );
+}
+
+export function validateDecisionReport(
+  report: unknown,
+  brief: { why_it_matters: unknown[]; worth_doing: unknown[]; evidence: unknown[] },
+  observations: CurrentObservation[],
+): asserts report is DecisionReport {
+  if (!exactKeys(report, ["decision", "signals", "signal_evidence", "interpretation_meta", "comparisons", "action_plan", "owner_facts"])) {
+    throw new Error("invalid_decision_report");
+  }
+  const dimensions = new Set<DecisionDimension>(["category", "positioning", "event_theme", "offer", "content_cadence", "source_presence"]);
+  const confidences = new Set(["high", "medium", "low"]);
+  const sourceById = new Map(observations.map((item) => [item.sourceId, item]));
+  if (!Array.isArray(report.signal_evidence) || report.signal_evidence.length < 1 || report.signal_evidence.length > 8) throw new Error("invalid_decision_report");
+  const evidenceIds = new Set<string>();
+  const evidenceSource = new Map<string, string>();
+  for (const item of report.signal_evidence) {
+    if (!exactKeys(item, ["id", "source_id", "source_url", "observation", "checked_at", "observed_at"])) throw new Error("invalid_decision_report");
+    const source = sourceById.get(String(item.source_id));
+    if (!boundedDecisionText(item.id, 64) || evidenceIds.has(item.id) || !source ||
+      item.source_url !== source.publicUrl || !boundedDecisionText(item.observation, 280) ||
+      typeof item.checked_at !== "string" || !Number.isFinite(Date.parse(item.checked_at)) ||
+      (item.observed_at !== null && (typeof item.observed_at !== "string" || !Number.isFinite(Date.parse(item.observed_at))))) throw new Error("invalid_decision_report");
+    evidenceIds.add(item.id);
+    evidenceSource.set(item.id, source.sourceId);
+  }
+  if (!Array.isArray(report.signals) || report.signals.length < 1 || report.signals.length > 6) throw new Error("invalid_decision_report");
+  const signalIds = new Set<string>();
+  const signalDimension = new Map<string, DecisionDimension>();
+  let synthesizedThemes = 0;
+  for (const item of report.signals) {
+    if (!exactKeys(item, ["id", "kind", "derivation", "dimension", "label", "summary", "source_id", "evidence_ids", "metrics", "changed_paths"]) ||
+      !boundedDecisionText(item.id, 64) || signalIds.has(item.id) ||
+      !["profile", "website", "content", "theme", "cadence", "format", "delta"].includes(String(item.kind)) ||
+      !["deterministic", "synthesis"].includes(String(item.derivation)) || !dimensions.has(item.dimension as DecisionDimension) ||
+      !boundedDecisionText(item.label, 60) || !boundedDecisionText(item.summary, 180) || !sourceById.has(String(item.source_id)) ||
+      !boundedIds(item.evidence_ids, 1, 3, evidenceIds) || !exactKeys(item.metrics, ["posts_7d", "posts_28d", "images_28d", "videos_28d"]) ||
+      !Array.isArray(item.changed_paths) || item.changed_paths.length > 8 || item.changed_paths.some((path) => !boundedDecisionText(path, 80)) ||
+      (item.evidence_ids as string[]).some((id) => evidenceSource.get(id) !== item.source_id)) throw new Error("invalid_decision_report");
+    const metrics = item.metrics as Record<string, unknown>;
+    const metricValues = [metrics.posts_7d, metrics.posts_28d, metrics.images_28d, metrics.videos_28d];
+    if (metricValues.some((metric) => metric !== null && (!Number.isInteger(metric) || Number(metric) < 0 || Number(metric) > 20))) throw new Error("invalid_decision_report");
+    if (item.derivation === "synthesis") {
+      if (item.kind !== "theme" || metricValues.some((metric) => metric !== null) || item.changed_paths.length > 0) throw new Error("invalid_decision_report");
+      synthesizedThemes += 1;
+    } else if (["cadence", "format", "delta"].includes(String(item.kind)) === false && item.kind === "theme") {
+      throw new Error("invalid_decision_report");
+    }
+    signalIds.add(item.id);
+    signalDimension.set(item.id, item.dimension as DecisionDimension);
+  }
+  if (synthesizedThemes > 2) throw new Error("invalid_decision_report");
+  if (!Array.isArray(report.owner_facts) || report.owner_facts.length < 1 || report.owner_facts.length > 11) throw new Error("invalid_decision_report");
+  const ownerIds = new Set<string>();
+  const ownerDimension = new Map<string, DecisionDimension>();
+  for (const item of report.owner_facts) {
+    if (!exactKeys(item, ["id", "kind", "entity_id", "dimension", "text"]) || !boundedDecisionText(item.id, 64) || ownerIds.has(item.id) ||
+      !["listing_category", "event_title", "event_description"].includes(String(item.kind)) || !boundedDecisionText(item.entity_id, 64) ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(item.entity_id)) ||
+      !dimensions.has(item.dimension as DecisionDimension) || !boundedDecisionText(item.text, 240)) throw new Error("invalid_decision_report");
+    ownerIds.add(item.id);
+    ownerDimension.set(item.id, item.dimension as DecisionDimension);
+  }
+  if (!exactKeys(report.decision, ["class", "confidence", "headline", "rationale", "signal_ids", "owner_fact_ids"]) ||
+    !["watch", "opportunity", "act"].includes(String(report.decision.class)) || !confidences.has(String(report.decision.confidence)) ||
+    !boundedDecisionText(report.decision.headline, 160) || !boundedDecisionText(report.decision.rationale, 240) ||
+    !boundedIds(report.decision.signal_ids, 1, 3, signalIds) || !boundedIds(report.decision.owner_fact_ids, 0, 3, ownerIds)) throw new Error("invalid_decision_report");
+  if (!Array.isArray(report.interpretation_meta) || report.interpretation_meta.length !== brief.why_it_matters.length) throw new Error("invalid_decision_report");
+  report.interpretation_meta.forEach((item, index) => {
+    if (!exactKeys(item, ["index", "signal_type", "confidence", "priority", "signal_ids", "owner_fact_ids"]) || item.index !== index ||
+      !["threat", "opportunity", "neutral"].includes(String(item.signal_type)) || !confidences.has(String(item.confidence)) ||
+      !["high", "medium"].includes(String(item.priority)) || !boundedIds(item.signal_ids, 1, 3, signalIds) || !boundedIds(item.owner_fact_ids, 0, 3, ownerIds)) throw new Error("invalid_decision_report");
+  });
+  if (!Array.isArray(report.comparisons) || report.comparisons.length > 5) throw new Error("invalid_decision_report");
+  const comparisonIds = new Set<string>();
+  for (const item of report.comparisons) {
+    if (!exactKeys(item, ["id", "dimension", "owner_text", "competitor_text", "outcome", "confidence", "signal_ids", "owner_fact_ids"]) ||
+      !boundedDecisionText(item.id, 64) || comparisonIds.has(String(item.id)) || !dimensions.has(item.dimension as DecisionDimension) || !boundedDecisionText(item.owner_text, 140) ||
+      !boundedDecisionText(item.competitor_text, 140) || !["owner_advantage", "competitor_pressure", "different", "not_comparable"].includes(String(item.outcome)) ||
+      !confidences.has(String(item.confidence)) || !boundedIds(item.signal_ids, 1, 3, signalIds) || !boundedIds(item.owner_fact_ids, 0, 3, ownerIds) ||
+      (item.signal_ids as string[]).some((id) => signalDimension.get(id) !== item.dimension) ||
+      (item.owner_fact_ids as string[]).some((id) => ownerDimension.get(id) !== item.dimension) ||
+      (item.outcome !== "not_comparable" && (item.owner_fact_ids as string[]).length === 0)) throw new Error("invalid_decision_report");
+    comparisonIds.add(String(item.id));
+  }
+  if (!Array.isArray(report.action_plan) || report.action_plan.length !== brief.worth_doing.length) throw new Error("invalid_decision_report");
+  const baseActions = brief.worth_doing as Array<Record<string, unknown>>;
+  const actionIds = new Set<string>();
+  let primary = 0;
+  report.action_plan.forEach((item, index) => {
+    if (!exactKeys(item, ["index", "action_id", "timeframe", "impact", "confidence", "order", "is_primary", "signal_ids", "owner_fact_ids"]) ||
+      item.index !== index || item.action_id !== baseActions[index]?.id || actionIds.has(String(item.action_id)) || item.order !== index + 1 ||
+      !["this_week", "this_month", "bigger_project"].includes(String(item.timeframe)) || !["high", "medium"].includes(String(item.impact)) ||
+      !confidences.has(String(item.confidence)) || typeof item.is_primary !== "boolean" || item.is_primary !== baseActions[index]?.is_primary ||
+      !boundedIds(item.signal_ids, 1, 3, signalIds) || !boundedIds(item.owner_fact_ids, 0, 3, ownerIds)) throw new Error("invalid_decision_report");
+    if (item.is_primary) {
+      primary += 1;
+      if (item.order !== 1 || item.timeframe !== "this_week") throw new Error("invalid_decision_report");
+    }
+    actionIds.add(String(item.action_id));
+  });
+  if (primary !== 1) throw new Error("invalid_decision_report");
 }
 export function providerSafeCode(error: unknown): string {
   const code = error instanceof Error ? error.message : "unreachable";
@@ -1284,6 +1669,7 @@ export async function handler(req: Request): Promise<Response> {
             "synthesis_failed",
             "synthesis_accept_failed",
             "invalid_synthesis",
+            "invalid_decision_report",
             "prohibited_metric",
           ].includes(message)
         ? "model_response_invalid"

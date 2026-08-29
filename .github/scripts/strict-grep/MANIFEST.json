@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 620,
+  "expectedStrictGrepMjsFiles": 621,
   "selfTestWiredFloor": 396,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -9306,6 +9306,15 @@
       "modes": ["plain", "self-test"],
       "selfTest": "wired",
       "jobKeys": ["issue-2725-competitor-worker-has-caller"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2796-competitor-decision-report.mjs",
+      "kind": "file",
+      "enforcement": "job:expo-export-gate",
+      "invocation": "node",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": ["expo-export-gate"]
     },
     {
       "script": "mingla-admin/src/pages/__tests__/ToolLeadsPage.issue2725.happy.test.js",

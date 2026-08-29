@@ -196,6 +196,7 @@ export function CompetitorWatchSection({
           brandId={brandId}
           venueListingId={venueListingId}
           row={briefRow}
+          offline={offline}
         />
       ) : null}
       {editRow ? (

@@ -398,7 +398,7 @@ describe("issue 2725 premium Competition live journey", () => {
     await Renderer.act(async () => {
       (result.props.onPress as () => void)();
     });
-    expect(output(tree)).toContain("PUBLIC SOURCES");
+    expect(output(tree)).toContain("SOURCES MINGLA CAN WATCH");
     expect(byId(tree, "competitor-source-sheet-submit")[0]?.props.label).toBe(
       "Watch competitor",
     );
@@ -420,7 +420,7 @@ describe("issue 2725 premium Competition live journey", () => {
     );
   });
 
-  it("renders concrete first observations, Gogi relevance, one action and linked evidence in order", async () => {
+  it("renders decision-first observations, Gogi relevance, bounded actions and inline evidence in order", async () => {
     mockBrief.mockReturnValue({
       isLoading: false,
       isError: false,
@@ -490,21 +490,27 @@ describe("issue 2725 premium Competition live journey", () => {
     const text = output(tree);
     let cursor = -1;
     for (const heading of [
-      "CURRENT PUBLIC OBSERVATIONS",
-      "WHY THIS MAY MATTER TO GOGI LAGOS",
-      "WORTH DOING NEXT",
-      "SOURCE EVIDENCE",
+      "WHAT HAPPENED",
+      "Signal health",
+      "CURRENT PUBLIC SIGNALS",
+      "COMPETITIVE READ",
+      "YOUR MOVE",
     ]) {
       const next = text.indexOf(heading);
       expect(next).toBeGreaterThan(cursor);
       cursor = next;
     }
     expect(text).not.toContain("Mingla checked public information");
-    expect(text).not.toContain("A second idea must not render");
+    expect(text).toContain("A second idea must not render");
+    expect(text).not.toContain("SOURCE EVIDENCE");
+    expect(text).not.toContain("Open original source");
+    const evidence = byId(tree, "competitor-signal-f1-evidence");
+    expect(evidence).toHaveLength(1);
     expect(
-      byId(tree, "competitor-brief-sheet-fact-f1-evidence-open"),
-    ).toHaveLength(1);
-    expect(byId(tree, "competitor-brief-sheet-action-a1")).toHaveLength(1);
+      (evidence[0]?.props.style as { minHeight?: number }).minHeight,
+    ).toBe(44);
+    expect(byId(tree, "competitor-brief-primary-action-a1")).toHaveLength(1);
+    expect(byId(tree, "competitor-brief-secondary-action-a2")).toHaveLength(1);
     expect(byId(tree, "competitor-brief-sheet")[0]?.props.presentation).toBe(
       "competition",
     );

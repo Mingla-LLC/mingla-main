@@ -727,6 +727,10 @@ jobs:
           psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f supabase/migrations/__tests__/issue_2725_amendment8_rollover_redaction_reuse.tester.adversarial.pg17.test.sql
 
+          # Issue #2796 — canonical v3 exact-schema/provenance/grant proof.
+          psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f supabase/migrations/__tests__/issue2796_competitor_decision_report_v3.implementor.pg17.test.sql
+
       # Issue #2587 — the share path publishes an offering's location, and it
       # read the base relation with no privacy gate at all: a host who turned on
       # "hide the address until someone buys" had that address served to an
@@ -1990,7 +1994,9 @@ jobs:
             supabase/functions/_shared/__tests__/issue927_tester_origin_runtime.test.ts
             supabase/functions/competitor-intel-worker/__tests__/issue_2725_worker_happy.test.ts
             supabase/functions/competitor-intel-worker/__tests__/issue_2725_amendment8_io_reuse.tester.adversarial.test.ts
+            supabase/functions/competitor-intel-worker/__tests__/issue2796_worker_v3_happy.test.ts
             supabase/functions/growth-tools-report/__tests__/issue_2725_competitor_brief_errors.test.ts
+            supabase/functions/growth-tools-report/__tests__/issue2796_v3_negotiation_happy.test.ts
           )
           for attempt in 1 2 3; do
             if deno test --allow-env --allow-read --no-check "${DENO_TEST_FILES[@]}"; then

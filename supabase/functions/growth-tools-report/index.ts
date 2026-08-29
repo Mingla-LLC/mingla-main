@@ -117,6 +117,16 @@ async function handleAppRead(
   if (auth instanceof Response) return auth;
 
   if (body.action === "competitor_brief") {
+    const allowed = new Set([
+      "action", "lane", "brand_id", "watch_id", "max_schema_version",
+    ]);
+    if (
+      Object.keys(body).some((key) => !allowed.has(key)) ||
+      (body.max_schema_version !== undefined &&
+        body.max_schema_version !== 2 && body.max_schema_version !== 3)
+    ) {
+      return json({ error: "validation", fields: ["request"] }, 400);
+    }
     if (!isUuidValue(body.watch_id)) {
       return json({ error: "validation", fields: ["watch_id"] }, 400);
     }
@@ -191,7 +201,7 @@ async function handleAppRead(
     let brief: Record<string, unknown> | null = null;
     if (watch.current_brief_id) {
       const { data, error: briefError } = await supabase.from("tool_competitor_briefs").select(
-        "status,updated_at,checked_at,what_changed,why_it_matters,worth_doing,evidence",
+        "schema_version,status,updated_at,checked_at,what_changed,why_it_matters,worth_doing,evidence,decision_report",
       ).eq("id", watch.current_brief_id).maybeSingle();
       if (briefError) {
         console.error("[growth-tools-report] competitor brief failed", briefError.message);
@@ -249,8 +259,10 @@ async function handleAppRead(
           )
       ? "available"
       : "not_applicable";
+    const wantsV3 = body.max_schema_version === 3 &&
+      brief?.schema_version === 3 && brief?.decision_report !== null;
     return json({
-      schema_version: 2,
+      schema_version: wantsV3 ? 3 : 2,
       watch_id: watch.id,
       freshness,
       updated_at: brief?.updated_at ?? null,
@@ -271,6 +283,7 @@ async function handleAppRead(
           website_health: { grade: null, changes: [] },
         }
         : null,
+      ...(wantsV3 ? { decision_report: brief?.decision_report } : {}),
     }, 200);
   }
 
