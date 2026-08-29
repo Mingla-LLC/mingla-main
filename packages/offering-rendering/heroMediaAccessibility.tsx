@@ -1,6 +1,6 @@
 // @ts-expect-error shared package React resolves through each app workspace.
 import React from "react";
-import { AccessibilityInfo, Platform, StyleSheet, Text } from "react-native";
+import { AccessibilityInfo, Platform, StyleSheet } from "react-native";
 
 import type { EventCoverMediaType } from "./types";
 
@@ -69,6 +69,32 @@ export interface HeroMediaChangeAnnouncerProps {
   testID?: string;
 }
 
+interface WebHeroMediaLiveRegionProps {
+  "aria-live": "polite";
+  "aria-atomic": true;
+  children?: React.ReactNode;
+  style: React.CSSProperties;
+  testID?: string;
+}
+
+const WebHeroMediaLiveRegion = ({
+  "aria-live": ariaLive,
+  "aria-atomic": ariaAtomic,
+  children,
+  style,
+  testID,
+}: WebHeroMediaLiveRegionProps) =>
+  React.createElement(
+    "div",
+    {
+      "aria-live": ariaLive,
+      "aria-atomic": ariaAtomic,
+      "data-testid": testID,
+      style,
+    },
+    children,
+  );
+
 export const HeroMediaChangeAnnouncer = (
   props: HeroMediaChangeAnnouncerProps,
 ) => {
@@ -76,14 +102,14 @@ export const HeroMediaChangeAnnouncer = (
   const message = useHeroMediaChangeAnnouncement(activeIndex, accessibleLabel);
   if (Platform.OS !== "web") return null;
   return (
-    <Text
+    <WebHeroMediaLiveRegion
       aria-live="polite"
       aria-atomic={true}
       style={styles.visuallyHidden}
       testID={testID}
     >
       {message}
-    </Text>
+    </WebHeroMediaLiveRegion>
   );
 };
 
