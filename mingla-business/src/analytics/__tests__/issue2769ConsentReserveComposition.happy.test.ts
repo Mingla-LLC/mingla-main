@@ -1,5 +1,12 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
+import React from "react";
+
+import { useWebConsentState } from "../useWebConsentState";
+
+const { renderToStaticMarkup } = require("react-dom/server") as {
+  renderToStaticMarkup: (element: React.ReactElement) => string;
+};
 
 const business = path.resolve(__dirname, "../../..");
 const repository = path.resolve(business, "..");
@@ -23,12 +30,19 @@ describe("issue #2769 consent/reserve production bridge", () => {
     expect(screen).toContain("{showPersistentReserveCta ? reserveCta : null}");
   });
 
-  test("native resolves to a no-op state without importing the browser owner", () => {
-    const nativeHook = read("mingla-business/src/analytics/useWebConsentState.ts");
-    expect(nativeHook).toContain('return "not_applicable";');
-    expect(nativeHook).not.toContain("webAnalytics.web");
-    expect(nativeHook).not.toContain("window");
-    expect(nativeHook).not.toContain("localStorage");
+  test("native resolves to a no-op state when the hook executes", () => {
+    function ConsentStateProbe(): React.ReactElement {
+      const consentState = useWebConsentState();
+      return React.createElement(
+        "output",
+        { "data-consent-state": consentState },
+        consentState,
+      );
+    }
+
+    const markup = renderToStaticMarkup(React.createElement(ConsentStateProbe));
+    expect(markup).toContain('data-consent-state="not_applicable"');
+    expect(markup).toContain(">not_applicable</output>");
   });
 
   test("the invitation reads the canonical external store and has no local visibility fork", () => {

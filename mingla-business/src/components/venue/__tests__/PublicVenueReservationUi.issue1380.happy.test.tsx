@@ -274,8 +274,8 @@ describe("issue #1380 public venue Reserve CTA", () => {
     expect(page).toContain(
       'normalizedReservationUiState.activeTab !== "reservations"',
     );
-    expect(page).toContain("showReserveCta && !isDesktop");
-    expect(page).toContain("showReserveCta ? reserveCta : null");
+    expect(page).toContain("showPersistentReserveCta && !isDesktop");
+    expect(page).toContain("showPersistentReserveCta ? reserveCta : null");
     expect(page).toContain(
       "normalizedReservationUiState.reservationSheetOpen\n            ? null\n            : reservationsBlock",
     );
