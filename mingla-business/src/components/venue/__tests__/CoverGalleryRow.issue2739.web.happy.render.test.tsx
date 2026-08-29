@@ -277,6 +277,63 @@ describe("issue #2739 CoverGalleryRow web semantics", () => {
     );
   });
 
+  it("H-5b binds a complete keyboard-only inset focus treatment and forced-colors fallback", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const buttons = hostButtons(tree.root);
+    const styleHosts = tree.root.findAll(
+      (node: ReactTestInstance) =>
+        typeof node.type === "string" && node.type === "style",
+    );
+
+    expect(
+      buttons.every(
+        (button) =>
+          button.props["data-mingla-cover-gallery-button"] === "true",
+      ),
+    ).toBe(true);
+    expect(styleHosts).toHaveLength(1);
+
+    const css = String(styleHosts[0]?.props.children ?? "");
+    const normalRule = css.match(
+      /button\[data-mingla-cover-gallery-button="true"\]:focus-visible\s*\{([^}]*)\}/,
+    )?.[1];
+    const forcedRule = css.match(
+      /@media\s*\(forced-colors:\s*active\)\s*\{[\s\S]*?button\[data-mingla-cover-gallery-button="true"\]:focus-visible\s*\{([^}]*)\}/,
+    )?.[1];
+
+    expect(normalRule).toContain("outline: none");
+    expect(normalRule).toContain("inset 0 0 0 2px #FFFFFF");
+    expect(normalRule).toContain("inset 0 0 0 4px #000000");
+    expect(css.match(/outline:\s*none/g)).toHaveLength(1);
+    expect(css).not.toMatch(/:focus(?!-visible)/);
+    expect(forcedRule).toContain("box-shadow: none");
+    expect(forcedRule).toContain("outline: 2px solid Highlight");
+    expect(forcedRule).toContain("outline-offset: -2px");
+    expect(forcedRule).toContain("forced-color-adjust: auto");
+  });
+
+  it("H-5c keeps first-edge focus at local scrollLeft zero", async () => {
+    setPlatform("web");
+    const tree = await mountRow();
+    const first = hostButtons(tree.root)[0];
+    const scrollOwner = {
+      getBoundingClientRect: jest.fn(() => ({ left: 20, right: 300 })),
+      scrollLeft: 0,
+    };
+    if (first === undefined) throw new Error("issue_2739_first_missing");
+
+    first.props.onFocus({
+      currentTarget: {
+        closest: jest.fn(() => scrollOwner),
+        getBoundingClientRect: jest.fn(() => ({ left: 20, right: 84 })),
+      },
+    });
+
+    expect(scrollOwner.scrollLeft).toBe(0);
+    expect(scrollOwner.getBoundingClientRect).toHaveBeenCalledTimes(1);
+  });
+
   it("H-6 preserves the native imagebutton, selected-state, and selected-name contract", async () => {
     setPlatform("ios");
     const tree = await mountRow({ activeIndex: 1 });

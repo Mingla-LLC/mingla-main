@@ -88,9 +88,25 @@ type WebGalleryFocusEvent = { currentTarget: WebGalleryFocusTarget };
 
 const WEB_GALLERY_SELECTOR =
   '[role="group"][aria-label="Choose cover photo"]';
-// Chromium's native focus outline paints one pixel beyond the button box. The
-// extra pixel also closes fractional-layout rounding without changing row
-// padding, gaps, thumbnail geometry, or the visible unfocused state.
+const WEB_GALLERY_BUTTON_SELECTOR =
+  'button[data-mingla-cover-gallery-button="true"]';
+const WEB_GALLERY_FOCUS_CSS = `
+${WEB_GALLERY_BUTTON_SELECTOR}:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px #FFFFFF, inset 0 0 0 4px #000000;
+}
+@media (forced-colors: active) {
+  ${WEB_GALLERY_BUTTON_SELECTOR}:focus-visible {
+    box-shadow: none;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+    forced-color-adjust: auto;
+  }
+}
+`;
+// Keep the established two-pixel local reveal margin for right-edge focus and
+// fractional-layout rounding. The inset indicator itself consumes no layout
+// space and first-edge focus remains valid at scrollLeft zero.
 const WEB_FOCUS_HALO_PX = 2;
 
 const keepFocusedGalleryButtonInlineVisible = (
@@ -219,6 +235,7 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
               role: "button",
               "aria-disabled": active ? true : undefined,
               "aria-label": a11yLabel,
+              "data-mingla-cover-gallery-button": "true",
               tabIndex: 0,
               onFocus: keepFocusedGalleryButtonInlineVisible,
               "data-testid":
@@ -276,6 +293,9 @@ export const CoverGalleryRow: React.FC<CoverGalleryRowProps> = ({
       }
       testID={testID}
     >
+      {Platform.OS === "web"
+        ? React.createElement("style", null, WEB_GALLERY_FOCUS_CSS)
+        : null}
       {/* Card 0 — the primary cover (▶ only when it is a video). */}
       {renderCard(
         0,
@@ -316,8 +336,8 @@ const styles = StyleSheet.create({
     flexShrink: 0,
   },
   // Positive overflow extends only the horizontal scroll range. It gives the
-  // final browser-native focus halo room to enter the viewport without adding
-  // a flex item, padding, gap, or any visible/layout geometry.
+  // final focused button the established two-pixel local reveal margin without
+  // adding a flex item, padding, gap, or any visible/layout geometry.
   webFocusScrollExtent: {
     position: "absolute",
     right: -WEB_FOCUS_HALO_PX,
