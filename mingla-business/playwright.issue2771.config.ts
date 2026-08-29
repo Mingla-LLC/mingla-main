@@ -2,7 +2,7 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './playwright',
-  testMatch: /issue2771-preconsent-analytics(?:\.tester\.adversarial)?\.spec\.ts$/,
+  testMatch: /(?:issue2771-preconsent-analytics(?:\.tester\.adversarial)?|issue2795-posthog-alias-consent)\.spec\.ts$/,
   fullyParallel: false,
   workers: 1,
   retries: 0,

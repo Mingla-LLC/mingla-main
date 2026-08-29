@@ -16,6 +16,10 @@ test('independent mutations cannot restore advanced-consent or unguarded attribu
     { business: sources.business.replace('readStoredConsent() !== "granted" || input.eventId.length', 'input.eventId.length') },
     { marketingProvider: sources.marketingProvider.replace("readMarketingConsent() !== 'granted' || posthogClient === null", 'posthogClient === null') },
     { marketingLayout: sources.marketingLayout.replace('<PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        ').replace('</PostHogProvider>', '') },
+    { business: sources.business.replace('        cross_subdomain_cookie: false,\n', '') },
+    { marketingProvider: sources.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '') },
+    { business: sources.business.replace('        cross_subdomain_cookie: false,\n', '        // cross_subdomain_cookie: false,\n') },
+    { marketingProvider: sources.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '      // cross_subdomain_cookie: false,\n') },
   ]
   for (const attack of attacks) {
     assert.notEqual(evaluateSources({ ...sources, ...attack }).length, 0)

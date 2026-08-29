@@ -70,6 +70,9 @@ export function evaluateSources(input) {
   if (!requiresGrant(bootBody) || !/await import\(['"]posthog-js['"]\)/.test(bootBody)) {
     errors.push('Business private boot must re-check grant and dynamically import PostHog')
   }
+  if (!/^[ \t]*cross_subdomain_cookie\s*:\s*false\s*,?\s*$/m.test(bootBody)) {
+    errors.push('Business PostHog init must keep consent cookies origin-local')
+  }
   for (const name of ['captureWeb', 'identifyWeb', 'getFeatureFlagWeb']) {
     if (!requiresGrant(functionBody(business, name), /posthogClient/)) {
       errors.push(`Business ${name} must require grant and a ready PostHog client`)
@@ -93,6 +96,10 @@ export function evaluateSources(input) {
   }
   if (!/await import\(['"]posthog-js['"]\)/.test(provider)) {
     errors.push('Marketing grant-only boot must dynamically import PostHog')
+  }
+  const marketingBootBody = functionBody(provider, 'bootGrantedMarketingAnalytics')
+  if (!/^[ \t]*cross_subdomain_cookie\s*:\s*false\s*,?\s*$/m.test(marketingBootBody)) {
+    errors.push('Marketing PostHog init must keep consent cookies origin-local')
   }
   if (!/return\s+enabled\s*\?\s*children\s*:\s*null/.test(provider)) {
     errors.push('Marketing provider must withhold analytics children until booted grant')
@@ -136,6 +143,8 @@ function runSelfTest() {
     ['Marketing eager GA', { marketingLayout: clean.marketingLayout.replace('<PostHogProvider>\n          <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />\n        </PostHogProvider>', '<PostHogProvider>{null}</PostHogProvider>\n        <GoogleAnalytics gaId={GA4_MEASUREMENT_ID} />') }],
     ['Reject analytics ping', { marketingBanner: clean.marketingBanner.replace('persistMarketingConsent(value)', "persistMarketingConsent(value)\n    if (value === 'denied') posthogOptOut()") }],
     ['Replay masking disabled', { marketingProvider: clean.marketingProvider.replace('maskAllInputs: true', 'maskAllInputs: false') }],
+    ['Business cross-subdomain cookie restored', { business: clean.business.replace('        cross_subdomain_cookie: false,\n', '') }],
+    ['Marketing cross-subdomain cookie restored', { marketingProvider: clean.marketingProvider.replace('      cross_subdomain_cookie: false,\n', '') }],
   ]
   if (evaluateSources(clean).length > 0) throw new Error('clean implementation failed before mutations')
   for (const [label, changed] of cases) {
@@ -157,7 +166,7 @@ function main() {
     process.exitCode = 1
     return
   }
-  console.log('OK: I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT — both web roots are grant-before-load')
+  console.log('OK: I-PROPOSED-2771-NO-WEB-ANALYTICS-BEFORE-GRANT — both web roots are grant-before-load and origin-local')
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) main()
