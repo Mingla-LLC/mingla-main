@@ -1,5 +1,10 @@
 import { assertEquals, assertThrows } from "https://deno.land/std@0.190.0/testing/asserts.ts";
-import { buildDecisionFoundation, buildObservationComparisons, validateDecisionReport } from "../index.ts";
+import {
+  buildDecisionFoundation,
+  buildObservationComparisons,
+  canFinishAsNoChange,
+  validateDecisionReport,
+} from "../index.ts";
 
 const observations = [{
   sourceId: "11111111-1111-4111-8111-111111111111",
@@ -59,4 +64,36 @@ Deno.test("issue 2796 worker keeps deterministic one-call and cost bounds in sou
   assertEquals(source.includes("candidateCount: 1"), true);
   assertEquals(source.includes("MAX_SYNTHESIS_REQUEST_BYTES = 65_536"), true);
   assertEquals(source.includes("RESERVED_MICROUSD = 50_000"), true);
+});
+
+Deno.test("issue 2811 upgrades unchanged legacy briefs once and keeps unchanged v3 checks free", () => {
+  const fingerprint = "a".repeat(64);
+  assertEquals(
+    canFinishAsNoChange({
+      observation_set_fingerprint: fingerprint,
+      schema_version: 2,
+    }, fingerprint),
+    false,
+  );
+  assertEquals(
+    canFinishAsNoChange({
+      observation_set_fingerprint: fingerprint,
+      schema_version: null,
+    }, fingerprint),
+    false,
+  );
+  assertEquals(
+    canFinishAsNoChange({
+      observation_set_fingerprint: fingerprint,
+      schema_version: 3,
+    }, fingerprint),
+    true,
+  );
+  assertEquals(
+    canFinishAsNoChange({
+      observation_set_fingerprint: "b".repeat(64),
+      schema_version: 3,
+    }, fingerprint),
+    false,
+  );
 });

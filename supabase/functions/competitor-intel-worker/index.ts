@@ -312,6 +312,19 @@ interface ClaimedJob {
   manual_tool_lead_id: string | null;
 }
 
+const CURRENT_BRIEF_SCHEMA_VERSION = 3;
+
+export function canFinishAsNoChange(
+  current: {
+    observation_set_fingerprint?: string | null;
+    schema_version?: number | null;
+  } | null,
+  observationSetFingerprint: string,
+): boolean {
+  return current?.observation_set_fingerprint === observationSetFingerprint &&
+    current.schema_version === CURRENT_BRIEF_SCHEMA_VERSION;
+}
+
 export async function processCompetitorJob(
   db: Db,
   job: ClaimedJob,
@@ -423,7 +436,7 @@ export async function processCompetitorJob(
   );
   const { data: current, error: currentError } = watch.current_brief_id
     ? await db.from("tool_competitor_briefs").select(
-      "observation_set_fingerprint,updated_at,job_id",
+      "observation_set_fingerprint,updated_at,job_id,schema_version",
     ).eq("id", watch.current_brief_id).maybeSingle()
     : { data: null, error: null };
   if (currentError) throw new Error("current_brief_read_failed");
@@ -459,7 +472,7 @@ export async function processCompetitorJob(
   }
   const checkedAt = observations.map((o) => o.checkedAt).sort().at(-1) ??
     new Date().toISOString();
-  if (current?.observation_set_fingerprint === obsSet) {
+  if (canFinishAsNoChange(current, obsSet)) {
     await settleZeroCost(db, job, "no_change");
     const finished = await finishJob(db, job, "no_change", null, {
       checked_at: checkedAt,
