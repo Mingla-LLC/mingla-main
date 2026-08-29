@@ -9734,25 +9734,25 @@ independent tester returns PASS.
 
 All eight #2725 rules were established ACTIVE after independent final integration PASS on 2026-08-28.
 
-## DRAFT — issue #2796 (premium competitor decision report)
+## ACTIVE — issue #2796 (premium competitor decision report)
 
-### I-PROPOSED-2796-V3-EXACT-PROVENANCE (DRAFT)
+### I-PROPOSED-2796-V3-EXACT-PROVENANCE (ACTIVE)
 - **Rule:** Every accepted v3 root and nested object is exact-key and bounded; every reference resolves; comparisons match dimensions; owner advantage requires explicit evidence on both sides; unsupported content cannot persist or render.
 - **Enforcement:** migration validator, worker/client validators, issue2796 PG17/Deno/Jest proofs, and the issue #2796 strict contract gate.
 
-### I-PROPOSED-2796-V2-DEFAULT-COMPATIBILITY (DRAFT)
+### I-PROPOSED-2796-V2-DEFAULT-COMPATIBILITY (ACTIVE)
 - **Rule:** Absent or max-v2 negotiation returns the exact v2 projection, old v2 remains readable, and reads never trigger generation.
 - **Enforcement:** report-edge negotiated projection, client discriminated union, and issue2796 compatibility proof.
 
-### I-PROPOSED-2796-SINGLE-CALL-COST-BOUND (DRAFT)
+### I-PROPOSED-2796-SINGLE-CALL-COST-BOUND (ACTIVE)
 - **Rule:** A new accepted fingerprint receives at most one bounded synthesis call, reuse receives zero, request/output/token cost is measured, and reservation plus the $1 venue/ISO-week ceiling fails closed.
 - **Enforcement:** deterministic prompt fingerprint, synthesis reuse ledger, request/output/receipt bounds, inherited #2725 budget arbiter, and issue2796 worker proof.
 
-### I-PROPOSED-2796-COMPETITION-DECISION-LAYOUT (DRAFT)
+### I-PROPOSED-2796-COMPETITION-DECISION-LAYOUT (ACTIVE)
 - **Rule:** Competition sheets own responsive gutters and readable measure, expose one save action and decision-first report order, render exactly one inline evidence disclosure per signal, never duplicate evidence, and preserve the nine truthful report states across Business iOS, Android, and web.
 - **Enforcement:** feature-scoped tokens/helper/components, issue2796 journey/layout proof, and the issue #2796 strict contract gate.
 
-All four #2796 rules remain DRAFT until independent tester proof and CLOSE promotion.
+All four #2796 rules were established ACTIVE after independent web, iOS AX5, and Android 100%/200% integration proof on 2026-08-29.
 
 ## ACTIVE — issue #2739 (public gallery thumbnail controls are operable and visibly focused)
 

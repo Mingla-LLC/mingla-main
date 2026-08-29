@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Venue Insights now presents each watched competitor as a premium, decision-first weekly brief with grounded comparisons, compact evidence, practical next actions, responsive accessible sheets, negotiated legacy compatibility, and a measured $1-per-venue weekly AI ceiling (#2796, PR #2804)
 - 2026-08-29 — PostHog consent now stays local to the exact Mingla web address where a visitor chose it, so accepting analytics on one public alias cannot place analytics storage on an undecided sibling alias (#2795, PR #2797)
 - 2026-08-29 — Mingla's public Business and Marketing pages now keep PostHog, Google Analytics, ad pixels, and client attribution completely off until a visitor explicitly grants analytics consent; rejecting or leaving the choice undecided stores and sends none, while a later grant starts each integration once (#2771, PR #2789)
 - 2026-08-29 — Public hero render guards now run against one Business-owned React, renderer, and React Native Web runtime, so their tests detect real component regressions instead of failing from duplicate test dependencies (#2788, PR #2790)
