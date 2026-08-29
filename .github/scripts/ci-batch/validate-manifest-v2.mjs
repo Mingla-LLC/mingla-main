@@ -188,6 +188,78 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     ]),
   }),
 ]);
+// [#2774] Reviewed reference-file additions to providers that ALREADY belong to
+// the frozen 73-provider authority. Unlike PROVIDERS_ADDED_SINCE_SEAL, these
+// declarations remove only the named new references while reconstructing the
+// historical record; live discovery and MANIFEST.json retain the full record.
+export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
+  Object.freeze({
+    issue: 2774,
+    workflow: "issue-1486-dormant-render-suites.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs",
+    ]),
+  }),
+]);
+const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES = new Set(
+  PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.map((item) => item.workflow),
+);
+
+export function normalizeProviderReferenceFilesForSeal(
+  discovered,
+  declarations = PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL,
+) {
+  if (!Array.isArray(discovered) || !Array.isArray(declarations)) {
+    throw new TypeError("provider reference seal normalization requires arrays");
+  }
+  const byWorkflow = new Map();
+  for (const [index, item] of discovered.entries()) {
+    const indices = byWorkflow.get(item?.workflow) || [];
+    indices.push(index);
+    byWorkflow.set(item?.workflow, indices);
+  }
+  const declaredWorkflows = new Set();
+  const normalized = discovered.map((item) => ({
+    ...item,
+    referenceFiles: [...(item.referenceFiles || [])],
+  }));
+  for (const declaration of declarations) {
+    if (!declaration || !Number.isInteger(declaration.issue)
+      || typeof declaration.workflow !== "string" || declaration.workflow.length === 0
+      || !Array.isArray(declaration.referenceFiles) || declaration.referenceFiles.length === 0) {
+      throw new Error("provider reference delta declaration is malformed");
+    }
+    if (declaredWorkflows.has(declaration.workflow)) {
+      throw new Error(`duplicate provider reference delta declaration: ${declaration.workflow}`);
+    }
+    declaredWorkflows.add(declaration.workflow);
+    const additions = new Set(declaration.referenceFiles);
+    if (additions.size !== declaration.referenceFiles.length
+      || declaration.referenceFiles.some((item) => typeof item !== "string" || item.length === 0)) {
+      throw new Error(`duplicate or empty provider reference delta: ${declaration.workflow}`);
+    }
+    const indices = byWorkflow.get(declaration.workflow) || [];
+    if (indices.length !== 1) {
+      throw new Error(`provider reference delta workflow must appear exactly once: ${declaration.workflow}`);
+    }
+    const record = normalized[indices[0]];
+    const current = record.referenceFiles;
+    if (new Set(current).size !== current.length) {
+      throw new Error(`provider reference inventory contains duplicates: ${declaration.workflow}`);
+    }
+    for (const referenceFile of additions) {
+      if (!current.includes(referenceFile)) {
+        throw new Error(`provider reference delta is missing: ${declaration.workflow} -> ${referenceFile}`);
+      }
+    }
+    const historical = current.filter((referenceFile) => !additions.has(referenceFile));
+    if (historical.length === 0) {
+      throw new Error(`provider reference delta would empty historical record: ${declaration.workflow}`);
+    }
+    record.referenceFiles = historical;
+  }
+  return normalized;
+}
 const PROVIDERS_ADDED_SINCE_SEAL_NAMES = new Set(
   PROVIDERS_ADDED_SINCE_SEAL.map((item) => item.workflow),
 );
@@ -1259,7 +1331,8 @@ export function discoverWorkflowProviders(root = DEFAULT_ROOT) {
       // theorised — it was the first thing the new guard reported.
       if (relative === ".github/scripts/ci-batch/validate-manifest-v2.mjs"
         && (PHASE3B_WRAPPER_SET.has(name) || PHASE3C_WRAPPER_SET.has(name)
-          || PROVIDERS_ADDED_SINCE_SEAL_NAMES.has(name))) continue;
+          || PROVIDERS_ADDED_SINCE_SEAL_NAMES.has(name)
+          || PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES.has(name))) continue;
       if (!workflowNames.has(name)) continue;
       if (!references.has(name)) references.set(name, []);
       references.get(name).push(relative);
@@ -2126,12 +2199,18 @@ export function validateRegistry(
 
   const discoveredProviders = workflowProviders ?? discoverWorkflowProviders(root);
   if (workflowProviders == null) {
+    let referenceNormalizedProviders = discoveredProviders;
+    try {
+      referenceNormalizedProviders = normalizeProviderReferenceFilesForSeal(discoveredProviders);
+    } catch (error) {
+      fail(errors, `provider reference delta normalization failed: ${error.message}`);
+    }
     // [#2591] Subtract the declared additions before the seal is computed. Each
     // must be PRESENT and BYTE-EQUAL to its declaration; anything else is RED.
     const declaredAdditions = new Map(PROVIDERS_ADDED_SINCE_SEAL.map((item) => [item.workflow, item]));
     const declaredSeen = new Set();
     const sealedDiscovery = [];
-    for (const item of discoveredProviders) {
+    for (const item of referenceNormalizedProviders) {
       const declared = declaredAdditions.get(item.workflow);
       if (!declared) { sealedDiscovery.push(item); continue; }
       declaredSeen.add(item.workflow);

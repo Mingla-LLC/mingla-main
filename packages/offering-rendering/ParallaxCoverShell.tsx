@@ -65,6 +65,10 @@ import { CoverGalleryRow } from "./CoverGalleryRow";
 import { type ResolvedTheme } from "./designTokens";
 import { type ThemePalette } from "./themePalette";
 import { type OfferingGalleryImage } from "./types";
+import {
+  buildHeroMediaAccessibleLabel,
+  HeroMediaChangeAnnouncer,
+} from "./heroMediaAccessibility";
 
 import { OfferingChrome } from "./OfferingChrome";
 import { useResponsiveLayout } from "./useResponsiveLayout";
@@ -156,6 +160,8 @@ export interface ParallaxCoverShellProps {
    * image and video covers.
    */
   galleryImages?: OfferingGalleryImage[];
+  heroAccessibilitySubject?: string | null;
+  coverMediaAlt?: string | null;
   /**
    * issue #1561 [first-screen-rebuild] — the word printed on the striped
    * placeholder when there is NO cover media. `EventCover` defaults it to
@@ -202,6 +208,8 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   hideCloseOnWeb = false,
   coverAspectRatio = 4 / 5,
   galleryImages,
+  heroAccessibilitySubject = null,
+  coverMediaAlt = null,
   coverPlaceholderLabel = null,
   testID,
 }: ParallaxCoverShellProps) => {
@@ -231,6 +239,14 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
   // offset to commit), and no RISK-1 gesture arbitration.
   const activeSequenceItem =
     activeIndex <= 0 ? undefined : gallery[activeIndex - 1];
+  const activeAccessibleLabel = buildHeroMediaAccessibleLabel({
+    subject: heroAccessibilitySubject,
+    mediaType: activeSequenceItem?.type ?? coverMediaType,
+    position: activeIndex + 1,
+    total: gallery.length + 1,
+    description:
+      activeSequenceItem === undefined ? coverMediaAlt : activeSequenceItem.alt,
+  });
 
   // Tap a row card → set the shown index. That's all — the deterministic render
   // below picks up sequence[activeIndex].
@@ -264,6 +280,7 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
 
   const coverMedia = (
     <EventCoverMedia
+      accessibleLabel={activeAccessibleLabel}
       mediaUrl={coverMediaUrl}
       mediaType={coverMediaType}
       hue={coverHue ?? undefined}
@@ -302,11 +319,17 @@ export const ParallaxCoverShell: React.FC<ParallaxCoverShellProps> = ({
       ) : (
         <EventCoverMedia
           mediaUrl={activeSequenceItem.url}
+          accessibleLabel={activeAccessibleLabel}
           mediaType={activeSequenceItem.type ?? "image"}
           height="100%"
           width="100%"
         />
       )}
+      <HeroMediaChangeAnnouncer
+        activeIndex={activeIndex}
+        accessibleLabel={activeAccessibleLabel}
+        testID={testID !== undefined ? `${testID}-hero-announcement` : undefined}
+      />
       {/* Pass 4 — NO on-cover chevrons: on the pinned-behind-scroll native cover
           they are unreachable (the body scroll swallows the tap, verified on the
           consumer). The beneath-cover CoverGalleryRow card-tap is the paging

@@ -182,6 +182,7 @@ jobs:
               # is the execution authority for #2696 in true filename order.
               # Matched by EXACT filename, never an issue-number infix.
               *20270601002696_issue_2696_event_scoped_session_lookup.sql) continue ;;
+              *20270607002774_issue_2774_public_hero_alt.sql) continue ;;
               # issue #2489 — SKIPPED under the standing instruction above ("any
               # future migration that re-emits a #1931-defined object belongs on
               # this list too").

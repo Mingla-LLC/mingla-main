@@ -136,6 +136,7 @@ export interface PublicEventProps {
   coverHue: number;
   coverMediaUrl: string | null;
   coverMediaType: EventCoverMediaType | null;
+  coverMediaAlt?: string | null;
   coverCredit: string | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF cover-gallery items (hero

@@ -101,6 +101,7 @@ export interface PublicExperience {
   visibility: string;
   timezone: string;
   coverMediaUrl: string | null;
+  coverMediaAlt?: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   // issue #868 [cover-gallery] — ADDITIONAL image/GIF items (default []).
   coverGallery?: OfferingGalleryImage[];
@@ -568,6 +569,7 @@ interface RpcExpPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  coverMediaAlt: string | null;
   // issue #868 [cover-gallery] — RPC json coverGallery key (default []).
   coverGallery?: OfferingGalleryImage[] | null;
   venueText: string | null;
@@ -632,6 +634,7 @@ function mapRpcPayload(p: RpcExpPayload): PublicExperiencePayload {
     visibility: p.visibility,
     timezone: p.timezone ?? "UTC",
     coverMediaUrl: p.coverMediaUrl ?? null,
+    coverMediaAlt: p.coverMediaAlt ?? null,
     coverMediaType: normalizeCoverType(p.coverMediaType),
     // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
     coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],

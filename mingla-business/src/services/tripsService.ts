@@ -284,6 +284,7 @@ export interface Trip {
   publishedAt: string | null;
   timezone: string;
   coverMediaUrl: string | null;
+  coverMediaAlt?: string | null;
   coverMediaPosterUrl?: string | null;
   coverMediaType: string | null;
   /**
@@ -504,6 +505,7 @@ interface EventRow {
   published_at: string | null;
   timezone: string;
   cover_media_url: string | null;
+  cover_media_alt?: string | null;
   cover_media_poster_url?: string | null;
   cover_media_type: string | null;
   // issue #868 [cover-gallery] — additive; absent on legacy rows → mapped to [].
@@ -721,6 +723,7 @@ function mapTrip(
     publishedAt: event.published_at,
     timezone: event.timezone,
     coverMediaUrl: event.cover_media_url,
+    coverMediaAlt: event.cover_media_alt ?? null,
     coverMediaPosterUrl:
       event.cover_media_poster_url ??
       (event.cover_media_type === "image" ? event.cover_media_url : null),

@@ -5,7 +5,7 @@ import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, providerDiscoveryAccounting, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
+import { discoverWorkflowProviders, isNonAuthoritativeProviderEvidence, normalizeProviderReferenceFilesForSeal, providerDiscoveryAccounting, PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL, PROVIDERS_ADDED_SINCE_SEAL, trackedFilesProcessInvocations, validateRegistry, withTrackedFilesScope } from "../validate-manifest-v2.mjs";
 import { execFileSync } from "node:child_process";
 import os from "node:os";
 import { buildShardReport, commandFingerprint, createIsolatedWorkspace, expectedPrimarySuites, materializeToolExposures, minimalChildEnvironment, resolveLeafCapability, runSuiteV2, validateSetupEvidence } from "../run-suite-batch.mjs";
@@ -91,9 +91,10 @@ const carriedWaveProviders = (root) => {
 // what keeps a drifted declaration red, and an UNDECLARED new provider is not
 // subtracted at all, so it still breaks the digest — which is the tripwire.
 const sealedDiscovery = (discovered) => {
+  const referenceNormalized = normalizeProviderReferenceFilesForSeal(discovered);
   const declared = new Map(PROVIDERS_ADDED_SINCE_SEAL
     .map((item) => [item.workflow, JSON.stringify([...item.referenceFiles])]));
-  return discovered.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+  return referenceNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
 };
 const reconstructShadowAuthority = (root, discovered) =>
   [...sealedDiscovery(discovered), ...carriedWaveProviders(root)].sort((a, b) => a.workflow.localeCompare(b.workflow));
@@ -110,6 +111,35 @@ function providerSnapshot(root) {
   const providers = discoverWorkflowProviders(root);
   return JSON.stringify({ providers, errors: validateRegistry(value, { root }) });
 }
+
+test("reviewed partial provider references preserve the frozen seal and fail closed", () => {
+  const discovered = discoverWorkflowProviders(ROOT);
+  const declaration = PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL[0];
+  assert.equal(digest(reconstructShadowAuthority(ROOT, discovered)), PROVIDER_DIGEST,
+    "the reviewed reference addition must reconstruct the unchanged frozen seal");
+
+  const missing = structuredClone(discovered);
+  missing.find((item) => item.workflow === declaration.workflow).referenceFiles = missing
+    .find((item) => item.workflow === declaration.workflow).referenceFiles
+    .filter((item) => !declaration.referenceFiles.includes(item));
+  assert.throws(() => normalizeProviderReferenceFilesForSeal(missing), /delta is missing/,
+    "missing declared reference must be RED");
+
+  const wrongWorkflow = [{ ...declaration, workflow: "issue-1485-web-missing-chunk-404-tests.yml" }];
+  assert.throws(() => normalizeProviderReferenceFilesForSeal(discovered, wrongWorkflow), /must appear exactly once/,
+    "declaring the reference against the wrong workflow must be RED");
+
+  const duplicate = structuredClone(discovered);
+  duplicate.push(structuredClone(duplicate.find((item) => item.workflow === declaration.workflow)));
+  assert.throws(() => normalizeProviderReferenceFilesForSeal(duplicate), /exactly once/,
+    "duplicate provider records must be RED");
+
+  const extra = structuredClone(discovered);
+  extra.find((item) => item.workflow === declaration.workflow).referenceFiles.push("undeclared/provider-reference.mjs");
+  extra.find((item) => item.workflow === declaration.workflow).referenceFiles.sort();
+  assert.notEqual(digest(reconstructShadowAuthority(ROOT, extra)), PROVIDER_DIGEST,
+    "an undeclared reference must remain inside the reconstructed seal and be RED");
+});
 
 function assertWave(value) {
   const suites = value.suites.filter((suite) => suite.migrationWave === "phase3b-postgres-wave");

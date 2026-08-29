@@ -75,6 +75,7 @@ export interface ConsumerExperienceDetail {
   timezone: string;
   currency: string;
   coverMediaUrl: string | null;
+  coverMediaAlt: string | null;
   coverMediaType: "image" | "video" | "gif" | null;
   /**
    * issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items, INDEPENDENT
@@ -158,6 +159,7 @@ interface RpcPayload {
   currency: string;
   coverMediaUrl: string | null;
   coverMediaType: string | null;
+  coverMediaAlt: string | null;
   // issue #868 [cover-gallery] — RPC coverGallery json key (default []).
   coverGallery?: OfferingGalleryImage[] | null;
   venueText: string | null;
@@ -213,6 +215,7 @@ function mapPayload(p: RpcPayload): ConsumerExperienceDetail {
     timezone: p.timezone ?? "UTC",
     currency: p.currency ?? "USD",
     coverMediaUrl: p.coverMediaUrl ?? null,
+    coverMediaAlt: p.coverMediaAlt ?? null,
     coverMediaType: coverType(p.coverMediaType),
     // issue #868 [cover-gallery] — additive; [] on legacy/absent (rule 9).
     coverGallery: Array.isArray(p.coverGallery) ? p.coverGallery : [],

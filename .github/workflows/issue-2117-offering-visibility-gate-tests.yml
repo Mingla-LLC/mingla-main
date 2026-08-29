@@ -86,6 +86,7 @@ jobs:
               # issue #2728 -- the fix-forward definition must not land before
               # the pre-#2117 baseline; doing so contaminates the before-state.
               *20270605002728_issue_2728_ticket_sold_count_namespace.sql) continue ;;
+              *20270607002774_issue_2774_public_hero_alt.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

@@ -126,6 +126,7 @@ const mapDraftToPublicEvent = (draft: DraftEvent): PublicEventProps => {
     hideAddressUntilTicket: Boolean(draft.hideAddressUntilTicket),
     coverHue: draft.coverHue,
     coverMediaUrl: safeCoverMediaUrl,
+    coverMediaAlt: coverVideoUnsafe ? null : (draft.coverMediaAlt ?? null),
     coverMediaType:
       safeCoverMediaType === "image" ||
       safeCoverMediaType === "video" ||

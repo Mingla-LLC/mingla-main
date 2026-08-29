@@ -226,6 +226,8 @@ export const FoundationEventPreview: React.FC<FoundationEventPreviewProps> = ({
       coverHue={event.coverHue}
       // issue #868 [cover-gallery] — ADDITIONAL image/GIF gallery items.
       galleryImages={event.coverGallery}
+      heroAccessibilitySubject={event.name}
+      coverMediaAlt={event.coverMediaAlt}
       entranceAnimationKey={`event:${event.id}`}
       muted={muted}
       onToggleMute={onToggleMute}
