@@ -12,13 +12,252 @@ const MAX_OBSERVED_ITEMS = 20;
 const OBSERVATION_WINDOW_DAYS = 28;
 const RESERVED_MICROUSD = 50_000;
 export const GEMINI_MODEL_ID = "gemini-2.5-flash";
-export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.0";
+export const PROMPT_CONTRACT_VERSION = "competitor-brief-v3.1";
 export const PRICING_VERSION = "gemini-2.5-flash-standard-2026-08";
 export const MAX_SYNTHESIS_OUTPUT_TOKENS = 1_200;
 const MAX_SYNTHESIS_REQUEST_BYTES = 65_536;
 const PROVIDER_TIMEOUT_MS = 12_000;
 const SYNTHESIS_TIMEOUT_MS = 15_000;
 const WORKER_CLAIM_LIMIT = 3;
+export const PROVIDER_RESPONSE_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "what_changed",
+    "why_it_matters",
+    "worth_doing",
+    "decision",
+    "theme_signals",
+    "interpretation_meta",
+    "comparisons",
+    "action_plan",
+  ],
+  properties: {
+    what_changed: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "text", "source_id", "evidence_id", "confidence"],
+        properties: {
+          id: { type: "string" },
+          text: { type: "string" },
+          source_id: { type: "string" },
+          evidence_id: { type: "string" },
+          confidence: { type: "string", enum: ["observed"] },
+        },
+      },
+    },
+    why_it_matters: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["text", "evidence_ids", "confidence"],
+        properties: {
+          text: { type: "string" },
+          evidence_ids: { type: "array", items: { type: "string" } },
+          confidence: { type: "string", enum: ["interpretation"] },
+        },
+      },
+    },
+    worth_doing: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["id", "text", "kind", "confidence", "is_primary"],
+        properties: {
+          id: { type: "string" },
+          text: { type: "string" },
+          kind: { type: "string" },
+          confidence: { type: "string", enum: ["suggested_action"] },
+          is_primary: { type: "boolean" },
+          target_id: { type: "string" },
+        },
+      },
+    },
+    decision: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "class",
+        "confidence",
+        "headline",
+        "rationale",
+        "signal_ids",
+        "owner_fact_ids",
+      ],
+      properties: {
+        class: { type: "string", enum: ["watch", "opportunity", "act"] },
+        confidence: { type: "string", enum: ["high", "medium", "low"] },
+        headline: { type: "string" },
+        rationale: { type: "string" },
+        signal_ids: { type: "array", items: { type: "string" } },
+        owner_fact_ids: { type: "array", items: { type: "string" } },
+      },
+    },
+    theme_signals: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "kind",
+          "derivation",
+          "dimension",
+          "label",
+          "summary",
+          "source_id",
+          "evidence_ids",
+          "metrics",
+          "changed_paths",
+        ],
+        properties: {
+          id: { type: "string" },
+          kind: { type: "string", enum: ["theme"] },
+          derivation: { type: "string", enum: ["synthesis"] },
+          dimension: {
+            type: "string",
+            enum: [
+              "category",
+              "positioning",
+              "event_theme",
+              "offer",
+              "content_cadence",
+              "source_presence",
+            ],
+          },
+          label: { type: "string" },
+          summary: { type: "string" },
+          source_id: { type: "string" },
+          evidence_ids: { type: "array", items: { type: "string" } },
+          metrics: {
+            type: "object",
+            additionalProperties: false,
+            required: [
+              "posts_7d",
+              "posts_28d",
+              "images_28d",
+              "videos_28d",
+            ],
+            properties: {
+              posts_7d: { type: "integer", nullable: true },
+              posts_28d: { type: "integer", nullable: true },
+              images_28d: { type: "integer", nullable: true },
+              videos_28d: { type: "integer", nullable: true },
+            },
+          },
+          changed_paths: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+    interpretation_meta: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "index",
+          "signal_type",
+          "confidence",
+          "priority",
+          "signal_ids",
+          "owner_fact_ids",
+        ],
+        properties: {
+          index: { type: "integer" },
+          signal_type: {
+            type: "string",
+            enum: ["threat", "opportunity", "neutral"],
+          },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          priority: { type: "string", enum: ["high", "medium"] },
+          signal_ids: { type: "array", items: { type: "string" } },
+          owner_fact_ids: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+    comparisons: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "dimension",
+          "owner_text",
+          "competitor_text",
+          "outcome",
+          "confidence",
+          "signal_ids",
+          "owner_fact_ids",
+        ],
+        properties: {
+          id: { type: "string" },
+          dimension: {
+            type: "string",
+            enum: [
+              "category",
+              "positioning",
+              "event_theme",
+              "offer",
+              "content_cadence",
+              "source_presence",
+            ],
+          },
+          owner_text: { type: "string" },
+          competitor_text: { type: "string" },
+          outcome: {
+            type: "string",
+            enum: [
+              "owner_advantage",
+              "competitor_pressure",
+              "different",
+              "not_comparable",
+            ],
+          },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          signal_ids: { type: "array", items: { type: "string" } },
+          owner_fact_ids: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+    action_plan: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "index",
+          "action_id",
+          "timeframe",
+          "impact",
+          "confidence",
+          "order",
+          "is_primary",
+          "signal_ids",
+          "owner_fact_ids",
+        ],
+        properties: {
+          index: { type: "integer" },
+          action_id: { type: "string" },
+          timeframe: {
+            type: "string",
+            enum: ["this_week", "this_month", "bigger_project"],
+          },
+          impact: { type: "string", enum: ["high", "medium"] },
+          confidence: { type: "string", enum: ["high", "medium", "low"] },
+          order: { type: "integer" },
+          is_primary: { type: "boolean" },
+          signal_ids: { type: "array", items: { type: "string" } },
+          owner_fact_ids: { type: "array", items: { type: "string" } },
+        },
+      },
+    },
+  },
+} as const;
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -745,6 +984,171 @@ export function buildDecisionFoundation(
   return { signals: signals.slice(0, 6), signal_evidence: signalEvidence, owner_facts: ownerFacts.slice(0, 11) };
 }
 
+export function groundedDecisionComparisons(
+  value: unknown,
+  signals: Array<Record<string, unknown>>,
+  ownerFacts: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  const signalById = new Map(signals.map((item) => [String(item.id), item]));
+  const ownerById = new Map(ownerFacts.map((item) => [String(item.id), item]));
+  const allowedDimensions = new Set<DecisionDimension>([
+    "category",
+    "positioning",
+    "event_theme",
+    "offer",
+    "content_cadence",
+    "source_presence",
+  ]);
+  const accepted = (Array.isArray(value) ? value : []).filter((item) => {
+    if (!item || typeof item !== "object" || Array.isArray(item)) return false;
+    const record = item as Record<string, unknown>;
+    const signalIds = Array.isArray(record.signal_ids)
+      ? record.signal_ids.map(String)
+      : [];
+    const ownerIds = Array.isArray(record.owner_fact_ids)
+      ? record.owner_fact_ids.map(String)
+      : [];
+    const dimension = record.dimension as DecisionDimension;
+    return allowedDimensions.has(dimension) && signalIds.length > 0 &&
+      signalIds.every((id) => signalById.get(id)?.dimension === dimension) &&
+      ownerIds.every((id) => ownerById.get(id)?.dimension === dimension) &&
+      (record.outcome === "not_comparable" || ownerIds.length > 0);
+  }).slice(0, 5) as Array<Record<string, unknown>>;
+  if (accepted.length > 0) return accepted;
+  const signal = signals.find((item) =>
+    allowedDimensions.has(item.dimension as DecisionDimension) &&
+    typeof item.id === "string" && typeof item.summary === "string"
+  );
+  if (!signal) return [];
+  const dimension = signal.dimension as DecisionDimension;
+  const owner = ownerFacts.find((item) => item.dimension === dimension);
+  return [{
+    id: "c-grounded-1",
+    dimension,
+    owner_text: typeof owner?.text === "string"
+      ? owner.text.slice(0, 140)
+      : "No comparable verified Mingla venue signal",
+    competitor_text: String(signal.summary).slice(0, 140),
+    outcome: "not_comparable",
+    confidence: "high",
+    signal_ids: [signal.id],
+    owner_fact_ids: owner && typeof owner.id === "string" ? [owner.id] : [],
+  }];
+}
+
+export function groundedDecisionBindings(
+  parsed: Record<string, unknown> | null,
+  signals: Array<Record<string, unknown>>,
+  ownerFacts: Array<Record<string, unknown>>,
+  whyCount: number,
+  actions: Array<Record<string, unknown>>,
+): Pick<DecisionReport, "decision" | "interpretation_meta" | "action_plan"> {
+  const signalIds = new Set(
+    signals.flatMap((item) => typeof item.id === "string" ? [item.id] : []),
+  );
+  const ownerIds = new Set(
+    ownerFacts.flatMap((item) => typeof item.id === "string" ? [item.id] : []),
+  );
+  const boundedIds = (
+    value: unknown,
+    allowed: Set<string>,
+    fallback: string[] = [],
+  ) => {
+    const ids = Array.isArray(value)
+      ? [...new Set(value.filter((id): id is string =>
+        typeof id === "string" && allowed.has(id)
+      ))].slice(0, 3)
+      : [];
+    return ids.length > 0 ? ids : fallback;
+  };
+  const fallbackSignalIds = signals.flatMap((item) =>
+    typeof item.id === "string" ? [item.id] : []
+  ).slice(0, 1);
+  const decisionInput = parsed?.decision &&
+      typeof parsed.decision === "object" && !Array.isArray(parsed.decision)
+    ? parsed.decision as Record<string, unknown>
+    : {};
+  const decision = {
+    class: ["watch", "opportunity", "act"].includes(
+        String(decisionInput.class),
+      )
+      ? decisionInput.class
+      : "watch",
+    confidence: ["high", "medium", "low"].includes(
+        String(decisionInput.confidence),
+      )
+      ? decisionInput.confidence
+      : "low",
+    headline: String(decisionInput.headline ?? "Competitor signal reviewed")
+      .slice(0, 160),
+    rationale: String(
+      decisionInput.rationale ??
+        "The available public signal should be reviewed against the venue's current plan.",
+    ).slice(0, 240),
+    signal_ids: boundedIds(
+      decisionInput.signal_ids,
+      signalIds,
+      fallbackSignalIds,
+    ),
+    owner_fact_ids: boundedIds(decisionInput.owner_fact_ids, ownerIds),
+  };
+  const interpretationInput = Array.isArray(parsed?.interpretation_meta)
+    ? parsed.interpretation_meta
+    : [];
+  const interpretation_meta = Array.from({ length: whyCount }, (_, index) => {
+    const raw = interpretationInput[index] &&
+        typeof interpretationInput[index] === "object" &&
+        !Array.isArray(interpretationInput[index])
+      ? interpretationInput[index] as Record<string, unknown>
+      : {};
+    return {
+      index,
+      signal_type: ["threat", "opportunity", "neutral"].includes(
+          String(raw.signal_type),
+        )
+        ? raw.signal_type
+        : "neutral",
+      confidence: ["high", "medium", "low"].includes(String(raw.confidence))
+        ? raw.confidence
+        : "low",
+      priority: ["high", "medium"].includes(String(raw.priority))
+        ? raw.priority
+        : "medium",
+      signal_ids: boundedIds(raw.signal_ids, signalIds, fallbackSignalIds),
+      owner_fact_ids: boundedIds(raw.owner_fact_ids, ownerIds),
+    };
+  });
+  const actionInput = Array.isArray(parsed?.action_plan)
+    ? parsed.action_plan
+    : [];
+  const action_plan = actions.map((action, index) => {
+    const raw = actionInput[index] && typeof actionInput[index] === "object" &&
+        !Array.isArray(actionInput[index])
+      ? actionInput[index] as Record<string, unknown>
+      : {};
+    return {
+      index,
+      action_id: action.id,
+      timeframe: ["this_week", "this_month", "bigger_project"].includes(
+          String(raw.timeframe),
+        )
+        ? raw.timeframe
+        : index === 0 ? "this_week" : "this_month",
+      impact: ["high", "medium"].includes(String(raw.impact))
+        ? raw.impact
+        : "medium",
+      confidence: ["high", "medium", "low"].includes(String(raw.confidence))
+        ? raw.confidence
+        : "low",
+      order: index + 1,
+      is_primary: action.is_primary,
+      signal_ids: boundedIds(raw.signal_ids, signalIds, fallbackSignalIds),
+      owner_fact_ids: boundedIds(raw.owner_fact_ids, ownerIds),
+    };
+  });
+  return { decision, interpretation_meta, action_plan };
+}
+
 export async function synthesizeBrief(
   name: string,
   city: string | null,
@@ -777,6 +1181,8 @@ export async function synthesizeBrief(
   }));
   const comparable = comparisons.filter((item) => item.before !== null);
   const firstCheck = comparable.length === 0;
+  const baselineOnly = firstCheck ||
+    comparable.every((item) => item.changedPaths.length === 0);
   const baselineFacts = observations.map((observation, index) => ({
     id: `f${index + 1}`,
     text: evidence[index].observation,
@@ -788,11 +1194,11 @@ export async function synthesizeBrief(
     name,
     city,
     first_check: firstCheck,
-    must_not_claim_change: firstCheck,
+    must_not_claim_change: baselineOnly,
     before_after: comparisons.map((item, index) => ({
       source_id: item.sourceId,
       kind: item.kind,
-      changed_paths: firstCheck ? [] : item.changedPaths,
+      changed_paths: baselineOnly ? [] : item.changedPaths,
       evidence_id: `e${index + 1}`,
     })),
     deterministic_decision_foundation: foundation,
@@ -807,6 +1213,24 @@ export async function synthesizeBrief(
       only_claim_changes_present_in_changed_paths: true,
       interpretations_and_actions_must_cite_venue_context_or_say_no_comparable_signal:
         true,
+      output_shape: {
+        what_changed:
+          "1-3 objects: id,text,source_id,evidence_id,confidence=observed",
+        why_it_matters:
+          "1-2 objects: text,evidence_ids,confidence=interpretation",
+        worth_doing:
+          "1-3 objects: id,text,kind,confidence=suggested_action,is_primary,target_id(optional)",
+        decision:
+          "object: class,confidence,headline,rationale,signal_ids,owner_fact_ids",
+        theme_signals:
+          "0-2 objects: id,kind=theme,derivation=synthesis,dimension,label,summary,source_id,evidence_ids,metrics,changed_paths=[]",
+        interpretation_meta:
+          "one per why_it_matters: index,signal_type,confidence,priority,signal_ids,owner_fact_ids",
+        comparisons:
+          "0-5 objects: id,dimension,owner_text,competitor_text,outcome,confidence,signal_ids,owner_fact_ids",
+        action_plan:
+          "one per worth_doing: index,action_id,timeframe,impact,confidence,order,is_primary,signal_ids,owner_fact_ids",
+      },
     },
   };
   const fingerprint = await sha256(canonical(prompt));
@@ -826,7 +1250,7 @@ export async function synthesizeBrief(
     if (cached?.result) {
       const reused = {
         ...cached.result,
-        what_changed: firstCheck
+        what_changed: baselineOnly
           ? sanitizeFirstCheckFacts(cached.result.what_changed, baselineFacts)
           : cached.result.what_changed,
         evidence,
@@ -856,129 +1280,6 @@ export async function synthesizeBrief(
   const key = Deno.env.get("GEMINI_API_KEY") ??
     Deno.env.get("GOOGLE_AI_API_KEY") ?? "";
   if (!key) throw new Error("model_configuration_missing");
-  const responseSchema = {
-    type: "object",
-    additionalProperties: false,
-    required: ["what_changed", "why_it_matters", "worth_doing", "decision", "theme_signals", "interpretation_meta", "comparisons", "action_plan"],
-    properties: {
-      decision: {
-        type: "object", additionalProperties: false,
-        required: ["class", "confidence", "headline", "rationale", "signal_ids", "owner_fact_ids"],
-        properties: {
-          class: { type: "string", enum: ["watch", "opportunity", "act"] },
-          confidence: { type: "string", enum: ["high", "medium", "low"] },
-          headline: { type: "string" }, rationale: { type: "string" },
-          signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
-          owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } },
-        },
-      },
-      theme_signals: {
-        type: "array", maxItems: 2,
-        items: { type: "object", additionalProperties: false,
-          required: ["id", "kind", "derivation", "dimension", "label", "summary", "source_id", "evidence_ids", "metrics", "changed_paths"],
-          properties: {
-            id: { type: "string" }, kind: { type: "string", enum: ["theme"] },
-            derivation: { type: "string", enum: ["synthesis"] },
-            dimension: { type: "string", enum: ["category", "positioning", "event_theme", "offer", "content_cadence", "source_presence"] },
-            label: { type: "string" }, summary: { type: "string" }, source_id: { type: "string" },
-            evidence_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
-            metrics: { type: "object", additionalProperties: false, required: ["posts_7d", "posts_28d", "images_28d", "videos_28d"],
-              properties: {
-                posts_7d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-                posts_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-                images_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-                videos_28d: { type: "integer", nullable: true, minimum: 0, maximum: 20 },
-              } },
-            changed_paths: { type: "array", maxItems: 0, items: { type: "string" } },
-          },
-        },
-      },
-      interpretation_meta: {
-        type: "array", minItems: 1, maxItems: 2,
-        items: { type: "object", additionalProperties: false,
-          required: ["index", "signal_type", "confidence", "priority", "signal_ids", "owner_fact_ids"],
-          properties: { index: { type: "integer" }, signal_type: { type: "string", enum: ["threat", "opportunity", "neutral"] },
-            confidence: { type: "string", enum: ["high", "medium", "low"] }, priority: { type: "string", enum: ["high", "medium"] },
-            signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
-            owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } } },
-        },
-      },
-      comparisons: {
-        type: "array", maxItems: 5,
-        items: { type: "object", additionalProperties: false,
-          required: ["id", "dimension", "owner_text", "competitor_text", "outcome", "confidence", "signal_ids", "owner_fact_ids"],
-          properties: { id: { type: "string" }, dimension: { type: "string", enum: ["category", "positioning", "event_theme", "offer", "content_cadence", "source_presence"] },
-            owner_text: { type: "string" }, competitor_text: { type: "string" }, outcome: { type: "string", enum: ["owner_advantage", "competitor_pressure", "different", "not_comparable"] },
-            confidence: { type: "string", enum: ["high", "medium", "low"] }, signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
-            owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } } },
-        },
-      },
-      action_plan: {
-        type: "array", minItems: 1, maxItems: 3,
-        items: { type: "object", additionalProperties: false,
-          required: ["index", "action_id", "timeframe", "impact", "confidence", "order", "is_primary", "signal_ids", "owner_fact_ids"],
-          properties: { index: { type: "integer" }, action_id: { type: "string" }, timeframe: { type: "string", enum: ["this_week", "this_month", "bigger_project"] },
-            impact: { type: "string", enum: ["high", "medium"] }, confidence: { type: "string", enum: ["high", "medium", "low"] },
-            order: { type: "integer" }, is_primary: { type: "boolean" }, signal_ids: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
-            owner_fact_ids: { type: "array", maxItems: 3, items: { type: "string" } } },
-        },
-      },
-      what_changed: {
-        type: "array",
-        minItems: 1,
-        maxItems: 3,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["id", "text", "source_id", "evidence_id", "confidence"],
-          properties: {
-            id: { type: "string" },
-            text: { type: "string" },
-            source_id: { type: "string" },
-            evidence_id: { type: "string" },
-            confidence: { type: "string", enum: ["observed"] },
-          },
-        },
-      },
-      why_it_matters: {
-        type: "array",
-        minItems: 1,
-        maxItems: 2,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["text", "evidence_ids", "confidence"],
-          properties: {
-            text: { type: "string" },
-            evidence_ids: {
-              type: "array",
-              minItems: 1,
-              items: { type: "string" },
-            },
-            confidence: { type: "string", enum: ["interpretation"] },
-          },
-        },
-      },
-      worth_doing: {
-        type: "array",
-        minItems: 1,
-        maxItems: 3,
-        items: {
-          type: "object",
-          additionalProperties: false,
-          required: ["id", "text", "kind", "confidence", "is_primary"],
-          properties: {
-            id: { type: "string" },
-            text: { type: "string" },
-            kind: { type: "string" },
-            confidence: { type: "string", enum: ["suggested_action"] },
-            is_primary: { type: "boolean" },
-            target_id: { type: "string" },
-          },
-        },
-      },
-    },
-  };
   const requestBody = {
     contents: [{
       parts: [{
@@ -990,7 +1291,7 @@ export async function synthesizeBrief(
     }],
     generationConfig: {
       responseMimeType: "application/json",
-      responseJsonSchema: responseSchema,
+      responseJsonSchema: PROVIDER_RESPONSE_SCHEMA,
       temperature: 0,
       seed: parseInt(fingerprint.slice(0, 8), 16) % 2147483647,
       thinkingConfig: { thinkingBudget: 0 },
@@ -1089,20 +1390,38 @@ export async function synthesizeBrief(
   const themeSignals = Array.isArray(parsed?.theme_signals)
     ? parsed.theme_signals.slice(0, Math.max(0, 6 - foundation.signals.length))
     : [];
+  const decisionSignals = [...foundation.signals, ...themeSignals];
+  const whyItMatters = Array.isArray(parsed?.why_it_matters)
+    ? parsed.why_it_matters.slice(0, 2)
+    : [];
+  const worthDoing = Array.isArray(parsed?.worth_doing)
+    ? parsed.worth_doing.slice(0, 3)
+    : [];
+  const bindings = groundedDecisionBindings(
+    parsed,
+    decisionSignals,
+    foundation.owner_facts,
+    whyItMatters.length,
+    worthDoing,
+  );
   const candidate = {
-    why_it_matters: Array.isArray(parsed?.why_it_matters) ? parsed.why_it_matters : [],
-    worth_doing: Array.isArray(parsed?.worth_doing) ? parsed.worth_doing : [],
-    what_changed: firstCheck
+    why_it_matters: whyItMatters,
+    worth_doing: worthDoing,
+    what_changed: baselineOnly
       ? sanitizeFirstCheckFacts(parsed?.what_changed, baselineFacts)
-      : Array.isArray(parsed?.what_changed) ? parsed.what_changed : [],
+      : Array.isArray(parsed?.what_changed) ? parsed.what_changed.slice(0, 3) : [],
     evidence,
     decision_report: {
-      decision: parsed?.decision,
-      signals: [...foundation.signals, ...themeSignals],
+      decision: bindings.decision,
+      signals: decisionSignals,
       signal_evidence: foundation.signal_evidence,
-      interpretation_meta: parsed?.interpretation_meta,
-      comparisons: parsed?.comparisons,
-      action_plan: parsed?.action_plan,
+      interpretation_meta: bindings.interpretation_meta,
+      comparisons: groundedDecisionComparisons(
+        parsed?.comparisons,
+        decisionSignals,
+        foundation.owner_facts,
+      ),
+      action_plan: bindings.action_plan,
       owner_facts: foundation.owner_facts,
     },
   };
