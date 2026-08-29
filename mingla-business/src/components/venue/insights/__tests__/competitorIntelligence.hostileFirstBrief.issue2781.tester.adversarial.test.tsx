@@ -155,7 +155,6 @@ describe("issue 2781 hostile first-brief client boundary", () => {
           visible
           onClose={jest.fn()}
           brandId="brand-1"
-          venueName="Gogi Lagos"
           row={row}
         />,
       );
