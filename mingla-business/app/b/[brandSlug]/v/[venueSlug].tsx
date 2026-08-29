@@ -87,7 +87,6 @@ import {
 } from "../../../../src/hooks/usePublicEvents";
 import { usePublicMenus } from "../../../../src/hooks/useMenus";
 import { usePublicStayDetail } from "../../../../src/hooks/usePublicStayDetail";
-import { reportNonFatal } from "../../../../src/diagnostics/reportNonFatal";
 import { PublicVenueNotFound } from "../../../../src/components/venue/PublicVenueNotFound";
 import { PublicVenueReservationSheet } from "../../../../src/components/venue/PublicVenueReservationSheet";
 import { GuestVenueReservation } from "../../../../src/components/venue/GuestVenueReservation";

@@ -83,6 +83,11 @@ function Harness(): React.ReactElement {
         venue={VENUE}
         discoveryPrice={null}
         menu={[]}
+        menuLifecycle={{
+          state: "ready",
+          isFetching: false,
+          onRetry: () => undefined,
+        }}
         reservable={{ reservable: true, venueId: VENUE.id, currency: "NGN" }}
         reservabilityState="ready"
         initialTab="reservations"

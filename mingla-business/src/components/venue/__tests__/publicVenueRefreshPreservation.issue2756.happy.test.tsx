@@ -12,6 +12,16 @@ import { classifyPublicVenueRouteState } from "@mingla/brand-rendering/publicVen
   true;
 process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL = "https://host.usemingla.com";
 
+jest.mock("react-native", () => {
+  const actual = jest.requireActual(
+    "react-native",
+  ) as typeof import("react-native");
+  return {
+    ...actual,
+    AccessibilityInfo: { announceForAccessibility: jest.fn() },
+  };
+});
+
 interface QueryState {
   data: Record<string, unknown> | null;
   isLoading: boolean;
@@ -104,7 +114,13 @@ jest.mock("../../../hooks/usePublicEvents", () => ({
 }));
 jest.mock("../../../hooks/useMenus", () => ({
   __esModule: true,
-  usePublicMenus: () => ({ data: [] }),
+  usePublicMenus: () => ({
+    data: [],
+    isLoading: false,
+    isFetching: false,
+    isError: false,
+    refetch: resolvedRefetch,
+  }),
 }));
 jest.mock("../../../hooks/usePublicStayDetail", () => ({
   __esModule: true,
@@ -232,6 +248,7 @@ const businessVenue = (name = "Gogi"): Record<string, unknown> => ({
 const consumerVenue = (name = "Gogi"): Record<string, unknown> => ({
   ...businessVenue(name),
   menu: [],
+  menuState: "ready",
   menuWindows: {},
   discoveryPrice: null,
   reservability: { state: "available", venueId: "venue-1", currency: "NGN" },

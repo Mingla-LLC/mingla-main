@@ -53,7 +53,7 @@ config.resolver.resolveRequest = (context, moduleName, platform) => {
   return (previous ?? context.resolveRequest)(context, moduleName, platform);
 };
 await Metro.runBuild(config, {
-  entry: path.join(here, "entry.tsx"),
+  entry: path.join(here, "__fixtures__/public-venue-refresh-focus.tsx"),
   platform: "web",
   minify: false,
   dev: true,

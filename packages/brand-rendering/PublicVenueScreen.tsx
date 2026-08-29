@@ -1138,7 +1138,7 @@ export const PublicVenueScreen = ({
     // Reservability changes normalize through ENVIRONMENT_CHANGED below; they
     // must not replay the route's initial tab over a user's current selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMenu, initialTab]);
+  }, [initialTab]);
 
   React.useEffect(() => {
     dispatchReservationUi({
