@@ -220,3 +220,41 @@ Deno.test("#2715 source-upload CAS loss rereads and projects the canonical winne
     globalThis.fetch = old;
   }
 });
+
+Deno.test("#2715 completed TUS with pending Bunny storage metadata stays retryable canonical truth", async () => {
+  const h = harness({ offset: 1024 });
+  h.deps.bunnyGetVideo = () =>
+    Promise.resolve({
+      ok: true as const,
+      video: {
+        guid: "guid",
+        status: 0,
+        length: 0,
+        storageSize: 0,
+        availableResolutions: null,
+        encodeProgress: 0,
+        outputCodecs: null,
+        originalHash: null,
+      },
+    });
+  const old = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(null, {
+        status: 200,
+        headers: { "upload-offset": "1024", "upload-length": "1024" },
+      }),
+    )) as typeof fetch;
+  try {
+    const response = await handleEventCoverVideoSourceUploaded(
+      request(),
+      h.deps as never,
+    );
+    const body = await response.json();
+    assert(response.status === 200, `provider registration lag returned ${response.status}`);
+    assert(body.status === "source_uploading", "canonical retryable status was not preserved");
+    assert(h.updates.length === 0, "storage metadata lag mutated source truth");
+  } finally {
+    globalThis.fetch = old;
+  }
+});
