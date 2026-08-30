@@ -164,6 +164,51 @@ Deno.test("#2715 capacity refusal cannot accept or supersede a replacement opera
   assert(providerCalls === 0, "capacity loser allocated a provider asset");
 });
 
+Deno.test("#2715 all-null composite cannot masquerade as replay or bypass capacity", async () => {
+  const acceptFlags: unknown[] = [];
+  let providerCalls = 0;
+  const client = {
+    rpc: (name: string, args: Record<string, unknown>) => {
+      assert(name === "cover_video_create_or_replay_job", `unexpected RPC ${name}`);
+      acceptFlags.push(args.p_accept_new);
+      return Promise.resolve({
+        data: {
+          id: null,
+          status: null,
+          provider: null,
+          brand_id: null,
+          event_id: null,
+          target_kind: null,
+        },
+        error: null,
+      });
+    },
+  };
+  const response = await handleEventCoverVideoUploadIntent(intentRequest(), {
+    ...commonIntentDeps,
+    bunnyCreateVideo: () => {
+      providerCalls += 1;
+      return Promise.resolve({ ok: true as const, guid: GUID });
+    },
+    checkBunnyCapacity: () =>
+      Promise.resolve({
+        blocked: true,
+        reason: "capacity_reached",
+        usedPercent: 99,
+      }),
+    serviceRoleClient: () => client,
+  } as never);
+  const payload = await response.json();
+
+  assert(response.status === 503, `all-null projection returned ${response.status}`);
+  assert(payload.error === "capacity_reached", "all-null projection bypassed capacity truth");
+  assert(
+    acceptFlags.length === 1 && acceptFlags[0] === false,
+    `all-null projection accepted before capacity: ${JSON.stringify(acceptFlags)}`,
+  );
+  assert(providerCalls === 0, "all-null projection reached provider allocation");
+});
+
 Deno.test("#2715 terminal operation replay returns canonical truth without provider work", async () => {
   let capacityCalls = 0;
   let providerCalls = 0;

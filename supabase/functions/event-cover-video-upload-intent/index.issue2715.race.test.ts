@@ -249,6 +249,115 @@ Deno.test("#2715 edge-first rollout returns retryable 503 with zero provider cal
   );
 });
 
+Deno.test("#2715 a PostgREST all-null composite means no replay and proceeds to one allocation", async () => {
+  const canonical: Record<string, unknown> = {
+    id: "77777777-7777-4777-8777-777777777777",
+    status: "source_uploading",
+    provider: "bunny",
+    brand_id: body.brandId,
+    event_id: body.eventId,
+    target_kind: "event",
+    apply_mode: "published_manual",
+    source_bytes: body.sourceBytes,
+    source_asset_id: null,
+    tus_resource_url: null,
+    tus_upload_offset: 0,
+  };
+  let accepted = 0, creates = 0;
+  const client = {
+    rpc: async (name: string, args: Record<string, unknown>) => {
+      if (name === "cover_video_create_or_replay_job") {
+        if (args.p_accept_new === false) {
+          return {
+            data: {
+              id: null,
+              status: null,
+              provider: null,
+              brand_id: null,
+              event_id: null,
+              target_kind: null,
+            },
+            error: null,
+          };
+        }
+        accepted += 1;
+        return { data: { ...canonical }, error: null };
+      }
+      if (name === "cover_video_claim_provider_allocation") {
+        return {
+          data: { ...canonical, provider_allocation_token: "lease" },
+          error: null,
+        };
+      }
+      if (name === "cover_video_begin_provider_create") {
+        return {
+          data: {
+            ...canonical,
+            provider_allocation_token: "lease",
+            provider_allocation_identity: canonical.id,
+          },
+          error: null,
+        };
+      }
+      if (name === "cover_video_record_provider_allocation_attempt") {
+        canonical.source_asset_id = args.p_source_asset_id;
+        return {
+          data: { ...canonical, provider_allocation_token: "lease" },
+          error: null,
+        };
+      }
+      if (name === "cover_video_renew_provider_allocation") {
+        return { data: true, error: null };
+      }
+      if (name === "cover_video_commit_provider_allocation") {
+        canonical.tus_resource_url = args.p_tus_url;
+        return { data: { ...canonical }, error: null };
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
+    from: () => ({
+      select: () => ({
+        eq: () => ({ maybeSingle: () => Promise.resolve({ data: canonical, error: null }) }),
+      }),
+    }),
+  };
+  const deps = {
+    bunnyCreateVideo: async () => {
+      creates += 1;
+      return { ok: true as const, guid: "null-composite-guid" };
+    },
+    bunnyFindVideoByTitle: () => Promise.resolve({ ok: true as const, guid: null }),
+    bunnyPresignTusUpload: () => Promise.resolve({
+      tusEndpoint: "https://tus",
+      libraryId: "lib",
+      videoId: "null-composite-guid",
+      authorizationSignature: "sig",
+      authorizationExpire: 2_000_000_000,
+    }),
+    checkBunnyCapacity: () => Promise.resolve({ blocked: false, reason: "under_cap", usedPercent: 1 }),
+    destroyCoverVideoAsset: () => Promise.resolve({ ok: true as const }),
+    providerConfigured: () => true,
+    reapSupersededBunnyAssets: () => Promise.resolve(),
+    requireCoverVideoTargetManager: () => Promise.resolve({ target: {} }),
+    requireUserId: () => Promise.resolve(USER),
+    serviceRoleClient: () => client,
+  };
+  const old = globalThis.fetch;
+  globalThis.fetch = (() => Promise.resolve(new Response(null, {
+    status: 201,
+    headers: { location: "/resource" },
+  }))) as typeof fetch;
+  try {
+    const response = await handleEventCoverVideoUploadIntent(request(), deps as never);
+    const payload = await response.json();
+    assert(response.status === 200, `all-null composite crashed or failed: ${response.status}`);
+    assert(payload.jobId === canonical.id && payload.upload?.protocol === "tus", "new canonical descriptor missing");
+    assert(accepted === 1 && creates === 1, "all-null composite did not allocate exactly once");
+  } finally {
+    globalThis.fetch = old;
+  }
+});
+
 Deno.test("#2715 old clients without immutable identity receive 426 before database or provider access", async () => {
   let dbCalls = 0, providerCalls = 0;
   const legacy = {

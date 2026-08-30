@@ -276,6 +276,17 @@ const isMissingDeterministicContract = (
     )
   );
 
+// PostgREST serializes a SQL function returning a nullable composite as an
+// object whose every field is null, not JavaScript null. Treat only a row with
+// a concrete canonical identity as a replay; otherwise the first capability
+// probe would try to format the all-null projection and crash before accepting
+// a new operation.
+const isConcreteJobRow = (value: unknown): value is Record<string, unknown> =>
+  value !== null && typeof value === "object" &&
+  typeof (value as { id?: unknown }).id === "string" &&
+  (value as { id: string }).id.length > 0 &&
+  typeof (value as { status?: unknown }).status === "string";
+
 const withAllocationLease = async <T>(
   supabase: ReturnType<typeof serviceRoleClient>,
   jobId: string,
@@ -657,7 +668,8 @@ export const handleEventCoverVideoUploadIntent = async (
       500,
     );
   }
-  const replayed = job !== null;
+  const replayed = isConcreteJobRow(job);
+  if (!replayed) job = null;
   if (replayed && NO_UPLOAD_REPLAY_STATUSES.has(String(job.status))) {
     logInfo(requestId, "terminal_replay", {
       jobId: job.id,
@@ -710,7 +722,7 @@ export const handleEventCoverVideoUploadIntent = async (
     });
     job = accepted.data;
     insertError = accepted.error;
-    if (insertError || !job) {
+    if (insertError || !isConcreteJobRow(job)) {
       if (isMissingDeterministicContract(insertError)) {
         return jsonResponse({
           error: "upload_temporarily_unavailable",
