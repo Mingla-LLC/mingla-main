@@ -4,11 +4,11 @@
  *
  * Enforces the proposed Home mobile lock-pane invariant:
  *   - populated mobile Home has exactly one scrolling surface: FlatList
- *   - Analytics -> Live -> Upcoming order is preserved on wide and mobile
+ *   - Last 7 days -> Analytics -> Live -> Recent order is preserved on wide and mobile
  *   - the removed Active events KPI cannot return
  *   - KPI/section-header styles and spacing contract remain explicit
  *   - pull-to-refresh stays on the FlatList and refreshes Analytics
- *   - upcoming row rendering stays extracted to UpcomingListItem
+ *   - Recent row rendering stays extracted to RecentRow/EventCoverMedia
  */
 
 import { existsSync, readFileSync } from "node:fs";
@@ -20,13 +20,13 @@ const __dirname = dirname(__filename);
 const REPO_ROOT = join(__dirname, "..", "..", "..");
 
 const HOME_PATH = join(REPO_ROOT, "mingla-business", "app", "(tabs)", "home.tsx");
-const UPCOMING_ITEM_PATH = join(
+const RECENT_ROW_PATH = join(
   REPO_ROOT,
   "mingla-business",
   "src",
   "components",
   "home",
-  "UpcomingListItem.tsx",
+  "RecentRow.tsx",
 );
 
 const BEGIN = "// orch-0974-lock-pane:begin-mobile-populated";
@@ -95,7 +95,7 @@ function extractStyleBlock(source, key) {
 }
 
 const homeSource = readRequired(HOME_PATH);
-const upcomingItemSource = readRequired(UPCOMING_ITEM_PATH);
+const recentRowSource = readRequired(RECENT_ROW_PATH);
 
 if (homeSource.length > 0) {
   const homeCode = stripComments(homeSource);
@@ -120,35 +120,24 @@ if (homeSource.length > 0) {
     }
 
     const flatListIndex = scoped.indexOf("<FlatList");
-    const flatListWindow = scoped
-      .slice(flatListIndex)
-      .split("\n")
-      .slice(0, 31)
-      .join("\n");
-    if (flatListIndex === -1 || !flatListWindow.includes("refreshControl=")) {
+    if (flatListIndex === -1 || !scoped.includes("refreshControl=")) {
       fail(
         "C4: refresh-control-on-list",
-        "The mobile populated FlatList must carry refreshControl= within 30 lines of its opening tag.",
+        "The mobile populated FlatList must carry refreshControl=.",
       );
     }
-    for (const forbidden of [
-      "AnalyticsHomeTile",
-      "styles.mobileKpiStack",
-      "renderLiveSection()",
-      "LiveOfferingCard",
-      "liveCarousel",
-    ]) {
-      if (scopedCode.includes(forbidden)) {
-        fail(
-          "C6: marker-pane-upcoming-only",
-          `The marker-bounded Upcoming pane must not contain ${forbidden}.`,
-        );
-      }
+    if (!scopedCode.includes('testID="home-mobile-scroll"')) {
+      fail(
+        "C1: single-scrollable-surface-mobile-populated",
+        "The marker-bounded mobile FlatList must own testID home-mobile-scroll.",
+      );
     }
-    assertOrdered("C6: marker-pane-upcoming-only", scopedCode, [
-      ["Upcoming header", "<Text style={styles.sectionTitle}>Upcoming</Text>"],
-      ["single FlatList", "<FlatList"],
-      ["non-live Upcoming data", "data={upcoming.nonLiveItems}"],
+    assertOrdered("C8: mobile-order", scopedCode, [
+      ["conditional Last 7 days", "{showRevenueTile ? ("],
+      ["Last 7 days tile", 'label="Last 7 days"'],
+      ["mobile Analytics tile", "<AnalyticsHomeTile"],
+      ["mobile Live section", "{renderLiveSection()}"],
+      ["Recent header", "style={styles.mobileRecentHeaderWrap}"],
     ]);
   }
 
@@ -167,43 +156,25 @@ if (homeSource.length > 0) {
     }
   }
 
-  const wideStart = homeCode.indexOf("{isWideDesktop ? (");
-  const mobileStart = homeCode.indexOf(") : currentBrand === null ? null : (");
+  const desktopRecent = homeSource.indexOf('testID="home-desktop-recent-scroll"');
+  const wideStart = homeSource.lastIndexOf("{isWideDesktop ? (", desktopRecent);
+  const mobileStart = beginIndex;
   if (wideStart === -1 || mobileStart === -1 || mobileStart <= wideStart) {
     fail(
       "C8: responsive-order",
       "Could not isolate the real wide and mobile Home JSX branches.",
     );
   } else {
-    const wide = homeCode.slice(wideStart, mobileStart);
-    const mobile = homeCode.slice(mobileStart);
+    const wide = stripComments(homeSource.slice(wideStart, mobileStart));
     assertOrdered("C8: wide-order", wide, [
       ["wide KPI row", "style={styles.desktopKpiGrid}"],
       ["conditional Last 7 days", "{showRevenueTile ? ("],
       ["Last 7 days tile", 'label="Last 7 days"'],
       ["wide Analytics tile", "<AnalyticsHomeTile"],
       ["wide Live section", "{renderLiveSection()}"],
-      ["wide Upcoming section", "style={styles.desktopUpcomingPane}"],
+      ["wide Recent section", "style={styles.desktopUpcomingPane}"],
+      ["independent desktop Recent scroll", 'testID="home-desktop-recent-scroll"'],
     ]);
-    assertOrdered("C8: mobile-order", mobile, [
-      ["mobile KPI outer", "style={styles.mobileKpiOuter}"],
-      ["mobile KPI stack", "style={styles.mobileKpiStack}"],
-      ["conditional Last 7 days", "{showRevenueTile ? ("],
-      ["Last 7 days tile", 'label="Last 7 days"'],
-      ["mobile Analytics tile", "<AnalyticsHomeTile"],
-      ["mobile Live section", "{renderLiveSection()}"],
-    ]);
-    const mobileLive = homeSource.lastIndexOf(
-      "{renderLiveSection()}",
-      beginIndex,
-    );
-    const mobileMarker = beginIndex;
-    if (mobileLive === -1 || mobileMarker === -1 || mobileMarker <= mobileLive) {
-      fail(
-        "C8: mobile-order",
-        "Mobile begin marker must follow Analytics and the Live section.",
-      );
-    }
   }
 
   if (countToken(homeCode, "<AnalyticsHomeTile") !== 2) {
@@ -228,10 +199,10 @@ if (homeSource.length > 0) {
       "Home refresh must invalidate the current brand's mingla-drove Analytics key.",
     );
   }
-  if (!homeCode.includes("data={upcoming.nonLiveItems}")) {
+  if (!homeCode.includes("data={recent.rows.slice(0, 10)}")) {
     fail(
-      "C5: upcoming-list-item-extracted",
-      "The mobile Upcoming FlatList must retain upcoming.nonLiveItems as its source.",
+      "C5: recent-row-extracted",
+      "The mobile Recent FlatList must use the bounded recent.rows slice as its source.",
     );
   }
 
@@ -279,21 +250,21 @@ if (homeSource.length > 0) {
     );
   }
 
-  if (!homeSource.includes("UpcomingListItem")) {
+  if (!homeSource.includes("RecentRow")) {
     fail(
-      "C5: upcoming-list-item-extracted",
-      `${rel(HOME_PATH)} must import and render UpcomingListItem.`,
+      "C5: recent-row-extracted",
+      `${rel(HOME_PATH)} must import and render RecentRow.`,
     );
   }
 }
 
 if (
-  upcomingItemSource.length > 0 &&
-  !upcomingItemSource.includes("export interface UpcomingListItemProps")
+  recentRowSource.length > 0 &&
+  !recentRowSource.includes("<EventCoverMedia")
 ) {
   fail(
-    "C5: upcoming-list-item-extracted",
-    `${rel(UPCOMING_ITEM_PATH)} must export UpcomingListItemProps.`,
+    "C5: recent-row-extracted",
+    `${rel(RECENT_ROW_PATH)} must render EventCoverMedia.`,
   );
 }
 
@@ -304,6 +275,6 @@ if (violations === 0) {
 
 console.error(`[ORCH-0974] FAIL — ${violations} violation(s).`);
 console.error(
-  "See: Mingla_Artifacts/specs/SPEC_ORCH-0974_HOME_MOBILE_SECTION_LOCK_AND_SPACING.md §10.",
+  "See issue #2794 SPEC Amendment 6 for the current Home lock-pane contract.",
 );
 process.exit(1);

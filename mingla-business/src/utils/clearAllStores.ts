@@ -30,6 +30,7 @@ import { useNotificationPrefsStore } from "../store/notificationPrefsStore";
 import { useLiveSectionCollapseStore } from "../store/liveSectionCollapseStore";
 import { useTodoToggleCollapseStore } from "../store/todoToggleCollapseStore";
 import { useAriConversationSelectionStore } from "../store/ariConversationSelectionStore";
+import { useBusinessRecentStore } from "../store/businessRecentStore";
 
 export const clearAllStores = (): void => {
   useCurrentBrandStore.getState().reset();
@@ -47,4 +48,5 @@ export const clearAllStores = (): void => {
   useLiveSectionCollapseStore.getState().reset(); // NEW ORCH-1143 — Constitution #6 (live-section accordion collapse)
   useTodoToggleCollapseStore.getState().reset(); // NEW #882 — Constitution #6 (todo-toggle position)
   useAriConversationSelectionStore.getState().reset(); // #1985 — account+brand Ari pointer must not survive sign-out
+  useBusinessRecentStore.getState().reset(); // #2794 — account+brand Recent pointer queue must not survive sign-out
 };

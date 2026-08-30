@@ -296,15 +296,19 @@ module.exports = {
     //   copy, the sessionStorage negative, and the no-dead-end-UI rule) are dark inside the covered
     //   file. All hold today. Recorded in #1850; outside what a file-level ledger can decide.
     "[/\\\\]home\\.orch_0974\\.test\\.tsx$", // invariant -> updated orch-0974-home-mobile-lock-pane.mjs
-    // moved: app/(tabs)/home.tsx, src/components/home/UpcomingListItem.tsx
-    // note: FILE fully covered, ASSERTIONS are not — the pair of 0974 suites kept 61 assertions as 10.
+    // moved: app/(tabs)/home.tsx
+    // dropped: src/components/home/UpcomingListItem.tsx — #2794 replaced Home Upcoming rows with
+    //   RecentRow.tsx; orch-0974-home-mobile-lock-pane.mjs owns the successor EventCoverMedia contract
+    // note: Home remains file-covered, ASSERTIONS are not — the pair of 0974 suites kept 61 assertions as 10.
     //   To-do toggle wiring, handleTodoAction exhaustiveness, six legacy-derivation negatives, the
-    //   empty-state negatives, three of four refresh keys and the list-item internals are all dark
-    //   inside covered files. One direct contradiction is correctly won by the gate (hasActiveEvents was
+    //   empty-state negatives, and three of four refresh keys remain dark inside Home. The retired
+    //   UpcomingListItem internals are the explicit drop above. One direct contradiction is correctly won by the gate (hasActiveEvents was
     //   removed by #1616, so the test is stale there). Recorded in #1850.
     "[/\\\\]home\\.orch_0974\\.adversarial\\.test\\.tsx$", // invariant -> updated orch-0974-home-mobile-lock-pane.mjs
-    // moved: app/(tabs)/home.tsx, src/components/home/UpcomingListItem.tsx
-    // note: see the sibling entry above — same two covered files, same assertion-level residue.
+    // moved: app/(tabs)/home.tsx
+    // dropped: src/components/home/UpcomingListItem.tsx — #2794 replaced Home Upcoming rows with
+    //   RecentRow.tsx; orch-0974-home-mobile-lock-pane.mjs owns the successor EventCoverMedia contract
+    // note: see the sibling entry above — Home stays covered; the retired row names its successor.
     "[/\\\\]venueAdsDrivenTile\\.issue865pr1\\.test\\.ts$", // invariant -> issue-1403-listing-insights-wiring.mjs
     // inverted -> DECOMMISSIONED. This is NOT a re-homing. #865's "Customers your ads drove" tile was
     //   removed, and issue-1403-listing-insights-wiring.mjs FAILS if that tile or useBrandConversionRollup

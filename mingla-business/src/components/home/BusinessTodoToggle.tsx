@@ -52,6 +52,7 @@ export interface BusinessTodoToggleProps {
   todos: BusinessTodo[];
   onAction: (todo: BusinessTodo) => void;
   testID?: string;
+  presentation?: "bounded" | "page-flow";
 }
 
 const headerCountLabel = (n: number): string =>
@@ -61,6 +62,7 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
   todos,
   onAction,
   testID,
+  presentation = "bounded",
 }) => {
   // #882 — position is store-owned (persisted + hydration-gated), never
   // component-local: both render sites (Home, Hub) share it and it survives
@@ -114,11 +116,7 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
         // mounts ABOVE the screen scroll area on Home/Hub (todoWrap sibling),
         // so an unbounded list (now up to ~11 rows with the profile band)
         // would bury the dashboard with rows running off-screen unscrollably.
-        <ScrollView
-          style={[styles.list, styles.listBounded]}
-          nestedScrollEnabled
-          showsVerticalScrollIndicator={true}
-        >
+        <TodoListOwner presentation={presentation} testID={testID}>
           {todos.map((todo, index) => (
             <Pressable
               key={todo.id}
@@ -160,11 +158,23 @@ export const BusinessTodoToggle: React.FC<BusinessTodoToggleProps> = ({
               <Icon name="chevR" size={16} color={textTokens.tertiary} />
             </Pressable>
           ))}
-        </ScrollView>
+        </TodoListOwner>
       ) : null}
     </GlassCard>
   );
 };
+
+function TodoListOwner({ presentation, testID, children }: {
+  presentation: "bounded" | "page-flow";
+  testID?: string;
+  children: React.ReactNode;
+}): React.ReactElement {
+  return presentation === "page-flow" ? (
+    <View style={styles.list} testID={testID !== undefined ? `${testID}-page-flow-list` : undefined}>{children}</View>
+  ) : (
+    <ScrollView style={[styles.list, styles.listBounded]} nestedScrollEnabled showsVerticalScrollIndicator>{children}</ScrollView>
+  );
+}
 
 const styles = StyleSheet.create({
   header: {

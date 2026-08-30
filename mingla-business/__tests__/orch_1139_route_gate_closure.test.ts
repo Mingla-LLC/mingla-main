@@ -82,6 +82,7 @@ const enumerateRoutes = (): string[] => {
   const routes = new Set<string>();
   for (const e of entries) {
     if (e.isDirectory()) {
+      if (e.name === "__tests__") continue;
       routes.add(e.name);
       continue;
     }
@@ -135,6 +136,7 @@ const EXPECTED: Record<string, Bucket> = {
   // route and is intentionally absent from every public/connect/invite exemption.
   insights: "gated-default",
   partner: "gated-default",
+  recent: "gated-default",
   // [ORCH-1062 drift-update] The `app/rsvp` authed RSVP creator route
   // (create / [id]/{index,edit,guests,preview}; shipped ORCH-1355/#831,
   // mirrors `event`) was added to app/ but never seeded into this ORCH-1139

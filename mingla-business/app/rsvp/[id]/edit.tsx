@@ -50,6 +50,11 @@ import {
 } from "../../../src/hooks/useServerDraftEvents";
 import { useBusinessEventById } from "../../../src/hooks/useBusinessEvents";
 import { usePublishRsvpDraft } from "../../../src/hooks/useRsvpEvents";
+import {
+  discardBusinessRecentDraft,
+  promoteBusinessRecentDraft,
+  useSuccessfulBusinessRecentOpen,
+} from "../../../src/hooks/useBusinessRecent";
 // Issue #976 [event-name-focus] — the d_*→server promotion routes through the
 // single-flight registry (one createServerDraft per d_* id, live-merge swap);
 // this route never calls createServerDraft directly anymore
@@ -91,7 +96,7 @@ export default function RsvpEditRoute(): React.ReactElement {
   const isEditPublished = modeParam === "edit-published";
   const isLegacyLocalDraftId =
     typeof idParam === "string" && idParam.startsWith("d_");
-  const { isAuthReady } = useAuth();
+  const { isAuthReady, user } = useAuth();
 
   // ORCH-1355 (symptom 1) — route-state activeDraftId. On the d_*→server draft
   // promotion (first dirty edit) we set this to the server id so the wizard
@@ -120,9 +125,10 @@ export default function RsvpEditRoute(): React.ReactElement {
       mountedRef.current = false;
     };
   }, []);
-  const pendingUrlReconcileRef = React.useRef<{ id: string; step: string } | null>(
-    null,
-  );
+  const pendingUrlReconcileRef = React.useRef<{
+    id: string;
+    step: string;
+  } | null>(null);
   const navigationRef = useNavigation();
   useFocusEffect(
     React.useCallback(() => {
@@ -248,11 +254,18 @@ export default function RsvpEditRoute(): React.ReactElement {
     const draftForBrand = draft ?? lastResolvedDraftRef.current;
     if (draftForBrand === null) return null;
     return brands.find((b) => b.id === draftForBrand.brandId) ?? null;
-  }, [isEditPublished, businessEventQuery.data?.brand, resolvedLiveEvent, draft, brands]);
+  }, [
+    isEditPublished,
+    businessEventQuery.data?.brand,
+    resolvedLiveEvent,
+    draft,
+    brands,
+  ]);
 
-  const [toast, setToast] = React.useState<{ visible: boolean; message: string }>(
-    { visible: false, message: "" },
-  );
+  const [toast, setToast] = React.useState<{
+    visible: boolean;
+    message: string;
+  }>({ visible: false, message: "" });
   const [missingDraftTimedOut, setMissingDraftTimedOut] = React.useState(false);
 
   useEffect(() => {
@@ -329,7 +342,9 @@ export default function RsvpEditRoute(): React.ReactElement {
         eventDraftKeys.list(draft.brandId),
         (prev) => (prev ?? []).filter((d) => d.id !== draft.id),
       );
-      queryClient.invalidateQueries({ queryKey: eventDraftKeys.list(draft.brandId) });
+      queryClient.invalidateQueries({
+        queryKey: eventDraftKeys.list(draft.brandId),
+      });
       setToast({
         visible: true,
         message: "This draft is no longer editable.",
@@ -444,9 +459,26 @@ export default function RsvpEditRoute(): React.ReactElement {
   // session; the safety belt or the bounce path always terminates that state.
   const renderDraft: DraftEvent | null =
     draft ??
-    ((migrationInFlight || isLegacyLocalDraftId)
+    (migrationInFlight || isLegacyLocalDraftId
       ? lastResolvedDraftRef.current
       : null);
+
+  const recentRsvp = isEditPublished ? resolvedLiveEvent : renderDraft;
+  useSuccessfulBusinessRecentOpen({
+    brandId: brand?.id ?? recentRsvp?.brandId ?? null,
+    entityType: "rsvp",
+    entityId: isEditPublished
+      ? (resolvedLiveEvent?.serverEventId ??
+        (typeof idParam === "string" ? idParam : null))
+      : (renderDraft?.id ?? null),
+    ready:
+      recentRsvp !== null && (isEditPublished || renderDraft?.isRsvp === true),
+    title: recentRsvp?.name,
+    coverUrl: recentRsvp?.coverMediaUrl,
+    coverPosterUrl: recentRsvp?.coverMediaPosterUrl,
+    coverType: recentRsvp?.coverMediaType,
+    status: isEditPublished ? resolvedLiveEvent?.status : "draft",
+  });
 
   const isCreateMode = useMemo<boolean>(() => {
     if (renderDraft === null) return false;
@@ -514,12 +546,20 @@ export default function RsvpEditRoute(): React.ReactElement {
   const handleDiscardDraft = React.useCallback(
     async (draftToDiscard: DraftEvent): Promise<void> => {
       if (isLocalOnlyDraft(draftToDiscard)) {
+        if (user !== null) {
+          discardBusinessRecentDraft({
+            userId: user.id,
+            brandId: draftToDiscard.brandId,
+            entityType: "rsvp",
+            localId: draftToDiscard.id,
+          });
+        }
         deleteDraft(draftToDiscard.id);
         return;
       }
       await discardServerDraft.discardDraft(draftToDiscard);
     },
-    [deleteDraft, discardServerDraft],
+    [deleteDraft, discardServerDraft, user],
   );
 
   // ORCH-0893 [Eager server-draft on creator entry — replace with client-id + lazy autosave]:
@@ -560,6 +600,15 @@ export default function RsvpEditRoute(): React.ReactElement {
         draftId: incoming.id,
       })
         .then((merged) => {
+          if (user !== null) {
+            promoteBusinessRecentDraft({
+              userId: user.id,
+              brandId: incoming.brandId,
+              entityType: "rsvp",
+              localId: incoming.id,
+              serverId: merged.id,
+            });
+          }
           // Issue #976 — resolve handlers are unmount- and focus-guarded: a
           // rapid wizard exit or a pushed Preview screen can never receive a
           // stray setParams.
@@ -606,7 +655,8 @@ export default function RsvpEditRoute(): React.ReactElement {
           }
           setToast({
             visible: true,
-            message: "Couldn't save this draft. Tap Save again or check your connection.",
+            message:
+              "Couldn't save this draft. Tap Save again or check your connection.",
           });
         });
     },
@@ -617,6 +667,7 @@ export default function RsvpEditRoute(): React.ReactElement {
       navigationRef,
       queryClient,
       router,
+      user,
     ],
   );
 
@@ -677,9 +728,12 @@ export default function RsvpEditRoute(): React.ReactElement {
           style={styles.recoveryCard}
           contentContainerStyle={styles.recoveryCardContent}
         >
-          <Text style={styles.recoveryTitle}>We could not load this draft.</Text>
+          <Text style={styles.recoveryTitle}>
+            We could not load this draft.
+          </Text>
           <Text style={styles.recoveryBody}>
-            Refresh, return to Home, or use desktop/the app if this phone browser cannot restore the draft.
+            Refresh, return to Home, or use desktop/the app if this phone
+            browser cannot restore the draft.
           </Text>
           <Button
             label="Back to Home"

@@ -68,6 +68,7 @@ import {
 } from "../../../src/hooks/useTrips";
 import { useTripOrders } from "../../../src/hooks/useTripOrders";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 // ORCH-0873 [Tr3 Stage 2 UI] — Money tab data.
 import { useInstallmentsForBrandTrips } from "../../../src/hooks/useOrderInstallments";
@@ -157,6 +158,14 @@ export default function TripDashboardRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const brandId = tripQuery.data?.brandId ?? null;
+  useSuccessfulBusinessRecentOpen({
+    brandId, entityType: "trip", entityId: typeof eventId === "string" ? eventId : null,
+    ready: tripQuery.data != null && !tripQuery.isLoading && !tripQuery.isError,
+    title: tripQuery.data?.title, coverUrl: tripQuery.data?.coverMediaUrl,
+    coverPosterUrl: tripQuery.data?.coverMediaPosterUrl,
+    coverType: normalizeCoverMediaType(tripQuery.data?.coverMediaType ?? null),
+    status: tripQuery.data?.status,
+  });
   const currentBrandRole = useCurrentBrandRole(brandId);
   const canShowListingInsights =
     !currentBrandRole.isLoading &&

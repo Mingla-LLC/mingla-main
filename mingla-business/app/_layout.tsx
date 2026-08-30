@@ -58,6 +58,7 @@ import { OtaAcknowledgementLayer } from "../src/components/ui/OtaAcknowledgement
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
+import { clearBusinessRecentCachedUser } from "../src/services/businessRecentStorage";
 // ORCH-0892-A: KeyboardRoot wraps every downstream surface so
 // react-native-keyboard-controller primitives can subscribe to native
 // keyboard events. Web variant is a passthrough Fragment (library has no
@@ -253,6 +254,7 @@ function RootLayoutInner(): React.ReactElement {
   // for. The `currentBrandId === null` short-circuit also handles this case;
   // both paths converge on `brandReady=true` (defensive belt-and-suspenders).
   const { loading, user } = useAuth();
+  const previousRecentUserRef = useRef<string | null>(null);
   const router = useRouter();
   // ORCH-1103 — the current route, so the unauthenticated redirect never targets
   // the route it is already on (the `/` → `/` self-redirect loop that produced
@@ -260,6 +262,25 @@ function RootLayoutInner(): React.ReactElement {
   // deferred return (Rules-of-Hooks; preserves the ORCH-1098 all-hooks-run fix).
   const pathname = usePathname();
   const currentBrandId = useCurrentBrandId();
+  useEffect(() => {
+    const nextUserId = user?.id ?? null;
+    const previousUserId = previousRecentUserRef.current;
+    if (
+      previousUserId !== null &&
+      (nextUserId === null || nextUserId !== previousUserId)
+    ) {
+      void clearBusinessRecentCachedUser(previousUserId).catch(() => {
+        console.warn("[Recent] persisted cache cleanup failed");
+      });
+      const recentQuery = (query: { queryKey: readonly unknown[] }): boolean =>
+        query.queryKey[0] === "business-recent-index" ||
+        query.queryKey[0] === "business-recent-page";
+      void queryClient.cancelQueries({ predicate: recentQuery }).then(() => {
+        queryClient.removeQueries({ predicate: recentQuery });
+      });
+    }
+    previousRecentUserRef.current = nextUserId;
+  }, [user?.id]);
   const { isFetched: brandFetched, fetchStatus: brandFetchStatus } =
     useBrand(currentBrandId);
   // ORCH-1133 — SOLE authoritative owner of the global current-brand WRITE.

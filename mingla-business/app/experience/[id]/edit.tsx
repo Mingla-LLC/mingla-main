@@ -25,6 +25,7 @@ import {
   View,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 
 import {
   canvas,
@@ -235,6 +236,14 @@ export default function ExperienceEditRoute(): React.ReactElement {
     typeof eventId === "string" ? eventId : null,
   );
   const experience = detailQuery.data ?? null;
+  useSuccessfulBusinessRecentOpen({
+    brandId: experience?.brandId ?? null, entityType: "experience",
+    entityId: typeof eventId === "string" ? eventId : null,
+    ready: experience !== null && !detailQuery.isLoading && !detailQuery.isError,
+    title: experience?.title, coverUrl: experience?.coverMediaUrl,
+    coverPosterUrl: experience?.coverMediaPosterUrl, coverType: experience?.coverMediaType,
+    status: experience?.status,
+  });
 
   // META-ORCH-1059 Sub-E — a scheduled/live experience routes through the
   // buyer-protection live-edit path (banner + reason + biz_update_live_experience).

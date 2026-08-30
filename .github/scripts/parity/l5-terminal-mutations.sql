@@ -743,3 +743,11 @@ BEGIN
   PERFORM cron.schedule('issue_1397_fx_refresh_daily', v_sched, v_cmd);
 END $l5$;
 -- @l5-verify: SELECT bool_and(command NOT LIKE '%timeout_milliseconds := 30000%') FROM cron.job WHERE jobname = 'issue_1397_fx_refresh_daily'
+
+-- ===== M-2794-01 =====
+REVOKE EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,timestamptz,uuid) FROM authenticated;
+-- @l5-verify: SELECT NOT has_function_privilege('authenticated', 'public.biz_record_recent_entity_open(uuid,text,uuid,timestamptz,uuid)', 'EXECUTE')
+
+-- ===== M-2794-02 =====
+GRANT SELECT ON TABLE public.business_recent_entity_opens TO authenticated;
+-- @l5-verify: SELECT has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT')

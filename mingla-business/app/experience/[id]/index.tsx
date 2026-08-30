@@ -64,6 +64,7 @@ import { useExperienceDetail } from "../../../src/hooks/useExperienceDetail";
 import { useCancelBusinessEvent } from "../../../src/hooks/useBusinessEvents";
 import { useEventOrders } from "../../../src/hooks/useEventOrders";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 import { summarizeEventMoney } from "../../../src/utils/moneySummary";
 import { offeringActivityFromOrders } from "../../../src/utils/offeringActivityFromOrders";
@@ -142,6 +143,14 @@ export default function ExperienceDashboardRoute(): React.ReactElement {
   }>({ visible: false, kind: "info", message: "" });
 
   const experience = detailQuery.data ?? null;
+  useSuccessfulBusinessRecentOpen({
+    brandId: experience?.brandId ?? null, entityType: "experience",
+    entityId: typeof eventId === "string" ? eventId : null,
+    ready: experience !== null && !detailQuery.isLoading && !detailQuery.isError,
+    title: experience?.title, coverUrl: experience?.coverMediaUrl,
+    coverPosterUrl: experience?.coverMediaPosterUrl, coverType: experience?.coverMediaType,
+    status: experience?.status,
+  });
   const currentBrandRole = useCurrentBrandRole(experience?.brandId ?? null);
   const canShowListingInsights =
     !currentBrandRole.isLoading &&

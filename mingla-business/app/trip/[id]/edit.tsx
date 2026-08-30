@@ -32,6 +32,12 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useAuth } from "../../../src/context/AuthContext";
+import {
+  discardBusinessRecentDraft,
+  promoteBusinessRecentDraft,
+  useSuccessfulBusinessRecentOpen,
+} from "../../../src/hooks/useBusinessRecent";
 import {
   useTrip,
   useSoftDeleteTrip,
@@ -59,6 +65,7 @@ export default function TripEditRoute(): React.ReactElement {
     typeof eventId === "string" && eventId.startsWith("d_");
 
   const currentBrand = useCurrentBrand();
+  const { user } = useAuth();
   const createTripDraftMutation = useCreateTripDraft();
   const tripMigratingIdRef = useRef<string | null>(null);
 
@@ -70,16 +77,53 @@ export default function TripEditRoute(): React.ReactElement {
     void createTripDraftMutation
       .mutateAsync({ brandId: currentBrand.id })
       .then((trip) => {
+        if (user !== null) {
+          promoteBusinessRecentDraft({
+            userId: user.id,
+            brandId: currentBrand.id,
+            entityType: "trip",
+            localId: eventId,
+            serverId: trip.id,
+          });
+        }
         router.replace(`/trip/${trip.id}/edit` as never);
       })
       .catch(() => {
         tripMigratingIdRef.current = null;
       });
-  }, [currentBrand, createTripDraftMutation, eventId, isClientOnlyId, router]);
+  }, [
+    currentBrand,
+    createTripDraftMutation,
+    eventId,
+    isClientOnlyId,
+    router,
+    user,
+  ]);
 
   const tripQuery = useTrip(
     typeof eventId === "string" && !isClientOnlyId ? eventId : null,
   );
+  useSuccessfulBusinessRecentOpen({
+    brandId: tripQuery.data?.brandId ?? currentBrand?.id ?? null,
+    entityType: "trip",
+    entityId: typeof eventId === "string" ? eventId : null,
+    ready:
+      !isClientOnlyId &&
+      currentBrand !== null &&
+      tripQuery.data != null &&
+      !tripQuery.isLoading &&
+      !tripQuery.isError,
+    title: tripQuery.data?.title,
+    coverUrl: tripQuery.data?.coverMediaUrl,
+    coverPosterUrl: tripQuery.data?.coverMediaPosterUrl,
+    coverType:
+      tripQuery.data?.coverMediaType === "image" ||
+      tripQuery.data?.coverMediaType === "video" ||
+      tripQuery.data?.coverMediaType === "gif"
+        ? tripQuery.data.coverMediaType
+        : null,
+    status: tripQuery.data?.status,
+  });
   // ORCH-0874 [Trip surfaces visual parity with Events]: wire useSoftDeleteTrip
   // for the wizard's create-mode-dirty discard ConfirmDialog (chrome X handler).
   const softDeleteMutation = useSoftDeleteTrip();
@@ -243,6 +287,14 @@ export default function TripEditRoute(): React.ReactElement {
           eventId: trip.id,
           brandId: trip.brandId,
         });
+        if (user !== null) {
+          discardBusinessRecentDraft({
+            userId: user.id,
+            brandId: trip.brandId,
+            entityType: "trip",
+            localId: trip.id,
+          });
+        }
       }}
       onPublished={(published) => {
         router.replace(`/trip/${published.id}` as never);

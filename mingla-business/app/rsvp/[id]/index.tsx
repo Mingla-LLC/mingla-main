@@ -58,6 +58,7 @@ import { EventDetailHeroStatusPill } from "../../../src/components/event/EventDe
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import { useBusinessEventsForBrand } from "../../../src/hooks/useBusinessEvents";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { isScannerOnlyRank } from "../../../src/utils/navTabGate";
 
 // ----- Status derivation (mirrors event/[id]/index.tsx) ---------------
@@ -135,6 +136,14 @@ export default function RsvpDetailScreen(): React.ReactElement {
   });
 
   const event = resolvedLiveEvent;
+  useSuccessfulBusinessRecentOpen({
+    brandId: brand?.id ?? event?.brandId ?? null,
+    entityType: "rsvp", entityId: event?.serverEventId ?? id,
+    ready: event !== null && draftEvent === null && routeEvent.replacementEventId === null,
+    title: event?.name, coverUrl: event?.coverMediaUrl,
+    coverPosterUrl: event?.coverMediaPosterUrl, coverType: event?.coverMediaType,
+    status: event?.status,
+  });
 
   // ----- Handlers ----------------------------------------------------
   const handleBack = useCallback((): void => {
