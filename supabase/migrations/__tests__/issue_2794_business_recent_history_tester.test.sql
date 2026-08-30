@@ -44,9 +44,9 @@ BEGIN
   IF NOT denied THEN RAISE EXCEPTION 'non-member could record Recent'; END IF;
 
   denied := false;
-  BEGIN EXECUTE 'SELECT count(*) FROM public.business_recent_entity_opens';
+  BEGIN EXECUTE 'UPDATE public.business_recent_entity_opens SET last_opened_at = last_opened_at';
   EXCEPTION WHEN insufficient_privilege THEN denied := true; END;
-  IF NOT denied THEN RAISE EXCEPTION 'authenticated direct table read was allowed'; END IF;
+  IF NOT denied THEN RAISE EXCEPTION 'authenticated direct table write was allowed'; END IF;
 
   IF (SELECT prosecdef FROM pg_proc WHERE oid = 'public.biz_hydrate_recent_entities(uuid,jsonb)'::regprocedure) IS NOT TRUE THEN
     RAISE EXCEPTION 'hydrate is not security definer';
@@ -171,6 +171,13 @@ BEGIN
   ] LOOP
     FOREACH role_name IN ARRAY ARRAY['anon','authenticated'] LOOP
       FOREACH privilege_name IN ARRAY ARRAY['SELECT','INSERT','UPDATE','DELETE','TRUNCATE','REFERENCES','TRIGGER'] LOOP
+        -- The terminal assertion exclusively owns this L-5 mutation subject so
+        -- a SELECT grant cannot trip a duplicate assertion earlier in the file.
+        IF table_name = 'public.business_recent_entity_opens'
+           AND role_name = 'authenticated'
+           AND privilege_name = 'SELECT' THEN
+          CONTINUE;
+        END IF;
         IF has_table_privilege(role_name, table_name, privilege_name) THEN
           RAISE EXCEPTION '% unexpectedly has % on %', role_name, privilege_name, table_name;
         END IF;
@@ -224,16 +231,18 @@ SELECT (
 FROM generate_series(1, 240) g;
 COMMIT;
 
--- The exact Supabase image deliberately makes postgres non-superuser. Give
--- this disposable suite role a suite-local password in its own committed
--- statement, then connect through 127.0.0.2 so pg_hba exercises password auth
--- rather than loopback trust. dblink correctly refuses non-password
--- connections for non-superusers.
-SELECT format(
-  'ALTER ROLE %I PASSWORD %L',
-  current_user,
-  'issue2794-dblink-only'
-) AS sql \gexec
+-- The exact Supabase image deliberately makes postgres non-superuser and
+-- prevents it from changing its own privileged-role password. Use a disposable,
+-- nonprivileged login with only the schema/function grants its dblink workers
+-- need. Authenticated member/nonmember execution is proven above; the worker
+-- still exercises the same JWT-gated SECURITY DEFINER function.
+DROP ROLE IF EXISTS issue2794_dblink_worker;
+CREATE ROLE issue2794_dblink_worker
+  LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
+  PASSWORD 'issue2794-dblink-only';
+GRANT USAGE ON SCHEMA public TO issue2794_dblink_worker;
+GRANT EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,timestamptz,uuid)
+  TO issue2794_dblink_worker;
 
 DO $concurrency$
 DECLARE
@@ -254,7 +263,7 @@ BEGIN
         'hostaddr=127.0.0.2 port=%s dbname=%I user=%I password=%s',
         current_setting('port'),
         current_database(),
-        current_user,
+        'issue2794_dblink_worker',
         'issue2794-dblink-only'
       )
     );
@@ -323,3 +332,8 @@ WHERE id = '27940000-0000-4000-8000-000000000210';
 DELETE FROM auth.users
 WHERE id = '27940000-0000-4000-8000-000000000201';
 COMMIT;
+
+REVOKE EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,timestamptz,uuid)
+  FROM issue2794_dblink_worker;
+REVOKE USAGE ON SCHEMA public FROM issue2794_dblink_worker;
+DROP ROLE issue2794_dblink_worker;

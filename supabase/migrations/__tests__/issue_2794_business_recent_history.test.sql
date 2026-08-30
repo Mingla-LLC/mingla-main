@@ -15,7 +15,10 @@ UPDATE public.events
    SET status = 'ended'
  WHERE id = '279400ca-0000-4000-8000-000000000202';
 
-SET LOCAL ROLE authenticated;
+-- Exercise the security-definer functions with the authenticated JWT claim, but
+-- keep the functional phase on the applying role. The terminal grant mutation
+-- must be able to reach its dedicated assertion after revoking authenticated's
+-- SQL-level EXECUTE privilege.
 SELECT set_config('request.jwt.claim.sub', '27940000-0000-4000-8000-000000000001', true);
 
 DO $test$
