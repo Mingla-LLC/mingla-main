@@ -327,7 +327,11 @@ export function audit(base = repoRoot) {
   required(analyticsGuard, '"email", "phone", "displayName", "personId", "brandId", "contactValue"', "exact forbidden analytics key set", failures);
   required(analyticsGuard, "contactValue?:string", "analytics self-test true mutation", failures);
   required(l5Mutations, "-- ===== M-1772-01 =====", "L-5 M-1772-01 section", failures);
-  required(l5Mutations, "biz_merge_brand_people_manual(uuid,uuid,uuid,text,text,uuid) TO anon", "L-5 anon grant mutation", failures);
+  required(l5Mutations, "CREATE OR REPLACE FUNCTION public.l5_issue_1772_allow_novel_writer()", "L-5 fixture-scoped trigger function", failures);
+  required(l5Mutations, "PERFORM 1 FROM public.brand_people WHERE id=NEW.brand_person_id FOR UPDATE;", "L-5 person-row serialization", failures);
+  required(l5Mutations, "NEW.record_state:='retired';", "L-5 terminal survivor mutation", failures);
+  required(l5Mutations, "CREATE TRIGGER a_l5_issue_1772_novel_writer", "L-5 early trigger ordering", failures);
+  required(l5Mutations, "-- @l5-verify: SELECT EXISTS(SELECT 1 FROM public.brand_person_contact_methods WHERE id='17720000-0000-4000-8000-000000000904'::uuid)", "L-5 surviving-row witness", failures);
   required(pgWorkflow, "L-5 subjects: 25", "L-5 subject total", failures);
   required(pgWorkflow, 'psql call sites in the workflow: $call_sites', "L-5 call-site discovery", failures);
   required(issue1773SqlTest, "9815b94c8ae402c9b81d2b6613be66f3", "#1773 current writer fingerprint", failures);

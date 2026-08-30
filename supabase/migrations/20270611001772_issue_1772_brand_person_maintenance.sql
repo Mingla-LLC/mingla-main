@@ -1110,15 +1110,23 @@ BEGIN
   SELECT pg_get_functiondef('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamptz)'::regprocedure) INTO v_def;
   v_before:=v_def;
   v_def:=replace(v_def,'WHERE s.brand_id=v_brand','WHERE s.superseded_at IS NULL AND s.brand_id=v_brand');
-  IF v_def=v_before OR v_def NOT LIKE '%s.superseded_at IS NULL%' THEN RAISE EXCEPTION 'issue_1772_source_separation_patch_failed'; END IF;
-  EXECUTE v_def;
+  IF v_def=v_before OR v_def NOT LIKE '%s.superseded_at IS NULL%'
+     OR v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source%' THEN
+    RAISE EXCEPTION 'issue_1772_source_separation_patch_failed';
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source%s',
+    substr(v_def,length('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_source')+1));
 
   SELECT pg_get_functiondef('public.biz_resolve_brand_person_conflict(uuid,uuid[],text,uuid,uuid)'::regprocedure) INTO v_def;
   v_before:=v_def;
   v_def:=replace(v_def,'ON CONFLICT (brand_id,person_id,normalized_name) DO NOTHING',
     'ON CONFLICT (brand_id,person_id,normalized_name) WHERE superseded_at IS NULL DO NOTHING');
-  IF v_def=v_before OR v_def NOT LIKE '%WHERE superseded_at IS NULL DO NOTHING%' THEN RAISE EXCEPTION 'issue_1772_conflict_separation_patch_failed'; END IF;
-  EXECUTE v_def;
+  IF v_def=v_before OR v_def NOT LIKE '%WHERE superseded_at IS NULL DO NOTHING%'
+     OR v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_conflict%' THEN
+    RAISE EXCEPTION 'issue_1772_conflict_separation_patch_failed';
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_conflict%s',
+    substr(v_def,length('CREATE OR REPLACE FUNCTION public.biz_resolve_brand_person_conflict')+1));
 
   -- Preserve the qualified #1774 digest body; refuse erased addresses before
   -- the first person/source/conflict write.
@@ -1131,8 +1139,12 @@ BEGIN
      OR (v_phone IS NOT NULL AND public.issue_1772_erasure_tombstoned(p_brand_id,''phone'',v_phone)) THEN
     RAISE EXCEPTION ''people_erased_contact_suppressed'' USING ERRCODE=''23514'';
   END IF;');
-  IF v_def=v_before OR v_def NOT LIKE '%people_erased_contact_suppressed%' THEN RAISE EXCEPTION 'issue_1772_manual_add_patch_failed'; END IF;
-  EXECUTE v_def;
+  IF v_def=v_before OR v_def NOT LIKE '%people_erased_contact_suppressed%'
+     OR v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.biz_add_brand_person%' THEN
+    RAISE EXCEPTION 'issue_1772_manual_add_patch_failed';
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION public.biz_add_brand_person%s',
+    substr(v_def,length('CREATE OR REPLACE FUNCTION public.biz_add_brand_person')+1));
 
   -- Preserve #1775 execution semantics and continue the batch after a
   -- tombstoned row is scrubbed and terminally classified.
@@ -1149,8 +1161,12 @@ BEGIN
      CONTINUE;
    END IF;
    IF r.outcome IN (''invalid'',''duplicate'') THEN CONTINUE; END IF;');
-  IF v_def=v_before OR v_def NOT LIKE '%reason_code=''erased_contact''%' THEN RAISE EXCEPTION 'issue_1772_import_patch_failed'; END IF;
-  EXECUTE v_def;
+  IF v_def=v_before OR v_def NOT LIKE '%reason_code=''erased_contact''%'
+     OR v_def NOT LIKE 'CREATE OR REPLACE FUNCTION public.issue_1775_execute_import%' THEN
+    RAISE EXCEPTION 'issue_1772_import_patch_failed';
+  END IF;
+  EXECUTE format('CREATE OR REPLACE FUNCTION public.issue_1775_execute_import%s',
+    substr(v_def,length('CREATE OR REPLACE FUNCTION public.issue_1775_execute_import')+1));
 END
 $forward_replace$;
 

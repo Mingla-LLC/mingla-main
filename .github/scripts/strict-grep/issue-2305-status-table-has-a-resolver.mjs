@@ -63,16 +63,11 @@
 // gate everyone bypasses is a gate that carries no information (#2113).
 //
 // So the honest narrow scope is: the gate's unit is the LIFECYCLE TABLE. It
-// discovers 23 of them in this repo and demands, for each, a reader, an
-// advancer, and a REACHABLE advancer. 20 already satisfy that; the three that do
-// not are allowlisted below by NAME and REASON, which is the point — the gate
-// SEES them. `brand_person_merge_events` — `status` in
-// (`active`,`reversed`), a nullable `reversed_at`, and
-// `brand_person_merge_reversal_shape` coupling them, the identical shape as the
-// conflicts table — is caught by (C): the only statement in the repo that
-// advances it to `'reversed'` lives inside `biz_reverse_brand_person_merge`,
-// which nothing calls. It is allowlisted below WITH the reason, so the gate
-// SEES it and NAMES it rather than being quietly narrowed to miss it.
+// discovers 28 of them in this repo and demands, for each, a reader, an
+// advancer, and a REACHABLE advancer. #1772 made the brand-person merge reversal
+// lifecycle reachable through its authorization-enforcing manual wrapper and
+// Business RPC caller, so 26 now satisfy the rule; the remaining two are
+// allowlisted below by NAME and REASON, which is the point — the gate SEES them.
 //
 // Modes:
 //   node issue-2305-status-table-has-a-resolver.mjs              — enforce
@@ -104,18 +99,6 @@ const CALLER_DIRS = [
  * can never quietly widen into a list of names nobody re-checks.
  */
 const WRITE_ONLY_BY_DESIGN = new Map([
-  [
-    "brand_person_merge_events",
-    "#2305 — `status` advances to 'reversed' ONLY inside " +
-      "`biz_reverse_brand_person_merge`, which is fully implemented, writes a " +
-      "complete reversal_manifest, and is called by NOTHING in production: it " +
-      "is service_role-only with no client grant and no Split UI. #2305 " +
-      "deliberately did not build that UI (SPEC §2 rules it out of scope) and " +
-      "must NOT grant the function to `authenticated` — it takes p_actor as a " +
-      "parameter and performs no authorization of its own (F-8). This entry is " +
-      "the third confirmed instance of the write-with-no-reader class and is " +
-      "recorded here so it stays visible until the Split path is built.",
-  ],
   [
     "ad_app_acquisition_canaries",
     "#2015 — a SEVEN-state lifecycle ('not_started' -> approval_required -> " +
@@ -658,7 +641,7 @@ function selfTest() {
   // 8. A STALE exemption must fail: an allowlist entry matching no discovered
   //    table is a gate quietly narrowing itself.
   r = analyze([LANDFILL, RESOLVER], ['supabase.rpc("biz_resolve_widget");']);
-  if (!r.staleExemptions.includes("brand_person_merge_events")) {
+  if (!r.staleExemptions.includes("ad_app_acquisition_canaries")) {
     console.error("#2305 self-test: a stale exemption was not reported.");
     process.exit(1);
   }

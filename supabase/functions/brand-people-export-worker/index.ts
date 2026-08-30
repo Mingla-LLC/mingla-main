@@ -44,7 +44,12 @@ export interface ExportWorkerDeps {
 const DEFAULT_DEPS: ExportWorkerDeps = {
   createService: (url, serviceKey) =>
     createClient(url, serviceKey, { auth: { persistSession: false } }),
-  envGet: (name) => Deno.env.get(name),
+  envGet: (name) =>
+    name === "SUPABASE_URL"
+      ? Deno.env.get("SUPABASE_URL")
+      : name === "SUPABASE_SERVICE_ROLE_KEY"
+      ? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+      : undefined,
   randomUUID: () => crypto.randomUUID(),
 };
 

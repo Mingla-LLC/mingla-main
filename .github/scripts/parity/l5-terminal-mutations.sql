@@ -753,6 +753,21 @@ GRANT SELECT ON TABLE public.business_recent_entity_opens TO authenticated;
 -- @l5-verify: SELECT has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT')
 
 -- ===== M-1772-01 =====
--- [TEST-MOD-APPROVED #1772] authenticated-only manual merge RPC must never become client-executable by anon.
-GRANT EXECUTE ON FUNCTION public.biz_merge_brand_people_manual(uuid,uuid,uuid,text,text,uuid) TO anon;
--- @l5-verify: SELECT has_function_privilege('anon','public.biz_merge_brand_people_manual(uuid,uuid,uuid,text,text,uuid)','EXECUTE')
+-- [TEST-MOD-APPROVED #1772] Preserve the real person-row wait, then falsify only
+-- the terminal novel-address predicate by allowing its one deterministic fixture
+-- to commit as retired after erasure. The ordinary tombstone checks stay intact.
+CREATE OR REPLACE FUNCTION public.l5_issue_1772_allow_novel_writer()
+RETURNS trigger LANGUAGE plpgsql AS $l5$
+BEGIN
+  IF NEW.id='17720000-0000-4000-8000-000000000904'::uuid THEN
+    PERFORM 1 FROM public.brand_people WHERE id=NEW.brand_person_id FOR UPDATE;
+    NEW.record_state:='retired';
+    NEW.retired_at:=now();
+  END IF;
+  RETURN NEW;
+END
+$l5$;
+CREATE TRIGGER a_l5_issue_1772_novel_writer
+  BEFORE INSERT ON public.brand_person_contact_methods
+  FOR EACH ROW EXECUTE FUNCTION public.l5_issue_1772_allow_novel_writer();
+-- @l5-verify: SELECT EXISTS(SELECT 1 FROM public.brand_person_contact_methods WHERE id='17720000-0000-4000-8000-000000000904'::uuid)
