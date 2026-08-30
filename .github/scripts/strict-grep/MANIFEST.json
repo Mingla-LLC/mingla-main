@@ -15,7 +15,7 @@
     "totality (P11, append-only list). Every fixture/unenforced reason MUST cite an ORCH-#### (P10).",
     "All three caps are hard: raising one is a visible MANIFEST diff \u2014 there is no bypass token (OQ-2)."
   ],
-  "expectedStrictGrepMjsFiles": 623,
+  "expectedStrictGrepMjsFiles": 624,
   "selfTestWiredFloor": 398,
   "unenforcedCap": 2,
   "fixtureCap": 10,
@@ -9364,6 +9364,15 @@
       "modes": ["plain"],
       "selfTest": "none",
       "jobKeys": ["issue-2851-pr-concurrency-policy-implementor"]
+    },
+    {
+      "script": ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.tester.test.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node --test",
+      "modes": ["plain"],
+      "selfTest": "none",
+      "jobKeys": ["issue-2851-pr-concurrency-policy-tester"]
     }
   ]
 }
