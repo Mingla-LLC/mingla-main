@@ -46,6 +46,30 @@ export const marketingKeys = {
       ] as const,
     detail: (brandId: string, personId: string): readonly unknown[] =>
       [...marketingKeys.people.all(brandId), "detail", personId] as const,
+    mergeCandidates: (
+      brandId: string,
+      personId: string,
+      search: string | null,
+    ): readonly unknown[] => [
+      ...marketingKeys.people.all(brandId),
+      "merge-candidates",
+      personId,
+      search?.trim() ?? "",
+    ] as const,
+    mergeHistory: (brandId: string, personId: string): readonly unknown[] =>
+      [...marketingKeys.people.all(brandId), "merge-history", personId] as const,
+    mergePreview: (
+      brandId: string,
+      leftPersonId: string,
+      rightPersonId: string,
+    ): readonly unknown[] => [
+      ...marketingKeys.people.all(brandId),
+      "merge-preview",
+      leftPersonId,
+      rightPersonId,
+    ] as const,
+    operation: (brandId: string, clientRequestId: string): readonly unknown[] =>
+      [...marketingKeys.people.all(brandId), "operation", clientRequestId] as const,
     // #2305 — the identity-conflict review queue. Nested under people.all so a
     // resolve can invalidate the book and the queue with one prefix if needed,
     // but the two are invalidated explicitly (a resolve ADDS a person to the

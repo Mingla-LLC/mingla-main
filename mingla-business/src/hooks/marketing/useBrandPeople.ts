@@ -2,7 +2,7 @@ import { useInfiniteQuery, useQuery, useQueryClient, type QueryClient } from "@t
 import { useEffect } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { getBrandPerson, listBrandPeople, PeopleServiceError } from "../../services/peopleService";
-import type { BrandPersonSummary } from "../../types/people";
+import type { BrandPersonDetail, BrandPersonSummary } from "../../types/people";
 import { marketingKeys } from "./marketingKeys";
 
 const retry = (count:number,error:Error):boolean => count<2 && error instanceof PeopleServiceError && error.retryable;
@@ -31,7 +31,7 @@ export function useBrandPeople(brandId:string|null,search:string|null,roleResolv
 export function useBrandPerson(brandId:string|null,personId:string|null,roleResolved:boolean,accepted:boolean,rank:number,online=true){
   const {isAuthReady,user}=useAuth(),queryClient=useQueryClient(); const allowed=roleResolved&&accepted&&rank>=20; const enabled=isAuthReady&&user!==null&&brandId!==null&&personId!==null&&allowed;
   useEffect(()=>{if(!enabled&&brandId!==null)void queryClient.cancelQueries({queryKey:marketingKeys.people.all(brandId)})},[brandId,enabled,queryClient]);
-  const query=useQuery<BrandPersonSummary>({queryKey:brandId&&personId?marketingKeys.people.detail(brandId,personId):marketingKeys.all,
+  const query=useQuery<BrandPersonDetail|BrandPersonSummary>({queryKey:brandId&&personId?marketingKeys.people.detail(brandId,personId):marketingKeys.all,
     queryFn:()=>getBrandPerson({brandId:brandId!,personId:personId!}),enabled,staleTime:30_000,retry,
     placeholderData:()=>brandId&&personId?findCachedBrandPerson(queryClient,brandId,personId):undefined});
   const hasData=query.data!==undefined,error=query.error instanceof PeopleServiceError?query.error.code:null;

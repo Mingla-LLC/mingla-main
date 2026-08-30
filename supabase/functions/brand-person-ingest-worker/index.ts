@@ -20,7 +20,9 @@ type SourcePhoneClient = {
   from: (table: string) => {
     select: (columns: string) => {
       eq: (column: string, value: string) => {
-        maybeSingle: () => PromiseLike<{ data: Record<string, unknown> | null; error: unknown }>;
+        maybeSingle: () => PromiseLike<
+          { data: Record<string, unknown> | null; error: unknown }
+        >;
       };
     };
   };
@@ -30,8 +32,11 @@ export async function normalizedPhoneForIngest(
   client: SourcePhoneClient,
   row: Pick<IngestRow, "source_kind" | "source_id" | "operation">,
 ): Promise<string | null> {
-  if (row.operation === "retire" ||
-    (row.source_kind !== "reservation" && row.source_kind !== "stay_reservation")) {
+  if (
+    row.operation === "retire" ||
+    (row.source_kind !== "reservation" &&
+      row.source_kind !== "stay_reservation")
+  ) {
     return null;
   }
   const table = row.source_kind === "reservation"
@@ -47,6 +52,14 @@ export async function normalizedPhoneForIngest(
   if (error) throw new Error("source_fetch_failed");
   if (data === null) return null;
   return resolveUserPhoneE164(data.phone, data.phoneCountryIso);
+}
+
+export function brandPersonIngestResolutionFailure(
+  message: string | undefined,
+): "erased_contact_suppressed" | "resolver_failed" {
+  return message?.includes("people_erased_contact_suppressed")
+    ? "erased_contact_suppressed"
+    : "resolver_failed";
 }
 
 function json(body: Record<string, unknown>, status = 200): Response {
@@ -90,6 +103,7 @@ export async function handler(request: Request): Promise<Response> {
     retired: 0,
     retryable: 0,
     dead: 0,
+    erasedSuppressed: 0,
     finishUnknown: 0,
   };
   for (const row of rows) {
@@ -110,7 +124,11 @@ export async function handler(request: Request): Promise<Response> {
         "biz_resolve_brand_person_source_derived",
         parameters,
       );
-      if (resolutionError) throw new Error("resolver_failed");
+      if (resolutionError) {
+        throw new Error(
+          brandPersonIngestResolutionFailure(resolutionError.message),
+        );
+      }
       const label = safeBrandPersonResolution(outcome).linkOutcome;
       if (label === "linked" || label === "already_linked") counts.linked += 1;
       else if (label === "conflict") counts.conflict += 1;
@@ -126,6 +144,17 @@ export async function handler(request: Request): Promise<Response> {
       );
       if (finishError) throw new Error("finish_failed");
     } catch (error) {
+      if (
+        error instanceof Error && error.message === "erased_contact_suppressed"
+      ) {
+        const { error: finishError } = await client.rpc(
+          "biz_finish_brand_person_ingest",
+          { p_id: row.id, p_succeeded: true, p_safe_error_code: null },
+        );
+        if (finishError) counts.finishUnknown += 1;
+        else counts.erasedSuppressed += 1;
+        continue;
+      }
       const code = error instanceof Error && error.message === "finish_failed"
         ? "ingest_finish_failed"
         : error instanceof Error && error.message === "source_fetch_failed"

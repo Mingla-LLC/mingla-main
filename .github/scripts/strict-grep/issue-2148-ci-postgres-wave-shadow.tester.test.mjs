@@ -57,6 +57,14 @@ const PARTIAL_REFERENCE_DELTAS = [{
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
     "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
   ],
+}, {
+  // [TEST-MOD-APPROVED #1772] Independently mirror A4's reviewed Supabase reference delta.
+  workflow: "supabase-migrations-and-stripe-deno.yml",
+  referenceFiles: [
+    ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+    ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
+    "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
+  ],
 }];
 const independentlyNormalizePartialReferences = (discovered, declarations = PARTIAL_REFERENCE_DELTAS) => {
   const normalized = structuredClone(discovered);

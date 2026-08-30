@@ -359,7 +359,7 @@ jobs:
           }
           for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
                        suite_1217a suite_1217t suite_1612 suite_1840 \
-                       suite_1384_1397 suite_2794; do
+                       suite_1384_1397 suite_1772 suite_2794; do
             create_suite_db "$suite"
           done
           docker exec "$PG_CONTRACT_CONTAINER" \
@@ -492,7 +492,7 @@ jobs:
           broken=0
           for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
                        suite_1217a suite_1217t suite_1612 suite_1840 \
-                       suite_1384_1397 suite_2794; do
+                       suite_1384_1397 suite_1772 suite_2794; do
             suite_fp="$(fingerprint_of "$suite")"
             suite_counts="$(counts_of "$suite")"
             echo "$suite fingerprint=$suite_fp counts=$suite_counts"
@@ -508,7 +508,7 @@ jobs:
           if [ "$broken" -ne 0 ]; then
             exit 1
           fi
-          echo "G-1 PASS: 10 of 10 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
+          echo "G-1 PASS: 11 of 11 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
 
       # ── L-5 — the terminal-assertion RED proof ───────────────────────────
       #
@@ -970,6 +970,7 @@ jobs:
           M-1840-05	psql	suite_1840
           M-2794-01	psql	suite_2794
           M-2794-02	psql	suite_2794
+          M-1772-01	psql	suite_1772
           M-1840-06	deno	-
           M-1840-07	deno	-
           M-1177-03	deno	-
@@ -1312,6 +1313,13 @@ jobs:
         run: |
           source .github/scripts/parity/pgsuite.sh
           run_psql M-2794-02 suite_2794 supabase/migrations/__tests__/issue_2794_business_recent_history_tester.test.sql
+
+      # ══ #1772 ═══════════════════════════════════════════════════════════
+      - name: "#1772 · Run brand-person maintenance happy SQL contracts"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-1772-01 suite_1772 supabase/migrations/__tests__/issue_1772_brand_person_maintenance.happy.pg17.test.sql
 
       - name: "#1840 · Run the #1840 sweep wiring + money-path regression tests"
         if: ${{ !cancelled() && steps.provision.outcome == 'success' }}

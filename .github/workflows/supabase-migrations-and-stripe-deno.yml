@@ -29,6 +29,12 @@ on:
       - "supabase/functions/competitor-intel-worker/**"
       - "supabase/functions/growth-tools-run/**"
       - "supabase/functions/growth-tools-report/**"
+      # Issue #1772 — service-only non-user contact erasure, terminal ingest
+      # mapping, and the capacity-safe credential-envelope proof.
+      - "supabase/functions/support-brand-person-erasure/**"
+      - "supabase/functions/brand-person-ingest-worker/**"
+      - "supabase/secrets.manifest.json"
+      - "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
@@ -154,6 +160,11 @@ on:
       - "supabase/functions/competitor-intel-worker/**"
       - "supabase/functions/growth-tools-run/**"
       - "supabase/functions/growth-tools-report/**"
+      # Issue #1772 — same guarded sources and proof as the push filter.
+      - "supabase/functions/support-brand-person-erasure/**"
+      - "supabase/functions/brand-person-ingest-worker/**"
+      - "supabase/secrets.manifest.json"
+      - "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
       # a change to the proof itself re-runs it; the code it guards already
       # rides on `supabase/functions/_shared/**` above.
@@ -2096,6 +2107,26 @@ jobs:
           # platform, no real DB.
           deno test --allow-env --allow-net --allow-read --no-check \
             supabase/functions/_shared/__tests__/issue927_tester_adversarial_runtime.test.ts
+
+  issue-1772-brand-person-erasure:
+    name: "Issue #1772 — capacity-safe erasure and ingest happy contracts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: denoland/setup-deno@v1
+        with:
+          deno-version: "1.46.x"
+      - name: "Issue #1772 — manifest proof before Edge happy tests"
+        run: |
+          set -euo pipefail
+          node --test scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs
+          deno test --allow-env --allow-read \
+            supabase/functions/support-brand-person-erasure/issue_1772_non_user_erasure.happy.test.ts \
+            supabase/functions/brand-person-ingest-worker/issue_1772_erasure_tombstone.happy.test.ts
 
   ad-creative-library-deno-tests:
     name: "ISSUE-866 WP3: Creative Library byte-probe + matrix + resolver Deno tests"
