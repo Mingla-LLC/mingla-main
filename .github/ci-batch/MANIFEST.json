@@ -17493,7 +17493,7 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "967070261897d26305ae05b4d73797ef14ea823e5979ccf9264f812ada6f3e5f",
+        "sourceSha256": "0555b6389b75fe60d1ab0c1f5186d2738203cc64f61ad19528dacf32b4a54a23",
         "triggers": [
           "pull_request",
           "push",

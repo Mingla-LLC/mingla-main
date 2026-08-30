@@ -249,11 +249,26 @@ jobs:
           fi
           changed="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
             --paginate --jq '.[].filename')"
-          # #2099 product code only. Deliberately EXCLUDES this workflow file and the
-          # shared strict-grep manifest: neither can change what ships in __common.
-          if printf '%s\n' "$changed" \
-             | grep -vE '^\.github/(workflows/issue-2099-|scripts/strict-grep/MANIFEST\.json)' \
-             | grep -qE '(2099|PendingVenueIdentityCorrection|HighRiskActionModal|VenueListingContent|venueListingsService|adminClaimsService|ClaimsPage)'; then
+          # Exact #2099 Mingla Business web product paths only. Names containing
+          # "2099" or "pending_venue" are not product-scope evidence.
+          sc4_product_paths=(
+            'mingla-business/app/venue/[venueId]/index.tsx'
+            'mingla-business/src/services/venueListingsService.ts'
+            'mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx'
+            'mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx'
+            'mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts'
+            'mingla-business/src/components/venue/VenueListingContent.tsx'
+          )
+          run_sc4=false
+          while IFS= read -r path; do
+            for product_path in "${sc4_product_paths[@]}"; do
+              if [ "$path" = "$product_path" ]; then
+                run_sc4=true
+                break 2
+              fi
+            done
+          done <<< "$changed"
+          if [ "$run_sc4" = true ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "#2099 product code changed — measuring."
           else

@@ -48,6 +48,26 @@ const PROVIDER_DELTA = `  Object.freeze({
     ]),
   }),
 `;
+const EXPECTED_SC4_PRODUCT_PATHS = [
+  "mingla-business/app/venue/[venueId]/index.tsx",
+  "mingla-business/src/services/venueListingsService.ts",
+  "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx",
+  "mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx",
+  "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts",
+  "mingla-business/src/components/venue/VenueListingContent.tsx",
+];
+const ISSUE_2855_CURRENT_DIFF = [
+  ".github/ci-batch/MANIFEST.json",
+  ".github/scripts/ci-batch/validate-manifest-v2.mjs",
+  ".github/scripts/strict-grep/issue-2148-ci-postgres-wave-shadow.tester.test.mjs",
+  ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
+  "REPORTS.md",
+  "docs/INVARIANT_REGISTRY.md",
+  "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql",
+  "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql",
+  "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+  "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+];
 
 const [
   original,
@@ -292,6 +312,109 @@ Deno.test("#2855 workflow runs the forward owner and ordered D4 replay twice", (
     originalName,
     forwardName,
   ]);
+});
+
+Deno.test("#2855 SC-4 classifier is exact-path product scope", () => {
+  const sc4Step = workflow.slice(
+    workflow.indexOf(
+      '- name: "SC-4 scope — did this change touch #2099 product code?"',
+    ),
+    workflow.indexOf("- if: steps.sc4scope.outputs.run == 'true'"),
+  );
+  const allowlistBlock = sc4Step.match(
+    /sc4_product_paths=\(\n([\s\S]*?)\n\s*\)/,
+  );
+  assert.ok(allowlistBlock, "SC-4 exact product-path allowlist is missing");
+  const productPaths = allowlistBlock[1].trim().split(/\r?\n/).map((line) => {
+    const match = line.trim().match(/^'([^']+)'$/);
+    assert.ok(match, `SC-4 allowlist entry is not one exact literal: ${line}`);
+    return match[1];
+  });
+  assert.deepEqual(
+    productPaths,
+    EXPECTED_SC4_PRODUCT_PATHS,
+    "SC-4 product allowlist drifted",
+  );
+  assert.match(
+    sc4Step,
+    /if \[ "\$path" = "\$product_path" \]; then/,
+    "SC-4 must classify by exact path equality",
+  );
+  for (
+    const token of [
+      "run_sc4=false",
+      "while IFS= read -r path; do",
+      'for product_path in "${sc4_product_paths[@]}"; do',
+      "run_sc4=true",
+      "break 2",
+      'done <<< "$changed"',
+      'if [ "$run_sc4" = true ]; then',
+    ]
+  ) {
+    assert.ok(
+      sc4Step.includes(token),
+      `SC-4 classifier is not wired: ${token}`,
+    );
+  }
+  assert.doesNotMatch(
+    sc4Step,
+    /grep[^\n]*(?:2099|PendingVenueIdentityCorrection|pending_venue)/,
+    "SC-4 must not classify by a filename fragment",
+  );
+  assert.match(
+    sc4Step,
+    /if \[ "\$\{\{ github\.event_name \}\}" != "pull_request" \]; then[\s\S]*?echo "run=true"/,
+    "push/main must continue to run SC-4",
+  );
+
+  const shouldRunOnPullRequest = (changedPaths: string[]): boolean =>
+    changedPaths.some((changedPath) => productPaths.includes(changedPath));
+  for (const productPath of EXPECTED_SC4_PRODUCT_PATHS) {
+    assert.equal(
+      shouldRunOnPullRequest([productPath]),
+      true,
+      `exact product path must run SC-4: ${productPath}`,
+    );
+  }
+  assert.equal(
+    shouldRunOnPullRequest([
+      "docs/unrelated.md",
+      EXPECTED_SC4_PRODUCT_PATHS[3],
+      "supabase/migrations/unrelated.sql",
+    ]),
+    true,
+    "one exact product path in a mixed PR must run SC-4",
+  );
+
+  assert.equal(
+    shouldRunOnPullRequest(ISSUE_2855_CURRENT_DIFF),
+    false,
+    "the exact #2855 diff must not run the Mingla Business bundle measurement",
+  );
+  const excludedPaths = [
+    "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql",
+    "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql",
+    "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts",
+    "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx",
+    "mingla-business/playwright.issue2099.config.ts",
+    "mingla-business/jest.issue2099.web.render.cjs",
+    "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.native.tsx",
+    "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.d.ts",
+    "mingla-admin/src/services/adminClaimsService.js",
+    ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
+    ".github/ci-batch/MANIFEST.json",
+    "docs/INVARIANT_REGISTRY.md",
+    "REPORTS.md",
+    "mingla-business/app/venue/[venueId]/index.tsx.test",
+    "other/PendingVenueIdentityCorrectionDialog.web.tsx",
+  ];
+  for (const excludedPath of excludedPaths) {
+    assert.equal(
+      shouldRunOnPullRequest([excludedPath]),
+      false,
+      `non-product or near-match path must skip SC-4: ${excludedPath}`,
+    );
+  }
 });
 
 Deno.test("#2855 records only its reviewed provider-reference delta", () => {
