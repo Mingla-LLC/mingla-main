@@ -906,8 +906,8 @@ BEGIN
   FROM actual
   WHERE actual_fingerprint <> expected_fingerprint;
 
-  IF v_index_count <> 60
-    OR v_index_fingerprint <> '6b03ce0a69d76988b1f13c367f396547'
+  IF v_index_count <> 61
+    OR v_index_fingerprint <> '6070f6b1331ff498899cfd34d77e3e61'
     OR v_function_mismatch IS NOT NULL
   THEN
     RAISE EXCEPTION

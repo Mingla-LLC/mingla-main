@@ -1,5 +1,13 @@
 # Invariant Registry
 
+## ACTIVE — issue #2854 (customer-patterns index inventory remains exact)
+
+### I-PROPOSED-2854-CUSTOMER-PATTERNS-INDEX-INVENTORY-PIN (ACTIVE)
+
+- **Rule:** On `brand_team_members`, `brands`, `event_dates`, `event_rsvps`, `events`, `orders`, `reservations`, and `venue_availability_config`, the complete canonical index inventory is exactly 61 / `6070f6b1331ff498899cfd34d77e3e61`; removing only `orders_attendance_claim_unconsumed_digest_uniq` reconstructs the #1406 authority exactly at 60 / `6b03ce0a69d76988b1f13c367f396547`; that #871 index retains its exact unique partial definition; and the seven unrelated RPC definition+ACL fingerprints remain frozen at the values in the issue #2854 binding SPEC.
+- **Enforcement:** the existing #1406 A-7 adversarial assertion plus the new #2854 independent tester guard, both executed by `.github/workflows/issue-1406-customer-patterns-performance-tests.yml`.
+- **Status:** ACTIVE after independent P0–P4-zero PASS at tester commit `511060e02` on 2026-08-30: all 546 migrations and five workflow suites passed on pinned PostgreSQL 17, while both the true old-authority revert and a non-unique #871 index mutant failed closed before exact restoration returned green. Any future intentional inventory change requires a reviewed issue, provenance proof, independent expected-value derivation, explicit append-only authorization for an existing-test edit, and deliberate re-bank; never loosen the guard to avoid that process.
+
 ## ACTIVE — issue #2799 (web privacy proof runs on production artifacts)
 
 ### I-2799-WEB-PRIVACY-PROOF-PRODUCTION-ARTIFACTS (ACTIVE)
