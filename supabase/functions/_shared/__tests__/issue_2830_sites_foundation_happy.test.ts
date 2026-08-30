@@ -5,6 +5,7 @@ import {
   resolveSitesAttributionPepper,
 } from "../sitesSecurity.ts";
 import { SITE_AGENT_READ_ONLY, SITE_AGENT_TOOLS } from "../agentSiteTools.ts";
+import { safeSitesRoute } from "../sitesObservability.ts";
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
@@ -92,6 +93,38 @@ Deno.test("#2830 Ari registry exposes exactly the approved twelve tools", () => 
     "Ari Website tool registry drifted",
   );
   assert(SITE_AGENT_READ_ONLY.size === 6, "Ari read-only set drifted");
+  const contentTool = SITE_AGENT_TOOLS.find((tool) =>
+    tool.name === "propose_site_content_update"
+  );
+  const contentProperties = contentTool?.parameters.properties as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const changes = contentProperties?.changes as
+    | { properties?: Record<string, unknown>; additionalProperties?: boolean }
+    | undefined;
+  assert(
+    changes?.additionalProperties === false,
+    "page changes are not closed",
+  );
+  assert(
+    Object.keys(changes.properties || {}).sort().join(",") ===
+      "blocks,enabled,nav_label,nav_order,seo,title",
+    "Ari page changes do not expose the approved fields",
+  );
+  const settingsTool = SITE_AGENT_TOOLS.find((tool) =>
+    tool.name === "propose_site_settings_update"
+  );
+  const settingsProperties = settingsTool?.parameters.properties as
+    | Record<string, Record<string, unknown>>
+    | undefined;
+  const settingsChanges = settingsProperties?.changes as
+    | { properties?: Record<string, unknown>; additionalProperties?: boolean }
+    | undefined;
+  assert(
+    settingsChanges?.additionalProperties === false &&
+      Object.keys(settingsChanges.properties || {}).length === 10,
+    "Ari settings changes are not exact and usable",
+  );
 });
 
 Deno.test("#2830 slot-88 import closure stays exact and value-blind", async () => {
@@ -128,4 +161,16 @@ Deno.test("#2830 slot-88 import closure stays exact and value-blind", async () =
     "slot-88 environment read is not sole",
   );
   assert(!helper.includes("console."), "slot-88 helper may not log material");
+});
+
+Deno.test("#2830 observability normalizes routes without query or identifier leakage", () => {
+  const request = new Request(
+    "https://fixture.invalid/functions/v1/brand-site-runtime-resolve/internal/v1/hosts/00000000-0000-4000-8000-000000000001/publication?token=must-not-appear",
+  );
+  const route = safeSitesRoute(request, "brand-site-runtime-resolve");
+  assert(
+    route === "/internal/v1/hosts/{id}/publication",
+    `unsafe observation route: ${route}`,
+  );
+  assert(!route.includes("token"), "observation route retained query data");
 });

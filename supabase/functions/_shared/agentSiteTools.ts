@@ -22,6 +22,238 @@ const PAGE_ROLE = {
   type: "string",
   enum: ["home", "about", "menu", "gallery", "contact"],
 };
+const SAFE_URL = {
+  type: "string",
+  minLength: 1,
+  maxLength: 2048,
+  description:
+    "An https URL or an approved relative Mingla path; never javascript, data, HTML, or code.",
+};
+const MEDIA_ID = { type: "string", format: "uuid" };
+const boundedText = (maxLength: number) => ({
+  type: "string",
+  minLength: 1,
+  maxLength,
+});
+const closedObject = (
+  properties: Record<string, unknown>,
+  required: string[] = [],
+) => ({
+  type: "object",
+  additionalProperties: false,
+  properties,
+  ...(required.length ? { required } : {}),
+});
+const cta = closedObject(
+  { label: boundedText(80), href: SAFE_URL },
+  ["label", "href"],
+);
+const block = (
+  blockType: string,
+  properties: Record<string, unknown>,
+  required: string[] = [],
+) =>
+  closedObject(
+    {
+      blockType: { type: "string", enum: [blockType] },
+      ...properties,
+    },
+    ["blockType", ...required],
+  );
+const SITE_BLOCK = {
+  anyOf: [
+    block(
+      "hero",
+      {
+        heading: boundedText(120),
+        subheading: boundedText(300),
+        media: MEDIA_ID,
+        ctas: { type: "array", maxItems: 2, items: cta },
+      },
+      ["heading", "media"],
+    ),
+    block(
+      "rich_text",
+      {
+        heading: boundedText(120),
+        content: {
+          type: "string",
+          minLength: 1,
+          maxLength: 5000,
+          description:
+            "Plain text for the bounded rich-text block. Mingla converts it to safe structured content.",
+        },
+      },
+      ["content"],
+    ),
+    block(
+      "media_feature",
+      {
+        media: MEDIA_ID,
+        alt: boundedText(240),
+        heading: boundedText(120),
+        caption: boundedText(500),
+        alignment: { type: "string", enum: ["left", "right"] },
+      },
+      ["media", "alt", "alignment"],
+    ),
+    block(
+      "cta",
+      {
+        heading: boundedText(120),
+        body: boundedText(500),
+        label: boundedText(80),
+        href: SAFE_URL,
+      },
+      ["heading", "label", "href"],
+    ),
+    block(
+      "offering_grid",
+      {
+        heading: boundedText(120),
+        offering_ids: {
+          type: "array",
+          minItems: 1,
+          maxItems: 12,
+          items: closedObject(
+            { offering_id: boundedText(80) },
+            ["offering_id"],
+          ),
+        },
+      },
+      ["offering_ids"],
+    ),
+    block(
+      "venue_reservation",
+      {
+        heading: boundedText(120),
+        body: boundedText(500),
+        reservation_target_id: boundedText(80),
+      },
+      ["heading", "reservation_target_id"],
+    ),
+    block(
+      "menu_link",
+      {
+        heading: boundedText(120),
+        label: boundedText(80),
+        href: SAFE_URL,
+      },
+      ["label", "href"],
+    ),
+    block(
+      "gallery",
+      {
+        heading: boundedText(120),
+        images: {
+          type: "array",
+          minItems: 1,
+          maxItems: 12,
+          items: closedObject(
+            { media: MEDIA_ID, alt: boundedText(240) },
+            ["media", "alt"],
+          ),
+        },
+      },
+      ["images"],
+    ),
+    block(
+      "hours_location",
+      {
+        heading: boundedText(120),
+        address: boundedText(300),
+        map_url: SAFE_URL,
+        hours: {
+          type: "array",
+          minItems: 1,
+          maxItems: 7,
+          items: closedObject(
+            { day: boundedText(20), value: boundedText(80) },
+            ["day", "value"],
+          ),
+        },
+      },
+      ["address", "hours"],
+    ),
+    block(
+      "testimonials",
+      {
+        heading: boundedText(120),
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 8,
+          items: closedObject(
+            { name: boundedText(120), quote: boundedText(500) },
+            ["name", "quote"],
+          ),
+        },
+      },
+      ["items"],
+    ),
+    block(
+      "faq",
+      {
+        heading: boundedText(120),
+        items: {
+          type: "array",
+          minItems: 1,
+          maxItems: 12,
+          items: closedObject(
+            { question: boundedText(240), answer: boundedText(1000) },
+            ["question", "answer"],
+          ),
+        },
+      },
+      ["items"],
+    ),
+    block(
+      "contact_handoff",
+      {
+        heading: boundedText(120),
+        body: boundedText(500),
+        label: boundedText(80),
+        href: SAFE_URL,
+      },
+      ["heading", "label", "href"],
+    ),
+    block("divider", {}),
+    block(
+      "spacer",
+      { size: { type: "string", enum: ["small", "medium", "large"] } },
+      ["size"],
+    ),
+  ],
+};
+const PAGE_CHANGES = closedObject({
+  title: boundedText(120),
+  enabled: { type: "boolean" },
+  nav_label: boundedText(40),
+  nav_order: { type: "integer", minimum: 0, maximum: 4 },
+  blocks: { type: "array", maxItems: 40, items: SITE_BLOCK },
+  seo: closedObject({
+    title: boundedText(70),
+    description: boundedText(170),
+  }),
+});
+const SETTINGS_CHANGES = closedObject({
+  display_name: boundedText(120),
+  short_description: boundedText(300),
+  logo: MEDIA_ID,
+  background_color: {
+    type: "string",
+    pattern: "^#[0-9a-fA-F]{6}$",
+  },
+  foreground_color: {
+    type: "string",
+    pattern: "^#[0-9a-fA-F]{6}$",
+  },
+  accent_color: { type: "string", pattern: "^#[0-9a-fA-F]{6}$" },
+  typography: { type: "string", enum: ["modern-sans", "editorial-serif"] },
+  seo_title: boundedText(70),
+  seo_description: boundedText(170),
+  social_image: MEDIA_ID,
+});
 
 function tool(
   name: string,
@@ -145,10 +377,9 @@ const proposeContent = tool(
     page_role: PAGE_ROLE,
     expected_revision: REVISION,
     changes: {
-      type: "object",
-      additionalProperties: false,
+      ...PAGE_CHANGES,
       description:
-        "Closed page fields/blocks to change; no HTML, CSS, JavaScript, iframe, SVG, or arbitrary code.",
+        "One or more closed page fields or typed blocks; no HTML, CSS, JavaScript, iframe, SVG, or arbitrary code.",
     },
     change_summary: { type: "string", minLength: 1, maxLength: 500 },
   },
@@ -196,7 +427,7 @@ const proposeSettings = tool(
     brand_id: UUID,
     site_id: UUID,
     expected_revision: REVISION,
-    changes: { type: "object", additionalProperties: false },
+    changes: SETTINGS_CHANGES,
     change_summary: { type: "string", minLength: 1, maxLength: 500 },
   },
   ["brand_id", "site_id", "expected_revision", "changes", "change_summary"],
@@ -349,6 +580,10 @@ const listVersions = tool(
   },
 );
 
+const createSitePreview = publicationTool("create_site_preview");
+const publishSite = publicationTool("publish_site");
+const rollbackSite = publicationTool("rollback_site");
+
 export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   getBrandSite,
   listSitePages,
@@ -357,11 +592,11 @@ export const SITE_AGENT_TOOLS: AgentToolDefinition[] = [
   proposeSettings,
   attachMedia,
   validateDraft,
-  publicationTool("create_site_preview"),
-  publicationTool("publish_site"),
+  createSitePreview,
+  publishSite,
   getOperation,
   listVersions,
-  publicationTool("rollback_site"),
+  rollbackSite,
 ];
 
 export const SITE_AGENT_READ_ONLY = new Set([

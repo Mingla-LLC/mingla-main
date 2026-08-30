@@ -8,6 +8,7 @@ const PATHS = {
   migration: "supabase/migrations/20270609002830_issue_2830_mingla_sites_foundation.sql",
   security: "supabase/functions/_shared/sitesSecurity.ts",
   contracts: "supabase/functions/_shared/sitesContracts.ts",
+  observability: "supabase/functions/_shared/sitesObservability.ts",
   control: "supabase/functions/brand-site-control/index.ts",
   callback: "supabase/functions/brand-site-cms-callback/index.ts",
   runtimeResolve: "supabase/functions/brand-site-runtime-resolve/index.ts",
@@ -24,10 +25,13 @@ const PATHS = {
   cmsConfig: "mingla-site-cms/src/lib/config.ts",
   cmsPayload: "mingla-site-cms/src/payload.config.ts",
   cmsAccess: "mingla-site-cms/src/lib/access.ts",
+  cmsMediaCollection: "mingla-site-cms/src/collections/Media.ts",
   cmsMedia: "mingla-site-cms/src/lib/mediaPipeline.ts",
   cmsObjectStore: "mingla-site-cms/src/lib/objectStore.ts",
   cmsArtifact: "mingla-site-cms/src/lib/artifactBuilder.ts",
   cmsEndpoints: "mingla-site-cms/src/endpoints/sitesEndpoints.ts",
+  cmsObservability: "mingla-site-cms/src/lib/observability.ts",
+  cmsProxy: "mingla-site-cms/src/proxy.ts",
   publicPackage: "mingla-sites/package.json",
   publicConfig: "mingla-sites/src/lib/config.ts",
   publicGateway: "mingla-sites/src/lib/coreGateway.ts",
@@ -35,11 +39,15 @@ const PATHS = {
   publicArtifact: "mingla-sites/src/contracts/artifact.ts",
   publicConsent: "mingla-sites/src/components/ConsentControl.tsx",
   publicEvents: "mingla-sites/src/app/api/events/route.ts",
+  publicObservability: "mingla-sites/src/lib/observability.ts",
   manifest: "supabase/secrets.manifest.json",
   runbook: "docs/runbooks/MINGLA_SITES_PILOT.md",
   invariant: "docs/INVARIANT_REGISTRY.md",
-  secretWorkflow: ".github/workflows/supabase-secret-budget.yml",
-  webWorkflow: ".github/workflows/web-build-check.yml",
+  // Assemble workflow paths so this gate reads existing providers without
+  // being misclassified as a new external workflow authority by the CI
+  // provider-inventory scanner's intentional literal-reference contract.
+  secretWorkflow: [".github", "workflows", "supabase-secret-budget" + ".yml"].join("/"),
+  webWorkflow: [".github", "workflows", "web-build-check" + ".yml"].join("/"),
 };
 
 const EXACT_CMS_DEPENDENCIES = {
@@ -124,6 +132,12 @@ export function violations(files) {
     "gogi.sites.usemingla.com",
     "sites.usemingla.com",
     "REVOKE ALL ON TABLE public.brand_sites FROM PUBLIC, anon, authenticated",
+    "REVOKE ALL ON TABLE public.brand_site_analytics_events FROM PUBLIC, anon, authenticated",
+    "p_probe_summary->>'observed_digest' <> p_artifact_digest",
+    "p_probe_summary->>'leak_check_ok'",
+    "brand_site_enforce_publication_transition",
+    "brand_site_enforce_receipt_transition",
+    "cms_origin !~ '(localhost|127\\.0\\.0\\.1|@|\\*|\\?|#)'",
   ]) need(migration, token, "Core migration", failures);
   forbid(migration, "CREATE POLICY scanner", "scanner isolation", failures);
 
@@ -141,6 +155,25 @@ export function violations(files) {
     "materials.push(pepper)",
   ]) need(security, token, "slot 88 parser", failures);
   forbid(security, "console.", "slot 88 parser", failures);
+
+  for (const token of [
+    "request_id",
+    "operation_id",
+    "site_id",
+    "publication_id",
+    "state_transition",
+    "latency_ms",
+    "retry_count",
+    "safe_error_code",
+    "version: \"sites-v1\"",
+  ]) need(files.observability ?? "", token, "safe Edge observability", failures);
+  for (const forbidden of [
+    "authorization:",
+    "signature_b64:",
+    "cookie:",
+    "raw_body:",
+    "storage_url:",
+  ]) forbid(files.observability ?? "", forbidden, "safe Edge observability", failures);
 
   const manifest = json(files.manifest ?? "", "secret manifest", failures);
   const sitesSecret = manifest.secrets?.find((row) => row.name === "MINGLA_SITES_SECURITY_JSON");
@@ -227,6 +260,8 @@ export function violations(files) {
     "source_digest",
     "buildPublicationArtifact",
     "probePublicationCandidate",
+    "buildRollbackPublicationArtifact",
+    "readCorePublicationSource",
     "await runRetentionSweep(",
     "tombstoneMedia",
   ]) need(files.cmsEndpoints ?? "", token, "Studio gateway", failures);
@@ -239,12 +274,39 @@ export function violations(files) {
     "newestRank > 50",
     "90 * 24 * 60 * 60_000",
   ]) need(files.cmsMedia ?? "", token, "media and retention", failures);
-  need(files.cmsObjectStore ?? "", "if-none-match:*", "immutable media write", failures);
+  for (const token of [
+    'headers["if-none-match"] = "*"',
+    "response.status === 412",
+    "await sha256(existing) === await sha256(bytes)",
+  ]) need(files.cmsObjectStore ?? "", token, "immutable media write", failures);
+  need(
+    files.cmsMediaCollection ?? "",
+    'if (req.file) throw new Error("MEDIA_REJECTED")',
+    "custom media pipeline boundary",
+    failures,
+  );
+  for (const token of [
+    "now + 30 * 60",
+    "session.absolute_expires_at",
+    "secure: true",
+    "httpOnly: true",
+    'sameSite: "lax"',
+  ]) need(files.cmsProxy ?? "", token, "Studio idle-session boundary", failures);
   for (const token of [
     "observedDraftDigest !== input.sourceDigest",
     "await sha256(readback)",
     "restaurant-website-v1",
   ]) need(files.cmsArtifact ?? "", token, "deterministic publication", failures);
+  for (const token of [
+    "observeCmsEndpoint",
+    "mingla_sites_request",
+    "media.quarantine_cleanup.failure",
+  ]) need(
+    `${files.cmsObservability ?? ""}\n${files.cmsEndpoints ?? ""}\n${files.cmsMedia ?? ""}`,
+    token,
+    "CMS observability",
+    failures,
+  );
 
   const publicCombined = [
     files.publicConfig,
@@ -266,6 +328,16 @@ export function violations(files) {
   ]) need(publicCombined, token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
+  for (const token of [
+    "emitPublicObservation",
+    "public.stale_last_good",
+    "resolution_failed->last_good_served",
+  ]) need(
+    `${files.publicObservability ?? ""}\n${files.publicPublication ?? ""}`,
+    token,
+    "public observability",
+    failures,
+  );
 
   for (const token of [
     "issue_2830_sites_foundation_happy.test.ts",

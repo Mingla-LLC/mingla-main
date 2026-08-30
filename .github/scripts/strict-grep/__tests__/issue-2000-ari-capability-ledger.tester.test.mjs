@@ -60,7 +60,13 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // [TEST-MOD-APPROVED #1976] Three partner/payments reads (87→90):
 // get_brand_balances_reports, list_partner_brand_links, list_partner_splits.
 // unsupported 21→18; registered_unverified 86→89. Denominator stays 120.
+// [TEST-MOD-APPROVED #2830] Twelve new Website outcome families are both real
+// Business operations and registered Ari tools, so the reviewed denominator
+// moves 120→132, mapped tools 108→120, and registered_unverified 107→119. The exact
+// id/status/mapping/source digests below are independently re-derived from the
+// expanded canonical ledger; all hostile mutations remain unchanged in shape.
 const EXPECTED_TOOL_NAMES = [
+  "attach_approved_site_media",
   "cancel_campaign",
   "cancel_event",
   "cancel_order",
@@ -70,6 +76,7 @@ const EXPECTED_TOOL_NAMES = [
   "create_event",
   "create_experience",
   "create_rsvp",
+  "create_site_preview",
   "create_stay_reservation",
   "create_support_ticket",
   "create_trip",
@@ -87,11 +94,14 @@ const EXPECTED_TOOL_NAMES = [
   "export_brand_people",
   "get_brand_analytics",
   "get_brand_balances_reports",
+  "get_brand_site",
   "get_campaign_report",
   "get_event_order_reconciliation",
   "get_operator_snapshot",
   "get_partner_status",
   "get_payout_status",
+  "get_site_operation_status",
+  "get_site_page",
   "get_tax_status",
   "get_trip_order_money",
   "get_venue_listing_status",
@@ -105,6 +115,8 @@ const EXPECTED_TOOL_NAMES = [
   "list_guest_roster",
   "list_partner_brand_links",
   "list_partner_splits",
+  "list_site_pages",
+  "list_site_versions",
   "list_venue_claim_feedback",
   "list_venue_listings",
   "manage_ari_history",
@@ -132,9 +144,12 @@ const EXPECTED_TOOL_NAMES = [
   "manage_venue_waitlist",
   "mark_claim_feedback_fixed",
   "patch_event_when",
+  "propose_site_content_update",
+  "propose_site_settings_update",
   "publish_event",
   "publish_experience",
   "publish_rsvp",
+  "publish_site",
   "publish_stay",
   "publish_trip",
   "quote_stay",
@@ -144,6 +159,7 @@ const EXPECTED_TOOL_NAMES = [
   "retry_installment",
   "revoke_brand_member",
   "revoke_scanner_invitation",
+  "rollback_site",
   "run_growth_tool",
   "schedule_campaign",
   "send_campaign_now",
@@ -168,23 +184,24 @@ const EXPECTED_TOOL_NAMES = [
   "update_rsvp_contribution_settings",
   "update_trip",
   "upsert_ticket_tier",
+  "validate_site_draft",
   "venue_ops_action",
 ];
 
 const EXPECTED = Object.freeze({
-  capabilityCount: 120,
+  capabilityCount: 132,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 107,
+    registered_unverified: 119,
     broken: 0,
     guided_handoff: 8,
     unsupported: 0,
     in_flight: 5,
   }),
-  idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
-  statusDigest: "a124115a7354deb8b0d685747dc298aa58e4b0752c19bea32a9d117df039aa5e",
-  mappingDigest: "fa0fc2d2051ee32a05ed4f387d64e1f0884fcb06eadc99b67d6d0fd9d27bc713",
-  sourceRefDigest: "5b125f4e45ac9e043a566b79f41a3a42b053b41d4b18d3b57283c44d48ac768c",
+  idDigest: "ea5af0ae087e01585d83f8542aff31654957432887110ba653ed41fc11fa35d1",
+  statusDigest: "5b567ade54913529c0ca0211e6e5ce481de863687573a4c73907460736916fca",
+  mappingDigest: "29bd0dd6827b42f36cc72a47b7c41c19bc63fb08e3e60303767bad7731f6c1bb",
+  sourceRefDigest: "e2a1ce66b158e9b7b2d54b899fb4d14e5f05a281d5c757e067500fabcabc68f9",
 });
 
 function readLedger() {
@@ -210,9 +227,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("108-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("120-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("107/0/0/8/5/0 classification changed");
+    failures.push("0/119/0/8/0/5 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
@@ -268,4 +285,3 @@ test("tester rejects an extant-but-wrong source token that a substring check wou
   row.owners.source[0].symbol = "brand";
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /source path\/symbol evidence changed/);
 });
-

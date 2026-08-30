@@ -5,6 +5,7 @@ import {
   assertRestaurantArtifact,
   type RestaurantArtifact,
 } from "../contracts/artifact";
+import { emitPublicObservation } from "./observability";
 
 type Resolution = {
   site_id: string;
@@ -50,7 +51,9 @@ async function signedResolution(hostname: string): Promise<Resolution> {
   return responseEnvelope.data as Resolution;
 }
 
-async function resolve(hostname: string): Promise<Resolution> {
+async function resolve(
+  hostname: string,
+): Promise<{ value: Resolution; stale: boolean }> {
   try {
     const value = await signedResolution(hostname);
     if (
@@ -58,10 +61,12 @@ async function resolve(hostname: string): Promise<Resolution> {
       value.renderer_key !== "restaurant-website-v1"
     ) throw new Error("NOT_FOUND");
     staleResolution.set(hostname, { value, expires: Date.now() + 5 * 60_000 });
-    return value;
+    return { value, stale: false };
   } catch (error) {
     const prior = staleResolution.get(hostname);
-    if (prior && prior.expires >= Date.now()) return prior.value;
+    if (prior && prior.expires >= Date.now()) {
+      return { value: prior.value, stale: true };
+    }
     throw error;
   }
 }
@@ -69,8 +74,54 @@ async function resolve(hostname: string): Promise<Resolution> {
 export async function loadPublication(
   hostname: string,
 ): Promise<{ artifact: RestaurantArtifact; resolution: Resolution }> {
-  const resolution = await resolve(hostname);
-  return { artifact: await loadResolvedArtifact(resolution), resolution };
+  const startedAt = performance.now();
+  const requestId = crypto.randomUUID();
+  let siteId: string | null = null;
+  let publicationId: string | null = null;
+  try {
+    const resolved = await resolve(hostname);
+    const resolution = resolved.value;
+    siteId = resolution.site_id;
+    publicationId = resolution.publication_id;
+    const artifact = await loadResolvedArtifact(resolution);
+    emitPublicObservation({
+      event: "mingla_sites_request",
+      metric: resolved.stale ? "public.stale_last_good" : "public.request.2xx",
+      request_id: requestId,
+      operation_id: null,
+      site_id: siteId,
+      publication_id: publicationId,
+      direction: "public_runtime",
+      route: "/",
+      state_transition: resolved.stale
+        ? "resolution_failed->last_good_served"
+        : "request_started->artifact_verified",
+      latency_ms: Math.max(0, Math.round(performance.now() - startedAt)),
+      retry_count: 0,
+      safe_error_code: null,
+      status_code: 200,
+      version: "sites-v1",
+    });
+    return { artifact, resolution };
+  } catch (error) {
+    emitPublicObservation({
+      event: "mingla_sites_request",
+      metric: "public.request.4xx",
+      request_id: requestId,
+      operation_id: null,
+      site_id: siteId,
+      publication_id: publicationId,
+      direction: "public_runtime",
+      route: "/",
+      state_transition: "request_started->request_rejected",
+      latency_ms: Math.max(0, Math.round(performance.now() - startedAt)),
+      retry_count: 0,
+      safe_error_code: "NOT_FOUND",
+      status_code: 404,
+      version: "sites-v1",
+    });
+    throw error;
+  }
 }
 
 export async function loadResolvedArtifact(

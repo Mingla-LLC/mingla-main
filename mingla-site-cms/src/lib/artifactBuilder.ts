@@ -55,12 +55,17 @@ function lexicalText(value: unknown): string[] {
     }
   };
   walk(value);
-  return result
+  const paragraphs = result
     .join("")
     .split("\n")
     .map((text) => text.trim())
     .filter(Boolean)
     .slice(0, 30);
+  if (
+    paragraphs.some((text) => text.length > 2_000) ||
+    paragraphs.reduce((total, text) => total + text.length, 0) > 20_000
+  ) throw new Error("VALIDATION_FAILED");
+  return paragraphs;
 }
 
 async function tenantRequest(
@@ -173,6 +178,9 @@ export async function buildPublicationArtifact(
   const media = new Map(
     mediaResult.docs.map((item: AnyDoc) => [String(item.id), item]),
   );
+  const pageRoles = new Map(
+    pagesResult.docs.map((page: AnyDoc) => [String(page.id), page.role]),
+  );
   const offeringIds = new Set<string>();
   for (const page of pagesResult.docs as AnyDoc[])
     for (const block of page.blocks || [])
@@ -215,47 +223,129 @@ export async function buildPublicationArtifact(
   };
   const blocks = (source: AnyDoc[]) =>
     source.map((raw) => {
-      const block = { ...raw };
-      delete block.id;
-      delete block.blockName;
-      if (raw.blockType === "rich_text") {
-        block.type = "rich_text";
-        block.paragraphs = lexicalText(raw.content).map((text) => ({ text }));
-        delete block.content;
-      } else block.type = raw.blockType;
-      delete block.blockType;
-      if (raw.media) {
-        const ref = renderMedia(raw.media, String(raw.alt || ""));
-        block.media_url = ref.url;
-        delete block.media;
-      }
-      if (raw.images)
-        block.images = raw.images.map((row: AnyDoc) =>
-          renderMedia(row.media, String(row.alt || "")),
-        );
-      if (raw.offering_ids) {
-        block.offerings = raw.offering_ids.map((row: AnyDoc) => {
+      switch (raw.blockType) {
+        case "hero":
+          return {
+            type: "hero",
+            heading: raw.heading,
+            subheading: raw.subheading,
+            media_url: renderMedia(raw.media, "").url,
+            ctas: (raw.ctas || []).map((row: AnyDoc) => ({
+              label: row.label,
+              href: row.href,
+            })),
+          };
+        case "rich_text":
+          return {
+            type: "rich_text",
+            heading: raw.heading,
+            paragraphs: lexicalText(raw.content).map((text) => ({ text })),
+          };
+        case "media_feature":
+          return {
+            type: "media_feature",
+            media_url: renderMedia(raw.media, String(raw.alt || "")).url,
+            alt: raw.alt,
+            heading: raw.heading,
+            caption: raw.caption,
+            alignment: raw.alignment,
+          };
+        case "cta":
+          return {
+            type: "cta",
+            heading: raw.heading,
+            body: raw.body,
+            label: raw.label,
+            href: raw.href,
+          };
+        case "offering_grid":
+          return {
+            type: "offering_grid",
+            heading: raw.heading,
+            offerings: (raw.offering_ids || []).map((row: AnyDoc) => {
+              const resolved = commercial.find(
+                (item) => item.id === row.offering_id,
+              );
+              if (!resolved) throw new Error("VALIDATION_FAILED");
+              return {
+                id: resolved.id,
+                label: resolved.title,
+                summary: resolved.summary || "",
+                url: resolved.url,
+              };
+            }),
+          };
+        case "venue_reservation": {
           const resolved = commercial.find(
-            (item) => item.id === row.offering_id,
+            (item) => item.id === raw.reservation_target_id,
           );
           if (!resolved) throw new Error("VALIDATION_FAILED");
           return {
-            id: resolved.id,
-            label: resolved.title,
-            summary: resolved.summary || "",
-            url: resolved.url,
+            type: "venue_reservation",
+            heading: raw.heading,
+            body: raw.body,
+            url: resolved.checkout_url,
           };
-        });
-        delete block.offering_ids;
+        }
+        case "menu_link":
+          return {
+            type: "menu_link",
+            heading: raw.heading,
+            label: raw.label,
+            href: raw.href,
+          };
+        case "gallery":
+          return {
+            type: "gallery",
+            heading: raw.heading,
+            images: (raw.images || []).map((row: AnyDoc) =>
+              renderMedia(row.media, String(row.alt || ""))
+            ),
+          };
+        case "hours_location":
+          return {
+            type: "hours_location",
+            heading: raw.heading,
+            address: raw.address,
+            map_url: raw.map_url,
+            hours: (raw.hours || []).map((row: AnyDoc) => ({
+              day: row.day,
+              value: row.value,
+            })),
+          };
+        case "testimonials":
+          return {
+            type: "testimonials",
+            heading: raw.heading,
+            items: (raw.items || []).map((row: AnyDoc) => ({
+              name: row.name,
+              quote: row.quote,
+            })),
+          };
+        case "faq":
+          return {
+            type: "faq",
+            heading: raw.heading,
+            items: (raw.items || []).map((row: AnyDoc) => ({
+              question: row.question,
+              answer: row.answer,
+            })),
+          };
+        case "contact_handoff":
+          return {
+            type: "contact_handoff",
+            heading: raw.heading,
+            body: raw.body,
+            label: raw.label,
+            href: raw.href,
+          };
+        case "divider":
+          return { type: "divider" };
+        case "spacer":
+          return { type: "spacer", size: raw.size };
+        default:
+          throw new Error("VALIDATION_FAILED");
       }
-      if (raw.reservation_target_id) {
-        const resolved = commercial.find(
-          (item) => item.id === raw.reservation_target_id,
-        );
-        if (!resolved) throw new Error("VALIDATION_FAILED");
-        block.url = resolved.checkout_url;
-      }
-      return block;
     });
   const artifact: AnyDoc = {
     schema_version: 1,
@@ -278,7 +368,9 @@ export async function buildPublicationArtifact(
       seo: page.seo,
     })),
     navigation: {
-      page_roles: ((navigationResult.docs[0] as AnyDoc)?.pages || []).map(id),
+      page_roles: ((navigationResult.docs[0] as AnyDoc)?.pages || [])
+        .map((page: unknown) => pageRoles.get(id(page)))
+        .filter(Boolean),
     },
     footer: (() => {
       const footer = { ...((footerResult.docs[0] as AnyDoc) || {}) };
@@ -291,6 +383,12 @@ export async function buildPublicationArtifact(
         "label",
       ])
         delete footer[key];
+      if (Array.isArray(footer.links)) {
+        footer.links = footer.links.map((row: AnyDoc) => ({
+          label: row.label,
+          href: row.href,
+        }));
+      }
       return footer;
     })(),
     site_settings: {
@@ -371,4 +469,73 @@ export async function probePublicationCandidate(input: {
     throw new Error("PROBE_FAILED");
   }
   return result.data as Record<string, unknown>;
+}
+
+export async function buildRollbackPublicationArtifact(input: {
+  siteId: string;
+  brandId: string;
+  publicationId: string;
+  sourceRevisionId: string;
+  sourceDigest: string;
+  generatedAt: string;
+  rollbackSourcePublicationId: string;
+  rollbackSource: Record<string, unknown>;
+}) {
+  const sourceArtifactDigest = String(
+    input.rollbackSource.artifact_digest || "",
+  );
+  const sourceArtifactKey = String(input.rollbackSource.artifact_key || "");
+  if (
+    input.rollbackSource.id !== input.rollbackSourcePublicationId ||
+    input.rollbackSource.site_id !== input.siteId ||
+    input.rollbackSource.source_revision_id !== input.sourceRevisionId ||
+    input.rollbackSource.source_digest !== input.sourceDigest ||
+    input.rollbackSource.status !== "published" ||
+    input.rollbackSource.artifact_schema_version !== 1 ||
+    input.rollbackSource.renderer_key !== "restaurant-website-v1" ||
+    input.rollbackSource.renderer_version !== 1 ||
+    !/^[0-9a-f]{64}$/.test(sourceArtifactDigest) ||
+    sourceArtifactKey !==
+      `publications/${input.siteId}/${input.rollbackSourcePublicationId}/${sourceArtifactDigest}.json`
+  ) throw new Error("VALIDATION_FAILED");
+  const sourceBytes = await readObject(
+    cmsConfig().artifactBucket,
+    sourceArtifactKey,
+  );
+  if (await sha256(sourceBytes) !== sourceArtifactDigest) {
+    throw new Error("ARTIFACT_DIGEST_MISMATCH");
+  }
+  const sourceArtifact = JSON.parse(
+    new TextDecoder().decode(sourceBytes),
+  ) as AnyDoc;
+  if (
+    sourceArtifact.site_id !== input.siteId ||
+    sourceArtifact.brand_id !== input.brandId ||
+    sourceArtifact.publication_id !== input.rollbackSourcePublicationId ||
+    sourceArtifact.source_revision_id !== input.sourceRevisionId ||
+    sourceArtifact.source_digest !== input.sourceDigest ||
+    sourceArtifact.schema_version !== 1 ||
+    sourceArtifact.renderer_key !== "restaurant-website-v1" ||
+    sourceArtifact.renderer_version !== 1
+  ) throw new Error("VALIDATION_FAILED");
+  const artifact = {
+    ...sourceArtifact,
+    publication_id: input.publicationId,
+    generated_at: input.generatedAt,
+  };
+  const serialized = stable(artifact);
+  const artifactDigest = await sha256(serialized);
+  const artifactKey =
+    `publications/${input.siteId}/${input.publicationId}/${artifactDigest}.json`;
+  await writeObject(
+    cmsConfig().artifactBucket,
+    artifactKey,
+    new TextEncoder().encode(serialized),
+    "application/json",
+  );
+  const readback = await readObject(cmsConfig().artifactBucket, artifactKey);
+  if (await sha256(readback) !== artifactDigest) {
+    throw new Error("ARTIFACT_DIGEST_MISMATCH");
+  }
+  return { artifact, serialized, artifactKey, artifactDigest };
 }

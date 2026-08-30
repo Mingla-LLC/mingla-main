@@ -1,4 +1,8 @@
-import type { CollectionConfig, FieldAccess } from "payload";
+import type {
+  CollectionBeforeOperationHook,
+  CollectionConfig,
+  FieldAccess,
+} from "payload";
 import {
   enforceLiveStudioWrite,
   tenantMediaCreate,
@@ -15,6 +19,9 @@ const systemFieldAccess = {
   read: systemMediaField,
   update: systemMediaField,
 };
+const rejectDirectPayloadUpload: CollectionBeforeOperationHook = ({ req }) => {
+  if (req.file) throw new Error("MEDIA_REJECTED");
+};
 
 export const Media: CollectionConfig = {
   slug: "media",
@@ -24,7 +31,9 @@ export const Media: CollectionConfig = {
     mimeTypes: ["image/jpeg", "image/png", "image/webp"],
     filesRequiredOnCreate: false,
   },
-  hooks: { beforeOperation: [enforceLiveStudioWrite] },
+  hooks: {
+    beforeOperation: [rejectDirectPayloadUpload, enforceLiveStudioWrite],
+  },
   access: {
     admin: ({ req }) => Boolean(req.user),
     create: tenantMediaCreate,

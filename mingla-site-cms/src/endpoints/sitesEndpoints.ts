@@ -1,11 +1,13 @@
 import type { Endpoint, PayloadRequest } from "payload";
 import {
   buildPublicationArtifact,
+  buildRollbackPublicationArtifact,
   publicationDraftDigest,
   probePublicationCandidate,
 } from "../lib/artifactBuilder";
 import {
   callCore,
+  readCorePublicationSource,
   readCoreRetentionProjection,
   verifyCoreRequest,
 } from "../lib/gateway";
@@ -17,6 +19,10 @@ import {
 } from "../lib/mediaPipeline";
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
+import {
+  emitCmsObservation,
+  observeCmsEndpoint,
+} from "../lib/observability";
 import {
   assertMutationRequest,
   decodePreviewGrant,
@@ -51,6 +57,7 @@ function safeFailure(error: unknown) {
       "SESSION_EXPIRED",
       "MEDIA_REJECTED",
       "MEDIA_PROCESSING",
+      "PUBLISH_FAILED_LAST_GOOD_PRESERVED",
       "IDEMPOTENCY_CONFLICT",
     ].includes(error.message)
       ? error.message
@@ -258,6 +265,11 @@ async function provisionOrReconcile(req: PayloadRequest): Promise<Response> {
 async function publish(req: PayloadRequest): Promise<Response> {
   let bodyText = "";
   let jobId: number | string | null = null;
+  let callbackContext: {
+    siteId: string;
+    operationId: string;
+    publicationId: string;
+  } | null = null;
   try {
     bodyText = (await req.text?.()) || "";
     const path = "/api/internal/publications";
@@ -269,6 +281,7 @@ async function publish(req: PayloadRequest): Promise<Response> {
         publication_id?: unknown;
         revision_id?: unknown;
         generated_at?: unknown;
+        rollback_source_publication_id?: unknown;
       };
     };
     if (
@@ -292,12 +305,22 @@ async function publish(req: PayloadRequest): Promise<Response> {
     );
     const sourceDigest = String(body.source_digest || "");
     const generatedAt = String(body.authorization.generated_at || "");
+    const rollbackSourcePublicationId = String(
+      body.authorization.rollback_source_publication_id || "",
+    );
     if (
       !/^[0-9a-f-]{36}$/i.test(publicationId) ||
       !/^[0-9a-f]{64}$/.test(sourceDigest) ||
+      (rollbackSourcePublicationId !== "" &&
+        !/^[0-9a-f-]{36}$/i.test(rollbackSourcePublicationId)) ||
       !Number.isFinite(Date.parse(generatedAt))
     )
       throw new Error("VALIDATION_FAILED");
+    callbackContext = {
+      siteId: envelope.site_id,
+      operationId: envelope.operation_id,
+      publicationId,
+    };
     const existing = (
       await req.payload.find({
         collection: "publication-jobs",
@@ -345,14 +368,29 @@ async function publish(req: PayloadRequest): Promise<Response> {
               retry_count: Number(job.retry_count || 0) + (existing ? 1 : 0),
             },
           });
-          const materialized = await buildPublicationArtifact(req, {
-            tenant,
-            operationId: envelope.operation_id,
-            publicationId,
-            sourceRevisionId: revisionId,
-            sourceDigest,
-            generatedAt,
-          });
+          const materialized = rollbackSourcePublicationId
+            ? await buildRollbackPublicationArtifact({
+                siteId: envelope.site_id,
+                brandId: String(tenant.core_brand_id),
+                publicationId,
+                sourceRevisionId: revisionId,
+                sourceDigest,
+                generatedAt,
+                rollbackSourcePublicationId,
+                rollbackSource: await readCorePublicationSource(
+                  envelope.site_id,
+                  rollbackSourcePublicationId,
+                  envelope.operation_id,
+                ),
+              })
+            : await buildPublicationArtifact(req, {
+                tenant,
+                operationId: envelope.operation_id,
+                publicationId,
+                sourceRevisionId: revisionId,
+                sourceDigest,
+                generatedAt,
+              });
           await req.payload.update({
             collection: "publication-jobs",
             id: job.id,
@@ -399,9 +437,48 @@ async function publish(req: PayloadRequest): Promise<Response> {
     });
     return json({ ok: true, data: result }, 202);
   } catch (error) {
+    const definitiveFailure =
+      error instanceof Error &&
+      [
+        "REVISION_CONFLICT",
+        "MEDIA_REJECTED",
+        "MEDIA_PROCESSING",
+        "VALIDATION_FAILED",
+        "PROBE_FAILED",
+        "ARTIFACT_DIGEST_MISMATCH",
+      ].includes(error.message);
+    let failureRecorded = false;
+    if (definitiveFailure && callbackContext) {
+      try {
+        await callCore(
+          `/internal/v1/sites/${callbackContext.siteId}/publication-failures`,
+          callbackContext.siteId,
+          callbackContext.operationId,
+          { publication_id: callbackContext.publicationId },
+        );
+        failureRecorded = true;
+      } catch {
+        emitCmsObservation({
+          event: "mingla_sites_state",
+          metric: "publish.failure_callback.ambiguous",
+          request_id: crypto.randomUUID(),
+          operation_id: callbackContext.operationId,
+          site_id: callbackContext.siteId,
+          publication_id: callbackContext.publicationId,
+          direction: "core_to_cms",
+          route: "/internal/publications",
+          state_transition: "publish_failed->callback_ambiguous",
+          latency_ms: 0,
+          retry_count: 0,
+          safe_error_code: "CORE_UNAVAILABLE",
+          status_code: null,
+          version: "sites-v1",
+        });
+      }
+    }
     if (jobId !== null) {
-      await req.payload
-        .update({
+      try {
+        await req.payload.update({
           collection: "publication-jobs",
           id: jobId,
           overrideAccess: true,
@@ -425,10 +502,31 @@ async function publish(req: PayloadRequest): Promise<Response> {
                 ? error.message
                 : "SERVICE_TEMPORARILY_UNAVAILABLE",
           },
-        })
-        .catch(() => undefined);
+        });
+      } catch {
+        emitCmsObservation({
+          event: "mingla_sites_state",
+          metric: "publish.job_state_persist.failure",
+          request_id: crypto.randomUUID(),
+          operation_id: callbackContext?.operationId ?? null,
+          site_id: callbackContext?.siteId ?? null,
+          publication_id: callbackContext?.publicationId ?? null,
+          direction: "core_to_cms",
+          route: "/internal/publications",
+          state_transition: "publish_failed->job_state_persist_failed",
+          latency_ms: 0,
+          retry_count: 0,
+          safe_error_code: "SERVICE_TEMPORARILY_UNAVAILABLE",
+          status_code: null,
+          version: "sites-v1",
+        });
+      }
     }
-    return safeFailure(error);
+    return safeFailure(
+      failureRecorded
+        ? new Error("PUBLISH_FAILED_LAST_GOOD_PRESERVED")
+        : error,
+    );
   }
 }
 
@@ -612,12 +710,19 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       expires_at: issuedAt + 1800,
       nonce: crypto.randomUUID(),
     });
+    const expiresAt = new Date((issuedAt + 1800) * 1000).toISOString();
+    await callCore(
+      `/internal/v1/sites/${envelope.site_id}/preview-results`,
+      envelope.site_id,
+      envelope.operation_id,
+      { revision_id: sourceRevision, expires_at: expiresAt },
+    );
     return json({
       ok: true,
       data: {
         site_id: envelope.site_id,
         source_revision: sourceRevision,
-        expires_at: new Date((issuedAt + 1800) * 1000).toISOString(),
+        expires_at: expiresAt,
         preview_url: `${cmsConfig().cmsOrigin}/preview?token=${encodeURIComponent(previewToken)}`,
       },
     });
@@ -635,6 +740,52 @@ const ARI_ACTIONS = new Set([
   "attach_approved_site_media",
   "validate_site_draft",
 ]);
+
+function plainTextToLexical(value: string): Record<string, unknown> {
+  return {
+    root: {
+      type: "root",
+      format: "",
+      indent: 0,
+      version: 1,
+      direction: "ltr",
+      children: [
+        {
+          type: "paragraph",
+          format: "",
+          indent: 0,
+          version: 1,
+          direction: "ltr",
+          textFormat: 0,
+          textStyle: "",
+          children: [
+            {
+              type: "text",
+              detail: 0,
+              format: 0,
+              mode: "normal",
+              style: "",
+              text: value,
+              version: 1,
+            },
+          ],
+        },
+      ],
+    },
+  };
+}
+
+function normalizeAriBlocks(value: unknown): unknown {
+  if (!Array.isArray(value)) return value;
+  return value.map((raw) => {
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return raw;
+    const block = raw as Record<string, unknown>;
+    if (block.blockType !== "rich_text" || typeof block.content !== "string") {
+      return block;
+    }
+    return { ...block, content: plainTextToLexical(block.content) };
+  });
+}
 
 async function ari(req: PayloadRequest): Promise<Response> {
   let raw = "";
@@ -790,7 +941,13 @@ async function ari(req: PayloadRequest): Promise<Response> {
         overrideAccess: false,
         draft: true,
         depth: 0,
-        data: { ...changes, revision: page.revision },
+        data: {
+          ...changes,
+          ...(Object.prototype.hasOwnProperty.call(changes, "blocks")
+            ? { blocks: normalizeAriBlocks(changes.blocks) }
+            : {}),
+          revision: page.revision,
+        } as never,
       });
       return json({
         ok: true,
@@ -1113,30 +1270,90 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
 }
 
 export const sitesEndpoints: Endpoint[] = [
-  { path: "/mingla/exchange", method: "post", handler: exchange },
-  { path: "/mingla/media/upload-grants", method: "post", handler: uploadGrant },
+  {
+    path: "/mingla/exchange",
+    method: "post",
+    handler: observeCmsEndpoint(
+      "/mingla/exchange",
+      "customer_to_cms",
+      exchange,
+    ),
+  },
+  {
+    path: "/mingla/media/upload-grants",
+    method: "post",
+    handler: observeCmsEndpoint(
+      "/mingla/media/upload-grants",
+      "studio_to_cms",
+      uploadGrant,
+    ),
+  },
   {
     path: "/mingla/media/:mediaId/complete",
     method: "post",
-    handler: uploadComplete,
+    handler: observeCmsEndpoint(
+      "/mingla/media/{mediaId}/complete",
+      "studio_to_cms",
+      uploadComplete,
+    ),
   },
   {
     path: "/mingla/media/:mediaId/tombstone",
     method: "post",
-    handler: mediaTombstone,
+    handler: observeCmsEndpoint(
+      "/mingla/media/{mediaId}/tombstone",
+      "studio_to_cms",
+      mediaTombstone,
+    ),
   },
-  { path: "/mingla/previews", method: "get", handler: previewDraft },
-  { path: "/mingla/previews", method: "post", handler: mintPreview },
+  {
+    path: "/mingla/previews",
+    method: "get",
+    handler: observeCmsEndpoint(
+      "/mingla/previews",
+      "studio_to_cms",
+      previewDraft,
+    ),
+  },
+  {
+    path: "/mingla/previews",
+    method: "post",
+    handler: observeCmsEndpoint(
+      "/mingla/previews",
+      "core_to_cms",
+      mintPreview,
+    ),
+  },
   {
     path: "/internal/reconcile/:operationId",
     method: "post",
-    handler: provisionOrReconcile,
+    handler: observeCmsEndpoint(
+      "/internal/reconcile/{operationId}",
+      "core_to_cms",
+      provisionOrReconcile,
+    ),
   },
-  { path: "/internal/publications", method: "post", handler: publish },
+  {
+    path: "/internal/publications",
+    method: "post",
+    handler: observeCmsEndpoint(
+      "/internal/publications",
+      "core_to_cms",
+      publish,
+    ),
+  },
   {
     path: "/internal/retention-sweep",
     method: "post",
-    handler: retentionSweep,
+    handler: observeCmsEndpoint(
+      "/internal/retention-sweep",
+      "core_to_cms",
+      retentionSweep,
+    ),
   },
-  { path: "/internal/ari", method: "post", handler: ari },
+  {
+    path: "/internal/ari",
+    method: "post",
+    handler: observeCmsEndpoint("/internal/ari", "core_to_cms", ari),
+  },
 ];

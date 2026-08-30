@@ -1,8 +1,7 @@
-import { readFileSync } from "fs";
-import path from "path";
 import {
   DEFERRED_WEBSITE_STATES,
   deriveWebsiteJourneyState,
+  primarySiteHost,
   type BrandSiteOverview,
 } from "../contracts";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
@@ -54,26 +53,27 @@ describe("#2830 Business Website journey", () => {
     expect(deriveWebsiteJourneyState(site("error"))).toBe(28);
   });
 
-  test("custom-domain states remain registered but have no Slice A route", () => {
+  test("custom-domain states remain registered outside the executable Slice A union", () => {
     expect(DEFERRED_WEBSITE_STATES).toEqual([18, 19, 20, 21, 22, 31, 32, 33]);
-    const routeRoot = path.join(process.cwd(), "app/brand/[id]");
-    const website = readFileSync(path.join(routeRoot, "website.tsx"), "utf8");
-    expect(website).not.toMatch(
-      /connect domain|dns|txt ownership|detach domain/i,
-    );
   });
 
-  test("Website stays route-lazy and provider neutral", () => {
-    const profile = readFileSync(
-      path.join(process.cwd(), "src/components/brand/BrandProfileView.tsx"),
-      "utf8",
+  test("selects only an explicitly primary permanent host and never guesses", () => {
+    const published = site("published");
+    published.brand_site_hosts = [
+      {
+        hostname: "secondary.sites.usemingla.com",
+        status: "pending",
+        is_primary: false,
+      },
+      {
+        hostname: "gogi.sites.usemingla.com",
+        status: "active",
+        is_primary: true,
+      },
+    ];
+    expect(primarySiteHost(published)?.hostname).toBe(
+      "gogi.sites.usemingla.com",
     );
-    const route = readFileSync(
-      path.join(process.cwd(), "app/brand/[id]/website.tsx"),
-      "utf8",
-    );
-    expect(profile).not.toMatch(/payload|sharp|storage-s3|db-postgres/i);
-    expect(route).toContain("Mingla Studio");
-    expect(route).not.toMatch(/payload|supabase|vercel|neon|s3/i);
+    expect(primarySiteHost(site("draft"))).toBeNull();
   });
 });

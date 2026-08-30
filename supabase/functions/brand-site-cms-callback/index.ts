@@ -7,6 +7,7 @@ import {
   verifySitesEnvelope,
 } from "../_shared/sitesContracts.ts";
 import { resolveCmsToCoreVerifier } from "../_shared/sitesSecurity.ts";
+import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 
 function decodeEnvelope(value: string | null): unknown {
   if (value === null || value.length > 16_384) {
@@ -19,7 +20,7 @@ function decodeEnvelope(value: string | null): unknown {
   }
 }
 
-export async function handleBrandSiteCmsCallback(
+async function handleBrandSiteCmsCallbackRequest(
   req: Request,
 ): Promise<Response> {
   if (!["GET", "POST"].includes(req.method)) {
@@ -80,6 +81,25 @@ export async function handleBrandSiteCmsCallback(
     const provisionMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/provision-results$/,
     );
+    const previewResultMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/preview-results$/,
+    );
+    if (previewResultMatch) {
+      const siteId = requireUuid(previewResultMatch[1]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const { data, error } = await service.rpc(
+        "brand_site_complete_preview",
+        {
+          p_site_id: siteId,
+          p_operation_id: requireUuid(envelope.operation_id),
+          p_revision_id: String(parsed.revision_id ?? ""),
+          p_expires_at: String(parsed.expires_at ?? ""),
+        },
+      );
+      return error
+        ? sitesJson({ ok: false, error: { code: "CALLBACK_AMBIGUOUS" } }, 409)
+        : sitesJson({ ok: true, data });
+    }
     if (provisionMatch) {
       const siteId = requireUuid(provisionMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
@@ -114,6 +134,26 @@ export async function handleBrandSiteCmsCallback(
     const retentionMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/retention-protection$/,
     );
+    const publicationSourceMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/publications\/([^/]+)\/source$/,
+    );
+    if (publicationSourceMatch && req.method === "GET") {
+      const siteId = requireUuid(publicationSourceMatch[1]);
+      const publicationId = requireUuid(publicationSourceMatch[2]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const { data, error } = await service
+        .from("brand_site_publications")
+        .select(
+          "id,site_id,source_revision_id,source_digest,artifact_key,artifact_digest,artifact_schema_version,renderer_key,renderer_version,status",
+        )
+        .eq("id", publicationId)
+        .eq("site_id", siteId)
+        .eq("status", "published")
+        .maybeSingle();
+      return error || !data
+        ? sitesJson({ ok: false, error: { code: "NOT_FOUND" } }, 404)
+        : sitesJson({ ok: true, data });
+    }
     if (retentionMatch && req.method === "GET") {
       const siteId = requireUuid(retentionMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
@@ -157,6 +197,24 @@ export async function handleBrandSiteCmsCallback(
     const publicationMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/publication-results$/,
     );
+    const publicationFailureMatch = path.match(
+      /^\/internal\/v1\/sites\/([^/]+)\/publication-failures$/,
+    );
+    if (publicationFailureMatch) {
+      const siteId = requireUuid(publicationFailureMatch[1]);
+      if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
+      const { data, error } = await service.rpc(
+        "brand_site_fail_publication",
+        {
+          p_site_id: siteId,
+          p_operation_id: requireUuid(envelope.operation_id),
+          p_publication_id: requireUuid(parsed.publication_id),
+        },
+      );
+      return error
+        ? sitesJson({ ok: false, error: { code: "CALLBACK_AMBIGUOUS" } }, 409)
+        : sitesJson({ ok: true, data });
+    }
     if (publicationMatch) {
       const siteId = requireUuid(publicationMatch[1]);
       if (siteId !== envelope.site_id) throw new Error("TENANT_MISMATCH");
@@ -204,6 +262,16 @@ export async function handleBrandSiteCmsCallback(
       : "SIGNATURE_INVALID";
     return sitesJson({ ok: false, error: { code } }, 403);
   }
+}
+
+export async function handleBrandSiteCmsCallback(
+  req: Request,
+): Promise<Response> {
+  return await observeSitesRequest(req, {
+    service: "brand-site-cms-callback",
+    direction: "cms_to_core",
+    handler: handleBrandSiteCmsCallbackRequest,
+  });
 }
 
 if (import.meta.main) serve(handleBrandSiteCmsCallback);

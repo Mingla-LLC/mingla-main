@@ -1,8 +1,9 @@
 import React, { useCallback } from "react";
-import { Alert, Linking, Platform, View } from "react-native";
+import { Alert, Linking, Platform } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { BrandWebsiteView } from "../../../src/components/sites/BrandWebsiteView";
+import { SafeScreen } from "../../../src/components/ui/SafeScreen";
 import { canvas } from "../../../src/constants/designSystem";
 import { isFeatureEnabled } from "../../../src/config/featureFlags";
 import { useBrand } from "../../../src/hooks/useBrands";
@@ -84,7 +85,7 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: canvas.discover }}>
+    <SafeScreen style={{ backgroundColor: canvas.discover }}>
       <Stack.Screen options={{ title: "Website", headerBackTitle: "Brand" }} />
       <BrandWebsiteView
         brandName={brand.data?.displayName ?? "Brand"}
@@ -146,6 +147,6 @@ export default function BrandWebsiteRoute(): React.ReactElement {
           });
         }}
       />
-    </View>
+    </SafeScreen>
   );
 }

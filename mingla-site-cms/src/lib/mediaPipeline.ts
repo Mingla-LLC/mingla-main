@@ -8,6 +8,7 @@ import {
   readObject,
   writeObject,
 } from "./objectStore";
+import { emitCmsObservation } from "./observability";
 
 const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp"]);
 const WIDTHS = [320, 640, 960, 1440, 1920] as const;
@@ -142,13 +143,44 @@ async function reject(
     | "METADATA_RETAINED"
     | "PROCESSING_FAILED",
 ) {
-  await deleteObject(cmsConfig().quarantineBucket, key).catch(() => undefined);
+  let quarantineRemoved = false;
+  try {
+    await deleteObject(cmsConfig().quarantineBucket, key);
+    quarantineRemoved = true;
+  } catch {
+    const studioUser = req.user as unknown as { siteId?: string };
+    emitCmsObservation({
+      event: "mingla_sites_state",
+      metric: "media.quarantine_cleanup.failure",
+      request_id: crypto.randomUUID(),
+      operation_id: null,
+      site_id: /^[0-9a-f-]{36}$/i.test(String(studioUser?.siteId || ""))
+        ? String(studioUser.siteId)
+        : null,
+      publication_id: null,
+      direction: "studio_to_cms",
+      route: "/media/quarantine-cleanup",
+      state_transition: "rejected->cleanup_retry_scheduled",
+      latency_ms: 0,
+      retry_count: 0,
+      safe_error_code: "STORAGE_UNAVAILABLE",
+      status_code: null,
+      version: "sites-v1",
+    });
+  }
   await req.payload.update({
     collection: "media",
     id: mediaId,
     overrideAccess: false,
     req,
-    data: { state: "REJECTED", rejection_code: code },
+    data: {
+      state: "REJECTED",
+      rejection_code: code,
+      quarantine_key: quarantineRemoved ? null : key,
+      quarantine_delete_by: quarantineRemoved
+        ? null
+        : new Date(Date.now() + 60 * 60_000).toISOString(),
+    },
   });
   throw new Error("MEDIA_REJECTED");
 }
@@ -311,8 +343,8 @@ export async function completeUpload(
       error instanceof Error &&
       !["MEDIA_REJECTED", "INVALID_STATE"].includes(error.message)
     ) {
-      await req.payload
-        .update({
+      try {
+        await req.payload.update({
           collection: "media",
           id: mediaId,
           overrideAccess: false,
@@ -321,8 +353,28 @@ export async function completeUpload(
             state: "RETRYABLE_FAILED",
             rejection_code: "PROCESSING_FAILED",
           },
-        })
-        .catch(() => undefined);
+        });
+      } catch {
+        const studioUser = req.user as unknown as { siteId?: string };
+        emitCmsObservation({
+          event: "mingla_sites_state",
+          metric: "media.state_persist.failure",
+          request_id: crypto.randomUUID(),
+          operation_id: null,
+          site_id: /^[0-9a-f-]{36}$/i.test(String(studioUser?.siteId || ""))
+            ? String(studioUser.siteId)
+            : null,
+          publication_id: null,
+          direction: "studio_to_cms",
+          route: "/media/processing",
+          state_transition: "processing_failed->state_persist_failed",
+          latency_ms: 0,
+          retry_count: 0,
+          safe_error_code: "SERVICE_TEMPORARILY_UNAVAILABLE",
+          status_code: null,
+          version: "sites-v1",
+        });
+      }
     }
     throw error;
   } finally {

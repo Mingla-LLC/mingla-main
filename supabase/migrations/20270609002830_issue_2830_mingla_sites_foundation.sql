@@ -212,7 +212,9 @@ CREATE TABLE public.brand_site_operation_receipts (
     public.brand_site_json_keys_allowed(
       result_summary,
       ARRAY['site_id','publication_id','status','destination','expires_at',
-        'revision_id','artifact_digest','last_good_preserved','retryable']
+        'revision_id','artifact_digest','last_good_preserved','retryable',
+        'brand_id','user_id','rank','generated_at',
+        'rollback_source_publication_id']
     )
   )
 );
@@ -226,6 +228,7 @@ CREATE TABLE public.brand_site_audit_log (
   action text NOT NULL CHECK (action IN (
     'site.provision_requested','site.provisioned','site.provision_failed',
     'editor.exchange_issued','editor.exchange_consumed','editor.sessions_revoked',
+    'preview.requested','preview.created',
     'publication.requested','publication.published','publication.failed',
     'publication.reconciled','publication.rollback_requested',
     'site.suspended','site.resumed','attribution.consumed'
@@ -315,6 +318,7 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     -- Analytics is additive. It may never roll back a successful checkout or
     -- make an order depend on the Sites control plane being available.
+    RAISE LOG 'mingla_sites_attribution_bind_failed sqlstate=%', SQLSTATE;
     RETURN NEW;
   END;
   RETURN NEW;
@@ -377,11 +381,11 @@ CREATE TABLE public.brand_site_service_config (
   ),
   CONSTRAINT brand_site_service_config_cms_origin_ck CHECK (
     cms_origin ~ '^https://[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{2,5})?$'
-    AND cms_origin !~ '(localhost|127\.0\.0\.1|@|\*|/|\?|#)'
+    AND cms_origin !~ '(localhost|127\.0\.0\.1|@|\*|\?|#)'
   ),
   CONSTRAINT brand_site_service_config_runtime_origin_ck CHECK (
     public_runtime_origin ~ '^https://[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?(?::[0-9]{2,5})?$'
-    AND public_runtime_origin !~ '(localhost|127\.0\.0\.1|@|\*|/|\?|#)'
+    AND public_runtime_origin !~ '(localhost|127\.0\.0\.1|@|\*|\?|#)'
   )
 );
 
@@ -403,6 +407,44 @@ $$;
 CREATE TRIGGER brand_site_validate_service_config
 BEFORE INSERT OR UPDATE ON public.brand_site_service_config
 FOR EACH ROW EXECUTE FUNCTION public.brand_site_validate_service_config();
+
+CREATE OR REPLACE FUNCTION public.brand_site_enforce_publication_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $$
+BEGIN
+  IF OLD.status IN ('published','failed','rolled_back') AND NEW IS DISTINCT FROM OLD THEN
+    RAISE EXCEPTION 'brand_site_publication_terminal';
+  END IF;
+  IF OLD.status = 'ambiguous' AND NEW.status NOT IN ('ambiguous','published','failed') THEN
+    RAISE EXCEPTION 'brand_site_publication_reconciliation_required';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER brand_site_enforce_publication_transition
+BEFORE UPDATE ON public.brand_site_publications
+FOR EACH ROW EXECUTE FUNCTION public.brand_site_enforce_publication_transition();
+
+CREATE OR REPLACE FUNCTION public.brand_site_enforce_receipt_transition()
+RETURNS trigger
+LANGUAGE plpgsql
+SET search_path TO 'public', 'pg_temp'
+AS $$
+BEGIN
+  IF OLD.status IN ('succeeded','failed') AND NEW IS DISTINCT FROM OLD THEN
+    RAISE EXCEPTION 'brand_site_receipt_terminal';
+  END IF;
+  IF OLD.status = 'ambiguous' AND NEW.status NOT IN ('ambiguous','succeeded','failed') THEN
+    RAISE EXCEPTION 'brand_site_receipt_reconciliation_required';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+CREATE TRIGGER brand_site_enforce_receipt_transition
+BEFORE UPDATE ON public.brand_site_operation_receipts
+FOR EACH ROW EXECUTE FUNCTION public.brand_site_enforce_receipt_transition();
 
 CREATE OR REPLACE FUNCTION public.brand_site_set_updated_at()
 RETURNS trigger
@@ -471,6 +513,7 @@ REVOKE ALL ON TABLE public.brand_site_operation_receipts FROM PUBLIC, anon, auth
 REVOKE ALL ON TABLE public.brand_site_audit_log FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.brand_site_gateway_nonces FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.brand_site_attribution_touches FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON TABLE public.brand_site_analytics_events FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON TABLE public.brand_site_service_config FROM PUBLIC, anon, authenticated;
 GRANT SELECT ON TABLE public.brand_sites TO authenticated;
 GRANT SELECT ON TABLE public.brand_site_hosts TO authenticated;
@@ -480,7 +523,8 @@ GRANT ALL ON TABLE public.brand_sites, public.brand_site_hosts,
   public.brand_site_publications, public.brand_site_editor_exchanges,
   public.brand_site_operation_receipts, public.brand_site_audit_log,
   public.brand_site_gateway_nonces, public.brand_site_attribution_touches,
-  public.brand_site_service_config TO service_role;
+  public.brand_site_analytics_events, public.brand_site_service_config
+  TO service_role;
 
 CREATE OR REPLACE FUNCTION public.brand_site_provision(
   p_brand_id uuid,
@@ -551,6 +595,9 @@ DECLARE
   v_site public.brand_sites%ROWTYPE;
   v_code text;
   v_digest text;
+  v_arguments_digest text;
+  v_exchange_id uuid;
+  v_receipt public.brand_site_operation_receipts%ROWTYPE;
   v_issued timestamptz := clock_timestamp();
   v_rank integer;
 BEGIN
@@ -559,6 +606,24 @@ BEGIN
     RAISE EXCEPTION 'sites_forbidden';
   END IF;
   SELECT * INTO STRICT v_site FROM public.brand_sites WHERE brand_id = p_brand_id;
+  v_arguments_digest := encode(
+    digest(p_destination || ':' || v_site.id::text, 'sha256'),
+    'hex'
+  );
+  SELECT * INTO v_receipt FROM public.brand_site_operation_receipts
+    WHERE operation_id = p_operation_id FOR UPDATE;
+  IF FOUND THEN
+    IF v_receipt.arguments_digest <> v_arguments_digest OR
+       v_receipt.site_id <> v_site.id OR
+       v_receipt.brand_id <> p_brand_id OR
+       v_receipt.user_id <> v_actor OR
+       v_receipt.kind <> 'editor_session' THEN
+      RAISE EXCEPTION 'sites_idempotency_conflict';
+    END IF;
+    -- Raw exchange codes are deliberately never persisted. A transport retry
+    -- receives the recorded result and cannot mint a second live credential.
+    RETURN COALESCE(v_receipt.result_summary, '{}'::jsonb);
+  END IF;
   v_code := replace(replace(trim(trailing '=' FROM encode(gen_random_bytes(32), 'base64')), '+', '-'), '/', '_');
   v_digest := encode(digest(v_code, 'sha256'), 'hex');
   INSERT INTO public.brand_site_editor_exchanges(
@@ -568,24 +633,24 @@ BEGIN
     v_site.id, p_brand_id, v_actor, v_digest, p_destination, v_rank,
     v_rank::text || ':' || extract(epoch FROM now())::bigint::text,
     v_issued, v_issued + interval '60 seconds'
-  );
+  ) RETURNING id INTO v_exchange_id;
   INSERT INTO public.brand_site_operation_receipts(
     operation_id, site_id, brand_id, user_id, kind, arguments_digest,
     status, result_summary, completed_at
   ) VALUES (
     p_operation_id, v_site.id, p_brand_id, v_actor, 'editor_session',
-    encode(digest(p_destination || ':' || v_site.id::text, 'sha256'), 'hex'),
+    v_arguments_digest,
     'succeeded', jsonb_build_object(
       'site_id', v_site.id, 'status', 'succeeded',
       'destination', p_destination, 'expires_at', v_issued + interval '60 seconds'
     ), now()
-  ) ON CONFLICT (operation_id) DO NOTHING;
+  );
   INSERT INTO public.brand_site_audit_log(
     site_id, brand_id, actor_user_id, actor_kind, action,
     resource_kind, resource_id, operation_id, metadata
   ) VALUES (
     v_site.id, p_brand_id, v_actor, 'user', 'editor.exchange_issued',
-    'editor_exchange', v_digest, p_operation_id,
+    'editor_exchange', v_exchange_id::text, p_operation_id,
     jsonb_build_object('destination', p_destination)
   );
   RETURN jsonb_build_object(
@@ -633,7 +698,10 @@ BEGIN
     WHERE operation_id = p_operation_id FOR UPDATE;
   IF FOUND THEN
     IF v_receipt.arguments_digest <> p_arguments_digest OR
-       v_receipt.site_id <> p_site_id OR v_receipt.kind <> p_kind THEN
+       v_receipt.site_id <> p_site_id OR
+       v_receipt.brand_id <> v_site.brand_id OR
+       v_receipt.user_id <> v_actor OR
+       v_receipt.kind <> p_kind THEN
       RAISE EXCEPTION 'sites_idempotency_conflict';
     END IF;
     RETURN COALESCE(v_receipt.result_summary, '{}'::jsonb) || jsonb_build_object(
@@ -677,6 +745,11 @@ BEGIN
       v_rollback_source_id,
       v_actor
     ) RETURNING requested_at INTO v_generated_at;
+    IF p_kind = 'publish' AND v_site.active_publication_id IS NULL THEN
+      UPDATE public.brand_sites
+      SET status = 'publishing', provisioning_error_code = NULL
+      WHERE id = p_site_id;
+    END IF;
   END IF;
   INSERT INTO public.brand_site_operation_receipts(
     operation_id, site_id, brand_id, user_id, kind, arguments_digest,
@@ -688,7 +761,8 @@ BEGIN
       'brand_id', v_site.brand_id, 'user_id', v_actor, 'rank', v_rank,
       'revision_id', p_expected_revision,
       'publication_id', v_publication_id,
-      'generated_at', v_generated_at
+      'generated_at', v_generated_at,
+      'rollback_source_publication_id', v_rollback_source_id
     )
   );
   INSERT INTO public.brand_site_audit_log(
@@ -697,6 +771,7 @@ BEGIN
   ) VALUES (
     p_site_id, v_site.brand_id, v_actor, 'user',
     CASE WHEN p_kind = 'rollback' THEN 'publication.rollback_requested'
+         WHEN p_kind = 'preview' THEN 'preview.requested'
          ELSE 'publication.requested' END,
     p_kind, COALESCE(v_publication_id::text, p_expected_revision), p_operation_id,
     jsonb_build_object('status', 'authorized')
@@ -705,7 +780,61 @@ BEGIN
     'site_id', p_site_id, 'status', 'authorized',
     'brand_id', v_site.brand_id, 'user_id', v_actor, 'rank', v_rank,
     'revision_id', p_expected_revision, 'publication_id', v_publication_id,
-    'generated_at', v_generated_at
+    'generated_at', v_generated_at,
+    'rollback_source_publication_id', v_rollback_source_id
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.brand_site_complete_preview(
+  p_site_id uuid,
+  p_operation_id uuid,
+  p_revision_id text,
+  p_expires_at timestamptz
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $$
+DECLARE
+  v_receipt public.brand_site_operation_receipts%ROWTYPE;
+BEGIN
+  SELECT * INTO STRICT v_receipt
+  FROM public.brand_site_operation_receipts
+  WHERE operation_id = p_operation_id
+    AND site_id = p_site_id
+    AND kind = 'preview'
+  FOR UPDATE;
+  IF v_receipt.status = 'succeeded' THEN
+    RETURN v_receipt.result_summary;
+  END IF;
+  IF v_receipt.status NOT IN ('authorized','executing','ambiguous') OR
+     p_revision_id <> v_receipt.result_summary->>'revision_id' OR
+     p_expires_at <= clock_timestamp() OR
+     p_expires_at > clock_timestamp() + interval '30 minutes' THEN
+    RAISE EXCEPTION 'sites_invalid_state';
+  END IF;
+  UPDATE public.brand_site_operation_receipts
+  SET status = 'succeeded', completed_at = clock_timestamp(),
+    result_summary = jsonb_build_object(
+      'site_id', p_site_id,
+      'status', 'succeeded',
+      'revision_id', p_revision_id,
+      'expires_at', p_expires_at
+    )
+  WHERE operation_id = p_operation_id;
+  INSERT INTO public.brand_site_audit_log(
+    site_id, brand_id, actor_user_id, actor_kind, action,
+    resource_kind, resource_id, operation_id, metadata
+  ) VALUES (
+    p_site_id, v_receipt.brand_id, v_receipt.user_id, 'user',
+    'preview.created', 'preview', p_revision_id, p_operation_id,
+    jsonb_build_object('status', 'succeeded')
+  );
+  RETURN jsonb_build_object(
+    'site_id', p_site_id,
+    'status', 'succeeded',
+    'revision_id', p_revision_id,
+    'expires_at', p_expires_at
   );
 END;
 $$;
@@ -887,7 +1016,17 @@ BEGIN
         'observed_digest','status_code']
      )
      OR COALESCE((p_probe_summary->>'http_ok')::boolean, false) IS NOT TRUE
-     OR COALESCE((p_probe_summary->>'digest_ok')::boolean, false) IS NOT TRUE THEN
+     OR COALESCE((p_probe_summary->>'digest_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'renderer_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'schema_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'canonical_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'assets_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'accessibility_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'consent_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'cta_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'leak_check_ok')::boolean, false) IS NOT TRUE
+     OR COALESCE((p_probe_summary->>'status_code')::integer, 0) <> 200
+     OR p_probe_summary->>'observed_digest' <> p_artifact_digest THEN
     RAISE EXCEPTION 'sites_callback_ambiguous';
   END IF;
   UPDATE public.brand_site_publications SET
@@ -920,6 +1059,73 @@ BEGIN
   RETURN jsonb_build_object(
     'site_id', p_site_id, 'publication_id', p_publication_id,
     'artifact_digest', p_artifact_digest, 'status', 'published'
+  );
+END;
+$$;
+
+CREATE OR REPLACE FUNCTION public.brand_site_fail_publication(
+  p_site_id uuid,
+  p_operation_id uuid,
+  p_publication_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $$
+DECLARE
+  v_site public.brand_sites%ROWTYPE;
+  v_publication public.brand_site_publications%ROWTYPE;
+BEGIN
+  SELECT * INTO STRICT v_site
+  FROM public.brand_sites WHERE id = p_site_id FOR UPDATE;
+  SELECT * INTO STRICT v_publication
+  FROM public.brand_site_publications
+  WHERE id = p_publication_id
+    AND site_id = p_site_id
+    AND operation_id = p_operation_id
+  FOR UPDATE;
+  IF v_publication.status = 'published' THEN
+    RAISE EXCEPTION 'sites_invalid_state';
+  END IF;
+  UPDATE public.brand_site_publications
+  SET status = 'failed', failed_at = clock_timestamp(),
+    failure_code = 'PUBLISH_FAILED_LAST_GOOD_PRESERVED'
+  WHERE id = p_publication_id;
+  UPDATE public.brand_sites
+  SET status = CASE
+      WHEN last_successful_publication_id IS NULL THEN 'draft'
+      ELSE 'published'
+    END,
+    provisioning_error_code = 'PUBLISH_FAILED_LAST_GOOD_PRESERVED'
+  WHERE id = p_site_id;
+  UPDATE public.brand_site_operation_receipts
+  SET status = 'failed', completed_at = clock_timestamp(),
+    error_code = 'PUBLISH_FAILED_LAST_GOOD_PRESERVED',
+    result_summary = jsonb_build_object(
+      'site_id', p_site_id,
+      'publication_id', p_publication_id,
+      'status', 'failed',
+      'last_good_preserved', v_site.last_successful_publication_id IS NOT NULL,
+      'retryable', false
+    )
+  WHERE operation_id = p_operation_id;
+  INSERT INTO public.brand_site_audit_log(
+    site_id, brand_id, actor_kind, action, resource_kind, resource_id,
+    operation_id, metadata
+  ) VALUES (
+    p_site_id, v_site.brand_id, 'system', 'publication.failed',
+    'publication', p_publication_id::text, p_operation_id,
+    jsonb_build_object(
+      'status', 'failed',
+      'safe_error_code', 'PUBLISH_FAILED_LAST_GOOD_PRESERVED',
+      'last_good_preserved', v_site.last_successful_publication_id IS NOT NULL
+    )
+  );
+  RETURN jsonb_build_object(
+    'site_id', p_site_id,
+    'publication_id', p_publication_id,
+    'status', 'failed',
+    'last_good_preserved', v_site.last_successful_publication_id IS NOT NULL,
+    'retryable', false
   );
 END;
 $$;
@@ -1415,8 +1621,10 @@ REVOKE ALL ON FUNCTION public.brand_site_issue_editor_exchange(uuid,uuid,text) F
 REVOKE ALL ON FUNCTION public.brand_site_authorize_operation(uuid,uuid,text,text,text,text) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.brand_site_consume_editor_exchange(text,text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_complete_provision(uuid,uuid,text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_site_complete_preview(uuid,uuid,text,timestamptz) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_commercial_projection(uuid,uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_complete_publication(uuid,uuid,uuid,text,text,text,text,jsonb) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_site_fail_publication(uuid,uuid,uuid) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_internal_authorize(uuid,uuid,integer) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_resolve_publication(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_consume_attribution(text,uuid) FROM PUBLIC, anon, authenticated;
@@ -1436,8 +1644,10 @@ GRANT EXECUTE ON FUNCTION public.brand_site_admin_detail(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_admin_action(uuid,uuid,text,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_consume_editor_exchange(text,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_complete_provision(uuid,uuid,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.brand_site_complete_preview(uuid,uuid,text,timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_commercial_projection(uuid,uuid[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_complete_publication(uuid,uuid,uuid,text,text,text,text,jsonb) TO service_role;
+GRANT EXECUTE ON FUNCTION public.brand_site_fail_publication(uuid,uuid,uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_internal_authorize(uuid,uuid,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_resolve_publication(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_consume_attribution(text,uuid) TO service_role;

@@ -6,6 +6,7 @@ import {
   verifySitesEnvelope,
 } from "../_shared/sitesContracts.ts";
 import { resolveRuntimeToCoreVerifier } from "../_shared/sitesSecurity.ts";
+import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 
 function envelopeHeader(req: Request): unknown {
   const value = req.headers.get("x-mingla-sites-envelope");
@@ -19,7 +20,7 @@ function envelopeHeader(req: Request): unknown {
   }
 }
 
-export async function handleBrandSiteRuntimeResolve(
+async function handleBrandSiteRuntimeResolveRequest(
   req: Request,
 ): Promise<Response> {
   if (req.method !== "POST") return sitesJson({ ok: false }, 405);
@@ -84,6 +85,16 @@ export async function handleBrandSiteRuntimeResolve(
   } catch {
     return sitesJson({ ok: false, error: { code: "SIGNATURE_INVALID" } }, 403);
   }
+}
+
+export async function handleBrandSiteRuntimeResolve(
+  req: Request,
+): Promise<Response> {
+  return await observeSitesRequest(req, {
+    service: "brand-site-runtime-resolve",
+    direction: "runtime_to_core",
+    handler: handleBrandSiteRuntimeResolveRequest,
+  });
 }
 
 if (import.meta.main) serve(handleBrandSiteRuntimeResolve);

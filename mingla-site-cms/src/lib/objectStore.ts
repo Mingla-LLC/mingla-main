@@ -103,6 +103,7 @@ async function signedRequest(
   key: string,
   body: Uint8Array | null,
   contentType?: string,
+  createOnly = false,
 ): Promise<Response> {
   const config = cmsConfig();
   const url = objectUrl(bucket, key);
@@ -117,6 +118,7 @@ async function signedRequest(
     "x-amz-date": stamp,
   };
   if (contentType) headers["content-type"] = contentType;
+  if (createOnly) headers["if-none-match"] = "*";
   const signedHeaders = Object.keys(headers).sort().join(";");
   const canonicalHeaders = Object.keys(headers)
     .sort()
@@ -158,8 +160,20 @@ export async function writeObject(
   bytes: Uint8Array,
   contentType: string,
 ): Promise<void> {
-  const response = await signedRequest("PUT", bucket, key, bytes, contentType);
-  if (!response.ok) throw new Error("STORAGE_UNAVAILABLE");
+  const response = await signedRequest(
+    "PUT",
+    bucket,
+    key,
+    bytes,
+    contentType,
+    true,
+  );
+  if (response.ok) return;
+  if (response.status === 412) {
+    const existing = await readObject(bucket, key);
+    if (await sha256(existing) === await sha256(bytes)) return;
+  }
+  throw new Error("STORAGE_UNAVAILABLE");
 }
 export async function deleteObject(bucket: string, key: string): Promise<void> {
   const response = await signedRequest("DELETE", bucket, key, null);

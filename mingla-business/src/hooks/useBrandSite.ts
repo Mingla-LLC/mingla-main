@@ -10,6 +10,7 @@ import {
   rollbackBrandSite,
   validateBrandSiteDraft,
 } from "../services/brandSitesService";
+import { useAuth } from "../context/AuthContext";
 
 export const brandSiteKeys = {
   all: ["brand-sites"] as const,
@@ -17,9 +18,10 @@ export const brandSiteKeys = {
 };
 
 export function useBrandSite(brandId: string, enabled: boolean) {
+  const { isAuthReady } = useAuth();
   return useQuery({
     queryKey: brandSiteKeys.detail(brandId),
-    enabled,
+    enabled: isAuthReady && enabled,
     staleTime: 30_000,
     queryFn: () => getBrandSite(brandId),
   });
@@ -59,18 +61,20 @@ export function useBrandSitePreview(brandId: string, siteId: string | null) {
 
 
 export function useBrandSiteVersions(siteId: string | null, enabled: boolean) {
+  const { isAuthReady } = useAuth();
   return useQuery({
     queryKey: [...brandSiteKeys.all, siteId, "versions"],
-    enabled: enabled && siteId !== null,
+    enabled: isAuthReady && enabled && siteId !== null,
     queryFn: () => getBrandSiteVersions(siteId!),
     staleTime: 30_000,
   });
 }
 
 export function useBrandSiteAnalytics(siteId: string | null, enabled: boolean) {
+  const { isAuthReady } = useAuth();
   return useQuery({
     queryKey: [...brandSiteKeys.all, siteId, "analytics"],
-    enabled: enabled && siteId !== null,
+    enabled: isAuthReady && enabled && siteId !== null,
     queryFn: () => getBrandSiteAnalytics(siteId!),
     staleTime: 60_000,
   });

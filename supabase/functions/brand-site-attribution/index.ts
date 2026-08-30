@@ -2,6 +2,7 @@ import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { requireUuid, sitesJson } from "../_shared/sitesContracts.ts";
 import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
+import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 
 const encoder = new TextEncoder();
 const ALLOWED_EVENTS = new Set([
@@ -39,7 +40,7 @@ async function digest(pepper: Uint8Array, value: string): Promise<string> {
     .join("");
 }
 
-export async function handleBrandSiteAttribution(
+async function handleBrandSiteAttributionRequest(
   req: Request,
 ): Promise<Response> {
   if (req.method !== "POST") return sitesJson({ ok: false }, 405);
@@ -181,6 +182,16 @@ export async function handleBrandSiteAttribution(
       400,
     );
   }
+}
+
+export async function handleBrandSiteAttribution(
+  req: Request,
+): Promise<Response> {
+  return await observeSitesRequest(req, {
+    service: "brand-site-attribution",
+    direction: "public_to_core",
+    handler: handleBrandSiteAttributionRequest,
+  });
 }
 
 if (import.meta.main) serve(handleBrandSiteAttribution);

@@ -241,3 +241,35 @@ export async function readCoreRetentionProjection(
     protected_artifact_keys: result.data.protected_artifact_keys.map(String),
   };
 }
+
+export async function readCorePublicationSource(
+  siteId: string,
+  publicationId: string,
+  operationId: string,
+): Promise<Record<string, unknown>> {
+  const path =
+    `/internal/v1/sites/${siteId}/publications/${publicationId}/source`;
+  const envelope = await signCmsRequest({
+    siteId,
+    operationId,
+    method: "GET",
+    path,
+    body: "",
+  });
+  const response = await fetch(
+    `${cmsConfig().coreBaseUrl}/functions/v1/brand-site-cms-callback${path}`,
+    {
+      method: "GET",
+      headers: {
+        "x-mingla-sites-envelope": Buffer.from(JSON.stringify(envelope))
+          .toString("base64"),
+      },
+      cache: "no-store",
+    },
+  );
+  const result = await response.json().catch(() => null);
+  if (!response.ok || !result?.ok || !result.data) {
+    throw new Error("CORE_UNAVAILABLE");
+  }
+  return result.data as Record<string, unknown>;
+}

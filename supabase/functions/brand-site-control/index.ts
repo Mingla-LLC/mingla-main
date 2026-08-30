@@ -4,13 +4,17 @@ import {
   requireSha256,
   requireUuid,
   signSitesEnvelope,
+  SITES_SAFE_CUSTOMER_CODES,
   sitesFailure,
   sitesJson,
+  type SitesSafeCustomerCode,
   sitesSha256Hex,
 } from "../_shared/sitesContracts.ts";
 import { resolveCoreToCmsSigner } from "../_shared/sitesSecurity.ts";
+import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 
 type JsonObject = Record<string, unknown>;
+const CUSTOMER_FAILURE_CODES = new Set<string>(SITES_SAFE_CUSTOMER_CODES);
 
 function clients(req: Request) {
   const url = Deno.env.get("SUPABASE_URL") ?? "";
@@ -89,20 +93,19 @@ async function callCms(
       body: serialized,
       signal: AbortSignal.timeout(15_000),
     });
-    if (!response.ok) {
-      return sitesFailure(
-        "SERVICE_TEMPORARILY_UNAVAILABLE",
-        503,
-        args.operationId,
-      );
-    }
     const payload = await response.json().catch(() => null) as
-      | { ok?: boolean; data?: unknown; error?: unknown }
+      | { ok?: boolean; data?: unknown; error?: { code?: unknown } }
       | null;
-    if (!payload?.ok) {
+    if (!response.ok || !payload?.ok) {
+      const reportedCode = payload?.error?.code;
+      const safeCode: SitesSafeCustomerCode =
+        typeof reportedCode === "string" &&
+          CUSTOMER_FAILURE_CODES.has(reportedCode)
+          ? reportedCode as SitesSafeCustomerCode
+          : "SERVICE_TEMPORARILY_UNAVAILABLE";
       return sitesFailure(
-        "SERVICE_TEMPORARILY_UNAVAILABLE",
-        503,
+        safeCode,
+        safeCode === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : 409,
         args.operationId,
       );
     }
@@ -116,7 +119,7 @@ async function callCms(
   }
 }
 
-export async function handleBrandSiteControl(req: Request): Promise<Response> {
+async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204 });
   const transportPath = relativePath(req);
   const db = clients(req);
@@ -215,7 +218,20 @@ export async function handleBrandSiteControl(req: Request): Promise<Response> {
           p_destination: destination,
         },
       );
-      if (error) return sitesFailure("FORBIDDEN", 403, operationId);
+      if (error) {
+        const idempotencyConflict = error.message.includes("idempotency");
+        return sitesFailure(
+          idempotencyConflict ? "IDEMPOTENCY_CONFLICT" : "FORBIDDEN",
+          idempotencyConflict ? 409 : 403,
+          operationId,
+        );
+      }
+      if (
+        !data || typeof data !== "object" ||
+        typeof (data as Record<string, unknown>).code !== "string"
+      ) {
+        return sitesFailure("OPERATION_IN_PROGRESS", 409, operationId);
+      }
       return sitesJson({ ok: true, data });
     }
 
@@ -364,6 +380,14 @@ export async function handleBrandSiteControl(req: Request): Promise<Response> {
     }
     return sitesFailure("VALIDATION_FAILED", 400);
   }
+}
+
+export async function handleBrandSiteControl(req: Request): Promise<Response> {
+  return await observeSitesRequest(req, {
+    service: "brand-site-control",
+    direction: "customer_to_core",
+    handler: handleBrandSiteControlRequest,
+  });
 }
 
 if (import.meta.main) serve(handleBrandSiteControl);
