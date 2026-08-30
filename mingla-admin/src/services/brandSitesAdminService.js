@@ -34,7 +34,7 @@ function safeReasonCode(reason) {
   return normalized.length >= 3 ? normalized : "ADMIN_REQUEST";
 }
 
-export async function runBrandSiteAction(siteId, action, reason) {
+export async function runBrandSiteAction(siteId, action, reason, targetOperationId = null) {
   const operationId = globalThis.crypto?.randomUUID?.();
   if (!operationId) throw new Error("A secure operation identifier is unavailable.");
   return unwrap(
@@ -43,8 +43,8 @@ export async function runBrandSiteAction(siteId, action, reason) {
       p_operation_id: operationId,
       p_action: action,
       p_reason_code: safeReasonCode(reason),
+      p_target_operation_id: targetOperationId,
     }),
     "The operation could not be completed.",
   );
 }
-

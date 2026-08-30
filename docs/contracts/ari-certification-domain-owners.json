@@ -17,6 +17,7 @@
     "payments": { "cache_owner_id": "ari.payments", "readback_owner": "payout/partner/payment canonical owner", "dependency_issue": null },
     "people": { "cache_owner_id": "ari.people", "readback_owner": "Brand People canonical owner", "dependency_issue": null },
     "rsvp": { "cache_owner_id": "ari.rsvp", "readback_owner": "RSVP draft/live/guest/contribution owner", "dependency_issue": 1977 },
+    "sites": { "cache_owner_id": "ari.sites", "readback_owner": "Core-owned Website state, operation receipt, and immutable publication owner", "dependency_issue": 2830 },
     "stays": { "cache_owner_id": "ari.stays", "readback_owner": "Stay quote/reservation/inventory owner", "dependency_issue": 1975 },
     "support": { "cache_owner_id": "ari.support", "readback_owner": "support ticket owner", "dependency_issue": null },
     "team": { "cache_owner_id": "ari.team", "readback_owner": "brand team/invitation/scanner owner", "dependency_issue": null },

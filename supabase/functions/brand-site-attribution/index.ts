@@ -1,7 +1,14 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { requireUuid, sitesJson } from "../_shared/sitesContracts.ts";
-import { resolveSitesAttributionPepper } from "../_shared/sitesSecurity.ts";
+import {
+  requireUuid,
+  sitesJson,
+  verifySitesEnvelope,
+} from "../_shared/sitesContracts.ts";
+import {
+  resolveRuntimeToCoreVerifier,
+  resolveSitesAttributionPepper,
+} from "../_shared/sitesSecurity.ts";
 import { observeSitesRequest } from "../_shared/sitesObservability.ts";
 
 const encoder = new TextEncoder();
@@ -44,27 +51,62 @@ async function handleBrandSiteAttributionRequest(
   req: Request,
 ): Promise<Response> {
   if (req.method !== "POST") return sitesJson({ ok: false }, 405);
-  const origin = req.headers.get("origin") ?? "";
-  if (origin !== "https://gogi.sites.usemingla.com") {
-    return sitesJson({ ok: false, error: { code: "FORBIDDEN" } }, 403);
-  }
-  let input: Record<string, unknown>;
+  const path =
+    new URL(req.url).pathname.replace(/^.*\/brand-site-attribution/, "") ||
+    "/";
+  const raw = await req.text();
   try {
-    const value = await req.json();
-    if (!value || typeof value !== "object" || Array.isArray(value)) {
-      throw new Error();
+    const encodedEnvelope = req.headers.get("x-mingla-sites-envelope");
+    if (encodedEnvelope === null || encodedEnvelope.length > 16_384) {
+      throw new Error("SIGNATURE_INVALID");
     }
-    input = value as Record<string, unknown>;
-  } catch {
-    return sitesJson({ ok: false, error: { code: "VALIDATION_FAILED" } }, 400);
-  }
-  try {
+    let parsedEnvelope: unknown;
+    try {
+      parsedEnvelope = JSON.parse(atob(encodedEnvelope));
+    } catch {
+      throw new Error("SIGNATURE_INVALID");
+    }
+    const envelope = await verifySitesEnvelope({
+      envelope: parsedEnvelope,
+      expectedAudience: "mingla-core",
+      expectedDirection: "runtime_to_core",
+      method: req.method,
+      path,
+      body: raw,
+      keys: resolveRuntimeToCoreVerifier(),
+    });
+    const value: unknown = JSON.parse(raw);
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("VALIDATION_FAILED");
+    }
+    const input = value as Record<string, unknown>;
+    const siteId = requireUuid(input.site_id);
     const action = String(input.action ?? "issue");
+    const expectedPath = action === "event"
+      ? `/internal/v1/sites/${siteId}/analytics-events`
+      : action === "issue"
+      ? `/internal/v1/sites/${siteId}/attribution`
+      : "";
+    if (envelope.site_id !== siteId || path !== expectedPath) {
+      throw new Error("SIGNATURE_INVALID");
+    }
     const service = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
       { auth: { persistSession: false } },
     );
+    const { error: nonceError } = await service
+      .from("brand_site_gateway_nonces")
+      .insert({
+        direction: envelope.direction,
+        nonce: envelope.nonce,
+        operation_id: envelope.operation_id,
+        site_id: envelope.site_id,
+        expires_at: new Date(Date.now() + 10 * 60_000).toISOString(),
+      });
+    if (nonceError) {
+      return sitesJson({ ok: false, error: { code: "REPLAY_DETECTED" } }, 409);
+    }
     const pepper = resolveSitesAttributionPepper();
     if (action === "event") {
       if (
@@ -125,7 +167,6 @@ async function handleBrandSiteAttributionRequest(
         return sitesJson({ ok: false, error: { code: "FORBIDDEN" } }, 403);
       }
       const rawToken = token();
-      const siteId = requireUuid(input.site_id);
       const brandId = requireUuid(input.brand_id);
       const publicationId = requireUuid(input.publication_id);
       const { data: binding, error: bindingError } = await service
@@ -169,17 +210,20 @@ async function handleBrandSiteAttributionRequest(
     }
     return sitesJson({ ok: false, error: { code: "FORBIDDEN" } }, 403);
   } catch (error) {
+    const code = error instanceof Error ? error.message : "VALIDATION_FAILED";
+    if (code === "SIGNATURE_INVALID") {
+      return sitesJson({ ok: false, error: { code } }, 403);
+    }
     return sitesJson(
       {
         ok: false,
         error: {
-          code: error instanceof Error &&
-              error.message === "sites_security_unavailable"
+          code: code === "sites_security_unavailable"
             ? "SERVICE_TEMPORARILY_UNAVAILABLE"
             : "VALIDATION_FAILED",
         },
       },
-      400,
+      code === "sites_security_unavailable" ? 503 : 400,
     );
   }
 }

@@ -3,6 +3,11 @@ import { noAccess } from "../lib/access";
 import { callCore } from "../lib/gateway";
 import { payloadUser, sessionFromHeaders } from "../lib/session";
 
+// This is the single admin-shell admission decision for the custom session
+// strategy. CRUD access to the hidden auth collection remains denied below.
+export const canAccessStudioAdmin: NonNullable<CollectionConfig["access"]>["admin"] =
+  ({ req }) => Boolean(req.user);
+
 export const StudioUsers: CollectionConfig = {
   slug: "studio-users",
   auth: {
@@ -33,7 +38,7 @@ export const StudioUsers: CollectionConfig = {
   },
   admin: { hidden: true },
   access: {
-    admin: () => false,
+    admin: canAccessStudioAdmin,
     create: noAccess,
     read: noAccess,
     update: noAccess,

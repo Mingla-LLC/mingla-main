@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { signedCorePost } from "../../../lib/coreGateway";
 
 const EVENT_NAMES = new Set([
   "site_view",
@@ -45,21 +46,16 @@ export async function POST(request: Request) {
     !EVENT_NAMES.has(String(event.event_name)) ||
     event.consent_policy_version !== "sites-v1"
   ) return NextResponse.json({ ok: false }, { status: 400 });
-  const { runtimeConfig } = await import("../../../lib/config");
-  const config = runtimeConfig();
-  await fetch(`${config.coreBaseUrl}/functions/v1/brand-site-attribution`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      origin: "https://gogi.sites.usemingla.com",
-    },
-    body: JSON.stringify({
+  await signedCorePost({
+    edgeFunction: "brand-site-attribution",
+    path: `/internal/v1/sites/${String(event.site_id)}/analytics-events`,
+    siteId: String(event.site_id),
+    body: {
       ...event,
       action: "event",
       consent_granted: true,
       occurred_at: event.occurred_at || new Date().toISOString(),
-    }),
-    cache: "no-store",
+    },
   }).catch(() => undefined);
   return new NextResponse(null, { status: 202 });
 }

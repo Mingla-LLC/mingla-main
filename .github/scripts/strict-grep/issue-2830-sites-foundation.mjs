@@ -24,6 +24,7 @@ const PATHS = {
   cmsPackage: "mingla-site-cms/package.json",
   cmsConfig: "mingla-site-cms/src/lib/config.ts",
   cmsPayload: "mingla-site-cms/src/payload.config.ts",
+  cmsUsers: "mingla-site-cms/src/collections/StudioUsers.ts",
   cmsAccess: "mingla-site-cms/src/lib/access.ts",
   cmsMediaCollection: "mingla-site-cms/src/collections/Media.ts",
   cmsMedia: "mingla-site-cms/src/lib/mediaPipeline.ts",
@@ -37,6 +38,7 @@ const PATHS = {
   publicGateway: "mingla-sites/src/lib/coreGateway.ts",
   publicPublication: "mingla-sites/src/lib/publication.ts",
   publicArtifact: "mingla-sites/src/contracts/artifact.ts",
+  publicRenderer: "mingla-sites/src/components/RestaurantV1.tsx",
   publicConsent: "mingla-sites/src/components/ConsentControl.tsx",
   publicEvents: "mingla-sites/src/app/api/events/route.ts",
   publicObservability: "mingla-sites/src/lib/observability.ts",
@@ -120,6 +122,12 @@ export function violations(files) {
   }
   for (const token of [
     "p_min_rank integer",
+    "'ari.sites.read_site', 'read'",
+    "'ari.sites.rollback', 'write'",
+    "v_capability_count <> 132",
+    "0de714ca5cf4f3a78dea892dabaadde8c22d09407d939ec366a239b6d63953ad",
+    "extensions.digest(",
+    "extensions.gen_random_bytes(32)",
     "v_rank < p_min_rank",
     "v_rank < 20",
     "backup_retention_days",
@@ -137,6 +145,11 @@ export function violations(files) {
     "p_probe_summary->>'leak_check_ok'",
     "brand_site_enforce_publication_transition",
     "brand_site_enforce_receipt_transition",
+    "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_ambiguous",
+    "p_target_operation_id uuid DEFAULT NULL",
+    "COALESCE(p_target_operation_id::text, '-')",
+    "receipt.status = 'ambiguous'",
+    "operation.reconcile_checked",
     "cms_origin !~ '(localhost|127\\.0\\.0\\.1|@|\\*|\\?|#)'",
   ]) need(migration, token, "Core migration", failures);
   forbid(migration, "CREATE POLICY scanner", "scanner isolation", failures);
@@ -167,6 +180,14 @@ export function violations(files) {
     "safe_error_code",
     "version: \"sites-v1\"",
   ]) need(files.observability ?? "", token, "safe Edge observability", failures);
+  for (const token of [
+    'service.rpc("brand_site_mark_operation_ambiguous"',
+    'p_safe_error_code: "SERVICE_TEMPORARILY_UNAVAILABLE"',
+  ]) need(files.control ?? "", token, "ambiguous Core-to-CMS transport", failures);
+  for (const token of [
+    'service.rpc("brand_site_mark_operation_ambiguous"',
+    'p_safe_error_code: "CALLBACK_AMBIGUOUS"',
+  ]) need(files.callback ?? "", token, "ambiguous CMS callback", failures);
   for (const forbidden of [
     "authorization:",
     "signature_b64:",
@@ -255,6 +276,13 @@ export function violations(files) {
     "cleanupAfterTenantDelete: false",
   ]) need(files.cmsPayload ?? "", token, "stripped Studio", failures);
   for (const token of [
+    "canAccessStudioAdmin",
+    "Boolean(req.user)",
+    "admin: { hidden: true }",
+    "admin: canAccessStudioAdmin",
+    "read: noAccess",
+  ]) need(files.cmsUsers ?? "", token, "Studio admin admission", failures);
+  for (const token of [
     "if (body.destination !== \"studio\")",
     "encodePreviewGrant",
     "source_digest",
@@ -313,6 +341,7 @@ export function violations(files) {
     files.publicGateway,
     files.publicPublication,
     files.publicArtifact,
+    files.publicRenderer,
     files.publicConsent,
     files.publicEvents,
   ].join("\n");
@@ -325,9 +354,17 @@ export function violations(files) {
     "await sha256(bytes)",
     "assertRestaurantArtifact",
     "mingla_site_analytics_consent_v1",
+    'edgeFunction: "brand-site-attribution"',
+    'aria-labelledby={page.role === "home"',
   ]) need(publicCombined, token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
+  need(
+    files.publicPublication ?? "",
+    "await signedCorePost({",
+    "public last-good runtime",
+    failures,
+  );
   for (const token of [
     "emitPublicObservation",
     "public.stale_last_good",
@@ -338,6 +375,13 @@ export function violations(files) {
     "public observability",
     failures,
   );
+  for (const token of [
+    "const envelope = await verifySitesEnvelope",
+    "resolveRuntimeToCoreVerifier",
+    'expectedDirection: "runtime_to_core"',
+    'from("brand_site_gateway_nonces")',
+    "REPLAY_DETECTED",
+  ]) need(files.attribution ?? "", token, "signed attribution gateway", failures);
 
   for (const token of [
     "issue_2830_sites_foundation_happy.test.ts",
@@ -359,7 +403,10 @@ export function violations(files) {
   ]) need(files.runbook ?? "", token, "Sites operations runbook", failures);
   need(files.invariant ?? "", "I-PROPOSED-2830-SITES-LAST-GOOD-TENANT-BOUNDARY (DRAFT)", "invariant registry", failures);
   need(files.denoHappy ?? "", "slot-88 import closure stays exact and value-blind", "implementor regression", failures);
-  need(files.checkout ?? "", "site_attribution_token_digest", "checkout attribution handoff", failures);
+  for (const token of [
+    "site_attribution_token_digest",
+    '.is("site_attribution_token_digest",',
+  ]) need(files.checkout ?? "", token, "checkout first-touch handoff", failures);
   return failures;
 }
 
@@ -380,11 +427,18 @@ function selfTest() {
     ["businessFlag", 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)', 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", true)', "Business feature flag"],
     ["businessRoute", "role.rank >= 20", "role.rank >= 10", "Business Website route"],
     ["migration", " FORCE ROW LEVEL SECURITY", "", "Core forced RLS"],
+    ["migration", "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_ambiguous", "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_uncertain", "Core migration"],
+    ["migration", "v_capability_count <> 132", "v_capability_count <> 120", "Core migration"],
+    ["migration", "extensions.gen_random_bytes(32)", "gen_random_bytes(32)", "Core migration"],
     ["security", "Deno.env.get(ENVELOPE_NAME)", "Deno.env.get(ENVELOPE_NAME); Deno.env.get(ENVELOPE_NAME)", "exactly one environment read"],
     ["ariTools", 'publicationTool("rollback_site")', 'publicationTool("rollback_site_removed")', "Ari closed tool registry"],
     ["cmsEndpoints", "await runRetentionSweep(", "await runRetentionSweepRemoved(", "Studio gateway"],
+    ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
     ["publicPublication", "await signedCorePost({", "await unsignedCorePost({", "public last-good runtime"],
+    ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
+    ["publicRenderer", 'aria-labelledby={page.role === "home"', 'aria-labelledby={true || page.role === "home"', "public last-good runtime"],
+    ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.3.3"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.3"', "production dependency isolation"],
     ["businessView", "Managed by Mingla.", "Configure custom domain", "deferred domain UI"],
     ["secretWorkflow", "final 88-name bundled-authority state", "final state", "existing secret CI lane"],

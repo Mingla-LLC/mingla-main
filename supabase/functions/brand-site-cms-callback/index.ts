@@ -53,6 +53,18 @@ async function handleBrandSiteCmsCallbackRequest(
     const url = Deno.env.get("SUPABASE_URL") ?? "";
     const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
     const service = createClient(url, key, { auth: { persistSession: false } });
+    const markAmbiguous = async (siteId: string): Promise<void> => {
+      try {
+        await service.rpc("brand_site_mark_operation_ambiguous", {
+          p_site_id: siteId,
+          p_operation_id: requireUuid(envelope.operation_id),
+          p_safe_error_code: "CALLBACK_AMBIGUOUS",
+        });
+      } catch {
+        // Preserve the signed callback's safe ambiguous response; the gateway
+        // observation remains the alerting signal if Core cannot persist it.
+      }
+    };
     const { error: nonceError } = await service
       .from("brand_site_gateway_nonces")
       .insert({
@@ -96,9 +108,14 @@ async function handleBrandSiteCmsCallbackRequest(
           p_expires_at: String(parsed.expires_at ?? ""),
         },
       );
-      return error
-        ? sitesJson({ ok: false, error: { code: "CALLBACK_AMBIGUOUS" } }, 409)
-        : sitesJson({ ok: true, data });
+      if (error) {
+        await markAmbiguous(siteId);
+        return sitesJson(
+          { ok: false, error: { code: "CALLBACK_AMBIGUOUS" } },
+          409,
+        );
+      }
+      return sitesJson({ ok: true, data });
     }
     if (provisionMatch) {
       const siteId = requireUuid(provisionMatch[1]);
@@ -111,9 +128,14 @@ async function handleBrandSiteCmsCallbackRequest(
           p_payload_tenant_id: requireUuid(parsed.tenant_id),
         },
       );
-      return error
-        ? sitesJson({ ok: false, error: { code: "CALLBACK_AMBIGUOUS" } }, 409)
-        : sitesJson({ ok: true, data });
+      if (error) {
+        await markAmbiguous(siteId);
+        return sitesJson(
+          { ok: false, error: { code: "CALLBACK_AMBIGUOUS" } },
+          409,
+        );
+      }
+      return sitesJson({ ok: true, data });
     }
     const projectionMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/projection$/,
@@ -211,9 +233,14 @@ async function handleBrandSiteCmsCallbackRequest(
           p_publication_id: requireUuid(parsed.publication_id),
         },
       );
-      return error
-        ? sitesJson({ ok: false, error: { code: "CALLBACK_AMBIGUOUS" } }, 409)
-        : sitesJson({ ok: true, data });
+      if (error) {
+        await markAmbiguous(siteId);
+        return sitesJson(
+          { ok: false, error: { code: "CALLBACK_AMBIGUOUS" } },
+          409,
+        );
+      }
+      return sitesJson({ ok: true, data });
     }
     if (publicationMatch) {
       const siteId = requireUuid(publicationMatch[1]);
@@ -231,9 +258,14 @@ async function handleBrandSiteCmsCallbackRequest(
           p_probe_summary: parsed.probe_summary ?? {},
         },
       );
-      return error
-        ? sitesJson({ ok: false, error: { code: "CALLBACK_AMBIGUOUS" } }, 409)
-        : sitesJson({ ok: true, data });
+      if (error) {
+        await markAmbiguous(siteId);
+        return sitesJson(
+          { ok: false, error: { code: "CALLBACK_AMBIGUOUS" } },
+          409,
+        );
+      }
+      return sitesJson({ ok: true, data });
     }
     const authorizeMatch = path.match(
       /^\/internal\/v1\/sites\/([^/]+)\/authorize$/,

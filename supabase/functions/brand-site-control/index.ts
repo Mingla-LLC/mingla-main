@@ -55,6 +55,18 @@ async function callCms(
     payload: JsonObject;
   },
 ): Promise<Response> {
+  const markAmbiguous = async (): Promise<void> => {
+    try {
+      await service.rpc("brand_site_mark_operation_ambiguous", {
+        p_site_id: args.siteId,
+        p_operation_id: args.operationId,
+        p_safe_error_code: "SERVICE_TEMPORARILY_UNAVAILABLE",
+      });
+    } catch {
+      // The customer response remains safely unavailable even if recording the
+      // uncertainty is itself unavailable; observability owns the alert.
+    }
+  };
   const { data: configData } = await service
     .from("brand_site_service_config")
     .select("cms_origin")
@@ -103,6 +115,9 @@ async function callCms(
           CUSTOMER_FAILURE_CODES.has(reportedCode)
           ? reportedCode as SitesSafeCustomerCode
           : "SERVICE_TEMPORARILY_UNAVAILABLE";
+      if (safeCode === "SERVICE_TEMPORARILY_UNAVAILABLE") {
+        await markAmbiguous();
+      }
       return sitesFailure(
         safeCode,
         safeCode === "SERVICE_TEMPORARILY_UNAVAILABLE" ? 503 : 409,
@@ -111,6 +126,7 @@ async function callCms(
     }
     return sitesJson({ ok: true, data: payload.data }, 202);
   } catch {
+    await markAmbiguous();
     return sitesFailure(
       "SERVICE_TEMPORARILY_UNAVAILABLE",
       503,

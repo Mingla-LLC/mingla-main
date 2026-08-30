@@ -2,7 +2,7 @@ import { hmacBase64, sha256 } from "./crypto";
 import { runtimeConfig } from "./config";
 
 export async function signedCorePost(input: {
-  edgeFunction: "brand-site-runtime-resolve";
+  edgeFunction: "brand-site-runtime-resolve" | "brand-site-attribution";
   path: string;
   siteId: string;
   body: Record<string, unknown>;

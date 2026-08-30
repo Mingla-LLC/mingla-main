@@ -2,6 +2,397 @@
 -- Additive only. This migration authors no infrastructure, data seed, pilot
 -- enablement, DNS change, live secret, deployment, or Gogi content mutation.
 
+DO $ari_certification$
+BEGIN
+  IF to_regclass('public.ari_cert_capability_requirements') IS NOT NULL THEN
+    INSERT INTO public.ari_cert_capability_requirements (
+      capability_id,
+      evidence_mode
+    ) VALUES
+      ('ari.sites.read_site', 'read'),
+      ('ari.sites.list_pages', 'read'),
+      ('ari.sites.read_page', 'read'),
+      ('ari.sites.propose_content', 'write'),
+      ('ari.sites.propose_settings', 'write'),
+      ('ari.sites.attach_media', 'write'),
+      ('ari.sites.validate_draft', 'read'),
+      ('ari.sites.create_preview', 'write'),
+      ('ari.sites.publish', 'write'),
+      ('ari.sites.read_operation', 'read'),
+      ('ari.sites.list_versions', 'read'),
+      ('ari.sites.rollback', 'write')
+    ON CONFLICT (capability_id) DO NOTHING;
+  END IF;
+END;
+$ari_certification$;
+
+-- #2830 extends the reviewed Ari certification requirement set in the same
+-- additive migration that registers the Website capabilities. Both halves of
+-- the pinned digest and the exact denominator move forward together.
+CREATE OR REPLACE FUNCTION public.ari_cert_begin_run(
+  p_release_sha text,
+  p_function_versions jsonb,
+  p_web_deployment_id text,
+  p_native_artifacts jsonb,
+  p_baseline jsonb DEFAULT '{}'::jsonb
+)
+RETURNS uuid
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_run_id uuid;
+BEGIN
+  IF p_release_sha !~ '^[0-9a-f]{40,64}$'
+     OR jsonb_typeof(p_function_versions) <> 'object'
+     OR NULLIF(p_function_versions ->> 'agent_chat', '') IS NULL
+     OR NULLIF(p_function_versions ->> 'agent_confirm_action', '') IS NULL
+     OR NULLIF(btrim(p_web_deployment_id), '') IS NULL
+     OR NOT private.ari_cert_native_artifacts_valid(p_native_artifacts)
+     OR jsonb_typeof(p_baseline) <> 'object' THEN
+    RAISE EXCEPTION 'ari_cert_invalid_release_manifest' USING ERRCODE = '22023';
+  END IF;
+  INSERT INTO public.ari_cert_runs (
+    release_sha, requirements_digest, function_versions,
+    web_deployment_id, native_artifacts, baseline, status
+  ) VALUES (
+    p_release_sha,
+    -- #2830: MUST equal the literal `ari_cert_finalize_run` checks. The gate
+    -- named in this file's header fails closed when these two diverge.
+    '0de714ca5cf4f3a78dea892dabaadde8c22d09407d939ec366a239b6d63953ad',
+    p_function_versions, p_web_deployment_id, p_native_artifacts, p_baseline, 'running'
+  ) RETURNING id INTO v_run_id;
+  RETURN v_run_id;
+END;
+$function$;
+
+-- ACLs re-stated verbatim from 20270504002060 (CREATE OR REPLACE preserves the
+-- existing grants, but re-stating them keeps this file independently correct).
+REVOKE ALL ON FUNCTION public.ari_cert_begin_run(text, jsonb, text, jsonb, jsonb) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.ari_cert_begin_run(text, jsonb, text, jsonb, jsonb) TO service_role;
+
+CREATE OR REPLACE FUNCTION public.ari_cert_finalize_run(p_run_id uuid)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public, pg_temp
+AS $function$
+DECLARE
+  v_run public.ari_cert_runs%ROWTYPE;
+  v_capability_count integer;
+  v_failed_count integer;
+  v_artifact_count integer;
+  v_residue_count integer;
+  v_missing_matrix_count integer;
+  v_unknown_count integer;
+  v_invalid_digest_count integer;
+  v_unverified_provenance_count integer;
+  v_invalid_native_count integer;
+  v_evidence_set_digest text;
+  v_artifact_set_digest text;
+  v_capability_set_digest text;
+  v_native_artifact_set_digest text;
+  v_cleanup_digest text;
+  v_rollback_digest text;
+  v_run_manifest_digest text;
+  v_attestation_key text;
+  v_attestation_key_id text;
+  v_attestation_payload bytea;
+  v_attestation_signature text;
+BEGIN
+  SELECT * INTO v_run FROM public.ari_cert_runs WHERE id = p_run_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'ari_cert_run_not_found' USING ERRCODE = 'P0002'; END IF;
+  SELECT count(DISTINCT capability_id), count(*) FILTER (WHERE outcome <> 'passed')
+    INTO v_capability_count, v_failed_count
+  FROM public.ari_cert_evidence WHERE run_id = p_run_id;
+  SELECT count(DISTINCT artifact_type) INTO v_artifact_count
+  FROM public.ari_cert_release_artifacts
+  WHERE run_id = p_run_id AND release_sha = v_run.release_sha;
+  SELECT count(*) INTO v_residue_count FROM public.ari_cert_fixtures
+  WHERE run_id = p_run_id AND cleanup_state <> 'removed';
+
+  SELECT count(*) INTO v_unknown_count
+  FROM public.ari_cert_evidence e
+  LEFT JOIN public.ari_cert_capability_requirements r
+    ON r.capability_id = e.capability_id
+  WHERE e.run_id = p_run_id AND r.capability_id IS NULL;
+
+  WITH expected AS (
+    SELECT
+      r.capability_id,
+      scenario,
+      target.surface,
+      target.artifact_type,
+      role_case,
+      CASE WHEN role_case = 'outsider' THEN 'outsider_tenant' ELSE 'owner_tenant' END AS tenant_case
+    FROM public.ari_cert_capability_requirements r
+    CROSS JOIN LATERAL unnest(public.ari_cert_required_scenarios(r.evidence_mode)) AS scenario
+    CROSS JOIN (VALUES
+      ('business_ios', 'business_ios_simulator'),
+      ('business_ios', 'business_ios_physical'),
+      ('business_android', 'business_android'),
+      ('business_web', 'business_web')
+    ) AS target(surface, artifact_type)
+    CROSS JOIN unnest(ARRAY['owner','applicable_member','below_threshold','revoked','outsider']::text[]) AS role_case
+  )
+  SELECT count(*) INTO v_missing_matrix_count
+  FROM expected x
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM public.ari_cert_evidence e
+    JOIN public.ari_cert_release_artifacts a
+      ON a.run_id = e.run_id
+     AND a.artifact_type = e.artifact_type
+     AND a.artifact_id = e.artifact_id
+     AND a.release_sha = v_run.release_sha
+    WHERE e.run_id = p_run_id
+      AND e.capability_id = x.capability_id
+      AND e.scenario = x.scenario
+      AND e.surface = x.surface
+      AND e.artifact_type = x.artifact_type
+      AND e.role_case = x.role_case
+      AND e.tenant_case = x.tenant_case
+      AND e.outcome = 'passed'
+      AND e.operation_id IS NOT NULL
+      AND e.request_id IS NOT NULL
+      AND e.client_turn_id IS NOT NULL
+      AND e.execution_id IS NOT NULL
+      AND NULLIF(btrim(e.canonical_readback_reference), '') IS NOT NULL
+      AND jsonb_typeof(e.safe_evidence) = 'object'
+      AND e.safe_evidence ?& ARRAY['receipt_id','readback_digest','telemetry_event_id']
+      AND (SELECT count(*) FROM jsonb_object_keys(e.safe_evidence)) = 3
+      AND (e.safe_evidence ->> 'receipt_id') ~* '^[0-9a-f-]{36}$'
+      AND (e.safe_evidence ->> 'telemetry_event_id') ~* '^[0-9a-f-]{36}$'
+      AND (e.safe_evidence ->> 'readback_digest') ~ '^[0-9a-f]{64}$'
+  );
+
+  SELECT count(*) INTO v_invalid_digest_count
+  FROM public.ari_cert_evidence e
+  WHERE e.run_id = p_run_id
+    AND e.evidence_digest <> private.ari_cert_digest_v1('scenario-evidence', ARRAY[
+      e.run_id::text,
+      e.capability_id,
+      e.scenario,
+      e.surface,
+      e.tenant_case,
+      e.role_case,
+      e.operation_id::text,
+      e.request_id::text,
+      e.client_turn_id::text,
+      e.execution_id::text,
+      e.artifact_type,
+      e.artifact_id,
+      e.canonical_readback_reference,
+      e.outcome,
+      e.safe_evidence ->> 'receipt_id',
+      e.safe_evidence ->> 'readback_digest',
+      e.safe_evidence ->> 'telemetry_event_id'
+    ]);
+
+  SELECT count(*) INTO v_unverified_provenance_count
+  FROM public.ari_cert_evidence e
+  WHERE e.run_id = p_run_id
+    AND NOT EXISTS (
+      SELECT 1
+      FROM private.ari_cert_verified_provenance p
+      WHERE p.run_id = e.run_id
+        AND p.capability_id = e.capability_id
+        AND p.surface = e.surface
+        AND p.tenant_case = e.tenant_case
+        AND p.role_case = e.role_case
+        AND p.scenario = e.scenario
+        AND p.operation_id = e.operation_id
+        AND p.request_id = e.request_id
+        AND p.client_turn_id = e.client_turn_id
+        AND p.execution_id = e.execution_id
+        AND p.canonical_readback_reference = e.canonical_readback_reference
+        AND p.artifact_type = e.artifact_type
+        AND p.artifact_id = e.artifact_id
+        AND p.receipt_id = (e.safe_evidence ->> 'receipt_id')::uuid
+        AND p.readback_digest = e.safe_evidence ->> 'readback_digest'
+        AND p.telemetry_event_id = (e.safe_evidence ->> 'telemetry_event_id')::uuid
+    );
+
+  SELECT count(*) INTO v_invalid_native_count
+  FROM jsonb_array_elements(v_run.native_artifacts) item
+  LEFT JOIN public.ari_cert_release_artifacts artifact
+    ON artifact.run_id = p_run_id
+   AND artifact.artifact_type = item ->> 'surface'
+   AND artifact.artifact_id = item ->> 'artifact_id'
+   AND artifact.release_sha = v_run.release_sha
+  WHERE artifact.id IS NULL;
+
+  IF NOT private.ari_cert_native_artifacts_valid(v_run.native_artifacts)
+     OR v_invalid_native_count <> 0 THEN
+    RAISE EXCEPTION 'ari_cert_invalid_native_artifacts' USING ERRCODE = '22023';
+  END IF;
+  IF v_capability_count <> 132 THEN RAISE EXCEPTION 'ari_cert_missing_capabilities:%', v_capability_count; END IF;
+  IF v_run.requirements_digest <> '0de714ca5cf4f3a78dea892dabaadde8c22d09407d939ec366a239b6d63953ad' THEN
+    RAISE EXCEPTION 'ari_cert_requirements_digest_mismatch';
+  END IF;
+  IF v_unknown_count <> 0 THEN RAISE EXCEPTION 'ari_cert_unknown_capabilities:%', v_unknown_count; END IF;
+  IF v_missing_matrix_count <> 0 THEN RAISE EXCEPTION 'ari_cert_missing_matrix_evidence:%', v_missing_matrix_count; END IF;
+  IF v_invalid_digest_count <> 0 THEN RAISE EXCEPTION 'ari_cert_invalid_evidence_digest:%', v_invalid_digest_count; END IF;
+  IF v_unverified_provenance_count <> 0 THEN RAISE EXCEPTION 'ari_cert_unverified_provenance:%', v_unverified_provenance_count; END IF;
+  IF v_failed_count <> 0 THEN RAISE EXCEPTION 'ari_cert_nonpassing_evidence:%', v_failed_count; END IF;
+  IF v_artifact_count <> 7 THEN RAISE EXCEPTION 'ari_cert_release_artifact_mismatch:%', v_artifact_count; END IF;
+  IF v_residue_count <> 0 THEN RAISE EXCEPTION 'ari_cert_fixture_residue:%', v_residue_count; END IF;
+  IF v_run.tester_verdict <> 'PASS' OR v_run.cleanup_manifest_digest IS NULL
+     OR v_run.rollback_rehearsed_at IS NULL
+     OR NULLIF(btrim(v_run.prior_compatible_pair), '') IS NULL
+     OR v_run.stranded_operation_count IS DISTINCT FROM 0 THEN
+    RAISE EXCEPTION 'ari_cert_test_or_rollback_incomplete';
+  END IF;
+
+  v_attestation_key := current_setting('app.settings.ari_certification_attestation_key', true);
+  v_attestation_key_id := current_setting('app.settings.ari_certification_attestation_key_id', true);
+  IF length(coalesce(v_attestation_key, '')) < 32
+     OR coalesce(v_attestation_key_id, '') !~ '^[a-zA-Z0-9_.:-]{1,64}$' THEN
+    RAISE EXCEPTION 'ari_cert_server_attestation_not_configured';
+  END IF;
+  SELECT private.ari_cert_digest_v1(
+    'evidence-set',
+    coalesce(array_agg(
+      evidence_digest ORDER BY capability_id, surface, artifact_type, scenario, role_case
+    ), ARRAY[]::text[])
+  )
+  INTO v_evidence_set_digest
+  FROM public.ari_cert_evidence WHERE run_id = p_run_id;
+
+  SELECT private.ari_cert_digest_v1(
+    'artifact-set',
+    coalesce(array_agg(private.ari_cert_digest_v1('release-artifact', ARRAY[
+      artifact_type, artifact_id, release_sha, sha256
+    ]) ORDER BY artifact_type), ARRAY[]::text[])
+  )
+  INTO v_artifact_set_digest
+  FROM public.ari_cert_release_artifacts WHERE run_id = p_run_id;
+
+  WITH per_capability AS (
+    SELECT e.capability_id, private.ari_cert_digest_v1(
+      'capability-evidence',
+      ARRAY[
+        p_run_id::text,
+        e.capability_id,
+        CASE r.evidence_mode
+          WHEN 'guided_handoff' THEN 'guided_handoff'
+          WHEN 'unsupported' THEN 'unsupported'
+          ELSE 'verified'
+        END,
+        'business_android', 'business_ios', 'business_web'
+      ] || ARRAY(
+        SELECT required_scenario
+        FROM unnest(public.ari_cert_required_scenarios(r.evidence_mode)) required_scenario
+        ORDER BY required_scenario
+      ) || ARRAY[
+        CASE WHEN r.evidence_mode IN ('guided_handoff','unsupported')
+          THEN NULL ELSE min(e.canonical_readback_reference) END,
+        'owner|applicable_member|below_threshold|revoked|outsider'
+      ] || array_agg(
+        e.evidence_digest ORDER BY e.surface, e.artifact_type, e.scenario, e.role_case
+      )
+    ) AS capability_digest
+    FROM public.ari_cert_evidence e
+    JOIN public.ari_cert_capability_requirements r
+      ON r.capability_id = e.capability_id
+    WHERE e.run_id = p_run_id
+    GROUP BY e.capability_id, r.evidence_mode
+  ), flattened AS (
+    SELECT capability_id, value, ordinal
+    FROM per_capability
+    CROSS JOIN LATERAL unnest(ARRAY[capability_id, capability_digest])
+      WITH ORDINALITY AS item(value, ordinal)
+  )
+  SELECT private.ari_cert_digest_v1(
+    'capability-set',
+    array_agg(value ORDER BY capability_id, ordinal)
+  )
+  INTO v_capability_set_digest
+  FROM flattened;
+
+  SELECT private.ari_cert_digest_v1(
+    'native-artifact-set',
+    array_agg(private.ari_cert_digest_v1('native-artifact', ARRAY[
+      item ->> 'surface', item ->> 'artifact_id',
+      item ->> 'runtime_version', item ->> 'device'
+    ]) ORDER BY item ->> 'surface')
+  )
+  INTO v_native_artifact_set_digest
+  FROM jsonb_array_elements(v_run.native_artifacts) item;
+
+  v_cleanup_digest := private.ari_cert_digest_v1(
+    'cleanup', ARRAY['true', v_run.cleanup_manifest_digest]
+  );
+  v_rollback_digest := private.ari_cert_digest_v1(
+    'rollback', ARRAY['true', v_run.prior_compatible_pair, v_run.stranded_operation_count::text]
+  );
+  v_run_manifest_digest := private.ari_cert_digest_v1('run-manifest', ARRAY[
+    v_run.function_versions ->> 'agent_chat',
+    v_run.function_versions ->> 'agent_confirm_action',
+    v_run.web_deployment_id,
+    v_run.tester_verdict,
+    v_native_artifact_set_digest,
+    v_capability_set_digest,
+    v_cleanup_digest,
+    v_rollback_digest
+  ]);
+  v_attestation_payload := private.ari_cert_canonical_tuple_v1('attestation', ARRAY[
+    v_attestation_key_id,
+    p_run_id::text,
+    v_run.release_sha,
+    v_run.requirements_digest,
+    v_evidence_set_digest,
+    v_artifact_set_digest,
+    v_capability_set_digest,
+    v_native_artifact_set_digest,
+    v_cleanup_digest,
+    v_rollback_digest,
+    v_run_manifest_digest
+  ]);
+  v_attestation_signature := encode(extensions.hmac(
+    v_attestation_payload,
+    convert_to(v_attestation_key, 'UTF8'),
+    'sha256'
+  ), 'hex');
+
+  INSERT INTO private.ari_cert_finalize_authorizations (run_id, transaction_id)
+  VALUES (p_run_id, txid_current())
+  ON CONFLICT (run_id) DO UPDATE SET transaction_id = EXCLUDED.transaction_id;
+
+  UPDATE public.ari_cert_runs
+  SET status = 'passed', cleanup_verified_at = now(), finished_at = now(),
+      attestation_key_id = v_attestation_key_id,
+      evidence_set_digest = v_evidence_set_digest,
+      artifact_set_digest = v_artifact_set_digest,
+      capability_set_digest = v_capability_set_digest,
+      native_artifact_set_digest = v_native_artifact_set_digest,
+      cleanup_digest = v_cleanup_digest,
+      rollback_digest = v_rollback_digest,
+      run_manifest_digest = v_run_manifest_digest,
+      attestation_signature = v_attestation_signature
+  WHERE id = p_run_id;
+  RETURN jsonb_build_object(
+    'run_id', p_run_id,
+    'status', 'passed',
+    'capability_count', 132,
+    'server_attestation', jsonb_build_object(
+      'algorithm', 'HMAC-SHA256',
+      'canonicalization', 'ARI-CERT-TUPLE-V1',
+      'key_id', v_attestation_key_id,
+      'evidence_set_digest', v_evidence_set_digest,
+      'artifact_set_digest', v_artifact_set_digest,
+      'capability_set_digest', v_capability_set_digest,
+      'native_artifact_set_digest', v_native_artifact_set_digest,
+      'cleanup_digest', v_cleanup_digest,
+      'rollback_digest', v_rollback_digest,
+      'run_manifest_digest', v_run_manifest_digest,
+      'signature', v_attestation_signature
+    )
+  );
+END;
+$function$;
+
 CREATE TABLE public.brand_sites (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   brand_id uuid NOT NULL UNIQUE REFERENCES public.brands(id),
@@ -231,6 +622,7 @@ CREATE TABLE public.brand_site_audit_log (
     'preview.requested','preview.created',
     'publication.requested','publication.published','publication.failed',
     'publication.reconciled','publication.rollback_requested',
+    'operation.reconcile_checked',
     'site.suspended','site.resumed','attribution.consumed'
   )),
   resource_kind text NOT NULL CHECK (length(resource_kind) BETWEEN 1 AND 64),
@@ -607,7 +999,7 @@ BEGIN
   END IF;
   SELECT * INTO STRICT v_site FROM public.brand_sites WHERE brand_id = p_brand_id;
   v_arguments_digest := encode(
-    digest(p_destination || ':' || v_site.id::text, 'sha256'),
+    extensions.digest(p_destination || ':' || v_site.id::text, 'sha256'),
     'hex'
   );
   SELECT * INTO v_receipt FROM public.brand_site_operation_receipts
@@ -624,8 +1016,8 @@ BEGIN
     -- receives the recorded result and cannot mint a second live credential.
     RETURN COALESCE(v_receipt.result_summary, '{}'::jsonb);
   END IF;
-  v_code := replace(replace(trim(trailing '=' FROM encode(gen_random_bytes(32), 'base64')), '+', '-'), '/', '_');
-  v_digest := encode(digest(v_code, 'sha256'), 'hex');
+  v_code := replace(replace(trim(trailing '=' FROM encode(extensions.gen_random_bytes(32), 'base64')), '+', '-'), '/', '_');
+  v_digest := encode(extensions.digest(v_code, 'sha256'), 'hex');
   INSERT INTO public.brand_site_editor_exchanges(
     site_id, brand_id, user_id, code_digest, destination, role_snapshot,
     membership_revision, issued_at, expires_at
@@ -847,7 +1239,7 @@ LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
 AS $$
 DECLARE
-  v_digest text := encode(digest(p_code, 'sha256'), 'hex');
+  v_digest text := encode(extensions.digest(p_code, 'sha256'), 'hex');
   v_exchange public.brand_site_editor_exchanges%ROWTYPE;
 BEGIN
   SELECT * INTO STRICT v_exchange FROM public.brand_site_editor_exchanges
@@ -1126,6 +1518,47 @@ BEGIN
     'status', 'failed',
     'last_good_preserved', v_site.last_successful_publication_id IS NOT NULL,
     'retryable', false
+  );
+END;
+$$;
+
+-- A transport timeout or rejected callback is uncertainty, not failure and
+-- never success. This transition preserves the live pointer and gives Admin an
+-- exact operation id to reconcile against durable Core state.
+CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_ambiguous(
+  p_site_id uuid,
+  p_operation_id uuid,
+  p_safe_error_code text
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER
+SET search_path TO 'public', 'pg_temp'
+AS $$
+DECLARE
+  v_receipt public.brand_site_operation_receipts%ROWTYPE;
+BEGIN
+  IF p_safe_error_code NOT IN ('CALLBACK_AMBIGUOUS','SERVICE_TEMPORARILY_UNAVAILABLE') THEN
+    RAISE EXCEPTION 'sites_validation_failed';
+  END IF;
+  SELECT * INTO STRICT v_receipt
+  FROM public.brand_site_operation_receipts
+  WHERE operation_id = p_operation_id AND site_id = p_site_id
+  FOR UPDATE;
+  IF v_receipt.status IN ('succeeded','failed') THEN
+    RETURN jsonb_build_object(
+      'site_id', p_site_id, 'operation_id', p_operation_id,
+      'status', v_receipt.status
+    );
+  END IF;
+  UPDATE public.brand_site_operation_receipts
+  SET status = 'ambiguous', error_code = p_safe_error_code
+  WHERE operation_id = p_operation_id;
+  UPDATE public.brand_site_publications
+  SET status = 'ambiguous', failure_code = p_safe_error_code
+  WHERE site_id = p_site_id AND operation_id = p_operation_id
+    AND status IN ('queued','validating','materializing','probing','ambiguous');
+  RETURN jsonb_build_object(
+    'site_id', p_site_id, 'operation_id', p_operation_id,
+    'status', 'ambiguous'
   );
 END;
 $$;
@@ -1508,7 +1941,8 @@ CREATE OR REPLACE FUNCTION public.brand_site_admin_action(
   p_site_id uuid,
   p_operation_id uuid,
   p_action text,
-  p_reason_code text
+  p_reason_code text,
+  p_target_operation_id uuid DEFAULT NULL
 ) RETURNS jsonb
 LANGUAGE plpgsql SECURITY DEFINER
 SET search_path TO 'public', 'pg_temp'
@@ -1518,6 +1952,10 @@ DECLARE
   v_kind text;
   v_status text;
   v_arguments_digest text;
+  v_target_receipt public.brand_site_operation_receipts%ROWTYPE;
+  v_target_publication public.brand_site_publications%ROWTYPE;
+  v_target_status text;
+  v_reconciled boolean := false;
 BEGIN
   IF auth.uid() IS NULL OR NOT public.is_admin_user() THEN
     RAISE EXCEPTION 'sites_forbidden';
@@ -1526,13 +1964,18 @@ BEGIN
     OR p_reason_code !~ '^[A-Z][A-Z0-9_]{2,63}$' THEN
     RAISE EXCEPTION 'sites_validation_failed';
   END IF;
+  IF (p_action = 'reconcile') <> (p_target_operation_id IS NOT NULL) THEN
+    RAISE EXCEPTION 'sites_validation_failed';
+  END IF;
 
   SELECT * INTO STRICT v_site FROM public.brand_sites
   WHERE id = p_site_id FOR UPDATE;
   v_kind := CASE WHEN p_action = 'revoke_editor_sessions'
     THEN 'revoke_sessions' ELSE p_action END;
-  v_arguments_digest := encode(digest(
-    p_site_id::text || ':' || p_action || ':' || p_reason_code, 'sha256'
+  v_arguments_digest := encode(extensions.digest(
+    p_site_id::text || ':' || p_action || ':' || p_reason_code || ':' ||
+      COALESCE(p_target_operation_id::text, '-'),
+    'sha256'
   ), 'hex');
 
   SELECT receipt.status INTO v_status
@@ -1548,7 +1991,8 @@ BEGIN
     ) THEN
       RETURN jsonb_build_object(
         'operation_id', p_operation_id, 'site_id', p_site_id,
-        'status', v_status, 'replayed', true
+        'status', v_status, 'replayed', true,
+        'target_operation_id', p_target_operation_id
       );
     END IF;
     RAISE EXCEPTION 'sites_idempotency_conflict';
@@ -1577,10 +2021,59 @@ BEGIN
     UPDATE public.brand_site_editor_exchanges SET status = 'revoked', revoked_at = now()
     WHERE site_id = p_site_id AND status = 'issued';
   ELSIF p_action = 'reconcile' THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM public.brand_site_operation_receipts receipt
-      WHERE receipt.site_id = p_site_id AND receipt.status IN ('failed','ambiguous')
-    ) THEN RAISE EXCEPTION 'sites_invalid_state'; END IF;
+    SELECT * INTO STRICT v_target_receipt
+    FROM public.brand_site_operation_receipts receipt
+    WHERE receipt.site_id = p_site_id
+      AND receipt.operation_id = p_target_operation_id
+      AND receipt.status = 'ambiguous'
+    FOR UPDATE;
+    SELECT * INTO v_target_publication
+    FROM public.brand_site_publications publication
+    WHERE publication.site_id = p_site_id
+      AND publication.operation_id = p_target_operation_id;
+
+    IF v_target_receipt.kind = 'provision' AND v_site.payload_tenant_id IS NOT NULL THEN
+      UPDATE public.brand_site_operation_receipts
+      SET status = 'succeeded', error_code = NULL, completed_at = clock_timestamp(),
+        result_summary = jsonb_build_object(
+          'site_id', p_site_id, 'status', 'succeeded'
+        )
+      WHERE operation_id = p_target_operation_id;
+      v_target_status := 'succeeded';
+      v_reconciled := true;
+    ELSIF v_target_publication.id IS NOT NULL
+      AND v_target_publication.status = 'published' THEN
+      UPDATE public.brand_site_operation_receipts
+      SET status = 'succeeded', error_code = NULL, completed_at = clock_timestamp(),
+        result_summary = jsonb_build_object(
+          'site_id', p_site_id,
+          'publication_id', v_target_publication.id,
+          'artifact_digest', v_target_publication.artifact_digest,
+          'status', 'succeeded'
+        )
+      WHERE operation_id = p_target_operation_id;
+      v_target_status := 'succeeded';
+      v_reconciled := true;
+    ELSIF v_target_publication.id IS NOT NULL
+      AND v_target_publication.status = 'failed' THEN
+      UPDATE public.brand_site_operation_receipts
+      SET status = 'failed',
+        error_code = COALESCE(v_target_publication.failure_code,
+          'PUBLISH_FAILED_LAST_GOOD_PRESERVED'),
+        completed_at = clock_timestamp(),
+        result_summary = jsonb_build_object(
+          'site_id', p_site_id,
+          'publication_id', v_target_publication.id,
+          'status', 'failed',
+          'last_good_preserved', v_site.last_successful_publication_id IS NOT NULL,
+          'retryable', false
+        )
+      WHERE operation_id = p_target_operation_id;
+      v_target_status := 'failed';
+      v_reconciled := true;
+    ELSE
+      v_target_status := 'ambiguous';
+    END IF;
   END IF;
 
   INSERT INTO public.brand_site_operation_receipts(
@@ -1602,15 +2095,25 @@ BEGIN
       WHEN 'suspend' THEN 'site.suspended'
       WHEN 'resume' THEN 'site.resumed'
       WHEN 'revoke_editor_sessions' THEN 'editor.sessions_revoked'
-      ELSE 'publication.reconciled'
+      ELSE CASE WHEN v_reconciled
+        THEN 'publication.reconciled'
+        ELSE 'operation.reconcile_checked' END
     END,
-    'brand_site', p_site_id::text, p_operation_id,
-    jsonb_build_object('reason_code', p_reason_code)
+    CASE WHEN p_action = 'reconcile' THEN 'operation' ELSE 'brand_site' END,
+    CASE WHEN p_action = 'reconcile'
+      THEN p_target_operation_id::text ELSE p_site_id::text END,
+    p_operation_id,
+    jsonb_build_object(
+      'reason_code', p_reason_code,
+      'status', CASE WHEN p_action = 'reconcile' THEN v_target_status ELSE 'succeeded' END
+    )
   );
 
   RETURN jsonb_build_object(
     'operation_id', p_operation_id, 'site_id', p_site_id,
-    'status', 'succeeded', 'replayed', false
+    'status', 'succeeded', 'replayed', false,
+    'target_operation_id', p_target_operation_id,
+    'target_status', v_target_status
   );
 END;
 $$;
@@ -1625,6 +2128,7 @@ REVOKE ALL ON FUNCTION public.brand_site_complete_preview(uuid,uuid,text,timesta
 REVOKE ALL ON FUNCTION public.brand_site_commercial_projection(uuid,uuid[]) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_complete_publication(uuid,uuid,uuid,text,text,text,text,jsonb) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_fail_publication(uuid,uuid,uuid) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.brand_site_mark_operation_ambiguous(uuid,uuid,text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_internal_authorize(uuid,uuid,integer) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_resolve_publication(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.brand_site_consume_attribution(text,uuid) FROM PUBLIC, anon, authenticated;
@@ -1633,7 +2137,7 @@ REVOKE ALL ON FUNCTION public.brand_site_customer_analytics(uuid) FROM PUBLIC, a
 REVOKE ALL ON FUNCTION public.brand_site_customer_audit(uuid) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.brand_site_admin_list(text,integer,integer) FROM PUBLIC, anon;
 REVOKE ALL ON FUNCTION public.brand_site_admin_detail(uuid) FROM PUBLIC, anon;
-REVOKE ALL ON FUNCTION public.brand_site_admin_action(uuid,uuid,text,text) FROM PUBLIC, anon;
+REVOKE ALL ON FUNCTION public.brand_site_admin_action(uuid,uuid,text,text,uuid) FROM PUBLIC, anon;
 GRANT EXECUTE ON FUNCTION public.brand_site_provision(uuid,uuid,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_issue_editor_exchange(uuid,uuid,text) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_authorize_operation(uuid,uuid,text,text,text,text) TO authenticated;
@@ -1641,13 +2145,14 @@ GRANT EXECUTE ON FUNCTION public.brand_site_customer_analytics(uuid) TO authenti
 GRANT EXECUTE ON FUNCTION public.brand_site_customer_audit(uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_admin_list(text,integer,integer) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_admin_detail(uuid) TO authenticated;
-GRANT EXECUTE ON FUNCTION public.brand_site_admin_action(uuid,uuid,text,text) TO authenticated;
+GRANT EXECUTE ON FUNCTION public.brand_site_admin_action(uuid,uuid,text,text,uuid) TO authenticated;
 GRANT EXECUTE ON FUNCTION public.brand_site_consume_editor_exchange(text,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_complete_provision(uuid,uuid,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_complete_preview(uuid,uuid,text,timestamptz) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_commercial_projection(uuid,uuid[]) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_complete_publication(uuid,uuid,uuid,text,text,text,text,jsonb) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_fail_publication(uuid,uuid,uuid) TO service_role;
+GRANT EXECUTE ON FUNCTION public.brand_site_mark_operation_ambiguous(uuid,uuid,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_internal_authorize(uuid,uuid,integer) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_resolve_publication(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.brand_site_consume_attribution(text,uuid) TO service_role;

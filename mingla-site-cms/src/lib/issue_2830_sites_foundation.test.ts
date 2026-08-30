@@ -2,6 +2,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import { publicationDraftDigest, stable } from "./artifactBuilder";
 import { requestTenant } from "./tenantIntegrity";
 import { artifactMayBePurged, mediaMayBePurged } from "./mediaPipeline";
+import { canAccessStudioAdmin, StudioUsers } from "../collections/StudioUsers";
 
 const SITE_ID = "00000000-0000-4000-8000-000000000001";
 const BRAND_ID = "00000000-0000-4000-8000-000000000002";
@@ -37,6 +38,17 @@ beforeAll(() => {
 });
 
 describe("#2830 exact draft and tenant boundary", () => {
+  it("admits an authenticated custom Studio session without exposing the hidden user collection", () => {
+    expect(canAccessStudioAdmin?.({ req: { user: null } } as never)).toBe(false);
+    expect(
+      canAccessStudioAdmin?.({
+        req: { user: { id: USER_ID, tenantId: TENANT_ID, rank: 20 } },
+      } as never),
+    ).toBe(true);
+    expect(StudioUsers.admin?.hidden).toBe(true);
+    expect(StudioUsers.access?.read?.({ req: { user: { id: USER_ID } } } as never)).toBe(false);
+  });
+
   it("canonicalizes an exact draft deterministically and changes on content", async () => {
     const draft = {
       pages: [{ id: "home", title: "Gogi", revision: 4 }],

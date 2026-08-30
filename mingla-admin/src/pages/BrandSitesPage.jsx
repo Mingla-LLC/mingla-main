@@ -205,7 +205,8 @@ function BrandSiteDetail({ siteId, onBack }) {
 
   const { site, hosts, publications, receipts, audit, health, readiness } = state.data;
   const config = action ? ACTIONS[action] : null;
-  const canReconcile = receipts.some((receipt) => ["failed", "ambiguous"].includes(receipt.status));
+  const ambiguousReceipt = receipts.find((receipt) => receipt.status === "ambiguous") ?? null;
+  const canReconcile = ambiguousReceipt !== null;
 
   return (
     <div className="flex flex-col gap-5">
@@ -259,7 +260,15 @@ function BrandSiteDetail({ siteId, onBack }) {
         title={config?.title} description={config?.description}
         confirmLabel={config?.confirmLabel} confirmPhrase={config?.confirmPhrase}
         destructive={config?.destructive}
-        onConfirm={async ({ reason }) => { await runBrandSiteAction(siteId, action, reason); await load(); }}
+        onConfirm={async ({ reason }) => {
+          await runBrandSiteAction(
+            siteId,
+            action,
+            reason,
+            action === "reconcile" ? ambiguousReceipt?.operation_id ?? null : null,
+          );
+          await load();
+        }}
         successMessage="Brand site operation completed."
       />
     </div>

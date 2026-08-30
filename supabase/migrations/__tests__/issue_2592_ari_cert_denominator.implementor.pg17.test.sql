@@ -14,10 +14,11 @@
 -- executable guard that the requirement set and the denominator can never drift
 -- apart again, in either direction.
 --
--- 120 is the ledger denominator. It is not a free constant: the same number is
+-- [TEST-MOD-APPROVED #2830] 132 is the ledger denominator after the twelve
+-- approved Website tools. It is not a free constant: the same number is
 -- enforced against `docs/contracts/ari-capability-ledger.json` and the tool
 -- registry by `.github/scripts/strict-grep/issue-2000-ari-capability-ledger.mjs`
--- ("120 capabilities, 80 registered tools, complete bijection"). Moving the
+-- ("132 capabilities, 97 registered tools, complete bijection"). Moving the
 -- ledger without moving this test turns this file red on purpose.
 --
 -- All fixtures roll back.
@@ -29,7 +30,7 @@ BEGIN;
 
 DO $test$
 DECLARE
-  c_ledger_denominator constant integer := 120;
+  c_ledger_denominator constant integer := 132;
   v_requirement_rows integer;
   v_finalizer_denominator integer;
   v_reported_count integer;

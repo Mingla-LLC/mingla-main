@@ -1,4 +1,3 @@
-
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { wrapEdgeHandler } from "../_shared/structuredLog.ts";
 import { fireBuyerPurchaseConfirmationPush } from "../_shared/businessNotifyTriggers.ts";
@@ -109,19 +108,16 @@ async function persistSiteAttributionToken(
   try {
     const { error } = await client.from("ticket_checkout_sessions").update({
       site_attribution_token_digest: await siteAttributionDigest(value),
-    }).eq("id", checkoutSessionId).is("order_id", null);
+    }).eq("id", checkoutSessionId).is("order_id", null)
+      .is("site_attribution_token_digest", null);
     if (error) {
       console.error(
         "[ticket-checkout-create] site attribution binding skipped",
-        error.message,
       );
     }
-  } catch (error) {
+  } catch {
     // Attribution never changes checkout availability or payment correctness.
-    console.error(
-      "[ticket-checkout-create] site attribution binding skipped",
-      error instanceof Error ? error.message : "unavailable",
-    );
+    console.error("[ticket-checkout-create] site attribution binding skipped");
   }
 }
 
@@ -210,16 +206,16 @@ const recordCheckoutRefusal = async (
     // never an exception at all.
     const outcome = await Promise.race([
       client.rpc("issue_2579_record_checkout_refusal", {
-      p_event_id: input.eventId.length > 0 ? input.eventId : null,
-      p_ticket_type_id: input.ticketTypeId,
-      // RAW. The RPC owns the allowlist; see the note above.
-      p_raise_token: input.message ?? null,
-      p_quantity_requested: input.quantity,
-      p_surface: input.surface,
-      // FULL E.164 in; the RPC stores the dial code only. Extraction lives
-      // there because the migration's probe runs in CI and a new edge test
-      // file would run in no lane.
-      p_buyer_phone_e164: input.phoneE164,
+        p_event_id: input.eventId.length > 0 ? input.eventId : null,
+        p_ticket_type_id: input.ticketTypeId,
+        // RAW. The RPC owns the allowlist; see the note above.
+        p_raise_token: input.message ?? null,
+        p_quantity_requested: input.quantity,
+        p_surface: input.surface,
+        // FULL E.164 in; the RPC stores the dial code only. Extraction lives
+        // there because the migration's probe runs in CI and a new edge test
+        // file would run in no lane.
+        p_buyer_phone_e164: input.phoneE164,
         p_buyer_email: input.email,
       }),
       new Promise<undefined>((resolve) => {
@@ -763,8 +759,8 @@ export const createTicketCheckoutCreateHandler = (
         body.payment_plan_choice !== "installments"
       ) {
         {
-        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
-      }
+          return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+        }
       }
       paymentPlanChoice = body.payment_plan_choice;
     }
@@ -801,7 +797,9 @@ export const createTicketCheckoutCreateHandler = (
     //
     // Default is unchanged: an event with no policy row, or mode
     // 'unrestricted', returns `allowed_unrestricted` and this block is a no-op.
-    let accessDecision: Awaited<ReturnType<typeof ticketCheckoutAccessDecision>>;
+    let accessDecision: Awaited<
+      ReturnType<typeof ticketCheckoutAccessDecision>
+    >;
     try {
       accessDecision = await ticketCheckoutAccessDecision(supabase, {
         eventId,
@@ -912,7 +910,9 @@ export const createTicketCheckoutCreateHandler = (
           500,
         );
       }
-      const rows = (occRows ?? []) as Array<{ id: string; end_at: string | null }>;
+      const rows = (occRows ?? []) as Array<
+        { id: string; end_at: string | null }
+      >;
       if (rows.length !== eventDateIds.length) {
         // At least one id is not an occurrence of THIS event (or was deleted).
         return refuse({ error: "occurrence_not_found" }, 422);
@@ -1183,8 +1183,8 @@ export const createTicketCheckoutCreateHandler = (
       });
       if (sessionError?.message?.includes("payment_plan_choice_invalid")) {
         {
-        return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
-      }
+          return jsonResponse({ error: "payment_plan_choice_invalid" }, 400);
+        }
       }
       // Issue #2101 — the database re-decides under the event -> brand lock. If
       // the policy or membership changed between the Edge decision above and
@@ -1365,7 +1365,8 @@ export const createTicketCheckoutCreateHandler = (
           : {};
       sessionUpdate.metadata = {
         ...existingMeta,
-        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ?? {}),
+        ...((sessionUpdate.metadata as Record<string, unknown> | undefined) ??
+          {}),
         event_date_id: anchorEventDateId,
         event_date_ids: orderedEventDateIds,
       };
@@ -1735,16 +1736,16 @@ export const createTicketCheckoutCreateHandler = (
       // = orderId.
       if (finalizedRecord.replayed !== true) {
         void fireAdConversion(supabase as never, { orderId, surface: "web" })
-        .catch(
-          (adConvErr) => {
-            console.warn(
-              "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
-              adConvErr instanceof Error
-                ? adConvErr.message
-                : String(adConvErr),
-            );
-          },
-        );
+          .catch(
+            (adConvErr) => {
+              console.warn(
+                "[ticket-checkout-create] ad-conversion fire failed (non-fatal):",
+                adConvErr instanceof Error
+                  ? adConvErr.message
+                  : String(adConvErr),
+              );
+            },
+          );
       }
       // issue #2136 — the envelope is spread FIRST and every field the buyer
       // contract (`TicketCheckoutFreeCompleted`) declares is then written
@@ -3041,7 +3042,9 @@ export const createTicketCheckoutCreateHandler = (
             ? {
               mingla_event_date_id: anchorEventDateId,
               ...(orderedEventDateIds.length > 1
-                ? { mingla_event_date_count: String(orderedEventDateIds.length) }
+                ? {
+                  mingla_event_date_count: String(orderedEventDateIds.length),
+                }
                 : {}),
             }
             : {}),

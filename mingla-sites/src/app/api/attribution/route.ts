@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { signedCorePost } from "../../../lib/coreGateway";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -40,30 +41,22 @@ export async function POST(request: Request) {
     input.source_kind !== "site" ||
     !/^[A-Za-z0-9_.-]{1,80}$/.test(String(input.source_ref || ""))
   ) return NextResponse.json({ ok: false }, { status: 400 });
-  const { runtimeConfig } = await import("../../../lib/config");
-  const config = runtimeConfig();
-  const response = await fetch(
-    `${config.coreBaseUrl}/functions/v1/brand-site-attribution`,
-    {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        origin: "https://gogi.sites.usemingla.com",
-      },
-      body: JSON.stringify({
-        action: "issue",
-        consent_granted: true,
-        event_name: input.event_name,
-        site_id: input.siteId,
-        brand_id: input.brandId,
-        publication_id: input.publicationId,
-        consent_policy_version: "sites-v1",
-        source_kind: "site",
-        source_ref: input.source_ref,
-      }),
-      cache: "no-store",
+  const response = await signedCorePost({
+    edgeFunction: "brand-site-attribution",
+    path: `/internal/v1/sites/${input.siteId}/attribution`,
+    siteId: String(input.siteId),
+    body: {
+      action: "issue",
+      consent_granted: true,
+      event_name: input.event_name,
+      site_id: input.siteId,
+      brand_id: input.brandId,
+      publication_id: input.publicationId,
+      consent_policy_version: "sites-v1",
+      source_kind: "site",
+      source_ref: input.source_ref,
     },
-  ).catch(() => null);
+  }).catch(() => null);
   if (!response?.ok) return NextResponse.json({ ok: false }, { status: 503 });
   const result = await response.json();
   return NextResponse.json(result, {

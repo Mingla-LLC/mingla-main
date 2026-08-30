@@ -129,28 +129,37 @@ Deno.test("#2830 Ari registry exposes exactly the approved twelve tools", () => 
 
 Deno.test("#2830 slot-88 import closure stays exact and value-blind", async () => {
   const expected = new Map([
-    ["brand-site-control/index.ts", "resolveCoreToCmsSigner"],
-    ["brand-site-cms-callback/index.ts", "resolveCmsToCoreVerifier"],
-    ["brand-site-runtime-resolve/index.ts", "resolveRuntimeToCoreVerifier"],
-    ["brand-site-attribution/index.ts", "resolveSitesAttributionPepper"],
+    ["brand-site-control/index.ts", ["resolveCoreToCmsSigner"]],
+    ["brand-site-cms-callback/index.ts", ["resolveCmsToCoreVerifier"]],
+    ["brand-site-runtime-resolve/index.ts", ["resolveRuntimeToCoreVerifier"]],
+    [
+      "brand-site-attribution/index.ts",
+      ["resolveRuntimeToCoreVerifier", "resolveSitesAttributionPepper"],
+    ],
   ]);
   const root = new URL("../../", import.meta.url);
-  const observed = new Map<string, string>();
+  const allResolvers = new Set([...expected.values()].flat());
+  const observed = new Map<string, string[]>();
   for await (const entry of Deno.readDir(root)) {
     if (!entry.isDirectory || !entry.name.startsWith("brand-site-")) continue;
     const relative = `${entry.name}/index.ts`;
     const source = await Deno.readTextFile(new URL(relative, root));
-    for (const resolver of expected.values()) {
-      if (source.includes(resolver)) observed.set(relative, resolver);
-    }
+    const importedResolvers = [...allResolvers].filter((resolver) =>
+      source.includes(resolver)
+    ).sort();
+    if (importedResolvers.length > 0) observed.set(relative, importedResolvers);
     assert(
       !source.includes("MINGLA_SITES_SECURITY_JSON"),
       `${relative} read the envelope directly`,
     );
   }
   assert(
-    JSON.stringify([...observed.entries()].sort()) ===
-      JSON.stringify([...expected.entries()].sort()),
+    JSON.stringify([...observed.entries()].sort()) === JSON.stringify(
+      [...expected.entries()].map(([path, resolvers]) => [
+        path,
+        [...resolvers].sort(),
+      ]).sort(),
+    ),
     "slot-88 resolver import closure drifted",
   );
   const helper = await Deno.readTextFile(
