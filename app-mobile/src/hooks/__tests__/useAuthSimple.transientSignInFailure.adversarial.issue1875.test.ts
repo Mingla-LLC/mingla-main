@@ -1594,3 +1594,49 @@ test('AX-F5 — the catch contains no retry and defers nothing', () => {
     assert.ok(!/\$\{/.test(body.slice(body.indexOf('Alert.alert(i18n.t('))), `${provider}: interpolation near the alert`)
   }
 })
+
+test('AX-F6 — the pinned baseline has durable main-line provenance and exact bytes', () => {
+  const squashMerge = '892a07fbf7de33567440d9682664da5cb2a42dc9'
+  const gitText = (...args: string[]): string =>
+    execFileSync('git', args, {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+
+  const mainRef = ['origin/main', 'main'].find((ref) => {
+    try {
+      gitText('rev-parse', '--verify', `${ref}^{commit}`)
+      return true
+    } catch {
+      return false
+    }
+  })
+  assert.ok(mainRef, 'AX-F6: neither origin/main nor main resolves to a durable main commit')
+
+  assert.doesNotThrow(
+    () => gitText('merge-base', '--is-ancestor', PRE_1875_BASELINE_COMMIT, mainRef),
+    `AX-F6: pinned baseline ${PRE_1875_BASELINE_COMMIT} is not an ancestor of ${mainRef}`,
+  )
+  assert.equal(
+    gitText('rev-parse', `${squashMerge}^`),
+    PRE_1875_BASELINE_COMMIT,
+    'AX-F6: pinned baseline is not the direct parent of the #1875 squash merge',
+  )
+
+  const pinnedBytes = execFileSync(
+    'git',
+    ['show', `${PRE_1875_BASELINE_COMMIT}:${HOOK_REPO_RELPATH}`],
+    {
+      cwd: REPO_ROOT,
+      maxBuffer: 32 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  assert.equal(
+    createHash('sha256').update(pinnedBytes).digest('hex'),
+    PRE_1875_BASELINE_SHA256,
+    'AX-F6: durable baseline bytes no longer match the pinned full-file sha256',
+  )
+})
