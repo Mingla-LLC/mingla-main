@@ -1373,12 +1373,12 @@ test('AX-E6 — Apple honours the identical cancellation contract', async () => 
  * The pre-#1875 `useAuthSimple.ts`, pinned by BOTH the commit it lives in and
  * the sha256 of its content.
  *
- * `fcb78cfac` is the `origin/main` commit this branch was rebased onto, so it
- * stays an ancestor of `main` after the squash-merge — which is what makes this
- * gate keep working on `main` instead of degenerating into comparing the file
- * against itself. `origin/main` is tried first because it is the cheapest ref to
- * have locally BEFORE the merge; the content hash is what actually decides, so
- * whichever ref answers, the baseline is provably the same bytes.
+ * `4bcefcf26656355f05ae740dc0cbd06b4ee9769c` is the direct parent of the
+ * #1875 squash merge `892a07fbf7de33567440d9682664da5cb2a42dc9` and remains
+ * on durable `main` first-parent history. Its full-file sha256 is the pinned
+ * content hash below, so the baseline has both durable provenance and exact-byte
+ * identity. `origin/main` and `main` remain diagnostic fallback refs; whichever
+ * ref answers, the content hash is what decides whether the bytes are accepted.
  *
  * ─── RE-BASELINING ────────────────────────────────────────────────────────
  * A future, legitimate change to `signInWithGoogle` / `signInWithApple` will
@@ -1387,7 +1387,7 @@ test('AX-E6 — Apple honours the identical cancellation contract', async () => 
  * the protocol #1044 established for `PRE_GOOGLE_CATCH` / `PRE_APPLE_CATCH`.
  * Never silence it by loosening the comparison.
  */
-const PRE_1875_BASELINE_COMMIT = 'fcb78cfac67380008c225f3db932260853ece5e7'
+const PRE_1875_BASELINE_COMMIT = '4bcefcf26656355f05ae740dc0cbd06b4ee9769c'
 const PRE_1875_BASELINE_SHA256 =
   '41a7a7fb52735b862ae3550e7aee090702cffa7dd96bbf36b771c534815ce353'
 
@@ -1593,4 +1593,50 @@ test('AX-F5 — the catch contains no retry and defers nothing', () => {
     assert.ok(!/setTimeout|setInterval/.test(body), `${provider}: the catch defers work`)
     assert.ok(!/\$\{/.test(body.slice(body.indexOf('Alert.alert(i18n.t('))), `${provider}: interpolation near the alert`)
   }
+})
+
+test('AX-F6 — the pinned baseline has durable main-line provenance and exact bytes', () => {
+  const squashMerge = '892a07fbf7de33567440d9682664da5cb2a42dc9'
+  const gitText = (...args: string[]): string =>
+    execFileSync('git', args, {
+      cwd: REPO_ROOT,
+      encoding: 'utf8',
+      maxBuffer: 32 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    }).trim()
+
+  const mainRef = ['origin/main', 'main'].find((ref) => {
+    try {
+      gitText('rev-parse', '--verify', `${ref}^{commit}`)
+      return true
+    } catch {
+      return false
+    }
+  })
+  assert.ok(mainRef, 'AX-F6: neither origin/main nor main resolves to a durable main commit')
+
+  assert.doesNotThrow(
+    () => gitText('merge-base', '--is-ancestor', PRE_1875_BASELINE_COMMIT, mainRef),
+    `AX-F6: pinned baseline ${PRE_1875_BASELINE_COMMIT} is not an ancestor of ${mainRef}`,
+  )
+  assert.equal(
+    gitText('rev-parse', `${squashMerge}^`),
+    PRE_1875_BASELINE_COMMIT,
+    'AX-F6: pinned baseline is not the direct parent of the #1875 squash merge',
+  )
+
+  const pinnedBytes = execFileSync(
+    'git',
+    ['show', `${PRE_1875_BASELINE_COMMIT}:${HOOK_REPO_RELPATH}`],
+    {
+      cwd: REPO_ROOT,
+      maxBuffer: 32 * 1024 * 1024,
+      stdio: ['ignore', 'pipe', 'pipe'],
+    },
+  )
+  assert.equal(
+    createHash('sha256').update(pinnedBytes).digest('hex'),
+    PRE_1875_BASELINE_SHA256,
+    'AX-F6: durable baseline bytes no longer match the pinned full-file sha256',
+  )
 })

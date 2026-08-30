@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-30 — Native sign-in regression checks now read their historical baseline from durable main history, so clean GitHub runners stay reliable without weakening the protected sign-in behavior (#2853, PR #2856)
 - 2026-08-30 — Business Home now keeps Recent work in one natural mobile scroll while preserving desktop’s independent workspace, ordered live-first across drafts, venues, events, experiences, RSVPs, and trips with secure account-scoped history (#2794, PR #2845)
 - 2026-08-29 — Competitor refresh journey tests now use their documented fixture clock, so UTC date rollovers cannot block unrelated pull requests while the future-date wording remains strictly verified (#2837, PR #2838)
 - 2026-08-29 — Local and cloud cover-video uploads now survive remounts, restarts, dropped responses, and long provider processing without duplicating or attaching the wrong video, while progress and failures remain truthful (#2715, PR #2827)
