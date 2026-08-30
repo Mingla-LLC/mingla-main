@@ -84,6 +84,7 @@ import { useVenueListing } from "../../../src/hooks/useVenueListings";
 import { openExternal } from "../../../src/services/guestFunnelLink";
 import { useVenueSuiteStore } from "../../../src/store/venueSuiteStore";
 import { listingStatusView } from "../../../src/utils/listingStatus";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 
 function paramValue(value: string | string[] | undefined): string | null {
   if (Array.isArray(value)) return value[0] ?? null;
@@ -214,6 +215,14 @@ export default function VenueManagementPage(): React.ReactElement {
         : null,
     [venue],
   );
+
+  useSuccessfulBusinessRecentOpen({
+    brandId, entityType: "venue", entityId: venueId,
+    ready: isAuthReady && user !== null && venue !== null,
+    title: venue?.name, coverUrl: venue?.coverMediaUrl,
+    coverPosterUrl: venue?.coverMediaPosterUrl, coverType: venue?.coverMediaType,
+    status: venue?.claimStatus,
+  });
 
   if (!isAuthReady || user === null) {
     return <View style={[styles.root, { paddingTop: insets.top }]} />;

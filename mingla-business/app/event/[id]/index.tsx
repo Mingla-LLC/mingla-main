@@ -74,6 +74,7 @@ import { EventDetailTicketTypeRow } from "../../../src/components/event/EventDet
 import { EventManageMenu } from "../../../src/components/event/EventManageMenu";
 import { ReconciliationCtaTile } from "../../../src/components/event/ReconciliationCtaTile";
 import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import { useManagedEventRoute } from "../../../src/hooks/useManagedEventRoute";
 import {
   useCancelBusinessEvent,
@@ -158,6 +159,14 @@ export default function EventDetailScreen(): React.ReactElement {
   const cancelServerEvent = useCancelBusinessEvent();
   const endServerTicketSales = useEndBusinessEventTicketSales();
   const event = resolvedLiveEvent;
+  useSuccessfulBusinessRecentOpen({
+    brandId: brand?.id ?? event?.brandId ?? null,
+    entityType: "event", entityId: event?.serverEventId ?? id,
+    ready: event !== null && draftEvent === null && routeEvent.replacementEventId === null,
+    title: event?.name, coverUrl: event?.coverMediaUrl,
+    coverPosterUrl: event?.coverMediaPosterUrl, coverType: event?.coverMediaType,
+    status: event?.status,
+  });
 
   // ----- Handlers -------------------------------------------------
   const handleBack = useCallback((): void => {

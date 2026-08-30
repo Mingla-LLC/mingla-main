@@ -32,6 +32,7 @@ import {
   typography,
 } from "../../../src/constants/designSystem";
 import { useCurrentBrand } from "../../../src/hooks/useCurrentBrand";
+import { useSuccessfulBusinessRecentOpen } from "../../../src/hooks/useBusinessRecent";
 import {
   useTrip,
   useSoftDeleteTrip,
@@ -80,6 +81,15 @@ export default function TripEditRoute(): React.ReactElement {
   const tripQuery = useTrip(
     typeof eventId === "string" && !isClientOnlyId ? eventId : null,
   );
+  useSuccessfulBusinessRecentOpen({
+    brandId: tripQuery.data?.brandId ?? currentBrand?.id ?? null,
+    entityType: "trip", entityId: typeof eventId === "string" ? eventId : null,
+    ready: !isClientOnlyId && tripQuery.data != null && !tripQuery.isLoading && !tripQuery.isError,
+    title: tripQuery.data?.title, coverUrl: tripQuery.data?.coverMediaUrl,
+    coverPosterUrl: tripQuery.data?.coverMediaPosterUrl,
+    coverType: tripQuery.data?.coverMediaType === "image" || tripQuery.data?.coverMediaType === "video" || tripQuery.data?.coverMediaType === "gif" ? tripQuery.data.coverMediaType : null,
+    status: tripQuery.data?.status,
+  });
   // ORCH-0874 [Trip surfaces visual parity with Events]: wire useSoftDeleteTrip
   // for the wizard's create-mode-dirty discard ConfirmDialog (chrome X handler).
   const softDeleteMutation = useSoftDeleteTrip();

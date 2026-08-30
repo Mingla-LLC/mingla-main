@@ -359,7 +359,7 @@ jobs:
           }
           for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
                        suite_1217a suite_1217t suite_1612 suite_1840 \
-                       suite_1384_1397; do
+                       suite_1384_1397 suite_2794; do
             create_suite_db "$suite"
           done
           docker exec "$PG_CONTRACT_CONTAINER" \
@@ -492,7 +492,7 @@ jobs:
           broken=0
           for suite in suite_1171 suite_1172 suite_1173 suite_1174 \
                        suite_1217a suite_1217t suite_1612 suite_1840 \
-                       suite_1384_1397; do
+                       suite_1384_1397 suite_2794; do
             suite_fp="$(fingerprint_of "$suite")"
             suite_counts="$(counts_of "$suite")"
             echo "$suite fingerprint=$suite_fp counts=$suite_counts"
@@ -508,7 +508,7 @@ jobs:
           if [ "$broken" -ne 0 ]; then
             exit 1
           fi
-          echo "G-1 PASS: 9 of 9 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
+          echo "G-1 PASS: 10 of 10 suite databases fingerprint-identical to $PG_CONTRACT_TEMPLATE."
 
       # ── L-5 — the terminal-assertion RED proof ───────────────────────────
       #
@@ -525,7 +525,7 @@ jobs:
       # terminal-class assertion messages — and passes unmutated.
       #
       # The earlier phrasing ("its LAST labelled RAISE EXCEPTION") was never
-      # expressible: only 1 of the 22 files ends on a labelled one.
+      # expressible: only 1 of the 24 files ends on a labelled one.
       #
       # This paragraph once continued that M-1173-02c's terminal assertion was
       # SUBSUMED by an earlier one. V-1 retired that grant: the earlier assertion
@@ -628,16 +628,16 @@ jobs:
             "$workflow" > "$RUNNER_TEMP/l5_map.tsv"
           call_sites=$(wc -l < "$RUNNER_TEMP/l5_map.tsv" | tr -d ' ')
           # TWO different denominators, named so a reader is never left guessing
-          # which one a mismatch is about: 24 psql call sites exist, but only 22
+          # which one a mismatch is about: 26 psql call sites exist, but only 24
           # are L-5 SUBJECTS. race_a and race_b are call sites carrying zero
           # RAISE EXCEPTION, so there is nothing to falsify in them.
-          echo "psql call sites in the workflow: $call_sites (L-5 subjects: 22; race_a and race_b are call sites but carry no assertion)"
+          echo "psql call sites in the workflow: $call_sites (L-5 subjects: 24; race_a and race_b are call sites but carry no assertion)"
 
           l5_phase="splitting the mutation table"
           mkdir -p "$RUNNER_TEMP/l5"
           # The id is captured by PATTERN, not by field position. It used to read
           # `$4` on `-- ===== M-1172-02a =====`, where $3 is the id and $4 is the
-          # trailing `=====` — so all twenty-two sections were written to one file
+          # trailing `=====` — so all twenty-four sections were written to one file
           # called `=====.sql` and the totality check correctly refused to run.
           # A positional read of a delimiter is one respacing away from doing that
           # again; a capture is not.
@@ -652,13 +652,13 @@ jobs:
           ' "$mutations"
           sections=$(ls -1 "$RUNNER_TEMP/l5"/*.sql 2>/dev/null | wc -l | tr -d ' ')
           echo "mutation sections split out: $sections"
-          if [ "$sections" != "22" ]; then
-            echo "::error::L-5: expected 22 mutation sections, split out $sections. The mutation table and the splitter disagree, so nothing can be proven."
+          if [ "$sections" != "24" ]; then
+            echo "::error::L-5: expected 24 mutation sections, split out $sections. The mutation table and the splitter disagree, so nothing can be proven."
             ls -1 "$RUNNER_TEMP/l5" 2>/dev/null | sed 's/^/  section file: /'
             exit 1
           fi
-          # Set equality, not just a count: the twenty-two sections must be exactly
-          # the twenty-two subjects, so a renamed section cannot be absorbed by a
+          # Set equality, not just a count: the twenty-four sections must be exactly
+          # the twenty-four subjects, so a renamed section cannot be absorbed by a
           # matching total.
           : > "$RUNNER_TEMP/l5_sections.txt"
           for sec in "$RUNNER_TEMP/l5"/*.sql; do
@@ -845,7 +845,7 @@ jobs:
           trap - EXIT
           if [ "$failures" -ne 0 ]; then
             l5_done=1
-            echo "::error::L-5: $failures of 22 terminal assertions could not be proven to have teeth."
+            echo "::error::L-5: $failures of 24 terminal assertions could not be proven to have teeth."
             exit 1
           fi
           if [ -s "$RUNNER_TEMP/parity/l5-subsumptions.txt" ]; then
@@ -853,7 +853,7 @@ jobs:
             cat "$RUNNER_TEMP/parity/l5-subsumptions.txt"
           fi
           l5_done=1
-          echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 22 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
+          echo "L-5 PASS: $((proven_terminal + proven_subsumed)) of 24 — $proven_terminal proven on their OWN terminal assertion, $proven_subsumed by DECLARED SUBSUMPTION. Each fails under a deliberate falsification of its contract and passes unmutated. The two race fixtures carry no assertion and are rendered by M-1173-02i."
 
       # ── Guard G-9 — the trigger union is a superset of every member ──────
       #
@@ -968,6 +968,8 @@ jobs:
           M-1840-03	psql	suite_1840
           M-1840-04	psql	suite_1840
           M-1840-05	psql	suite_1840
+          M-2794-01	psql	suite_2794
+          M-2794-02	psql	suite_2794
           M-1840-06	deno	-
           M-1840-07	deno	-
           M-1177-03	deno	-
@@ -1297,6 +1299,19 @@ jobs:
         run: |
           source .github/scripts/parity/pgsuite.sh
           run_psql M-1840-05 suite_1840 supabase/migrations/__tests__/issue_1840_ng_float_alerts_retest.test.sql
+
+      # ══ #2794 ═══════════════════════════════════════════════════════════
+      - name: "#2794 · Run Business Recent SQL contracts"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-2794-01 suite_2794 supabase/migrations/__tests__/issue_2794_business_recent_history.test.sql
+
+      - name: "#2794 · Run Business Recent adversarial SQL contracts"
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          source .github/scripts/parity/pgsuite.sh
+          run_psql M-2794-02 suite_2794 supabase/migrations/__tests__/issue_2794_business_recent_history_tester.test.sql
 
       - name: "#1840 · Run the #1840 sweep wiring + money-path regression tests"
         if: ${{ !cancelled() && steps.provision.outcome == 'success' }}

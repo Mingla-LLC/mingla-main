@@ -40,21 +40,19 @@ import { BrandDeleteSheet } from "../../src/components/brand/BrandDeleteSheet";
 import { BrandSwitcherSheet } from "../../src/components/brand/BrandSwitcherSheet";
 import { BusinessTodoToggle } from "../../src/components/home/BusinessTodoToggle";
 import { AnalyticsHomeTile } from "../../src/components/home/AnalyticsHomeTile";
-import { HomeTripRow } from "../../src/components/home/HomeTripRow";
 import {
   LiveOfferingCard,
   type LiveCardMetrics,
 } from "../../src/components/home/LiveOfferingCard";
-import { UpcomingListItem } from "../../src/components/home/UpcomingListItem";
-import { EventCoverMedia } from "../../src/components/ui/EventCoverMedia";
 import { GlassCard } from "../../src/components/ui/GlassCard";
 import { Icon } from "../../src/components/ui/Icon";
 import { KpiTile } from "../../src/components/ui/KpiTile";
-import { Pill } from "../../src/components/ui/Pill";
 import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
 import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
+import { EmptyState } from "../../src/components/ui/EmptyState";
+import { RecentRow } from "../recent";
 import { InvitePendingSheet } from "../../src/components/team/InvitePendingSheet";
 import {
   accent,
@@ -74,6 +72,7 @@ import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
+import { useBusinessRecent } from "../../src/hooks/useBusinessRecent";
 import { brandKeys } from "../../src/hooks/useBrands";
 import {
   eventOrdersKeys,
@@ -88,11 +87,11 @@ import {
   useBrandMinglaDroveRollup,
 } from "../../src/hooks/useBrandAnalytics";
 import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapseStore";
-import type { DraftEvent } from "../../src/store/draftEventStore";
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
-import { routeForEventRowDefensive } from "../../src/utils/routeForEventRow";
+import { routeForBusinessRecent } from "../../src/utils/routeForEventRow";
+import type { BusinessRecentPointer } from "../../src/store/businessRecentStore";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
@@ -100,8 +99,6 @@ import {
   currencyCodeOrNull,
   formatCurrencyRound,
 } from "../../src/utils/currency";
-import { formatDraftDateLine } from "../../src/utils/eventDateDisplay";
-import { formatRelativeTime } from "../../src/utils/relativeTime";
 // ORCH-1055 (META-ORCH-1048 sub-F): rank-10 scanners see a stripped-down
 // door-list surface instead of the brand-owner KPI dashboard. Importing
 // the scanner shell + rank gate at the top so the early-branch reads
@@ -140,9 +137,6 @@ interface ToastState {
   message: string;
 }
 
-const getEventName = (name: string, fallback: string): string =>
-  name.trim().length > 0 ? name : fallback;
-
 const hasUnlimitedTickets = (event: LiveEvent): boolean =>
   event.tickets.some((ticket) => ticket.isUnlimited);
 
@@ -180,9 +174,11 @@ export default function HomeTab(): React.ReactElement {
   );
   const brandRecovery = useCurrentBrandRecovery();
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
+  const recent = useBusinessRecent({ brandId: currentBrand?.id ?? null });
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
-  const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] = useState<boolean>(false);
+  const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] =
+    useState<boolean>(false);
   // ORCH-1111 — pending-invite Accept/Decline sheet, opened from the invite
   // To-Do row. Null when closed.
   const [pendingInvite, setPendingInvite] = useState<{
@@ -195,7 +191,10 @@ export default function HomeTab(): React.ReactElement {
   const [brandPendingDelete, setBrandPendingDelete] = useState<Brand | null>(
     null,
   );
-  const [toast, setToast] = useState<ToastState>({ visible: false, message: "" });
+  const [toast, setToast] = useState<ToastState>({
+    visible: false,
+    message: "",
+  });
   // ORCH-0816 — pull-to-refresh as a manual freshness signal alongside the
   // Realtime subscription. Invalidates brand stats AND per-event order keys.
   // ORCH-0965 — also invalidates the upcoming composite key.
@@ -208,6 +207,7 @@ export default function HomeTab(): React.ReactElement {
         queryClient.invalidateQueries({ queryKey: brandKeys.all }),
         queryClient.invalidateQueries({ queryKey: eventOrdersKeys.all }),
         queryClient.invalidateQueries({ queryKey: upcomingKeys.all }),
+        recent.refresh(),
         ...(currentBrand !== null
           ? [
               queryClient.invalidateQueries({
@@ -219,7 +219,7 @@ export default function HomeTab(): React.ReactElement {
     } finally {
       setIsRefreshing(false);
     }
-  }, [currentBrand, queryClient]);
+  }, [currentBrand, queryClient, recent]);
 
   const handleOpenAnalytics = useCallback((): void => {
     router.push("/analytics?entry=home_tile" as never);
@@ -275,49 +275,17 @@ export default function HomeTab(): React.ReactElement {
   }, []);
 
   const handleSeeAllEvents = useCallback((): void => {
-    router.push("/(tabs)/hub/events" as never);
+    router.push("/recent" as never);
   }, [router]);
 
-  // ORCH-0865 REWORK 5: tap-handlers route THROUGH routeForEventRow so a
-  // trip row that ever reaches this list (via stale cache, race, or future
-  // regression) navigates to the trip surface, NOT the event surface.
-  const handleOpenDraft = useCallback(
-    (draft: DraftEvent): void => {
+  const handleOpenRecent = useCallback(
+    (row: BusinessRecentPointer): void => {
       router.push(
-        routeForEventRowDefensive({
-          id: draft.id,
-          event_type:
-            (draft as DraftEvent & { event_type?: "event" | "experience" | "trip" }).event_type ?? "event",
-          status: "draft",
-        }) as never,
-      );
-    },
-    [router],
-  );
-
-  const handleOpenLiveEvent = useCallback(
-    (event: LiveEvent): void => {
-      router.push(
-        routeForEventRowDefensive({
-          id: event.id,
-          event_type:
-            (event as LiveEvent & { event_type?: "event" | "experience" | "trip" }).event_type ?? "event",
-          status: event.status,
-        }) as never,
-      );
-    },
-    [router],
-  );
-
-  // ORCH-0965 — new: trip-row tap. routeForEventRowDefensive routes trips
-  // to /trip/{id} for live/scheduled and /trip/{id}/edit for drafts.
-  const handleOpenTrip = useCallback(
-    (trip: Trip): void => {
-      router.push(
-        routeForEventRowDefensive({
-          id: trip.id,
-          event_type: "trip",
-          status: trip.status,
+        routeForBusinessRecent({
+          id: row.entityId,
+          entityType: row.entityType,
+          status:
+            row.status === "draft" || row.localDraft ? "draft" : row.status,
         }) as never,
       );
     },
@@ -380,9 +348,8 @@ export default function HomeTab(): React.ReactElement {
       return {
         queryKey: ["rsvpCheckinSummary", eventId],
         queryFn: async () => {
-          const { fetchHomeRsvpCheckinSummary } = await import(
-            "../../src/services/homeRsvpSummaryService"
-          );
+          const { fetchHomeRsvpCheckinSummary } =
+            await import("../../src/services/homeRsvpSummaryService");
           return fetchHomeRsvpCheckinSummary(eventId);
         },
         staleTime: 15_000,
@@ -391,11 +358,14 @@ export default function HomeTab(): React.ReactElement {
     }),
   });
   const liveRsvpSummaryById = useMemo(() => {
-    const map: Record<string, {
+    const map: Record<
+      string,
+      {
       going: number;
       capacity: number | null;
       checkedInValue: string;
-    }> = {};
+      }
+    > = {};
     liveRsvpItems.forEach((item, index) => {
       const source = item.source as LiveEvent;
       const query = liveRsvpSummaryQueries[index];
@@ -431,10 +401,15 @@ export default function HomeTab(): React.ReactElement {
           mode: "rsvp",
           revenueLabel: "",
           soldValue: summary.going.toLocaleString("en-GB"),
-          capacityLabel: summary.capacity === null ? "Unlimited" : summary.capacity.toLocaleString("en-GB"),
+          capacityLabel:
+            summary.capacity === null
+              ? "Unlimited"
+              : summary.capacity.toLocaleString("en-GB"),
           capacity: summary.capacity,
-          progress: summary.capacity !== null && summary.capacity > 0
-            ? Math.min(1, summary.going / summary.capacity) : 0,
+          progress:
+            summary.capacity !== null && summary.capacity > 0
+              ? Math.min(1, summary.going / summary.capacity)
+              : 0,
           checkedInValue: summary.checkedInValue,
         };
         continue;
@@ -492,7 +467,8 @@ export default function HomeTab(): React.ReactElement {
   const handleScanPress = useCallback(
     (id: string): void => {
       const item = liveItems.find((candidate) => candidate.id === id);
-      const route = (item?.source as LiveEvent | undefined)?.event_type === "rsvp"
+      const route =
+        (item?.source as LiveEvent | undefined)?.event_type === "rsvp"
         ? `/rsvp/${id}/scanner`
         : `/event/${id}/scanner`;
       router.push(route as never);
@@ -518,9 +494,7 @@ export default function HomeTab(): React.ReactElement {
   const liveCardWidth = useMemo(
     () =>
       Math.min(
-        Math.round(
-          windowDimensions.width - spacing.md * 2 - LIVE_CARD_PEEK,
-        ),
+        Math.round(windowDimensions.width - spacing.md * 2 - LIVE_CARD_PEEK),
         LIVE_CARD_MAX,
       ),
     [windowDimensions.width],
@@ -540,7 +514,6 @@ export default function HomeTab(): React.ReactElement {
   // items only (live offerings are surfaced exclusively in the live carousel
   // above). When every active item is live, the Upcoming section hides cleanly
   // instead of showing an empty list.
-  const hasUpcomingItems = upcoming.nonLiveItems.length > 0;
 
   // ORCH-1038 — unified smart to-do list: derived from live state, ordered by
   // priority, auto-vanishing as conditions are met. Single source of truth shared
@@ -623,7 +596,9 @@ export default function HomeTab(): React.ReactElement {
               <View style={styles.liveHeaderDot} />
               <Text style={styles.liveHeaderTitle}>Live now</Text>
               {liveItems.length > 1 ? (
-                <Text style={styles.liveHeaderCount}>{`· ${liveItems.length}`}</Text>
+                <Text
+                  style={styles.liveHeaderCount}
+                >{`· ${liveItems.length}`}</Text>
               ) : null}
             </View>
             {/* Chevron is decorative — the expanded/collapsed state lives on the
@@ -645,9 +620,7 @@ export default function HomeTab(): React.ReactElement {
               an internal continuation of the card edge. Inset 16/16 so it does
               not collide with the rounded corners. Rendered ONLY when open, so
               a collapsed header sits alone as a clean rounded bar. */}
-          {showLiveOpen ? (
-            <View style={styles.liveSectionDivider} />
-          ) : null}
+          {showLiveOpen ? <View style={styles.liveSectionDivider} /> : null}
 
           {/* §4.4-A.4/A.5 — body INSIDE the same surface, under the divider.
               Single-live = flat content laid on the shared surface; carousel =
@@ -668,6 +641,7 @@ export default function HomeTab(): React.ReactElement {
             ) : (
               <View style={styles.liveSectionCarouselBody}>
                 <ScrollView
+                  testID="home-desktop-recent-scroll"
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   snapToInterval={liveCardWidth + spacing.md}
@@ -695,6 +669,73 @@ export default function HomeTab(): React.ReactElement {
       </View>
     );
   };
+
+  const renderRecentState = (): React.ReactElement | null => {
+    if (recent.state === "loading") {
+      return (
+        <View style={styles.recentSkeletons} accessibilityLiveRegion="polite">
+          {[0, 1, 2].map((value) => (
+            <View key={value} style={styles.recentSkeleton} />
+          ))}
+        </View>
+      );
+    }
+    if (recent.state === "offline-empty") {
+      return (
+        <EmptyState
+          title="Recent is offline"
+          description="Reconnect to load your recent work."
+        />
+      );
+    }
+    if (recent.state === "permission") {
+      return (
+        <EmptyState
+          title="Recent isn’t available for this brand"
+          description="Your access may have changed. Switch brands or ask a brand owner for access."
+        />
+      );
+    }
+    if (recent.state === "error-empty") {
+      return (
+        <EmptyState
+          title="Couldn’t load Recent"
+          description="Your work is still safe. Check your connection and try again."
+          cta={{ label: "Try again", onPress: recent.retry }}
+        />
+      );
+    }
+    if (recent.state === "omitted") {
+      return (
+        <EmptyState
+          title="Nothing recent is available"
+          description="Those items may have been removed or you may no longer have access. Open something else to start again."
+        />
+      );
+    }
+    if (recent.state === "empty") {
+      return (
+        <EmptyState
+          title="Nothing recent yet"
+          description="Open a venue, event, experience, trip, or draft and it’ll show up here."
+          cta={{
+            label: "Browse your work",
+            onPress: () => router.push("/(tabs)/hub" as never),
+          }}
+        />
+      );
+    }
+    return null;
+  };
+
+  const recentBanner =
+    recent.state === "offline-cached"
+      ? "You’re offline — showing saved Recent."
+      : recent.state === "error-cached"
+        ? "Couldn’t refresh Recent. Showing saved work."
+        : recent.state === "refreshing"
+          ? "Updating…"
+          : null;
 
   // ORCH-1055: rank-10 scanner — render the door-only surface. All hooks
   // above have run unconditionally; this is a render-time branch, safe
@@ -732,6 +773,7 @@ export default function HomeTab(): React.ReactElement {
 
       {/* ORCH-1038 — unified smart to-do toggle, flush under the top bar, full
           top-bar width, on Home + Hub. Hides entirely when there is nothing to do. */}
+      {isWideDesktop ? (
       <View style={styles.todoWrap}>
         <BusinessTodoToggle
           todos={todos}
@@ -739,6 +781,7 @@ export default function HomeTab(): React.ReactElement {
           testID="business-todo-toggle"
         />
       </View>
+      ) : null}
 
       {isWideDesktop ? (
         <ScrollView
@@ -747,7 +790,10 @@ export default function HomeTab(): React.ReactElement {
           contentContainerStyle={[styles.scroll, styles.desktopScroll]}
           showsVerticalScrollIndicator={false}
           refreshControl={
-            <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={handleRefresh}
+            />
           }
         >
           {currentBrand === null ? null : (
@@ -785,175 +831,76 @@ export default function HomeTab(): React.ReactElement {
 
               {renderLiveSection()}
 
-              {hasUpcomingItems ? (
               <View style={styles.desktopUpcomingPane}>
                 <View style={styles.sectionHeaderRow}>
-                  <Text style={styles.sectionTitle}>Upcoming</Text>
+                  <Text accessibilityRole="header" style={styles.sectionTitle}>
+                    Recent
+                  </Text>
+                  {recent.total > 10 ? (
                   <Pressable
                     onPress={handleSeeAllEvents}
-                    accessibilityRole="link"
-                    accessibilityLabel="See all upcoming events"
+                      accessibilityRole="button"
+                      accessibilityLabel="See all Recent, button"
                   >
                     <Text style={styles.sectionLink}>See all</Text>
                   </Pressable>
+                  ) : null}
                 </View>
-
+                {recentBanner === null ? null : (
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={styles.recentBanner}
+                  >
+                    {recentBanner}
+                  </Text>
+                )}
                 <ScrollView
                   style={styles.desktopUpcomingList}
                   scrollEnabled={isWideDesktop}
                   showsVerticalScrollIndicator={false}
-                  contentContainerStyle={[
-                    styles.eventsCol,
-                    styles.desktopEventsGrid,
-                  ]}
+                  contentContainerStyle={[styles.desktopEventsGrid]}
                 >
-                {/* ORCH-1143 SC-7 — non-live items only; live offerings are in
-                    the live carousel above, never duplicated in this list. */}
-                {upcoming.nonLiveItems.map((item) => {
-                    if (item.kind === "draft") {
-                      const draft = item.source as DraftEvent;
-                      return (
+                  {renderRecentState()}
+                  {recent.rows.slice(0, 10).map((row) => (
                         <View
-                          key={item.key}
+                      key={`${row.entityType}:${row.entityId}`}
                           style={styles.desktopEventCell}
                         >
-                        <Pressable
-                          onPress={() => handleOpenDraft(draft)}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Resume draft: ${
-                            draft.name || "Untitled"
-                          }`}
-                          style={styles.eventRow}
-                        >
-                          <View style={styles.eventCoverWrap}>
-                            <EventCoverMedia
-                              hue={draft.coverHue}
-                              mediaUrl={draft.coverMediaUrl}
-                              mediaType={draft.coverMediaType}
-                              radius={12}
-                              label=""
-                              height={56}
-                              width={56}
-                            />
-                          </View>
-                          <View style={styles.eventTextCol}>
-                            <View style={styles.eventPillRow}>
-                              <Pill variant="draft">Draft</Pill>
-                            </View>
-                            <Text style={styles.eventTitle} numberOfLines={1}>
-                              {getEventName(draft.name, "Untitled draft")}
-                            </Text>
-                            <Text style={styles.eventWhen} numberOfLines={1}>
-                              {`Step ${draft.lastStepReached + 1} of 7 · ${formatRelativeTime(
-                                draft.updatedAt,
-                              )}`}
-                            </Text>
-                          </View>
-                          <View style={styles.eventSoldCol}>
-                            <Text style={styles.eventSoldValue}>—</Text>
-                            <Text style={styles.eventSoldLabel}>resume</Text>
-                          </View>
-                        </Pressable>
-                        </View>
-                      );
-                    }
-
-                    if (item.kind === "trip") {
-                      const trip = item.source as Trip;
-                      return (
-                        <View
-                          key={item.key}
-                          style={styles.desktopEventCell}
-                        >
-                          <HomeTripRow
-                            trip={trip}
-                            status={item.status === "live" ? "live" : "upcoming"}
-                            onPress={() => handleOpenTrip(trip)}
+                      <RecentRow
+                        row={row}
+                        onPress={() => handleOpenRecent(row)}
                           />
                         </View>
-                      );
-                    }
-
-                    // 'event' or 'experience' — rendered through the LiveEvent row JSX.
-                    const event = item.source as LiveEvent;
-                    const salesSummary = eventSalesSummaries[event.id];
-                    const rowSoldLabel = salesSummary?.soldLabel ?? "Loading…";
-                    const revenueLabel = salesSummary?.revenueLabel ?? "Loading…";
-                    const refreshErrorLabel =
-                      salesSummary?.readStatus === "stale-error"
-                        ? "Unable to refresh"
-                        : null;
-                    const isLive = item.status === "live";
-
-                    return (
-                      <View
-                        key={item.key}
-                        style={styles.desktopEventCell}
-                      >
-                      <Pressable
-                        onPress={() => handleOpenLiveEvent(event)}
-                        accessibilityRole="button"
-                        accessibilityLabel={`Open ${item.kind}: ${
-                          event.name || "Untitled"
-                        }. ${rowSoldLabel}. ${revenueLabel}.${
-                          refreshErrorLabel === null
-                            ? ""
-                            : ` ${refreshErrorLabel}.`
-                        }`}
-                        style={styles.eventRow}
-                      >
-                        <View style={styles.eventCoverWrap}>
-                          <EventCoverMedia
-                            hue={event.coverHue}
-                            mediaUrl={event.coverMediaUrl}
-                            mediaType={event.coverMediaType}
-                            radius={12}
-                            label=""
-                            height={56}
-                            width={56}
-                          />
-                        </View>
-                        <View style={styles.eventTextCol}>
-                          <View style={styles.eventPillRow}>
-                            <Pill
-                              variant={isLive ? "live" : "accent"}
-                              livePulse={isLive}
-                            >
-                              {isLive ? "Live" : "Upcoming"}
-                            </Pill>
-                          </View>
-                          <Text style={styles.eventTitle} numberOfLines={1}>
-                            {getEventName(event.name, "Untitled event")}
-                          </Text>
-                          <Text style={styles.eventWhen} numberOfLines={1}>
-                            {formatDraftDateLine(event)}
-                          </Text>
-                        </View>
-                        <View style={styles.eventSoldCol}>
-                          <Text style={styles.eventSoldValue}>
-                            {rowSoldLabel}
-                          </Text>
-                          <Text style={styles.eventRevenueValue}>
-                            {revenueLabel}
-                          </Text>
-                          {refreshErrorLabel === null ? null : (
-                            <Text style={styles.eventRevenueValue}>
-                              {refreshErrorLabel}
-                            </Text>
-                          )}
-                        </View>
-                      </Pressable>
-                      </View>
-                    );
-                  })}
+                  ))}
                 </ScrollView>
               </View>
-              ) : null}
             </>
           )}
         </ScrollView>
       ) : currentBrand === null ? null : (
+        <FlatList
+          testID="home-mobile-scroll"
+          style={styles.mobileUpcomingList}
+          data={recent.rows.slice(0, 10)}
+          keyExtractor={(row) => `${row.entityType}:${row.entityId}`}
+          renderItem={({ item }) => (
+            <View style={styles.mobileRecentRowWrap}>
+              <RecentRow row={item} onPress={() => handleOpenRecent(item)} />
+            </View>
+          )}
+          ItemSeparatorComponent={() => (
+            <View style={styles.mobileUpcomingSep} />
+          )}
+          ListHeaderComponent={
         <>
+              <View style={styles.todoWrap}>
+                <BusinessTodoToggle
+                  todos={todos}
+                  onAction={handleTodoAction}
+                  presentation="page-flow"
+                  testID="business-todo-toggle"
+                />
+              </View>
           <View style={styles.mobileKpiOuter}>
             <View style={styles.mobileKpiStack}>
               {showRevenueTile ? (
@@ -980,60 +927,46 @@ export default function HomeTab(): React.ReactElement {
               />
             </View>
           </View>
-
           {renderLiveSection()}
-          {
-            // orch-0974-lock-pane:begin-mobile-populated; ORCH-1038 — the to-do
-            // toggle above carries no-brand / no-venue / deck-readiness / offering
-            // guidance; this pane owns Upcoming only.
-          }
-          <View style={styles.mobileBody}>
-          <View style={styles.lockedZone}>
-            {hasUpcomingItems ? (
+              <View style={styles.mobileRecentHeaderWrap}>
             <View style={styles.mobileSectionHeaderRow}>
-              <Text style={styles.sectionTitle}>Upcoming</Text>
+                  <Text accessibilityRole="header" style={styles.sectionTitle}>
+                    Recent
+                  </Text>
+                  {recent.total > 10 ? (
               <Pressable
                 onPress={handleSeeAllEvents}
-                accessibilityRole="link"
-                accessibilityLabel="See all upcoming events"
+                      accessibilityRole="button"
+                      accessibilityLabel="See all Recent, button"
               >
                 <Text style={styles.sectionLink}>See all</Text>
               </Pressable>
-            </View>
             ) : null}
           </View>
-
-          <FlatList
-            testID="home-upcoming-list"
-            style={styles.mobileUpcomingList}
-            // ORCH-1143 SC-7 — non-live items only; live offerings are in the
-            // live carousel above (with the scan button), never duplicated here.
-            data={upcoming.nonLiveItems}
-            keyExtractor={(item) => item.key}
-            renderItem={({ item }) => (
-              <UpcomingListItem
-                item={item}
-                currentBrandCurrency={currentBrand.defaultCurrency}
-                eventSalesSummaries={eventSalesSummaries}
-                onOpenDraft={handleOpenDraft}
-                onOpenTrip={handleOpenTrip}
-                onOpenLiveEvent={handleOpenLiveEvent}
-              />
+                {recentBanner === null ? null : (
+                  <Text
+                    accessibilityLiveRegion="polite"
+                    style={styles.recentBanner}
+                  >
+                    {recentBanner}
+                  </Text>
             )}
-            ItemSeparatorComponent={() => (
-              <View style={styles.mobileUpcomingSep} />
-            )}
-            contentContainerStyle={styles.mobileUpcomingContent}
+                {renderRecentState()}
+              </View>
+            </>
+          }
+          contentContainerStyle={[
+            styles.mobileUpcomingContent,
+            { paddingBottom: spacing.xl * 4 + insets.bottom },
+          ]}
             refreshControl={
-              <RefreshControl refreshing={isRefreshing} onRefresh={handleRefresh} />
+            <RefreshControl
+              refreshing={isRefreshing || recent.isRefreshing}
+              onRefresh={handleRefresh}
+            />
             }
             showsVerticalScrollIndicator={false}
           />
-          </View>
-          {
-            // orch-0974-lock-pane:end-mobile-populated
-          }
-        </>
       )}
 
       <BrandSwitcherSheet
@@ -1194,6 +1127,12 @@ const styles = StyleSheet.create({
   },
   mobileUpcomingContent: {
     paddingBottom: spacing.xl * 4,
+  },
+  mobileRecentHeaderWrap: {
+    paddingHorizontal: spacing.md,
+  },
+  mobileRecentRowWrap: {
+    paddingHorizontal: spacing.md,
   },
   mobileUpcomingSep: {
     height: spacing.sm,
@@ -1363,6 +1302,25 @@ const styles = StyleSheet.create({
     fontSize: typography.bodySm.fontSize,
     color: accent.warm,
     fontWeight: "600",
+  },
+  recentBanner: {
+    color: textTokens.secondary,
+    fontSize: typography.caption.fontSize,
+    lineHeight: typography.caption.lineHeight,
+    paddingBottom: spacing.sm,
+  },
+  recentSkeletons: {
+    width: "100%",
+    gap: spacing.sm,
+    paddingBottom: spacing.md,
+  },
+  recentSkeleton: {
+    minHeight: 84,
+    borderRadius: radiusTokens.lg,
+    backgroundColor: glass.tint.profileBase,
+    borderWidth: 1,
+    borderColor: glass.border.profileBase,
+    opacity: 0.55,
   },
   nextActionChooser: {
     marginBottom: spacing.md,

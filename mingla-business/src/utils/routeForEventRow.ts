@@ -48,6 +48,8 @@
  */
 
 export type EventTypeForRouting = "event" | "experience" | "trip" | "rsvp";
+export type BusinessRecentEntityType = EventTypeForRouting | "venue";
+export type BusinessRecentDestination = "detail" | "edit";
 
 export type EventStatusForRouting =
   | "draft"
@@ -124,4 +126,28 @@ export function routeForEventRowDefensive(
   ) as EventTypeForRouting;
   const status = row.status as EventStatusForRouting;
   return routeForEventRow({ id: row.id, event_type: eventType, status });
+}
+
+/** Canonical route for the mixed #2794 Recent workspace. */
+export function routeForBusinessRecent(row: {
+  id: string;
+  entityType: BusinessRecentEntityType;
+  destination?: BusinessRecentDestination;
+  status?: string | null;
+}): string {
+  const destination = row.destination ?? (row.status === "draft" ? "edit" : "detail");
+  if (row.entityType === "venue") return `/venue/${row.id}`;
+  if (destination === "edit") {
+    switch (row.entityType) {
+      case "event": return `/event/${row.id}/edit`;
+      case "rsvp": return `/rsvp/${row.id}/edit`;
+      case "experience": return `/experience/${row.id}/edit`;
+      case "trip": return `/trip/${row.id}/edit`;
+    }
+  }
+  return routeForEventRow({
+    id: row.id,
+    event_type: row.entityType,
+    status: row.status as EventStatusForRouting,
+  });
 }
