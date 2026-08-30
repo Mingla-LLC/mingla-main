@@ -656,6 +656,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
   const upsert = useBusinessRecentStore((state) => state.upsert);
   const remove = useBusinessRecentStore((state) => state.remove);
   const clearScope = useBusinessRecentStore((state) => state.clearScope);
+  const hasHydrated = useBusinessRecentStore((state) => state.hasHydrated);
   const operationRef = useRef<string | null>(null);
   const focusedRef = useRef(false);
   const recordedThisFocusRef = useRef(false);
@@ -680,6 +681,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
     if (
       !focusedRef.current ||
       recordedThisFocusRef.current ||
+      !hasHydrated ||
       !input.ready ||
       input.brandId === null ||
       input.entityId === null ||
@@ -825,6 +827,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
     }
   }, [
     clearScope,
+    hasHydrated,
     input.brandId,
     input.coverPosterUrl,
     input.coverType,

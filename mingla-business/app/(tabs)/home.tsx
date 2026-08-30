@@ -60,6 +60,7 @@ import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorS
 // RecentRow is Home's rendering boundary for Recent covers and owns the shared
 // video-capable EventCoverMedia presentation; Home must not reimplement it.
 import { RecentRow } from "../../src/components/home/RecentRow";
+import { RecentStatePanel } from "../../src/components/home/RecentStatePanel";
 import { InvitePendingSheet } from "../../src/components/team/InvitePendingSheet";
 import {
   accent,
@@ -190,38 +191,6 @@ function SeeAllRecentButton({
   );
 }
 
-function RecentStatePanel({
-  title,
-  description,
-  cta,
-}: {
-  title: string;
-  description: string;
-  cta?: { label: string; onPress: () => void };
-}): React.ReactElement {
-  return (
-    <View style={styles.recentStatePanel}>
-      <Text style={styles.recentStateTitle}>{title}</Text>
-      <Text style={styles.recentStateDescription}>{description}</Text>
-      {cta !== undefined ? (
-        <View style={styles.recentStateCtaWrap}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={cta.label}
-            onPress={cta.onPress}
-            style={({ pressed }) => [
-              styles.recentStateCta,
-              pressed && styles.recentStateCtaPressed,
-            ]}
-          >
-            <Text style={styles.recentStateCtaLabel}>{cta.label}</Text>
-          </Pressable>
-        </View>
-      ) : null}
-    </View>
-  );
-}
-
 export default function HomeTab(): React.ReactElement {
   const recentImpressionBrandRef = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
@@ -280,7 +249,7 @@ export default function HomeTab(): React.ReactElement {
         ...(currentBrand !== null
           ? [
               queryClient.invalidateQueries({
-                queryKey: brandAnalyticsKeys.minglaDrove(currentBrand.id),
+        queryKey: brandAnalyticsKeys.minglaDrove(currentBrand.id),
               }),
             ]
           : []),
@@ -1018,6 +987,7 @@ export default function HomeTab(): React.ReactElement {
           showsVerticalScrollIndicator={false}
         />
       ) : (
+        // orch-0974-lock-pane:begin-mobile-populated
         <FlatList
           testID="home-mobile-scroll"
           style={styles.mobileUpcomingList}
@@ -1113,6 +1083,7 @@ export default function HomeTab(): React.ReactElement {
             }
             showsVerticalScrollIndicator={false}
           />
+        // orch-0974-lock-pane:end-mobile-populated
       )}
 
       <BrandSwitcherSheet
@@ -1491,44 +1462,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     opacity: 0.55,
-  },
-  recentStatePanel: {
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.lg,
-    gap: spacing.xs,
-  },
-  recentStateTitle: {
-    fontSize: typography.h3.fontSize,
-    lineHeight: typography.h3.lineHeight,
-    fontWeight: typography.h3.fontWeight,
-    letterSpacing: typography.h3.letterSpacing,
-    color: textTokens.primary,
-    textAlign: "center",
-  },
-  recentStateDescription: {
-    fontSize: typography.bodySm.fontSize,
-    lineHeight: typography.bodySm.lineHeight,
-    fontWeight: typography.bodySm.fontWeight,
-    color: textTokens.secondary,
-    textAlign: "center",
-  },
-  recentStateCtaWrap: { marginTop: spacing.lg - spacing.xs },
-  recentStateCta: {
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: spacing.md,
-    borderRadius: radiusTokens.full,
-    backgroundColor: accent.warm,
-  },
-  recentStateCtaPressed: { opacity: 0.72 },
-  recentStateCtaLabel: {
-    fontSize: typography.buttonMd.fontSize,
-    lineHeight: typography.buttonMd.lineHeight,
-    fontWeight: typography.buttonMd.fontWeight,
-    letterSpacing: typography.buttonMd.letterSpacing,
-    color: textTokens.inverse,
   },
   nextActionChooser: {
     marginBottom: spacing.md,
