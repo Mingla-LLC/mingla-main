@@ -479,7 +479,13 @@ export function useBusinessRecent(input: {
           }
           if (category === "permission") {
             permissionDenied = true;
-            if (isCurrent()) clearScope(scope);
+            if (isCurrent()) {
+              clearScope(scope);
+              setFallbackRows([]);
+              await clearBusinessRecentCachedScope(scope).catch(() => {
+                console.warn("[Recent] denied scope cache cleanup failed");
+              });
+            }
             break;
           }
         }
@@ -589,7 +595,9 @@ export function useBusinessRecent(input: {
     return () => subscription.remove();
   }, [refresh]);
 
-  const hasPageError = pageQueries.some((query) => query.isError);
+  const hasPageError = pageQueries
+    .slice(1)
+    .some((query) => query.isError);
   const isLoadingMore =
     pageCount > 1 &&
     pageQueries.slice(1).some((query) => query.isLoading || query.isFetching);
@@ -761,7 +769,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
             ),
           });
         })
-        .catch((error: unknown) => {
+        .catch(async (error: unknown) => {
           if (!isCurrent()) return;
           const category = recentErrorCategory(error);
           if (category === "entity-permission") {
@@ -775,6 +783,9 @@ export function useSuccessfulBusinessRecentOpen(input: {
             });
           } else if (category === "permission") {
             clearScope(scope);
+            await clearBusinessRecentCachedScope(scope).catch(() => {
+              console.warn("[Recent] denied scope cache cleanup failed");
+            });
           }
           postHogService.capture("business_recent_record_failed", {
             entity_type: input.entityType,
