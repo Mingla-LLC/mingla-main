@@ -50,6 +50,10 @@ on:
     paths: *issue_2101_paths
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2101-named-buyer-checkout-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2101-contract-guard:
     name: "#2101 guard — pairing, Metro resolution, native isolation, validator, writers, levers"

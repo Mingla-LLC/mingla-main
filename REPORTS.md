@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-30 — New pushes now stop obsolete tests for the same pull request while keeping other pull requests, workflows, manual runs, main checks, and the reviewed load-smoke exception isolated (#2851, PR #2852)
 - 2026-08-30 — Pending-venue identity correction now recognizes six reviewed new database relationships while keeping every new lane disallowed, zero-use, and fail-closed under the existing schema, state, lock, privacy, audit, and rollback protections (#2855, PR #2860)
 - 2026-08-30 — Customer-pattern database checks now recognize the reviewed attendance-claim index while still pinning the exact full index inventory and every protected analytics RPC contract (#2854, PR #2857)
 - 2026-08-30 — Native sign-in regression checks now read their historical baseline from durable main history, so clean GitHub runners stay reliable without weakening the protected sign-in behavior (#2853, PR #2856)

@@ -35,6 +35,10 @@ on:
       - ".github/workflows/issue-2395-manual-contact-groups-tests.yml"
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2395-manual-contact-groups-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   manual-group-client-edge-contract:
     runs-on: ubuntu-latest

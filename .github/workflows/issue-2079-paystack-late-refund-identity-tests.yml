@@ -39,6 +39,10 @@ on:
       - "docs/INVARIANT_REGISTRY.md"
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2079-paystack-late-refund-identity-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2079-provider-correct-late-refund:
     runs-on: ubuntu-latest

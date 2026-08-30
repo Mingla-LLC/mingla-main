@@ -40,6 +40,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-production-supabase-authority-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   offline-authority:
     name: Fail-closed production authority

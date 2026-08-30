@@ -81,6 +81,8 @@ orch-1386-tester-adversarial.yml f0d49800ed79ccf9a0dd51a0c6fef8cf236ad199da41a90
 // Both replacement values were derived programmatically from the files on disk,
 // never hand-typed, and each old value was verified to occur exactly once in
 // this file before being replaced.
+// [TEST-MOD-APPROVED #2851] The old d6ea… #2393 lock is re-banked solely for
+// its approved top-level concurrency bytes; both full-file lock proofs survive.
 const REFERENCE_SHA256 = locks(`
 .github/scripts/__tests__/issue-2207-merged-checkout-workflow.tester.test.mjs fc65e60b8636d7dc23190e10e8b0372cf6f033dca4cf060fb3e67d5f0ce21e06
 .github/scripts/strict-grep/__tests__/issue-1607-explorer-guard-integrity.adversarial.test.mjs a6dba7a4a109956b82acae0beb2eb6eb28bdc1c1522d5793452cbcc4885d3652
@@ -114,7 +116,7 @@ scripts/issue-1615/curated-composition-terminal-ui.implementor.happy.test.mjs f1
 scripts/issue-1615/curated-composition-terminal-ui.tester.adversarial.test.mjs 4d382fefd13bd483b711715005b602e4f4445b324a9804554458ef438bb99a39
 scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs 0cbacffe0dea33f5b69b318ae537422a53d869d039f5cc037d1331c19a1bce63
 scripts/issue-1880/expanded-share-handoff.tester.adversarial.test.mjs 707fefb8934df9435b1de1ce1daf8cb0fe8cf8abe8d481ce7ab734ea2e62807e
-.github/workflows/issue-2393-valid-marketing-test-fixtures.yml d6ea3933b77f620544626715509ca4a812266bfec3296e012ead9d9ca2ca4a61
+.github/workflows/issue-2393-valid-marketing-test-fixtures.yml 466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e
 `);
 
 const PHASE2_SUITES_SHA256 = "1c289e7014d7f52808636371c806d9fc05d94e4dfd1644f64840ded1df1f1702";
@@ -238,6 +240,28 @@ function inspectOrigins(value = manifest()) {
 function inspectBatchJobs() {
   return JSON.parse(execFileSync("ruby", ["-e", BATCH_RUBY, BATCH_PATH], { encoding: "utf8" }));
 }
+
+const EXPECTED_BATCH_EVENTS = ["pull_request", "push", "workflow_dispatch"];
+const BATCH_EVENTS_RUBY = String.raw`
+require "yaml"; require "json"
+doc = YAML.safe_load(STDIN.read, aliases: true) || {}
+raw = doc.key?("on") ? doc["on"] : doc[true]
+events = case raw
+         when Hash then raw.keys.map(&:to_s)
+         when Array then raw.map(&:to_s)
+         when String then [raw]
+         else []
+         end
+STDOUT.write(JSON.generate(events.sort))`;
+const batchEventNames = (source) => JSON.parse(execFileSync("ruby", ["-e", BATCH_EVENTS_RUBY], { input: source, encoding: "utf8" }));
+const assertBatchTriggerBoundary = (source) => assert.deepEqual(
+  batchEventNames(source), EXPECTED_BATCH_EVENTS, "ci-batch top-level event set must remain pull_request/push/workflow_dispatch",
+);
+const assertTargetTriggerMutantFails = (source) => {
+  const mutant = source.replace(/^  pull_request:\s*$/m, "  pull_request_target:");
+  assert.notEqual(mutant, source, "target-trigger mutant must change the parsed event key");
+  assert.throws(() => assertBatchTriggerBoundary(mutant), /ci-batch top-level event set/);
+};
 
 const INSTALLS = new Set(["npm ci", "npm ci --ignore-scripts", "npm install --no-save yaml"]);
 function assertionRuns(origin, variantId, inspections) {
@@ -396,7 +420,12 @@ test("typed setup, runtime, timeout, dispatch, and trust boundaries are exact", 
   assert.equal((source.match(/actions\/checkout@11bd71901bbe5b1630ceea73d27597364c9af683/g) || []).length, 2);
   assert.equal((source.match(/actions\/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020/g) || []).length, 5);
   assert.match(source, /permissions:\n  contents: read/);
-  assert.doesNotMatch(source, /secrets\.|id-token:\s*write|pull_request_target|environment:/);
+  // [TEST-MOD-APPROVED #2851] Replace the old whole-source target-token ban
+  // with semantic trigger truth: the canonical concurrency operand is safe,
+  // while an actual pull_request_target trigger mutant remains red.
+  assert.doesNotMatch(source, /secrets\.|id-token:\s*write|environment:/);
+  assertBatchTriggerBoundary(source);
+  assertTargetTriggerMutantFails(source);
   assert.match(source, /workflow_dispatch:[\s\S]*type: choice[\s\S]*- issue-2300-orch-artifact-reap/);
   assert.doesNotMatch(jobs.batch.if, /matrix|strategy|steps|runner|job/);
   assert.doesNotMatch(jobs.dispatch.if, /matrix|strategy|steps|runner|job/);

@@ -16,6 +16,10 @@ on:
       - 'scripts/deploy-supabase-functions.sh'
       - 'scripts/ci/issue1456-edge-deploy-idempotency.test.mjs'
 
+concurrency:
+  group: ci-issue-1456-edge-deploy-idempotency-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   exact-duplicate-only:
     runs-on: ubuntu-latest

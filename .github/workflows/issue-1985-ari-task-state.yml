@@ -79,6 +79,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-issue-1985-ari-task-state-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   ari-task-state-pg17:
     runs-on: ubuntu-latest
