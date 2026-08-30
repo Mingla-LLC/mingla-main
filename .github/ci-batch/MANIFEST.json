@@ -17493,7 +17493,7 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "73ba3e9f44f156ba385e91344c9c9bf55f97a1946d31f06d6affadacae28796c",
+        "sourceSha256": "0555b6389b75fe60d1ab0c1f5186d2738203cc64f61ad19528dacf32b4a54a23",
         "triggers": [
           "pull_request",
           "push",
@@ -17523,10 +17523,13 @@
           "mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts",
           "mingla-business/src/services/venueListingsService.ts",
           "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql",
+          "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql",
           "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh",
           "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql",
           "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts",
-          "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+          "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh",
+          "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+          "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql"
         ],
         "jobKeys": [
           "issue-2099-boot-payload-ceiling",
@@ -22189,7 +22192,9 @@
       "referenceFiles": [
         "mingla-business/src/components/venue/__tests__/issue2099PendingIdentityCorrection.test.tsx",
         "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts",
-        "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+        "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh",
+        "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+        "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."
     },

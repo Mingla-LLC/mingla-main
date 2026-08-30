@@ -7,10 +7,13 @@ on:
   pull_request:
     paths: &issue2099Paths
       - "supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql"
+      - "supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.concurrent.test.sh"
       - "supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.tester_adversarial.test.sh"
+      - "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts"
+      - "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql"
       - "mingla-business/app/venue/[venueId]/index.tsx"
       - "mingla-business/src/services/venueListingsService.ts"
       - "mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx"
@@ -73,7 +76,7 @@ jobs:
       - run: npm --prefix mingla-admin ci
 
       - name: "#2099 static migration/workflow seal"
-        run: deno test --allow-read supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts
+        run: deno test --allow-read supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.ts supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts
 
       # Check P — structural placement + the resolution seal, under the STOCK
       # config, in its own process, so it judges the render config from outside.
@@ -246,11 +249,26 @@ jobs:
           fi
           changed="$(gh api "repos/${{ github.repository }}/pulls/${{ github.event.number }}/files" \
             --paginate --jq '.[].filename')"
-          # #2099 product code only. Deliberately EXCLUDES this workflow file and the
-          # shared strict-grep manifest: neither can change what ships in __common.
-          if printf '%s\n' "$changed" \
-             | grep -vE '^\.github/(workflows/issue-2099-|scripts/strict-grep/MANIFEST\.json)' \
-             | grep -qE '(2099|PendingVenueIdentityCorrection|HighRiskActionModal|VenueListingContent|venueListingsService|adminClaimsService|ClaimsPage)'; then
+          # Exact #2099 Mingla Business web product paths only. Names containing
+          # "2099" or "pending_venue" are not product-scope evidence.
+          sc4_product_paths=(
+            'mingla-business/app/venue/[venueId]/index.tsx'
+            'mingla-business/src/services/venueListingsService.ts'
+            'mingla-business/src/components/venue/PendingVenueIdentityCorrectionLauncher.web.tsx'
+            'mingla-business/src/components/venue/PendingVenueIdentityCorrectionDialog.web.tsx'
+            'mingla-business/src/services/pendingVenueIdentityCorrectionService.web.ts'
+            'mingla-business/src/components/venue/VenueListingContent.tsx'
+          )
+          run_sc4=false
+          while IFS= read -r path; do
+            for product_path in "${sc4_product_paths[@]}"; do
+              if [ "$path" = "$product_path" ]; then
+                run_sc4=true
+                break 2
+              fi
+            done
+          done <<< "$changed"
+          if [ "$run_sc4" = true ]; then
             echo "run=true" >> "$GITHUB_OUTPUT"
             echo "#2099 product code changed — measuring."
           else
@@ -317,9 +335,34 @@ jobs:
           db_password="$(docker inspect --format '{{range .Config.Env}}{{println .}}{{end}}' "$db_container" | sed -n 's/^POSTGRES_PASSWORD=//p')"
           echo "$db_container" > /tmp/issue2099-db-container
           echo "$db_password" > /tmp/issue2099-db-password
-          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f - < supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql
+          main_sql="supabase/migrations/__tests__/issue_2099_pending_venue_identity_correction.test.sql"
+          tester_sql="supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql"
+          test -r "$main_sql"
+          test -r "$tester_sql"
+          python3 - "$main_sql" "$tester_sql" <<'PY' | docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 -f -
+          import pathlib
+          import re
+          import sys
 
-      # §D4 — the exact same migration file applied a SECOND and THIRD time must
+          marker = b"-- #2855_TESTER_ADVERSARIAL_INCLUDE"
+          main_path, tester_path = map(pathlib.Path, sys.argv[1:])
+          try:
+              main = main_path.read_bytes()
+              tester = tester_path.read_bytes()
+          except OSError as error:
+              raise SystemExit(f"#2855 SQL combiner could not read input: {error}")
+          if main.splitlines().count(marker) != 1 or main.count(marker) != 1:
+              raise SystemExit("#2855 SQL combiner requires exactly one standalone marker")
+          if re.search(rb"(?mi)^\s*(?:BEGIN|START\s+TRANSACTION|COMMIT|END|ROLLBACK)\s*;", tester):
+              raise SystemExit("#2855 tester SQL must remain an outer-transaction fragment")
+          combined = main.replace(marker, tester)
+          if combined == main or marker in combined or re.search(rb"(?m)^\s*\\i(?:\s|$)", combined):
+              raise SystemExit("#2855 SQL combiner replacement did not complete")
+          sys.stdout.buffer.write(combined)
+          PY
+
+      # §D4 — the exact ordered current contract (historical original followed
+      # by #2855's forward owner) applied a SECOND and THIRD time must
       # exit 0 without dropping or truncating either #2099 table, without losing
       # a guard or audit row, and leaving the catalog contract equivalent.
       - name: "D4 — migration replay safety (second and third apply)"
@@ -362,9 +405,13 @@ jobs:
           before="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           after_second="$(snapshot)"
           docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
             -f - < supabase/migrations/20270418002099_issue_2099_pending_venue_identity_correction.sql
+          docker exec -i -e PGPASSWORD="$db_password" "$db_container" psql -U postgres -d postgres -v ON_ERROR_STOP=1 \
+            -f - < supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql
           after_third="$(snapshot)"
           test "$before" = "$after_second"
           test "$after_second" = "$after_third"

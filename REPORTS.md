@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-30 — Pending-venue identity correction now recognizes six reviewed new database relationships while keeping every new lane disallowed, zero-use, and fail-closed under the existing schema, state, lock, privacy, audit, and rollback protections (#2855, PR #2860)
 - 2026-08-30 — Customer-pattern database checks now recognize the reviewed attendance-claim index while still pinning the exact full index inventory and every protected analytics RPC contract (#2854, PR #2857)
 - 2026-08-30 — Native sign-in regression checks now read their historical baseline from durable main history, so clean GitHub runners stay reliable without weakening the protected sign-in behavior (#2853, PR #2856)
 - 2026-08-30 — Business Home now keeps Recent work in one natural mobile scroll while preserving desktop’s independent workspace, ordered live-first across drafts, venues, events, experiences, RSVPs, and trips with secure account-scoped history (#2794, PR #2845)
