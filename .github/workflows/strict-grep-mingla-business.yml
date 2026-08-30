@@ -77,8 +77,8 @@ on:
       # exists only so editing the gate itself re-runs the gate.
       - "scripts/ci/check-checkout-status-consumers.sh"
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: ci-strict-grep-mingla-business-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 # ORCH-1383 — BATCHED. This workflow used to declare 351 jobs, one per gate,
 # each of which checked out the 685 MB repo and installed Node to run a ~0.1s script.

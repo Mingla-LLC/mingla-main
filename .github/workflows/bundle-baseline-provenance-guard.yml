@@ -11,6 +11,10 @@ permissions:
   contents: read
   pull-requests: read
 
+concurrency:
+  group: ci-bundle-baseline-provenance-guard-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   provenance:
     name: Bundle baseline provenance guard

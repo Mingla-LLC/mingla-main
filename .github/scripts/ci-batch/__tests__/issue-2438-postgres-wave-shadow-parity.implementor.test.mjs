@@ -284,7 +284,9 @@ test("terminal registry has exact identities, counts, digests, and the twelve wr
     assert.equal(fs.readFileSync(path.join(workflowDir, entry), "utf8").includes(MARKER), false, `${entry} still carries the #2438 marker`);
   }
   // SC-1: the sibling that merely shares a filename stem is untouched.
-  assert.equal(digest(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad");
+  // [TEST-MOD-APPROVED #2851] The old a2d6… lock changed only for the approved
+  // top-level concurrency map; the sibling remains locked by its complete bytes.
+  assert.equal(digest(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137");
 });
 
 test("provider authority ignores reserved tester bytes but rejects eligible source drift", () => {
@@ -719,7 +721,9 @@ test("tracked-file scoping is explicit, exited, and provably wrong around a muta
 test("SC-21 terminal state is executable and fail-closed in both directions", () => {
   const temp = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "phase3b-terminal-state-")));
   const SIBLING = ".github/workflows/issue-679-brand-follows-rls-proof.yml";
-  const SIBLING_SHA = "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad";
+  // [TEST-MOD-APPROVED #2851] Keep the terminal-clone proof on the same newly
+  // re-banked full-file sibling lock; no lifecycle/provider assertion is relaxed.
+  const SIBLING_SHA = "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137";
   const wrapperNames = Object.keys(WRAPPERS);
   const wrapperPath = (name) => path.join(temp, ".github/workflows", name);
   const guard = (relative) => {

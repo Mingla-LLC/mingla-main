@@ -18,6 +18,10 @@ on:
       - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
       - ".github/workflows/issue-871-attendance-entitlement-tests.yml"
 
+concurrency:
+  group: ci-issue-871-attendance-entitlement-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-871-contract:
     name: "Issue 871 edge/mobile/web contract"

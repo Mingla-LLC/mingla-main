@@ -24,8 +24,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: issue-1532-stay-manager-ux-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-issue-1532-stay-manager-ux-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   issue-1532-stay-manager-ux:

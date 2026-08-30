@@ -42,6 +42,14 @@
 - **Regression:** Append-only SQL, Deno, and Jest suites prove defaults/no backfill, sender isolation and Reply-To preservation, atomic eligibility, provider-first/message-first reconciliation, repeated-open monotonicity, eligible-denominator math, exact copy/helper, privacy disclosure, complete pagination, unknown-history rendering, and fail-closed unhealthy evidence across the shared Business iOS/Android/web analytics contract.
 - **Status:** ACTIVE after PR #2722 merged all-green, the privacy disclosure and isolated provider/DNS configuration were verified in production, migration and edge receipts matched merged main, a controlled campaign produced matched sent/delivered/opened truth with zero unmatched or stale debt, transactional source remained untracked, and the product owner approved the binding runtime-evidence amendment recorded on issue #2714.
 
+## DRAFT — issue #2851 (PR workflow concurrency remains isolated)
+
+### I-ISSUE-2851-PR-CONCURRENCY-ISOLATION (DRAFT)
+
+- **Rule:** Every PR-family GitHub Actions workflow owns a filename-derived, repository-unique concurrency identity. Verification generations for the same workflow and PR replace older generations; push, schedule, and manual runs use run-unique identities and are neither actively cancelled nor pending-displaced. A workflow with irreversible side effects must be a path-specific reviewed non-cancellable exception; the sole current exception is `load-smoke.yml` because it performs authenticated external POSTs that cancellation cannot roll back.
+- **Enforcement:** `.github/scripts/strict-grep/issue-2851-pr-concurrency-policy.mjs` in plain and `--self-test` modes, the implementor regression suite `.github/scripts/strict-grep/issue-2851-pr-concurrency-policy.implementor.test.mjs`, and the independently authored tester suite `.github/scripts/strict-grep/issue-2851-pr-concurrency-policy.tester.test.mjs`, all registered in strict-grep Class A.
+- **Status:** DRAFT during implementation and independent verification. Activate only after both regression suites, fails-on-revert proofs, CI registry validation, live same-PR replacement evidence, non-PR/cross-PR isolation evidence, and the final PR check set are green.
+
 ## DRAFT — issue #2148 / Phase 0 issue #2431 (CI topology remains bounded)
 
 ### I-PROPOSED-2148-CI-TOPOLOGY-BOUNDED (DRAFT)

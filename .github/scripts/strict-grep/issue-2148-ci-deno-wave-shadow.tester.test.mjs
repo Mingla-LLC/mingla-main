@@ -315,8 +315,10 @@ test("lifecycle, provider and reference transitions cannot go partial", () => {
 });
 
 test("a filtered replay lane, the #679 sibling and the wrapper set itself cannot be touched", () => {
+  // [TEST-MOD-APPROVED #2851] Re-bank the old a2d6… sibling lock solely for the
+  // approved concurrency-only bytes; the assertion still hashes the complete file.
   assert.equal(sha(read(".github/workflows/issue-679-brand-follows-rls-proof.yml")),
-    "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad", "#679 must be byte-identical");
+    "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137", "#679 must be byte-identical");
   for (const lane of ["issue-1931-private-event-access.yml", "issue-2117-offering-visibility-gate-tests.yml",
     "issue-1644-storage-guardrail-collage-fill-tests.yml", "issue-1647-admin-mv-and-db-reclaim-tests.yml"]) {
     assert.ok(fs.existsSync(path.join(ROOT, ".github/workflows", lane)), `${lane}: filtered replay lane deleted`);

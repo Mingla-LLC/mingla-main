@@ -119,8 +119,10 @@ const CANDIDATE_SEALS = {
 };
 // SC-1.2 / SC-1.3: the #679 RLS sibling and the four filtered replay lanes are
 // NOT candidates and must be byte-untouched.
+// [TEST-MOD-APPROVED #2851] The old a2d6… sibling lock is re-banked only for its
+// approved concurrency-only bytes; the complete-file non-candidate lock survives.
 const NOT_A_CANDIDATE = {
-  "issue-679-brand-follows-rls-proof": "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad",
+  "issue-679-brand-follows-rls-proof": "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137",
 };
 const FILTERED_REPLAY_LANES = [
   "issue-1931-private-event-access", "issue-2117-offering-visibility-gate-tests",

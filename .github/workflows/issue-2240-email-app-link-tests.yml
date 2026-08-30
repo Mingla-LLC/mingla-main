@@ -53,6 +53,10 @@ on:
     paths: *issue_2240_paths
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2240-email-app-link-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2240-offline:
     name: "#2240 Offline — the email's link names a route that exists"

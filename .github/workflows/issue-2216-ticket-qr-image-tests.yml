@@ -46,6 +46,10 @@ on:
     paths: *issue_2216_paths
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2216-ticket-qr-image-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2216-edge-qr:
     name: "#2216 Edge — every buyer-facing ticket carries a renderable QR"

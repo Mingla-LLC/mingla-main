@@ -18,6 +18,10 @@ on:
       - "docs/load-test-fixtures.md"
       - ".github/workflows/load-smoke.yml"
 
+concurrency:
+  group: ci-load-smoke-${{ github.run_id }}
+  cancel-in-progress: false
+
 jobs:
   validate-scripts:
     name: "Validate k6 scripts"
