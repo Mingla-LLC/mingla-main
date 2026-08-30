@@ -107,12 +107,13 @@ export default function TripEditRoute(): React.ReactElement {
     brandId: tripQuery.data?.brandId ?? currentBrand?.id ?? null,
     entityType: "trip",
     entityId: typeof eventId === "string" ? eventId : null,
-    ready: isClientOnlyId
-      ? currentBrand !== null
-      : tripQuery.data != null && !tripQuery.isLoading && !tripQuery.isError,
-    title: isClientOnlyId
-      ? TRIP_DRAFT_PLACEHOLDER_TITLE
-      : tripQuery.data?.title,
+    ready:
+      !isClientOnlyId &&
+      currentBrand !== null &&
+      tripQuery.data != null &&
+      !tripQuery.isLoading &&
+      !tripQuery.isError,
+    title: tripQuery.data?.title,
     coverUrl: tripQuery.data?.coverMediaUrl,
     coverPosterUrl: tripQuery.data?.coverMediaPosterUrl,
     coverType:
