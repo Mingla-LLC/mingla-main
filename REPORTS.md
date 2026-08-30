@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-29 — Competitor refresh journey tests now use their documented fixture clock, so UTC date rollovers cannot block unrelated pull requests while the future-date wording remains strictly verified (#2837, PR #2838)
 - 2026-08-29 — Competitor action plans now follow recommendations by stable action ID after primary-action ordering and always schedule the primary recommendation for this week (#2823, PR #2824)
 - 2026-08-29 — Competitor reports now place the one primary recommendation first before decision-plan validation, so a valid model suggestion cannot be rejected merely because Gemini returned it second (#2820, PR #2821)
 - 2026-08-29 — Premium competitor reports now deterministically clean and ground every Gemini-owned theme and comparison field before strict validation, so malformed model output cannot waste a measured refresh or replace the last good report (#2817, PR #2818)
