@@ -15685,7 +15685,7 @@
       "providerWorkflow": ".github/workflows/issue-1875-google-signin-transient-failure-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c2ffb35be7b51ec31d037e0bb92cea8aec53ad8cbe74c641bb08d2191988acd7",
+        "sourceSha256": "08fe28184054dffd1b4b8c3b1d01d1e2dc6ed3c806ca29469887a0bae3b54902",
         "triggers": [
           "pull_request",
           "push"

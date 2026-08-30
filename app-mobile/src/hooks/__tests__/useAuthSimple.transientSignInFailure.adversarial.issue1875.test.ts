@@ -1373,12 +1373,12 @@ test('AX-E6 — Apple honours the identical cancellation contract', async () => 
  * The pre-#1875 `useAuthSimple.ts`, pinned by BOTH the commit it lives in and
  * the sha256 of its content.
  *
- * `fcb78cfac` is the `origin/main` commit this branch was rebased onto, so it
- * stays an ancestor of `main` after the squash-merge — which is what makes this
- * gate keep working on `main` instead of degenerating into comparing the file
- * against itself. `origin/main` is tried first because it is the cheapest ref to
- * have locally BEFORE the merge; the content hash is what actually decides, so
- * whichever ref answers, the baseline is provably the same bytes.
+ * `4bcefcf26656355f05ae740dc0cbd06b4ee9769c` is the direct parent of the
+ * #1875 squash merge `892a07fbf7de33567440d9682664da5cb2a42dc9` and remains
+ * on durable `main` first-parent history. Its full-file sha256 is the pinned
+ * content hash below, so the baseline has both durable provenance and exact-byte
+ * identity. `origin/main` and `main` remain diagnostic fallback refs; whichever
+ * ref answers, the content hash is what decides whether the bytes are accepted.
  *
  * ─── RE-BASELINING ────────────────────────────────────────────────────────
  * A future, legitimate change to `signInWithGoogle` / `signInWithApple` will
@@ -1387,7 +1387,7 @@ test('AX-E6 — Apple honours the identical cancellation contract', async () => 
  * the protocol #1044 established for `PRE_GOOGLE_CATCH` / `PRE_APPLE_CATCH`.
  * Never silence it by loosening the comparison.
  */
-const PRE_1875_BASELINE_COMMIT = 'fcb78cfac67380008c225f3db932260853ece5e7'
+const PRE_1875_BASELINE_COMMIT = '4bcefcf26656355f05ae740dc0cbd06b4ee9769c'
 const PRE_1875_BASELINE_SHA256 =
   '41a7a7fb52735b862ae3550e7aee090702cffa7dd96bbf36b771c534815ce353'
 
