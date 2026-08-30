@@ -1,5 +1,7 @@
 # Mingla
 
+<!-- #2851 controlled pull_request_target cancellation proof: generation A; this PR must never merge. -->
+
 Mingla helps people discover experiences, plan with friends, and run the operational surfaces that keep the ecosystem healthy. Both apps are live on the App Store and Google Play.
 
 README is a snapshot front door. The truth system is small and lives in two places: **work** is tracked as issues on the Mingla Avengers board, and **durable knowledge** lives in the four canonical docs plus `docs/`.
