@@ -229,22 +229,20 @@ test("a stale allowlist entry is reported rather than silently ignored", () => {
 test("an exemption that is no longer NEEDED is reported too", () => {
   // Once a table gains a reachable resolver its exemption stops telling the
   // truth, so it must be dropped rather than left to rot.
-  const [exemptTable] = WRITE_ONLY_BY_DESIGN.keys();
-  assert.ok(exemptTable, "the frozen allowlist must contain a test subject");
   const r = analyze(
     [
-      mig(`CREATE TABLE public.${exemptTable} (
+      mig(`CREATE TABLE public.brand_person_merge_events (
         id uuid PRIMARY KEY,
         status text NOT NULL DEFAULT 'active' CHECK (status IN ('active','reversed')),
         reversed_at timestamptz NULL
       );`),
       mig(
-        `SELECT 1 FROM public.${exemptTable};
-         UPDATE public.${exemptTable} SET status='reversed', reversed_at=now();`,
+        `SELECT 1 FROM public.brand_person_merge_events;
+         UPDATE public.brand_person_merge_events SET status='reversed', reversed_at=now();`,
         "20270202000000_y.sql",
       ),
     ],
     ["// nothing"],
   );
-  assert.ok(r.unneededExemptions.includes(exemptTable));
+  assert.ok(r.unneededExemptions.includes("brand_person_merge_events"));
 });

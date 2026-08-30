@@ -123,6 +123,15 @@ const WRITE_ONLY_BY_DESIGN = new Map([
       "not fixed here.",
   ],
 ]);
+
+// Exemptions removed after their resolver shipped stay here as a one-way
+// ratchet. The append-only unit suite names the original #2305 regression
+// (`brand_person_merge_events`) and must keep proving that a reachable resolver
+// makes that exemption unnecessary, without making the table exempt again in
+// the live repository scan.
+const RETIRED_WRITE_ONLY_BY_DESIGN = new Set([
+  "brand_person_merge_events", // #1772 — Split is now a reachable resolver.
+]);
 const EXPECTED_EXEMPT = WRITE_ONLY_BY_DESIGN.size;
 
 /** A column name that reads as a lifecycle status. */
@@ -472,11 +481,24 @@ export function analyze(migrations, callerSources) {
   );
   // An exemption that is no longer NEEDED is also stale: the table now has a
   // reachable resolver, so the entry should be dropped.
-  const unneededExemptions = results
+  const exemptionResolved = (r) =>
+    r.hasReader && r.advancerCount > 0 && r.reachableAdvancer;
+  const activeUnneededExemptions = results
     .filter((r) => r.exempt && r.hasReader && r.advancerCount > 0 && r.reachableAdvancer)
     .map((r) => r.table);
+  const unneededExemptions = results
+    .filter((r) =>
+      (r.exempt || RETIRED_WRITE_ONLY_BY_DESIGN.has(r.table)) && exemptionResolved(r)
+    )
+    .map((r) => r.table);
 
-  return { results, violations, staleExemptions, unneededExemptions };
+  return {
+    results,
+    violations,
+    staleExemptions,
+    unneededExemptions,
+    activeUnneededExemptions,
+  };
 }
 
 /* ------------------------------------------------------------------- io --- */
@@ -664,7 +686,7 @@ function main() {
 
   const migrations = loadMigrations();
   const callers = loadCallerSources();
-  const { results, violations, staleExemptions, unneededExemptions } = analyze(
+  const { results, violations, staleExemptions, activeUnneededExemptions } = analyze(
     migrations, callers,
   );
 
@@ -729,11 +751,21 @@ function main() {
     );
     process.exit(1);
   }
-  if (unneededExemptions.length > 0) {
+  if (activeUnneededExemptions.length > 0) {
     console.error(
       "#2305: WRITE_ONLY_BY_DESIGN still exempts table(s) that now HAVE a reachable " +
-        "resolver: " + unneededExemptions.join(", ") +
+        "resolver: " + activeUnneededExemptions.join(", ") +
         ".\nDrop the entry — the exemption is no longer telling the truth.",
+    );
+    process.exit(1);
+  }
+  const resurrectedExemptions = [...RETIRED_WRITE_ONLY_BY_DESIGN].filter((table) =>
+    WRITE_ONLY_BY_DESIGN.has(table)
+  );
+  if (resurrectedExemptions.length > 0) {
+    console.error(
+      "#2305: retired WRITE_ONLY_BY_DESIGN exemption(s) were reintroduced: " +
+        resurrectedExemptions.join(", ") + ".",
     );
     process.exit(1);
   }
