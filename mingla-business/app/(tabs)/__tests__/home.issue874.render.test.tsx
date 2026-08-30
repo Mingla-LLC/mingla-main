@@ -69,7 +69,8 @@ let mockUpcoming = {
 };
 
 jest.mock("expo-router", () => ({
-  useRouter: () => ({ push: mockPush }),
+  useLocalSearchParams: () => ({}),
+  useRouter: () => ({ push: mockPush, replace: jest.fn() }),
 }));
 jest.mock("@tanstack/react-query", () => ({
   useQueryClient: () => ({ invalidateQueries: mockInvalidateQueries }),

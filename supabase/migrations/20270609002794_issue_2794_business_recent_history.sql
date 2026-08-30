@@ -223,7 +223,10 @@ BEGIN
          CASE WHEN r.entity_type = 'venue' THEN v.claim_status ELSE e.status END,
          CASE WHEN r.entity_type = 'venue' THEN NULL ELSE ed.start_at END,
          CASE WHEN r.entity_type = 'venue' THEN NULL ELSE ed.end_at END,
-         CASE WHEN r.entity_type = 'venue' THEN NULL ELSE e.ended_at END
+         CASE
+           WHEN r.entity_type = 'venue' OR e.status <> 'ended' THEN NULL
+           ELSE e.updated_at
+         END
     FROM public.business_recent_entity_opens r
     LEFT JOIN public.events e
       ON r.entity_type <> 'venue' AND e.id = r.entity_id

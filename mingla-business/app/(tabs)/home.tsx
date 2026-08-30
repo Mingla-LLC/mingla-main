@@ -38,7 +38,7 @@ import {
   useWindowDimensions,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -60,6 +60,7 @@ import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorS
 // RecentRow is Home's rendering boundary for Recent covers and owns the shared
 // video-capable EventCoverMedia presentation; Home must not reimplement it.
 import { RecentRow } from "../../src/components/home/RecentRow";
+import { RecentFullScreen } from "../../src/components/home/RecentFullScreen";
 import { RecentStatePanel } from "../../src/components/home/RecentStatePanel";
 import { InvitePendingSheet } from "../../src/components/team/InvitePendingSheet";
 import {
@@ -80,7 +81,7 @@ import { useCurrentBrandRole } from "../../src/hooks/useCurrentBrandRole";
 import { useCurrentBrandRecovery } from "../../src/hooks/useCurrentBrandRecovery";
 import { useBusinessTodos } from "../../src/hooks/useBusinessTodos";
 import { useResponsiveLayout } from "../../src/hooks/useResponsiveLayout";
-import { useBusinessRecent } from "../../src/hooks/useBusinessRecent";
+import { useBusinessRecent } from "../../src/hooks/useBusinessRecentHome";
 import { brandKeys } from "../../src/hooks/useBrands";
 import {
   eventOrdersKeys,
@@ -195,6 +196,7 @@ export default function HomeTab(): React.ReactElement {
   const recentImpressionBrandRef = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const params = useLocalSearchParams<{ recent?: string }>();
   const { isWideDesktop } = useResponsiveLayout();
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -212,7 +214,12 @@ export default function HomeTab(): React.ReactElement {
   );
   const brandRecovery = useCurrentBrandRecovery();
   const upcoming = useUpcomingForBrand(currentBrand?.id ?? null);
-  const recent = useBusinessRecent({ brandId: currentBrand?.id ?? null });
+  const showFullRecent = params.recent === "all";
+  const [recentPageCount, setRecentPageCount] = useState(1);
+  const recent = useBusinessRecent({
+    brandId: currentBrand?.id ?? null,
+    pageCount: showFullRecent ? recentPageCount : 1,
+  });
   const [sheetVisible, setSheetVisible] = useState<boolean>(false);
   // ORCH-0826 M0: universal creator sheet (Create event/experience/trip)
   const [isUniversalCreatorOpen, setIsUniversalCreatorOpen] =
@@ -824,6 +831,19 @@ export default function HomeTab(): React.ReactElement {
   // still drive onboarding.
   if (isScannerOnlyRank(callerRank)) {
     return <ScannerHome />;
+  }
+
+  if (showFullRecent) {
+    return (
+      <RecentFullScreen
+        recent={recent}
+        pageCount={recentPageCount}
+        onBack={() => router.replace("/(tabs)/home" as never)}
+        onRequestNextPage={() =>
+          setRecentPageCount((count) => Math.min(8, count + 1))
+        }
+      />
+    );
   }
 
   return (

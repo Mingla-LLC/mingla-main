@@ -1,4 +1,5 @@
 import type { StateStorage } from "zustand/middleware";
+import { enqueueBusinessRecentCacheMutation } from "./businessRecentCacheQueue";
 
 const recentStorage =
   (): typeof import("@react-native-async-storage/async-storage").default => {
@@ -17,5 +18,27 @@ export const businessRecentStateStorage: StateStorage = {
   setItem: (name, value) => recentStorage().setItem(name, value),
   removeItem: (name) => recentStorage().removeItem(name),
 };
+
+export function clearBusinessRecentCachedUser(
+  userId: string,
+): Promise<void> {
+  return enqueueBusinessRecentCacheMutation(async () => {
+    const storage = recentStorage();
+    const manifestKey = "business-recent-cache-manifest-v1";
+    const raw = await storage.getItem(manifestKey);
+    if (raw === null) return;
+    const manifest: string[] = JSON.parse(raw);
+    const prefix = `${userId}:`;
+    const cacheKey = (scope: string): string =>
+      `business-recent-cache-v1:${scope}`;
+    await storage.multiRemove(
+      manifest.filter((scope) => scope.startsWith(prefix)).map(cacheKey),
+    );
+    await storage.setItem(
+      manifestKey,
+      JSON.stringify(manifest.filter((scope) => !scope.startsWith(prefix))),
+    );
+  });
+}
 
 export default recentStorage;

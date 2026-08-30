@@ -224,6 +224,17 @@ SELECT (
 FROM generate_series(1, 240) g;
 COMMIT;
 
+-- The exact Supabase image deliberately makes postgres non-superuser. Give
+-- this disposable suite role a suite-local password in its own committed
+-- statement, then connect through 127.0.0.2 so pg_hba exercises password auth
+-- rather than loopback trust. dblink correctly refuses non-password
+-- connections for non-superusers.
+SELECT format(
+  'ALTER ROLE %I PASSWORD %L',
+  current_user,
+  'issue2794-dblink-only'
+) AS sql \gexec
+
 DO $concurrency$
 DECLARE
   worker integer;
@@ -240,10 +251,11 @@ BEGIN
     PERFORM dblink_connect(
       connection_name,
       format(
-        'host=127.0.0.1 port=%s dbname=%I user=%I',
+        'hostaddr=127.0.0.2 port=%s dbname=%I user=%I password=%s',
         current_setting('port'),
         current_database(),
-        current_user
+        current_user,
+        'issue2794-dblink-only'
       )
     );
     query_text := format($query$

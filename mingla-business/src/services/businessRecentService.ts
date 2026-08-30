@@ -5,12 +5,24 @@ import { businessRecentDestination } from "../utils/routeForEventRow";
 import {
   mergeRecentPointers,
   promoteBusinessRecentPointers,
-} from "../store/businessRecentStore";
+} from "../utils/businessRecentPointerMerge";
 import recentStorage from "./businessRecentStorage";
+import { enqueueBusinessRecentCacheMutation } from "./businessRecentCacheQueue";
 import type {
   BusinessRecentEntityType,
   BusinessRecentPointer,
 } from "../store/businessRecentStore";
+import {
+  emitBusinessRecentPresentation,
+  subscribeBusinessRecentPresentation,
+  type BusinessRecentPresentationMutation,
+} from "./businessRecentPresentationBus";
+
+export { clearBusinessRecentCachedUser } from "./businessRecentCacheAdmin";
+export {
+  subscribeBusinessRecentPresentation,
+  type BusinessRecentPresentationMutation,
+};
 
 const recentSupabase = (): typeof import("./supabase").supabase => {
   // Detail routes may register their Recent writer without instantiating the
@@ -19,44 +31,6 @@ const recentSupabase = (): typeof import("./supabase").supabase => {
   const { supabase } = require("./supabase") as typeof import("./supabase");
   return supabase;
 };
-
-export type BusinessRecentPresentationMutation =
-  | {
-      kind: "upsert";
-      scope: string;
-      pointer: BusinessRecentPointer;
-    }
-  | {
-      kind: "remove";
-      scope: string;
-      entityType: BusinessRecentEntityType;
-      entityId: string;
-    }
-  | {
-      kind: "promote";
-      scope: string;
-      entityType: BusinessRecentEntityType;
-      localId: string;
-      serverId: string;
-      operationId: string;
-    }
-  | {
-      kind: "clear";
-      scope: string;
-    };
-
-type BusinessRecentPresentationListener = (
-  mutation: BusinessRecentPresentationMutation,
-) => void;
-
-const presentationListeners = new Set<BusinessRecentPresentationListener>();
-
-export function subscribeBusinessRecentPresentation(
-  listener: BusinessRecentPresentationListener,
-): () => void {
-  presentationListeners.add(listener);
-  return () => presentationListeners.delete(listener);
-}
 
 export interface BusinessRecentIndexRow {
   pointerId: string;
@@ -171,14 +145,6 @@ export const businessRecentKeys = {
 
 const CACHE_MANIFEST_KEY = "business-recent-cache-manifest-v1";
 const cacheKey = (scope: string): string => `business-recent-cache-v1:${scope}`;
-let cacheMutationChain: Promise<void> = Promise.resolve();
-
-const enqueueCacheMutation = (mutation: () => Promise<void>): Promise<void> => {
-  const result = cacheMutationChain.catch(() => undefined).then(mutation);
-  cacheMutationChain = result.catch(() => undefined);
-  return result;
-};
-
 const writeBusinessRecentCache = async (
   scope: string,
   pointers: BusinessRecentPointer[],
@@ -209,16 +175,17 @@ export async function saveBusinessRecentCache(
   scope: string,
   pointers: BusinessRecentPointer[],
 ): Promise<void> {
-  await enqueueCacheMutation(() => writeBusinessRecentCache(scope, pointers));
+  await enqueueBusinessRecentCacheMutation(() =>
+    writeBusinessRecentCache(scope, pointers),
+  );
 }
 
 export async function upsertBusinessRecentPresentationCache(
   scope: string,
   pointer: BusinessRecentPointer,
 ): Promise<void> {
-  for (const listener of presentationListeners)
-    listener({ kind: "upsert", scope, pointer });
-  await enqueueCacheMutation(async () => {
+  emitBusinessRecentPresentation({ kind: "upsert", scope, pointer });
+  await enqueueBusinessRecentCacheMutation(async () => {
     const existing = await loadBusinessRecentCache(scope);
     await writeBusinessRecentCache(
       scope,
@@ -232,9 +199,13 @@ export async function removeBusinessRecentPresentationCache(
   entityType: BusinessRecentEntityType,
   entityId: string,
 ): Promise<void> {
-  for (const listener of presentationListeners)
-    listener({ kind: "remove", scope, entityType, entityId });
-  await enqueueCacheMutation(async () => {
+  emitBusinessRecentPresentation({
+    kind: "remove",
+    scope,
+    entityType,
+    entityId,
+  });
+  await enqueueBusinessRecentCacheMutation(async () => {
     const existing = await loadBusinessRecentCache(scope);
     await writeBusinessRecentCache(
       scope,
@@ -253,9 +224,8 @@ export async function promoteBusinessRecentPresentationCache(input: {
   serverId: string;
   operationId: string;
 }): Promise<void> {
-  for (const listener of presentationListeners)
-    listener({ kind: "promote", ...input });
-  await enqueueCacheMutation(async () => {
+  emitBusinessRecentPresentation({ kind: "promote", ...input });
+  await enqueueBusinessRecentCacheMutation(async () => {
     const existing = await loadBusinessRecentCache(input.scope);
     const promoted = promoteBusinessRecentPointers(existing, input);
     if (promoted === existing) return;
@@ -263,28 +233,11 @@ export async function promoteBusinessRecentPresentationCache(input: {
   });
 }
 
-export async function clearBusinessRecentCachedUser(
-  userId: string,
-): Promise<void> {
-  await enqueueCacheMutation(async () => {
-    const storage = recentStorage();
-    const manifestRaw = await storage.getItem(CACHE_MANIFEST_KEY);
-    if (manifestRaw === null) return;
-    const manifest: string[] = JSON.parse(manifestRaw);
-    const prefix = `${userId}:`;
-    const removed = manifest.filter((scope) => scope.startsWith(prefix));
-    const retained = manifest.filter((scope) => !scope.startsWith(prefix));
-    await storage.multiRemove(removed.map(cacheKey));
-    await storage.setItem(CACHE_MANIFEST_KEY, JSON.stringify(retained));
-  });
-}
-
 export async function clearBusinessRecentCachedScope(
   scope: string,
 ): Promise<void> {
-  for (const listener of presentationListeners)
-    listener({ kind: "clear", scope });
-  await enqueueCacheMutation(async () => {
+  emitBusinessRecentPresentation({ kind: "clear", scope });
+  await enqueueBusinessRecentCacheMutation(async () => {
     const storage = recentStorage();
     const manifestRaw = await storage.getItem(CACHE_MANIFEST_KEY);
     const manifest: string[] =
