@@ -76,10 +76,11 @@ jobs:
         with:
           # FULL history is required. The tester adversarial suite's AX-F1..AX-F3
           # differential resolves the PINNED pre-#1875 baseline of
-          # useAuthSimple.ts (commit fcb78cfac, verified by sha256) and proves
-          # the shipped sign-in functions are byte-identical to it once the
-          # declared #1875 regions are excised. A shallow checkout cannot see
-          # that commit and the gate fails closed with a re-baseline message.
+          # useAuthSimple.ts at main-line commit 4bcefcf2 — the direct parent of
+          # the #1875 squash merge and independently verified by sha256 — then
+          # proves the shipped sign-in functions are byte-identical once the
+          # declared #1875 regions are excised. A shallow checkout can omit that
+          # durable ancestor, so the gate fails closed with a re-baseline message.
           fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
