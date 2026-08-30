@@ -134,6 +134,22 @@ const SINGLE_DATE_EVENT = {
   masterEndAtUtc: null,
 };
 
+// Lifecycle truth is intentionally separate from the display occurrences used by
+// K-1 through K-5. Every populated public-event fixture stays active regardless
+// of the wall clock without changing the date-line inputs those tests exercise.
+const CHECKOUT_TERMINAL_SOURCE = {
+  kind: "occurrences" as const,
+  value: [
+    {
+      id: "lifecycle-2338",
+      startAt: "2099-08-29T10:00:00+00:00",
+      endAt: "2099-08-29T17:00:00+00:00",
+      timezone: "Africa/Lagos",
+      isMaster: true,
+    },
+  ],
+};
+
 let publicEventData: unknown = null;
 let routeParams: Record<string, string> = { eventId: EVENT_ID };
 
@@ -161,7 +177,13 @@ jest.mock(
 );
 jest.mock("../../../../src/hooks/usePublicEvents", () => ({
   usePublicEventById: () => ({
-    data: publicEventData,
+    data:
+      publicEventData === null
+        ? null
+        : {
+            ...(publicEventData as Record<string, unknown>),
+            terminalSource: CHECKOUT_TERMINAL_SOURCE,
+          },
     isLoading: false,
     isFetching: false,
     isError: false,

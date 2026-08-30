@@ -2018,9 +2018,9 @@ export function validateRegistry(
   const leafRegistry = manifest.phase3bLeafCapabilities;
   const leaves = leafRegistry?.leaves || [];
   if (leafRegistry?.schemaVersion !== 1 || leafRegistry?.expectedLeaves !== 40 || leaves.length !== 40
-      || leafRegistry?.currentExecutedLeaves !== 37 || leafRegistry?.currentAbsentLeaves !== 3
+      || leafRegistry?.currentExecutedLeaves !== 40 || leafRegistry?.currentAbsentLeaves !== 0
       || crypto.createHash("sha256").update(JSON.stringify(leaves)).digest("hex") !== leafRegistry?.registrySha256) {
-    fail(errors, "Phase 3B leaf registry must equal 40 maximum / current 37 executed + 3 absent");
+    fail(errors, "Phase 3B leaf registry must equal 40 maximum / current 40 executed + 0 absent");
   }
   const leafIds = new Set();
   for (const leaf of leaves) {
@@ -2088,8 +2088,8 @@ export function validateRegistry(
   // [#2438 SC-13] Exactly two accepted forms — the shadow contract and the
   // terminal contract — and the wave header must agree with the suites' own
   // atomic lifecycle, so a terminal wave header over shadow suites stays red.
-  const expectedWaveContract = { suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 37,
-    currentAbsentLeaves: 3, lifecycle: phase3bTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };
+  const expectedWaveContract = { suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 40,
+    currentAbsentLeaves: 0, lifecycle: phase3bTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };
   if (JSON.stringify(waveContract) !== JSON.stringify(expectedWaveContract)) {
     fail(errors, "Phase 3B wave count contract drifted");
   }

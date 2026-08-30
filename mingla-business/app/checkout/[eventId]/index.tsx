@@ -57,7 +57,7 @@ import { JoinWaitlistSheet } from "../../../src/components/waitlist/JoinWaitlist
 // + 24h < Date.now()` which fired at 8pm EDT on the start day for any
 // US-Eastern event — blocking ticket purchases on still-live events (S0).
 import { resolveEventCheckoutLifecycleGate } from "../../../src/utils/eventLifecycle";
-import { eventAcquisitionNoticeCopy } from "@mingla/offering-rendering";
+import { eventAcquisitionNoticeCopy } from "@mingla/offering-rendering/eventAcquisitionLifecycle";
 // META-ORCH-1187 LEG 2 — buyer-web funnel capture (web-only; native no-op).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 

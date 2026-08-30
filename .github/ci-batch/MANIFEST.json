@@ -20717,8 +20717,8 @@
       "suiteCount": 12,
       "outerCommandCount": 36,
       "maximumLeafCount": 40,
-      "currentExecutedLeaves": 37,
-      "currentAbsentLeaves": 3,
+      "currentExecutedLeaves": 40,
+      "currentAbsentLeaves": 0,
       "lifecycle": "batched-historical"
     },
     "phase3c-deno-wave": {
@@ -20779,8 +20779,8 @@
   "phase3bLeafCapabilities": {
     "schemaVersion": 1,
     "expectedLeaves": 40,
-    "currentExecutedLeaves": 37,
-    "currentAbsentLeaves": 3,
+    "currentExecutedLeaves": 40,
+    "currentAbsentLeaves": 0,
     "leaves": [
       {
         "id": "leaf:issue-1022-theme-control-tests:01:1",

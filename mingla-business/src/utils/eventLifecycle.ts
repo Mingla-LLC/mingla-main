@@ -140,10 +140,9 @@ export const isEventPast = (
   masterEndAtUtc: string | null,
   nowMs: number = Date.now(),
 ): boolean => {
-  const gate = resolveEventCheckoutLifecycleGate(
-    event,
-    { kind: "single_end", endAtUtc: masterEndAtUtc },
-    nowMs,
+  return (
+    ["cancelled", "ended"].includes(event.status) ||
+    event.endedAt !== null ||
+    nowMs > Date.parse(masterEndAtUtc || "")
   );
-  return gate.kind === "closed";
 };
