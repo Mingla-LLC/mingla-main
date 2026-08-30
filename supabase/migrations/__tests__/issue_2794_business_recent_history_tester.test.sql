@@ -7,8 +7,8 @@ INSERT INTO auth.users (id) VALUES
   ('27940000-0000-4000-8000-000000000104');
 INSERT INTO public.creator_accounts (id)
 VALUES ('27940000-0000-4000-8000-000000000101');
-INSERT INTO public.brands (id, account_id, name, slug)
-VALUES ('27940000-0000-4000-8000-000000000110', '27940000-0000-4000-8000-000000000101', 'Recent Adversarial', 'recent-adversarial');
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES ('27940000-0000-4000-8000-000000000110', '27940000-0000-4000-8000-000000000101', 'Recent Adversarial', 'recent-adversarial', 'USD');
 INSERT INTO public.brand_team_members (brand_id, user_id, role, accepted_at, removed_at) VALUES
   ('27940000-0000-4000-8000-000000000110', '27940000-0000-4000-8000-000000000103', 'scanner', now(), NULL),
   ('27940000-0000-4000-8000-000000000110', '27940000-0000-4000-8000-000000000104', 'event_manager', now(), now());
@@ -199,12 +199,13 @@ INSERT INTO auth.users (id)
 VALUES ('27940000-0000-4000-8000-000000000201');
 INSERT INTO public.creator_accounts (id)
 VALUES ('27940000-0000-4000-8000-000000000201');
-INSERT INTO public.brands (id, account_id, name, slug)
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
 VALUES (
   '27940000-0000-4000-8000-000000000210',
   '27940000-0000-4000-8000-000000000201',
   'Recent Concurrency',
-  'recent-concurrency'
+  'recent-concurrency',
+  'USD'
 );
 INSERT INTO public.events (
   id, brand_id, created_by, title, slug, status, visibility, event_type

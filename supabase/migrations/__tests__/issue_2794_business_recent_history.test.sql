@@ -3,8 +3,8 @@ BEGIN;
 INSERT INTO auth.users (id) VALUES ('27940000-0000-4000-8000-000000000001');
 INSERT INTO public.creator_accounts (id)
 VALUES ('27940000-0000-4000-8000-000000000001');
-INSERT INTO public.brands (id, account_id, name, slug)
-VALUES ('27940000-0000-4000-8000-000000000010', '27940000-0000-4000-8000-000000000001', 'Recent Test', 'recent-test');
+INSERT INTO public.brands (id, account_id, name, slug, default_currency)
+VALUES ('27940000-0000-4000-8000-000000000010', '27940000-0000-4000-8000-000000000001', 'Recent Test', 'recent-test', 'USD');
 INSERT INTO public.events (id, brand_id, created_by, title, slug, status, visibility, event_type)
 SELECT ('2794' || lpad(to_hex(g), 4, '0') || '-0000-4000-8000-' || lpad(g::text, 12, '0'))::uuid,
        '27940000-0000-4000-8000-000000000010',
