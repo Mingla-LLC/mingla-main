@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-30 — Missing email HMAC authority now stops before parallel fingerprint work begins, eliminating intermittent crypto-leak CI failures while preserving valid delivery idempotency (#2874, PR #2875)
 - 2026-08-30 — The pull-request cancellation safety proof now stays accurate on main and unrelated future branches instead of falsely requiring every checkout to recreate its original 123-file change (#2871, PR #2872)
 - 2026-08-30 — New pushes now stop obsolete tests for the same pull request while keeping other pull requests, workflows, manual runs, main checks, and the reviewed load-smoke exception isolated (#2851, PR #2852)
 - 2026-08-30 — Pending-venue identity correction now recognizes six reviewed new database relationships while keeping every new lane disallowed, zero-use, and fail-closed under the existing schema, state, lock, privacy, audit, and rollback protections (#2855, PR #2860)

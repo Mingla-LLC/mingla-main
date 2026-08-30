@@ -403,38 +403,53 @@ Deno.test("issue #1437 HP-7: invalid HMAC material fails closed and diagnostics 
 });
 
 Deno.test("issue #1437 HP-8: missing HMAC authority fails before claim or provider I/O", async () => {
+  // [TEST-MOD-APPROVED #2874] The missing-authority rejection must happen
+  // before Promise.all starts either sibling SHA-256 digest. Counting the real
+  // WebCrypto boundary makes the former timing-dependent Deno leak deterministic.
+  const subtle = crypto.subtle;
+  const originalDigest = subtle.digest;
+  let digestCalls = 0;
   let claimCalls = 0;
   let providerCalls = 0;
-  await assertRejects(
-    () =>
-      dispatchIdempotentLegacyEmail(
-        {
-          recipient: "person@example.com",
-          logicalIdempotencyKey: "issue-1437-no-hmac",
-          recipientHmacSecret:
-            resolveNotificationRecipientHmacSecret(env({})) ?? "",
-          payload: {
-            from: "Mingla <notifications@example.com>",
-            to: ["person@example.com"],
-            subject: "Compatibility proof",
-            text: "No provider call is allowed.",
+  subtle.digest = ((algorithm: AlgorithmIdentifier, data: BufferSource) => {
+    digestCalls += 1;
+    return originalDigest.call(subtle, algorithm, data);
+  }) as SubtleCrypto["digest"];
+  try {
+    await assertRejects(
+      () =>
+        dispatchIdempotentLegacyEmail(
+          {
+            recipient: "person@example.com",
+            logicalIdempotencyKey: "issue-1437-no-hmac",
+            recipientHmacSecret:
+              resolveNotificationRecipientHmacSecret(env({})) ?? "",
+            payload: {
+              from: "Mingla <notifications@example.com>",
+              to: ["person@example.com"],
+              subject: "Compatibility proof",
+              text: "No provider call is allowed.",
+            },
           },
-        },
-        {
-          claimDelivery: () => {
-            claimCalls += 1;
-            throw new Error("claim_must_not_run");
+          {
+            claimDelivery: () => {
+              claimCalls += 1;
+              throw new Error("claim_must_not_run");
+            },
+            completeDelivery: () => Promise.resolve(),
+            sendResend: () => {
+              providerCalls += 1;
+              throw new Error("provider_must_not_run");
+            },
           },
-          completeDelivery: () => Promise.resolve(),
-          sendResend: () => {
-            providerCalls += 1;
-            throw new Error("provider_must_not_run");
-          },
-        },
-      ),
-    Error,
-    "notification_recipient_hmac_secret_missing",
-  );
+        ),
+      Error,
+      "notification_recipient_hmac_secret_missing",
+    );
+  } finally {
+    subtle.digest = originalDigest;
+  }
+  assertStrictEquals(digestCalls, 0);
   assertStrictEquals(claimCalls, 0);
   assertStrictEquals(providerCalls, 0);
 });
