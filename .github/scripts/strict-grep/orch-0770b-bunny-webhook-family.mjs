@@ -4,7 +4,7 @@
  * The Bunny library webhook is the AUTHENTICITY boundary of the live event-cover
  * pipeline: it verifies a v1/hmac-sha256 signature envelope, maps the numeric
  * Bunny status, keys the owning job by `source_asset_id`, and finalizes
- * fail-closed on a missing processed MP4. This slice is high-security enough to
+ * retries when a processed MP4 is not yet available. This slice is high-security enough to
  * own its own gate (the sibling `orch-0770` pins upload-intent + shared; this
  * pins webhook + presign-verify + source-uploaded Bunny-truth).
  *
@@ -18,7 +18,8 @@
  *     WH-3  `mapBunnyStatus`                        — numeric status → lifecycle.
  *     WH-4  `assertProcessedDerivative`             — fail-closed derivative check.
  *     WH-5  keys the job on `.eq("source_asset_id", …)` — the VideoGuid job key.
- *     WH-6  `processed_mp4_unavailable`             — fail-closed finalize code.
+ *     WH-6  `derivative_not_ready` HTTP 503          — retryable, non-mutating
+ *           derivative lag; neither failure transition nor asset deletion is allowed.
  *     WH-CLD  `x-cld-timestamp` / `verifyCloudinaryNotificationSignature` ABSENT
  *             — Cloudinary webhook signing must not reappear (reintroduction guard).
  *   _shared/bunnyStream.ts (comment-stripped):
@@ -90,8 +91,14 @@ export function scan(sources) {
   if (!/\.eq\(\s*"source_asset_id"/.test(wh)) {
     failures.push('WH-5: webhook no longer keys the owning job on `.eq("source_asset_id", …)` — the Bunny VideoGuid job key changed.');
   }
-  if (!wh.includes("processed_mp4_unavailable")) {
-    failures.push("WH-6: webhook no longer fails closed with `processed_mp4_unavailable` on a missing processed MP4.");
+  // [TEST-MOD-APPROVED #2715 A13] Derivative propagation lag is retryable. Pin
+  // both missing-derivative branches to the stable 503 response and forbid any
+  // terminal mutation/destruction inside either branch.
+  const retryableDerivativeBranches = wh.match(
+    /if\s*\(\s*(?:best|head)\s*===\s*null\s*\)\s*\{\s*return\s+jsonResponse\(\s*\{\s*error:\s*["']derivative_not_ready["']\s*\}\s*,\s*503\s*\)\s*;\s*\}/g,
+  ) ?? [];
+  if (retryableDerivativeBranches.length !== 2) {
+    failures.push("WH-6: missing processed derivatives must return stable `derivative_not_ready` HTTP 503 without a terminal job mutation or asset deletion.");
   }
   for (const cld of ["x-cld-timestamp", "verifyCloudinaryNotificationSignature"]) {
     if (wh.includes(cld)) {
@@ -142,7 +149,10 @@ if (process.argv.includes("--self-test")) {
       "const verification = await verifyBunnyWebhookSignature({ rawBody, signatureHeader });",
       "const mapped = mapBunnyStatus(status);",
       '.eq("source_asset_id", videoGuid)',
-      'await failJob("processed_mp4_unavailable", "gone");',
+      "const best = bunnyBestMp4(video.video);",
+      'if (best === null) { return jsonResponse({ error: "derivative_not_ready" }, 503); }',
+      "const head = await headWithRetry(best.url);",
+      'if (head === null) { return jsonResponse({ error: "derivative_not_ready" }, 503); }',
       "const derivative = assertProcessedDerivative({ url, mimeType });",
     ].join("\n"),
     bunnyStream: [
@@ -179,7 +189,11 @@ if (process.argv.includes("--self-test")) {
   bad("drop mapBunnyStatus (webhook) trips WH-3", (s) => { s.webhook = s.webhook.replaceAll("mapBunnyStatus", "foo"); }, "WH-3:");
   bad("drop assertProcessedDerivative trips WH-4", (s) => { s.webhook = s.webhook.replaceAll("assertProcessedDerivative", "foo"); }, "WH-4:");
   bad("drop source_asset_id keying trips WH-5", (s) => { s.webhook = s.webhook.replace('.eq("source_asset_id", videoGuid)', '.eq("id", x)'); }, "WH-5:");
-  bad("drop processed_mp4_unavailable trips WH-6", (s) => { s.webhook = s.webhook.replace("processed_mp4_unavailable", "other_code"); }, "WH-6:");
+  // [TEST-MOD-APPROVED #2715 A13] WH-6 rejects each unsafe historical shape.
+  bad("revert derivative lag to processed_mp4_unavailable trips WH-6", (s) => { s.webhook = s.webhook.replace("derivative_not_ready", "processed_mp4_unavailable"); }, "WH-6:");
+  bad("return 2xx for derivative lag trips WH-6", (s) => { s.webhook = s.webhook.replace("}, 503);", "}, 200);"); }, "WH-6:");
+  bad("delete an asset during derivative lag trips WH-6", (s) => { s.webhook = s.webhook.replace('return jsonResponse({ error: "derivative_not_ready" }, 503);', 'await destroyCoverVideoAsset(existingJob); return jsonResponse({ error: "derivative_not_ready" }, 503);'); }, "WH-6:");
+  bad("terminally mutate during derivative lag trips WH-6", (s) => { s.webhook = s.webhook.replace('return jsonResponse({ error: "derivative_not_ready" }, 503);', 'await supabase.rpc("cover_video_transition_job", { p_to_status: "failed" }); return jsonResponse({ error: "derivative_not_ready" }, 503);'); }, "WH-6:");
   bad("reintroduce x-cld-timestamp trips WH-CLD", (s) => { s.webhook += '\nconst t = req.headers.get("x-cld-timestamp");'; }, "WH-CLD:");
   bad("reintroduce verifyCloudinaryNotificationSignature trips WH-CLD", (s) => { s.webhook += "\nverifyCloudinaryNotificationSignature(x);"; }, "WH-CLD:");
   bad("drop \"v1\" envelope trips BS-2", (s) => { s.bunnyStream = s.bunnyStream.replace('"v1"', '"v9"'); }, "BS-2:");

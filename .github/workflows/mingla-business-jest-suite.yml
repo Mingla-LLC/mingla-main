@@ -112,16 +112,17 @@ jobs:
             src/utils/__tests__/browserFilePicker.test.ts \
             --testSequencer=./scripts/ci/issue-1487-sequencer.cjs
 
-      - name: "#1664 event-cover timeout determinism contract"
+      # [TEST-MOD-APPROVED #2715] Historical script path now guards durable processing.
+      - name: "#2715 event-cover durable-processing determinism contract"
         if: always()
         run: |
           node scripts/ci/issue-1664-event-cover-timeout-determinism.mjs --self-test
           node scripts/ci/issue-1664-event-cover-timeout-determinism.mjs
 
-      - name: "#1664 frozen-clock adversarial timeout proof"
+      - name: "#2715 frozen-clock durable-processing proof"
         if: always()
         run: >-
           npx jest --ci --runInBand --runTestsByPath
           src/services/__tests__/eventCoverVideoProcessingService.test.ts
-          --testNamePattern="waits with status callbacks and carries last status on timeout"
+          --testNamePattern="keeps the same processing job alive beyond the former deadline and later resolves"
           --setupFilesAfterEnv=./scripts/ci/issue-1664-frozen-wall-clock.setup.cjs

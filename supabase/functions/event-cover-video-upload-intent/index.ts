@@ -5,11 +5,13 @@ import {
   destroyCoverVideoAsset,
   isValidUuid,
   jsonResponse,
+  mapEventCoverVideoStatus,
   MAX_DURATION_MS,
   MAX_SOURCE_VIDEO_BYTES,
   MAX_SOURCE_VIDEO_DURATION_MS,
   providerConfigured,
   requireBrandCoverManager,
+  requireCoverVideoTargetManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
@@ -19,27 +21,86 @@ import {
 import {
   bunnyCreateVideo,
   bunnyFetchLibraryUsage,
+  bunnyFindVideoByTitle,
   bunnyPresignTusUpload,
   bunnyUsagePct,
 } from "../_shared/bunnyStream.ts";
 import { resolveRuntimeNumber } from "../_shared/runtimeConfig.ts";
 
-export const SOURCE_CEILING_MS = 33_000;
+export const SOURCE_CEILING_MS = 15_000;
+const SOURCE_MIME_EXTENSIONS = new Map([
+  ["video/mp4", "mp4"],
+  ["video/quicktime", "mov"],
+  ["video/x-m4v", "m4v"],
+  ["video/webm", "webm"],
+]);
+const SHA256_RE = /^[0-9a-f]{64}$/;
+const TERMINAL_JOB_STATUSES = new Set([
+  "failed",
+  "cancelled",
+  "superseded",
+  "applied",
+]);
+const NO_UPLOAD_REPLAY_STATUSES = new Set(["ready", ...TERMINAL_JOB_STATUSES]);
 
-const logInfo = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
-  console.log("[event-cover-video-upload-intent]", JSON.stringify({
-    requestId,
-    stage,
-    ...payload,
-  }));
+const canonicalJobResponse = (
+  job: Record<string, unknown>,
+  status = 200,
+): Response =>
+  jsonResponse({
+    jobId: job.id,
+    provider: job.provider,
+    status: mapEventCoverVideoStatus(
+      job as Parameters<typeof mapEventCoverVideoStatus>[0],
+    ),
+  }, status);
+
+const initializingJobResponse = (job: Record<string, unknown>): Response => {
+  const leaseUntil = typeof job.provider_allocation_lease_until === "string"
+    ? Date.parse(job.provider_allocation_lease_until)
+    : Number.NaN;
+  const remaining = Number.isFinite(leaseUntil)
+    ? Math.max(250, leaseUntil - Date.now())
+    : 1_000;
+  return jsonResponse({
+    initializing: true,
+    jobId: job.id,
+    provider: job.provider,
+    retryAfterMs: Math.min(2_000, remaining),
+    status: mapEventCoverVideoStatus(
+      job as Parameters<typeof mapEventCoverVideoStatus>[0],
+    ),
+  }, 202);
 };
 
-const logWarn = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
-  console.warn("[event-cover-video-upload-intent]", JSON.stringify({
-    requestId,
-    stage,
-    ...payload,
-  }));
+const logInfo = (
+  requestId: string,
+  stage: string,
+  payload: Record<string, unknown> = {},
+) => {
+  console.log(
+    "[event-cover-video-upload-intent]",
+    JSON.stringify({
+      requestId,
+      stage,
+      ...payload,
+    }),
+  );
+};
+
+const logWarn = (
+  requestId: string,
+  stage: string,
+  payload: Record<string, unknown> = {},
+) => {
+  console.warn(
+    "[event-cover-video-upload-intent]",
+    JSON.stringify({
+      requestId,
+      stage,
+      ...payload,
+    }),
+  );
 };
 
 // ── META-ORCH-1270 (Phase 2): pre-upload circuit-breaker ──
@@ -57,8 +118,12 @@ export function evaluateCapacityBreaker(
   usedPercent: number | null,
   hardCapPct: number,
 ): { blocked: boolean; reason: string } {
-  if (usedPercent == null) return { blocked: false, reason: "usage_unreadable_fail_open" };
-  if (usedPercent >= hardCapPct) return { blocked: true, reason: "capacity_reached" };
+  if (usedPercent == null) {
+    return { blocked: false, reason: "usage_unreadable_fail_open" };
+  }
+  if (usedPercent >= hardCapPct) {
+    return { blocked: true, reason: "capacity_reached" };
+  }
   return { blocked: false, reason: "under_cap" };
 }
 
@@ -75,7 +140,10 @@ async function readBunnyUsagePercent(supabase: any): Promise<number | null> {
       .order("checked_at", { ascending: false })
       .limit(1)
       .maybeSingle();
-    const row = (data ?? null) as { detail?: Record<string, unknown>; checked_at?: string } | null;
+    const row = (data ?? null) as {
+      detail?: Record<string, unknown>;
+      checked_at?: string;
+    } | null;
     if (row?.checked_at) {
       const ageMs = Date.now() - new Date(row.checked_at).getTime();
       if (ageMs >= 0 && ageMs < BUNNY_HEALTH_ROW_FRESH_MS) {
@@ -90,12 +158,21 @@ async function readBunnyUsagePercent(supabase: any): Promise<number | null> {
   }
   // 2) no fresh row → live fetch, module-cached 60s so a burst of intents does
   //    not hammer Bunny's account API.
-  if (bunnyUsageCache && Date.now() - bunnyUsageCache.atMs < BUNNY_USAGE_CACHE_TTL_MS) {
+  if (
+    bunnyUsageCache &&
+    Date.now() - bunnyUsageCache.atMs < BUNNY_USAGE_CACHE_TTL_MS
+  ) {
     return bunnyUsageCache.value;
   }
-  const storageCap = resolveRuntimeNumber("bunny_storage_cap_bytes", "BUNNY_STORAGE_CAP_BYTES") ??
+  const storageCap = resolveRuntimeNumber(
+    "bunny_storage_cap_bytes",
+    "BUNNY_STORAGE_CAP_BYTES",
+  ) ??
     0;
-  const trafficCap = resolveRuntimeNumber("bunny_traffic_cap_bytes", "BUNNY_TRAFFIC_CAP_BYTES") ??
+  const trafficCap = resolveRuntimeNumber(
+    "bunny_traffic_cap_bytes",
+    "BUNNY_TRAFFIC_CAP_BYTES",
+  ) ??
     0;
   const usage = await bunnyFetchLibraryUsage();
   let value: number | null = null;
@@ -116,7 +193,9 @@ async function readBunnyUsagePercent(supabase: any): Promise<number | null> {
 async function checkBunnyCapacity(
   supabase: any,
 ): Promise<{ blocked: boolean; reason: string; usedPercent: number | null }> {
-  const rawCap = Number(Deno.env.get("EVENT_COVER_UPLOAD_HARD_CAP_PCT") ?? "90");
+  const rawCap = Number(
+    Deno.env.get("EVENT_COVER_UPLOAD_HARD_CAP_PCT") ?? "90",
+  );
   const hardCap = Number.isFinite(rawCap) ? rawCap : 90;
   const usedPercent = await readBunnyUsagePercent(supabase);
   return { ...evaluateCapacityBreaker(usedPercent, hardCap), usedPercent };
@@ -130,7 +209,12 @@ async function checkBunnyCapacity(
 // deno-lint-ignore no-explicit-any
 export async function reapSupersededBunnyAssets(
   supabase: any,
-  filter: { targetKind: "event" | "brand"; eventId: string | null; brandId: string; provider: string },
+  filter: {
+    targetKind: "event" | "brand";
+    eventId: string | null;
+    brandId: string;
+    provider: string;
+  },
 ): Promise<void> {
   if (filter.provider !== "bunny") return;
   const base = supabase
@@ -147,7 +231,12 @@ export async function reapSupersededBunnyAssets(
   if (error) return;
   for (
     const row of (data ?? []) as Array<
-      { id: string; provider?: string | null; source_asset_id?: unknown; source_public_id?: unknown }
+      {
+        id: string;
+        provider?: string | null;
+        source_asset_id?: unknown;
+        source_public_id?: unknown;
+      }
     >
   ) {
     const destroyed = await destroyCoverVideoAsset(row);
@@ -164,12 +253,67 @@ const defaultDeps = {
   bunnyCreateVideo,
   bunnyPresignTusUpload,
   checkBunnyCapacity,
+  destroyCoverVideoAsset,
+  bunnyFindVideoByTitle,
   providerConfigured,
   reapSupersededBunnyAssets,
+  requireCoverVideoTargetManager,
   requireBrandCoverManager,
   requireEventManager,
   requireUserId,
   serviceRoleClient,
+  sleep: (ms: number) =>
+    new Promise<void>((resolve) => setTimeout(resolve, ms)),
+};
+
+const isMissingDeterministicContract = (
+  error: { code?: string; message?: string } | null,
+): boolean =>
+  error !== null && (
+    ["PGRST202", "PGRST204", "42883", "42703"].includes(error.code ?? "") ||
+    /cover_video_create_or_replay_job|client_operation_id|source_sha256/i.test(
+      error.message ?? "",
+    )
+  );
+
+const withAllocationLease = async <T>(
+  supabase: ReturnType<typeof serviceRoleClient>,
+  jobId: string,
+  token: string,
+  operation: () => Promise<T>,
+): Promise<{ value: T; leaseOwned: boolean }> => {
+  let leaseOwned = true;
+  let renewal: Promise<void> | null = null;
+  const renew = (): Promise<void> => {
+    if (!leaseOwned) return Promise.resolve();
+    if (renewal) return renewal;
+    const pending = Promise.resolve(
+      supabase.rpc("cover_video_renew_provider_allocation", {
+        p_job_id: jobId,
+        p_token: token,
+        p_lease_seconds: 60,
+      }),
+    ).then(({ data, error }) => {
+      if (error || data !== true) leaseOwned = false;
+    }).catch(() => {
+      leaseOwned = false;
+    }).finally(() => {
+      if (renewal === pending) renewal = null;
+    });
+    renewal = pending;
+    return pending;
+  };
+  const timer = setInterval(() => {
+    void renew();
+  }, 20_000);
+  try {
+    const value = await operation();
+    if (renewal) await renewal;
+    return { value, leaseOwned };
+  } finally {
+    clearInterval(timer);
+    if (renewal) await renewal;
+  }
 };
 
 export const handleEventCoverVideoUploadIntent = async (
@@ -177,7 +321,9 @@ export const handleEventCoverVideoUploadIntent = async (
   deps: typeof defaultDeps = defaultDeps,
 ): Promise<Response> => {
   let requestId: string = crypto.randomUUID();
-  if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
   if (req.method !== "POST") {
     logWarn(requestId, "method_not_allowed", { method: req.method });
     return jsonResponse({ error: "method_not_allowed" }, 405);
@@ -185,7 +331,9 @@ export const handleEventCoverVideoUploadIntent = async (
 
   const userIdOrResponse = await deps.requireUserId(req);
   if (userIdOrResponse instanceof Response) {
-    logWarn(requestId, "auth_response_returned", { status: userIdOrResponse.status });
+    logWarn(requestId, "auth_response_returned", {
+      status: userIdOrResponse.status,
+    });
     return userIdOrResponse;
   }
   const userId = userIdOrResponse;
@@ -199,23 +347,38 @@ export const handleEventCoverVideoUploadIntent = async (
     applyMode?: string;
     sourceFileName?: string | null;
     sourceMimeType?: string | null;
+    sourceExtension?: string | null;
+    sourceSha256?: string | null;
     sourceBytes?: number | null;
     sourceDurationMs?: number | null;
     trimStartMs?: number;
     trimEndMs?: number;
     clientRequestId?: string;
+    clientOperationId?: string;
+    venueId?: string;
+    draftOwnerKey?: string;
+    refreshTransport?: boolean;
   };
   try {
     body = await req.json();
   } catch {
     logWarn(requestId, "invalid_json");
-    return jsonResponse({ error: "validation_error", detail: "invalid_json" }, 400);
+    return jsonResponse(
+      { error: "validation_error", detail: "invalid_json" },
+      400,
+    );
   }
-  if (typeof body.clientRequestId === "string" && body.clientRequestId.trim().length > 0) {
+  if (
+    typeof body.clientRequestId === "string" &&
+    body.clientRequestId.trim().length > 0
+  ) {
     requestId = body.clientRequestId.trim();
   }
 
-  const targetKind = body.target === "brand" ? "brand" : "event";
+  const targetKind = body.target === "brand" || body.target === "venue" ||
+      body.target === "venue_draft"
+    ? body.target
+    : "event";
 
   logInfo(requestId, "received", {
     applyMode: body.applyMode,
@@ -224,40 +387,56 @@ export const handleEventCoverVideoUploadIntent = async (
     targetKind,
     sourceBytes: body.sourceBytes,
     sourceDurationMs: body.sourceDurationMs,
-    sourceFileName: body.sourceFileName,
     sourceMimeType: body.sourceMimeType,
     trimEndMs: body.trimEndMs,
     trimStartMs: body.trimStartMs,
   });
 
-  if (!deps.providerConfigured()) {
-    logWarn(requestId, "provider_not_configured");
-    return jsonResponse({
-      error: "provider_not_configured",
-      detail: "Video cover processing is not configured yet. Images and GIFs still work.",
-    });
-  }
-
   const eventId = body.eventId;
   const brandId = body.brandId;
-  // ORCH-0989: event-target requires a valid eventId; brand-target must NOT
-  // carry one (the job is keyed on brand_id alone).
+  if (!isValidUuid(body.clientOperationId)) {
+    return jsonResponse({
+      error: "client_version_required",
+      detail: "client_operation_id_required",
+    }, 426);
+  }
   if (targetKind === "event" && !isValidUuid(eventId)) {
     logWarn(requestId, "event_id_invalid_uuid", { eventId });
-    return jsonResponse({ error: "validation_error", detail: "event_id_invalid_uuid" }, 400);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "event_id_invalid_uuid",
+    }, 400);
   }
   if (!isValidUuid(brandId)) {
     logWarn(requestId, "brand_id_invalid_uuid", { brandId });
-    return jsonResponse({ error: "validation_error", detail: "brand_id_invalid_uuid" }, 400);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "brand_id_invalid_uuid",
+    }, 400);
+  }
+  if (targetKind === "venue" && !isValidUuid(body.venueId)) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "venue_id_invalid_uuid",
+    }, 400);
+  }
+  if (
+    targetKind === "venue_draft" &&
+    (typeof body.draftOwnerKey !== "string" ||
+      body.draftOwnerKey.trim().length < 3 || body.draftOwnerKey.length > 160)
+  ) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "draft_owner_key_invalid",
+    }, 400);
   }
   // ORCH-0989: a brand is always "live", so brand video uses published_manual
   // apply semantics (apply step writes brands.cover_media_url on ready).
-  const applyMode =
-    targetKind === "brand"
-      ? "published_manual"
-      : body.applyMode === "published_manual"
-        ? "published_manual"
-        : "draft_auto";
+  const applyMode = targetKind !== "event"
+    ? "published_manual"
+    : body.applyMode === "published_manual"
+    ? "published_manual"
+    : "draft_auto";
   // ORCH-1308: source_bytes/source_duration_ms/trim_*_ms are INTEGER (bytes are
   // bigint) columns. A browser reports `<video>.duration` in FRACTIONAL seconds,
   // so the web path can send a non-integer ms (e.g. 17971.995) — Postgres then
@@ -271,16 +450,48 @@ export const handleEventCoverVideoUploadIntent = async (
   const sourceDurationMs = Math.round(Number(body.sourceDurationMs ?? 0));
   const trimStartMs = Math.round(Number(body.trimStartMs ?? 0));
   const rawTrimEndMs = Math.round(Number(body.trimEndMs ?? sourceDurationMs));
-  // Accept a generous source window for native keyframe overshoot, but persist a
-  // processed trim window capped at MAX_DURATION_MS. (ORCH-0978 AMENDMENT 8.)
-  const trimEndMs = Math.min(rawTrimEndMs, MAX_DURATION_MS);
+  const trimEndMs = rawTrimEndMs;
+  const sourceMimeType = String(body.sourceMimeType ?? "").toLowerCase();
+  const sourceExtension = String(body.sourceExtension ?? "").toLowerCase()
+    .replace(/^\./, "");
+  const sourceSha256 = String(body.sourceSha256 ?? "").toLowerCase();
+  const sourceFileName = typeof body.sourceFileName === "string"
+    ? body.sourceFileName.trim()
+    : "";
+  if (SOURCE_MIME_EXTENSIONS.get(sourceMimeType) !== sourceExtension) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "source_type_not_allowed",
+    }, 422);
+  }
+  if (
+    sourceFileName.length === 0 || sourceFileName.length > 255 ||
+    !sourceFileName.toLowerCase().endsWith(`.${sourceExtension}`)
+  ) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "source_file_name_invalid",
+    }, 422);
+  }
+  if (!SHA256_RE.test(sourceSha256)) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "source_sha256_invalid",
+    }, 422);
+  }
 
-  if (!Number.isFinite(sourceBytes) || sourceBytes <= 0 || sourceBytes > MAX_SOURCE_VIDEO_BYTES) {
+  if (
+    !Number.isFinite(sourceBytes) || sourceBytes <= 0 ||
+    sourceBytes > MAX_SOURCE_VIDEO_BYTES
+  ) {
     logWarn(requestId, "source_size_out_of_range", {
       maxSourceBytes: MAX_SOURCE_VIDEO_BYTES,
       sourceBytes,
     });
-    return jsonResponse({ error: "validation_error", detail: "source_size_out_of_range" }, 422);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "source_size_out_of_range",
+    }, 422);
   }
   if (
     !Number.isFinite(sourceDurationMs) ||
@@ -291,7 +502,10 @@ export const handleEventCoverVideoUploadIntent = async (
       maxSourceDurationMs: MAX_SOURCE_VIDEO_DURATION_MS,
       sourceDurationMs,
     });
-    return jsonResponse({ error: "validation_error", detail: "source_duration_out_of_range" }, 422);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "source_duration_out_of_range",
+    }, 422);
   }
   if (sourceDurationMs > SOURCE_CEILING_MS) {
     logWarn(requestId, "duration_over_cap", {
@@ -306,11 +520,17 @@ export const handleEventCoverVideoUploadIntent = async (
       422,
     );
   }
-  const trimError = validateTrimRange({ sourceDurationMs, trimStartMs, trimEndMs });
+  const trimError = validateTrimRange({
+    sourceDurationMs,
+    trimStartMs,
+    trimEndMs,
+  });
   if (trimError !== null) {
     let detail: unknown = "trim_invalid";
     try {
-      detail = (await trimError.clone().json() as { detail?: unknown }).detail ?? detail;
+      detail =
+        (await trimError.clone().json() as { detail?: unknown }).detail ??
+          detail;
     } catch {
       // Keep fallback detail for malformed diagnostic body.
     }
@@ -333,15 +553,24 @@ export const handleEventCoverVideoUploadIntent = async (
   const supabase = deps.serviceRoleClient();
   // ORCH-0989: brand-target gates on brand_admin (no events lookup);
   // event-target keeps the byte-for-byte event_manager gate.
-  const allowed =
-    targetKind === "brand"
-      ? await deps.requireBrandCoverManager(supabase, brandId as string, userId)
-      : await deps.requireEventManager(supabase, eventId as string, brandId as string, userId);
+  const allowed = await deps.requireCoverVideoTargetManager(supabase, {
+    targetKind,
+    eventId: targetKind === "event" ? eventId as string : null,
+    brandId: brandId as string,
+    venueId: targetKind === "venue" ? body.venueId as string : null,
+    draftOwnerKey: targetKind === "venue_draft"
+      ? body.draftOwnerKey!.trim()
+      : null,
+    requestedBy: userId,
+  }, userId);
   if (allowed instanceof Response) {
     let detail: unknown = null;
     let error: unknown = null;
     try {
-      const body = await allowed.clone().json() as { error?: unknown; detail?: unknown };
+      const body = await allowed.clone().json() as {
+        error?: unknown;
+        detail?: unknown;
+      };
       detail = body.detail ?? null;
       error = body.error ?? null;
     } catch {
@@ -360,10 +589,91 @@ export const handleEventCoverVideoUploadIntent = async (
     targetKind,
   });
 
-  // META-ORCH-1270 (Phase 2) — active provider decides host + upload descriptor.
-  // Determined here (before supersede) so the circuit-breaker can refuse a new
-  // upload WITHOUT cancelling the user's prior in-progress upload.
+  // Provider selection is deterministic configuration, not provider I/O. It is
+  // needed to validate immutable replay identity, but provider health/config is
+  // deliberately checked only after a same-operation terminal replay returns.
   const provider = coverVideoProvider();
+  const operationArgs = {
+    p_requested_by: userId,
+    p_client_operation_id: body.clientOperationId,
+    p_target_kind: targetKind,
+    p_event_id: targetKind === "event" ? eventId : null,
+    p_brand_id: brandId,
+    p_venue_id: targetKind === "venue" ? body.venueId : null,
+    p_draft_owner_key: targetKind === "venue_draft"
+      ? body.draftOwnerKey?.trim()
+      : null,
+    p_apply_mode: applyMode,
+    p_provider: provider,
+    p_source_file_name: sourceFileName,
+    p_source_mime_type: sourceMimeType,
+    p_source_extension: sourceExtension,
+    p_source_sha256: sourceSha256,
+    p_source_bytes: sourceBytes,
+    p_source_duration_ms: sourceDurationMs,
+    p_trim_start_ms: trimStartMs,
+    p_trim_end_ms: trimEndMs,
+  };
+
+  // Replay/schema probe. It cannot create or supersede. Therefore terminal and
+  // active same-operation truth always wins before capacity/provider work, while
+  // a genuinely new replacement remains non-destructive until capacity accepts.
+  let { data: job, error: insertError } = await supabase.rpc(
+    "cover_video_create_or_replay_job",
+    {
+      ...operationArgs,
+      p_accept_new: false,
+    },
+  );
+  if (insertError) {
+    if (isMissingDeterministicContract(insertError)) {
+      return jsonResponse({
+        error: "upload_temporarily_unavailable",
+        detail: "deterministic_upload_contract_pending",
+      }, 503);
+    }
+    if (
+      /cover_video_operation_identity_mismatch/i.test(
+        insertError?.message ?? "",
+      )
+    ) {
+      return jsonResponse({
+        error: "operation_conflict",
+        detail: "immutable_upload_identity_mismatch",
+      }, 409);
+    }
+    console.error(
+      "[event-cover-video-upload-intent]",
+      JSON.stringify({
+        brandId,
+        code: insertError?.code,
+        eventId,
+        requestId,
+        stage: "job_insert_failed",
+      }),
+    );
+    return jsonResponse(
+      { error: "internal_error", detail: "job_insert_failed" },
+      500,
+    );
+  }
+  const replayed = job !== null;
+  if (replayed && NO_UPLOAD_REPLAY_STATUSES.has(String(job.status))) {
+    logInfo(requestId, "terminal_replay", {
+      jobId: job.id,
+      status: job.status,
+    });
+    return canonicalJobResponse(job as Record<string, unknown>);
+  }
+
+  if (!deps.providerConfigured()) {
+    logWarn(requestId, "provider_not_configured");
+    return jsonResponse({
+      error: "provider_not_configured",
+      detail:
+        "Video cover processing is not configured yet. Images and GIFs still work.",
+    });
+  }
 
   // META-ORCH-1270 (Phase 2) — pre-upload circuit-breaker (Bunny only). BEFORE
   // creating any Bunny video, refuse if usage% >= the hard cap so blowing past
@@ -371,144 +681,404 @@ export const handleEventCoverVideoUploadIntent = async (
   // FAIL-OPEN on an unreadable usage (documented); a real reading >= cap fails
   // CLOSED with {error:"capacity_reached"}. Optional-chained so the Phase-1 test
   // deps (which omit checkBunnyCapacity) are unaffected.
-  if (provider === "bunny" && deps.checkBunnyCapacity) {
+  if (!replayed && provider === "bunny" && deps.checkBunnyCapacity) {
     const capacity = await deps.checkBunnyCapacity(supabase);
     if (capacity.blocked) {
-      logWarn(requestId, "capacity_reached", { usedPercent: capacity.usedPercent });
+      logWarn(requestId, "capacity_reached", {
+        usedPercent: capacity.usedPercent,
+      });
       return jsonResponse(
         {
           error: "capacity_reached",
-          detail: "Cover video uploads are temporarily paused (storage/traffic cap reached). Try again later.",
+          detail:
+            "Cover video uploads are temporarily paused (storage/traffic cap reached). Try again later.",
         },
         503,
       );
     }
     if (capacity.reason === "usage_unreadable_fail_open") {
-      logWarn(requestId, "bunny_usage_unreadable_fail_open", { usedPercent: capacity.usedPercent });
+      logWarn(requestId, "bunny_usage_unreadable_fail_open", {
+        usedPercent: capacity.usedPercent,
+      });
     }
   }
 
-  // ORCH-0989: supersede prior active jobs. Event-target keys on event_id
-  // (filter order preserved: .eq() then .not()); brand-target keys on
-  // brand_id + target_kind='brand' (no event_id).
-  const supersedeBase = supabase
-    .from("event_cover_video_jobs")
-    .update({
-      status: "cancelled",
-      cancelled_at: new Date().toISOString(),
-      failure_code: "superseded",
-      failure_message: "Superseded by a newer cover video upload.",
+  if (!replayed) {
+    const accepted = await supabase.rpc("cover_video_create_or_replay_job", {
+      ...operationArgs,
+      p_accept_new: true,
     });
-  const { error: cancelError } =
-    targetKind === "brand"
-      ? await supersedeBase
-          .eq("brand_id", brandId as string)
-          .eq("target_kind", "brand")
-          .not("status", "in", "(failed,cancelled,applied)")
-      : await supersedeBase
-          .eq("event_id", eventId as string)
-          .not("status", "in", "(failed,cancelled,applied)");
-  if (cancelError) {
-    logWarn(requestId, "active_job_cancel_failed", {
-      code: cancelError.code,
-      details: cancelError.details,
-      hint: cancelError.hint,
-      message: cancelError.message,
-    });
-  } else {
-    logInfo(requestId, "active_jobs_cancelled", { eventId });
-    // META-ORCH-1270 (Phase 2) — reap the superseded Bunny assets so an orphaned
-    // upload never lingers in the library. Optional-chained (Phase-1 test deps
-    // omit it) and best-effort (never fails the intent).
-    await deps.reapSupersededBunnyAssets?.(supabase, {
-      targetKind,
-      eventId: eventId ?? null,
-      brandId: brandId as string,
-      provider,
-    });
+    job = accepted.data;
+    insertError = accepted.error;
+    if (insertError || !job) {
+      if (isMissingDeterministicContract(insertError)) {
+        return jsonResponse({
+          error: "upload_temporarily_unavailable",
+          detail: "deterministic_upload_contract_pending",
+        }, 503);
+      }
+      if (
+        /cover_video_operation_identity_mismatch/i.test(
+          insertError?.message ?? "",
+        )
+      ) {
+        return jsonResponse({
+          error: "operation_conflict",
+          detail: "immutable_upload_identity_mismatch",
+        }, 409);
+      }
+      return jsonResponse({
+        error: "internal_error",
+        detail: "job_insert_failed",
+      }, 500);
+    }
   }
-
-  // META-ORCH-1270 — stamp the active provider on the job row so the webhook +
-  // destroy path route on the row's own provider value (not just the current env).
-  const { data: job, error: insertError } = await supabase
-    .from("event_cover_video_jobs")
-    .insert({
-      // ORCH-0989: brand-target jobs carry no event_id (row CHECK enforces it).
-      event_id: targetKind === "brand" ? null : eventId,
-      target_kind: targetKind,
-      brand_id: brandId,
-      requested_by: userId,
-      provider,
-      status: "source_uploading",
-      apply_mode: applyMode,
-      source_file_name: body.sourceFileName ?? null,
-      source_mime_type: body.sourceMimeType ?? null,
-      source_bytes: sourceBytes,
-      source_duration_ms: sourceDurationMs,
-      trim_start_ms: trimStartMs,
-      trim_end_ms: trimEndMs,
-    })
-    .select("id")
-    .single();
-  if (insertError || !job) {
-    console.error("[event-cover-video-upload-intent]", JSON.stringify({
-      brandId,
-      code: insertError?.code,
-      details: insertError?.details,
-      eventId,
-      hint: insertError?.hint,
-      message: insertError?.message,
-      requestId,
-      stage: "job_insert_failed",
-    }));
-    return jsonResponse(
-      { error: "internal_error", detail: "job_insert_failed" },
-      500,
-    );
-  }
-  logInfo(requestId, "job_insert_pass", { jobId: job.id });
+  logInfo(requestId, "job_insert_pass", { jobId: job.id, replayed });
 
   // META-ORCH-1270 — Bunny branch. Create the Bunny video object, persist its
   // guid into source_asset_id (the webhook + destroy lookup key), and return a
   // TUS upload descriptor (the AccessKey NEVER reaches the client — only the
   // presigned AuthorizationSignature does). Cloudinary branch below is untouched.
   if (provider === "bunny") {
-    const create = await deps.bunnyCreateVideo(job.id);
-    if (!create.ok) {
-      await supabase
-        .from("event_cover_video_jobs")
-        .update({
-          status: "failed",
-          completed_at: new Date().toISOString(),
-          failure_code: "provider_create_failed",
-          failure_message: "Could not create the video on the media host. Try again.",
-        })
-        .eq("id", job.id);
-      logWarn(requestId, "bunny_create_failed", { jobId: job.id, reason: create.reason });
-      return jsonResponse(
-        { error: "internal_error", detail: "provider_create_failed" },
-        500,
-      );
-    }
-    const libraryId = Deno.env.get("BUNNY_STREAM_LIBRARY_ID") ?? "";
-    const cdnHostname = Deno.env.get("BUNNY_STREAM_CDN_HOSTNAME") ?? "";
-    const { error: bunnyPayloadError } = await supabase
-      .from("event_cover_video_jobs")
-      .update({
-        source_asset_id: create.guid,
-        provider_payload: {
-          bunny: { videoId: create.guid, libraryId, cdnHostname },
+    let videoId = typeof job.source_asset_id === "string"
+      ? job.source_asset_id
+      : "";
+    if (
+      typeof job.tus_resource_url !== "string" ||
+      job.tus_resource_url.length === 0
+    ) {
+      const claim = await supabase.rpc(
+        "cover_video_claim_provider_allocation",
+        {
+          p_job_id: job.id,
+          p_lease_seconds: 60,
         },
-      })
-      .eq("id", job.id);
-    if (bunnyPayloadError) {
-      logWarn(requestId, "bunny_payload_update_failed", {
-        code: bunnyPayloadError.code,
-        jobId: job.id,
-        message: bunnyPayloadError.message,
-      });
+      );
+      if (claim.error || !claim.data) {
+        return jsonResponse({
+          error: "upload_temporarily_unavailable",
+          detail: "provider_allocation_claim_unavailable",
+        }, 503);
+      }
+      const claimed = claim.data as Record<string, unknown>;
+      if (TERMINAL_JOB_STATUSES.has(String(claimed.status))) {
+        return canonicalJobResponse(claimed);
+      }
+      if (
+        typeof claimed.tus_resource_url === "string" &&
+        typeof claimed.source_asset_id === "string"
+      ) {
+        Object.assign(job, claimed);
+        videoId = claimed.source_asset_id;
+      } else if (typeof claimed.provider_allocation_token !== "string") {
+        // A bounded edge request returns active canonical truth. The client
+        // replays the same immutable operation using retryAfterMs; it is not a
+        // loser failure and is not tied to an arbitrary ten-second timeout.
+        return initializingJobResponse(claimed);
+      } else {
+        const leaseToken = claimed.provider_allocation_token;
+        videoId = typeof claimed.source_asset_id === "string"
+          ? claimed.source_asset_id
+          : videoId;
+        if (
+          videoId.length === 0 &&
+          claimed.provider_allocation_uncertain_at != null
+        ) {
+          if (claimed.provider_allocation_identity !== job.id) {
+            return initializingJobResponse(claimed);
+          }
+          const lookup = await withAllocationLease(
+            supabase,
+            job.id,
+            leaseToken,
+            () => deps.bunnyFindVideoByTitle(job.id),
+          );
+          if (!lookup.leaseOwned || !lookup.value.ok) {
+            return initializingJobResponse(claimed);
+          }
+          const resolution = await supabase.rpc(
+            "cover_video_resolve_provider_allocation",
+            {
+              p_job_id: job.id,
+              p_token: leaseToken,
+              p_source_asset_id: lookup.value.guid,
+              p_absent: lookup.value.guid === null,
+            },
+          );
+          if (resolution.error || !resolution.data) {
+            return initializingJobResponse(claimed);
+          }
+          Object.assign(job, resolution.data);
+          videoId = typeof resolution.data.source_asset_id === "string"
+            ? resolution.data.source_asset_id
+            : "";
+        }
+        if (videoId.length === 0) {
+          const begun = await supabase.rpc(
+            "cover_video_begin_provider_create",
+            {
+              p_job_id: job.id,
+              p_token: leaseToken,
+              p_identity: job.id,
+            },
+          );
+          if (begun.error || !begun.data) {
+            return initializingJobResponse(claimed);
+          }
+          const created = await withAllocationLease(
+            supabase,
+            job.id,
+            leaseToken,
+            () => deps.bunnyCreateVideo(job.id),
+          );
+          const create = created.value;
+          if (!created.leaseOwned) return initializingJobResponse(claimed);
+          if (!create.ok) {
+            await supabase.rpc(
+              "cover_video_record_provider_allocation_attempt",
+              {
+                p_job_id: job.id,
+                p_token: leaseToken,
+                p_source_asset_id: null,
+                p_error: create.reason,
+              },
+            );
+            if (create.retryable !== false) {
+              return initializingJobResponse(claimed);
+            }
+            const failed = await supabase.rpc("cover_video_transition_job", {
+              p_job_id: job.id,
+              p_from_statuses: ["source_uploading"],
+              p_to_status: "failed",
+              p_provider_status: null,
+              p_provider_progress: null,
+              p_patch: {
+                failure_code: "provider_create_rejected",
+                failure_message: "Video upload could not be created.",
+              },
+            });
+            return failed.data
+              ? canonicalJobResponse(failed.data as Record<string, unknown>)
+              : initializingJobResponse(claimed);
+          }
+          videoId = create.guid;
+          const recorded = await supabase.rpc(
+            "cover_video_record_provider_allocation_attempt",
+            {
+              p_job_id: job.id,
+              p_token: leaseToken,
+              p_source_asset_id: videoId,
+              p_error: null,
+            },
+          );
+          if (recorded.error || !recorded.data) {
+            // The pre-Create uncertainty marker remains durable. If the record
+            // response was lost after commit, canonical readback recovers it;
+            // otherwise the next claimant must provider-lookup by exact title.
+            const reread = await supabase.from("event_cover_video_jobs")
+              .select("*").eq("id", job.id).maybeSingle();
+            if (reread.data?.source_asset_id === videoId) {
+              Object.assign(job, reread.data);
+            } else {
+              return initializingJobResponse(claimed);
+            }
+          } else {
+            Object.assign(job, recorded.data);
+          }
+        }
+
+        const presign = await deps.bunnyPresignTusUpload(videoId);
+        const createdTus = await withAllocationLease(
+          supabase,
+          job.id,
+          leaseToken,
+          async () => {
+            try {
+              const response = await fetch(presign.tusEndpoint, {
+                method: "POST",
+                headers: {
+                  AuthorizationSignature: presign.authorizationSignature,
+                  AuthorizationExpire: String(presign.authorizationExpire),
+                  LibraryId: presign.libraryId,
+                  VideoId: presign.videoId,
+                  "Tus-Resumable": "1.0.0",
+                  "Upload-Length": String(sourceBytes),
+                  "Upload-Metadata": `filetype ${btoa(sourceMimeType)},title ${
+                    btoa(job.id)
+                  },sha256 ${btoa(sourceSha256)}`,
+                },
+              });
+              return { response, networkError: null as string | null };
+            } catch {
+              return { response: null, networkError: "tus_create_network" };
+            }
+          },
+        );
+        const createTus = createdTus.value.response;
+        const location = createTus?.headers.get("location") ?? null;
+        const tusRetryable = createTus === null || createTus.status >= 500 ||
+          createTus.status === 408 || createTus.status === 429 ||
+          (createTus.status === 201 && location === null);
+        if (!createdTus.leaseOwned || tusRetryable) {
+          await supabase.rpc("cover_video_record_provider_allocation_attempt", {
+            p_job_id: job.id,
+            p_token: leaseToken,
+            p_source_asset_id: videoId,
+            p_error: createdTus.value.networkError ??
+              `tus_create_http_${createTus?.status ?? "unknown"}`,
+          });
+          return initializingJobResponse({
+            ...claimed,
+            source_asset_id: videoId,
+          });
+        }
+        if (createTus?.status !== 201 || location === null) {
+          const failed = await supabase.rpc("cover_video_transition_job", {
+            p_job_id: job.id,
+            p_from_statuses: ["source_uploading"],
+            p_to_status: "failed",
+            p_provider_status: null,
+            p_provider_progress: null,
+            p_patch: {
+              failure_code: "provider_transport_rejected",
+              failure_message: "Video upload transport was rejected.",
+            },
+          });
+          if (failed.data?.status === "failed") {
+            await deps.destroyCoverVideoAsset({ source_asset_id: videoId });
+          }
+          return failed.data
+            ? canonicalJobResponse(failed.data as Record<string, unknown>)
+            : initializingJobResponse(claimed);
+        }
+        const tusResourceUrl = new URL(location, presign.tusEndpoint)
+          .toString();
+        const commitArgs = {
+          p_job_id: job.id,
+          p_token: leaseToken,
+          p_source_asset_id: videoId,
+          p_source_public_id: videoId,
+          p_tus_url: tusResourceUrl,
+          p_tus_length: sourceBytes,
+          p_expires_at: new Date(presign.authorizationExpire * 1000)
+            .toISOString(),
+        };
+        let commit = await supabase.rpc(
+          "cover_video_commit_provider_allocation",
+          commitArgs,
+        );
+        let committed = commit.data as Record<string, unknown> | null;
+        let commitFailed = commit.error !== null || committed === null;
+        for (let attempt = 0; commitFailed && attempt < 2; attempt += 1) {
+          const reread = await supabase.from("event_cover_video_jobs").select(
+            "*",
+          ).eq("id", job.id).maybeSingle();
+          if (reread.error || !reread.data) {
+            return initializingJobResponse({
+              ...claimed,
+              source_asset_id: videoId,
+            });
+          }
+          const canonical = reread.data as Record<string, unknown>;
+          if (
+            canonical.source_asset_id === videoId &&
+            canonical.tus_resource_url === tusResourceUrl
+          ) {
+            committed = canonical;
+            commitFailed = false;
+            break;
+          }
+          if (
+            canonical.provider_allocation_token === leaseToken &&
+            canonical.source_asset_id === videoId &&
+            canonical.status === "source_uploading"
+          ) {
+            commit = await supabase.rpc(
+              "cover_video_commit_provider_allocation",
+              commitArgs,
+            );
+            committed = commit.data as Record<string, unknown> | null;
+            commitFailed = commit.error !== null || committed === null;
+            continue;
+          }
+          // A different canonical owner/asset is definitive loss. Delete only
+          // this caller's now-proven orphan, never an uncertain/canonical asset.
+          if (
+            canonical.source_asset_id !== videoId &&
+            canonical.provider_allocation_token !== leaseToken
+          ) {
+            await deps.destroyCoverVideoAsset({ source_asset_id: videoId });
+          }
+          return TERMINAL_JOB_STATUSES.has(String(canonical.status))
+            ? canonicalJobResponse(canonical)
+            : initializingJobResponse(canonical);
+        }
+        if (commitFailed || committed === null) {
+          return initializingJobResponse({
+            ...claimed,
+            source_asset_id: videoId,
+          });
+        }
+        Object.assign(job, committed);
+      }
     }
-    const presign = await deps.bunnyPresignTusUpload(create.guid);
+    const presign = await deps.bunnyPresignTusUpload(videoId);
+    let tusResourceUrl = typeof job.tus_resource_url === "string"
+      ? job.tus_resource_url
+      : "";
+    if (tusResourceUrl.length === 0) {
+      return jsonResponse({
+        error: "internal_error",
+        detail: "transport_missing",
+      }, 500);
+    }
+    if (body.refreshTransport === true) {
+      if (Number(job.tus_upload_offset ?? 0) !== 0) {
+        return jsonResponse({
+          error: "transport_conflict",
+          detail: "uploaded_transport_cannot_be_replaced",
+        }, 409);
+      }
+      const createTus = await fetch(presign.tusEndpoint, {
+        method: "POST",
+        headers: {
+          AuthorizationSignature: presign.authorizationSignature,
+          AuthorizationExpire: String(presign.authorizationExpire),
+          LibraryId: presign.libraryId,
+          VideoId: presign.videoId,
+          "Tus-Resumable": "1.0.0",
+          "Upload-Length": String(sourceBytes),
+          "Upload-Metadata": `filetype ${btoa(sourceMimeType)},title ${
+            btoa(job.id)
+          },sha256 ${btoa(sourceSha256)}`,
+        },
+      });
+      const location = createTus.headers.get("location");
+      if (createTus.status !== 201 || location === null) {
+        return jsonResponse({
+          error: "transport_integrity_failed",
+          detail: "tus_create_failed",
+        }, 502);
+      }
+      const replacementUrl = new URL(location, presign.tusEndpoint).toString();
+      const { data: replaced, error: replaceError } = await supabase.rpc(
+        "cover_video_replace_transport",
+        {
+          p_job_id: job.id,
+          p_expected_url: tusResourceUrl,
+          p_new_url: replacementUrl,
+          p_expires_at: new Date(presign.authorizationExpire * 1000)
+            .toISOString(),
+        },
+      );
+      if (replaceError || replaced?.tus_resource_url !== replacementUrl) {
+        return jsonResponse({
+          error: "transport_conflict",
+          detail: "transport_replace_race",
+        }, 409);
+      }
+      tusResourceUrl = replacementUrl;
+    }
     logInfo(requestId, "returned", { jobId: job.id, provider: "bunny" });
     return jsonResponse({
       jobId: job.id,
@@ -516,7 +1086,7 @@ export const handleEventCoverVideoUploadIntent = async (
       maxDurationMs: MAX_DURATION_MS,
       finalMaxBytes: 25 * 1024 * 1024,
       upload: {
-        url: presign.tusEndpoint,
+        url: tusResourceUrl,
         // NEW discriminator the client branches on ("tus" vs the implicit
         // Cloudinary multipart path). The Cloudinary branch omits `protocol`;
         // the client treats any non-"tus" value (including absent) as Cloudinary.
@@ -530,7 +1100,8 @@ export const handleEventCoverVideoUploadIntent = async (
           VideoId: presign.videoId,
         },
         metadata: {
-          filetype: body.sourceMimeType ?? "video/mp4",
+          filetype: sourceMimeType,
+          sha256: sourceSha256,
           title: job.id,
         },
       },

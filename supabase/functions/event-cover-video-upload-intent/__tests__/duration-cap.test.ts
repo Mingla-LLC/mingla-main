@@ -1,12 +1,5 @@
-// #966 [TEST-MOD-APPROVED ORCH-0966] — cover-video is Bunny-only. The upload
-// intent used to run the Cloudinary signature/URL branch by default; post-#966
-// coverVideoProvider() is hard-wired to "bunny", so the intent runs the Bunny/TUS
-// branch. This suite is adapted to inject Bunny deps (bunnyCreateVideo /
-// bunnyPresignTusUpload) instead of the removed cloudinarySignature dep, and the
-// Cloudinary `eager`/`du_30` payload assertion was retired. The LIVE, provider-
-// agnostic duration-cap boundaries — 33000ms accept / 33001ms reject (the 33001
-// reject returns 422 before any provider branch) and the trim-clamp insert
-// values — are preserved verbatim.
+// [TEST-MOD-APPROVED #2715 A8] Exact 15-second server contract. Restoring the
+// former 33-second ceiling or trim clamping makes these executable proofs fail.
 import {
   handleEventCoverVideoUploadIntent,
   SOURCE_CEILING_MS,
@@ -14,172 +7,200 @@ import {
 
 const EVENT_ID = "09b4ece6-eabc-4734-8ce3-3a25d90417e4";
 const BRAND_ID = "22a18413-bfbf-4087-9ba7-45f70deba0f3";
-
-type UploadIntentTestBody = {
-  sourceDurationMs?: number;
+const OP_ID = "33a18413-bfbf-4087-9ba7-45f70deba0f3";
+const SHA = "a".repeat(64);
+type Input = {
+  sourceDurationMs: number;
   trimEndMs?: number;
   trimStartMs?: number;
 };
+type Capture = { rpc?: Record<string, unknown>; allocations: number };
 
-type CapturedUploadIntentWrite = {
-  insert?: Record<string, unknown>;
-  providerPayload?: Record<string, unknown>;
-};
-
-const makeRequest = (body: UploadIntentTestBody): Request =>
-  new Request("https://example.test/functions/v1/event-cover-video-upload-intent", {
-    body: JSON.stringify({
-      applyMode: "published_manual",
-      brandId: BRAND_ID,
-      eventId: EVENT_ID,
-      sourceBytes: 289420,
-      sourceDurationMs: body.sourceDurationMs,
-      trimEndMs: body.trimEndMs,
-      trimStartMs: body.trimStartMs,
-    }),
-    headers: {
-      Authorization: "Bearer user-session-jwt",
-      "Content-Type": "application/json",
+const makeRequest = (body: Input) =>
+  new Request(
+    "https://example.test/functions/v1/event-cover-video-upload-intent",
+    {
+      method: "POST",
+      headers: {
+        Authorization: "Bearer test",
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        applyMode: "published_manual",
+        brandId: BRAND_ID,
+        eventId: EVENT_ID,
+        clientOperationId: OP_ID,
+        sourceBytes: 289420,
+        sourceDurationMs: body.sourceDurationMs,
+        trimEndMs: body.trimEndMs ?? body.sourceDurationMs,
+        trimStartMs: body.trimStartMs ?? 0,
+        sourceFileName: "cover.mp4",
+        sourceMimeType: "video/mp4",
+        sourceExtension: "mp4",
+        sourceSha256: SHA,
+      }),
     },
-    method: "POST",
-  });
+  );
 
-const createSupabaseStub = (captured: CapturedUploadIntentWrite = {}) => {
-  const updateResult = { error: null };
-  const eqResult = {
-    not: () => Promise.resolve(updateResult),
-    then: (resolve: (value: typeof updateResult) => unknown) =>
-      Promise.resolve(updateResult).then(resolve),
+const createHarness = (capture: Capture) => {
+  const job = {
+    id: "job_source_ceiling",
+    status: "source_uploading",
+    source_bytes: 289420,
+    source_asset_id: null,
+    tus_resource_url: null,
+    tus_upload_offset: 0,
+  };
+  const supabase = {
+    rpc: (name: string, args: Record<string, unknown>) => {
+      if (name === "cover_video_create_or_replay_job") {
+        capture.rpc = args;
+        return Promise.resolve({
+          data: args.p_accept_new === false ? null : job,
+          error: null,
+        });
+      }
+      if (name === "cover_video_claim_provider_allocation") {
+        return Promise.resolve({
+          data: { ...job, provider_allocation_token: "lease-token" },
+          error: null,
+        });
+      }
+      // [TEST-MOD-APPROVED #2715 A15] Fixture-only durable uncertainty claim for
+      // the exact/sub-cap happy paths; rejection ordering remains untouched.
+      if (name === "cover_video_begin_provider_create") {
+        return Promise.resolve({
+          data: {
+            ...job,
+            provider_allocation_token: "lease-token",
+            provider_allocation_identity: job.id,
+            provider_allocation_uncertain_at: new Date().toISOString(),
+          },
+          error: null,
+        });
+      }
+      if (name === "cover_video_record_provider_allocation_attempt") {
+        return Promise.resolve({
+          data: {
+            ...job,
+            source_asset_id: "guid",
+            provider_allocation_token: "lease-token",
+          },
+          error: null,
+        });
+      }
+      if (name === "cover_video_commit_provider_allocation") {
+        return Promise.resolve({
+          data: {
+            ...job,
+            source_asset_id: "guid",
+            tus_resource_url: "https://video.bunnycdn.com/tusupload/resource",
+          },
+          error: null,
+        });
+      }
+      throw new Error(`unexpected rpc ${name}`);
+    },
   };
   return {
-    from: (table: string) => {
-      if (table !== "event_cover_video_jobs") {
-        throw new Error(`Unexpected table ${table}`);
-      }
-      return {
-        insert: (payload: Record<string, unknown>) => {
-          captured.insert = payload;
-          return {
-            select: () => ({
-              single: () => Promise.resolve({ data: { id: "job_source_ceiling" }, error: null }),
-            }),
-          };
-        },
-        update: (payload: Record<string, unknown>) => ({
-          eq: (column: string) => {
-            if (column === "id") {
-              captured.providerPayload = payload;
-            }
-            return eqResult;
-          },
-        }),
-      };
+    bunnyCreateVideo: () => {
+      capture.allocations += 1;
+      return Promise.resolve({ ok: true as const, guid: "guid" });
     },
+    bunnyPresignTusUpload: () =>
+      Promise.resolve({
+        tusEndpoint: "https://video.bunnycdn.com/tusupload",
+        libraryId: "lib",
+        videoId: "guid",
+        authorizationSignature: "sig",
+        authorizationExpire: 2_000_000_000,
+      }),
+    checkBunnyCapacity: () =>
+      Promise.resolve({ blocked: false, reason: "under_cap", usedPercent: 1 }),
+    destroyCoverVideoAsset: () => Promise.resolve({ ok: true as const }),
+    providerConfigured: () => true,
+    reapSupersededBunnyAssets: () => Promise.resolve(),
+    requireCoverVideoTargetManager: () => Promise.resolve({ target: {} }),
+    requireUserId: () =>
+      Promise.resolve("44a18413-bfbf-4087-9ba7-45f70deba0f3"),
+    serviceRoleClient: () => supabase,
   };
 };
 
-// #966 — Bunny deps replace the removed cloudinarySignature dep. bunnyCreateVideo
-// returns a guid; bunnyPresignTusUpload returns a TUS descriptor. The intent's
-// Bunny branch returns 200 with { jobId, provider: "bunny", upload: { protocol:
-// "tus", ... } }.
-const createDeps = (captured: CapturedUploadIntentWrite = {}) => ({
-  bunnyCreateVideo: () => Promise.resolve({ ok: true as const, guid: "bunny-guid-source-ceiling" }),
-  bunnyPresignTusUpload: () =>
-    Promise.resolve({
-      tusEndpoint: "https://video.bunnycdn.com/tusupload",
-      libraryId: "lib-test",
-      videoId: "bunny-guid-source-ceiling",
-      authorizationSignature: "sig-test",
-      authorizationExpire: 1_760_000_000,
-    }),
-  providerConfigured: () => true,
-  requireEventManager: () =>
-    Promise.resolve({ event: { brand_id: BRAND_ID, id: EVENT_ID, status: "published" } }),
-  requireUserId: () => Promise.resolve("user_123"),
-  serviceRoleClient: () => createSupabaseStub(captured),
-});
+const withTusCreate = async (fn: () => Promise<void>) => {
+  const old = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(null, {
+        status: 201,
+        headers: { location: "/tusupload/resource" },
+      }),
+    )) as typeof fetch;
+  try {
+    await fn();
+  } finally {
+    globalThis.fetch = old;
+  }
+};
+const assert = (condition: boolean, message: string) => {
+  if (!condition) throw new Error(message);
+};
 
-Deno.test("ORCH-0978 duration cap accepts 33000ms source boundary", async () => {
+Deno.test("#2715 accepts the exact 15000ms boundary", async () =>
+  withTusCreate(async () => {
+    const capture: Capture = { allocations: 0 };
+    const response = await handleEventCoverVideoUploadIntent(
+      makeRequest({ sourceDurationMs: SOURCE_CEILING_MS }),
+      createHarness(capture) as never,
+    );
+    assert(SOURCE_CEILING_MS === 15_000, "ceiling must be exactly 15000");
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    assert(capture.allocations === 1, "expected one allocation");
+    assert(
+      capture.rpc?.p_source_duration_ms === 15_000 &&
+        capture.rpc?.p_trim_end_ms === 15_000,
+      "exact boundary must persist unchanged",
+    );
+  }));
+
+Deno.test("#2715 rejects 15001ms before provider allocation", async () => {
+  const capture: Capture = { allocations: 0 };
   const response = await handleEventCoverVideoUploadIntent(
-    makeRequest({ sourceDurationMs: SOURCE_CEILING_MS }),
-    createDeps() as never,
+    makeRequest({ sourceDurationMs: 15_001 }),
+    createHarness(capture) as never,
   );
-  const body = await response.json();
-
-  if (response.status !== 200) {
-    throw new Error(`Expected 200 at boundary, received ${response.status}`);
-  }
-  if (body.jobId !== "job_source_ceiling") {
-    throw new Error(`Expected jobId job_source_ceiling, received ${String(body.jobId)}`);
-  }
+  assert(response.status === 422, `expected 422, got ${response.status}`);
+  assert(capture.allocations === 0, "over-cap source allocated provider asset");
 });
 
-Deno.test("ORCH-0978 duration cap rejects 33001ms", async () => {
+Deno.test("#2715 rejects an above-cap source instead of clamping its trim", async () => {
+  const capture: Capture = { allocations: 0 };
   const response = await handleEventCoverVideoUploadIntent(
-    makeRequest({ sourceDurationMs: SOURCE_CEILING_MS + 1 }),
-    createDeps() as never,
+    makeRequest({ sourceDurationMs: 31_000, trimEndMs: 31_000 }),
+    createHarness(capture) as never,
   );
-  const body = await response.json();
-  const expected = {
-    error: "duration_over_cap",
-    detail: {
-      sourceDurationMs: SOURCE_CEILING_MS + 1,
-      ceilingMs: SOURCE_CEILING_MS,
-    },
-  };
-
-  if (response.status !== 422) {
-    throw new Error(`Expected 422 above boundary, received ${response.status}`);
-  }
-  if (JSON.stringify(body) !== JSON.stringify(expected)) {
-    throw new Error(`Unexpected body: ${JSON.stringify(body)}`);
-  }
+  assert(response.status === 422, `expected 422, got ${response.status}`);
+  assert(
+    capture.rpc === undefined,
+    "above-cap source reached durable job creation",
+  );
+  assert(capture.allocations === 0, "above-cap source reached provider");
 });
 
-Deno.test("ORCH-0978 generous source clamps persisted trim window to 30000ms", async () => {
-  const captured: CapturedUploadIntentWrite = {};
-  const response = await handleEventCoverVideoUploadIntent(
-    makeRequest({ sourceDurationMs: 31_000, trimEndMs: 31_000, trimStartMs: 0 }),
-    createDeps(captured) as never,
-  );
-  const body = await response.json();
-
-  if (response.status !== 200) {
-    throw new Error(
-      `Expected 200 for clamped source, received ${response.status}: ${JSON.stringify(body)}`,
+Deno.test("#2715 preserves a valid sub-cap source and trim exactly", async () =>
+  withTusCreate(async () => {
+    const capture: Capture = { allocations: 0 };
+    const response = await handleEventCoverVideoUploadIntent(
+      makeRequest({ sourceDurationMs: 12_400, trimEndMs: 12_400 }),
+      createHarness(capture) as never,
     );
-  }
-  if (captured.insert?.source_duration_ms !== 31_000) {
-    throw new Error(
-      `Expected source_duration_ms=31000, received ${String(captured.insert?.source_duration_ms)}`,
+    assert(response.status === 200, `expected 200, got ${response.status}`);
+    assert(
+      capture.rpc?.p_source_duration_ms === 12_400,
+      "source duration changed",
     );
-  }
-  if (captured.insert?.trim_end_ms !== 30_000) {
-    throw new Error(
-      `Expected clamped trim_end_ms=30000, received ${String(captured.insert?.trim_end_ms)}`,
+    assert(
+      capture.rpc?.p_trim_end_ms === 12_400,
+      "trim was clamped or changed",
     );
-  }
-});
-
-Deno.test("ORCH-0978 normal native trim remains unclamped", async () => {
-  const captured: CapturedUploadIntentWrite = {};
-  const response = await handleEventCoverVideoUploadIntent(
-    makeRequest({ sourceDurationMs: 29_400, trimEndMs: 29_400, trimStartMs: 0 }),
-    createDeps(captured) as never,
-  );
-  const body = await response.json();
-
-  if (response.status !== 200) {
-    throw new Error(
-      `Expected 200 for normal trim, received ${response.status}: ${JSON.stringify(body)}`,
-    );
-  }
-  if (captured.insert?.source_duration_ms !== 29_400) {
-    throw new Error(
-      `Expected source_duration_ms=29400, received ${String(captured.insert?.source_duration_ms)}`,
-    );
-  }
-  if (captured.insert?.trim_end_ms !== 29_400) {
-    throw new Error(`Expected trim_end_ms=29400, received ${String(captured.insert?.trim_end_ms)}`);
-  }
-});
+  }));

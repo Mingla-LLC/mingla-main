@@ -46,4 +46,9 @@ export type CoverTarget =
       brandId: string;
       /** venue_listings row id — the cover's true owner (host-persisted). */
       venueId: string;
+    }
+  | {
+      kind: "venue_draft";
+      brandId: string;
+      draftOwnerKey: string;
     };

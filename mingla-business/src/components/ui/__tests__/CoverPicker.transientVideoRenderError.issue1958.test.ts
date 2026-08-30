@@ -42,12 +42,31 @@ describe("CoverPicker transient local-video render errors (issue #1958)", () => 
     "const switchTab = useCallback(",
   );
 
-  test("T-1958-01 only compressing, uploading, and processing are active upload phases", () => {
-    expect(activeUpload).toContain('videoUpload.stage.phase === "compressing"');
-    expect(activeUpload).toContain('videoUpload.stage.phase === "uploading"');
-    expect(activeUpload).toContain('videoUpload.stage.phase === "processing"');
-    expect(activeUpload).not.toContain('videoUpload.stage.phase === "ready"');
-    expect(activeUpload).not.toContain('videoUpload.stage.phase === "error"');
+  // [TEST-MOD-APPROVED #2715] Every nonterminal deterministic stage retains
+  // preview ownership; detached is durable ownership, not active transport.
+  test("T-1958-01 all nonterminal deterministic stages retain preview ownership", () => {
+    expect(activeUpload).toContain(
+      // [TEST-MOD-APPROVED #2715] Applied is a distinct terminal projection;
+      // ready remains durable but not active transport.
+      '!["idle", "ready", "applied", "error"].includes(videoUpload.stage.phase)',
+    );
+    for (const phase of [
+      "picking",
+      "preparing",
+      "validating",
+      "compressing",
+      "intent_pending",
+      "uploading",
+      "ack_pending",
+      "processing",
+      "detached",
+      "reattaching",
+    ]) {
+      expect(activeUpload).not.toContain(`"${phase}"`);
+    }
+    for (const phase of ["idle", "ready", "error"]) {
+      expect(activeUpload).toContain(`"${phase}"`);
+    }
   });
 
   test("T-1958-02 the current non-null local preview is suppressed only during an active upload", () => {

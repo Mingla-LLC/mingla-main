@@ -852,6 +852,24 @@ export const useDraftVenueStore = create<DraftVenueStore>()(
   ),
 );
 
+/** Await the same persisted envelope Zustand writes after a draft mutation. */
+export const flushDraftVenuePersistence = async (): Promise<void> => {
+  const state = useDraftVenueStore.getState();
+  const options = useDraftVenueStore.persist.getOptions();
+  const storage = options.storage;
+  if (!storage) throw new Error("draft_venue_storage_unavailable");
+  if (typeof options.name !== "string") throw new Error("draft_venue_storage_name_unavailable");
+  await storage.setItem(options.name, {
+    state: {
+      ...pickDraft(state),
+      activeBrandId: state.activeBrandId,
+      activeDraftId: state.activeDraftId,
+      drafts: state.drafts,
+    },
+    version: 4,
+  });
+};
+
 /**
  * META-ORCH-1255 — read a brand's draft regardless of active status (pure;
  * for `getState()` call sites and the to-do gate). UNCHANGED SIGNATURE.

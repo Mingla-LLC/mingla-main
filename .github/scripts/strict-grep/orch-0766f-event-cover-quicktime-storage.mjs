@@ -66,7 +66,7 @@ requireIncludes(
       "service test must prove short MOV upload contract",
     ],
     [
-      "keeps 29-second enforcement for iOS MOV videos before upload",
+      "keeps 15-second enforcement for iOS MOV videos before upload",
       "service test must prove over-limit MOV is rejected before upload",
     ],
     [

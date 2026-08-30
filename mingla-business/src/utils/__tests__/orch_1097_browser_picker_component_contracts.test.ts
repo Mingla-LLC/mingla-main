@@ -11,14 +11,17 @@ const stripComments = (source: string): string =>
     .join("\n");
 
 describe("ORCH-1097 browser picker component contracts", () => {
-  test("cover picker web image/GIF and desktop video branches prepare browser assets and keep phone video degraded", () => {
+  // [TEST-MOD-APPROVED #2715] Wildcard video/* admitted unsupported costly
+  // inputs; SC-5 requires exact supported formats while phone web stays enabled.
+  test("browser image/GIF and video selections use deterministic phone/desktop parity and exact supported formats", () => {
     const deviceMedia = stripComments(repoFile("src/components/ui/coverPickerDeviceMedia.ts"));
     const picker = stripComments(repoFile("src/components/ui/CoverPicker.tsx"));
 
     expect(deviceMedia).toContain("export const launchCoverImagePicker");
     expect(deviceMedia).toContain("accept: \"image/jpeg,image/png,image/webp,image/gif\"");
     expect(deviceMedia).toContain("export const launchCoverVideoPicker");
-    expect(deviceMedia).toContain("accept: \"video/mp4,video/quicktime,video/*\"");
+    expect(deviceMedia).toContain("accept: \"video/mp4,video/quicktime,video/x-m4v,video/webm,.mp4,.mov,.m4v,.webm\"");
+    expect(deviceMedia).not.toContain("video/*");
     expect(deviceMedia).toContain("duration: await readBrowserVideoDurationMs(file.uri)");
     expect(deviceMedia).toContain("revokeCoverPickedAssets");
 

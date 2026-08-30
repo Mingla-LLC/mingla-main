@@ -19,7 +19,9 @@
 
 import { beforeEach, describe, expect, it, jest } from "@jest/globals";
 
-const mockBytes = jest.fn<() => Promise<Uint8Array>>();
+const mockReadBytes = jest.fn<(length: number) => Uint8Array>();
+const mockClose = jest.fn();
+const mockHandle = { offset: 0, readBytes: mockReadBytes, close: mockClose };
 const mockExpoFetch =
   jest.fn<
     (
@@ -33,10 +35,9 @@ const mockExpoFetch =
     ) => Promise<{ status: number; text: () => Promise<string> }>
   >();
 
-// Native File API — `new File(uri).bytes()` is the reliable read that replaces
-// the iOS-empty fetch-blob.
+// [TEST-MOD-APPROVED #2715] Native FileHandle reads only the requested slice.
 jest.mock("expo-file-system", () => ({
-  File: jest.fn().mockImplementation(() => ({ bytes: mockBytes })),
+  File: jest.fn().mockImplementation(() => ({ open: () => mockHandle })),
 }));
 
 // Native streaming fetch — sends request headers verbatim.
@@ -44,27 +45,30 @@ jest.mock("expo/fetch", () => ({ fetch: mockExpoFetch }));
 
 import {
   patchBunnyTusNative,
-  readEventCoverVideoBytes,
+  readEventCoverVideoChunk,
 } from "../eventCoverVideoTusPatch.native";
 
 const RESUMABLE_URL = "https://video.bunnycdn.com/tus/upload-abc-123";
 
-describe("ORCH-1295 — native TUS PATCH transport (File.bytes() + expo/fetch)", () => {
+describe("ORCH-1295 — native TUS PATCH transport (bounded FileHandle reads + expo/fetch)", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  it("reads clip bytes via the native File API, never fetch-blob (size-0 on iOS)", async () => {
-    const fileBytes = new Uint8Array([1, 2, 3, 4]);
-    mockBytes.mockResolvedValue(fileBytes);
+  it("reads only the requested chunk from a clip larger than one chunk", async () => {
+    // [TEST-MOD-APPROVED #2715] The 12 MiB fixture is never allocated as one body.
+    const chunk = new Uint8Array([1, 2, 3, 4]);
+    mockReadBytes.mockReturnValue(chunk);
 
     const fetchSpy = jest.fn();
     const originalFetch = global.fetch;
     global.fetch = fetchSpy as unknown as typeof fetch;
     try {
-      const out = await readEventCoverVideoBytes("file:///tmp/cover.mp4");
-      expect(out).toBe(fileBytes);
-      expect(mockBytes).toHaveBeenCalledTimes(1);
+      const out = await readEventCoverVideoChunk("file:///tmp/12mb-cover.mp4", 5 * 1024 * 1024, 4);
+      expect(out).toBe(chunk);
+      expect(mockHandle.offset).toBe(5 * 1024 * 1024);
+      expect(mockReadBytes).toHaveBeenCalledWith(4);
+      expect(mockClose).toHaveBeenCalledTimes(1);
       // The ORCH-0786 fix: no fetch(uri).blob() on native.
       expect(fetchSpy).not.toHaveBeenCalled();
     } finally {

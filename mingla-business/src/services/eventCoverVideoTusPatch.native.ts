@@ -31,14 +31,19 @@ export interface NativeTusPatchResult {
   bodyText: string;
 }
 
-// Reliable native byte read (replaces the iOS-empty fetch-blob). Cover videos are
-// compressed to <=25 MB before upload, so reading the whole clip is acceptable.
-// `File.bytes()` yields a concrete `Uint8Array<ArrayBuffer>` (a valid `BodyInit`).
-export const readEventCoverVideoBytes = async (
+export const readEventCoverVideoChunk = async (
   uri: string,
+  offset: number,
+  length: number,
 ): Promise<Uint8Array<ArrayBuffer>> => {
   const { File } = await import("expo-file-system");
-  return new File(uri).bytes();
+  const handle = new File(uri).open();
+  try {
+    handle.offset = offset;
+    return handle.readBytes(length);
+  } finally {
+    handle.close();
+  }
 };
 
 // Single-shot TUS PATCH of the raw bytes via expo/fetch (headers verbatim).

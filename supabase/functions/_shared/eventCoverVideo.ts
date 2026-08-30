@@ -19,7 +19,7 @@ export const FINAL_MAX_BYTES = Number.parseInt(
   10,
 );
 export const MAX_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "30000",
+  Deno.env.get("EVENT_COVER_MAX_DURATION_MS") ?? "15000",
   10,
 );
 export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(
@@ -27,14 +27,15 @@ export const MAX_SOURCE_VIDEO_BYTES = Number.parseInt(
   10,
 );
 export const MAX_SOURCE_VIDEO_DURATION_MS = Number.parseInt(
-  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "60000",
+  Deno.env.get("EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS") ?? "15000",
   10,
 );
 
 const UUID_REGEX =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ORCH_0978_AUTH_FAILURE_REASON_HEADER = "x-orch-0978-auth-failure-reason";
-const ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER = "x-orch-0978-auth-exp-delta-sec";
+const ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER =
+  "x-orch-0978-auth-exp-delta-sec"; // ggignore — public diagnostic header name, not a credential
 
 type AuthFailureReason =
   | "token_absent"
@@ -43,12 +44,19 @@ type AuthFailureReason =
   | "token_invalid_signature"
   | "userid_missing";
 
-const logWarn = (requestId: string, stage: string, payload: Record<string, unknown> = {}) => {
-  console.warn("[event-cover-video]", JSON.stringify({
-    requestId,
-    stage,
-    ...payload,
-  }));
+const logWarn = (
+  requestId: string,
+  stage: string,
+  payload: Record<string, unknown> = {},
+) => {
+  console.warn(
+    "[event-cover-video]",
+    JSON.stringify({
+      requestId,
+      stage,
+      ...payload,
+    }),
+  );
 };
 
 const authHeaderPrefix = (authHeader: string): string | null => {
@@ -58,7 +66,9 @@ const authHeaderPrefix = (authHeader: string): string | null => {
 
 const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
   const segments = token.split(".");
-  if (segments.length !== 3 || segments.some((segment) => segment.length === 0)) {
+  if (
+    segments.length !== 3 || segments.some((segment) => segment.length === 0)
+  ) {
     return null;
   }
   try {
@@ -68,13 +78,17 @@ const decodeJwtPayload = (token: string): Record<string, unknown> | null => {
       .padEnd(Math.ceil(segments[1].length / 4) * 4, "=");
     const decoded = atob(padded);
     const payload = JSON.parse(decoded);
-    return payload && typeof payload === "object" && !Array.isArray(payload) ? payload : null;
+    return payload && typeof payload === "object" && !Array.isArray(payload)
+      ? payload
+      : null;
   } catch {
     return null;
   }
 };
 
-const expDeltaSecFromPayload = (payload: Record<string, unknown> | null): number | null => {
+const expDeltaSecFromPayload = (
+  payload: Record<string, unknown> | null,
+): number | null => {
   const exp = payload?.exp;
   if (typeof exp !== "number" || !Number.isFinite(exp)) return null;
   return Math.floor(exp - Date.now() / 1000);
@@ -95,7 +109,10 @@ const unauthenticatedResponse = (
   const response = jsonResponse({ error: "unauthenticated" }, 401);
   response.headers.set(ORCH_0978_AUTH_FAILURE_REASON_HEADER, reason);
   if (expDeltaSec !== null) {
-    response.headers.set(ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER, String(expDeltaSec));
+    response.headers.set(
+      ORCH_0978_AUTH_FAILURE_EXP_DELTA_HEADER,
+      String(expDeltaSec),
+    );
   }
   return response;
 };
@@ -152,7 +169,11 @@ export async function requireUserId(req: Request): Promise<string | Response> {
   );
   const { data, error } = await userClient.auth.getUser(token);
   if (error) {
-    return unauthenticatedResponse("token_invalid_signature", authHeader, expDeltaSec);
+    return unauthenticatedResponse(
+      "token_invalid_signature",
+      authHeader,
+      expDeltaSec,
+    );
   }
   if (!data.user?.id) {
     return unauthenticatedResponse("userid_missing", authHeader, expDeltaSec);
@@ -165,7 +186,9 @@ export async function requireEventManager(
   eventId: string,
   brandId: string,
   userId: string,
-): Promise<{ event: { id: string; brand_id: string; status: string | null } } | Response> {
+): Promise<
+  { event: { id: string; brand_id: string; status: string | null } } | Response
+> {
   const { data: event, error: eventError } = await supabase
     .from("events")
     .select("id, brand_id, status")
@@ -180,7 +203,9 @@ export async function requireEventManager(
       500,
     );
   }
-  if (!event) return jsonResponse({ error: "not_found", detail: "event_not_found" }, 404);
+  if (!event) {
+    return jsonResponse({ error: "not_found", detail: "event_not_found" }, 404);
+  }
 
   const { data: rank, error: rankError } = await supabase.rpc(
     "biz_brand_effective_rank",
@@ -205,7 +230,10 @@ export async function requireEventManager(
     );
   }
   if (Number(rank ?? 0) < Number(requiredRank ?? 40)) {
-    return jsonResponse({ error: "forbidden", detail: "permission_denied" }, 403);
+    return jsonResponse(
+      { error: "forbidden", detail: "permission_denied" },
+      403,
+    );
   }
   return { event };
 }
@@ -236,16 +264,107 @@ export async function requireBrandCoverManager(
     { p_role: "brand_admin" },
   );
   if (requiredRankError) {
-    console.error("[event-cover-video] brand role rank failed:", requiredRankError);
+    console.error(
+      "[event-cover-video] brand role rank failed:",
+      requiredRankError,
+    );
     return jsonResponse(
       { error: "internal_error", detail: "role_rank_failed" },
       500,
     );
   }
   if (Number(rank ?? 0) < Number(requiredRank ?? 50)) {
-    return jsonResponse({ error: "forbidden", detail: "permission_denied" }, 403);
+    return jsonResponse(
+      { error: "forbidden", detail: "permission_denied" },
+      403,
+    );
   }
   return { brandId };
+}
+
+export type CoverVideoTargetKind = "event" | "brand" | "venue" | "venue_draft";
+
+export type CoverVideoTargetSelector = {
+  targetKind: CoverVideoTargetKind;
+  eventId: string | null;
+  brandId: string;
+  venueId: string | null;
+  draftOwnerKey: string | null;
+  requestedBy?: string | null;
+};
+
+export async function requireCoverVideoTargetManager(
+  supabase: SupabaseClient,
+  selector: CoverVideoTargetSelector,
+  userId: string,
+): Promise<{ target: CoverVideoTargetSelector } | Response> {
+  if (selector.targetKind === "event") {
+    if (!isValidUuid(selector.eventId)) {
+      return jsonResponse({
+        error: "validation_error",
+        detail: "event_id_invalid_uuid",
+      }, 400);
+    }
+    const allowed = await requireEventManager(
+      supabase,
+      selector.eventId,
+      selector.brandId,
+      userId,
+    );
+    return allowed instanceof Response ? allowed : { target: selector };
+  }
+  if (selector.targetKind === "venue") {
+    if (!isValidUuid(selector.venueId)) {
+      return jsonResponse({
+        error: "validation_error",
+        detail: "venue_id_invalid_uuid",
+      }, 400);
+    }
+    const { data: venue, error } = await supabase
+      .from("venue_listings")
+      .select("id,brand_id")
+      .eq("id", selector.venueId)
+      .eq("brand_id", selector.brandId)
+      .maybeSingle();
+    if (error) {
+      return jsonResponse({
+        error: "internal_error",
+        detail: "venue_read_failed",
+      }, 500);
+    }
+    if (!venue) {
+      return jsonResponse(
+        { error: "not_found", detail: "venue_not_found" },
+        404,
+      );
+    }
+  }
+  if (
+    selector.targetKind === "venue_draft" &&
+    (typeof selector.draftOwnerKey !== "string" ||
+      selector.draftOwnerKey.trim().length < 3 ||
+      selector.draftOwnerKey.length > 160)
+  ) {
+    return jsonResponse({
+      error: "validation_error",
+      detail: "draft_owner_key_invalid",
+    }, 400);
+  }
+  if (
+    selector.targetKind === "venue_draft" &&
+    selector.requestedBy !== userId
+  ) {
+    return jsonResponse(
+      { error: "forbidden", detail: "draft_owner_mismatch" },
+      403,
+    );
+  }
+  const allowed = await requireBrandCoverManager(
+    supabase,
+    selector.brandId,
+    userId,
+  );
+  return allowed instanceof Response ? allowed : { target: selector };
 }
 
 // #966 — Bunny is the sole cover-video provider. The runtime-config value is no
@@ -295,21 +414,35 @@ export function validateTrimRange(input: {
   trimStartMs: number;
   trimEndMs: number;
 }): Response | null {
-  if (!Number.isFinite(input.trimStartMs) || !Number.isFinite(input.trimEndMs)) {
-    return jsonResponse({ error: "validation_error", detail: "trim_invalid" }, 400);
+  if (
+    !Number.isFinite(input.trimStartMs) || !Number.isFinite(input.trimEndMs)
+  ) {
+    return jsonResponse(
+      { error: "validation_error", detail: "trim_invalid" },
+      400,
+    );
   }
   if (input.trimStartMs < 0 || input.trimEndMs <= input.trimStartMs) {
-    return jsonResponse({ error: "validation_error", detail: "trim_invalid" }, 400);
+    return jsonResponse(
+      { error: "validation_error", detail: "trim_invalid" },
+      400,
+    );
   }
   if (input.trimEndMs - input.trimStartMs > MAX_DURATION_MS) {
-    return jsonResponse({ error: "validation_error", detail: "trim_over_duration" }, 422);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "trim_over_duration",
+    }, 422);
   }
   if (
     typeof input.sourceDurationMs === "number" &&
     input.sourceDurationMs > 0 &&
     input.trimEndMs > input.sourceDurationMs + 250
   ) {
-    return jsonResponse({ error: "validation_error", detail: "trim_out_of_range" }, 422);
+    return jsonResponse({
+      error: "validation_error",
+      detail: "trim_out_of_range",
+    }, 422);
   }
   return null;
 }
@@ -320,43 +453,75 @@ export function assertProcessedDerivative(input: {
   bytes: unknown;
   durationMs: unknown;
   videoCodec?: unknown;
-  audioCodec?: unknown;
-}): { ok: true; url: string; bytes: number; durationMs: number } | { ok: false; code: string; message: string } {
+}): { ok: true; url: string; bytes: number; durationMs: number } | {
+  ok: false;
+  code: string;
+  message: string;
+} {
   if (typeof input.url !== "string" || !/^https:\/\//i.test(input.url)) {
-    return { ok: false, code: "processed_url_invalid", message: "Processed video URL was invalid." };
+    return {
+      ok: false,
+      code: "processed_url_invalid",
+      message: "Processed video URL was invalid.",
+    };
   }
   if (input.mimeType !== "video/mp4") {
-    return { ok: false, code: "processed_mime_invalid", message: "Processed video was not video/mp4." };
+    return {
+      ok: false,
+      code: "processed_mime_invalid",
+      message: "Processed video was not video/mp4.",
+    };
   }
-  const bytes = typeof input.bytes === "number" ? input.bytes : Number(input.bytes);
+  const bytes = typeof input.bytes === "number"
+    ? input.bytes
+    : Number(input.bytes);
   if (!Number.isFinite(bytes) || bytes <= 0 || bytes > FINAL_MAX_BYTES) {
-    return { ok: false, code: "processed_size_invalid", message: "Processed video was over the final size budget." };
+    return {
+      ok: false,
+      code: "processed_size_invalid",
+      message: "Processed video was over the final size budget.",
+    };
   }
-  const durationMs =
-    typeof input.durationMs === "number" ? input.durationMs : Number(input.durationMs);
+  const durationMs = typeof input.durationMs === "number"
+    ? input.durationMs
+    : typeof input.durationMs === "string" && input.durationMs.trim().length > 0
+    ? Number(input.durationMs)
+    : Number.NaN;
   if (!Number.isFinite(durationMs)) {
-    return { ok: false, code: "processed_duration_missing", message: "Processed video duration was missing from the provider callback." };
+    return {
+      ok: false,
+      code: "processed_duration_missing",
+      message:
+        "Processed video duration was missing from the provider callback.",
+    };
   }
   if (durationMs <= 0) {
-    return { ok: false, code: "processed_duration_nonpositive", message: "Processed video duration was zero or negative." };
+    return {
+      ok: false,
+      code: "processed_duration_nonpositive",
+      message: "Processed video duration was zero or negative.",
+    };
   }
   if (durationMs > MAX_DURATION_MS) {
-    return { ok: false, code: "processed_duration_over_cap", message: "Processed video was over the duration limit." };
+    return {
+      ok: false,
+      code: "processed_duration_over_cap",
+      message: "Processed video was over the duration limit.",
+    };
   }
   if (
-    typeof input.videoCodec === "string" &&
-    input.videoCodec.length > 0 &&
-    !/h\.?264|avc1|libx264/i.test(input.videoCodec)
+    typeof input.videoCodec !== "string" ||
+    !/h\.?264|avc(?:1)?|libx264|x264/i.test(input.videoCodec)
   ) {
-    return { ok: false, code: "processed_codec_invalid", message: "Processed video was not H.264." };
+    return {
+      ok: false,
+      code: "processed_codec_invalid",
+      message: "Processed video was not H.264.",
+    };
   }
-  if (
-    typeof input.audioCodec === "string" &&
-    input.audioCodec.length > 0 &&
-    !/aac|mp4a/i.test(input.audioCodec)
-  ) {
-    return { ok: false, code: "processed_audio_invalid", message: "Processed video audio was not AAC." };
-  }
+  // Bunny outputCodecs is video-only evidence. Successful Bunny MP4 output
+  // carries AAC audio by provider contract; inventing a second codec field from
+  // outputCodecs rejects real x264 responses and fabricates evidence.
   return { ok: true, url: input.url, bytes, durationMs };
 }
 
@@ -368,6 +533,7 @@ export type EventCoverVideoJobStatus =
   | "ready"
   | "failed"
   | "cancelled"
+  | "superseded"
   | "applied";
 
 export type EventCoverVideoStatusPayload = {
@@ -376,7 +542,10 @@ export type EventCoverVideoStatusPayload = {
   eventId: string | null;
   brandId: string;
   // ORCH-0989: 'event' (default) or 'brand'.
-  targetKind: "event" | "brand";
+  targetKind: CoverVideoTargetKind;
+  venueId: string | null;
+  draftOwnerKey: string | null;
+  clientOperationId: string | null;
   status: EventCoverVideoJobStatus;
   applyMode: "draft_auto" | "published_manual";
   stageLabel: string;
@@ -387,16 +556,20 @@ export type EventCoverVideoStatusPayload = {
   canCheckAgain: boolean;
   canCancel: boolean;
   processedUrl: string | null;
+  processedPosterUrl: string | null;
   processedMimeType: string | null;
   processedBytes: number | null;
   processedDurationMs: number | null;
   failureCode: string | null;
   failureMessage: string | null;
+  safeJobCode: string;
   createdAt: string | null;
   updatedAt: string | null;
   sourceUploadedAt: string | null;
   appliedAt: string | null;
   cancelledAt: string | null;
+  applicationVersion: number;
+  applicationReceipt: Record<string, unknown> | null;
 };
 
 export type EventCoverVideoReadyUpdateInput = {
@@ -407,16 +580,18 @@ export type EventCoverVideoReadyUpdateInput = {
     url: string;
   };
   providerPayload: Record<string, unknown>;
-  posterUrl: string;
+  posterUrl?: string;
 };
 
-export function eventCoverVideoReadyUpdate(input: EventCoverVideoReadyUpdateInput): Record<string, unknown> {
+export function eventCoverVideoReadyUpdate(
+  input: EventCoverVideoReadyUpdateInput,
+): Record<string, unknown> {
   return {
     processed_bytes: input.derivative.bytes,
     processed_duration_ms: input.derivative.durationMs,
     processed_mime_type: "video/mp4",
     processed_url: input.derivative.url,
-    processed_poster_url: input.posterUrl,
+    processed_poster_url: input.posterUrl ?? null,
     provider_payload: input.providerPayload,
     completed_at: input.applyMode === "published_manual"
       ? new Date().toISOString()
@@ -431,6 +606,9 @@ type EventCoverVideoJobRow = {
   event_id: string | null;
   brand_id: string;
   target_kind?: string | null;
+  venue_id?: string | null;
+  draft_owner_key?: string | null;
+  client_operation_id?: string | null;
   status: string | null;
   apply_mode: string | null;
   processed_url?: string | null;
@@ -445,6 +623,9 @@ type EventCoverVideoJobRow = {
   applied_at?: string | null;
   cancelled_at?: string | null;
   provider_payload?: unknown;
+  provider_progress?: number | null;
+  application_version?: number | null;
+  application_receipt?: unknown;
 };
 
 const stageForStatus = (
@@ -456,38 +637,65 @@ const stageForStatus = (
 } => {
   switch (status) {
     case "source_uploading":
-      return { label: "Uploading video...", progressKind: "determinate", progressPercent: 35 };
+      return {
+        label: "Uploading video",
+        progressKind: "indeterminate",
+        progressPercent: null,
+      };
     case "source_uploaded":
       return {
         label: "Upload complete. Preparing processing...",
         progressKind: "indeterminate",
-        progressPercent: 45,
+        progressPercent: null,
       };
     case "processing_queued":
     case "processing":
       return {
         label: "Processing browser-safe video...",
         progressKind: "indeterminate",
-        progressPercent: 70,
+        progressPercent: null,
       };
     case "ready":
-      return { label: "Video ready.", progressKind: "terminal", progressPercent: 100 };
+      return {
+        label: "Video ready.",
+        progressKind: "terminal",
+        progressPercent: 100,
+      };
     case "applied":
-      return { label: "Cover video updated.", progressKind: "terminal", progressPercent: 100 };
+      return {
+        label: "Cover video updated.",
+        progressKind: "terminal",
+        progressPercent: 100,
+      };
     case "failed":
-      return { label: "Video processing failed.", progressKind: "terminal", progressPercent: null };
+      return {
+        label: "Video processing failed.",
+        progressKind: "terminal",
+        progressPercent: null,
+      };
     case "cancelled":
       return {
         label: "Video processing cancelled.",
         progressKind: "terminal",
         progressPercent: null,
       };
+    case "superseded":
+      return {
+        label: "Using your newer video",
+        progressKind: "terminal",
+        progressPercent: null,
+      };
   }
 };
 
-const sourceUploadedAtFromPayload = (providerPayload: unknown): string | null => {
-  if (providerPayload === null || typeof providerPayload !== "object") return null;
-  const sourceUpload = (providerPayload as { source_upload?: unknown }).source_upload;
+const sourceUploadedAtFromPayload = (
+  providerPayload: unknown,
+): string | null => {
+  if (providerPayload === null || typeof providerPayload !== "object") {
+    return null;
+  }
+  const sourceUpload =
+    (providerPayload as { source_upload?: unknown }).source_upload;
   if (sourceUpload === null || typeof sourceUpload !== "object") return null;
   const value = (sourceUpload as { acknowledged_at?: unknown }).acknowledged_at;
   return typeof value === "string" ? value : null;
@@ -504,40 +712,73 @@ export function mapEventCoverVideoStatus(
     "ready",
     "failed",
     "cancelled",
+    "superseded",
     "applied",
   ];
   const status = knownStatuses.includes(job.status as EventCoverVideoJobStatus)
     ? job.status as EventCoverVideoJobStatus
     : "processing";
   const stage = stageForStatus(status);
-  const isTerminal = ["ready", "failed", "cancelled", "applied"].includes(status);
-  const isActive = !isTerminal;
+  const trustedProgress =
+    (status === "processing" || status === "processing_queued") &&
+      typeof job.provider_progress === "number" &&
+      job.provider_progress >= 0 && job.provider_progress <= 100
+      ? job.provider_progress
+      : null;
+  const isTerminal = ["failed", "cancelled", "superseded", "applied"]
+    .includes(status);
+  const isActive = [
+    "source_uploading",
+    "source_uploaded",
+    "processing_queued",
+    "processing",
+  ]
+    .includes(status);
   return {
     appliedAt: job.applied_at ?? null,
-    applyMode: job.apply_mode === "published_manual" ? "published_manual" : "draft_auto",
+    applyMode: job.apply_mode === "published_manual"
+      ? "published_manual"
+      : "draft_auto",
     brandId: job.brand_id,
     canCancel: isActive,
     canCheckAgain: isActive,
     canRetry: status === "failed" || status === "cancelled",
     cancelledAt: job.cancelled_at ?? null,
+    clientOperationId: job.client_operation_id ?? null,
     createdAt: job.created_at ?? null,
     eventId: job.event_id ?? null,
-    targetKind: job.target_kind === "brand" ? "brand" : "event",
+    targetKind: job.target_kind === "brand" || job.target_kind === "venue" ||
+        job.target_kind === "venue_draft"
+      ? job.target_kind
+      : "event",
+    venueId: job.venue_id ?? null,
+    draftOwnerKey: job.draft_owner_key ?? null,
     failureCode: job.failure_code ?? null,
-    failureMessage: job.failure_message ?? null,
+    failureMessage: null,
+    safeJobCode: job.id.replace(/-/g, "").slice(0, 8).toUpperCase(),
     isTerminal,
     jobId: job.id,
-    processedBytes: typeof job.processed_bytes === "number" ? job.processed_bytes : null,
-    processedDurationMs:
-      typeof job.processed_duration_ms === "number" ? job.processed_duration_ms : null,
+    processedBytes: typeof job.processed_bytes === "number"
+      ? job.processed_bytes
+      : null,
+    processedDurationMs: typeof job.processed_duration_ms === "number"
+      ? job.processed_duration_ms
+      : null,
     processedMimeType: job.processed_mime_type ?? null,
     processedPosterUrl: job.processed_poster_url ?? null,
     processedUrl: job.processed_url ?? null,
-    progressKind: stage.progressKind,
-    progressPercent: stage.progressPercent,
+    progressKind: trustedProgress === null ? stage.progressKind : "determinate",
+    progressPercent: trustedProgress,
     sourceUploadedAt: sourceUploadedAtFromPayload(job.provider_payload),
     stageLabel: stage.label,
     status,
     updatedAt: job.updated_at ?? null,
+    applicationVersion: typeof job.application_version === "number"
+      ? job.application_version
+      : 0,
+    applicationReceipt: job.application_receipt !== null &&
+        typeof job.application_receipt === "object"
+      ? job.application_receipt as Record<string, unknown>
+      : null,
   };
 }

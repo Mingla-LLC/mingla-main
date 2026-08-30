@@ -98,7 +98,7 @@ export interface CoverPickerSheetProps {
   initial: CoverPatch;
   /** Cover hue fallback for the empty preview (0..360). */
   initialCoverHue?: number;
-  onCoverChange: (patch: CoverPatch) => void;
+  onCoverChange: (patch: CoverPatch) => void | Promise<void>;
   // issue #1356 [cover-nested-toast]: retained on the interface for API
   // compatibility (all 11 parent mounts still pass it — zero parent edits), but
   // the sheet NO LONGER forwards it to CoverPicker. Cover feedback now routes to
@@ -135,6 +135,7 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
     message: string;
     kind: ToastKind;
   }>({ visible: false, message: "", kind: "info" });
+  const [videoProcessing, setVideoProcessing] = useState(false);
 
   const handleShowToast = useCallback((message: string): void => {
     setToast({ visible: true, message, kind: inferKind(message) });
@@ -151,9 +152,9 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
   }, [initial]);
 
   const handleCoverChange = useCallback(
-    (patch: CoverPatch): void => {
+    async (patch: CoverPatch): Promise<void> => {
       setCurrentPatch(patch);
-      onCoverChange(patch);
+      await onCoverChange(patch);
     },
     [onCoverChange],
   );
@@ -213,7 +214,10 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
               onShowToast={handleShowToast}
               disabled={disabled}
               isWideDesktop={isWideDesktop}
-              onCoverVideoProcessingChange={onCoverVideoProcessingChange}
+              onCoverVideoProcessingChange={(processing): void => {
+                setVideoProcessing(processing);
+                onCoverVideoProcessingChange?.(processing);
+              }}
             />
           </Suspense>
         </ScrollView>
@@ -227,7 +231,17 @@ export const CoverPickerSheet: React.FC<CoverPickerSheetProps> = ({
             selected yet. Covers persist live via onCoverChange, so this button
             is confirm + close, not the persistence path. */}
         <View style={styles.footer}>
-          {hasSelection ? (
+          {videoProcessing ? (
+            <Button
+              label="Close — keep working"
+              variant="primary"
+              size="lg"
+              fullWidth
+              onPress={onClose}
+              accessibilityLabel="Close cover picker; video keeps working"
+              testID="cover-picker-keep-working"
+            />
+          ) : hasSelection ? (
             <Pressable
               onPress={onClose}
               accessibilityRole="button"

@@ -35,13 +35,12 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
     expect(service).toMatch(/protocol\?:\s*EventCoverVideoUploadProtocol/);
   });
 
-  it("the TUS creation request sends the documented TUS headers + metadata", () => {
+  it("uses the server-issued TUS resource and recovers its offset with HEAD", () => {
+    // [TEST-MOD-APPROVED #2715] Resource creation belongs to the durable edge job.
     expect(service).toMatch(/"Tus-Resumable":\s*"1\.0\.0"/);
-    expect(service).toMatch(/"Upload-Length":\s*String\(bytes\)/);
-    expect(service).toMatch(/"Upload-Metadata":\s*tusMetadata\(input\.upload\.metadata\)/);
-    // Creation must succeed with 201 and yield a Location (resumable URL).
-    expect(service).toMatch(/createResponse\.status\s*!==\s*201/);
-    expect(service).toMatch(/\.headers\.get\("location"\)/);
+    expect(service).toMatch(/method:\s*"HEAD"/);
+    expect(service).toMatch(/headers\.get\("Upload-Offset"\)/);
+    expect(service).not.toMatch(/method:\s*"POST"[\s\S]*Upload-Length/);
   });
 
   it("tusMetadata base64-encodes filetype and title per the TUS spec", () => {
@@ -55,7 +54,9 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
 
   it("the PATCH leg uses the raw TUS body content type + offset headers", () => {
     expect(service).toMatch(/"Content-Type":\s*"application\/offset\+octet-stream"/);
-    expect(service).toMatch(/"Upload-Offset":\s*"0"/);
+    // [TEST-MOD-APPROVED #2715] PATCH starts at server truth and uses bounded chunks.
+    expect(service).toMatch(/"Upload-Offset":\s*String\(offset\)/);
+    expect(service).toMatch(/EVENT_COVER_TUS_CHUNK_BYTES\s*=\s*5\s*\*\s*1024\s*\*\s*1024/);
     // ORCH-1295 — the native PATCH reads bytes with the File API and streams them
     // via expo/fetch (patchBunnyTusNative) so Upload-Offset reaches Bunny. It must
     // NOT route through expo-file-system's binary upload task (dropped
@@ -65,7 +66,7 @@ describe("META-ORCH-1270 — client Bunny TUS upload leg (C1 + C7)", () => {
     // PATCH — replaced under [TEST-MOD-APPROVED ORCH-1295].)
     expect(service).toMatch(/patchTusNative/);
     expect(service).toMatch(/patchBunnyTusNative\(/);
-    expect(service).toMatch(/readEventCoverVideoBytes\(/);
+    expect(service).toMatch(/readEventCoverVideoChunk\(/);
     expect(service).not.toMatch(/createBinaryUploadTask/);
     // Web PATCH still rides the verbatim-header XHR helper.
     expect(service).toMatch(/await patchTusWithXhr\(/);

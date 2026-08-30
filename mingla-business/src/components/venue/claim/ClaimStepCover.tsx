@@ -26,7 +26,7 @@ import {
   text as textTokens,
   typography,
 } from "../../../constants/designSystem";
-import { useDraftVenueStore } from "../../../store/draftVenueStore";
+import { flushDraftVenuePersistence, useDraftVenueStore } from "../../../store/draftVenueStore";
 import { ThemeControlRow } from "../../theme/ThemeControlRow";
 import { ThemeSheet } from "../../theme/ThemeSheet";
 import { useVenueThemeControl } from "../useVenueThemeControl";
@@ -61,6 +61,7 @@ export interface ClaimStepCoverProps {
 export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
   const claim = useDraftVenueStore((s) => s.claim);
   const patch = useDraftVenueStore((s) => s.patch);
+  const activeDraftId = useDraftVenueStore((s) => s.activeDraftId);
   // #1022 A/F-13 — ONE discriminated sheet state, never two booleans, so the
   // cover picker and the theme sheet cannot both be open at once.
   const [activeSheet, setActiveSheet] = useState<"none" | "cover" | "theme">(
@@ -107,7 +108,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
   );
 
   const handleCoverPatch = useCallback(
-    (p: CoverPatch): void => {
+    async (p: CoverPatch): Promise<void> => {
       const cur = useDraftVenueStore.getState().claim;
       if (cur === null) return;
       if (p.coverMediaUrl === null) return; // remove → keep current choice
@@ -138,6 +139,7 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
           },
         },
       });
+      await flushDraftVenuePersistence();
       setActiveSheet("none");
     },
     [patch],
@@ -272,17 +274,17 @@ export const ClaimStepCover: React.FC<ClaimStepCoverProps> = ({ brandId }) => {
         testID="claim-cover-theme-control-row"
       />
 
-      {brandId !== null ? (
+      {brandId !== null && activeDraftId !== null ? (
         <CoverPickerSheet
           visible={pickerVisible}
           onClose={() => setActiveSheet("none")}
           target={{
-            kind: "venue",
+            kind: "venue_draft",
             brandId,
             // Pre-submit: no venue row exists yet. The picker never reads
             // venueId (host persists the patch — here, into the draft);
             // sentinel mirrors the picker's own "" eventRowId precedent.
-            venueId: "",
+            draftOwnerKey: activeDraftId,
           }}
           initial={EMPTY_COVER}
           onCoverChange={handleCoverPatch}

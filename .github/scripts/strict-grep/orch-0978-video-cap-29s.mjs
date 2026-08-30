@@ -28,6 +28,51 @@ const walkFiles = (dirPath) => {
   });
 };
 
+const constraintClause = (source, name) => {
+  const marker = `ADD CONSTRAINT ${name}`;
+  const start = source.indexOf(marker);
+  if (start < 0) return "";
+  const tail = source.slice(start + marker.length);
+  const boundary = tail.search(/\bADD CONSTRAINT\b|;/);
+  return marker + (boundary < 0 ? tail : tail.slice(0, boundary));
+};
+const constraintHasExactCap = (source, name) =>
+  /<=\s*15000\b/.test(constraintClause(source, name));
+const providerDurationIsAuthoritative = (source) => {
+  const block = source.match(/const lengthSeconds[\s\S]*?const derivative\s*=/)?.[0] ?? "";
+  return block.includes('typeof video.video.length === "number" && video.video.length > 0') &&
+    block.includes("const durationMs = lengthSeconds * 1000") &&
+    block.includes('error: "derivative_not_ready"') &&
+    block.includes('detail: "duration_pending"') &&
+    !/trim_(?:start|end)_ms/.test(block);
+};
+
+if (process.argv.includes("--self-test")) {
+  const goodSql = `ALTER TABLE jobs
+    ADD CONSTRAINT event_cover_video_jobs_trim_max_duration CHECK (trim_end_ms-trim_start_ms <= 15000) NOT VALID,
+    ADD CONSTRAINT event_cover_video_jobs_processed_max_duration CHECK (processed_duration_ms <= 15000) NOT VALID;`;
+  const goodWebhook = `
+    const lengthSeconds = typeof video.video.length === "number" && video.video.length > 0 ? video.video.length : 0;
+    const durationMs = lengthSeconds * 1000;
+    if (durationMs <= 0) return jsonResponse({ error: "derivative_not_ready", detail: "duration_pending" }, 503);
+    const derivative = validate(durationMs);`;
+  const cases = [
+    ["GOOD exact SQL caps", constraintHasExactCap(goodSql, "event_cover_video_jobs_trim_max_duration") && constraintHasExactCap(goodSql, "event_cover_video_jobs_processed_max_duration"), true],
+    ["BAD trim 15001", constraintHasExactCap(goodSql.replace("trim_start_ms <= 15000", "trim_start_ms <= 15001"), "event_cover_video_jobs_trim_max_duration"), false],
+    ["BAD processed 15001", constraintHasExactCap(goodSql.replace("processed_duration_ms <= 15000", "processed_duration_ms <= 15001"), "event_cover_video_jobs_processed_max_duration"), false],
+    ["GOOD provider duration", providerDurationIsAuthoritative(goodWebhook), true],
+    ["BAD trim fallback", providerDurationIsAuthoritative(goodWebhook.replace("const durationMs = lengthSeconds * 1000", "const durationMs = lengthSeconds > 0 ? lengthSeconds * 1000 : trim_end_ms - trim_start_ms")), false],
+  ];
+  for (const [label, actual, expected] of cases) {
+    if (actual !== expected) {
+      console.error(`ORCH-0978 duration gate self-test FAIL: ${label}`);
+      process.exit(1);
+    }
+  }
+  console.log("ORCH-0978 duration gate self-test PASS (5/5).");
+  process.exit(0);
+}
+
 const coverPickerPath = "mingla-business/src/components/ui/CoverPicker.tsx";
 const deviceMediaPath = "mingla-business/src/components/ui/coverPickerDeviceMedia.native.ts";
 // ORCH-1001: the native trim wiring (react-native-video-trim import + showEditor
@@ -42,7 +87,7 @@ const processingServicePath =
   "mingla-business/src/services/eventCoverVideoProcessingService.ts";
 const mediaRulesPath = "mingla-business/src/utils/eventCoverMediaRules.ts";
 const migrationPath =
-  "supabase/migrations/20260730000001_orch_0978_video_cap_generous_source.sql";
+  "supabase/migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql";
 const uploadIntentPath = "supabase/functions/event-cover-video-upload-intent/index.ts";
 const webhookPath = "supabase/functions/event-cover-video-webhook/index.ts";
 
@@ -60,41 +105,37 @@ if (
 } else if (coverPicker.includes("videoMaxDuration") || deviceMedia.includes("videoMaxDuration")) {
   fail("C1", "video picker must not rely on ImagePicker videoMaxDuration");
 } else {
-  ok("C1", "Dedicated trimmer receives the 29s cap; picker videoMaxDuration is dead");
+  ok("C1", "Dedicated trimmer receives the canonical 15s cap; picker videoMaxDuration is dead");
 }
 
 const processingService = read(processingServicePath);
-if (!processingService.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000")) {
-  fail("C2", `${processingServicePath} must pin EVENT_COVER_MAX_VIDEO_DURATION_MS at 29_000`);
-} else if (processingService.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000")) {
-  fail("C2", `${processingServicePath} must not contain the old 30_000 cap`);
+if (!processingService.includes('import { EVENT_COVER_MAX_VIDEO_DURATION_MS }')) {
+  fail("C2", `${processingServicePath} must import the canonical duration contract`);
+} else if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = EVENT_COVER_MAX_VIDEO_DURATION_MS")) {
+  fail("C2", `${processingServicePath} must make the accepted source ceiling equal the processed cap`);
 } else {
-  ok("C2", "Cloudinary-pipeline constant is 29_000");
+  ok("C2", "Processing service consumes one exact duration contract");
 }
 
 const mediaRules = read(mediaRulesPath);
-if (!mediaRules.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS = 29_000")) {
-  fail("C3", `${mediaRulesPath} must pin EVENT_COVER_MAX_VIDEO_DURATION_MS at 29_000`);
-} else if (mediaRules.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS = 30_000")) {
-  fail("C3", `${mediaRulesPath} must not contain the old 30_000 cap`);
+if (!mediaRules.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS = 15_000")) {
+  fail("C3", `${mediaRulesPath} must pin EVENT_COVER_MAX_VIDEO_DURATION_MS at 15_000`);
+} else if (/EVENT_COVER_MAX_VIDEO_DURATION_MS\s*=\s*(?:29_000|30_000)/.test(mediaRules)) {
+  fail("C3", `${mediaRulesPath} must not contain the old 29/30-second cap`);
 } else {
-  ok("C3", "Storage-pipeline constant is 29_000");
+  ok("C3", "Client media contract is exactly 15_000ms");
 }
 
 if (!existsSync(join(root, migrationPath))) {
   fail("C4", `${migrationPath} must exist`);
 } else {
   const migration = read(migrationPath);
-  const trimConstraintPattern =
-    /ADD CONSTRAINT event_cover_video_jobs_trim_max_duration[\s\S]*?<= 30000/;
-  const processedConstraintPattern =
-    /ADD CONSTRAINT event_cover_video_jobs_processed_max_duration[\s\S]*?<= 30000/;
-  if (!trimConstraintPattern.test(migration)) {
-    fail("C4", "trim max-duration constraint must contain 30000");
-  } else if (!processedConstraintPattern.test(migration)) {
-    fail("C4", "processed max-duration constraint must contain 30000");
+  if (!constraintHasExactCap(migration, "event_cover_video_jobs_trim_max_duration")) {
+    fail("C4", "trim max-duration constraint must contain 15000");
+  } else if (!constraintHasExactCap(migration, "event_cover_video_jobs_processed_max_duration")) {
+    fail("C4", "processed max-duration constraint must contain 15000");
   } else {
-    ok("C4", "DB migration pins both video duration constraints to 30000");
+    ok("C4", "DB migration pins both video duration constraints to 15000");
   }
 }
 
@@ -105,10 +146,11 @@ const webhook = read(webhookPath);
 // carries the SAME invariant — upload-intent stamps the Bunny video GUID into
 // source_asset_id, and the webhook resolves the owning job by that GUID. Re-point,
 // not weaken: dropping either the GUID stamp or the GUID lookup still fails C5.
-if (!uploadIntent.includes("source_asset_id: create.guid")) {
+if (!uploadIntent.includes('"cover_video_commit_provider_allocation"') ||
+    !uploadIntent.includes("p_source_asset_id: videoId")) {
   fail(
     "C5",
-    `${uploadIntentPath} must stamp the Bunny video GUID into source_asset_id (source_asset_id: create.guid)`,
+    `${uploadIntentPath} must atomically commit the Bunny video GUID as p_source_asset_id`,
   );
 } else if (!/\.eq\("source_asset_id", videoGuid\)/.test(webhook)) {
   fail(
@@ -119,22 +161,16 @@ if (!uploadIntent.includes("source_asset_id: create.guid")) {
   ok("C5", "Upload-intent Bunny GUID stamp and webhook source_asset_id lookup remain aligned");
 }
 
-// #966 (SPEC AMENDMENT 1): C6 re-pointed from the removed Cloudinary
-// `eagerDurationOrFallback` to the Bunny duration derivation, which still ties the
-// fallback to the trim columns — durationMs derives from the Bunny video length and
-// falls back to trim_end_ms - trim_start_ms. Re-point, not weaken: dropping the
-// trim-column fallback still fails C6.
-if (
-  !webhook.includes("lengthSeconds") ||
-  !webhook.includes("trim_end_ms") ||
-  !webhook.includes("trim_start_ms")
-) {
+// #2715: only provider-observed duration is authoritative. Missing Bunny length
+// is retryable derivative-not-ready state; client trim columns are never an
+// output-duration fallback.
+if (!providerDurationIsAuthoritative(webhook)) {
   fail(
     "C6",
-    `${webhookPath} must derive processed duration from the Bunny video length with a trim_end_ms/trim_start_ms fallback`,
+    `${webhookPath} must require positive Bunny length and return duration_pending without trim-derived fallback`,
   );
 } else {
-  ok("C6", "Webhook duration derivation remains tied to job trim columns");
+  ok("C6", "Webhook accepts only provider-observed duration and retries missing evidence");
 }
 
 const sharedPath = "supabase/functions/_shared/eventCoverVideo.ts";
@@ -190,26 +226,24 @@ if (offendingFiles.length > 0) {
   ok("C9", `"30 seconds" literal is dead in eventCoverNativeVideo.ts + eventCoverMediaRules.ts`);
 }
 
-if (!uploadIntent.includes("SOURCE_CEILING_MS = 33_000")) {
-  fail("C10", `${uploadIntentPath} must declare SOURCE_CEILING_MS = 33_000`);
+if (!uploadIntent.includes("SOURCE_CEILING_MS = 15_000")) {
+  fail("C10", `${uploadIntentPath} must declare SOURCE_CEILING_MS = 15_000`);
 } else if (uploadIntent.includes("EFFECTIVE_TRIM_CEILING_MS")) {
   fail("C10", `${uploadIntentPath} must not contain dead EFFECTIVE_TRIM_CEILING_MS`);
-} else if (!uploadIntent.includes("Math.min(rawTrimEndMs, MAX_DURATION_MS)")) {
-  fail("C10", `${uploadIntentPath} must clamp rawTrimEndMs with MAX_DURATION_MS before persistence`);
+} else if (uploadIntent.includes("Math.min(rawTrimEndMs, MAX_DURATION_MS)")) {
+  fail("C10", `${uploadIntentPath} must not silently clamp a mismatched trim identity`);
 } else {
-  ok("C10", "Upload-intent uses a 33s source ceiling and clamps persisted trim to 30s");
+  ok("C10", "Upload-intent enforces one exact 15s source/trim identity");
 }
 
-if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = 33_000")) {
-  fail("C11", `${processingServicePath} must declare EVENT_COVER_SOURCE_CEILING_MS = 33_000`);
+if (!processingService.includes("EVENT_COVER_SOURCE_CEILING_MS = EVENT_COVER_MAX_VIDEO_DURATION_MS")) {
+  fail("C11", `${processingServicePath} must keep source ceiling equal to the canonical cap`);
 } else if (!coverPicker.includes("EVENT_COVER_SOURCE_CEILING_MS")) {
   fail("C11", `${coverPickerPath} must reference EVENT_COVER_SOURCE_CEILING_MS`);
 } else if (coverPicker.includes("EVENT_COVER_MAX_VIDEO_DURATION_MS + 250")) {
   fail("C11", `${coverPickerPath} must not use the old +250ms duration tolerance`);
-} else if (!(33_000 > 30_000)) {
-  fail("C11", "source ceiling must remain strictly greater than processed cap");
 } else {
-  ok("C11", "Client source ceiling is 33s and remains above the 30s processed cap");
+  ok("C11", "Client source and processed ceilings share the exact 15s contract");
 }
 
 const videoPickerCall = deviceMedia.match(

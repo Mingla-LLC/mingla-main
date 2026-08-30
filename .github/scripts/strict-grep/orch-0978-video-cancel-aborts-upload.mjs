@@ -20,7 +20,7 @@ const failures = [];
 if (!/uploadAbortController\?\.abort\(\)[\s\S]*supabase\.functions\.invoke<StatusResponse>\(\s*"event-cover-video-cancel"/.test(service)) {
   failures.push("cancelEventCoverVideoJob must abort the upload controller before invoking the cancel edge function.");
 }
-if (!/uploadAbortController\?\.abort\(\)[\s\S]*cancelEventCoverVideoJob\(\{/.test(hook)) {
+if (!/abortRef\.current\?\.abort\(\)[\s\S]*cancelEventCoverVideoJob\(jobIdRef\.current\)/.test(hook)) {
   failures.push("useEventCoverVideoUpload.cancel must abort before calling cancelEventCoverVideoJob.");
 }
 // META-ORCH-1270: cancel now destroys the source via the provider-agnostic

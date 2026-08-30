@@ -26,24 +26,34 @@
 //   B5. RLS keeps the event predicate BYTE-FOR-BYTE (event_manager, events join,
 //       deleted_at IS NULL) — SC-17 no-weakening — AND adds a brand branch gated
 //       by brand_admin (SC-16). The brand branch MUST NOT touch the events table.
-//   B6. apply edge fn writes brands.cover_media_url + cover_media_type='video'
-//       ONLY for target_kind='brand', behind requireBrandCoverManager
-//       (brand_admin), and keeps the event write path on requireEventManager.
+//   B6. apply edge authorizes the exact target, then delegates the brand/event
+//       write and replay-safe receipt to the atomic cover_video_apply_once RPC.
 //
 // Static-SQL + static-source assertion: deterministic, runs in CI with no DB
 // credentials. The live DB probe (tester report §Backend) proves the SAME
 // invariants are actually enforced on the remote.
 
-import { assert, assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
+import {
+  assert,
+  assertEquals,
+} from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 const MIGRATION_URL = new URL(
   "../../migrations/20260801000000_orch_0989_brand_cover_video_target.sql",
   import.meta.url,
 );
 const APPLY_URL = new URL("./index.ts", import.meta.url);
+const ISSUE_2715_MIGRATION_URL = new URL(
+  "../../migrations/20270604002715_issue_2715_deterministic_cover_video_jobs.sql",
+  import.meta.url,
+);
 
 const migration = await Deno.readTextFile(MIGRATION_URL);
 const apply = await Deno.readTextFile(APPLY_URL);
+const issue2715 = (await Deno.readTextFile(ISSUE_2715_MIGRATION_URL)).replace(
+  /\s+/g,
+  " ",
+);
 
 // Collapse whitespace for robust substring matching against multi-line SQL.
 const sql = migration.replace(/\s+/g, " ");
@@ -116,25 +126,60 @@ Deno.test("B5: RLS keeps event predicate byte-for-byte AND adds brand_admin bran
   );
 });
 
-Deno.test("B6: apply writes brands cover ONLY for brand target, behind brand_admin gate", () => {
+Deno.test("B6: apply authorizes the exact target and atomically writes only its branch", () => {
+  // [TEST-MOD-APPROVED #2715] Target-aware edge auth precedes the locked,
+  // replay-safe SQL owner; the edge never becomes a second write authority.
   const code = apply.replace(/\s+/g, " ");
   assert(
-    /const isBrandTarget = job\.target_kind === "brand"/.test(code),
-    "apply must discriminate on target_kind",
+    /requireCoverVideoTargetManager\(supabase, \{ targetKind: job\.target_kind, eventId: job\.event_id, brandId: job\.brand_id, venueId: job\.venue_id, draftOwnerKey: job\.draft_owner_key, requestedBy: job\.requested_by, \}, userId\)/
+      .test(code),
+    "edge auth must use the exact job target identity",
   );
   assert(
-    /isBrandTarget[\s\S]*?requireBrandCoverManager/.test(apply),
-    "brand target must gate on requireBrandCoverManager (brand_admin)",
+    /supabase\.rpc\( "cover_video_apply_once"/.test(code),
+    "edge must delegate to cover_video_apply_once",
+  );
+  assertEquals(
+    /\.from\("(?:brands|events)"\)/.test(apply),
+    false,
+    "edge must not directly mutate brand or event targets",
+  );
+
+  const eventBranch = issue2715.slice(
+    issue2715.indexOf("IF v_job.target_kind='event'"),
+    issue2715.indexOf("ELSIF v_job.target_kind='brand'"),
+  );
+  const brandBranch = issue2715.slice(
+    issue2715.indexOf("ELSIF v_job.target_kind='brand'"),
+    issue2715.indexOf(
+      "UPDATE public.event_cover_video_jobs SET status='applied'",
+    ),
   );
   assert(
-    /requireEventManager/.test(apply),
-    "event target must keep requireEventManager gate",
+    /UPDATE public\.events[\s\S]*WHERE id=v_job\.event_id/.test(eventBranch),
+    "event branch must bind its write to v_job.event_id",
   );
-  // The brands write must set BOTH cover_media_type='video' and cover_media_url.
-  const brandsWrite = apply.slice(apply.indexOf('.from("brands")'));
   assert(
-    /cover_media_type: "video"/.test(brandsWrite) &&
-      /cover_media_url: job\.processed_url/.test(brandsWrite),
-    "brand apply must write cover_media_type='video' + cover_media_url=processed_url",
+    /UPDATE public\.brands[\s\S]*WHERE id=v_job\.brand_id/.test(brandBranch) &&
+      /cover_media_type='video'/.test(brandBranch) &&
+      /cover_media_url=v_job\.processed_url/.test(brandBranch) &&
+      /cover_media_poster_url=v_job\.processed_poster_url/.test(brandBranch),
+    "brand branch must bind id/url/poster/video type to the brand job",
+  );
+  assert(
+    /WHERE id=p_job_id FOR UPDATE/.test(issue2715) &&
+      /IF v_job\.status='applied' THEN RETURN v_job/.test(issue2715) &&
+      /application_version=application_version\+1/.test(issue2715) &&
+      /application_receipt=jsonb_build_object/.test(issue2715),
+    "RPC must lock, replay safely, and record one atomic receipt/version",
+  );
+  assert(
+    /processedUrl: job\.processed_url/.test(apply) &&
+      /posterUrl: job\.processed_poster_url/.test(apply) &&
+      /status: mapEventCoverVideoStatus\(job\)/.test(apply) &&
+      /processedUrl: applied\.processed_url/.test(apply) &&
+      /posterUrl: applied\.processed_poster_url/.test(apply) &&
+      /status: mapEventCoverVideoStatus\(applied\)/.test(apply),
+    "success and replay responses must preserve safe authoritative fields",
   );
 });

@@ -14921,7 +14921,7 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "49d0a7e559ec7f938dd10937a871ee306e0669653a612d5b0c1e51d8f626e04b",
+        "sourceSha256": "82058532c2a4464bff9bb5ddfdcf7b0c9bd112b896cb6ac9d8b2226ede8a6e56",
         "triggers": [
           "pull_request",
           "push"
@@ -14935,6 +14935,7 @@
           "scripts/issue-1719/**",
           "scripts/issue-2589/**",
           "supabase/functions/_shared/contentShare*.ts",
+          "supabase/functions/_shared/eventCoverVideo.issue2715.*.test.ts",
           "supabase/functions/event-cover-video-*/**",
           "supabase/functions/run-business-place-authoring-pipeline/**",
           "supabase/migrations/*1719*",
@@ -14948,11 +14949,13 @@
           "ubuntu-latest"
         ],
         "runtimeVersions": [
+          "deno:1.46.x",
           "node:22"
         ],
         "setupActions": [
           "actions/checkout@v4",
-          "actions/setup-node@v4"
+          "actions/setup-node@v4",
+          "denoland/setup-deno@v1"
         ],
         "trustBoundary": {
           "permissions": [],
