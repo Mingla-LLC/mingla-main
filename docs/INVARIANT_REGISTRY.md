@@ -1,5 +1,13 @@
 # Invariant Registry
 
+## DRAFT — issue #2855 (pending-venue dependency schema remains reviewed and fail-closed)
+
+### I-PROPOSED-2855-PENDING-VENUE-SCHEMA-REVIEWED (DRAFT)
+
+- **Rule:** #2099 dynamically discovers every public ordinary/partitioned foreign-key or semantic venue/pool lane. Only `brand_hours`, `brand_place_pipeline_state`, `venue_availability_config`, and `venue_reservation_settings` may be nonzero at their exact baseline cardinality; `venue_listings` is identity-self and every other relation defaults disallowed. The current reviewed schema digest is pinned, and schema plus state are recomputed under the postgres-owned DDL seal and deterministic relation/row locks immediately before mutation. Any unknown schema, nonzero disallowed state, stale state, missing seal, or unsafe privilege fails closed with zero correction and zero audit.
+- **Enforcement:** `supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql`, the #2855 implementor provenance/equivalence guard, the independent tester real-nonzero guard, and the #2099 PostgreSQL 17 full-chain/D4/D5/D7 workflow.
+- **Status:** DRAFT until independent tester PASS, all-green merge, exact merged-main production migration receipt, and readback of both RPC definitions, owners, grants, search paths, the DDL seal, and the reviewed live schema digest.
+
 ## ACTIVE — issue #2854 (customer-patterns index inventory remains exact)
 
 ### I-PROPOSED-2854-CUSTOMER-PATTERNS-INDEX-INVENTORY-PIN (ACTIVE)

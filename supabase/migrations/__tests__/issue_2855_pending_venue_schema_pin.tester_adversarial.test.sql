@@ -1,0 +1,4 @@
+-- Reserved for the independent #2855 tester.
+-- A schema hash review approves only the lane's existence, never nonzero use.
+-- CI owner: issue-2099-pending-venue-identity-correction-tests.yml.
+-- The implementor intentionally supplies no tester-owned assertions here.

@@ -200,6 +200,14 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
       ".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs",
     ]),
   }),
+  Object.freeze({
+    issue: 2855,
+    workflow: "issue-2099-pending-venue-identity-correction-tests.yml",
+    referenceFiles: Object.freeze([
+      "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+      "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+    ]),
+  }),
 ]);
 const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL_NAMES = new Set(
   PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL.map((item) => item.workflow),
