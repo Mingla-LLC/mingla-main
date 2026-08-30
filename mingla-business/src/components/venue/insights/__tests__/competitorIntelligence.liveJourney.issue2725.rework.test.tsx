@@ -91,6 +91,7 @@ const Renderer = require("react-test-renderer") as {
   act: (callback: () => Promise<void> | void) => Promise<void>;
 };
 const trees: Tree[] = [];
+const FIXED_NOW_MS = Date.parse("2026-08-28T16:00:00Z");
 const render = async (element: React.ReactElement): Promise<Tree> => {
   let tree: Tree | null = null;
   await Renderer.act(async () => {
@@ -172,6 +173,7 @@ const row: CompetitorWatchV2Row = {
 };
 
 beforeEach(() => {
+  jest.spyOn(Date, "now").mockReturnValue(FIXED_NOW_MS);
   mockSearch.mockReturnValue({
     data: [
       {
@@ -190,6 +192,7 @@ beforeEach(() => {
 afterEach(() => {
   trees.splice(0).forEach((tree) => tree.unmount());
   jest.clearAllMocks();
+  jest.restoreAllMocks();
 });
 
 describe("issue 2725 premium Competition live journey", () => {
