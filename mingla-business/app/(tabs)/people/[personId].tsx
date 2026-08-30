@@ -388,6 +388,9 @@ export default function BrandPersonDetailRoute(): React.ReactElement {
     || query.kind === "notFound" || query.kind === "offlineEmpty" || query.kind === "error";
   const detail = !hidden && isDetail(query.data) ? query.data : null;
   const person = hidden ? null : query.data ?? null;
+  const maintenanceRoute = detail !== null || (
+    person === null && roleResolved && role.accepted && role.rank >= 20
+  );
 
   return (
     <SafeScreen edges={["top"]} style={styles.host}>
@@ -397,7 +400,7 @@ export default function BrandPersonDetailRoute(): React.ReactElement {
         onBack={() => router.replace("/(tabs)/marketing/people" as never)}
         rightSlot={null}
       />
-      {brand?.id && personId ? (
+      {brand?.id && personId && maintenanceRoute ? (
         <MaintenanceDetailExperience
           person={person}
           detail={detail}

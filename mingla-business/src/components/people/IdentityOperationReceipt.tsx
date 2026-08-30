@@ -51,17 +51,24 @@ export function IdentityOperationReceipt(
       : `Primary ${props.channel} changed.`
     : `We can’t split this automatically. Nothing changed. Reference ${props.supportReference}.`;
   React.useEffect(() => {
-    const frame = requestAnimationFrame(() => {
+    const focus = (): void => {
       if (Platform.OS === "web") {
         (headingRef.current as (React.ElementRef<typeof Text> & { focus?: () => void }) | null)
           ?.focus?.();
       } else {
         const handle = findNodeHandle(headingRef.current);
-        if (handle !== null) AccessibilityInfo.setAccessibilityFocus(handle);
+        if (handle !== null) AccessibilityInfo?.setAccessibilityFocus?.(handle);
       }
-    });
-    AccessibilityInfo.announceForAccessibility(announcement);
-    return () => cancelAnimationFrame(frame);
+    };
+    const frame = typeof requestAnimationFrame === "function"
+      ? requestAnimationFrame(focus)
+      : null;
+    const timer = frame === null ? setTimeout(focus, 0) : null;
+    AccessibilityInfo?.announceForAccessibility?.(announcement);
+    return () => {
+      if (frame !== null) cancelAnimationFrame(frame);
+      if (timer !== null) clearTimeout(timer);
+    };
   }, [announcement]);
   if (props.kind === "unsafe") {
     return (

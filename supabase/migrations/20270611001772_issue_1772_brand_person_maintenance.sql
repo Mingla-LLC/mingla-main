@@ -8,7 +8,8 @@ BEGIN;
 -- older decision remains immutable history and is restored only by exact split.
 ALTER TABLE public.brand_person_identity_separations
   ADD COLUMN superseded_at timestamptz NULL,
-  ADD COLUMN superseded_by uuid NULL REFERENCES auth.users(id) ON DELETE SET NULL,
+  -- Immutable actor snapshot: intentionally no auth.users foreign key.
+  ADD COLUMN superseded_by uuid NULL,
   ADD COLUMN superseded_by_merge_event_id uuid NULL
     REFERENCES public.brand_person_merge_events(id) ON DELETE RESTRICT,
   ADD CONSTRAINT issue_1772_separation_supersession_shape CHECK (
@@ -31,7 +32,7 @@ ALTER TABLE public.brand_offering_invites
 CREATE TABLE public.brand_person_maintenance_operations (
   client_request_id uuid PRIMARY KEY,
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
-  actor_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  actor_id uuid NOT NULL,
   operation text NOT NULL CHECK (operation IN ('manual_merge','split','promote_primary')),
   request_hash char(64) NOT NULL CHECK (request_hash ~ '^[0-9a-f]{64}$'),
   required_rank smallint NOT NULL CHECK (required_rank IN (20,50)),
@@ -62,7 +63,7 @@ CREATE TABLE public.brand_person_erasure_challenges (
   attempt_count smallint NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
   consumed_at timestamptz NULL,
   invalidated_at timestamptz NULL,
-  created_by uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  created_by uuid NOT NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now(),
   CONSTRAINT issue_1772_challenge_consumption_shape CHECK (
@@ -82,7 +83,7 @@ CREATE TABLE public.brand_person_erasure_operations (
   case_reference text NOT NULL CHECK (case_reference ~ '^[A-Z0-9][A-Z0-9._/-]{2,79}$'),
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
   person_id uuid NOT NULL REFERENCES public.brand_people(id) ON DELETE RESTRICT,
-  actor_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  actor_id uuid NOT NULL,
   reason_code text NOT NULL DEFAULT 'privacy_request' CHECK (reason_code='privacy_request'),
   state text NOT NULL CHECK (state IN ('db_erased','cleanup_retryable','completed')),
   count_summary jsonb NOT NULL DEFAULT '{}'::jsonb CHECK (jsonb_typeof(count_summary)='object'),
@@ -111,7 +112,7 @@ CREATE TABLE public.brand_person_erasure_audit (
   case_reference text NOT NULL CHECK (case_reference ~ '^[A-Z0-9][A-Z0-9._/-]{2,79}$'),
   brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE RESTRICT,
   person_id uuid NOT NULL REFERENCES public.brand_people(id) ON DELETE RESTRICT,
-  actor_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE RESTRICT,
+  actor_id uuid NOT NULL,
   event text NOT NULL CHECK (event IN (
     'challenge_created','challenge_dispatch_claimed','challenge_sent','challenge_failed','verification_rejected',
     'db_erased','cleanup_retryable','completed','refused'
@@ -222,6 +223,31 @@ RETURNS boolean LANGUAGE sql STABLE SECURITY DEFINER SET search_path=public,pg_t
   )
 $f$;
 
+-- Serialize canonical-address creation and erasure by the exact brand/channel/
+-- normalized-address tuple. This private service helper prevents a contact from
+-- racing into a brand while the same address is being erased.
+CREATE OR REPLACE FUNCTION public.issue_1772_lock_brand_person_address(
+  p_brand_id uuid,p_channel text,p_value text
+) RETURNS text LANGUAGE plpgsql VOLATILE SECURITY DEFINER SET search_path=public,pg_temp AS $f$
+DECLARE v_channel text:=lower(btrim(COALESCE(p_channel,''))); v_normalized text;
+BEGIN
+  IF p_brand_id IS NULL OR v_channel NOT IN ('email','phone') OR p_value IS NULL OR btrim(p_value)='' THEN
+    RAISE EXCEPTION 'people_contact_invalid' USING ERRCODE='22023';
+  END IF;
+  v_normalized:=CASE WHEN v_channel='email'
+    THEN public.issue_1770_normalize_email(p_value)
+    ELSE public.issue_1770_normalize_phone(p_value) END;
+  IF v_normalized IS NULL OR btrim(v_normalized)='' THEN
+    RAISE EXCEPTION 'people_contact_invalid' USING ERRCODE='22023';
+  END IF;
+  PERFORM pg_advisory_xact_lock(hashtextextended(encode(
+    public.issue_1772_frame('mingla:brand-person-address-lock:v1')||
+    public.issue_1772_frame(p_brand_id::text)||public.issue_1772_frame(v_channel)||
+    public.issue_1772_frame(v_normalized),'hex'),1772));
+  RETURN v_normalized;
+END
+$f$;
+
 CREATE OR REPLACE FUNCTION public.issue_1772_assert_support_actor(p_actor_id uuid)
 RETURNS void LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $f$
 BEGIN
@@ -237,20 +263,31 @@ REVOKE ALL ON FUNCTION public.issue_1772_brand_person_version(uuid) FROM PUBLIC,
 REVOKE ALL ON FUNCTION public.issue_1772_merge_event_version(uuid) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_1772_erasure_fingerprint(uuid,text,text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_1772_erasure_tombstoned(uuid,text,text) FROM PUBLIC,anon,authenticated;
+REVOKE ALL ON FUNCTION public.issue_1772_lock_brand_person_address(uuid,text,text) FROM PUBLIC,anon,authenticated;
 REVOKE ALL ON FUNCTION public.issue_1772_assert_support_actor(uuid) FROM PUBLIC,anon;
 GRANT EXECUTE ON FUNCTION public.issue_1772_frame(text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_1772_brand_person_version(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_1772_merge_event_version(uuid) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_1772_erasure_fingerprint(uuid,text,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_1772_erasure_tombstoned(uuid,text,text) TO service_role;
+GRANT EXECUTE ON FUNCTION public.issue_1772_lock_brand_person_address(uuid,text,text) TO service_role;
 GRANT EXECUTE ON FUNCTION public.issue_1772_assert_support_actor(uuid) TO authenticated,service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_1772_reject_tombstoned_contact()
 RETURNS trigger LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp AS $f$
 BEGIN
-  IF NEW.record_state='active'
-     AND public.issue_1772_erasure_tombstoned(NEW.brand_id,NEW.channel,NEW.normalized_value) THEN
-    RAISE EXCEPTION 'people_erased_contact_suppressed' USING ERRCODE='23514';
+  IF NEW.record_state='active' THEN
+    -- Person-first ordering is shared with erasure. A writer targeting a person
+    -- being erased waits, then fails closed after the row becomes non-active.
+    PERFORM 1 FROM public.brand_people p
+      WHERE p.id=NEW.brand_person_id AND p.brand_id=NEW.brand_id
+        AND p.record_status='active' AND public.biz_brand_person_canonical(p.id)=p.id
+      FOR UPDATE;
+    IF NOT FOUND THEN RAISE EXCEPTION 'people_not_found' USING ERRCODE='P0002'; END IF;
+    NEW.normalized_value:=public.issue_1772_lock_brand_person_address(NEW.brand_id,NEW.channel,NEW.normalized_value);
+    IF public.issue_1772_erasure_tombstoned(NEW.brand_id,NEW.channel,NEW.normalized_value) THEN
+      RAISE EXCEPTION 'people_erased_contact_suppressed' USING ERRCODE='23514';
+    END IF;
   END IF;
   RETURN NEW;
 END
@@ -340,7 +377,15 @@ BEGIN
   v_search:=replace(replace(replace(lower(btrim(COALESCE(p_search,''))),'\','\\'),'%','\%'),'_','\_');
   SELECT COALESCE(jsonb_agg(summary ORDER BY updated_at DESC,id DESC),'[]'::jsonb) INTO v_rows
   FROM (
-    SELECT p.id,p.updated_at,public.issue_1772_person_summary(p.id) summary
+    SELECT p.id,p.updated_at,public.issue_1772_person_summary(p.id)||jsonb_build_object(
+      'matchedContact',CASE WHEN v_search<>'' THEN (
+        SELECT jsonb_build_object('id',c.id,'channel',c.channel,'value',c.normalized_value,'isPrimary',c.is_primary)
+        FROM public.brand_person_contact_methods c
+        WHERE c.brand_person_id=p.id AND c.record_state='active' AND c.provenance_scope='brand_owned'
+          AND lower(c.normalized_value) ILIKE '%'||v_search||'%' ESCAPE '\'
+        ORDER BY c.is_primary DESC,c.channel,c.id LIMIT 1
+      ) ELSE NULL END
+    ) summary
     FROM public.brand_people p
     WHERE p.brand_id=p_brand_id AND p.record_status='active' AND p.id<>p_person_id
       AND public.biz_brand_person_canonical(p.id)=p.id
@@ -396,7 +441,8 @@ DECLARE v_row public.brand_person_maintenance_operations%ROWTYPE;
 BEGIN
   SELECT * INTO v_row FROM public.brand_person_maintenance_operations WHERE client_request_id=p_request;
   IF NOT FOUND THEN RETURN NULL; END IF;
-  IF v_row.brand_id<>p_brand OR v_row.actor_id<>p_actor OR v_row.operation<>p_operation OR v_row.request_hash<>p_hash THEN
+  IF v_row.brand_id IS DISTINCT FROM p_brand OR v_row.actor_id IS DISTINCT FROM p_actor
+     OR v_row.operation IS DISTINCT FROM p_operation OR v_row.request_hash IS DISTINCT FROM p_hash THEN
     RAISE EXCEPTION 'people_idempotency_conflict' USING ERRCODE='23505';
   END IF;
   IF COALESCE(public.biz_brand_effective_rank(p_brand,p_actor),-1)<v_row.required_rank THEN
@@ -689,7 +735,7 @@ RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg
 DECLARE v_actor uuid:=auth.uid(); v_row public.brand_person_maintenance_operations%ROWTYPE;
 BEGIN
   SELECT * INTO v_row FROM public.brand_person_maintenance_operations WHERE client_request_id=p_client_request_id AND brand_id=p_brand_id;
-  IF NOT FOUND OR v_actor IS NULL OR v_row.actor_id<>v_actor THEN RAISE EXCEPTION 'people_operation_not_found' USING ERRCODE='P0002'; END IF;
+  IF NOT FOUND OR v_actor IS NULL OR v_row.actor_id IS DISTINCT FROM v_actor THEN RAISE EXCEPTION 'people_operation_not_found' USING ERRCODE='P0002'; END IF;
   IF COALESCE(public.biz_brand_effective_rank(p_brand_id,v_actor),-1)<v_row.required_rank THEN RAISE EXCEPTION 'people_forbidden' USING ERRCODE='42501'; END IF;
   RETURN v_row.result_json||jsonb_build_object('replayed',true);
 END
@@ -724,7 +770,7 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended(p_client_request_id::text,1772));
   SELECT * INTO v_existing FROM public.brand_person_erasure_challenges WHERE client_request_id=p_client_request_id;
   IF FOUND THEN
-    IF v_existing.request_hash<>v_hash OR v_existing.created_by<>p_actor_id THEN RAISE EXCEPTION 'people_idempotency_conflict' USING ERRCODE='23505'; END IF;
+    IF v_existing.request_hash IS DISTINCT FROM v_hash OR v_existing.created_by IS DISTINCT FROM p_actor_id THEN RAISE EXCEPTION 'people_idempotency_conflict' USING ERRCODE='23505'; END IF;
     RETURN jsonb_build_object('challengeId',v_existing.id,'deliveryState',v_existing.delivery_state,
       'existing',true,'shouldDispatch',false);
   END IF;
@@ -778,7 +824,7 @@ DECLARE v_row public.brand_person_erasure_challenges%ROWTYPE;
 BEGIN
   PERFORM public.issue_1772_require_support_service(p_actor_id);
   SELECT * INTO v_row FROM public.brand_person_erasure_challenges WHERE id=p_challenge_id FOR UPDATE;
-  IF NOT FOUND OR v_row.created_by<>p_actor_id THEN RAISE EXCEPTION 'people_erasure_challenge_not_found' USING ERRCODE='P0002'; END IF;
+  IF NOT FOUND OR v_row.created_by IS DISTINCT FROM p_actor_id THEN RAISE EXCEPTION 'people_erasure_challenge_not_found' USING ERRCODE='P0002'; END IF;
   IF v_row.consumed_at IS NOT NULL OR v_row.invalidated_at IS NOT NULL THEN
     RETURN jsonb_build_object('challengeId',v_row.id,'claimed',false,'deliveryState',v_row.delivery_state);
   END IF;
@@ -804,7 +850,7 @@ BEGIN
   PERFORM public.issue_1772_require_support_service(p_actor_id);
   IF p_state NOT IN('sent','failed') OR (p_safe_code IS NOT NULL AND p_safe_code !~ '^[a-z0-9_]{1,80}$') THEN RAISE EXCEPTION 'people_erasure_input_invalid' USING ERRCODE='22023'; END IF;
   SELECT * INTO v_row FROM public.brand_person_erasure_challenges WHERE id=p_challenge_id FOR UPDATE;
-  IF NOT FOUND OR v_row.created_by<>p_actor_id THEN RAISE EXCEPTION 'people_erasure_challenge_not_found' USING ERRCODE='P0002'; END IF;
+  IF NOT FOUND OR v_row.created_by IS DISTINCT FROM p_actor_id THEN RAISE EXCEPTION 'people_erasure_challenge_not_found' USING ERRCODE='P0002'; END IF;
   IF v_row.delivery_state=p_state THEN RETURN jsonb_build_object('challengeId',v_row.id,'deliveryState',v_row.delivery_state,'replayed',true); END IF;
   IF v_row.delivery_state='pending' AND p_state='failed' THEN
     IF p_safe_code NOT IN('no_contact','invalid_recipient','country_unresolved','provider_kill_switch_off','ng_operator_embargo','provider_config_missing','provider_protocol_error','pre_dispatch_failed') THEN
@@ -836,6 +882,7 @@ DECLARE v_challenge public.brand_person_erasure_challenges%ROWTYPE; v_existing p
   v_person public.brand_people%ROWTYPE; v_operation uuid:=gen_random_uuid(); v_hash text; v_attempts integer;
   v_cleanup jsonb:='[]'::jsonb; v_counts jsonb; v_contact_count integer:=0; v_name_count integer:=0;
   v_source_count integer:=0; v_invite_count integer:=0; v_export_count integer:=0; v_import_count integer:=0;
+  v_locked record;
 BEGIN
   PERFORM public.issue_1772_require_support_service(p_actor_id);
   IF p_client_request_id IS NULL OR p_verification_hash !~ '^[0-9a-f]{64}$' THEN RAISE EXCEPTION 'people_erasure_input_invalid' USING ERRCODE='22023'; END IF;
@@ -843,12 +890,12 @@ BEGIN
   PERFORM pg_advisory_xact_lock(hashtextextended(p_client_request_id::text,1772));
   SELECT * INTO v_existing FROM public.brand_person_erasure_operations WHERE client_request_id=p_client_request_id;
   IF FOUND THEN
-    IF v_existing.request_hash<>v_hash OR v_existing.actor_id<>p_actor_id THEN RAISE EXCEPTION 'people_idempotency_conflict' USING ERRCODE='23505'; END IF;
+    IF v_existing.request_hash IS DISTINCT FROM v_hash OR v_existing.actor_id IS DISTINCT FROM p_actor_id THEN RAISE EXCEPTION 'people_idempotency_conflict' USING ERRCODE='23505'; END IF;
     RETURN jsonb_build_object('operationId',v_existing.id,'state',v_existing.state,'cleanupPaths',v_existing.cleanup_paths,
       'countSummary',v_existing.count_summary,'replayed',true);
   END IF;
   SELECT * INTO v_challenge FROM public.brand_person_erasure_challenges WHERE id=p_challenge_id FOR UPDATE;
-  IF NOT FOUND OR v_challenge.created_by<>p_actor_id THEN RAISE EXCEPTION 'people_erasure_challenge_not_found' USING ERRCODE='P0002'; END IF;
+  IF NOT FOUND OR v_challenge.created_by IS DISTINCT FROM p_actor_id THEN RAISE EXCEPTION 'people_erasure_challenge_not_found' USING ERRCODE='P0002'; END IF;
   IF v_challenge.delivery_state='dispatching' AND v_challenge.consumed_at IS NULL
      AND v_challenge.invalidated_at IS NULL AND v_challenge.expires_at>now() THEN
     RETURN jsonb_build_object('state','delivery_unknown','safeCode','challenge_state_unknown');
@@ -868,10 +915,44 @@ BEGIN
         CASE WHEN v_attempts>=5 THEN 'challenge_locked' ELSE 'verification_mismatch' END,jsonb_build_object('attemptCount',v_attempts));
     RETURN jsonb_build_object('state','verification_rejected','safeCode',CASE WHEN v_attempts>=5 THEN 'challenge_locked' ELSE 'verification_mismatch' END,'attemptsRemaining',5-v_attempts);
   END IF;
+  -- Lock the target person first, matching the canonical contact trigger. This
+  -- prevents a novel address (which cannot be present in the scan yet) from
+  -- committing to the target while erasure is in flight.
+  PERFORM 1 FROM public.brand_people
+    WHERE id=v_challenge.person_id AND brand_id=v_challenge.brand_id
+      AND record_status='active' AND public.biz_brand_person_canonical(id)=id
+    FOR UPDATE;
+  -- Acquire every current address lock in a stable order, then re-read the
+  -- canonical graph while those locks are held.
+  FOR v_locked IN
+    SELECT c.channel,c.normalized_value,c.id
+    FROM public.brand_person_contact_methods c
+    WHERE c.brand_person_id=v_challenge.person_id AND c.brand_id=v_challenge.brand_id
+      AND c.channel IN('email','phone') AND c.normalized_value NOT LIKE 'erased:%'
+    ORDER BY c.channel,c.normalized_value,c.id
+  LOOP
+    PERFORM public.issue_1772_lock_brand_person_address(v_challenge.brand_id,v_locked.channel,v_locked.normalized_value);
+  END LOOP;
   SELECT * INTO v_person FROM public.brand_people WHERE id=v_challenge.person_id AND brand_id=v_challenge.brand_id AND record_status='active' AND public.biz_brand_person_canonical(id)=id FOR UPDATE;
   IF NOT FOUND OR v_person.linked_user_id IS NOT NULL
      OR EXISTS(SELECT 1 FROM public.brand_person_identity_conflicts c WHERE c.brand_id=v_challenge.brand_id AND c.status='open' AND v_challenge.person_id=ANY(c.candidate_person_ids))
-     OR EXISTS(SELECT 1 FROM public.brand_person_merge_events m WHERE m.brand_id=v_challenge.brand_id AND m.status='active' AND (m.winner_person_id=v_challenge.person_id OR m.loser_person_id=v_challenge.person_id)) THEN
+     OR EXISTS(SELECT 1 FROM public.brand_person_merge_events m WHERE m.brand_id=v_challenge.brand_id AND m.status='active' AND (m.winner_person_id=v_challenge.person_id OR m.loser_person_id=v_challenge.person_id))
+     OR EXISTS(
+       SELECT 1
+       FROM public.brand_person_contact_methods target_contact
+       JOIN public.brand_person_contact_methods other_contact
+         ON other_contact.brand_id=target_contact.brand_id
+        AND other_contact.channel=target_contact.channel
+        AND other_contact.normalized_value=target_contact.normalized_value
+        AND other_contact.brand_person_id IS DISTINCT FROM target_contact.brand_person_id
+        AND other_contact.record_state='active' AND other_contact.provenance_scope='brand_owned'
+       JOIN public.brand_people other_person ON other_person.id=other_contact.brand_person_id
+       WHERE target_contact.brand_person_id=v_challenge.person_id
+         AND target_contact.brand_id=v_challenge.brand_id
+         AND target_contact.record_state='active' AND target_contact.provenance_scope='brand_owned'
+         AND other_person.brand_id=v_challenge.brand_id AND other_person.record_status='active'
+         AND public.biz_brand_person_canonical(other_person.id)=other_person.id
+     ) THEN
     UPDATE public.brand_person_erasure_challenges SET invalidated_at=now(),updated_at=now() WHERE id=p_challenge_id;
     INSERT INTO public.brand_person_erasure_audit(challenge_id,case_reference,brand_id,person_id,actor_id,event,reason_code)
       VALUES(v_challenge.id,v_challenge.case_reference,v_challenge.brand_id,v_challenge.person_id,p_actor_id,'refused','identity_not_unambiguous');
@@ -901,9 +982,14 @@ BEGIN
     WHERE resolved_person_id=v_challenge.person_id AND state='pending';
   UPDATE public.brand_contact_import_rows r SET name=NULL,email=NULL,phone_e164=NULL,phone_country=NULL,duplicate_key=NULL,
     canonical_person_id=NULL,conflict_id=NULL,outcome='invalid',reason_code='erased_contact',executed_at=COALESCE(executed_at,now())
-    WHERE r.canonical_person_id=v_challenge.person_id
+    WHERE EXISTS(
+      SELECT 1 FROM public.brand_contact_import_batches b
+      WHERE b.id=r.batch_id AND b.brand_id=v_challenge.brand_id
+    ) AND (
+      r.canonical_person_id=v_challenge.person_id
       OR (r.email IS NOT NULL AND public.issue_1772_erasure_tombstoned(v_challenge.brand_id,'email',r.email))
-      OR (r.phone_e164 IS NOT NULL AND public.issue_1772_erasure_tombstoned(v_challenge.brand_id,'phone',r.phone_e164));
+      OR (r.phone_e164 IS NOT NULL AND public.issue_1772_erasure_tombstoned(v_challenge.brand_id,'phone',r.phone_e164))
+    );
   GET DIAGNOSTICS v_import_count=ROW_COUNT;
   WITH removed AS (UPDATE public.brand_offering_invites SET status='removed',removal_reason='privacy_erasure',removed_at=now(),updated_at=now()
     WHERE brand_person_id=v_challenge.person_id AND status='active' RETURNING id)
@@ -920,7 +1006,7 @@ BEGIN
     SELECT storage_path path FROM public.brand_people_export_jobs WHERE brand_id=v_challenge.brand_id AND export_kind='brand_book' AND status IN('queued','running','ready') AND storage_path IS NOT NULL
     UNION SELECT prepared_storage_path FROM public.brand_people_export_jobs WHERE brand_id=v_challenge.brand_id AND export_kind='brand_book' AND status IN('queued','running','ready') AND prepared_storage_path IS NOT NULL
   ) paths;
-  WITH expired AS (UPDATE public.brand_people_export_jobs SET status='expired',storage_path=NULL,prepared_storage_path=NULL,
+  WITH expired AS (UPDATE public.brand_people_export_jobs SET status='expired',
     safe_error_code='privacy_erasure',expires_at=now(),updated_at=now()
     WHERE brand_id=v_challenge.brand_id AND export_kind='brand_book' AND status IN('queued','running','ready') RETURNING 1)
     SELECT count(*) INTO v_export_count FROM expired;
@@ -943,8 +1029,13 @@ BEGIN
   PERFORM public.issue_1772_require_support_service(p_actor_id);
   IF p_safe_code IS NOT NULL AND p_safe_code !~ '^[a-z0-9_]{1,80}$' THEN RAISE EXCEPTION 'people_erasure_input_invalid' USING ERRCODE='22023'; END IF;
   SELECT * INTO v_row FROM public.brand_person_erasure_operations WHERE id=p_operation_id FOR UPDATE;
-  IF NOT FOUND OR v_row.actor_id<>p_actor_id THEN RAISE EXCEPTION 'people_erasure_operation_not_found' USING ERRCODE='P0002'; END IF;
-  IF v_row.state='completed' AND p_success THEN RETURN jsonb_build_object('operationId',v_row.id,'state','completed','replayed',true); END IF;
+  IF NOT FOUND OR v_row.actor_id IS DISTINCT FROM p_actor_id THEN RAISE EXCEPTION 'people_erasure_operation_not_found' USING ERRCODE='P0002'; END IF;
+  IF v_row.state='completed' THEN
+    RETURN jsonb_build_object('operationId',v_row.id,'state','completed','replayed',true);
+  END IF;
+  IF v_row.state NOT IN('db_erased','cleanup_retryable') THEN
+    RAISE EXCEPTION 'people_erasure_cleanup_state_invalid' USING ERRCODE='23514';
+  END IF;
   v_state:=CASE WHEN p_success THEN 'completed' ELSE 'cleanup_retryable' END;
   UPDATE public.brand_person_erasure_operations SET state=v_state,safe_code=p_safe_code,
     completed_at=CASE WHEN p_success THEN now() ELSE NULL END,updated_at=now() WHERE id=p_operation_id;
@@ -954,6 +1045,33 @@ BEGIN
   RETURN jsonb_build_object('operationId',v_row.id,'state',v_state,'replayed',false);
 END
 $f$;
+
+-- The worker clears an exact path only after Storage confirms deletion. Privacy
+-- erasure markers are eligible immediately; ordinary ready/expired jobs retain
+-- the original expiry condition.
+CREATE OR REPLACE FUNCTION public.biz_expire_brand_people_export(
+  p_job_id uuid,p_storage_path text
+) RETURNS boolean
+LANGUAGE sql SECURITY DEFINER SET search_path=public,pg_temp
+AS $f$
+  WITH updated AS (
+    UPDATE public.brand_people_export_jobs
+    SET status='expired',
+      storage_path=CASE WHEN storage_path=p_storage_path THEN NULL ELSE storage_path END,
+      prepared_storage_path=CASE WHEN prepared_storage_path=p_storage_path THEN NULL ELSE prepared_storage_path END,
+      updated_at=now()
+    WHERE id=p_job_id
+      AND p_storage_path IS NOT NULL
+      AND p_storage_path IN(storage_path,prepared_storage_path)
+      AND (
+        (status='expired' AND safe_error_code='privacy_erasure')
+        OR (status IN('ready','expired') AND expires_at<=now())
+      )
+    RETURNING 1
+  ) SELECT EXISTS(SELECT 1 FROM updated)
+$f$;
+REVOKE ALL ON FUNCTION public.biz_expire_brand_people_export(uuid,text) FROM PUBLIC,anon,authenticated;
+GRANT EXECUTE ON FUNCTION public.biz_expire_brand_people_export(uuid,text) TO service_role;
 
 CREATE OR REPLACE FUNCTION public.issue_1772_get_brand_person_erasure_operation(p_operation_id uuid,p_actor_id uuid)
 RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path=public,pg_temp AS $f$
@@ -1046,7 +1164,7 @@ REVOKE ALL ON FUNCTION public.issue_1775_execute_import(uuid,uuid,uuid,text,text
 GRANT EXECUTE ON FUNCTION public.issue_1775_execute_import(uuid,uuid,uuid,text,text,text,text,text,uuid,text) TO service_role;
 
 DO $assert$
-DECLARE v_table text; v_def text;
+DECLARE v_table text; v_def text; v_actor_shape text;
 BEGIN
   FOREACH v_table IN ARRAY ARRAY[
     'brand_person_maintenance_operations','brand_person_erasure_keys','brand_person_erasure_challenges',
@@ -1091,6 +1209,53 @@ BEGIN
      OR has_function_privilege('authenticated','public.issue_1772_claim_erasure_challenge_delivery(uuid,uuid)','EXECUTE') THEN
     RAISE EXCEPTION 'issue_1772_dispatch_claim_contract_drift';
   END IF;
+  SELECT pg_get_functiondef('public.issue_1772_reject_tombstoned_contact()'::regprocedure) INTO v_def;
+  IF position('PERFORM 1' in v_def)=0
+     OR position('PERFORM 1' in v_def)>position('issue_1772_lock_brand_person_address' in v_def)
+     OR position('issue_1772_lock_brand_person_address' in v_def)=0
+     OR position('issue_1772_lock_brand_person_address' in v_def)>position('issue_1772_erasure_tombstoned' in v_def) THEN
+    RAISE EXCEPTION 'issue_1772_address_lock_order_drift';
+  END IF;
+  IF has_function_privilege('anon','public.issue_1772_lock_brand_person_address(uuid,text,text)','EXECUTE')
+     OR has_function_privilege('authenticated','public.issue_1772_lock_brand_person_address(uuid,text,text)','EXECUTE')
+     OR NOT has_function_privilege('service_role','public.issue_1772_lock_brand_person_address(uuid,text,text)','EXECUTE') THEN
+    RAISE EXCEPTION 'issue_1772_address_lock_grant_drift';
+  END IF;
+  SELECT pg_get_functiondef('public.issue_1772_execute_brand_person_erasure(uuid,text,uuid,uuid)'::regprocedure) INTO v_def;
+  IF position('PERFORM 1 FROM public.brand_people' in v_def)=0
+     OR position('PERFORM 1 FROM public.brand_people' in v_def)>position('FOR v_locked IN' in v_def)
+     OR v_def NOT LIKE '%ORDER BY c.channel,c.normalized_value,c.id%'
+     OR v_def NOT LIKE '%other_contact.brand_person_id IS DISTINCT FROM target_contact.brand_person_id%'
+     OR v_def NOT LIKE '%brand_contact_import_batches b%AND b.brand_id=v_challenge.brand_id%' THEN
+    RAISE EXCEPTION 'issue_1772_erasure_lock_or_scope_drift';
+  END IF;
+  SELECT pg_get_functiondef('public.issue_1772_complete_brand_person_erasure_cleanup(uuid,uuid,boolean,text)'::regprocedure) INTO v_def;
+  IF v_def NOT LIKE '%IF v_row.state=''completed'' THEN%'
+     OR v_def NOT LIKE '%people_erasure_cleanup_state_invalid%' THEN
+    RAISE EXCEPTION 'issue_1772_cleanup_absorbing_drift';
+  END IF;
+  SELECT pg_get_functiondef('public.biz_expire_brand_people_export(uuid,text)'::regprocedure) INTO v_def;
+  IF v_def NOT LIKE '%privacy_erasure%'
+     OR v_def NOT LIKE '%prepared_storage_path%'
+     OR v_def NOT LIKE '%p_storage_path%' THEN
+    RAISE EXCEPTION 'issue_1772_export_marker_cleanup_drift';
+  END IF;
+  FOREACH v_actor_shape IN ARRAY ARRAY[
+    'brand_person_identity_separations.superseded_by',
+    'brand_person_maintenance_operations.actor_id',
+    'brand_person_erasure_challenges.created_by',
+    'brand_person_erasure_operations.actor_id',
+    'brand_person_erasure_audit.actor_id'
+  ] LOOP
+    IF EXISTS(
+      SELECT 1 FROM pg_constraint con
+      JOIN pg_attribute att ON att.attrelid=con.conrelid AND att.attnum=ANY(con.conkey)
+      WHERE con.contype='f' AND con.conrelid=format('public.%I',split_part(v_actor_shape,'.',1))::regclass
+        AND att.attname=split_part(v_actor_shape,'.',2)
+    ) THEN
+      RAISE EXCEPTION 'issue_1772_actor_snapshot_fk_drift:%',v_actor_shape;
+    END IF;
+  END LOOP;
 END
 $assert$;
 

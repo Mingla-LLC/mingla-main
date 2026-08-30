@@ -14,13 +14,22 @@ const files = {
   erasureTest: "supabase/functions/support-brand-person-erasure/issue_1772_non_user_erasure.happy.test.ts",
   worker: "supabase/functions/brand-person-ingest-worker/index.ts",
   workerTest: "supabase/functions/brand-person-ingest-worker/issue_1772_erasure_tombstone.happy.test.ts",
+  exportWorker: "supabase/functions/brand-people-export-worker/index.ts",
+  exportWorkerTest: "supabase/functions/brand-people-export-worker/issue_1772_erasure_race.happy.test.ts",
   ciManifest: ".github/ci-batch/MANIFEST.json",
   validator: ".github/scripts/ci-batch/validate-manifest-v2.mjs",
   guard: ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
   service: "mingla-business/src/services/peopleService.ts",
+  maintenanceService: "mingla-business/src/services/peopleMaintenanceService.ts",
   hook: "mingla-business/src/hooks/marketing/useBrandPersonMaintenance.ts",
   flow: "mingla-business/src/components/people/PersonMaintenanceFlow.tsx",
   detail: "mingla-business/src/components/people/PersonDetailView.tsx",
+  sections: "mingla-business/src/components/people/PersonDetailSections.tsx",
+  comparison: "mingla-business/src/components/people/PersonComparisonCard.tsx",
+  receipt: "mingla-business/src/components/people/IdentityOperationReceipt.tsx",
+  route: "mingla-business/app/(tabs)/people/[personId].tsx",
+  peoplePage: "mingla-business/src/components/people/PeoplePage.tsx",
+  peoplePageTest: "mingla-business/src/components/people/__tests__/PeoplePage.issue1772.conflict-deeplink.happy.test.tsx",
   serviceTest: "mingla-business/src/services/__tests__/peopleService.issue1772.happy.test.ts",
   hookTest: "mingla-business/src/hooks/marketing/__tests__/useBrandPersonMaintenance.issue1772.happy.test.tsx",
   detailTest: "mingla-business/src/components/people/__tests__/PersonDetailView.issue1772.happy.test.tsx",
@@ -30,6 +39,10 @@ const files = {
   invariant: "docs/INVARIANT_REGISTRY.md",
   erasureRunbook: "docs/runbooks/B2_GDPR_ERASURE_RUNBOOK.md",
   capacityRunbook: "docs/runbooks/SUPABASE_SECRET_CAPACITY.md",
+  readinessGuard: ".github/scripts/strict-grep/orch-1004-auth-scoped-query-readiness.mjs",
+  analyticsGuard: ".github/scripts/strict-grep/issue-1774-people-page.mjs",
+  l5Mutations: ".github/scripts/parity/l5-terminal-mutations.sql",
+  issue1773SqlTest: "supabase/migrations/__tests__/issue_1773_preserves_1857_phone_authority.pg17.test.sql",
 };
 
 function required(source, needle, label, failures) {
@@ -57,18 +70,31 @@ export function audit(base = repoRoot) {
   const erasureTest = read("erasureTest");
   const worker = read("worker");
   const workerTest = read("workerTest");
+  const exportWorker = read("exportWorker");
+  const exportWorkerTest = read("exportWorkerTest");
   const ciManifestText = read("ciManifest");
   const validator = read("validator");
   const guardSource = read("guard");
   const service = read("service");
+  const maintenanceService = read("maintenanceService");
   const hook = read("hook");
   const flow = read("flow");
   const detail = read("detail");
+  const sections = read("sections");
+  const comparison = read("comparison");
+  const receipt = read("receipt");
+  const route = read("route");
+  const peoplePage = read("peoplePage");
+  const peoplePageTest = read("peoplePageTest");
   const pgWorkflow = read("pgWorkflow");
   const denoWorkflow = read("denoWorkflow");
   const invariant = read("invariant");
   const erasureRunbook = read("erasureRunbook");
   const capacityRunbook = read("capacityRunbook");
+  const readinessGuard = read("readinessGuard");
+  const analyticsGuard = read("analyticsGuard");
+  const l5Mutations = read("l5Mutations");
+  const issue1773SqlTest = read("issue1773SqlTest");
   read("serviceTest");
   read("hookTest");
   read("detailTest");
@@ -124,6 +150,30 @@ export function audit(base = repoRoot) {
   const hashExpression = createHash.slice(createHash.indexOf("v_hash:="), createHash.indexOf("PERFORM pg_advisory_xact_lock"));
   if (/p_challenge_id|p_code_hash/.test(hashExpression)) failures.push("challenge intent hash includes random challenge/code material");
 
+  for (const needle of [
+    "CREATE OR REPLACE FUNCTION public.issue_1772_lock_brand_person_address(\n  p_brand_id uuid",
+    "other_contact.brand_person_id IS DISTINCT FROM target_contact.brand_person_id",
+    "brand_contact_import_batches b",
+    "WHERE b.id=r.batch_id AND b.brand_id=v_challenge.brand_id",
+    "'matchedContact'",
+    "IF v_row.state='completed' THEN",
+    "prepared_storage_path",
+    "safe_error_code='privacy_erasure'",
+    "p_storage_path IN(storage_path,prepared_storage_path)",
+  ]) required(migration, needle, `A6 integrity contract ${needle}`, failures);
+  if (!/REVOKE ALL ON FUNCTION public\.issue_1772_lock_brand_person_address[\s\S]{0,160}FROM PUBLIC,anon,authenticated/.test(migration)) {
+    failures.push("shared address lock is client executable");
+  }
+  for (const forbidden of [
+    /superseded_by uuid[^;\n]*REFERENCES auth\.users/i,
+    /brand_person_maintenance_operations[\s\S]{0,900}actor_id uuid[^;\n]*REFERENCES auth\.users/i,
+    /brand_person_erasure_challenges[\s\S]{0,900}created_by uuid[^;\n]*REFERENCES auth\.users/i,
+    /brand_person_erasure_operations[\s\S]{0,900}actor_id uuid[^;\n]*REFERENCES auth\.users/i,
+    /brand_person_erasure_audit[\s\S]{0,900}actor_id uuid[^;\n]*REFERENCES auth\.users/i,
+  ]) {
+    if (forbidden.test(migration)) failures.push("immutable actor snapshot regained an auth lifecycle FK");
+  }
+
   for (const rpc of [
     "biz_list_brand_person_merge_candidates",
     "biz_preview_brand_person_merge",
@@ -133,10 +183,23 @@ export function audit(base = repoRoot) {
     "biz_preview_brand_person_split",
     "biz_reverse_brand_person_merge_manual",
     "biz_get_brand_person_maintenance_operation",
-  ]) required(service, `\"${rpc}\"`, `Business RPC ${rpc}`, failures);
-  if (/\.from\s*\(/.test(service)) failures.push("Business people service directly accesses a table");
-  if (/SUPABASE_SERVICE_ROLE_KEY|service_role/i.test([service, hook, flow, detail].join("\n"))) failures.push("Business maintenance surface contains service authority");
-  for (const needle of ["stableMaintenanceRequestId", "maintenanceRequestIdsRef", "clientRequestId", "useInfiniteQuery", "cancelQueries", "removeQueries"]) {
+  ]) required(maintenanceService, `\"${rpc}\"`, `Business maintenance RPC ${rpc}`, failures);
+  if (/\.from\s*\(/.test(service + maintenanceService)) failures.push("Business people service directly accesses a table");
+  if (/peopleMaintenanceService/.test(service)) failures.push("eager People service imports or re-exports maintenance service");
+  for (const rpc of [
+    "biz_list_brand_person_merge_candidates",
+    "biz_preview_brand_person_merge",
+    "biz_merge_brand_people_manual",
+    "biz_promote_brand_person_contact",
+    "biz_list_brand_person_merge_history",
+    "biz_preview_brand_person_split",
+    "biz_reverse_brand_person_merge_manual",
+    "biz_get_brand_person_maintenance_operation",
+  ]) {
+    if (service.includes(rpc)) failures.push(`maintenance RPC returned to eager peopleService: ${rpc}`);
+  }
+  if (/SUPABASE_SERVICE_ROLE_KEY|service_role/i.test([service, maintenanceService, hook, flow, detail, route].join("\n"))) failures.push("Business maintenance surface contains service authority");
+  for (const needle of ["stableMaintenanceRequestId", "maintenanceRequestIdsRef", "clientRequestId", "useInfiniteQuery", "cancelQueries", "removeQueries", "AsyncStorage", "RECOVERY_TTL_MS", "RECOVERY_MAX_PER_SCOPE", "storage_blocked", "retry_available", "check_again", 'invalidateMaintenance("none")', "retryRecoveredIntent"]) {
     required(hook, needle, `stable/offline hook contract ${needle}`, failures);
   }
   if ((hook.match(/stableMaintenanceRequestId\(/g) ?? []).length < 4) failures.push("mutations do not all use stable request IDs");
@@ -151,8 +214,55 @@ export function audit(base = repoRoot) {
     "Open Review",
     "Try again",
   ]) required(flow, needle, `approved maintenance UI ${needle}`, failures);
+  for (const needle of [
+    'import { ScrollView } from "../../wrappers/SmartScrollView"',
+    "person.matchedContact",
+    'announce("Merging people…")',
+    'announce("Splitting merge…")',
+    "fontScale >= 2",
+    "androidOpaque",
+    "result.survivorPersonId",
+  ]) required(flow, needle, `A6 maintenance flow ${needle}`, failures);
+  for (const needle of [
+    "No merge history yet.",
+    "initialError",
+    "refreshError",
+    "loadMoreError",
+    "loadingMore",
+    "hasNextPage",
+    "fontScale >= 2",
+  ]) required(sections, needle, `A6 history state ${needle}`, failures);
+  for (const source of [comparison, receipt]) {
+    required(source, "fontScale >= 2", "A6 200-percent text stacking", failures);
+    required(source, "androidOpaque", "A6 Android opaque surface", failures);
+  }
+  required(receipt, 'backgroundColor: Platform.OS === "android" ? androidOpaque.successFill', "Android opaque receipt fill", failures);
+  required(flow, "candidate.personId === mergeResult.survivorPersonId", "returned-survivor receipt facts", failures);
+  for (const needle of [
+    'AccessibilityInfo.announceForAccessibility("Making primary…")',
+    'router.replace("/(tabs)/marketing/people?review=conflicts" as never)',
+    "restoredMerge.survivorPersonId",
+    "maintenance.acknowledgeRecovery()",
+    "historyInitialError={historyFirstPageError}",
+  ]) required(route, needle, `A6 route recovery ${needle}`, failures);
+  for (const needle of [
+    "routeParams.review !== \"conflicts\"",
+    "consumedReviewSignalRef.current",
+    "conflicts.kind === \"success\" && online && conflicts.openCount > 0",
+    'capturePeople("people_conflict_queue_opened", { surface: "page" })',
+    'router.replace("/(tabs)/marketing/people" as never)',
+  ]) required(peoplePage, needle, `A6 conflict deep link ${needle}`, failures);
+  required(peoplePageTest, "opens once, records once, and consumes the signal", "PeoplePage happy deep-link proof", failures);
   required(hook, "maintenanceRequestIdsRef.current,", "stable mutation request map", failures);
+  required(hook, 'import AsyncStorage from "@react-native-async-storage/async-storage"', "durable recovery storage owner", failures);
+  required(hook, "const RECOVERY_TTL_MS = 24 * 60 * 60 * 1000", "24-hour recovery TTL", failures);
   required(hook, "const maintenanceRequestIdsRef = React.useRef<Map<string, string>>(new Map());", "stable request map lifetime", failures);
+  required(hook, "await persistIntent", "storage-before-network mutation barrier", failures);
+  required(hook, "await removePersistedIntent(recoveredIntentKey)", "explicit receipt acknowledgement clearing", failures);
+  required(hook, "const enabledRead = isAuthReady && user !== null", "direct rank-20 auth authority", failures);
+  required(hook, "const enabledMerge = isAuthReady && user !== null", "direct rank-50 auth authority", failures);
+  required(hook, 'caught.code === "people_merge_stale"', "merge stale review barrier", failures);
+  required(hook, 'caught.code === "people_split_stale"', "split stale review barrier", failures);
   if (/erase|erasure/i.test([flow, detail].join("\n"))) failures.push("erasure leaked into the Business UI");
 
   for (const needle of [
@@ -190,6 +300,37 @@ export function audit(base = repoRoot) {
   const smsCall = handler.slice(handler.indexOf(": await deps.sendSms({"), handler.indexOf("}).catch", handler.indexOf(": await deps.sendSms({")));
   if (smsCall.includes("idempotency")) failures.push("SMS dispatch gained a provider idempotency input");
   required(worker, 'message?.includes("people_erased_contact_suppressed")', "worker terminal tombstone mapping", failures);
+  for (const needle of [
+    "export async function expireFiles",
+    "prepared_storage_path",
+    "privacy_erasure",
+    "observed?.status === \"ready\"",
+    "import.meta.main",
+  ]) required(exportWorker, needle, `A6 export cleanup ${needle}`, failures);
+  if ((exportWorker.match(/if \(removeError\)/g) ?? []).length !== 2) {
+    failures.push("both exact export deletion paths must retain markers only on Storage errors");
+  }
+  for (const needle of [
+    "expireFiles",
+    "prepared_storage_path",
+    "privacy_erasure",
+    "failed/crashed cleanup cleared a durable marker",
+    "const second = expiryService(rows, objects)",
+    'objects.has("brand/crash-window.csv")',
+    "fake.erasurePass() !== 1",
+    "prepare/upload erasure race did not converge without retry",
+    "ambiguous completion deleted or retried an observed ready export",
+  ]) required(exportWorkerTest, needle, `A6 export happy proof ${needle}`, failures);
+
+  required(readinessGuard, '"marketing/useBrandPersonMaintenance.ts"', "ORCH-1004 registration", failures);
+  required(analyticsGuard, "forbiddenAnalyticsKeys", "exact analytics forbidden-property scan", failures);
+  required(analyticsGuard, '"email", "phone", "displayName", "personId", "brandId", "contactValue"', "exact forbidden analytics key set", failures);
+  required(analyticsGuard, "contactValue?:string", "analytics self-test true mutation", failures);
+  required(l5Mutations, "-- ===== M-1772-01 =====", "L-5 M-1772-01 section", failures);
+  required(l5Mutations, "biz_merge_brand_people_manual(uuid,uuid,uuid,text,text,uuid) TO anon", "L-5 anon grant mutation", failures);
+  required(pgWorkflow, "L-5 subjects: 25", "L-5 subject total", failures);
+  required(pgWorkflow, 'psql call sites in the workflow: $call_sites', "L-5 call-site discovery", failures);
+  required(issue1773SqlTest, "9815b94c8ae402c9b81d2b6613be66f3", "#1773 current writer fingerprint", failures);
 
   let secretManifest;
   try { secretManifest = JSON.parse(secretManifestText); } catch { failures.push("secret manifest is invalid JSON"); }
@@ -215,6 +356,10 @@ export function audit(base = repoRoot) {
   required(denoWorkflow, nodeCommand, "secret CI command", failures);
   required(denoWorkflow, files.erasureTest, "erasure happy CI command", failures);
   required(denoWorkflow, files.workerTest, "worker happy CI command", failures);
+  required(denoWorkflow, "supabase/functions/brand-people-export-worker/issue_1772_erasure_race.*.test.ts", "export happy/tester CI glob", failures);
+  if ((denoWorkflow.match(/supabase\/functions\/brand-people-export-worker\/\*\*/g) ?? []).length !== 2) {
+    failures.push("export worker push/pull path filters are not exact");
+  }
   if (!(denoWorkflow.indexOf(nodeCommand) < denoWorkflow.indexOf(files.erasureTest) && denoWorkflow.indexOf(nodeCommand) < denoWorkflow.indexOf(files.workerTest))) {
     failures.push("secret proof must run before Edge happy tests");
   }
@@ -263,6 +408,7 @@ export function audit(base = repoRoot) {
     "supabase/migrations/__tests__/issue_1772_brand_person_maintenance.happy.pg17.test.sql",
     "supabase/functions/brand-person-ingest-worker/issue_1772_erasure_tombstone.happy.test.ts",
     "supabase/functions/support-brand-person-erasure/issue_1772_non_user_erasure.happy.test.ts",
+    "supabase/functions/brand-people-export-worker/issue_1772_erasure_race.happy.test.ts",
   ]) {
     if (postgresReferences.includes(falseReference) || supabaseReferences.includes(falseReference)
         || provider("postgres-contract-suites.yml")?.referenceFiles?.includes(falseReference)

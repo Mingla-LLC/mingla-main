@@ -21,6 +21,9 @@ export interface BrandPersonIdentitySummary {
   linked: boolean;
   identityVersion: string;
 }
+export interface BrandPersonMergeCandidate extends BrandPersonIdentitySummary {
+  matchedContact: BrandPersonContact | null;
+}
 export interface BrandPersonDetail extends BrandPersonSummary {
   alternateNames: string[];
   linked: boolean;
@@ -29,7 +32,7 @@ export interface BrandPersonDetail extends BrandPersonSummary {
 }
 export interface BrandPersonMergeCandidateCursor { updatedAt: string; personId: string }
 export interface BrandPersonMergeCandidatePage {
-  rows: BrandPersonIdentitySummary[];
+  rows: BrandPersonMergeCandidate[];
   nextCursor: BrandPersonMergeCandidateCursor | null;
 }
 export type BrandPersonMergePreviewState = "ready" | "open_conflict" | "distinct_linked_users";

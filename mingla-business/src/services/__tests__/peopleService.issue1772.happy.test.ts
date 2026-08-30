@@ -10,16 +10,18 @@ jest.mock("../../diagnostics/reportNonFatal", () => ({
 
 import {
   getBrandPerson,
+  PeopleServiceError,
+} from "../peopleService";
+import {
   getBrandPersonMaintenanceOperation,
   listBrandPersonMergeCandidates,
   listBrandPersonMergeHistory,
   mergeBrandPeople,
-  PeopleServiceError,
   previewBrandPersonMerge,
   previewBrandPersonSplit,
   promoteBrandPersonContact,
   splitBrandPersonMerge,
-} from "../peopleService";
+} from "../peopleMaintenanceService";
 
 const identity = {
   personId: "17720000-0000-4000-8000-000000000001",
@@ -42,6 +44,10 @@ const other = {
   displayName: "Maya T",
   linked: false,
   identityVersion: "version-right",
+};
+const candidate = {
+  ...other,
+  matchedContact: other.contacts[0],
 };
 const detail = {
   ...identity,
@@ -70,7 +76,7 @@ describe("#1772 strict Business maintenance RPC boundary", () => {
 
     rpc.mockResolvedValueOnce({
       data: {
-        rows: [other],
+        rows: [candidate],
         nextCursor: { updatedAt: other.updatedAt, personId: other.personId },
       },
       error: null,
@@ -82,7 +88,7 @@ describe("#1772 strict Business maintenance RPC boundary", () => {
       cursor: null,
       limit: 50,
     })).resolves.toEqual({
-      rows: [other],
+      rows: [candidate],
       nextCursor: { updatedAt: other.updatedAt, personId: other.personId },
     });
     expect(rpc).toHaveBeenLastCalledWith(

@@ -33,6 +33,7 @@ on:
       # mapping, and the capacity-safe credential-envelope proof.
       - "supabase/functions/support-brand-person-erasure/**"
       - "supabase/functions/brand-person-ingest-worker/**"
+      - "supabase/functions/brand-people-export-worker/**"
       - "supabase/secrets.manifest.json"
       - "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
@@ -163,6 +164,7 @@ on:
       # Issue #1772 — same guarded sources and proof as the push filter.
       - "supabase/functions/support-brand-person-erasure/**"
       - "supabase/functions/brand-person-ingest-worker/**"
+      - "supabase/functions/brand-people-export-worker/**"
       - "supabase/secrets.manifest.json"
       - "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs"
       # Issue #2587 — the share-capture privacy gate proof. Listed EXPLICITLY so
@@ -2109,7 +2111,7 @@ jobs:
             supabase/functions/_shared/__tests__/issue927_tester_adversarial_runtime.test.ts
 
   issue-1772-brand-person-erasure:
-    name: "Issue #1772 — capacity-safe erasure and ingest happy contracts"
+    name: "Issue #1772 — erasure, ingest, and export happy contracts"
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -2126,7 +2128,8 @@ jobs:
           node --test scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs
           deno test --allow-env --allow-read \
             supabase/functions/support-brand-person-erasure/issue_1772_non_user_erasure.happy.test.ts \
-            supabase/functions/brand-person-ingest-worker/issue_1772_erasure_tombstone.happy.test.ts
+            supabase/functions/brand-person-ingest-worker/issue_1772_erasure_tombstone.happy.test.ts \
+            supabase/functions/brand-people-export-worker/issue_1772_erasure_race.*.test.ts
 
   ad-creative-library-deno-tests:
     name: "ISSUE-866 WP3: Creative Library byte-probe + matrix + resolver Deno tests"

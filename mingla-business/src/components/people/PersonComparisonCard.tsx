@@ -1,5 +1,12 @@
 import React from "react";
-import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
 import {
   accent,
   androidOpaque,
@@ -44,6 +51,8 @@ export function PersonComparisonCard({
   disambiguate?: boolean;
   onSelect?: () => void;
 }): React.ReactElement {
+  const { fontScale } = useWindowDimensions();
+  const largeText = fontScale >= 2;
   const accessibleSuffix = disambiguate ? disambiguator(person) : null;
   const accessibleLabel = selectable
     ? `Keep ${person.displayName}${accessibleSuffix ? `, ${accessibleSuffix}` : ""}`
@@ -51,7 +60,7 @@ export function PersonComparisonCard({
   const content = (
     <>
       {selectable ? (
-        <View style={styles.radioRow}>
+        <View style={[styles.radioRow, largeText ? styles.largeTextRow : null]}>
           <View style={[styles.radio, selected ? styles.radioSelected : null]}>
             {selected ? <Icon name="check" size={14} color={text.inverse} /> : null}
           </View>
@@ -81,7 +90,11 @@ export function PersonComparisonCard({
       </View>
     </>
   );
-  const cardStyle = [styles.card, selected ? styles.selected : null];
+  const cardStyle = [
+    styles.card,
+    largeText ? styles.largeTextCard : null,
+    selected ? styles.selected : null,
+  ];
   if (!selectable || !onSelect) return <View style={cardStyle}>{content}</View>;
   return (
     <Pressable
@@ -116,6 +129,8 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.78 },
   radioRow: { minHeight: 44, flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  largeTextRow: { flexDirection: "column", alignItems: "stretch" },
+  largeTextCard: { minWidth: 0, width: "100%" },
   radio: {
     width: 22,
     height: 22,

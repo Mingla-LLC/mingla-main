@@ -1,7 +1,9 @@
 import React from "react";
 import {
+  AccessibilityInfo,
+  findNodeHandle,
+  Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -9,6 +11,7 @@ import {
 } from "react-native";
 import {
   accent,
+  androidOpaque,
   glass,
   radius,
   semantic,
@@ -19,6 +22,8 @@ import {
 import { PeopleServiceError } from "../../services/peopleService";
 import type {
   BrandPersonIdentitySummary,
+  BrandPersonMaintenanceOperation,
+  BrandPersonMergeCandidate,
   BrandPersonMergePreview,
   BrandPersonMergeResult,
   BrandPersonSplitPreview,
@@ -32,6 +37,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { IdentityOperationReceipt } from "./IdentityOperationReceipt";
 import { PersonComparisonCard } from "./PersonComparisonCard";
 
@@ -43,7 +49,7 @@ export interface PersonMaintenanceFlowProps {
   mergeVisible: boolean;
   candidateSearch: string;
   onCandidateSearchChange: (value: string) => void;
-  candidateRows: BrandPersonIdentitySummary[];
+  candidateRows: BrandPersonMergeCandidate[];
   candidatesLoading: boolean;
   candidatesLoadingMore: boolean;
   candidatesError: FlowError;
@@ -82,23 +88,49 @@ export interface PersonMaintenanceFlowProps {
   onCloseSplit: () => void;
   onViewPeople: () => void;
   onEmailSupport: (supportReference: string) => void;
+  restoredOperation?: BrandPersonMaintenanceOperation | null;
+  restoredOperationKind?: "merge" | "promote" | "split" | null;
+  onAcknowledgeReceipt?: () => void | Promise<void>;
+  onCheckRecovery?: () => void;
+  onStaleReview?: (message: string) => void;
 }
 
-function Header({
-  title,
-  subtitle,
-  onClose,
-  closeDisabled,
-}: {
+type FocusTarget = React.ElementRef<typeof Text> & { focus?: () => void };
+
+function focusAfterLayout(target: React.RefObject<FocusTarget | null>): void {
+  const focus = (): void => {
+    if (Platform.OS === "web") {
+      target.current?.focus?.();
+      return;
+    }
+    const handle = findNodeHandle(target.current);
+    if (handle !== null) AccessibilityInfo?.setAccessibilityFocus?.(handle);
+  };
+  if (typeof requestAnimationFrame === "function") requestAnimationFrame(focus);
+  else setTimeout(focus, 0);
+}
+
+function announce(message: string): void {
+  AccessibilityInfo?.announceForAccessibility?.(message);
+}
+
+const Header = React.forwardRef<FocusTarget, {
   title: string;
   subtitle?: string;
   onClose: () => void;
   closeDisabled: boolean;
-}) {
+  stacked: boolean;
+}>(function Header({
+  title,
+  subtitle,
+  onClose,
+  closeDisabled,
+  stacked,
+}, ref) {
   return (
-    <View style={styles.header}>
+    <View style={[styles.header, stacked ? styles.stacked : null]}>
       <View style={styles.headerCopy}>
-        <Text accessibilityRole="header" style={styles.title}>{title}</Text>
+        <Text ref={ref} accessible accessibilityRole="header" style={styles.title}>{title}</Text>
         {subtitle ? <Text style={styles.subtitle}>{subtitle}</Text> : null}
       </View>
       <Button
@@ -111,18 +143,29 @@ function Header({
       />
     </View>
   );
-}
+});
 
-function CurrentPersonCard({ person }: { person: BrandPersonIdentitySummary }) {
-  const primary = person.contacts.find((contact) => contact.isPrimary)
-    ?? person.contacts[0];
+function CurrentPersonCard({
+  person,
+  stacked,
+}: {
+  person: BrandPersonIdentitySummary;
+  stacked: boolean;
+}) {
+  const email = person.contacts.find((contact) =>
+    contact.channel === "email" && contact.isPrimary
+  );
+  const phone = person.contacts.find((contact) =>
+    contact.channel === "phone" && contact.isPrimary
+  );
   return (
-    <View style={styles.currentCard}>
+    <View style={[styles.currentCard, stacked ? styles.largeTextRow : null]}>
       <Avatar name={person.displayName} photo={person.avatarUrl ?? undefined} size="row" />
       <View style={styles.currentCopy}>
         <Text style={styles.currentLabel}>Current person</Text>
         <Text style={styles.currentName}>{person.displayName}</Text>
-        {primary ? <Text style={styles.currentContact}>{primary.value}</Text> : null}
+        {email ? <Text style={styles.currentContact}>Primary email: {email.value}</Text> : null}
+        {phone ? <Text style={styles.currentContact}>Primary phone: {phone.value}</Text> : null}
       </View>
     </View>
   );
@@ -131,28 +174,59 @@ function CurrentPersonCard({ person }: { person: BrandPersonIdentitySummary }) {
 function CandidateRow({
   person,
   disabled,
+  stacked,
   onPress,
 }: {
-  person: BrandPersonIdentitySummary;
+  person: BrandPersonMergeCandidate;
   disabled: boolean;
+  stacked: boolean;
   onPress: () => void;
 }) {
-  const matching = person.contacts.find((contact) => contact.isPrimary)
-    ?? person.contacts[0];
+  const primaryEmail = person.contacts.find((contact) =>
+    contact.channel === "email" && contact.isPrimary
+  );
+  const primaryPhone = person.contacts.find((contact) =>
+    contact.channel === "phone" && contact.isPrimary
+  );
+  const matching = person.matchedContact;
+  const alternateMatch = matching !== null && matching.id !==
+    (matching.channel === "email" ? primaryEmail?.id : primaryPhone?.id);
+  const matchedAlternate = alternateMatch ? matching : null;
+  const facts = [
+    primaryEmail ? `primary email ${primaryEmail.value}` : null,
+    primaryPhone ? `primary phone ${primaryPhone.value}` : null,
+    matchedAlternate
+      ? `matched ${matchedAlternate.channel} ${matchedAlternate.value}`
+      : null,
+  ].filter((value): value is string => value !== null);
   return (
     <Pressable
-      accessibilityLabel={`${person.displayName}${matching ? `, ${matching.value}` : ""}`}
+      accessibilityLabel={[person.displayName, ...facts].join(", ")}
       accessibilityRole="button"
       accessibilityState={{ disabled }}
       disabled={disabled}
       onPress={onPress}
       testID={`merge-candidate-${person.personId}`}
-      style={({ pressed }) => [styles.candidateRow, pressed && !disabled && styles.candidatePressed]}
+      style={({ pressed }) => [
+        styles.candidateRow,
+        stacked ? styles.largeTextRow : null,
+        pressed && !disabled && styles.candidatePressed,
+      ]}
     >
       <Avatar name={person.displayName} photo={person.avatarUrl ?? undefined} size="row" />
       <View style={styles.candidateCopy}>
         <Text style={styles.candidateName}>{person.displayName}</Text>
-        {matching ? <Text style={styles.candidateContact}>{matching.value}</Text> : null}
+        {primaryEmail ? (
+          <Text style={styles.candidateContact}>Primary email: {primaryEmail.value}</Text>
+        ) : null}
+        {primaryPhone ? (
+          <Text style={styles.candidateContact}>Primary phone: {primaryPhone.value}</Text>
+        ) : null}
+        {matchedAlternate ? (
+          <Text style={styles.matchedContact}>
+            Matched {matchedAlternate.channel}: {matchedAlternate.value}
+          </Text>
+        ) : null}
       </View>
       <Icon name="chevR" size={20} color={text.secondary} />
     </Pressable>
@@ -219,9 +293,8 @@ function mergeBlock(preview: BrandPersonMergePreview): React.ReactElement | null
 export function PersonMaintenanceFlow(
   props: PersonMaintenanceFlowProps,
 ): React.ReactElement {
-  const { width } = useWindowDimensions();
+  const { width, fontScale } = useWindowDimensions();
   const [mergeStep, setMergeStep] = React.useState<"picker" | "review" | "receipt">("picker");
-  const [selectedCandidate, setSelectedCandidate] = React.useState<BrandPersonIdentitySummary | null>(null);
   const [survivorId, setSurvivorId] = React.useState<string | null>(null);
   const [confirmMerge, setConfirmMerge] = React.useState(false);
   const [mergeError, setMergeError] = React.useState<string | null>(null);
@@ -229,19 +302,31 @@ export function PersonMaintenanceFlow(
   const [confirmSplit, setConfirmSplit] = React.useState(false);
   const [splitResult, setSplitResult] = React.useState<BrandPersonSplitResult | null>(null);
   const [splitMutationError, setSplitMutationError] = React.useState<string | null>(null);
-  const stacked = width < 352;
+  const pickerHeadingRef = React.useRef<FocusTarget | null>(null);
+  const reviewHeadingRef = React.useRef<FocusTarget | null>(null);
+  const mergeAlertRef = React.useRef<FocusTarget | null>(null);
+  const splitHeadingRef = React.useRef<FocusTarget | null>(null);
+  const splitAlertRef = React.useRef<FocusTarget | null>(null);
+  const mergeConfirmHeadingRef = React.useRef<FocusTarget | null>(null);
+  const splitConfirmHeadingRef = React.useRef<FocusTarget | null>(null);
+  const mergeConfirmTriggerRef = React.useRef<React.ElementRef<typeof Pressable> | null>(null);
+  const splitConfirmTriggerRef = React.useRef<React.ElementRef<typeof Pressable> | null>(null);
+  const stacked = width < 352 || fontScale >= 2;
 
   React.useEffect(() => {
     if (props.mergeVisible) return;
     setMergeStep("picker");
-    setSelectedCandidate(null);
     setSurvivorId(null);
     setConfirmMerge(false);
     setMergeError(null);
     setMergeResult(null);
     props.onSelectedPersonIdChange(null);
     props.onMergeReviewOpenChange(false);
-  }, [props.mergeVisible]);
+  }, [
+    props.mergeVisible,
+    props.onMergeReviewOpenChange,
+    props.onSelectedPersonIdChange,
+  ]);
 
   React.useEffect(() => {
     if (props.splitVisible) return;
@@ -250,8 +335,34 @@ export function PersonMaintenanceFlow(
     setSplitMutationError(null);
   }, [props.splitVisible]);
 
-  const chooseCandidate = (candidate: BrandPersonIdentitySummary): void => {
-    setSelectedCandidate(candidate);
+  React.useEffect(() => {
+    if (!props.mergeVisible) return;
+    if (confirmMerge && stacked) focusAfterLayout(mergeConfirmHeadingRef);
+    else if (mergeError || props.previewError) focusAfterLayout(mergeAlertRef);
+    else focusAfterLayout(mergeStep === "picker" ? pickerHeadingRef : reviewHeadingRef);
+  }, [confirmMerge, mergeError, mergeStep, props.mergeVisible, props.previewError, stacked]);
+
+  React.useEffect(() => {
+    if (!props.splitVisible) return;
+    if (confirmSplit && stacked) focusAfterLayout(splitConfirmHeadingRef);
+    else if (splitMutationError || props.splitError) focusAfterLayout(splitAlertRef);
+    else focusAfterLayout(splitHeadingRef);
+  }, [confirmSplit, props.splitError, props.splitVisible, splitMutationError, stacked]);
+
+  React.useEffect(() => {
+    const operation = props.restoredOperation;
+    if (props.restoredOperationKind === "merge" && operation &&
+      "survivorPersonId" in operation) {
+      setMergeResult(operation);
+      setMergeStep("receipt");
+    }
+    if (props.restoredOperationKind === "split" && operation && "outcome" in operation &&
+      (operation.outcome === "reversed" || operation.outcome === "escalated")) {
+      setSplitResult(operation);
+    }
+  }, [props.restoredOperation, props.restoredOperationKind]);
+
+  const chooseCandidate = (candidate: BrandPersonMergeCandidate): void => {
     setSurvivorId(null);
     setMergeStep("review");
     props.onSelectedPersonIdChange(candidate.personId);
@@ -266,7 +377,6 @@ export function PersonMaintenanceFlow(
     }
     if (mergeStep === "review") {
       setMergeStep("picker");
-      setSelectedCandidate(null);
       setSurvivorId(null);
       props.onSelectedPersonIdChange(null);
       props.onMergeReviewOpenChange(false);
@@ -287,6 +397,7 @@ export function PersonMaintenanceFlow(
       ? preview.leftVersion
       : preview.rightVersion;
     setMergeError(null);
+    announce("Merging people…");
     try {
       const result = await props.onMerge({
         intentKey: `${winner.personId}:${loser.personId}:${winnerVersion}:${loserVersion}`,
@@ -295,7 +406,14 @@ export function PersonMaintenanceFlow(
         winnerVersion,
         loserVersion,
       });
+      if (
+        result.survivorPersonId !== preview.left.personId &&
+        result.survivorPersonId !== preview.right.personId
+      ) {
+        throw new PeopleServiceError("people_unknown", false);
+      }
       setConfirmMerge(false);
+      setSurvivorId(result.survivorPersonId);
       setMergeResult(result);
       setMergeStep("receipt");
     } catch (caught) {
@@ -303,7 +421,13 @@ export function PersonMaintenanceFlow(
       if (code === "people_merge_stale") {
         setConfirmMerge(false);
         setSurvivorId(null);
-        setMergeError("One of these records changed or is no longer available. Refresh and choose again.");
+        setMergeStep("picker");
+        props.onSelectedPersonIdChange(null);
+        props.onMergeReviewOpenChange(false);
+        const message = "This record changed. Review the latest details before trying again.";
+        setMergeError(message);
+        props.onStaleReview?.(message);
+        void props.onRetryCandidates();
       } else if (code === "people_forbidden") {
         setMergeError("You don’t have permission to do that.");
       } else if (!props.online) {
@@ -317,6 +441,7 @@ export function PersonMaintenanceFlow(
   const submitSplit = async (): Promise<void> => {
     if (!props.splitMergeEventId || props.splitPreview?.state !== "safe") return;
     setSplitMutationError(null);
+    announce("Splitting merge…");
     try {
       const result = await props.onSplit({
         intentKey: `${props.splitMergeEventId}:${props.splitPreview.splitVersion}`,
@@ -327,6 +452,14 @@ export function PersonMaintenanceFlow(
       setSplitResult(result);
     } catch (caught) {
       const code = errorCode(caught instanceof Error ? caught : new Error("unknown"));
+      if (code === "people_split_stale") {
+        setConfirmSplit(false);
+        const message = "This record changed. Review the latest details before trying again.";
+        setSplitMutationError(message);
+        props.onStaleReview?.(message);
+        props.onCloseSplit();
+        return;
+      }
       setSplitMutationError(code === "people_forbidden"
         ? "You don’t have permission to do that."
         : !props.online
@@ -335,17 +468,27 @@ export function PersonMaintenanceFlow(
     }
   };
 
-  const mergeReceiptName = props.preview?.state === "ready" && mergeResult
-    ? (props.preview.left.personId === mergeResult.survivorPersonId
-      ? props.preview.left.displayName
-      : props.preview.right.displayName)
-    : props.person.displayName;
+  const mergeReceiptPerson = mergeResult && props.preview?.state === "ready"
+    ? [props.preview.left, props.preview.right].find((candidate) =>
+      candidate.personId === mergeResult.survivorPersonId
+    ) ?? null
+    : mergeResult?.survivorPersonId === props.person.personId
+    ? props.person
+    : null;
+  const mergeReceiptName = mergeReceiptPerson?.displayName ?? null;
   const splitUnsafeReference = props.splitPreview?.state === "unsafe"
     ? props.splitPreview.supportReference
     : null;
   const resultFacts = props.preview?.state === "ready" && survivorId
     ? mergedResultFacts(props.preview, survivorId)
     : null;
+  const survivorName = survivorId === props.preview?.left.personId
+    ? props.preview.left.displayName
+    : props.preview?.right.displayName ?? "this person";
+  const absorbedName = survivorId === props.preview?.left.personId
+    ? props.preview?.right.displayName
+    : props.preview?.left.displayName ?? "The other record";
+  const mergeConfirmationDescription = `${absorbedName} will become part of ${survivorName}. Every email and phone stays available. Past orders, tickets, RSVPs, bookings, payments, and sends do not change.`;
 
   return (
     <>
@@ -355,21 +498,38 @@ export function PersonMaintenanceFlow(
         snapPoint="full"
         dismissOnScrimTap={!props.mergePending}
       >
-        {mergeStep === "receipt" && mergeResult ? (
+        {mergeStep === "receipt" && mergeResult && mergeReceiptName ? (
           <IdentityOperationReceipt
             kind="merge"
             survivorName={mergeReceiptName}
-            onPrimary={() => props.onViewMergedPerson(mergeResult.survivorPersonId)}
+            onPrimary={() => {
+              props.onViewMergedPerson(mergeResult.survivorPersonId);
+              void props.onAcknowledgeReceipt?.();
+            }}
           />
+        ) : mergeStep === "receipt" && mergeResult ? (
+          <View style={styles.receiptError}>
+            <Text ref={mergeAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
+              Mingla couldn’t safely match the completed merge to these people.
+            </Text>
+            <Button label="Check again" onPress={() => props.onCheckRecovery?.()} />
+          </View>
         ) : mergeStep === "picker" ? (
           <View style={styles.sheetBody}>
             <Header
+              ref={pickerHeadingRef}
               title="Merge a duplicate"
               subtitle="Choose the other record. Nothing changes until you review and confirm."
               onClose={closeMerge}
               closeDisabled={props.mergePending}
+              stacked={stacked}
             />
-            <CurrentPersonCard person={props.person} />
+            <CurrentPersonCard person={props.person} stacked={stacked} />
+            {mergeError ? (
+              <Text ref={mergeAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
+                {mergeError}
+              </Text>
+            ) : null}
             <Input
               value={props.candidateSearch}
               onChangeText={props.onCandidateSearchChange}
@@ -414,6 +574,7 @@ export function PersonMaintenanceFlow(
                     key={candidate.personId}
                     person={candidate}
                     disabled={!props.online}
+                    stacked={stacked}
                     onPress={() => chooseCandidate(candidate)}
                   />
                 ))}
@@ -437,10 +598,12 @@ export function PersonMaintenanceFlow(
         ) : (
           <View style={styles.sheetBody}>
             <Header
+              ref={reviewHeadingRef}
               title="Review these two people"
               subtitle="Choose the person you want to keep."
               onClose={closeMerge}
               closeDisabled={props.mergePending}
+              stacked={stacked}
             />
             {props.previewLoading ? (
               <View accessibilityLiveRegion="polite" style={[styles.comparisonRow, stacked && styles.stacked]}>
@@ -450,7 +613,7 @@ export function PersonMaintenanceFlow(
             ) : props.previewError ? (
               <View style={styles.blockStack}>
                 <View accessibilityRole="alert" style={styles.errorBlock}>
-                  <Text style={styles.blockText}>
+                  <Text ref={mergeAlertRef} accessible style={styles.blockText}>
                     One of these records changed or is no longer available. Refresh and choose again.
                   </Text>
                 </View>
@@ -520,7 +683,11 @@ export function PersonMaintenanceFlow(
                     </Text>
                   </GlassCard>
                 ) : null}
-                {mergeError ? <Text accessibilityRole="alert" style={styles.inlineError}>{mergeError}</Text> : null}
+                {mergeError ? (
+                  <Text ref={mergeAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
+                    {mergeError}
+                  </Text>
+                ) : null}
                 {props.preview.state === "open_conflict" ? (
                   <Button label="Open Review" fullWidth onPress={props.onOpenReview} />
                 ) : props.preview.state === "distinct_linked_users" ? (
@@ -528,9 +695,49 @@ export function PersonMaintenanceFlow(
                 ) : null}
               </ScrollView>
             ) : null}
-            {props.preview?.state === "ready" || props.previewLoading || !props.preview ? (
+            {confirmMerge && stacked ? (
+              <View style={styles.inlineConfirm} accessibilityViewIsModal>
+                <Text
+                  ref={mergeConfirmHeadingRef}
+                  accessible
+                  accessibilityRole="header"
+                  style={styles.resultTitle}
+                >
+                  Merge into {survivorName}?
+                </Text>
+                <Text style={styles.blockText}>{mergeConfirmationDescription}</Text>
+                {mergeError ? (
+                  <Text ref={mergeAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
+                    {mergeError}
+                  </Text>
+                ) : null}
+                <View style={styles.stacked}>
+                  <Button
+                    label="Go back"
+                    variant="secondary"
+                    fullWidth
+                    disabled={props.mergePending}
+                    onPress={() => {
+                      setConfirmMerge(false);
+                      focusAfterLayout(mergeConfirmTriggerRef as React.RefObject<FocusTarget | null>);
+                    }}
+                  />
+                  <Button
+                    label={`Merge into ${survivorName}`}
+                    variant="destructive"
+                    fullWidth
+                    loading={props.mergePending}
+                    disabled={props.mergePending}
+                    onPress={() => void submitMerge()}
+                  />
+                </View>
+              </View>
+            ) : null}
+            {(props.preview?.state === "ready" || props.previewLoading || !props.preview) &&
+                !(confirmMerge && stacked) ? (
               <View style={styles.footer}>
                 <Button
+                  ref={mergeConfirmTriggerRef}
                   label="Review merge"
                   size="lg"
                   fullWidth
@@ -544,18 +751,19 @@ export function PersonMaintenanceFlow(
       </Sheet>
 
       <ConfirmDialog
-        visible={confirmMerge}
+        visible={confirmMerge && !stacked}
         onClose={() => setConfirmMerge(false)}
         onConfirm={submitMerge}
-        title={`Merge into ${survivorId === props.preview?.left.personId ? props.preview.left.displayName : props.preview?.right.displayName ?? "this person"}?`}
-        description={`${survivorId === props.preview?.left.personId ? props.preview?.right.displayName : props.preview?.left.displayName ?? "The other record"} will become part of ${survivorId === props.preview?.left.personId ? props.preview.left.displayName : props.preview?.right.displayName ?? "this person"}. Every email and phone stays available. Past orders, tickets, RSVPs, bookings, payments, and sends do not change.`}
-        confirmLabel={`Merge into ${survivorId === props.preview?.left.personId ? props.preview.left.displayName : props.preview?.right.displayName ?? "this person"}`}
+        title={`Merge into ${survivorName}?`}
+        description={mergeConfirmationDescription}
+        confirmLabel={`Merge into ${survivorName}`}
         cancelLabel="Go back"
         destructive
         confirmLoading={props.mergePending}
         closeDisabled={props.mergePending}
         errorMessage={mergeError}
         initialFocus="cancel"
+        restoreFocus={() => focusAfterLayout(mergeConfirmTriggerRef as React.RefObject<FocusTarget | null>)}
       />
 
       <Sheet
@@ -565,13 +773,22 @@ export function PersonMaintenanceFlow(
         dismissOnScrimTap={!props.splitPending}
       >
         {splitResult?.outcome === "reversed" ? (
-          <IdentityOperationReceipt kind="split" onPrimary={props.onViewPeople} />
+          <IdentityOperationReceipt
+            kind="split"
+            onPrimary={() => {
+              props.onViewPeople();
+              void props.onAcknowledgeReceipt?.();
+            }}
+          />
         ) : splitResult?.outcome === "escalated" ? (
           <IdentityOperationReceipt
             kind="unsafe"
             supportReference={splitResult.supportReference}
             onEmailSupport={() => props.onEmailSupport(splitResult.supportReference)}
-            onDone={props.onCloseSplit}
+            onDone={() => {
+              props.onCloseSplit();
+              void props.onAcknowledgeReceipt?.();
+            }}
           />
         ) : splitUnsafeReference !== null ? (
           <IdentityOperationReceipt
@@ -583,10 +800,12 @@ export function PersonMaintenanceFlow(
         ) : (
           <View style={styles.sheetBody}>
             <Header
+              ref={splitHeadingRef}
               title="Split this merge?"
               subtitle="Two people will reappear in your book. Future contact, group, invite, and suppression behavior returns to the saved partition. Past orders, tickets, RSVPs, bookings, payments, and sends do not change."
               onClose={props.onCloseSplit}
               closeDisabled={props.splitPending}
+              stacked={stacked}
             />
             {props.splitLoading ? (
               <View accessibilityLiveRegion="polite" style={[styles.comparisonRow, stacked && styles.stacked]}>
@@ -595,7 +814,7 @@ export function PersonMaintenanceFlow(
               </View>
             ) : props.splitError ? (
               <View style={styles.blockStack}>
-                <Text accessibilityRole="alert" style={styles.inlineError}>
+                <Text ref={splitAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
                   Mingla couldn’t confirm the latest Split status. Nothing has changed.
                 </Text>
                 <Button label="Try again" variant="secondary" onPress={props.onRetrySplitPreview} />
@@ -618,12 +837,54 @@ export function PersonMaintenanceFlow(
                   </Text>
                 ) : null}
                 {splitMutationError ? (
-                  <Text accessibilityRole="alert" style={styles.inlineError}>{splitMutationError}</Text>
+                  <Text ref={splitAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
+                    {splitMutationError}
+                  </Text>
                 ) : null}
               </ScrollView>
             ) : null}
-            {props.splitPreview?.state === "safe" ? <View style={styles.footer}>
+            {confirmSplit && stacked ? (
+              <View style={styles.inlineConfirm} accessibilityViewIsModal>
+                <Text
+                  ref={splitConfirmHeadingRef}
+                  accessible
+                  accessibilityRole="header"
+                  style={styles.resultTitle}
+                >
+                  Split this merge?
+                </Text>
+                <Text style={styles.blockText}>
+                  Two people will reappear in your book. Past orders, tickets, RSVPs, bookings, payments, and sends do not change.
+                </Text>
+                {splitMutationError ? (
+                  <Text ref={splitAlertRef} accessible accessibilityRole="alert" style={styles.inlineError}>
+                    {splitMutationError}
+                  </Text>
+                ) : null}
+                <View style={styles.stacked}>
+                  <Button
+                    label="Go back"
+                    variant="secondary"
+                    fullWidth
+                    disabled={props.splitPending}
+                    onPress={() => {
+                      setConfirmSplit(false);
+                      focusAfterLayout(splitConfirmTriggerRef as React.RefObject<FocusTarget | null>);
+                    }}
+                  />
+                  <Button
+                    label="Split into two people"
+                    fullWidth
+                    loading={props.splitPending}
+                    disabled={props.splitPending}
+                    onPress={() => void submitSplit()}
+                  />
+                </View>
+              </View>
+            ) : null}
+            {props.splitPreview?.state === "safe" && !(confirmSplit && stacked) ? <View style={styles.footer}>
               <Button
+                ref={splitConfirmTriggerRef}
                 label="Split into two people"
                 size="lg"
                 fullWidth
@@ -636,7 +897,7 @@ export function PersonMaintenanceFlow(
       </Sheet>
 
       <ConfirmDialog
-        visible={confirmSplit}
+        visible={confirmSplit && !stacked}
         onClose={() => setConfirmSplit(false)}
         onConfirm={submitSplit}
         title="Split this merge?"
@@ -647,6 +908,7 @@ export function PersonMaintenanceFlow(
         closeDisabled={props.splitPending}
         errorMessage={splitMutationError}
         initialFocus="cancel"
+        restoreFocus={() => focusAfterLayout(splitConfirmTriggerRef as React.RefObject<FocusTarget | null>)}
       />
     </>
   );
@@ -665,9 +927,9 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileBase,
     borderWidth: 1,
-    borderColor: glass.border.profileBase,
+    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
   },
   currentCopy: { flex: 1 },
   currentLabel: { ...typography.caption, color: text.secondary },
@@ -680,14 +942,15 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: spacing.sm,
-    backgroundColor: glass.tint.profileElevated,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileElevated,
     borderWidth: 1,
-    borderColor: glass.border.profileElevated,
+    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileElevated,
   },
   candidatePressed: { opacity: 0.72 },
   candidateCopy: { flex: 1, gap: 2 },
   candidateName: { ...typography.bodySm, fontWeight: "600", color: text.primary },
   candidateContact: { ...typography.bodySm, color: text.secondary },
+  matchedContact: { ...typography.bodySm, fontWeight: "600", color: accent.warm },
   skeletons: { gap: spacing.sm },
   results: { gap: spacing.sm, paddingBottom: spacing.lg },
   paginationError: { alignItems: "center", gap: spacing.xs, padding: spacing.sm },
@@ -696,13 +959,13 @@ const styles = StyleSheet.create({
   empty: { alignItems: "center", gap: spacing.sm, padding: spacing.lg },
   emptyTitle: { ...typography.body, fontWeight: "600", color: text.primary, textAlign: "center" },
   comparisonRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.md },
-  stacked: { flexDirection: "column" },
+  stacked: { flexDirection: "column", gap: spacing.sm },
   reviewContent: { gap: spacing.md, paddingBottom: spacing.lg },
   warning: {
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: semantic.warning,
-    backgroundColor: semantic.warningTint,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.warningFill : semantic.warningTint,
     padding: spacing.md,
     flexDirection: "row",
     flexWrap: "wrap",
@@ -713,7 +976,7 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: semantic.error,
-    backgroundColor: semantic.errorTint,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
     padding: spacing.md,
     flexDirection: "row",
     gap: spacing.sm,
@@ -727,13 +990,31 @@ const styles = StyleSheet.create({
   fieldLabel: { ...typography.caption, color: text.secondary },
   fieldValue: { ...typography.monoMd, color: text.primary },
   inlineError: { ...typography.bodySm, color: semantic.error },
+  receiptError: {
+    margin: spacing.md,
+    padding: spacing.lg,
+    gap: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.errorFill : semantic.errorTint,
+  },
+  inlineConfirm: {
+    padding: spacing.lg,
+    gap: spacing.lg,
+    borderRadius: radius.lg,
+    borderWidth: 1,
+    borderColor: Platform.OS === "android" ? androidOpaque.rowBorder : glass.border.profileBase,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileElevated,
+  },
   footer: { borderTopWidth: 1, borderTopColor: glass.border.profileBase, paddingTop: 12 },
   sectionLabel: { ...typography.labelCap, color: text.secondary },
   neutralCallout: {
     borderRadius: radius.md,
     borderWidth: 1,
     borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
+    backgroundColor: Platform.OS === "android" ? androidOpaque.rowFill : glass.tint.profileBase,
     padding: spacing.md,
   },
+  largeTextRow: { flexDirection: "column", alignItems: "stretch" },
 });

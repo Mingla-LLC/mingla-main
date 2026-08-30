@@ -26,10 +26,10 @@
 --     but the mutated run also exits 0, and that is RED.
 --
 -- Sections are delimited by `-- ===== <command-id> =====` and split at run time.
--- 22 sections: the 24 consolidated SQL call sites minus the two race fixtures,
+-- 25 sections: the 27 consolidated SQL call sites minus the two race fixtures,
 -- which carry ZERO `RAISE EXCEPTION` and whose verdict is rendered by M-1173-02i.
 --
--- [#2594] Five of the 22 arrived with the #1384/#1397 subjects rehomed out of the
+-- [#2594] Five of the 25 arrived with the #1384/#1397 subjects rehomed out of the
 -- class-A static-gates job. Their terminal predicates are of two shapes and the
 -- distinction matters when reading the mutations below:
 --
@@ -751,3 +751,8 @@ REVOKE EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,t
 -- ===== M-2794-02 =====
 GRANT SELECT ON TABLE public.business_recent_entity_opens TO authenticated;
 -- @l5-verify: SELECT has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT')
+
+-- ===== M-1772-01 =====
+-- [TEST-MOD-APPROVED #1772] authenticated-only manual merge RPC must never become client-executable by anon.
+GRANT EXECUTE ON FUNCTION public.biz_merge_brand_people_manual(uuid,uuid,uuid,text,text,uuid) TO anon;
+-- @l5-verify: SELECT has_function_privilege('anon','public.biz_merge_brand_people_manual(uuid,uuid,uuid,text,text,uuid)','EXECUTE')

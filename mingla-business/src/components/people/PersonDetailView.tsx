@@ -28,12 +28,24 @@ export interface PersonDetailViewProps {
   onRetry: () => void;
   historyRows?: BrandPersonMergeHistoryRow[];
   historyLoading?: boolean;
+  historyInitialError?: boolean;
+  historyRefreshError?: boolean;
+  historyLoadMoreError?: boolean;
+  historyLoadingMore?: boolean;
+  historyHasNextPage?: boolean;
+  onRetryHistory?: () => void;
+  onLoadMoreHistory?: () => void;
   mutationDisabled?: boolean;
   promotingContactId?: string | null;
   primaryError?: string | null;
   onMerge?: () => void;
   onPromote?: (contact: BrandPersonContact) => void;
   onSplit?: (row: BrandPersonMergeHistoryRow) => void;
+  maintenanceRecoveryState?: "loading" | "ready" | "retry_available" |
+    "check_again" | "storage_blocked" | "receipt";
+  onCheckRecovery?: () => void;
+  onRetryRecovery?: () => void;
+  onAbandonRecovery?: () => void;
 }
 
 export function PersonDetailView({
@@ -44,12 +56,23 @@ export function PersonDetailView({
   onRetry,
   historyRows = [],
   historyLoading = false,
+  historyInitialError = false,
+  historyRefreshError = false,
+  historyLoadMoreError = false,
+  historyLoadingMore = false,
+  historyHasNextPage = false,
+  onRetryHistory,
+  onLoadMoreHistory,
   mutationDisabled = false,
   promotingContactId = null,
   primaryError = null,
   onMerge,
   onPromote,
   onSplit,
+  maintenanceRecoveryState = "ready",
+  onCheckRecovery,
+  onRetryRecovery,
+  onAbandonRecovery,
 }: PersonDetailViewProps): React.ReactElement {
   if (loading) {
     return (
@@ -147,11 +170,14 @@ export function PersonDetailView({
   // eslint-disable-next-line @typescript-eslint/no-require-imports
   const { Button } = require("../ui/Button") as typeof import("../ui/Button");
   // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const detailSections = require(
+    "./PersonDetailSections"
+  ) as typeof import("./PersonDetailSections");
   const {
     AlternateNames,
     ContactChannelSection,
     MergeHistoryCard,
-  } = require("./PersonDetailSections") as typeof import("./PersonDetailSections");
+  } = detailSections;
   return (
     <ScrollView contentContainerStyle={styles.content}>
       {status ? (
@@ -186,10 +212,55 @@ export function PersonDetailView({
         error={primaryError}
         onPromote={(contact) => onPromote?.(contact)}
       />
-      {detail.capabilities.canViewMergeHistory && onSplit ? (
+      {maintenanceRecoveryState === "loading" ? (
+        <GlassCard contentStyle={styles.recoveryCard}>
+          <Text accessibilityLiveRegion="polite" style={styles.heading}>
+            Checking your last People change…
+          </Text>
+        </GlassCard>
+      ) : maintenanceRecoveryState === "check_again" ? (
+        <GlassCard contentStyle={styles.recoveryCard}>
+          <Text accessibilityRole="alert" style={styles.recoveryTitle}>
+            Mingla couldn’t confirm your last People change.
+          </Text>
+          <Text style={styles.value}>Nothing will be sent again until the result is confirmed.</Text>
+          {onCheckRecovery ? <Button label="Check again" onPress={onCheckRecovery} /> : null}
+        </GlassCard>
+      ) : maintenanceRecoveryState === "storage_blocked" ? (
+        <GlassCard contentStyle={styles.recoveryCard}>
+          <Text accessibilityRole="alert" style={styles.recoveryTitle}>
+            People changes are paused.
+          </Text>
+          <Text style={styles.value}>
+            Mingla can’t safely save recovery details on this device. Free storage or restart, then check again.
+          </Text>
+          {onCheckRecovery ? <Button label="Check again" onPress={onCheckRecovery} /> : null}
+        </GlassCard>
+      ) : maintenanceRecoveryState === "retry_available" ? (
+        <GlassCard contentStyle={styles.recoveryCard}>
+          <Text accessibilityRole="alert" style={styles.recoveryTitle}>
+            No completed People change was found.
+          </Text>
+          <Text style={styles.value}>Review the latest details before retrying the saved change.</Text>
+          <View style={styles.recoveryActions}>
+            {onRetryRecovery ? <Button label="Retry reviewed change" onPress={onRetryRecovery} /> : null}
+            {onAbandonRecovery ? (
+              <Button label="Abandon saved change" variant="secondary" onPress={onAbandonRecovery} />
+            ) : null}
+          </View>
+        </GlassCard>
+      ) : null}
+      {detail.capabilities.canViewMergeHistory ? (
         <MergeHistoryCard
           rows={historyRows}
           loading={historyLoading}
+          initialError={historyInitialError}
+          refreshError={historyRefreshError}
+          loadMoreError={historyLoadMoreError}
+          loadingMore={historyLoadingMore}
+          hasNextPage={historyHasNextPage}
+          onRetry={onRetryHistory}
+          onLoadMore={onLoadMoreHistory}
           onSplit={onSplit}
         />
       ) : null}
@@ -234,4 +305,7 @@ const styles = StyleSheet.create({
   legacyContactCopy: { flex: 1 },
   legacyPrimary: { ...typography.caption, color: text.secondary },
   value: { ...typography.body, color: text.primary, flex: 1 },
+  recoveryCard: { gap: spacing.md },
+  recoveryTitle: { ...typography.h3, color: text.primary },
+  recoveryActions: { gap: spacing.sm },
 });

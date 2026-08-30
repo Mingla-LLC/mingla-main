@@ -54,6 +54,7 @@ const other = {
   displayName: "Maya T",
   linked: false,
   identityVersion: "version-b",
+  matchedContact: null,
 };
 const preview = {
   state: "ready" as const,
@@ -131,11 +132,16 @@ describe("#1772 merge and Split barriers", () => {
     review = tree.root.findAllByType("MockButton").find((node: any) => node.props.label === "Review merge");
     expect(review.props.disabled).toBe(false);
     TR.act(() => review.props.onPress());
-    const confirm = tree.root.findByType("MockConfirm");
-    expect(confirm.props.title).toBe("Merge into Maya Thompson?");
-    expect(confirm.props.description).toContain("Every email and phone stays available.");
-    expect(confirm.props.description).toContain("Past orders, tickets, RSVPs, bookings, payments, and sends do not change.");
-    await TR.act(async () => { await confirm.props.onConfirm(); });
+    // [TEST-MOD-APPROVED #1772] Compact/200%-text confirmation is inline so
+    // its actions remain scrollable instead of clipping in a nested dialog.
+    const confirmation = textOf(tree.toJSON()).replace(/\s+/g, " ");
+    expect(confirmation).toContain("Merge into Maya Thompson");
+    expect(confirmation).toContain("Every email and phone stays available.");
+    expect(confirmation).toContain("Past orders, tickets, RSVPs, bookings, payments, and sends do not change.");
+    const confirm = tree.root.findAllByType("MockButton").find((node: any) =>
+      node.props.label === "Merge into Maya Thompson"
+    );
+    await TR.act(async () => { await confirm.props.onPress(); });
     expect(flowProps.onMerge).toHaveBeenCalledTimes(1);
     expect(textOf(tree.toJSON())).toContain("Merge complete");
     expect(textOf(tree.toJSON())).toContain("Every email and phone is still here.");
@@ -180,7 +186,8 @@ describe("#1772 merge and Split barriers", () => {
     expect(textOf(tree.toJSON())).toContain("After Split");
     const split = tree.root.findAllByType("MockButton").find((node: any) => node.props.label === "Split into two people");
     TR.act(() => split.props.onPress());
-    expect(tree.root.findByType("MockConfirm").props.title).toBe("Split this merge?");
+    expect(textOf(tree.toJSON())).toContain("Split this merge?");
+    expect(textOf(tree.toJSON())).toContain("Two people will reappear in your book.");
   });
 
   test("source pins responsive stacking and the named radio group", async () => {
