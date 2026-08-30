@@ -1,11 +1,23 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { AppState, type AppStateStatus } from "react-native";
 import { useFocusEffect } from "expo-router";
-import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  QueryClientContext,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { useAuth } from "../context/AuthContext";
 import { useNetInfoSafe } from "../lib/netinfoSafe";
-import { postHogService } from "../services/postHogService";
 import {
   businessRecentKeys,
   clearBusinessRecentCachedScope,
@@ -27,6 +39,7 @@ import {
 } from "../services/businessRecentService";
 import {
   mergeRecentPointers,
+  ensureBusinessRecentStoreHydrated,
   promoteBusinessRecentPointers,
   recentScopeKey,
   useBusinessRecentStore,
@@ -34,6 +47,24 @@ import {
   type BusinessRecentPointer,
 } from "../store/businessRecentStore";
 import { businessRecentDestination } from "../utils/routeForEventRow";
+
+const useBusinessRecentFocusEffect: typeof useFocusEffect =
+  typeof useFocusEffect === "function"
+    ? useFocusEffect
+    : (effect) => useEffect(effect, [effect]);
+const MissingBusinessRecentQueryClientContext = createContext<null>(null);
+
+const captureBusinessRecent = (
+  event: string,
+  properties: Record<string, string | number | boolean>,
+): void => {
+  // Analytics is an outcome of a Recent operation, not a detail-route import
+  // dependency. Keep registration side-effect-free until capture is required.
+  const { postHogService } =
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    require("../services/postHogService") as typeof import("../services/postHogService");
+  postHogService.capture(event, properties);
+};
 
 export type BusinessRecentStateKind =
   | "loading"
@@ -74,6 +105,7 @@ export function useBusinessRecent(input: {
   retry: () => Promise<void>;
   refresh: () => Promise<void>;
 } {
+  void ensureBusinessRecentStoreHydrated();
   const { user, isAuthReady } = useAuth();
   const queryClient = useQueryClient();
   const network = useNetInfoSafe();
@@ -193,8 +225,7 @@ export function useBusinessRecent(input: {
   const pageQueries = useQueries({
     queries: indexPages.map((indexPage, pageOffset) => {
       const pageNumber = pageOffset + 1;
-      const cursor =
-        indexPage.map((row) => row.pointerId).join(":") || "empty";
+      const cursor = indexPage.map((row) => row.pointerId).join(":") || "empty";
       return {
         queryKey:
           userId !== null && input.brandId !== null
@@ -267,7 +298,7 @@ export function useBusinessRecent(input: {
     }),
   });
 
-  useFocusEffect(
+  useBusinessRecentFocusEffect(
     useCallback(() => {
       if (userId !== null && input.brandId !== null && !isOffline) {
         void queryClient.invalidateQueries({
@@ -300,10 +331,7 @@ export function useBusinessRecent(input: {
     );
     return index === undefined ? pointer : withIndexLifecycle(pointer, index);
   });
-  const rows = orderBusinessRecentPointers(
-    mergedRows,
-    indexRows,
-  );
+  const rows = orderBusinessRecentPointers(mergedRows, indexRows);
   const omitted = pageQueries.reduce(
     (total, query) => total + (query.data?.omitted ?? 0),
     0,
@@ -377,7 +405,7 @@ export function useBusinessRecent(input: {
     const eventKey = `${scope}:${pageCount}:${indexRows[0]?.pointerId ?? "empty"}`;
     if (loadedEventRef.current === eventKey) return;
     loadedEventRef.current = eventKey;
-    postHogService.capture("business_recent_page_loaded", {
+    captureBusinessRecent("business_recent_page_loaded", {
       source: pageCount === 1 ? "home" : "recent",
       count_bucket:
         rows.length > 25 ? "26_plus" : rows.length > 10 ? "11_25" : "0_10",
@@ -493,16 +521,10 @@ export function useBusinessRecent(input: {
       if (!permissionDenied && isCurrent()) {
         await Promise.all([
           queryClient.invalidateQueries({
-            queryKey: businessRecentKeys.index(
-              userId,
-              input.brandId as string,
-            ),
+            queryKey: businessRecentKeys.index(userId, input.brandId as string),
           }),
           queryClient.invalidateQueries({
-            queryKey: businessRecentKeys.pages(
-              userId,
-              input.brandId as string,
-            ),
+            queryKey: businessRecentKeys.pages(userId, input.brandId as string),
           }),
         ]);
       }
@@ -595,9 +617,7 @@ export function useBusinessRecent(input: {
     return () => subscription.remove();
   }, [refresh]);
 
-  const hasPageError = pageQueries
-    .slice(1)
-    .some((query) => query.isError);
+  const hasPageError = pageQueries.slice(1).some((query) => query.isError);
   const isLoadingMore =
     pageCount > 1 &&
     pageQueries.slice(1).some((query) => query.isLoading || query.isFetching);
@@ -627,9 +647,12 @@ export function useSuccessfulBusinessRecentOpen(input: {
   coverType?: "image" | "video" | "gif" | null;
   status?: string | null;
 }): void {
+  void ensureBusinessRecentStoreHydrated();
   const { user } = useAuth();
   const network = useNetInfoSafe();
-  const queryClient = useQueryClient();
+  const queryClient = useContext(
+    QueryClientContext ?? MissingBusinessRecentQueryClientContext,
+  );
   const upsert = useBusinessRecentStore((state) => state.upsert);
   const remove = useBusinessRecentStore((state) => state.remove);
   const clearScope = useBusinessRecentStore((state) => state.clearScope);
@@ -639,7 +662,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
   const activeIdentityRef = useRef<string | null>(null);
   const recordCurrentRef = useRef<() => void>(() => undefined);
 
-  useFocusEffect(
+  useBusinessRecentFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
       recordedThisFocusRef.current = false;
@@ -756,13 +779,13 @@ export function useSuccessfulBusinessRecentOpen(input: {
           }).catch(() => {
             console.warn("[Recent] accepted presentation cache write failed");
           });
-          void queryClient.invalidateQueries({
+          void queryClient?.invalidateQueries({
             queryKey: businessRecentKeys.pages(
               user.id,
               input.brandId as string,
             ),
           });
-          void queryClient.invalidateQueries({
+          void queryClient?.invalidateQueries({
             queryKey: businessRecentKeys.index(
               user.id,
               input.brandId as string,
@@ -787,7 +810,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
               console.warn("[Recent] denied scope cache cleanup failed");
             });
           }
-          postHogService.capture("business_recent_record_failed", {
+          captureBusinessRecent("business_recent_record_failed", {
             entity_type: input.entityType,
             source: "detail",
             error_category: recentErrorCategory(error),
@@ -835,6 +858,7 @@ export function promoteBusinessRecentDraft(input: {
   localId: string;
   serverId: string;
 }): void {
+  void ensureBusinessRecentStoreHydrated();
   const scope = recentScopeKey(input.userId, input.brandId);
   const operationId = newRecentOperationId();
   useBusinessRecentStore
@@ -863,6 +887,7 @@ export function discardBusinessRecentDraft(input: {
   entityType: BusinessRecentEntityType;
   localId: string;
 }): void {
+  void ensureBusinessRecentStoreHydrated();
   const scope = recentScopeKey(input.userId, input.brandId);
   useBusinessRecentStore
     .getState()

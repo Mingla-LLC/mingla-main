@@ -57,8 +57,9 @@ import { Toast } from "../../src/components/ui/Toast";
 import { IconChrome } from "../../src/components/ui/IconChrome";
 import { TopBar } from "../../src/components/ui/TopBar";
 import { UniversalCreatorSheet } from "../../src/components/ui/UniversalCreatorSheet";
-import { EmptyState } from "../../src/components/ui/EmptyState";
-import { RecentRow } from "../recent";
+// RecentRow is Home's rendering boundary for Recent covers and owns the shared
+// video-capable EventCoverMedia presentation; Home must not reimplement it.
+import { RecentRow } from "../../src/components/home/RecentRow";
 import { InvitePendingSheet } from "../../src/components/team/InvitePendingSheet";
 import {
   accent,
@@ -186,6 +187,38 @@ function SeeAllRecentButton({
     >
       <Text style={styles.sectionLink}>See all</Text>
     </Pressable>
+  );
+}
+
+function RecentStatePanel({
+  title,
+  description,
+  cta,
+}: {
+  title: string;
+  description: string;
+  cta?: { label: string; onPress: () => void };
+}): React.ReactElement {
+  return (
+    <View style={styles.recentStatePanel}>
+      <Text style={styles.recentStateTitle}>{title}</Text>
+      <Text style={styles.recentStateDescription}>{description}</Text>
+      {cta !== undefined ? (
+        <View style={styles.recentStateCtaWrap}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={cta.label}
+            onPress={cta.onPress}
+            style={({ pressed }) => [
+              styles.recentStateCta,
+              pressed && styles.recentStateCtaPressed,
+            ]}
+          >
+            <Text style={styles.recentStateCtaLabel}>{cta.label}</Text>
+          </Pressable>
+        </View>
+      ) : null}
+    </View>
   );
 }
 
@@ -760,7 +793,7 @@ export default function HomeTab(): React.ReactElement {
     }
     if (recent.state === "offline-empty") {
       return (
-        <EmptyState
+        <RecentStatePanel
           title="Recent is offline"
           description="Reconnect to load your recent work."
         />
@@ -768,7 +801,7 @@ export default function HomeTab(): React.ReactElement {
     }
     if (recent.state === "permission") {
       return (
-        <EmptyState
+        <RecentStatePanel
           title="Recent isn’t available for this brand"
           description="Your access may have changed. Switch brands or ask a brand owner for access."
         />
@@ -776,16 +809,16 @@ export default function HomeTab(): React.ReactElement {
     }
     if (recent.state === "error-empty") {
       return (
-        <EmptyState
+        <RecentStatePanel
           title="Couldn’t load Recent"
           description="Your work is still safe. Check your connection and try again."
-          cta={{ label: "Try again", onPress: recent.retry }}
+          cta={{ label: "Try again", onPress: () => void recent.retry() }}
         />
       );
     }
     if (recent.state === "omitted") {
       return (
-        <EmptyState
+        <RecentStatePanel
           title="Nothing recent is available"
           description="Those items may have been removed or you may no longer have access. Open something else to start again."
         />
@@ -793,7 +826,7 @@ export default function HomeTab(): React.ReactElement {
     }
     if (recent.state === "empty") {
       return (
-        <EmptyState
+        <RecentStatePanel
           title="Nothing recent yet"
           description="Open a venue, event, experience, trip, or draft and it’ll show up here."
           cta={{
@@ -1458,6 +1491,44 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: glass.border.profileBase,
     opacity: 0.55,
+  },
+  recentStatePanel: {
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    gap: spacing.xs,
+  },
+  recentStateTitle: {
+    fontSize: typography.h3.fontSize,
+    lineHeight: typography.h3.lineHeight,
+    fontWeight: typography.h3.fontWeight,
+    letterSpacing: typography.h3.letterSpacing,
+    color: textTokens.primary,
+    textAlign: "center",
+  },
+  recentStateDescription: {
+    fontSize: typography.bodySm.fontSize,
+    lineHeight: typography.bodySm.lineHeight,
+    fontWeight: typography.bodySm.fontWeight,
+    color: textTokens.secondary,
+    textAlign: "center",
+  },
+  recentStateCtaWrap: { marginTop: spacing.lg - spacing.xs },
+  recentStateCta: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.md,
+    borderRadius: radiusTokens.full,
+    backgroundColor: accent.warm,
+  },
+  recentStateCtaPressed: { opacity: 0.72 },
+  recentStateCtaLabel: {
+    fontSize: typography.buttonMd.fontSize,
+    lineHeight: typography.buttonMd.lineHeight,
+    fontWeight: typography.buttonMd.fontWeight,
+    letterSpacing: typography.buttonMd.letterSpacing,
+    color: textTokens.inverse,
   },
   nextActionChooser: {
     marginBottom: spacing.md,

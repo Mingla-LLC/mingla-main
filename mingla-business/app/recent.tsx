@@ -12,14 +12,10 @@ import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { EmptyState } from "../src/components/ui/EmptyState";
-import { EventCoverMedia } from "../src/components/ui/EventCoverMedia";
-import { Icon } from "../src/components/ui/Icon";
-import { Pill } from "../src/components/ui/Pill";
 import { TopBar } from "../src/components/ui/TopBar";
+import { RecentRow } from "../src/components/home/RecentRow";
 import {
   accent,
-  glass,
-  radius,
   spacing,
   text as textTokens,
   typography,
@@ -28,76 +24,13 @@ import { useBusinessRecent } from "../src/hooks/useBusinessRecent";
 import { useCurrentBrand } from "../src/hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../src/hooks/useResponsiveLayout";
 import type { BusinessRecentPointer } from "../src/store/businessRecentStore";
-import { formatRelativeTime } from "../src/utils/relativeTime";
 import {
   businessRecentDestination,
   routeForBusinessRecent,
 } from "../src/utils/routeForEventRow";
 import { postHogService } from "../src/services/postHogService";
 
-const typeLabel = (row: BusinessRecentPointer): string =>
-  row.entityType === "rsvp"
-    ? "RSVP"
-    : row.entityType[0].toUpperCase() + row.entityType.slice(1);
-
-const isLive = (row: BusinessRecentPointer): boolean => row.status === "live";
-
-export function RecentRow({
-  row,
-  onPress,
-}: {
-  row: BusinessRecentPointer;
-  onPress: () => void;
-}): React.ReactElement {
-  const [focused, setFocused] = useState(false);
-  const live = isLive(row);
-  const status = live
-    ? "Live"
-    : row.status === "draft" || row.localDraft
-      ? "Draft"
-      : typeLabel(row);
-  const opened = `Opened ${formatRelativeTime(row.lastOpenedAt)}`;
-  return (
-    <Pressable
-      onPress={onPress}
-      onFocus={() => setFocused(true)}
-      onBlur={() => setFocused(false)}
-      accessibilityRole="button"
-      accessibilityLabel={`Open ${typeLabel(row)}: ${row.title?.trim() || "Title unavailable"}. ${status}. ${opened}.`}
-      style={({ pressed }) => [
-        styles.row,
-        pressed && styles.rowPressed,
-        Platform.OS === "web" && focused && styles.rowFocused,
-      ]}
-    >
-      <EventCoverMedia
-        hue={24}
-        mediaUrl={row.coverUrl ?? null}
-        posterUrl={row.coverPosterUrl ?? null}
-        mediaType={row.coverType ?? null}
-        radius={12}
-        label=""
-        height={56}
-        width={56}
-      />
-      <View style={styles.rowText}>
-        <View style={styles.metaRow}>
-          {live ? (
-            <Pill variant="live">Live</Pill>
-          ) : row.status === "draft" || row.localDraft ? (
-            <Pill variant="draft">Draft</Pill>
-          ) : null}
-          <Text style={styles.type}>{typeLabel(row)}</Text>
-        </View>
-        <Text style={styles.title} numberOfLines={2}>
-          {row.title?.trim() || "--"}
-        </Text>
-        <Text style={styles.opened}>{opened}</Text>
-      </View>
-      <Icon name="chevR" size={18} color={textTokens.tertiary} />
-    </Pressable>
-  );
-}
+export { RecentRow } from "../src/components/home/RecentRow";
 
 export default function RecentScreen(): React.ReactElement {
   const insets = useSafeAreaInsets();
@@ -263,7 +196,9 @@ export default function RecentScreen(): React.ReactElement {
                 onPress={() => void recent.retry()}
                 style={styles.footerRetry}
               >
-                <Text style={styles.retryLabel}>Couldn’t load more — Retry</Text>
+                <Text style={styles.retryLabel}>
+                  Couldn’t load more — Retry
+                </Text>
               </Pressable>
             ) : !recent.hasMore && rows.length > 0 ? (
               <Text style={styles.footer}>End of Recent</Text>
@@ -308,43 +243,6 @@ const styles = StyleSheet.create({
   content: { padding: spacing.md, paddingBottom: spacing.xl * 4 },
   desktopGrid: { flexDirection: "row", flexWrap: "wrap" },
   cell: { width: "25%", padding: spacing.xs },
-  row: {
-    minHeight: 84,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.sm,
-    padding: spacing.sm,
-    borderRadius: radius.lg,
-    borderWidth: 1,
-    borderColor: glass.border.profileBase,
-    backgroundColor: glass.tint.profileBase,
-  },
-  rowPressed: { opacity: 0.72 },
-  rowFocused: { borderColor: accent.warm, borderWidth: 2 },
-  rowText: { flex: 1, minWidth: 0 },
-  metaRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: spacing.xs,
-    marginBottom: 2,
-  },
-  type: {
-    color: textTokens.tertiary,
-    fontSize: typography.micro.fontSize,
-    fontWeight: "700",
-    textTransform: "uppercase",
-  },
-  title: {
-    color: textTokens.primary,
-    fontSize: typography.body.fontSize,
-    lineHeight: typography.body.lineHeight,
-    fontWeight: "600",
-  },
-  opened: {
-    color: textTokens.secondary,
-    fontSize: typography.caption.fontSize,
-    lineHeight: typography.caption.lineHeight,
-  },
   separator: { height: spacing.sm },
   state: { padding: spacing.xl, alignItems: "center" },
   stateTitle: {

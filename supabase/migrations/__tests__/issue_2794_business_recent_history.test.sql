@@ -1,6 +1,8 @@
 BEGIN;
 
 INSERT INTO auth.users (id) VALUES ('27940000-0000-4000-8000-000000000001');
+INSERT INTO public.creator_accounts (id)
+VALUES ('27940000-0000-4000-8000-000000000001');
 INSERT INTO public.brands (id, account_id, name, slug)
 VALUES ('27940000-0000-4000-8000-000000000010', '27940000-0000-4000-8000-000000000001', 'Recent Test', 'recent-test');
 INSERT INTO public.events (id, brand_id, created_by, title, slug, status, visibility, event_type)

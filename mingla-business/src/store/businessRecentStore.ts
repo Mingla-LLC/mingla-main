@@ -1,6 +1,6 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
+import { businessRecentStateStorage } from "../services/businessRecentStorage";
 
 export type BusinessRecentEntityType =
   "venue" | "event" | "rsvp" | "experience" | "trip";
@@ -222,7 +222,8 @@ export const useBusinessRecentStore = create<BusinessRecentState>()(
     {
       name: "business-recent-v1",
       version: 1,
-      storage: createJSONStorage(() => AsyncStorage),
+      storage: createJSONStorage(() => businessRecentStateStorage),
+      skipHydration: true,
       partialize: (state) => ({
         scopes: Object.fromEntries(
           Object.entries(state.scopes).map(([scope, pointers]) => [
@@ -242,3 +243,12 @@ export const useBusinessRecentStore = create<BusinessRecentState>()(
     },
   ),
 );
+
+let businessRecentHydration: Promise<void> | null = null;
+
+export const ensureBusinessRecentStoreHydrated = (): Promise<void> => {
+  businessRecentHydration ??= Promise.resolve(
+    useBusinessRecentStore.persist.rehydrate(),
+  );
+  return businessRecentHydration;
+};

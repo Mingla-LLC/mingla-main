@@ -2,9 +2,13 @@ import React from "react";
 import { act, fireEvent, render } from "@testing-library/react-native";
 import HomeTab from "../home";
 
+// [TEST-MOD-APPROVED #2794] The approved Recent workspace supersedes this
+// lane's former Last-7/Live/Upcoming composition contract.
+
 const mockPush = jest.fn();
 const mockInvalidateQueries = jest.fn().mockResolvedValue(undefined);
 const mockSetCurrentBrand = jest.fn();
+const mockRecentRefresh = jest.fn().mockResolvedValue(undefined);
 const mockAnalyticsData = {
   brandId: "brand-874",
   authorized: true,
@@ -45,6 +49,16 @@ const mockUpcomingItem = {
     tickets: [],
     currency: "USD",
   },
+};
+const mockRecentRow = {
+  entityType: "event" as const,
+  entityId: "recent-live-1",
+  lastOpenedAt: "2026-08-29T12:00:00.000Z",
+  operationId: "recent-operation-1",
+  title: "Recent live event",
+  status: "live",
+  pendingSync: false,
+  localDraft: false,
 };
 let mockIsWideDesktop = false;
 let mockUpcoming = {
@@ -92,6 +106,19 @@ jest.mock("../../../src/hooks/useBusinessTodos", () => ({
 jest.mock("../../../src/hooks/useResponsiveLayout", () => ({
   useResponsiveLayout: () => ({ isWideDesktop: mockIsWideDesktop }),
 }));
+jest.mock("../../../src/hooks/useBusinessRecent", () => ({
+  useBusinessRecent: () => ({
+    rows: [mockRecentRow],
+    total: 1,
+    state: "populated",
+    isRefreshing: false,
+    isLoadingMore: false,
+    hasPageError: false,
+    hasMore: false,
+    retry: jest.fn().mockResolvedValue(undefined),
+    refresh: mockRecentRefresh,
+  }),
+}));
 jest.mock("../../../src/hooks/useBrands", () => ({
   brandKeys: { all: ["brands"] },
 }));
@@ -134,6 +161,9 @@ jest.mock("../../../src/utils/eventDateDisplay", () => ({
 jest.mock("../../../src/utils/navTabGate", () => ({
   isScannerOnlyRank: () => false,
 }));
+jest.mock("../../../src/services/postHogService", () => ({
+  postHogService: { capture: jest.fn() },
+}));
 
 jest.mock("../../../src/components/brand/BrandDeleteSheet", () => ({
   BrandDeleteSheet: "BrandDeleteSheet",
@@ -147,14 +177,11 @@ jest.mock("../../../src/components/home/BusinessTodoToggle", () => ({
 jest.mock("../../../src/components/home/AnalyticsHomeTile", () => ({
   AnalyticsHomeTile: "AnalyticsHomeTile",
 }));
-jest.mock("../../../src/components/home/HomeTripRow", () => ({
-  HomeTripRow: "HomeTripRow",
-}));
 jest.mock("../../../src/components/home/LiveOfferingCard", () => ({
   LiveOfferingCard: "LiveOfferingCard",
 }));
-jest.mock("../../../src/components/home/UpcomingListItem", () => ({
-  UpcomingListItem: "UpcomingListItem",
+jest.mock("../../../src/components/home/RecentRow", () => ({
+  RecentRow: "RecentRow",
 }));
 jest.mock("../../../src/components/scanners/ScannerHome", () => ({
   ScannerHome: "ScannerHome",
@@ -203,11 +230,8 @@ const renderedOrder = (root: TestNode): string[] => {
       order.push("analytics");
     } else if (node.type === "LiveOfferingCard") {
       order.push("live");
-    } else if (
-      node.type === "UpcomingListItem" ||
-      node.type === "EventCoverMedia"
-    ) {
-      order.push("upcoming");
+    } else if (node.type === "RecentRow") {
+      order.push("recent");
     }
     node.children.forEach(visit);
   };
@@ -240,24 +264,23 @@ describe("issue #874 Home integration real render", () => {
     };
     mockPush.mockClear();
     mockInvalidateQueries.mockClear();
+    mockRecentRefresh.mockClear();
   });
 
   it.each([
     ["mobile", false],
     ["wide", true],
-  ])("renders Last 7 days, Analytics, Live, then Upcoming on %s", async (_, wide) => {
+  ])("renders Analytics before Recent on %s", async (_, wide) => {
     mockIsWideDesktop = wide;
     const screen = await render(<HomeTab />);
     expect(screen.root).not.toBeNull();
     const order = renderedOrder(screen.root as unknown as TestNode);
-    expect(order.indexOf("last7")).toBeGreaterThan(-1);
-    expect(order.indexOf("analytics")).toBeGreaterThan(order.indexOf("last7"));
-    expect(order.indexOf("live")).toBeGreaterThan(order.indexOf("analytics"));
-    expect(order.indexOf("upcoming")).toBeGreaterThan(order.indexOf("live"));
+    expect(order.indexOf("analytics")).toBeGreaterThan(-1);
+    expect(order.indexOf("recent")).toBeGreaterThan(order.indexOf("analytics"));
     expect(screen.queryByText("Active events")).toBeNull();
   });
 
-  it("keeps Analytics discoverable and hides Live when there is no live offering", async () => {
+  it("keeps Analytics discoverable and renders Recent without a live carousel", async () => {
     mockUpcoming = {
       items: [mockUpcomingItem],
       liveItems: [],
@@ -269,20 +292,14 @@ describe("issue #874 Home integration real render", () => {
     const root = screen.root as unknown as TestNode;
     expect(findNodes(root, (node) => node.type === "AnalyticsHomeTile")).toHaveLength(1);
     expect(findNodes(root, (node) => node.type === "LiveOfferingCard")).toHaveLength(0);
-    expect(findNodes(root, (node) => node.type === "UpcomingListItem")).toHaveLength(1);
+    expect(findNodes(root, (node) => node.type === "RecentRow")).toHaveLength(1);
   });
 
-  it("preserves one/two-plus Live behavior and Analytics navigation", async () => {
-    mockUpcoming = {
-      items: [mockLive("live-1"), mockLive("live-2"), mockUpcomingItem],
-      liveItems: [mockLive("live-1"), mockLive("live-2")],
-      nonLiveItems: [mockUpcomingItem],
-      counts: { active: 3, total: 3 },
-    };
+  it("preserves Analytics navigation alongside Recent", async () => {
     const screen = await render(<HomeTab />);
     expect(screen.root).not.toBeNull();
     const root = screen.root as unknown as TestNode;
-    expect(findNodes(root, (node) => node.type === "LiveOfferingCard")).toHaveLength(2);
+    expect(findNodes(root, (node) => node.type === "RecentRow")).toHaveLength(1);
     fireEvent.press(
       findNodes(root, (node) => node.type === "AnalyticsHomeTile")[0] as never,
     );
@@ -291,7 +308,7 @@ describe("issue #874 Home integration real render", () => {
 
   it("pull-to-refresh invalidates the brand-keyed Analytics preview", async () => {
     const screen = await render(<HomeTab />);
-    const list = screen.getByTestId("home-upcoming-list");
+    const list = screen.getByTestId("home-mobile-scroll");
     const refreshControl = list.props.refreshControl as {
       props: { onRefresh: () => Promise<void> };
     };
@@ -301,5 +318,6 @@ describe("issue #874 Home integration real render", () => {
     expect(mockInvalidateQueries).toHaveBeenCalledWith({
       queryKey: ["brand-analytics", mockBrand.id, "mingla-drove"],
     });
+    expect(mockRecentRefresh).toHaveBeenCalledTimes(1);
   });
 });

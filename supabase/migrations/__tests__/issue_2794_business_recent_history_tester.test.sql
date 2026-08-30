@@ -5,6 +5,8 @@ INSERT INTO auth.users (id) VALUES
   ('27940000-0000-4000-8000-000000000102'),
   ('27940000-0000-4000-8000-000000000103'),
   ('27940000-0000-4000-8000-000000000104');
+INSERT INTO public.creator_accounts (id)
+VALUES ('27940000-0000-4000-8000-000000000101');
 INSERT INTO public.brands (id, account_id, name, slug)
 VALUES ('27940000-0000-4000-8000-000000000110', '27940000-0000-4000-8000-000000000101', 'Recent Adversarial', 'recent-adversarial');
 INSERT INTO public.brand_team_members (brand_id, user_id, role, accepted_at, removed_at) VALUES
@@ -194,6 +196,8 @@ ROLLBACK;
 CREATE EXTENSION IF NOT EXISTS dblink;
 BEGIN;
 INSERT INTO auth.users (id)
+VALUES ('27940000-0000-4000-8000-000000000201');
+INSERT INTO public.creator_accounts (id)
 VALUES ('27940000-0000-4000-8000-000000000201');
 INSERT INTO public.brands (id, account_id, name, slug)
 VALUES (

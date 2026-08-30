@@ -204,7 +204,7 @@ export default function RsvpEditRoute(): React.ReactElement {
   // editor with the stale fallback. The non-edit-published (draft) path is
   // untouched. The route-level safe-exit guard keeps using `resolvedLiveEvent`.
   const editorLiveEvent = isEditPublished
-    ? (serverLiveEvent ?? (serverEventSettled ? liveEvent : null))
+    ? serverLiveEvent ?? (serverEventSettled ? liveEvent : null)
     : null;
   const resolvedLiveEvent = serverLiveEvent ?? liveEvent;
   const autosave = useServerDraftAutosave();

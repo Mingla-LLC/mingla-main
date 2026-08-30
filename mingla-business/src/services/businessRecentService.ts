@@ -1,6 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage";
-
-import { supabase } from "./supabase";
 import { deriveLiveStatus } from "../utils/eventLifecycle";
 import { ensureSecureRandom } from "../lib/secureRandomSafe";
 import type { LiveEvent } from "../store/liveEventStore";
@@ -9,10 +6,19 @@ import {
   mergeRecentPointers,
   promoteBusinessRecentPointers,
 } from "../store/businessRecentStore";
+import recentStorage from "./businessRecentStorage";
 import type {
   BusinessRecentEntityType,
   BusinessRecentPointer,
 } from "../store/businessRecentStore";
+
+const recentSupabase = (): typeof import("./supabase").supabase => {
+  // Detail routes may register their Recent writer without instantiating the
+  // auth client; the client is needed only when a Recent RPC actually runs.
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { supabase } = require("./supabase") as typeof import("./supabase");
+  return supabase;
+};
 
 export type BusinessRecentPresentationMutation =
   | {
@@ -177,11 +183,12 @@ const writeBusinessRecentCache = async (
   scope: string,
   pointers: BusinessRecentPointer[],
 ): Promise<void> => {
-  const manifestRaw = await AsyncStorage.getItem(CACHE_MANIFEST_KEY);
+  const storage = recentStorage();
+  const manifestRaw = await storage.getItem(CACHE_MANIFEST_KEY);
   const manifest: string[] =
     manifestRaw === null ? [] : JSON.parse(manifestRaw);
   const nextManifest = Array.from(new Set([...manifest, scope]));
-  await AsyncStorage.multiSet([
+  await storage.multiSet([
     [cacheKey(scope), JSON.stringify(pointers.slice(0, 200))],
     [CACHE_MANIFEST_KEY, JSON.stringify(nextManifest)],
   ]);
@@ -190,7 +197,7 @@ const writeBusinessRecentCache = async (
 export async function loadBusinessRecentCache(
   scope: string,
 ): Promise<BusinessRecentPointer[]> {
-  const raw = await AsyncStorage.getItem(cacheKey(scope));
+  const raw = await recentStorage().getItem(cacheKey(scope));
   if (raw === null) return [];
   const parsed: unknown = JSON.parse(raw);
   return Array.isArray(parsed)
@@ -260,14 +267,15 @@ export async function clearBusinessRecentCachedUser(
   userId: string,
 ): Promise<void> {
   await enqueueCacheMutation(async () => {
-    const manifestRaw = await AsyncStorage.getItem(CACHE_MANIFEST_KEY);
+    const storage = recentStorage();
+    const manifestRaw = await storage.getItem(CACHE_MANIFEST_KEY);
     if (manifestRaw === null) return;
     const manifest: string[] = JSON.parse(manifestRaw);
     const prefix = `${userId}:`;
     const removed = manifest.filter((scope) => scope.startsWith(prefix));
     const retained = manifest.filter((scope) => !scope.startsWith(prefix));
-    await AsyncStorage.multiRemove(removed.map(cacheKey));
-    await AsyncStorage.setItem(CACHE_MANIFEST_KEY, JSON.stringify(retained));
+    await storage.multiRemove(removed.map(cacheKey));
+    await storage.setItem(CACHE_MANIFEST_KEY, JSON.stringify(retained));
   });
 }
 
@@ -277,11 +285,12 @@ export async function clearBusinessRecentCachedScope(
   for (const listener of presentationListeners)
     listener({ kind: "clear", scope });
   await enqueueCacheMutation(async () => {
-    const manifestRaw = await AsyncStorage.getItem(CACHE_MANIFEST_KEY);
+    const storage = recentStorage();
+    const manifestRaw = await storage.getItem(CACHE_MANIFEST_KEY);
     const manifest: string[] =
       manifestRaw === null ? [] : JSON.parse(manifestRaw);
-    await AsyncStorage.multiRemove([cacheKey(scope)]);
-    await AsyncStorage.setItem(
+    await storage.multiRemove([cacheKey(scope)]);
+    await storage.setItem(
       CACHE_MANIFEST_KEY,
       JSON.stringify(manifest.filter((entry) => entry !== scope)),
     );
@@ -324,7 +333,7 @@ export async function recordBusinessRecentOpen(input: {
   openedAt: string;
   operationId: string;
 }): Promise<{ acceptedOpenedAt: string; retained: boolean }> {
-  const { data, error } = await supabase.rpc("biz_record_recent_entity_open", {
+  const { data, error } = await recentSupabase().rpc("biz_record_recent_entity_open", {
     p_brand_id: input.brandId,
     p_entity_type: input.entityType,
     p_entity_id: input.entityId,
@@ -351,7 +360,7 @@ export async function recordBusinessRecentOpen(input: {
 export async function listBusinessRecentIndex(
   brandId: string,
 ): Promise<BusinessRecentIndexRow[]> {
-  const { data, error } = await supabase.rpc("biz_list_recent_entity_index", {
+  const { data, error } = await recentSupabase().rpc("biz_list_recent_entity_index", {
     p_brand_id: brandId,
   });
   if (error !== null) throw error;
@@ -382,7 +391,7 @@ export async function hydrateBusinessRecent(
 }> {
   if (refs.length > 25)
     throw new Error("Recent hydration is limited to 25 items.");
-  const { data, error } = await supabase.rpc("biz_hydrate_recent_entities", {
+  const { data, error } = await recentSupabase().rpc("biz_hydrate_recent_entities", {
     p_brand_id: brandId,
     p_refs: refs,
   });
