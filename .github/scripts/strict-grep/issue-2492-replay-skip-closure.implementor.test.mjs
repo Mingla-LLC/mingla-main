@@ -6,7 +6,7 @@
 // T-3  error      synthetic migration reading a skipped column from
 //                 a `LANGUAGE sql` body                              -> non-zero
 // T-5  negative   the SAME reference inside a plpgsql body           -> exit 0
-// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 9/1/3/4,
+// T-10 INVENTORY  exactly 4 filtered lanes, glob counts 10/1/3/5,
 //                 zero violations
 //
 // T-10 is the non-vacuous one. "Real chain -> exit 0" passes just as happily
@@ -126,6 +126,19 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 });
 
 // [TEST-MOD-APPROVED #2489] The #1931 lane's skip inventory moved from FOUR to SIX.
+//
+// [TEST-MOD-APPROVED #2491] The #1931 lane moved from NINE globs to TEN and the
+// #2117 lane from FOUR to FIVE. #2491 C2 steps 3+4 re-emit
+// `pg_direct_event_checkout_bundle` to switch its sold subquery onto
+// `ticket_types.sold_count`; that function's current body reaches
+// `issue_1931_event_ordinary_read_blocked` / `multi_date_pricing_mode` on the
+// first lane and `issue_2489_address_withheld` / `issue_2489_public_theme` on
+// the second, none of which those phases have. The #2492 guard itself named the
+// exact filename to add to each list.
+//
+// ONLY the pinned counts move. No parser scenario is relaxed, no assertion is
+// deleted, and the inventory stays an exact deepEqual — which is the whole
+// point of T-10: a parser blind to a lane must still red here.
 // Two legitimate skips were added, neither of them a workaround:
 //   * 20270523002489_issue_2489_address_privacy_server_gate.sql — added on this
 //     gate's OWN remediation instruction, which names the exact filename form and
@@ -156,7 +169,7 @@ test("T-1 — the guard is clean on the repository as shipped", () => {
 // [TEST-MOD-APPROVED #2728] The #2728 fix-forward is deliberately skipped
 // before baseline and applied after corrected #2117; only the pinned inventory
 // moves, and every parser, security, and containment assertion remains intact.
-test("T-10 — lane inventory is exactly 4 lanes at 9/1/3/4 (a blind parser reds here)", () => {
+test("T-10 — lane inventory is exactly 4 lanes at 10/1/3/5 (a blind parser reds here)", () => {
   const { lanes, violations } = analyseLanes();
   assert.equal(violations.length, 0);
 
@@ -164,8 +177,8 @@ test("T-10 — lane inventory is exactly 4 lanes at 9/1/3/4 (a blind parser reds
   assert.deepEqual(inventory, {
     "issue-1644-storage-guardrail-collage-fill-tests.yml": 1,
     "issue-1647-admin-mv-and-db-reclaim-tests.yml": 3,
-    [LANE]: 9,
-    "issue-2117-offering-visibility-gate-tests.yml": 4,
+    [LANE]: 10,
+    "issue-2117-offering-visibility-gate-tests.yml": 5,
   });
   assert.equal(lanes.length, 4, "exactly four filtered replay lanes exist on this base");
 
@@ -181,9 +194,9 @@ test("T-10 — lane inventory is exactly 4 lanes at 9/1/3/4 (a blind parser reds
   assert.equal(alternation.branchCount, 1);
   assert.equal(alternation.globs.length, 3);
 
-  // SC-2: the #1931 lane skips exactly nine files, and ...002463 is NOT one.
+  // SC-2: the #1931 lane skips exactly ten files, and ...002463 is NOT one.
   const pinned = lanes.find((l) => l.workflow === LANE);
-  assert.equal(pinned.skipped.length, 9);
+  assert.equal(pinned.skipped.length, 10);
   assert.ok(pinned.skipped.includes(SKIPPED_MIGRATION));
   assert.equal(
     pinned.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
@@ -292,8 +305,8 @@ test("T-23 — the two-line branch form is read, and its skip actually takes eff
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 10, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
-  assert.equal(lane.globs.length, 10);
+  assert.equal(lane.branchCount, 11, "`<pattern>)` on one line and `continue ;;` on the next is one branch, not none");
+  assert.equal(lane.globs.length, 11);
   assert.ok(
     lane.skipped.includes("20270522002463_issue_2462_phone_backfill.sql"),
     "reading the branch is not enough — the glob must actually resolve and skip the file",
@@ -322,7 +335,7 @@ test("T-24 — C-4(c) reds on a branch the parser cannot read, where C-4(b) cann
 
   const { lanes, violations } = analyseLanes({ workflowsDir, migrationsDir });
   const lane = lanes.find((l) => l.workflow === LANE);
-  assert.equal(lane.branchCount, 9, "precondition: the 3-line branch really is unread");
+  assert.equal(lane.branchCount, 10, "precondition: the 3-line branch really is unread");
   assert.ok(lane.globs.length > 0, "precondition: sibling branches still yield globs, so C-4(b) cannot fire");
   assert.equal(
     violations.some((v) => v.check === "C-4b"),
@@ -389,8 +402,8 @@ test("T-2723-I1/I2/I3 — exact #2696 skip is present and C-3 fails on its rever
 
   const lane = real.lanes.find((candidate) => candidate.workflow === LANE);
   assert.ok(lane, "the #1931 filtered replay lane must exist");
-  assert.equal(lane.globs.length, 9, "the #1931 lane must expose exactly nine skip globs");
-  assert.equal(lane.skipped.length, 9, "those nine globs must resolve exactly nine skipped migrations");
+  assert.equal(lane.globs.length, 10, "the #1931 lane must expose exactly ten skip globs");
+  assert.equal(lane.skipped.length, 10, "those ten globs must resolve exactly ten skipped migrations");
   assert.ok(lane.globs.includes(ISSUE_2723_EXACT_GLOB), "the exact #2696 filename glob must be present");
   assert.ok(lane.skipped.includes(ISSUE_2723_MIGRATION), "the exact #2696 migration must resolve as skipped");
   assert.equal(
