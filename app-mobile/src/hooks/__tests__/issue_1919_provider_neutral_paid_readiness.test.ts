@@ -13,9 +13,15 @@ describe("issue #1919 provider-neutral Consumer readiness", () => {
     expect(brandHook).toContain("new Set(");
     expect(brandHook).toContain('"pg_brands_can_collect"');
     expect(brandHook).toContain("if (readyError === null)");
-    expect(brandHook).toContain("!isPaidOnline(ticketMap.get(row.id) ?? []) ||");
-    expect(brandHook).toContain("readyBrandIds.has(row.brand_id)");
-    expect(brandHook).not.toContain('"pg_brands_can_charge"');
+    expect(brandHook).toContain("paidOnline: canonical.event.tickets.some(");
+    expect(brandHook).toContain('ticket.availableAt === "online" || ticket.availableAt === "both"');
+    expect(brandHook).toContain("!ticket.isFree &&");
+    expect(brandHook).toContain("(ticket.priceGbp ?? 0) > 0");
+    expect(brandHook).toContain(".filter((item) => item.paidOnline)");
+    expect(brandHook).toContain("if (paidBrandIds.length > 0)");
+    expect(brandHook).toContain("!paidOnline || readyBrandIds.has(row.brand_id)");
+    expect(brandHook.match(/"pg_brands_can_collect"/g)).toHaveLength(1);
+    expect(brandHook).not.toMatch(/ticketMap|isPaidOnline|pg_brands_can_charge|pg_brand_can_charge|paystack_subaccount_code|stripe_connect_accounts|charges_enabled/);
   });
 
   test("trip detail bypasses readiness for free and fails closed for paid RPC errors", () => {

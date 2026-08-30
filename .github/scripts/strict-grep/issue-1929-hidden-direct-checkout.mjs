@@ -19,7 +19,12 @@ const check = ({ migration, business, consumerHook, consumerScreen, edge }) => {
   if (/tt\.is_(hidden|disabled)\s+IS\s+NOT\s+TRUE/.test(migration)) fail("ticket projection filtered");
   if (!migration.includes("v_event.visibility NOT IN ('public', 'hidden')")) fail("fresh checkout predicate changed");
   if (!business.includes('supabase.rpc("pg_direct_event_checkout_bundle"')) fail("business bundle missing");
-  if (!business.includes('if (data === null) return "fallback"')) fail("fallback not literal-null gated");
+  const payloadReader = business.match(/const fetchDirectEventBundlePayload = async \([\s\S]*?\): Promise<JsonRecord \| null> => \{([\s\S]*?)\n\};/)?.[1];
+  if (!payloadReader?.includes('if (data === null) return null;')) fail("payload absence not literal-null gated");
+  if (!payloadReader.includes('if (!isDirectEventBundle(data))') || !payloadReader.includes('throw new Error("invalid_direct_event_checkout_bundle")')) fail("payload malformed envelope not rejected");
+  if (payloadReader.indexOf('if (error !== null) throw error;') > payloadReader.indexOf('if (data === null) return null;')) fail("payload null checked before RPC error");
+  const detailReader = business.match(/const readDirectEventBundle = async \([\s\S]*?\): Promise<PublicEventDetail \| null \| "fallback"> => \{([\s\S]*?)\n\};/)?.[1];
+  if (!detailReader?.includes('return payload === null ? "fallback" : detailFromDirectBundle(payload);')) fail("fallback not payload literal-null gated");
   if (!business.includes('if (error !== null) throw error;')) fail("RPC error does not throw");
   if (!business.includes('throw new Error("invalid_direct_event_checkout_bundle")')) fail("malformed payload not redacted");
   if (!business.includes('row.event_type !== "rsvp"')) fail("slug fallback not RSVP-only");
@@ -66,6 +71,8 @@ if (process.argv.includes("--self-test")) {
   const mutations = [
     { key: "migration", from: "v_event.visibility NOT IN ('public', 'hidden')", to: "v_event.visibility <> 'public'" },
     { key: "business", from: 'row.event_type !== "rsvp"', to: 'row.event_type !== "event"' },
+    { key: "business", from: 'if (error !== null) throw error;\n  if (data === null) return null;\n  if (!isDirectEventBundle(data))', to: 'if (error !== null) throw error;\n  if (!data) return null;\n  if (!isDirectEventBundle(data))' },
+    { key: "business", from: 'return payload === null ? "fallback" : detailFromDirectBundle(payload);', to: 'return !payload ? "fallback" : detailFromDirectBundle(payload);' },
     { key: "consumerHook", from: 'supabase.rpc("pg_direct_event_checkout_bundle"', to: 'supabase.rpc("pg_public_event_by_slug"' },
     { key: "edge", from: "deps.paystackInitializeTransaction({", to: "paystackInitializeTransaction({" },
     // #2242 — the cart's site must be falsifiable. The first mutation is the exact

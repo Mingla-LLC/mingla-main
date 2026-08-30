@@ -49,21 +49,27 @@ const parseFiniteTimestamp = (value: string): number | null => {
   return Number.isFinite(parsed) ? parsed : null;
 };
 
+const terminalUnavailable = (
+  reason: Extract<EventTerminalResolution, { kind: "unavailable" }>["reason"],
+): EventTerminalResolution => ({ kind: "unavailable", reason });
+const invalidOccurrences = (): EventTerminalResolution =>
+  terminalUnavailable("occurrences_invalid");
+
 export const resolveEventTerminal = (
   source: EventTerminalSource,
 ): EventTerminalResolution => {
   if (source.kind === "single_end") {
     if (source.endAtUtc === null || source.endAtUtc.trim().length === 0) {
-      return { kind: "unavailable", reason: "single_end_missing" };
+      return terminalUnavailable("single_end_missing");
     }
     const endAtMs = parseFiniteTimestamp(source.endAtUtc);
     return endAtMs === null
-      ? { kind: "unavailable", reason: "single_end_invalid" }
+      ? terminalUnavailable("single_end_invalid")
       : { kind: "known", endAtUtc: new Date(endAtMs).toISOString(), endAtMs };
   }
 
   if (!Array.isArray(source.value) || source.value.length === 0) {
-    return { kind: "unavailable", reason: "occurrences_missing" };
+    return terminalUnavailable("occurrences_missing");
   }
 
   const ids = new Set<string>();
@@ -74,19 +80,19 @@ export const resolveEventTerminal = (
       typeof candidate !== "object" ||
       Array.isArray(candidate)
     ) {
-      return { kind: "unavailable", reason: "occurrences_invalid" };
+      return invalidOccurrences();
     }
     const row = candidate as Record<string, unknown>;
     const id = typeof row.id === "string" ? row.id.trim() : "";
     const startAt = typeof row.startAt === "string" ? row.startAt : null;
     const endAt = typeof row.endAt === "string" ? row.endAt : null;
     if (id.length === 0 || ids.has(id) || startAt === null || endAt === null) {
-      return { kind: "unavailable", reason: "occurrences_invalid" };
+      return invalidOccurrences();
     }
     const startAtMs = parseFiniteTimestamp(startAt);
     const endAtMs = parseFiniteTimestamp(endAt);
     if (startAtMs === null || endAtMs === null || endAtMs <= startAtMs) {
-      return { kind: "unavailable", reason: "occurrences_invalid" };
+      return invalidOccurrences();
     }
     ids.add(id);
     terminalEndMs = Math.max(terminalEndMs, endAtMs);
@@ -99,7 +105,9 @@ export const resolveEventTerminal = (
   };
 };
 
-const terminalSourceForInput = (input: EventAcquisitionInput): EventTerminalSource =>
+const terminalSourceForInput = (
+  input: EventAcquisitionInput,
+): EventTerminalSource =>
   input.terminalSource ?? {
     kind: "single_end",
     endAtUtc: input.masterEndAtUtc ?? null,
@@ -121,21 +129,12 @@ export const resolveEventAcquisitionState = (
   }
   const terminal = resolveEventTerminal(terminalSourceForInput(input));
   if (terminal.kind === "unavailable") {
-    if (input.terminalSource?.kind === "occurrences") {
-      return {
-        kind: "unavailable",
-        reason:
-          terminal.reason === "occurrences_missing"
-            ? "occurrences_missing"
-            : "occurrences_invalid",
-      };
-    }
     return {
       kind: "unavailable",
-      reason:
-        terminal.reason === "single_end_missing"
-          ? "master_end_missing"
-          : "master_end_invalid",
+      reason: terminal.reason.replace(
+        "single_end",
+        "master_end",
+      ) as Extract<EventAcquisitionState, { kind: "unavailable" }>["reason"],
     };
   }
   if (terminal.endAtMs <= nowMs) {
@@ -175,40 +174,38 @@ export interface EventAcquisitionNoticeCopy {
   announcement: string;
 }
 
+const acquisitionNotice = (
+  eyebrow: EventAcquisitionNoticeCopy["eyebrow"],
+  heading: string,
+  body: string,
+): EventAcquisitionNoticeCopy => ({
+  eyebrow,
+  heading,
+  body,
+  announcement: `${heading}. ${body}`,
+});
+
 export const eventAcquisitionNoticeCopy = (
   state: Exclude<EventAcquisitionState, { kind: "current" }>,
   eventType: "event" | "rsvp",
   brandName: string,
 ): EventAcquisitionNoticeCopy => {
   if (state.kind === "cancelled") {
-    if (eventType === "event") {
-      const body = `${brandName} has cancelled this event. If you purchased tickets, you will receive refund details by email.`;
-      return {
-        eyebrow: "CANCELLED",
-        heading: "This event has been cancelled",
-        body,
-        announcement: `This event has been cancelled. ${body}`,
-      };
-    }
     const body = `${brandName} has cancelled this event. RSVPs are closed.`;
-    return {
-      eyebrow: "CANCELLED",
-      heading: "This event has been cancelled",
-      body,
-      announcement: `This event has been cancelled. ${body}`,
-    };
+    return acquisitionNotice(
+      "CANCELLED",
+      "This event has been cancelled",
+      eventType === "event"
+        ? `${brandName} has cancelled this event. If you purchased tickets, you will receive refund details by email.`
+        : body,
+    );
   }
   if (state.kind === "ended") {
     const body =
       eventType === "rsvp"
         ? "This event has ended. RSVPs are closed."
         : "This event has ended. Ticket sales are closed.";
-    return {
-      eyebrow: "PAST EVENT",
-      heading: "Event ended",
-      body,
-      announcement: `Event ended. ${body}`,
-    };
+    return acquisitionNotice("PAST EVENT", "Event ended", body);
   }
   const heading =
     eventType === "rsvp" ? "RSVP unavailable" : "Booking unavailable";
@@ -216,12 +213,7 @@ export const eventAcquisitionNoticeCopy = (
     eventType === "rsvp"
       ? "This event’s schedule is unavailable, so RSVPs are closed."
       : "This event’s schedule is unavailable, so ticket sales are closed.";
-  return {
-    eyebrow: "SCHEDULE UNAVAILABLE",
-    heading,
-    body,
-    announcement: `${heading}. ${body}`,
-  };
+  return acquisitionNotice("SCHEDULE UNAVAILABLE", heading, body);
 };
 
 /**
@@ -257,9 +249,11 @@ export const forwardableAcquisitionState = (
   terminalSourceOrEndAtUtc: EventTerminalSource | string | null,
   nowMs: number = Date.now(),
 ): EventAcquisitionState | undefined => {
-  const explicitOccurrenceSource =
+  const terminalSource: EventTerminalSource =
     typeof terminalSourceOrEndAtUtc === "object" &&
-    terminalSourceOrEndAtUtc?.kind === "occurrences";
+    terminalSourceOrEndAtUtc !== null
+      ? terminalSourceOrEndAtUtc
+      : { kind: "single_end", endAtUtc: terminalSourceOrEndAtUtc };
   const resolved = resolveEventAcquisitionState(
     {
       operatorStatus:
@@ -269,16 +263,13 @@ export const forwardableAcquisitionState = (
             ? "ended"
             : "scheduled",
       operatorEndedAtUtc: null,
-      ...(typeof terminalSourceOrEndAtUtc === "object" &&
-      terminalSourceOrEndAtUtc !== null
-        ? { terminalSource: terminalSourceOrEndAtUtc }
-        : { masterEndAtUtc: terminalSourceOrEndAtUtc }),
+      terminalSource,
     },
     nowMs,
   );
   return resolved.kind === "ended" ||
     resolved.kind === "cancelled" ||
-    (explicitOccurrenceSource && resolved.kind === "unavailable")
+    (terminalSource.kind === "occurrences" && resolved.kind === "unavailable")
     ? resolved
     : undefined;
 };

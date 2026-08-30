@@ -21,7 +21,7 @@ describe("#1929 tester Consumer canonical bundle", () => {
   test.each([undefined,false,0,"",[payload],{...payload,brand:[]}])("malformed %p never fabricates a standard event", async (data) => {
     rpc.mockResolvedValue({data,error:null});
     usePublicEventBySlug("brand","hidden");
-    await expect((options.queryFn as () => Promise<unknown>)()).resolves.toBeNull();
+    await expect((options.queryFn as () => Promise<unknown>)()).rejects.toThrow("invalid_direct_event_checkout_bundle");
   });
   test("mapping does not expose visibility or seed/list cache data", () => {
     const mapped = mapRpcPayloadToPublicEvent({...payload,visibility:"hidden",business_draft:{secret:true}});

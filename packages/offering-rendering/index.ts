@@ -422,7 +422,6 @@ export {
   eventAcquisitionNoticeCopy,
   forwardableAcquisitionState,
   nextEventAcquisitionBoundaryDelayMs,
-  resolveEventTerminal,
   resolveEventAcquisitionState,
 } from "./eventAcquisitionLifecycle";
 export type {
