@@ -58,15 +58,6 @@ BEGIN
   IF (SELECT count(*) FROM public.biz_list_recent_entity_index('27940000-0000-4000-8000-000000000010')) <> 200 THEN
     RAISE EXCEPTION 'retention was not bounded at 200';
   END IF;
-  IF NOT EXISTS (
-    SELECT 1
-      FROM public.biz_list_recent_entity_index('27940000-0000-4000-8000-000000000010')
-     WHERE entity_id = '279400ca-0000-4000-8000-000000000202'
-       AND raw_status = 'ended'
-       AND ended_at = '2027-06-09 12:00:00+00'::timestamptz
-  ) THEN
-    RAISE EXCEPTION 'ended lifecycle timestamp did not follow canonical event status/update truth';
-  END IF;
   v := public.biz_record_recent_entity_open(
     '27940000-0000-4000-8000-000000000010', 'event', v_first,
     now(), '27940000-0000-4000-8001-000000000001');
@@ -99,6 +90,19 @@ BEGIN
   EXCEPTION WHEN OTHERS THEN
     IF SQLERRM <> 'recent_operation_mismatch' THEN RAISE; END IF;
   END;
+  PERFORM public.biz_record_recent_entity_open(
+    '27940000-0000-4000-8000-000000000010', 'event',
+    '279400ca-0000-4000-8000-000000000202', now(),
+    '279400ca-0000-4000-8001-000000000203');
+  IF NOT EXISTS (
+    SELECT 1
+      FROM public.biz_list_recent_entity_index('27940000-0000-4000-8000-000000000010')
+     WHERE entity_id = '279400ca-0000-4000-8000-000000000202'
+       AND raw_status = 'ended'
+       AND ended_at = '2027-06-09 12:00:00+00'::timestamptz
+  ) THEN
+    RAISE EXCEPTION 'ended lifecycle timestamp did not follow canonical event status/update truth';
+  END IF;
   PERFORM public.biz_record_recent_entity_open(
     '27940000-0000-4000-8000-000000000010', 'event', v_first, now(),
     '27940000-0000-4000-8001-000000000100');
