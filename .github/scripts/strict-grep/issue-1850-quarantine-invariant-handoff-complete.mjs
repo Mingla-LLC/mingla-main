@@ -42,14 +42,14 @@
  * hand-offs. The eleven fall into exactly three buckets.
  *
  *   MEASURED-CATCHES: metaOrch1255R2, PaymentPlanEditor, orch_0893a_hydration_gate,
- *     orch_1165_keyboard_toolbar_mount_coverage, venueIntelligence
- *   MEASURED-INVERSION-ONLY: venueAdsDrivenTile
- *   MEASURED-MISSES: liveEventStore-v4-v5-migrator, rsvp, orch_0911_trip_confirm_loading_state,
+ *     orch_1165_keyboard_toolbar_mount_coverage, venueIntelligence,
  *     home.orch_0974.test, home.orch_0974.adversarial
+ *   MEASURED-INVERSION-ONLY: venueAdsDrivenTile
+ *   MEASURED-MISSES: liveEventStore-v4-v5-migrator, rsvp, orch_0911_trip_confirm_loading_state
  *
- * CATCHES are the five the ⊆ rule reddens on. INVERSION-ONLY is the one where ⊆ is
+ * CATCHES are the seven the ⊆ rule reddens on. INVERSION-ONLY is the one where ⊆ is
  * silent — the named gate does read the file — and R4 reddens instead, so the gate
- * as a whole still sees it. MISSES are the five nothing here reddens on at all:
+ * as a whole still sees it. MISSES are the three nothing here reddens on at all:
  * those are the blind spots, and they are the only ones.
  *
  * THE FLAGSHIP BLIND SPOT IS `rsvp/[id]/preview` — one file, fully covered, and
@@ -57,7 +57,7 @@
  * the ticket renderer" rule survived the hand-off; every positive-mount, migration,
  * guard and UX-state rule is unguarded, and this gate is silent about all of it,
  * because the named gate does read the file. If you are looking for what this
- * mechanism cannot see, look there first, then at the other four named above.
+ * mechanism cannot see, look there first, then at the other two named above.
  *
  * CORRECTION OF THE RECORD (#1850 TEST, P2-4). This paragraph previously offered
  * `PaymentPlanEditor` as its one concrete example of a case the gate would NOT
@@ -67,8 +67,9 @@
  * cache-invalidation rules that hand-off dropped live in OTHER files
  * (`orderInstallmentsService.ts`, `useOrderInstallments.ts`) — which a file-level
  * rule sees perfectly well. Only the residue INSIDE `PaymentPlanEditor.tsx` is
- * invisible here. The count of five was right; the set was wrong, and it named
- * none of the five genuinely missed.
+ * invisible here. The count of five was right at that backfill; #2794 later made
+ * both Home drops explicit and named their RecentRow successor, leaving the three
+ * genuinely missed hand-offs listed above.
  *
  * The lesson is the one this whole issue is about: a documented limitation is an
  * assertion, and it needs evidence like any other. `T-7` of the happy-path suite

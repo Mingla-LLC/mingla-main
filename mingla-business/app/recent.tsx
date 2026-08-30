@@ -1,6 +1,9 @@
 import React from "react";
 import { Redirect } from "expo-router";
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — redirect-only route
+// renders no operator-visible UI; Home applies the destination safe-area insets.
+
 /**
  * `/recent` remains the stable route while Home owns both Recent layouts.
  * RecentFullScreen is the delegated presentation authority and contains, in
