@@ -39,6 +39,7 @@ import {
   type OfferingGalleryImage,
   type EventAcquisitionInput,
   type EventAcquisitionState,
+  type EventTerminalSource,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -414,7 +415,9 @@ interface TicketTypeRow {
 }
 
 export type PublicBrandRecord = Brand;
-export type PublicEventRecord = LiveEvent;
+export type PublicEventRecord = LiveEvent & {
+  terminalSource: EventTerminalSource;
+};
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
 export type MultiDatePricingMode = "per_day" | "all_days";
@@ -439,6 +442,8 @@ export interface PublicEventDetail {
   event: PublicEventRecord;
   brand: PublicBrandRecord;
   tickets: PublicTicketTypeRecord[];
+  /** Raw canonical lifecycle source retained before display normalization. */
+  terminalSource: EventTerminalSource;
   /**
    * issue #2160 [multi-day multi-select] — every materialised occurrence of
    * this event, chronological, delivered by the SAME SECURITY DEFINER reader
@@ -1254,6 +1259,10 @@ const parseLocationGeoPoint = (
 export const publicEventViewRowToEvent = (
   row: BusinessPublicEventViewRow,
   tickets: PublicTicketTypeRecord[],
+  terminalSource: EventTerminalSource = {
+    kind: "single_end",
+    endAtUtc: row.master_end_at,
+  },
 ): PublicEventRecord => {
   const theme = asRecord(row.public_theme);
   const businessEvent = asRecord(theme.business_event);
@@ -1274,6 +1283,7 @@ export const publicEventViewRowToEvent = (
   const startSplit = splitTimestampInTz(row.master_start_at, dateTimezone);
   const endSplit = splitTimestampInTz(row.master_end_at, dateTimezone);
   return {
+    terminalSource,
     id: row.id,
     serverEventId: row.id,
     brandId: row.brand_id,
@@ -1658,6 +1668,10 @@ const detailFromRow = async (
     event: merged,
     brand: viewRowToBrand(row),
     tickets,
+    terminalSource: {
+      kind: "single_end",
+      endAtUtc: row.master_end_at,
+    },
     // The `business_public_events_view` fallback path serves RSVP rows only,
     // which have no occurrence concept and no multi-day pricing.
     occurrences: [],
@@ -1859,7 +1873,11 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     vibe_tags: asStringArray(payload.vibeTags),
     music_genres: asStringArray(payload.musicGenres),
   } as unknown as BusinessPublicEventViewRow;
-  const event = publicEventViewRowToEvent(row, tickets);
+  const terminalSource: EventTerminalSource = {
+    kind: "occurrences",
+    value: payload.occurrences,
+  };
+  const event = publicEventViewRowToEvent(row, tickets, terminalSource);
   event.cityGeo = asLatLng(payload.cityGeo);
   const bookable = await resolveEventBookable(
     String(payload.brandId),
@@ -1869,6 +1887,7 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     event,
     brand: viewRowToBrand(row),
     tickets,
+    terminalSource,
     bookable,
     // issue #2160 / #2161 — the occurrences ride the SAME reader that served
     // the event, so an unlisted event's days arrive exactly like a public
@@ -1881,16 +1900,23 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
   };
 };
 
-const readDirectEventBundle = async (
+const fetchDirectEventBundlePayload = async (
   args: { p_event_id: string | null; p_brand_slug: string | null; p_event_slug: string | null },
-): Promise<PublicEventDetail | null | "fallback"> => {
+): Promise<JsonRecord | null> => {
   const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
   if (error !== null) throw error;
-  if (data === null) return "fallback";
+  if (data === null) return null;
   if (!isDirectEventBundle(data)) {
     throw new Error("invalid_direct_event_checkout_bundle");
   }
-  return detailFromDirectBundle(data);
+  return data;
+};
+
+const readDirectEventBundle = async (
+  args: { p_event_id: string | null; p_brand_slug: string | null; p_event_slug: string | null },
+): Promise<PublicEventDetail | null | "fallback"> => {
+  const payload = await fetchDirectEventBundlePayload(args);
+  return payload === null ? "fallback" : detailFromDirectBundle(payload);
 };
 
 export const getPublicEventBySlug = async (
@@ -1970,19 +1996,75 @@ export const fetchPublicBrandEvents = async (
   const rows = ((data ?? []) as BusinessPublicEventViewRow[]).filter(
     (row) =>
       (row.event_type === "event" || row.event_type === "rsvp") &&
-      resolveEventAcquisitionState(
+      row.status !== "cancelled" &&
+      row.status !== "ended",
+  );
+
+  const MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4;
+  type HydratedBrandEvent = {
+    row: BusinessPublicEventViewRow;
+    tickets: PublicTicketTypeRecord[];
+    terminalSource: EventTerminalSource;
+  };
+  const hydrated: Array<HydratedBrandEvent | null> = new Array(rows.length).fill(null);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < rows.length) {
+      const index = cursor;
+      cursor += 1;
+      const row = rows[index];
+      if (row === undefined) continue;
+      if (row.event_type === "rsvp") {
+        const terminalSource: EventTerminalSource = {
+          kind: "single_end",
+          endAtUtc: row.master_end_at,
+        };
+        const state = resolveEventAcquisitionState(
+          {
+            operatorStatus: viewStatusToLiveStatus(row.status),
+            operatorEndedAtUtc: null,
+            terminalSource,
+          },
+          nowMs,
+        );
+        if (state.kind === "current") hydrated[index] = { row, tickets: [], terminalSource };
+        continue;
+      }
+
+      const payload = await fetchDirectEventBundlePayload({
+        p_event_id: row.id,
+        p_brand_slug: null,
+        p_event_slug: null,
+      });
+      if (payload === null) continue;
+      if (payload.id !== row.id) throw new Error("invalid_direct_event_checkout_bundle");
+      const terminalSource: EventTerminalSource = {
+        kind: "occurrences",
+        value: payload.occurrences,
+      };
+      const state = resolveEventAcquisitionState(
         {
           operatorStatus: viewStatusToLiveStatus(row.status),
           operatorEndedAtUtc: null,
-          masterEndAtUtc: row.master_end_at,
+          terminalSource,
         },
         nowMs,
-      ).kind === "current",
+      );
+      if (state.kind !== "current") continue;
+      const currency = asStringOrNull(payload.currency) ?? row.currency ?? "USD";
+      const tickets = (payload.tickets as unknown[]).map((ticket) =>
+        directBundleTicketToStub(ticket, currency),
+      );
+      hydrated[index] = { row, tickets, terminalSource };
+    }
+  };
+  await Promise.all(
+    Array.from(
+      { length: Math.min(MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY, rows.length) },
+      () => worker(),
+    ),
   );
-
-  const eventTickets = await Promise.all(
-    rows.map((row) => (row.event_type === "event" ? fetchTickets(row.id) : [])),
-  );
+  const current = hydrated.filter((item): item is HydratedBrandEvent => item !== null);
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
   // brand that can't charge from the public brand-page event feed (the view is
@@ -1991,22 +2073,20 @@ export const fetchPublicBrandEvents = async (
   // round-trip over the distinct paid brand ids; free events are never dropped.
   const paidBrandIds = Array.from(
     new Set(
-      rows
-        .filter((_row, idx) => ticketsArePaidOnline(eventTickets[idx] ?? []))
-        .map((row) => row.brand_id)
+      current
+        .filter(({ tickets }) => ticketsArePaidOnline(tickets))
+        .map(({ row }) => row.brand_id)
         .filter((id): id is string => typeof id === "string"),
     ),
   );
   const readyBrandIds = await fetchReadyBrandIds(paidBrandIds);
-  const visible = rows
-    .map((row, idx) => ({ row, tickets: eventTickets[idx] ?? [] }))
-    .filter(
+  const visible = current.filter(
       ({ row, tickets }) =>
         !ticketsArePaidOnline(tickets) || readyBrandIds.has(row.brand_id),
     );
 
-  return visible.map(({ row, tickets }) =>
-    publicEventViewRowToEvent(row, tickets),
+  return visible.map(({ row, tickets, terminalSource }) =>
+    publicEventViewRowToEvent(row, tickets, terminalSource),
   );
 };
 

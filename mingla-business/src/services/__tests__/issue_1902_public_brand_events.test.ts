@@ -75,8 +75,7 @@ beforeEach(() => {
   rpcMock.mockReset();
 });
 
-test("production adapter admits current ticketed + RSVP rows and reads tickets only for ticketed", async () => {
-  rpcMock.mockResolvedValue({ data: [], error: null } as never);
+test("production adapter admits current ticketed + RSVP rows, reuses bundle tickets, and never reads ticket_types", async () => {
   const rows = [
     {
       ...base,
@@ -95,7 +94,59 @@ test("production adapter admits current ticketed + RSVP rows and reads tickets o
       master_end_at: "2020-01-01T00:00:00Z",
     },
   ];
+  const bundleEventIds: string[] = [];
   const ticketEventIds: string[] = [];
+  rpcMock.mockImplementation(((name: string, args: { p_event_id?: string }) => {
+    if (name !== "pg_direct_event_checkout_bundle") {
+      throw new Error(`unexpected RPC ${name}`);
+    }
+    const id = args.p_event_id;
+    if (id !== "ticketed" && id !== "ended") {
+      throw new Error(`unexpected bundle event ${String(id)}`);
+    }
+    bundleEventIds.push(id);
+    const future = id === "ticketed";
+    return Promise.resolve({
+      data: {
+        id,
+        brandId: "brand-1",
+        brandSlug: "brand",
+        eventSlug: id,
+        name: id === "ticketed" ? "Ticketed" : "Ended",
+        status: "scheduled",
+        brand: { id: "brand-1", slug: "brand", name: "Brand" },
+        currency: "USD",
+        tickets:
+          id === "ticketed"
+            ? [
+                {
+                  id: "t",
+                  name: "Free",
+                  isFree: true,
+                  isUnlimited: true,
+                  availableOnline: true,
+                  availableInPerson: false,
+                  displayOrder: 0,
+                },
+              ]
+            : [],
+        occurrences: [
+          {
+            id: `${id}-day`,
+            startAt: future
+              ? "2099-01-01T18:00:00Z"
+              : "2020-01-01T18:00:00Z",
+            endAt: future
+              ? "2099-01-01T20:00:00Z"
+              : "2020-01-01T20:00:00Z",
+            timezone: "UTC",
+            isMaster: true,
+          },
+        ],
+      },
+      error: null,
+    });
+  }) as never);
   fromMock.mockImplementation(((table: string) => {
     if (table === "business_public_events_view") {
       const builder: Record<string, unknown> = {};
@@ -114,37 +165,7 @@ test("production adapter admits current ticketed + RSVP rows and reads tickets o
         return builder;
       });
       builder.is = jest.fn(() => builder);
-      builder.order = jest.fn(() =>
-        Promise.resolve({
-          data: [
-            {
-              id: "t",
-              event_id: "ticketed",
-              name: "Free",
-              description: null,
-              price_cents: 0,
-              currency: "USD",
-              quantity_total: null,
-              is_unlimited: true,
-              is_free: true,
-              sale_start_at: null,
-              sale_end_at: null,
-              min_purchase_qty: 1,
-              max_purchase_qty: null,
-              is_hidden: false,
-              is_disabled: false,
-              requires_approval: false,
-              allow_transfers: true,
-              password_protected: false,
-              available_online: true,
-              available_in_person: false,
-              waitlist_enabled: false,
-              display_order: 0,
-            },
-          ],
-          error: null,
-        }),
-      );
+      builder.order = jest.fn(() => Promise.resolve({ data: [], error: null }));
       return builder;
     }
     throw new Error(`unexpected table ${table}`);
@@ -157,5 +178,11 @@ test("production adapter admits current ticketed + RSVP rows and reads tickets o
   ]);
   expect(result[0]?.tickets).toHaveLength(1);
   expect(result[1]?.tickets).toHaveLength(0);
-  expect(ticketEventIds).toEqual(["ticketed"]);
+  expect(result[0]?.terminalSource.kind).toBe("occurrences");
+  expect(result[1]?.terminalSource).toEqual({
+    kind: "single_end",
+    endAtUtc: "2099-01-01T20:00:00Z",
+  });
+  expect(bundleEventIds.sort()).toEqual(["ended", "ticketed"]);
+  expect(ticketEventIds).toEqual([]);
 });

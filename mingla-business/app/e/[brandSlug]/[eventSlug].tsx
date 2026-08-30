@@ -97,6 +97,7 @@ export default function PublicEventRoute(): React.ReactElement {
       event={publicEventQuery.data.event}
       brand={publicEventQuery.data.brand}
       bookable={publicEventQuery.data.bookable}
+      terminalSource={publicEventQuery.data.terminalSource}
       // ══ issue #2209 ═══════════════════════════════════════════════════════
       // THE DAYS. `PublicEventDetail` has carried `occurrences` +
       // `multiDatePricingMode` since #2160 and this route — the ONLY production

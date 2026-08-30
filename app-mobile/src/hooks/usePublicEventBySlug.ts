@@ -26,6 +26,7 @@ import {
   type PublicEventProps,
   type PublicTicketProps,
   type OfferingGalleryImage,
+  type EventTerminalSource,
 } from "@mingla/offering-rendering";
 
 import { supabase } from "../services/supabase";
@@ -41,6 +42,7 @@ export interface CanonicalPublicEvent {
   occurrences: readonly PublicEventOccurrenceLike[];
   isMultiDate: boolean;
   multiDatePricingMode: "per_day" | "all_days";
+  terminalSource: EventTerminalSource;
 }
 
 export interface PublicEventOccurrenceLike {
@@ -251,6 +253,10 @@ export const mapRpcPayloadToPublicEvent = (
   const currency = asString(payload.currency) ?? "USD";
   const timezone = validTimezoneOr(payload.timezone, "UTC");
   const brandRaw = (payload.brand ?? null) as Record<string, unknown> | null;
+  const terminalSource: EventTerminalSource = {
+    kind: "occurrences",
+    value: payload.occurrences,
+  };
   const event: PublicEventProps = {
     id: String(payload.id ?? ""),
     name: String(payload.name ?? ""),
@@ -283,7 +289,7 @@ export const mapRpcPayloadToPublicEvent = (
       // it takes a status, and the coercion belongs at the boundary that has the
       // untyped data. `asString` also maps "" to null, which reads as scheduled.
       asString(payload.status),
-      asString(payload.masterEndAt),
+      terminalSource,
     ),
     endedAt: null,
     format: asFormat(payload.format),
@@ -342,6 +348,7 @@ export const mapRpcPayloadToPublicEvent = (
     isMultiDate: payload.isMultiDate === true,
     multiDatePricingMode:
       payload.multiDatePricingMode === "all_days" ? "all_days" : "per_day",
+    terminalSource,
   };
 };
 
@@ -367,7 +374,10 @@ export const usePublicEventBySlug = (
       // PostgREST RPCs may be mocked or misconfigured to return a JSON array.
       // The bundle contract is exactly one object or SQL NULL; arrays and
       // primitive values fail closed instead of fabricating an empty event.
-      if (!isDirectEventBundlePayload(data)) return null;
+      if (data === null) return null;
+      if (!isDirectEventBundlePayload(data)) {
+        throw new Error("invalid_direct_event_checkout_bundle");
+      }
       return mapRpcPayloadToPublicEvent(data);
     },
   });

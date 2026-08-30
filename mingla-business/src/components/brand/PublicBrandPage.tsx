@@ -28,6 +28,7 @@ import type {
   PublicTripCard,
   PublicUpcomingRow,
   PublicVenueDetail,
+  PublicEventRecord,
 } from "../../services/publicEventsService";
 import type { Brand } from "../../store/currentBrandStore";
 import type { LiveEvent } from "../../store/liveEventStore";
@@ -39,7 +40,7 @@ import { ShareModal } from "../ui/ShareModal";
 
 interface PublicBrandPageProps {
   brand: Brand;
-  events: LiveEvent[];
+  events: PublicEventRecord[];
   pastEvents?: LiveEvent[];
   trips: PublicTripCard[];
   pastTrips?: PublicTripCard[];
@@ -78,7 +79,7 @@ const mapBrand = (brand: Brand): PublicBrand => ({
   theme: brand.theme,
 });
 
-const mapEvent = (event: LiveEvent): PublicBrandEvent => ({
+const mapEvent = (event: PublicEventRecord): PublicBrandEvent => ({
   id: event.id,
   name: event.name,
   brandSlug: event.brandSlug,
@@ -86,6 +87,7 @@ const mapEvent = (event: LiveEvent): PublicBrandEvent => ({
   status: event.status,
   eventType: event.event_type === "rsvp" ? "rsvp" : "event",
   operatorEndedAtUtc: null,
+  terminalSource: event.terminalSource,
   masterStartAtUtc: event.masterStartAtUtc ?? null,
   masterEndAtUtc: event.masterEndAtUtc ?? null,
   masterTimezone: event.timezone,

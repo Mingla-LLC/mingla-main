@@ -422,6 +422,7 @@ export {
   eventAcquisitionNoticeCopy,
   forwardableAcquisitionState,
   nextEventAcquisitionBoundaryDelayMs,
+  resolveEventTerminal,
   resolveEventAcquisitionState,
 } from "./eventAcquisitionLifecycle";
 export type {
@@ -429,6 +430,8 @@ export type {
   EventAcquisitionNoticeCopy,
   EventAcquisitionOperatorStatus,
   EventAcquisitionState,
+  EventTerminalResolution,
+  EventTerminalSource,
 } from "./eventAcquisitionLifecycle";
 // ORCH-1162 Bug 2 — the SINGLE shared static-Mapbox URL builder. The trip,
 // event, and experience public pages all draw their "Where you'll be" map from

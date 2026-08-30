@@ -56,8 +56,8 @@ import { JoinWaitlistSheet } from "../../../src/components/waitlist/JoinWaitlist
 // canonical helper. Pre-0850 local `computeIsPast` used `new Date(event.date)
 // + 24h < Date.now()` which fired at 8pm EDT on the start day for any
 // US-Eastern event — blocking ticket purchases on still-live events (S0).
-import { isEventPast } from "../../../src/utils/eventLifecycle";
-import { computeMasterEndAtUtc } from "../../../src/utils/eventDateMath";
+import { resolveEventCheckoutLifecycleGate } from "../../../src/utils/eventLifecycle";
+import { eventAcquisitionNoticeCopy } from "@mingla/offering-rendering";
 // META-ORCH-1187 LEG 2 — buyer-web funnel capture (web-only; native no-op).
 import { captureWeb, gaEvent } from "../../../src/analytics/webAnalytics";
 
@@ -370,7 +370,21 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
     .slice()
     .sort(sortByDisplayOrder);
 
-  const isPast = isEventPast(event, computeMasterEndAtUtc(event));
+  const checkoutLifecycle = resolveEventCheckoutLifecycleGate(
+    event,
+    publicEventQuery.data?.terminalSource ?? {
+      kind: "occurrences",
+      value: null,
+    },
+  );
+  const unavailableCopy =
+    checkoutLifecycle.kind === "unavailable"
+      ? eventAcquisitionNoticeCopy(
+          checkoutLifecycle.acquisitionState,
+          "event",
+          brand?.displayName ?? "Mingla",
+        )
+      : null;
   const allSoldOut =
     visibleTickets.length > 0 &&
     visibleTickets.every((t) => !t.isUnlimited && (t.capacity ?? 0) <= 0);
@@ -388,8 +402,29 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
   const waitlistTicket =
     visibleTickets.find((ticket) => ticket.id === waitlistTicketId) ?? null;
 
+  if (checkoutLifecycle.kind === "unavailable" && unavailableCopy !== null) {
+    return (
+      <View style={styles.host}>
+        <CheckoutHeader
+          stepIndex={0}
+          totalSteps={3}
+          title="Get tickets"
+          onBack={handleBack}
+        />
+        <View style={styles.emptyWrap}>
+          <EmptyState
+            illustration="ticket"
+            title={unavailableCopy.heading}
+            description={unavailableCopy.body}
+            cta={{ label: "Back to event", onPress: handleBack }}
+          />
+        </View>
+      </View>
+    );
+  }
+
   if (
-    isPast ||
+    checkoutLifecycle.kind === "closed" ||
     visibleTickets.length === 0 ||
     (allSoldOut && !hasWaitlistSoldOut) ||
     (allUnavailable && !hasWaitlistSoldOut)
@@ -406,12 +441,12 @@ export default function CheckoutTicketsScreen(): React.ReactElement {
           <EmptyState
             illustration="ticket"
             title={
-              isPast || allUnavailable
+              checkoutLifecycle.kind === "closed" || allUnavailable
                 ? "This event isn't taking new tickets"
                 : "Sold out"
             }
             description={
-              isPast || allUnavailable
+              checkoutLifecycle.kind === "closed" || allUnavailable
                 ? "Sales are closed for this event."
                 : "All tickets for this event are gone."
             }

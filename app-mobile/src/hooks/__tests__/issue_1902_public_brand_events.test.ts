@@ -46,7 +46,7 @@ beforeEach(() => {
   mockRpc.mockReset();
 });
 
-test("consumer production adapter admits RSVP and excludes its id from ticket reads", async () => {
+test("consumer production adapter reuses bundle tickets, preserves RSVP single-end, and never reads ticket_types", async () => {
   const brand = {
     id: "b",
     slug: "brand",
@@ -89,52 +89,97 @@ test("consumer production adapter admits RSVP and excludes its id from ticket re
     },
     { ...base, id: "r", title: "RSVP", slug: "rsvp", event_type: "rsvp" },
   ];
-  const ticketIn = jest.fn();
+  const ticketTableReads = jest.fn();
   mockFrom.mockImplementation(((table: string) => {
     if (table === "business_public_brands_view")
       return chain({ data: brand, error: null });
     if (table === "business_public_events_view")
       return chain({ data: events, error: null });
     if (table === "ticket_types") {
-      const builder: Record<string, unknown> = {};
-      builder.select = jest.fn(() => builder);
-      builder.in = ticketIn.mockImplementation(((
-        _field: string,
-        ids: string[],
-      ) => {
-        expect(ids).toEqual(["e"]);
-        return builder;
-      }) as never);
-      builder.is = jest.fn(() =>
-        Promise.resolve({
-          data: [
-            {
-              event_id: "e",
-              price_cents: 0,
-              currency: "USD",
-              is_free: true,
-              is_hidden: false,
-              available_online: true,
-            },
-          ],
-          error: null,
-        }),
-      );
-      return builder;
+      ticketTableReads();
+      return chain({ data: [], error: null });
     }
     throw new Error(`unexpected ${table}`);
   }) as never);
-  mockRpc.mockResolvedValue({ data: [], error: null } as never);
+  mockRpc.mockImplementation(((name: string, args: Record<string, unknown>) => {
+    if (
+      name === "pg_public_trips_by_brand" ||
+      name === "pg_public_experiences_by_brand" ||
+      name === "pg_public_brand_upcoming"
+    ) {
+      return Promise.resolve({ data: [], error: null });
+    }
+    if (name !== "pg_direct_event_checkout_bundle") {
+      throw new Error(`unexpected RPC ${name}`);
+    }
+    expect(args).toEqual({
+      p_event_id: "e",
+      p_brand_slug: null,
+      p_event_slug: null,
+    });
+    return Promise.resolve({
+      data: {
+        id: "e",
+        brandId: "b",
+        brandSlug: "brand",
+        eventSlug: "tickets",
+        name: "Tickets",
+        status: "scheduled",
+        brand: { id: "b", slug: "brand", name: "Brand" },
+        currency: "USD",
+        occurrences: [
+          {
+            id: "occ-e",
+            startAt: "2099-01-01T18:00:00Z",
+            endAt: "2099-01-01T20:00:00Z",
+            timezone: "UTC",
+            isMaster: true,
+          },
+        ],
+        tickets: [
+          {
+            id: "ticket-e",
+            name: "Free",
+            priceCents: 0,
+            currency: "USD",
+            isFree: true,
+            isHidden: false,
+            isDisabled: false,
+            availableOnline: true,
+            availableInPerson: false,
+          },
+        ],
+      },
+      error: null,
+    });
+  }) as never);
+  const mockedOffering = jest.requireMock("@mingla/offering-rendering") as {
+    forwardableAcquisitionState?: unknown;
+  };
+  mockedOffering.forwardableAcquisitionState = (
+    jest.requireActual(
+      "../../../../packages/offering-rendering/eventAcquisitionLifecycle",
+    ) as { forwardableAcquisitionState: unknown }
+  ).forwardableAcquisitionState;
   const result = await fetchConsumerBrandBySlug("brand");
   expect(
     result?.events.map((event) => [
       event.id,
       event.eventType,
       event.tickets.length,
+      event.terminalSource.kind,
     ]),
   ).toEqual([
-    ["e", "event", 1],
-    ["r", "rsvp", 0],
+    ["e", "event", 1, "occurrences"],
+    ["r", "rsvp", 0, "single_end"],
   ]);
-  expect(ticketIn).toHaveBeenCalledTimes(1);
+  expect(
+    mockRpc.mock.calls.filter(([name]) => name === "pg_direct_event_checkout_bundle"),
+  ).toEqual([
+    [
+      "pg_direct_event_checkout_bundle",
+      { p_event_id: "e", p_brand_slug: null, p_event_slug: null },
+    ],
+  ]);
+  expect(ticketTableReads).not.toHaveBeenCalled();
 });

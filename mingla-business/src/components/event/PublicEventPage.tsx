@@ -61,6 +61,7 @@ import {
   type ChipInResult,
   type EventAcquisitionInput,
   type EventAcquisitionState,
+  type EventTerminalSource,
   type MapsAppId,
   type MapsOpenTarget,
   nextEventAcquisitionBoundaryDelayMs,
@@ -169,6 +170,8 @@ import { JoinWaitlistSheet } from "../waitlist/JoinWaitlistSheet";
 interface PublicEventPageAdapterProps {
   event: LiveEvent;
   brand: Brand | null;
+  /** Canonical raw lifecycle source from the guest bundle (single-end for RSVP). */
+  terminalSource?: EventTerminalSource;
   /**
    * issue #2160 / #2161 — every materialised occurrence of this event, handed
    * down from `PublicEventDetail`. They arrive on the SAME SECURITY DEFINER
@@ -431,6 +434,7 @@ const NO_SELECTION: readonly string[] = [];
 export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
   event,
   brand,
+  terminalSource,
   bookable = true,
   occurrences = NO_OCCURRENCES,
   multiDatePricingMode = "per_day",
@@ -549,11 +553,13 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                   ? "live"
                   : "scheduled",
           operatorEndedAtUtc: null,
-          masterEndAtUtc: event.masterEndAtUtc ?? null,
+          ...(terminalSource === undefined
+            ? { masterEndAtUtc: event.masterEndAtUtc ?? null }
+            : { terminalSource }),
         },
         nowMs,
       ),
-    [event.masterEndAtUtc, event.status, nowMs],
+    [event.masterEndAtUtc, event.status, nowMs, terminalSource],
   );
   const [serverAcquisitionOverride, setServerAcquisitionOverride] = useState<
     "ended" | "unavailable" | null
@@ -661,7 +667,9 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
                   ? "live"
                   : "scheduled",
           operatorEndedAtUtc: null,
-          masterEndAtUtc: event.masterEndAtUtc ?? null,
+          ...(terminalSource === undefined
+            ? { masterEndAtUtc: event.masterEndAtUtc ?? null }
+            : { terminalSource }),
         },
       ],
       nowMs,
@@ -685,7 +693,7 @@ export const PublicEventPage: React.FC<PublicEventPageAdapterProps> = ({
       if (typeof document !== "undefined")
         document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [event.masterEndAtUtc, event.status, nowMs]);
+  }, [event.masterEndAtUtc, event.status, nowMs, terminalSource]);
   const publicEvent = useMemo(
     () => mapLiveEventToPublicEvent(event, acquisitionState, occurrences),
     [acquisitionState, event, occurrences],

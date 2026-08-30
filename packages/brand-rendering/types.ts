@@ -1,4 +1,8 @@
-import type { ResolvedTheme, ThemeInput } from "@mingla/offering-rendering";
+import type {
+  EventTerminalSource,
+  ResolvedTheme,
+  ThemeInput,
+} from "@mingla/offering-rendering";
 // #1558 — ONE owner for the venue-category union. It used to be inlined here
 // AND declared again in mingla-business/src/types/brand.ts; both now read the
 // profile module, so a fifth category cannot exist in one list and not the
@@ -55,6 +59,7 @@ export interface PublicBrandEvent {
   status: "scheduled" | "live" | "ended" | "cancelled";
   eventType: "event" | "rsvp";
   operatorEndedAtUtc: string | null;
+  terminalSource: EventTerminalSource;
   masterStartAtUtc: string | null;
   masterEndAtUtc: string | null;
   masterTimezone: string | null;

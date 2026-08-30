@@ -10,6 +10,7 @@ import {
   isThemeColor,
   isThemeFontSlug,
   type ResolvedTheme,
+  type EventTerminalSource,
   type ThemeInput,
 } from "@mingla/offering-rendering";
 import type {
@@ -23,6 +24,10 @@ import type {
 } from "@mingla/brand-rendering";
 
 import { supabase } from "../services/supabase";
+import {
+  isDirectEventBundlePayload,
+  mapRpcPayloadToPublicEvent,
+} from "./usePublicEventBySlug";
 
 export const consumerBrandKeys = {
   all: ["consumerBrand"] as const,
@@ -69,15 +74,6 @@ interface PublicEventRow {
   master_start_at: string | null;
   master_end_at: string | null;
   master_timezone: string | null;
-}
-
-interface TicketTypeRow {
-  event_id: string;
-  price_cents: number;
-  currency: string;
-  is_free: boolean;
-  is_hidden: boolean;
-  available_online: boolean;
 }
 
 interface PublicTripRow {
@@ -226,28 +222,10 @@ const mapBrand = (row: PublicBrandRow): PublicBrand => {
   };
 };
 
-const fetchTickets = async (
-  eventIds: string[],
-): Promise<Map<string, TicketTypeRow[]>> => {
-  if (eventIds.length === 0) return new Map();
-  const { data, error } = await supabase
-    .from("ticket_types")
-    .select("event_id,price_cents,currency,is_free,is_hidden,available_online")
-    .in("event_id", eventIds)
-    .is("deleted_at", null);
-  if (error !== null) throw error;
-  const out = new Map<string, TicketTypeRow[]>();
-  for (const row of (data ?? []) as TicketTypeRow[]) {
-    const list = out.get(row.event_id) ?? [];
-    list.push(row);
-    out.set(row.event_id, list);
-  }
-  return out;
-};
-
 const mapEvent = (
   row: PublicEventRow,
-  tickets: TicketTypeRow[],
+  tickets: PublicBrandEvent["tickets"],
+  terminalSource: EventTerminalSource,
 ): PublicBrandEvent => {
   const theme = asRecord(row.public_theme);
   const businessEvent = asRecord(theme.business_event);
@@ -259,6 +237,7 @@ const mapEvent = (
     status: row.status,
     eventType: row.event_type === "rsvp" ? "rsvp" : "event",
     operatorEndedAtUtc: null,
+    terminalSource,
     masterStartAtUtc: row.master_start_at,
     masterEndAtUtc: row.master_end_at,
     masterTimezone: row.master_timezone,
@@ -270,12 +249,7 @@ const mapEvent = (
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     currency: row.currency,
-    tickets: tickets.map((ticket) => ({
-      priceGbp: ticket.is_free ? null : ticket.price_cents / 100,
-      currency: ticket.currency,
-      isFree: ticket.is_free,
-      visibility: ticket.is_hidden ? "hidden" : "public",
-    })),
+    tickets,
   };
 };
 
@@ -371,19 +345,99 @@ export const fetchConsumerBrandBySlug = async (
   const allEventRows = ((eventResult.data ?? []) as PublicEventRow[]).filter(
     (row) =>
       (row.event_type === "event" || row.event_type === "rsvp") &&
-      resolveEventAcquisitionState(
+      row.status !== "cancelled" &&
+      row.status !== "ended",
+  );
+  const MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4;
+  type HydratedConsumerBrandEvent = {
+    row: PublicEventRow;
+    tickets: PublicBrandEvent["tickets"];
+    terminalSource: EventTerminalSource;
+    paidOnline: boolean;
+  };
+  const hydrated: Array<HydratedConsumerBrandEvent | null> = new Array(
+    allEventRows.length,
+  ).fill(null);
+  let cursor = 0;
+  const worker = async (): Promise<void> => {
+    while (cursor < allEventRows.length) {
+      const index = cursor;
+      cursor += 1;
+      const row = allEventRows[index];
+      if (row === undefined) continue;
+      if (row.event_type === "rsvp") {
+        const terminalSource: EventTerminalSource = {
+          kind: "single_end",
+          endAtUtc: row.master_end_at,
+        };
+        const state = resolveEventAcquisitionState(
+          {
+            operatorStatus: row.status,
+            operatorEndedAtUtc: null,
+            terminalSource,
+          },
+          nowMs,
+        );
+        if (state.kind === "current") {
+          hydrated[index] = { row, tickets: [], terminalSource, paidOnline: false };
+        }
+        continue;
+      }
+
+      const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", {
+        p_event_id: row.id,
+        p_brand_slug: null,
+        p_event_slug: null,
+      });
+      if (error !== null) throw error;
+      if (data === null) continue;
+      if (!isDirectEventBundlePayload(data) || data.id !== row.id) {
+        throw new Error("invalid_direct_event_checkout_bundle");
+      }
+      const canonical = mapRpcPayloadToPublicEvent(data);
+      const state = resolveEventAcquisitionState(
         {
           operatorStatus: row.status,
           operatorEndedAtUtc: null,
-          masterEndAtUtc: row.master_end_at,
+          terminalSource: canonical.terminalSource,
         },
         nowMs,
-      ).kind === "current",
+      );
+      if (state.kind !== "current") continue;
+      const tickets: PublicBrandEvent["tickets"] = canonical.event.tickets.map(
+        (ticket) => ({
+          priceGbp: ticket.priceGbp,
+          currency: ticket.currency,
+          isFree: ticket.isFree,
+          visibility: ticket.visibility,
+        }),
+      );
+      hydrated[index] = {
+        row,
+        tickets,
+        terminalSource: canonical.terminalSource,
+        paidOnline: canonical.event.tickets.some(
+          (ticket) =>
+            (ticket.availableAt === "online" || ticket.availableAt === "both") &&
+            !ticket.isFree &&
+            (ticket.priceGbp ?? 0) > 0,
+        ),
+      };
+    }
+  };
+  await Promise.all(
+    Array.from(
+      {
+        length: Math.min(
+          MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY,
+          allEventRows.length,
+        ),
+      },
+      () => worker(),
+    ),
   );
-  const ticketMap = await fetchTickets(
-    allEventRows
-      .filter((row) => row.event_type === "event")
-      .map((row) => row.id),
+  const current = hydrated.filter(
+    (item): item is HydratedConsumerBrandEvent => item !== null,
   );
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
@@ -393,16 +447,11 @@ export const fetchConsumerBrandBySlug = async (
   // the server RPCs (A-3/A-4/A-5) and are already gated. One batched
   // pg_brands_can_collect round-trip over the distinct paid brand ids; free
   // events are never dropped. mirrors fetchPublicBrandEvents (mingla-business).
-  const isPaidOnline = (tickets: TicketTypeRow[]): boolean =>
-    tickets.some(
-      (t) => t.available_online === true && !t.is_free && t.price_cents > 0,
-    );
   const paidBrandIds = Array.from(
     new Set(
-      allEventRows
-        .filter((row) => row.event_type === "event")
-        .filter((row) => isPaidOnline(ticketMap.get(row.id) ?? []))
-        .map((row) => row.brand_id)
+      current
+        .filter((item) => item.paidOnline)
+        .map(({ row }) => row.brand_id)
         .filter((id): id is string => typeof id === "string"),
     ),
   );
@@ -421,13 +470,13 @@ export const fetchConsumerBrandBySlug = async (
       );
     }
   }
-  const rows = allEventRows.filter(
-    (row) =>
-      row.event_type === "rsvp" ||
-      !isPaidOnline(ticketMap.get(row.id) ?? []) ||
-      readyBrandIds.has(row.brand_id),
+  const rows = current.filter(
+    ({ row, paidOnline }) =>
+      !paidOnline || readyBrandIds.has(row.brand_id),
   );
-  const events = rows.map((row) => mapEvent(row, ticketMap.get(row.id) ?? []));
+  const events = rows.map(({ row, tickets, terminalSource }) =>
+    mapEvent(row, tickets, terminalSource),
+  );
   const trips = ((tripResult.data ?? []) as PublicTripRow[]).map(mapTrip);
   const experiences = (
     (experienceResult.data ?? []) as PublicExperienceRow[]

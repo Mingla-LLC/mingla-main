@@ -309,7 +309,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
               {
                 operatorStatus: event.status,
                 operatorEndedAtUtc: event.operatorEndedAtUtc,
-                masterEndAtUtc: event.masterEndAtUtc,
+                terminalSource: event.terminalSource,
               },
               nowMs,
             ).kind === "current",
@@ -330,7 +330,7 @@ export const PublicBrandPage: React.FC<PublicBrandPageProps> = ({
       events.map((event: PublicBrandEvent) => ({
         operatorStatus: event.status,
         operatorEndedAtUtc: event.operatorEndedAtUtc,
-        masterEndAtUtc: event.masterEndAtUtc,
+        terminalSource: event.terminalSource,
       })),
       nowMs,
     );

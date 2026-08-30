@@ -1,4 +1,5 @@
 import { nextEventAcquisitionBoundaryDelayMs, resolveEventAcquisitionState } from "../eventAcquisitionLifecycle.ts";
+import { resolveEventTerminal } from "../eventAcquisitionLifecycle.ts";
 
 const NOW = Date.parse("2026-08-11T12:00:00Z");
 const cases = [
@@ -32,4 +33,73 @@ Deno.test("issue #1902 preserves reasons, equality, offsets, and safe boundary d
   if (capped !== 2_147_483_000) throw new Error(`timer cap mismatch: ${capped}`);
   const none = nextEventAcquisitionBoundaryDelayMs([{ operatorStatus: "ended", operatorEndedAtUtc: null, masterEndAtUtc: "2099-08-11T12:00:01Z" }], NOW);
   if (none !== null) throw new Error("terminal state must not schedule a timer");
+});
+
+Deno.test("issue #2582 uses the final raw camelCase occurrence across a multi-day gap", () => {
+  const occurrences = [
+    {
+      id: "day-2",
+      startAt: "2026-08-30T12:00:00Z",
+      endAt: "2026-08-30T19:00:00Z",
+      timezone: "Africa/Lagos",
+      isMaster: false,
+    },
+    {
+      id: "day-1",
+      startAt: "2026-08-29T12:00:00Z",
+      endAt: "2026-08-29T19:00:00Z",
+      timezone: "Africa/Lagos",
+      isMaster: true,
+    },
+  ];
+  const terminalSource = { kind: "occurrences" as const, value: occurrences };
+  const terminal = resolveEventTerminal(terminalSource);
+  if (
+    terminal.kind !== "known" ||
+    terminal.endAtUtc !== "2026-08-30T19:00:00.000Z"
+  ) {
+    throw new Error(`final occurrence was not terminal: ${JSON.stringify(terminal)}`);
+  }
+
+  const betweenDays = Date.parse("2026-08-30T08:00:00Z");
+  const duringDayTwo = Date.parse("2026-08-30T13:01:00Z");
+  for (const nowMs of [betweenDays, duringDayTwo]) {
+    const state = resolveEventAcquisitionState(
+      {
+        operatorStatus: "scheduled",
+        operatorEndedAtUtc: null,
+        terminalSource,
+      },
+      nowMs,
+    );
+    if (state.kind !== "current") {
+      throw new Error(`multi-day event ended early at ${nowMs}: ${state.kind}`);
+    }
+  }
+
+  const boundaryDelay = nextEventAcquisitionBoundaryDelayMs(
+    [
+      {
+        operatorStatus: "scheduled",
+        operatorEndedAtUtc: null,
+        terminalSource,
+      },
+    ],
+    duringDayTwo,
+  );
+  if (boundaryDelay !== Date.parse("2026-08-30T19:00:00Z") - duringDayTwo) {
+    throw new Error(`final boundary delay mismatch: ${boundaryDelay}`);
+  }
+
+  const atFinalEnd = resolveEventAcquisitionState(
+    {
+      operatorStatus: "scheduled",
+      operatorEndedAtUtc: null,
+      terminalSource,
+    },
+    Date.parse("2026-08-30T19:00:00Z"),
+  );
+  if (atFinalEnd.kind !== "ended") {
+    throw new Error(`exact final equality must end: ${atFinalEnd.kind}`);
+  }
 });
