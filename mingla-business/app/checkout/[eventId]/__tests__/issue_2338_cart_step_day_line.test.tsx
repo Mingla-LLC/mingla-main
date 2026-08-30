@@ -150,8 +150,17 @@ const CHECKOUT_TERMINAL_SOURCE = {
   ],
 };
 
+let checkoutTerminalSource:
+  | typeof CHECKOUT_TERMINAL_SOURCE
+  | { kind: "occurrences"; value: [] } = CHECKOUT_TERMINAL_SOURCE;
 let publicEventData: unknown = null;
 let routeParams: Record<string, string> = { eventId: EVENT_ID };
+type CapturedEmptyStateProps = {
+  title?: unknown;
+  description?: unknown;
+  cta?: { label?: unknown };
+};
+let capturedEmptyStateProps: CapturedEmptyStateProps | null = null;
 
 const router = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
 
@@ -182,7 +191,7 @@ jest.mock("../../../../src/hooks/usePublicEvents", () => ({
         ? null
         : {
             ...(publicEventData as Record<string, unknown>),
-            terminalSource: CHECKOUT_TERMINAL_SOURCE,
+            terminalSource: checkoutTerminalSource,
           },
     isLoading: false,
     isFetching: false,
@@ -193,11 +202,20 @@ jest.mock("../../../../src/analytics/webAnalytics", () => ({
   captureWeb: jest.fn(),
   gaEvent: jest.fn(),
 }));
+jest.mock("@mingla/offering-rendering", () => ({
+  ...jest.requireActual("../../../../__manual_mocks__/offering-rendering.js"),
+  ...jest.requireActual(
+    "../../../../../packages/offering-rendering/eventAcquisitionLifecycle",
+  ),
+}));
 jest.mock("../../../../src/components/ui/EventCoverMedia", () => ({
   EventCoverMedia: () => null,
 }));
 jest.mock("../../../../src/components/ui/EmptyState", () => ({
-  EmptyState: () => null,
+  EmptyState: (props: CapturedEmptyStateProps) => {
+    capturedEmptyStateProps = props;
+    return null;
+  },
 }));
 jest.mock("../../../../src/components/ui/Button", () => {
   const { Pressable } = require("react-native");
@@ -259,6 +277,8 @@ describe("issue #2338 — the cart step's day line", () => {
   beforeEach(() => {
     router.push.mockReset();
     router.replace.mockReset();
+    checkoutTerminalSource = CHECKOUT_TERMINAL_SOURCE;
+    capturedEmptyStateProps = null;
     routeParams = {
       eventId: EVENT_ID,
       eventDateIds: `${DAY_29.id},${DAY_30.id}`,
@@ -324,6 +344,18 @@ describe("issue #2338 — the cart step's day line", () => {
     expect(cartDateLine(tree)).toBe(
       `Mingla Nigeria · ${formatDraftDateLine(SINGLE_DATE_EVENT as never)}`,
     );
+    await act(async () => tree.unmount());
+  });
+
+  test("K-6 unavailable standard-event truth uses the real lifecycle notice copy", async () => {
+    checkoutTerminalSource = { kind: "occurrences", value: [] };
+    const tree = await mount();
+    const captured = capturedEmptyStateProps as CapturedEmptyStateProps | null;
+    expect(captured?.title).toBe("Booking unavailable");
+    expect(captured?.description).toBe(
+      "This event’s schedule is unavailable, so ticket sales are closed.",
+    );
+    expect(captured?.cta?.label).toBe("Back to event");
     await act(async () => tree.unmount());
   });
 });

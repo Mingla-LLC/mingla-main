@@ -46,10 +46,10 @@ describe("ORCH-0850 — Checkout isPast gate ADVERSARIAL", () => {
 
   // --- Cluster A: Boundary equality on end_at edge -----------------------
   describe("Cluster A — boundary equality on end_at", () => {
-    it("A-01: now exactly equal to end_at returns false (NOT past — `>` not `>=`)", () => {
+    it("A-01: now exactly equal to end_at returns true (past — canonical `<=` terminal rule)", () => {
       // end_at = 9pm EDT May 15 = 2026-05-16T01:00Z. Set now exactly equal.
-      // Predicate is `Date.now() > endTime` (strictly greater) → false → not past.
-      // Checkout opens. Buyer can still purchase up to the very last millisecond.
+      // Canonical terminal truth is `endTime <= Date.now()` → true → past/closed.
+      // Checkout closes at the exact terminal instant, not one millisecond later.
       jest.setSystemTime(new Date("2026-05-16T01:00:00.000Z"));
       const event = makeEvent({
         status: "scheduled",
@@ -58,7 +58,7 @@ describe("ORCH-0850 — Checkout isPast gate ADVERSARIAL", () => {
         endsAt: "21:00",
         timezone: "America/New_York",
       });
-      expect(isEventPast(event, computeMasterEndAtUtc(event))).toBe(false);
+      expect(isEventPast(event, computeMasterEndAtUtc(event))).toBe(true);
     });
 
     it("A-02: now exactly 1ms after end_at returns true (past)", () => {
