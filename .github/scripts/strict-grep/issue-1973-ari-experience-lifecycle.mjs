@@ -152,10 +152,12 @@ function check(s) {
     'status: "scheduled"',
     "undefined",
   ]);
-  requireAll("120-capability certification proof", s.certificationTest, [
+  // [TEST-MOD-APPROVED #2830] Twelve approved Website tools extend the
+  // certification denominator while this owner still proves one missing row.
+  requireAll("132-capability certification proof", s.certificationTest, [
     "ari.experience.unpublish",
-    "ari_cert_missing_capabilities:119",
-    "expected exactly 120 certification requirements",
+    "ari_cert_missing_capabilities:131",
+    "expected exactly 132 certification requirements",
   ]);
   requireAll("public payload Edge proof", s.publicPayloadTest, [
     '"update_experience"',
@@ -257,7 +259,7 @@ if (process.argv.includes("--self-test")) {
     {
       ...sources,
       certificationTest: sources.certificationTest.replace(
-        "ari_cert_missing_capabilities:119",
+        "ari_cert_missing_capabilities:131",
         "accepted_obsolete_inventory",
       ),
     },

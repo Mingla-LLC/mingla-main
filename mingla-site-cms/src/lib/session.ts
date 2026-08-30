@@ -8,6 +8,7 @@ export const STUDIO_CSRF_COOKIE = "__Host-mingla_studio_csrf";
 export type StudioSession = {
   version: 1; site_id: string; brand_id: string; user_id: string; rank: number;
   tenant_id: string; issued_at: number; absolute_expires_at: number; idle_expires_at: number; nonce: string;
+  return_surface: "web" | "native";
 };
 
 export type PreviewGrant = {
@@ -57,6 +58,7 @@ export async function decodeSession(value: string | null): Promise<StudioSession
   const session = decoded as unknown as StudioSession;
   const now = Math.floor(Date.now() / 1000);
   if (session.version !== 1 || session.rank < 20 || session.absolute_expires_at <= now || session.idle_expires_at <= now) return null;
+  if (session.return_surface !== "web" && session.return_surface !== "native") return null;
   if (![session.site_id, session.brand_id, session.user_id, session.tenant_id].every((id) => /^[0-9a-f-]{36}$/i.test(id))) return null;
   return session;
 }
@@ -96,6 +98,13 @@ export function cookieValue(headers: Headers, name: string): string | null {
 }
 
 export async function sessionFromHeaders(headers: Headers): Promise<StudioSession | null> { return decodeSession(cookieValue(headers, STUDIO_COOKIE)); }
+
+export function studioReturnLocation(session: StudioSession): string {
+  const brandId = encodeURIComponent(session.brand_id);
+  return session.return_surface === "native"
+    ? `mingla-business://website-return?brandId=${brandId}`
+    : `https://business.usemingla.com/brand/${brandId}/website`;
+}
 
 export function assertMutationRequest(headers: Headers): void {
   const config = cmsConfig();

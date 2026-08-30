@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
   BrandSiteOperation,
   BrandSiteOverview,
@@ -50,6 +51,79 @@ function operationId(): string {
   });
 }
 
+export const PROVISION_POLL_WINDOW_MS = 30_000;
+const PROVISION_OPERATION_PREFIX = "mingla:brand-site-provision:v1:";
+
+export interface PersistedProvisionOperation {
+  operationId: string;
+  startedAt: number;
+}
+
+export function authoritativeProvisionOperation(
+  site: BrandSiteOverview | null | undefined,
+): PersistedProvisionOperation | null {
+  const receipt = site?.latest_provision_operation;
+  const startedAt = receipt ? Date.parse(receipt.authorized_at) : NaN;
+  return site?.status === "provisioning" &&
+      receipt !== null &&
+      receipt !== undefined &&
+      Number.isFinite(startedAt)
+    ? { operationId: receipt.operation_id, startedAt }
+    : null;
+}
+
+export function resolveProvisionOperation(
+  cached: PersistedProvisionOperation | null,
+  site: BrandSiteOverview | null | undefined,
+): PersistedProvisionOperation | null {
+  return cached ?? authoritativeProvisionOperation(site);
+}
+
+export function createBrandSiteOperationId(): string {
+  return operationId();
+}
+
+export async function loadProvisionOperation(
+  brandId: string,
+): Promise<PersistedProvisionOperation | null> {
+  try {
+    const value = JSON.parse(
+      (await AsyncStorage.getItem(`${PROVISION_OPERATION_PREFIX}${brandId}`)) ??
+        "null",
+    ) as Partial<PersistedProvisionOperation> | null;
+    return value &&
+        typeof value.operationId === "string" &&
+        /^[0-9a-f-]{36}$/i.test(value.operationId) &&
+        typeof value.startedAt === "number"
+      ? { operationId: value.operationId, startedAt: value.startedAt }
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function persistProvisionOperation(
+  brandId: string,
+  operation: PersistedProvisionOperation,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      `${PROVISION_OPERATION_PREFIX}${brandId}`,
+      JSON.stringify(operation),
+    );
+  } catch {
+    // The Core receipt remains authoritative; storage recovery is best effort.
+  }
+}
+
+export async function clearProvisionOperation(brandId: string): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(`${PROVISION_OPERATION_PREFIX}${brandId}`);
+  } catch {
+    // A stale local receipt cannot authorize or repeat a different operation.
+  }
+}
+
 async function invoke<T>(
   route: string,
   method: "GET" | "POST",
@@ -89,13 +163,14 @@ export async function getBrandSite(
   }
 }
 
-export function provisionBrandSite(brandId: string): Promise<{
-  site_id: string;
-  status: string;
-}> {
-  return invoke(`/v1/brands/${brandId}/site`, "POST", {
-    operation_id: operationId(),
+export async function provisionBrandSite(
+  brandId: string,
+  requestedOperationId: string,
+): Promise<{ operation_id: string }> {
+  await invoke(`/v1/brands/${brandId}/site`, "POST", {
+    operation_id: requestedOperationId,
   });
+  return { operation_id: requestedOperationId };
 }
 
 export function createStudioExchange(
@@ -176,9 +251,12 @@ export function rollbackBrandSite(input: {
   });
 }
 
-export function studioExchangeUrl(exchange: StudioExchange): string {
+export function studioExchangeUrl(
+  exchange: StudioExchange,
+  returnSurface: "web" | "native",
+): string {
   const safeCode = encodeURIComponent(exchange.code);
   const safeDestination = encodeURIComponent(exchange.destination);
   const safeSiteId = encodeURIComponent(exchange.site_id);
-  return `https://studio.sites.usemingla.com/mingla/exchange?code=${safeCode}&destination=${safeDestination}&site_id=${safeSiteId}`;
+  return `https://studio.sites.usemingla.com/mingla/exchange?code=${safeCode}&destination=${safeDestination}&site_id=${safeSiteId}&return_surface=${returnSurface}`;
 }

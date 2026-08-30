@@ -53,7 +53,6 @@ export const adPixelsReady = (): boolean => false;
 export const getStoredClickAttribution = (): { clickId: string | null } => ({
   clickId: null,
 });
-export const getStoredSiteAttribution = (): string | null => null;
 export const postAttributionTouch = async (
   _input: unknown,
 ): Promise<string | null> => null;

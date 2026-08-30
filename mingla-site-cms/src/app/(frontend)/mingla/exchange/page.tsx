@@ -11,10 +11,11 @@ function ExchangeContent() {
     const code = params.get("code");
     const destination = "studio";
     const siteId = params.get("site_id");
-    if (!code || !siteId) return;
+    const returnSurface = params.get("return_surface");
+    if (!code || !siteId || !["web", "native"].includes(returnSurface ?? "")) return;
     fetch("/api/mingla/exchange", {
       method: "POST", headers: { "content-type": "application/json" },
-      body: JSON.stringify({ code, destination, site_id: siteId }),
+      body: JSON.stringify({ code, destination, site_id: siteId, return_surface: returnSurface }),
     }).then(async (response) => {
       const result = await response.json();
       if (!response.ok || !result.ok) throw new Error();

@@ -4,7 +4,8 @@ const links = [
   ["Pages", "/admin/collections/pages"], ["Media", "/admin/collections/media"],
   ["Navigation", "/admin/collections/navigation"], ["Footer", "/admin/collections/footer"],
   ["Site settings & SEO", "/admin/collections/site-settings"],
-  ["View live site", "https://gogi.sites.usemingla.com"], ["Return to Mingla", "https://business.usemingla.com"],
+  ["Preview", "/api/mingla/studio-preview"],
+  ["View live site", "https://gogi.sites.usemingla.com"], ["Return to Mingla", "/api/mingla/return"],
 ] as const;
 
 export default function StudioNav() {

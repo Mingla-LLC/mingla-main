@@ -183,3 +183,22 @@ Deno.test("#2830 observability normalizes routes without query or identifier lea
   );
   assert(!route.includes("token"), "observation route retained query data");
 });
+
+Deno.test("#2830 provisioning recovery is projected from the Core receipt", async () => {
+  const source = await Deno.readTextFile(
+    new URL("../../brand-site-control/index.ts", import.meta.url),
+  );
+  for (
+    const token of [
+      '.from("brand_site_operation_receipts")',
+      '.eq("kind", "provision")',
+      '.order("authorized_at", { ascending: false })',
+      "latest_provision_operation: receipt ?? null",
+    ]
+  ) {
+    assert(
+      source.includes(token),
+      `Core provisioning projection lost ${token}`,
+    );
+  }
+});

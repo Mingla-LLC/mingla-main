@@ -175,3 +175,43 @@ describe("#2830 private preview grant", () => {
     expect(await decodePreviewGrant(`${token.slice(0, -1)}x`)).toBeNull();
   });
 });
+
+describe("#2830 fixed Studio return contract", () => {
+  it("derives only the signed web or native Website workspace target", async () => {
+    const { decodeSession, encodeSession, studioReturnLocation } =
+      await import("./session");
+    const now = Math.floor(Date.now() / 1000);
+    const base = {
+      version: 1 as const,
+      site_id: SITE_ID,
+      brand_id: BRAND_ID,
+      user_id: USER_ID,
+      rank: 20,
+      tenant_id: TENANT_ID,
+      issued_at: now,
+      absolute_expires_at: now + 3600,
+      idle_expires_at: now + 1800,
+      nonce: "00000000-0000-4000-8000-000000000006",
+    };
+    const web = await decodeSession(
+      await encodeSession({ ...base, return_surface: "web" }),
+    );
+    const native = await decodeSession(
+      await encodeSession({ ...base, return_surface: "native" }),
+    );
+    expect(studioReturnLocation(web!)).toBe(
+      `https://business.usemingla.com/brand/${BRAND_ID}/website`,
+    );
+    expect(studioReturnLocation(native!)).toBe(
+      `mingla-business://website-return?brandId=${BRAND_ID}`,
+    );
+    expect(
+      await decodeSession(
+        await encodeSession({
+          ...base,
+          return_surface: "https://attacker.invalid" as never,
+        }),
+      ),
+    ).toBeNull();
+  });
+});

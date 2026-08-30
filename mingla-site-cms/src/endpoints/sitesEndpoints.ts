@@ -28,6 +28,8 @@ import {
   decodePreviewGrant,
   encodeSession,
   encodePreviewGrant,
+  sessionFromHeaders,
+  studioReturnLocation,
   STUDIO_COOKIE,
   STUDIO_CSRF_COOKIE,
 } from "../lib/session";
@@ -90,6 +92,9 @@ async function exchange(req: PayloadRequest): Promise<Response> {
     const body = await objectBody(req);
     const code = String(body.code || "");
     if (body.destination !== "studio") throw new Error("SESSION_EXPIRED");
+    if (body.return_surface !== "web" && body.return_surface !== "native") {
+      throw new Error("SESSION_EXPIRED");
+    }
     const destination = "studio" as const;
     const siteIdHint = String(body.site_id || "");
     if (!/^[0-9a-f-]{36}$/i.test(siteIdHint)) {
@@ -126,6 +131,7 @@ async function exchange(req: PayloadRequest): Promise<Response> {
         Date.parse(String(result.idle_expires_at)) / 1000,
       ),
       nonce: crypto.randomUUID(),
+      return_surface: body.return_surface,
     });
     const csrf = base64url(crypto.getRandomValues(new Uint8Array(32)));
     const headers = new Headers();
@@ -148,6 +154,22 @@ async function exchange(req: PayloadRequest): Promise<Response> {
       200,
       headers,
     );
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+async function returnToMingla(req: PayloadRequest): Promise<Response> {
+  try {
+    const session = await sessionFromHeaders(req.headers);
+    if (!session) throw new Error("SESSION_EXPIRED");
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: studioReturnLocation(session),
+        "cache-control": "no-store, private",
+      },
+    });
   } catch (error) {
     return safeFailure(error);
   }
@@ -731,6 +753,93 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
   }
 }
 
+async function studioPreview(req: PayloadRequest): Promise<Response> {
+  try {
+    const session = await sessionFromHeaders(req.headers);
+    if (!session) throw new Error("SESSION_EXPIRED");
+    const tenant = await req.payload.findByID({
+      collection: "tenants",
+      id: session.tenant_id,
+      overrideAccess: true,
+      depth: 0,
+    });
+    if (
+      String(tenant.core_site_id) !== session.site_id ||
+      String(tenant.core_brand_id) !== session.brand_id
+    ) {
+      throw new Error("FORBIDDEN");
+    }
+    const scoped = scopedRequest(req, {
+      siteId: session.site_id,
+      brandId: session.brand_id,
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      rank: session.rank,
+    });
+    const tenantWhere = { tenant: { equals: session.tenant_id } };
+    const [pages, settings, navigation, footer, media] = await Promise.all([
+      req.payload.find({
+        collection: "pages", overrideAccess: false, req: scoped, draft: true,
+        depth: 0, limit: 5, where: tenantWhere, sort: "nav_order",
+      }),
+      req.payload.find({
+        collection: "site-settings", overrideAccess: false, req: scoped,
+        draft: true, depth: 0, limit: 1, where: tenantWhere,
+      }),
+      req.payload.find({
+        collection: "navigation", overrideAccess: false, req: scoped,
+        draft: true, depth: 0, limit: 1, where: tenantWhere,
+      }),
+      req.payload.find({
+        collection: "footer", overrideAccess: false, req: scoped, draft: true,
+        depth: 0, limit: 1, where: tenantWhere,
+      }),
+      req.payload.find({
+        collection: "media", overrideAccess: false, req: scoped, depth: 0,
+        limit: 500, sort: "id",
+        where: { and: [tenantWhere, { state: { equals: "READY" } }] },
+      }),
+    ]);
+    const home = pages.docs.find(
+      (page) => page.role === "home" && page.enabled === true,
+    );
+    if (!home || !settings.docs[0]) throw new Error("VALIDATION_FAILED");
+    const digest = await publicationDraftDigest({
+      pages: pages.docs,
+      settings: settings.docs[0],
+      navigation: navigation.docs[0] ?? null,
+      footer: footer.docs[0] ?? null,
+      media: media.docs,
+    });
+    const issuedAt = Math.floor(Date.now() / 1000);
+    const token = await encodePreviewGrant({
+      version: 1,
+      issuer: "mingla-site-cms",
+      audience: "mingla-studio-preview",
+      site_id: session.site_id,
+      brand_id: session.brand_id,
+      user_id: session.user_id,
+      tenant_id: session.tenant_id,
+      source_revision: String(home.revision),
+      source_digest: digest,
+      renderer_key: "restaurant-website-v1",
+      renderer_version: 1,
+      issued_at: issuedAt,
+      expires_at: issuedAt + 1800,
+      nonce: crypto.randomUUID(),
+    });
+    return new Response(null, {
+      status: 302,
+      headers: {
+        location: `/preview?token=${encodeURIComponent(token)}&site_id=${encodeURIComponent(session.site_id)}`,
+        "cache-control": "no-store, private",
+      },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
 const ARI_ACTIONS = new Set([
   "get_brand_site",
   "list_site_pages",
@@ -1277,6 +1386,24 @@ export const sitesEndpoints: Endpoint[] = [
       "/mingla/exchange",
       "customer_to_cms",
       exchange,
+    ),
+  },
+  {
+    path: "/mingla/return",
+    method: "get",
+    handler: observeCmsEndpoint(
+      "/mingla/return",
+      "studio_to_cms",
+      returnToMingla,
+    ),
+  },
+  {
+    path: "/mingla/studio-preview",
+    method: "get",
+    handler: observeCmsEndpoint(
+      "/mingla/studio-preview",
+      "studio_to_cms",
+      studioPreview,
     ),
   },
   {

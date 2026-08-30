@@ -20,6 +20,7 @@ import {
 } from "../../constants/designSystem";
 import type {
   BrandSiteAnalytics,
+  BrandSiteOperation,
   BrandSiteOverview,
   BrandSiteVersion,
 } from "../../sites/contracts";
@@ -41,8 +42,13 @@ interface BrandWebsiteViewProps {
   isRollingBack: boolean;
   versions: BrandSiteVersion[];
   analytics: BrandSiteAnalytics | null;
+  provisionOperationId: string | null;
+  provisionOperation: BrandSiteOperation | null;
+  provisionPollingTimedOut: boolean;
+  isReconciling: boolean;
   onRetry: () => void;
   onProvision: () => void;
+  onReconcileProvision: () => void;
   onOpenStudio: () => void;
   onPreview: () => void;
   onViewLive: (hostname: string) => void;
@@ -74,8 +80,13 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = ({
   isRollingBack,
   versions,
   analytics,
+  provisionOperationId,
+  provisionOperation,
+  provisionPollingTimedOut,
+  isReconciling,
   onRetry,
   onProvision,
+  onReconcileProvision,
   onOpenStudio,
   onPreview,
   onViewLive,
@@ -130,7 +141,80 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = ({
         </View>
       </View>
 
-      {site === null ? (
+      {site?.status === "provisioning" ? (
+        <GlassCard
+          variant="elevated"
+          contentStyle={styles.cardContent}
+          testID="website-provisioning"
+        >
+          <Text style={styles.cardTitle}>Setting up your Website…</Text>
+          <Text style={styles.body}>
+            Mingla is creating the private editing workspace. Nothing is live,
+            and you can leave this screen safely.
+          </Text>
+          <View style={styles.progressList}>
+            {[
+              "Setup request accepted",
+              "Website authority created",
+              "Studio workspace creating",
+              "Draft checking",
+              "Draft ready",
+            ].map((label, index) => (
+              <View key={label} style={styles.progressRow}>
+                <View
+                  style={[
+                    styles.progressDot,
+                    index < 2 ? styles.progressDotComplete : undefined,
+                  ]}
+                />
+                <Text style={index < 2 ? styles.progressComplete : styles.helper}>
+                  {label}
+                </Text>
+              </View>
+            ))}
+          </View>
+          {provisionOperationId ? (
+            <Text style={styles.meta} selectable>
+              Operation {provisionOperationId}
+            </Text>
+          ) : (
+            <Text style={styles.meta}>
+              Reconnecting to the authoritative setup receipt…
+            </Text>
+          )}
+          {provisionOperation?.status === "ambiguous" ? (
+            <Text style={styles.body}>
+              Setup has not failed, but Mingla cannot yet prove the final state.
+              Checking again uses this same operation and cannot create a
+              duplicate Website.
+            </Text>
+          ) : provisionPollingTimedOut ? (
+            <Text style={styles.body}>
+              Setup is still working. Mingla stopped automatic checks to keep
+              them bounded; your operation is preserved.
+            </Text>
+          ) : (
+            <Text style={styles.helper}>Checking the durable receipt…</Text>
+          )}
+          {canProvision &&
+          (provisionOperation?.status === "ambiguous" ||
+            provisionPollingTimedOut) ? (
+            <Button
+              label="Check setup status"
+              loading={isReconciling}
+              onPress={onReconcileProvision}
+              variant="secondary"
+              fullWidth
+            />
+          ) : !canProvision &&
+            (provisionOperation?.status === "ambiguous" ||
+              provisionPollingTimedOut) ? (
+            <Text style={styles.helper}>
+              A brand admin can check this setup operation again.
+            </Text>
+          ) : null}
+        </GlassCard>
+      ) : site === null ? (
         <GlassCard
           variant="elevated"
           contentStyle={styles.cardContent}
@@ -375,6 +459,19 @@ const styles = StyleSheet.create({
   statusDotLive: { backgroundColor: semantic.success },
   statusDotError: { backgroundColor: semantic.error },
   actionStack: { gap: spacing.sm },
+  progressList: { gap: spacing.sm },
+  progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
+  progressDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 999,
+    backgroundColor: glass.border.profileBase,
+  },
+  progressDotComplete: { backgroundColor: semantic.success },
+  progressComplete: {
+    color: textTokens.primary,
+    fontSize: typography.caption.fontSize,
+  },
   address: {
     color: textTokens.primary,
     fontSize: typography.body.fontSize,

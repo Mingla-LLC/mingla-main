@@ -30,6 +30,14 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   // issue #1971 — the aggregate trip order/money snapshot runs inline under the
   // same tenant scope as every other read.
   "get_trip_order_money",
+  // issue #2830 — all six Website reads assert this authority inline before
+  // Core independently reauthorizes the site/brand relationship.
+  "get_brand_site",
+  "list_site_pages",
+  "get_site_page",
+  "validate_site_draft",
+  "get_site_operation_status",
+  "list_site_versions",
 ]);
 
 export interface AccessibleAgentBrand {

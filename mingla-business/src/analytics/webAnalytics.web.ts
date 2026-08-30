@@ -117,7 +117,7 @@ let adPixelIds: AdPixelIds = { meta: null, tiktok: null, snap: null, reddit: nul
 let adPixelsBootstrapped = false;
 
 // First-party storage key for the captured ad click_id (threaded into checkout).
-const AD_CLICK_STORAGE_KEY = "mingla_ad_click_v1";
+const AD_CLICK_KEY = "mingla_ad_click_v1";
 
 declare global {
   // gtag/dataLayer injected by the GA4 loader below; the four ad-pixel globals
@@ -231,7 +231,6 @@ function writeStoredConsent(choice: ConsentChoice): void {
  * script and configures the measurement with `send_page_view` enabled. Idempotent.
  */
 function loadGa4(measurementId: string): void {
-  if (!hasWindow()) return;
   window.dataLayer = window.dataLayer ?? [];
   // eslint-disable-next-line prefer-rest-params
   const gtag = function gtag(): void {
@@ -281,7 +280,7 @@ async function bootGrantedAnalytics(): Promise<void> {
   // Issue #2771: vendor opt-out/denied modes can still initialize, persist,
   // load configuration, and transmit. Explicit Mingla grant must dominate the
   // loader itself, including every retry/concurrent entry.
-  if (!hasWindow() || readStoredConsent() !== "granted") return;
+  if (readStoredConsent() !== "granted") return;
   const posthogKey = readEnv("EXPO_PUBLIC_POSTHOG_KEY");
   const posthogHost = readEnv("EXPO_PUBLIC_POSTHOG_HOST") ?? POSTHOG_US_HOST;
   gaMeasurementId = readEnv("EXPO_PUBLIC_GA4_MEASUREMENT_ID") ?? null;
@@ -351,7 +350,7 @@ async function bootGrantedAnalytics(): Promise<void> {
 }
 
 function ensureGrantedAnalyticsBoot(): Promise<void> {
-  if (!hasWindow() || readStoredConsent() !== "granted") {
+  if (readStoredConsent() !== "granted") {
     return Promise.resolve();
   }
   if (bootPromise === null) {
@@ -445,11 +444,10 @@ export function getFeatureFlagWeb(key: string): boolean | string | undefined {
 // exact pair (A2-5 / SC-15). NOTHING here is on the tap→pay critical path.
 // ═════════════════════════════════════════════════════════════════════════════
 
-const ATTR_POST_TIMEOUT_MS = 4000;
+const ATTR_TIMEOUT_MS = 4000;
 
 function injectPixelScriptOnce(src: string, marker: string): void {
-  if (!hasWindow()) return;
-  if (window.document.querySelector(`script[data-mingla-pixel="${marker}"]`) !== null) return;
+  if (window.document.querySelector(`script[data-mingla-pixel="${marker}"]`)) return;
   const s = window.document.createElement("script");
   s.async = true;
   s.src = src;
@@ -459,7 +457,6 @@ function injectPixelScriptOnce(src: string, marker: string): void {
 
 /** Wrap a single pixel call so its failure is a silent no-op (never blocks the page). */
 function safePixel(fn: () => void): void {
-  if (!hasWindow()) return;
   try {
     fn();
   } catch (err) {
@@ -489,7 +486,6 @@ function createQueuedPixel(handlerKey: string, queueKey: string): QueuedPixel {
 }
 
 function bootstrapMetaPixel(pixelId: string): void {
-  if (!hasWindow()) return;
   if (window.fbq === undefined) {
     // Canonical fbq stub — queues calls until fbevents.js loads + sets callMethod.
     const n = createQueuedPixel("callMethod", "queue");
@@ -507,7 +503,6 @@ function bootstrapMetaPixel(pixelId: string): void {
 }
 
 function bootstrapTikTokPixel(pixelCode: string): void {
-  if (!hasWindow()) return;
   window.TiktokAnalyticsObject = "ttq";
   const ttq = (window.ttq = window.ttq ?? {}) as unknown as {
     methods: string[];
@@ -550,7 +545,6 @@ function bootstrapTikTokPixel(pixelCode: string): void {
 }
 
 function bootstrapSnapPixel(pixelId: string): void {
-  if (!hasWindow()) return;
   if (window.snaptr === undefined) {
     window.snaptr = createQueuedPixel("handleRequest", "queue") as Window["snaptr"];
   }
@@ -560,7 +554,6 @@ function bootstrapSnapPixel(pixelId: string): void {
 }
 
 function bootstrapRedditPixel(pixelId: string): void {
-  if (!hasWindow()) return;
   if (window.rdt === undefined) {
     window.rdt = createQueuedPixel("sendEvent", "callQueue") as Window["rdt"];
   }
@@ -575,7 +568,7 @@ function bootstrapRedditPixel(pixelId: string): void {
  * block the page nor prevent the others from loading. Idempotent.
  */
 function bootstrapAdPixels(): void {
-  if (!hasWindow() || readStoredConsent() !== "granted" || adPixelsBootstrapped) return;
+  if (readStoredConsent() !== "granted" || adPixelsBootstrapped) return;
   adPixelsBootstrapped = true; // set first so a throw can't cause a re-bootstrap loop
   if (adPixelIds.meta) safePixel(() => bootstrapMetaPixel(adPixelIds.meta as string));
   if (adPixelIds.tiktok) safePixel(() => bootstrapTikTokPixel(adPixelIds.tiktok as string));
@@ -691,67 +684,29 @@ interface StoredAdClick {
 
 /** The click_id captured on landing, for threading into checkout-create. */
 export function getStoredClickAttribution(): StoredAdClick {
-  if (!hasWindow() || readStoredConsent() !== "granted") return { clickId: null };
+  let clickId: unknown;
   try {
-    const raw = window.sessionStorage.getItem(AD_CLICK_STORAGE_KEY);
-    if (raw === null) return { clickId: null };
-    const parsed = JSON.parse(raw) as { clickId?: string };
-    return { clickId: typeof parsed.clickId === "string" ? parsed.clickId : null };
-  } catch {
-    return { clickId: null };
-  }
-}
-
-const SITE_ATTRIBUTION_KEY = "mingla_site_attribution_v1";
-const SITE_ATTRIBUTION_RE = /^[A-Za-z0-9_-]{43}$/;
-
-/**
- * #2830 — preserve the opaque Mingla Sites handoff only for this browser tab.
- * The source site mints it only after analytics consent; it contains no buyer
- * data and expires server-side after 30 minutes. Native deliberately has no
- * equivalent source, so the sibling module returns null.
- */
-export function getStoredSiteAttribution(): string | null {
-  if (!hasWindow()) return null;
-  try {
-    const fromUrl = new URL(window.location.href).searchParams.get(
-      "site_attribution",
-    );
-    if (fromUrl && SITE_ATTRIBUTION_RE.test(fromUrl)) {
-      window.sessionStorage.setItem(
-        SITE_ATTRIBUTION_KEY,
-        JSON.stringify({ token: fromUrl, capturedAt: Date.now() }),
-      );
-      return fromUrl;
+    if (readStoredConsent() === "granted") {
+      clickId = (JSON.parse(
+        window.sessionStorage.getItem(AD_CLICK_KEY) ?? "{}",
+      ) as { clickId?: unknown }).clickId;
     }
-    const stored = window.sessionStorage.getItem(SITE_ATTRIBUTION_KEY);
-    if (!stored) return null;
-    const parsed = JSON.parse(stored) as { token?: unknown; capturedAt?: unknown };
-    if (
-      typeof parsed.token !== "string" ||
-      !SITE_ATTRIBUTION_RE.test(parsed.token) ||
-      typeof parsed.capturedAt !== "number" ||
-      Date.now() - parsed.capturedAt > 30 * 60_000
-    ) {
-      window.sessionStorage.removeItem(SITE_ATTRIBUTION_KEY);
-      return null;
-    }
-    return parsed.token;
   } catch {
-    return null;
+    // Storage and malformed data remain optional attribution failures.
   }
+  return { clickId: typeof clickId === "string" ? clickId : null };
 }
 
 function storeClickId(clickId: string): void {
-  if (!hasWindow() || readStoredConsent() !== "granted") return;
+  if (readStoredConsent() !== "granted") return;
   try {
-    window.sessionStorage.setItem(AD_CLICK_STORAGE_KEY, JSON.stringify({ clickId, ts: Date.now() }));
+    window.sessionStorage.setItem(AD_CLICK_KEY, JSON.stringify({ clickId }));
   } catch {
     // sessionStorage unavailable (private mode) — non-fatal; threading is skipped.
   }
 }
 
-function postAttribution(
+function postAttr(
   base: string,
   anon: string,
   body: Record<string, unknown>,
@@ -859,13 +814,10 @@ export function captureAdClickIds(dest?: CaptureAdClickDest): void {
  * (attribution-capture) turns this host into entry_source.
  */
 export function readReferrerHost(): string | null {
-  if (!hasWindow() || readStoredConsent() !== "granted") return null;
+  if (readStoredConsent() !== "granted") return null;
   try {
-    const ref = (window.document as { referrer?: string } | undefined)?.referrer;
-    if (typeof ref !== "string" || ref.length === 0) return null;
-    let host = new URL(ref).hostname.toLowerCase();
-    if (host.startsWith("www.")) host = host.slice(4);
-    return host.length > 0 ? host : null;
+    const host = new URL(window.document.referrer).hostname.toLowerCase();
+    return host.replace(/^www\./, "") || null;
   } catch {
     return null;
   }
@@ -884,14 +836,14 @@ interface PostTouchInput {
 
 /** POST a touch to attribution-capture; returns the server click_id (or null). */
 export async function postAttributionTouch(input: PostTouchInput): Promise<string | null> {
-  if (!hasWindow() || readStoredConsent() !== "granted") return null;
+  if (readStoredConsent() !== "granted") return null;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
   if (base === undefined || anon === undefined) return null;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ATTR_POST_TIMEOUT_MS);
+  const aborter = new AbortController();
+  const timer = setTimeout(() => aborter.abort(), ATTR_TIMEOUT_MS);
   try {
-    const res = await postAttribution(
+    const res = await postAttr(
       base,
       anon,
       {
@@ -913,7 +865,7 @@ export async function postAttributionTouch(input: PostTouchInput): Promise<strin
           }
           : undefined,
       },
-      controller.signal,
+      aborter.signal,
     );
     if (!res.ok) return null;
     const data = (await res.json()) as { click_id?: string };
@@ -937,15 +889,14 @@ export function postAttributionConversion(input: {
   currency?: string | null;
   eventSourceUrl?: string | null;
 }): void {
-  if (!hasWindow() || readStoredConsent() !== "granted" || input.eventId.length === 0) return;
+  if (readStoredConsent() !== "granted" || input.eventId.length === 0) return;
   const base = readEnv("EXPO_PUBLIC_SUPABASE_URL");
   const anon = readEnv("EXPO_PUBLIC_SUPABASE_ANON_KEY");
   if (base === undefined || anon === undefined) return;
-  const clickId = getStoredClickAttribution().clickId;
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), ATTR_POST_TIMEOUT_MS);
+  const aborter = new AbortController();
+  const timer = setTimeout(() => aborter.abort(), ATTR_TIMEOUT_MS);
   try {
-    void postAttribution(
+    void postAttr(
       base,
       anon,
       {
@@ -957,10 +908,10 @@ export function postAttributionConversion(input: {
         event_name: "Purchase",
         value_cents: input.valueCents ?? null,
         currency: input.currency ?? null,
-        click_id: clickId,
+        click_id: getStoredClickAttribution().clickId,
         event_source_url: input.eventSourceUrl ?? window.location.href,
       },
-      controller.signal,
+      aborter.signal,
     )
       .catch(() => {
         // Fire-and-forget: a failed early record is harmless — the server fire

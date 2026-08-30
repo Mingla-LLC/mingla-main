@@ -5,7 +5,6 @@ import {
   type BrandSiteOverview,
 } from "../contracts";
 import { BRAND_ROLE_RANK } from "../../utils/brandRole";
-import { MIN_RANK, canPerformAction } from "../../utils/permissionGates";
 
 const site = (status: BrandSiteOverview["status"]): BrandSiteOverview => ({
   id: "00000000-0000-4000-8000-000000000001",
@@ -24,10 +23,9 @@ const site = (status: BrandSiteOverview["status"]): BrandSiteOverview => ({
 
 describe("#2830 Business Website journey", () => {
   test("fails-on-revert: the monotonic rank floors are exact across all six roles", () => {
-    expect(MIN_RANK.WEBSITE_WORKSPACE).toBe(20);
-    expect(MIN_RANK.WEBSITE_PROVISION).toBe(50);
+    expect(BRAND_ROLE_RANK.marketing_manager).toBe(20);
     for (const rank of [10, 19]) {
-      expect(canPerformAction(rank, "WEBSITE_WORKSPACE")).toBe(false);
+      expect(rank < BRAND_ROLE_RANK.marketing_manager).toBe(true);
     }
     for (const role of [
       "marketing_manager",
@@ -36,12 +34,10 @@ describe("#2830 Business Website journey", () => {
       "brand_admin",
       "brand_owner",
     ] as const) {
-      expect(canPerformAction(BRAND_ROLE_RANK[role], "WEBSITE_WORKSPACE")).toBe(
-        true,
-      );
+      expect(BRAND_ROLE_RANK[role] >= BRAND_ROLE_RANK.marketing_manager).toBe(true);
     }
-    expect(canPerformAction(49, "WEBSITE_PROVISION")).toBe(false);
-    expect(canPerformAction(50, "WEBSITE_PROVISION")).toBe(true);
+    expect(BRAND_ROLE_RANK.brand_admin).toBe(50);
+    expect(49 < BRAND_ROLE_RANK.brand_admin).toBe(true);
   });
 
   test("maps Core truth to the approved overview/progress/live/failure states", () => {

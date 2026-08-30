@@ -128,6 +128,8 @@ jest.mock("../../../../src/analytics/webAnalytics", () => ({
   captureWeb: jest.fn(),
   gaEvent: jest.fn(),
   getStoredClickAttribution: () => ({ clickId: null }),
+  // [TEST-MOD-APPROVED #2830] Optional Sites enrichment stays absent here.
+  getStoredSiteAttribution: () => null,
 }));
 jest.mock("../../../../src/components/ui/Button", () => {
   const { Pressable } = require("react-native");

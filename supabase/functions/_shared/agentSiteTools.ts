@@ -9,6 +9,7 @@ import {
   requireAgentOperationId,
   ToolError,
 } from "./agentToolHelpers.ts";
+import { assertAgentReadBrand } from "./agentTenantScope.ts";
 
 const UUID = { type: "string", format: "uuid" };
 const REVISION = { type: "string", minLength: 1, maxLength: 200 };
@@ -339,10 +340,11 @@ const getBrandSite = tool(
   "Read one accessible brand's Restaurant Website v1 status and draft summary. Never reveals a Website to ranks below marketing manager.",
   { brand_id: UUID },
   ["brand_id"],
-  async (args, client) => {
+  async (args, client, userId) => {
     if (!isUuid(args.brand_id)) {
       throw new ToolError("INVALID_ARGS", "brand_id must be a UUID");
     }
+    await assertAgentReadBrand(client, userId, args.brand_id);
     return await invokeControl(client, {
       route: `/v1/brands/${args.brand_id}/site`,
       method: "GET",
@@ -355,8 +357,15 @@ const listSitePages = tool(
   "List the five fixed Restaurant Website v1 page roles and current draft revisions.",
   { brand_id: UUID, site_id: UUID },
   ["brand_id", "site_id"],
-  async (args, client) =>
-    await cmsTool("list_site_pages", args, client, crypto.randomUUID()),
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    return await cmsTool(
+      "list_site_pages",
+      args,
+      client,
+      crypto.randomUUID(),
+    );
+  },
 );
 
 const getSitePage = tool(
@@ -364,8 +373,10 @@ const getSitePage = tool(
   "Read one structured Website draft page by fixed role.",
   { brand_id: UUID, site_id: UUID, page_role: PAGE_ROLE },
   ["brand_id", "site_id", "page_role"],
-  async (args, client) =>
-    await cmsTool("get_site_page", args, client, crypto.randomUUID()),
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    return await cmsTool("get_site_page", args, client, crypto.randomUUID());
+  },
 );
 
 const proposeContent = tool(
@@ -501,8 +512,15 @@ const validateDraft = tool(
   "Validate the current structured draft and return a safe readiness receipt. Performs no publication.",
   { brand_id: UUID, site_id: UUID },
   ["brand_id", "site_id"],
-  async (args, client) =>
-    await cmsTool("validate_site_draft", args, client, crypto.randomUUID()),
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    return await cmsTool(
+      "validate_site_draft",
+      args,
+      client,
+      crypto.randomUUID(),
+    );
+  },
 );
 
 function publicationTool(
@@ -554,11 +572,12 @@ const getOperation = tool(
   "Read the durable safe receipt for one Website operation.",
   { brand_id: UUID, site_id: UUID, operation_id: UUID },
   ["brand_id", "site_id", "operation_id"],
-  async (args, client) => {
+  async (args, client, userId) => {
     const { siteId } = requiredIds(args);
     if (!isUuid(args.operation_id)) {
       throw new ToolError("INVALID_ARGS", "operation_id must be a UUID");
     }
+    await assertAgentReadBrand(client, userId, args.brand_id);
     return await invokeControl(client, {
       route: `/v1/sites/${siteId}/operations/${args.operation_id}`,
       method: "GET",
@@ -571,8 +590,9 @@ const listVersions = tool(
   "List immutable Website publication versions and their safe receipts.",
   { brand_id: UUID, site_id: UUID },
   ["brand_id", "site_id"],
-  async (args, client) => {
+  async (args, client, userId) => {
     const { siteId } = requiredIds(args);
+    await assertAgentReadBrand(client, userId, args.brand_id);
     return await invokeControl(client, {
       route: `/v1/sites/${siteId}/versions`,
       method: "GET",

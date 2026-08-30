@@ -173,7 +173,23 @@ async function handleBrandSiteControlRequest(req: Request): Promise<Response> {
         .eq("brand_id", brandId)
         .maybeSingle();
       if (error || data === null) return sitesFailure("NOT_FOUND", 404);
-      return sitesJson({ ok: true, data });
+      const { data: receipt, error: receiptError } = await db.user
+        .from("brand_site_operation_receipts")
+        .select(
+          "operation_id,status,error_code,authorized_at,updated_at,result_summary",
+        )
+        .eq("site_id", data.id)
+        .eq("kind", "provision")
+        .order("authorized_at", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (receiptError) {
+        return sitesFailure("SERVICE_TEMPORARILY_UNAVAILABLE", 503);
+      }
+      return sitesJson({
+        ok: true,
+        data: { ...data, latest_provision_operation: receipt ?? null },
+      });
     }
 
     if (brandMatch && method === "POST") {

@@ -474,8 +474,8 @@ test("H33 proxy credential is standalone governed authority and excluded from ru
   const manifest = JSON.parse(read("supabase/secrets.manifest.json"));
   const record = manifest.secrets.find((entry) => entry.name === "SHARED_CARD_PROXY_SECRET");
   // [TEST-MOD-APPROVED #1770] The invitation-token pepper is a reviewed
-  // standalone secret, so the exact cross-issue rollout baseline is now 87.
-  assert.equal(manifest.rollout.expected_user_managed_count, 87);
+  // standalone secret, so the exact cross-issue rollout baseline is now 88.
+  assert.equal(manifest.rollout.expected_user_managed_count, 88);
   assert.equal(record.class, "authentication_secret");
   assert.deepEqual(record.readers, ["supabase/functions/shared-card/index.ts"]);
   assert.equal(record.issue, 1615);

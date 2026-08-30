@@ -2,10 +2,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   createStudioExchange,
   createBrandSitePreview,
+  getBrandSiteOperation,
   getBrandSiteAnalytics,
   getBrandSiteVersions,
   getBrandSite,
   publishBrandSite,
+  PROVISION_POLL_WINDOW_MS,
   provisionBrandSite,
   rollbackBrandSite,
   validateBrandSiteDraft,
@@ -30,11 +32,33 @@ export function useBrandSite(brandId: string, enabled: boolean) {
 export function useProvisionBrandSite(brandId: string) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => provisionBrandSite(brandId),
-    onSuccess: async () => {
+    mutationFn: (operationId: string) =>
+      provisionBrandSite(brandId, operationId),
+    onSettled: async () => {
       await queryClient.invalidateQueries({
         queryKey: brandSiteKeys.detail(brandId),
       });
+    },
+  });
+}
+
+export function useBrandSiteOperation(
+  siteId: string | null,
+  operationId: string | null,
+  startedAt: number | null,
+) {
+  const { isAuthReady } = useAuth();
+  return useQuery({
+    queryKey: [...brandSiteKeys.all, siteId, "operation", operationId],
+    enabled: isAuthReady && siteId !== null && operationId !== null,
+    queryFn: () => getBrandSiteOperation(siteId!, operationId!),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      if (status === "succeeded" || status === "failed") return false;
+      return startedAt !== null &&
+          Date.now() - startedAt < PROVISION_POLL_WINDOW_MS
+        ? 2_000
+        : false;
     },
   });
 }

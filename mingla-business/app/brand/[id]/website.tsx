@@ -1,4 +1,4 @@
-import React, { useCallback } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Alert, Linking, Platform } from "react-native";
 import { Redirect, Stack, useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -11,6 +11,7 @@ import { useCurrentBrandRole } from "../../../src/hooks/useCurrentBrandRole";
 import {
   useBrandSite,
   useBrandSiteAnalytics,
+  useBrandSiteOperation,
   useBrandSitePreview,
   useBrandSiteVersions,
   usePublishBrandSite,
@@ -18,7 +19,16 @@ import {
   useRollbackBrandSite,
   useStudioExchange,
 } from "../../../src/hooks/useBrandSite";
-import { studioExchangeUrl } from "../../../src/services/brandSitesService";
+import {
+  clearProvisionOperation,
+  createBrandSiteOperationId,
+  loadProvisionOperation,
+  persistProvisionOperation,
+  PROVISION_POLL_WINDOW_MS,
+  resolveProvisionOperation,
+  studioExchangeUrl,
+  type PersistedProvisionOperation,
+} from "../../../src/services/brandSitesService";
 
 const RETURN_URL = "mingla-business://website-return";
 
@@ -32,19 +42,69 @@ export default function BrandWebsiteRoute(): React.ReactElement {
     isFeatureEnabled("sites") && role.rank >= 20 && safeBrandId.length > 0;
   const brand = useBrand(enabled ? safeBrandId : null);
   const site = useBrandSite(safeBrandId, enabled);
+  const refetchSite = site.refetch;
+  const [provisionOperation, setProvisionOperation] =
+    useState<PersistedProvisionOperation | null>(null);
+  const [operationCacheChecked, setOperationCacheChecked] = useState(false);
   const provision = useProvisionBrandSite(safeBrandId);
   const studio = useStudioExchange(safeBrandId);
   const preview = useBrandSitePreview(safeBrandId, site.data?.id ?? null);
-  const versions = useBrandSiteVersions(site.data?.id ?? null, enabled);
-  const analytics = useBrandSiteAnalytics(site.data?.id ?? null, enabled);
+  const workReady = enabled && site.data?.status !== "provisioning";
+  const receipt = useBrandSiteOperation(
+    site.data?.id ?? null,
+    provisionOperation?.operationId ?? null,
+    provisionOperation?.startedAt ?? null,
+  );
+  const versions = useBrandSiteVersions(site.data?.id ?? null, workReady);
+  const analytics = useBrandSiteAnalytics(site.data?.id ?? null, workReady);
   const publish = usePublishBrandSite(safeBrandId, site.data?.id ?? null);
   const rollback = useRollbackBrandSite(safeBrandId);
+
+  useEffect(() => {
+    let active = true;
+    setOperationCacheChecked(false);
+    setProvisionOperation(null);
+    if (!safeBrandId) return () => {
+      active = false;
+    };
+    void loadProvisionOperation(safeBrandId).then((stored) => {
+      if (active) {
+        setProvisionOperation(stored);
+        setOperationCacheChecked(true);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, [safeBrandId]);
+
+  useEffect(() => {
+    if (!operationCacheChecked || provisionOperation !== null) return;
+    const authoritative = resolveProvisionOperation(null, site.data);
+    if (authoritative !== null) setProvisionOperation(authoritative);
+  }, [operationCacheChecked, provisionOperation, site.data]);
+
+  useEffect(() => {
+    if (receipt.data?.status !== "succeeded") return;
+    let active = true;
+    void refetchSite().then((result) => {
+      if (!active || result.data?.status === "provisioning") return;
+      void clearProvisionOperation(safeBrandId);
+      setProvisionOperation(null);
+    });
+    return () => {
+      active = false;
+    };
+  }, [receipt.data?.status, refetchSite, safeBrandId]);
 
   const openStudio = useCallback(
     async () => {
       try {
         const exchange = await studio.mutateAsync();
-        const url = studioExchangeUrl(exchange);
+        const url = studioExchangeUrl(
+          exchange,
+          Platform.OS === "web" ? "web" : "native",
+        );
         if (Platform.OS === "web") {
           await Linking.openURL(url);
         } else {
@@ -100,15 +160,36 @@ export default function BrandWebsiteRoute(): React.ReactElement {
         isRollingBack={rollback.isPending}
         versions={versions.data ?? []}
         analytics={analytics.data ?? null}
+        provisionOperationId={provisionOperation?.operationId ?? null}
+        provisionOperation={receipt.data ?? null}
+        provisionPollingTimedOut={
+          provisionOperation !== null &&
+          Date.now() - provisionOperation.startedAt >= PROVISION_POLL_WINDOW_MS &&
+          receipt.data?.status !== "succeeded" &&
+          receipt.data?.status !== "failed"
+        }
+        isReconciling={provision.isPending}
         onRetry={() => {
           void Promise.all([role.refetch(), site.refetch()]);
         }}
         onProvision={() => {
-          void provision.mutateAsync().catch(() => {
-            Alert.alert(
-              "Setup didn’t finish",
-              "Nothing was published. Try again when you’re online.",
-            );
+          const operation = {
+            operationId: createBrandSiteOperationId(),
+            startedAt: Date.now(),
+          };
+          setProvisionOperation(operation);
+          void persistProvisionOperation(safeBrandId, operation);
+          void provision.mutateAsync(operation.operationId).catch(() => {
+            void site.refetch();
+          });
+        }}
+        onReconcileProvision={() => {
+          if (role.rank < 50 || provisionOperation === null) return;
+          const retry = { ...provisionOperation, startedAt: Date.now() };
+          setProvisionOperation(retry);
+          void persistProvisionOperation(safeBrandId, retry);
+          void provision.mutateAsync(retry.operationId).catch(() => {
+            void site.refetch();
           });
         }}
         onOpenStudio={() => {

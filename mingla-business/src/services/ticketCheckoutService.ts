@@ -12,10 +12,7 @@ import type { BuyerDetails, CartLine, OrderResult } from "../components/checkout
 // ISSUE-865 WP-C — thread the first-party ad click_id (captured on the public
 // page) into checkout-create so the post-finalize conversion send can link the
 // order to its campaign. Web-only source (native returns null → field omitted).
-import {
-  getStoredClickAttribution,
-  getStoredSiteAttribution,
-} from "../analytics/webAnalytics";
+import { getStoredClickAttribution } from "../analytics/webAnalytics";
 
 export interface TicketCheckoutCreateInput {
   eventId: string;
@@ -678,8 +675,12 @@ export const paidCheckoutErrorMessage = (error: unknown): string => {
 
 export const createTicketCheckout = async (
   input: TicketCheckoutCreateInput,
-): Promise<TicketCheckoutCreateResult> =>
-  invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
+): Promise<TicketCheckoutCreateResult> => {
+  const clickId = getStoredClickAttribution().clickId;
+  const site = await import("../analytics/siteAttribution")
+    .then((module) => module.default?.())
+    .catch(() => undefined);
+  return invokeOrThrow<TicketCheckoutCreateResult>("ticket-checkout-create", {
     eventId: input.eventId,
     returnContract: "host_v1",
     buyer: input.buyer,
@@ -717,15 +718,13 @@ export const createTicketCheckout = async (
     // ISSUE-865 WP-C — forward the captured ad click_id ONLY when present, so
     // the request stays byte-identical for non-ad traffic. The edge fn persists
     // it on ticket_checkout_sessions.attribution_click_id (WP-B threading).
-    ...(getStoredClickAttribution().clickId !== null
-      ? { attribution_click_id: getStoredClickAttribution().clickId }
+    ...(clickId !== null
+      ? { attribution_click_id: clickId }
       : {}),
     // #2830 — the public-site token is opaque, short-lived and web-only. It is
     // never treated as buyer authority; checkout binds its digest to the
     // resulting order after the existing money/idempotency decisions succeed.
-    ...(getStoredSiteAttribution() !== null
-      ? { site_attribution_token: getStoredSiteAttribution() }
-      : {}),
+    ...site,
     // issue #2150 — forward the guest's own buyer status token ONLY when the
     // browser holds one, so a first submit and every paid request stay
     // byte-identical. It is the possession proof that lets an anonymous guest
@@ -743,6 +742,7 @@ export const createTicketCheckout = async (
     // 502 must propagate, and retrying it would change the paid finalize path.
     retryOnTransportFailure: true,
   });
+};
 
 export const getTicketCheckoutStatus = async (
   checkoutSessionId: string,

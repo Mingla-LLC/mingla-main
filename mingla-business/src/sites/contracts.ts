@@ -19,6 +19,15 @@ export interface BrandSiteOverview {
   created_at: string;
   updated_at: string;
   brand_site_hosts: BrandSiteHost[];
+  latest_provision_operation?: Pick<
+    BrandSiteOperation,
+    | "operation_id"
+    | "status"
+    | "error_code"
+    | "authorized_at"
+    | "updated_at"
+    | "result_summary"
+  > | null;
 }
 
 export interface StudioExchange {
