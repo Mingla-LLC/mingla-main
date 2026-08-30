@@ -1,3 +1,10 @@
+\set ON_ERROR_STOP on
+-- dblink opens independent sessions. Consume the exact image's generated,
+-- per-run credential from the psql environment without printing or persisting
+-- it, and keep it available across the intentional first-phase ROLLBACK.
+\getenv issue_2794_dblink_password POSTGRES_PASSWORD
+SET issue_2794.dblink_password TO :'issue_2794_dblink_password';
+
 BEGIN;
 
 INSERT INTO auth.users (id) VALUES
@@ -231,19 +238,6 @@ SELECT (
 FROM generate_series(1, 240) g;
 COMMIT;
 
--- The exact Supabase image deliberately makes postgres non-superuser and
--- prevents it from changing its own privileged-role password. Use a disposable,
--- nonprivileged login with only the schema/function grants its dblink workers
--- need. Authenticated member/nonmember execution is proven above; the worker
--- still exercises the same JWT-gated SECURITY DEFINER function.
-DROP ROLE IF EXISTS issue2794_dblink_worker;
-CREATE ROLE issue2794_dblink_worker
-  LOGIN INHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION
-  PASSWORD 'issue2794-dblink-only';
-GRANT USAGE ON SCHEMA public TO issue2794_dblink_worker;
-GRANT EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,timestamptz,uuid)
-  TO issue2794_dblink_worker;
-
 DO $concurrency$
 DECLARE
   worker integer;
@@ -260,11 +254,12 @@ BEGIN
     PERFORM dblink_connect(
       connection_name,
       format(
-        'hostaddr=127.0.0.2 port=%s dbname=%I user=%I password=%s',
-        current_setting('port'),
+        'dbname=%L user=%L password=%L host=%L port=%L',
         current_database(),
-        'issue2794_dblink_worker',
-        'issue2794-dblink-only'
+        'supabase_admin',
+        current_setting('issue_2794.dblink_password'),
+        current_setting('unix_socket_directories'),
+        current_setting('port')
       )
     );
     query_text := format($query$
@@ -332,8 +327,3 @@ WHERE id = '27940000-0000-4000-8000-000000000210';
 DELETE FROM auth.users
 WHERE id = '27940000-0000-4000-8000-000000000201';
 COMMIT;
-
-REVOKE EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,timestamptz,uuid)
-  FROM issue2794_dblink_worker;
-REVOKE USAGE ON SCHEMA public FROM issue2794_dblink_worker;
-DROP ROLE issue2794_dblink_worker;
