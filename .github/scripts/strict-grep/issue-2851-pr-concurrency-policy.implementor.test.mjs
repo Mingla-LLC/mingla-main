@@ -8,6 +8,7 @@
 import { strict as assert } from "node:assert";
 import crypto from "node:crypto";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
@@ -21,7 +22,6 @@ import {
   REPO_ROOT,
 } from "./issue-2851-pr-concurrency-policy.mjs";
 
-const WORKFLOW_DIR = ".github/workflows";
 // Construct live workflow names at runtime. The CI-batch provider scanner reads
 // tracked source and must not treat this regression suite as provider evidence.
 const liveWorkflow = (...stemParts) => `${stemParts.join("-")}.${["y", "ml"].join("")}`;
@@ -33,6 +33,20 @@ const DENIED = [
   liveWorkflow("rotate", "apple", "jwt"),
   liveWorkflow("sprint", "rollover"),
   liveWorkflow("stripe", "connect", "smoke"),
+];
+const PR_FAMILY_COUNT = 123;
+const PR_FAMILY_IDENTITY_SHA256 =
+  "a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912";
+const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
+  "528307c7937a2055b3763d799a4147d608bd5ea2612fd64e82d9b7af1f9ac5e2";
+const DENIED_FULL_SHA256 = [
+  "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
+  "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
+  "7fe5131de1ff59b0b247b9c718ca01bbcfcb637ff115e1e5751e052c05bdb72a",
+  "0ca059b1118b93b455ee539ff31c28b2fe6ad53c61c5f61faee5c5eccb9cb7f5",
+  "ae053d47c1cea32c1889cc00eba1ed11b5bbec30dd726c3d078af92f3dfdf76a",
+  "c6056ea23b01ad1e38e2cfe94891872dbed9dba94c9d7e5464c354f1563fc132",
+  "9c1acd54bfa35a2eb6f67aea9c7c097ea1bcfe80a67865a1b2b8f62f8ef462b5",
 ];
 
 const RUBY_CANONICAL = String.raw`
@@ -55,19 +69,6 @@ end
 STDOUT.write(JSON.generate(result))
 `;
 
-function git(...args) {
-  return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-}
-
-function baseWorkflowSources() {
-  const names = git("ls-tree", "-r", "--name-only", "origin/main", "--", WORKFLOW_DIR)
-    .trim().split("\n").filter((name) => /\.ya?ml$/i.test(name));
-  return Object.fromEntries(names.map((repositoryPath) => [
-    path.basename(repositoryPath),
-    git("show", `origin/main:${repositoryPath}`),
-  ]));
-}
-
 function canonicalize(sources) {
   return JSON.parse(execFileSync("ruby", ["-e", RUBY_CANONICAL], {
     input: JSON.stringify(sources),
@@ -78,6 +79,46 @@ function canonicalize(sources) {
 
 function sha256(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
+}
+
+function currentTreeAuthority(sources) {
+  const canonical = canonicalize(sources);
+  const names = Object.keys(canonical).filter((name) => {
+    const events = canonical[name].events;
+    return events.includes("pull_request") || events.includes("pull_request_target");
+  }).sort();
+  const withoutConcurrency = Object.fromEntries(
+    names.map((name) => [name, canonical[name]]),
+  );
+  return {
+    names,
+    identitySha256: sha256(JSON.stringify(names)),
+    withoutConcurrencySha256: sha256(JSON.stringify(withoutConcurrency)),
+  };
+}
+
+function assertCurrentTreeAuthority(sources) {
+  const authority = currentTreeAuthority(sources);
+  assert.equal(authority.names.length, PR_FAMILY_COUNT, "PR-family identity count drifted");
+  assert.equal(authority.identitySha256, PR_FAMILY_IDENTITY_SHA256, "PR-family identity digest drifted");
+  assert.equal(
+    authority.withoutConcurrencySha256,
+    PR_FAMILY_WITHOUT_CONCURRENCY_SHA256,
+    "PR-family non-concurrency semantic digest drifted",
+  );
+  return authority;
+}
+
+function assertDeniedAuthorities(sources, identities = DENIED, hashes = DENIED_FULL_SHA256) {
+  assert.deepEqual(identities, DENIED, "denied workflow identity ordering/correspondence drifted");
+  assert.equal(identities.length, 7, "denied workflow identity count drifted");
+  assert.equal(new Set(identities).size, 7, "denied workflow identities must be unique");
+  assert.equal(hashes.length, 7, "denied workflow authority count drifted");
+  assert.equal(new Set(hashes).size, 7, "denied workflow authorities must be unique");
+  for (const [index, name] of identities.entries()) {
+    assert.equal(typeof sources[name], "string", `${name}: denied workflow is missing or renamed`);
+    assert.equal(sha256(sources[name]), hashes[index], `${name}: denied workflow bytes changed`);
+  }
 }
 
 function replacePolicy(source, group, cancel) {
@@ -116,32 +157,104 @@ test("the real tree has 123 canonical PR-family policies and the sole load excep
   });
 });
 
+// [TEST-MOD-APPROVED #2582] The origin/main diff was valid before #2851
+// merged, then became an empty moving-base comparison downstream. Preserve the
+// same exact 123 identities and non-concurrency semantics with current-tree
+// digests, and preserve the seven exclusions with durable full-byte hashes.
 test("all 123 workflow changes are top-level concurrency-only", () => {
-  const before = baseWorkflowSources();
-  const after = readWorkflowSources();
-  const beforeCanonical = canonicalize(before);
-  const afterCanonical = canonicalize(after);
-  const approved = Object.keys(beforeCanonical).filter((name) => {
-    const events = beforeCanonical[name].events;
-    return events.includes("pull_request") || events.includes("pull_request_target");
-  }).sort();
-  const changed = git("diff", "--name-only", "origin/main", "--", WORKFLOW_DIR)
-    .trim().split("\n").filter(Boolean).map((name) => path.basename(name)).sort();
+  const sources = readWorkflowSources();
+  const authority = assertCurrentTreeAuthority(sources);
+  const audit = auditWorkflowSources(sources);
+  assert.deepEqual(audit.errors, []);
+  assert.deepEqual(audit.counts, {
+    totalWorkflows: 130,
+    prFamily: 123,
+    standardPullRequest: 122,
+    pullRequestTarget: 1,
+    normalPolicies: 122,
+    exceptions: 1,
+  });
 
-  assert.equal(approved.length, 123);
-  assert.deepEqual(changed, approved);
-  assert.deepEqual(Object.keys(afterCanonical).sort(), Object.keys(beforeCanonical).sort());
-  for (const name of Object.keys(beforeCanonical)) {
-    assert.deepEqual(afterCanonical[name].withoutConcurrency, beforeCanonical[name].withoutConcurrency, `${name}: non-concurrency semantics drifted`);
+  const noHistoryRoot = fs.mkdtempSync(path.join(os.tmpdir(), "mingla-2851-no-git-"));
+  try {
+    const noHistoryWorkflows = path.join(noHistoryRoot, ".github/workflows");
+    fs.mkdirSync(noHistoryWorkflows, { recursive: true });
+    for (const [name, source] of Object.entries(sources)) {
+      fs.writeFileSync(path.join(noHistoryWorkflows, name), source);
+    }
+    assert.deepEqual(
+      assertCurrentTreeAuthority(readWorkflowSources(noHistoryRoot)),
+      authority,
+      "current-tree authority must not require Git metadata or history",
+    );
+  } finally {
+    fs.rmSync(noHistoryRoot, { recursive: true, force: true });
   }
+
+  const removed = { ...sources };
+  delete removed[authority.names[0]];
+  assert.throws(() => assertCurrentTreeAuthority(removed), /identity count drifted/);
+
+  const renamed = { ...sources };
+  const renamedFrom = authority.names[0];
+  renamed[liveWorkflow("renamed", "pr", "family", "fixture")] = renamed[renamedFrom];
+  delete renamed[renamedFrom];
+  assert.throws(() => assertCurrentTreeAuthority(renamed), /identity digest drifted/);
+
+  const added = { ...sources };
+  added[liveWorkflow("added", "pr", "family", "fixture")] = sources[authority.names[0]];
+  assert.throws(() => assertCurrentTreeAuthority(added), /identity count drifted/);
+
+  const semanticDrift = { ...sources };
+  const semanticName = authority.names[0];
+  semanticDrift[semanticName] = `${semanticDrift[semanticName]}\nx-amendment-13-probe: true\n`;
+  const semanticAuthority = currentTreeAuthority(semanticDrift);
+  assert.equal(semanticAuthority.identitySha256, authority.identitySha256);
+  assert.notEqual(semanticAuthority.withoutConcurrencySha256, authority.withoutConcurrencySha256);
+  assert.throws(() => assertCurrentTreeAuthority(semanticDrift), /non-concurrency semantic digest drifted/);
+
+  const concurrencyDrift = { ...sources };
+  const concurrencyName = liveWorkflow("framework", "major", "guard");
+  concurrencyDrift[concurrencyName] = removePolicy(concurrencyDrift[concurrencyName]);
+  const concurrencyAuthority = assertCurrentTreeAuthority(concurrencyDrift);
+  assert.deepEqual(concurrencyAuthority, authority);
+  assert.ok(
+    auditWorkflowSources(concurrencyDrift).errors.some((error) =>
+      error.includes(`${concurrencyName}: missing or non-object top-level concurrency policy`)),
+  );
+
+  assert.throws(() => assertCurrentTreeAuthority({}), /identity count drifted/);
+  assert.throws(
+    () => assertCurrentTreeAuthority({ [liveWorkflow("malformed", "fixture")]: "on: [pull_request\n" }),
+    /Command failed/,
+  );
 });
 
 test("the seven non-PR workflow files remain byte-identical", () => {
-  const before = baseWorkflowSources();
-  const after = readWorkflowSources();
-  for (const name of DENIED) {
-    assert.equal(sha256(after[name]), sha256(before[name]), `${name}: denied workflow bytes changed`);
-  }
+  const sources = readWorkflowSources();
+  assertDeniedAuthorities(sources);
+
+  const missing = { ...sources };
+  delete missing[DENIED[0]];
+  assert.throws(() => assertDeniedAuthorities(missing), /missing or renamed/);
+
+  const renamed = { ...sources };
+  renamed[liveWorkflow("renamed", "denied", "fixture")] = renamed[DENIED[0]];
+  delete renamed[DENIED[0]];
+  assert.throws(() => assertDeniedAuthorities(renamed), /missing or renamed/);
+
+  const duplicated = [...DENIED];
+  duplicated[1] = duplicated[0];
+  assert.throws(() => assertDeniedAuthorities(sources, duplicated), /ordering\/correspondence drifted/);
+
+  assert.throws(
+    () => assertDeniedAuthorities(sources, [...DENIED].reverse()),
+    /ordering\/correspondence drifted/,
+  );
+
+  const byteDrift = { ...sources };
+  byteDrift[DENIED[0]] = `${byteDrift[DENIED[0]]}\n`;
+  assert.throws(() => assertDeniedAuthorities(byteDrift), /denied workflow bytes changed/);
 });
 
 test("missing concurrency reversion turns the real repository scan red", () => {
