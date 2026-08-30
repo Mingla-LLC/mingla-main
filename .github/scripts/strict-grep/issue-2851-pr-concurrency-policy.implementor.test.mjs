@@ -1,12 +1,12 @@
 // Issue #2851 implementor regression proof.
 //
-// This suite protects the real repository, not a retyped policy replica: all
-// 123 approved workflow edits must be concurrency-only, the seven non-PR files
-// must stay byte-identical, the production scan must pass, and six distinct
-// true policy reversions must turn the semantic guard red.
+// This suite protects the real repository, not a retyped policy replica: the
+// current workflow inventory must remain correctly partitioned, the production
+// scan must pass, and six distinct true policy reversions must turn the semantic
+// guard red. It deliberately does not inspect git history: #2871 proved that a
+// historical PR diff is not a durable invariant on main or on later branches.
 
 import { strict as assert } from "node:assert";
-import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { execFileSync } from "node:child_process";
@@ -21,7 +21,6 @@ import {
   REPO_ROOT,
 } from "./issue-2851-pr-concurrency-policy.mjs";
 
-const WORKFLOW_DIR = ".github/workflows";
 // Construct live workflow names at runtime. The CI-batch provider scanner reads
 // tracked source and must not treat this regression suite as provider evidence.
 const liveWorkflow = (...stemParts) => `${stemParts.join("-")}.${["y", "ml"].join("")}`;
@@ -55,29 +54,12 @@ end
 STDOUT.write(JSON.generate(result))
 `;
 
-function git(...args) {
-  return execFileSync("git", args, { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 });
-}
-
-function baseWorkflowSources() {
-  const names = git("ls-tree", "-r", "--name-only", "origin/main", "--", WORKFLOW_DIR)
-    .trim().split("\n").filter((name) => /\.ya?ml$/i.test(name));
-  return Object.fromEntries(names.map((repositoryPath) => [
-    path.basename(repositoryPath),
-    git("show", `origin/main:${repositoryPath}`),
-  ]));
-}
-
 function canonicalize(sources) {
   return JSON.parse(execFileSync("ruby", ["-e", RUBY_CANONICAL], {
     input: JSON.stringify(sources),
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
   }));
-}
-
-function sha256(value) {
-  return crypto.createHash("sha256").update(value).digest("hex");
 }
 
 function replacePolicy(source, group, cancel) {
@@ -116,31 +98,37 @@ test("the real tree has 123 canonical PR-family policies and the sole load excep
   });
 });
 
-test("all 123 workflow changes are top-level concurrency-only", () => {
-  const before = baseWorkflowSources();
-  const after = readWorkflowSources();
-  const beforeCanonical = canonicalize(before);
-  const afterCanonical = canonicalize(after);
-  const approved = Object.keys(beforeCanonical).filter((name) => {
-    const events = beforeCanonical[name].events;
+test("the real tree independently classifies 123 PR-family and seven non-PR workflows", () => {
+  // [TEST-MOD-APPROVED #2871] This is a current-tree invariant, so it behaves
+  // identically on main and on unrelated future branches. The pre-fix test
+  // compared against origin/main and therefore required every future checkout
+  // to reproduce #2851's one-time historical diff.
+  const sources = readWorkflowSources();
+  const canonical = canonicalize(sources);
+  const approved = Object.keys(canonical).filter((name) => {
+    const events = canonical[name].events;
     return events.includes("pull_request") || events.includes("pull_request_target");
   }).sort();
-  const changed = git("diff", "--name-only", "origin/main", "--", WORKFLOW_DIR)
-    .trim().split("\n").filter(Boolean).map((name) => path.basename(name)).sort();
+  const outsideMandate = Object.keys(canonical).filter((name) => !approved.includes(name)).sort();
 
   assert.equal(approved.length, 123);
-  assert.deepEqual(changed, approved);
-  assert.deepEqual(Object.keys(afterCanonical).sort(), Object.keys(beforeCanonical).sort());
-  for (const name of Object.keys(beforeCanonical)) {
-    assert.deepEqual(afterCanonical[name].withoutConcurrency, beforeCanonical[name].withoutConcurrency, `${name}: non-concurrency semantics drifted`);
+  assert.deepEqual(outsideMandate, [...DENIED].sort());
+  for (const name of approved) {
+    const topLevelPolicies = sources[name].match(/^concurrency:\s*$/gm) || [];
+    assert.equal(topLevelPolicies.length, 1, `${name}: expected exactly one top-level concurrency mapping`);
+    assert.equal(Object.hasOwn(canonical[name].withoutConcurrency, "concurrency"), false, `${name}: canonicalizer did not isolate concurrency`);
   }
 });
 
-test("the seven non-PR workflow files remain byte-identical", () => {
-  const before = baseWorkflowSources();
-  const after = readWorkflowSources();
+test("the seven non-PR workflows remain outside the PR cancellation mandate", () => {
+  // [TEST-MOD-APPROVED #2871] These files may be legitimately edited later;
+  // their durable contract is their non-PR event classification, not permanent
+  // byte equality with whichever origin/main a runner happens to fetch.
+  const canonical = canonicalize(readWorkflowSources());
   for (const name of DENIED) {
-    assert.equal(sha256(after[name]), sha256(before[name]), `${name}: denied workflow bytes changed`);
+    assert.ok(canonical[name], `${name}: expected non-PR workflow is missing`);
+    assert.equal(canonical[name].events.includes("pull_request"), false, `${name}: unexpectedly entered the pull_request family`);
+    assert.equal(canonical[name].events.includes("pull_request_target"), false, `${name}: unexpectedly entered the pull_request_target family`);
   }
 });
 
