@@ -1,0 +1,1 @@
+export default function SessionExpired() { return <main style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, fontFamily: "Arial" }}><div><p>Mingla Studio</p><h1>Your editing session ended.</h1><p>Your saved drafts are safe. Unsaved changes may not have been saved.</p><a href="https://business.usemingla.com">Return to Mingla</a></div></main>; }

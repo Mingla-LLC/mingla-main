@@ -21,22 +21,25 @@ const PAYMENT_FIELDS = [
   "source_refunds_post_disabled",
 ];
 // [TEST-MOD-APPROVED #1770] Written reason: Seth authorized the standalone
-// offering-invite token pepper, so the exact governed set is now 87 names.
+// offering-invite token pepper. #2830's separately founder-approved bounded
+// credential envelope occupies slot 88 under the unchanged 87/90 policy.
 
 function record(name) {
   return manifest.secrets.find((entry) => entry.name === name);
 }
 
-test("issue #1436: final manifest is exactly 87 unique names with no exception or retired direct record", () => {
+test("issue #1436: final manifest is exactly 88 unique names with only approved slot 88", () => {
   const names = manifest.secrets.map((entry) => entry.name);
   assert.equal(manifest.rollout.live_audit_mode, "enforced");
   assert.equal(manifest.rollout.transition_stage, "complete");
-  assert.equal(manifest.rollout.expected_user_managed_count, 87);
+  assert.equal(manifest.rollout.expected_user_managed_count, 88);
   assert.equal(manifest.policy.normal_ceiling, 87);
   assert.equal(manifest.policy.absolute_ceiling, 90);
-  assert.equal(names.length, 87);
-  assert.equal(new Set(names).size, 87);
-  assert.deepEqual(manifest.exceptions, []);
+  assert.equal(names.length, 88);
+  assert.equal(new Set(names).size, 88);
+  assert.equal(manifest.exceptions.length, 1);
+  assert.equal(manifest.exceptions[0].issue, 2830);
+  assert.equal(manifest.exceptions[0].expires_at, "2026-11-28T03:40:33Z");
   for (const name of RETIRED_DIRECT_NAMES) {
     assert.equal(names.includes(name), false, `${name} must remain absent`);
   }
@@ -125,7 +128,7 @@ test("issue #1436: exact live-set parity passes and any retired direct-name retu
     nowMs: Date.parse("2026-08-03T00:00:00Z"),
   });
   assert.equal(exact.ok, true);
-  assert.equal(exact.count, 87);
+  assert.equal(exact.count, 88);
 
   for (const retired of RETIRED_DIRECT_NAMES) {
     const restored = auditSecretBudget({
@@ -136,9 +139,6 @@ test("issue #1436: exact live-set parity passes and any retired direct-name retu
     });
     assert.equal(restored.ok, false);
     assert.match(restored.failures.join("\n"), /unexpected_live_name/);
-    assert.match(
-      restored.failures.join("\n"),
-      /approved_exception_required/,
-    );
+    assert.doesNotMatch(restored.failures.join("\n"), /approved_exception_required/);
   }
 });

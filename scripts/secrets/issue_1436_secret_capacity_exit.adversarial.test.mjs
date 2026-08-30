@@ -15,16 +15,16 @@ const RETIRED_DIRECT_NAMES = [
   "SOURCE_REFUNDS_POST_DISABLED",
 ];
 // [TEST-MOD-APPROVED #1770] Written reason: the approved standalone invite
-// pepper raises same-count exact-set parity fixtures from 86 to 87.
+// pepper raised parity to 87; #2830's approved Sites envelope occupies slot 88.
 
 test("issue #1436 adversarial: a same-count direct-name substitution cannot bypass exact-set parity", () => {
-  assert.equal(expectedNames.length, 87);
+  assert.equal(expectedNames.length, 88);
 
   for (const retiredName of RETIRED_DIRECT_NAMES) {
     const substitutedNames = expectedNames
       .filter((name) => name !== "MAPBOX_ACCESS_TOKEN")
       .concat(retiredName);
-    assert.equal(substitutedNames.length, 87);
+    assert.equal(substitutedNames.length, 88);
 
     const result = auditSecretBudget({
       manifest,

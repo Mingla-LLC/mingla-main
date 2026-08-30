@@ -702,6 +702,46 @@ export function getStoredClickAttribution(): StoredAdClick {
   }
 }
 
+const SITE_ATTRIBUTION_KEY = "mingla_site_attribution_v1";
+const SITE_ATTRIBUTION_RE = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * #2830 — preserve the opaque Mingla Sites handoff only for this browser tab.
+ * The source site mints it only after analytics consent; it contains no buyer
+ * data and expires server-side after 30 minutes. Native deliberately has no
+ * equivalent source, so the sibling module returns null.
+ */
+export function getStoredSiteAttribution(): string | null {
+  if (!hasWindow()) return null;
+  try {
+    const fromUrl = new URL(window.location.href).searchParams.get(
+      "site_attribution",
+    );
+    if (fromUrl && SITE_ATTRIBUTION_RE.test(fromUrl)) {
+      window.sessionStorage.setItem(
+        SITE_ATTRIBUTION_KEY,
+        JSON.stringify({ token: fromUrl, capturedAt: Date.now() }),
+      );
+      return fromUrl;
+    }
+    const stored = window.sessionStorage.getItem(SITE_ATTRIBUTION_KEY);
+    if (!stored) return null;
+    const parsed = JSON.parse(stored) as { token?: unknown; capturedAt?: unknown };
+    if (
+      typeof parsed.token !== "string" ||
+      !SITE_ATTRIBUTION_RE.test(parsed.token) ||
+      typeof parsed.capturedAt !== "number" ||
+      Date.now() - parsed.capturedAt > 30 * 60_000
+    ) {
+      window.sessionStorage.removeItem(SITE_ATTRIBUTION_KEY);
+      return null;
+    }
+    return parsed.token;
+  } catch {
+    return null;
+  }
+}
+
 function storeClickId(clickId: string): void {
   if (!hasWindow() || readStoredConsent() !== "granted") return;
   try {

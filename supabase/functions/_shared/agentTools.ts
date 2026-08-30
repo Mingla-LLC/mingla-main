@@ -22,10 +22,10 @@ import {
   isString,
   isUuid,
   requireAgentOperationId,
-  resolveEventBrand,
   ToolError,
 } from "./agentToolHelpers.ts";
 import { secureAgentTools } from "./agentToolAuthorization.ts";
+import { SITE_AGENT_READ_ONLY, SITE_AGENT_TOOLS } from "./agentSiteTools.ts";
 
 export { ToolError } from "./agentToolHelpers.ts";
 
@@ -1558,6 +1558,7 @@ export const AGENT_TOOLS: AgentTool[] = secureAgentTools([
   listBrandAuditLog,
   manageBrandDiscoveryCurrency,
   ...DOMAIN_TOOLS,
+  ...SITE_AGENT_TOOLS,
 ]);
 
 export function findTool(name: string): AgentTool | undefined {
@@ -1570,6 +1571,7 @@ export const READ_ONLY_TOOL_NAMES = new Set<string>([
   "list_brand_audit_log",
   "list_events",
   ...DOMAIN_READ_ONLY,
+  ...SITE_AGENT_READ_ONLY,
 ]);
 
 /** Server-owned call classification for tools with both read and write actions. */

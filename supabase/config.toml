@@ -781,3 +781,24 @@ verify_jwt = false
 # make every installed build reject it and fail open.
 [functions.app-ota-policy]
 verify_jwt = false
+
+# #2830 — customer Website control plane. User identity and monotonic role
+# authority are re-derived inside Core; provider-neutral failures are returned.
+[functions.brand-site-control]
+verify_jwt = true
+
+# #2830 — signed CMS-to-Core service gateway. Supabase JWT verification is not
+# the authority; the function verifies the directional, expiring HMAC envelope
+# and consumes its nonce before any work.
+[functions.brand-site-cms-callback]
+verify_jwt = false
+
+# #2830 — signed public-runtime-to-Core exact-host resolver. Anonymous browser
+# traffic never calls this route; only the server runtime owns its sender key.
+[functions.brand-site-runtime-resolve]
+verify_jwt = false
+
+# #2830 — consent-gated first-party attribution issue/consume bridge. It uses
+# an exact Mingla Sites Origin allowlist and stores only a peppered token digest.
+[functions.brand-site-attribution]
+verify_jwt = false

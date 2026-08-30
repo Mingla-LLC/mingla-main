@@ -1,0 +1,12 @@
+import React from "react";
+
+const links = [
+  ["Pages", "/admin/collections/pages"], ["Media", "/admin/collections/media"],
+  ["Navigation", "/admin/collections/navigation"], ["Footer", "/admin/collections/footer"],
+  ["Site settings & SEO", "/admin/collections/site-settings"],
+  ["View live site", "https://gogi.sites.usemingla.com"], ["Return to Mingla", "https://business.usemingla.com"],
+] as const;
+
+export default function StudioNav() {
+  return <nav className="studio-nav" aria-label="Mingla Studio"><div className="studio-wordmark">Mingla Studio</div>{links.map(([label, href]) => <a key={label} href={href}>{label}</a>)}<p className="studio-note">Restaurant Website v1</p></nav>;
+}

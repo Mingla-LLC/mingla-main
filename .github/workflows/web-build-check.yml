@@ -172,3 +172,82 @@ jobs:
         run: |
           test -f playwright/issue2768/public-venue-hit-target-fidelity.happy.spec.ts
           npx playwright test -c playwright.issue2768.config.ts
+
+  # [WORKFLOW-MOD-APPROVED #2830] The approved two-app Sites foundation uses
+  # this existing build lane; no new workflow or deployment is created here.
+  mingla-site-cms-build:
+    name: "mingla-site-cms: test, build, audit"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-site-cms
+    env:
+      DATABASE_URL: postgresql://fixture.invalid/sites
+      PAYLOAD_SECRET: QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
+      SITES_CORE_BASE_URL: https://core.invalid
+      SITES_CMS_ORIGIN: https://studio.invalid
+      SUPABASE_S3_ENDPOINT: https://storage.invalid
+      SUPABASE_S3_REGION: fixture
+      SUPABASE_S3_ACCESS_KEY_ID: fixture
+      SUPABASE_S3_SECRET_ACCESS_KEY: fixture
+      SITES_MEDIA_QUARANTINE_BUCKET: quarantine
+      SITES_MEDIA_APPROVED_BUCKET: approved
+      SITES_PUBLICATION_ARTIFACT_BUCKET: artifacts
+      SITES_MEDIA_RECOVERY_BUCKET: recovery
+      SITES_PREVIEW_SIGNING_SECRET: QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=
+      MINGLA_CMS_TO_CORE_CURRENT_KID: cms-core-current
+      MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
+      MINGLA_CORE_TO_CMS_CURRENT_KID: core-cms-current
+      MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: Q0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0NDQ0M=
+      SITES_CANDIDATE_PROBE_SECRET: REREREREREREREREREREREREREREREREREREREREREQ=
+      SITES_PUBLIC_RUNTIME_ORIGIN: https://runtime.invalid
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-site-cms/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - name: Dependency security ceiling
+        run: npm audit --audit-level=high
+
+  mingla-sites-build:
+    name: "mingla-sites: test, build, isolation"
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mingla-sites
+    env:
+      SITES_CORE_BASE_URL: https://core.invalid
+      SITES_ARTIFACT_READ_BASE_URL: https://objects.invalid
+      SITES_ARTIFACT_READ_TOKEN: fixture-read-token
+      SITES_PUBLICATION_ARTIFACT_BUCKET: artifacts
+      SITES_MEDIA_APPROVED_BUCKET: approved
+      SITES_ALLOWED_HOST_SUFFIX: sites.usemingla.com
+      MINGLA_RUNTIME_TO_CORE_CURRENT_KID: runtime-core-current
+      MINGLA_RUNTIME_TO_CORE_CURRENT_KEY_B64: RUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUVFRUU=
+      SITES_PILOT_SITE_ID: 00000000-0000-4000-8000-000000000001
+      SITES_CANDIDATE_PROBE_SECRET: RkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkZGRkY=
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mingla-sites/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm run build
+      - name: Public runtime dependency isolation and security ceiling
+        run: |
+          npm audit --audit-level=high
+          node -e 'const p=require("./package.json"); const names=Object.keys({...p.dependencies,...p.devDependencies}); const forbidden=names.filter((name)=>/(payload|postgres|s3|sharp|lexical|graphql)/i.test(name)); if(forbidden.length) { console.error(forbidden.join("\n")); process.exit(1) }'

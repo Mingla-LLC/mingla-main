@@ -422,8 +422,10 @@ export function violations(files) {
   }
   // [TEST-MOD-APPROVED #1770] The approved offering-invite pepper advances the
   // exact capacity baseline while remaining a standalone cryptographic secret.
-  if (manifest.rollout?.expected_user_managed_count !== 87) {
-    failures.push("manifest: Phase B must enforce expected count at 87");
+  // [TEST-MOD-APPROVED #2830] The established Phase B names remain bundled;
+  // founder-approved Sites slot 88 is independently guarded by issue #2830.
+  if (manifest.rollout?.expected_user_managed_count !== 88) {
+    failures.push("manifest: Phase B plus approved Sites slot must enforce expected count at 88");
   }
   const records = new Map(
     (manifest.secrets ?? []).map((record) => [record.name, record]),

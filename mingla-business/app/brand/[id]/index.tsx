@@ -151,6 +151,12 @@ export default function BrandProfileRoute(): React.ReactElement {
     router.push(`/brand/${brandId}/audit-log` as never);
   };
 
+  // #2830 — route-lazy Website workspace. No editor/server dependency enters
+  // this profile bundle; the route imports its own Sites modules on navigation.
+  const handleOpenWebsite = (brandId: string): void => {
+    router.push(`/brand/${brandId}/website` as never);
+  };
+
   // ORCH-0815-A2-ui (DEC-149): "Blasts" Operations row → brand-rollup
   // buyer list with "Blast these N customers →" CTA pre-filling the
   // marketing composer audience (composer ships in sub-ORCH-B).
@@ -225,6 +231,7 @@ export default function BrandProfileRoute(): React.ReactElement {
         onPricingDefaults={handleOpenPricingDefaults}
         onReports={handleOpenReports}
         onAuditLog={handleOpenAuditLog}
+        onWebsite={handleOpenWebsite}
         onBlasts={handleOpenBlasts}
         onViewPublic={handleViewPublic}
         onCreateEvent={handleCreateEvent}

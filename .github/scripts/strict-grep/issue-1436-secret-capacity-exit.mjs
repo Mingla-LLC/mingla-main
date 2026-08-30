@@ -32,6 +32,33 @@ const paymentFields = [
   "payout_release_execute",
   "source_refunds_post_disabled",
 ];
+const sitesFieldNames = [
+  "schema_version",
+  "core_to_cms_current_kid",
+  "core_to_cms_current_key_b64",
+  "core_to_cms_previous_kid",
+  "core_to_cms_previous_key_b64",
+  "cms_to_core_current_kid",
+  "cms_to_core_current_key_b64",
+  "cms_to_core_previous_kid",
+  "cms_to_core_previous_key_b64",
+  "runtime_to_core_current_kid",
+  "runtime_to_core_current_key_b64",
+  "runtime_to_core_previous_kid",
+  "runtime_to_core_previous_key_b64",
+  "attribution_pepper_b64",
+];
+const sitesException = {
+  issue: 2830,
+  owner: "Platform Security",
+  approved_by: "Seth Ogieva (@sethogieva)",
+  approved_at: "2026-08-30T03:40:33Z",
+  first_set_not_before: "2026-08-30T03:40:33Z",
+  next_review_at: "2026-09-29T03:40:33Z",
+  expires_at: "2026-11-28T03:40:33Z",
+  primary_owner_ack: "Platform Security, founder-approved",
+  backup_owner_ack: "Platform Engineering, founder-approved",
+};
 
 function requireToken(source, token, label, failures) {
   if (!source.includes(token)) failures.push(`${label}: missing ${token}`);
@@ -53,9 +80,9 @@ export function violations(files) {
   if (
     manifest.rollout?.live_audit_mode !== "enforced" ||
     manifest.rollout?.transition_stage !== "complete" ||
-    manifest.rollout?.expected_user_managed_count !== 87
+    manifest.rollout?.expected_user_managed_count !== 88
   ) {
-    failures.push("manifest: final enforced 87-name rollout missing");
+    failures.push("manifest: final enforced 88-name rollout missing");
   }
   if (
     manifest.policy?.normal_ceiling !== 87 ||
@@ -63,11 +90,14 @@ export function violations(files) {
   ) {
     failures.push("manifest: 87/90 policy changed");
   }
-  if (records.size !== 87 || manifest.secrets?.length !== 87) {
-    failures.push("manifest: exactly 87 unique records required");
+  if (records.size !== 88 || manifest.secrets?.length !== 88) {
+    failures.push("manifest: exactly 88 unique records required");
   }
-  if (!Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 0) {
-    failures.push("manifest: capacity exceptions must be empty");
+  if (
+    !Array.isArray(manifest.exceptions) || manifest.exceptions.length !== 1 ||
+    JSON.stringify(manifest.exceptions[0]) !== JSON.stringify(sitesException)
+  ) {
+    failures.push("manifest: exact founder-approved #2830 slot-88 exception missing");
   }
   for (const name of retiredDirectNames) {
     if (records.has(name)) {
@@ -123,6 +153,24 @@ export function violations(files) {
     failures.push("manifest: content-share runtime field missing");
   }
 
+  const sitesSecurity = records.get("MINGLA_SITES_SECURITY_JSON");
+  if (
+    sitesSecurity?.class !== "credential_bundle" ||
+    sitesSecurity?.owner !== "Platform Security" ||
+    sitesSecurity?.backup_owner !== "Platform Engineering" ||
+    sitesSecurity?.source_type !== "secure_vault" ||
+    sitesSecurity?.rotation_or_review_days !== 30 ||
+    sitesSecurity?.expires_at !== sitesException.expires_at ||
+    sitesSecurity?.issue !== 2830 ||
+    JSON.stringify(sitesSecurity?.readers) !== JSON.stringify([
+      "supabase/functions/_shared/sitesSecurity.ts",
+    ]) ||
+    JSON.stringify(sitesSecurity?.bundle_fields?.map((entry) => entry.name)) !==
+      JSON.stringify(sitesFieldNames)
+  ) {
+    failures.push("manifest: exact MINGLA_SITES_SECURITY_JSON slot-88 contract missing");
+  }
+
   const conversion = records.get("AD_CONVERSION_TOKENS");
   if (
     !conversion?.bundle_fields?.some((entry) =>
@@ -145,7 +193,7 @@ export function violations(files) {
   }
 
   for (const [token, label] of [
-    ["target_must_be_87_unique_names", "capacity gate"],
+    ["target_must_be_88_unique_names", "capacity gate"],
     ['["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]', "capacity gate"],
     ['["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]', "capacity gate"],
     ['["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]', "capacity gate"],
@@ -157,7 +205,7 @@ export function violations(files) {
     "retired direct compatibility name present",
     "bundled payment authority missing",
     "bundled notification HMAC authority missing",
-    "exact 87-name manifest",
+    "exact 88-name manifest",
   ]) {
     requireToken(files.refund ?? "", token, "refund guard", failures);
   }
@@ -167,7 +215,7 @@ export function violations(files) {
     "SOURCE_REFUNDS_POST_DISABLED",
     "PAYOUT_RELEASE_EXECUTE",
     "PAYOUT_HOLD_ONBOARD_FLIP",
-    "exactly 87",
+    "exactly 88",
     "content_share_v1_create_enabled",
     "CONTENT_SHARE_V1_CREATE_ENABLED",
   ]) {
@@ -284,9 +332,9 @@ function fixtureManifest() {
     rollout: {
       live_audit_mode: "enforced",
       transition_stage: "complete",
-      expected_user_managed_count: 87,
+      expected_user_managed_count: 88,
     },
-    exceptions: [],
+    exceptions: [sitesException],
     secrets: [
       {
         name: "AD_CONVERSION_TOKENS",
@@ -332,6 +380,18 @@ function fixtureManifest() {
         ],
         bundle_fields: [],
       },
+      {
+        name: "MINGLA_SITES_SECURITY_JSON",
+        class: "credential_bundle",
+        owner: "Platform Security",
+        backup_owner: "Platform Engineering",
+        source_type: "secure_vault",
+        rotation_or_review_days: 30,
+        expires_at: sitesException.expires_at,
+        issue: 2830,
+        readers: ["supabase/functions/_shared/sitesSecurity.ts"],
+        bundle_fields: sitesFieldNames.map((name) => ({ name })),
+      },
       ...filler,
     ],
   };
@@ -341,11 +401,11 @@ function selfTest() {
   const clean = {
     manifest: JSON.stringify(fixtureManifest()),
     capacity:
-      'target_must_be_87_unique_names; ["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
+      'target_must_be_88_unique_names; ["content_share_v1_create_enabled", "CONTENT_SHARE_V1_CREATE_ENABLED"]; ["payout_hold_onboard_flip", "PAYOUT_HOLD_ONBOARD_FLIP"]; ["payout_release_execute", "PAYOUT_RELEASE_EXECUTE"]; ["source_refunds_post_disabled", "SOURCE_REFUNDS_POST_DISABLED"]',
     refund:
-      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 87-name manifest",
+      "retired direct compatibility name present; bundled payment authority missing; bundled notification HMAC authority missing; exact 88-name manifest",
     runbook:
-      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 87 content_share_v1_create_enabled CONTENT_SHARE_V1_CREATE_ENABLED",
+      "schema v2 NOTIFICATION_RECIPIENT_HMAC_SECRET SOURCE_REFUNDS_POST_DISABLED PAYOUT_RELEASE_EXECUTE PAYOUT_HOLD_ONBOARD_FLIP exactly 88 content_share_v1_create_enabled CONTENT_SHARE_V1_CREATE_ENABLED",
     invariant: "I-PROPOSED-1436-SECRET-CAPACITY-EXIT (ACTIVE)",
     test: "any retired direct-name return fails closed",
     adversarialTest:
@@ -377,7 +437,7 @@ function selfTest() {
           expected_user_managed_count: 89,
         },
       }),
-      expected: "final enforced 87-name rollout missing",
+      expected: "final enforced 88-name rollout missing",
     },
     {
       key: "manifest",
@@ -385,7 +445,7 @@ function selfTest() {
         ...fixtureManifest(),
         exceptions: [{ issue: 1430 }],
       }),
-      expected: "capacity exceptions must be empty",
+      expected: "exact founder-approved #2830 slot-88 exception missing",
     },
     {
       key: "manifest",
@@ -488,6 +548,6 @@ if (process.argv.includes("--self-test")) {
     process.exit(1);
   }
   console.log(
-    "issue-1436 secret-capacity exit gate PASS (87 names, bundled authority, no exception)",
+    "issue-1436 secret-capacity exit gate PASS (88 names, bundled authority, exact #2830 slot-88 exception)",
   );
 }

@@ -35,6 +35,7 @@ import { CareersPage } from "./pages/CareersPage";
 // + Brands (#/business-brands). Replaces the ORCH-1271 scaffolding placeholder.
 import { PeopleConsolePage } from "./pages/PeopleConsolePage";
 import { BrandsConsolePage } from "./pages/BrandsConsolePage";
+import { BrandSitesPage } from "./pages/BrandSitesPage";
 // ORCH-1273 — Business offerings console (READ-ONLY): Offerings
 // (#/business-offerings) + Venues (#/business-venues). Detail views deep-link via
 // ?offeringId= / ?venueId= within the same tab (matches the 1272 pattern).
@@ -93,6 +94,7 @@ const PAGES = {
   // (hash routes #/business-people, #/business-brands).
   "business-people": PeopleConsolePage,
   "business-brands": BrandsConsolePage,
+  "brand-sites": BrandSitesPage,
   // ORCH-1273: Business offerings console (READ-ONLY) — Offerings + Venues
   // (hash routes #/business-offerings, #/business-venues).
   "business-offerings": OfferingsConsolePage,
