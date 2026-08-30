@@ -1,6 +1,7 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { brandWebsiteReturnPath } from "../src/sites/studioReturn";
 
+// orch-strict-grep-allow safearea-on-fullscreen-routes — Redirect-only route renders no visible surface before leaving.
 /** Fixed native Studio return target; arbitrary paths are never accepted. */
 export default function WebsiteReturnRoute() {
   const params = useLocalSearchParams<{ brandId?: string | string[] }>();

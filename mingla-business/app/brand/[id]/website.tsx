@@ -29,8 +29,11 @@ import {
   studioExchangeUrl,
   type PersistedProvisionOperation,
 } from "../../../src/services/brandSitesService";
-
-const RETURN_URL = "mingla-business://website-return";
+import {
+  openStudioHandoff,
+  STUDIO_NATIVE_RETURN_URL,
+  studioReturnSurface,
+} from "../../../src/sites/studioHandoff";
 
 export default function BrandWebsiteRoute(): React.ReactElement {
   const router = useRouter();
@@ -101,15 +104,15 @@ export default function BrandWebsiteRoute(): React.ReactElement {
     async () => {
       try {
         const exchange = await studio.mutateAsync();
+        const surface = studioReturnSurface(Platform.OS);
         const url = studioExchangeUrl(
           exchange,
-          Platform.OS === "web" ? "web" : "native",
+          surface,
         );
-        if (Platform.OS === "web") {
-          await Linking.openURL(url);
-        } else {
-          await WebBrowser.openAuthSessionAsync(url, RETURN_URL);
-        }
+        await openStudioHandoff(url, surface, {
+          openWeb: Linking.openURL,
+          openNative: WebBrowser.openAuthSessionAsync,
+        });
         await site.refetch();
       } catch {
         Alert.alert(
@@ -127,7 +130,10 @@ export default function BrandWebsiteRoute(): React.ReactElement {
       if (Platform.OS === "web") {
         await Linking.openURL(grant.preview_url);
       } else {
-        await WebBrowser.openAuthSessionAsync(grant.preview_url, RETURN_URL);
+        await WebBrowser.openAuthSessionAsync(
+          grant.preview_url,
+          STUDIO_NATIVE_RETURN_URL,
+        );
       }
     } catch {
       Alert.alert(

@@ -1,8 +1,11 @@
-import fs from "node:fs";
-import path from "node:path";
 import {
   studioExchangeUrl,
 } from "../../services/brandSitesService";
+import {
+  openStudioHandoff,
+  STUDIO_NATIVE_RETURN_URL,
+  studioReturnSurface,
+} from "../studioHandoff";
 import { brandWebsiteReturnPath } from "../studioReturn";
 
 const BRAND_ID = "00000000-0000-4000-8000-000000000002";
@@ -33,17 +36,23 @@ describe("#2830 Studio native/web return", () => {
     expect(brandWebsiteReturnPath("../../admin")).toBeNull();
   });
 
-  it("uses the fixed auth-session callback for both native platforms", () => {
-    const source = fs.readFileSync(
-      path.resolve(process.cwd(), "app/brand/[id]/website.tsx"),
-      "utf8",
+  it("executes the fixed auth-session callback on iOS and Android", async () => {
+    expect(studioReturnSurface("web")).toBe("web");
+    expect(studioReturnSurface("ios")).toBe("native");
+    expect(studioReturnSurface("android")).toBe("native");
+
+    const openWeb = jest.fn(async () => undefined);
+    const openNative = jest.fn(async () => undefined);
+    const bindings = { openWeb, openNative };
+    await openStudioHandoff("https://studio.example/exchange", "native", bindings);
+    expect(openNative).toHaveBeenCalledWith(
+      "https://studio.example/exchange",
+      STUDIO_NATIVE_RETURN_URL,
     );
-    expect(source).toContain(
-      'const RETURN_URL = "mingla-business://website-return";',
-    );
-    expect(source).toContain(
-      'Platform.OS === "web" ? "web" : "native"',
-    );
-    expect(source).toContain("WebBrowser.openAuthSessionAsync(url, RETURN_URL)");
+    expect(openWeb).not.toHaveBeenCalled();
+
+    await openStudioHandoff("https://studio.example/exchange", "web", bindings);
+    expect(openWeb).toHaveBeenCalledWith("https://studio.example/exchange");
+    expect(openNative).toHaveBeenCalledTimes(1);
   });
 });
