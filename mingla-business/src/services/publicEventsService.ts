@@ -2096,7 +2096,7 @@ export const fetchPublicBrandTrips = async (
     p_brand_slug: brandSlug,
   });
 
-  if (error !== null) throw error;
+  if (error) throw error;
   const rows = (data ?? []) as PublicTripCardRow[];
   return rows.map(tripRowToCard);
 };
@@ -2122,6 +2122,7 @@ export const experienceRowToCard = (
   experienceId: row.experience_id,
   experienceSlug: row.experience_slug,
   ...publicOfferingCard(row),
+  coverMediaType: row.cover_media_type,
   venueText: row.venue_text,
   nextOccurrenceAt: row.next_occurrence_at,
 });
@@ -2141,7 +2142,7 @@ export const fetchPublicBrandExperiences = async (
     p_brand_slug: brandSlug,
   });
 
-  if (error !== null) throw error;
+  if (error) throw error;
   return ((data ?? []) as PublicExperienceCardRow[]).map(experienceRowToCard);
 };
 
