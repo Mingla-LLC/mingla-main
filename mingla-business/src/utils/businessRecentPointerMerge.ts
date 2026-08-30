@@ -1,7 +1,7 @@
 import type {
   BusinessRecentEntityType,
   BusinessRecentPointer,
-} from "../store/businessRecentStore";
+} from "../store/businessRecentTypes";
 
 const pointerKey = (pointer: BusinessRecentPointer): string =>
   `${pointer.entityType}:${pointer.entityId}`;
