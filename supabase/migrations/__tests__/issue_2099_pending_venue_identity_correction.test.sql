@@ -79,7 +79,7 @@ DECLARE p jsonb; r jsonb; retry jsonb; rollback_preview jsonb; rb jsonb; v_sourc
   v_address text; v_gallery text[]; v_hours jsonb; v_inputs jsonb;
 BEGIN
   p:=public.preview_pending_venue_identity_correction('20990000-0000-0000-0000-000000000020');
-  IF p->>'ok'<>'true' OR p->>'schema_fingerprint'<>'9a8c2a743af413f17f3b3e75e4f656f3e9cf3867cda091eb204bb9d5460f1ba0' THEN
+  IF p->>'ok'<>'true' OR p->>'schema_fingerprint'<>'52f4624c994529d2e63b8f70b79a3fcfe28f3ff90dafe300bc45439e37cd2921' THEN
     RAISE EXCEPTION '#2099 eligible preview failed: %',p;
   END IF;
   r:=public.correct_pending_venue_identity(
@@ -150,6 +150,7 @@ DO $$ BEGIN
     RAISE EXCEPTION '#2099 owner audit truncate unexpectedly succeeded';
   EXCEPTION WHEN insufficient_privilege THEN NULL; END;
 END $$;
+-- #2855_TESTER_ADVERSARIAL_INCLUDE
 UPDATE public.place_pool SET ai_signal_scores='{"private":"must-not-leak"}' WHERE id='20990000-0000-0000-0000-000000000010';
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub','20990000-0000-0000-0000-000000000001',true);

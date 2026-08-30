@@ -29,6 +29,12 @@ const sha = (value) => crypto.createHash("sha256").update(typeof value === "stri
 const PARTIAL_REFERENCE_DELTAS = [{
   workflow: "issue-1486-dormant-render-suites.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
+}, {
+  workflow: "issue-2099-pending-venue-identity-correction-tests.yml",
+  referenceFiles: [
+    "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
+    "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+  ],
 }];
 const independentlyNormalizePartialReferences = (discovered, declarations = PARTIAL_REFERENCE_DELTAS) => {
   const normalized = structuredClone(discovered);
@@ -218,21 +224,22 @@ test("locks independent registry, leaf, setup, provider and lifecycle identities
   // #2725: Amendment 8 adds the PG17 competitor-budget workflow covered by this refreshed seal.
   assert.equal(sha(reconstructed), "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f");
 
-  const partial = PARTIAL_REFERENCE_DELTAS[0];
-  const missing = structuredClone(providers);
-  missing.find((item) => item.workflow === partial.workflow).referenceFiles = missing
-    .find((item) => item.workflow === partial.workflow).referenceFiles
-    .filter((item) => !partial.referenceFiles.includes(item));
-  assert.throws(() => independentlyNormalizePartialReferences(missing), /must exist/,
-    "missing reviewed partial reference must be RED");
-  const undeclared = structuredClone(providers);
-  undeclared.find((item) => item.workflow === partial.workflow).referenceFiles.push("undeclared/provider-reference.mjs");
-  undeclared.find((item) => item.workflow === partial.workflow).referenceFiles.sort();
-  const undeclaredNormalized = independentlyNormalizePartialReferences(undeclared);
-  const undeclaredSealed = undeclaredNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
-  assert.notEqual(sha([...undeclaredSealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow))),
-    "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f",
-    "undeclared partial reference must remain RED against the frozen seal");
+  for (const partial of PARTIAL_REFERENCE_DELTAS) {
+    const missing = structuredClone(providers);
+    missing.find((item) => item.workflow === partial.workflow).referenceFiles = missing
+      .find((item) => item.workflow === partial.workflow).referenceFiles
+      .filter((item) => !partial.referenceFiles.includes(item));
+    assert.throws(() => independentlyNormalizePartialReferences(missing), /must exist/,
+      `missing reviewed partial reference must be RED: ${partial.workflow}`);
+    const undeclared = structuredClone(providers);
+    undeclared.find((item) => item.workflow === partial.workflow).referenceFiles.push("undeclared/provider-reference.mjs");
+    undeclared.find((item) => item.workflow === partial.workflow).referenceFiles.sort();
+    const undeclaredNormalized = independentlyNormalizePartialReferences(undeclared);
+    const undeclaredSealed = undeclaredNormalized.filter((item) => declared.get(item.workflow) !== JSON.stringify(item.referenceFiles));
+    assert.notEqual(sha([...undeclaredSealed, ...carried].sort((a, b) => a.workflow.localeCompare(b.workflow))),
+      "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f",
+      `undeclared partial reference must remain RED against the frozen seal: ${partial.workflow}`);
+  }
   // [#2438 A9-SC3] Tighter than a straight substitution. A9-SC1 ratified TWO totals;
   // the amended line above pins only the first. discoverLiveOrigins() is the second and
   // nothing in this file pinned it, so half of A9-SC1 would have shipped untested.
