@@ -194,14 +194,6 @@ BEGIN
 END;
 $table_grants$;
 
-DO $terminal$
-BEGIN
-  IF has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT') THEN
-    RAISE EXCEPTION 'issue_2794_terminal_direct_table_denial';
-  END IF;
-END;
-$terminal$;
-
 ROLLBACK;
 
 -- Four independent sessions record one private scope concurrently. Without the
@@ -327,3 +319,11 @@ WHERE id = '27940000-0000-4000-8000-000000000210';
 DELETE FROM auth.users
 WHERE id = '27940000-0000-4000-8000-000000000201';
 COMMIT;
+
+DO $terminal$
+BEGIN
+  IF has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT') THEN
+    RAISE EXCEPTION 'issue_2794_terminal_direct_table_denial';
+  END IF;
+END;
+$terminal$;
