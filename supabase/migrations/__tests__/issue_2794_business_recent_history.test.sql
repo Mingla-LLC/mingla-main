@@ -12,7 +12,7 @@ SELECT ('2794' || lpad(to_hex(g), 4, '0') || '-0000-4000-8000-' || lpad(g::text,
        'Recent ' || g, 'recent-' || g, 'live', 'public', 'event'
   FROM generate_series(1, 202) g;
 UPDATE public.events
-   SET status = 'ended', updated_at = '2027-06-09 12:00:00+00'
+   SET status = 'ended'
  WHERE id = '279400ca-0000-4000-8000-000000000202';
 
 SET LOCAL ROLE authenticated;
@@ -96,10 +96,12 @@ BEGIN
     '279400ca-0000-4000-8001-000000000203');
   IF NOT EXISTS (
     SELECT 1
-      FROM public.biz_list_recent_entity_index('27940000-0000-4000-8000-000000000010')
-     WHERE entity_id = '279400ca-0000-4000-8000-000000000202'
-       AND raw_status = 'ended'
-       AND ended_at = '2027-06-09 12:00:00+00'::timestamptz
+      FROM public.biz_list_recent_entity_index('27940000-0000-4000-8000-000000000010') recent
+      JOIN public.events stored_event ON stored_event.id = recent.entity_id
+     WHERE recent.entity_id = '279400ca-0000-4000-8000-000000000202'
+       AND recent.raw_status = 'ended'
+       AND recent.ended_at IS NOT NULL
+       AND recent.ended_at = stored_event.updated_at
   ) THEN
     RAISE EXCEPTION 'ended lifecycle timestamp did not follow canonical event status/update truth';
   END IF;
