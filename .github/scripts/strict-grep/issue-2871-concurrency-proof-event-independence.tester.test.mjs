@@ -68,15 +68,22 @@ function createFixture() {
   return root;
 }
 
-function runImplementorSuite(root) {
-  return run(process.execPath, ["--test", IMPLEMENTOR_PATH], root);
+function runImplementorContextAssertions(root) {
+  // The full 10-test implementor suite is already a separate Class A entry.
+  // Re-run only the two assertions that previously depended on git history so
+  // this independent proof does not duplicate six expensive policy mutations.
+  return run(process.execPath, [
+    "--test",
+    "--test-name-pattern=the real tree independently classifies|the seven non-PR workflows",
+    IMPLEMENTOR_PATH,
+  ], root);
 }
 
 function combinedOutput(result) {
   return `${result.stdout}\n${result.stderr}`;
 }
 
-test("the implementor suite passes at remote-main identity and after an unrelated branch commit", (t) => {
+test("the implementor context assertions pass at remote-main identity and after an unrelated branch commit", (t) => {
   const implementorSource = fs.readFileSync(path.join(REPO_ROOT, IMPLEMENTOR_PATH), "utf8");
   assert.doesNotMatch(implementorSource, /["']origin\/main["']/);
   assert.doesNotMatch(implementorSource, /function git\s*\(/);
@@ -87,9 +94,9 @@ test("the implementor suite passes at remote-main identity and after an unrelate
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
 
   assert.equal(git(root, "rev-parse", "HEAD"), git(root, "rev-parse", "origin/main"));
-  const mainResult = runImplementorSuite(root);
-  requireSuccess(mainResult, "implementor suite with HEAD equal to origin/main");
-  assert.match(combinedOutput(mainResult), /pass 10/);
+  const mainResult = runImplementorContextAssertions(root);
+  requireSuccess(mainResult, "implementor context assertions with HEAD equal to origin/main");
+  assert.match(combinedOutput(mainResult), /pass 2/);
 
   git(root, "switch", "-c", "unrelated-change");
   fs.writeFileSync(path.join(root, "UNRELATED.txt"), "This file does not affect workflow policy.\n");
@@ -97,9 +104,9 @@ test("the implementor suite passes at remote-main identity and after an unrelate
   git(root, "commit", "-m", "fixture: unrelated one-file change");
   assert.notEqual(git(root, "rev-parse", "HEAD"), git(root, "rev-parse", "origin/main"));
 
-  const branchResult = runImplementorSuite(root);
-  requireSuccess(branchResult, "implementor suite after unrelated one-file branch change");
-  assert.match(combinedOutput(branchResult), /pass 10/);
+  const branchResult = runImplementorContextAssertions(root);
+  requireSuccess(branchResult, "implementor context assertions after unrelated one-file branch change");
+  assert.match(combinedOutput(branchResult), /pass 2/);
 
   const changedWorkflows = git(root, "diff", "--name-only", "origin/main", "--", WORKFLOW_DIR)
     .split("\n").filter(Boolean);
