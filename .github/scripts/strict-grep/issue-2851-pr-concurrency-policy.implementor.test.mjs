@@ -1,9 +1,10 @@
 // Issue #2851 implementor regression proof.
 //
-// This suite protects the real repository, not a retyped policy replica: all
-// 123 approved workflow edits must be concurrency-only, the seven non-PR files
-// must stay byte-identical, the production scan must pass, and six distinct
-// true policy reversions must turn the semantic guard red.
+// This suite protects the real repository, not a retyped policy replica: the
+// current workflow inventory must remain correctly partitioned, the production
+// scan must pass, and six distinct true policy reversions must turn the semantic
+// guard red. It deliberately does not inspect git history: #2871 proved that a
+// historical PR diff is not a durable invariant on main or on later branches.
 
 import { strict as assert } from "node:assert";
 import crypto from "node:crypto";
@@ -120,7 +121,6 @@ function assertDeniedAuthorities(sources, identities = DENIED, hashes = DENIED_F
     assert.equal(sha256(sources[name]), hashes[index], `${name}: denied workflow bytes changed`);
   }
 }
-
 function replacePolicy(source, group, cancel) {
   const replacement = `concurrency:\n  group: ${group}\n  cancel-in-progress: ${cancel}\n`;
   const updated = source.replace(/^concurrency:\n(?: {2}[^\n]*\n){2}/m, replacement);
@@ -161,7 +161,7 @@ test("the real tree has 123 canonical PR-family policies and the sole load excep
 // merged, then became an empty moving-base comparison downstream. Preserve the
 // same exact 123 identities and non-concurrency semantics with current-tree
 // digests, and preserve the seven exclusions with durable full-byte hashes.
-test("all 123 workflow changes are top-level concurrency-only", () => {
+test("the real tree independently classifies 123 PR-family and seven non-PR workflows", () => {
   const sources = readWorkflowSources();
   const authority = assertCurrentTreeAuthority(sources);
   const audit = auditWorkflowSources(sources);
@@ -230,7 +230,7 @@ test("all 123 workflow changes are top-level concurrency-only", () => {
   );
 });
 
-test("the seven non-PR workflow files remain byte-identical", () => {
+test("the seven non-PR workflows remain outside the PR cancellation mandate", () => {
   const sources = readWorkflowSources();
   assertDeniedAuthorities(sources);
 

@@ -1,5 +1,6 @@
 import {
   assertNotEquals,
+  assertRejects,
   assertStrictEquals,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
@@ -10,7 +11,10 @@ import {
 import {
   resolveNotificationRecipientHmacSecret,
 } from "./notificationRecipientHmac.ts";
-import { recipientFingerprint } from "./legacyEmailIdempotency.ts";
+import {
+  dispatchIdempotentLegacyEmail,
+  recipientFingerprint,
+} from "./legacyEmailIdempotency.ts";
 
 function env(values: Record<string, string>): SecretEnvGetter {
   return (name: string): string | undefined => values[name];
@@ -147,4 +151,61 @@ Deno.test("issue #1437 tester: malformed envelope diagnostics never reveal a val
     [...errors, ...warnings].some((line) => line.includes(directCanary)),
     false,
   );
+});
+
+Deno.test("issue #2874 tester: missing HMAC rejects before unresolved sibling digests start", async () => {
+  // [TEST-MOD-APPROVED #2874] Keep any attempted SHA-256 siblings pending
+  // until after the dispatch verdict. The old Promise.all ordering therefore
+  // records two started digests deterministically instead of depending on
+  // whether WebCrypto happens to finish before Deno's leak check.
+  const subtle = crypto.subtle;
+  const originalDigest = subtle.digest;
+  const releaseDigests: Array<(value: ArrayBuffer) => void> = [];
+  let digestCalls = 0;
+  let claimCalls = 0;
+  let providerCalls = 0;
+  subtle.digest = (() => {
+    digestCalls += 1;
+    return new Promise<ArrayBuffer>((resolve) => releaseDigests.push(resolve));
+  }) as SubtleCrypto["digest"];
+
+  try {
+    await assertRejects(
+      () =>
+        dispatchIdempotentLegacyEmail(
+          {
+            recipient: "person@example.com",
+            logicalIdempotencyKey: "issue-2874-unresolved-digest-proof",
+            recipientHmacSecret: "x".repeat(31),
+            payload: {
+              from: "Mingla <notifications@example.com>",
+              to: ["person@example.com"],
+              subject: "Missing HMAC ordering proof",
+              text: "No digest, claim, or provider work may start.",
+            },
+          },
+          {
+            claimDelivery: () => {
+              claimCalls += 1;
+              throw new Error("claim_must_not_run");
+            },
+            completeDelivery: () => Promise.resolve(),
+            sendResend: () => {
+              providerCalls += 1;
+              throw new Error("provider_must_not_run");
+            },
+          },
+        ),
+      Error,
+      "notification_recipient_hmac_secret_missing",
+    );
+    assertStrictEquals(digestCalls, 0);
+    assertStrictEquals(claimCalls, 0);
+    assertStrictEquals(providerCalls, 0);
+  } finally {
+    subtle.digest = originalDigest;
+    for (const release of releaseDigests) {
+      release(new ArrayBuffer(32));
+    }
+  }
 });
