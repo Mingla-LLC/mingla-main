@@ -195,13 +195,29 @@ export const handleEventCoverVideoSourceUploaded = async (
   const uploadOffset = Number(tusHead.headers.get("upload-offset"));
   const uploadLength = Number(tusHead.headers.get("upload-length"));
   if (
-    !tusHead.ok || storageSize <= 0 || uploadOffset !== job.source_bytes ||
+    !tusHead.ok || uploadOffset !== job.source_bytes ||
     uploadLength !== job.source_bytes
   ) {
     return jsonResponse({
       error: "upload_incomplete",
       detail: { uploadOffset, uploadLength },
     }, 409);
+  }
+  if (storageSize <= 0) {
+    // Bunny can acknowledge the exact completed TUS offset before its video
+    // metadata exposes storageSize. This is provider registration lag, not an
+    // incomplete upload: preserve canonical source_uploading truth so the
+    // client's acknowledgement loop retries instead of failing a fully
+    // uploaded source.
+    console.log(
+      "[event-cover-video-source-uploaded]",
+      JSON.stringify({
+        jobId: job.id,
+        requestId,
+        stage: "bunny_storage_metadata_pending",
+      }),
+    );
+    return jsonResponse(mapEventCoverVideoStatus(job));
   }
   if (storageSize > MAX_SOURCE_VIDEO_BYTES) {
     const { data: failedJob } = await supabase.rpc(

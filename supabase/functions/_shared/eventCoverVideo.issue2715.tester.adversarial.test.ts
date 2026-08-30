@@ -4,6 +4,7 @@ import {
 } from "./eventCoverVideo.ts";
 import { hmacSha256Hex } from "./bunnyStream.ts";
 import { handleEventCoverVideoUploadIntent } from "../event-cover-video-upload-intent/index.ts";
+import { handleEventCoverVideoSourceUploaded } from "../event-cover-video-source-uploaded/index.ts";
 import { handleReaper } from "../event-cover-video-reaper/index.ts";
 import { handleEventCoverVideoWebhook } from "../event-cover-video-webhook/index.ts";
 
@@ -720,3 +721,91 @@ for (const terminal of ["cancelled", "superseded"] as const) {
     }
   });
 }
+
+Deno.test("#2715 full TUS truth wins over zero-byte Bunny metadata lag without cleanup", async () => {
+  let updates = 0, destroys = 0;
+  const sourceJob = {
+    ...job("source_uploading"),
+    source_asset_id: GUID,
+    source_bytes: 716_949,
+    tus_resource_url: "https://tus.example.test/resource",
+  };
+  const client = {
+    from: () => ({
+      select: () => ({
+        eq: () => ({
+          maybeSingle: () => Promise.resolve({ data: sourceJob, error: null }),
+        }),
+      }),
+      update: () => {
+        updates += 1;
+        throw new Error("storage metadata lag must not mutate");
+      },
+    }),
+  };
+  const request = new Request("https://test/source-uploaded", {
+    method: "POST",
+    headers: {
+      Authorization: "Bearer tester-token",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      jobId: JOB,
+      target: "venue_draft",
+      brandId: BRAND,
+    }),
+  });
+  const old = globalThis.fetch;
+  globalThis.fetch = (() =>
+    Promise.resolve(
+      new Response(null, {
+        status: 200,
+        headers: {
+          "upload-offset": "716949",
+          "upload-length": "716949",
+        },
+      }),
+    )) as typeof fetch;
+  try {
+    const response = await handleEventCoverVideoSourceUploaded(request, {
+      bunnyGetVideo: () =>
+        Promise.resolve({
+          ok: true as const,
+          video: {
+            guid: GUID,
+            status: 0,
+            length: 0,
+            storageSize: 0,
+            availableResolutions: null,
+            encodeProgress: 0,
+            outputCodecs: null,
+            originalHash: null,
+          },
+        }),
+      bunnyPresignTusUpload: () =>
+        Promise.resolve({
+          authorizationExpire: 2_000_000_000,
+          authorizationSignature: "signature",
+          libraryId: "library",
+          tusEndpoint: "https://tus.example.test/files/",
+          videoId: GUID,
+        }),
+      destroyCoverVideoAsset: () => {
+        destroys += 1;
+        return Promise.resolve({ ok: true as const });
+      },
+      requireCoverVideoTargetManager: () => Promise.resolve({ target: {} }),
+      requireUserId: () => Promise.resolve(USER),
+      serviceRoleClient: () => client,
+    } as never);
+    const payload = await response.json();
+    assert(response.status === 200, `metadata lag became HTTP ${response.status}`);
+    assert(payload.status === "source_uploading", "active retry truth was lost");
+    assert(
+      updates === 0 && destroys === 0,
+      "metadata lag mutated or deleted provider truth",
+    );
+  } finally {
+    globalThis.fetch = old;
+  }
+});
