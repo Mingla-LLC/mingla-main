@@ -60,7 +60,7 @@ documents = {}
 errors = []
 payload.fetch("sources").each do |file, source|
   begin
-    stream = Psych.parse_stream(source, file)
+    stream = Psych.parse_stream(source, filename: file)
     root = stream.children.fetch(0).root
     duplicate_keys(root, file, errors)
     documents[file] = YAML.safe_load(source, aliases: true) || {}

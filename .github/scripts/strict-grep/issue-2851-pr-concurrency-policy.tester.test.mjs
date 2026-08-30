@@ -208,6 +208,17 @@ test("case-folding and YAML display-name deception cannot collapse workflow iden
   assert.deepEqual(auditWorkflowSources(synthetic, { requireLoadException: false }).errors, []);
 });
 
+test("Psych receives the workflow filename through its cross-version keyword API", () => {
+  // [TEST-MOD-APPROVED #2851] GitHub's Psych rejects the legacy second
+  // positional filename that the workstation's older Psych still accepts.
+  const guard = fs.readFileSync(
+    path.join(TEST_ROOT, ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.mjs"),
+    "utf8",
+  );
+  assert.match(guard, /Psych\.parse_stream\(source, filename: file\)/);
+  assert.doesNotMatch(guard, /Psych\.parse_stream\(source,\s*file\)/);
+});
+
 test("the policy guard and both independent regression suites are wired into Class A", () => {
   const manifest = JSON.parse(fs.readFileSync(path.join(TEST_ROOT, ".github/scripts/strict-grep/MANIFEST.json"), "utf8"));
   const paths = [
