@@ -2,7 +2,9 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { supabase } from "./supabase";
 import { deriveLiveStatus } from "../utils/eventLifecycle";
+import { ensureSecureRandom } from "../lib/secureRandomSafe";
 import type { LiveEvent } from "../store/liveEventStore";
+import { businessRecentDestination } from "../utils/routeForEventRow";
 import {
   mergeRecentPointers,
   promoteBusinessRecentPointers,
@@ -62,25 +64,11 @@ export interface BusinessRecentIndexRow {
   endedAt: string | null;
 }
 
-const canonicalLifecycle = (
+export const canonicalBusinessRecentLifecycle = (
   row: Omit<BusinessRecentIndexRow, "lifecycleStatus">,
-  deriveTripLifecycleStatus: typeof import("../components/trip/TripDetailHeroStatusPill").deriveTripLifecycleStatus,
 ): string | null => {
   if (row.entityType === "venue") return row.rawStatus;
-  if (row.entityType === "trip" || row.entityType === "experience") {
-    const status = row.rawStatus;
-    if (
-      !["draft", "scheduled", "live", "ended", "cancelled"].includes(
-        status ?? "",
-      )
-    )
-      return status;
-    return deriveTripLifecycleStatus({
-      status: status as "draft" | "scheduled" | "live" | "ended" | "cancelled",
-      startAt: row.startsAt,
-      endAt: row.endsAt,
-    });
-  }
+  if (row.entityType === "trip") return row.rawStatus;
   return deriveLiveStatus(
     {
       status: row.rawStatus,
@@ -121,6 +109,21 @@ export const orderBusinessRecentPointers = (
       ai?.pointerId ?? `${a.entityType}:${a.entityId}`,
     );
   });
+};
+
+export const retainAuthoritativeBusinessRecentPointers = (
+  pointers: BusinessRecentPointer[],
+  indexRows: BusinessRecentIndexRow[],
+): BusinessRecentPointer[] => {
+  const authoritative = new Set(
+    indexRows.map((row) => `${row.entityType}:${row.entityId}`),
+  );
+  return pointers.filter(
+    (pointer) =>
+      authoritative.has(`${pointer.entityType}:${pointer.entityId}`) ||
+      pointer.pendingSync ||
+      pointer.localDraft,
+  );
 };
 
 interface IndexRpcRow {
@@ -285,15 +288,33 @@ export async function clearBusinessRecentCachedScope(
   });
 }
 
+let fallbackOperationSequence = 0;
+
 export function newRecentOperationId(): string {
+  ensureSecureRandom();
   const cryptoRef = (globalThis as { crypto?: Crypto }).crypto;
   if (cryptoRef !== undefined && typeof cryptoRef.randomUUID === "function") {
     return cryptoRef.randomUUID();
   }
-  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (char) => {
-    const random = (Math.random() * 16) | 0;
-    return (char === "x" ? random : (random & 0x3) | 0x8).toString(16);
-  });
+  if (typeof cryptoRef?.getRandomValues === "function") {
+    const bytes = cryptoRef.getRandomValues(new Uint8Array(16));
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    const hex = Array.from(bytes, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join("");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  }
+  fallbackOperationSequence = (fallbackOperationSequence + 1) & 0xffff;
+  const clock = Date.now().toString(16).padStart(12, "0").slice(-12);
+  const sequence = fallbackOperationSequence.toString(16).padStart(4, "0");
+  console.warn(
+    "[Recent] secure random unavailable; using a collision-bounded local UUID fallback.",
+  );
+  return `${clock.slice(0, 8)}-${clock.slice(8)}-4${sequence.slice(1)}-8${sequence.slice(1)}-${clock}${sequence}`.slice(
+    0,
+    36,
+  );
 }
 
 export async function recordBusinessRecentOpen(input: {
@@ -330,9 +351,6 @@ export async function recordBusinessRecentOpen(input: {
 export async function listBusinessRecentIndex(
   brandId: string,
 ): Promise<BusinessRecentIndexRow[]> {
-  const { deriveTripLifecycleStatus } = await import(
-    "../components/trip/TripDetailHeroStatusPill"
-  );
   const { data, error } = await supabase.rpc("biz_list_recent_entity_index", {
     p_brand_id: brandId,
   });
@@ -350,7 +368,7 @@ export async function listBusinessRecentIndex(
     };
     return {
       ...raw,
-      lifecycleStatus: canonicalLifecycle(raw, deriveTripLifecycleStatus),
+      lifecycleStatus: canonicalBusinessRecentLifecycle(raw),
     };
   });
 }
@@ -380,6 +398,7 @@ export async function hydrateBusinessRecent(
   return {
     pointers: payload.items.map((item) => ({
       ...item,
+      destination: businessRecentDestination(item.entityType, item.status),
       operationId: "server",
       pendingSync: false,
       localDraft: false,
@@ -390,8 +409,9 @@ export async function hydrateBusinessRecent(
 
 export const recentErrorCategory = (
   error: unknown,
-): "permission" | "network" | "unknown" => {
+): "permission" | "entity-permission" | "network" | "unknown" => {
   const message = error instanceof Error ? error.message : String(error);
+  if (/recent_entity_forbidden/i.test(message)) return "entity-permission";
   if (/recent_brand_forbidden|permission|row-level security/i.test(message))
     return "permission";
   if (/network|fetch|offline|timeout/i.test(message)) return "network";

@@ -15,6 +15,7 @@ export interface BusinessRecentPointer {
   coverPosterUrl?: string | null;
   coverType?: "image" | "video" | "gif" | null;
   status?: string | null;
+  destination?: "detail" | "edit";
   startsAt?: string | null;
   endsAt?: string | null;
   pendingSync: boolean;

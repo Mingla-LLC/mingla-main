@@ -29,7 +29,10 @@ import { useCurrentBrand } from "../src/hooks/useCurrentBrand";
 import { useResponsiveLayout } from "../src/hooks/useResponsiveLayout";
 import type { BusinessRecentPointer } from "../src/store/businessRecentStore";
 import { formatRelativeTime } from "../src/utils/relativeTime";
-import { routeForBusinessRecent } from "../src/utils/routeForEventRow";
+import {
+  businessRecentDestination,
+  routeForBusinessRecent,
+} from "../src/utils/routeForEventRow";
 import { postHogService } from "../src/services/postHogService";
 
 const typeLabel = (row: BusinessRecentPointer): string =>
@@ -128,7 +131,12 @@ export default function RecentScreen(): React.ReactElement {
       const destination = routeForBusinessRecent({
         id: row.entityId,
         entityType: row.entityType,
-        status: row.status === "draft" || row.localDraft ? "draft" : row.status,
+        destination:
+          row.destination ??
+          businessRecentDestination(
+            row.entityType,
+            row.localDraft ? "draft" : row.status,
+          ),
       });
       if (destination !== null) router.push(destination as never);
     },
@@ -193,9 +201,22 @@ export default function RecentScreen(): React.ReactElement {
         </Text>
       ) : null}
       {recent.state === "error-cached" ? (
-        <Text accessibilityLiveRegion="polite" style={styles.banner}>
-          Couldn’t refresh Recent. Showing saved work.
-        </Text>
+        <View style={styles.bannerRow}>
+          <Text
+            accessibilityLiveRegion="polite"
+            style={[styles.banner, styles.bannerMessage]}
+          >
+            Couldn’t refresh Recent. Showing saved work.
+          </Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Retry loading Recent"
+            onPress={() => void recent.retry()}
+            style={styles.retryButton}
+          >
+            <Text style={styles.retryLabel}>Retry</Text>
+          </Pressable>
+        </View>
       ) : null}
       {recent.state === "refreshing" ? (
         <Text accessibilityLiveRegion="polite" style={styles.banner}>
@@ -233,11 +254,20 @@ export default function RecentScreen(): React.ReactElement {
           }}
           onEndReachedThreshold={0.4}
           ListFooterComponent={
-            recent.hasMore ? (
+            recent.isLoadingMore ? (
               <Text style={styles.footer}>Loading more…</Text>
-            ) : (
+            ) : recent.hasPageError ? (
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Retry loading more Recent"
+                onPress={() => void recent.retry()}
+                style={styles.footerRetry}
+              >
+                <Text style={styles.retryLabel}>Couldn’t load more — Retry</Text>
+              </Pressable>
+            ) : !recent.hasMore && rows.length > 0 ? (
               <Text style={styles.footer}>End of Recent</Text>
-            )
+            ) : null
           }
         />
       )}
@@ -253,6 +283,25 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.md,
     paddingVertical: spacing.xs,
     fontSize: typography.caption.fontSize,
+  },
+  bannerMessage: { flex: 1 },
+  bannerRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+    paddingRight: spacing.md,
+  },
+  retryButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
+  retryLabel: { color: accent.warm, fontWeight: "700" },
+  footerRetry: {
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    padding: spacing.sm,
   },
   mobileList: { flex: 1 },
   desktopList: { flex: 1, minHeight: 0 },

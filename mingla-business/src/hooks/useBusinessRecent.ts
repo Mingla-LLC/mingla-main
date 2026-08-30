@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AppState, type AppStateStatus } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 
@@ -17,6 +18,7 @@ import {
   promoteBusinessRecentPresentationCache,
   recentErrorCategory,
   recordBusinessRecentOpen,
+  retainAuthoritativeBusinessRecentPointers,
   removeBusinessRecentPresentationCache,
   saveBusinessRecentCache,
   subscribeBusinessRecentPresentation,
@@ -31,6 +33,7 @@ import {
   type BusinessRecentEntityType,
   type BusinessRecentPointer,
 } from "../store/businessRecentStore";
+import { businessRecentDestination } from "../utils/routeForEventRow";
 
 export type BusinessRecentStateKind =
   | "loading"
@@ -44,12 +47,15 @@ export type BusinessRecentStateKind =
   | "permission"
   | "omitted";
 
+const EMPTY_RECENT_POINTERS: BusinessRecentPointer[] = [];
+
 const withIndexLifecycle = (
   pointer: BusinessRecentPointer,
   index: BusinessRecentIndexRow,
 ): BusinessRecentPointer => ({
   ...pointer,
   status: index.lifecycleStatus,
+  destination: businessRecentDestination(index.entityType, index.rawStatus),
   startsAt: index.startsAt,
   endsAt: index.endsAt,
 });
@@ -62,6 +68,8 @@ export function useBusinessRecent(input: {
   total: number;
   state: BusinessRecentStateKind;
   isRefreshing: boolean;
+  isLoadingMore: boolean;
+  hasPageError: boolean;
   hasMore: boolean;
   retry: () => Promise<void>;
   refresh: () => Promise<void>;
@@ -77,7 +85,9 @@ export function useBusinessRecent(input: {
       ? recentScopeKey(userId, input.brandId)
       : null;
   const cached = useBusinessRecentStore((state) =>
-    scope === null ? [] : (state.scopes[scope] ?? []),
+    scope === null
+      ? EMPTY_RECENT_POINTERS
+      : (state.scopes[scope] ?? EMPTY_RECENT_POINTERS),
   );
   const remove = useBusinessRecentStore((state) => state.remove);
   const upsert = useBusinessRecentStore((state) => state.upsert);
@@ -89,6 +99,7 @@ export function useBusinessRecent(input: {
   const cachedSnapshotRef = useRef<string | null>(null);
   const [fallbackRows, setFallbackRows] = useState<BusinessRecentPointer[]>([]);
   const [fallbackReady, setFallbackReady] = useState(false);
+  const recentAppStateRef = useRef<AppStateStatus>(AppState.currentState);
   activeScopeRef.current = scope;
 
   useEffect(() => {
@@ -270,12 +281,19 @@ export function useBusinessRecent(input: {
   );
 
   const serverRows = pageQueries.flatMap((query) => query.data?.rows ?? []);
+  const authoritativeIndexReady =
+    indexQuery.isSuccess && !indexQuery.isFetching;
   const currentIndexByKey = new Map(
     indexRows.map((row) => [`${row.entityType}:${row.entityId}`, row]),
   );
-  const mergedRows = mergeRecentPointers(
-    serverRows.length > 0 ? serverRows : fallbackRows,
-    cached,
+  const candidateRows = mergeRecentPointers(
+    mergeRecentPointers(fallbackRows, cached),
+    serverRows,
+  );
+  const mergedRows = (
+    authoritativeIndexReady
+      ? retainAuthoritativeBusinessRecentPointers(candidateRows, indexRows)
+      : candidateRows
   ).map((pointer) => {
     const index = currentIndexByKey.get(
       `${pointer.entityType}:${pointer.entityId}`,
@@ -298,18 +316,38 @@ export function useBusinessRecent(input: {
     queryError === null ? null : recentErrorCategory(queryError);
 
   useEffect(() => {
-    if (scope === null || serverRows.length === 0) return;
-    const snapshotKey = serverRows
-      .map((row) => `${row.entityType}:${row.entityId}:${row.lastOpenedAt}`)
-      .join("|");
-    if (cachedSnapshotRef.current === `${scope}:${snapshotKey}`) return;
-    cachedSnapshotRef.current = `${scope}:${snapshotKey}`;
-    const generation = useBusinessRecentStore.getState().generation;
-    const requestScope = scope;
+    if (scope === null || !authoritativeIndexReady) return;
     const snapshot = orderBusinessRecentPointers(
-      mergeRecentPointers(fallbackRows, serverRows),
+      retainAuthoritativeBusinessRecentPointers(
+        mergeRecentPointers(fallbackRows, serverRows),
+        indexRows,
+      ),
       indexRows,
     );
+    const sourceKey = fallbackRows
+      .map((row) => `${row.entityType}:${row.entityId}:${row.lastOpenedAt}`)
+      .join("|");
+    const snapshotKey = snapshot
+      .map((row) => `${row.entityType}:${row.entityId}:${row.lastOpenedAt}`)
+      .join("|");
+    for (const pointer of cached) {
+      if (
+        !pointer.pendingSync &&
+        !pointer.localDraft &&
+        !indexRows.some(
+          (row) =>
+            row.entityType === pointer.entityType &&
+            row.entityId === pointer.entityId,
+        )
+      ) {
+        remove(scope, pointer.entityType, pointer.entityId);
+      }
+    }
+    const reconciliationKey = `${scope}:${sourceKey}=>${snapshotKey}`;
+    if (cachedSnapshotRef.current === reconciliationKey) return;
+    cachedSnapshotRef.current = reconciliationKey;
+    const generation = useBusinessRecentStore.getState().generation;
+    const requestScope = scope;
     setFallbackRows(snapshot);
     void saveBusinessRecentCache(requestScope, snapshot).catch(() => {
       if (
@@ -319,7 +357,15 @@ export function useBusinessRecent(input: {
         console.warn("[Recent] offline presentation cache write failed");
       }
     });
-  }, [fallbackRows, indexRows, scope, serverRows]);
+  }, [
+    authoritativeIndexReady,
+    cached,
+    fallbackRows,
+    indexRows,
+    remove,
+    scope,
+    serverRows,
+  ]);
 
   useEffect(() => {
     if (
@@ -412,7 +458,26 @@ export function useBusinessRecent(input: {
             pendingSync: false,
           });
         } catch (error: unknown) {
-          if (recentErrorCategory(error) === "permission") {
+          const category = recentErrorCategory(error);
+          if (category === "entity-permission") {
+            remove(scope, pointer.entityType, pointer.entityId);
+            setFallbackRows((current) =>
+              current.filter(
+                (row) =>
+                  row.entityType !== pointer.entityType ||
+                  row.entityId !== pointer.entityId,
+              ),
+            );
+            await removeBusinessRecentPresentationCache(
+              scope,
+              pointer.entityType,
+              pointer.entityId,
+            ).catch(() => {
+              console.warn("[Recent] forbidden entity cache cleanup failed");
+            });
+            continue;
+          }
+          if (category === "permission") {
             permissionDenied = true;
             if (isCurrent()) clearScope(scope);
             break;
@@ -453,11 +518,18 @@ export function useBusinessRecent(input: {
   const state: BusinessRecentStateKind = useMemo(() => {
     if (errorKind === "permission") return "permission";
     if (isOffline) return rows.length > 0 ? "offline-cached" : "offline-empty";
+    const firstHydrationPending =
+      indexRows.length > 0 &&
+      rows.length === 0 &&
+      pageQueries.some(
+        (query) => query.isLoading || query.isPending || query.isFetching,
+      );
     if (
       (!isAuthReady ||
         indexQuery.isLoading ||
         !hasHydrated ||
-        !fallbackReady) &&
+        !fallbackReady ||
+        firstHydrationPending) &&
       rows.length === 0
     )
       return "loading";
@@ -477,6 +549,7 @@ export function useBusinessRecent(input: {
     indexQuery.isError,
     indexQuery.isFetching,
     indexQuery.isLoading,
+    indexRows.length,
     omitted,
     pageQueries,
     rows.length,
@@ -494,14 +567,43 @@ export function useBusinessRecent(input: {
     ]);
   }, [input.brandId, isOffline, queryClient, userId]);
 
+  const retry = useCallback(async (): Promise<void> => {
+    if (userId === null || input.brandId === null || isOffline) return;
+    const failedPages = pageQueries.filter((query) => query.isError);
+    if (!indexQuery.isError && failedPages.length === 0) {
+      await refresh();
+      return;
+    }
+    await Promise.all([
+      ...(indexQuery.isError ? [indexQuery.refetch()] : []),
+      ...failedPages.map((query) => query.refetch()),
+    ]);
+  }, [indexQuery, input.brandId, isOffline, pageQueries, refresh, userId]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (nextState) => {
+      const previous = recentAppStateRef.current;
+      recentAppStateRef.current = nextState;
+      if (previous !== "active" && nextState === "active") void refresh();
+    });
+    return () => subscription.remove();
+  }, [refresh]);
+
+  const hasPageError = pageQueries.some((query) => query.isError);
+  const isLoadingMore =
+    pageCount > 1 &&
+    pageQueries.slice(1).some((query) => query.isLoading || query.isFetching);
+
   return {
     rows,
     total: indexRows.length,
     state,
     isRefreshing:
       indexQuery.isFetching || pageQueries.some((query) => query.isFetching),
+    isLoadingMore,
+    hasPageError,
     hasMore: indexRows.length > pageCount * 25,
-    retry: refresh,
+    retry,
     refresh,
   };
 }
@@ -527,12 +629,14 @@ export function useSuccessfulBusinessRecentOpen(input: {
   const focusedRef = useRef(false);
   const recordedThisFocusRef = useRef(false);
   const activeIdentityRef = useRef<string | null>(null);
+  const recordCurrentRef = useRef<() => void>(() => undefined);
 
   useFocusEffect(
     useCallback(() => {
       focusedRef.current = true;
       recordedThisFocusRef.current = false;
       operationRef.current = null;
+      recordCurrentRef.current();
       return () => {
         focusedRef.current = false;
         operationRef.current = null;
@@ -541,7 +645,7 @@ export function useSuccessfulBusinessRecentOpen(input: {
     }, []),
   );
 
-  useEffect(() => {
+  const recordCurrentOpen = useCallback(() => {
     if (
       !focusedRef.current ||
       recordedThisFocusRef.current ||
@@ -587,6 +691,10 @@ export function useSuccessfulBusinessRecentOpen(input: {
       coverPosterUrl: input.coverPosterUrl,
       coverType: input.coverType,
       status: input.status,
+      destination: businessRecentDestination(
+        input.entityType,
+        localDraft ? "draft" : input.status,
+      ),
       pendingSync: !localDraft,
       localDraft,
     }).catch(() => {
@@ -631,6 +739,10 @@ export function useSuccessfulBusinessRecentOpen(input: {
             coverPosterUrl: input.coverPosterUrl,
             coverType: input.coverType,
             status: input.status,
+            destination: businessRecentDestination(
+              input.entityType,
+              input.status,
+            ),
             pendingSync: false,
             localDraft: false,
           }).catch(() => {
@@ -651,7 +763,19 @@ export function useSuccessfulBusinessRecentOpen(input: {
         })
         .catch((error: unknown) => {
           if (!isCurrent()) return;
-          if (recentErrorCategory(error) === "permission") clearScope(scope);
+          const category = recentErrorCategory(error);
+          if (category === "entity-permission") {
+            remove(scope, input.entityType, input.entityId as string);
+            void removeBusinessRecentPresentationCache(
+              scope,
+              input.entityType,
+              input.entityId as string,
+            ).catch(() => {
+              console.warn("[Recent] forbidden entity cache cleanup failed");
+            });
+          } else if (category === "permission") {
+            clearScope(scope);
+          }
           postHogService.capture("business_recent_record_failed", {
             entity_type: input.entityType,
             source: "detail",
@@ -682,6 +806,11 @@ export function useSuccessfulBusinessRecentOpen(input: {
     upsert,
     user,
   ]);
+  recordCurrentRef.current = recordCurrentOpen;
+
+  useEffect(() => {
+    recordCurrentOpen();
+  }, [recordCurrentOpen]);
 
   useEffect(() => {
     if (user === null) operationRef.current = null;

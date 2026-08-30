@@ -58,7 +58,6 @@ import { OtaAcknowledgementLayer } from "../src/components/ui/OtaAcknowledgement
 import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
-import { useBusinessRecentStore } from "../src/store/businessRecentStore";
 import { clearBusinessRecentCachedUser } from "../src/services/businessRecentService";
 // ORCH-0892-A: KeyboardRoot wraps every downstream surface so
 // react-native-keyboard-controller primitives can subscribe to native
@@ -270,8 +269,6 @@ function RootLayoutInner(): React.ReactElement {
       previousUserId !== null &&
       (nextUserId === null || nextUserId !== previousUserId)
     ) {
-      useBusinessRecentStore.getState().reset();
-      void useBusinessRecentStore.persist.clearStorage();
       void clearBusinessRecentCachedUser(previousUserId).catch(() => {
         console.warn("[Recent] persisted cache cleanup failed");
       });

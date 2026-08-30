@@ -96,7 +96,10 @@ import { useLiveSectionCollapseStore } from "../../src/store/liveSectionCollapse
 import type { LiveEvent } from "../../src/store/liveEventStore";
 import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
-import { routeForBusinessRecent } from "../../src/utils/routeForEventRow";
+import {
+  businessRecentDestination,
+  routeForBusinessRecent,
+} from "../../src/utils/routeForEventRow";
 import type { BusinessRecentPointer } from "../../src/store/businessRecentStore";
 import { postHogService } from "../../src/services/postHogService";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
@@ -160,6 +163,31 @@ const formatCapacityLabel = (event: LiveEvent): string => {
   }
   return capacity === null ? "—" : capacity.toLocaleString("en-GB");
 };
+
+function SeeAllRecentButton({
+  onPress,
+}: {
+  onPress: () => void;
+}): React.ReactElement {
+  const [focused, setFocused] = useState(false);
+  return (
+    <Pressable
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      accessibilityRole="button"
+      accessibilityLabel="See all Recent"
+      accessibilityHint="Opens your complete Recent workspace"
+      style={({ pressed }) => [
+        styles.sectionLinkButton,
+        pressed && styles.sectionLinkButtonPressed,
+        Platform.OS === "web" && focused && styles.sectionLinkButtonFocused,
+      ]}
+    >
+      <Text style={styles.sectionLink}>See all</Text>
+    </Pressable>
+  );
+}
 
 export default function HomeTab(): React.ReactElement {
   const recentImpressionBrandRef = useRef<string | null>(null);
@@ -309,7 +337,12 @@ export default function HomeTab(): React.ReactElement {
       const destination = routeForBusinessRecent({
         id: row.entityId,
         entityType: row.entityType,
-        status: row.status === "draft" || row.localDraft ? "draft" : row.status,
+        destination:
+          row.destination ??
+          businessRecentDestination(
+            row.entityType,
+            row.localDraft ? "draft" : row.status,
+          ),
       });
       if (destination !== null) router.push(destination as never);
     },
@@ -882,22 +915,28 @@ export default function HomeTab(): React.ReactElement {
                     Recent
                   </Text>
                   {recent.total > 10 ? (
-                  <Pressable
-                    onPress={handleSeeAllEvents}
-                      accessibilityRole="button"
-                      accessibilityLabel="See all Recent, button"
-                  >
-                    <Text style={styles.sectionLink}>See all</Text>
-                  </Pressable>
+                    <SeeAllRecentButton onPress={handleSeeAllEvents} />
                   ) : null}
                 </View>
                 {recentBanner === null ? null : (
-                  <Text
-                    accessibilityLiveRegion="polite"
-                    style={styles.recentBanner}
-                  >
-                    {recentBanner}
-                  </Text>
+                  <View style={styles.recentBannerRow}>
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={styles.recentBanner}
+                    >
+                      {recentBanner}
+                    </Text>
+                    {recent.state === "error-cached" ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Retry loading Recent"
+                        onPress={() => void recent.retry()}
+                        style={styles.recentRetryButton}
+                      >
+                        <Text style={styles.sectionLink}>Retry</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 )}
                 <ScrollView
                   testID="home-desktop-recent-scroll"
@@ -1002,22 +1041,28 @@ export default function HomeTab(): React.ReactElement {
                     Recent
                   </Text>
                   {recent.total > 10 ? (
-              <Pressable
-                onPress={handleSeeAllEvents}
-                      accessibilityRole="button"
-                      accessibilityLabel="See all Recent, button"
-              >
-                <Text style={styles.sectionLink}>See all</Text>
-              </Pressable>
+                    <SeeAllRecentButton onPress={handleSeeAllEvents} />
             ) : null}
           </View>
                 {recentBanner === null ? null : (
-                  <Text
-                    accessibilityLiveRegion="polite"
-                    style={styles.recentBanner}
-                  >
-                    {recentBanner}
-                  </Text>
+                  <View style={styles.recentBannerRow}>
+                    <Text
+                      accessibilityLiveRegion="polite"
+                      style={styles.recentBanner}
+                    >
+                      {recentBanner}
+                    </Text>
+                    {recent.state === "error-cached" ? (
+                      <Pressable
+                        accessibilityRole="button"
+                        accessibilityLabel="Retry loading Recent"
+                        onPress={() => void recent.retry()}
+                        style={styles.recentRetryButton}
+                      >
+                        <Text style={styles.sectionLink}>Retry</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
             )}
                 {renderRecentState()}
               </View>
@@ -1371,7 +1416,31 @@ const styles = StyleSheet.create({
     color: accent.warm,
     fontWeight: "600",
   },
+  sectionLinkButton: {
+    minHeight: 44,
+    minWidth: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+    borderRadius: radiusTokens.sm,
+  },
+  sectionLinkButtonPressed: { opacity: 0.65 },
+  sectionLinkButtonFocused: {
+    borderWidth: 2,
+    borderColor: accent.warm,
+  },
+  recentBannerRow: {
+    minHeight: 44,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  recentRetryButton: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: spacing.sm,
+  },
   recentBanner: {
+    flex: 1,
     color: textTokens.secondary,
     fontSize: typography.caption.fontSize,
     lineHeight: typography.caption.lineHeight,

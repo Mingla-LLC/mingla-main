@@ -51,6 +51,14 @@ export type EventTypeForRouting = "event" | "experience" | "trip" | "rsvp";
 export type BusinessRecentEntityType = EventTypeForRouting | "venue";
 export type BusinessRecentDestination = "detail" | "edit";
 
+export const businessRecentDestination = (
+  entityType: BusinessRecentEntityType,
+  rawStatus?: string | null,
+): BusinessRecentDestination =>
+  entityType !== "experience" && entityType !== "venue" && rawStatus === "draft"
+    ? "edit"
+    : "detail";
+
 export type EventStatusForRouting =
   | "draft"
   | "scheduled"
@@ -139,29 +147,12 @@ export function routeForBusinessRecent(row: {
     !["venue", "event", "rsvp", "experience", "trip"].includes(row.entityType)
   )
     return null;
-  if (
-    row.status != null &&
-    !["draft", "scheduled", "live", "ended", "cancelled"].includes(row.status)
-  )
-    return null;
   const destination =
-    row.destination ?? (row.status === "draft" ? "edit" : "detail");
+    row.destination ?? businessRecentDestination(row.entityType, row.status);
   if (row.entityType === "venue") return `/venue/${row.id}`;
-  if (destination === "edit") {
-    switch (row.entityType) {
-      case "event":
-        return `/event/${row.id}/edit`;
-      case "rsvp":
-        return `/rsvp/${row.id}/edit`;
-      case "experience":
-        return `/experience/${row.id}/edit`;
-      case "trip":
-        return `/trip/${row.id}/edit`;
-    }
-  }
   return routeForEventRow({
     id: row.id,
     event_type: row.entityType,
-    status: row.status as EventStatusForRouting,
+    status: destination === "edit" ? "draft" : undefined,
   });
 }
