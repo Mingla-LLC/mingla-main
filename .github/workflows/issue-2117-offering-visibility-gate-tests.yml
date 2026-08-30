@@ -91,6 +91,13 @@ jobs:
               # the pre-#2117 baseline; doing so contaminates the before-state.
               *20270605002728_issue_2728_ticket_sold_count_namespace.sql) continue ;;
               *20270607002774_issue_2774_public_hero_alt.sql) continue ;;
+              # issue #2491 C2 steps 3+4 — SKIPPED for the same reason this phase
+              # skips #2117. #2491 re-emits `pg_direct_event_checkout_bundle`,
+              # whose CURRENT body reaches `issue_2489_address_withheld` /
+              # `issue_2489_public_theme`, which this phase does not have.
+              # EXACT FILENAME: an `*_issue_2491_*` infix would also skip the
+              # step-1 and step-1b migrations, which this phase must apply.
+              *20270604002491_issue_2491_c2_step34_switch_sold_readers.sql) continue ;;
             esac
             psql -h localhost -U postgres -d postgres -v ON_ERROR_STOP=1 -q -f "$f"
           done

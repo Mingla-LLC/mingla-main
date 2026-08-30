@@ -187,6 +187,20 @@ jobs:
               # Matched by EXACT filename, never an issue-number infix.
               *20270601002696_issue_2696_event_scoped_session_lookup.sql) continue ;;
               *20270607002774_issue_2774_public_hero_alt.sql) continue ;;
+              # issue #2491 C2 steps 3+4 — SKIPPED FOR THE SAME REASON #2160 IS.
+              #
+              # This phase deliberately runs the chain WITHOUT #1931, and #2491
+              # re-emits `pg_direct_event_checkout_bundle` to switch its sold
+              # subquery onto `ticket_types.sold_count`. That function's CURRENT
+              # body — defined by #1931 — calls
+              # `issue_1931_event_ordinary_read_blocked` and reads
+              # `multi_date_pricing_mode`, and a `LANGUAGE sql` body is validated
+              # at CREATE time, so applying #2491 here aborts.
+              #
+              # Listed by EXACT FILENAME, never by an `*_issue_2491_*` infix: the
+              # infix would also swallow the step-1 counter migration and the
+              # step-1b observer, which this phase must still apply.
+              *20270604002491_issue_2491_c2_step34_switch_sold_readers.sql) continue ;;
               # issue #2489 — SKIPPED under the standing instruction above ("any
               # future migration that re-emits a #1931-defined object belongs on
               # this list too").
