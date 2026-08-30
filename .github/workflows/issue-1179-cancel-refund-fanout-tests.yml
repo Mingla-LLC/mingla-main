@@ -17,6 +17,10 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
 
+concurrency:
+  group: ci-issue-1179-cancel-refund-fanout-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-1179-deno-check:
     name: "Issue 1179 edge fn type-check"

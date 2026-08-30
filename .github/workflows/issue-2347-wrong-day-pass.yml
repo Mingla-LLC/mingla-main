@@ -47,6 +47,10 @@ on:
     paths: *issue_2347_paths
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2347-wrong-day-pass-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2347-scan-level:
     name: "#2347 the pass on a card scans on THAT card's day"

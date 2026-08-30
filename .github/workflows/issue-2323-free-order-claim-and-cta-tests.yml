@@ -58,6 +58,10 @@ on:
     paths: *issue_2323_paths
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2323-free-order-claim-and-cta-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2323-client:
     name: "#2323/#2326 Client — the screen asks, and the tap lands"

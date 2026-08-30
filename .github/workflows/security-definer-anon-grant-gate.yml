@@ -28,6 +28,10 @@ on:
       - "scripts/ci/security_definer_anon_gate.sh"
       - ".github/workflows/security-definer-anon-grant-gate.yml"
 
+concurrency:
+  group: ci-security-definer-anon-grant-gate-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   anon-definer-gate:
     name: "No unallowlisted anon-executable SECURITY DEFINER function"

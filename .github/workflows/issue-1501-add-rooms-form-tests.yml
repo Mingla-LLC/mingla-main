@@ -27,8 +27,8 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: issue-1501-add-rooms-form-${{ github.ref }}
-  cancel-in-progress: true
+  group: ci-issue-1501-add-rooms-form-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
 
 jobs:
   issue-1501-add-rooms-form:

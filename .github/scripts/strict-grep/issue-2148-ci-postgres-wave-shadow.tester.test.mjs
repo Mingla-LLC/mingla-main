@@ -4,6 +4,7 @@ import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import test from "node:test";
+import { execFileSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import {
   PHASE3B_SHADOW_MARKER,
@@ -26,6 +27,27 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../.
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), "utf8");
 const manifest = () => JSON.parse(read(".github/ci-batch/MANIFEST.json"));
 const sha = (value) => crypto.createHash("sha256").update(typeof value === "string" || Buffer.isBuffer(value) ? value : JSON.stringify(value)).digest("hex");
+const EXPECTED_BATCH_EVENTS = ["pull_request", "push", "workflow_dispatch"];
+const RUBY_EVENT_NAMES = String.raw`
+require "yaml"; require "json"
+doc = YAML.safe_load(STDIN.read, aliases: true) || {}
+raw = doc.key?("on") ? doc["on"] : doc[true]
+events = case raw
+         when Hash then raw.keys.map(&:to_s)
+         when Array then raw.map(&:to_s)
+         when String then [raw]
+         else []
+         end
+STDOUT.write(JSON.generate(events.sort))`;
+const batchEventNames = (source) => JSON.parse(execFileSync("ruby", ["-e", RUBY_EVENT_NAMES], { input: source, encoding: "utf8" }));
+const assertBatchTriggerBoundary = (source) => assert.deepEqual(
+  batchEventNames(source), EXPECTED_BATCH_EVENTS, "ci-batch top-level event set must remain pull_request/push/workflow_dispatch",
+);
+const assertTargetTriggerMutantFails = (source) => {
+  const mutant = source.replace(/^  pull_request:\s*$/m, "  pull_request_target:");
+  assert.notEqual(mutant, source, "target-trigger mutant must change the parsed event key");
+  assert.throws(() => assertBatchTriggerBoundary(mutant), /ci-batch top-level event set/);
+};
 const PARTIAL_REFERENCE_DELTAS = [{
   workflow: "issue-1486-dormant-render-suites.yml",
   referenceFiles: [".github/scripts/strict-grep/issue-2774-public-hero-accessibility.mjs"],
@@ -112,7 +134,9 @@ test("reconstructs source truth before trusting generated registry", () => {
   const liveWorkflows = fs.readdirSync(workflowDir).filter((file) => /\.ya?ml$/.test(file));
   assert.equal(liveWorkflows.filter((file) => fs.readFileSync(path.join(workflowDir, file), "utf8").includes(PHASE3B_SHADOW_MARKER)).length, 0);
   assert.equal(liveWorkflows.some((file) => WRAPPERS.some(([name]) => name === file)), false);
-  assert.equal(sha(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad");
+  // [TEST-MOD-APPROVED #2851] The old a2d6… #679 lock changed only because its
+  // approved top-level concurrency map changed; this remains a full-file lock.
+  assert.equal(sha(fs.readFileSync(path.join(ROOT, ".github/workflows/issue-679-brand-follows-rls-proof.yml"))), "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137");
   assert.equal(suites.find((suite) => suite.origin.endsWith("issue-2013-ari-tenant-containment.yml")).originPaths.includes(".github/workflows/issue-2013-ari-tenant-containment.yml"), false);
   assert.match(read(".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs"), /ci-batch|phase3b/i);
 });
@@ -301,7 +325,12 @@ test("canonical cost fixture and workflow topology remain exact", () => {
   assert.equal((workflow.match(/^\s+- class:/gm)||[]).length,14); assert.equal((workflow.match(/^\s+secondaryClass: phase3b-/gm)||[]).length,9);
   assert.deepEqual([...workflow.matchAll(/hostTimeoutMinutes:\s*(\d+)/g)].map((m)=>Number(m[1])), [50,45,40,45,45,55,55,50,60,62,55,55,105,55]);
   for (const pin of ["actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683","denoland/setup-deno@11b63cf76cfcafb4e43f97b6cad24d8e8438f62d","denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed"]) assert.match(workflow,new RegExp(pin));
-  assert.doesNotMatch(workflow,/pull_request_target|id-token:\s*write|contents:\s*write|secrets\./);
+  // [TEST-MOD-APPROVED #2851] The old whole-source target-token ban conflated
+  // the approved concurrency operand with a trigger. Semantic events keep the
+  // original no-pull_request_target trust boundary, including a red trigger mutant.
+  assert.doesNotMatch(workflow,/id-token:\s*write|contents:\s*write|secrets\./);
+  assertBatchTriggerBoundary(workflow);
+  assertTargetTriggerMutantFails(workflow);
   for (const stage of ["id: phase3b-select","id: phase3b-decision","Run selected Phase 3B suites with exact attribution","Upload Phase 3B suite results","Reconcile Phase 3B host"]) assert.match(workflow,new RegExp(stage));
 });
 

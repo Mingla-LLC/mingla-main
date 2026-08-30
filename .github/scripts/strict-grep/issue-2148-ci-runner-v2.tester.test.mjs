@@ -24,6 +24,27 @@ import {
 const readManifest = () => JSON.parse(fs.readFileSync(DEFAULT_MANIFEST, "utf8"));
 const temporaryDirectory = (name) => fs.mkdtempSync(path.join(os.tmpdir(), `${name}-`));
 const batchWorkflow = () => path.join(DEFAULT_ROOT, ".github/workflows", ["ci", "batch.yml"].join("-"));
+const EXPECTED_BATCH_EVENTS = ["pull_request", "push", "workflow_dispatch"];
+const RUBY_EVENT_NAMES = String.raw`
+require "yaml"; require "json"
+doc = YAML.safe_load(STDIN.read, aliases: true) || {}
+raw = doc.key?("on") ? doc["on"] : doc[true]
+events = case raw
+         when Hash then raw.keys.map(&:to_s)
+         when Array then raw.map(&:to_s)
+         when String then [raw]
+         else []
+         end
+STDOUT.write(JSON.generate(events.sort))`;
+const batchEventNames = (source) => JSON.parse(execFileSync("ruby", ["-e", RUBY_EVENT_NAMES], { input: source, encoding: "utf8" }));
+const assertBatchTriggerBoundary = (source) => assert.deepEqual(
+  batchEventNames(source), EXPECTED_BATCH_EVENTS, "ci-batch top-level event set must remain pull_request/push/workflow_dispatch",
+);
+const assertTargetTriggerMutantFails = (source) => {
+  const mutant = source.replace(/^  pull_request:\s*$/m, "  pull_request_target:");
+  assert.notEqual(mutant, source, "target-trigger mutant must change the parsed event key");
+  assert.throws(() => assertBatchTriggerBoundary(mutant), /ci-batch top-level event set/);
+};
 
 function gitFixture(name) {
   const root = temporaryDirectory(name);
@@ -200,7 +221,12 @@ test("workflow matrix retains the exact trust boundary and independently locked 
   const workflow = fs.readFileSync(batchWorkflow(), "utf8");
   const manifest = readManifest();
   assert.match(workflow, /permissions:\s*\n\s+contents:\s*read/);
-  assert.doesNotMatch(workflow, /pull_request_target|id-token:\s*write|contents:\s*write|secrets\./);
+  // [TEST-MOD-APPROVED #2851] The old whole-source target-token ban rejected
+  // the approved concurrency operand. Semantic events preserve the actual trust
+  // boundary and prove an on.pull_request_target mutant still fails.
+  assert.doesNotMatch(workflow, /id-token:\s*write|contents:\s*write|secrets\./);
+  assertBatchTriggerBoundary(workflow);
+  assertTargetTriggerMutantFails(workflow);
   assert.doesNotMatch(workflow, /^\s*paths(?:-ignore)?:/m);
   assert.match(workflow, /fail-fast:\s*false/);
   const baseline = manifest.suites.slice(0, 23);

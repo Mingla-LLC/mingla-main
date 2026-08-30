@@ -48,6 +48,10 @@ on:
     paths: *issue_2150_paths
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2150-free-resubmit-idempotent-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2150-edge-contract:
     name: "#2150 Edge — a resubmit returns the existing order, never re-finalizes"

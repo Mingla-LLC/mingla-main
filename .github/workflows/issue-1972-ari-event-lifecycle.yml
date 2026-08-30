@@ -60,6 +60,10 @@ on:
       - ".github/scripts/strict-grep/issue-1972-ari-event-lifecycle.mjs"
       - ".github/workflows/issue-1972-ari-event-lifecycle.yml"
 
+concurrency:
+  group: ci-issue-1972-ari-event-lifecycle-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   deno-and-business:
     runs-on: ubuntu-latest

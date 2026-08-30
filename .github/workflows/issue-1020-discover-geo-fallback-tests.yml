@@ -37,6 +37,10 @@ on:
       # without this path a change to that action would not re-run it.
       - ".github/actions/migrated-postgres/**"
 
+concurrency:
+  group: ci-issue-1020-discover-geo-fallback-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   # ---------------------------------------------------------------------------
   # PG17 proof — the REAL runtime proof that the public.-qualified geo predicate

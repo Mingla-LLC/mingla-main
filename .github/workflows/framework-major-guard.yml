@@ -47,6 +47,10 @@ on:
       - ".github/scripts/strict-grep/orch-1386-framework-major-registry.json"
       - ".github/workflows/framework-major-guard.yml"
 
+concurrency:
+  group: ci-framework-major-guard-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   # Job `name:` is deliberately SHORT and STABLE ("Framework Major Guard") so it
   # can be bound as a ruleset required-status-check context (issue #1051) — a

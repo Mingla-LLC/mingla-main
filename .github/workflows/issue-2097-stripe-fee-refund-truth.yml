@@ -27,6 +27,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2097-stripe-fee-refund-truth-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   issue-2097-deno-and-contract:
     runs-on: ubuntu-latest

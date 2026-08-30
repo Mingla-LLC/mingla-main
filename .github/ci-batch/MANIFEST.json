@@ -11414,7 +11414,7 @@
       "providerWorkflow": ".github/workflows/issue-1002-campaign-builder-multi-destination-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8da35c12e5c25e33475da6be56012bac2b705da4fdad1b488aff258bc89ecb5e",
+        "sourceSha256": "117675329b1a23d5a99ead8ed0831b38a38cc552440fd58f8b2324bcccb4aca6",
         "triggers": [
           "pull_request",
           "push"
@@ -11506,7 +11506,7 @@
       "providerWorkflow": ".github/workflows/issue-1014-free-publish-currency-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "dd55b5c5610fdb9dcc93dfad85120cccd5899540cd9aaaf5b6018db4d9709102",
+        "sourceSha256": "3b6d8d90cdf5697d9a0f885adcbfe80db0bcb378b9c8e316c088a6d4b920a475",
         "triggers": [
           "pull_request",
           "push"
@@ -11551,7 +11551,7 @@
       "providerWorkflow": ".github/workflows/issue-1020-discover-geo-fallback-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "25d3b2db0228b8c9cb843c7b917ed9423035340022a583924eecbc79c2ddf529",
+        "sourceSha256": "158a23987048894c305a8024d551e9db7d24ba6337730d8195a69a3984f72758",
         "triggers": [
           "pull_request",
           "push"
@@ -11698,7 +11698,7 @@
       "providerWorkflow": ".github/workflows/issue-1039-1043-theme-readback-rsvp-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2b0561310b2f17c7ab5f682578ab6f9d6c2677d87080df356bbbe4bcef33cdce",
+        "sourceSha256": "f9f4c4efa3f6584c5a8a51270e2656cc3053c0a129c112893fd052e7a72d9ce8",
         "triggers": [
           "pull_request",
           "push"
@@ -11746,7 +11746,7 @@
       "providerWorkflow": ".github/workflows/issue-1042-assetlinks-tests.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
-        "sourceSha256": "60b055bcf574d56bc759fb937709f91f4c5d61c2f3e2b3950794fd8cd6afc6a4",
+        "sourceSha256": "1a45d4a5d5a8fb63eff7faa03b6113a40384fbe13d19d6f761d896f1d9f9b321",
         "triggers": [
           "pull_request",
           "push"
@@ -11792,7 +11792,7 @@
       "providerWorkflow": ".github/workflows/issue-1044-auth-failure-capture-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "ba148300dd10783706bf0a0a25cd3afdcfd447908806c5d99a96cf13e40c6b74",
+        "sourceSha256": "7c4dd94b0146bffaed1e7bb9fae600463775ad25d8225e6761c1c549f06ac42d",
         "triggers": [
           "pull_request",
           "push"
@@ -12000,7 +12000,7 @@
       "providerWorkflow": ".github/workflows/issue-1175-paystack-refunds-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "4c41013295c1400639cd572b286288807f5af6aa970bdea51e2fe36f815c831e",
+        "sourceSha256": "1803f44ad2ba81e6b5c8b94ebd56379fe7586eae1b06964479c96511d4cb1461",
         "triggers": [
           "pull_request"
         ],
@@ -12173,7 +12173,7 @@
       "providerWorkflow": ".github/workflows/issue-1179-cancel-refund-fanout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "dc534b7d3f1d67022feefead5ea35d8d7a01bf6d32696cf8e8767d73bbf2d519",
+        "sourceSha256": "7c8507142caf3faf8cd9d6bb4acbd47cef0378af834466f76d49733fafb47f2b",
         "triggers": [
           "pull_request"
         ],
@@ -12222,7 +12222,7 @@
       "providerWorkflow": ".github/workflows/issue-1184-video-phase-a-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e7f0af5266832c6b3fef01a7a77d93bb93f7db221bfdf84b4ed214a07a804891",
+        "sourceSha256": "c83fdee863a6a253881f39f6870e7fd50eef61ccadb8f3ba5da7cf0c8595b9b9",
         "triggers": [
           "pull_request",
           "push"
@@ -12278,7 +12278,7 @@
       "providerWorkflow": ".github/workflows/issue-1185-reddit-video-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a5a500a366005aaf6d9710109d83399c2ff04be5506b385547107c5ab3877344",
+        "sourceSha256": "57359136157d07fc80d883685bf96f6de39c9ec4371270265139a16f0b83dd70",
         "triggers": [
           "pull_request",
           "push"
@@ -12538,7 +12538,7 @@
       "providerWorkflow": ".github/workflows/issue-1392-stay-activation-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c28c5210e2f569ca33d10b0636ed8ecec476fa41f3b15d75561d256b2f081da4",
+        "sourceSha256": "dd402a0f5267cd3d1942a58156c5848aefd7507e41fd00d53ec767ae7ea5214f",
         "triggers": [
           "pull_request",
           "push"
@@ -12586,7 +12586,7 @@
       "providerWorkflow": ".github/workflows/issue-1403-listing-insights-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "413ef73a6e35769e7bb517531cdf5f9b10f7893cc7c3533e3ffbdc8543011033",
+        "sourceSha256": "bb8c010875f47752985c930a54c659e118119f905c67fe49313f634013ae3255",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -12625,7 +12625,7 @@
       "providerWorkflow": ".github/workflows/issue-1406-customer-patterns-performance-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "adb71dfb0381840485475e3a5c1e1b70e5c3b2df1dbc90ec874aab5c032648d3",
+        "sourceSha256": "72df4a212f93ee11ebe42b4e8611bb12df18e9d17dfcb1f9352e9f78de23c921",
         "triggers": [
           "pull_request",
           "push"
@@ -12667,7 +12667,7 @@
       "providerWorkflow": ".github/workflows/issue-1421-venue-organic-insights-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "730f2ef858265860a663d1c240cf2df47006a528da1ceffa786cbc874815d057",
+        "sourceSha256": "8fc9b35326cb6f9caadbbde092de843bfd7b75ca8990e77edf432cb8b277cf7a",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -12707,7 +12707,7 @@
       "providerWorkflow": ".github/workflows/issue-1423-stay-discovery-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e56e088feea8438b5f1d24a06985067c69c2dfbff79a94ebc025d7e9d1e1e98c",
+        "sourceSha256": "95926fb42e3d69dbb5ba00a6a025dc8e6de87d900ac47f331e9398a150bdf926",
         "triggers": [
           "pull_request",
           "push"
@@ -12856,7 +12856,7 @@
       "providerWorkflow": ".github/workflows/issue-1431-stay-ads-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0cb9aea8fdebe59e6ed0da5495dbc27b1395b3bf0d278e3ba082e293b5f30ae6",
+        "sourceSha256": "b0461f5575efc5004a33567b181247f5013cfbfd6ed43257f89f5f4a73073b07",
         "triggers": [
           "pull_request",
           "push"
@@ -12969,7 +12969,7 @@
       "providerWorkflow": ".github/workflows/issue-1447-rsvp-admission-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0db63a3b3a023d3d9771e1102e4e282406d9cfe3b0aa6d16e4f3a45509930f4c",
+        "sourceSha256": "98bfafce4ad48e34834610b0c0a2491db1e04a7fdfee0d50d5646cb4d8e1f204",
         "triggers": [
           "pull_request",
           "push"
@@ -13037,7 +13037,7 @@
       "providerWorkflow": ".github/workflows/issue-1456-edge-deploy-idempotency.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "751a292672e8a8c96fa8a541fcae8e6fadb5059fd37320facb2929477f10124c",
+        "sourceSha256": "1f134ff179aee31cb038e9731518313096a749141ede5b24158e94063824f33b",
         "triggers": [
           "pull_request",
           "push"
@@ -13078,7 +13078,7 @@
       "providerWorkflow": ".github/workflows/issue-1459-venue-manager-photo-upload-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "6d1355cae0c75fc9e1dee102c4d78de596c9d17f9e682bdaaa6269aa85bd4c56",
+        "sourceSha256": "aa58e4e71436c9c2c9081f8719c4bb5b0664cce93164d450ca385f9c96faaf2b",
         "triggers": [
           "pull_request",
           "push"
@@ -13173,7 +13173,7 @@
       "providerWorkflow": ".github/workflows/issue-1463-permitted-staff-venue-submit-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "621047b0bfece5ce1e07507db61cdd615bdd0c1d1f3db5e9769ea1393b74dbc9",
+        "sourceSha256": "fccfbfaced0d5fc2a348a37c0e2753ee91814f13d9f0345c77f4108d2396e11c",
         "triggers": [
           "pull_request",
           "push"
@@ -13319,7 +13319,7 @@
       "providerWorkflow": ".github/workflows/issue-1469-stay-authoring-permissions.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "30650079a9c2bd5035a9457e40094f062c18f0207b72ca98bc8b0e34fbd23c52",
+        "sourceSha256": "9ff64c5c5116f5cdac65e0df30541dfe3aee1036d2e7c388010725bb80af1f66",
         "triggers": [
           "pull_request",
           "push"
@@ -13417,7 +13417,7 @@
       "providerWorkflow": ".github/workflows/issue-1484-stay-desktop-shell-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "6b96bf4708221d5716c812bb7453708b23174d4da3c9aac06a308f478f25f2c4",
+        "sourceSha256": "43111500eb8c1dcbade6fba97215d5f5b1825a55021a1ece2bd053cc8a71a79e",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -13515,7 +13515,7 @@
       "providerWorkflow": ".github/workflows/issue-1486-dormant-render-suites.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9eb4060664485232f87558a67bd5c3c09786f717057cedde853209533fe42b28",
+        "sourceSha256": "ee5a83851c0054bce1f509fd958c557060923ef8444ecd513febf3b6f7f1870f",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -13551,7 +13551,7 @@
       "providerWorkflow": ".github/workflows/issue-1501-add-rooms-form-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "3a238c48c71ff082cb435cd5b8b85a83d74407cad33b4a7a34c22bc1fab525e9",
+        "sourceSha256": "521d7fbbd435e89c7c3e572c8c98131a0481d79bfdc39dad74fe315cee0be006",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -13587,7 +13587,7 @@
       "providerWorkflow": ".github/workflows/issue-1503-stay-date-pickers-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "40756b0b847cc40221955b1be128342ac3d6aa1aa134d9d346842cc7362542e0",
+        "sourceSha256": "8469e7fdb6403faeaa81502ba769bffd06f6de328d733ab75fc7f0b6a6cf4b64",
         "triggers": [
           "pull_request",
           "push"
@@ -13738,7 +13738,7 @@
       "providerWorkflow": ".github/workflows/issue-1529-notification-country-code-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "beca841da93f1e5b297bfb47f5179b1c4d058614c4a390c785a2f6f573086162",
+        "sourceSha256": "be067190eb81aa8ad0ad4c59e19d596dce63e1d350f925cf4e9bb760a58af26c",
         "triggers": [
           "pull_request",
           "push"
@@ -13795,7 +13795,7 @@
       "providerWorkflow": ".github/workflows/issue-1532-stay-manager-ux-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "e44d429d908616805006128ec1697441a857524c8b701458f378e5929e2ca486",
+        "sourceSha256": "7020aa20ecda1a8346b11b5eb4279d622cbda4424168ac900fffde09baf0ebba",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -13839,7 +13839,7 @@
       "providerWorkflow": ".github/workflows/issue-1540-paired-saves-sheet-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "10c131eea30955d47fed71a98719e0810fe6945d0cb6c77521c0c9bee65eff9a",
+        "sourceSha256": "7a85dbd3aace23a60d289651c5cda3bc2df2db95b8f53080e5df3b5bf30762ca",
         "triggers": [
           "pull_request",
           "push"
@@ -13894,7 +13894,7 @@
       "providerWorkflow": ".github/workflows/issue-1563-room-price-filter-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "5e8f0565d3efb2f53ac1b69fbf159aee1bb2a486e6d04c0bc9871120e13fe249",
+        "sourceSha256": "ce954207d4da6d3df6fec598ce3bedb2ab82b356e6fe5958aa84425beb64a9ec",
         "triggers": [
           "pull_request",
           "push"
@@ -14206,7 +14206,7 @@
       "providerWorkflow": ".github/workflows/issue-1614-onconflict-arbiter-audit.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "843500edabea644f03381ef3c6cc307af4779df8611bc2695db8f8c5a2b185e7",
+        "sourceSha256": "d4e9bba5d9c7f04d5c1c3629b3dab34f4e4b9a3d008228c1b60ca8ad19f77a11",
         "triggers": [
           "pull_request",
           "push"
@@ -14646,7 +14646,7 @@
       "providerWorkflow": ".github/workflows/issue-1644-storage-guardrail-collage-fill-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "382311beccdd473d9caa76d76a34123e9ba618b4fef503995fcb42bc0e4ea4d4",
+        "sourceSha256": "6ae6028065277b4edc07dc0996222dfddaefb31bcb3432997e9236a56ed58bf3",
         "triggers": [
           "pull_request",
           "push"
@@ -14705,7 +14705,7 @@
       "providerWorkflow": ".github/workflows/issue-1647-admin-mv-and-db-reclaim-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8aa504f373f0eae9e99866d36a49fa38e12489a31e1f1d2fcadcdaadb227f863",
+        "sourceSha256": "dd95e568b765494e0ca29464462d381a07cbe48031c54bef22ed34db781cc2b2",
         "triggers": [
           "pull_request",
           "push"
@@ -14921,7 +14921,7 @@
       "providerWorkflow": ".github/workflows/issue-1719-unified-sharing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "82058532c2a4464bff9bb5ddfdcf7b0c9bd112b896cb6ac9d8b2226ede8a6e56",
+        "sourceSha256": "df866cc75a6b5278d9df0caf676059c0c41876b57a58da2c8b5fb44650cb075b",
         "triggers": [
           "pull_request",
           "push"
@@ -14974,7 +14974,7 @@
       "providerWorkflow": ".github/workflows/issue-1771-friends-trigger-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "05981f5e2614795f547791fcd37e93121aff980c43d84d1bd8d9318facc72774",
+        "sourceSha256": "af99ea0f6e10ec6bed4f278558b016c53bfb6432032f2f021738cee350be27d8",
         "triggers": [
           "pull_request",
           "push"
@@ -15013,7 +15013,7 @@
       "providerWorkflow": ".github/workflows/issue-1773-reservation-stay-ingest-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2d04e4a40ae666beaf8802301ed85a93e650eb04accb5b8efb6c7aa2c6dc1b98",
+        "sourceSha256": "530002917304eed4339f16acad7124ffc45e33ac1ba3e55e78265a221540f5ee",
         "triggers": [
           "pull_request",
           "push"
@@ -15063,7 +15063,7 @@
       "providerWorkflow": ".github/workflows/issue-1774-people-page-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "992c9b39a01a60d27e07511768386e124c141e217df71786d13b710ee427ceee",
+        "sourceSha256": "42cc16e95a4b147bc34c0c8ef90fc7f4cfba0c13885fb6dc810711bbe1f483e2",
         "triggers": [
           "pull_request",
           "push"
@@ -15128,7 +15128,7 @@
       "providerWorkflow": ".github/workflows/issue-1775-csv-contact-import-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5a67833a0d054469b7008da2e18470fd822124e698b4a6c4944e2ba4d6a46b74",
+        "sourceSha256": "4494fb0495a6da26b64c911da676f0c85b8fe0726ffa8a25c2326e3cff809d8a",
         "triggers": [
           "pull_request",
           "push"
@@ -15184,7 +15184,7 @@
       "providerWorkflow": ".github/workflows/issue-1789-spots-print-menu-depth-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "7e917fe71d32ee46e7b6dc721dd6c7a39952fab32a0e5a6cd3674e714282ca24",
+        "sourceSha256": "e6e444e73c03ce1ceead1c155bc9244439bd262a752af133b3f1d02d8eb448bd",
         "triggers": [
           "pull_request",
           "push"
@@ -15240,7 +15240,7 @@
       "providerWorkflow": ".github/workflows/issue-1791-orders-queue-alerting-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "525c303be70443cc6ec722d3755b13f85d7795b9bc17d956d07207967ba38d09",
+        "sourceSha256": "59922caa9c85b095ef427edc7072ce62c8f2d9c87e27c57641bb2aa240cb3b9c",
         "triggers": [
           "pull_request",
           "push"
@@ -15300,7 +15300,7 @@
       "providerWorkflow": ".github/workflows/issue-1792-waiter-mode-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "43061d90da1cf3e0b970e72539bf4c488fae4dd08cc66a7e51509c14bbd31a6f",
+        "sourceSha256": "955a191e7e1dd5a24a4d449794fc6fd510a8580cd7c8ed926675a977b414ddc9",
         "triggers": [
           "pull_request",
           "push"
@@ -15352,7 +15352,7 @@
       "providerWorkflow": ".github/workflows/issue-1793-guest-ordering-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "51e871ac46a02199532f9634e98343a34acadc200c03495925d06826eac1d0f8",
+        "sourceSha256": "9918e98dff23c65b8d259037454b491b70e9d1455f877d9ac471825bf47e0259",
         "triggers": [
           "pull_request",
           "push"
@@ -15418,7 +15418,7 @@
       "providerWorkflow": ".github/workflows/issue-1810-guest-roster-export-compat-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5a0f84eae1b6717f4834a9267f67c1c23eaaef3e65438c1955255d3fe1b33d96",
+        "sourceSha256": "9b77246a0f0211015cd4a19ae7b51fd5b47cf0933d08be7dbbd371f06352d96f",
         "triggers": [
           "pull_request",
           "push"
@@ -15460,7 +15460,7 @@
       "providerWorkflow": ".github/workflows/issue-1812-brand-people-export-search-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a517e2cb31fac12e1cd7c787c789deeb9a8b7758a31682309361131fb5ac0324",
+        "sourceSha256": "d00a0120910234ddb83b0e31b290f250f711f562896b995df4d57c59338d9c24",
         "triggers": [
           "pull_request",
           "push"
@@ -15525,7 +15525,7 @@
       "providerWorkflow": ".github/workflows/issue-1857-phone-country-authority-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9320f7a8d49cd7118008181bf72db82dc1ff099a41dc7e3f0888627242153d92",
+        "sourceSha256": "de8df82d38bc5a9a258379bbc679db0260a50c41f771b7fa50f134be609c97aa",
         "triggers": [
           "pull_request",
           "push"
@@ -15589,7 +15589,7 @@
       "providerWorkflow": ".github/workflows/issue-1858-explicit-brand-export-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "443347dfe6f52980818f7fda44ce7dbc6833a647c3c781ea8ef040f88d160e87",
+        "sourceSha256": "1eee7bf2e72704246bf25ac10b8abbc79039f83f512626f4abf529f2a68cb9f4",
         "triggers": [
           "pull_request",
           "push"
@@ -15685,7 +15685,7 @@
       "providerWorkflow": ".github/workflows/issue-1875-google-signin-transient-failure-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "08fe28184054dffd1b4b8c3b1d01d1e2dc6ed3c806ca29469887a0bae3b54902",
+        "sourceSha256": "02c1b7a02fb120a394a5ad92e431ca5ea57d8f945718c61ec2fdc216118c5c33",
         "triggers": [
           "pull_request",
           "push"
@@ -15849,7 +15849,7 @@
       "providerWorkflow": ".github/workflows/issue-1902-rsvp-backend-safety-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b958f41593b427e0d666da1ea68d5d7da266e5ddc925c6875c71702aa1c9f125",
+        "sourceSha256": "df4ff5cb31c2dea42f1fa52e41e59536b3ee9a9d8b79481ebfa18e30fa11ce12",
         "triggers": [
           "pull_request",
           "push"
@@ -15894,7 +15894,7 @@
       "providerWorkflow": ".github/workflows/issue-1928-app-identity-registry-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d17675d6125854afd57bbb06d7c31579ab4aec1eb937a02f1e5bd40d96ebb6ae",
+        "sourceSha256": "05e921cb084680b1b460b37ab514543d86ac2d247865568e5f8a75a590ba7412",
         "triggers": [
           "pull_request",
           "push"
@@ -15958,7 +15958,7 @@
       "providerWorkflow": ".github/workflows/issue-1929-hidden-direct-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9f75f5c4fa36312dd13032e07d9d31f031f923d876344d9d730f6a984f9f5c77",
+        "sourceSha256": "9b612b0b6864f9dd12314b5e38bf1d01be45907a5beeedaf4c6237424766b797",
         "triggers": [
           "pull_request",
           "push"
@@ -16014,7 +16014,7 @@
       "providerWorkflow": ".github/workflows/issue-1930-checkout-current-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "fb59f33982feb30656f08497e3d0ef3b5c7d55dc9e8f85c5095de607ab0dd916",
+        "sourceSha256": "02dc398b17e0c8bd5a4bec6614223475c7d3be084cb8fc457e94e22c9d7ef150",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -16077,7 +16077,7 @@
       "providerWorkflow": ".github/workflows/issue-1931-private-event-access.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0f9c578731d48b119b314cb59c8f1b21f8279581dc62b768fd745f5c707fd4a2",
+        "sourceSha256": "ebda3248f678e9e70623b5332e0ac3459d2bd759a8cb42d69aa11b3ead1fd450",
         "triggers": [
           "pull_request",
           "push"
@@ -16350,7 +16350,7 @@
       "providerWorkflow": ".github/workflows/issue-1972-ari-event-lifecycle.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "9f7a01608306566407e2e1d0c1f6e9ccffe5c6503643d2b1ec063dd7ad797a32",
+        "sourceSha256": "b41f75a4dcc031cfa2fb92f84df78408c7d12039428419ddb840eedec77d8dc5",
         "triggers": [
           "pull_request",
           "push"
@@ -16417,7 +16417,7 @@
       "providerWorkflow": ".github/workflows/issue-1973-ari-experience-lifecycle.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "ec8f6d2261a69e3f0c48ed74475cd084503042092eb82bfb37d7a0d1c8c3220b",
+        "sourceSha256": "481a777aea742399cd392973415a62c83aa39e01b94b584b83c2e491031d8e26",
         "triggers": [
           "pull_request"
         ],
@@ -16472,7 +16472,7 @@
       "providerWorkflow": ".github/workflows/issue-1974-ari-ticket-pricing.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1242ff4f75786b92ea1c55d8501111bbf157c0933ec121d8b38a0c0ddf28878d",
+        "sourceSha256": "3daa47003e541c300523ffe71755c0cbb5ceff8d68c4f7d15e536ab3f80497c0",
         "triggers": [
           "pull_request",
           "push"
@@ -16536,7 +16536,7 @@
       "providerWorkflow": ".github/workflows/issue-1979-ari-venue-ops.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c85d6087bd2a42cdefc01c44c34f031c7068b9f66a48eee1288d30e983d62531",
+        "sourceSha256": "99601d47010ff037c16f3182d14ef89994f158cefa27e1036609885fc87927c0",
         "triggers": [
           "pull_request",
           "push"
@@ -16589,7 +16589,7 @@
       "providerWorkflow": ".github/workflows/issue-1985-ari-task-state.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bf24d99058e3265658243bdb1f9e8f88ebc6000245f8ea9008b01fb419e3ee6b",
+        "sourceSha256": "cba1d22562e936e0ddb319a13588be815b92baf4a127d9618257abee58f18932",
         "triggers": [
           "pull_request",
           "push"
@@ -16666,7 +16666,7 @@
       "providerWorkflow": ".github/workflows/issue-1995-contact-book-blast.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "2169f5a3afebdf3244674fd9ac2c1c18f74021cc8b7ce06605aeccf7c6d80376",
+        "sourceSha256": "665bc07590d372d96787c8694759fdb24ceebadb05770e9530b10f8efac45fc3",
         "triggers": [
           "pull_request"
         ],
@@ -16838,7 +16838,7 @@
       "providerWorkflow": ".github/workflows/issue-2009-published-event-visibility.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "6b66f2f6009b8a3e442bf7baeebfb165dc5e8dc8508ddfa1ba6b85e24cf752fd",
+        "sourceSha256": "1aa4b1f3f491ec99974500de608bde90c499b71e0d37a8c83b2993738da6c7c5",
         "triggers": [
           "pull_request",
           "push"
@@ -16968,7 +16968,7 @@
       "providerWorkflow": ".github/workflows/issue-2015-app-network-bindings.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "99961c5458e0729a1d71093438a3d265e9296b941c7d3bd83085b9564ab1092b",
+        "sourceSha256": "20fadaf21fe6ad761271016f6dc228b94eb8c53661c52ffecf815e15311274c9",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -17113,7 +17113,7 @@
       "providerWorkflow": ".github/workflows/issue-2060-ari-reliability.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5e520538121599d16c69240108ad5e7ca6472982f624d353f1bf4f113db66191",
+        "sourceSha256": "1a70383dd9489399474946231080297d8c99b23576147f1b74f4f6f1b1dcbd9b",
         "triggers": [
           "pull_request",
           "push"
@@ -17179,7 +17179,7 @@
       "providerWorkflow": ".github/workflows/issue-2063-ari-brand-management.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "45a0be3a29376ea90fc8d23d4e5a40c3fec4159ae668d9fa3834c579cb0b9864",
+        "sourceSha256": "ae3ee7ebadf77f0ee20e868c39c1404571e7cede4c263daca5d1dca9fc423b4b",
         "triggers": [
           "pull_request",
           "push"
@@ -17255,7 +17255,7 @@
       "providerWorkflow": ".github/workflows/issue-2075-force-update.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "b48712f72d0b431f9f20cd0cde3da54bf63ffeac675a1c1aad4f7be64b2e74f8",
+        "sourceSha256": "dffb0ec04c8ddfb6ec9e355d6e87df2f3defec57344865b6bd47172db8d842d7",
         "triggers": [
           "pull_request"
         ],
@@ -17326,7 +17326,7 @@
       "providerWorkflow": ".github/workflows/issue-2079-paystack-late-refund-identity-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "92da20a6b1129208637bb9bbac557d3d272e05ab22f8b9cefbf95d0e8a75abe5",
+        "sourceSha256": "a30ff2f29184f1365a21033219186b4314b3940e72d722c1336dcc17a315623e",
         "triggers": [
           "pull_request",
           "push",
@@ -17432,7 +17432,7 @@
       "providerWorkflow": ".github/workflows/issue-2097-stripe-fee-refund-truth.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c73ec03bcde2fbbda952050cc088e339ea7d08d3b320f966d699ea4f6e692ac5",
+        "sourceSha256": "9510e1e0bf7ce2de5769e97c5e8eae6e10bf567399b2de6bbc91d0bf3ee9b7bf",
         "triggers": [
           "pull_request",
           "push",
@@ -17493,7 +17493,7 @@
       "providerWorkflow": ".github/workflows/issue-2099-pending-venue-identity-correction-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0555b6389b75fe60d1ab0c1f5186d2738203cc64f61ad19528dacf32b4a54a23",
+        "sourceSha256": "31c39b5bb0f87541daa42819e8bf8e2a38b53acf2e4ff1b01be6cb863e7c2d53",
         "triggers": [
           "pull_request",
           "push",
@@ -17567,7 +17567,7 @@
       "providerWorkflow": ".github/workflows/issue-2101-named-buyer-checkout-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "20b8881eb440075f38bc238692190bfbc9dbf5d45f87331613cf79cfe88a7758",
+        "sourceSha256": "6ddf20b62c3a940be91ffbf4acb27d8ac40d3cf5cd6dc95e067e82ed566184a3",
         "triggers": [
           "pull_request",
           "push",
@@ -17647,7 +17647,7 @@
       "providerWorkflow": ".github/workflows/issue-2107-mandatory-js-update.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "457269f8b140b387501bf3381c916d81dfe190d7ef1f6c97543b75e843f9ff02",
+        "sourceSha256": "1325a3698eba843c041e72fc018f9244bfe0aa760363efde0b87b7aa9b0c0a95",
         "triggers": [
           "pull_request"
         ],
@@ -17712,7 +17712,7 @@
       "providerWorkflow": ".github/workflows/issue-2117-offering-visibility-gate-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5338ac577e3bb294b026927f4a58e84c9c3d60e19a1f99c2d9534dfc35fa9e2d",
+        "sourceSha256": "8aafd774606c2cb6d518a08e3a7095e00890eab26423b38f5a7ef61b957f68cd",
         "triggers": [
           "pull_request",
           "push"
@@ -17762,7 +17762,7 @@
       "providerWorkflow": ".github/workflows/issue-2136-free-checkout-contract-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d02c4a1b8179878bcc301fcd68ebc643e86ac38da815bc42452be5e692699890",
+        "sourceSha256": "e6aa0052f41e5898b514e2d498dcd5e7c9ff3a9d53e957e65c746df1c991b97d",
         "triggers": [
           "pull_request",
           "push",
@@ -17821,7 +17821,7 @@
       "providerWorkflow": ".github/workflows/issue-2150-free-resubmit-idempotent-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e0d17f4fbcaafd476ab36f9b0eded905b1211b927de06840a8ce509c6e155329",
+        "sourceSha256": "2248ad14e933f2850c817492d12014eaf08e53c1de4b261aa774a515a87abd98",
         "triggers": [
           "pull_request",
           "push",
@@ -17882,7 +17882,7 @@
       "providerWorkflow": ".github/workflows/issue-2160-multiday-multiselect-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a1241160cba77d7b9f6d7af16fb04a77c2aaaec48b8b05a081a44c48c44cc930",
+        "sourceSha256": "f999943d581aeab976c808de726265e19cc7005c098b6e7a0ef1df0b41a4fa27",
         "triggers": [
           "pull_request",
           "push",
@@ -17965,7 +17965,7 @@
       "providerWorkflow": ".github/workflows/issue-2160-tester-adversarial-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "cebfdced5c5a2fc8c360af7c464175cea1d025e213f8aaa94805b6a963300af0",
+        "sourceSha256": "d8dd136960b378e8192cd92ef68e75f6ee23f98ec61baf9193d34bd878e37f26",
         "triggers": [
           "pull_request",
           "push",
@@ -18013,7 +18013,7 @@
       "providerWorkflow": ".github/workflows/issue-2168-revocation-refund-handoff-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "72afbf9b957975ec6eea34db005bc5f0c21e1c6ab60ce1dea2100516ed7b1740",
+        "sourceSha256": "0db3f9d4f77551116aa907d90e07d26a7c3d0b4b67f861775502f28f52ad9e21",
         "triggers": [
           "pull_request"
         ],
@@ -18055,7 +18055,7 @@
       "providerWorkflow": ".github/workflows/issue-2198-paystack-return-verify-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "80e611689406a3669508a1a744f922ffe7607ef10e2c32c3fd8f99dffaba4267",
+        "sourceSha256": "72b69d44442195556ae924e3515a79ba0e82becd3d4a40ae40ebb8c2e2f56f77",
         "triggers": [
           "pull_request",
           "push",
@@ -18156,7 +18156,7 @@
       "providerWorkflow": ".github/workflows/issue-2216-ticket-qr-image-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0adfb63a42253e84ef5911a36c2870ef746b4014cdb2ec100136416621c08ccb",
+        "sourceSha256": "c4ece1d47ae6dbac05e17ca83161ab98216757eb1f6488eb34264c20c5d164e9",
         "triggers": [
           "pull_request",
           "push",
@@ -18216,7 +18216,7 @@
       "providerWorkflow": ".github/workflows/issue-2217-confirmation-app-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5bc6352275fa721b233e9a683a8bb5f7090d9936e91d2a1365ef010ab39de94f",
+        "sourceSha256": "e153f34ad1eee8f4799f30aac94522b68fbf52135faed37d698c39647350dd78",
         "triggers": [
           "pull_request",
           "push",
@@ -18279,7 +18279,7 @@
       "providerWorkflow": ".github/workflows/issue-2220-icon-geometry.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
-        "sourceSha256": "8d0f60855b49d3440a0d4681f34deda34c4028f2f4eccb1fe4ddc9f0560c1789",
+        "sourceSha256": "9b14808ec740d2906a5c9c2b0665bec7397fea029ff7fba2a5b38e0ae4f1d3d6",
         "triggers": [
           "pull_request"
         ],
@@ -18389,7 +18389,7 @@
       "providerWorkflow": ".github/workflows/issue-2240-email-app-link-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "116660018f8d59dd5f9e03a15278f3d2b4eff1291258c3c18d888c234c8876cc",
+        "sourceSha256": "3f6a047fca028b78c68db14abe3a03da33d105aab50f5118064186ba34233cab",
         "triggers": [
           "pull_request",
           "push",
@@ -18502,7 +18502,7 @@
       "providerWorkflow": ".github/workflows/issue-2262-composer-responsive-layout.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "8103bb178868fc6d280a8cfd7b54bbd48e856977a184a23fbaed7bf781470d6b",
+        "sourceSha256": "df16041693b5e007096ed77b18ecf3e9092fa78177844b3416a8eb0ab7f559cd",
         "triggers": [
           "pull_request",
           "push",
@@ -18570,7 +18570,7 @@
       "providerWorkflow": ".github/workflows/issue-2267-marketing-tenancy.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a90d1d4431ea9f8b0379359913721840de6cd15183c00355712b976dbe7fee87",
+        "sourceSha256": "5784aaa8f1f8e4abafc4849078c24c6ba040b804792015abd0c15b00cce252e7",
         "triggers": [
           "pull_request",
           "push",
@@ -18620,7 +18620,7 @@
       "providerWorkflow": ".github/workflows/issue-2269-verified-phone-claim-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "de461446257b58dc4f226538b8658c43e43ec02bfc4450ca24c2d16f702b471b",
+        "sourceSha256": "6cd7ab75f20042a7e3ddd08a17f2588d13b3ed3c798a8416adbfe8331a0fae91",
         "triggers": [
           "pull_request",
           "push",
@@ -18672,7 +18672,7 @@
       "providerWorkflow": ".github/workflows/issue-2272-web-app-link-landings.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "349d07bda708c4e9a9c695cffcf028881070884221a1c3ebd76e3a333252efc7",
+        "sourceSha256": "d657c4796bc8c872ac98639e57e5d3b72383f4cbc3981ddc463acfa4d6e11d87",
         "triggers": [
           "pull_request",
           "push",
@@ -18782,7 +18782,7 @@
       "providerWorkflow": ".github/workflows/issue-2305-conflict-resolution-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "c8e4a598770ce16a44db92a336fb58a43ba617f4da4fccf16f844de252b808b8",
+        "sourceSha256": "cff1aebd2b1439dfe8b0b3da1dcb82271797b1070e14b82ff6fa1a94d7a5c108",
         "triggers": [
           "pull_request",
           "push",
@@ -18834,7 +18834,7 @@
       "providerWorkflow": ".github/workflows/issue-2306-lazy-native-imports.yml",
       "rationale": "Retained as the sole live provider of its complete suite during Phase 1.",
       "workflowMetadata": {
-        "sourceSha256": "6381ea0ae38b329cf754dbded44c4726e310b3337592948debaa9765ccc0b7e2",
+        "sourceSha256": "6071d3488e9e35e97d097f0754db26cbfb43b8bdadc53edd17d772f4e430f605",
         "triggers": [
           "pull_request"
         ],
@@ -18947,7 +18947,7 @@
       "providerWorkflow": ".github/workflows/issue-2323-free-order-claim-and-cta-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "5aec07bf3d60015d1872fd6321200cded53780db5ef26927e70bf8df09d529e7",
+        "sourceSha256": "242c6297004592247bff29fb9648a046e67f745456b71732daaeeaf5e4a9d714",
         "triggers": [
           "pull_request",
           "push",
@@ -19009,7 +19009,7 @@
       "providerWorkflow": ".github/workflows/issue-2333-online-event-publish.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "54642f2312bac0b6e42d3228ffe23d91817f5146159b61d9823efa9080930cee",
+        "sourceSha256": "2d30709ce54af2b56b3ea15eb15e9c389103d87373b04d17ba1aa764a13fd6c8",
         "triggers": [
           "pull_request",
           "push",
@@ -19065,7 +19065,7 @@
       "providerWorkflow": ".github/workflows/issue-2337-free-409-honest-copy-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "0513bbab793f1b59ffb2464ba4223175eb9d1c24f4b87a2b67f57d47bd595cd8",
+        "sourceSha256": "f8164ac0de92bb0834bc7ccaa920fcb99cd35095e8536f3d34055e339dd98a54",
         "triggers": [
           "pull_request",
           "push",
@@ -19133,7 +19133,7 @@
       "providerWorkflow": ".github/workflows/issue-2347-wrong-day-pass.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "bb3e6fa0a37313d72d4eaea0a9735a96655b9798c9f33cfe2899d6e42a5bfa31",
+        "sourceSha256": "ec33ab88c21ad040c92f049097c44b128a75d8f1d02aed14521a4f4f085fea31",
         "triggers": [
           "pull_request",
           "push",
@@ -19187,7 +19187,7 @@
       "providerWorkflow": ".github/workflows/issue-2353-format-truth-and-edit-grant.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "67f5241a1c5c08d1426d594be95538412a6b4501c679efc15c626260c0d6a68b",
+        "sourceSha256": "f9d58f05922c2c997dd7bfc8489e5187efe6a7e63431b889796a4fee90853831",
         "triggers": [
           "pull_request",
           "push"
@@ -19233,7 +19233,7 @@
       "providerWorkflow": ".github/workflows/issue-2391-migrated-postgres-snapshot.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "06aaf7a1baabf7d9ad3d190c402b81bc897042a25f750aeb9465bec6f345b045",
+        "sourceSha256": "2d19a3afc98333fd79af365a5121afdd50a2391ffc6f1e1c8c60d19610e3af57",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -19272,7 +19272,7 @@
       "providerWorkflow": ".github/workflows/issue-2391-tester-ordered-suffix.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a15898e66be861f0ae4cf1caef93eaed3a8ac57af4808eee0f7db86a0ba23717",
+        "sourceSha256": "1c833c1955b1bddfd4e3fe7739199c08f7a19588827a5cd4bd60be3dbcb3cd57",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -19358,7 +19358,7 @@
       "providerWorkflow": ".github/workflows/issue-2393-valid-marketing-test-fixtures.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "d6ea3933b77f620544626715509ca4a812266bfec3296e012ead9d9ca2ca4a61",
+        "sourceSha256": "466ad276405d0719a0d91c7dab4398192085784cc473b791d68895c154eab12e",
         "triggers": [
           "pull_request",
           "push"
@@ -19401,7 +19401,7 @@
       "providerWorkflow": ".github/workflows/issue-2395-manual-contact-groups-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "09ae9f4c392cab419b23b2d8edc11f81de42aa276d547b76797dc0ceba12e7f2",
+        "sourceSha256": "4c24c0ab10424ebfd6c556dbb1e209df9e93430eac6328c45f50e7ed52ffd77d",
         "triggers": [
           "pull_request",
           "push",
@@ -19467,7 +19467,7 @@
       "providerWorkflow": ".github/workflows/issue-2418-bank-list-native-identity.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "efb593b9bebb4aec358e938616ea34174fd7c02cc3a8ab157cf91df4db7c8e71",
+        "sourceSha256": "7f49ec4d020f0f6c654f1eaee6c1409f1bc7426eed9cc80c0125d9f6645e0a99",
         "triggers": [
           "pull_request"
         ],
@@ -19584,7 +19584,7 @@
       "providerWorkflow": ".github/workflows/issue-679-brand-follows-rls-proof.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "a2d6b6274bf7f52c9e84ad4bfb8c16d0fb549c30cf69475415426d2906adf7ad",
+        "sourceSha256": "7c2ef59a790f26a6ce953de6dd63fd623e57a1bfca3727892deaecf8fce85137",
         "triggers": [
           "pull_request",
           "push"
@@ -19623,7 +19623,7 @@
       "providerWorkflow": ".github/workflows/issue-855-pr2-source-tracking-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1db67ca7e96a1ce2a1403f56a8c1de6e27a5ed4c85b6234d343bdef3054c64e1",
+        "sourceSha256": "37a4b5d524dfa4807551c153335966aa16415c3902561b3347c7a9f81ecd0268",
         "triggers": [
           "pull_request",
           "push"
@@ -19668,7 +19668,7 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "8eca1f6912b2d803fc593be64f8d1f8179b82121e34c87e991c873d5ee308342",
+        "sourceSha256": "2fae7e7f3396fc7157ff3c89928a4ceb46b89e1e7dc7588750163b0ce120ab8f",
         "triggers": [
           "pull_request"
         ],
@@ -19719,7 +19719,7 @@
       "providerWorkflow": ".github/workflows/issue-873-guest-status-roster-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "791fa5b5f6bfbb28776c21c6f2c6e9f6496c9b2f371998cd9f5e1e6910b29804",
+        "sourceSha256": "8ea77d6542ef64861d53e530b14adffc78ec98f848b6a16f3fdfb6dc1ec8adee",
         "triggers": [
           "pull_request",
           "push"
@@ -19771,7 +19771,7 @@
       "providerWorkflow": ".github/workflows/issue-874-business-analytics-tests.yml",
       "rationale": "Retained as the sole live provider because it is operational or scheduled and is excluded from generic batching.",
       "workflowMetadata": {
-        "sourceSha256": "3ed1ebc876955cb788c7545019b18df8356781152615e2a5213704ea8e1a73d4",
+        "sourceSha256": "680f8581d527097abd20f24afd345703460548194ac23c2eb2f99420ce290719",
         "triggers": [
           "pull_request",
           "workflow_dispatch"
@@ -19808,7 +19808,7 @@
       "providerWorkflow": ".github/workflows/issue-875-customer-patterns-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "65e9a4ac202ae722d796eca57effd5a619ffa60e1edfa0194151137360fd1541",
+        "sourceSha256": "37867ad61fd5dfc3bbe2c2ef5a0d752dca6a2f1efb1795d91d2a8bd574afcfa0",
         "triggers": [
           "pull_request",
           "push"
@@ -19900,7 +19900,7 @@
       "providerWorkflow": ".github/workflows/issue-905-links-consent-suppression-tests.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "35355b3764f6affd3a3f35aef4719bc7000fc2142d4b68b8a0b765170a902799",
+        "sourceSha256": "c5abd7bf86a37289368ed9b9bc72d3cf98c1781ba6ec1a3abad6243e1d73dce8",
         "triggers": [
           "pull_request",
           "push"
@@ -19941,7 +19941,7 @@
       "providerWorkflow": ".github/workflows/issue-922-business-web-actionable.yml",
       "rationale": "Retained as the sole live provider because it consumes build, typecheck, lint, or bundle setup.",
       "workflowMetadata": {
-        "sourceSha256": "332046db59f700af94036a9fbc28162a52652e5192337306844b8139dc0f7361",
+        "sourceSha256": "6d50f9f9a838f4c60571f3ff850ed220481a234a3addc1902d8dbad4647c57dc",
         "triggers": [
           "pull_request",
           "push"
@@ -20153,7 +20153,7 @@
       "providerWorkflow": ".github/workflows/issue-989-campaign-builder-targeting-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "64da6a4eb85b6c84120615785e1bdbd18fe10845885fd4cc8117653c564036b0",
+        "sourceSha256": "cc90b70b35fd63bf7c64b89ea7b7e5083af3633ec6f8e1364c7e9349f2963668",
         "triggers": [
           "pull_request",
           "push"
@@ -20199,7 +20199,7 @@
       "providerWorkflow": ".github/workflows/issue-992-campaign-builder-google-snap-targeting-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1616315acdae7a0c7540b2f81f46c4c859bcf2c4546fde546ca838786e035770",
+        "sourceSha256": "1dff01f8f5aa5bc65809632dc512a6b264eddc0b2dac81952cf42427e1e1100a",
         "triggers": [
           "pull_request",
           "push"
@@ -20319,7 +20319,7 @@
       "providerWorkflow": ".github/workflows/issue-997-video-c-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "7e2614c3dd4d2c9563b7daa48b495fa2bd07272dc1645e6685df08b42210f6fb",
+        "sourceSha256": "68b8d58e90704810ce7a63e2c0b9e354cad07ee8af744fb512771909a032a08a",
         "triggers": [
           "pull_request",
           "push"
@@ -20377,7 +20377,7 @@
       "providerWorkflow": ".github/workflows/issue-997-video-d1-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e82fe3745a517d5bf3b4a4b2091a97f247c4dac8cc84f9990343e1f707a39246",
+        "sourceSha256": "1888a461b9dd16ebd68fb72506bf7ca2c11790c2f13559e01242efb6661549ef",
         "triggers": [
           "pull_request",
           "push"
@@ -20441,7 +20441,7 @@
       "providerWorkflow": ".github/workflows/issue-997-video-d2-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "943d898f085da0abd77feeb73fff6987e7054287c90ba765f6014e3b0a81b122",
+        "sourceSha256": "3d2d08127745fbb34b2b03727185ffc260fdf4722d6482eb1cc769c66144fc73",
         "triggers": [
           "pull_request",
           "push"
@@ -20501,7 +20501,7 @@
       "providerWorkflow": ".github/workflows/meta-orch-1337-social-proof-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "1c3ddbc0bef6e506db882d807415ae60752436077e53eb39d880c5423b67835e",
+        "sourceSha256": "66748f569217d6f4c8deb2d779f531d99a557c22f7530407ad09b2350e3780a2",
         "triggers": [
           "pull_request",
           "push"

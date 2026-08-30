@@ -39,6 +39,10 @@ on:
       - "docs/INVARIANT_REGISTRY.md"
   workflow_dispatch:
 
+concurrency:
+  group: ci-issue-2305-conflict-resolution-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
+
 jobs:
   # The behavioural half. A conflict resolved without a source link is a FALSE
   # resolution — the queue empties, the operator believes the buyer is filed, and
