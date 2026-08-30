@@ -55,6 +55,15 @@ const bundle = (overrides: Record<string, unknown> = {}) => ({
       availableOnline: true,
     },
   ],
+  occurrences: [
+    {
+      id: "occurrence-1",
+      startAt: "2099-01-01T18:00:00Z",
+      endAt: "2099-01-01T20:00:00Z",
+      timezone: "Africa/Lagos",
+      isMaster: true,
+    },
+  ],
   brand: { id: "brand-1", slug: "lagos-club", name: "Lagos Club" },
   ...overrides,
 });
@@ -96,14 +105,22 @@ describe("#1929 direct event bundle hook behavior", () => {
     expect(result.event.status).toBe(uiStatus);
   });
 
-  test.each([null, [], [bundle()], {}, { id: "only-id" }, "bad"])(
-    "malformed/null/private/unknown-shaped result fails closed: %p",
+  test("literal null result resolves null without fabricating an event", async () => {
+    mockRpc.mockResolvedValue({ data: null, error: null });
+    usePublicEventBySlug("lagos-club", "missing-or-private");
+    await expect(
+      (mockQueryOptions.queryFn as () => Promise<unknown>)(),
+    ).resolves.toBeNull();
+  });
+
+  test.each([[], [bundle()], {}, { id: "only-id" }, "bad"])(
+    "malformed non-null result rejects through query error ownership: %p",
     async (data) => {
       mockRpc.mockResolvedValue({ data, error: null });
       usePublicEventBySlug("lagos-club", "missing-or-private");
       await expect(
         (mockQueryOptions.queryFn as () => Promise<unknown>)(),
-      ).resolves.toBeNull();
+      ).rejects.toThrow("invalid_direct_event_checkout_bundle");
     },
   );
 
@@ -131,27 +148,56 @@ describe("#1929 direct event bundle hook behavior", () => {
 // bug: the rule already existed and the buyer web already used it; Explorer
 // never did.
 describe("issue #2562 — the consumer mapper derives past state from the clock", () => {
-  test("a finished event maps to an ENDED acquisition state", () => {
+  test("an event with a finished occurrence maps to an ENDED acquisition state", () => {
     const result = mapRpcPayloadToPublicEvent(
-      bundle({ status: "scheduled", masterEndAt: "2020-01-01T00:00:00.000Z" }),
+      bundle({
+        status: "scheduled",
+        masterEndAt: "2100-01-01T00:00:00.000Z",
+        occurrences: [
+          {
+            id: "past-occurrence",
+            startAt: "2020-01-01T00:00:00.000Z",
+            endAt: "2020-01-01T01:00:00.000Z",
+            timezone: "UTC",
+            isMaster: true,
+          },
+        ],
+      }),
     );
     expect(result.event.acquisitionState?.kind).toBe("ended");
   });
 
-  test("an event still ahead carries no acquisition state", () => {
+  test("an event with an occurrence still ahead carries no acquisition state", () => {
     const result = mapRpcPayloadToPublicEvent(
-      bundle({ status: "scheduled", masterEndAt: "2100-01-01T00:00:00.000Z" }),
+      bundle({
+        status: "scheduled",
+        masterEndAt: "2020-01-01T00:00:00.000Z",
+        occurrences: [
+          {
+            id: "future-occurrence",
+            startAt: "2099-01-01T18:00:00.000Z",
+            endAt: "2099-01-01T20:00:00.000Z",
+            timezone: "UTC",
+            isMaster: true,
+          },
+        ],
+      }),
     );
     expect(result.event.acquisitionState).toBeUndefined();
   });
 
-  test("FAIL SAFE — a missing end time is NOT treated as past", () => {
-    // `unavailable` reads as past downstream. Forwarding it raw would stop
-    // sales on a live event the moment its end time went missing.
+  test("FAIL SAFE — a missing occurrence schedule maps to unavailable", () => {
     const result = mapRpcPayloadToPublicEvent(
-      bundle({ status: "scheduled", masterEndAt: null }),
+      bundle({
+        status: "scheduled",
+        masterEndAt: "2100-01-01T00:00:00.000Z",
+        occurrences: [],
+      }),
     );
-    expect(result.event.acquisitionState).toBeUndefined();
+    expect(result.event.acquisitionState).toEqual({
+      kind: "unavailable",
+      reason: "occurrences_missing",
+    });
   });
 
   test("a cancelled event maps to cancelled, not ended", () => {

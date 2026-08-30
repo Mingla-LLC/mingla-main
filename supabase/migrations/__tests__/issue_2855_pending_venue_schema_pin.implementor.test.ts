@@ -37,6 +37,8 @@ const ORIGINAL_SHA256 =
   "8d35452b0237115640d4fcbc9dbc05c12b25ffa1b57a706c85cfc698df0c2bbe";
 const VALIDATOR_BEFORE_AMENDMENT_SHA256 =
   "0d800e8969068c146957e130e74702cfffadb13284233ff16507dc9468af6e49";
+const VALIDATOR_AFTER_PROVIDER_ONLY_REMOVAL_SHA256 =
+  "e867484eced566bdd86b1fca43e1a36ca8154875f6926161973647bc9a40bcf1";
 const FROZEN_PROVIDER_SEAL =
   "c0813be9c105418cd60697b22be5ae5dbc2055b03895c2e5c77f68606a498a7f";
 const PROVIDER_DELTA = `  Object.freeze({
@@ -48,6 +50,32 @@ const PROVIDER_DELTA = `  Object.freeze({
     ]),
   }),
 `;
+const PHASE3B_LEAF_REGISTRY_CURRENT =
+  `      || leafRegistry?.currentExecutedLeaves !== 40 || leafRegistry?.currentAbsentLeaves !== 0
+      || crypto.createHash("sha256").update(JSON.stringify(leaves)).digest("hex") !== leafRegistry?.registrySha256) {
+    fail(errors, "Phase 3B leaf registry must equal 40 maximum / current 40 executed + 0 absent");`;
+const PHASE3B_LEAF_REGISTRY_RETIRED =
+  `      || leafRegistry?.currentExecutedLeaves !== 37 || leafRegistry?.currentAbsentLeaves !== 3
+      || crypto.createHash("sha256").update(JSON.stringify(leaves)).digest("hex") !== leafRegistry?.registrySha256) {
+    fail(errors, "Phase 3B leaf registry must equal 40 maximum / current 37 executed + 3 absent");`;
+const PHASE3B_WAVE_HEADER_CURRENT =
+  `  const expectedWaveContract = { suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 40,
+    currentAbsentLeaves: 0, lifecycle: phase3bTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };`;
+const PHASE3B_WAVE_HEADER_RETIRED =
+  `  const expectedWaveContract = { suiteCount: 12, outerCommandCount: 36, maximumLeafCount: 40, currentExecutedLeaves: 37,
+    currentAbsentLeaves: 3, lifecycle: phase3bTerminal ? PHASE3B_TERMINAL_LIFECYCLE : PHASE3B_SHADOW_LIFECYCLE };`;
+const PHASE3B_CURRENT_TO_BASE_REWRITES = [
+  {
+    label: "Phase 3B leaf-registry contract",
+    current: PHASE3B_LEAF_REGISTRY_CURRENT,
+    retired: PHASE3B_LEAF_REGISTRY_RETIRED,
+  },
+  {
+    label: "Phase 3B wave-header contract",
+    current: PHASE3B_WAVE_HEADER_CURRENT,
+    retired: PHASE3B_WAVE_HEADER_RETIRED,
+  },
+] as const;
 const EXPECTED_SC4_PRODUCT_PATHS = [
   "mingla-business/app/venue/[venueId]/index.tsx",
   "mingla-business/src/services/venueListingsService.ts",
@@ -93,6 +121,52 @@ const [
 
 function count(source: string, token: string): number {
   return source.split(token).length - 1;
+}
+
+function reconstructValidatorBeforeAmendments(source: string): string {
+  assert.equal(
+    count(source, PROVIDER_DELTA),
+    1,
+    "the exact #2855 provider-reference declaration must appear once",
+  );
+  let reconstructed = source.replace(PROVIDER_DELTA, "");
+  for (const rewrite of PHASE3B_CURRENT_TO_BASE_REWRITES) {
+    assert.equal(
+      count(reconstructed, rewrite.current),
+      1,
+      `${rewrite.label} current 40/0 fragment must appear once`,
+    );
+    assert.equal(
+      count(reconstructed, rewrite.retired),
+      0,
+      `${rewrite.label} retired 37/3 fragment must be absent`,
+    );
+    reconstructed = reconstructed.replace(rewrite.current, rewrite.retired);
+  }
+  return reconstructed;
+}
+
+function assertComposedValidatorProvenance(source: string): void {
+  const reconstructed = reconstructValidatorBeforeAmendments(source);
+  assert.equal(
+    createHash("sha256").update(reconstructed).digest("hex"),
+    VALIDATOR_BEFORE_AMENDMENT_SHA256,
+    "validator drifted outside the approved #2855 and #2582 declarations",
+  );
+  const seal = source.match(
+    /const LOCKED_PROVIDER_DISCOVERY_SHA256 = "([0-9a-f]{64})";/,
+  );
+  assert.ok(seal, "frozen provider seal declaration missing");
+  assert.equal(
+    seal[1],
+    FROZEN_PROVIDER_SEAL,
+    "#2855 must not re-pin the provider seal",
+  );
+  assert.equal(
+    count(source, "issue: 2855,"),
+    1,
+    "#2855 may add only one validator declaration",
+  );
 }
 
 function functionBlock(
@@ -419,29 +493,65 @@ Deno.test("#2855 SC-4 classifier is exact-path product scope", () => {
 
 Deno.test("#2855 records only its reviewed provider-reference delta", () => {
   assert.equal(
-    count(validator, PROVIDER_DELTA),
-    1,
-    "the exact #2855 provider-reference declaration must appear once",
+    createHash("sha256").update(validator.replace(PROVIDER_DELTA, "")).digest(
+      "hex",
+    ),
+    VALIDATOR_AFTER_PROVIDER_ONLY_REMOVAL_SHA256,
+    "the pre-composition one-delta reconstruction must remain the proven merge-head failure",
   );
-  const withoutDelta = validator.replace(PROVIDER_DELTA, "");
-  assert.equal(
-    createHash("sha256").update(withoutDelta).digest("hex"),
+  assert.notEqual(
+    VALIDATOR_AFTER_PROVIDER_ONLY_REMOVAL_SHA256,
     VALIDATOR_BEFORE_AMENDMENT_SHA256,
-    "validator drifted outside the approved #2855 declaration",
+    "the old one-delta reconstruction must stay red against the original base",
   );
-  const seal = validator.match(
-    /const LOCKED_PROVIDER_DISCOVERY_SHA256 = "([0-9a-f]{64})";/,
+  assertComposedValidatorProvenance(validator);
+
+  const missingProviderDelta = validator.replace(
+    "issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+    "issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql.missing",
   );
-  assert.ok(seal, "frozen provider seal declaration missing");
-  assert.equal(
-    seal[1],
-    FROZEN_PROVIDER_SEAL,
-    "#2855 must not re-pin the provider seal",
+  assert.throws(
+    () => assertComposedValidatorProvenance(missingProviderDelta),
+    "an altered #2855 provider path must fail exact-once ownership",
   );
-  assert.equal(
-    count(validator, "issue: 2855,"),
-    1,
-    "#2855 may add only one validator declaration",
+
+  const alteredCurrentFragment = validator.replace(
+    PHASE3B_LEAF_REGISTRY_CURRENT,
+    PHASE3B_LEAF_REGISTRY_CURRENT.replace(
+      "current 40 executed + 0 absent",
+      "current forty executed + 0 absent",
+    ),
+  );
+  assert.throws(
+    () => assertComposedValidatorProvenance(alteredCurrentFragment),
+    "an altered #2582 current fragment must fail closed",
+  );
+
+  const duplicateCurrentFragment = validator.replace(
+    PHASE3B_WAVE_HEADER_CURRENT,
+    `${PHASE3B_WAVE_HEADER_CURRENT}\n${PHASE3B_WAVE_HEADER_CURRENT}`,
+  );
+  assert.throws(
+    () => assertComposedValidatorProvenance(duplicateCurrentFragment),
+    "a duplicate #2582 current fragment must fail exact-once cardinality",
+  );
+  assert.throws(
+    () =>
+      assertComposedValidatorProvenance(
+        `${validator}\n${PHASE3B_LEAF_REGISTRY_RETIRED}`,
+      ),
+    "a retired 37/3 fragment in live validator bytes must fail",
+  );
+  assert.throws(
+    () => assertComposedValidatorProvenance(`${validator}\n// foreign drift`),
+    "foreign validator drift must remain visible after reconstruction",
+  );
+  assert.throws(
+    () =>
+      assertComposedValidatorProvenance(
+        validator.replace(FROZEN_PROVIDER_SEAL, "0".repeat(64)),
+      ),
+    "re-pinning the frozen provider seal must remain red",
   );
 });
 

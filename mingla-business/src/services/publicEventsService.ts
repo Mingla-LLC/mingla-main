@@ -1,5 +1,4 @@
 import type { PublicMenuGroup } from "@mingla/brand-rendering";
-import * as OfferingRendering from "@mingla/offering-rendering";
 // issue #2469 — the ONE owner of the venueName/address split.
 //
 // DEEP specifier, not the barrel: `publicEventLocation` is a pure, import-free
@@ -39,6 +38,8 @@ import {
   type OfferingGalleryImage,
   type EventAcquisitionInput,
   type EventAcquisitionState,
+  type EventTerminalSource,
+  resolveEventAcquisitionState as sharedResolveEventAcquisitionState,
 } from "@mingla/offering-rendering";
 import { parseClaimedVenueHours } from "../utils/venuePublicHours";
 import { buildVenueGalleryPhotoUrls } from "../utils/venuePublicPhotos";
@@ -49,7 +50,7 @@ import {
 import { splitBrandDescription } from "./brandMapping";
 
 const resolveEventAcquisitionState =
-  OfferingRendering.resolveEventAcquisitionState ??
+  sharedResolveEventAcquisitionState ??
   ((_input: EventAcquisitionInput, _nowMs?: number): EventAcquisitionState =>
     // Old isolated Jest factories expose only the exports their narrow harness
     // predates. Keep those tests runnable; a missing production export must
@@ -348,29 +349,33 @@ export interface PublicVenueDiscoveryPrice {
 export async function getPublicVenueDiscoveryPrice(
   placePoolId: string,
 ): Promise<PublicVenueDiscoveryPrice | null> {
-  const [{ data: projected, error }, { data: currencies, error: currencyError }] =
-    await Promise.all([
-      supabase.rpc("place_discovery_range_for_viewer", {
-        p_place_pool_id: placePoolId,
-        p_display_currency: null,
-        p_snapshot: null,
-      }),
-      supabase.rpc("issue_1384_supported_currencies"),
-    ]);
+  const [
+    { data: projected, error },
+    { data: currencies, error: currencyError },
+  ] = await Promise.all([
+    supabase.rpc("place_discovery_range_for_viewer", {
+      p_place_pool_id: placePoolId,
+      p_display_currency: null,
+      p_snapshot: null,
+    }),
+    supabase.rpc("issue_1384_supported_currencies"),
+  ]);
   if (error || currencyError) throw error ?? currencyError;
   const row = Array.isArray(projected) ? projected[0] : projected;
   if (
     row?.price_range_status !== "active" ||
     !Number.isSafeInteger(Number(row.source_min_minor)) ||
     typeof row.source_currency_code !== "string"
-  ) return null;
+  )
+    return null;
   const metadata = Array.isArray(currencies)
     ? currencies.find((item) => item.code === row.source_currency_code)
     : null;
   if (!Number.isInteger(metadata?.minor_unit_exponent)) return null;
   return {
     minMinor: Number(row.source_min_minor),
-    maxMinor: row.source_max_minor === null ? null : Number(row.source_max_minor),
+    maxMinor:
+      row.source_max_minor === null ? null : Number(row.source_max_minor),
     currencyCode: row.source_currency_code,
     minorUnitExponent: metadata.minor_unit_exponent,
   };
@@ -414,7 +419,9 @@ interface TicketTypeRow {
 }
 
 export type PublicBrandRecord = Brand;
-export type PublicEventRecord = LiveEvent;
+export type PublicEventRecord = LiveEvent & {
+  terminalSource: EventTerminalSource;
+};
 
 /** issue #2160 — the organiser's per-event multi-day pricing choice. */
 export type MultiDatePricingMode = "per_day" | "all_days";
@@ -439,6 +446,8 @@ export interface PublicEventDetail {
   event: PublicEventRecord;
   brand: PublicBrandRecord;
   tickets: PublicTicketTypeRecord[];
+  /** Raw canonical lifecycle source retained before display normalization. */
+  terminalSource: EventTerminalSource;
   /**
    * issue #2160 [multi-day multi-select] — every materialised occurrence of
    * this event, chronological, delivered by the SAME SECURITY DEFINER reader
@@ -777,28 +786,40 @@ const asThemeInput = (
   return Object.keys(out).length > 0 ? out : null;
 };
 
+const publicBrandCore = (
+  id: string,
+  displayName: string,
+  slug: string,
+  description: string | null,
+  events: number,
+) => {
+  const { tagline, bio } = splitBrandDescription(description);
+  return {
+    id,
+    displayName,
+    slug,
+    role: "owner" as const,
+    stats: { events, followers: 0, rev: 0, rev7d: 0, attendees: 0 },
+    currentLiveEvent: null,
+    bio,
+    tagline,
+  };
+};
+
 const viewRowToBrand = (row: BusinessPublicEventViewRow): PublicBrandRecord => {
   const theme = asRecord(row.public_theme);
-  const { tagline, bio } = splitBrandDescription(row.brand_description);
   return {
-    id: row.brand_id,
-    displayName: row.brand_name,
-    slug: row.brand_slug,
+    ...publicBrandCore(
+      row.brand_id,
+      row.brand_name,
+      row.brand_slug,
+      row.brand_description,
+      0,
+    ),
     address: row.brand_address,
     coverHue: asNumber(theme.brandCoverHue, asNumber(theme.coverHue, 25)),
     coverMediaUrl: row.brand_cover_media_url ?? undefined,
     photo: row.brand_profile_photo_url ?? undefined,
-    role: "owner",
-    stats: {
-      events: 0,
-      followers: 0,
-      rev: 0,
-      rev7d: 0,
-      attendees: 0,
-    },
-    currentLiveEvent: null,
-    bio,
-    tagline,
     links: asLinks(theme.brandLinks),
     displayAttendeeCount: row.brand_display_attendee_count,
     theme: asThemeInput(
@@ -813,28 +834,14 @@ export const publicBrandViewRowToBrand = (
   row: BusinessPublicBrandViewRow,
   eventCount = 0,
 ): PublicBrandRecord => {
-  const { tagline, bio } = splitBrandDescription(row.description);
   return {
-    id: row.id,
-    displayName: row.name,
-    slug: row.slug,
+    ...publicBrandCore(row.id, row.name, row.slug, row.description, eventCount),
     address: row.address,
     coverHue: row.cover_hue,
     coverMediaUrl: row.cover_media_url ?? undefined,
     coverMediaType: row.cover_media_type ?? undefined,
     profilePhotoType: row.profile_photo_type ?? undefined,
     photo: row.profile_photo_url ?? undefined,
-    role: "owner",
-    stats: {
-      events: eventCount,
-      followers: 0,
-      rev: 0,
-      rev7d: 0,
-      attendees: 0,
-    },
-    currentLiveEvent: null,
-    bio,
-    tagline,
     contact: extractBrandContact(row.contact_email, row.contact_phone),
     links: asLinks(row.social_links, row.custom_links),
     displayAttendeeCount: row.display_attendee_count,
@@ -972,6 +979,23 @@ const invalidPublicVenueReservable = (): never => {
   throw new PublicVenueReservableContractError();
 };
 
+const publicVenueReservable = (
+  reservable: unknown,
+  venueId: unknown,
+  currency: unknown,
+): PublicVenueReservable => {
+  if (
+    typeof reservable !== "boolean" ||
+    (typeof venueId !== "string" && venueId !== null) ||
+    (typeof currency !== "string" && currency !== null) ||
+    (reservable && (venueId === null || venueId.trim().length === 0)) ||
+    (!reservable && (venueId !== null || currency !== null))
+  ) {
+    return invalidPublicVenueReservable();
+  }
+  return { reservable, venueId, currency };
+};
+
 /**
  * #2730 — validate the camel-cased cache contract as well as the RPC result.
  * React Query selectors call this even for fresh pre-seeded values, preventing
@@ -989,25 +1013,11 @@ export const validatePublicVenueReservable = (
     keys.length !== 3 ||
     keys.some(
       (key) => key !== "reservable" && key !== "venueId" && key !== "currency",
-    ) ||
-    typeof row.reservable !== "boolean" ||
-    (typeof row.venueId !== "string" && row.venueId !== null) ||
-    (typeof row.currency !== "string" && row.currency !== null)
+    )
   ) {
     return invalidPublicVenueReservable();
   }
-  if (
-    (row.reservable &&
-      (row.venueId === null || row.venueId.trim().length === 0)) ||
-    (!row.reservable && (row.venueId !== null || row.currency !== null))
-  ) {
-    return invalidPublicVenueReservable();
-  }
-  return {
-    reservable: row.reservable,
-    venueId: row.venueId,
-    currency: row.currency,
-  };
+  return publicVenueReservable(row.reservable, row.venueId, row.currency);
 };
 
 const parsePublicVenueReservableRpcResponse = (
@@ -1025,18 +1035,7 @@ const parsePublicVenueReservableRpcResponse = (
     return invalidPublicVenueReservable();
   }
   const row = candidate as JsonRecord;
-  if (
-    typeof row.reservable !== "boolean" ||
-    (typeof row.venue_id !== "string" && row.venue_id !== null) ||
-    (typeof row.currency !== "string" && row.currency !== null)
-  ) {
-    return invalidPublicVenueReservable();
-  }
-  return validatePublicVenueReservable({
-    reservable: row.reservable,
-    venueId: row.venue_id,
-    currency: row.currency,
-  });
+  return publicVenueReservable(row.reservable, row.venue_id, row.currency);
 };
 
 /**
@@ -1060,18 +1059,16 @@ export const getPublicVenueReservable = async (
  * META-ORCH-1255(C) — all verified venues of a brand, for the public brand
  * page "Locations" section (SC-12). [] → the section is omitted.
  */
-export const fetchPublicBrandVenues = async (
-  brandSlug: string,
-): Promise<PublicVenueSummary[]> => {
+const fetchPublicBrandVenueRows = async (brandSlug: string) => {
   const { data, error } = await supabase
     .from("venue_public_view")
     .select(
-      "id, slug, name, address, city, cover_media_url, pool_photo_urls, created_at",
+      "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id, created_at",
     )
     .eq("brand_slug", brandSlug)
     .order("created_at", { ascending: true });
   if (error !== null) throw error;
-  const rows = (data ?? []) as Array<
+  return (data ?? []) as Array<
     Pick<
       VenuePublicViewRow,
       | "id"
@@ -1081,9 +1078,14 @@ export const fetchPublicBrandVenues = async (
       | "city"
       | "cover_media_url"
       | "pool_photo_urls"
+      | "place_pool_id"
     >
   >;
-  return rows.map((row) => ({
+};
+
+const publicVenueSummary = (
+  row: Awaited<ReturnType<typeof fetchPublicBrandVenueRows>>[number],
+): PublicVenueSummary => ({
     id: row.id,
     slug: row.slug,
     name: row.name,
@@ -1094,7 +1096,13 @@ export const fetchPublicBrandVenues = async (
       (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
         ? row.pool_photo_urls[0]
         : null),
-  }));
+  });
+
+export const fetchPublicBrandVenues = async (
+  brandSlug: string,
+): Promise<PublicVenueSummary[]> => {
+  const rows = await fetchPublicBrandVenueRows(brandSlug);
+  return rows.map(publicVenueSummary);
 };
 
 /**
@@ -1105,40 +1113,9 @@ export const fetchPublicBrandVenues = async (
 export const fetchPublicBrandVenueStates = async (
   brandSlug: string,
 ): Promise<PublicVenueSummary[]> => {
-  const { data, error } = await supabase
-    .from("venue_public_view")
-    .select(
-      "id, slug, name, address, city, cover_media_url, pool_photo_urls, place_pool_id, created_at",
-    )
-    .eq("brand_slug", brandSlug)
-    .order("created_at", { ascending: true });
-  if (error !== null) throw error;
-
-  return (
-    (data ?? []) as Array<
-      Pick<
-        VenuePublicViewRow,
-        | "id"
-        | "slug"
-        | "name"
-        | "address"
-        | "city"
-        | "cover_media_url"
-        | "pool_photo_urls"
-        | "place_pool_id"
-      >
-    >
-  ).map((row): PublicVenueSummary => ({
-    id: row.id,
-    slug: row.slug,
-    name: row.name,
-    address: asStringOrNull(row.address),
-    city: asStringOrNull(row.city),
-    photoUrl:
-      asStringOrNull(row.cover_media_url) ??
-      (Array.isArray(row.pool_photo_urls) && row.pool_photo_urls.length > 0
-        ? row.pool_photo_urls[0]
-        : null),
+  const rows = await fetchPublicBrandVenueRows(brandSlug);
+  return rows.map((row): PublicVenueSummary => ({
+    ...publicVenueSummary(row),
     placePoolId: row.place_pool_id,
     reservationState: row.place_pool_id === null ? "unavailable" : "loading",
   }));
@@ -1148,32 +1125,8 @@ export const claimedVenueRowToBrand = (
   row: ClaimedVenuePublicViewRow,
   eventCount = 0,
 ): PublicBrandRecord => {
-  const { tagline, bio } = splitBrandDescription(row.description);
   return {
-    id: row.id,
-    displayName: row.name,
-    slug: row.slug,
-    address: row.address,
-    coverHue: row.cover_hue,
-    coverMediaUrl: row.cover_media_url ?? undefined,
-    coverMediaType: row.cover_media_type ?? undefined,
-    profilePhotoType: row.profile_photo_type ?? undefined,
-    photo: row.profile_photo_url ?? undefined,
-    role: "owner",
-    stats: {
-      events: eventCount,
-      followers: 0,
-      rev: 0,
-      rev7d: 0,
-      attendees: 0,
-    },
-    currentLiveEvent: null,
-    bio,
-    tagline,
-    contact: extractBrandContact(row.contact_email, row.contact_phone),
-    links: asLinks(row.social_links, row.custom_links),
-    displayAttendeeCount: row.display_attendee_count,
-    claimStatus: row.claim_status,
+    ...publicBrandViewRowToBrand(row, eventCount),
     city: asStringOrNull(row.city) ?? undefined,
     countryCode: asStringOrNull(row.country_code) ?? undefined,
     lat: typeof row.lat === "number" ? row.lat : undefined,
@@ -1197,13 +1150,15 @@ const viewStatusToLiveStatus = (status: string): LiveEventStatus => {
   return "scheduled";
 };
 
-const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
+const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => {
+  const { available_online, is_free, password_protected } = row;
+  return {
   id: row.id,
   name: row.name,
-  priceGbp: row.is_free ? null : row.price_cents / 100,
+  priceGbp: is_free ? null : row.price_cents / 100,
   currency: row.currency,
   capacity: row.quantity_total,
-  isFree: row.is_free,
+  isFree: is_free,
   isUnlimited: row.is_unlimited,
   visibility: row.is_hidden
     ? "hidden"
@@ -1212,9 +1167,9 @@ const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
       : "public",
   displayOrder: row.display_order,
   approvalRequired: row.requires_approval,
-  passwordProtected: row.password_protected,
+  passwordProtected: password_protected,
   password: null,
-  passwordConfigured: row.password_protected,
+  passwordConfigured: password_protected,
   waitlistEnabled: row.waitlist_enabled,
   minPurchaseQty: row.min_purchase_qty,
   maxPurchaseQty: row.max_purchase_qty,
@@ -1223,12 +1178,13 @@ const ticketRowToTicketStub = (row: TicketTypeRow): PublicTicketTypeRecord => ({
   saleStartAt: row.sale_start_at,
   saleEndAt: row.sale_end_at,
   availableAt:
-    row.available_online && row.available_in_person
+    available_online && row.available_in_person
       ? "both"
-      : row.available_online
+      : available_online
         ? "online"
         : "door",
-});
+  };
+};
 
 // ORCH-1162 Bug 2 — parse a Postgres `point` ("(lng,lat)" string or {x,y}) into
 // {lat,lng}. VERBATIM logic from businessEvents.ts:410 (the proven precedent).
@@ -1254,16 +1210,35 @@ const parseLocationGeoPoint = (
 export const publicEventViewRowToEvent = (
   row: BusinessPublicEventViewRow,
   tickets: PublicTicketTypeRecord[],
+  terminalSource: EventTerminalSource = {
+    kind: "single_end",
+    endAtUtc: row.master_end_at,
+  },
 ): PublicEventRecord => {
-  const theme = asRecord(row.public_theme);
+  const {
+    cover_media_gallery,
+    event_type,
+    id,
+    location_text,
+    master_end_at,
+    master_start_at,
+    music_genres,
+    party_types,
+    public_theme,
+    recurrence_rules,
+    status,
+    updated_at,
+    vibe_tags,
+  } = row;
+  const theme = asRecord(public_theme);
   const businessEvent = asRecord(theme.business_event);
   const location = asRecord(businessEvent.location);
   // issue #2469 — the shared extractor owns the venueName/address split for
   // every surface. It reads the same `businessEvent.location` object as
   // `location` above; `location` is still read for `location.city` etc.
   const seedLocation = extractPublicEventLocation(
-    row.public_theme,
-    row.location_text,
+    public_theme,
+    location_text,
   );
   const settings = asRecord(businessEvent.settings);
   const coverHue = asNumber(businessEvent.coverHue ?? theme.coverHue, 25);
@@ -1271,18 +1246,19 @@ export const publicEventViewRowToEvent = (
   // view (I-PROPOSED-AY EVENT_DATES_SOLE_DATE_AUTHORITY).
   const dateTimezone =
     row.master_timezone ?? asStringOrNull(row.timezone) ?? "UTC";
-  const startSplit = splitTimestampInTz(row.master_start_at, dateTimezone);
-  const endSplit = splitTimestampInTz(row.master_end_at, dateTimezone);
+  const startSplit = splitTimestampInTz(master_start_at, dateTimezone);
+  const endSplit = splitTimestampInTz(master_end_at, dateTimezone);
   return {
-    id: row.id,
-    serverEventId: row.id,
+    terminalSource,
+    id,
+    serverEventId: id,
     brandId: row.brand_id,
     brandSlug: row.brand_slug,
     eventSlug: row.slug,
-    status: viewStatusToLiveStatus(row.status),
-    publishedAt: row.published_at ?? row.updated_at,
-    cancelledAt: row.status === "cancelled" ? row.updated_at : null,
-    endedAt: row.status === "ended" ? row.updated_at : null,
+    status: viewStatusToLiveStatus(status),
+    publishedAt: row.published_at ?? updated_at,
+    cancelledAt: status === "cancelled" ? updated_at : null,
+    endedAt: status === "ended" ? updated_at : null,
     name: row.title,
     description: row.description ?? "",
     format: asFormat(businessEvent.format, row.is_online),
@@ -1295,15 +1271,15 @@ export const publicEventViewRowToEvent = (
     // Source of truth for cross-midnight display and ORCH-0850 lifecycle
     // math. When non-null these take precedence over the smart-infer
     // fallback in `computeMasterEndAtUtc`.
-    masterStartAtUtc: row.master_start_at,
-    masterEndAtUtc: row.master_end_at,
+    masterStartAtUtc: master_start_at,
+    masterEndAtUtc: master_end_at,
     timezone: dateTimezone,
     recurrenceRule:
       businessEvent.recurrenceRule === null ||
       businessEvent.recurrenceRule === undefined
-        ? row.recurrence_rules === null
+        ? recurrence_rules === null
           ? null
-          : (row.recurrence_rules as RecurrenceRule)
+          : (recurrence_rules as RecurrenceRule)
         : (businessEvent.recurrenceRule as RecurrenceRule),
     multiDates: Array.isArray(businessEvent.multiDates)
       ? (businessEvent.multiDates as MultiDateEntry[])
@@ -1334,8 +1310,8 @@ export const publicEventViewRowToEvent = (
     coverMediaUrl: row.cover_media_url,
     coverMediaType: row.cover_media_type,
     // issue #868 [cover-gallery] — additive; [] on legacy rows (rule 9).
-    coverGallery: Array.isArray(row.cover_media_gallery)
-      ? row.cover_media_gallery
+    coverGallery: Array.isArray(cover_media_gallery)
+      ? cover_media_gallery
       : [],
     coverMediaProvider: asEventCoverMediaProvider(row.cover_media_provider),
     coverMediaSourceUrl: asStringOrNull(row.cover_media_source_url),
@@ -1379,11 +1355,11 @@ export const publicEventViewRowToEvent = (
     // ORCH-1150 — discriminator + RSVP host-control snapshot (inert for
     // non-RSVP rows). The public RSVP page + Hub list-card read these.
     event_type:
-      row.event_type === "rsvp"
+      event_type === "rsvp"
         ? "rsvp"
-        : row.event_type === "experience"
+        : event_type === "experience"
           ? "experience"
-          : row.event_type === "trip"
+          : event_type === "trip"
             ? "trip"
             : "event",
     rsvpCapacity: row.rsvp_capacity ?? null,
@@ -1404,16 +1380,16 @@ export const publicEventViewRowToEvent = (
     // ORCH-1157 [rsvp-public-redesign] — surface party types / vibe tags from the
     // anon view so the Direction-C RSVP page renders vibe chips. Default [] (rule
     // 9: missing is empty, never fabricated). Already-present columns; no migration.
-    partyTypes: Array.isArray(row.party_types) ? row.party_types : [],
-    vibeTags: Array.isArray(row.vibe_tags) ? row.vibe_tags : [],
+    partyTypes: Array.isArray(party_types) ? party_types : [],
+    vibeTags: Array.isArray(vibe_tags) ? vibe_tags : [],
     // ORCH-1167 [event-page-canonical] — thread music_genres (was DROPPED — F-3).
     // Default [] (rule 9: missing is empty, never fabricated). For the standard-
     // event PAGE BODY the authoritative source is the pg_public_event_by_slug RPC
     // (merged in detailFromRow); this view-derived value is the fallback.
-    musicGenres: Array.isArray(row.music_genres) ? row.music_genres : [],
+    musicGenres: Array.isArray(music_genres) ? music_genres : [],
     orders: [],
     createdAt: row.created_at,
-    updatedAt: row.updated_at,
+    updatedAt: updated_at,
   };
 };
 
@@ -1658,6 +1634,10 @@ const detailFromRow = async (
     event: merged,
     brand: viewRowToBrand(row),
     tickets,
+    terminalSource: {
+      kind: "single_end",
+      endAtUtc: row.master_end_at,
+    },
     // The `business_public_events_view` fallback path serves RSVP rows only,
     // which have no occurrence concept and no multi-day pricing.
     occurrences: [],
@@ -1667,7 +1647,8 @@ const detailFromRow = async (
 };
 
 const isDirectEventBundle = (value: unknown): value is JsonRecord => {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return false;
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    return false;
   const payload = value as JsonRecord;
   const brand = payload.brand;
   return (
@@ -1692,8 +1673,12 @@ const directBundleTicketToStub = (
 ): PublicTicketTypeRecord => {
   const ticket = asRecord(value);
   const isFree = ticket.isFree === true;
-  const priceCents = typeof ticket.priceCents === "number" ? ticket.priceCents : 0;
-  const allInCents = typeof ticket.allInCents === "number" ? ticket.allInCents : priceCents;
+  const isUnlimited = ticket.isUnlimited === true;
+  const passwordProtected = ticket.passwordProtected === true;
+  const priceCents =
+    typeof ticket.priceCents === "number" ? ticket.priceCents : 0;
+  const allInCents =
+    typeof ticket.allInCents === "number" ? ticket.allInCents : priceCents;
   return {
     id: String(ticket.id ?? ""),
     name: String(ticket.name ?? ""),
@@ -1702,7 +1687,7 @@ const directBundleTicketToStub = (
     priceAllInGbp: isFree ? null : allInCents / 100,
     currency: asStringOrNull(ticket.currency) ?? fallbackCurrency,
     capacity:
-      ticket.isUnlimited === true
+      isUnlimited
         ? null
         : typeof ticket.remaining === "number"
           ? ticket.remaining
@@ -1710,18 +1695,19 @@ const directBundleTicketToStub = (
             ? ticket.capacity
             : null,
     isFree,
-    isUnlimited: ticket.isUnlimited === true,
+    isUnlimited,
     visibility:
       ticket.isHidden === true
         ? "hidden"
         : ticket.isDisabled === true
           ? "disabled"
           : "public",
-    displayOrder: typeof ticket.displayOrder === "number" ? ticket.displayOrder : 0,
+    displayOrder:
+      typeof ticket.displayOrder === "number" ? ticket.displayOrder : 0,
     approvalRequired: ticket.requiresApproval === true,
-    passwordProtected: ticket.passwordProtected === true,
+    passwordProtected,
     password: null,
-    passwordConfigured: ticket.passwordProtected === true,
+    passwordConfigured: passwordProtected,
     waitlistEnabled: ticket.waitlistEnabled === true,
     // issue #2462 [free checkout dead-ends on "Nothing was reserved"] — THE
     // ORGANISER'S PURCHASE RULES, READ INSTEAD OF INVENTED.
@@ -1775,7 +1761,9 @@ const directBundleTicketToStub = (
   };
 };
 
-const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventDetail> => {
+const detailFromDirectBundle = async (
+  payload: JsonRecord,
+): Promise<PublicEventDetail> => {
   const brand = payload.brand as JsonRecord;
   const currency = asStringOrNull(payload.currency) ?? "USD";
   const tickets = (payload.tickets as unknown[]).map((ticket) =>
@@ -1794,7 +1782,6 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     brand_id: payload.brandId,
     brand_slug: payload.brandSlug,
     brand_name: brand.name,
-    brand_description: null,
     brand_profile_photo_url: asStringOrNull(brand.profilePhotoUrl),
     brand_display_attendee_count: false,
     brand_address: asStringOrNull(brand.address),
@@ -1831,17 +1818,14 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     recurrence_rules: null,
     cover_media_url: asStringOrNull(payload.coverMediaUrl),
     cover_media_type: payload.coverMediaType,
-    cover_media_gallery: Array.isArray(payload.coverGallery) ? payload.coverGallery : [],
+    cover_media_gallery: Array.isArray(payload.coverGallery)
+      ? payload.coverGallery
+      : [],
     cover_media_provider: payload.coverMediaProvider,
-    cover_media_source_url: null,
     cover_media_credit: asStringOrNull(payload.coverMediaCredit),
-    cover_media_credit_url: null,
-    cover_media_alt: null,
     currency,
     visibility: "public",
-    show_on_discover: false,
     status: payload.status,
-    published_at: null,
     timezone: asStringOrNull(payload.timezone) ?? "UTC",
     created_at: asStringOrNull(payload.masterStartAt) ?? "",
     updated_at: asStringOrNull(payload.masterEndAt) ?? "",
@@ -1852,14 +1836,16 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     master_start_at: asStringOrNull(payload.masterStartAt),
     master_end_at: asStringOrNull(payload.masterEndAt),
     master_timezone: asStringOrNull(payload.timezone),
-    master_event_date_id: null,
-    display_price_cents: null,
     pricing_currency: currency,
     party_types: asStringArray(payload.partyTypes),
     vibe_tags: asStringArray(payload.vibeTags),
     music_genres: asStringArray(payload.musicGenres),
   } as unknown as BusinessPublicEventViewRow;
-  const event = publicEventViewRowToEvent(row, tickets);
+  const terminalSource: EventTerminalSource = {
+    kind: "occurrences",
+    value: payload.occurrences,
+  };
+  const event = publicEventViewRowToEvent(row, tickets, terminalSource);
   event.cityGeo = asLatLng(payload.cityGeo);
   const bookable = await resolveEventBookable(
     String(payload.brandId),
@@ -1869,6 +1855,7 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
     event,
     brand: viewRowToBrand(row),
     tickets,
+    terminalSource,
     bookable,
     // issue #2160 / #2161 — the occurrences ride the SAME reader that served
     // the event, so an unlisted event's days arrive exactly like a public
@@ -1881,16 +1868,27 @@ const detailFromDirectBundle = async (payload: JsonRecord): Promise<PublicEventD
   };
 };
 
-const readDirectEventBundle = async (
-  args: { p_event_id: string | null; p_brand_slug: string | null; p_event_slug: string | null },
-): Promise<PublicEventDetail | null | "fallback"> => {
+const fetchDirectEventBundlePayload = async (args: {
+  p_event_id: string | null;
+  p_brand_slug: string | null;
+  p_event_slug: string | null;
+}): Promise<JsonRecord | null> => {
   const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
   if (error !== null) throw error;
-  if (data === null) return "fallback";
+  if (data === null) return null;
   if (!isDirectEventBundle(data)) {
     throw new Error("invalid_direct_event_checkout_bundle");
   }
-  return detailFromDirectBundle(data);
+  return data;
+};
+
+const readDirectEventBundle = async (args: {
+  p_event_id: string | null;
+  p_brand_slug: string | null;
+  p_event_slug: string | null;
+}): Promise<PublicEventDetail | null | "fallback"> => {
+  const payload = await fetchDirectEventBundlePayload(args);
+  return payload === null ? "fallback" : detailFromDirectBundle(payload);
 };
 
 export const getPublicEventBySlug = async (
@@ -1970,18 +1968,100 @@ export const fetchPublicBrandEvents = async (
   const rows = ((data ?? []) as BusinessPublicEventViewRow[]).filter(
     (row) =>
       (row.event_type === "event" || row.event_type === "rsvp") &&
-      resolveEventAcquisitionState(
-        {
-          operatorStatus: viewStatusToLiveStatus(row.status),
-          operatorEndedAtUtc: null,
-          masterEndAtUtc: row.master_end_at,
-        },
-        nowMs,
-      ).kind === "current",
+      row.status !== "cancelled" &&
+      row.status !== "ended",
   );
 
-  const eventTickets = await Promise.all(
-    rows.map((row) => (row.event_type === "event" ? fetchTickets(row.id) : [])),
+  const MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4;
+  type HydratedBrandEvent = {
+    row: BusinessPublicEventViewRow;
+    tickets: PublicTicketTypeRecord[];
+    terminalSource: EventTerminalSource;
+    paidOnline: boolean;
+  };
+  const hydrated: Array<HydratedBrandEvent | null> = new Array(
+    rows.length,
+  ).fill(null);
+  let cursor = 0;
+  await Promise.all(
+    Array.from(
+      {
+        length: Math.min(
+          MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY,
+          rows.length,
+        ),
+      },
+      async () => {
+        while (cursor < rows.length) {
+          const index = cursor;
+          cursor += 1;
+          const row = rows[index];
+          if (row === undefined) continue;
+          if (row.event_type === "rsvp") {
+            const terminalSource: EventTerminalSource = {
+              kind: "single_end",
+              endAtUtc: row.master_end_at,
+            };
+            if (
+              resolveEventAcquisitionState(
+                {
+                  operatorStatus: viewStatusToLiveStatus(row.status),
+                  operatorEndedAtUtc: null,
+                  terminalSource,
+                },
+                nowMs,
+              ).kind === "current"
+            ) {
+              hydrated[index] = {
+                row,
+                tickets: [],
+                terminalSource,
+                paidOnline: false,
+              };
+            }
+            continue;
+          }
+
+          const payload = await fetchDirectEventBundlePayload({
+            p_event_id: row.id,
+            p_brand_slug: null,
+            p_event_slug: null,
+          });
+          if (payload === null) continue;
+          if (payload.id !== row.id)
+            throw new Error("invalid_direct_event_checkout_bundle");
+          const terminalSource: EventTerminalSource = {
+            kind: "occurrences",
+            value: payload.occurrences,
+          };
+          if (
+            resolveEventAcquisitionState(
+              {
+                operatorStatus: viewStatusToLiveStatus(row.status),
+                operatorEndedAtUtc: null,
+                terminalSource,
+              },
+              nowMs,
+            ).kind !== "current"
+          )
+            continue;
+          const currency =
+            asStringOrNull(payload.currency) ?? row.currency ?? "USD";
+          const tickets = (payload.tickets as unknown[]).map((ticket) =>
+            directBundleTicketToStub(ticket, currency),
+          );
+          hydrated[index] = {
+            row,
+            tickets,
+            terminalSource,
+            paidOnline: ticketsArePaidOnline(tickets),
+          };
+        }
+      },
+    ),
+  );
+  const current = hydrated.filter(
+    (item): item is HydratedBrandEvent => item !== null,
   );
 
   // ORCH-1076 I-PAID-SUPPLY-REQUIRES-CHARGES-ENABLED — drop PAID events from a
@@ -1991,22 +2071,19 @@ export const fetchPublicBrandEvents = async (
   // round-trip over the distinct paid brand ids; free events are never dropped.
   const paidBrandIds = Array.from(
     new Set(
-      rows
-        .filter((_row, idx) => ticketsArePaidOnline(eventTickets[idx] ?? []))
-        .map((row) => row.brand_id)
+      current
+        .filter(({ paidOnline }) => paidOnline)
+        .map(({ row }) => row.brand_id)
         .filter((id): id is string => typeof id === "string"),
     ),
   );
   const readyBrandIds = await fetchReadyBrandIds(paidBrandIds);
-  const visible = rows
-    .map((row, idx) => ({ row, tickets: eventTickets[idx] ?? [] }))
-    .filter(
-      ({ row, tickets }) =>
-        !ticketsArePaidOnline(tickets) || readyBrandIds.has(row.brand_id),
-    );
+  const visible = current.filter(
+    ({ row, paidOnline }) => !paidOnline || readyBrandIds.has(row.brand_id),
+  );
 
-  return visible.map(({ row, tickets }) =>
-    publicEventViewRowToEvent(row, tickets),
+  return visible.map(({ row, tickets, terminalSource }) =>
+    publicEventViewRowToEvent(row, tickets, terminalSource),
   );
 };
 
@@ -2019,49 +2096,43 @@ export const fetchPublicBrandTrips = async (
     p_brand_slug: brandSlug,
   });
 
-  if (error !== null) throw error;
+  if (error) throw error;
   const rows = (data ?? []) as PublicTripCardRow[];
   return rows.map(tripRowToCard);
 };
 
-export const experienceRowToCard = (
-  row: PublicExperienceCardRow,
-): PublicExperienceCard => ({
-  experienceId: row.experience_id,
+const publicOfferingCard = (row: PublicExperienceCardRow | PublicUpcomingRowRaw) => ({
   brandId: row.brand_id,
   brandSlug: row.brand_slug,
   brandName: row.brand_name,
-  experienceSlug: row.experience_slug,
   name: row.title,
   bio: row.description,
   coverMediaUrl: row.cover_media_url,
   coverMediaType: row.cover_media_type,
   theme: asRecord(row.theme),
-  venueText: row.venue_text,
-  nextOccurrenceAt: row.next_occurrence_at,
   priceFromMinorUnits: row.price_from_cents,
   currency: row.currency ?? "USD",
   isFree: row.is_free,
   publishedAt: row.published_at,
 });
 
+export const experienceRowToCard = (
+  row: PublicExperienceCardRow,
+): PublicExperienceCard => ({
+  experienceId: row.experience_id,
+  experienceSlug: row.experience_slug,
+  ...publicOfferingCard(row),
+  coverMediaType: row.cover_media_type,
+  venueText: row.venue_text,
+  nextOccurrenceAt: row.next_occurrence_at,
+});
+
 const upcomingRowToCard = (row: PublicUpcomingRowRaw): PublicUpcomingRow => ({
   offeringId: row.offering_id,
-  brandId: row.brand_id,
-  brandSlug: row.brand_slug,
-  brandName: row.brand_name,
   offeringType: row.offering_type,
   offeringSlug: row.offering_slug,
-  name: row.title,
-  bio: row.description,
-  coverMediaUrl: row.cover_media_url,
-  coverMediaType: row.cover_media_type,
-  theme: asRecord(row.theme),
+  ...publicOfferingCard(row),
   startsAt: row.starts_at,
-  priceFromMinorUnits: row.price_from_cents,
-  currency: row.currency ?? "USD",
-  isFree: row.is_free,
-  publishedAt: row.published_at,
 });
 
 export const fetchPublicBrandExperiences = async (
@@ -2071,7 +2142,7 @@ export const fetchPublicBrandExperiences = async (
     p_brand_slug: brandSlug,
   });
 
-  if (error !== null) throw error;
+  if (error) throw error;
   return ((data ?? []) as PublicExperienceCardRow[]).map(experienceRowToCard);
 };
 

@@ -8703,6 +8703,12 @@ _Historical rule (ORCH-1221): the "All of it" chip was a select-all control impl
 - **Enforcement:** `.github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs` and the issue #1902 lifecycle transition suite.
 - **Established:** DRAFT at issue #1902 IMPLEMENT 2026-08-11; activated after independent tester PASS and PR #1924 merge `14d7df15f` on 2026-08-12.
 
+### I-PROPOSED-2582-STANDARD-EVENT-TERMINAL-IS-FINAL-OCCURRENCE (ACTIVE)
+
+- **Rule:** A standard ticketed event remains current until the greatest valid `endAt` across its complete canonical occurrence bundle. The earliest/master occurrence scalar may describe display order but may never decide terminal acquisition state. Missing, empty, duplicate, malformed, or temporally invalid occurrence truth is unavailable and fail-closed; no client may fall back to the master scalar or invent a local date predicate.
+- **Enforcement:** the shared lifecycle resolver, Business and Consumer bundle hydration, public event/brand/checkout adapters, `.github/scripts/strict-grep/issue-1902-public-event-lifecycle.mjs`, the #2582 implementor and independent adversarial suites, and Phase 3B's four live #1902 tester leaves.
+- **Established:** ACTIVE at issue #2582 CLOSE after independent exact-head PASS at `8fa767def6c6c60abb713bcaef21ef30ba6469b9` across Business and Consumer iOS/Android, buyer-web lifecycle contracts, destructive mutations, bundle budget, and terminal all-green CI for PR #2850 on 2026-08-30.
+
 ### I-PUBLIC-BRAND-EVENTS-CURRENT-TICKETED-AND-RSVP (ACTIVE)
 
 - **Rule:** A public brand Events tab contains only current public ticketed events and current public RSVP events. Ended, cancelled, missing-end, and invalid-end rows are absent; RSVP rows never trigger ticket-tier or paid-readiness reads; every visible card is one complete navigation target with an honest type and action.

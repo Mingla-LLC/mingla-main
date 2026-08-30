@@ -784,6 +784,7 @@ export default function ConsumerEventDetailScreen({
     [],
   );
   const handleProceedToCart = useCallback((): void => {
+    if (validatedDayCanonical === null || canonicalQuery.isError) return;
     // ORCH-1167-R3 (change 3) — the empty-selection early-return is REMOVED: the
     // on-sale floating + in-box button is always tappable, and tapping at 0
     // selected opens the cart (TicketCartSheet) where the buyer picks/edits
@@ -794,7 +795,7 @@ export default function ConsumerEventDetailScreen({
     );
     setInitialTicketTypeId(firstSelected ?? null);
     setCartVisible(true);
-  }, [ticketQuantities]);
+  }, [canonicalQuery.isError, ticketQuantities, validatedDayCanonical]);
   const handleGuestSignIn = useCallback((): void => {
     setGuestSheetVisible(false);
     router.replace("/");
@@ -1411,12 +1412,26 @@ export default function ConsumerEventDetailScreen({
     : null;
   const publicEventForBody: PublicEventProps =
     canonical === null
-      ? { ...seededPublicEvent, dateSubline: occurrenceSummary }
+      ? {
+          ...seededPublicEvent,
+          dateSubline: occurrenceSummary,
+          ...(validatedDayCanonical?.event.acquisitionState === undefined
+            ? {}
+            : {
+                acquisitionState:
+                  validatedDayCanonical.event.acquisitionState,
+              }),
+        }
       : {
           ...canonical.event,
           dateLine: seededPublicEvent.dateLine,
           dateSubline: occurrenceSummary,
         };
+  const canonicalLifecycleReady =
+    validatedDayCanonical !== null && !canonicalQuery.isError;
+  const canonicalLifecycleBlockedLabel = canonicalQuery.isError
+    ? "We couldn’t load the event days."
+    : "Loading tickets...";
   const bodyStaticMapUrl: string | null = (() => {
     if (publicEventForBody.format === "online") return null;
     if (publicEventForBody.hideAddressUntilTicket) return null;
@@ -1610,7 +1625,9 @@ export default function ConsumerEventDetailScreen({
                 onOpenMaps={openMapsForTarget}
                 onCopyAddress={copyAddressForTarget}
                 staticMapUrl={bodyStaticMapUrl}
-                submitting={checkoutInFlight}
+                submitting={checkoutInFlight || !canonicalLifecycleReady}
+                purchaseReady={canonicalLifecycleReady}
+                purchaseBlockedLabel={canonicalLifecycleBlockedLabel}
                 pricingNote={
                   validOccurrences.length > 1 &&
                   tickets.some((ticket) => !ticket.isFree) &&
@@ -1703,7 +1720,9 @@ export default function ConsumerEventDetailScreen({
               theme={theme}
               ticketQuantities={ticketQuantities}
               onProceedToCart={handleProceedToCart}
-              submitting={checkoutInFlight}
+              submitting={checkoutInFlight || !canonicalLifecycleReady}
+              purchaseReady={canonicalLifecycleReady}
+              purchaseBlockedLabel={canonicalLifecycleBlockedLabel}
               testID="orch-1167-consumer-event-floating-bar"
             />
           </View>

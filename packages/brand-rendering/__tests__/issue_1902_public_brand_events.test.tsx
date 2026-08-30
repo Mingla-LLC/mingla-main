@@ -86,6 +86,21 @@ const event = (
   status: "scheduled",
   eventType,
   operatorEndedAtUtc: null,
+  terminalSource:
+    eventType === "rsvp"
+      ? { kind: "single_end", endAtUtc: end }
+      : {
+          kind: "occurrences",
+          value: [
+            {
+              id: `${id}-day`,
+              startAt: start,
+              endAt: end,
+              timezone: "UTC",
+              isMaster: true,
+            },
+          ],
+        },
   masterStartAtUtc: start,
   masterEndAtUtc: end,
   masterTimezone: "UTC",

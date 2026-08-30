@@ -20,6 +20,11 @@
  */
 
 import type { LiveEvent } from "../store/liveEventStore";
+import {
+  resolveEventAcquisitionState,
+  type EventAcquisitionState,
+  type EventTerminalSource,
+} from "@mingla/offering-rendering/eventAcquisitionLifecycle";
 
 export type EventLifecycleStatus = "live" | "upcoming" | "past" | "cancelled";
 
@@ -89,14 +94,56 @@ export const deriveLiveStatus = (
  * Established by ORCH-0850 [End-not-start parity systemic]. Enforces
  * I-PROPOSED-EVENT-LIFECYCLE-SINGLE-HELPER + I-PROPOSED-LIVE-STATUS-UTC-INPUT.
  */
+export type EventCheckoutLifecycleGate =
+  | { kind: "current" }
+  | {
+      kind: "closed";
+      acquisitionState: Extract<
+        EventAcquisitionState,
+        { kind: "ended" | "cancelled" }
+      >;
+    }
+  | {
+      kind: "unavailable";
+      acquisitionState: Extract<EventAcquisitionState, { kind: "unavailable" }>;
+    };
+
+export const resolveEventCheckoutLifecycleGate = (
+  event: LiveEvent,
+  terminalSource: EventTerminalSource,
+  nowMs: number = Date.now(),
+): EventCheckoutLifecycleGate => {
+  const acquisitionState = resolveEventAcquisitionState(
+    {
+      operatorStatus:
+        event.status === "cancelled"
+          ? "cancelled"
+          : event.status === "ended"
+            ? "ended"
+            : event.status === "live"
+              ? "live"
+              : "scheduled",
+      operatorEndedAtUtc: event.endedAt,
+      terminalSource,
+    },
+    nowMs,
+  );
+  if (acquisitionState.kind === "current") return { kind: "current" };
+  if (acquisitionState.kind === "unavailable") {
+    return { kind: "unavailable", acquisitionState };
+  }
+  return { kind: "closed", acquisitionState };
+};
+
 export const isEventPast = (
   event: LiveEvent,
   masterEndAtUtc: string | null,
+  nowMs: number = Date.now(),
 ): boolean => {
-  if (event.status === "cancelled" || event.status === "ended") return true;
-  if (event.endedAt !== null) return true;
-  if (masterEndAtUtc === null) return false;
-  const endTime = Date.parse(masterEndAtUtc);
-  if (!Number.isFinite(endTime)) return false;
-  return Date.now() > endTime;
+  const gate = resolveEventCheckoutLifecycleGate(
+    event,
+    { kind: "single_end", endAtUtc: masterEndAtUtc },
+    nowMs,
+  );
+  return gate.kind === "closed";
 };

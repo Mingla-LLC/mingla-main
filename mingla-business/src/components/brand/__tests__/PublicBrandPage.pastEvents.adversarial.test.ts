@@ -132,7 +132,7 @@ describe("ORCH-0850 — PublicBrandPage Upcoming/Past memo ADVERSARIAL", () => {
       expect(isEventPast(event, computeMasterEndAtUtc(event))).toBe(false);
     });
 
-    it("B-02: pre-fix UTC-midnight bug would have put this event in BOTH Upcoming AND Past simultaneously (contradictory)", () => {
+    it("B-02: exact end equality belongs only to Past and preserves a mutually exclusive partition", () => {
       // Pre-fix memo: upcomingEvents includes events where eventTime >= cutoff;
       // pastEvents includes events where eventTime < cutoff. Mutually exclusive on `<` vs `>=`.
       // Post-fix uses canonical isEventPast which is true ⊕ false → mutually exclusive.
@@ -147,11 +147,11 @@ describe("ORCH-0850 — PublicBrandPage Upcoming/Past memo ADVERSARIAL", () => {
         endsAt: "21:00",
         timezone: "America/New_York",
       });
-      // end_at = 01:00 UTC May 16 exactly. isEventPast uses `>` so equal-to → false (not past).
+      // end_at = 01:00 UTC May 16 exactly. Canonical `<=` terminal truth makes equality past.
       const past = isEventPast(event, computeMasterEndAtUtc(event));
       const upcoming = event.status !== "cancelled" && !past;
-      expect(past).toBe(false);
-      expect(upcoming).toBe(true);
+      expect(past).toBe(true);
+      expect(upcoming).toBe(false);
       // Mutually exclusive: NOT both.
       expect(past && upcoming).toBe(false);
     });

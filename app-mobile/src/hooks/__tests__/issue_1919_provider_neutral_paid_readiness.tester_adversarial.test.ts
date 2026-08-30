@@ -11,9 +11,14 @@ describe("issue #1919 tester adversarial Consumer contract", () => {
     expect(source.match(/supabase\.rpc\(\s*"pg_brands_can_collect"/g)).toHaveLength(1);
     expect(source).toMatch(/Array\.from\(\s*new Set\(/s);
     expect(source).toContain("if (paidBrandIds.length > 0)");
-    expect(source).toContain("!isPaidOnline(ticketMap.get(row.id) ?? []) ||");
-    expect(source).toContain("readyBrandIds.has(row.brand_id)");
-    expect(source).not.toMatch(/pg_brands_can_charge|pg_brand_can_charge/);
+    expect(source).toContain("paidOnline: canonical.event.tickets.some(");
+    expect(source).toMatch(/ticket\.availableAt === "online" \|\| ticket\.availableAt === "both"/);
+    expect(source).toContain("!ticket.isFree &&");
+    expect(source).toContain("(ticket.priceGbp ?? 0) > 0");
+    expect(source).toContain(".filter((item) => item.paidOnline)");
+    expect(source).toContain("if (readyError === null)");
+    expect(source).toContain("!paidOnline || readyBrandIds.has(row.brand_id)");
+    expect(source).not.toMatch(/ticketMap|isPaidOnline|pg_brands_can_charge|pg_brand_can_charge|paystack_subaccount_code|stripe_connect_accounts|charges_enabled/);
   });
 
   test("paid trip detail fails closed, while free detail performs no readiness RPC", () => {

@@ -134,8 +134,33 @@ const SINGLE_DATE_EVENT = {
   masterEndAtUtc: null,
 };
 
+// Lifecycle truth is intentionally separate from the display occurrences used by
+// K-1 through K-5. Every populated public-event fixture stays active regardless
+// of the wall clock without changing the date-line inputs those tests exercise.
+const CHECKOUT_TERMINAL_SOURCE = {
+  kind: "occurrences" as const,
+  value: [
+    {
+      id: "lifecycle-2338",
+      startAt: "2099-08-29T10:00:00+00:00",
+      endAt: "2099-08-29T17:00:00+00:00",
+      timezone: "Africa/Lagos",
+      isMaster: true,
+    },
+  ],
+};
+
+let checkoutTerminalSource:
+  | typeof CHECKOUT_TERMINAL_SOURCE
+  | { kind: "occurrences"; value: [] } = CHECKOUT_TERMINAL_SOURCE;
 let publicEventData: unknown = null;
 let routeParams: Record<string, string> = { eventId: EVENT_ID };
+type CapturedEmptyStateProps = {
+  title?: unknown;
+  description?: unknown;
+  cta?: { label?: unknown };
+};
+let capturedEmptyStateProps: CapturedEmptyStateProps | null = null;
 
 const router = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
 
@@ -161,7 +186,13 @@ jest.mock(
 );
 jest.mock("../../../../src/hooks/usePublicEvents", () => ({
   usePublicEventById: () => ({
-    data: publicEventData,
+    data:
+      publicEventData === null
+        ? null
+        : {
+            ...(publicEventData as Record<string, unknown>),
+            terminalSource: checkoutTerminalSource,
+          },
     isLoading: false,
     isFetching: false,
     isError: false,
@@ -171,11 +202,20 @@ jest.mock("../../../../src/analytics/webAnalytics", () => ({
   captureWeb: jest.fn(),
   gaEvent: jest.fn(),
 }));
+jest.mock("@mingla/offering-rendering", () => ({
+  ...jest.requireActual("../../../../__manual_mocks__/offering-rendering.js"),
+  ...jest.requireActual(
+    "../../../../../packages/offering-rendering/eventAcquisitionLifecycle",
+  ),
+}));
 jest.mock("../../../../src/components/ui/EventCoverMedia", () => ({
   EventCoverMedia: () => null,
 }));
 jest.mock("../../../../src/components/ui/EmptyState", () => ({
-  EmptyState: () => null,
+  EmptyState: (props: CapturedEmptyStateProps) => {
+    capturedEmptyStateProps = props;
+    return null;
+  },
 }));
 jest.mock("../../../../src/components/ui/Button", () => {
   const { Pressable } = require("react-native");
@@ -237,6 +277,8 @@ describe("issue #2338 — the cart step's day line", () => {
   beforeEach(() => {
     router.push.mockReset();
     router.replace.mockReset();
+    checkoutTerminalSource = CHECKOUT_TERMINAL_SOURCE;
+    capturedEmptyStateProps = null;
     routeParams = {
       eventId: EVENT_ID,
       eventDateIds: `${DAY_29.id},${DAY_30.id}`,
@@ -302,6 +344,18 @@ describe("issue #2338 — the cart step's day line", () => {
     expect(cartDateLine(tree)).toBe(
       `Mingla Nigeria · ${formatDraftDateLine(SINGLE_DATE_EVENT as never)}`,
     );
+    await act(async () => tree.unmount());
+  });
+
+  test("K-6 unavailable standard-event truth uses the real lifecycle notice copy", async () => {
+    checkoutTerminalSource = { kind: "occurrences", value: [] };
+    const tree = await mount();
+    const captured = capturedEmptyStateProps as CapturedEmptyStateProps | null;
+    expect(captured?.title).toBe("Booking unavailable");
+    expect(captured?.description).toBe(
+      "This event’s schedule is unavailable, so ticket sales are closed.",
+    );
+    expect(captured?.cta?.label).toBe("Back to event");
     await act(async () => tree.unmount());
   });
 });

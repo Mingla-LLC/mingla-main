@@ -192,7 +192,7 @@ function assertWave(value) {
   // validator subtracts from the frozen provider seal. Subject and strength unchanged;
   // the number simply stops being typed in a second place where it can disagree.
   assert.equal(retained.length + batched.length + consolidated.length, 91 + PROVIDERS_ADDED_SINCE_SEAL.length);
-  assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 37); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 3);
+  assert.equal(value.phase3bLeafCapabilities.leaves.length, 40); assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves, 40); assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves, 0);
   assert.equal(new Set(suites.map((suite) => suite.executionClass)).size, 9); assert.equal(new Set(suites.map((suite) => suite.hostClass)).size, 9); assert.equal(value.classes.length, 14); assert.equal(value.executionClasses.length, 29);
   assert.equal(digest(value.commandCapabilities.commands.slice(0,51)), "bb9c0e598a08ab91d8714ec2db80100c8b4d966d980a3cc290c3bcad93990a3f");
   assert.equal(digest(value.commandCapabilities.commands.slice(51,158)), "3cdccc5cb491f7a642ffa2a49f450d6f7ed5b37450d1f18a1fe219d5c629e709");
@@ -400,8 +400,8 @@ test("#1902 setup, env, compounds, and conditional leaf accounting are separate 
   ]);
   const compounds = value.suites.filter((item) => item.migrationWave === "phase3b-postgres-wave").flatMap((item) => item.steps.filter((step) => step.children));
   assert.deepEqual(compounds.map((step) => step.children.length).sort(), [2,4]);
-  assert.equal(suite.conditionalExpectedFiles.filter((file) => fs.existsSync(path.join(ROOT,file))).length, 1);
-  assert.equal(suite.conditionalExpectedFiles.filter((file) => !fs.existsSync(path.join(ROOT,file))).length, 3);
+  assert.equal(suite.conditionalExpectedFiles.filter((file) => fs.existsSync(path.join(ROOT,file))).length, 4);
+  assert.equal(suite.conditionalExpectedFiles.filter((file) => !fs.existsSync(path.join(ROOT,file))).length, 0);
   const installs = value.setupProfiles[suite.setupProfile].installs;
   const exposures = value.setupProfiles[suite.setupProfile].toolExposures;
   const orderedInstalls = installs.map((install) => ({ id: install.id, cwd: install.cwd, command: install.invocation.command, argv: install.invocation.argv }));
@@ -463,27 +463,25 @@ test("primary and secondary reconciliation is lane-exact and non-masking", () =>
 
   const lifecycle=canonicalReconciliation(value,"admin-node20-install");
   assert.deepEqual(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,lifecycle.secondary),[]);
-  assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves,37);
-  assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves,3);
-  assert.equal(lifecycle.secondary.executedLeafIds.length,11);
-  assert.equal(lifecycle.secondary.absentLeafIds.length,3);
-  assert.deepEqual(lifecycle.secondary.absentLeafIds,[
-    "leaf:issue-1902-public-event-lifecycle-tests:07:brand",
-    "leaf:issue-1902-public-event-lifecycle-tests:07:business",
-    "leaf:issue-1902-public-event-lifecycle-tests:07:consumer",
-  ]);
-  const fabricatedAllPresent=structuredClone(lifecycle.secondary);
-  for(const leaf of fabricatedAllPresent.results[0].leafResults){leaf.status="passed";leaf.executed=true;}
-  fabricatedAllPresent.results[0].outerResults[6].executedLeaves=4;fabricatedAllPresent.results[0].outerResults[6].skippedAbsentLeaves=0;
-  fabricatedAllPresent.results[0].presentLeaves=14;fabricatedAllPresent.results[0].executedLeaves=14;fabricatedAllPresent.results[0].absentLeaves=0;
-  fabricatedAllPresent.executedLeafIds=[...fabricatedAllPresent.expectedLeafIds];fabricatedAllPresent.absentLeafIds=[];
-  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,fabricatedAllPresent).join("\n"),/secondary-evidence-mismatch/);
+  assert.equal(value.phase3bLeafCapabilities.currentExecutedLeaves,40);
+  assert.equal(value.phase3bLeafCapabilities.currentAbsentLeaves,0);
+  assert.equal(lifecycle.secondary.executedLeafIds.length,14);
+  assert.equal(lifecycle.secondary.absentLeafIds.length,0);
+  assert.deepEqual(lifecycle.secondary.absentLeafIds,[]);
+  const fabricatedAbsence=structuredClone(lifecycle.secondary);
+  const fabricatedAbsentId="leaf:issue-1902-public-event-lifecycle-tests:07:brand";
+  const fabricatedAbsentLeaf=fabricatedAbsence.results[0].leafResults.find((leaf)=>leaf.id===fabricatedAbsentId);
+  fabricatedAbsentLeaf.status="skipped-absent";fabricatedAbsentLeaf.executed=false;
+  fabricatedAbsence.results[0].outerResults[6].executedLeaves=3;fabricatedAbsence.results[0].outerResults[6].skippedAbsentLeaves=1;
+  fabricatedAbsence.results[0].presentLeaves=13;fabricatedAbsence.results[0].executedLeaves=13;fabricatedAbsence.results[0].absentLeaves=1;
+  fabricatedAbsence.executedLeafIds=fabricatedAbsence.executedLeafIds.filter((id)=>id!==fabricatedAbsentId);fabricatedAbsence.absentLeafIds=[fabricatedAbsentId];
+  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,fabricatedAbsence).join("\n"),/secondary-evidence-mismatch/);
   const presentClaimedAbsent=structuredClone(lifecycle.secondary);const presentId="leaf:issue-1902-public-event-lifecycle-tests:07:offering";
   const presentLeaf=presentClaimedAbsent.results[0].leafResults.find((leaf)=>leaf.id===presentId);presentLeaf.status="skipped-absent";presentLeaf.executed=false;
   assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,presentClaimedAbsent).join("\n"),/secondary-evidence-mismatch/);
-  const absentClaimedPassed=structuredClone(lifecycle.secondary);const absentLeaf=absentClaimedPassed.results[0].leafResults.find((leaf)=>leaf.id===lifecycle.secondary.absentLeafIds[0]);
-  absentLeaf.status="passed";absentLeaf.executed=true;
-  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,absentClaimedPassed).join("\n"),/secondary-evidence-mismatch/);
+  const presentOmitted=structuredClone(lifecycle.secondary);
+  presentOmitted.executedLeafIds=presentOmitted.executedLeafIds.filter((id)=>id!==presentId);
+  assert.match(reconcilePhase3bReports(value,"admin-node20-install",lifecycle.decision,lifecycle.primary,presentOmitted).join("\n"),/secondary-evidence-mismatch/);
   for(const mutate of [
     (report)=>{report.toolExposureExecutions=0;},
     (report)=>{report.orderedToolExposures[0].version="29.7.1";},

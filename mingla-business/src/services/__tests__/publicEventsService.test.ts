@@ -339,7 +339,7 @@ describe("public brand lookup", () => {
     expect(mockFrom).toHaveBeenCalledTimes(2);
   });
 
-  test("keeps populated brand events and ticket fetches public-event-backed", async () => {
+  test("keeps populated brand events and hydrates tickets from the canonical direct bundle", async () => {
     const claimedQuery = queryBuilder("maybeSingle", {
       data: null,
       error: null,
@@ -361,41 +361,58 @@ describe("public brand lookup", () => {
         }),
       ),
     };
-    const ticketsQuery = queryBuilder("order", {
-      data: [
-        {
-          id: "ticket-1",
-          event_id: "event-1",
-          name: "General",
-          description: null,
-          price_cents: 0,
-          currency: "GBP",
-          quantity_total: null,
-          is_unlimited: true,
-          is_free: true,
-          sale_start_at: null,
-          sale_end_at: null,
-          min_purchase_qty: 1,
-          max_purchase_qty: null,
-          is_hidden: false,
-          is_disabled: false,
-          requires_approval: false,
-          allow_transfers: true,
-          password_protected: false,
-          available_online: true,
-          available_in_person: false,
-          waitlist_enabled: false,
-          display_order: 0,
-        },
-      ],
-      error: null,
+    mockRpc.mockImplementation((name, args) => {
+      if (name === "pg_direct_event_checkout_bundle") {
+        expect(args).toEqual({
+          p_event_id: "event-1",
+          p_brand_slug: null,
+          p_event_slug: null,
+        });
+        return Promise.resolve({
+          data: {
+            id: "event-1",
+            brandId: "brand-1",
+            brandSlug: "test-stripe",
+            eventSlug: "great-free-event",
+            name: "Great Free Event",
+            status: "scheduled",
+            brand: { id: "brand-1", slug: "test-stripe", name: "Test Stripe" },
+            currency: "GBP",
+            timezone: "Europe/Paris",
+            masterStartAt: "2099-01-01T18:00:00Z",
+            masterEndAt: "2099-01-01T20:00:00Z",
+            occurrences: [
+              {
+                id: "occurrence-1",
+                startAt: "2099-01-01T18:00:00Z",
+                endAt: "2099-01-01T20:00:00Z",
+                timezone: "Europe/Paris",
+                isMaster: true,
+              },
+            ],
+            tickets: [
+              {
+                id: "ticket-1",
+                name: "General",
+                isFree: true,
+                isUnlimited: true,
+                availableOnline: true,
+                availableInPerson: false,
+                priceCents: 0,
+                currency: "GBP",
+              },
+            ],
+          },
+          error: null,
+        });
+      }
+      return Promise.resolve({ data: [], error: null });
     });
     mockFrom.mockImplementation((table) => {
       if (table === "claimed_venues_public_view") return claimedQuery;
       if (table === "business_public_brands_view") return brandQuery;
       if (table === "business_public_events_view") return eventsQuery;
       if (table === "events") return eventTypesQuery;
-      if (table === "ticket_types") return ticketsQuery;
       if (table === "public_menus_view") return menusQuery();
       throw new Error(`Unexpected table ${String(table)}`);
     });
@@ -410,8 +427,14 @@ describe("public brand lookup", () => {
       brandSlug: "test-stripe",
       eventSlug: "great-free-event",
       tickets: [expect.objectContaining({ id: "ticket-1", name: "General" })],
+      terminalSource: { kind: "occurrences" },
     });
-    expect(ticketsQuery.eq).toHaveBeenCalledWith("event_id", "event-1");
+    expect(mockRpc).toHaveBeenCalledWith("pg_direct_event_checkout_bundle", {
+      p_event_id: "event-1",
+      p_brand_slug: null,
+      p_event_slug: null,
+    });
+    expect(mockFrom).not.toHaveBeenCalledWith("ticket_types");
   });
 });
 

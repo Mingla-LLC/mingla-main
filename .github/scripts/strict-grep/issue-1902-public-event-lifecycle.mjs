@@ -5,7 +5,10 @@ const files = {
   brand: "packages/brand-rendering/PublicBrandPage.tsx",
   service: "mingla-business/src/services/publicEventsService.ts",
   consumer: "app-mobile/src/hooks/useBrandBySlug.ts",
+  consumerDirect: "app-mobile/src/hooks/usePublicEventBySlug.ts",
+  consumerScreen: "app-mobile/src/screens/Event/ConsumerEventDetailScreen.tsx",
   direct: "mingla-business/src/components/event/PublicEventPage.tsx",
+  checkout: "mingla-business/app/checkout/[eventId]/index.tsx",
   wrapper: "mingla-business/src/components/brand/PublicBrandPage.tsx",
   teaser: "mingla-business/src/components/brand/NextEventTeaser.tsx",
   eventBody: "packages/offering-rendering/EventOfferingBody.tsx",
@@ -84,6 +87,9 @@ function enforce(s) {
     "single lifecycle owner",
   );
   requireText(s.lifecycle, "2_147_483_000", "safe timer cap");
+  requireText(s.lifecycle, "resolveEventTerminal", "terminal resolver");
+  requireText(s.lifecycle, "row.startAt", "raw camelCase occurrence start");
+  requireText(s.lifecycle, "row.endAt", "raw camelCase occurrence end");
   requireText(s.brand, 'event.eventType === "rsvp"', "RSVP event cards");
   requireText(
     s.brand,
@@ -97,14 +103,37 @@ function enforce(s) {
   );
   requireText(
     s.service,
-    'row.event_type === "event" ? fetchTickets(row.id) : []',
-    "RSVP ticket-read exclusion",
+    "MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4",
+    "bounded Business bundle hydration",
   );
+  requireText(s.service, "payload.tickets", "Business bundle ticket reuse");
+  requireText(s.service, 'row.event_type === "rsvp"', "Business RSVP bundle exclusion");
   requireText(
     s.consumer,
     'row.event_type === "event" || row.event_type === "rsvp"',
     "consumer RSVP admission",
   );
+  requireText(s.consumer, "MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4", "bounded Consumer bundle hydration");
+  requireText(s.consumer, "mapRpcPayloadToPublicEvent", "Consumer bundle mapper reuse");
+  requireText(s.consumer, 'row.event_type === "rsvp"', "Consumer RSVP bundle exclusion");
+  if (/\.from\(["']ticket_types["']\)/.test(s.consumer)) {
+    throw new Error("issue #1902 Consumer brand path retained ticket_types read");
+  }
+  requireText(s.consumerDirect, "value: payload.occurrences", "Consumer raw occurrence source");
+  requireText(s.consumerDirect, "terminalSource", "Consumer canonical terminal source");
+  requireText(s.consumerScreen, "validatedDayCanonical.event.acquisitionState", "warm canonical acquisition overlay");
+  requireText(s.consumerScreen, "canonicalLifecycleReady", "warm purchase suppression");
+  requireText(s.direct, "terminalSource", "Business detail terminal source");
+  requireText(s.checkout, "resolveEventCheckoutLifecycleGate", "checkout tri-state adapter");
+  requireText(s.checkout, 'checkoutLifecycle.kind === "unavailable"', "checkout unavailable branch");
+  requireText(s.checkout, 'checkoutLifecycle.kind === "closed"', "checkout closed branch");
+  requireText(s.wrapper, "terminalSource: event.terminalSource", "Business brand terminal pass-through");
+  if (/terminalSource\s*:\s*event\.terminalSource\s*(?:\?\?|\?)/.test(s.wrapper)) {
+    throw new Error("issue #1902 Business brand terminal source gained a fallback");
+  }
+  if (/Date\.parse|Date\.now|new Date/.test(s.wrapper)) {
+    throw new Error("issue #1902 Business brand wrapper gained local date logic");
+  }
   requireText(s.direct, "<EventAcquisitionNotice", "direct lifecycle notice");
   requireText(
     s.direct,
@@ -219,8 +248,21 @@ if (process.argv.includes("--self-test")) {
     ["brand", 'event.eventType === "rsvp"'],
     ["brand", 'if (upcomingEvents.length > 0) tabs.push("events")'],
     ["service", 'row.event_type === "event" || row.event_type === "rsvp"'],
-    ["service", 'row.event_type === "event" ? fetchTickets(row.id) : []'],
+    ["service", "MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4"],
+    ["service", "payload.tickets"],
+    ["service", 'row.event_type === "rsvp"'],
     ["consumer", 'row.event_type === "event" || row.event_type === "rsvp"'],
+    ["consumer", "MAX_PUBLIC_BRAND_EVENT_BUNDLE_CONCURRENCY = 4"],
+    ["consumer", "mapRpcPayloadToPublicEvent"],
+    ["consumerDirect", "value: payload.occurrences"],
+    ["consumerDirect", "terminalSource"],
+    ["consumerScreen", "validatedDayCanonical.event.acquisitionState"],
+    ["consumerScreen", "canonicalLifecycleReady"],
+    ["direct", "terminalSource"],
+    ["checkout", "resolveEventCheckoutLifecycleGate"],
+    ["checkout", 'checkoutLifecycle.kind === "unavailable"'],
+    ["checkout", 'checkoutLifecycle.kind === "closed"'],
+    ["wrapper", "terminalSource: event.terminalSource"],
     ["direct", "<EventAcquisitionNotice"],
     ["direct", 'acquisitionState.kind === "current"'],
     ["teaser", 'rsvp: "RSVP"'],
@@ -254,6 +296,31 @@ if (process.argv.includes("--self-test")) {
       failed = true;
     }
     if (!failed) throw new Error(`self-test survived ${key}:${needle}`);
+  }
+
+  for (const [label, wrapper] of [
+    [
+      "Business brand terminal fallback",
+      baseline.wrapper.replace(
+        "terminalSource: event.terminalSource",
+        "terminalSource: event.terminalSource ?? { kind: \"single_end\", endAtUtc: event.masterEndAtUtc }",
+      ),
+    ],
+    [
+      "Business brand local date parsing",
+      baseline.wrapper.replace(
+        "terminalSource: event.terminalSource",
+        "terminalSource: event.terminalSource, lifecycleProbe: Date.parse(event.masterEndAtUtc ?? \"\")",
+      ),
+    ],
+  ]) {
+    let failed = false;
+    try {
+      enforce({ ...baseline, wrapper });
+    } catch {
+      failed = true;
+    }
+    if (!failed) throw new Error(`self-test survived injected ${label}`);
   }
 
   // [#2438 SC-13/SC-17] Execute the terminal branch instead of merely writing it.
@@ -299,7 +366,7 @@ if (process.argv.includes("--self-test")) {
   }
   if (PROOF_FILES.length !== 7) throw new Error(`issue #1902 expects exactly 7 product proof files, found ${PROOF_FILES.length}`);
   console.log(
-    `issue #1902 gate self-test: PASS (${mutations.length} mutations, ${PHASE3B_LIFECYCLES.length} accepted lifecycles, 6 forged lifecycles, ${PROOF_FILES.length} decoupled product proofs, 0 workflow-file literals, provider ${CI_BATCH_PROVIDER})`,
+    `issue #1902 gate self-test: PASS (${mutations.length} removals, 2 injected wrapper mutations, ${PHASE3B_LIFECYCLES.length} accepted lifecycles, 6 forged lifecycles, ${PROOF_FILES.length} decoupled product proofs, 0 workflow-file literals, provider ${CI_BATCH_PROVIDER})`,
   );
 } else {
   enforce(baseline);
