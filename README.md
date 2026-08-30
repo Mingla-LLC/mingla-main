@@ -1,6 +1,6 @@
 # Mingla
 
-<!-- #2851 controlled pull_request_target cancellation proof: generation A; this PR must never merge. -->
+<!-- #2851 controlled pull_request_target cancellation proof: generation B; this PR must never merge. -->
 
 Mingla helps people discover experiences, plan with friends, and run the operational surfaces that keep the ecosystem healthy. Both apps are live on the App Store and Google Play.
 
