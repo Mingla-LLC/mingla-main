@@ -1,12 +1,12 @@
 # Invariant Registry
 
-## DRAFT — issue #2855 (pending-venue dependency schema remains reviewed and fail-closed)
+## ACTIVE — issue #2855 (pending-venue dependency schema remains reviewed and fail-closed)
 
-### I-PROPOSED-2855-PENDING-VENUE-SCHEMA-REVIEWED (DRAFT)
+### I-PROPOSED-2855-PENDING-VENUE-SCHEMA-REVIEWED (ACTIVE)
 
 - **Rule:** #2099 dynamically discovers every public ordinary/partitioned foreign-key or semantic venue/pool lane. Only `brand_hours`, `brand_place_pipeline_state`, `venue_availability_config`, and `venue_reservation_settings` may be nonzero at their exact baseline cardinality; `venue_listings` is identity-self and every other relation defaults disallowed. The current reviewed schema digest is pinned, and schema plus state are recomputed under the postgres-owned DDL seal and deterministic relation/row locks immediately before mutation. Any unknown schema, nonzero disallowed state, stale state, missing seal, or unsafe privilege fails closed with zero correction and zero audit.
 - **Enforcement:** `supabase/migrations/20270610002855_issue_2855_pending_venue_schema_pin.sql`, the #2855 implementor provenance/equivalence guard, the independent tester real-nonzero guard, and the #2099 PostgreSQL 17 full-chain/D4/D5/D7 workflow.
-- **Status:** DRAFT until independent tester PASS, all-green merge, exact merged-main production migration receipt, and readback of both RPC definitions, owners, grants, search paths, the DDL seal, and the reviewed live schema digest.
+- **Status:** ACTIVE for the repository contract after independent P0–P4-zero PASS at pre-rebase candidate `3949f1a83` and byte-identical post-rebase verification: all 547 migrations, the host-composed real-row guard, D4 replay, D5 races, D7 unknown-lane proof, old-pin/allowlist/provider-reference mutants, and 993/993 Class A passed. Production activation is not yet claimed: CLOSE still requires verified merged-main bytes, exact prerequisite live digest, sanctioned surgical apply and stamp, both RPC definitions/owners/grants/search paths/new-pin readback, the DDL seal, and safe read-only preview evidence.
 
 ## ACTIVE — issue #2854 (customer-patterns index inventory remains exact)
 
