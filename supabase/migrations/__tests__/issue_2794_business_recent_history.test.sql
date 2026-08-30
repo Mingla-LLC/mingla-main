@@ -8,19 +8,29 @@ SELECT ('2794' || lpad(to_hex(g), 4, '0') || '-0000-4000-8000-' || lpad(g::text,
        '27940000-0000-4000-8000-000000000010',
        '27940000-0000-4000-8000-000000000001',
        'Recent ' || g, 'recent-' || g, 'live', 'public', 'event'
-  FROM generate_series(1, 201) g;
+  FROM generate_series(1, 202) g;
 
 SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '27940000-0000-4000-8000-000000000001', true);
 
 DO $test$
-DECLARE v jsonb; v_advanced jsonb; i integer; v_first uuid := '27940001-0000-4000-8000-000000000001';
+DECLARE
+  v jsonb;
+  v_advanced jsonb;
+  v_stale jsonb;
+  v_before timestamptz;
+  v_after timestamptz;
+  i integer;
+  v_first uuid := '27940001-0000-4000-8000-000000000001';
 BEGIN
+  v_before := clock_timestamp();
   v := public.biz_record_recent_entity_open(
     '27940000-0000-4000-8000-000000000010', 'event', v_first,
     now() + interval '1 day', '27940000-0000-4000-8001-000000000001');
-  IF (v->>'acceptedOpenedAt')::timestamptz > now() + interval '6 minutes' THEN
-    RAISE EXCEPTION 'future timestamp was not clamped';
+  v_after := clock_timestamp();
+  IF (v->>'acceptedOpenedAt')::timestamptz < v_before
+     OR (v->>'acceptedOpenedAt')::timestamptz > v_after THEN
+    RAISE EXCEPTION 'future timestamp was not clamped to server receipt time';
   END IF;
   IF public.biz_record_recent_entity_open(
     '27940000-0000-4000-8000-000000000010', 'event', v_first,
@@ -43,6 +53,38 @@ BEGIN
   IF (SELECT count(*) FROM public.biz_list_recent_entity_index('27940000-0000-4000-8000-000000000010')) <> 200 THEN
     RAISE EXCEPTION 'retention was not bounded at 200';
   END IF;
+  v := public.biz_record_recent_entity_open(
+    '27940000-0000-4000-8000-000000000010', 'event', v_first,
+    now(), '27940000-0000-4000-8001-000000000001');
+  v_advanced := public.biz_record_recent_entity_open(
+    '27940000-0000-4000-8000-000000000010', 'event',
+    '27940002-0000-4000-8000-000000000002', now(),
+    '27940002-0000-4000-8001-000000000002');
+  IF (v->>'retained')::boolean AND (v_advanced->>'retained')::boolean THEN
+    RAISE EXCEPTION 'replay of a subsequently pruned operation claimed retained=true';
+  END IF;
+  v_stale := public.biz_record_recent_entity_open(
+    '27940000-0000-4000-8000-000000000010', 'event',
+    '279400ca-0000-4000-8000-000000000202', now() - interval '30 days',
+    '279400ca-0000-4000-8001-000000000202');
+  IF (v_stale->>'retained')::boolean IS DISTINCT FROM false THEN
+    RAISE EXCEPTION '201st stale pointer did not self-prune with retained=false';
+  END IF;
+  IF public.biz_record_recent_entity_open(
+    '27940000-0000-4000-8000-000000000010', 'event',
+    '279400ca-0000-4000-8000-000000000202', now(),
+    '279400ca-0000-4000-8001-000000000202') <> v_stale THEN
+    RAISE EXCEPTION 'stale self-prune operation replay changed acknowledgement';
+  END IF;
+  BEGIN
+    PERFORM public.biz_record_recent_entity_open(
+      '27940000-0000-4000-8000-000000000010', 'event',
+      '279400c9-0000-4000-8000-000000000201', now(),
+      '279400ca-0000-4000-8001-000000000202');
+    RAISE EXCEPTION 'operation mismatch was accepted';
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM <> 'recent_operation_mismatch' THEN RAISE; END IF;
+  END;
   PERFORM public.biz_record_recent_entity_open(
     '27940000-0000-4000-8000-000000000010', 'event', v_first, now(),
     '27940000-0000-4000-8001-000000000100');
@@ -52,10 +94,35 @@ BEGIN
   END IF;
   v := public.biz_hydrate_recent_entities(
     '27940000-0000-4000-8000-000000000010',
-    jsonb_build_array(jsonb_build_object('entityType','event','entityId','279400c9-0000-4000-8000-000000000201')));
-  IF jsonb_array_length(v->'items') <> 1 THEN RAISE EXCEPTION 'authorized hydration failed'; END IF;
+    jsonb_build_array(
+      jsonb_build_object('entityType','event','entityId','279400c9-0000-4000-8000-000000000201'),
+      jsonb_build_object('entityType','event','entityId','279400c8-0000-4000-8000-000000000200')));
+  IF jsonb_array_length(v->'items') <> 2
+     OR v->'items'->0->>'entityId' <> '279400c9-0000-4000-8000-000000000201'
+     OR v->'items'->1->>'entityId' <> '279400c8-0000-4000-8000-000000000200' THEN
+    RAISE EXCEPTION 'authorized hydration did not preserve requested order';
+  END IF;
 END;
 $test$;
+
+RESET ROLE;
+UPDATE public.events SET deleted_at = now()
+ WHERE id = '279400c9-0000-4000-8000-000000000201';
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '27940000-0000-4000-8000-000000000001', true);
+DO $omission$
+DECLARE v jsonb;
+BEGIN
+  v := public.biz_hydrate_recent_entities(
+    '27940000-0000-4000-8000-000000000010',
+    jsonb_build_array(jsonb_build_object(
+      'entityType','event','entityId','279400c9-0000-4000-8000-000000000201')));
+  IF jsonb_array_length(v->'items') <> 0
+     OR jsonb_array_length(v->'omitted') <> 1 THEN
+    RAISE EXCEPTION 'deleted retained pointer was not safely omitted';
+  END IF;
+END;
+$omission$;
 
 DO $terminal$
 BEGIN

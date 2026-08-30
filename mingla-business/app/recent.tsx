@@ -30,37 +30,14 @@ import { useResponsiveLayout } from "../src/hooks/useResponsiveLayout";
 import type { BusinessRecentPointer } from "../src/store/businessRecentStore";
 import { formatRelativeTime } from "../src/utils/relativeTime";
 import { routeForBusinessRecent } from "../src/utils/routeForEventRow";
+import { postHogService } from "../src/services/postHogService";
 
 const typeLabel = (row: BusinessRecentPointer): string =>
   row.entityType === "rsvp"
     ? "RSVP"
     : row.entityType[0].toUpperCase() + row.entityType.slice(1);
 
-const isLive = (row: BusinessRecentPointer): boolean => {
-  if (row.entityType === "venue") return row.status === "verified";
-  if (
-    row.status === "cancelled" ||
-    row.status === "ended" ||
-    row.status === "draft"
-  )
-    return false;
-  const now = Date.now();
-  const start =
-    row.startsAt === null || row.startsAt === undefined
-      ? Number.NaN
-      : Date.parse(row.startsAt);
-  const end =
-    row.endsAt === null || row.endsAt === undefined
-      ? Number.NaN
-      : Date.parse(row.endsAt);
-  if (row.entityType === "trip") {
-    if (Number.isFinite(end) && now > end) return false;
-    return Number.isFinite(start) ? now >= start : row.status === "live";
-  }
-  return Number.isFinite(start)
-    ? now >= start - 4 * 60 * 60 * 1000 && now < start + 24 * 60 * 60 * 1000
-    : row.status === "live";
-};
+const isLive = (row: BusinessRecentPointer): boolean => row.status === "live";
 
 export function RecentRow({
   row,
@@ -83,7 +60,7 @@ export function RecentRow({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       accessibilityRole="button"
-      accessibilityLabel={`Open ${typeLabel(row)}: ${row.title ?? "Untitled"}. ${status}. ${opened}.`}
+      accessibilityLabel={`Open ${typeLabel(row)}: ${row.title?.trim() || "Title unavailable"}. ${status}. ${opened}.`}
       style={({ pressed }) => [
         styles.row,
         pressed && styles.rowPressed,
@@ -110,7 +87,7 @@ export function RecentRow({
           <Text style={styles.type}>{typeLabel(row)}</Text>
         </View>
         <Text style={styles.title} numberOfLines={2}>
-          {row.title?.trim() || `Untitled ${typeLabel(row).toLowerCase()}`}
+          {row.title?.trim() || "--"}
         </Text>
         <Text style={styles.opened}>{opened}</Text>
       </View>
@@ -135,16 +112,27 @@ export default function RecentScreen(): React.ReactElement {
   );
   const openRow = useCallback(
     (row: BusinessRecentPointer): void => {
-      router.push(
-        routeForBusinessRecent({
-          id: row.entityId,
-          entityType: row.entityType,
-          status:
-            row.status === "draft" || row.localDraft ? "draft" : row.status,
-        }) as never,
+      const position = rows.findIndex(
+        (candidate) =>
+          candidate.entityType === row.entityType &&
+          candidate.entityId === row.entityId,
       );
+      postHogService.capture("business_recent_item_open", {
+        entity_type: row.entityType,
+        live_bucket: row.status === "live" ? "live" : "not_live",
+        source: "recent",
+        position_bucket:
+          position < 10 ? "1_10" : position < 25 ? "11_25" : "26_plus",
+        surface: "business",
+      });
+      const destination = routeForBusinessRecent({
+        id: row.entityId,
+        entityType: row.entityType,
+        status: row.status === "draft" || row.localDraft ? "draft" : row.status,
+      });
+      if (destination !== null) router.push(destination as never);
     },
-    [router],
+    [router, rows],
   );
 
   const stateNode =

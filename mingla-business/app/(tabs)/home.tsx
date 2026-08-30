@@ -18,7 +18,13 @@
  * Brand-chip on TopBar opens BrandSwitcherSheet (mode auto-derives from list state).
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   FlatList,
   LayoutAnimation,
@@ -92,6 +98,7 @@ import type { Trip } from "../../src/services/tripsService";
 // ORCH-0865 REWORK 5 — canonical routing helper, ban hardcoded /event/{id}
 import { routeForBusinessRecent } from "../../src/utils/routeForEventRow";
 import type { BusinessRecentPointer } from "../../src/store/businessRecentStore";
+import { postHogService } from "../../src/services/postHogService";
 import { tripToLiveEvent } from "../../src/utils/tripToLiveEvent";
 import type { BusinessTodo } from "../../src/utils/businessTodos";
 
@@ -155,6 +162,7 @@ const formatCapacityLabel = (event: LiveEvent): string => {
 };
 
 export default function HomeTab(): React.ReactElement {
+  const recentImpressionBrandRef = useRef<string | null>(null);
   const insets = useSafeAreaInsets();
   const router = useRouter();
   const { isWideDesktop } = useResponsiveLayout();
@@ -275,22 +283,59 @@ export default function HomeTab(): React.ReactElement {
   }, []);
 
   const handleSeeAllEvents = useCallback((): void => {
+    postHogService.capture("business_recent_see_all_open", {
+      source: "home",
+      count_bucket: recent.total > 25 ? "26_plus" : "11_25",
+      cache: recent.rows.length > 0,
+      surface: "business",
+    });
     router.push("/recent" as never);
-  }, [router]);
+  }, [recent.rows.length, recent.total, router]);
 
   const handleOpenRecent = useCallback(
     (row: BusinessRecentPointer): void => {
-      router.push(
-        routeForBusinessRecent({
-          id: row.entityId,
-          entityType: row.entityType,
-          status:
-            row.status === "draft" || row.localDraft ? "draft" : row.status,
-        }) as never,
+      const position = recent.rows.findIndex(
+        (candidate) =>
+          candidate.entityType === row.entityType &&
+          candidate.entityId === row.entityId,
       );
+      postHogService.capture("business_recent_item_open", {
+        entity_type: row.entityType,
+        live_bucket: row.status === "live" ? "live" : "not_live",
+        source: "home",
+        position_bucket: position < 3 ? "top_3" : "4_10",
+        surface: "business",
+      });
+      const destination = routeForBusinessRecent({
+        id: row.entityId,
+        entityType: row.entityType,
+        status: row.status === "draft" || row.localDraft ? "draft" : row.status,
+      });
+      if (destination !== null) router.push(destination as never);
     },
-    [router],
+    [recent.rows, router],
   );
+
+  useEffect(() => {
+    if (
+      currentBrand === null ||
+      recent.state === "loading" ||
+      recentImpressionBrandRef.current === currentBrand.id
+    )
+      return;
+    recentImpressionBrandRef.current = currentBrand.id;
+    postHogService.capture("business_recent_home_impression", {
+      count_bucket:
+        recent.rows.length === 0
+          ? "0"
+          : recent.rows.length <= 10
+            ? "1_10"
+            : "11_plus",
+      cache: recent.rows.length > 0,
+      offline: recent.state.startsWith("offline"),
+      surface: "business",
+    });
+  }, [currentBrand, recent.rows.length, recent.state]);
 
   useEffect(() => {
     if (brandRecovery.errorMessage !== null) {
@@ -641,7 +686,7 @@ export default function HomeTab(): React.ReactElement {
             ) : (
               <View style={styles.liveSectionCarouselBody}>
                 <ScrollView
-                  testID="home-desktop-recent-scroll"
+                  testID="home-live-carousel"
                   horizontal
                   showsHorizontalScrollIndicator={false}
                   snapToInterval={liveCardWidth + spacing.md}
@@ -789,7 +834,7 @@ export default function HomeTab(): React.ReactElement {
           scrollEnabled={false}
           contentContainerStyle={[styles.scroll, styles.desktopScroll]}
           showsVerticalScrollIndicator={false}
-          refreshControl={
+            refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
               onRefresh={handleRefresh}
@@ -855,6 +900,7 @@ export default function HomeTab(): React.ReactElement {
                   </Text>
                 )}
                 <ScrollView
+                  testID="home-desktop-recent-scroll"
                   style={styles.desktopUpcomingList}
                   scrollEnabled={isWideDesktop}
                   showsVerticalScrollIndicator={false}
@@ -877,7 +923,29 @@ export default function HomeTab(): React.ReactElement {
             </>
           )}
         </ScrollView>
-      ) : currentBrand === null ? null : (
+      ) : currentBrand === null ? (
+        <FlatList
+          testID="home-mobile-scroll"
+          style={styles.mobileUpcomingList}
+          data={[] as BusinessRecentPointer[]}
+          renderItem={() => null}
+          ListHeaderComponent={
+            <View style={styles.todoWrap}>
+              <BusinessTodoToggle
+                todos={todos}
+                onAction={handleTodoAction}
+                presentation="page-flow"
+                testID="business-todo-toggle"
+              />
+            </View>
+          }
+          contentContainerStyle={[
+            styles.mobileUpcomingContent,
+            { paddingBottom: spacing.xl * 4 + insets.bottom },
+          ]}
+          showsVerticalScrollIndicator={false}
+        />
+      ) : (
         <FlatList
           testID="home-mobile-scroll"
           style={styles.mobileUpcomingList}
@@ -959,7 +1027,7 @@ export default function HomeTab(): React.ReactElement {
             styles.mobileUpcomingContent,
             { paddingBottom: spacing.xl * 4 + insets.bottom },
           ]}
-            refreshControl={
+          refreshControl={
             <RefreshControl
               refreshing={isRefreshing || recent.isRefreshing}
               onRefresh={handleRefresh}

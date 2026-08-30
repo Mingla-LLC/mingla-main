@@ -21,12 +21,22 @@ export interface BusinessRecentPointer {
   localDraft: boolean;
 }
 
+export type BusinessRecentQueuePointer = Pick<
+  BusinessRecentPointer,
+  | "entityType"
+  | "entityId"
+  | "lastOpenedAt"
+  | "operationId"
+  | "pendingSync"
+  | "localDraft"
+>;
+
 interface BusinessRecentState {
-  scopes: Record<string, BusinessRecentPointer[]>;
+  scopes: Record<string, BusinessRecentQueuePointer[]>;
+  generation: number;
   hasHydrated: boolean;
   setHasHydrated: (value: boolean) => void;
-  upsert: (scope: string, pointer: BusinessRecentPointer) => void;
-  replaceScope: (scope: string, pointers: BusinessRecentPointer[]) => void;
+  upsert: (scope: string, pointer: BusinessRecentQueuePointer) => void;
   remove: (
     scope: string,
     entityType: BusinessRecentEntityType,
@@ -44,8 +54,19 @@ interface BusinessRecentState {
 }
 
 const pointerKey = (
-  pointer: Pick<BusinessRecentPointer, "entityType" | "entityId">,
+  pointer: Pick<BusinessRecentQueuePointer, "entityType" | "entityId">,
 ): string => `${pointer.entityType}:${pointer.entityId}`;
+
+const queuePointer = (
+  pointer: BusinessRecentQueuePointer,
+): BusinessRecentQueuePointer => ({
+  entityType: pointer.entityType,
+  entityId: pointer.entityId,
+  lastOpenedAt: pointer.lastOpenedAt,
+  operationId: pointer.operationId,
+  pendingSync: pointer.pendingSync,
+  localDraft: pointer.localDraft,
+});
 
 export const recentScopeKey = (userId: string, brandId: string): string =>
   `${userId}:${brandId}`;
@@ -73,24 +94,87 @@ export const mergeRecentPointers = (
     .slice(0, 200);
 };
 
+export const promoteBusinessRecentPointers = (
+  current: BusinessRecentPointer[],
+  input: {
+    entityType: BusinessRecentEntityType;
+    localId: string;
+    serverId: string;
+    operationId: string;
+  },
+): BusinessRecentPointer[] => {
+  const local = current.find(
+    (pointer) =>
+      pointer.entityType === input.entityType &&
+      pointer.entityId === input.localId,
+  );
+  if (local === undefined) return current;
+  const server = current.find(
+    (pointer) =>
+      pointer.entityType === input.entityType &&
+      pointer.entityId === input.serverId,
+  );
+  const newer =
+    server !== undefined &&
+    Date.parse(server.lastOpenedAt) > Date.parse(local.lastOpenedAt)
+      ? server
+      : local;
+  const withoutAliases = current.filter(
+    (pointer) =>
+      pointer.entityType !== input.entityType ||
+      (pointer.entityId !== input.localId &&
+        pointer.entityId !== input.serverId),
+  );
+  return mergeRecentPointers(withoutAliases, [
+    {
+      ...local,
+      ...server,
+      ...newer,
+      entityId: input.serverId,
+      operationId: input.operationId,
+      pendingSync: true,
+      localDraft: false,
+    },
+  ]);
+};
+
+const mergeRecentQueuePointers = (
+  current: BusinessRecentQueuePointer[],
+  incoming: BusinessRecentQueuePointer[],
+): BusinessRecentQueuePointer[] => {
+  const byKey = new Map<string, BusinessRecentQueuePointer>();
+  for (const pointer of [...current, ...incoming]) {
+    const key = pointerKey(pointer);
+    const prior = byKey.get(key);
+    if (
+      prior === undefined ||
+      Date.parse(pointer.lastOpenedAt) >= Date.parse(prior.lastOpenedAt)
+    ) {
+      byKey.set(key, { ...prior, ...pointer });
+    }
+  }
+  return Array.from(byKey.values())
+    .sort((a, b) => {
+      const time = Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt);
+      return time !== 0 ? time : pointerKey(b).localeCompare(pointerKey(a));
+    })
+    .slice(0, 200);
+};
+
 export const useBusinessRecentStore = create<BusinessRecentState>()(
   persist(
     (set) => ({
       scopes: {},
+      generation: 0,
       hasHydrated: false,
       setHasHydrated: (value) => set({ hasHydrated: value }),
       upsert: (scope, pointer) =>
         set((state) => ({
           scopes: {
             ...state.scopes,
-            [scope]: mergeRecentPointers(state.scopes[scope] ?? [], [pointer]),
-          },
-        })),
-      replaceScope: (scope, pointers) =>
-        set((state) => ({
-          scopes: {
-            ...state.scopes,
-            [scope]: mergeRecentPointers([], pointers),
+            [scope]: mergeRecentQueuePointers(state.scopes[scope] ?? [], [
+              queuePointer(pointer),
+            ]),
           },
         })),
       remove: (scope, entityType, entityId) =>
@@ -107,28 +191,17 @@ export const useBusinessRecentStore = create<BusinessRecentState>()(
       promoteDraft: (scope, entityType, localId, serverId, operationId) =>
         set((state) => {
           const existing = state.scopes[scope] ?? [];
-          const local = existing.find(
-            (pointer) =>
-              pointer.entityType === entityType && pointer.entityId === localId,
-          );
-          if (local === undefined) return state;
-          const withoutAliases = existing.filter(
-            (pointer) =>
-              pointer.entityType !== entityType ||
-              (pointer.entityId !== localId && pointer.entityId !== serverId),
-          );
+          const promoted = promoteBusinessRecentPointers(existing, {
+            entityType,
+            localId,
+            serverId,
+            operationId,
+          });
+          if (promoted === existing) return state;
           return {
             scopes: {
               ...state.scopes,
-              [scope]: mergeRecentPointers(withoutAliases, [
-                {
-                  ...local,
-                  entityId: serverId,
-                  operationId,
-                  pendingSync: true,
-                  localDraft: false,
-                },
-              ]),
+              [scope]: promoted.map(queuePointer),
             },
           };
         }),
@@ -138,13 +211,32 @@ export const useBusinessRecentStore = create<BusinessRecentState>()(
           delete scopes[scope];
           return { scopes };
         }),
-      reset: () => set({ scopes: {}, hasHydrated: true }),
+      reset: () =>
+        set((state) => ({
+          scopes: {},
+          hasHydrated: true,
+          generation: state.generation + 1,
+        })),
     }),
     {
       name: "business-recent-v1",
       version: 1,
       storage: createJSONStorage(() => AsyncStorage),
-      partialize: (state) => ({ scopes: state.scopes }),
+      partialize: (state) => ({
+        scopes: Object.fromEntries(
+          Object.entries(state.scopes).map(([scope, pointers]) => [
+            scope,
+            pointers.map((pointer) => ({
+              entityType: pointer.entityType,
+              entityId: pointer.entityId,
+              lastOpenedAt: pointer.lastOpenedAt,
+              operationId: pointer.operationId,
+              pendingSync: pointer.pendingSync,
+              localDraft: pointer.localDraft,
+            })),
+          ]),
+        ),
+      }),
       onRehydrateStorage: () => (state) => state?.setHasHydrated(true),
     },
   ),

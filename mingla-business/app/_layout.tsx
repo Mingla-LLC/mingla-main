@@ -59,6 +59,7 @@ import { useCurrentBrandRecovery } from "../src/hooks/useCurrentBrandRecovery";
 import { useBrand } from "../src/hooks/useBrands";
 import { useCurrentBrandId } from "../src/store/currentBrandStore";
 import { useBusinessRecentStore } from "../src/store/businessRecentStore";
+import { clearBusinessRecentCachedUser } from "../src/services/businessRecentService";
 // ORCH-0892-A: KeyboardRoot wraps every downstream surface so
 // react-native-keyboard-controller primitives can subscribe to native
 // keyboard events. Web variant is a passthrough Fragment (library has no
@@ -264,9 +265,22 @@ function RootLayoutInner(): React.ReactElement {
   const currentBrandId = useCurrentBrandId();
   useEffect(() => {
     const nextUserId = user?.id ?? null;
-    if (previousRecentUserRef.current !== null && nextUserId === null) {
+    const previousUserId = previousRecentUserRef.current;
+    if (
+      previousUserId !== null &&
+      (nextUserId === null || nextUserId !== previousUserId)
+    ) {
       useBusinessRecentStore.getState().reset();
       void useBusinessRecentStore.persist.clearStorage();
+      void clearBusinessRecentCachedUser(previousUserId).catch(() => {
+        console.warn("[Recent] persisted cache cleanup failed");
+      });
+      const recentQuery = (query: { queryKey: readonly unknown[] }): boolean =>
+        query.queryKey[0] === "business-recent-index" ||
+        query.queryKey[0] === "business-recent-page";
+      void queryClient.cancelQueries({ predicate: recentQuery }).then(() => {
+        queryClient.removeQueries({ predicate: recentQuery });
+      });
     }
     previousRecentUserRef.current = nextUserId;
   }, [user?.id]);

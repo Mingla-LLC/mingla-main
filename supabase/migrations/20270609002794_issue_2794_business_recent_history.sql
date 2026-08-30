@@ -31,6 +31,30 @@ ALTER TABLE public.business_recent_entity_opens FORCE ROW LEVEL SECURITY;
 REVOKE ALL ON TABLE public.business_recent_entity_opens FROM PUBLIC, anon, authenticated;
 GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.business_recent_entity_opens TO service_role;
 
+CREATE TABLE public.business_recent_operation_receipts (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id uuid NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
+  brand_id uuid NOT NULL REFERENCES public.brands(id) ON DELETE CASCADE,
+  operation_id uuid NOT NULL,
+  entity_type text NOT NULL CONSTRAINT business_recent_receipt_entity_type_check
+    CHECK (entity_type IN ('venue','event','rsvp','experience','trip')),
+  entity_id uuid NOT NULL,
+  accepted_opened_at timestamptz NOT NULL,
+  retained boolean NOT NULL,
+  server_received_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT business_recent_receipt_operation_unique
+    UNIQUE (user_id, brand_id, operation_id)
+);
+
+CREATE INDEX business_recent_receipt_scope_order_idx
+  ON public.business_recent_operation_receipts
+  (user_id, brand_id, server_received_at DESC, id DESC);
+
+ALTER TABLE public.business_recent_operation_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.business_recent_operation_receipts FORCE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE public.business_recent_operation_receipts FROM PUBLIC, anon, authenticated;
+GRANT SELECT, INSERT, UPDATE, DELETE ON TABLE public.business_recent_operation_receipts TO service_role;
+
 CREATE FUNCTION public.biz_record_recent_entity_open(
   p_brand_id uuid,
   p_entity_type text,
@@ -44,8 +68,10 @@ SET search_path = public, pg_temp
 AS $function$
 DECLARE
   v_uid uuid := auth.uid();
+  v_received_at timestamptz := clock_timestamp();
   v_accepted timestamptz;
   v_existing public.business_recent_entity_opens%ROWTYPE;
+  v_receipt public.business_recent_operation_receipts%ROWTYPE;
   v_pointer_id uuid;
   v_retained boolean;
 BEGIN
@@ -60,6 +86,22 @@ BEGIN
        < public.biz_role_rank('event_manager') THEN
     RAISE EXCEPTION 'recent_brand_forbidden';
   END IF;
+  -- Serialize the complete read/upsert/prune transaction for one private scope.
+  PERFORM pg_advisory_xact_lock(hashtextextended(v_uid::text || ':' || p_brand_id::text, 2794));
+
+  SELECT * INTO v_receipt
+    FROM public.business_recent_operation_receipts
+   WHERE user_id = v_uid AND brand_id = p_brand_id
+     AND operation_id = p_operation_id;
+  IF FOUND THEN
+    IF v_receipt.entity_type <> p_entity_type OR v_receipt.entity_id <> p_entity_id THEN
+      RAISE EXCEPTION 'recent_operation_mismatch';
+    END IF;
+    RETURN jsonb_build_object(
+      'acceptedOpenedAt', v_receipt.accepted_opened_at,
+      'retained', v_receipt.retained
+    );
+  END IF;
 
   IF p_entity_type = 'venue' THEN
     PERFORM 1 FROM public.venue_listings v
@@ -72,13 +114,19 @@ BEGIN
   END IF;
   IF NOT FOUND THEN RAISE EXCEPTION 'recent_entity_forbidden'; END IF;
 
-  v_accepted := LEAST(p_opened_at, now() + interval '5 minutes');
+  v_accepted := CASE
+    WHEN p_opened_at > v_received_at + interval '5 minutes' THEN v_received_at
+    ELSE p_opened_at
+  END;
 
   SELECT * INTO v_existing
     FROM public.business_recent_entity_opens
    WHERE user_id = v_uid AND brand_id = p_brand_id
      AND idempotency_operation_id = p_operation_id;
   IF FOUND THEN
+    IF v_existing.entity_type <> p_entity_type OR v_existing.entity_id <> p_entity_id THEN
+      RAISE EXCEPTION 'recent_operation_mismatch';
+    END IF;
     RETURN jsonb_build_object(
       'acceptedOpenedAt', v_existing.last_opened_at,
       'retained', EXISTS (
@@ -92,31 +140,58 @@ BEGIN
     server_received_at, idempotency_operation_id
   ) VALUES (
     v_uid, p_brand_id, p_entity_type, p_entity_id, v_accepted,
-    now(), p_operation_id
+    v_received_at, p_operation_id
   )
   ON CONFLICT (user_id, brand_id, entity_type, entity_id) DO UPDATE
     SET last_opened_at = GREATEST(
           public.business_recent_entity_opens.last_opened_at,
           EXCLUDED.last_opened_at
         ),
-        server_received_at = now(),
+        server_received_at = v_received_at,
         idempotency_operation_id = EXCLUDED.idempotency_operation_id,
         updated_at = now()
   RETURNING id, last_opened_at INTO v_pointer_id, v_accepted;
 
-  DELETE FROM public.business_recent_entity_opens r
-   WHERE r.user_id = v_uid AND r.brand_id = p_brand_id
-     AND r.id IN (
-       SELECT doomed.id
-         FROM public.business_recent_entity_opens doomed
-        WHERE doomed.user_id = v_uid AND doomed.brand_id = p_brand_id
-        ORDER BY doomed.last_opened_at DESC, doomed.id DESC
-        OFFSET 200
-     );
+  WITH pruned AS (
+    DELETE FROM public.business_recent_entity_opens r
+     WHERE r.user_id = v_uid AND r.brand_id = p_brand_id
+       AND r.id IN (
+         SELECT doomed.id
+           FROM public.business_recent_entity_opens doomed
+          WHERE doomed.user_id = v_uid AND doomed.brand_id = p_brand_id
+          ORDER BY doomed.last_opened_at DESC, doomed.id DESC
+          OFFSET 200
+       )
+    RETURNING r.entity_type, r.entity_id
+  )
+  UPDATE public.business_recent_operation_receipts receipt
+     SET retained = false
+    FROM pruned
+   WHERE receipt.user_id = v_uid AND receipt.brand_id = p_brand_id
+     AND receipt.entity_type = pruned.entity_type
+     AND receipt.entity_id = pruned.entity_id;
 
   SELECT EXISTS (
     SELECT 1 FROM public.business_recent_entity_opens r WHERE r.id = v_pointer_id
   ) INTO v_retained;
+
+  INSERT INTO public.business_recent_operation_receipts (
+    user_id, brand_id, operation_id, entity_type, entity_id,
+    accepted_opened_at, retained, server_received_at
+  ) VALUES (
+    v_uid, p_brand_id, p_operation_id, p_entity_type, p_entity_id,
+    v_accepted, v_retained, v_received_at
+  );
+
+  DELETE FROM public.business_recent_operation_receipts receipt
+   WHERE receipt.user_id = v_uid AND receipt.brand_id = p_brand_id
+     AND receipt.id IN (
+       SELECT doomed.id
+         FROM public.business_recent_operation_receipts doomed
+        WHERE doomed.user_id = v_uid AND doomed.brand_id = p_brand_id
+        ORDER BY doomed.server_received_at DESC, doomed.id DESC
+        OFFSET 400
+     );
   RETURN jsonb_build_object('acceptedOpenedAt', v_accepted, 'retained', v_retained);
 END;
 $function$;
@@ -127,9 +202,10 @@ RETURNS TABLE (
   entity_type text,
   entity_id uuid,
   last_opened_at timestamptz,
-  lifecycle_status text,
+  raw_status text,
   starts_at timestamptz,
-  ends_at timestamptz
+  ends_at timestamptz,
+  ended_at timestamptz
 )
 LANGUAGE plpgsql
 SECURITY DEFINER
@@ -146,7 +222,8 @@ BEGIN
   SELECT r.id, r.entity_type, r.entity_id, r.last_opened_at,
          CASE WHEN r.entity_type = 'venue' THEN v.claim_status ELSE e.status END,
          CASE WHEN r.entity_type = 'venue' THEN NULL ELSE ed.start_at END,
-         CASE WHEN r.entity_type = 'venue' THEN NULL ELSE ed.end_at END
+         CASE WHEN r.entity_type = 'venue' THEN NULL ELSE ed.end_at END,
+         CASE WHEN r.entity_type = 'venue' THEN NULL ELSE e.ended_at END
     FROM public.business_recent_entity_opens r
     LEFT JOIN public.events e
       ON r.entity_type <> 'venue' AND e.id = r.entity_id
@@ -292,6 +369,8 @@ GRANT EXECUTE ON FUNCTION public.biz_hydrate_recent_entities(uuid,jsonb) TO auth
 
 COMMENT ON TABLE public.business_recent_entity_opens IS
   'Issue #2794: RPC-only private successful-open pointers, capped at 200 per user and brand.';
+COMMENT ON TABLE public.business_recent_operation_receipts IS
+  'Issue #2794: bounded user-effect receipts for idempotent Recent retries, capped at 400 per user and brand.';
 
 COMMIT;
 NOTIFY pgrst, 'reload schema';

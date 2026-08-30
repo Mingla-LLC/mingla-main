@@ -134,15 +134,29 @@ export function routeForBusinessRecent(row: {
   entityType: BusinessRecentEntityType;
   destination?: BusinessRecentDestination;
   status?: string | null;
-}): string {
-  const destination = row.destination ?? (row.status === "draft" ? "edit" : "detail");
+}): string | null {
+  if (
+    !["venue", "event", "rsvp", "experience", "trip"].includes(row.entityType)
+  )
+    return null;
+  if (
+    row.status != null &&
+    !["draft", "scheduled", "live", "ended", "cancelled"].includes(row.status)
+  )
+    return null;
+  const destination =
+    row.destination ?? (row.status === "draft" ? "edit" : "detail");
   if (row.entityType === "venue") return `/venue/${row.id}`;
   if (destination === "edit") {
     switch (row.entityType) {
-      case "event": return `/event/${row.id}/edit`;
-      case "rsvp": return `/rsvp/${row.id}/edit`;
-      case "experience": return `/experience/${row.id}/edit`;
-      case "trip": return `/trip/${row.id}/edit`;
+      case "event":
+        return `/event/${row.id}/edit`;
+      case "rsvp":
+        return `/rsvp/${row.id}/edit`;
+      case "experience":
+        return `/experience/${row.id}/edit`;
+      case "trip":
+        return `/trip/${row.id}/edit`;
     }
   }
   return routeForEventRow({
