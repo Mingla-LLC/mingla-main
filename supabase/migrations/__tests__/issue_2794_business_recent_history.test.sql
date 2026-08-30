@@ -92,7 +92,7 @@ BEGIN
   END;
   PERFORM public.biz_record_recent_entity_open(
     '27940000-0000-4000-8000-000000000010', 'event',
-    '279400ca-0000-4000-8000-000000000202', now(),
+    '279400ca-0000-4000-8000-000000000202', now() + interval '1 second',
     '279400ca-0000-4000-8001-000000000203');
   IF NOT EXISTS (
     SELECT 1
