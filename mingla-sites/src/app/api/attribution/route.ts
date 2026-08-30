@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
+import { hasGrantedAnalyticsConsent } from "../../../lib/consent";
 import { signedCorePost } from "../../../lib/coreGateway";
 
 const UUID =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export async function POST(request: Request) {
-  if (
-    !request.headers.get("cookie")?.includes(
-      "mingla_site_analytics_consent_v1=granted",
-    )
-  ) {
+  if (!hasGrantedAnalyticsConsent(request.headers.get("cookie"))) {
     return NextResponse.json({ ok: false }, { status: 403 });
   }
   if (

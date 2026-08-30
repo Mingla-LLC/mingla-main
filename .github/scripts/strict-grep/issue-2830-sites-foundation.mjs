@@ -36,11 +36,14 @@ const PATHS = {
   publicPackage: "mingla-sites/package.json",
   publicConfig: "mingla-sites/src/lib/config.ts",
   publicGateway: "mingla-sites/src/lib/coreGateway.ts",
+  publicConsentContract: "mingla-sites/src/lib/consent.ts",
   publicPublication: "mingla-sites/src/lib/publication.ts",
   publicArtifact: "mingla-sites/src/contracts/artifact.ts",
   publicRenderer: "mingla-sites/src/components/RestaurantV1.tsx",
   publicConsent: "mingla-sites/src/components/ConsentControl.tsx",
   publicEvents: "mingla-sites/src/app/api/events/route.ts",
+  publicAttributionRoute: "mingla-sites/src/app/api/attribution/route.ts",
+  publicSecurityTest: "mingla-sites/src/lib/securityBoundary.test.ts",
   publicObservability: "mingla-sites/src/lib/observability.ts",
   manifest: "supabase/secrets.manifest.json",
   runbook: "docs/runbooks/MINGLA_SITES_PILOT.md",
@@ -339,11 +342,14 @@ export function violations(files) {
   const publicCombined = [
     files.publicConfig,
     files.publicGateway,
+    files.publicConsentContract,
     files.publicPublication,
     files.publicArtifact,
     files.publicRenderer,
     files.publicConsent,
     files.publicEvents,
+    files.publicAttributionRoute,
+    files.publicSecurityTest,
   ].join("\n");
   for (const token of [
     "MINGLA_RUNTIME_TO_CORE_CURRENT_KID",
@@ -365,6 +371,32 @@ export function violations(files) {
     "public last-good runtime",
     failures,
   );
+  for (const token of [
+    "input.siteId !== config.pilotSiteId",
+    'throw new Error("SITE_SCOPE_MISMATCH")',
+  ]) need(files.publicGateway ?? "", token, "public pilot signing boundary", failures);
+  for (const token of [
+    'cookieHeader.split(";")',
+    'name === CONSENT_KEY && value === "granted"',
+  ]) need(
+    files.publicConsentContract ?? "",
+    token,
+    "public exact consent cookie boundary",
+    failures,
+  );
+  for (const routeSource of [files.publicEvents ?? "", files.publicAttributionRoute ?? ""]) {
+    need(
+      routeSource,
+      'hasGrantedAnalyticsConsent(request.headers.get("cookie"))',
+      "public exact consent cookie boundary",
+      failures,
+    );
+  }
+  for (const token of [
+    "expect(fetchSpy).not.toHaveBeenCalled()",
+    '"xmingla_site_analytics_consent_v1=granted"',
+    '"mingla_site_analytics_consent_v1=granted-extra"',
+  ]) need(files.publicSecurityTest ?? "", token, "public security regression", failures);
   for (const token of [
     "emitPublicObservation",
     "public.stale_last_good",
@@ -436,6 +468,8 @@ function selfTest() {
     ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
     ["publicPublication", "await signedCorePost({", "await unsignedCorePost({", "public last-good runtime"],
+    ["publicGateway", "input.siteId !== config.pilotSiteId", "input.siteId === config.pilotSiteId", "public pilot signing boundary"],
+    ["publicConsentContract", 'name === CONSENT_KEY && value === "granted"', 'name.includes(CONSENT_KEY) && value.startsWith("granted")', "public exact consent cookie boundary"],
     ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
     ["publicRenderer", 'aria-labelledby={page.role === "home"', 'aria-labelledby={true || page.role === "home"', "public last-good runtime"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { hasGrantedAnalyticsConsent } from "../../../lib/consent";
 import { signedCorePost } from "../../../lib/coreGateway";
 
 const EVENT_NAMES = new Set([
@@ -28,11 +29,9 @@ const KEYS = new Set([
 ]);
 
 export async function POST(request: Request) {
-  if (
-    !request.headers.get("cookie")?.includes(
-      "mingla_site_analytics_consent_v1=granted",
-    )
-  ) return NextResponse.json({ ok: false }, { status: 403 });
+  if (!hasGrantedAnalyticsConsent(request.headers.get("cookie"))) {
+    return NextResponse.json({ ok: false }, { status: 403 });
+  }
   if (
     request.headers.get("content-type")?.split(";", 1)[0] !== "application/json"
   ) return NextResponse.json({ ok: false }, { status: 415 });

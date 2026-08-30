@@ -1,6 +1,8 @@
 "use client";
 
-export const CONSENT_KEY = "mingla_site_analytics_consent_v1";
+import { CONSENT_KEY } from "./consent";
+
+export { CONSENT_KEY } from "./consent";
 export const CONSENT_EVENT = "mingla:analytics-consent";
 
 export type SiteEventContext = {

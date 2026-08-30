@@ -8,6 +8,9 @@ export async function signedCorePost(input: {
   body: Record<string, unknown>;
 }): Promise<Response> {
   const config = runtimeConfig();
+  if (input.siteId !== config.pilotSiteId) {
+    throw new Error("SITE_SCOPE_MISMATCH");
+  }
   const serialized = JSON.stringify(input.body);
   const issuedAt = new Date();
   const unsigned = {
