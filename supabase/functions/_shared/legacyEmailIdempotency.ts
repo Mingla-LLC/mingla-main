@@ -109,13 +109,17 @@ export function normalizeEmailRecipient(value: string): string {
   return normalized;
 }
 
+function assertRecipientHmacSecret(secret: string): void {
+  if (secret.trim().length < 32) {
+    throw new Error("notification_recipient_hmac_secret_missing");
+  }
+}
+
 export async function recipientFingerprint(
   recipient: string,
   secret: string,
 ): Promise<string> {
-  if (secret.trim().length < 32) {
-    throw new Error("notification_recipient_hmac_secret_missing");
-  }
+  assertRecipientHmacSecret(secret);
   const key = await crypto.subtle.importKey(
     "raw",
     encoder.encode(secret),
@@ -164,6 +168,10 @@ export async function dispatchIdempotentLegacyEmail(
   ) {
     return { outcome: "manual_review", reason: "recipient_in_idempotency_key" };
   }
+  // Validate the one required authority synchronously before constructing the
+  // parallel hash batch. Otherwise its rejected promise can make Promise.all
+  // return while the two sibling digest operations are still running.
+  assertRecipientHmacSecret(input.recipientHmacSecret);
   const [recipientHash, payloadHash, providerKey] = await Promise.all([
     recipientFingerprint(recipient, input.recipientHmacSecret),
     payloadFingerprint(input.payload),
