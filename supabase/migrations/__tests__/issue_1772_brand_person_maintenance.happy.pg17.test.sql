@@ -419,7 +419,7 @@ VALUES('17720100-0000-4000-8000-000000000040','17720100-0000-4000-8000-000000000
 INSERT INTO public.event_rsvps(id,event_id,user_id,guest_name,guest_email,guest_phone,rsvp_status,
   approval_status,plus_count,created_at)
 VALUES('17720100-0000-4000-8000-000000000060','17720100-0000-4000-8000-000000000020',NULL,
-  'Legacy Roster Guest','legacy-roster@example.test',NULL,'going','pending',0,now());
+  'Legacy Roster Guest','legacy-roster@example.test','+12125551772','going','pending',0,now());
 INSERT INTO public.brand_person_source_links(id,brand_id,brand_person_id,source_kind,source_id,
   offering_invite_id,link_method,source_occurred_at)
 VALUES('17720100-0000-4000-8000-000000000061','17720100-0000-4000-8000-000000000010',
