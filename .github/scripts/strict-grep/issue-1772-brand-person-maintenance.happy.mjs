@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../../..");
 const files = {
-  migration: "supabase/migrations/20270611001772_issue_1772_brand_person_maintenance.sql",
+  migration: "supabase/migrations/20270612001772_issue_1772_brand_person_maintenance.sql",
   sqlTest: "supabase/migrations/__tests__/issue_1772_brand_person_maintenance.happy.pg17.test.sql",
   secretManifest: "supabase/secrets.manifest.json",
   secretTest: "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",

@@ -1,6 +1,9 @@
 -- Issue #1772, parent #876: authenticated Book identity maintenance and
 -- verified, support-only erasure for brand-owned non-user contacts.
 -- Forward-only. No production data is mutated by this migration.
+-- Monotonic release version 20270612001772. Renamed before its first remote
+-- apply so fresh-schema CI cannot reuse a snapshot built from an earlier
+-- unmerged revision of this migration.
 
 BEGIN;
 

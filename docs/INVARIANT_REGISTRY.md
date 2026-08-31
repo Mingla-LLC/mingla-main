@@ -493,7 +493,7 @@
   distinct loser facts remain alternate/non-primary. Split restores only the exact stored event
   partition or changes no identity data and escalates. Source commerce and historical delivery
   facts never move or rewrite.
-- **Enforcement:** Migration `20270611001772_issue_1772_brand_person_maintenance.sql`, RPC-only
+- **Enforcement:** Migration `20270612001772_issue_1772_brand_person_maintenance.sql`, RPC-only
   Business service/hook boundaries, immutable PII-free operation receipts, #1772 PostgreSQL/Jest
   happy and independent adversarial suites, and the paired strict guards.
 - **Established:** DRAFT at the binding #1772 SPEC plus Amendments A1–A3. Activate only after the
