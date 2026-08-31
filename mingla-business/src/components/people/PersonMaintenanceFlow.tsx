@@ -313,6 +313,7 @@ export function PersonMaintenanceFlow(
   const mergeConfirmTriggerRef = React.useRef<React.ElementRef<typeof Pressable> | null>(null);
   const splitConfirmTriggerRef = React.useRef<React.ElementRef<typeof Pressable> | null>(null);
   const stacked = width < 352 || fontScale >= 2;
+  const inlineConfirmation = Platform.OS !== "web" || stacked;
 
   React.useEffect(() => {
     if (props.mergeVisible) return;
@@ -338,17 +339,17 @@ export function PersonMaintenanceFlow(
 
   React.useEffect(() => {
     if (!props.mergeVisible) return;
-    if (confirmMerge && stacked) focusAfterLayout(mergeConfirmHeadingRef);
+    if (confirmMerge && inlineConfirmation) focusAfterLayout(mergeConfirmHeadingRef);
     else if (mergeError || props.previewError) focusAfterLayout(mergeAlertRef);
     else focusAfterLayout(mergeStep === "picker" ? pickerHeadingRef : reviewHeadingRef);
-  }, [confirmMerge, mergeError, mergeStep, props.mergeVisible, props.previewError, stacked]);
+  }, [confirmMerge, inlineConfirmation, mergeError, mergeStep, props.mergeVisible, props.previewError]);
 
   React.useEffect(() => {
     if (!props.splitVisible) return;
-    if (confirmSplit && stacked) focusAfterLayout(splitConfirmHeadingRef);
+    if (confirmSplit && inlineConfirmation) focusAfterLayout(splitConfirmHeadingRef);
     else if (splitMutationError || props.splitError) focusAfterLayout(splitAlertRef);
     else focusAfterLayout(splitHeadingRef);
-  }, [confirmSplit, props.splitError, props.splitVisible, splitMutationError, stacked]);
+  }, [confirmSplit, inlineConfirmation, props.splitError, props.splitVisible, splitMutationError]);
 
   React.useEffect(() => {
     const operation = props.restoredOperation;
@@ -696,7 +697,7 @@ export function PersonMaintenanceFlow(
                 ) : null}
               </NativeScrollView>
             ) : null}
-            {confirmMerge && stacked ? (
+            {confirmMerge && inlineConfirmation ? (
               <View style={styles.inlineConfirm} accessibilityViewIsModal>
                 <Text
                   ref={mergeConfirmHeadingRef}
@@ -735,7 +736,7 @@ export function PersonMaintenanceFlow(
               </View>
             ) : null}
             {(props.preview?.state === "ready" || props.previewLoading || !props.preview) &&
-                !(confirmMerge && stacked) ? (
+                !(confirmMerge && inlineConfirmation) ? (
               <View style={styles.footer}>
                 <Button
                   ref={mergeConfirmTriggerRef}
@@ -752,7 +753,7 @@ export function PersonMaintenanceFlow(
       </Sheet>
 
       <ConfirmDialog
-        visible={confirmMerge && !stacked}
+        visible={confirmMerge && !inlineConfirmation}
         onClose={() => setConfirmMerge(false)}
         onConfirm={submitMerge}
         title={`Merge into ${survivorName}?`}
@@ -844,7 +845,7 @@ export function PersonMaintenanceFlow(
                 ) : null}
               </NativeScrollView>
             ) : null}
-            {confirmSplit && stacked ? (
+            {confirmSplit && inlineConfirmation ? (
               <View style={styles.inlineConfirm} accessibilityViewIsModal>
                 <Text
                   ref={splitConfirmHeadingRef}
@@ -883,7 +884,7 @@ export function PersonMaintenanceFlow(
                 </View>
               </View>
             ) : null}
-            {props.splitPreview?.state === "safe" && !(confirmSplit && stacked) ? <View style={styles.footer}>
+            {props.splitPreview?.state === "safe" && !(confirmSplit && inlineConfirmation) ? <View style={styles.footer}>
               <Button
                 ref={splitConfirmTriggerRef}
                 label="Split into two people"
@@ -898,7 +899,7 @@ export function PersonMaintenanceFlow(
       </Sheet>
 
       <ConfirmDialog
-        visible={confirmSplit && !stacked}
+        visible={confirmSplit && !inlineConfirmation}
         onClose={() => setConfirmSplit(false)}
         onConfirm={submitSplit}
         title="Split this merge?"

@@ -13,9 +13,9 @@ describe("#1772 native maintenance footer hit targets", () => {
   });
 
   test("bounds both no-input review panes above their footer actions", () => {
-    // [TEST-MOD-APPROVED #1772] The keyboard-aware native scroll view can
-    // intercept sheet-footer touches when no keyboard input exists. Merge and
-    // Split reviews must use bounded React Native scroll views instead.
+    // [TEST-MOD-APPROVED #1772] No-input review panes do not need keyboard
+    // coordination. Bounding them independently keeps the footer outside the
+    // review scroll surface on every native size.
     expect(source.match(/<NativeScrollView\b/g) ?? []).toHaveLength(2);
     expect(source.match(/<\/NativeScrollView>/g) ?? []).toHaveLength(2);
     expect(source.match(/style=\{styles\.reviewScroll\}/g) ?? []).toHaveLength(
