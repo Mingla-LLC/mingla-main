@@ -830,95 +830,259 @@ const getTripOrderMoney = writeTool(
 
 // ----------------------------------------------------------------------------
 // E. RSVP
+//
+// issue #1977 — RSVP writes commit through `ari_execute_rsvp_operation`, the
+// same canonical graph/guest/contribution boundary Business uses. No Ari
+// executor may shallow-insert `events` or call `refund-order` for chip-ins.
 // ----------------------------------------------------------------------------
+
+const RSVP_PARTY_TYPES = [
+  "birthday-party",
+  "rooftop-party",
+  "club-night",
+  "house-party",
+  "warehouse-party",
+  "beach-party",
+  "pool-party",
+  "boat-party",
+  "themed-party",
+  "corporate-event",
+  "graduation-party",
+  "holiday-party",
+  "networking-event",
+  "rave",
+  "festival",
+] as const;
+
+function compactRsvpPayload(
+  args: Record<string, unknown>,
+): Record<string, unknown> {
+  const payload: Record<string, unknown> = {};
+  const copy = (target: string, source = target): void => {
+    if (args[source] !== undefined) payload[target] = args[source];
+  };
+  copy("title");
+  copy("description");
+  copy("timezone");
+  copy("city");
+  copy("partyTypes", "party_types");
+  copy("vibeTags", "vibe_tags");
+  copy("musicGenres", "music_genres");
+  copy("requestedVisibility", "requested_visibility");
+  copy("rsvpCapacity", "capacity");
+  copy("rsvpAllowPlusOnes", "allow_plus_ones");
+  copy("rsvpPlusOnesMax", "plus_ones_max");
+  copy("rsvpWaitlistEnabled", "waitlist_enabled");
+  copy("rsvpApprovalMode", "approval_mode");
+  copy("rsvpDiscoverable", "discoverable");
+  copy("privateGuestList", "private_guest_list");
+  copy("hideRemainingCount", "hide_remaining_count");
+  copy("hideAddressUntilTicket", "hide_address_until_rsvp");
+  copy("rsvpContributionEnabled", "contribution_enabled");
+  copy("rsvpContributionSuggestedCents", "suggested_cents");
+  copy("rsvpContributionMinCents", "minimum_cents");
+  if (
+    args.date !== undefined || args.doors_open !== undefined ||
+    args.ends_at !== undefined
+  ) {
+    payload.when = {
+      ...(args.date !== undefined ? { date: args.date } : {}),
+      ...(args.doors_open !== undefined ? { doorsOpen: args.doors_open } : {}),
+      ...(args.ends_at !== undefined ? { endsAt: args.ends_at } : {}),
+      ...(args.timezone !== undefined ? { timezone: args.timezone } : {}),
+    };
+  }
+  if (args.format !== undefined) {
+    payload.format = args.format;
+    payload.is_online = args.format === "online" || args.format === "hybrid";
+  }
+  copy("location_text");
+  copy("online_url");
+  return payload;
+}
+
+const RSVP_WRITE_PROPERTIES = {
+  title: { type: "string", minLength: 1, maxLength: 180 },
+  description: { type: "string", maxLength: 5000 },
+  timezone: { type: "string", minLength: 1, maxLength: 100 },
+  format: { type: "string", enum: ["in_person", "online", "hybrid"] },
+  date: { type: "string", minLength: 10, maxLength: 10 },
+  doors_open: { type: "string", minLength: 5, maxLength: 5 },
+  ends_at: { type: "string", minLength: 5, maxLength: 5 },
+  location_text: { type: "string", maxLength: 500 },
+  online_url: { type: "string", maxLength: 2000 },
+  city: { type: "string", maxLength: 120 },
+  party_types: {
+    type: "array",
+    maxItems: 15,
+    items: { type: "string", enum: RSVP_PARTY_TYPES },
+  },
+  vibe_tags: { type: "array", maxItems: 16, items: { type: "string" } },
+  music_genres: { type: "array", maxItems: 18, items: { type: "string" } },
+  requested_visibility: {
+    type: "string",
+    enum: ["public", "unlisted", "private"],
+  },
+  capacity: { type: "integer", minimum: 1, maximum: 100000 },
+  allow_plus_ones: { type: "boolean" },
+  plus_ones_max: { type: "integer", minimum: 0, maximum: 20 },
+  waitlist_enabled: { type: "boolean" },
+  approval_mode: { type: "string", enum: ["auto", "manual"] },
+  discoverable: { type: "boolean" },
+  private_guest_list: { type: "boolean" },
+  hide_remaining_count: { type: "boolean" },
+  hide_address_until_rsvp: { type: "boolean" },
+  contribution_enabled: { type: "boolean" },
+  suggested_cents: { type: "integer", minimum: 1 },
+  minimum_cents: { type: "integer", minimum: 1 },
+} as const;
+
+async function executeRsvpWrite(
+  name: string,
+  args: Record<string, unknown>,
+  client: any,
+  context: Parameters<AgentToolDefinition["executor"]>[3],
+): Promise<unknown> {
+  return await callRpc(client, "ari_execute_rsvp_operation", {
+    p_operation_id: requireAgentOperationId(context),
+    p_tool_name: name,
+    p_args: args,
+  });
+}
 
 const createRsvp = writeTool(
   "create_rsvp",
-  "Create a draft RSVP under an owned brand.",
-  { brand_id: UUID, title: STR },
-  ["brand_id", "title"],
-  async (args, client, userId) => {
-    const brandId = await requireBrand(args, client, userId);
-    const { data, error } = await client
-      .from("events")
-      .insert({
-        brand_id: brandId,
-        created_by: userId,
-        title: args.title,
-        event_type: "rsvp",
-        status: "draft",
-      })
-      .select("id, title, status")
-      .single();
-    if (error) throw new ToolError("RPC_FAILED", error.message);
-    return data;
+  "Create one private canonical RSVP draft. Dates, tickets, and public visibility are never created before publish.",
+  { brand_id: UUID, ...RSVP_WRITE_PROPERTIES },
+  ["brand_id", "title", "timezone", "format"],
+  async (args, client, userId, context) => {
+    await requireBrand(args, client, userId);
+    return await executeRsvpWrite("create_rsvp", args, client, context);
+  },
+);
+
+const updateRsvp = writeTool(
+  "update_rsvp",
+  "Update the same canonical RSVP draft or live RSVP. A live edit requires a 10–200 character reason.",
+  {
+    event_id: UUID,
+    ...RSVP_WRITE_PROPERTIES,
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["event_id"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    const payload = compactRsvpPayload(args);
+    if (Object.keys(payload).length === 0) {
+      throw new ToolError("INVALID_ARGS", "Nothing to update");
+    }
+    return await executeRsvpWrite("update_rsvp", args, client, context);
   },
 );
 
 const publishRsvp = writeTool(
   "publish_rsvp",
-  "Publish a draft RSVP via business_publish_rsvp_draft.",
+  "Publish the fresh stored canonical RSVP draft through business_publish_rsvp_draft. Never creates tickets.",
   { event_id: UUID },
   ["event_id"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    return await callRpc(client, "business_publish_rsvp_draft", {
-      p_event_id: eventId,
-    });
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeRsvpWrite("publish_rsvp", args, client, context);
+  },
+);
+
+const updateRsvpContributionSettings = writeTool(
+  "update_rsvp_contribution_settings",
+  "Update chip-in settings through the same RSVP draft/live owner. Values are minor units in the event currency.",
+  {
+    event_id: UUID,
+    contribution_enabled: { type: "boolean" },
+    suggested_cents: { type: "integer", minimum: 1 },
+    minimum_cents: { type: "integer", minimum: 1 },
+    reason: { type: "string", minLength: 10, maxLength: 200 },
+  },
+  ["event_id", "contribution_enabled"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    return await executeRsvpWrite(
+      "update_rsvp_contribution_settings",
+      args,
+      client,
+      context,
+    );
   },
 );
 
 const setRsvpGuestStatus = writeTool(
   "set_rsvp_guest_status",
-  "Approve or decline an RSVP guest via host_set_rsvp_status. Use guest_ids for bulk approve.",
+  "Approve or deny exactly selected RSVP roster keys, or explicitly act on all pending guests.",
   {
     event_id: UUID,
-    guest_id: UUID,
-    guest_ids: { type: "array", items: UUID },
-    status: { type: "string", enum: ["approved", "denied", "pending"] },
+    decision: { type: "string", enum: ["approve", "deny"] },
+    scope: { type: "string", enum: ["selected", "all_pending"] },
+    roster_keys: {
+      type: "array",
+      minItems: 1,
+      maxItems: 100,
+      items: { type: "string", minLength: 6, maxLength: 50 },
+    },
+    roster_watermark: { type: "integer", minimum: 0 },
   },
-  ["event_id", "status"],
-  async (args, client, userId) => {
-    const { eventId } = await requireEvent(args, client, userId);
-    if (Array.isArray(args.guest_ids) && args.guest_ids.length > 0) {
-      if (args.status !== "approved") {
-        throw new ToolError(
-          "INVALID_ARGS",
-          "guest_ids bulk path only approves. Pass status=approved, or a single guest_id to deny/pend.",
-        );
-      }
-      return await callRpc(client, "host_bulk_approve_rsvps", {
-        p_event_id: eventId,
-      });
+  ["event_id", "decision", "scope"],
+  async (args, client, userId, context) => {
+    await requireEvent(args, client, userId);
+    if (
+      args.scope === "selected" &&
+      (!Array.isArray(args.roster_keys) || args.roster_keys.length === 0)
+    ) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "roster_keys are required for selected scope",
+      );
     }
-    if (!isUuid(args.guest_id)) {
-      throw new ToolError("INVALID_ARGS", "guest_id or guest_ids required");
+    if (args.scope === "all_pending" && args.roster_keys !== undefined) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "roster_keys must be omitted for all_pending scope",
+      );
     }
-    return await callRpc(client, "host_set_rsvp_status", {
-      p_rsvp_id: args.guest_id,
-      p_status: args.status,
-    });
+    return await executeRsvpWrite(
+      "set_rsvp_guest_status",
+      args,
+      client,
+      context,
+    );
   },
 );
 
 const refundRsvpContribution = writeTool(
   "refund_rsvp_contribution",
-  "Refund an RSVP chip-in via rsvp-contribution-create refund path / refund-order. Destructive.",
+  "Refund an RSVP chip-in through the contribution source-refund path. The server derives exact refundable cents.",
   {
     event_id: UUID,
-    order_id: UUID,
-    amount_cents: { type: "integer", minimum: 1 },
+    contribution_id: UUID,
+    mode: { type: "string", enum: ["discretionary", "cancellation"] },
+    reason: { type: "string", minLength: 3, maxLength: 200 },
   },
-  ["event_id", "order_id"],
-  async (args, client, userId) => {
-    await requireEvent(args, client, userId);
-    if (!isUuid(args.order_id)) {
-      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+  ["event_id", "contribution_id", "mode", "reason"],
+  async (args, client, userId, context) => {
+    const { eventId } = await requireEvent(args, client, userId);
+    if (!isUuid(args.contribution_id)) {
+      throw new ToolError("INVALID_ARGS", "contribution_id must be a uuid");
     }
-    return await invokeFn(client, "refund-order", {
-      order_id: args.order_id,
-      amount_cents: args.amount_cents ?? null,
-    }, { "Idempotency-Key": newIdempotencyKey() });
+    return await invokeFn(
+      client,
+      "rsvp-contribution-refund",
+      {
+        eventId,
+        contributionId: args.contribution_id,
+        mode: args.mode,
+        reason: args.reason,
+        operationId: requireAgentOperationId(context),
+        operationArgs: args,
+      },
+      { "Idempotency-Key": requireAgentOperationId(context) },
+    );
   },
   "REFUND",
 );
@@ -3206,6 +3370,129 @@ const getTaxStatus = writeTool(
   },
 );
 
+// #1976 — balances + payout ledger read. Same edge as Host
+// (`brand-stripe-balances`) plus the same `brand_payout_releases` table Host
+// reads in brandPayoutLedgerService. CSV export remains a guided handoff.
+const getBrandBalancesReports = writeTool(
+  "get_brand_balances_reports",
+  "Read Stripe available/pending balances and recent payout-release ledger rows for a brand. Finance-gated. CSV export stays in Brand → Payments → Reports.",
+  { brand_id: UUID, limit: { type: "integer", minimum: 1, maximum: 50 } },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    await requireBrand(args, client, userId);
+    const balances = await invokeFn<Record<string, unknown>>(
+      client,
+      "brand-stripe-balances",
+      { brand_id: args.brand_id },
+    );
+    const limit = typeof args.limit === "number" && args.limit >= 1
+      ? Math.min(50, Math.floor(args.limit))
+      : 20;
+    const { data, error } = await client
+      .from("brand_payout_releases")
+      .select(
+        "id, event_id, provider, currency, status, releasable_at, released_at, gross_cents, refunded_cents, net_release_cents, organiser_cash_delivered_cents",
+      )
+      .eq("brand_id", args.brand_id)
+      .order("releasable_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    return {
+      brand_id: args.brand_id,
+      balances: {
+        currency: (balances.currency as string | undefined) ?? null,
+        available_minor: (balances.available_minor as number | undefined) ??
+          (balances.availableMinor as number | undefined) ?? null,
+        pending_minor: (balances.pending_minor as number | undefined) ??
+          (balances.pendingMinor as number | undefined) ?? null,
+        retrieved_at: (balances.retrieved_at as string | undefined) ??
+          (balances.retrievedAt as string | undefined) ?? null,
+      },
+      payout_releases: data ?? [],
+      guide:
+        "CSV exports (Stripe payouts / tax / all transactions) open in Brand → Payments → Reports.",
+    };
+  },
+);
+
+// #1976 — partner-side brand-link list (partnerBrandLinksService.listPartnerBrandLinks).
+// RLS binds partner_account_id = auth.uid(); never surface the partner account id.
+const listPartnerBrandLinks = writeTool(
+  "list_partner_brand_links",
+  "List the caller's partner-brand links (partner_brand_links). Optional include_cancelled. Never exposes partner_account_id.",
+  {
+    include_cancelled: { type: "boolean" },
+  },
+  [],
+  async (args, client, userId) => {
+    let query = client
+      .from("partner_brand_links")
+      .select(
+        "id, brand_id, invited_owner_email, invited_at, accepted_at, owner_stripe_connected_at, first_split_at, cancelled_at, cancelled_reason, brand:brands(id, name, slug, default_currency)",
+      )
+      .eq("partner_account_id", userId)
+      .order("invited_at", { ascending: false });
+    if (args.include_cancelled !== true) {
+      query = query.is("cancelled_at", null);
+    }
+    const { data, error } = await query;
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+      id: row.id,
+      brand_id: row.brand_id,
+      invited_owner_email: row.invited_owner_email,
+      status: derivePartnerLinkStatus(
+        row as unknown as Parameters<typeof derivePartnerLinkStatus>[0],
+      ),
+      cancelled_reason: row.cancelled_reason ?? null,
+      brand: row.brand ?? null,
+    }));
+  },
+);
+
+// #1976 — partner split earnings read (partnerSplitsService.listPartnerSplits).
+// RLS admits partner self-read and brand finance/admin. No mutations (webhook-only writes).
+const listPartnerSplits = writeTool(
+  "list_partner_splits",
+  "List partner_splits earnings rows for the caller (status, share, currency). Optional brand/currency/date filters. Read-only.",
+  {
+    brand_id: UUID,
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    from: { type: "string", minLength: 10, maxLength: 40 },
+    to: { type: "string", minLength: 10, maxLength: 40 },
+    limit: { type: "integer", minimum: 1, maximum: 200 },
+  },
+  [],
+  async (args, client, _userId) => {
+    if (args.brand_id !== undefined && !isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    const limit = typeof args.limit === "number" && args.limit >= 1
+      ? Math.min(200, Math.floor(args.limit))
+      : 50;
+    let query = client
+      .from("partner_splits")
+      .select(
+        "id, order_id, brand_id, mingla_fee_cents, partner_share_cents, transfer_currency, status, created_at, transferred_at, reversed_at, provider",
+      )
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (isUuid(args.brand_id)) query = query.eq("brand_id", args.brand_id);
+    if (typeof args.currency === "string" && args.currency.length === 3) {
+      query = query.eq("transfer_currency", args.currency.toLowerCase());
+    }
+    if (typeof args.from === "string") {
+      query = query.gte("created_at", args.from);
+    }
+    if (typeof args.to === "string") query = query.lte("created_at", args.to);
+    const { data, error } = await query;
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    // PII minimization: never return partner_account_id even if selected.
+    return data ?? [];
+  },
+);
+
 // ----------------------------------------------------------------------------
 // K. Refunds / cancels / installments
 // ----------------------------------------------------------------------------
@@ -3375,6 +3662,46 @@ const retryInstallment = writeTool(
   },
 );
 
+// #1981 — same Host edge as Trip Money → Charge now.
+const chargeInstallmentNow = writeTool(
+  "charge_installment_now",
+  "Charge a due trip installment now via manual-charge-installment. Finance-gated. Type CHARGE to confirm.",
+  {
+    brand_id: UUID,
+    installment_id: UUID,
+    at_risk_override: { type: "boolean" },
+  },
+  ["brand_id", "installment_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.installment_id)) {
+      throw new ToolError("INVALID_ARGS", "installment_id must be a uuid");
+    }
+    return await invokeFn(client, "manual-charge-installment", {
+      installmentId: args.installment_id,
+      atRiskOverride: args.at_risk_override === true,
+    });
+  },
+  "CHARGE",
+);
+
+// #1981 — same Host edge as Trip Money → Send reminder.
+const sendInstallmentReminder = writeTool(
+  "send_installment_reminder",
+  "Send a buyer trip-installment reminder via send-installment-reminder. Finance-gated.",
+  { brand_id: UUID, order_id: UUID },
+  ["brand_id", "order_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.order_id)) {
+      throw new ToolError("INVALID_ARGS", "order_id must be a uuid");
+    }
+    return await invokeFn(client, "send-installment-reminder", {
+      orderId: args.order_id,
+    });
+  },
+);
+
 // ----------------------------------------------------------------------------
 // L. Analytics (read)
 // ----------------------------------------------------------------------------
@@ -3399,6 +3726,78 @@ const getBrandAnalytics = writeTool(
       question: args.question ?? null,
       conversion: conv,
       venue: intel,
+    };
+  },
+);
+
+// #1984 — event order reconciliation (Business getEventOrderRevenue parity,
+// without buyer PII). Aggregates from the same orders + line items the orders
+// screen reads under caller JWT / RLS.
+const getEventOrderReconciliation = writeTool(
+  "get_event_order_reconciliation",
+  "Read sold count, gross, refunded, and net revenue for an event from orders. No buyer PII.",
+  { event_id: UUID },
+  ["event_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.event_id)) {
+      throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+    }
+    await assertAgentReadEvent(client, userId, args.event_id);
+    await requireEvent(args, client, userId);
+    const { data, error } = await client
+      .from("orders")
+      .select(
+        `payment_status, total_cents, refunded_amount_cents, currency,
+         order_line_items ( id, quantity ),
+         refunds ( status, refund_line_items ( order_line_item_id, quantity ) )`,
+      )
+      .eq("event_id", args.event_id);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    let soldCount = 0;
+    let revenueCents = 0;
+    let refundedCents = 0;
+    let currency: string | null = null;
+    for (const row of (data ?? []) as Array<Record<string, unknown>>) {
+      const status = String(row.payment_status ?? "");
+      // Mirror eventOrdersService.getEventOrderRevenue: paid + partial refund.
+      if (status !== "paid" && status !== "partial_refund") continue;
+      if (currency === null && typeof row.currency === "string") {
+        currency = row.currency;
+      }
+      revenueCents += Number(row.total_cents ?? 0);
+      refundedCents += Number(row.refunded_amount_cents ?? 0);
+      const refundedQtyByLine: Record<string, number> = {};
+      const refunds = Array.isArray(row.refunds)
+        ? row.refunds as Array<Record<string, unknown>>
+        : [];
+      for (const refund of refunds) {
+        if (refund.status !== "succeeded") continue;
+        const rlis = Array.isArray(refund.refund_line_items)
+          ? refund.refund_line_items as Array<Record<string, unknown>>
+          : [];
+        for (const rli of rlis) {
+          const lineId = String(rli.order_line_item_id ?? "");
+          if (!lineId) continue;
+          refundedQtyByLine[lineId] = (refundedQtyByLine[lineId] ?? 0) +
+            Number(rli.quantity ?? 0);
+        }
+      }
+      const lines = Array.isArray(row.order_line_items)
+        ? row.order_line_items as Array<Record<string, unknown>>
+        : [];
+      for (const line of lines) {
+        const lineId = String(line.id ?? "");
+        const qty = Number(line.quantity ?? 0);
+        soldCount += Math.max(0, qty - (refundedQtyByLine[lineId] ?? 0));
+      }
+    }
+    return {
+      event_id: args.event_id,
+      sold_count: soldCount,
+      revenue_cents: revenueCents,
+      refunded_cents: refundedCents,
+      net_revenue_cents: revenueCents - refundedCents,
+      currency,
     };
   },
 );
@@ -3516,6 +3915,1363 @@ const revokeBrandMember = writeTool(
     return { member_id: args.member_id, revoked: true };
   },
 );
+
+// #1982 — Team screen list (listBrandTeamMembers + listBrandInvitations).
+// Role changes are invite-time only on Host; invite_brand_member already covers that.
+const listBrandTeam = writeTool(
+  "list_brand_team",
+  "List active brand team members and pending brand invitations (roles included). Admin-gated by RLS.",
+  { brand_id: UUID },
+  ["brand_id"],
+  async (args, client, userId) => {
+    await assertAgentReadBrand(client, userId, args.brand_id);
+    await requireBrand(args, client, userId);
+    const [members, invitations] = await Promise.all([
+      client
+        .from("brand_team_members")
+        .select("id, user_id, role, invited_at, accepted_at")
+        .eq("brand_id", args.brand_id)
+        .is("removed_at", null),
+      client
+        .from("brand_invitations")
+        .select(
+          "id, email, invitee_name, role, status, expires_at, accepted_at, revoked_at",
+        )
+        .eq("brand_id", args.brand_id)
+        .order("expires_at", { ascending: false }),
+    ]);
+    if (members.error) throw new ToolError("RPC_FAILED", members.error.message);
+    if (invitations.error) {
+      throw new ToolError("RPC_FAILED", invitations.error.message);
+    }
+    return {
+      brand_id: args.brand_id,
+      members: members.data ?? [],
+      invitations: invitations.data ?? [],
+    };
+  },
+);
+
+// #1982 — same Host verb as scannerInvitationsService.revokeScannerInvitation.
+const revokeScannerInvitation = writeTool(
+  "revoke_scanner_invitation",
+  "Revoke a pending scanner invitation (scanner_invitations.status=revoked). Event-manager gated by RLS.",
+  { brand_id: UUID, invitation_id: UUID },
+  ["brand_id", "invitation_id"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.invitation_id)) {
+      throw new ToolError("INVALID_ARGS", "invitation_id must be a uuid");
+    }
+    const { data, error } = await client
+      .from("scanner_invitations")
+      .update({ status: "revoked", revoked_at: new Date().toISOString() })
+      .eq("id", args.invitation_id)
+      .eq("brand_id", args.brand_id)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (data === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "That scanner invitation was not found, is not pending, or you lack permission.",
+      );
+    }
+    return { invitation_id: args.invitation_id, revoked: true };
+  },
+);
+
+// #1982 — Brand People book list/detail/add via the same RPCs Host uses.
+const manageBrandPeople = writeTool(
+  "manage_brand_people",
+  "List, inspect, or manually add Brand People via biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person. Marketing-gated.",
+  {
+    brand_id: UUID,
+    action: { type: "string", enum: ["list", "get", "add"] },
+    person_id: UUID,
+    search: { type: "string", maxLength: 200 },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+    display_name: { type: "string", minLength: 1, maxLength: 200 },
+    email: { type: "string", maxLength: 320 },
+    phone_e164: { type: "string", maxLength: 32 },
+    phone_country_iso: { type: "string", minLength: 2, maxLength: 2 },
+    client_request_id: UUID,
+  },
+  ["brand_id", "action"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    const action = String(args.action);
+    if (action === "list") {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      const limit = typeof args.limit === "number" && args.limit >= 1
+        ? Math.min(100, Math.floor(args.limit))
+        : 25;
+      return await callRpc(client, "biz_get_brand_people_book", {
+        p_brand_id: args.brand_id,
+        p_search: typeof args.search === "string" ? args.search : null,
+        p_cursor: null,
+        p_limit: limit,
+      });
+    }
+    if (action === "get") {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      if (!isUuid(args.person_id)) {
+        throw new ToolError("INVALID_ARGS", "person_id must be a uuid");
+      }
+      return await callRpc(client, "biz_get_brand_person", {
+        p_brand_id: args.brand_id,
+        p_person_id: args.person_id,
+      });
+    }
+    if (action === "add") {
+      const displayName = typeof args.display_name === "string"
+        ? args.display_name.trim()
+        : "";
+      if (displayName.length < 1) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "display_name is required to add a person",
+        );
+      }
+      const clientRequestId = isUuid(args.client_request_id)
+        ? args.client_request_id
+        : newIdempotencyKey();
+      return await callRpc(client, "biz_add_brand_person", {
+        p_brand_id: args.brand_id,
+        p_display_name: displayName,
+        p_email: typeof args.email === "string" ? args.email : null,
+        p_phone_e164: typeof args.phone_e164 === "string"
+          ? args.phone_e164
+          : null,
+        p_phone_country_iso: typeof args.phone_country_iso === "string"
+          ? args.phone_country_iso
+          : null,
+        p_client_request_id: clientRequestId,
+      });
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list, get, or add");
+  },
+);
+
+// ----------------------------------------------------------------------------
+// #1972 reopen — event group chat, door sale, orders, waitlist, scanner admin
+// ----------------------------------------------------------------------------
+
+const manageEventGroupChat = writeTool(
+  "manage_event_group_chat",
+  "Read and moderate an event group chat (conversations/messages). Actions: get, list_messages, list_participants, post, set_broadcast_only, remove_participant, delete_message. Text posts only — media stays a guided handoff.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: {
+      type: "string",
+      enum: [
+        "get",
+        "list_messages",
+        "list_participants",
+        "post",
+        "set_broadcast_only",
+        "remove_participant",
+        "delete_message",
+      ],
+    },
+    conversation_id: UUID,
+    message_id: UUID,
+    participant_user_id: UUID,
+    content: { type: "string", minLength: 1, maxLength: 4000 },
+    is_broadcast_only: { type: "boolean" },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    const action = String(args.action);
+    if (action === "get") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const { data, error } = await client
+        .from("conversations")
+        .select(
+          "id, name, is_broadcast_only, is_enabled, events!event_id(title)",
+        )
+        .eq("event_id", eventId)
+        .in("linked_entity_type", ["trip", "event"])
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) return { conversation: null };
+      const eventName =
+        (data as { events?: { title?: string | null } | null }).events?.title
+          ?.trim() || data.name?.trim() || "Group chat";
+      return {
+        conversation: {
+          id: data.id,
+          name: data.name ?? "Group chat",
+          event_name: eventName,
+          is_broadcast_only: Boolean(data.is_broadcast_only),
+          is_enabled: Boolean(data.is_enabled),
+        },
+      };
+    }
+    if (action === "list_messages") {
+      await assertAgentReadEvent(client, userId, eventId);
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const limit = typeof args.limit === "number"
+        ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+        : 80;
+      const { data, error } = await client
+        .from("messages")
+        .select(
+          "id, sender_id, content, created_at, message_type, file_url, file_name",
+        )
+        .eq("conversation_id", args.conversation_id)
+        .is("deleted_at", null)
+        .order("created_at", { ascending: true })
+        .limit(limit);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { messages: data ?? [] };
+    }
+    if (action === "list_participants") {
+      await assertAgentReadEvent(client, userId, eventId);
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("conversation_participants")
+        .select("user_id, joined_at")
+        .eq("conversation_id", args.conversation_id)
+        .order("joined_at", { ascending: true });
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return {
+        participants: (data ?? []).map((
+          row: { user_id: string; joined_at: string },
+        ) => ({
+          user_id: row.user_id,
+          joined_at: row.joined_at,
+        })),
+      };
+    }
+    if (action === "post") {
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const content = typeof args.content === "string"
+        ? args.content.trim()
+        : "";
+      if (content.length < 1) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "content is required for a text post",
+        );
+      }
+      const { data, error } = await client
+        .from("messages")
+        .insert({
+          conversation_id: args.conversation_id,
+          sender_id: userId,
+          content,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { message_id: data.id, posted: true };
+    }
+    if (action === "set_broadcast_only") {
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      if (typeof args.is_broadcast_only !== "boolean") {
+        throw new ToolError("INVALID_ARGS", "is_broadcast_only is required");
+      }
+      const { data, error } = await client
+        .from("conversations")
+        .update({
+          is_broadcast_only: args.is_broadcast_only,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", args.conversation_id)
+        .eq("event_id", eventId)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Not allowed to toggle broadcast-only on this conversation.",
+        );
+      }
+      return {
+        conversation_id: args.conversation_id,
+        is_broadcast_only: args.is_broadcast_only,
+      };
+    }
+    if (action === "remove_participant") {
+      if (!isUuid(args.conversation_id) || !isUuid(args.participant_user_id)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "conversation_id and participant_user_id must be uuids",
+        );
+      }
+      const { data, error } = await client
+        .from("conversation_participants")
+        .delete()
+        .eq("conversation_id", args.conversation_id)
+        .eq("user_id", args.participant_user_id)
+        .select("user_id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Not allowed to remove this participant or already removed.",
+        );
+      }
+      return { removed_user_id: args.participant_user_id, removed: true };
+    }
+    if (action === "delete_message") {
+      if (!isUuid(args.message_id)) {
+        throw new ToolError("INVALID_ARGS", "message_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("messages")
+        .update({
+          deleted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", args.message_id)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Not allowed to delete this message or already deleted.",
+        );
+      }
+      return { message_id: args.message_id, deleted: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported group-chat action");
+  },
+);
+
+const manageEventDoorSale = writeTool(
+  "manage_event_door_sale",
+  "List or record in-person door sales on door_sales_ledger (cash/card_reader/nfc/manual). 'list' is a read; 'create' records a sale.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: { type: "string", enum: ["list", "create"] },
+    payment_method: {
+      type: "string",
+      enum: ["cash", "card_reader", "nfc", "manual"],
+    },
+    amount_cents: { type: "integer", minimum: 0, maximum: 10_000_000 },
+    currency: { type: "string", minLength: 3, maxLength: 3 },
+    notes: { type: "string", maxLength: 500 },
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    if (args.action === "list") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const limit = typeof args.limit === "number"
+        ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+        : 50;
+      const { data, error } = await client
+        .from("door_sales_ledger")
+        .select(
+          "id, event_id, payment_method, amount_cents, currency, reconciled, notes, created_at, scanner_user_id",
+        )
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { event_id: eventId, sales: data ?? [] };
+    }
+    if (args.action === "create") {
+      const method = args.payment_method;
+      if (
+        method !== "cash" && method !== "card_reader" && method !== "nfc" &&
+        method !== "manual"
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "payment_method must be cash, card_reader, nfc, or manual",
+        );
+      }
+      if (
+        typeof args.amount_cents !== "number" ||
+        !Number.isInteger(args.amount_cents) ||
+        args.amount_cents < 0
+      ) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "amount_cents must be a non-negative integer",
+        );
+      }
+      const currency = typeof args.currency === "string"
+        ? args.currency.trim().toUpperCase()
+        : "GBP";
+      if (!/^[A-Z]{3}$/.test(currency)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "currency must be a 3-letter ISO code",
+        );
+      }
+      const { data, error } = await client
+        .from("door_sales_ledger")
+        .insert({
+          event_id: eventId,
+          scanner_user_id: userId,
+          payment_method: method,
+          amount_cents: args.amount_cents,
+          currency,
+          notes: typeof args.notes === "string" ? args.notes : null,
+        })
+        .select("id, payment_method, amount_cents, currency, created_at")
+        .single();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { sale: data, recorded: true };
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list or create");
+  },
+);
+
+const listEventOrders = writeTool(
+  "list_event_orders",
+  "List event orders (id, status, totals, line counts) without buyer PII. Mirrors Host eventOrdersService.fetchEventOrders for operators.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    limit: { type: "integer", minimum: 1, maximum: 100 },
+  },
+  ["brand_id", "event_id"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    await assertAgentReadEvent(client, userId, eventId);
+    const limit = typeof args.limit === "number"
+      ? Math.min(100, Math.max(1, Math.floor(args.limit)))
+      : 50;
+    const { data, error } = await client
+      .from("orders")
+      .select(
+        "id, event_id, total_cents, currency, payment_method, payment_status, confirmed_at, created_at, cancelled_at, refunded_amount_cents, order_line_items(id, quantity, total_cents)",
+      )
+      .eq("event_id", eventId)
+      .order("created_at", { ascending: false })
+      .limit(limit);
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    const orders = (data ?? []).map((row: Record<string, unknown>) => {
+      const lines = Array.isArray(row.order_line_items)
+        ? row.order_line_items
+        : [];
+      return {
+        id: row.id,
+        event_id: row.event_id,
+        total_cents: row.total_cents,
+        currency: row.currency,
+        payment_method: row.payment_method,
+        payment_status: row.payment_status,
+        confirmed_at: row.confirmed_at,
+        created_at: row.created_at,
+        cancelled_at: row.cancelled_at,
+        refunded_amount_cents: row.refunded_amount_cents ?? 0,
+        line_count: lines.length,
+        quantity_total: lines.reduce(
+          (sum: number, line: { quantity?: number }) =>
+            sum + (typeof line.quantity === "number" ? line.quantity : 0),
+          0,
+        ),
+      };
+    });
+    return { event_id: eventId, orders };
+  },
+);
+
+const manageEventWaitlist = writeTool(
+  "manage_event_waitlist",
+  "Read an event ticket waitlist (event_waitlist_get) or toggle waitlist_enabled on a ticket type. Recent entries omit raw contact when possible.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: { type: "string", enum: ["list", "set_enabled"] },
+    ticket_type_id: UUID,
+    waitlist_enabled: { type: "boolean" },
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    if (args.action === "list") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const rows = await callRpc(client, "event_waitlist_get", {
+        p_event_id: eventId,
+        p_recent_limit: 25,
+      });
+      const tickets = (Array.isArray(rows) ? rows : []).map(
+        (row: Record<string, unknown>) => ({
+          ticket_type_id: row.ticket_type_id,
+          ticket_type_name: row.ticket_type_name,
+          waitlist_enabled: row.waitlist_enabled,
+          waiting_count: row.waiting_count,
+          invited_count: row.invited_count,
+          recent: Array.isArray(row.recent)
+            ? row.recent.map((entry: Record<string, unknown>) => ({
+              id: entry.id,
+              qty_requested: entry.qty_requested,
+              status: entry.status,
+              created_at: entry.created_at,
+              // Drop email/phone/name — roster-style PII minimization.
+            }))
+            : [],
+        }),
+      );
+      return { event_id: eventId, tickets };
+    }
+    if (args.action === "set_enabled") {
+      if (!isUuid(args.ticket_type_id)) {
+        throw new ToolError("INVALID_ARGS", "ticket_type_id must be a uuid");
+      }
+      if (typeof args.waitlist_enabled !== "boolean") {
+        throw new ToolError("INVALID_ARGS", "waitlist_enabled is required");
+      }
+      const { data, error } = await client
+        .from("ticket_types")
+        .update({ waitlist_enabled: args.waitlist_enabled })
+        .eq("id", args.ticket_type_id)
+        .eq("event_id", eventId)
+        .is("deleted_at", null)
+        .select("id, waitlist_enabled")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Ticket type not found for this event, or you lack permission.",
+        );
+      }
+      return {
+        ticket_type_id: data.id,
+        waitlist_enabled: data.waitlist_enabled,
+      };
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list or set_enabled");
+  },
+);
+
+const manageEventScanners = writeTool(
+  "manage_event_scanners",
+  "List scanner invitations for an event, or revoke a pending invitation. Invite remains invite_scanner.",
+  {
+    brand_id: UUID,
+    event_id: UUID,
+    action: { type: "string", enum: ["list", "revoke"] },
+    invitation_id: UUID,
+  },
+  ["brand_id", "event_id", "action"],
+  async (args, client, userId) => {
+    const { eventId, brandId } = await requireEvent(args, client, userId);
+    if (brandId !== args.brand_id) {
+      throw new ToolError("INVALID_ARGS", "brand_id does not match the event");
+    }
+    if (args.action === "list") {
+      await assertAgentReadEvent(client, userId, eventId);
+      const { data, error } = await client
+        .from("scanner_invitations")
+        .select(
+          "id, brand_id, event_id, scope, email, invitee_name, permissions, status, expires_at, accepted_at, revoked_at, created_at",
+        )
+        .eq("event_id", eventId)
+        .order("created_at", { ascending: false });
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { event_id: eventId, invitations: data ?? [] };
+    }
+    if (args.action === "revoke") {
+      if (!isUuid(args.invitation_id)) {
+        throw new ToolError("INVALID_ARGS", "invitation_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("scanner_invitations")
+        .update({ status: "revoked", revoked_at: new Date().toISOString() })
+        .eq("id", args.invitation_id)
+        .eq("brand_id", brandId)
+        .eq("event_id", eventId)
+        .eq("status", "pending")
+        .select("id")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "That scanner invitation was not found, is not pending, or you lack permission.",
+        );
+      }
+      return { invitation_id: args.invitation_id, revoked: true };
+    }
+    throw new ToolError("INVALID_ARGS", "action must be list or revoke");
+  },
+);
+
+// ----------------------------------------------------------------------------
+// #1980 — marketing audiences, templates, campaign reports
+// ----------------------------------------------------------------------------
+
+const manageMarketingAudiences = writeTool(
+  "manage_marketing_audiences",
+  "List marketing audiences for the signed-in account, or ensure a brand/event buyers audience exists (same Host ensureBrandBuyersAudience / ensureEventBuyersAudience).",
+  {
+    brand_id: UUID,
+    action: {
+      type: "string",
+      enum: ["list", "ensure_brand_buyers", "ensure_event_buyers"],
+    },
+    event_id: UUID,
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("marketing_audiences")
+        .select(
+          "id, brand_id, name, query_definition, is_system_generated, created_at",
+        )
+        .eq("account_id", userId)
+        .order("created_at", { ascending: false })
+        .limit(100);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { audiences: data ?? [] };
+    }
+    if (!isUuid(args.brand_id)) {
+      throw new ToolError("INVALID_ARGS", "brand_id must be a uuid");
+    }
+    await requireBrand(args, client, userId);
+    if (action === "ensure_brand_buyers") {
+      const { data: existing, error: selErr } = await client
+        .from("marketing_audiences")
+        .select("id, query_definition")
+        .eq("brand_id", args.brand_id)
+        .eq("is_system_generated", true);
+      if (selErr) throw new ToolError("RPC_FAILED", selErr.message);
+      for (const row of existing ?? []) {
+        const qd =
+          (row as { query_definition?: { kind?: string; brand_id?: string } })
+            .query_definition;
+        if (qd?.kind === "brand_buyers" && qd.brand_id === args.brand_id) {
+          return { audience_id: row.id, ensured: false };
+        }
+      }
+      const { data: inserted, error: insErr } = await client
+        .from("marketing_audiences")
+        .insert({
+          account_id: userId,
+          brand_id: args.brand_id,
+          name: "All brand buyers",
+          query_definition: {
+            kind: "brand_buyers",
+            brand_id: args.brand_id,
+            payment_statuses: ["paid", "partial_refund"],
+          },
+          is_system_generated: true,
+        })
+        .select("id")
+        .maybeSingle();
+      if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
+      if (inserted === null) {
+        throw new ToolError("RPC_FAILED", "Audience insert returned no row");
+      }
+      return { audience_id: inserted.id, ensured: true };
+    }
+    if (action === "ensure_event_buyers") {
+      if (!isUuid(args.event_id)) {
+        throw new ToolError("INVALID_ARGS", "event_id must be a uuid");
+      }
+      const { data: existing, error: selErr } = await client
+        .from("marketing_audiences")
+        .select("id, query_definition")
+        .eq("brand_id", args.brand_id)
+        .eq("is_system_generated", true);
+      if (selErr) throw new ToolError("RPC_FAILED", selErr.message);
+      for (const row of existing ?? []) {
+        const qd =
+          (row as { query_definition?: { kind?: string; event_id?: string } })
+            .query_definition;
+        if (qd?.kind === "event_buyers" && qd.event_id === args.event_id) {
+          return { audience_id: row.id, ensured: false };
+        }
+      }
+      const { data: inserted, error: insErr } = await client
+        .from("marketing_audiences")
+        .insert({
+          account_id: userId,
+          brand_id: args.brand_id,
+          name: "Event buyers",
+          query_definition: {
+            kind: "event_buyers",
+            event_id: args.event_id,
+            payment_statuses: ["paid", "partial_refund"],
+          },
+          is_system_generated: true,
+        })
+        .select("id")
+        .maybeSingle();
+      if (insErr) throw new ToolError("RPC_FAILED", insErr.message);
+      if (inserted === null) {
+        throw new ToolError("RPC_FAILED", "Audience insert returned no row");
+      }
+      return { audience_id: inserted.id, ensured: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported audience action");
+  },
+);
+
+const manageMarketingTemplates = writeTool(
+  "manage_marketing_templates",
+  "List, create, update, or delete the caller's marketing email templates (not starter packs).",
+  {
+    brand_id: UUID,
+    action: { type: "string", enum: ["list", "create", "update", "delete"] },
+    template_id: UUID,
+    name: { type: "string", minLength: 1, maxLength: 200 },
+    subject_template: { type: "string", maxLength: 500 },
+    body_template: { type: "string", minLength: 1, maxLength: 20000 },
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("marketing_templates")
+        .select(
+          "id, account_id, brand_id, name, channel, subject_template, body_template, updated_at",
+        )
+        .eq("is_starter_pack", false)
+        .eq("account_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(100);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { templates: data ?? [] };
+    }
+    if (action === "create") {
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      const body = typeof args.body_template === "string"
+        ? args.body_template
+        : "";
+      if (name.length < 1 || body.length < 1) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "name and body_template are required",
+        );
+      }
+      if (args.brand_id !== undefined && args.brand_id !== null) {
+        await requireBrand(args, client, userId);
+      }
+      const { data, error } = await client
+        .from("marketing_templates")
+        .insert({
+          account_id: userId,
+          brand_id: isUuid(args.brand_id) ? args.brand_id : null,
+          name,
+          channel: "email",
+          subject_template: typeof args.subject_template === "string"
+            ? args.subject_template
+            : null,
+          body_template: body,
+          is_starter_pack: false,
+        })
+        .select(
+          "id, account_id, brand_id, name, channel, subject_template, body_template, updated_at",
+        )
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("RPC_FAILED", "Template insert returned no row");
+      }
+      return { template: data, created: true };
+    }
+    if (action === "update") {
+      if (!isUuid(args.template_id)) {
+        throw new ToolError("INVALID_ARGS", "template_id must be a uuid");
+      }
+      const name = typeof args.name === "string" ? args.name.trim() : "";
+      const body = typeof args.body_template === "string"
+        ? args.body_template
+        : "";
+      if (name.length < 1 || body.length < 1) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "name and body_template are required",
+        );
+      }
+      const { data, error } = await client
+        .from("marketing_templates")
+        .update({
+          name,
+          subject_template: typeof args.subject_template === "string"
+            ? args.subject_template
+            : null,
+          body_template: body,
+          ...(args.brand_id !== undefined
+            ? { brand_id: isUuid(args.brand_id) ? args.brand_id : null }
+            : {}),
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", args.template_id)
+        .eq("account_id", userId)
+        .eq("is_starter_pack", false)
+        .select(
+          "id, account_id, brand_id, name, channel, subject_template, body_template, updated_at",
+        )
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Template not found, is a starter pack, or you lack permission.",
+        );
+      }
+      return { template: data, updated: true };
+    }
+    if (action === "delete") {
+      if (!isUuid(args.template_id)) {
+        throw new ToolError("INVALID_ARGS", "template_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("marketing_templates")
+        .delete()
+        .eq("id", args.template_id)
+        .eq("account_id", userId)
+        .eq("is_starter_pack", false)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Template not found, is a starter pack, or you lack permission.",
+        );
+      }
+      return { template_id: args.template_id, deleted: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported template action");
+  },
+);
+
+const getCampaignReport = writeTool(
+  "get_campaign_report",
+  "Read campaign delivery/engagement report (accepted/delivered/opened/clicked aggregates + top links). No recipient emails returned.",
+  { brand_id: UUID, campaign_id: UUID },
+  ["campaign_id"],
+  async (args, client, userId) => {
+    if (!isUuid(args.campaign_id)) {
+      throw new ToolError("INVALID_ARGS", "campaign_id must be a uuid");
+    }
+    const { data: campaign, error: campaignErr } = await client
+      .from("marketing_campaigns")
+      .select(
+        "id, brand_id, name, channel, status, scheduled_for, sent_at, recipient_count, created_at",
+      )
+      .eq("id", args.campaign_id)
+      .maybeSingle();
+    if (campaignErr) throw new ToolError("RPC_FAILED", campaignErr.message);
+    if (campaign === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Campaign not found or access denied.",
+      );
+    }
+    if (isUuid(args.brand_id) && args.brand_id !== campaign.brand_id) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "brand_id does not match the campaign",
+      );
+    }
+    if (isUuid(campaign.brand_id)) {
+      await assertAgentReadBrand(client, userId, campaign.brand_id);
+    }
+    const { data: messages, error: messageErr } = await client
+      .from("marketing_messages")
+      .select("id, status, sent_at, click_count, delivered_at, opened_at")
+      .eq("campaign_id", args.campaign_id)
+      .limit(500);
+    if (messageErr) throw new ToolError("RPC_FAILED", messageErr.message);
+    const rows = messages ?? [];
+    const acceptedStatuses = new Set([
+      "sent",
+      "delivered",
+      "opened",
+      "clicked",
+      "unsubscribed",
+    ]);
+    const counts: Record<string, number> = {};
+    for (const msg of rows) {
+      const status = String((msg as { status?: string }).status ?? "");
+      counts[status] = (counts[status] ?? 0) + 1;
+    }
+    const accepted = Object.entries(counts).reduce(
+      (sum, [status, n]) => sum + (acceptedStatuses.has(status) ? n : 0),
+      0,
+    );
+    const delivered =
+      rows.filter((m) =>
+        (m as { delivered_at?: string | null }).delivered_at != null
+      ).length;
+    const opened =
+      rows.filter((m) => (m as { opened_at?: string | null }).opened_at != null)
+        .length;
+    const clicked =
+      rows.filter((m) => ((m as { click_count?: number }).click_count ?? 0) > 0)
+        .length;
+    const { data: clicks, error: clickErr } = await client
+      .from("marketing_clicks")
+      .select("destination_url, clicked_at, message_id")
+      .eq("campaign_id", args.campaign_id)
+      .limit(2000);
+    if (clickErr) throw new ToolError("RPC_FAILED", clickErr.message);
+    const linkCounts = new Map<string, number>();
+    let totalClicks = 0;
+    const unique = new Set<string>();
+    for (const click of clicks ?? []) {
+      if ((click as { clicked_at?: string | null }).clicked_at == null) {
+        continue;
+      }
+      totalClicks += 1;
+      const url = String(
+        (click as { destination_url?: string }).destination_url ?? "",
+      );
+      linkCounts.set(url, (linkCounts.get(url) ?? 0) + 1);
+      const mid = (click as { message_id?: string | null }).message_id;
+      if (typeof mid === "string") unique.add(mid);
+    }
+    const topLinks = Array.from(linkCounts.entries())
+      .map(([destination_url, n]) => ({ destination_url, clicks: n }))
+      .sort((a, b) => b.clicks - a.clicks)
+      .slice(0, 5);
+    return {
+      campaign,
+      recipient_stats: {
+        total: rows.length,
+        accepted,
+        delivered,
+        opened,
+        clicked,
+        bounced: counts.bounced ?? 0,
+        failed: counts.failed ?? 0,
+        has_event_coverage: delivered > 0 || opened > 0 ||
+          (counts.bounced ?? 0) > 0,
+      },
+      click_stats: {
+        total_clicks: totalClicks,
+        unique_clickers: unique.size,
+        top_links: topLinks,
+      },
+    };
+  },
+);
+
+// ----------------------------------------------------------------------------
+// #1983 — profile avatar, Ari history, notifications inbox, support inbox
+// ----------------------------------------------------------------------------
+
+const editProfileAvatar = writeTool(
+  "edit_profile_avatar",
+  "Update the signed-in operator's display name and/or avatar_url on creator_accounts. Avatar URL must come from the proposal-card picker (never invented).",
+  {
+    display_name: { type: "string", minLength: 1, maxLength: 80 },
+    avatar_url: { type: "string", maxLength: 2000 },
+    clear_avatar: { type: "boolean" },
+  },
+  [],
+  async (args, client, userId) => {
+    const patch: Record<string, unknown> = {
+      updated_at: new Date().toISOString(),
+    };
+    if (typeof args.display_name === "string") {
+      const name = args.display_name.trim();
+      if (name.length < 1) {
+        throw new ToolError("INVALID_ARGS", "display_name can't be empty");
+      }
+      patch.display_name = name;
+    }
+    if (args.clear_avatar === true) {
+      patch.avatar_url = null;
+    } else if (typeof args.avatar_url === "string") {
+      const url = args.avatar_url.trim();
+      if (url.length < 1) {
+        throw new ToolError("INVALID_ARGS", "avatar_url can't be empty");
+      }
+      patch.avatar_url = url;
+    }
+    if (Object.keys(patch).length === 1) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Provide display_name, avatar_url, and/or clear_avatar.",
+      );
+    }
+    const { data, error } = await client
+      .from("creator_accounts")
+      .update(patch)
+      .eq("id", userId)
+      .select("id, display_name, avatar_url")
+      .maybeSingle();
+    if (error) throw new ToolError("RPC_FAILED", error.message);
+    if (data === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Creator account not found for this user.",
+      );
+    }
+    return { profile: data, updated: true };
+  },
+);
+
+const manageAriHistory = writeTool(
+  "manage_ari_history",
+  "List Ari conversations, delete one conversation, or delete all Ari data for the signed-in operator (agent_conversations + agent_user_profile).",
+  {
+    action: {
+      type: "string",
+      enum: ["list", "delete_conversation", "delete_all"],
+    },
+    conversation_id: UUID,
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("agent_conversations")
+        .select("id, title, brand_id, created_at, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false })
+        .limit(50);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { conversations: data ?? [] };
+    }
+    if (action === "delete_conversation") {
+      if (!isUuid(args.conversation_id)) {
+        throw new ToolError("INVALID_ARGS", "conversation_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("agent_conversations")
+        .delete()
+        .eq("id", args.conversation_id)
+        .eq("user_id", userId)
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (!data || data.length === 0) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Conversation not found or already deleted.",
+        );
+      }
+      return { conversation_id: args.conversation_id, deleted: true };
+    }
+    if (action === "delete_all") {
+      const conversationsResult = await client
+        .from("agent_conversations")
+        .delete()
+        .eq("user_id", userId)
+        .select("id");
+      if (conversationsResult.error) {
+        throw new ToolError("RPC_FAILED", conversationsResult.error.message);
+      }
+      const profileResult = await client
+        .from("agent_user_profile")
+        .delete()
+        .eq("user_id", userId)
+        .select("id");
+      if (profileResult.error) {
+        throw new ToolError("RPC_FAILED", profileResult.error.message);
+      }
+      return {
+        deleted_conversations: (conversationsResult.data ?? []).length,
+        deleted_profile: (profileResult.data ?? []).length > 0,
+        deleted_all: true,
+      };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported Ari history action");
+  },
+);
+
+const manageBusinessNotifications = writeTool(
+  "manage_business_notifications",
+  "List, mark-read, mark-all-read, or soft-delete Host business notifications (stripe.% / business.% only).",
+  {
+    action: {
+      type: "string",
+      enum: ["list", "mark_read", "mark_all_read", "soft_delete"],
+    },
+    notification_id: UUID,
+    limit: { type: "integer", minimum: 1, maximum: 50 },
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const limit = typeof args.limit === "number"
+        ? Math.min(50, Math.max(1, Math.floor(args.limit)))
+        : 50;
+      const { data, error } = await client
+        .from("notifications")
+        .select(
+          "id, brand_id, type, title, body, deep_link, read_at, created_at",
+        )
+        .eq("user_id", userId)
+        .or("type.like.stripe.%,type.like.business.%")
+        .is("deleted_at", null)
+        .is("in_app_suppressed_at", null)
+        .order("created_at", { ascending: false })
+        .limit(limit);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      const rows = data ?? [];
+      return {
+        notifications: rows,
+        unread_count: rows.filter((n) =>
+          (n as { read_at?: string | null }).read_at == null
+        ).length,
+      };
+    }
+    if (action === "mark_read") {
+      if (!isUuid(args.notification_id)) {
+        throw new ToolError("INVALID_ARGS", "notification_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("notifications")
+        .update({ read_at: new Date().toISOString() })
+        .eq("id", args.notification_id)
+        .eq("user_id", userId)
+        .select("id, read_at")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("INVALID_ARGS", "Notification not found.");
+      }
+      return { notification_id: data.id, read_at: data.read_at };
+    }
+    if (action === "mark_all_read") {
+      const nowIso = new Date().toISOString();
+      const { data, error } = await client
+        .from("notifications")
+        .update({ read_at: nowIso })
+        .eq("user_id", userId)
+        .is("read_at", null)
+        .or("type.like.stripe.%,type.like.business.%")
+        .select("id");
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { marked: (data ?? []).length, read_at: nowIso };
+    }
+    if (action === "soft_delete") {
+      if (!isUuid(args.notification_id)) {
+        throw new ToolError("INVALID_ARGS", "notification_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("notifications")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", args.notification_id)
+        .eq("user_id", userId)
+        .select("id")
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError("INVALID_ARGS", "Notification not found.");
+      }
+      return { notification_id: data.id, soft_deleted: true };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported notification action");
+  },
+);
+
+const manageSupportInbox = writeTool(
+  "manage_support_inbox",
+  "List/get the caller's support tickets, or reply with a text message on the ticket's conversation (same Host supportService + groupChat post).",
+  {
+    action: { type: "string", enum: ["list", "get", "reply"] },
+    ticket_id: UUID,
+    content: { type: "string", minLength: 1, maxLength: 4000 },
+  },
+  ["action"],
+  async (args, client, userId) => {
+    const action = String(args.action);
+    if (action === "list") {
+      const { data, error } = await client
+        .from("support_tickets")
+        .select(
+          "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
+        )
+        .order("last_message_at", { ascending: false })
+        .limit(50);
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      return { tickets: data ?? [] };
+    }
+    if (action === "get") {
+      if (!isUuid(args.ticket_id)) {
+        throw new ToolError("INVALID_ARGS", "ticket_id must be a uuid");
+      }
+      const { data, error } = await client
+        .from("support_tickets")
+        .select(
+          "id, subject, status, priority, conversation_id, brand_id, created_at, last_message_at, resolved_at",
+        )
+        .eq("id", args.ticket_id)
+        .maybeSingle();
+      if (error) throw new ToolError("RPC_FAILED", error.message);
+      if (data === null) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Ticket not found or access denied.",
+        );
+      }
+      return { ticket: data };
+    }
+    if (action === "reply") {
+      if (!isUuid(args.ticket_id)) {
+        throw new ToolError("INVALID_ARGS", "ticket_id must be a uuid");
+      }
+      const content = typeof args.content === "string"
+        ? args.content.trim()
+        : "";
+      if (content.length < 1) {
+        throw new ToolError("INVALID_ARGS", "content is required");
+      }
+      const { data: ticket, error: ticketErr } = await client
+        .from("support_tickets")
+        .select("id, conversation_id")
+        .eq("id", args.ticket_id)
+        .maybeSingle();
+      if (ticketErr) throw new ToolError("RPC_FAILED", ticketErr.message);
+      if (ticket === null || !isUuid(ticket.conversation_id)) {
+        throw new ToolError(
+          "INVALID_ARGS",
+          "Ticket not found or access denied.",
+        );
+      }
+      const { data: message, error: msgErr } = await client
+        .from("messages")
+        .insert({
+          conversation_id: ticket.conversation_id,
+          sender_id: userId,
+          content,
+          message_type: "text",
+        })
+        .select("id")
+        .single();
+      if (msgErr) throw new ToolError("RPC_FAILED", msgErr.message);
+      return {
+        ticket_id: ticket.id,
+        conversation_id: ticket.conversation_id,
+        message_id: message.id,
+        replied: true,
+      };
+    }
+    throw new ToolError("INVALID_ARGS", "Unsupported support action");
+  },
+);
+
+// ----------------------------------------------------------------------------
+// #1978 reopen — venue gallery (URL sync; device pick stays a guided handoff)
+// ----------------------------------------------------------------------------
+
+const manageVenueGallery = writeTool(
+  "manage_venue_gallery",
+  "Read or sync a venue's gallery URL set via place_pool.business_gallery_urls / run-business-place-authoring-pipeline sync_gallery. URLs must come from the proposal-card picker — device media selection is a guided handoff.",
+  {
+    brand_id: UUID,
+    venue_id: UUID,
+    place_pool_id: UUID,
+    action: { type: "string", enum: ["get", "sync"] },
+    gallery_urls: {
+      type: "array",
+      items: { type: "string", maxLength: 2000 },
+      maxItems: 20,
+    },
+  },
+  ["brand_id", "venue_id", "action"],
+  async (args, client, userId) => {
+    await requireBrand(args, client, userId);
+    if (!isUuid(args.venue_id)) {
+      throw new ToolError("INVALID_ARGS", "venue_id must be a uuid");
+    }
+    const { data: venue, error: venueErr } = await client
+      .from("venue_listings")
+      .select("id, brand_id, place_pool_id")
+      .eq("id", args.venue_id)
+      .eq("brand_id", args.brand_id)
+      .maybeSingle();
+    if (venueErr) throw new ToolError("RPC_FAILED", venueErr.message);
+    if (venue === null) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "Venue not found for this brand, or you lack permission.",
+      );
+    }
+    const placePoolId = isUuid(args.place_pool_id)
+      ? args.place_pool_id
+      : venue.place_pool_id;
+    if (!isUuid(placePoolId)) {
+      throw new ToolError(
+        "INVALID_ARGS",
+        "place_pool_id is required (venue has no linked place).",
+      );
+    }
+    if (actionIsGet(args.action)) {
+      await assertAgentReadBrand(client, userId, args.brand_id);
+      const { data: place, error: placeErr } = await client
+        .from("place_pool")
+        .select("id, business_gallery_urls")
+        .eq("id", placePoolId)
+        .maybeSingle();
+      if (placeErr) throw new ToolError("RPC_FAILED", placeErr.message);
+      if (place === null) {
+        throw new ToolError("INVALID_ARGS", "Place pool not found.");
+      }
+      const urls = Array.isArray(place.business_gallery_urls)
+        ? place.business_gallery_urls.filter((u: unknown) =>
+          typeof u === "string" && u.trim().length > 0
+        )
+        : [];
+      return {
+        venue_id: args.venue_id,
+        place_pool_id: placePoolId,
+        gallery_urls: urls,
+        gallery_count: urls.length,
+      };
+    }
+    if (String(args.action) !== "sync") {
+      throw new ToolError("INVALID_ARGS", "action must be get or sync");
+    }
+    const raw = Array.isArray(args.gallery_urls) ? args.gallery_urls : null;
+    if (raw === null) {
+      throw new ToolError("INVALID_ARGS", "gallery_urls is required for sync");
+    }
+    const galleryUrls = raw
+      .filter((u): u is string => typeof u === "string")
+      .map((u) => u.trim())
+      .filter((u) => u.length > 0)
+      .slice(0, 20);
+    return await invokeFn(client, "run-business-place-authoring-pipeline", {
+      action: "sync_gallery",
+      brand_id: args.brand_id,
+      venue_id: args.venue_id,
+      place_pool_id: placePoolId,
+      gallery_urls: galleryUrls,
+    });
+  },
+);
+
+function actionIsGet(action: unknown): boolean {
+  return action === "get";
+}
 
 // #1984 — slim a guest roster row to the non-PII fields Ari needs to reason
 // about status + next action. Drops contactLabel (partial email/phone),
@@ -3696,29 +5452,6 @@ const listGuestRoster = writeTool(
   },
 );
 
-const setGuestApproval = writeTool(
-  "set_guest_approval",
-  "Approve or deny a single pending RSVP guest via host_set_rsvp_status. Approving an under-capacity waitlisted guest promotes them and issues their pass.",
-  { event_id: UUID, rsvp_id: UUID, approved: { type: "boolean" } },
-  ["event_id", "rsvp_id", "approved"],
-  async (args, client, userId) => {
-    await requireEvent(args, client, userId);
-    if (!isUuid(args.rsvp_id)) {
-      throw new ToolError("INVALID_ARGS", "rsvp_id must be a uuid");
-    }
-    // #1984 — the single-guest approval verb is host_set_rsvp_status(p_rsvp_id,
-    // p_status) where p_status ∈ {approved,denied}; it self-gates on
-    // event_manager+ rank and enforces capacity. The pre-repair tool called
-    // biz_guest_roster_access — a READ-only rollout gate that never mutates
-    // approval — so no guest was ever approved. rsvp_id is the roster row's
-    // rsvpId.
-    return await callRpc(client, "host_set_rsvp_status", {
-      p_rsvp_id: args.rsvp_id,
-      p_status: args.approved === true ? "approved" : "denied",
-    });
-  },
-);
-
 const exportBrandPeople = writeTool(
   "export_brand_people",
   "Kick off a Brand People (brand book) CSV export via brand-people-export. Returns a job to poll. PII — extra confirm.",
@@ -3871,15 +5604,17 @@ const getOperatorSnapshot = writeTool(
     if (brandId) {
       await assertAgentReadBrand(client, userId, brandId);
     }
-    // Preserve this tool's pre-existing owner-only detail semantics after the
-    // broader accessibility guard; delegated roles are not silently promoted.
-    const brands = scope.filter((brand) => brand.role === "owner").slice(0, 8)
-      .map(({ id, name, role, effective_rank }) => ({
+    // Ledger `ari.operator.snapshot` requires brand_member: list every brand the
+    // caller can already read. Owner-only filtering was the Wave-3 leftover that
+    // kept delegated members out of the snapshot brand list and auto-select.
+    const brands = scope.slice(0, 8).map(
+      ({ id, name, role, effective_rank }) => ({
         id,
         name,
         role,
         effective_rank,
-      }));
+      }),
+    );
     if (!brandId && brands.length === 1) brandId = brands[0].id;
     let offerings: unknown[] = [];
     let canCollect: unknown = null;
@@ -3938,7 +5673,9 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   deleteTrip,
   getTripOrderMoney,
   createRsvp,
+  updateRsvp,
   publishRsvp,
+  updateRsvpContributionSettings,
   setRsvpGuestStatus,
   refundRsvpContribution,
   quoteStay,
@@ -3969,16 +5706,37 @@ export const DOMAIN_TOOLS: AgentToolDefinition[] = [
   getPartnerStatus,
   disconnectPartner,
   getTaxStatus,
+  getBrandBalancesReports,
+  listPartnerBrandLinks,
+  listPartnerSplits,
   refundOrder,
   cancelOrder,
   cancelTripBooking,
   retryInstallment,
+  chargeInstallmentNow,
+  sendInstallmentReminder,
   getBrandAnalytics,
+  getEventOrderReconciliation,
   inviteBrandMember,
   inviteScanner,
   revokeBrandMember,
+  listBrandTeam,
+  revokeScannerInvitation,
+  manageBrandPeople,
+  manageEventGroupChat,
+  manageEventDoorSale,
+  listEventOrders,
+  manageEventWaitlist,
+  manageEventScanners,
+  manageMarketingAudiences,
+  manageMarketingTemplates,
+  getCampaignReport,
+  editProfileAvatar,
+  manageAriHistory,
+  manageBusinessNotifications,
+  manageSupportInbox,
+  manageVenueGallery,
   listGuestRoster,
-  setGuestApproval,
   exportBrandPeople,
   updateAriPrefs,
   updateNotificationPrefs,
@@ -3992,9 +5750,16 @@ export const DOMAIN_READ_ONLY = new Set<string>([
   "get_payout_status",
   "get_partner_status",
   "get_tax_status",
+  "get_brand_balances_reports",
+  "list_partner_brand_links",
+  "list_partner_splits",
   "get_brand_analytics",
   "list_guest_roster",
+  "list_brand_team",
+  "list_event_orders",
+  "get_campaign_report",
   "get_operator_snapshot",
+  "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline; they never mutate.
   "list_venue_listings",
   "get_venue_listing_status",
@@ -4013,6 +5778,7 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   "refund_order",
   "cancel_order",
   "cancel_trip_booking",
+  "charge_installment_now",
   "export_brand_people",
   "request_account_deletion",
   // #1975 — money-affecting Stay operations. create/transition hold priced
@@ -4024,4 +5790,6 @@ export const MONEY_CONFIRM_TOOLS = new Set<string>([
   // issue #1971 — deposit and instalment metadata changes what a traveller is
   // charged and when. Confirmed, never inline.
   "manage_trip_tiers",
+  // #1972 reopen — recording a door sale is money; list stays read-only above.
+  "manage_event_door_sale",
 ]);

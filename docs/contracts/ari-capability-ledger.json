@@ -9,16 +9,16 @@
   },
   "audit": {
     "baseline_sha": "829c46fc319c34452e18876b728b6d840f95b904",
-    "verified_at": "2026-08-13T12:00:00Z",
-    "registered_tool_count": 85,
+    "verified_at": "2026-08-25T00:00:00Z",
+    "registered_tool_count": 108,
     "capability_count": 120,
     "status_breakdown": {
-      "registered_unverified": 63,
-      "broken": 21,
+      "verified": 0,
+      "registered_unverified": 107,
+      "broken": 0,
       "guided_handoff": 8,
-      "unsupported": 24,
-      "in_flight": 4,
-      "verified": 0
+      "unsupported": 0,
+      "in_flight": 5
     }
   },
   "operation_universe": {
@@ -1374,22 +1374,70 @@
         ]
       },
       "ari_tool": "create_rsvp",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical draft graph",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
+    },
+    {
+      "id": "ari.rsvp.update",
+      "domain": "rsvp",
+      "outcome": "Update a draft or live RSVP",
+      "safety": "write",
+      "required_role": "owner_or_event_manager",
+      "confirmation": "standard",
+      "surfaces": [
+        "business_ios",
+        "business_android",
+        "business_web"
+      ],
+      "provenance": {
+        "phase": "open_work",
+        "introduced_by": "issue-1977"
+      },
+      "owners": {
+        "ui": [
+          "mingla-business/app/rsvp/[id]/edit.tsx"
+        ],
+        "source": [
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const updateRsvp"
+          }
+        ]
+      },
+      "ari_tool": "update_rsvp",
+      "status": "registered_unverified",
+      "evidence": [
+        {
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical update graph",
+          "guard_role": "implementor"
+        }
+      ],
+      "owning_issues": [
+        1977
+      ],
+      "blockers": [
+        "Exact-revision runtime and cross-surface parity evidence are pending"
+      ],
+      "confidence": "high",
+      "verified_at": "2026-08-20"
     },
     {
       "id": "ari.rsvp.publish",
@@ -1423,19 +1471,21 @@
         ]
       },
       "ari_tool": "publish_rsvp",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts canonical publish graph",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1472,19 +1522,21 @@
         ]
       },
       "ari_tool": "set_rsvp_guest_status",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:setRsvpGuestStatus discards selected ids and approves all pending"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts exact selected/all-pending scopes",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Selected IDs are not preserved"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -1521,19 +1573,21 @@
         ]
       },
       "ari_tool": "refund_rsvp_contribution",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:refundRsvpContribution uses wrong refund-order envelope"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts event-bound source refund",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "Required source refund payload omitted"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -2304,22 +2358,23 @@
         ]
       },
       "ari_tool": "send_campaign_now",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:sendCampaignNow skips canonical schedule-first transition"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1980/#2593 agentDomainTools.ts:sendCampaignNow matches Business sendNow marketing-send {campaign_id} contract"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "Calls sender without canonical scheduling state"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.marketing.cancel_campaign",
@@ -2402,23 +2457,24 @@
         ]
       },
       "ari_tool": "run_growth_tool",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:runGrowthTool routes three of four engines to wrong endpoint/envelope"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1980/#2593 agentDomainTools.ts:runGrowthTool routes each engine to its app-lane function with {action,lane,brand_id,input}"
         }
       ],
       "owning_issues": [
-        2000,
-        1743
+        1980,
+        1743,
+        2000
       ],
       "blockers": [
-        "Three engines use the wrong backend contract"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.payout.status",
@@ -2448,22 +2504,23 @@
         ]
       },
       "ari_tool": "get_payout_status",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1982/#2593 agentDomainTools.ts:getPayoutStatus reads pg_brand_can_collect boolean via finance_manager gate"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "Delegated finance managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.partner.status",
@@ -2497,22 +2554,23 @@
         ]
       },
       "ari_tool": "get_partner_status",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1976 agentDomainTools.ts:getPartnerStatus reads partner_brand_links with derived status"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "Delegated finance managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.partner.disconnect",
@@ -2546,22 +2604,23 @@
         ]
       },
       "ari_tool": "disconnect_partner",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1976/#2593 agentDomainTools.ts:disconnectPartner calls partner_disconnect_link on partner_brand_links row id"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "Delegated finance managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.tax.status_guidance",
@@ -2644,22 +2703,23 @@
         ]
       },
       "ari_tool": "refund_order",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:refundOrder omits required refund payload"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1981 agentDomainTools.ts:refundOrder sends lines+reason+Idempotency-Key to refund-order"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "Required source/refund contract fields missing"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.order.cancel",
@@ -2693,22 +2753,23 @@
         ]
       },
       "ari_tool": "cancel_order",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:cancelOrder omits canonical cancellation payload"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1981 agentDomainTools.ts:cancelOrder sends reason+Idempotency-Key to cancel-order"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "Canonical cancellation contract mismatch"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.cancel_booking",
@@ -2742,22 +2803,23 @@
         ]
       },
       "ari_tool": "cancel_trip_booking",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:cancelTripBooking uses wrong identifier/flow"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview\u2192commit with expectedRefundTotalCents fail-closed"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "Bypasses canonical preview/commit flow and identifier"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.installment.retry",
@@ -2787,22 +2849,23 @@
         ]
       },
       "ari_tool": "retry_installment",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1981 agentDomainTools.ts:retryInstallment calls biz_retry_installment under finance_manager gate"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "Delegated finance managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.analytics.brand",
@@ -2836,22 +2899,23 @@
         ]
       },
       "ari_tool": "get_brand_analytics",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1984 agentDomainTools.ts:getBrandAnalytics reads brand_conversion_rollup + venue_intelligence_overview via assertAgentReadBrand"
         }
       ],
       "owning_issues": [
+        1984,
         2000
       ],
       "blockers": [
-        "Delegated members blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.invite_member",
@@ -2881,22 +2945,23 @@
         ]
       },
       "ari_tool": "invite_brand_member",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1983 agentDomainTools.ts:inviteBrandMember sends invitee_name to invite-brand-member"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Delegated brand admins blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.invite_scanner",
@@ -2930,22 +2995,23 @@
         ]
       },
       "ari_tool": "invite_scanner",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1983 agentDomainTools.ts:inviteScanner routes to invite-scanner with scope/scan contract"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.revoke_member",
@@ -2975,22 +3041,23 @@
         ]
       },
       "ari_tool": "revoke_brand_member",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:revokeBrandMember targets nonexistent brand_members"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1983 agentDomainTools.ts:revokeBrandMember soft-deletes brand_team_members.removed_at"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Targets a nonexistent table instead of canonical membership authority"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.guests.list_roster",
@@ -3024,67 +3091,23 @@
         ]
       },
       "ari_tool": "list_guest_roster",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertEventOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1984/#2593 agentDomainTools.ts:listGuestRoster calls biz_guest_roster_list with slim non-PII rows + real cursor pagination"
         }
       ],
       "owning_issues": [
+        1984,
         2000
       ],
       "blockers": [
-        "Delegated event managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
-    },
-    {
-      "id": "ari.guests.set_approval",
-      "domain": "guests",
-      "outcome": "Approve or deny one guest",
-      "safety": "write",
-      "required_role": "owner_or_event_manager",
-      "confirmation": "standard",
-      "surfaces": [
-        "business_ios",
-        "business_android",
-        "business_web"
-      ],
-      "provenance": {
-        "phase": "pr_1986",
-        "introduced_by": "PR-1986"
-      },
-      "owners": {
-        "ui": [
-          "mingla-business/app/event/[id]/guests/[guestId].tsx"
-        ],
-        "source": [
-          {
-            "path": "supabase/functions/_shared/agentDomainTools.ts",
-            "symbol": "const setGuestApproval"
-          }
-        ]
-      },
-      "ari_tool": "set_guest_approval",
-      "status": "broken",
-      "evidence": [
-        {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:setGuestApproval calls wrong access RPC"
-        }
-      ],
-      "owning_issues": [
-        2000
-      ],
-      "blockers": [
-        "Wrong RPC and argument meaning"
-      ],
-      "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.people.export",
@@ -3114,22 +3137,23 @@
         ]
       },
       "ari_tool": "export_brand_people",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentToolHelpers.ts:assertBrandOwned owner-first guard"
+          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "reference": "#1984 agentDomainTools.ts:exportBrandPeople sends brand-people-export {scope:brand_book,brandId,clientRequestId}"
         }
       ],
       "owning_issues": [
+        1984,
         2000
       ],
       "blockers": [
-        "Delegated marketing managers blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.settings.preferences",
@@ -3347,22 +3371,23 @@
         ]
       },
       "ari_tool": "get_operator_snapshot",
-      "status": "broken",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentDomainTools.ts:getOperatorSnapshot owner-only brand check"
+          "sha": "0d96e695e7eaf7e4733f4444089aedead415f78f",
+          "reference": "#1983 agentDomainTools.ts:getOperatorSnapshot lists all accessible brands (brand_member), not owner-only"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Delegated members blocked"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.brand.hours",
@@ -3529,26 +3554,31 @@
           {
             "path": "mingla-business/src/services/groupChatService.ts",
             "symbol": "getEventGroupChat"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventGroupChat"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_group_chat",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "groupChatService.ts"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventGroupChat mirrors groupChatService"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.scan_ticket",
@@ -4296,26 +4326,31 @@
           {
             "path": "mingla-business/src/services/marketing/marketingAudienceService.ts",
             "symbol": "listAudiencesForAccount"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageMarketingAudiences"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_marketing_audiences",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "marketingAudienceService.ts"
+          "sha": "72ec52f3169be2f1c5faa56f88894133859869ff",
+          "reference": "#1980 agentDomainTools.ts:manageMarketingAudiences mirrors listAudiencesForAccount / ensure*Audience"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.marketing.manage_templates",
@@ -4341,26 +4376,31 @@
           {
             "path": "mingla-business/src/services/marketing/marketingTemplateService.ts",
             "symbol": "listUserTemplates"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageMarketingTemplates"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_marketing_templates",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "marketingTemplateService.ts"
+          "sha": "72ec52f3169be2f1c5faa56f88894133859869ff",
+          "reference": "#1980 agentDomainTools.ts:manageMarketingTemplates mirrors marketingTemplateService"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.people.list_detail_add",
@@ -4386,26 +4426,31 @@
           {
             "path": "mingla-business/src/services/peopleService.ts",
             "symbol": "listBrandPeople"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageBrandPeople"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_brand_people",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "peopleService.ts canonical People book"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "Export tool does not cover book/detail/add"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.people.import_contacts",
@@ -4578,26 +4623,35 @@
           {
             "path": "mingla-business/src/services/brandStripeBalancesService.ts",
             "symbol": "fetchBrandStripeBalances"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getBrandBalancesReports"
+          },
+          {
+            "path": "mingla-business/src/services/brandPayoutLedgerService.ts",
+            "symbol": "fetchBrandPayoutLedger"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_brand_balances_reports",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "payments reports surface"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1976 agentDomainTools.ts:getBrandBalancesReports invokes brand-stripe-balances and reads brand_payout_releases"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "Payout readiness is not balance/report parity"
+        "No deployed cross-surface Pass-5 proof"
       ],
-      "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "confidence": "high",
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.list_manage_roles",
@@ -4623,26 +4677,31 @@
           {
             "path": "mingla-business/src/hooks/useBrandInvitations.ts",
             "symbol": "useBrandInvitations"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listBrandTeam"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_brand_team",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "team management surface"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors listBrandTeamMembers + listBrandInvitations"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "Invite/revoke tools do not cover listing and role changes"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.team.revoke_scanner",
@@ -4668,26 +4727,31 @@
           {
             "path": "mingla-business/src/services/scannerInvitationsService.ts",
             "symbol": "revokeScannerInvitation"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const revokeScannerInvitation"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "revoke_scanner_invitation",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "scannerInvitationsService.ts"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1982 agentDomainTools.ts:revokeScannerInvitation mirrors scannerInvitationsService.revokeScannerInvitation"
         }
       ],
       "owning_issues": [
+        1982,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.account.edit_profile_avatar",
@@ -4713,26 +4777,31 @@
           {
             "path": "mingla-business/src/services/creatorAvatarService.ts",
             "symbol": "uploadCreatorAvatar"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const editProfileAvatar"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "edit_profile_avatar",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "edit-profile route and avatar service"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:editProfileAvatar updates creator_accounts like edit-profile"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No registered tool; file selection is separate"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.account.manage_ari_history",
@@ -4758,26 +4827,31 @@
           {
             "path": "mingla-business/src/services/agentChatService.ts",
             "symbol": "deleteAllAriData"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageAriHistory"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_ari_history",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "agentChatService history operations"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:manageAriHistory mirrors agentChatService history ops"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.notifications.read_manage",
@@ -4803,26 +4877,31 @@
           {
             "path": "mingla-business/src/hooks/useBusinessNotifications.ts",
             "symbol": "useBusinessNotifications"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageBusinessNotifications"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_business_notifications",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "notifications route/hook"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:manageBusinessNotifications mirrors useBusinessNotificationsInbox"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Preference update is not notification inbox parity"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.support.read_reply",
@@ -4848,26 +4927,31 @@
           {
             "path": "mingla-business/src/services/supportService.ts",
             "symbol": "listOwnSupportTickets"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageSupportInbox"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_support_inbox",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "supportService read surface"
+          "sha": "e1e3a975aec1e430aa0d3bee99e2af70cc900b26",
+          "reference": "#1983 agentDomainTools.ts:manageSupportInbox mirrors supportService list/get + message reply"
         }
       ],
       "owning_issues": [
+        1983,
         2000
       ],
       "blockers": [
-        "Create ticket does not cover inbox/detail/reply"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.analytics.orders_reconciliation",
@@ -4893,26 +4977,31 @@
           {
             "path": "mingla-business/src/services/eventOrdersService.ts",
             "symbol": "getEventOrderRevenue"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getEventOrderReconciliation"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_event_order_reconciliation",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "event reconciliation surface"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1984 agentDomainTools.ts:getEventOrderReconciliation aggregates orders sold/refunded/net without buyer PII"
         }
       ],
       "owning_issues": [
+        1984,
         2000
       ],
       "blockers": [
-        "Brand analytics tool does not cover order reconciliation"
+        "No deployed cross-surface Pass-5 proof"
       ],
-      "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "confidence": "high",
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.venue.organic_insights",
@@ -4927,8 +5016,8 @@
         "business_web"
       ],
       "provenance": {
-        "phase": "post_1986",
-        "introduced_by": "product_source"
+        "phase": "open_work",
+        "introduced_by": "issue-1796"
       },
       "owners": {
         "ui": [
@@ -4942,22 +5031,22 @@
         ]
       },
       "ari_tool": null,
-      "status": "unsupported",
+      "status": "in_flight",
       "evidence": [
         {
           "tier": "source_contract",
           "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "venueOrganicInsightsService.ts"
+          "reference": "GitHub issue #1796 open-work overlay"
         }
       ],
       "owning_issues": [
-        2000
+        1796
       ],
       "blockers": [
-        "No accepted Ari mapping; venue intelligence remains #1796"
+        "Open issue; no accepted Ari mapping"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.marketing.campaign_reports",
@@ -4983,26 +5072,31 @@
           {
             "path": "mingla-business/src/services/marketing/marketingReportService.ts",
             "symbol": "getCampaignReport"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const getCampaignReport"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "get_campaign_report",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "marketingReportService.ts"
+          "sha": "72ec52f3169be2f1c5faa56f88894133859869ff",
+          "reference": "#1980 agentDomainTools.ts:getCampaignReport mirrors getCampaignReport without recipient emails"
         }
       ],
       "owning_issues": [
+        1980,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.brand.audit_log",
@@ -5120,26 +5214,31 @@
           {
             "path": "mingla-business/src/services/ticketCheckoutService.ts",
             "symbol": "createTicketCheckout"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventDoorSale"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_door_sale",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "event door-sale surface"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventDoorSale writes door_sales_ledger"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.order_management",
@@ -5165,26 +5264,31 @@
           {
             "path": "mingla-business/src/services/eventOrdersService.ts",
             "symbol": "fetchEventOrders"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listEventOrders"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_event_orders",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "event orders service"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:listEventOrders mirrors fetchEventOrders without buyer PII"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "Refund/cancel tools do not cover order reading"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.waitlist",
@@ -5210,26 +5314,31 @@
           {
             "path": "mingla-business/src/services/waitlistService.ts",
             "symbol": "fetchEventWaitlist"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventWaitlist"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_waitlist",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "waitlistService event flow"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventWaitlist calls event_waitlist_get / ticket_types"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "No registered event-waitlist tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.event.scanner_admin",
@@ -5255,26 +5364,31 @@
           {
             "path": "mingla-business/src/services/scannerInvitationsService.ts",
             "symbol": "listScannerInvitationsForEvent"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageEventScanners"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_event_scanners",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "scanner invitation administration"
+          "sha": "abd1558ed9a1093e12fe86ce8295f1ca3b8bc2d1",
+          "reference": "#1972 agentDomainTools.ts:manageEventScanners mirrors listScannerInvitationsForEvent + revoke"
         }
       ],
       "owning_issues": [
+        1972,
         2000
       ],
       "blockers": [
-        "invite_scanner does not cover list/revoke"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.experience.snap_generation",
@@ -5448,20 +5562,22 @@
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "update_rsvp_contribution_settings",
+      "status": "registered_unverified",
       "evidence": [
         {
-          "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "RSVP live-edit contribution contract"
+          "tier": "regression",
+          "sha": "4838f60e82ff2c57c6a5d41a0c35038fc2324104",
+          "reference": "issue_1977_ari_rsvp_lifecycle.test.ts shared contribution-settings owner",
+          "guard_role": "implementor"
         }
       ],
       "owning_issues": [
+        1977,
         2000
       ],
       "blockers": [
-        "No registered settings tool"
+        "Exact-revision runtime and cross-surface parity evidence are pending"
       ],
       "confidence": "high",
       "verified_at": "2026-08-13"
@@ -5545,26 +5661,31 @@
           {
             "path": "mingla-business/src/services/manualInstallmentChargeService.ts",
             "symbol": "manualChargeInstallment"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const chargeInstallmentNow"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "charge_installment_now",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "manual trip-installment charge mutation"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1981 agentDomainTools.ts:chargeInstallmentNow invokes manual-charge-installment"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "No registered manual-charge tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.installment.send_reminder",
@@ -5594,26 +5715,31 @@
           {
             "path": "mingla-business/src/services/installmentReminderService.ts",
             "symbol": "sendInstallmentReminder"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const sendInstallmentReminder"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "send_installment_reminder",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "manual buyer reminder mutation"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1981 agentDomainTools.ts:sendInstallmentReminder invokes send-installment-reminder"
         }
       ],
       "owning_issues": [
+        1981,
         2000
       ],
       "blockers": [
-        "No registered installment-reminder tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.trip.order_money",
@@ -5690,34 +5816,39 @@
           {
             "path": "mingla-business/src/services/venueGalleryService.ts",
             "symbol": "uploadGalleryPhoto"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const manageVenueGallery"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "manage_venue_gallery",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "venue gallery service"
+          "sha": "8a9b7e7faeec3d8fc73676fe396b41f7bf2a7a6a",
+          "reference": "#1978 agentDomainTools.ts:manageVenueGallery syncs via run-business-place-authoring-pipeline"
         }
       ],
       "owning_issues": [
+        1978,
         2000
       ],
       "blockers": [
-        "No registered tool; device media selection also needs handoff"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.partner.brand_links",
       "domain": "payments",
-      "outcome": "Invite and manage partner-brand links",
-      "safety": "write",
-      "required_role": "partner_or_owner",
-      "confirmation": "standard",
+      "outcome": "List partner-brand links for the caller",
+      "safety": "read",
+      "required_role": "business_user",
+      "confirmation": "none",
       "surfaces": [
         "business_ios",
         "business_android",
@@ -5735,34 +5866,39 @@
           {
             "path": "mingla-business/src/services/partnerBrandLinksService.ts",
             "symbol": "listPartnerBrandLinks"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listPartnerBrandLinks"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_partner_brand_links",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "partner brand-links service"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1976 agentDomainTools.ts:listPartnerBrandLinks mirrors partnerBrandLinksService.listPartnerBrandLinks"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "No registered tool"
+        "No deployed cross-surface Pass-5 proof"
       ],
-      "confidence": "medium",
-      "verified_at": "2026-08-13"
+      "confidence": "high",
+      "verified_at": "2026-08-25"
     },
     {
       "id": "ari.partner.splits",
       "domain": "payments",
-      "outcome": "Read and manage partner split allocations",
-      "safety": "money",
-      "required_role": "partner_or_finance_manager",
-      "confirmation": "standard",
+      "outcome": "Read partner split earnings for the caller",
+      "safety": "read",
+      "required_role": "business_user",
+      "confirmation": "none",
       "surfaces": [
         "business_ios",
         "business_android",
@@ -5780,26 +5916,31 @@
           {
             "path": "mingla-business/src/services/partnerSplitsService.ts",
             "symbol": "listPartnerSplits"
+          },
+          {
+            "path": "supabase/functions/_shared/agentDomainTools.ts",
+            "symbol": "const listPartnerSplits"
           }
         ]
       },
-      "ari_tool": null,
-      "status": "unsupported",
+      "ari_tool": "list_partner_splits",
+      "status": "registered_unverified",
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "829c46fc319c34452e18876b728b6d840f95b904",
-          "reference": "partner splits service"
+          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "reference": "#1976 agentDomainTools.ts:listPartnerSplits mirrors partnerSplitsService.listPartnerSplits"
         }
       ],
       "owning_issues": [
+        1976,
         2000
       ],
       "blockers": [
-        "Partner status does not cover splits"
+        "No deployed cross-surface Pass-5 proof"
       ],
       "confidence": "high",
-      "verified_at": "2026-08-13"
+      "verified_at": "2026-08-25"
     }
   ]
 }

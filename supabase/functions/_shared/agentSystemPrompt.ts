@@ -19,8 +19,11 @@
 // inclusions, packages and traveller intake are operable; publish loads the
 // stored graph; delete is guarded across every payment rail; and the aggregate
 // trip order/money read is finance-gated and PII-free.
+// v7 (#1977): RSVP lifecycle rebuilt on ari_execute_rsvp_operation — canonical
+// draft graph, publish from stored payload, selected/all_pending guest status,
+// contribution settings, and contribution-path refunds.
 
-export const PROMPT_VERSION = "v6";
+export const PROMPT_VERSION = "v15";
 // Separate persisted-context provenance from the legacy model-prompt identifier.
 // Only rows carrying this server-written revision may replay into scoped Gemini history.
 export const TENANT_CONTEXT_VERSION = "tenant-v1";
@@ -308,10 +311,12 @@ CAPABILITIES (your tools):
 - publish_trip — publish a draft trip from its stored graph
 - delete_trip — soft-delete a trip with no outstanding orders
 - get_trip_order_money — read aggregate trip order/instalment totals (finance)
-- create_rsvp — create a draft RSVP
-- publish_rsvp — publish a draft RSVP
-- set_rsvp_guest_status — approve/decline RSVP guests
-- refund_rsvp_contribution — refund an RSVP chip-in
+- create_rsvp — create one private canonical RSVP draft (dates/visibility only at publish)
+- update_rsvp — edit a draft or live RSVP (live edits require a 10–200 character reason)
+- publish_rsvp — publish the stored RSVP draft through business_publish_rsvp_draft
+- update_rsvp_contribution_settings — set chip-in enabled/suggested/minimum (minor units)
+- set_rsvp_guest_status — approve/deny selected roster keys or all pending guests
+- refund_rsvp_contribution — refund a chip-in via rsvp-contribution-refund (type-to-confirm)
 - quote_stay — price a Stay cart (brand, venue, canonical room/place lines); ephemeral, creates nothing
 - create_stay_reservation — create a Stay reservation group from an accepted quote (quote id + version + guest); money
 - transition_stay — approve/decline a Stay request, or cancel it through a reviewed cancel preview (never re-derive money)
@@ -340,16 +345,37 @@ CAPABILITIES (your tools):
 - get_partner_status — read partner-split status
 - disconnect_partner — disconnect a partner (destructive)
 - get_tax_status — read tax status; open Connect tax screen
+- get_brand_balances_reports — Stripe balances + recent payout releases (CSV stays in Payments → Reports)
+- list_partner_brand_links — list the caller's partner-brand links
+- list_partner_splits — list partner earnings / split rows
 - refund_order — refund an order
 - cancel_order — cancel an order
 - cancel_trip_booking — cancel a trip booking
 - retry_installment — retry a failed installment
+- charge_installment_now — charge a due trip installment now (type CHARGE)
+- send_installment_reminder — email/push a trip installment reminder to the buyer
 - get_brand_analytics — read conversion / venue intelligence rollups
+- get_event_order_reconciliation — sold/refunded/net revenue for an event (no buyer PII)
 - invite_brand_member — invite a team member
 - invite_scanner — invite a scanner
 - revoke_brand_member — revoke a member
+- list_brand_team — list team members and invitations (roles)
+- revoke_scanner_invitation — revoke a pending scanner invite
+- manage_brand_people — list/get/add Brand People (marketing)
+- manage_event_group_chat — read/moderate event group chat
+- manage_event_door_sale — list/record door sales (ledger)
+- list_event_orders — list event orders (no buyer PII)
+- manage_event_waitlist — list/toggle event ticket waitlist
+- manage_event_scanners — list/revoke event scanner invitations
+- manage_marketing_audiences — list/ensure campaign audiences
+- manage_marketing_templates — list/create/update/delete templates
+- get_campaign_report — campaign delivery/engagement report
+- edit_profile_avatar — update display name / avatar URL
+- manage_ari_history — list/delete Ari conversations (or all data)
+- manage_business_notifications — list/mark/soft-delete Host notifications
+- manage_support_inbox — list/get/reply on support tickets
+- manage_venue_gallery — get/sync venue gallery URLs
 - list_guest_roster — list guests (names/status only)
-- set_guest_approval — approve/decline a roster guest
 - export_brand_people — export Brand People CSV (PII confirm)
 - update_ari_prefs — conversational Ari preferences
 - update_notification_prefs — notification type prefs

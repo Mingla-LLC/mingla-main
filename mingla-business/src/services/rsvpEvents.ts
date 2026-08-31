@@ -3,7 +3,7 @@
  *
  * Forked from businessEvents.publishBusinessEventDraft. RSVP NEVER routes
  * through the EVENT publish RPC (I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC):
- *   - publishRsvpDraft → business_publish_rsvp_draft
+ *   - publishRsvpDraft → business_publish_rsvp_graph
  *   - updateLiveRsvp   → biz_update_live_rsvp
  *
  * ORCH-1150: do NOT merge back into the event/ticket service path. See SPEC §5.1.
@@ -17,28 +17,31 @@ import {
   type PublishRpcResponse,
 } from "./businessEvents";
 import {
-  draftToServerUpdate,
-  publishedVisibilityForDraft,
   type RsvpUpdatePayload,
 } from "../utils/serverDraftEventMapper";
 import { logAppsFlyerEvent } from "./appsFlyerService";
 import type { DraftEvent } from "../store/draftEventStore";
 
+const createRsvpRequestId = (): string => {
+  const maybeCrypto = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (typeof maybeCrypto?.randomUUID === "function") return maybeCrypto.randomUUID();
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (character) => {
+    const random = Math.floor(Math.random() * 16);
+    return (character === "x" ? random : (random & 0x3) | 0x8).toString(16);
+  });
+};
+
 export const publishRsvpDraft = async (
   draft: DraftEvent,
   clientRevision: number | null = draft.clientRevision ?? null,
 ): Promise<PublishedBusinessEvent> => {
-  const payload = draftToServerUpdate(draft, {});
+  void clientRevision;
   // I-PROPOSED-1150-RSVP-OWN-PUBLISH-RPC: this MUST call the RSVP publish RPC,
   // never the EVENT publish RPC (that would re-introduce the
   // event_ticket_required 0-ticket block).
-  const { data, error } = await supabase.rpc("business_publish_rsvp_draft", {
+  const { data, error } = await supabase.rpc("business_publish_rsvp_graph", {
     p_event_id: draft.id,
-    p_draft_payload: {
-      ...payload,
-      visibility: publishedVisibilityForDraft(draft.visibility),
-    },
-    p_client_revision: clientRevision,
+    p_client_request_id: createRsvpRequestId(),
   });
 
   if (error !== null) throw error;
@@ -77,13 +80,15 @@ export const updateLiveRsvp = async (
   payload: Partial<RsvpUpdatePayload> & Pick<RsvpUpdatePayload, "title">,
   reason: string,
 ): Promise<UpdateLiveRsvpResult> => {
-  const { data, error } = await supabase.rpc("biz_update_live_rsvp", {
+  const { data, error } = await supabase.rpc("business_update_rsvp_graph", {
     p_event_id: eventId,
     p_payload: payload,
     p_reason: reason,
+    p_client_request_id: createRsvpRequestId(),
   });
   if (error !== null) throw error;
-  const res = (data ?? {}) as {
+  const graph = (data ?? {}) as { updateResult?: unknown };
+  const res = (graph.updateResult ?? {}) as {
     ok?: boolean;
     reason?: string;
     going_count?: number;

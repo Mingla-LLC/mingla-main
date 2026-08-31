@@ -11,10 +11,18 @@ export const TENANT_SCOPED_READ_TOOL_NAMES = new Set([
   "get_payout_status",
   "get_partner_status",
   "get_tax_status",
+  "get_brand_balances_reports",
+  "list_partner_brand_links",
+  "list_partner_splits",
   "get_brand_analytics",
   "list_brand_audit_log",
   "list_guest_roster",
+  "list_brand_team",
+  "list_event_orders",
+  "get_campaign_report",
   "get_operator_snapshot",
+  // #1984 — event order sold/refunded/net read; same tenant scope as other reads.
+  "get_event_order_reconciliation",
   // issue #1978 — venue discovery reads run inline under the same tenant scope.
   "list_venue_listings",
   "get_venue_listing_status",

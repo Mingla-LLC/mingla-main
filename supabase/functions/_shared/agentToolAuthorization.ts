@@ -40,11 +40,12 @@ const EVENT_TYPE_BY_TOOL: Readonly<
   delete_trip: "trip",
   get_trip_order_money: "trip",
   cancel_trip_booking: "trip",
+  update_rsvp: "rsvp",
   publish_rsvp: "rsvp",
+  update_rsvp_contribution_settings: "rsvp",
   set_rsvp_guest_status: "rsvp",
   refund_rsvp_contribution: "rsvp",
   list_guest_roster: "rsvp",
-  set_guest_approval: "rsvp",
 });
 
 const role = (
@@ -100,7 +101,9 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   // (biz_trip_require_finance); the coarse gate here agrees.
   get_trip_order_money: role("finance_manager", "event"),
   create_rsvp: role("event_manager", "brand"),
+  update_rsvp: role("event_manager", "event"),
   publish_rsvp: role("event_manager", "event"),
+  update_rsvp_contribution_settings: role("event_manager", "event"),
   set_rsvp_guest_status: role("event_manager", "event"),
   refund_rsvp_contribution: role("finance_manager", "event"),
   quote_stay: role("scanner", "brand"),
@@ -139,22 +142,52 @@ export const AGENT_TOOL_AUTHORIZATION: Readonly<
   get_partner_status: role("finance_manager", "brand"),
   disconnect_partner: role("finance_manager", "brand"),
   get_tax_status: role("finance_manager", "brand"),
+  // #1976 — balances/ledger read is finance-gated like Host payments surfaces.
+  get_brand_balances_reports: role("finance_manager", "brand"),
+  // #1976 — partner self-reads; RLS binds partner_account_id / partner splits.
+  list_partner_brand_links: role("business_user", "none"),
+  list_partner_splits: role("business_user", "optional_brand"),
   refund_order: role("finance_manager", "brand"),
   cancel_order: role("finance_manager", "brand"),
   cancel_trip_booking: role("finance_manager", "brand"),
   retry_installment: role("finance_manager", "brand"),
+  // #1981 — Trip Money manual charge + reminder; same finance floor as Host.
+  charge_installment_now: role("finance_manager", "brand"),
+  send_installment_reminder: role("finance_manager", "brand"),
   get_brand_analytics: role("scanner", "brand"),
   invite_brand_member: role("brand_admin", "brand"),
   invite_scanner: role("event_manager", "brand"),
   revoke_brand_member: role("brand_admin", "brand"),
+  // #1982 — team list + scanner revoke + Brand People book.
+  list_brand_team: role("brand_admin", "brand"),
+  revoke_scanner_invitation: role("event_manager", "brand"),
+  manage_brand_people: role("marketing_manager", "brand"),
+  // #1972 reopen — event group chat / door / orders / waitlist / scanners.
+  manage_event_group_chat: role("event_manager", "event"),
+  manage_event_door_sale: role("event_manager", "event"),
+  list_event_orders: role("finance_manager", "event"),
+  manage_event_waitlist: role("event_manager", "event"),
+  manage_event_scanners: role("event_manager", "event"),
+  // #1980 — marketing audiences / templates / campaign reports.
+  manage_marketing_audiences: role("marketing_manager", "optional_brand"),
+  manage_marketing_templates: role("marketing_manager", "optional_brand"),
+  get_campaign_report: role("marketing_manager", "campaign"),
+  // #1983 — self-scoped account / inbox / support.
+  edit_profile_avatar: role("self", "none"),
+  manage_ari_history: role("self", "none"),
+  manage_business_notifications: role("self", "none"),
+  manage_support_inbox: role("self", "none"),
+  // #1978 reopen — venue gallery sync.
+  manage_venue_gallery: role("event_manager", "brand"),
   list_guest_roster: role("event_manager", "event"),
-  set_guest_approval: role("event_manager", "event"),
   export_brand_people: role("marketing_manager", "brand"),
   update_ari_prefs: role("self", "none"),
   update_notification_prefs: role("self", "none"),
   create_support_ticket: role("self", "optional_brand"),
   request_account_deletion: role("self", "none"),
   get_operator_snapshot: role("scanner", "optional_brand"),
+  // #1984 — same finance floor as brand analytics refunds; event-scoped.
+  get_event_order_reconciliation: role("finance_manager", "event"),
 });
 
 function unavailable(): never {
@@ -335,6 +368,25 @@ async function resolveBrand(
     assertExpectedEventType(toolName, event);
     if (event.brand_id !== brandId) unavailable();
   }
+  if (isUuid(args.contribution_id)) {
+    const contribution = await rowBrand(
+      client,
+      "event_rsvp_contributions",
+      args.contribution_id,
+      "event_id",
+    );
+    const event = await rowBrand(
+      client,
+      "events",
+      contribution.event_id,
+      "brand_id, event_type",
+      true,
+    );
+    assertExpectedEventType(toolName, event);
+    if (event.brand_id !== brandId || contribution.event_id !== args.event_id) {
+      unavailable();
+    }
+  }
   if (isUuid(args.installment_id)) {
     const installment = await rowBrand(
       client,
@@ -362,10 +414,46 @@ async function resolveBrand(
     const member = await rowBrand(client, "brand_team_members", args.member_id);
     if (member.brand_id !== brandId) unavailable();
   }
+  if (isUuid(args.invitation_id)) {
+    const invitation = await rowBrand(
+      client,
+      "scanner_invitations",
+      args.invitation_id,
+    );
+    if (invitation.brand_id !== brandId) unavailable();
+  }
   for (const resourceId of [args.listing_id, args.venue_id]) {
     if (!isUuid(resourceId)) continue;
     const venue = await rowBrand(client, "venue_listings", resourceId);
     if (venue.brand_id !== brandId) unavailable();
+  }
+  if (Array.isArray(args.roster_keys)) {
+    for (const key of args.roster_keys) {
+      if (typeof key !== "string" || !/^rsvp:[0-9a-f-]{36}$/i.test(key)) {
+        unavailable();
+      }
+      const rsvpId = key.slice(5);
+      const rosterRsvp = await rowBrand(
+        client,
+        "event_rsvps",
+        rsvpId,
+        "event_id",
+      );
+      const rosterEvent = await rowBrand(
+        client,
+        "events",
+        rosterRsvp.event_id,
+        "brand_id, event_type",
+        true,
+      );
+      assertExpectedEventType(toolName, rosterEvent);
+      if (rosterEvent.brand_id !== brandId) unavailable();
+      if (
+        isUuid(args.event_id) && !sameUuid(rosterRsvp.event_id, args.event_id)
+      ) {
+        unavailable();
+      }
+    }
   }
   const guestIds = [
     args.guest_id,

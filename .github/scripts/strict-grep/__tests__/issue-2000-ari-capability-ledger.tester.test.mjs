@@ -28,11 +28,44 @@ const LEDGER_PATH = path.join(ROOT, "docs/contracts/ari-capability-ledger.json")
 // independent proof that the denominator itself did not move. Every hostile
 // mutant below still fires; the broken-laundering mutant is simply re-aimed at a
 // row that is still broken.
+//
+// [TEST-MOD-APPROVED #424 ledger-truth] Fifteen Wave-3/#2593 repaired rows leave
+// broken (16→1) into registered_unverified (69→84). ari.venue.organic_insights
+// leaves unsupported for in_flight under #1796 (23→22 unsupported, 4→5 in_flight).
+// Capability denominator and tool set are UNCHANGED at 120 / 86. Re-pin
+// statusBreakdown, statusDigest, and the classification message; re-aim the
+// broken-laundering mutant at ari.operator.snapshot.
+//
+// [TEST-MOD-APPROVED #424/#1983] ari.operator.snapshot leaves broken (1→0) into
+// registered_unverified (84→85) after getOperatorSnapshot admits all accessible
+// brands. Tool set and denominator UNCHANGED (86 / 120). Re-pin statusBreakdown,
+// statusDigest, and classification message; re-aim the status-laundering mutant
+// at unverified→broken (no broken rows remain to flip the other way).
+//
+// [TEST-MOD-APPROVED #1984] Register get_event_order_reconciliation (86→87).
+// ari.analytics.orders_reconciliation leaves unsupported (22→21) into
+// registered_unverified (85→86). Denominator stays 120. Re-pin tool names,
+// statusBreakdown, statusDigest, mappingDigest, sourceRefDigest, and
+// classification message.
+//
+
+// [TEST-MOD-APPROVED #1978] manage_venue_gallery (107→108). unsupported 1→0.
+// [TEST-MOD-APPROVED #1983] edit_profile_avatar + manage_ari_history + notifications + support inbox (103→107).
+// [TEST-MOD-APPROVED #1980] manage_marketing_audiences + templates + get_campaign_report (100→103).
+// [TEST-MOD-APPROVED #1972] manage_event_group_chat + door_sale + list_event_orders + waitlist + scanners (95→100).
+// [TEST-MOD-APPROVED #1982] list_brand_team + revoke_scanner_invitation + manage_brand_people (92→95).
+// [TEST-MOD-APPROVED #1981] Register charge_installment_now +
+// send_installment_reminder (90→92). Two unsupported rows leave into
+// registered_unverified (89→91, unsupported 18→16). Denominator stays 120.
+// [TEST-MOD-APPROVED #1976] Three partner/payments reads (87→90):
+// get_brand_balances_reports, list_partner_brand_links, list_partner_splits.
+// unsupported 21→18; registered_unverified 86→89. Denominator stays 120.
 const EXPECTED_TOOL_NAMES = [
   "cancel_campaign",
   "cancel_event",
   "cancel_order",
   "cancel_trip_booking",
+  "charge_installment_now",
   "create_brand",
   "create_event",
   "create_experience",
@@ -49,9 +82,13 @@ const EXPECTED_TOOL_NAMES = [
   "disconnect_partner",
   "draft_campaign",
   "duplicate_event",
+  "edit_profile_avatar",
   "end_event_sales",
   "export_brand_people",
   "get_brand_analytics",
+  "get_brand_balances_reports",
+  "get_campaign_report",
+  "get_event_order_reconciliation",
   "get_operator_snapshot",
   "get_partner_status",
   "get_payout_status",
@@ -61,21 +98,36 @@ const EXPECTED_TOOL_NAMES = [
   "invite_brand_member",
   "invite_scanner",
   "list_brand_audit_log",
+  "list_brand_team",
   "list_brands",
+  "list_event_orders",
   "list_events",
   "list_guest_roster",
+  "list_partner_brand_links",
+  "list_partner_splits",
   "list_venue_claim_feedback",
   "list_venue_listings",
+  "manage_ari_history",
   "manage_brand_discovery_currency",
   "manage_brand_hours",
+  "manage_brand_people",
+  "manage_business_notifications",
+  "manage_event_door_sale",
+  "manage_event_group_chat",
+  "manage_event_scanners",
+  "manage_event_waitlist",
   "manage_experience_stops",
+  "manage_marketing_audiences",
+  "manage_marketing_templates",
   "manage_stay_inventory",
   "manage_stay_policy_price_media",
+  "manage_support_inbox",
   "manage_trip_days",
   "manage_trip_inclusions",
   "manage_trip_tiers",
   "manage_trip_traveler_intake",
   "manage_venue_availability",
+  "manage_venue_gallery",
   "manage_venue_menu",
   "manage_venue_waitlist",
   "mark_claim_feedback_fixed",
@@ -91,14 +143,15 @@ const EXPECTED_TOOL_NAMES = [
   "request_account_deletion",
   "retry_installment",
   "revoke_brand_member",
+  "revoke_scanner_invitation",
   "run_growth_tool",
   "schedule_campaign",
   "send_campaign_now",
+  "send_installment_reminder",
   "send_venue_sms",
   "set_brand_pricing_defaults",
   "set_event_cover",
   "set_event_guest_privacy",
-  "set_guest_approval",
   "set_pricing_switches",
   "set_rsvp_guest_status",
   "submit_venue_claim",
@@ -111,6 +164,8 @@ const EXPECTED_TOOL_NAMES = [
   "update_event",
   "update_experience",
   "update_notification_prefs",
+  "update_rsvp",
+  "update_rsvp_contribution_settings",
   "update_trip",
   "upsert_ticket_tier",
   "venue_ops_action",
@@ -120,16 +175,16 @@ const EXPECTED = Object.freeze({
   capabilityCount: 120,
   statusBreakdown: Object.freeze({
     verified: 0,
-    registered_unverified: 63,
-    broken: 21,
+    registered_unverified: 107,
+    broken: 0,
     guided_handoff: 8,
-    unsupported: 24,
-    in_flight: 4,
+    unsupported: 0,
+    in_flight: 5,
   }),
-  idDigest: "e28cf99d53c6a2c3205a2a5aaab5f3b0cd4dd4a36cdd8b834ee3ab86b57cc556",
-  statusDigest: "a487b817393732127a3f2f218584142699d6ab2a200f83b83a0273c1736e6b2c",
-  mappingDigest: "041212bb7146f9acbce72f4103cf0f45b13f800ff4534c59118764e036abdcf2",
-  sourceRefDigest: "02bd022a1d553964b08eafc15f1aa79ba0e71eecd2526a5fc88443318e278ec7",
+  idDigest: "1fb5ded9fad7468ea6e74f573ad428d49b9e279d0078d5332088a82e6ce94580",
+  statusDigest: "a124115a7354deb8b0d685747dc298aa58e4b0752c19bea32a9d117df039aa5e",
+  mappingDigest: "fa0fc2d2051ee32a05ed4f387d64e1f0884fcb06eadc99b67d6d0fd9d27bc713",
+  sourceRefDigest: "5b125f4e45ac9e043a566b79f41a3a42b053b41d4b18d3b57283c44d48ac768c",
 });
 
 function readLedger() {
@@ -155,9 +210,9 @@ function independentlyValidateSnapshot(ledger) {
 
   if (capabilities.length !== EXPECTED.capabilityCount) failures.push("capability denominator changed");
   if (new Set(ids).size !== ids.length) failures.push("capability ids are not unique");
-  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("85-tool set changed");
+  if (JSON.stringify(toolNames) !== JSON.stringify(EXPECTED_TOOL_NAMES)) failures.push("108-tool set changed");
   if (JSON.stringify(statusBreakdown) !== JSON.stringify(EXPECTED.statusBreakdown)) {
-    failures.push("63/21/24/8/4/0 classification changed");
+    failures.push("107/0/0/8/5/0 classification changed");
   }
   if (digest(ids) !== EXPECTED.idDigest) failures.push("capability-id denominator changed");
   if (digest(capabilities.map((capability) => `${capability.id}\t${capability.status}`)) !== EXPECTED.statusDigest) failures.push("status assignment changed");
@@ -189,17 +244,21 @@ test("tester rejects a bijective but semantically swapped tool mapping", () => {
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /tool-to-capability mapping changed/);
 });
 
-test("tester rejects broken-to-unverified status laundering with reconciled counters", () => {
+test("tester rejects status laundering with reconciled counters", () => {
   const ledger = readLedger();
   // [TEST-MOD-APPROVED #1978] pin a still-broken row after ticket pricing and
   // venue listing repairs moved prior targets out of broken.
   // [TEST-MOD-APPROVED #1971] Re-aimed from ari.trip.create (repaired here) to
   // ari.rsvp.create, which is still proven broken. The mutant is unchanged in
   // shape and still fires — only its target row moved.
-  const row = ledger.capabilities.find((capability) => capability.id === "ari.rsvp.create");
-  row.status = "registered_unverified";
-  ledger.audit.status_breakdown.broken--;
-  ledger.audit.status_breakdown.registered_unverified++;
+  // [TEST-MOD-APPROVED #424 ledger-truth] Re-aimed from ari.rsvp.create to
+  // ari.operator.snapshot after Wave-3 rows left broken.
+  // [TEST-MOD-APPROVED #424/#1983] No broken rows remain; re-aim to
+  // unverified→broken so statusDigest/classification still move.
+  const row = ledger.capabilities.find((capability) => capability.id === "ari.operator.snapshot");
+  row.status = "broken";
+  ledger.audit.status_breakdown.registered_unverified--;
+  ledger.audit.status_breakdown.broken++;
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /classification changed|status assignment changed/);
 });
 
@@ -209,3 +268,4 @@ test("tester rejects an extant-but-wrong source token that a substring check wou
   row.owners.source[0].symbol = "brand";
   assert.match(independentlyValidateSnapshot(ledger).join("; "), /source path\/symbol evidence changed/);
 });
+

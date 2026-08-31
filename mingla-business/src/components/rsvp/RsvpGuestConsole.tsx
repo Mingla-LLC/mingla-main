@@ -378,6 +378,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
     (contributionId: string): void => {
       setRefundPendingId(contributionId);
       void requestRsvpContributionRefund({
+        eventId,
         contributionId,
         mode: "discretionary",
         reason: "Organizer-approved RSVP contribution refund",
@@ -388,7 +389,7 @@ export const RsvpGuestConsole: React.FC<RsvpGuestConsoleProps> = ({
         showToast("Couldn't request this refund. Try again.");
       }).finally(() => setRefundPendingId(null));
     },
-    [contributionRefunds, showToast],
+    [contributionRefunds, eventId, showToast],
   );
 
   // ORCH-1334 — one row: a press-isolated tappable body (avatar + name + source

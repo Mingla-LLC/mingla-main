@@ -5,7 +5,11 @@
  * lazily-promoted server row, so an RSVP draft's server `events` row was
  * 'event' for its whole draft lifetime — the cover-video pipeline (keyed on the
  * draft id → its events row) bound to an 'event' row and the processed URL never
- * persisted. Fix: insert event_type:'rsvp' when sourceDraft.isRsvp === true.
+ * persisted. Fix: #1977 routes RSVP promotion through
+ * business_create_rsvp_draft_graph, which types the row as rsvp at creation.
+ *
+ * [TEST-MOD-APPROVED #1977] Repin RSVP createServerDraft to the graph RPC after
+ * #1977 replaced the client insert path.
  *
  * Paired fetch-widening: the draft reads/updates previously filtered
  * .eq("event_type","event"); now they .in("event_type", ["event","rsvp"]) so an
@@ -166,6 +170,7 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
       timezone: source.timezone,
       created_at: source.createdAt,
       updated_at: source.updatedAt,
+      event_type: source.isRsvp === true ? "rsvp" : "event",
     };
     mockFrom.mockImplementation((table: unknown) => {
       if (table === "brands") {
@@ -186,7 +191,11 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
       async (name: unknown, rawArgs: unknown) => {
         const args = rawArgs as { p_payload?: unknown };
         rpcNames.push(name);
-        expect(name).toBe("business_create_event_draft");
+        if (source.isRsvp === true) {
+          expect(name).toBe("business_create_rsvp_draft_graph");
+        } else {
+          expect(name).toBe("business_create_event_draft");
+        }
         capture.insertPayloads.push(args.p_payload);
         return { data: { event: insertedRow }, error: null };
       },
@@ -195,12 +204,9 @@ describe("ORCH-1150-R2 D-2 — createServerDraft types the server row by RSVP-ne
     return { insertPayloads: capture.insertPayloads, rpcNames };
   };
 
-  test("RSVP draft (isRsvp:true) → server row inserted with event_type:'rsvp'", async () => {
-    const { insertPayloads } = await runCreate(baseDraft({ isRsvp: true }));
-    expect(insertPayloads).toHaveLength(1);
-    expect((insertPayloads[0] as { event_type?: string }).event_type).toBe(
-      "rsvp",
-    );
+  test("RSVP draft (isRsvp:true) → graph RPC creates an rsvp-typed row", async () => {
+    const { rpcNames } = await runCreate(baseDraft({ isRsvp: true }));
+    expect(rpcNames).toEqual(["business_create_rsvp_draft_graph"]);
   });
 
   test("ticketed draft (isRsvp:false) → server row stays event_type:'event'", async () => {

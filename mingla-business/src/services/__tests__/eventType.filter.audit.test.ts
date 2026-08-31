@@ -71,18 +71,21 @@ describe("ORCH-0859 REWORK 3 — events_type filter audit (event-only callers)",
     expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
   });
 
-  test("eventDrafts.autosaveServerDraft (UPDATE) filters event_type IN (event,rsvp)", () => {
+  test("eventDrafts.autosaveServerDraft routes RSVP via graph and events via draft RPC", () => {
+    // [TEST-MOD-APPROVED #1977] RSVP autosave no longer UPDATE-filters events;
+    // it calls business_update_rsvp_graph. Event drafts still use
+    // business_update_event_draft. Trip exclusion remains via the draft RPCs.
     const fn = EVENT_DRAFTS.match(/autosaveServerDraft = async[^]*?^\};/m);
     expect(fn).not.toBeNull();
-    expect(fn?.[0]).toMatch(/\.in\("event_type",\s*DRAFT_EVENT_TYPES\)/);
+    expect(fn?.[0]).toMatch(/business_update_rsvp_graph/);
+    expect(fn?.[0]).toMatch(/business_update_event_draft/);
   });
 
-  test("eventDrafts.createServerDraft INSERT payload sets event_type (event|rsvp)", () => {
-    // ORCH-1150: the insert writes the event_type via the `eventTypeForInsert`
-    // variable ("event" | "rsvp", draft.isRsvp), not a bare literal.
-    expect(EVENT_DRAFTS).toMatch(
-      /insert\(\{[^}]*event_type:\s*eventTypeForInsert/,
-    );
+  test("eventDrafts.createServerDraft routes RSVP drafts through business_create_rsvp_draft_graph", () => {
+    // #1977 — RSVP draft promotion uses the canonical graph RPC; event drafts
+    // still use business_create_event_draft with eventTypeForInsert.
+    expect(EVENT_DRAFTS).toMatch(/business_create_rsvp_draft_graph/);
+    expect(EVENT_DRAFTS).toMatch(/eventTypeForInsert:\s*"event"\s*\|\s*"rsvp"/);
   });
 
   test("useBrands brand-stats counters (past/scheduled/live) all filter event_type='event'", () => {

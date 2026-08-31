@@ -135,6 +135,14 @@ const RECEIPT_BACKED_TOOL_NAMES = new Set([
   "manage_trip_traveler_intake",
   "publish_trip",
   "delete_trip",
+  // Issue #1977 — RSVP lifecycle writes commit through ari_execute_rsvp_operation
+  // and the shared #1972 operation receipt.
+  "create_rsvp",
+  "update_rsvp",
+  "publish_rsvp",
+  "update_rsvp_contribution_settings",
+  "set_rsvp_guest_status",
+  "refund_rsvp_contribution",
 ]);
 // [TEST-MOD-APPROVED #1973] Preserve the #1972 recovery-contract name while
 // extending the exact same receipt gate to the experience lifecycle.

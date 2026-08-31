@@ -1582,5 +1582,25 @@ export function isReadOnlyAgentToolCall(
       args.action === "get_state") ||
     // #1975 — manage_stay_inventory 'get' is a pure read that may run inline;
     // every other action is a confirmed mutation.
-    (toolName === "manage_stay_inventory" && args.action === "get");
+    (toolName === "manage_stay_inventory" && args.action === "get") ||
+    // #1982 — Brand People list/get are pure reads; add is confirmed.
+    (toolName === "manage_brand_people" &&
+      (args.action === "list" || args.action === "get")) ||
+    // #1972 reopen — read actions on multi-action event tools run inline.
+    (toolName === "manage_event_group_chat" &&
+      (args.action === "get" || args.action === "list_messages" ||
+        args.action === "list_participants")) ||
+    (toolName === "manage_event_door_sale" && args.action === "list") ||
+    (toolName === "manage_event_waitlist" && args.action === "list") ||
+    (toolName === "manage_event_scanners" && args.action === "list") ||
+    // #1980 — marketing list actions run inline.
+    (toolName === "manage_marketing_audiences" && args.action === "list") ||
+    (toolName === "manage_marketing_templates" && args.action === "list") ||
+    // #1983 — self inbox/history reads run inline.
+    (toolName === "manage_ari_history" && args.action === "list") ||
+    (toolName === "manage_business_notifications" && args.action === "list") ||
+    (toolName === "manage_support_inbox" &&
+      (args.action === "list" || args.action === "get")) ||
+    // #1978 reopen — gallery get is a pure read.
+    (toolName === "manage_venue_gallery" && args.action === "get");
 }

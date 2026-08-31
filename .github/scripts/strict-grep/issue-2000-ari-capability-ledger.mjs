@@ -52,6 +52,7 @@ ari.trip.update
 ari.trip.publish
 ari.trip.delete
 ari.rsvp.create
+ari.rsvp.update
 ari.rsvp.publish
 ari.rsvp.bulk_status
 ari.rsvp.refund_contribution
@@ -86,7 +87,6 @@ ari.team.invite_member
 ari.team.invite_scanner
 ari.team.revoke_member
 ari.guests.list_roster
-ari.guests.set_approval
 ari.people.export
 ari.settings.preferences
 ari.settings.notifications
@@ -180,29 +180,19 @@ ari.partner.splits
 // blocker rule, and the executable proofs live in
 // supabase/migrations/__tests__/issue_1971_trip_lifecycle.implementor.happy.pg17.test.sql.
 const PROVEN_BROKEN_AUDIT_SHA = "829c46fc319c34452e18876b728b6d840f95b904";
-const PROVEN_BROKEN_CAPABILITY_IDS = new Set(`
-ari.rsvp.create
-ari.rsvp.publish
-ari.rsvp.bulk_status
-ari.rsvp.refund_contribution
-ari.marketing.send_now
-ari.growth.run_tool
-ari.payout.status
-ari.partner.status
-ari.partner.disconnect
-ari.order.refund
-ari.order.cancel
-ari.trip.cancel_booking
-ari.installment.retry
-ari.analytics.brand
-ari.team.invite_member
-ari.team.invite_scanner
-ari.team.revoke_member
-ari.guests.list_roster
-ari.guests.set_approval
-ari.people.export
-ari.operator.snapshot
-`.trim().split(/\s+/));
+// [TEST-MOD-APPROVED #1977] 21 - 5 RSVP lifecycle rows (create/publish/bulk/
+// refund + retired duplicate set_approval) = 16.
+// [TEST-MOD-APPROVED #424 ledger-truth] 16 - 15 Wave-3/#2593 repaired money/
+// people/marketing rows = 1. Each named defect is repaired at source in
+// agentDomainTools.ts (+ delegated auth): canonical partner_brand_links,
+// refund/cancel/trip-cancel payloads, brand_team_members revoke, invite-
+// scanner, growth app-lane engines, roster pagination, and finance/marketing
+// role gates.
+// [TEST-MOD-APPROVED #424/#1983] 1 - ari.operator.snapshot = 0. getOperatorSnapshot
+// now returns every accessible brand (brand_member), matching ledger required_role.
+// Empty proven-broken authority is intentional — no behavioural coverage removed;
+// the flipped row stays under the registered_unverified verification-gap rule.
+const PROVEN_BROKEN_CAPABILITY_IDS = new Set();
 
 const STATUSES = new Set([
   "verified",
@@ -343,10 +333,10 @@ function validateRef(root, auditSha, ref, label, failures, requireHistoricalRef 
 
 export function validateLedger({ root, ledger, registered, advertised }) {
   const failures = [];
-  // [TEST-MOD-APPROVED #1971] 25 - 4 trip lifecycle rows = 21.
-  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 21) {
+  // [TEST-MOD-APPROVED #424/#1983] 1 - operator.snapshot = 0 proven-broken.
+  if (PROVEN_BROKEN_CAPABILITY_IDS.size !== 0) {
     failures.push(
-      `proven-broken authority must contain 21 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
+      `proven-broken authority must contain 0 audited IDs, found ${PROVEN_BROKEN_CAPABILITY_IDS.size}`,
     );
   }
   addSetDiff(
@@ -555,31 +545,37 @@ function selfTest() {
   expectMutation("duplicate alias", ({ ledger }) => {
     ledger.capabilities.find((c) => c.ari_tool === null).ari_tool = ledger.capabilities.find((c) => c.ari_tool).ari_tool;
   }, (failure) => failure.includes("maps 2 times"));
-  expectMutation("broken to verified laundering", ({ ledger }) => {
-    ledger.capabilities.find((c) => c.status === "broken").status = "verified";
-    ledger.audit.status_breakdown.broken--;
+  // [TEST-MOD-APPROVED #424/#1983] No broken rows remain; re-aim verified laundering
+  // at a registered_unverified row (still fails "verified requires").
+  expectMutation("unverified to verified laundering", ({ ledger }) => {
+    const row = ledger.capabilities.find((c) => c.id === "ari.operator.snapshot");
+    row.status = "verified";
+    ledger.audit.status_breakdown.registered_unverified--;
     ledger.audit.status_breakdown.verified++;
   }, (failure) => failure.includes("verified requires"));
-  // [TEST-MOD-APPROVED #1971] Re-aimed from ari.trip.create, which this issue
-  // repairs, to ari.rsvp.create, which remains proven broken. The mutation and
-  // its predicate are unchanged.
-  expectMutation("broken to unverified laundering", ({ ledger }) => {
-    const row = ledger.capabilities.find((c) => c.id === "ari.rsvp.create");
-    row.status = "registered_unverified";
-    row.blockers = ["No exact-revision runtime evidence on all required surfaces"];
-    ledger.audit.status_breakdown.broken--;
-    ledger.audit.status_breakdown.registered_unverified++;
-  }, (failure) => failure.includes("proven-broken capability was laundered"));
+  // [TEST-MOD-APPROVED #424/#1983] Empty proven-broken authority: inventing a
+  // broken classification without authority must still fail closed.
+  expectMutation("broken without proven-broken authority", ({ ledger }) => {
+    const row = ledger.capabilities.find((c) => c.id === "ari.operator.snapshot");
+    row.status = "broken";
+    row.blockers = ["Invented concrete defect for hostile mutation"];
+    row.evidence = [{
+      tier: "source_contract",
+      sha: PROVEN_BROKEN_AUDIT_SHA,
+      reference: "hostile mutation invents a broken claim",
+    }];
+    ledger.audit.status_breakdown.registered_unverified--;
+    ledger.audit.status_breakdown.broken++;
+  }, (failure) => failure.includes("broken classification lacks proven-broken authority"));
   expectMutation("stale symbol", ({ ledger }) => {
     ledger.capabilities[0].owners.source[0].symbol = "symbol_that_does_not_exist";
   }, (failure) => failure.includes("symbol") && failure.includes("stale"));
-  // [TEST-MOD-APPROVED #1971] Same re-aim: the historical-source rule only
-  // applies to rows still inside the proven-broken authority.
-  expectMutation("proven-broken historical source must exist", ({ ledger }) => {
-    const broken = ledger.capabilities.find((c) => c.id === "ari.rsvp.create");
-    const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
-    broken.owners.source[0] = { ...postBaseline.owners.source[0] };
-  }, (failure) => failure.includes("absent at audit SHA"));
+  // [TEST-MOD-APPROVED #424/#1983] With zero proven-broken rows, keep hostile
+  // coverage by refusing concrete-defect blockers on registered_unverified.
+  expectMutation("unverified blockers must be verification gaps", ({ ledger }) => {
+    const row = ledger.capabilities.find((c) => c.id === "ari.operator.snapshot");
+    row.blockers = ["Owner-only brands filter still excludes delegated members"];
+  }, (failure) => failure.includes("registered_unverified blockers must describe verification gaps only"));
   expectMutation("post-baseline current symbol remains exact", ({ ledger }) => {
     const postBaseline = ledger.capabilities.find((c) => c.id === "ari.experience.unpublish");
     postBaseline.owners.source[0].symbol = "symbol_that_does_not_exist";
