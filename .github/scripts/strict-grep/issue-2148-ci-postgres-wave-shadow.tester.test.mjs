@@ -63,6 +63,7 @@ const PARTIAL_REFERENCE_DELTAS = [{
   referenceFiles: [
     ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
     ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
+    ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
     "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
   ],
 }];

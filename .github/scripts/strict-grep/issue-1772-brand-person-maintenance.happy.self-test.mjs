@@ -53,6 +53,8 @@ const tracked = [
 ];
 
 const mutations = [
+  ["supabase/migrations/20270611001772_issue_1772_brand_person_maintenance.sql", "CREATE OR REPLACE FUNCTION public.biz_guest_roster_set_rsvp_approval(", "", "legacy person-key RSVP projection"],
+  ["supabase/migrations/__tests__/issue_1772_brand_person_maintenance.happy.pg17.test.sql", "legacy person-key RSVP wrapper lost projected roster DTO", "legacy person-key proof removed", "legacy RSVP runtime DTO proof"],
   ["supabase/migrations/20270611001772_issue_1772_brand_person_maintenance.sql", "issue_1772_require_brand_rank(p_brand_id,50)", "issue_1772_require_brand_rank(p_brand_id,20)", "rank-50 authority"],
   ["mingla-business/src/components/people/PersonMaintenanceFlow.tsx", 'disabled={!props.online || props.preview?.state !== "ready" || survivorId === null}', 'disabled={!props.online || props.preview?.state !== "ready"}', "explicit survivor confirmation"],
   ["mingla-business/src/hooks/marketing/useBrandPersonMaintenance.ts", "const maintenanceRequestIdsRef = React.useRef<Map<string, string>>(new Map());", "const maintenanceRequestIdsRef = { current: new Map<string, string>() };", "stable mutation request ID"],

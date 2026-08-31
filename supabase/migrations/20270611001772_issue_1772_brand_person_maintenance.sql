@@ -1179,6 +1179,45 @@ GRANT EXECUTE ON FUNCTION public.biz_add_brand_person(uuid,text,text,text,text,u
 REVOKE ALL ON FUNCTION public.issue_1775_execute_import(uuid,uuid,uuid,text,text,text,text,text,uuid,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.issue_1775_execute_import(uuid,uuid,uuid,text,text,text,text,text,uuid,text) TO service_role;
 
+-- #1977 introduced the new RSVP-domain batch writer, but its compatibility
+-- wrapper replaced the established Book roster contract. Keep the new writer
+-- for Ari/current Host callers while restoring the legacy person-key resolver,
+-- fail-closed action gates, and projected roster DTO for existing callers.
+CREATE OR REPLACE FUNCTION public.biz_guest_roster_set_rsvp_approval(
+  p_event_id uuid,p_roster_key text,p_decision text,p_client_request_id uuid
+) RETURNS jsonb
+LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_temp
+AS $function$
+DECLARE v_brand uuid; v_rollout jsonb; v_row jsonb; v_rsvp uuid; v_target text;
+BEGIN
+  SELECT e.brand_id INTO v_brand FROM public.events e WHERE e.id=p_event_id AND e.deleted_at IS NULL;
+  IF auth.uid() IS NULL OR v_brand IS NULL
+     OR public.biz_brand_effective_rank(v_brand,auth.uid())<public.biz_role_rank('event_manager') THEN
+    RAISE EXCEPTION 'guest_roster_forbidden' USING ERRCODE='42501';
+  END IF;
+  v_rollout:=public.biz_guest_roster_rollout(v_brand);
+  IF NOT COALESCE((v_rollout->>'singleActionsEnabled')::boolean,false)
+     OR p_decision NOT IN ('approve','deny') OR p_client_request_id IS NULL THEN
+    RAISE EXCEPTION 'guest_roster_action_invalid' USING ERRCODE='22023';
+  END IF;
+  SELECT row_data INTO v_row FROM public.biz_guest_roster_project(p_event_id)
+  WHERE row_data->>'rosterKey'=p_roster_key;
+  v_rsvp:=(v_row->>'rsvpId')::uuid;
+  v_target:=CASE p_decision WHEN 'approve' THEN 'approved' ELSE 'denied' END;
+  IF v_rsvp IS NULL OR NOT EXISTS (
+    SELECT 1 FROM public.event_rsvps r WHERE r.id=v_rsvp
+      AND r.event_id=p_event_id AND r.rsvp_status='going'
+      AND r.approval_status IN ('pending',v_target)
+  ) THEN RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001'; END IF;
+  UPDATE public.event_rsvps SET approval_status=v_target WHERE id=v_rsvp AND approval_status<>v_target;
+  SELECT row_data INTO v_row FROM public.biz_guest_roster_project(p_event_id)
+  WHERE row_data->>'rosterKey'=p_roster_key;
+  RETURN v_row;
+END;
+$function$;
+REVOKE ALL ON FUNCTION public.biz_guest_roster_set_rsvp_approval(uuid,text,text,uuid) FROM PUBLIC,anon;
+GRANT EXECUTE ON FUNCTION public.biz_guest_roster_set_rsvp_approval(uuid,text,text,uuid) TO authenticated;
+
 DO $assert$
 DECLARE v_table text; v_def text; v_actor_shape text;
 BEGIN

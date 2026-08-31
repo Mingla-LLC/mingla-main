@@ -393,3 +393,96 @@ DELETE FROM auth.users WHERE id='17720000-0000-4000-8000-000000000901';
 \! rm -f /tmp/issue_1772_novel_writer.log /tmp/issue_1772_novel_writer.done
 
 \echo 'issue #1772 happy SQL + novel-address serialization passed'
+
+-- #1977's new RSVP-domain batch writer remains available, while the legacy
+-- Book roster wrapper must keep accepting canonical person keys and returning
+-- the projected roster row that existing callers consume.
+BEGIN;
+INSERT INTO auth.users(id) VALUES
+  ('17720100-0000-4000-8000-000000000001'),
+  ('17720100-0000-4000-8000-000000000002');
+INSERT INTO public.creator_accounts(id)
+  VALUES('17720100-0000-4000-8000-000000000001');
+INSERT INTO public.brands(id,account_id,name,slug,default_currency)
+VALUES('17720100-0000-4000-8000-000000000010','17720100-0000-4000-8000-000000000001',
+  'Issue 1772 RSVP Compatibility','issue-1772-rsvp-compatibility','USD');
+INSERT INTO public.events(id,brand_id,created_by,event_type,title,slug,status,visibility,currency,
+  timezone,party_types,rsvp_approval_mode,rsvp_discoverable,theme,created_at,updated_at)
+VALUES('17720100-0000-4000-8000-000000000020','17720100-0000-4000-8000-000000000010',
+  '17720100-0000-4000-8000-000000000001','rsvp','Issue 1772 RSVP Compatibility',
+  'issue-1772-rsvp-compatibility','scheduled','public','USD','UTC','{}','auto',false,'{}',now(),now());
+INSERT INTO public.brand_people(id,brand_id,display_name)
+VALUES('17720100-0000-4000-8000-000000000030','17720100-0000-4000-8000-000000000010','Legacy Roster Guest');
+INSERT INTO public.brand_offering_invites(id,brand_id,event_id,brand_person_id,origin)
+VALUES('17720100-0000-4000-8000-000000000040','17720100-0000-4000-8000-000000000010',
+  '17720100-0000-4000-8000-000000000020','17720100-0000-4000-8000-000000000030','wizard');
+INSERT INTO public.event_rsvps(id,event_id,user_id,guest_name,guest_email,guest_phone,rsvp_status,
+  approval_status,plus_count,created_at)
+VALUES('17720100-0000-4000-8000-000000000060','17720100-0000-4000-8000-000000000020',NULL,
+  'Legacy Roster Guest','legacy-roster@example.test',NULL,'going','pending',0,now());
+INSERT INTO public.brand_person_source_links(id,brand_id,brand_person_id,source_kind,source_id,
+  offering_invite_id,link_method,source_occurred_at)
+VALUES('17720100-0000-4000-8000-000000000061','17720100-0000-4000-8000-000000000010',
+  '17720100-0000-4000-8000-000000000030','event_rsvp','17720100-0000-4000-8000-000000000060',
+  '17720100-0000-4000-8000-000000000040','invite_token',now());
+INSERT INTO public.guest_roster_brand_rollouts(brand_id,phase)
+VALUES('17720100-0000-4000-8000-000000000010','internal_read');
+UPDATE public.feature_flags SET is_enabled=true
+  WHERE flag_key IN('guest_roster_read_enabled','guest_roster_single_actions_enabled');
+
+DO $legacy_rsvp_wrapper$
+DECLARE v jsonb; v_denied boolean:=false;
+BEGIN
+  PERFORM set_config('request.jwt.claim.sub','17720100-0000-4000-8000-000000000002',true);
+  BEGIN
+    PERFORM public.biz_guest_roster_set_rsvp_approval(
+      '17720100-0000-4000-8000-000000000020',
+      'person:17720100-0000-4000-8000-000000000030','approve',
+      '17720100-0000-4000-8000-000000000070');
+  EXCEPTION WHEN insufficient_privilege THEN
+    v_denied:=SQLERRM LIKE '%guest_roster_forbidden%';
+  END;
+  IF NOT v_denied THEN RAISE EXCEPTION 'legacy RSVP wrapper authority did not fail closed'; END IF;
+
+  PERFORM set_config('request.jwt.claim.sub','17720100-0000-4000-8000-000000000001',true);
+  BEGIN
+    PERFORM public.biz_guest_roster_set_rsvp_approval(
+      '17720100-0000-4000-8000-000000000020',
+      'person:17720100-0000-4000-8000-000000000030','approve',
+      '17720100-0000-4000-8000-000000000071');
+    RAISE EXCEPTION 'legacy RSVP wrapper ignored the rollout gate';
+  EXCEPTION WHEN invalid_parameter_value THEN
+    IF SQLERRM NOT LIKE '%guest_roster_action_invalid%' THEN RAISE; END IF;
+  END;
+
+  UPDATE public.guest_roster_brand_rollouts SET phase='single_actions'
+    WHERE brand_id='17720100-0000-4000-8000-000000000010';
+  v:=public.biz_guest_roster_set_rsvp_approval(
+    '17720100-0000-4000-8000-000000000020',
+    'person:17720100-0000-4000-8000-000000000030','approve',
+    '17720100-0000-4000-8000-000000000072');
+  IF v->>'rosterKey'<>'person:17720100-0000-4000-8000-000000000030'
+     OR v->>'personId'<>'17720100-0000-4000-8000-000000000030'
+     OR v->>'rsvpId'<>'17720100-0000-4000-8000-000000000060'
+     OR v->>'primaryStatus'<>'going'
+     OR (SELECT approval_status FROM public.event_rsvps
+       WHERE id='17720100-0000-4000-8000-000000000060')<>'approved' THEN
+    RAISE EXCEPTION 'legacy person-key RSVP wrapper lost projected roster DTO: %',v;
+  END IF;
+
+  UPDATE public.event_rsvps SET approval_status='denied'
+    WHERE id='17720100-0000-4000-8000-000000000060';
+  BEGIN
+    PERFORM public.biz_guest_roster_set_rsvp_approval(
+      '17720100-0000-4000-8000-000000000020',
+      'person:17720100-0000-4000-8000-000000000030','approve',
+      '17720100-0000-4000-8000-000000000073');
+    RAISE EXCEPTION 'legacy RSVP wrapper accepted a stale status';
+  EXCEPTION WHEN serialization_failure THEN
+    IF SQLERRM NOT LIKE '%guest_roster_status_changed%' THEN RAISE; END IF;
+  END;
+END
+$legacy_rsvp_wrapper$;
+ROLLBACK;
+
+\echo 'issue #1772 happy SQL + novel-address serialization + legacy RSVP compatibility passed'

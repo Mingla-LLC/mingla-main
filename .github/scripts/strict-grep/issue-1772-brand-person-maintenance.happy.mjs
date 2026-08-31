@@ -174,6 +174,40 @@ export function audit(base = repoRoot) {
     if (forbidden.test(migration)) failures.push("immutable actor snapshot regained an auth lifecycle FK");
   }
 
+  const legacyRsvpWrapperStart = migration.indexOf(
+    "CREATE OR REPLACE FUNCTION public.biz_guest_roster_set_rsvp_approval",
+  );
+  const legacyRsvpWrapperEnd = migration.indexOf(
+    "REVOKE ALL ON FUNCTION public.biz_guest_roster_set_rsvp_approval",
+    legacyRsvpWrapperStart,
+  );
+  if (legacyRsvpWrapperStart < 0 || legacyRsvpWrapperEnd < legacyRsvpWrapperStart) {
+    failures.push("legacy RSVP compatibility wrapper is missing");
+  } else {
+    const legacyRsvpWrapper = migration.slice(legacyRsvpWrapperStart, legacyRsvpWrapperEnd);
+    for (const needle of [
+      "public.biz_brand_effective_rank(v_brand,auth.uid())<public.biz_role_rank('event_manager')",
+      "(v_rollout->>'singleActionsEnabled')::boolean",
+      "p_decision NOT IN ('approve','deny') OR p_client_request_id IS NULL",
+      "SELECT row_data INTO v_row FROM public.biz_guest_roster_project(p_event_id)",
+      "WHERE row_data->>'rosterKey'=p_roster_key",
+      "r.rsvp_status='going'",
+      "r.approval_status IN ('pending',v_target)",
+      "RAISE EXCEPTION 'guest_roster_status_changed' USING ERRCODE='40001'",
+      "RETURN v_row",
+    ]) required(legacyRsvpWrapper, needle, `legacy RSVP wrapper ${needle}`, failures);
+    if (legacyRsvpWrapper.includes("business_set_rsvp_guest_status")) {
+      failures.push("legacy RSVP wrapper delegates person keys to the new RSVP-only batch writer");
+    }
+  }
+  for (const needle of [
+    "DO $legacy_rsvp_wrapper$",
+    "legacy RSVP wrapper authority did not fail closed",
+    "legacy RSVP wrapper ignored the rollout gate",
+    "legacy person-key RSVP wrapper lost projected roster DTO",
+    "legacy RSVP wrapper accepted a stale status",
+  ]) required(sqlTest, needle, `legacy RSVP PostgreSQL proof ${needle}`, failures);
+
   for (const rpc of [
     "biz_list_brand_person_merge_candidates",
     "biz_preview_brand_person_merge",
