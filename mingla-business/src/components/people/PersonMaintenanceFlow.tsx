@@ -4,6 +4,7 @@ import {
   findNodeHandle,
   Platform,
   Pressable,
+  ScrollView as NativeScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -37,7 +38,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
-import { ScrollView } from "../../wrappers/SmartScrollView";
+import { ScrollView as SmartScrollView } from "../../wrappers/SmartScrollView";
 import { IdentityOperationReceipt } from "./IdentityOperationReceipt";
 import { PersonComparisonCard } from "./PersonComparisonCard";
 
@@ -568,7 +569,7 @@ export function PersonMaintenanceFlow(
                 </Text>
               </View>
             ) : (
-              <ScrollView contentContainerStyle={styles.results} keyboardShouldPersistTaps="handled">
+              <SmartScrollView contentContainerStyle={styles.results} keyboardShouldPersistTaps="handled">
                 {props.candidateRows.map((candidate) => (
                   <CandidateRow
                     key={candidate.personId}
@@ -592,7 +593,7 @@ export function PersonMaintenanceFlow(
                     onPress={props.onLoadMoreCandidates}
                   />
                 ) : null}
-              </ScrollView>
+              </SmartScrollView>
             )}
           </View>
         ) : (
@@ -623,7 +624,7 @@ export function PersonMaintenanceFlow(
                 </View>
               </View>
             ) : props.preview ? (
-              <ScrollView contentContainerStyle={styles.reviewContent}>
+              <NativeScrollView style={styles.reviewScroll} contentContainerStyle={styles.reviewContent}>
                 <View
                   accessibilityRole="radiogroup"
                   accessibilityLabel="Choose the person to keep"
@@ -693,7 +694,7 @@ export function PersonMaintenanceFlow(
                 ) : props.preview.state === "distinct_linked_users" ? (
                   <Button label="Done" variant="secondary" fullWidth onPress={props.onCloseMerge} />
                 ) : null}
-              </ScrollView>
+              </NativeScrollView>
             ) : null}
             {confirmMerge && stacked ? (
               <View style={styles.inlineConfirm} accessibilityViewIsModal>
@@ -820,7 +821,7 @@ export function PersonMaintenanceFlow(
                 <Button label="Try again" variant="secondary" onPress={props.onRetrySplitPreview} />
               </View>
             ) : props.splitPreview?.state === "safe" ? (
-              <ScrollView contentContainerStyle={styles.reviewContent}>
+              <NativeScrollView style={styles.reviewScroll} contentContainerStyle={styles.reviewContent}>
                 <Text style={styles.sectionLabel}>After Split</Text>
                 <View style={[styles.comparisonRow, stacked && styles.stacked]}>
                   <PersonComparisonCard person={props.splitPreview.left} />
@@ -841,7 +842,7 @@ export function PersonMaintenanceFlow(
                     {splitMutationError}
                   </Text>
                 ) : null}
-              </ScrollView>
+              </NativeScrollView>
             ) : null}
             {confirmSplit && stacked ? (
               <View style={styles.inlineConfirm} accessibilityViewIsModal>
@@ -961,6 +962,7 @@ const styles = StyleSheet.create({
   comparisonRow: { flexDirection: "row", alignItems: "stretch", gap: spacing.md },
   stacked: { flexDirection: "column", gap: spacing.sm },
   reviewContent: { gap: spacing.md, paddingBottom: spacing.lg },
+  reviewScroll: { flex: 1 },
   warning: {
     borderRadius: radius.md,
     borderWidth: 1,
