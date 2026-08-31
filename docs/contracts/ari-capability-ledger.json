@@ -2363,7 +2363,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1980/#2593 agentDomainTools.ts:sendCampaignNow matches Business sendNow marketing-send {campaign_id} contract"
         }
       ],
@@ -2462,7 +2462,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1980/#2593 agentDomainTools.ts:runGrowthTool routes each engine to its app-lane function with {action,lane,brand_id,input}"
         }
       ],
@@ -2509,7 +2509,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982/#2593 agentDomainTools.ts:getPayoutStatus reads pg_brand_can_collect boolean via finance_manager gate"
         }
       ],
@@ -2559,7 +2559,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:getPartnerStatus reads partner_brand_links with derived status"
         }
       ],
@@ -2609,7 +2609,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976/#2593 agentDomainTools.ts:disconnectPartner calls partner_disconnect_link on partner_brand_links row id"
         }
       ],
@@ -2708,7 +2708,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:refundOrder sends lines+reason+Idempotency-Key to refund-order"
         }
       ],
@@ -2758,7 +2758,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:cancelOrder sends reason+Idempotency-Key to cancel-order"
         }
       ],
@@ -2808,7 +2808,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981/#2593 agentDomainTools.ts:cancelTripBooking preview\u2192commit with expectedRefundTotalCents fail-closed"
         }
       ],
@@ -2854,7 +2854,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:retryInstallment calls biz_retry_installment under finance_manager gate"
         }
       ],
@@ -2904,7 +2904,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984 agentDomainTools.ts:getBrandAnalytics reads brand_conversion_rollup + venue_intelligence_overview via assertAgentReadBrand"
         }
       ],
@@ -2950,7 +2950,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:inviteBrandMember sends invitee_name to invite-brand-member"
         }
       ],
@@ -3000,7 +3000,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:inviteScanner routes to invite-scanner with scope/scan contract"
         }
       ],
@@ -3046,7 +3046,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:revokeBrandMember soft-deletes brand_team_members.removed_at"
         }
       ],
@@ -3096,7 +3096,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984/#2593 agentDomainTools.ts:listGuestRoster calls biz_guest_roster_list with slim non-PII rows + real cursor pagination"
         }
       ],
@@ -3142,7 +3142,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "a9fbdb1893bc02b1499d5a0159d204e85dfd0312",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984 agentDomainTools.ts:exportBrandPeople sends brand-people-export {scope:brand_book,brandId,clientRequestId}"
         }
       ],
@@ -3376,7 +3376,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "0d96e695e7eaf7e4733f4444089aedead415f78f",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1983 agentDomainTools.ts:getOperatorSnapshot lists all accessible brands (brand_member), not owner-only"
         }
       ],
@@ -4439,7 +4439,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982 agentDomainTools.ts:manageBrandPeople calls biz_get_brand_people_book / biz_get_brand_person / biz_add_brand_person"
         }
       ],
@@ -4640,7 +4640,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:getBrandBalancesReports invokes brand-stripe-balances and reads brand_payout_releases"
         }
       ],
@@ -4690,7 +4690,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982 agentDomainTools.ts:listBrandTeam mirrors listBrandTeamMembers + listBrandInvitations"
         }
       ],
@@ -4740,7 +4740,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1982 agentDomainTools.ts:revokeScannerInvitation mirrors scannerInvitationsService.revokeScannerInvitation"
         }
       ],
@@ -4990,7 +4990,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1984 agentDomainTools.ts:getEventOrderReconciliation aggregates orders sold/refunded/net without buyer PII"
         }
       ],
@@ -5674,7 +5674,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:chargeInstallmentNow invokes manual-charge-installment"
         }
       ],
@@ -5728,7 +5728,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1981 agentDomainTools.ts:sendInstallmentReminder invokes send-installment-reminder"
         }
       ],
@@ -5879,7 +5879,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:listPartnerBrandLinks mirrors partnerBrandLinksService.listPartnerBrandLinks"
         }
       ],
@@ -5929,7 +5929,7 @@
       "evidence": [
         {
           "tier": "source_contract",
-          "sha": "d57a4a6c7475d0de765a5bec6df153934ab36981",
+          "sha": "110a80488259b83bea43e6cbe42642f4c79a99b7",
           "reference": "#1976 agentDomainTools.ts:listPartnerSplits mirrors partnerSplitsService.listPartnerSplits"
         }
       ],
