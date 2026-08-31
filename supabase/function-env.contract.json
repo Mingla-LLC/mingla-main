@@ -1,0 +1,3047 @@
+{
+  "functions": {
+    "accept-brand-invitation": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "accept-scanner-invitation": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "accept-tag-along": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-app-identity-preflight": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-app-readiness": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-app-readiness-event": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-campaign-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-campaign-sync": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-connect": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-create-campaign": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "MAPBOX_ACCESS_TOKEN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "admin-ad-creative-prepare": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID"
+      ]
+    },
+    "admin-ad-creative-upload": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID"
+      ]
+    },
+    "admin-ad-google-provision-conversion": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-preflight": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-ad-preview": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUSINESS_WEB_ORIGIN",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID"
+      ]
+    },
+    "admin-ad-targeting-search": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-payout-hold-migrate": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-place-search": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_MAPS_API_KEY"
+      ]
+    },
+    "admin-reconcile-ticket-refund": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-refresh-places": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_MAPS_API_KEY"
+      ]
+    },
+    "admin-refund-order": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "admin-review-venue-claim": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
+        "RESEND_API_KEY"
+      ]
+    },
+    "admin-seed-map-strangers": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-seed-places": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_MAPS_API_KEY"
+      ]
+    },
+    "admin-send-email": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
+    },
+    "admin-source-refund-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS"
+      ]
+    },
+    "admin-source-refund-operations": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "ADMIN_SOURCE_REFUND_CURSOR_HMAC_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "admin-stay-operations": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "admin-stripe-connect-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN"
+      ]
+    },
+    "admin-write-primitive": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "agent-chat": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY_ARI",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "agent-confirm-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY_ARI",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "api-health-probe": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXCHANGERATE_API_KEY",
+        "EXCHANGE_RATE_API_KEY",
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "SENTRY_AUTH_TOKEN",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "GEMINI_API_KEY",
+        "GOOGLE_MAPS_API_KEY",
+        "MAPBOX_ACCESS_TOKEN",
+        "OPENAI_API_KEY",
+        "PEXELS_API_KEY",
+        "RESEND_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "SERPER_API_KEY",
+        "TICKETMASTER_API_KEY",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN"
+      ]
+    },
+    "app-ota-policy": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "app-version-policy": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "attendance-claim-backfill": {
+      "migration_fallback_top_level": [
+        "ATTENDANCE_CLAIM_PEPPER"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "ATTENDANCE_CLAIM_PEPPER"
+        ]
+      },
+      "required_top_level": [
+        "RESEND_API_KEY",
+        "app.qr_token_pepper"
+      ]
+    },
+    "attendance-claim-identity": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "attendance-claim-link": {
+      "migration_fallback_top_level": [
+        "ATTENDANCE_CLAIM_PEPPER"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "ATTENDANCE_CLAIM_PEPPER"
+        ]
+      },
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "attribution-capture": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "backfill-place-photo-thumbs": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "backfill-place-photos": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_MAPS_API_KEY"
+      ]
+    },
+    "backfill-rsvp-qr-codes": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "beta-access-lead-submit": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BETA_LEAD_IP_SALT"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
+    },
+    "brand-mingla-tos-accept": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-paystack-onboard": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "brand-people-export": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-people-export-worker": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-person-ingest-worker": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "CRON_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-stripe-account-session": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "brand-stripe-balances": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-stripe-detach": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-stripe-onboard": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "brand-stripe-refresh-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "brand-stripe-tax-account-session": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "brand-tax-registrations-list": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "cancel-order": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "cancel-trip-booking": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "careers-apply": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BETA_LEAD_IP_SALT"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
+    },
+    "careers-cv-signed-url": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "check-launch-city": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "checkout-sale-revocation": {
+      "migration_fallback_top_level": [
+        "CHECKOUT_REVOCATION_EXECUTE"
+      ],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {
+        "MINGLA_DELIVERY_FLAGS_JSON": [
+          "checkout_revocation_execute"
+        ]
+      },
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "claim-attendance": {
+      "migration_fallback_top_level": [
+        "ATTENDANCE_CLAIM_PEPPER"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "ATTENDANCE_CLAIM_PEPPER"
+        ]
+      },
+      "required_top_level": []
+    },
+    "claim-pending-trip-chat-participation": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "claim-search-pool": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "competitor-intel-worker": {
+      "migration_fallback_top_level": [
+        "META_COMPETITOR_ACCESS_TOKEN",
+        "META_COMPETITOR_IG_USER_ID"
+      ],
+      "optional_top_level": [
+        "CRON_SECRET",
+        "GOOGLE_AI_API_KEY"
+      ],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "META_COMPETITOR_ACCESS_TOKEN",
+          "META_COMPETITOR_IG_USER_ID"
+        ]
+      },
+      "required_top_level": [
+        "GEMINI_API_KEY"
+      ]
+    },
+    "compute-engagement-scores": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "contact-import": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "decline-brand-invitation": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "decline-tag-along": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "delete-user": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "discover-cards": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "discover-merged-events": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "event-cancel-refund-fanout": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-attest-selection": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_GIPHY_API_KEY",
+        "EXPO_PUBLIC_GIPHY_KEY",
+        "GIPHY_API_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "PEXELS_API_KEY"
+      ]
+    },
+    "event-cover-pexels-curated": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "PEXELS_API_KEY"
+      ]
+    },
+    "event-cover-pexels-search": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "PEXELS_API_KEY"
+      ]
+    },
+    "event-cover-video-apply": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-video-cancel": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-video-reaper": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "BUNNY_STREAM_WEBHOOK_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-video-source-uploaded": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-video-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-video-upload-intent": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "event-cover-video-webhook": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_API_KEY",
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "BUNNY_STREAM_WEBHOOK_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "events": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EVENTBRITE_TOKEN"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "generate-curated-experiences": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "OPENAI_API_KEY"
+      ]
+    },
+    "generate-holiday-categories": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "OPENAI_API_KEY"
+      ]
+    },
+    "get-companion-stops": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "get-nearby-people": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "get-paired-profile-cards": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "MAPBOX_ACCESS_TOKEN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "get-paired-saves": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "get-person-hero-cards": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "MAPBOX_ACCESS_TOKEN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "get-picnic-grocery": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "growth-tools-book": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_CALENDAR_KEYS",
+        "RESEND_API_KEY"
+      ]
+    },
+    "growth-tools-events": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "GROWTH_TOOLS_APP_LIMITS_JSON"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY",
+        "PEXELS_API_KEY"
+      ]
+    },
+    "growth-tools-gate": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
+    },
+    "growth-tools-geocode": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "MAPBOX_ACCESS_TOKEN"
+      ]
+    },
+    "growth-tools-preview": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "growth-tools-pricing": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "GROWTH_TOOLS_APP_LIMITS_JSON"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY"
+      ]
+    },
+    "growth-tools-report": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "GROWTH_TOOLS_APP_LIMITS_JSON"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "growth-tools-run": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "GROWTH_TOOLS_APP_LIMITS_JSON",
+        "SCREENSHOTONE_ACCESS_KEY",
+        "SCREENSHOTONE_SECRET_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY",
+        "SCREENSHOTONE_KEYS"
+      ]
+    },
+    "growth-tools-trips": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "GROWTH_TOOLS_APP_LIMITS_JSON"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY",
+        "PEXELS_API_KEY"
+      ]
+    },
+    "guest-roster-actions": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "OFFERING_INVITE_TOKEN_PEPPER",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "invite-brand-member": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "RESEND_API_KEY"
+      ]
+    },
+    "invite-scanner": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "RESEND_API_KEY"
+      ]
+    },
+    "keep-warm": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "list-my-pending-invites": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "lookup-phone": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "manage-brand-discovery-currency": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "manage-stay-inventory": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "manual-charge-installment": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "mapbox-geocode": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "MAPBOX_ACCESS_TOKEN"
+      ]
+    },
+    "marketing-send": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "TWILIO_MARKETING_MESSAGING_SERVICE_SID"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "OFFERING_INVITE_TOKEN_PEPPER",
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET",
+        "app.qr_token_pepper"
+      ]
+    },
+    "marketing-track-click": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "marketing-unsubscribe": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "moderate-content": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "OPENAI_API_KEY"
+      ]
+    },
+    "notification-retry-sweeper": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "notify-birthday-reminder": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-calendar-reminder": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-dispatch": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "notify-holiday-reminder": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-invite-response": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-lifecycle": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-message": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-outbox-drain": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS"
+      ]
+    },
+    "notify-pair-activity": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-pair-request-visible": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-referral-credited": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-reminders": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-session-lock": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-session-match": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "notify-support": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "offering-invite-dispatch": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "OFFERING_INVITE_TOKEN_PEPPER",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "onesignal-event-stream": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY"
+      ]
+    },
+    "parse-play-activities": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY_ARI"
+      ]
+    },
+    "parse-restaurant-menu": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY_ARI",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "partner-paystack-onboard": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "partner-paystack-split-retry": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "partner-reissue-invitation": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "RESEND_API_KEY"
+      ]
+    },
+    "partner-stripe-account-session": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN"
+      ]
+    },
+    "partner-stripe-detach": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "partner-stripe-onboard": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN"
+      ]
+    },
+    "payout-release-sweep": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "paystack-checkout-create": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "paystack-webhook": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "private-event-access": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "private-event-media": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "private-event-read": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "process-booking-deadlines": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "process-scheduled-installments": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "public-submit-rsvp": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY",
+        "app.qr_token_pepper"
+      ]
+    },
+    "reconcile-stuck-checkouts": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "record-consent": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "record-visit": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "refresh-fx-rates": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "refund-order": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "replace-curated-stop": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "resend-webhook": {
+      "migration_fallback_top_level": [
+        "RESEND_WEBHOOK_SECRET"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "RESEND_WEBHOOK_SECRET"
+        ]
+      },
+      "required_top_level": []
+    },
+    "reviewer-signin": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "REVIEWER_BYPASS_CODE",
+        "REVIEWER_EMAIL"
+      ]
+    },
+    "rsvp-contribution-create": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "rsvp-contribution-refund": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "rsvp-notify": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET",
+        "app.qr_token_pepper"
+      ]
+    },
+    "rsvp-pass-fetch": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "run-bouncer": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "run-business-place-authoring-pipeline": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "GOOGLE_AI_API_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY"
+      ]
+    },
+    "run-place-intelligence-trial": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GEMINI_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "SERPER_API_KEY"
+      ]
+    },
+    "run-pre-photo-bouncer": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "run-signal-scorer": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "scan-rsvp": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "scan-ticket": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "self-serve-unsubscribe": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "send-collaboration-invite": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "send-friend-accepted-notification": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "send-friend-request-email": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "send-installment-reminder": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY",
+        "app.qr_token_pepper"
+      ]
+    },
+    "send-message-email": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY"
+      ]
+    },
+    "send-otp": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_VERIFY_SERVICE_SID"
+      ]
+    },
+    "send-pair-accepted-notification": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "send-pair-request": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "send-phone-invite": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "send-tag-along": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "send-venue-sms": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "shared-card": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "BUNNY_STREAM_CDN_HOSTNAME"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SHARED_CARD_PROXY_SECRET"
+      ]
+    },
+    "sms-delivery-reconcile": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TERMII_API_KEY",
+        "app.qr_token_pepper"
+      ]
+    },
+    "source-refund-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "source-refund-attention": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "source-refund-sweep": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "static-map": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "MAPBOX_ACCESS_TOKEN"
+      ]
+    },
+    "stay-reservation-sweep": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "stay-reservations": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT"
+      ]
+    },
+    "stripe-kyc-stall-reminder": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "CRON_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "stripe-mode": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "stripe-webhook": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_WEBHOOK_SECRET_PREVIOUS"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "APPSFLYER_BUSINESS_ANDROID_APP_ID",
+        "APPSFLYER_BUSINESS_IOS_APP_ID",
+        "APPSFLYER_S2S_TOKEN",
+        "RESEND_API_KEY",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "STRIPE_WEBHOOK_SECRET",
+        "STRIPE_WEBHOOK_SECRET_PLATFORM",
+        "app.qr_token_pepper"
+      ]
+    },
+    "stripe-webhook-health-check": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "CRON_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "submit-feedback": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "support-brand-person-erasure": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "BRAND_PERSON_ERASURE_CHALLENGE_SECRET"
+        ]
+      },
+      "required_top_level": [
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "support-claim": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "support-grant-staff": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "support-send": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "support-set-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "termii-delivery-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "TERMII_WEBHOOK_SECRET"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TERMII_API_KEY",
+        "app.qr_token_pepper"
+      ]
+    },
+    "ticket-checkout-confirm": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "ticket-checkout-create": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "ticket-checkout-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "ticket-confirmation-dispatch": {
+      "migration_fallback_top_level": [
+        "ATTENDANCE_CLAIM_PEPPER"
+      ],
+      "optional_top_level": [],
+      "required_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "ATTENDANCE_CLAIM_PEPPER"
+        ]
+      },
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "RESEND_API_KEY",
+        "TERMII_API_KEY",
+        "TERMII_SENDER_ID",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_MESSAGING_SERVICE_SID",
+        "TWILIO_STATUS_CALLBACK_SECRET",
+        "app.qr_token_pepper"
+      ]
+    },
+    "ticket-pdf-fetch": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "ticketmaster-events": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TICKETMASTER_API_KEY"
+      ]
+    },
+    "trip-intake-upload-signed-url": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "twilio-inbound-sms": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TWILIO_STATUS_CALLBACK_SECRET"
+      ]
+    },
+    "twilio-message-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TWILIO_STATUS_CALLBACK_SECRET",
+        "app.qr_token_pepper"
+      ]
+    },
+    "update-map-location": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "upsert-leaderboard-presence": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "venue-address-pool-match": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "GOOGLE_MAPS_API_KEY"
+      ]
+    },
+    "venue-claim-decision-email": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "RESEND_API_KEY"
+      ]
+    },
+    "venue-claim-submitted-email": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "RESEND_API_KEY"
+      ]
+    },
+    "venue-order-create": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-order-escalation-sweep": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-order-guest-action": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-order-staff": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-order-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-organic-capture": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": []
+    },
+    "venue-qr-sheet": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-reservation-cancel": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-reservation-confirm": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-reservation-create": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY"
+      ],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "BUSINESS_WEB_ORIGIN",
+        "SENTRY_DSN",
+        "SENTRY_ENVIRONMENT",
+        "app.qr_token_pepper"
+      ]
+    },
+    "venue-reservation-refund-status": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "verify-otp": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN",
+        "TWILIO_VERIFY_SERVICE_SID"
+      ]
+    },
+    "waitlist-signup": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "app.qr_token_pepper"
+      ]
+    },
+    "weather": {
+      "migration_fallback_top_level": [],
+      "optional_top_level": [],
+      "required_bundle_fields": {},
+      "required_top_level": [
+        "OPENWEATHER_API_KEY"
+      ]
+    }
+  },
+  "non_secret_runtime_config": [
+    "API_HEALTH_ADMIN_URL",
+    "BOOKING_CALENDAR_ID",
+    "BOOKING_NOTIFY_TO",
+    "BOOKING_TZ",
+    "DENO_ENV",
+    "DENO_TESTING",
+    "DISABLE_CRON_JITTER",
+    "DISABLE_PHOTO_URL_TRANSFORM",
+    "DISCOVERY_PRICE_RANGE_V2_SERVE",
+    "DISCOVER_MERGED_CACHE_TTL_MS",
+    "DISCOVER_MERGED_STALE_MS",
+    "EVENTS_RATE_LIMIT_MAX",
+    "EVENT_COVER_FINAL_MAX_BYTES",
+    "EVENT_COVER_MAX_DURATION_MS",
+    "EVENT_COVER_MAX_SOURCE_VIDEO_BYTES",
+    "EVENT_COVER_MAX_SOURCE_VIDEO_DURATION_MS",
+    "EVENT_COVER_UPLOAD_HARD_CAP_PCT",
+    "META_GRAPH_API_VERSION",
+    "META_GRAPH_BASE",
+    "MINGLA_BUSINESS_BUYER_DOMAIN",
+    "MINGLA_BUSINESS_WEB_URL",
+    "MINGLA_CONSUMER_WEB_URL",
+    "MINGLA_PUBLIC_APP_ORIGIN",
+    "MINGLA_PUBLIC_WEB_BASE_URL",
+    "MINGLA_TRACKING_LINK_ORIGIN",
+    "MINGLA_UNSUBSCRIBE_LINK_ORIGIN",
+    "ORCH_TEST_NO_SERVE",
+    "PAYSTACK_PARTNER_ALERT_EMAILS",
+    "PRICING_RATE_LIMIT_MAX",
+    "PUBLIC_BUYER_BASE_URL",
+    "RESEND_BETA_FROM",
+    "RESEND_CAREERS_FROM",
+    "RESEND_FROM_EMAIL",
+    "RESEND_INVITE_FROM",
+    "RESEND_MARKETING_FROM",
+    "RSVP_QR_ALERT_EMAILS",
+    "SENTRY_ORG",
+    "SENTRY_ORG_SLUG",
+    "SUPPORT_EMAIL",
+    "THUMB_404_FALLBACK_TO_TRANSFORM",
+    "TIKTOK_API_VERSION",
+    "TIKTOK_GRAPH_BASE",
+    "TRIPS_RATE_LIMIT_MAX",
+    "USE_PLACE_PHOTO_THUMBS"
+  ],
+  "platform_managed": [
+    "SUPABASE_ANON_KEY",
+    "SUPABASE_SENTRY_DSN",
+    "SUPABASE_SERVICE_ROLE_KEY",
+    "SUPABASE_URL"
+  ],
+  "remediation": {
+    "allowed_extra_live_names": [
+      "ATTENDANCE_CLAIM_PEPPER",
+      "CHECKOUT_REVOCATION_EXECUTE",
+      "META_COMPETITOR_ACCESS_TOKEN",
+      "META_COMPETITOR_IG_USER_ID",
+      "RESEND_WEBHOOK_SECRET"
+    ],
+    "expires_after_merge_hours": 72,
+    "issue": 2241,
+    "production_ref": "gqnoajqerqhnvulmnyvv",
+    "selected_functions": [
+      "attendance-claim-backfill",
+      "attendance-claim-link",
+      "brand-paystack-onboard",
+      "brand-stripe-onboard",
+      "checkout-sale-revocation",
+      "claim-attendance",
+      "competitor-intel-worker",
+      "event-cancel-refund-fanout",
+      "guest-roster-actions",
+      "marketing-send",
+      "notify-dispatch",
+      "offering-invite-dispatch",
+      "payout-release-sweep",
+      "resend-webhook",
+      "rsvp-contribution-refund",
+      "rsvp-notify",
+      "send-pair-request",
+      "send-phone-invite",
+      "send-venue-sms",
+      "source-refund-sweep",
+      "support-brand-person-erasure",
+      "ticket-confirmation-dispatch",
+      "venue-reservation-cancel"
+    ]
+  },
+  "schema_version": 1,
+  "shared_modules": {
+    "supabase/functions/_shared/adCreative.ts": {
+      "allowed_call_expressions": {
+        "requireEnv": [
+          "ctx.tokenEnvVar"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+        "GOOGLE_ADS_OAUTH_CLIENT_ID",
+        "GOOGLE_ADS_OAUTH_CLIENT_SECRET",
+        "GOOGLE_ADS_REFRESH_TOKEN",
+        "SNAPCHAT_CLIENT_ID",
+        "SNAPCHAT_CLIENT_SECRET",
+        "SNAPCHAT_REFRESH_TOKEN",
+        "TIKTOK_ACCESS_TOKEN",
+        "TIKTOK_MINGLABIZ_ACCESS_TOKEN"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "requireEnv"
+      ]
+    },
+    "supabase/functions/_shared/adCreativePrepare.ts": {
+      "allowed_call_expressions": {
+        "requiredToken": [
+          "connection"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "BUNNY_STREAM_CDN_HOSTNAME",
+        "GOOGLE_ADS_REFRESH_TOKEN",
+        "META_SYSTEM_USER_TOKEN",
+        "SNAPCHAT_REFRESH_TOKEN",
+        "TIKTOK_ACCESS_TOKEN"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "connection.token_env_var"
+      ],
+      "local_call_identifiers": [
+        "requiredToken"
+      ]
+    },
+    "supabase/functions/_shared/capiTokens.ts": {
+      "allowed_call_expressions": {
+        "getEnv": [
+          "name"
+        ],
+        "getToken": [
+          "tokenName"
+        ],
+        "resolveCapiToken": [
+          "n"
+        ]
+      },
+      "allowed_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "APPSFLYER_API_V2_TOKEN"
+        ]
+      },
+      "allowed_identifier_references": {
+        "getToken": [
+          "supabase/functions/_shared/adConversionFire.ts@23205:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/metaCapi.ts@2054:getToken:call_argument:resolveRuntimeString:getToken",
+          "supabase/functions/_shared/metaCapi.ts@2802:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/metaCapi.ts@4680:getToken:call_argument:metaApiVersion:getToken",
+          "supabase/functions/_shared/redditCapi.ts@2453:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/snapCapi.ts@1429:deps.getToken:grouped_reference:deps.getToken",
+          "supabase/functions/_shared/tiktokEvents.ts@1793:deps.getToken:grouped_reference:deps.getToken"
+        ]
+      },
+      "allowed_top_level": [
+        "AD_CONVERSION_TOKENS"
+      ],
+      "closure_call_identifiers": [
+        "getToken",
+        "resolveCapiToken"
+      ],
+      "dynamic_getters": [
+        "n"
+      ],
+      "local_call_identifiers": [
+        "getEnv"
+      ]
+    },
+    "supabase/functions/_shared/email/experienceConfirmationEmail.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "DENO_TESTING",
+        "MINGLA_FOOTER_ADDRESS",
+        "MINGLA_FROM_EMAIL",
+        "SUPPORT_EMAIL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "key"
+      ],
+      "local_call_identifiers": [
+        "requireEnv"
+      ]
+    },
+    "supabase/functions/_shared/email/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "DENO_TESTING",
+        "MINGLA_FOOTER_ADDRESS",
+        "SUPPORT_EMAIL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "key"
+      ],
+      "local_call_identifiers": [
+        "requireEnv"
+      ]
+    },
+    "supabase/functions/_shared/email/senders.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "RESEND_ADMIN_FROM",
+        "RESEND_NOREPLY_FROM",
+        "RESEND_SYSTEM_FROM",
+        "RESEND_TICKET_FROM"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "envKey"
+      ],
+      "local_call_identifiers": [
+        "resolveSender"
+      ]
+    },
+    "supabase/functions/_shared/email/tripConfirmationEmail.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "DENO_TESTING",
+        "MINGLA_FOOTER_ADDRESS",
+        "MINGLA_FROM_EMAIL",
+        "SUPPORT_EMAIL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "key"
+      ],
+      "local_call_identifiers": [
+        "requireEnv"
+      ]
+    },
+    "supabase/functions/_shared/google.ts": {
+      "allowed_call_expressions": {
+        "read": [
+          "laneEnvName(\"GOOGLE_ADS_CUSTOMER_ID\", lane)",
+          "laneEnvName(\"GOOGLE_ADS_DEVELOPER_TOKEN\", lane)",
+          "laneEnvName(\"GOOGLE_ADS_LOGIN_CUSTOMER_ID\", lane)",
+          "laneEnvName(\"GOOGLE_ADS_OAUTH_CLIENT_ID\", lane)",
+          "laneEnvName(\"GOOGLE_ADS_OAUTH_CLIENT_SECRET\", lane)",
+          "refreshTokenEnvVar"
+        ],
+        "resolveGoogleEnvConfig": [
+          "conn",
+          "conn ?? null",
+          "existing ?? null"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "GOOGLE_ADS_API_BASE",
+        "GOOGLE_ADS_CUSTOMER_ID",
+        "GOOGLE_ADS_DEVELOPER_TOKEN",
+        "GOOGLE_ADS_LOGIN_CUSTOMER_ID",
+        "GOOGLE_ADS_MINGLABIZ_CUSTOMER_ID",
+        "GOOGLE_ADS_MINGLABIZ_DEVELOPER_TOKEN",
+        "GOOGLE_ADS_MINGLABIZ_LOGIN_CUSTOMER_ID",
+        "GOOGLE_ADS_MINGLABIZ_OAUTH_CLIENT_ID",
+        "GOOGLE_ADS_MINGLABIZ_OAUTH_CLIENT_SECRET",
+        "GOOGLE_ADS_MINGLABIZ_REFRESH_TOKEN",
+        "GOOGLE_ADS_OAUTH_CLIENT_ID",
+        "GOOGLE_ADS_OAUTH_CLIENT_SECRET",
+        "GOOGLE_ADS_REFRESH_TOKEN"
+      ],
+      "closure_call_identifiers": [
+        "resolveGoogleEnvConfig"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "read"
+      ]
+    },
+    "supabase/functions/_shared/governedAdSecret.ts": {
+      "allowed_call_expressions": {
+        "defaultGetEnv": [
+          "BUNDLE_NAME",
+          "legacyName"
+        ]
+      },
+      "allowed_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "ATTENDANCE_CLAIM_PEPPER",
+          "META_COMPETITOR_ACCESS_TOKEN",
+          "META_COMPETITOR_IG_USER_ID",
+          "RESEND_WEBHOOK_SECRET"
+        ]
+      },
+      "allowed_identifier_references": {
+        "defaultGetEnv": [
+          "supabase/functions/_shared/governedAdSecret.ts@3429:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
+        ]
+      },
+      "allowed_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "DENO_DEPLOYMENT_ID",
+        "DENO_FUNCTION_NAME"
+      ],
+      "closure_call_identifiers": [
+        "resolveGovernedAdField"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "defaultGetEnv",
+        "safeRuntimeEnv"
+      ]
+    },
+    "supabase/functions/_shared/marketingBookQuote.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "MINGLA_TRACKING_LINK_ORIGIN"
+      ],
+      "closure_call_identifiers": [
+        "resolveMarketingTrackingOrigin"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "getEnv"
+      ]
+    },
+    "supabase/functions/_shared/marketingTokens.ts": {
+      "allowed_call_expressions": {
+        "requireSecret": [
+          "options.secretEnvKey ?? \"UNSUBSCRIBE_TOKEN_SECRET\""
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "UNSUBSCRIBE_TOKEN_SECRET"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "envKey"
+      ],
+      "local_call_identifiers": [
+        "requireSecret"
+      ]
+    },
+    "supabase/functions/_shared/meta.ts": {
+      "allowed_call_expressions": {
+        "resolveMetaToken": [
+          "conn ?? null"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "META_AD_ACCOUNT_ID",
+        "META_BUSINESS_ID",
+        "META_DATASET_ID",
+        "META_GRAPH_BASE",
+        "META_IG_USER_ID",
+        "META_MINGLABIZ_AD_ACCOUNT_ID",
+        "META_MINGLABIZ_BUSINESS_ID",
+        "META_MINGLABIZ_DATASET_ID",
+        "META_MINGLABIZ_IG_USER_ID",
+        "META_MINGLABIZ_PAGE_ID",
+        "META_MINGLABIZ_SYSTEM_USER_TOKEN",
+        "META_PAGE_ID",
+        "META_SYSTEM_USER_TOKEN"
+      ],
+      "closure_call_identifiers": [
+        "resolveMetaToken"
+      ],
+      "dynamic_getters": [
+        "envVarName",
+        "laneEnvName(\"META_AD_ACCOUNT_ID\", lane)",
+        "laneEnvName(\"META_BUSINESS_ID\", lane)",
+        "laneEnvName(\"META_DATASET_ID\", lane)",
+        "laneEnvName(\"META_IG_USER_ID\", lane)",
+        "laneEnvName(\"META_PAGE_ID\", lane)"
+      ],
+      "local_call_identifiers": [
+        "resolveMetaToken"
+      ]
+    },
+    "supabase/functions/_shared/notificationRecipientHmac.ts": {
+      "allowed_call_expressions": {
+        "defaultGetEnv": [
+          "BUNDLE_NAME",
+          "FIELD_NAME"
+        ]
+      },
+      "allowed_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "NOTIFICATION_RECIPIENT_HMAC_SECRET"
+        ]
+      },
+      "allowed_identifier_references": {
+        "defaultGetEnv": [
+          "supabase/functions/_shared/notificationRecipientHmac.ts@2127:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
+        ]
+      },
+      "allowed_top_level": [
+        "AD_CONVERSION_TOKENS",
+        "DENO_DEPLOYMENT_ID",
+        "DENO_FUNCTION_NAME"
+      ],
+      "closure_call_identifiers": [
+        "resolveNotificationRecipientHmacSecret"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "defaultGetEnv",
+        "diagnosticEnv"
+      ]
+    },
+    "supabase/functions/_shared/paystack.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "PAYSTACK_SECRET_KEY_LIVE",
+        "PAYSTACK_SECRET_KEY_TEST"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "envVarName"
+      ],
+      "local_call_identifiers": [
+        "resolvePaystackSecretKey"
+      ]
+    },
+    "supabase/functions/_shared/reddit.ts": {
+      "allowed_call_expressions": {
+        "read": [
+          "laneEnvName(\"REDDIT_ADS_CLIENT_ID\", lane)",
+          "laneEnvName(\"REDDIT_ADS_CLIENT_SECRET\", lane)",
+          "laneEnvName(name, lane)",
+          "refreshTokenEnvVar"
+        ],
+        "resolveRedditEnvConfig": [
+          "conn",
+          "conn ?? null"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "REDDIT_ADS_ACCOUNT_ID",
+        "REDDIT_ADS_API_BASE",
+        "REDDIT_ADS_BUSINESS_ID",
+        "REDDIT_ADS_CLIENT_ID",
+        "REDDIT_ADS_CLIENT_SECRET",
+        "REDDIT_ADS_FUNDING_INSTRUMENT_ID",
+        "REDDIT_ADS_MINGLABIZ_ACCOUNT_ID",
+        "REDDIT_ADS_MINGLABIZ_BUSINESS_ID",
+        "REDDIT_ADS_MINGLABIZ_CLIENT_ID",
+        "REDDIT_ADS_MINGLABIZ_CLIENT_SECRET",
+        "REDDIT_ADS_MINGLABIZ_FUNDING_INSTRUMENT_ID",
+        "REDDIT_ADS_MINGLABIZ_PIXEL_ID",
+        "REDDIT_ADS_MINGLABIZ_PROFILE_ID",
+        "REDDIT_ADS_MINGLABIZ_REFRESH_TOKEN",
+        "REDDIT_ADS_PIXEL_ID",
+        "REDDIT_ADS_PROFILE_ID",
+        "REDDIT_ADS_REFRESH_TOKEN",
+        "REDDIT_ADS_TOKEN_URL"
+      ],
+      "closure_call_identifiers": [
+        "resolveRedditEnvConfig"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "read",
+        "readOptional"
+      ]
+    },
+    "supabase/functions/_shared/runtimeConfig.ts": {
+      "allowed_call_expressions": {
+        "defaultGetEnv": [
+          "RUNTIME_CONFIG_BUNDLE",
+          "legacyName"
+        ],
+        "resolveRuntimeConfigValue": [
+          "field"
+        ]
+      },
+      "allowed_bundle_fields": {
+        "MINGLA_RUNTIME_CONFIG_JSON": [
+          "bunny_storage_cap_bytes",
+          "bunny_traffic_cap_bytes",
+          "content_share_v1_create_enabled",
+          "event_cover_video_provider",
+          "google_ads_api_version",
+          "meta_api_version",
+          "mingla_footer_address",
+          "mingla_logo_url",
+          "ng_payout_float_horizon_days",
+          "offering_invite_sms_price_book_v1",
+          "termii_base_url"
+        ]
+      },
+      "allowed_identifier_references": {
+        "defaultGetEnv": [
+          "supabase/functions/_shared/runtimeConfig.ts@11503:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@12653:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@14768:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15140:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15240:getEnv:call_argument:resolveRuntimeConfigValue:getEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15425:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@15525:getEnv:call_argument:resolveRuntimeConfigValue:getEnv",
+          "supabase/functions/_shared/runtimeConfig.ts@16160:defaultGetEnv:parameter_default:getEnv=defaultGetEnv"
+        ]
+      },
+      "allowed_top_level": [
+        "BUNNY_STORAGE_CAP_BYTES",
+        "BUNNY_TRAFFIC_CAP_BYTES",
+        "CONTENT_SHARE_V1_CREATE_ENABLED",
+        "DENO_DEPLOYMENT_ID",
+        "DENO_FUNCTION_NAME",
+        "GOOGLE_ADS_API_VERSION",
+        "META_API_VERSION",
+        "MINGLA_FOOTER_ADDRESS",
+        "MINGLA_LOGO_URL",
+        "MINGLA_RUNTIME_CONFIG_JSON",
+        "TERMII_BASE_URL"
+      ],
+      "closure_call_identifiers": [
+        "resolveRuntimeBoolean",
+        "resolveRuntimeConfigValue",
+        "resolveRuntimeNumber",
+        "resolveRuntimeString"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "defaultGetEnv",
+        "diagnosticEnv"
+      ]
+    },
+    "supabase/functions/_shared/secretBundle.ts": {
+      "allowed_call_expressions": {
+        "defaultGetEnv": [
+          "bundle",
+          "legacyName"
+        ],
+        "resolveDeliveryFlagValue": [
+          "field"
+        ],
+        "resolveEmailSenderValue": [
+          "bundleField"
+        ]
+      },
+      "allowed_bundle_fields": {
+        "MINGLA_ALERT_RECIPIENTS_JSON": [
+          "api_health",
+          "stripe_disputes",
+          "stripe_webhook_failures"
+        ],
+        "MINGLA_DELIVERY_FLAGS_JSON": [
+          "checkout_revocation_execute",
+          "marketing_send_live_enabled",
+          "payout_hold_onboard_flip",
+          "payout_release_execute",
+          "paystack_payout_hold_onboard_flip",
+          "sms_live_enabled.ng",
+          "sms_live_enabled.us",
+          "source_refunds_post_disabled"
+        ],
+        "MINGLA_EMAIL_SENDERS_JSON": [
+          "admin_from",
+          "system_from",
+          "ticket_from"
+        ],
+        "MINGLA_PAYMENT_MODES_JSON": [
+          "paystack_mode",
+          "stripe_mode"
+        ]
+      },
+      "allowed_identifier_references": {
+        "defaultGetEnv": [
+          "supabase/functions/_shared/secretBundle.ts@15709:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@16048:getEnv:call_argument:fallback:getEnv",
+          "supabase/functions/_shared/secretBundle.ts@16178:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@16519:getEnv:call_argument:fallback:getEnv",
+          "supabase/functions/_shared/secretBundle.ts@16651:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@17225:getEnv:call_argument:fallback:getEnv",
+          "supabase/functions/_shared/secretBundle.ts@17586:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@18129:getEnv:call_argument:fallback:getEnv",
+          "supabase/functions/_shared/secretBundle.ts@18494:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@19288:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@19742:getEnv:call_argument:fallback:getEnv",
+          "supabase/functions/_shared/secretBundle.ts@19924:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/secretBundle.ts@20281:getEnv:call_argument:fallback:getEnv"
+        ]
+      },
+      "allowed_top_level": [
+        "DENO_DEPLOYMENT_ID",
+        "DENO_FUNCTION_NAME",
+        "MINGLA_ALERT_RECIPIENTS_JSON",
+        "MINGLA_DELIVERY_FLAGS_JSON",
+        "MINGLA_EMAIL_SENDERS_JSON",
+        "MINGLA_PAYMENT_MODES_JSON"
+      ],
+      "closure_call_identifiers": [
+        "resolveAlertRecipientValue",
+        "resolveDeliveryFlagValue",
+        "resolveEmailSenderValue",
+        "resolvePaymentModeValue",
+        "resolvePaymentOperationFlagValue"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "defaultGetEnv",
+        "diagnosticEnv"
+      ]
+    },
+    "supabase/functions/_shared/snapchat.ts": {
+      "allowed_call_expressions": {
+        "read": [
+          "laneEnvName(\"SNAPCHAT_AD_ACCOUNT_ID\", lane)",
+          "laneEnvName(\"SNAPCHAT_CLIENT_ID\", lane)",
+          "laneEnvName(\"SNAPCHAT_CLIENT_SECRET\", lane)",
+          "laneEnvName(name, lane)",
+          "refreshTokenEnvVar"
+        ],
+        "resolveSnapchatEnvConfig": [
+          "conn ?? null"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "SNAPCHAT_AD_ACCOUNT_ID",
+        "SNAPCHAT_API_BASE",
+        "SNAPCHAT_CLIENT_ID",
+        "SNAPCHAT_CLIENT_SECRET",
+        "SNAPCHAT_MINGLABIZ_AD_ACCOUNT_ID",
+        "SNAPCHAT_MINGLABIZ_CLIENT_ID",
+        "SNAPCHAT_MINGLABIZ_CLIENT_SECRET",
+        "SNAPCHAT_MINGLABIZ_ORG_ID",
+        "SNAPCHAT_MINGLABIZ_PIXEL_ID",
+        "SNAPCHAT_MINGLABIZ_PROFILE_ID",
+        "SNAPCHAT_MINGLABIZ_REFRESH_TOKEN",
+        "SNAPCHAT_ORG_ID",
+        "SNAPCHAT_PIXEL_ID",
+        "SNAPCHAT_PROFILE_ID",
+        "SNAPCHAT_REFRESH_TOKEN",
+        "SNAPCHAT_TOKEN_URL"
+      ],
+      "closure_call_identifiers": [
+        "resolveSnapchatEnvConfig"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "read",
+        "readOptional"
+      ]
+    },
+    "supabase/functions/_shared/storageHeadroomGuard.ts": {
+      "allowed_call_expressions": {
+        "defaultGetEnv": [
+          "STORAGE_HEADROOM_MAX_BYTES_ENV"
+        ],
+        "resolveStorageHeadroomThreshold": [
+          "opts.getEnv ?? defaultGetEnv"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_identifier_references": {
+        "defaultGetEnv": [
+          "supabase/functions/_shared/storageHeadroomGuard.ts@4100:defaultGetEnv:parameter_default:getEnv=defaultGetEnv",
+          "supabase/functions/_shared/storageHeadroomGuard.ts@7042:defaultGetEnv:call_argument:resolveStorageHeadroomThreshold:opts.getEnv ?? defaultGetEnv"
+        ]
+      },
+      "allowed_top_level": [
+        "STORAGE_BACKFILL_MAX_BYTES"
+      ],
+      "closure_call_identifiers": [
+        "resolveStorageHeadroomThreshold"
+      ],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": [
+        "defaultGetEnv"
+      ]
+    },
+    "supabase/functions/_shared/stripe.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [],
+      "closure_call_identifiers": [
+        "createStripeClient"
+      ],
+      "dynamic_getters": [
+        "envVarName"
+      ],
+      "local_call_identifiers": [
+        "createStripeClient"
+      ]
+    },
+    "supabase/functions/_shared/stripeBlueprintClient.ts": {
+      "allowed_call_expressions": {
+        "resolveBlueprintStripeKey": [
+          "options.envVarNames"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "envVarName"
+      ],
+      "local_call_identifiers": [
+        "resolveBlueprintStripeKey"
+      ]
+    },
+    "supabase/functions/_shared/stripeMode.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "EXPO_PUBLIC_STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY",
+        "STRIPE_PUBLISHABLE_KEY_LIVE",
+        "STRIPE_PUBLISHABLE_KEY_TEST",
+        "STRIPE_RAK_BALANCES_LIVE",
+        "STRIPE_RAK_DETACH_LIVE",
+        "STRIPE_RAK_DETACH_TEST",
+        "STRIPE_RAK_ONBOARD_LIVE",
+        "STRIPE_RAK_ONBOARD_TEST",
+        "STRIPE_RAK_REFRESH_STATUS_LIVE",
+        "STRIPE_RAK_REFRESH_STATUS_TEST",
+        "STRIPE_RAK_TICKET_CHECKOUT_LIVE",
+        "STRIPE_RAK_TICKET_CHECKOUT_TEST",
+        "STRIPE_RAK_TICKET_REFUND_LIVE",
+        "STRIPE_RAK_TICKET_REFUND_TEST",
+        "STRIPE_RAK_WEBHOOK_LIVE",
+        "STRIPE_RAK_WEBHOOK_TEST"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "`STRIPE_PUBLISHABLE_KEY_${suffix}`",
+        "envVarName"
+      ],
+      "local_call_identifiers": [
+        "resolveStripeKey"
+      ]
+    },
+    "supabase/functions/_shared/tiktok.ts": {
+      "allowed_call_expressions": {
+        "resolveTikTokToken": [
+          "conn ?? null"
+        ]
+      },
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "TIKTOK_ACCESS_TOKEN",
+        "TIKTOK_ADVERTISER_ID",
+        "TIKTOK_API_VERSION",
+        "TIKTOK_GRAPH_BASE",
+        "TIKTOK_MINGLABIZ_ACCESS_TOKEN",
+        "TIKTOK_MINGLABIZ_ADVERTISER_ID"
+      ],
+      "closure_call_identifiers": [
+        "resolveTikTokToken"
+      ],
+      "dynamic_getters": [
+        "envVarName",
+        "laneEnvName(\"TIKTOK_ADVERTISER_ID\", effectiveLane)"
+      ],
+      "local_call_identifiers": [
+        "resolveTikTokToken"
+      ]
+    },
+    "supabase/functions/admin-ad-connect/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "GOOGLE_ADS_REFRESH_TOKEN",
+        "META_SYSTEM_USER_TOKEN",
+        "REDDIT_ADS_CLIENT_ID",
+        "REDDIT_ADS_CLIENT_SECRET",
+        "REDDIT_ADS_REFRESH_TOKEN",
+        "SNAPCHAT_AD_ACCOUNT_ID",
+        "SNAPCHAT_CLIENT_ID",
+        "SNAPCHAT_CLIENT_SECRET",
+        "SNAPCHAT_MINGLABIZ_AD_ACCOUNT_ID",
+        "SNAPCHAT_PROFILE_ID",
+        "SNAPCHAT_REFRESH_TOKEN",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL",
+        "TIKTOK_ACCESS_TOKEN",
+        "TIKTOK_ADVERTISER_ID",
+        "TIKTOK_MINGLABIZ_ADVERTISER_ID"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "lane === \"business\" ? \"SNAPCHAT_MINGLABIZ_AD_ACCOUNT_ID\" : \"SNAPCHAT_AD_ACCOUNT_ID\"",
+        "lane === \"business\" ? \"TIKTOK_MINGLABIZ_ADVERTISER_ID\" : \"TIKTOK_ADVERTISER_ID\""
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/admin-ad-create-campaign/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "SNAPCHAT_MINGLABIZ_PROFILE_ID",
+        "SNAPCHAT_PROFILE_ID",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "lane === \"business\" ? \"SNAPCHAT_MINGLABIZ_PROFILE_ID\" : \"SNAPCHAT_PROFILE_ID\""
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/admin-ad-preview/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "connection.token_env_var"
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/admin-payout-hold-migrate/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "key"
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/api-health-probe/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "API_HEALTH_ADMIN_URL",
+        "BUNNY_ACCOUNT_API_KEY",
+        "BUNNY_STREAM_LIBRARY_ID",
+        "GEMINI_API_KEY",
+        "GOOGLE_MAPS_API_KEY",
+        "MAPBOX_ACCESS_TOKEN",
+        "ONESIGNAL_APP_ID",
+        "ONESIGNAL_BUSINESS_APP_ID",
+        "ONESIGNAL_BUSINESS_REST_API_KEY",
+        "ONESIGNAL_REST_API_KEY",
+        "OPENAI_API_KEY",
+        "PEXELS_API_KEY",
+        "RESEND_API_KEY",
+        "SENTRY_ORG",
+        "SENTRY_ORG_SLUG",
+        "SERPER_API_KEY",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL",
+        "TICKETMASTER_API_KEY",
+        "TWILIO_ACCOUNT_SID",
+        "TWILIO_AUTH_TOKEN"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "appIdVar",
+        "envVar",
+        "restKeyVar"
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/notify-dispatch/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "RESEND_API_KEY",
+        "RESEND_FROM_EMAIL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "\"SUPABASE_SERVICE_ROLE_KEY\","
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/notify-reminders/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/payout-release-sweep/index.ts": {
+      "allowed_bundle_fields": {},
+      "allowed_top_level": [
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_URL"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "key"
+      ],
+      "local_call_identifiers": []
+    },
+    "supabase/functions/support-brand-person-erasure/erasureContract.ts": {
+      "allowed_bundle_fields": {
+        "AD_CONVERSION_TOKENS": [
+          "BRAND_PERSON_ERASURE_CHALLENGE_SECRET"
+        ]
+      },
+      "allowed_top_level": [
+        "AD_CONVERSION_TOKENS"
+      ],
+      "closure_call_identifiers": [],
+      "dynamic_getters": [
+        "name"
+      ],
+      "local_call_identifiers": []
+    }
+  }
+}

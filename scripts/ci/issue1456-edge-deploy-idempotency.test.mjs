@@ -35,12 +35,30 @@ printf 'deployed %s\\n' "$name"
   const mockPath = join(binRoot, "supabase");
   await writeFile(mockPath, mock);
   await chmod(mockPath, 0o755);
+  const nodeStub = join(binRoot, "node");
+  await writeFile(
+    nodeStub,
+    "#!/usr/bin/env bash\n# #1456 isolates the wrapper's deploy loop; authority/preflight have their own executable suites.\nexit 0\n",
+  );
+  await chmod(nodeStub, 0o755);
   return { root, functionsRoot, binRoot, callsPath };
 }
 
 async function run(mode) {
   const current = await fixture(mode);
-  const result = spawnSync("bash", [deployScript, current.functionsRoot], {
+  const result = spawnSync("bash", [
+    deployScript,
+    "--project-ref",
+    "gqnoajqerqhnvulmnyvv",
+    "--merged-commit",
+    "0123456789abcdef0123456789abcdef01234567",
+    "--function",
+    "alpha",
+    "--function",
+    "beta",
+    "--function",
+    "gamma",
+  ], {
     encoding: "utf8",
     env: {
       ...process.env,
@@ -59,6 +77,12 @@ assert.equal(duplicate.result.status, 0, duplicate.result.stderr);
 assert.equal(duplicate.calls.length, 3, "the exact duplicate response must not starve later functions");
 assert.match(duplicate.calls[2], /gamma/);
 assert.ok(duplicate.calls.every((call) => !call.includes("--no-verify-jwt")));
+assert.ok(duplicate.calls.every((call) => call.includes("--use-api")));
+assert.ok(
+  duplicate.calls.every((call) =>
+    call.includes("--project-ref gqnoajqerqhnvulmnyvv")
+  ),
+);
 
 const conflict = await run("other-conflict");
 assert.notEqual(conflict.result.status, 0, "any different deployment failure must stay fatal");

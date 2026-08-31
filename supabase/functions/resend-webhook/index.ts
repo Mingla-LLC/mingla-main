@@ -19,6 +19,7 @@
  */
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
 
 /** Events we act on. Anything else is acked and ignored, never 500'd. */
 const HANDLED = new Set([
@@ -142,7 +143,10 @@ export async function handleResendWebhook(req: Request): Promise<Response> {
     });
   }
 
-  const secret = Deno.env.get("RESEND_WEBHOOK_SECRET") ?? "";
+  const secret = resolveGovernedAdField(
+    "RESEND_WEBHOOK_SECRET",
+    "RESEND_WEBHOOK_SECRET",
+  ) ?? "";
   if (secret.length === 0) {
     // Fail CLOSED. An unverified endpoint that writes engagement metrics is a
     // vandalism surface: anyone could inflate a brand's open rate, or worse,

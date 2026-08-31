@@ -22581,6 +22581,7 @@
       "providerWorkflow": ".github/workflows/supabase-secret-budget.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1436-secret-capacity-exit.mjs",
+        ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
         "scripts/ops/verify-production-supabase-authority.mjs"
       ],
       "rationale": "Phase 1 records this external coupling and preserves the existing live provider unchanged."

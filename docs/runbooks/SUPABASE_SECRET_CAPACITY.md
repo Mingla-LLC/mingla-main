@@ -20,9 +20,9 @@ response into GitHub, chat, logs, artifacts, or this file.
 
 The pull-request audit validates the exact 88-name target manifest offline. The scheduled/manual
 workflow uses the dedicated least-privilege `SUPABASE_SECRET_AUDIT_ACCESS_TOKEN` only at live
-runtime and emits sorted names/reasons/counts, never raw CLI output. Until that separately
-authorized credential exists, the live step records an explicit warning and does not invoke the
-CLI.
+runtime and emits sorted names/reasons/counts, never raw CLI output. If that separately
+authorized credential is missing, the scheduled/manual workflow emits an error and fails; a
+green skipped live audit is forbidden.
 
 `supabase/secrets.manifest.json` is in `enforced` / `complete` mode. The live audit accepts only
 the exact 88-name manifest set and applies the 87/90 ceilings. Slot 88 is the sole time-bounded,
@@ -54,13 +54,14 @@ These objects are permitted:
 
 - `MINGLA_PAYMENT_MODES_JSON`: independent `stripe_mode` and `paystack_mode`.
 - `MINGLA_EMAIL_SENDERS_JSON`: independent `admin_from`, `system_from`, and `ticket_from`.
-- `MINGLA_DELIVERY_FLAGS_JSON` schema v3: the original independent marketing, Nigeria SMS,
+- `MINGLA_DELIVERY_FLAGS_JSON` schema v4: the original independent marketing, Nigeria SMS,
   and US SMS booleans plus an exact `payment_operations` object containing independent
   `payout_hold_onboard_flip`, `paystack_payout_hold_onboard_flip`,
-  `payout_release_execute`, and `source_refunds_post_disabled` JSON booleans. The Paystack
-  onboarding field is bundle-only and has no direct-name fallback. Schemas v1 and v2 remain
-  readable for compatibility; production stays v2 until the complete compatibility rollout
-  is verified, then moves to v3 with the Paystack field false.
+  `payout_release_execute`, `source_refunds_post_disabled`, and
+  `checkout_revocation_execute` JSON booleans. The Paystack onboarding field is bundle-only and
+  has no direct-name fallback. Schemas v1, v2, and v3 remain readable for compatibility. During
+  #2241, schema v3 plus exact `CHECKOUT_REVOCATION_EXECUTE` fallback stays authoritative until
+  all 23 compatibility functions are verified; only then does the complete object move to v4.
 - `MINGLA_ALERT_RECIPIENTS_JSON`: independent API-health, Stripe-dispute, and
   Stripe-webhook-failure lists.
 - `MINGLA_RUNTIME_CONFIG_JSON`: eight required non-credential fields plus the optional
@@ -72,7 +73,10 @@ These objects are permitted:
   The resolver never trims, normalizes, logs, rotates, or returns that value. It also owns the
   independent `BRAND_PERSON_ERASURE_CHALLENGE_SECRET` field for #1772. That field has its own
   Platform Security ownership and rotation boundary and is never derived from, substituted with,
-  or exposed to any other envelope reader.
+  or exposed to any other envelope reader. #2241 also gives this open envelope four independently
+  governed fields: `ATTENDANCE_CLAIM_PEPPER`, `META_COMPETITOR_ACCESS_TOKEN`,
+  `META_COMPETITOR_IG_USER_ID`, and `RESEND_WEBHOOK_SECRET`. Each reads the valid envelope first,
+  falls back only to its identical direct migration name, and never substitutes another field.
 - `OFFERING_INVITE_TOKEN_PEPPER`: the #1770 standalone cryptographic secret used only by the
   shared offering-invite token helper, `marketing-send`, and the authenticated dispatch boundary. It stays outside every bundle
   because its independent rotation and audit boundary is part of invite authorization.
@@ -104,6 +108,89 @@ source parity. If the recursive guard derives any other set or count, stop for a
 after all 17 pass may the bundle be transformed value-blindly to exact schema v3 with the new
 Paystack field false and all six pre-existing controls unchanged. Activation is a separate
 post-#1845 operation.
+
+### #2241 exact-87 readiness reconciliation
+
+`supabase/function-env.contract.json` is the checked inventory for every production Edge
+function. Run `audit-function-secret-contract.mjs` before any deploy; it follows recursive
+relative imports, rejects an unclassified literal read, and requires each dynamic getter to
+declare exact allowed public names, governed fields, and local/import-closure call boundaries.
+Adding a new literal to an approved getter without declaring that name or field fails the audit.
+A non-literal, conditional, concatenated, template, or variable argument also fails unless its
+exact normalized expression is contract-owned. Static relative template-literal `import()` calls
+and valid second arguments enter the closure; every computed dynamic import fails closed.
+
+The only production entrypoint for the #2241 set/deploy sequence is
+`scripts/secrets/reconcile-governed-secrets.mjs` (or the
+`scripts/deploy-supabase-functions.sh --issue-2241-remediation` wrapper). It creates an ephemeral
+Ed25519 authority and one-use random nonce in memory. Signed receipts contain public names and
+PASS flags only, expire within 15 minutes, and are never accepted from a file. Altered,
+wrong-project, wrong-commit, wrong-function, stale, or replayed receipts fail. The secure bundle
+inputs must come from stdin or mode-0600 files; the setter writes only the already-existing named
+secret through `/dev/stdin` and never puts a value in argv or output. The stdin assignment uses
+the exact double-quote and escape rules of the Supabase CLI's pinned `godotenv` parser, including
+literal dollar signs, comment markers, quotes, backslashes, backticks, bangs, and line breaks.
+
+Normal deployment of any of the eight bundle-dependent functions must use the same wrapper with
+the complete authoritative object(s) supplied in the same process: `--ad-input <0600-path>` for
+an AD reader and/or `--delivery-input <0600-path>` for the checkout delivery reader, alongside
+the explicit `--function`, `--project-ref`, and `--merged-commit` arguments. Before its first
+apply or deploy, that route requires exact value-blind live-name parity with the 87-name manifest.
+It then applies the complete object, creates and consumes the protected in-memory receipt, runs
+the later function-readiness preflight, deploys only the selected functions with `--use-api`, and
+verifies source/JWT parity. A receipt file, receipt CLI argument, receipt environment variable,
+or second process is never accepted.
+
+Before the production invocation, all of these sources must exist and be independently attested:
+
+- AppsFlyer API v2 material from its provider dashboard plus secure vault;
+- every optional `*_PREVIOUS_*` field or pair as `present` or `intentionally_absent`;
+- the exact current attendance pepper and Resend webhook secret from their secure vault owners;
+- the exact checkout execution boolean from the approved Payments operating record;
+- complete AD and delivery objects with every pre-existing field preserved; and
+- the dedicated GitHub live-audit credential.
+
+If any source is missing or ambiguous, stop. Never reconstruct from Supabase, inspect plaintext,
+infer from metadata, partially patch an object, persist a deploy-authority receipt, or rotate a
+credential as a substitute for continuity.
+
+The remediation is valid only from the exact clean merged commit that current remote `main`
+reports via `git ls-remote` (a stale local tracking ref is not authority), within 72 hours, against
+production ref `gqnoajqerqhnvulmnyvv`, while live names equal the exact 87-name manifest plus
+`ATTENDANCE_CLAIM_PEPPER`, `CHECKOUT_REVOCATION_EXECUTE`,
+`META_COMPETITOR_ACCESS_TOKEN`, `META_COMPETITOR_IG_USER_ID`, and
+`RESEND_WEBHOOK_SECRET`. Its recursive deploy set is exactly:
+
+`brand-paystack-onboard`, `brand-stripe-onboard`, `payout-release-sweep`, `marketing-send`,
+`event-cancel-refund-fanout`, `rsvp-contribution-refund`, `source-refund-sweep`,
+`venue-reservation-cancel`, `send-pair-request`, `send-phone-invite`, `send-venue-sms`,
+`ticket-confirmation-dispatch`, `notify-dispatch`, `offering-invite-dispatch`, `rsvp-notify`,
+`guest-roster-actions`, `support-brand-person-erasure`, `checkout-sale-revocation`,
+`attendance-claim-link`, `claim-attendance`, `attendance-claim-backfill`,
+`competitor-intel-worker`, and `resend-webhook`.
+
+The coordinator first proves exact value-blind 92-name remediation parity; mismatch permits zero
+apply or deploy calls. It then applies the reconstructed complete AD object. A same-run applied AD receipt
+and a prepared-transition receipt for the exact preserved delivery-v3 → v4 candidate authorize
+that one 23-function deploy. It downloads each deployed function, recursively follows relative
+imports, rejects any missing, extra, or drifted closure file, then reads the remote function list
+as names plus `verify_jwt` metadata only and requires exact live parity with the local lock. It
+then applies delivery v4 and verifies a fresh one-use applied receipt. No receipt authorizes an
+unset.
+
+While every direct fallback remains, run value-blind attendance, checkout (without money
+movement), competitor observation, Resend signature, prior AD/delivery reader, and synthetic
+non-PII #1772 challenge smokes. Only after all pass may the five direct names be removed, one at a
+time, in this order: `META_COMPETITOR_IG_USER_ID` (91),
+`META_COMPETITOR_ACCESS_TOKEN` (90), `RESEND_WEBHOOK_SECRET` (89),
+`CHECKOUT_REVOCATION_EXECUTE` (88), and `ATTENDANCE_CLAIM_PEPPER` last (87). Stop on any fallback
+or invalid-bundle diagnostic or failed smoke. Then run the exact names-only audit and manually
+dispatch the credential-backed workflow; both must execute and report exact 87 parity.
+
+Rollback before any unset restores the prior complete bundle from its authoritative source.
+After an unset, restore that exact direct name first from its approved source, verify the fallback
+rail, then restore the prior bundle/deployed revision if necessary, reversing the removal order.
+Never roll back completed #1772 erasure records.
 
 ## No-downtime sequence
 
@@ -226,9 +313,13 @@ Offline target validation is safe and requires no credential:
 
 ```bash
 node scripts/secrets/audit-supabase-secret-budget.mjs --manifest-only
+node scripts/secrets/audit-function-secret-contract.mjs
 node --test scripts/secrets/issue_1203_*.test.mjs
+node --test scripts/secrets/issue_2241_*.test.mjs
 node .github/scripts/strict-grep/issue-1203-secret-capacity.mjs --self-test
 node .github/scripts/strict-grep/issue-1203-secret-capacity.mjs
+node .github/scripts/strict-grep/issue-2241-secret-readiness.mjs --self-test
+node .github/scripts/strict-grep/issue-2241-secret-readiness.mjs
 ```
 
 Run the live audit through the scheduled/manual GitHub workflow. Do not run or paste raw

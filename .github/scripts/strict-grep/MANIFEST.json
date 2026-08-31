@@ -4623,6 +4623,18 @@
       ]
     },
     {
+      "script": ".github/scripts/strict-grep/issue-2241-secret-readiness.mjs",
+      "kind": "file",
+      "enforcement": "batch:A",
+      "invocation": "node",
+      "modes": [
+        "self-test",
+        "plain"
+      ],
+      "selfTest": "wired",
+      "jobKeys": []
+    },
+    {
       "script": ".github/scripts/strict-grep/issue-2290-queue-worker-has-cron-caller.mjs",
       "kind": "file",
       "enforcement": "batch:A",
