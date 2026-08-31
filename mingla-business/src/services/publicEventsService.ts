@@ -1868,23 +1868,26 @@ const detailFromDirectBundle = async (
   };
 };
 
-// issue #2879 A — on the web, read the bundle through the cached endpoint
-// rather than calling Supabase directly.
+// issue #2879 A — the web reads this bundle through a 5-second cached endpoint
+// instead of hitting Supabase once per visitor.
 //
 // This single call WAS the read-path problem: every visitor's browser made it,
 // page views arrive BEFORE reservations and outnumber them, and it had no
-// protection at all. `/api/event-checkout-bundle` fronts it with a 5-second
-// shared cache, which at 830 views/sec takes the database from 830 calls per
-// second to 0.2.
+// protection at all. At 830 views/sec a 5-second shared cache takes the
+// database from 830 calls/sec to 0.2.
 //
-// WEB ONLY, deliberately. The volume problem is people opening a shared link
-// in a browser. Native keeps calling Supabase directly, so this ships with no
-// app release and no store review — which is what makes it available BEFORE an
-// on-sale rather than after one.
+// It sits IN FRONT OF `fetchDirectEventBundlePayload` rather than inside it,
+// deliberately. ORCH-1167 pins that helper's exact shape — rpc, then throw on
+// error, then null, then validate, then return — and folding a second read
+// into it would put a validation and a `return data` ahead of the RPC and
+// dissolve a contract that exists to keep one reader honest. One function,
+// one job.
 //
-// `document` is the web test because this module is deliberately free of
-// react-native imports (see the note at the top of this file). React Native
-// has `window` and `fetch`; it never has `document`.
+// WEB ONLY. Native keeps calling Supabase directly, so this ships with no app
+// release and no store review — which is what makes it available BEFORE an
+// on-sale rather than after one. `document` is the web test because this
+// module is deliberately free of react-native imports (see the note at the top
+// of this file): React Native has `window` and `fetch`, never `document`.
 const isWebRuntime = (): boolean => typeof document !== "undefined";
 
 const cachedBundleUrl = (args: {
@@ -1902,38 +1905,47 @@ const cachedBundleUrl = (args: {
   return null;
 };
 
+// "miss" means "this read did not happen here" — distinct from null, which
+// means "the reader says this event is not visible". Collapsing the two would
+// turn every cache outage into a not-found page.
+const CACHE_MISS = "miss" as const;
+
+const readCachedEventBundlePayload = async (args: {
+  p_event_id: string | null;
+  p_brand_slug: string | null;
+  p_event_slug: string | null;
+}): Promise<JsonRecord | null | typeof CACHE_MISS> => {
+  const url = isWebRuntime() ? cachedBundleUrl(args) : null;
+  if (url === null) return CACHE_MISS;
+  try {
+    const response = await fetch(url);
+    // 404 is the endpoint rendering the reader's SQL NULL: not visible
+    // anonymously. Re-asking Supabase would defeat the cache for exactly the
+    // bad-link traffic it exists to absorb.
+    if (response.status === 404) return null;
+    if (!response.ok) return CACHE_MISS;
+    const data: unknown = await response.json();
+    if (!isDirectEventBundle(data)) {
+      // A malformed body is a REAL defect, not an availability blip. Falling
+      // back would hide a broken contract behind a page that looks fine.
+      throw new Error("invalid_direct_event_checkout_bundle");
+    }
+    return data;
+  } catch (error) {
+    if (error instanceof Error && error.message === "invalid_direct_event_checkout_bundle") {
+      throw error;
+    }
+    // Any transport failure degrades to exactly today's behaviour. This
+    // endpoint is a performance shield, never a dependency.
+    return CACHE_MISS;
+  }
+};
+
 const fetchDirectEventBundlePayload = async (args: {
   p_event_id: string | null;
   p_brand_slug: string | null;
   p_event_slug: string | null;
 }): Promise<JsonRecord | null> => {
-  const url = isWebRuntime() ? cachedBundleUrl(args) : null;
-  if (url !== null) {
-    try {
-      const response = await fetch(url);
-      // 404 is the endpoint's rendering of the reader returning null — not
-      // visible anonymously — and means here exactly what a null row meant.
-      if (response.status === 404) return null;
-      if (response.ok) {
-        const data: unknown = await response.json();
-        if (!isDirectEventBundle(data)) {
-          throw new Error("invalid_direct_event_checkout_bundle");
-        }
-        return data;
-      }
-      // Any other status (502 upstream, proxy error, origin hiccup) falls
-      // through to the direct call below. This endpoint is a performance
-      // shield, never a dependency: if it is down the page still loads, by
-      // doing exactly what it did before this change.
-    } catch (error) {
-      // A malformed body is a REAL defect, not an availability blip. Falling
-      // back on it would hide a broken contract behind a page that looks fine.
-      if (error instanceof Error && error.message === "invalid_direct_event_checkout_bundle") {
-        throw error;
-      }
-    }
-  }
-
   const { data, error } = await supabase.rpc("pg_direct_event_checkout_bundle", args);
   if (error !== null) throw error;
   if (data === null) return null;
@@ -1948,7 +1960,10 @@ const readDirectEventBundle = async (args: {
   p_brand_slug: string | null;
   p_event_slug: string | null;
 }): Promise<PublicEventDetail | null | "fallback"> => {
-  const payload = await fetchDirectEventBundlePayload(args);
+  const cached = await readCachedEventBundlePayload(args);
+  const payload = cached === CACHE_MISS
+    ? await fetchDirectEventBundlePayload(args)
+    : cached;
   return payload === null ? "fallback" : detailFromDirectBundle(payload);
 };
 

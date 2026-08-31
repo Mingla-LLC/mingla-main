@@ -15,16 +15,14 @@ const PUBLIC_ORIGIN = (
   "https://host.usemingla.com"
 ).replace(/\/+$/, "");
 
-const SUPABASE_URL = (
-  process.env.EXPO_PUBLIC_SUPABASE_URL ||
-  process.env.SUPABASE_URL ||
-  DEFAULT_SUPABASE_URL
-).replace(/\/+$/, "");
-
-const SUPABASE_ANON_KEY =
-  process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY ||
-  process.env.SUPABASE_ANON_KEY ||
-  DEFAULT_SUPABASE_ANON_KEY;
+// issue #2879 — these now live in ./supabaseRpc so api/event-checkout-bundle.js
+// can reach them without requiring this module, which drags in React and the
+// OG-card renderer. One owner, imported here rather than duplicated.
+const {
+  SUPABASE_URL,
+  SUPABASE_ANON_KEY,
+  requestRpcJson,
+} = require("./supabaseRpc");
 const EXPLORER_PUBLIC_ORIGIN = "https://usemingla.com";
 
 const LOGO_PUBLIC_PATH = "/brand/mingla-business-logo.png";
