@@ -73,6 +73,31 @@ export interface PersistedPublicationOperation {
   rollbackSourcePublicationId: string | null;
 }
 
+export function canResetFailedPublicationOperation(
+  operation: PersistedPublicationOperation | null,
+  receipt: BrandSiteOperation | null,
+): operation is PersistedPublicationOperation {
+  return Boolean(
+    operation &&
+      receipt?.operation_id === operation.operationId &&
+      receipt.site_id === operation.siteId &&
+      receipt.status === "failed",
+  );
+}
+
+export function failedRollbackReviewVersion(
+  operation: PersistedPublicationOperation,
+  versions: BrandSiteVersion[],
+): BrandSiteVersion | null {
+  if (operation.kind !== "rollback") return null;
+  return versions.find((version) =>
+    (operation.rollbackSourcePublicationId !== null &&
+      version.id === operation.rollbackSourcePublicationId) ||
+    (version.source_revision_id === operation.expectedRevision &&
+      version.source_digest === operation.sourceDigest)
+  ) ?? null;
+}
+
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SHA256 = /^[0-9a-f]{64}$/;
 

@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState } from "react";
 import {
   ActivityIndicator,
   ScrollView,
@@ -72,6 +72,7 @@ interface BrandWebsiteViewProps {
   onSelectRollback: (version: BrandSiteVersion) => void;
   onRollback: () => void;
   onReconcilePublication: () => void;
+  onResetFailedPublication: () => void;
 }
 
 const siteStatusCopy: Record<BrandSiteOverview["status"], string> = {
@@ -102,6 +103,7 @@ const PanelCard: React.FC<{
 );
 
 export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
+  const [showFailureDetails, setShowFailureDetails] = useState(false);
   const host = useMemo(
     () => (props.site === null ? null : primarySiteHost(props.site)),
     [props.site],
@@ -429,13 +431,42 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
               Reference · {props.publicationOperation.error_code}
             </Text>
           ) : null}
-          <Button label="Review fixes in Studio" onPress={props.onOpenStudio} fullWidth />
           <Button
-            label="Return to website overview"
-            onPress={() => props.onSetPanel("overview")}
+            label={
+              props.publicationOperation?.result_summary?.retryable === true
+                ? "Try again"
+                : "Review fixes"
+            }
+            onPress={props.onResetFailedPublication}
+            fullWidth
+          />
+          <Button
+            label="Open Mingla Studio"
+            onPress={props.onOpenStudio}
+            variant="secondary"
+            fullWidth
+          />
+          {host && props.site?.active_publication_id && host.status === "active" ? (
+            <Button
+              label="View live website"
+              onPress={() => props.onViewLive(host.hostname)}
+              variant="secondary"
+              fullWidth
+            />
+          ) : null}
+          <Button
+            label={showFailureDetails ? "Hide operation details" : "View operation details"}
+            onPress={() => setShowFailureDetails((visible) => !visible)}
             variant="ghost"
             fullWidth
           />
+          {showFailureDetails ? (
+            <OperationReceipt
+              operationId={props.publicationOperationId}
+              operation={props.publicationOperation}
+              timedOut={props.publicationPollingTimedOut}
+            />
+          ) : null}
         </PanelCard>
       ) : null}
 
@@ -617,6 +648,11 @@ const OperationReceipt: React.FC<{
             ? "The operation reached a verified failure."
             : "Checking the durable receipt…"}
     </Text>
+    {operation ? (
+      <Text style={styles.meta} selectable>
+        Status · {operation.status} · Updated {new Date(operation.updated_at).toLocaleString()}
+      </Text>
+    ) : null}
   </View>
 );
 

@@ -217,7 +217,10 @@ export interface Page {
           }
         | {
             media: string | Media;
-            alt: string;
+            /**
+             * Describe meaningful images. Leave empty only when the image is decorative.
+             */
+            alt?: string | null;
             heading?: string | null;
             caption?: string | null;
             alignment: 'left' | 'right';
@@ -264,7 +267,10 @@ export interface Page {
             heading?: string | null;
             images: {
               media: string | Media;
-              alt: string;
+              /**
+               * Describe meaningful images. Leave empty only when the image is decorative.
+               */
+              alt?: string | null;
               id?: string | null;
             }[];
             id?: string | null;

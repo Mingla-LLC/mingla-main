@@ -1,12 +1,15 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
+  canResetFailedPublicationOperation,
   clearPublicationOperation,
+  failedRollbackReviewVersion,
   loadPublicationOperation,
   persistPublicationOperation,
   publishBrandSite,
   rollbackBrandSite,
   type PersistedPublicationOperation,
 } from "../brandSitesService";
+import type { BrandSiteOperation, BrandSiteVersion } from "../../sites/contracts";
 import { supabase } from "../supabase";
 
 jest.mock("../supabase", () => ({
@@ -91,5 +94,61 @@ describe("#2830 durable publication recovery", () => {
         body: expect.objectContaining({ operation_id: operation.operationId }),
       }),
     );
+  });
+
+  it("allows explicit reset only for the matching authoritative failed receipt", () => {
+    const receipt: BrandSiteOperation = {
+      operation_id: operation.operationId,
+      site_id: operation.siteId,
+      kind: "publish",
+      status: "failed",
+      error_code: "PROBE_FAILED",
+      authorized_at: "2026-08-30T12:00:00Z",
+      updated_at: "2026-08-30T12:01:00Z",
+      result_summary: { retryable: true },
+    };
+    expect(canResetFailedPublicationOperation(operation, receipt)).toBe(true);
+    expect(canResetFailedPublicationOperation(operation, {
+      ...receipt,
+      status: "executing",
+    })).toBe(false);
+    expect(canResetFailedPublicationOperation(operation, {
+      ...receipt,
+      status: "ambiguous",
+    })).toBe(false);
+    expect(canResetFailedPublicationOperation(operation, {
+      ...receipt,
+      operation_id: "00000000-0000-4000-8000-000000000009",
+    })).toBe(false);
+    expect(canResetFailedPublicationOperation(operation, {
+      ...receipt,
+      site_id: "00000000-0000-4000-8000-000000000009",
+    })).toBe(false);
+  });
+
+  it("recovers a failed rollback into the exact immutable version review", () => {
+    const rollbackOperation: PersistedPublicationOperation = {
+      ...operation,
+      kind: "rollback",
+      rollbackSourcePublicationId: "00000000-0000-4000-8000-000000000005",
+    };
+    const version: BrandSiteVersion = {
+      id: rollbackOperation.rollbackSourcePublicationId!,
+      site_id: operation.siteId,
+      source_revision_id: operation.expectedRevision,
+      source_digest: operation.sourceDigest,
+      artifact_digest: null,
+      renderer_version: 1,
+      status: "published",
+      previous_publication_id: null,
+      rollback_source_publication_id: null,
+      requested_at: "2026-08-30T12:00:00Z",
+      completed_at: "2026-08-30T12:01:00Z",
+      failure_code: null,
+    };
+    expect(failedRollbackReviewVersion(rollbackOperation, [version])).toEqual(
+      version,
+    );
+    expect(failedRollbackReviewVersion(operation, [version])).toBeNull();
   });
 });

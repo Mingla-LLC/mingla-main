@@ -46,6 +46,19 @@ const readyMedia = (name = "media", label = "Image"): Field => ({
       : false;
   },
 });
+const accessibleAlt = (): Field => ({
+  name: "alt",
+  label: "Alternative text",
+  type: "text",
+  required: false,
+  maxLength: 240,
+  validate: (value: unknown) =>
+    value == null ? true : safeText(value, 240),
+  admin: {
+    description:
+      "Describe meaningful images. Leave empty only when the image is decorative.",
+  },
+});
 const ctaFields: Field[] = [short("label", "Label", true, 80), link()];
 
 export const restaurantBlocks: Block[] = [
@@ -87,7 +100,7 @@ export const restaurantBlocks: Block[] = [
     labels: { singular: "Image feature", plural: "Image features" },
     fields: [
       readyMedia(),
-      short("alt", "Alternative text", true, 240),
+      accessibleAlt(),
       short("heading", "Heading", false, 120),
       short("caption", "Caption", false, 500),
       {
@@ -153,7 +166,7 @@ export const restaurantBlocks: Block[] = [
         minRows: 1,
         maxRows: 12,
         required: true,
-        fields: [readyMedia(), short("alt", "Alternative text", true, 240)],
+        fields: [readyMedia(), accessibleAlt()],
       },
     ],
   },

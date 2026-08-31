@@ -1,10 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
+  attachStudioMedia,
   canSelectStudioMedia,
+  loadStudioMediaLibrary,
+  removeUnusedStudioMedia,
   STUDIO_MEDIA_MAX_BYTES,
   uploadStudioMedia,
   validateStudioMediaFile,
   type StudioMediaProgress,
+  type StudioMediaLibraryTarget,
 } from "./studioMediaClient";
 
 const file = new File([new Uint8Array([1, 2, 3])], "room.webp", {
@@ -18,6 +22,21 @@ const response = (status: number, body: unknown) =>
   });
 
 describe("#2830 Studio media client", () => {
+  const target: StudioMediaLibraryTarget = {
+    id: "target-1",
+    pageId: "00000000-0000-4000-8000-000000000020",
+    pageTitle: "Home",
+    pageRole: "home",
+    expectedRevision: "7",
+    blockIndex: 1,
+    field: "media",
+    imageIndex: null,
+    label: "Home · Image feature 2",
+    currentMediaId: null,
+    currentAlt: "",
+    decorativeOnly: false,
+  };
+
   it("uses the exact quarantine grant, completes once, polls boundedly and reaches READY", async () => {
     const request = vi
       .fn()
@@ -128,5 +147,82 @@ describe("#2830 Studio media client", () => {
     expect(canSelectStudioMedia({ state: "READY", altText: "Dining room", decorative: false })).toBe(true);
     expect(canSelectStudioMedia({ state: "READY", altText: "", decorative: true })).toBe(true);
     expect(canSelectStudioMedia({ state: "PROCESSING", altText: "Dining room", decorative: false })).toBe(false);
+  });
+
+  it("loads the tenant library and writes one exact READY image into a draft target", async () => {
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(response(200, { ok: true, data: {
+        media: [], targets: [target], close_url: "/admin/collections/pages",
+      } }))
+      .mockResolvedValueOnce(response(200, { ok: true, data: {
+        page_id: target.pageId,
+        media_id: "00000000-0000-4000-8000-000000000010",
+        draft_revision: "8",
+        state: 8,
+        return_url: `/admin/collections/pages/${target.pageId}`,
+      } }));
+    const bindings = { request };
+    await expect(loadStudioMediaLibrary(bindings)).resolves.toMatchObject({
+      targets: [target],
+    });
+    await expect(attachStudioMedia(
+      "00000000-0000-4000-8000-000000000010",
+      target,
+      { altText: "Dining room", decorative: false },
+      bindings,
+    )).resolves.toMatchObject({ state: 8, draft_revision: "8" });
+    expect(request).toHaveBeenNthCalledWith(
+      2,
+      "/api/mingla/media/00000000-0000-4000-8000-000000000010/attach",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({
+          page_id: target.pageId,
+          expected_revision: "7",
+          block_index: 1,
+          field: "media",
+          image_index: null,
+          alt: "Dining room",
+          decorative: false,
+        }),
+      }),
+    );
+  });
+
+  it("refuses a meaningful image without alt and uses only the safe tombstone route", async () => {
+    const request = vi.fn(async () => response(200, { ok: true, data: {} }));
+    await expect(attachStudioMedia(
+      "00000000-0000-4000-8000-000000000010",
+      target,
+      { altText: "", decorative: false },
+      { request },
+    )).rejects.toThrow("VALIDATION_FAILED");
+    expect(request).not.toHaveBeenCalled();
+    await removeUnusedStudioMedia(
+      "00000000-0000-4000-8000-000000000010",
+      { request },
+    );
+    expect(request).toHaveBeenCalledWith(
+      "/api/mingla/media/00000000-0000-4000-8000-000000000010/tombstone",
+      { method: "POST" },
+    );
+  });
+
+  it("rejects an attach response that tries to redirect outside the exact draft", async () => {
+    const mediaId = "00000000-0000-4000-8000-000000000010";
+    const request = vi.fn(async () => response(200, { ok: true, data: {
+      page_id: target.pageId,
+      media_id: mediaId,
+      draft_revision: "8",
+      state: 8,
+      return_url: "https://attacker.invalid/selected",
+    } }));
+    await expect(attachStudioMedia(
+      mediaId,
+      target,
+      { altText: "Dining room", decorative: false },
+      { request },
+    )).rejects.toThrow("VALIDATION_FAILED");
   });
 });

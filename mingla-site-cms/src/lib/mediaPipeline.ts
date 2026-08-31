@@ -408,36 +408,20 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     where: { tenant: { equals: tenantId } },
   });
   for (const page of pages.docs) {
-    const blocks = structuredClone(
-      Array.isArray(page.blocks) ? page.blocks : [],
-    );
-    let changed = false;
+    const blocks = Array.isArray(page.blocks) ? page.blocks : [];
     for (const block of blocks as Array<Record<string, unknown>>) {
       if (relationshipId(block.media) === mediaId) {
-        block.media = null;
-        changed = true;
+        throw new Error("INVALID_STATE");
       }
-      if (Array.isArray(block.images)) {
-        const retained = block.images.filter(
+      if (
+        Array.isArray(block.images) &&
+        block.images.some(
           (row) =>
-            relationshipId((row as Record<string, unknown>).media) !== mediaId,
-        );
-        if (retained.length !== block.images.length) {
-          block.images = retained;
-          changed = true;
-        }
+            relationshipId((row as Record<string, unknown>).media) === mediaId,
+        )
+      ) {
+        throw new Error("INVALID_STATE");
       }
-    }
-    if (changed) {
-      await req.payload.update({
-        collection: "pages",
-        id: page.id,
-        overrideAccess: false,
-        req,
-        draft: true,
-        depth: 0,
-        data: { blocks, revision: page.revision },
-      });
     }
   }
   const settings = await req.payload.find({
@@ -450,23 +434,13 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     where: { tenant: { equals: tenantId } },
   });
   const setting = settings.docs[0];
-  if (setting) {
-    const data: Record<string, null> = {};
-    if (relationshipId(setting.logo) === mediaId) data.logo = null;
-    if (relationshipId(setting.social_image) === mediaId) {
-      data.social_image = null;
-    }
-    if (Object.keys(data).length > 0) {
-      await req.payload.update({
-        collection: "site-settings",
-        id: setting.id,
-        overrideAccess: false,
-        req,
-        draft: true,
-        depth: 0,
-        data,
-      });
-    }
+  if (
+    setting &&
+    [setting.logo, setting.social_image].some(
+      (value) => relationshipId(value) === mediaId,
+    )
+  ) {
+    throw new Error("INVALID_STATE");
   }
   const previousGrantContext = req.context.minglaMediaGrant;
   req.context.minglaMediaGrant = true;

@@ -107,4 +107,18 @@ describe("#2830 explicit Website journey owner", () => {
     expect(source).toContain("website-publication-failed");
     expect(source).toContain("website-session-expired");
   });
+
+  it("keeps terminal failure reset explicit and never clears on generic navigation", () => {
+    const route = fs.readFileSync(
+      path.resolve(__dirname, "../../../app/brand/[id]/website.tsx"),
+      "utf8",
+    );
+    expect(route).toContain("onResetFailedPublication");
+    expect(route).toContain("canResetFailedPublicationOperation");
+    expect(route).toContain('setPanel("publish_review")');
+    expect(route).toContain('setPanel(rollbackVersion ? "rollback_review" : "versions")');
+    expect(route).not.toMatch(
+      /nextPanel === "overview"[\s\S]{0,500}clearPublicationOperation/,
+    );
+  });
 });

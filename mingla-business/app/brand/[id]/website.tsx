@@ -24,9 +24,11 @@ import {
 import { useNetInfoSafe } from "../../../src/lib/netinfoSafe";
 import {
   BrandSitesError,
+  canResetFailedPublicationOperation,
   clearProvisionOperation,
   clearPublicationOperation,
   createBrandSiteOperationId,
+  failedRollbackReviewVersion,
   loadProvisionOperation,
   loadPublicationOperation,
   persistProvisionOperation,
@@ -413,21 +415,6 @@ export default function BrandWebsiteRoute(): React.ReactElement {
             setValidationFailure(null);
           }
           if (nextPanel !== "rollback_review") setSelectedVersion(null);
-          if (
-            nextPanel === "overview" &&
-            publicationReceipt.data?.status === "failed" &&
-            user?.id &&
-            site.data?.id
-          ) {
-            const scope = {
-              accountId: user.id,
-              brandId: safeBrandId,
-              siteId: site.data.id,
-            };
-            void refetchSite().then(() => clearPublicationOperation(scope)).then(
-              () => setPublicationOperation(null),
-            );
-          }
         }}
         onProvision={() => {
           const operation = {
@@ -527,6 +514,31 @@ export default function BrandWebsiteRoute(): React.ReactElement {
           void runPublication(retry).catch((error) => {
             setNotice(noticeFor(error));
             void publicationReceipt.refetch();
+          });
+        }}
+        onResetFailedPublication={() => {
+          const receipt = publicationReceipt.data ?? null;
+          if (
+            !canResetFailedPublicationOperation(publicationOperation, receipt)
+          ) {
+            return;
+          }
+          const failed = publicationOperation;
+          const rollbackVersion = failedRollbackReviewVersion(
+            failed,
+            versions.data ?? [],
+          );
+          void clearPublicationOperation(failed).then(() => {
+            setPublicationOperation(null);
+            setValidation(null);
+            setValidationFailure(null);
+            if (failed.kind === "rollback") {
+              setSelectedVersion(rollbackVersion);
+              setPanel(rollbackVersion ? "rollback_review" : "versions");
+              return;
+            }
+            setSelectedVersion(null);
+            setPanel("publish_review");
           });
         }}
       />

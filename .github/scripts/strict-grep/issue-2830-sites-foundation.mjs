@@ -40,6 +40,7 @@ const PATHS = {
   cmsSession: "mingla-site-cms/src/lib/session.ts",
   cmsNav: "mingla-site-cms/src/components/StudioNav.tsx",
   cmsMediaClient: "mingla-site-cms/src/lib/studioMediaClient.ts",
+  cmsMediaSelection: "mingla-site-cms/src/lib/studioMediaSelection.ts",
   cmsMediaManager: "mingla-site-cms/src/components/StudioMediaManager.tsx",
   cmsPreview: "mingla-site-cms/src/components/PreviewChrome.tsx",
   cmsStyles: "mingla-site-cms/src/app/(payload)/studio.css",
@@ -274,6 +275,8 @@ export function violations(files) {
     "isPreviewing={preview.isPending}",
     "loadPublicationOperation",
     "onReconcilePublication",
+    "onResetFailedPublication",
+    "!canResetFailedPublicationOperation(",
     "operationId: operation.operationId",
   ]) need(route, token, "Business Website route", failures);
   need(
@@ -283,6 +286,12 @@ export function violations(files) {
     failures,
   );
   need(files.businessView ?? "", "if (props.rank < 20) return null;", "rank-10 zero signal", failures);
+  for (const token of [
+    "onResetFailedPublication",
+    "View operation details",
+    "View live website",
+    'result_summary?.retryable === true',
+  ]) need(files.businessView ?? "", token, "terminal publication recovery", failures);
   for (const token of [
     'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:"',
     "publicationOperationKey(",
@@ -367,6 +376,10 @@ export function violations(files) {
     "readCorePublicationSource",
     "await runRetentionSweep(",
     "tombstoneMedia",
+    'path: "/mingla/media-library"',
+    'path: "/mingla/media/:mediaId/attach"',
+    "applyStudioMediaSelection",
+    "assertMutationRequest(req.headers)",
   ]) need(files.cmsEndpoints ?? "", token, "Studio gateway", failures);
   for (const token of [
     "MAX_BYTES = 20 * 1024 * 1024",
@@ -412,13 +425,31 @@ export function violations(files) {
     "grant.required_headers",
     "for (let attempt = 0; attempt < 10; attempt += 1)",
     "canSelectStudioMedia",
+    '"/api/mingla/media-library"',
+    "attachStudioMedia",
+    "attachment.return_url !== expectedReturn",
   ]) need(files.cmsMediaClient ?? "", token, "executable Studio media manager", failures);
+  for (const token of [
+    "expectedRevision",
+    "pageId",
+    "blockIndex",
+    "applyStudioMediaSelection",
+    'throw new Error("REVISION_CONFLICT")',
+  ]) need(files.cmsMediaSelection ?? "", token, "Studio media draft binding", failures);
   for (const token of [
     "JPEG, PNG or WebP",
     "20 MB and 40 megapixels",
     "This image is decorative",
-    "Use image",
+    "Use in draft",
+    "Remove unused",
+    "window.location.assign(result.return_url)",
   ]) need(files.cmsMediaManager ?? "", token, "accessible Studio media manager", failures);
+  forbid(
+    files.cmsMediaManager ?? "",
+    "mingla:media-selected",
+    "executable Studio media manager",
+    failures,
+  );
   for (const token of [
     'mobile: "320px"',
     'tablet: "768px"',
@@ -430,6 +461,9 @@ export function violations(files) {
     "--studio-black: #101013",
     "--studio-gold: #cda052",
     '[data-collection-slug="media"] .upload',
+    "repeat(4, minmax(0, 1fr))",
+    "repeat(3, minmax(0, 1fr))",
+    "repeat(2, minmax(0, 1fr))",
   ]) need(files.cmsStyles ?? "", token, "approved Studio visual shell", failures);
   for (const token of [
     "observedDraftDigest !== input.sourceDigest",
@@ -582,6 +616,7 @@ function selfTest() {
     ["businessFlag", 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)', 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", true)', "Business feature flag"],
     ["businessRoute", "role.rank >= 20", "role.rank >= 10", "Business Website route"],
     ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],
+    ["businessRoute", "!canResetFailedPublicationOperation(", "!canResetAnyPublicationOperation(", "Business Website route"],
     ["businessService", 'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:"', 'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:"', "durable publication scope"],
     ["businessJourney", "export const WEBSITE_JOURNEY", "const WEBSITE_JOURNEY", "explicit Website journey owner"],
     ["businessEntry", 'return "Publishing…"', 'return "Website ready"', "status-aware Brand Profile entry"],
@@ -601,7 +636,9 @@ function selfTest() {
     ["cmsSession", "decodeSessionReturnContext", "decodeExpiredSessionUnchecked", "fixed Studio return owner"],
     ["cmsNav", '["Media", "/studio/media"]', '["Media", "/admin/collections/media"]', "stripped Studio navigation"],
     ["cmsMediaClient", "grant.upload_url", '"/api/direct-upload"', "executable Studio media manager"],
-    ["cmsMediaManager", "This image is decorative", "Skip description", "accessible Studio media manager"],
+    ["cmsMediaClient", "attachment.return_url !== expectedReturn", "attachment.return_url === expectedReturn", "executable Studio media manager"],
+    ["cmsMediaSelection", "applyStudioMediaSelection", "pretendStudioMediaSelection", "Studio media draft binding"],
+    ["cmsMediaManager", "window.location.assign(result.return_url)", 'window.dispatchEvent(new CustomEvent("mingla:media-selected"))', "accessible Studio media manager"],
     ["cmsPreview", 'mobile: "320px"', 'mobile: "375px"', "complete preview chrome"],
     ["cmsStyles", "--studio-gold: #cda052", "--studio-gold: #d85a22", "approved Studio visual shell"],
     ["publicPublication", "await signedCorePost({", "await unsignedCorePost({", "public last-good runtime"],

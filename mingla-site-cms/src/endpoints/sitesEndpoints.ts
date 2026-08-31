@@ -17,6 +17,12 @@ import {
   runRetentionSweep,
   tombstoneMedia,
 } from "../lib/mediaPipeline";
+import { readObject } from "../lib/objectStore";
+import {
+  applyStudioMediaSelection,
+  referencedStudioMediaIds,
+  studioMediaTargets,
+} from "../lib/studioMediaSelection";
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
 import {
@@ -637,6 +643,218 @@ async function mediaStatus(req: PayloadRequest): Promise<Response> {
         media_id: String(media.id),
         state: media.state,
         rejection_code: media.rejection_code ?? null,
+      },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
+  try {
+    const session = await sessionFromHeaders(req.headers);
+    if (!session) throw new Error("SESSION_EXPIRED");
+    const tenant = await req.payload.findByID({
+      collection: "tenants",
+      id: session.tenant_id,
+      overrideAccess: true,
+      depth: 0,
+    });
+    if (
+      String(tenant.core_site_id) !== session.site_id ||
+      String(tenant.core_brand_id) !== session.brand_id
+    ) {
+      throw new Error("FORBIDDEN");
+    }
+    const scoped = scopedRequest(req, {
+      siteId: session.site_id,
+      brandId: session.brand_id,
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      rank: session.rank,
+    });
+    const mediaScoped = {
+      ...scoped,
+      context: { ...scoped.context, minglaMediaGrant: true },
+    };
+    const tenantWhere = { tenant: { equals: session.tenant_id } };
+    const [pages, media, settings] = await Promise.all([
+      req.payload.find({
+        collection: "pages",
+        overrideAccess: false,
+        req: scoped,
+        draft: true,
+        depth: 0,
+        limit: 5,
+        sort: "nav_order",
+        where: tenantWhere,
+      }),
+      req.payload.find({
+        collection: "media",
+        overrideAccess: false,
+        req: mediaScoped,
+        depth: 0,
+        limit: 100,
+        sort: "-updatedAt",
+        where: {
+          and: [tenantWhere, { state: { not_equals: "TOMBSTONED" } }],
+        },
+      }),
+      req.payload.find({
+        collection: "site-settings",
+        overrideAccess: false,
+        req: scoped,
+        draft: true,
+        depth: 0,
+        limit: 1,
+        where: tenantWhere,
+      }),
+    ]);
+    const referenced = referencedStudioMediaIds(pages.docs);
+    const setting = settings.docs[0];
+    for (const value of [setting?.logo, setting?.social_image]) {
+      const id = value && typeof value === "object" && "id" in value
+        ? String(value.id)
+        : typeof value === "string" || typeof value === "number"
+          ? String(value)
+          : null;
+      if (id) referenced.add(id);
+    }
+    return json({
+      ok: true,
+      data: {
+        media: media.docs.map((item) => ({
+          id: String(item.id),
+          filename: String(item.original_filename_safe || "Website image"),
+          state: item.state,
+          width: typeof item.width === "number" ? item.width : null,
+          height: typeof item.height === "number" ? item.height : null,
+          rejection_code: item.rejection_code ?? null,
+          thumbnail_url:
+            item.state === "READY"
+              ? `/api/mingla/media/${encodeURIComponent(String(item.id))}/thumbnail`
+              : null,
+          in_use: referenced.has(String(item.id)),
+        })),
+        targets: studioMediaTargets(pages.docs),
+        close_url: "/admin/collections/pages",
+      },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+async function studioMediaThumbnail(req: PayloadRequest): Promise<Response> {
+  try {
+    const session = await sessionFromHeaders(req.headers);
+    if (!session) throw new Error("SESSION_EXPIRED");
+    const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    const scoped = scopedRequest(req, {
+      siteId: session.site_id,
+      brandId: session.brand_id,
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      rank: session.rank,
+    });
+    const mediaScoped = {
+      ...scoped,
+      context: { ...scoped.context, minglaMediaGrant: true },
+    };
+    const media = await req.payload.findByID({
+      collection: "media",
+      id,
+      overrideAccess: false,
+      req: mediaScoped,
+      depth: 0,
+    });
+    const manifest = media.rendition_manifest as {
+      renditions?: Array<{ key?: string; width?: number }>;
+    } | null;
+    const rendition = manifest?.renditions?.find((item) => item.width === 640) ??
+      manifest?.renditions?.find((item) => typeof item.key === "string");
+    if (media.state !== "READY" || typeof rendition?.key !== "string") {
+      throw new Error("MEDIA_PROCESSING");
+    }
+    return new Response(
+      Buffer.from(await readObject(cmsConfig().approvedBucket, rendition.key)),
+      {
+        status: 200,
+        headers: {
+          "cache-control": "no-store, private",
+          "content-type": "image/webp",
+          "x-content-type-options": "nosniff",
+        },
+      },
+    );
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
+  try {
+    assertMutationRequest(req.headers);
+    const session = await sessionFromHeaders(req.headers);
+    if (!session) throw new Error("SESSION_EXPIRED");
+    const body = await objectBody(req);
+    const mediaId = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    const scoped = scopedRequest(req, {
+      siteId: session.site_id,
+      brandId: session.brand_id,
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      rank: session.rank,
+    });
+    const [page, media] = await Promise.all([
+      req.payload.findByID({
+        collection: "pages",
+        id: String(body.page_id || ""),
+        overrideAccess: false,
+        req: scoped,
+        draft: true,
+        depth: 0,
+      }),
+      req.payload.findByID({
+        collection: "media",
+        id: mediaId,
+        overrideAccess: false,
+        req: scoped,
+        depth: 0,
+      }),
+    ]);
+    if (media.state !== "READY") throw new Error("MEDIA_PROCESSING");
+    if (body.field !== "media" && body.field !== "images") {
+      throw new Error("VALIDATION_FAILED");
+    }
+    const blocks = applyStudioMediaSelection(page, String(media.id), {
+      expectedRevision: String(body.expected_revision || ""),
+      blockIndex: Number(body.block_index),
+      field: body.field,
+      imageIndex:
+        body.image_index === null
+          ? null
+          : Number(body.image_index),
+      alt: String(body.alt || ""),
+      decorative: body.decorative === true,
+    });
+    const updated = await req.payload.update({
+      collection: "pages",
+      id: page.id,
+      overrideAccess: false,
+      req: scoped,
+      draft: true,
+      depth: 0,
+      data: { blocks: blocks as never, revision: page.revision },
+    });
+    return json({
+      ok: true,
+      data: {
+        page_id: String(updated.id),
+        media_id: String(media.id),
+        draft_revision: String(updated.revision),
+        state: 8,
+        return_url: `/admin/collections/pages/${encodeURIComponent(String(updated.id))}`,
       },
     });
   } catch (error) {
@@ -1494,6 +1712,33 @@ export const sitesEndpoints: Endpoint[] = [
       "/mingla/media/{mediaId}/complete",
       "studio_to_cms",
       uploadComplete,
+    ),
+  },
+  {
+    path: "/mingla/media-library",
+    method: "get",
+    handler: observeCmsEndpoint(
+      "/mingla/media-library",
+      "studio_to_cms",
+      studioMediaLibrary,
+    ),
+  },
+  {
+    path: "/mingla/media/:mediaId/thumbnail",
+    method: "get",
+    handler: observeCmsEndpoint(
+      "/mingla/media/{mediaId}/thumbnail",
+      "studio_to_cms",
+      studioMediaThumbnail,
+    ),
+  },
+  {
+    path: "/mingla/media/:mediaId/attach",
+    method: "post",
+    handler: observeCmsEndpoint(
+      "/mingla/media/{mediaId}/attach",
+      "studio_to_cms",
+      studioMediaAttach,
     ),
   },
   {

@@ -40,6 +40,8 @@ describe("#2830 stripped Studio and preview contract", () => {
   it("owns the executable grant, exact PUT, completion, poll and READY path", () => {
     const client = read("src/lib/studioMediaClient.ts");
     const manager = read("src/components/StudioMediaManager.tsx");
+    const endpoints = read("src/endpoints/sitesEndpoints.ts");
+    const styles = read("src/app/(payload)/studio.css");
     expect(client).toContain('"/api/mingla/media/upload-grants"');
     expect(client).toContain("grant.upload_url");
     expect(client).toContain("grant.required_headers");
@@ -51,6 +53,19 @@ describe("#2830 stripped Studio and preview contract", () => {
     expect(manager).toContain("Retry");
     expect(manager).toContain("Replace");
     expect(manager).toContain("Dismiss");
+    expect(manager).toContain("Remove unused");
+    expect(manager).toContain("Use in draft");
+    expect(manager).toContain("window.location.assign(result.return_url)");
+    expect(manager).not.toContain("mingla:media-selected");
+    expect(client).toContain('"/api/mingla/media-library"');
+    expect(client).toContain("/attach");
+    expect(endpoints).toContain("applyStudioMediaSelection");
+    expect(endpoints).toContain("draft: true");
+    expect(endpoints).toContain("assertMutationRequest(req.headers)");
+    expect(endpoints).toContain("state: 8");
+    expect(styles).toContain("repeat(4, minmax(0, 1fr))");
+    expect(styles).toContain("repeat(3, minmax(0, 1fr))");
+    expect(styles).toContain("repeat(2, minmax(0, 1fr))");
   });
 
   it("keeps generic Payload upload paths unavailable", () => {

@@ -78,6 +78,7 @@ describe("#2830 Website state 4", () => {
           onSelectRollback={jest.fn()}
           onRollback={jest.fn()}
           onReconcilePublication={jest.fn()}
+          onResetFailedPublication={jest.fn()}
         />,
       );
     });
@@ -118,6 +119,7 @@ describe("#2830 Website state 4", () => {
             onOpenAri={jest.fn()} onValidatePublish={jest.fn()}
             onPublish={jest.fn()} onSelectRollback={jest.fn()}
             onRollback={jest.fn()} onReconcilePublication={jest.fn()}
+            onResetFailedPublication={jest.fn()}
           />,
         );
       });

@@ -31,11 +31,17 @@ interface UploadGrant {
 
 interface MediaStatus {
   media_id: string;
-  state: "UPLOADING" | "PROCESSING" | "READY" | "REJECTED" | "RETRYABLE_FAILED";
+  state:
+    | "UPLOADING"
+    | "QUARANTINED"
+    | "PROCESSING"
+    | "READY"
+    | "REJECTED"
+    | "RETRYABLE_FAILED";
   rejection_code: string | null;
 }
 
-interface StudioMediaBindings {
+export interface StudioMediaBindings {
   request: (url: string, init?: RequestInit) => Promise<Response>;
   put: (
     url: string,
@@ -45,6 +51,52 @@ interface StudioMediaBindings {
   ) => Promise<void>;
   digest: (file: File) => Promise<string>;
   sleep: (milliseconds: number) => Promise<void>;
+}
+
+export interface StudioMediaLibraryItem {
+  id: string;
+  filename: string;
+  state:
+    | "UPLOADING"
+    | "QUARANTINED"
+    | "PROCESSING"
+    | "READY"
+    | "REJECTED"
+    | "RETRYABLE_FAILED";
+  width: number | null;
+  height: number | null;
+  rejection_code: string | null;
+  thumbnail_url: string | null;
+  in_use: boolean;
+}
+
+export interface StudioMediaLibraryTarget {
+  id: string;
+  pageId: string;
+  pageTitle: string;
+  pageRole: string;
+  expectedRevision: string;
+  blockIndex: number;
+  field: "media" | "images";
+  imageIndex: number | null;
+  label: string;
+  currentMediaId: string | null;
+  currentAlt: string;
+  decorativeOnly: boolean;
+}
+
+export interface StudioMediaLibrary {
+  media: StudioMediaLibraryItem[];
+  targets: StudioMediaLibraryTarget[];
+  close_url: "/admin/collections/pages";
+}
+
+export interface StudioMediaAttachment {
+  page_id: string;
+  media_id: string;
+  draft_revision: string;
+  state: 8;
+  return_url: string;
 }
 
 function defaultPut(
@@ -96,6 +148,74 @@ async function envelope<T>(response: Response): Promise<T> {
     | null;
   if (response.ok && body?.ok && body.data !== undefined) return body.data;
   throw new Error(body?.error?.code ?? "SERVICE_TEMPORARILY_UNAVAILABLE");
+}
+
+export async function loadStudioMediaLibrary(
+  bindings: Pick<StudioMediaBindings, "request"> = DEFAULT_BINDINGS,
+): Promise<StudioMediaLibrary> {
+  return envelope<StudioMediaLibrary>(
+    await bindings.request("/api/mingla/media-library", { method: "GET" }),
+  );
+}
+
+export async function attachStudioMedia(
+  mediaId: string,
+  target: StudioMediaLibraryTarget,
+  input: { altText: string; decorative: boolean },
+  bindings: Pick<StudioMediaBindings, "request"> = DEFAULT_BINDINGS,
+): Promise<StudioMediaAttachment> {
+  if (
+    !/^[0-9a-f-]{36}$/i.test(mediaId) ||
+    !canSelectStudioMedia({
+      state: "READY",
+      altText: input.altText,
+      decorative: input.decorative,
+    }) ||
+    (target.decorativeOnly && !input.decorative)
+  ) {
+    throw new Error("VALIDATION_FAILED");
+  }
+  const attachment = await envelope<StudioMediaAttachment>(
+    await bindings.request(
+      `/api/mingla/media/${encodeURIComponent(mediaId)}/attach`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          page_id: target.pageId,
+          expected_revision: target.expectedRevision,
+          block_index: target.blockIndex,
+          field: target.field,
+          image_index: target.imageIndex,
+          alt: input.decorative ? "" : input.altText.trim(),
+          decorative: input.decorative,
+        }),
+      },
+    ),
+  );
+  const expectedReturn =
+    `/admin/collections/pages/${encodeURIComponent(target.pageId)}`;
+  if (
+    attachment.page_id !== target.pageId ||
+    attachment.media_id !== mediaId ||
+    attachment.state !== 8 ||
+    attachment.return_url !== expectedReturn
+  ) {
+    throw new Error("VALIDATION_FAILED");
+  }
+  return attachment;
+}
+
+export async function removeUnusedStudioMedia(
+  mediaId: string,
+  bindings: Pick<StudioMediaBindings, "request"> = DEFAULT_BINDINGS,
+): Promise<void> {
+  await envelope(
+    await bindings.request(
+      `/api/mingla/media/${encodeURIComponent(mediaId)}/tombstone`,
+      { method: "POST" },
+    ),
+  );
 }
 
 export function validateStudioMediaFile(file: Pick<File, "type" | "size">): string | null {
