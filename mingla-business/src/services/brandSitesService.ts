@@ -53,10 +53,102 @@ function operationId(): string {
 
 export const PROVISION_POLL_WINDOW_MS = 30_000;
 const PROVISION_OPERATION_PREFIX = "mingla:brand-site-provision:v1:";
+export const PUBLICATION_POLL_WINDOW_MS = 30_000;
+const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:";
 
 export interface PersistedProvisionOperation {
   operationId: string;
   startedAt: number;
+}
+
+export interface PersistedPublicationOperation {
+  accountId: string;
+  brandId: string;
+  siteId: string;
+  operationId: string;
+  kind: "publish" | "rollback";
+  startedAt: number;
+  expectedRevision: string;
+  sourceDigest: string;
+  rollbackSourcePublicationId: string | null;
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const SHA256 = /^[0-9a-f]{64}$/;
+
+function publicationOperationKey(
+  accountId: string,
+  brandId: string,
+  siteId: string,
+): string {
+  return `${PUBLICATION_OPERATION_PREFIX}${accountId}:${brandId}:${siteId}`;
+}
+
+export async function loadPublicationOperation(input: {
+  accountId: string;
+  brandId: string;
+  siteId: string;
+}): Promise<PersistedPublicationOperation | null> {
+  try {
+    const raw = await AsyncStorage.getItem(
+      publicationOperationKey(input.accountId, input.brandId, input.siteId),
+    );
+    const value = JSON.parse(raw ?? "null") as
+      | Partial<PersistedPublicationOperation>
+      | null;
+    if (
+      !value ||
+      value.accountId !== input.accountId ||
+      value.brandId !== input.brandId ||
+      value.siteId !== input.siteId ||
+      !UUID.test(String(value.accountId)) ||
+      !UUID.test(String(value.brandId)) ||
+      !UUID.test(String(value.siteId)) ||
+      !UUID.test(String(value.operationId)) ||
+      (value.kind !== "publish" && value.kind !== "rollback") ||
+      typeof value.startedAt !== "number" ||
+      !Number.isFinite(value.startedAt) ||
+      typeof value.expectedRevision !== "string" ||
+      value.expectedRevision.length < 1 ||
+      !SHA256.test(String(value.sourceDigest)) ||
+      (value.rollbackSourcePublicationId !== null &&
+        !UUID.test(String(value.rollbackSourcePublicationId)))
+    ) return null;
+    return value as PersistedPublicationOperation;
+  } catch {
+    return null;
+  }
+}
+
+export async function persistPublicationOperation(
+  operation: PersistedPublicationOperation,
+): Promise<void> {
+  try {
+    await AsyncStorage.setItem(
+      publicationOperationKey(
+        operation.accountId,
+        operation.brandId,
+        operation.siteId,
+      ),
+      JSON.stringify(operation),
+    );
+  } catch {
+    // The Core receipt remains authoritative; local persistence is resume-only.
+  }
+}
+
+export async function clearPublicationOperation(input: {
+  accountId: string;
+  brandId: string;
+  siteId: string;
+}): Promise<void> {
+  try {
+    await AsyncStorage.removeItem(
+      publicationOperationKey(input.accountId, input.brandId, input.siteId),
+    );
+  } catch {
+    // A stale local pointer has no server authority and cannot publish by itself.
+  }
 }
 
 export function authoritativeProvisionOperation(
@@ -186,11 +278,13 @@ export function createBrandSitePreview(input: {
   siteId: string;
   expectedRevision: string;
   sourceDigest: string;
+  returnSurface: "web" | "native";
 }): Promise<BrandSitePreview> {
   return invoke(`/v1/sites/${input.siteId}/previews`, "POST", {
     operation_id: operationId(),
     expected_revision: input.expectedRevision,
     source_digest: input.sourceDigest,
+    return_surface: input.returnSurface,
   });
 }
 
@@ -203,16 +297,21 @@ export function getBrandSiteOperation(
 
 export function publishBrandSite(input: {
   siteId: string;
+  operationId: string;
   expectedRevision: string;
   sourceDigest: string;
-  argumentsDigest: string;
-}): Promise<{ status: string }> {
+}): Promise<{ operation_id: string; status: string }> {
   return invoke(`/v1/sites/${input.siteId}/publications`, "POST", {
-    operation_id: operationId(),
+    operation_id: input.operationId,
     expected_revision: input.expectedRevision,
     source_digest: input.sourceDigest,
-    arguments_digest: input.argumentsDigest,
-  });
+  }).then((result) => ({
+    operation_id: input.operationId,
+    status:
+      result && typeof result === "object" && "status" in result
+        ? String((result as { status?: unknown }).status ?? "executing")
+        : "executing",
+  }));
 }
 
 export function validateBrandSiteDraft(input: {
@@ -241,22 +340,31 @@ export function getBrandSiteAnalytics(
 
 export function rollbackBrandSite(input: {
   siteId: string;
+  operationId: string;
   sourceRevision: string;
   sourceDigest: string;
-}): Promise<{ status: string }> {
+}): Promise<{ operation_id: string; status: string }> {
   return invoke(`/v1/sites/${input.siteId}/rollbacks`, "POST", {
-    operation_id: operationId(),
+    operation_id: input.operationId,
     expected_revision: input.sourceRevision,
     source_digest: input.sourceDigest,
-  });
+  }).then((result) => ({
+    operation_id: input.operationId,
+    status:
+      result && typeof result === "object" && "status" in result
+        ? String((result as { status?: unknown }).status ?? "executing")
+        : "executing",
+  }));
 }
 
 export function studioExchangeUrl(
   exchange: StudioExchange,
   returnSurface: "web" | "native",
+  brandId: string,
 ): string {
   const safeCode = encodeURIComponent(exchange.code);
   const safeDestination = encodeURIComponent(exchange.destination);
   const safeSiteId = encodeURIComponent(exchange.site_id);
-  return `https://studio.sites.usemingla.com/mingla/exchange?code=${safeCode}&destination=${safeDestination}&site_id=${safeSiteId}&return_surface=${returnSurface}`;
+  const safeBrandId = encodeURIComponent(brandId);
+  return `https://studio.sites.usemingla.com/mingla/exchange?code=${safeCode}&destination=${safeDestination}&site_id=${safeSiteId}&brand_id=${safeBrandId}&return_surface=${returnSurface}`;
 }

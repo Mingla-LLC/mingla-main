@@ -1,7 +1,7 @@
 import React from "react";
 
 const links = [
-  ["Pages", "/admin/collections/pages"], ["Media", "/admin/collections/media"],
+  ["Pages", "/admin/collections/pages"], ["Media", "/studio/media"],
   ["Navigation", "/admin/collections/navigation"], ["Footer", "/admin/collections/footer"],
   ["Site settings & SEO", "/admin/collections/site-settings"],
   ["Preview", "/api/mingla/studio-preview"],

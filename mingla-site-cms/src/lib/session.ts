@@ -26,7 +26,21 @@ export type PreviewGrant = {
   issued_at: number;
   expires_at: number;
   nonce: string;
+  return_surface: "web" | "native";
 };
+
+export type StudioReturnResult =
+  | "exchange_expired"
+  | "session_expired"
+  | "preview_expired"
+  | "preview_publish";
+
+export type StudioReturnContext = Pick<
+  StudioSession,
+  "brand_id" | "site_id" | "return_surface"
+>;
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 async function encodeSigned(value: Record<string, unknown>): Promise<string> {
   const payload = base64url(new TextEncoder().encode(JSON.stringify(value)));
@@ -63,6 +77,28 @@ export async function decodeSession(value: string | null): Promise<StudioSession
   return session;
 }
 
+function returnContext(value: Record<string, unknown> | null): StudioReturnContext | null {
+  if (
+    !value ||
+    !UUID.test(String(value.brand_id || "")) ||
+    !UUID.test(String(value.site_id || "")) ||
+    (value.return_surface !== "web" && value.return_surface !== "native")
+  ) return null;
+  return {
+    brand_id: String(value.brand_id),
+    site_id: String(value.site_id),
+    return_surface: value.return_surface,
+  };
+}
+
+/** Validates the signature and closed context even when the session has expired. */
+export async function decodeSessionReturnContext(
+  value: string | null,
+): Promise<StudioReturnContext | null> {
+  const decoded = await decodeSigned(value);
+  return decoded?.version === 1 ? returnContext(decoded) : null;
+}
+
 export async function encodePreviewGrant(grant: PreviewGrant): Promise<string> {
   return encodeSigned(grant);
 }
@@ -78,6 +114,7 @@ export async function decodePreviewGrant(value: string | null): Promise<PreviewG
     grant.audience !== "mingla-studio-preview" ||
     grant.renderer_key !== "restaurant-website-v1" ||
     grant.renderer_version !== 1 ||
+    (grant.return_surface !== "web" && grant.return_surface !== "native") ||
     grant.issued_at > now + 5 ||
     grant.expires_at <= now ||
     grant.expires_at - grant.issued_at > 1800 ||
@@ -92,6 +129,19 @@ export async function decodePreviewGrant(value: string | null): Promise<PreviewG
   return grant;
 }
 
+
+/** Validates a preview's signed return context without accepting an expired grant. */
+export async function decodePreviewReturnContext(
+  value: string | null,
+): Promise<StudioReturnContext | null> {
+  const decoded = await decodeSigned(value);
+  return decoded?.version === 1 &&
+      decoded.issuer === "mingla-site-cms" &&
+      decoded.audience === "mingla-studio-preview"
+    ? returnContext(decoded)
+    : null;
+}
+
 export function cookieValue(headers: Headers, name: string): string | null {
   const match = headers.get("cookie")?.split(";").map((part) => part.trim()).find((part) => part.startsWith(`${name}=`));
   return match ? decodeURIComponent(match.slice(name.length + 1)) : null;
@@ -99,11 +149,24 @@ export function cookieValue(headers: Headers, name: string): string | null {
 
 export async function sessionFromHeaders(headers: Headers): Promise<StudioSession | null> { return decodeSession(cookieValue(headers, STUDIO_COOKIE)); }
 
-export function studioReturnLocation(session: StudioSession): string {
-  const brandId = encodeURIComponent(session.brand_id);
-  return session.return_surface === "native"
-    ? `mingla-business://website-return?brandId=${brandId}`
-    : `https://business.usemingla.com/brand/${brandId}/website`;
+export function studioReturnLocationFromContext(
+  context: StudioReturnContext,
+  result?: StudioReturnResult,
+): string {
+  const brandId = encodeURIComponent(context.brand_id);
+  const suffix = result ? `&result=${encodeURIComponent(result)}` : "";
+  return context.return_surface === "native"
+    ? `mingla-business://website-return?brandId=${brandId}${suffix}`
+    : `https://business.usemingla.com/brand/${brandId}/website${
+      result ? `?studioResult=${encodeURIComponent(result)}` : ""
+    }`;
+}
+
+export function studioReturnLocation(
+  session: StudioSession,
+  result?: StudioReturnResult,
+): string {
+  return studioReturnLocationFromContext(session, result);
 }
 
 export function assertMutationRequest(headers: Headers): void {

@@ -30,6 +30,7 @@ import {
   encodePreviewGrant,
   sessionFromHeaders,
   studioReturnLocation,
+  studioReturnLocationFromContext,
   STUDIO_COOKIE,
   STUDIO_CSRF_COOKIE,
 } from "../lib/session";
@@ -48,7 +49,7 @@ async function objectBody(
     throw new Error("VALIDATION_FAILED");
   return value as Record<string, unknown>;
 }
-function safeFailure(error: unknown) {
+function safeFailure(error: unknown, returnUrl?: string) {
   const code =
     error instanceof Error &&
     [
@@ -77,6 +78,7 @@ function safeFailure(error: unknown) {
           "MEDIA_PROCESSING",
           "SERVICE_TEMPORARILY_UNAVAILABLE",
         ].includes(code),
+        ...(returnUrl ? { return_url: returnUrl } : {}),
       },
     },
     code === "FORBIDDEN" || code === "SESSION_EXPIRED"
@@ -88,6 +90,7 @@ function safeFailure(error: unknown) {
 }
 
 async function exchange(req: PayloadRequest): Promise<Response> {
+  let failureReturn: string | undefined;
   try {
     const body = await objectBody(req);
     const code = String(body.code || "");
@@ -97,9 +100,21 @@ async function exchange(req: PayloadRequest): Promise<Response> {
     }
     const destination = "studio" as const;
     const siteIdHint = String(body.site_id || "");
-    if (!/^[0-9a-f-]{36}$/i.test(siteIdHint)) {
+    const brandIdHint = String(body.brand_id || "");
+    if (
+      !/^[0-9a-f-]{36}$/i.test(siteIdHint) ||
+      !/^[0-9a-f-]{36}$/i.test(brandIdHint)
+    ) {
       throw new Error("SESSION_EXPIRED");
     }
+    failureReturn = studioReturnLocationFromContext(
+      {
+        site_id: siteIdHint,
+        brand_id: brandIdHint,
+        return_surface: body.return_surface,
+      },
+      "exchange_expired",
+    );
     const result = await callCore(
       "/internal/v1/editor-exchanges/consume",
       siteIdHint,
@@ -115,7 +130,11 @@ async function exchange(req: PayloadRequest): Promise<Response> {
       depth: 0,
     });
     const tenant = tenantResult.docs[0];
-    if (!tenant) throw new Error("SESSION_EXPIRED");
+    if (
+      !tenant ||
+      String(result.site_id) !== siteIdHint ||
+      String(result.brand_id) !== brandIdHint
+    ) throw new Error("SESSION_EXPIRED");
     const session = await encodeSession({
       version: 1,
       site_id: String(result.site_id),
@@ -155,7 +174,7 @@ async function exchange(req: PayloadRequest): Promise<Response> {
       headers,
     );
   } catch (error) {
-    return safeFailure(error);
+    return safeFailure(error, failureReturn);
   }
 }
 
@@ -573,14 +592,52 @@ async function uploadComplete(req: PayloadRequest): Promise<Response> {
     assertMutationRequest(req.headers);
     const body = await objectBody(req);
     const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
+    const media = await completeUpload(
+      req,
+      id,
+      String(body.checksum || ""),
+      Number(body.bytes),
+    );
+    if (!media) throw new Error("MEDIA_REJECTED");
     return json({
       ok: true,
-      data: await completeUpload(
-        req,
-        id,
-        String(body.checksum || ""),
-        Number(body.bytes),
-      ),
+      data: {
+        media_id: String(media.id),
+        state: media.state,
+        rejection_code: media.rejection_code ?? null,
+      },
+    });
+  } catch (error) {
+    return safeFailure(error);
+  }
+}
+
+async function mediaStatus(req: PayloadRequest): Promise<Response> {
+  try {
+    const session = await sessionFromHeaders(req.headers);
+    if (!session) throw new Error("SESSION_EXPIRED");
+    const id = new URL(req.url || "http://local").pathname.split("/").at(-1)!;
+    const scoped = scopedRequest(req, {
+      siteId: session.site_id,
+      brandId: session.brand_id,
+      tenantId: session.tenant_id,
+      userId: session.user_id,
+      rank: session.rank,
+    });
+    const media = await req.payload.findByID({
+      collection: "media",
+      id,
+      overrideAccess: false,
+      req: scoped,
+      depth: 0,
+    });
+    return json({
+      ok: true,
+      data: {
+        media_id: String(media.id),
+        state: media.state,
+        rejection_code: media.rejection_code ?? null,
+      },
     });
   } catch (error) {
     return safeFailure(error);
@@ -713,7 +770,10 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       body.expected_revision || body.authorization.revision_id || "",
     );
     const sourceDigest = String(body.source_digest || "");
-    if (!/^[0-9a-f]{64}$/.test(sourceDigest)) {
+    if (
+      !/^[0-9a-f]{64}$/.test(sourceDigest) ||
+      (body.return_surface !== "web" && body.return_surface !== "native")
+    ) {
       throw new Error("VALIDATION_FAILED");
     }
     const previewToken = await encodePreviewGrant({
@@ -731,6 +791,7 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
       issued_at: issuedAt,
       expires_at: issuedAt + 1800,
       nonce: crypto.randomUUID(),
+      return_surface: body.return_surface,
     });
     const expiresAt = new Date((issuedAt + 1800) * 1000).toISOString();
     await callCore(
@@ -827,6 +888,7 @@ async function studioPreview(req: PayloadRequest): Promise<Response> {
       issued_at: issuedAt,
       expires_at: issuedAt + 1800,
       nonce: crypto.randomUUID(),
+      return_surface: session.return_surface,
     });
     return new Response(null, {
       status: 302,
@@ -1353,7 +1415,17 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
     )
       throw new Error("REVISION_CONFLICT");
     const blocks = Array.isArray(home.blocks) ? home.blocks : [];
+    const hero = blocks.find(
+      (block: Record<string, unknown>) => block.blockType === "hero",
+    ) as Record<string, unknown> | undefined;
+    const visit = blocks.find(
+      (block: Record<string, unknown>) => block.blockType === "hours_location",
+    ) as Record<string, unknown> | undefined;
     const content = blocks
+      .filter(
+        (block: Record<string, unknown>) =>
+          block.blockType !== "hero" && block.blockType !== "hours_location",
+      )
       .map((block: Record<string, unknown>) => {
         const heading = block.heading
           ? `<h2>${escapeHtml(block.heading)}</h2>`
@@ -1362,7 +1434,7 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
         return `<section data-block="${escapeHtml(block.blockType)}">${heading}${body ? `<p>${escapeHtml(body)}</p>` : ""}</section>`;
       })
       .join("");
-    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width"><meta name="robots" content="noindex,nofollow"><title>Private preview — not live</title><style>body{margin:0;background:#fffaf3;color:#17120e;font:16px/1.6 Arial}header{padding:18px 6vw;border-bottom:1px solid #e5d8ca;font-weight:800}main{max-width:1100px;margin:auto}section{padding:56px 6vw}h1,h2{font-family:Georgia,serif}aside{position:sticky;top:0;background:#fff2db;padding:10px;text-align:center;border-bottom:1px solid #e2a34f}</style></head><body><aside><strong>Private preview — not live</strong></aside><header>${escapeHtml(home.title)}</header><main><section><h1>${escapeHtml(home.title)}</h1></section>${content}</main></body></html>`;
+    const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Private preview — not live</title><style>:root{--ink:#101013;--panel:#17171a;--gold:#cda052;--ivory:#f0eee9;--muted:#a7a39a}*{box-sizing:border-box}body{min-width:320px;margin:0;overflow-x:hidden;background:var(--ink);color:var(--ivory);font:16px/1.6 Arial,sans-serif}header{height:72px;display:flex;align-items:center;padding:0 max(20px,calc((100vw - 1200px)/2));border-bottom:1px solid rgba(205,160,82,.3);font-weight:800;text-transform:uppercase}main{margin:auto}.hero{min-height:clamp(640px,88svh,900px);display:grid;align-items:end;padding:8vw max(20px,calc((100vw - 1200px)/2));background:var(--panel)}section{width:min(100%,1200px);margin:auto;padding:clamp(5rem,9vw,9rem) max(20px,4vw)}h1,h2{font-family:Impact,'Arial Narrow',sans-serif;text-transform:uppercase;letter-spacing:-.04em}h1{max-width:900px;margin:0;font-size:clamp(3.6rem,10vw,8.5rem);line-height:.86}h2{font-size:clamp(2.5rem,7vw,5.5rem);line-height:.92}.fact-rail{width:min(100%,1200px);display:grid;grid-template-columns:repeat(3,1fr);padding:0;background:var(--panel);border-block:1px solid rgba(205,160,82,.3)}.fact-rail div{padding:24px;border-right:1px solid rgba(205,160,82,.3)}.fact-rail strong{display:block;color:var(--gold);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase}.non-live{position:sticky;top:0;z-index:3;padding:10px;text-align:center;color:var(--ink);background:#dfb262;font-weight:800}@media(max-width:767px){header{height:64px;padding:0 16px}.hero{min-height:max(560px,76svh);padding:5rem 20px 4rem}.fact-rail{grid-template-columns:1fr}.fact-rail div{border-right:0;border-bottom:1px solid rgba(205,160,82,.3)}}@media(prefers-reduced-motion:reduce){*{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}</style></head><body><aside class="non-live"><strong>Private preview — not live</strong></aside><header>${escapeHtml(settings.docs[0].display_name || home.title)}</header><main><section class="hero"><div><p style="color:#cda052;text-transform:uppercase;letter-spacing:.16em">Restaurant Website v1</p><h1>${escapeHtml(hero?.heading || home.title)}</h1><p>${escapeHtml(hero?.subheading || "")}</p></div></section><aside class="fact-rail" aria-label="Restaurant facts"><div><strong>Visit</strong>${escapeHtml(visit?.address || "See restaurant details")}</div><div><strong>Hours</strong>See current opening hours</div><div><strong>Contact</strong>Contact the restaurant</div></aside>${content}</main></body></html>`;
     return new Response(html, {
       status: 200,
       headers: {
@@ -1422,6 +1494,15 @@ export const sitesEndpoints: Endpoint[] = [
       "/mingla/media/{mediaId}/complete",
       "studio_to_cms",
       uploadComplete,
+    ),
+  },
+  {
+    path: "/mingla/media/:mediaId",
+    method: "get",
+    handler: observeCmsEndpoint(
+      "/mingla/media/{mediaId}",
+      "studio_to_cms",
+      mediaStatus,
     ),
   },
   {

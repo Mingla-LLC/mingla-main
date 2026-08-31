@@ -20,7 +20,15 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   const response = NextResponse.next({
     request: { headers: requestHeaders },
   });
-  const session = await decodeSession(request.cookies.get(STUDIO_COOKIE)?.value ?? null);
+  const sessionToken = request.cookies.get(STUDIO_COOKIE)?.value ?? null;
+  const session = await decodeSession(sessionToken);
+  if (
+    !session &&
+    (request.nextUrl.pathname.startsWith("/admin") ||
+      request.nextUrl.pathname.startsWith("/studio"))
+  ) {
+    return NextResponse.redirect(new URL("/mingla/session-expired", request.url));
+  }
   if (!session) return response;
   const now = Math.floor(Date.now() / 1000);
   const refreshedIdle = Math.min(session.absolute_expires_at, now + 30 * 60);
@@ -49,5 +57,5 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/api/:path*", "/preview"],
+  matcher: ["/admin/:path*", "/studio/:path*", "/api/:path*", "/preview"],
 };

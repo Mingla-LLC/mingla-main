@@ -1,7 +1,6 @@
 import React, { useMemo } from "react";
 import {
   ActivityIndicator,
-  Alert,
   ScrollView,
   StyleSheet,
   Text,
@@ -20,19 +19,26 @@ import {
 } from "../../constants/designSystem";
 import type {
   BrandSiteAnalytics,
+  BrandSiteDraftValidation,
   BrandSiteOperation,
   BrandSiteOverview,
   BrandSiteVersion,
+  WebsiteJourneyState,
 } from "../../sites/contracts";
-import {
-  deriveWebsiteJourneyState,
-  primarySiteHost,
-} from "../../sites/contracts";
+import { primarySiteHost } from "../../sites/contracts";
+import type {
+  WebsiteWorkspacePanel,
+  WorkspaceNotice,
+} from "../../sites/websiteJourney";
+import { WEBSITE_JOURNEY } from "../../sites/websiteJourney";
 
 interface BrandWebsiteViewProps {
   brandName: string;
   site: BrandSiteOverview | null;
   rank: number;
+  journeyState: WebsiteJourneyState;
+  panel: WebsiteWorkspacePanel;
+  notice: WorkspaceNotice;
   isLoading: boolean;
   isError: boolean;
   isProvisioning: boolean;
@@ -40,91 +46,122 @@ interface BrandWebsiteViewProps {
   isPreviewing: boolean;
   isPublishing: boolean;
   isRollingBack: boolean;
+  isValidating: boolean;
   versions: BrandSiteVersion[];
   analytics: BrandSiteAnalytics | null;
+  validation: BrandSiteDraftValidation | null;
+  validationFailure: string | null;
+  selectedVersion: BrandSiteVersion | null;
   provisionOperationId: string | null;
   provisionOperation: BrandSiteOperation | null;
   provisionPollingTimedOut: boolean;
+  publicationOperationId: string | null;
+  publicationOperation: BrandSiteOperation | null;
+  publicationPollingTimedOut: boolean;
   isReconciling: boolean;
   onRetry: () => void;
+  onSetPanel: (panel: WebsiteWorkspacePanel) => void;
   onProvision: () => void;
   onReconcileProvision: () => void;
   onOpenStudio: () => void;
   onPreview: () => void;
   onViewLive: (hostname: string) => void;
   onOpenAri: () => void;
+  onValidatePublish: () => void;
   onPublish: () => void;
-  onRollback: (version: BrandSiteVersion) => void;
+  onSelectRollback: (version: BrandSiteVersion) => void;
+  onRollback: () => void;
+  onReconcilePublication: () => void;
 }
 
-const statusCopy: Record<BrandSiteOverview["status"], string> = {
-  provisioning: "Creating your private Website workspace…",
-  draft: "Your draft is ready to edit and preview.",
-  publishing: "Publishing is in progress. You can leave safely.",
-  published: "Your last verified Website is live.",
+const siteStatusCopy: Record<BrandSiteOverview["status"], string> = {
+  provisioning: "Mingla is creating the private editing workspace.",
+  draft: "Your private draft is ready to edit and preview.",
+  publishing:
+    "Mingla is verifying the exact revision before changing the public website.",
+  published: "Your last verified website is live.",
   suspended:
     "Public delivery is paused. Your verified publication is preserved.",
-  error: "Setup needs attention. Your last verified Website remains safe.",
+  error:
+    "Publishing needs attention. Your last verified website remains safe.",
 };
 
-export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = ({
-  brandName,
-  site,
-  rank,
-  isLoading,
-  isError,
-  isProvisioning,
-  isOpeningStudio,
-  isPreviewing,
-  isPublishing,
-  isRollingBack,
-  versions,
-  analytics,
-  provisionOperationId,
-  provisionOperation,
-  provisionPollingTimedOut,
-  isReconciling,
-  onRetry,
-  onProvision,
-  onReconcileProvision,
-  onOpenStudio,
-  onPreview,
-  onViewLive,
-  onOpenAri,
-  onPublish,
-  onRollback,
-}) => {
-  const host = useMemo(
-    () => (site === null ? null : primarySiteHost(site)),
-    [site],
-  );
-  const state = deriveWebsiteJourneyState(site);
-  const canProvision = rank >= 50;
-  const canWork = rank >= 20;
+const PanelCard: React.FC<{
+  title: string;
+  children: React.ReactNode;
+  testID?: string;
+}> = ({ title, children, testID }) => (
+  <GlassCard
+    variant="elevated"
+    contentStyle={styles.cardContent}
+    testID={testID}
+  >
+    <Text style={styles.cardTitle}>{title}</Text>
+    {children}
+  </GlassCard>
+);
 
-  if (!canWork) {
-    return null;
-  }
-  if (isLoading) {
+export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = (props) => {
+  const host = useMemo(
+    () => (props.site === null ? null : primarySiteHost(props.site)),
+    [props.site],
+  );
+  const canProvision = props.rank >= 50;
+
+  if (props.rank < 20) return null;
+  if (props.isLoading) {
     return (
-      <View style={styles.centered}>
+      <View style={styles.centered} testID="website-loading">
         <ActivityIndicator
           color={accent.warm}
           accessibilityLabel="Loading Website"
         />
-        <Text style={styles.body}>Loading Website…</Text>
+        <Text style={styles.body}>Checking your website status…</Text>
       </View>
     );
   }
-  if (isError) {
+  if (props.notice === "unauthorized") {
     return (
-      <View style={styles.centered}>
-        <Text style={styles.title}>Couldn’t load Website</Text>
-        <Text style={styles.body}>Your public Website is unaffected.</Text>
-        <Button label="Try again" onPress={onRetry} variant="secondary" />
+      <View style={styles.centered} testID="website-unauthorized">
+        <Text style={styles.title}>Website access changed</Text>
+        <Text style={styles.body}>
+          Your role no longer has access to this brand website.
+        </Text>
+        <Button
+          label="Return to Brand Profile"
+          onPress={props.onRetry}
+          variant="secondary"
+        />
       </View>
     );
   }
+  if (props.notice === "offline") {
+    return (
+      <View style={styles.centered} testID="website-offline">
+        <Text style={styles.title}>You’re offline</Text>
+        <Text style={styles.body}>
+          Your live website is unaffected. Reconnect to check the durable
+          operation receipt.
+        </Text>
+        <Button label="Try again" onPress={props.onRetry} variant="secondary" />
+      </View>
+    );
+  }
+  if (props.isError) {
+    return (
+      <View style={styles.centered} testID="website-error">
+        <Text style={styles.title}>Couldn’t load Website</Text>
+        <Text style={styles.body}>Your public website is unaffected.</Text>
+        <Button label="Try again" onPress={props.onRetry} variant="secondary" />
+      </View>
+    );
+  }
+
+  const definition = WEBSITE_JOURNEY[props.journeyState];
+  const actionLocked =
+    props.publicationOperationId !== null &&
+    props.publicationOperation?.status !== "succeeded" &&
+    props.publicationOperation?.status !== "failed";
 
   return (
     <ScrollView contentContainerStyle={styles.scroll}>
@@ -134,263 +171,511 @@ export const BrandWebsiteView: React.FC<BrandWebsiteViewProps> = ({
         </View>
         <View style={styles.headingCopy}>
           <Text style={styles.eyebrow}>RESTAURANT WEBSITE V1</Text>
-          <Text style={styles.title}>{brandName} Website</Text>
-          <Text style={styles.body}>
-            Structured editing, private previews and verified publishing.
-          </Text>
+          <Text style={styles.title}>{props.brandName} Website</Text>
+          <Text style={styles.body}>{definition.title}</Text>
         </View>
       </View>
 
-      {site?.status === "provisioning" ? (
-        <GlassCard
-          variant="elevated"
-          contentStyle={styles.cardContent}
-          testID="website-provisioning"
+      {props.notice === "expired" || props.journeyState === 30 ? (
+        <PanelCard
+          title="Your secure Studio session ended"
+          testID="website-session-expired"
         >
-          <Text style={styles.cardTitle}>Setting up your Website…</Text>
           <Text style={styles.body}>
-            Mingla is creating the private editing workspace. Nothing is live,
-            and you can leave this screen safely.
+            No draft or live website was changed. Open Studio again from this
+            workspace to continue.
           </Text>
-          <View style={styles.progressList}>
-            {[
+          <Button
+            label="Open Mingla Studio again"
+            onPress={props.onOpenStudio}
+            loading={props.isOpeningStudio}
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 2 ? (
+        <PanelCard
+          title="Your own website, edited in Mingla"
+          testID="website-not-setup"
+        >
+          <Text style={styles.body}>
+            Start with the fixed Restaurant Website v1 layout. Setup creates a
+            private draft; nothing becomes public.
+          </Text>
+          {canProvision ? (
+            <Button
+              label="Review website setup"
+              onPress={() => props.onSetPanel("setup_review")}
+              fullWidth
+            />
+          ) : (
+            <Text style={styles.helper}>
+              A brand admin can set up the website.
+            </Text>
+          )}
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 3 ? (
+        <PanelCard title="Review your website setup" testID="website-setup-review">
+          <Text style={styles.body}>
+            Mingla will create a private Studio workspace and draft for {props.brandName}.
+            Nothing will be published.
+          </Text>
+          <View style={styles.reviewList}>
+            <Text style={styles.reviewItem}>Layout · Restaurant Website v1</Text>
+            <Text style={styles.reviewItem}>
+              Address · Permanent Mingla address after setup
+            </Text>
+            <Text style={styles.reviewItem}>
+              Publishing · Separate preview and confirmation required
+            </Text>
+          </View>
+          <Button
+            label="Create website draft"
+            loading={props.isProvisioning}
+            onPress={props.onProvision}
+            fullWidth
+          />
+          <Button
+            label="Back"
+            onPress={() => props.onSetPanel("overview")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 4 ? (
+        <PanelCard title="Creating your website draft" testID="website-provisioning">
+          <Text style={styles.body}>
+            Nothing is live, and you can leave safely. This screen follows the
+            authoritative setup receipt.
+          </Text>
+          <ProgressRows
+            labels={[
               "Setup request accepted",
               "Website authority created",
               "Studio workspace creating",
               "Draft checking",
               "Draft ready",
-            ].map((label, index) => (
-              <View key={label} style={styles.progressRow}>
-                <View
-                  style={[
-                    styles.progressDot,
-                    index < 2 ? styles.progressDotComplete : undefined,
-                  ]}
-                />
-                <Text style={index < 2 ? styles.progressComplete : styles.helper}>
-                  {label}
-                </Text>
-              </View>
-            ))}
-          </View>
-          {provisionOperationId ? (
-            <Text style={styles.meta} selectable>
-              Operation {provisionOperationId}
-            </Text>
-          ) : (
-            <Text style={styles.meta}>
-              Reconnecting to the authoritative setup receipt…
-            </Text>
-          )}
-          {provisionOperation?.status === "ambiguous" ? (
-            <Text style={styles.body}>
-              Setup has not failed, but Mingla cannot yet prove the final state.
-              Checking again uses this same operation and cannot create a
-              duplicate Website.
-            </Text>
-          ) : provisionPollingTimedOut ? (
-            <Text style={styles.body}>
-              Setup is still working. Mingla stopped automatic checks to keep
-              them bounded; your operation is preserved.
-            </Text>
-          ) : (
-            <Text style={styles.helper}>Checking the durable receipt…</Text>
-          )}
+            ]}
+            complete={2}
+          />
+          <OperationReceipt
+            operationId={props.provisionOperationId}
+            operation={props.provisionOperation}
+            timedOut={props.provisionPollingTimedOut}
+          />
           {canProvision &&
-          (provisionOperation?.status === "ambiguous" ||
-            provisionPollingTimedOut) ? (
+          (props.provisionPollingTimedOut ||
+            props.provisionOperation?.status === "ambiguous") ? (
             <Button
               label="Check setup status"
-              loading={isReconciling}
-              onPress={onReconcileProvision}
+              loading={props.isReconciling}
+              onPress={props.onReconcileProvision}
               variant="secondary"
               fullWidth
             />
-          ) : !canProvision &&
-            (provisionOperation?.status === "ambiguous" ||
-              provisionPollingTimedOut) ? (
-            <Text style={styles.helper}>
-              A brand admin can check this setup operation again.
+          ) : null}
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 6 ? (
+        <PanelCard title="Opening Mingla Studio…" testID="website-opening-studio">
+          <ActivityIndicator color={accent.warm} />
+          <Text style={styles.body}>
+            Creating a short-lived, one-time secure handoff.
+          </Text>
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 12 ? (
+        <PanelCard title="Creating a private preview…" testID="website-previewing">
+          <ActivityIndicator color={accent.warm} />
+          <Text style={styles.body}>
+            This preview is short-lived and is not your live website.
+          </Text>
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 13 ? (
+        <PanelCard title="Ready to publish?" testID="website-publish-review">
+          <Text style={styles.body}>
+            Mingla validates and verifies one exact revision before changing
+            the public website.
+          </Text>
+          {props.validation === null ? (
+            <>
+              {props.validationFailure ? (
+                <View style={styles.validationFailure}>
+                  <Text style={styles.failureTitle}>Draft needs review</Text>
+                  <Text style={styles.body}>{props.validationFailure}</Text>
+                </View>
+              ) : null}
+              <Button
+                label={props.validationFailure ? "Check draft again" : "Check draft"}
+                loading={props.isValidating}
+                onPress={props.onValidatePublish}
+                fullWidth
+              />
+            </>
+          ) : (
+            <View style={styles.reviewList}>
+              <Text style={styles.reviewItem}>
+                Layout · {props.validation.renderer}
+              </Text>
+              <Text style={styles.reviewItem}>
+                Pages checked · {props.validation.checked_pages}
+              </Text>
+              <Text style={styles.reviewItem}>
+                Revision · {props.validation.home_revision}
+              </Text>
+              <Button
+                label="Publish website"
+                loading={props.isPublishing}
+                onPress={props.onPublish}
+                fullWidth
+              />
+            </View>
+          )}
+          <Button
+            label="Preview again"
+            onPress={props.onPreview}
+            variant="secondary"
+            fullWidth
+          />
+          <Button
+            label="Cancel"
+            onPress={() => props.onSetPanel("overview")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 14 ? (
+        <PanelCard
+          title={
+            props.publicationOperationId
+              ? "Publishing your website"
+              : "Verifying publication status"
+          }
+          testID="website-publication-running"
+        >
+          <Text style={styles.body}>
+            You can leave safely. Mingla will not start another publish or
+            rollback while this outcome is unproven.
+          </Text>
+          <ProgressRows
+            labels={[
+              "Request accepted",
+              "Revision validated",
+              "Artifact materialized",
+              "Public probe verified",
+              "Live pointer changed",
+            ]}
+            complete={props.publicationOperation?.status === "succeeded" ? 5 : 2}
+          />
+          <OperationReceipt
+            operationId={props.publicationOperationId}
+            operation={props.publicationOperation}
+            timedOut={props.publicationPollingTimedOut}
+          />
+          {props.publicationPollingTimedOut ||
+          props.publicationOperation?.status === "ambiguous" ? (
+            <Button
+              label="Check the same operation"
+              loading={props.isReconciling}
+              onPress={props.onReconcilePublication}
+              variant="secondary"
+              fullWidth
+            />
+          ) : null}
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 25 && props.selectedVersion ? (
+        <PanelCard title="Publish this earlier version?" testID="website-rollback-review">
+          <Text style={styles.body}>
+            Mingla will validate revision {props.selectedVersion.source_revision_id} again
+            and publish it as a new immutable version. History is preserved.
+          </Text>
+          <Button
+            label="Publish this earlier version"
+            loading={props.isRollingBack}
+            onPress={props.onRollback}
+            fullWidth
+          />
+          <Button
+            label="Cancel"
+            onPress={() => props.onSetPanel("versions")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
+
+      {props.journeyState === 28 ? (
+        <PanelCard title="That publish didn’t make it live" testID="website-publication-failed">
+          <Text style={styles.failureTitle}>Last good preserved</Text>
+          <Text style={styles.body}>
+            Nothing unverified replaced the public website. Review the draft or
+            earlier version before trying again.
+          </Text>
+          {props.publicationOperation?.error_code ? (
+            <Text style={styles.meta}>
+              Reference · {props.publicationOperation.error_code}
             </Text>
           ) : null}
-        </GlassCard>
-      ) : site === null ? (
-        <GlassCard
-          variant="elevated"
-          contentStyle={styles.cardContent}
-          testID="website-not-setup"
-        >
-          <Text style={styles.cardTitle}>Your Website isn’t set up yet</Text>
-          <Text style={styles.body}>
-            Mingla will create one private draft using the fixed Restaurant
-            Website v1 layout.
-          </Text>
-          {canProvision ? (
-            <Button
-              label="Set up Website"
-              loading={isProvisioning}
-              onPress={() =>
-                Alert.alert(
-                  "Create Website draft?",
-                  "This creates a private draft. Nothing becomes public until a separate publish confirmation.",
-                  [
-                    { text: "Cancel", style: "cancel" },
-                    { text: "Create draft", onPress: onProvision },
-                  ],
-                )
-              }
-              leadingIcon="plus"
-            />
-          ) : (
-            <Text style={styles.helper}>
-              A brand admin needs to set this up.
-            </Text>
-          )}
-        </GlassCard>
-      ) : (
+          <Button label="Review fixes in Studio" onPress={props.onOpenStudio} fullWidth />
+          <Button
+            label="Return to website overview"
+            onPress={() => props.onSetPanel("overview")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
+
+      {(props.journeyState === 5 || props.journeyState === 15) && props.site ? (
         <>
-          <GlassCard variant="elevated" contentStyle={styles.cardContent}>
+          <PanelCard
+            title={
+              props.site.status === "published"
+                ? "Your website is live"
+                : "Your website draft is ready"
+            }
+            testID="website-overview"
+          >
             <View style={styles.statusRow}>
               <View
                 style={[
                   styles.statusDot,
-                  site.status === "published"
+                  props.site.status === "published"
                     ? styles.statusDotLive
-                    : site.status === "error"
-                      ? styles.statusDotError
-                      : undefined,
+                    : undefined,
                 ]}
               />
-              <Text style={styles.cardTitle}>
-                {site.status === "published"
-                  ? "Verified live"
-                  : "Website workspace"}
-              </Text>
+              <Text style={styles.body}>{siteStatusCopy[props.site.status]}</Text>
             </View>
-            <Text style={styles.body}>{statusCopy[site.status]}</Text>
             <Text style={styles.meta}>
-              Journey state {state} · Last checked{" "}
-              {new Date(site.updated_at).toLocaleString()}
+              Last checked {new Date(props.site.updated_at).toLocaleString()}
             </Text>
             <View style={styles.actionStack}>
               <Button
                 label="Open Mingla Studio"
-                loading={isOpeningStudio}
-                onPress={onOpenStudio}
+                loading={props.isOpeningStudio}
+                disabled={actionLocked}
+                onPress={props.onOpenStudio}
                 leadingIcon="edit"
                 fullWidth
               />
               <Button
                 label="Preview draft"
-                loading={isPreviewing}
-                onPress={onPreview}
+                loading={props.isPreviewing}
+                disabled={actionLocked}
+                onPress={props.onPreview}
                 variant="secondary"
                 leadingIcon="eye"
                 fullWidth
               />
               <Button
-                label="Publish Website"
-                loading={isPublishing}
-                onPress={() =>
-                  Alert.alert(
-                    "Publish Website?",
-                    "Mingla will validate and verify this exact revision before changing the public Website.",
-                    [
-                      { text: "Preview again", style: "cancel", onPress: onPreview },
-                      { text: "Publish Website", onPress: onPublish },
-                    ],
-                  )
-                }
+                label="Review and publish"
+                disabled={actionLocked}
+                onPress={() => props.onSetPanel("publish_review")}
                 variant="secondary"
                 fullWidth
               />
               <Button
                 label="Edit with Ari"
-                onPress={onOpenAri}
+                disabled={actionLocked}
+                onPress={props.onOpenAri}
                 variant="ghost"
                 fullWidth
               />
             </View>
-          </GlassCard>
+          </PanelCard>
+          <WorkspaceNavigation props={props} />
+        </>
+      ) : null}
 
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-            <Text style={styles.cardTitle}>Analytics</Text>
-            {analytics === null ? (
-              <Text style={styles.body}>Analytics are unavailable. Your Website remains live.</Text>
-            ) : (
-              <View style={styles.metricRow}>
-                <View style={styles.metric}><Text style={styles.metricValue}>{analytics.events_30d}</Text><Text style={styles.helper}>Privacy-safe events · 30 days</Text></View>
-                <View style={styles.metric}><Text style={styles.metricValue}>{analytics.consumed_handoffs}</Text><Text style={styles.helper}>Attributed checkouts</Text></View>
+      {props.journeyState === 23 ? (
+        <PanelCard title="Website analytics" testID="website-analytics">
+          {props.analytics === null ? (
+            <Text style={styles.body}>
+              Analytics are unavailable. Your website remains live.
+            </Text>
+          ) : (
+            <View style={styles.metricRow}>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>{props.analytics.events_30d}</Text>
+                <Text style={styles.helper}>Privacy-safe events · 30 days</Text>
               </View>
-            )}
-          </GlassCard>
+              <View style={styles.metric}>
+                <Text style={styles.metricValue}>
+                  {props.analytics.consumed_handoffs}
+                </Text>
+                <Text style={styles.helper}>Attributed checkouts</Text>
+              </View>
+            </View>
+          )}
+          <Button
+            label="Back to website"
+            onPress={() => props.onSetPanel("overview")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
 
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-            <Text style={styles.cardTitle}>Versions</Text>
-            {versions.length === 0 ? (
-              <Text style={styles.body}>No verified publication versions yet.</Text>
-            ) : versions.slice(0, 5).map((version) => (
+      {props.journeyState === 24 ? (
+        <PanelCard title="Version history" testID="website-versions">
+          {props.versions.length === 0 ? (
+            <Text style={styles.body}>No verified publication versions yet.</Text>
+          ) : (
+            props.versions.map((version) => (
               <View key={version.id} style={styles.versionRow}>
                 <View style={styles.versionCopy}>
-                  <Text style={styles.versionTitle}>Revision {version.source_revision_id}</Text>
-                  <Text style={styles.helper}>{version.status} · {new Date(version.requested_at).toLocaleString()}</Text>
+                  <Text style={styles.versionTitle}>
+                    Revision {version.source_revision_id}
+                  </Text>
+                  <Text style={styles.helper}>
+                    {version.status} · {new Date(version.requested_at).toLocaleString()}
+                  </Text>
                 </View>
-                {version.status === "published" && version.id !== site.active_publication_id ? (
+                {version.status === "published" &&
+                version.id !== props.site?.active_publication_id ? (
                   <Button
-                    label="Publish this version"
-                    loading={isRollingBack}
-                    onPress={() =>
-                      Alert.alert(
-                        "Publish this earlier version?",
-                        "It will be validated again and published as a new version. History is preserved.",
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          { text: "Publish earlier version", onPress: () => onRollback(version) },
-                        ],
-                      )
-                    }
+                    label="Review"
+                    disabled={actionLocked}
+                    onPress={() => props.onSelectRollback(version)}
                     variant="ghost"
                   />
                 ) : null}
               </View>
-            ))}
-          </GlassCard>
+            ))
+          )}
+          <Button
+            label="Back to website"
+            onPress={() => props.onSetPanel("overview")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
 
-          <GlassCard variant="base" contentStyle={styles.cardContent}>
-            <Text style={styles.cardTitle}>Permanent Mingla address</Text>
-            {host === null ? (
-              <Text style={styles.body}>
-                Your permanent address will appear after setup completes.
-              </Text>
-            ) : (
-              <>
-                <Text style={styles.address}>{host.hostname}</Text>
-                <Text style={styles.helper}>Managed by Mingla.</Text>
-                {site.active_publication_id !== null &&
-                host.status === "active" ? (
-                  <Button
-                    label="View Website"
-                    onPress={() => onViewLive(host.hostname)}
-                    variant="secondary"
-                    leadingIcon="eye"
-                  />
-                ) : null}
-              </>
-            )}
-          </GlassCard>
-
-          {site.status === "error" ? (
-            <GlassCard variant="base" contentStyle={styles.cardContent}>
-              <Text style={styles.failureTitle}>Last good preserved</Text>
-              <Text style={styles.body}>
-                Review the draft in Mingla Studio, then publish again when it
-                validates.
-              </Text>
-            </GlassCard>
-          ) : null}
-        </>
-      )}
+      {props.journeyState === 17 ? (
+        <PanelCard title="Permanent website address" testID="website-address">
+          {host === null ? (
+            <Text style={styles.body}>
+              Your permanent address will appear after setup completes.
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.address}>{host.hostname}</Text>
+              <Text style={styles.helper}>Managed securely by Mingla.</Text>
+              {props.site?.active_publication_id && host.status === "active" ? (
+                <Button
+                  label="View website"
+                  onPress={() => props.onViewLive(host.hostname)}
+                  variant="secondary"
+                />
+              ) : null}
+            </>
+          )}
+          <Button
+            label="Back to website"
+            onPress={() => props.onSetPanel("overview")}
+            variant="ghost"
+            fullWidth
+          />
+        </PanelCard>
+      ) : null}
     </ScrollView>
+  );
+};
+
+const OperationReceipt: React.FC<{
+  operationId: string | null;
+  operation: BrandSiteOperation | null;
+  timedOut: boolean;
+}> = ({ operationId, operation, timedOut }) => (
+  <View style={styles.receipt}>
+    <Text style={styles.meta} selectable>
+      {operationId
+        ? `Operation ${operationId}`
+        : "Recovering the authoritative operation…"}
+    </Text>
+    <Text style={styles.body}>
+      {operation?.status === "ambiguous"
+        ? "Mingla cannot yet prove the final state. The same operation is preserved for reconciliation."
+        : timedOut
+          ? "Automatic checks stopped after the bounded window. The operation remains preserved."
+          : operation?.status === "failed"
+            ? "The operation reached a verified failure."
+            : "Checking the durable receipt…"}
+    </Text>
+  </View>
+);
+
+const ProgressRows: React.FC<{ labels: string[]; complete: number }> = ({
+  labels,
+  complete,
+}) => (
+  <View style={styles.progressList}>
+    {labels.map((label, index) => (
+      <View key={label} style={styles.progressRow}>
+        <View
+          style={[
+            styles.progressDot,
+            index < complete ? styles.progressDotComplete : undefined,
+          ]}
+        />
+        <Text style={index < complete ? styles.progressComplete : styles.helper}>
+          {label}
+        </Text>
+      </View>
+    ))}
+  </View>
+);
+
+const WorkspaceNavigation: React.FC<{ props: BrandWebsiteViewProps }> = ({
+  props,
+}) => {
+  const host = props.site ? primarySiteHost(props.site) : null;
+  return (
+    <GlassCard variant="base" contentStyle={styles.cardContent}>
+      <Text style={styles.cardTitle}>Website workspace</Text>
+      <Button
+        label="Analytics"
+        onPress={() => props.onSetPanel("analytics")}
+        variant="ghost"
+        fullWidth
+      />
+      <Button
+        label="Version history"
+        onPress={() => props.onSetPanel("versions")}
+        variant="ghost"
+        fullWidth
+      />
+      <Button
+        label="Permanent address"
+        onPress={() => props.onSetPanel("address")}
+        variant="ghost"
+        fullWidth
+      />
+      {host && props.site?.active_publication_id && host.status === "active" ? (
+        <Button
+          label="View live website"
+          onPress={() => props.onViewLive(host.hostname)}
+          variant="secondary"
+          leadingIcon="eye"
+          fullWidth
+        />
+      ) : null}
+    </GlassCard>
   );
 };
 
@@ -457,8 +742,27 @@ const styles = StyleSheet.create({
     backgroundColor: accent.warm,
   },
   statusDotLive: { backgroundColor: semantic.success },
-  statusDotError: { backgroundColor: semantic.error },
   actionStack: { gap: spacing.sm },
+  reviewList: {
+    gap: spacing.sm,
+    padding: spacing.md,
+    borderRadius: 12,
+    backgroundColor: glass.tint.profileBase,
+  },
+  reviewItem: { color: textTokens.primary, fontSize: typography.bodySm.fontSize },
+  receipt: {
+    gap: spacing.xs,
+    padding: spacing.sm,
+    borderRadius: 10,
+    backgroundColor: glass.tint.profileBase,
+  },
+  validationFailure: {
+    gap: spacing.xs,
+    padding: spacing.md,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: semantic.error,
+  },
   progressList: { gap: spacing.sm },
   progressRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm },
   progressDot: {
@@ -472,6 +776,11 @@ const styles = StyleSheet.create({
     color: textTokens.primary,
     fontSize: typography.caption.fontSize,
   },
+  failureTitle: {
+    color: semantic.error,
+    fontSize: typography.h3.fontSize,
+    fontWeight: "700",
+  },
   address: {
     color: textTokens.primary,
     fontSize: typography.body.fontSize,
@@ -480,15 +789,25 @@ const styles = StyleSheet.create({
     borderRadius: 10,
     backgroundColor: glass.tint.profileBase,
   },
-  failureTitle: {
-    color: semantic.error,
-    fontSize: typography.h3.fontSize,
-    fontWeight: "700",
-  },
   metricRow: { flexDirection: "row", gap: spacing.sm },
   metric: { flex: 1, gap: spacing.xs },
-  metricValue: { color: textTokens.primary, fontSize: typography.h2.fontSize, fontWeight: "700" },
-  versionRow: { flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingVertical: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: glass.border.profileBase },
+  metricValue: {
+    color: textTokens.primary,
+    fontSize: typography.h2.fontSize,
+    fontWeight: "700",
+  },
+  versionRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingVertical: spacing.sm,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: glass.border.profileBase,
+  },
   versionCopy: { flex: 1, gap: spacing.xs },
-  versionTitle: { color: textTokens.primary, fontSize: typography.bodySm.fontSize, fontWeight: "600" },
+  versionTitle: {
+    color: textTokens.primary,
+    fontSize: typography.bodySm.fontSize,
+    fontWeight: "600",
+  },
 });

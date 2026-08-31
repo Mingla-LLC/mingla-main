@@ -20,6 +20,10 @@ const PATHS = {
   businessRoute: "mingla-business/app/brand/[id]/website.tsx",
   businessView: "mingla-business/src/components/sites/BrandWebsiteView.tsx",
   businessService: "mingla-business/src/services/brandSitesService.ts",
+  businessJourney: "mingla-business/src/sites/websiteJourney.ts",
+  businessEntry: "mingla-business/src/sites/brandWebsiteEntry.ts",
+  businessProfile: "mingla-business/src/components/brand/BrandProfileView.tsx",
+  businessReturn: "mingla-business/src/sites/studioReturn.ts",
   checkout: "supabase/functions/ticket-checkout-create/index.ts",
   cmsPackage: "mingla-site-cms/package.json",
   cmsConfig: "mingla-site-cms/src/lib/config.ts",
@@ -33,6 +37,12 @@ const PATHS = {
   cmsEndpoints: "mingla-site-cms/src/endpoints/sitesEndpoints.ts",
   cmsObservability: "mingla-site-cms/src/lib/observability.ts",
   cmsProxy: "mingla-site-cms/src/proxy.ts",
+  cmsSession: "mingla-site-cms/src/lib/session.ts",
+  cmsNav: "mingla-site-cms/src/components/StudioNav.tsx",
+  cmsMediaClient: "mingla-site-cms/src/lib/studioMediaClient.ts",
+  cmsMediaManager: "mingla-site-cms/src/components/StudioMediaManager.tsx",
+  cmsPreview: "mingla-site-cms/src/components/PreviewChrome.tsx",
+  cmsStyles: "mingla-site-cms/src/app/(payload)/studio.css",
   publicPackage: "mingla-sites/package.json",
   publicConfig: "mingla-sites/src/lib/config.ts",
   publicGateway: "mingla-sites/src/lib/coreGateway.ts",
@@ -40,6 +50,7 @@ const PATHS = {
   publicPublication: "mingla-sites/src/lib/publication.ts",
   publicArtifact: "mingla-sites/src/contracts/artifact.ts",
   publicRenderer: "mingla-sites/src/components/RestaurantV1.tsx",
+  publicStyles: "mingla-sites/src/app/styles.css",
   publicConsent: "mingla-sites/src/components/ConsentControl.tsx",
   publicEvents: "mingla-sites/src/app/api/events/route.ts",
   publicAttributionRoute: "mingla-sites/src/app/api/attribution/route.ts",
@@ -261,8 +272,45 @@ export function violations(files) {
     "usePublishBrandSite",
     "useRollbackBrandSite",
     "isPreviewing={preview.isPending}",
+    "loadPublicationOperation",
+    "onReconcilePublication",
+    "operationId: operation.operationId",
   ]) need(route, token, "Business Website route", failures);
-  need(files.businessView ?? "", "if (!canWork) {\n    return null;", "rank-10 zero signal", failures);
+  need(
+    route,
+    "await persistPublicationOperation(operation);",
+    "durable publication dispatch",
+    failures,
+  );
+  need(files.businessView ?? "", "if (props.rank < 20) return null;", "rank-10 zero signal", failures);
+  for (const token of [
+    'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:"',
+    "publicationOperationKey(",
+    "accountId: string",
+    "brandId: string",
+    "siteId: string",
+  ]) need(files.businessService ?? "", token, "durable publication scope", failures);
+  for (const token of [
+    "export const WEBSITE_JOURNEY",
+    "deriveBusinessWebsiteState",
+    "25:",
+    "30:",
+  ]) need(files.businessJourney ?? "", token, "explicit Website journey owner", failures);
+  for (const token of [
+    "loadBrandWebsiteEntryContext",
+    '"brand-site-control"',
+    'return "Not set up"',
+    'return "Publishing…"',
+  ]) need(files.businessEntry ?? "", token, "status-aware Brand Profile entry", failures);
+  need(files.businessProfile ?? "", 'import("../../sites/brandWebsiteEntry")', "lazy Brand Profile entry boundary", failures);
+  forbid(files.businessProfile ?? "", 'import("../../services/brandSitesService")', "Business eager bundle boundary", failures);
+  forbid(files.businessProfile ?? "", 'import("../../sites/websiteJourney")', "Business eager bundle boundary", failures);
+  forbid(files.businessView ?? "", "Journey state", "customer-safe Website state", failures);
+  for (const token of [
+    "export const STUDIO_RETURN_RESULTS = [",
+    "brandWebsiteReturnPath",
+    "studioResult=",
+  ]) need(files.businessReturn ?? "", token, "validated Business return owner", failures);
   for (const source of [route, files.businessView ?? ""]) {
     forbid(source, "custom domain", "deferred domain UI", failures);
     for (const provider of ["Vercel", "Payload", "Supabase", "Neon"]) {
@@ -348,6 +396,42 @@ export function violations(files) {
     'sameSite: "lax"',
   ]) need(files.cmsProxy ?? "", token, "Studio idle-session boundary", failures);
   for (const token of [
+    "decodeSessionReturnContext",
+    "decodePreviewReturnContext",
+    "studioReturnLocationFromContext",
+    "mingla-business://website-return?brandId=",
+  ]) need(files.cmsSession ?? "", token, "fixed Studio return owner", failures);
+  for (const token of [
+    '["Media", "/studio/media"]',
+    "Site settings & SEO",
+    "Return to Mingla",
+  ]) need(files.cmsNav ?? "", token, "stripped Studio navigation", failures);
+  for (const token of [
+    '"/api/mingla/media/upload-grants"',
+    "grant.upload_url",
+    "grant.required_headers",
+    "for (let attempt = 0; attempt < 10; attempt += 1)",
+    "canSelectStudioMedia",
+  ]) need(files.cmsMediaClient ?? "", token, "executable Studio media manager", failures);
+  for (const token of [
+    "JPEG, PNG or WebP",
+    "20 MB and 40 megapixels",
+    "This image is decorative",
+    "Use image",
+  ]) need(files.cmsMediaManager ?? "", token, "accessible Studio media manager", failures);
+  for (const token of [
+    'mobile: "320px"',
+    'tablet: "768px"',
+    'desktop: "min(100%, 1440px)"',
+    "Private preview — not live",
+    "Publish this revision",
+  ]) need(files.cmsPreview ?? "", token, "complete preview chrome", failures);
+  for (const token of [
+    "--studio-black: #101013",
+    "--studio-gold: #cda052",
+    '[data-collection-slug="media"] .upload',
+  ]) need(files.cmsStyles ?? "", token, "approved Studio visual shell", failures);
+  for (const token of [
     "observedDraftDigest !== input.sourceDigest",
     "await sha256(readback)",
     "restaurant-website-v1",
@@ -389,6 +473,21 @@ export function violations(files) {
   ]) need(publicCombined, token, "public last-good runtime", failures);
   for (const forbidden of ["@payloadcms", "from \"payload\"", "postgresAdapter", "sharp(", "lexicalEditor"])
     forbid(publicCombined, forbidden, "public runtime isolation", failures);
+  for (const token of [
+    "--ink: #101013",
+    "--gold: #cda052",
+    "--gold-hover: #dfb262",
+    "min-width: 320px",
+    "88svh",
+    "76svh",
+    "@media (prefers-reduced-motion: reduce)",
+  ]) need(files.publicStyles ?? "", token, "Restaurant Website v1 visual contract", failures);
+  for (const token of [
+    'className="fact-rail"',
+    "editorial-feature",
+    "ConsentControl",
+    "TrackedLink",
+  ]) need(files.publicRenderer ?? "", token, "Restaurant Website v1 composition", failures);
   need(
     files.publicPublication ?? "",
     "await signedCorePost({",
@@ -482,6 +581,12 @@ function selfTest() {
   const reversions = [
     ["businessFlag", 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", false)', 'readEnvFlag("EXPO_PUBLIC_FF_SITES_ENABLED", true)', "Business feature flag"],
     ["businessRoute", "role.rank >= 20", "role.rank >= 10", "Business Website route"],
+    ["businessRoute", "await persistPublicationOperation(operation);", "await persistPublicationPointer(operation);", "durable publication dispatch"],
+    ["businessService", 'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:v1:"', 'const PUBLICATION_OPERATION_PREFIX = "mingla:brand-site-publication:"', "durable publication scope"],
+    ["businessJourney", "export const WEBSITE_JOURNEY", "const WEBSITE_JOURNEY", "explicit Website journey owner"],
+    ["businessEntry", 'return "Publishing…"', 'return "Website ready"', "status-aware Brand Profile entry"],
+    ["businessProfile", 'import("../../sites/brandWebsiteEntry")', 'import("../../services/brandSitesService")', "Business eager bundle boundary"],
+    ["businessReturn", "export const STUDIO_RETURN_RESULTS = [", "const STUDIO_RETURN_RESULTS = [", "validated Business return owner"],
     ["migration", " FORCE ROW LEVEL SECURITY", "", "Core forced RLS"],
     ["migration", "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_ambiguous", "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_uncertain", "Core migration"],
     ["migration", "v_capability_count <> 132", "v_capability_count <> 120", "Core migration"],
@@ -493,14 +598,22 @@ function selfTest() {
     ["cmsEndpoints", "await runRetentionSweep(", "await runRetentionSweepRemoved(", "Studio gateway"],
     ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
+    ["cmsSession", "decodeSessionReturnContext", "decodeExpiredSessionUnchecked", "fixed Studio return owner"],
+    ["cmsNav", '["Media", "/studio/media"]', '["Media", "/admin/collections/media"]', "stripped Studio navigation"],
+    ["cmsMediaClient", "grant.upload_url", '"/api/direct-upload"', "executable Studio media manager"],
+    ["cmsMediaManager", "This image is decorative", "Skip description", "accessible Studio media manager"],
+    ["cmsPreview", 'mobile: "320px"', 'mobile: "375px"', "complete preview chrome"],
+    ["cmsStyles", "--studio-gold: #cda052", "--studio-gold: #d85a22", "approved Studio visual shell"],
     ["publicPublication", "await signedCorePost({", "await unsignedCorePost({", "public last-good runtime"],
     ["publicGateway", "input.siteId !== config.pilotSiteId", "input.siteId === config.pilotSiteId", "public pilot signing boundary"],
     ["publicConsentContract", 'name === CONSENT_KEY && value === "granted"', 'name.includes(CONSENT_KEY) && value.startsWith("granted")', "public exact consent cookie boundary"],
     ["attribution", "const envelope = await verifySitesEnvelope", "const envelope = await verifyUnsignedEnvelope", "signed attribution gateway"],
     ["publicRenderer", 'aria-labelledby={page.role === "home"', 'aria-labelledby={true || page.role === "home"', "public last-good runtime"],
+    ["publicRenderer", 'className="fact-rail"', 'className="facts"', "Restaurant Website v1 composition"],
+    ["publicStyles", "--gold: #cda052", "--gold: #d85a22", "Restaurant Website v1 visual contract"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.3.3"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.3"', "production dependency isolation"],
-    ["businessView", "Managed by Mingla.", "Configure custom domain", "deferred domain UI"],
+    ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],
     ["secretWorkflow", "final 88-name bundled-authority state", "final state", "existing secret CI lane"],
     ["webWorkflow", "mingla-sites-build:", "mingla-sites-removed:", "existing build CI lane"],
     ["runbook", "restore drill older than 100 days", "restore drill older than one hundred days", "Sites operations runbook"],

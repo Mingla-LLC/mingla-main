@@ -71,13 +71,14 @@ export function useStudioExchange(brandId: string) {
 
 export function useBrandSitePreview(brandId: string, siteId: string | null) {
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (returnSurface: "web" | "native") => {
       if (!siteId) throw new Error("Website unavailable");
       const draft = await validateBrandSiteDraft({ brandId, siteId });
       return createBrandSitePreview({
         siteId,
         expectedRevision: draft.home_revision,
         sourceDigest: draft.draft_digest,
+        returnSurface,
       });
     },
   });
@@ -107,14 +108,16 @@ export function useBrandSiteAnalytics(siteId: string | null, enabled: boolean) {
 export function usePublishBrandSite(brandId: string, siteId: string | null) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async () => {
+    mutationFn: async (input: {
+      operationId: string;
+      validation: Awaited<ReturnType<typeof validateBrandSiteDraft>>;
+    }) => {
       if (!siteId) throw new Error("Website unavailable");
-      const draft = await validateBrandSiteDraft({ brandId, siteId });
       return publishBrandSite({
         siteId,
-        expectedRevision: draft.home_revision,
-        sourceDigest: draft.draft_digest,
-        argumentsDigest: "",
+        operationId: input.operationId,
+        expectedRevision: input.validation.home_revision,
+        sourceDigest: input.validation.draft_digest,
       });
     },
     onSuccess: async () => {
@@ -130,6 +133,18 @@ export function useRollbackBrandSite(brandId: string) {
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: brandSiteKeys.detail(brandId) });
       await queryClient.invalidateQueries({ queryKey: brandSiteKeys.all });
+    },
+  });
+}
+
+export function useValidateBrandSiteDraft(
+  brandId: string,
+  siteId: string | null,
+) {
+  return useMutation({
+    mutationFn: async () => {
+      if (!siteId) throw new Error("Website unavailable");
+      return validateBrandSiteDraft({ brandId, siteId });
     },
   });
 }

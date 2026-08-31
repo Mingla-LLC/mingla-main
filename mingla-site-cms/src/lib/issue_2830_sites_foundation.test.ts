@@ -150,10 +150,12 @@ describe("#2830 retention protection", () => {
 
 describe("#2830 private preview grant", () => {
   it("binds the exact tenant, revision and digest and rejects tampering", async () => {
-    const { decodePreviewGrant, encodePreviewGrant } =
+    const { decodePreviewGrant, decodePreviewReturnContext, encodePreviewGrant } =
       await import("./session");
     const issuedAt = Math.floor(Date.now() / 1000);
     const token = await encodePreviewGrant({
+      // [TEST-MOD-APPROVED #2830] Preview return context is now part of the approved signed grant.
+      return_surface: "native",
       version: 1,
       issuer: "mingla-site-cms",
       audience: "mingla-studio-preview",
@@ -173,12 +175,18 @@ describe("#2830 private preview grant", () => {
     expect(decoded?.source_revision).toBe("4");
     expect(decoded?.source_digest).toBe("a".repeat(64));
     expect(await decodePreviewGrant(`${token.slice(0, -1)}x`)).toBeNull();
+    expect((await decodePreviewReturnContext(token))?.return_surface).toBe("native");
   });
 });
 
 describe("#2830 fixed Studio return contract", () => {
   it("derives only the signed web or native Website workspace target", async () => {
-    const { decodeSession, encodeSession, studioReturnLocation } =
+    const {
+      decodeSession,
+      decodeSessionReturnContext,
+      encodeSession,
+      studioReturnLocation,
+    } =
       await import("./session");
     const now = Math.floor(Date.now() / 1000);
     const base = {
@@ -205,6 +213,30 @@ describe("#2830 fixed Studio return contract", () => {
     expect(studioReturnLocation(native!)).toBe(
       `mingla-business://website-return?brandId=${BRAND_ID}`,
     );
+    for (const result of [
+      "exchange_expired",
+      "session_expired",
+      "preview_expired",
+    ] as const) {
+      expect(studioReturnLocation(native!, result)).toBe(
+        `mingla-business://website-return?brandId=${BRAND_ID}&result=${result}`,
+      );
+      expect(studioReturnLocation(web!, result)).toBe(
+        `https://business.usemingla.com/brand/${BRAND_ID}/website?studioResult=${result}`,
+      );
+    }
+    const expiredToken = await encodeSession({
+      ...base,
+      return_surface: "native",
+      absolute_expires_at: now - 1,
+      idle_expires_at: now - 1,
+    });
+    expect(await decodeSession(expiredToken)).toBeNull();
+    expect(await decodeSessionReturnContext(expiredToken)).toEqual({
+      brand_id: BRAND_ID,
+      site_id: SITE_ID,
+      return_surface: "native",
+    });
     expect(
       await decodeSession(
         await encodeSession({

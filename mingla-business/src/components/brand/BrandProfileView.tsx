@@ -408,6 +408,28 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
   const canViewWebsite = isFeatureEnabled("sites") &&
     canPerformAction(currentRank, "WEBSITE_WORKSPACE");
+  const [websiteContext, setWebsiteContext] = useState<string | null>(null);
+  useEffect(() => {
+    let active = true;
+    if (!canViewWebsite || brand === null || onWebsite === undefined) {
+      setWebsiteContext(null);
+      return () => {
+        active = false;
+      };
+    }
+    setWebsiteContext("Checking website status…");
+    void import("../../sites/brandWebsiteEntry")
+      .then(async ({ loadBrandWebsiteEntryContext }) => {
+        const context = await loadBrandWebsiteEntryContext(brand.id);
+        if (active) setWebsiteContext(context);
+      })
+      .catch(() => {
+        if (active) setWebsiteContext("Status unavailable");
+      });
+    return () => {
+      active = false;
+    };
+  }, [brand, canViewWebsite, onWebsite]);
   // META-ORCH-1076 — provider-neutral: a connected Paystack brand is payout-ready,
   // so the "Connect bank to sell tickets" banner + Operations sub treat it as
   // active even though its Stripe status is "not_connected".
@@ -426,7 +448,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
       rows.push({
         icon: "globe",
         label: "Website",
-        sub: "Edit, preview and publish Restaurant Website v1",
+        sub: websiteContext ?? "Open website workspace",
         onPress: () => {
           if (brand !== null) onWebsite(brand.id);
         },
@@ -505,6 +527,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     canViewAuditLog,
     canViewWebsite,
     onWebsite,
+    websiteContext,
     stripeStatus,
   ]);
 

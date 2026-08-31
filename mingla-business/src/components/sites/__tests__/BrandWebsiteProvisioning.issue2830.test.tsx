@@ -33,6 +33,7 @@ const site = {
 };
 
 describe("#2830 Website state 4", () => {
+  // [TEST-MOD-APPROVED #2830] The approved explicit journey owner adds durable publication props.
   it("shows receipt progress and no editing, preview, publish or insight action", () => {
     let tree!: { toJSON: () => unknown };
     act(() => {
@@ -41,6 +42,9 @@ describe("#2830 Website state 4", () => {
           brandName="Gogi"
           site={site}
           rank={50}
+          journeyState={4}
+          panel="overview"
+          notice={null}
           isLoading={false}
           isError={false}
           isProvisioning={false}
@@ -48,26 +52,37 @@ describe("#2830 Website state 4", () => {
           isPreviewing={false}
           isPublishing={false}
           isRollingBack={false}
+          isValidating={false}
           versions={[]}
           analytics={null}
+          validation={null}
+          validationFailure={null}
+          selectedVersion={null}
           provisionOperationId="00000000-0000-4000-8000-000000000003"
           provisionOperation={null}
           provisionPollingTimedOut={false}
+          publicationOperationId={null}
+          publicationOperation={null}
+          publicationPollingTimedOut={false}
           isReconciling={false}
           onRetry={jest.fn()}
+          onSetPanel={jest.fn()}
           onProvision={jest.fn()}
           onReconcileProvision={jest.fn()}
           onOpenStudio={jest.fn()}
           onPreview={jest.fn()}
           onViewLive={jest.fn()}
           onOpenAri={jest.fn()}
+          onValidatePublish={jest.fn()}
           onPublish={jest.fn()}
+          onSelectRollback={jest.fn()}
           onRollback={jest.fn()}
+          onReconcilePublication={jest.fn()}
         />,
       );
     });
     const content = JSON.stringify(tree.toJSON());
-    expect(content).toContain("Setting up your Website");
+    expect(content).toContain("Creating your website draft");
     for (const forbidden of [
       "Open Mingla Studio",
       "Preview draft",
@@ -87,16 +102,22 @@ describe("#2830 Website state 4", () => {
         tree = create(
           <BrandWebsiteView
             brandName="Gogi" site={site} rank={rank} isLoading={false}
+            journeyState={4} panel="overview" notice={null}
             isError={false} isProvisioning={false} isOpeningStudio={false}
             isPreviewing={false} isPublishing={false} isRollingBack={false}
-            versions={[]} analytics={null}
+            isValidating={false} versions={[]} analytics={null}
+            validation={null} validationFailure={null} selectedVersion={null}
             provisionOperationId="00000000-0000-4000-8000-000000000003"
             provisionOperation={null} provisionPollingTimedOut
+            publicationOperationId={null} publicationOperation={null}
+            publicationPollingTimedOut={false}
             isReconciling={false} onRetry={jest.fn()} onProvision={jest.fn()}
+            onSetPanel={jest.fn()}
             onReconcileProvision={jest.fn()} onOpenStudio={jest.fn()}
             onPreview={jest.fn()} onViewLive={jest.fn()}
-            onOpenAri={jest.fn()} onPublish={jest.fn()}
-            onRollback={jest.fn()}
+            onOpenAri={jest.fn()} onValidatePublish={jest.fn()}
+            onPublish={jest.fn()} onSelectRollback={jest.fn()}
+            onRollback={jest.fn()} onReconcilePublication={jest.fn()}
           />,
         );
       });
@@ -104,6 +125,6 @@ describe("#2830 Website state 4", () => {
     };
     expect(renderAt(50)).toContain("Check setup status");
     expect(renderAt(40)).not.toContain("Check setup status");
-    expect(renderAt(40)).toContain("A brand admin can check");
+    expect(renderAt(40)).toContain("authoritative setup receipt");
   });
 });

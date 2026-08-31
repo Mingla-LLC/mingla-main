@@ -47,7 +47,7 @@ export interface BrandSitePreview {
 export interface BrandSiteOperation {
   operation_id: string;
   site_id: string;
-  kind: "provision" | "preview" | "publish" | "rollback";
+  kind: "provision" | "editor_session" | "preview" | "publish" | "rollback" | "reconcile";
   status: "authorized" | "executing" | "succeeded" | "failed" | "ambiguous";
   error_code: string | null;
   authorized_at: string;
