@@ -378,8 +378,10 @@ export function audit(base = repoRoot) {
   if (field?.owner !== "Platform Security" || field?.source_type !== "secure_vault") failures.push("secret field owner/source contract drifted");
   if ((secretManifest?.secrets ?? []).some((entry) => entry.name === "BRAND_PERSON_ERASURE_CHALLENGE_SECRET")) failures.push("standalone erasure secret name is forbidden");
 
+  // [TEST-MOD-APPROVED #2830] — Sites appends the founder-approved slot-88
+  // bundled security envelope; every #1772 field and ordering check stays fixed.
   for (const needle of [
-    "87-name envelope",
+    "88-name envelope",
     "canonical standard Base64",
     "fail-closed handler ordering",
     "provider executes the Node proof before both happy Deno suites",

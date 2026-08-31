@@ -62,6 +62,9 @@ const mutations = [
   ["supabase/functions/brand-person-ingest-worker/index.ts", 'message?.includes("people_erased_contact_suppressed")', "false", "terminal ingest tombstone mapping"],
   ["supabase/migrations/20270612001772_issue_1772_brand_person_maintenance.sql", "SET delivery_state='dispatching'", "SET delivery_state='sent'", "one-shot DB dispatch claim"],
   ["supabase/secrets.manifest.json", "BRAND_PERSON_ERASURE_CHALLENGE_SECRET", "BRAND_PERSON_ERASURE_SHARED_SECRET", "bundle field"],
+  // [TEST-MOD-APPROVED #2830] — a true-source rollback to the pre-Sites
+  // envelope must make the slot-88 compatibility requirement fail closed.
+  ["scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs", "88-name envelope", "87-name envelope", "slot-88 secret proof envelope"],
   ["supabase/secrets.manifest.json", "supabase/functions/support-brand-person-erasure/erasureContract.ts", "supabase/functions/support-brand-person-erasure/index.ts", "sole manifest reader"],
   ["supabase/secrets.manifest.json", '"name":"BRAND_PERSON_ERASURE_CHALLENGE_SECRET","owner":"Platform Security","source_type":"secure_vault"', '"name":"BRAND_PERSON_ERASURE_CHALLENGE_SECRET","owner":"Growth Engineering","source_type":"provider_dashboard"', "field ownership/source"],
   ["supabase/functions/support-brand-person-erasure/erasureContract.ts", "const bundle = readEnv(ERASURE_SECRET_BUNDLE);", "const bundle = readEnv(ERASURE_SECRET_FIELD) ?? readEnv(ERASURE_SECRET_BUNDLE);", "direct-name fallback"],
