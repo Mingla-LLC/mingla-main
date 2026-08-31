@@ -90,7 +90,7 @@ BEGIN PERFORM nextval('public.l5_fired'); RETURN NULL; END $w$;
 CREATE TRIGGER l5_verify AFTER INSERT OR UPDATE ON public.brand_payout_releases
   FOR EACH ROW WHEN (NEW.id = '11720000-0000-0000-0000-000000000007' AND NEW.stripe_payout_id = 'po_l5_mutant') EXECUTE FUNCTION public.l5_witness();
 ALTER TABLE public.brand_payout_releases ENABLE ALWAYS TRIGGER l5_verify;
--- @l5-verify: SELECT is_called FROM public.l5_fired
+-- @l5-verify: SELECT is_called FROM public.l5_fired /* issue_1772_terminal_rsvp */
 
 -- ===== M-1172-02b =====
 -- terminal: release …111 reopened exactly once (attempt_count = 8). A SENTINEL,
@@ -753,21 +753,24 @@ GRANT SELECT ON TABLE public.business_recent_entity_opens TO authenticated;
 -- @l5-verify: SELECT has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT')
 
 -- ===== M-1772-01 =====
--- [TEST-MOD-APPROVED #1772] Preserve the real person-row wait, then falsify only
--- the terminal novel-address predicate by allowing its one deterministic fixture
--- to commit as retired after erasure. The ordinary tombstone checks stay intact.
-CREATE OR REPLACE FUNCTION public.l5_issue_1772_allow_novel_writer()
+-- [TEST-MOD-APPROVED #1772] Falsify only the terminal legacy-RSVP stale-state
+-- predicate. The earlier successful approval remains unchanged; when the fixture
+-- deliberately moves that same RSVP from approved to denied, keep it pending so
+-- the final approve succeeds and reaches the terminal RAISE EXCEPTION.
+CREATE OR REPLACE FUNCTION public.l5_issue_1772_keep_rsvp_pending()
 RETURNS trigger LANGUAGE plpgsql AS $l5$
 BEGIN
-  IF NEW.id='17720000-0000-4000-8000-000000000904'::uuid THEN
-    PERFORM 1 FROM public.brand_people WHERE id=NEW.brand_person_id FOR UPDATE;
-    NEW.record_state:='retired';
-    NEW.retired_at:=now();
+  IF NEW.id='17720100-0000-4000-8000-000000000060'::uuid
+     AND OLD.approval_status='approved'
+     AND NEW.approval_status='denied' THEN
+    NEW.approval_status:='pending';
+    PERFORM nextval('public.l5_fired');
   END IF;
   RETURN NEW;
 END
 $l5$;
-CREATE TRIGGER a_l5_issue_1772_novel_writer
-  BEFORE INSERT ON public.brand_person_contact_methods
-  FOR EACH ROW EXECUTE FUNCTION public.l5_issue_1772_allow_novel_writer();
--- @l5-verify: SELECT EXISTS(SELECT 1 FROM public.brand_person_contact_methods WHERE id='17720000-0000-4000-8000-000000000904'::uuid)
+CREATE TRIGGER l5_issue_1772_keep_rsvp_pending
+  BEFORE UPDATE OF approval_status ON public.event_rsvps
+  FOR EACH ROW EXECUTE FUNCTION public.l5_issue_1772_keep_rsvp_pending();
+ALTER TABLE public.event_rsvps ENABLE ALWAYS TRIGGER l5_issue_1772_keep_rsvp_pending;
+-- @l5-verify: SELECT is_called FROM public.l5_fired
