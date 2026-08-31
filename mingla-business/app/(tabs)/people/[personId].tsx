@@ -114,13 +114,13 @@ function MaintenanceDetailExperience({
     : null;
 
   React.useEffect(() => {
-    if (restoredMerge === null) return;
+    if (restoredMerge === null || mergeOpen) return;
     if (restoredMerge.survivorPersonId !== personId) {
       router.replace(`/(tabs)/people/${restoredMerge.survivorPersonId}` as never);
       return;
     }
     if (detail !== null) setMergeOpen(true);
-  }, [detail, personId, restoredMerge, router]);
+  }, [detail, mergeOpen, personId, restoredMerge, router]);
 
   const mutationDisabled = !maintenance.mutationAllowed || maintenance.merge.isPending
     || maintenance.promote.isPending || maintenance.split.isPending;
