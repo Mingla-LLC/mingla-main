@@ -155,6 +155,30 @@ export function violations(files) {
     "operation.reconcile_checked",
     "cms_origin !~ '(localhost|127\\.0\\.0\\.1|@|\\*|\\?|#)'",
   ]) need(migration, token, "Core migration", failures);
+  need(
+    migration,
+    "pilot_site_id IS NULL OR pilot_brand_id IS NOT NULL",
+    "Gogi pilot bootstrap boundary",
+    failures,
+  );
+  const provision = migration.match(
+    /CREATE OR REPLACE FUNCTION public\.brand_site_provision\([\s\S]*?\n\$\$;/,
+  )?.[0] ?? "";
+  for (const token of [
+    "SELECT config.pilot_brand_id INTO v_pilot_brand_id",
+    "WHERE config.config_key = 'sites_v1'",
+    "FOR SHARE",
+    "v_pilot_brand_id IS DISTINCT FROM p_brand_id",
+  ]) need(provision, token, "Gogi pilot provisioning boundary", failures);
+  for (const token of ["pilot_site_id", "pilot_enabled"]) {
+    forbid(provision, token, "Gogi pilot provisioning bootstrap", failures);
+  }
+  if (
+    provision.indexOf("v_pilot_brand_id IS DISTINCT FROM p_brand_id") >
+      provision.indexOf("INSERT INTO public.brand_sites")
+  ) {
+    failures.push("Gogi pilot provisioning boundary: allowlist runs after site creation");
+  }
   forbid(migration, "CREATE POLICY scanner", "scanner isolation", failures);
 
   const security = files.security ?? "";
@@ -462,6 +486,8 @@ function selfTest() {
     ["migration", "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_ambiguous", "CREATE OR REPLACE FUNCTION public.brand_site_mark_operation_uncertain", "Core migration"],
     ["migration", "v_capability_count <> 132", "v_capability_count <> 120", "Core migration"],
     ["migration", "extensions.gen_random_bytes(32)", "gen_random_bytes(32)", "Core migration"],
+    ["migration", "pilot_site_id IS NULL OR pilot_brand_id IS NOT NULL", "(pilot_brand_id IS NULL) = (pilot_site_id IS NULL)", "Gogi pilot bootstrap boundary"],
+    ["migration", "v_pilot_brand_id IS DISTINCT FROM p_brand_id", "v_pilot_brand_id IS NULL", "Gogi pilot provisioning boundary"],
     ["security", "Deno.env.get(ENVELOPE_NAME)", "Deno.env.get(ENVELOPE_NAME); Deno.env.get(ENVELOPE_NAME)", "exactly one environment read"],
     ["ariTools", 'publicationTool("rollback_site")', 'publicationTool("rollback_site_removed")', "Ari closed tool registry"],
     ["cmsEndpoints", "await runRetentionSweep(", "await runRetentionSweepRemoved(", "Studio gateway"],

@@ -31,7 +31,6 @@ import {
 } from "../../../src/services/brandSitesService";
 import {
   openStudioHandoff,
-  STUDIO_NATIVE_RETURN_URL,
   studioReturnSurface,
 } from "../../../src/sites/studioHandoff";
 
@@ -127,14 +126,14 @@ export default function BrandWebsiteRoute(): React.ReactElement {
   const openPreview = useCallback(async () => {
     try {
       const grant = await preview.mutateAsync();
-      if (Platform.OS === "web") {
-        await Linking.openURL(grant.preview_url);
-      } else {
-        await WebBrowser.openAuthSessionAsync(
-          grant.preview_url,
-          STUDIO_NATIVE_RETURN_URL,
-        );
-      }
+      await openStudioHandoff(
+        grant.preview_url,
+        studioReturnSurface(Platform.OS),
+        {
+          openWeb: Linking.openURL,
+          openNative: WebBrowser.openAuthSessionAsync,
+        },
+      );
     } catch {
       Alert.alert(
         "Couldn’t create preview",

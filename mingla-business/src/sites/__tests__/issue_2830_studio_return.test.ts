@@ -1,3 +1,5 @@
+import fs from "node:fs";
+import path from "node:path";
 import {
   studioExchangeUrl,
 } from "../../services/brandSitesService";
@@ -54,5 +56,18 @@ describe("#2830 Studio native/web return", () => {
     await openStudioHandoff("https://studio.example/exchange", "web", bindings);
     expect(openWeb).toHaveBeenCalledWith("https://studio.example/exchange");
     expect(openNative).toHaveBeenCalledTimes(1);
+  });
+
+  it("routes Website previews through the fixed handoff instead of an opaque redirect call", () => {
+    const route = fs.readFileSync(
+      path.resolve(__dirname, "../../../app/brand/[id]/website.tsx"),
+      "utf8",
+    );
+    expect(route).toContain("openStudioHandoff(\n        grant.preview_url");
+    expect(route).toContain("openNative: WebBrowser.openAuthSessionAsync");
+    expect(route).not.toMatch(
+      /WebBrowser\.openAuthSessionAsync\s*\(\s*grant\.preview_url/,
+    );
+    expect(route).not.toContain("STUDIO_NATIVE_RETURN_URL");
   });
 });

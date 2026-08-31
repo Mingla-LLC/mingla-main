@@ -766,7 +766,7 @@ CREATE TABLE public.brand_site_service_config (
   updated_by uuid NOT NULL REFERENCES auth.users(id),
   updated_at timestamptz NOT NULL,
   CONSTRAINT brand_site_service_config_pair_ck CHECK (
-    (pilot_brand_id IS NULL) = (pilot_site_id IS NULL)
+    pilot_site_id IS NULL OR pilot_brand_id IS NOT NULL
   ),
   CONSTRAINT brand_site_service_config_enable_ck CHECK (
     NOT pilot_enabled OR (pilot_brand_id IS NOT NULL AND pilot_site_id IS NOT NULL)
@@ -930,12 +930,22 @@ DECLARE
   v_actor uuid := auth.uid();
   v_site public.brand_sites%ROWTYPE;
   v_receipt public.brand_site_operation_receipts%ROWTYPE;
+  v_pilot_brand_id uuid;
 BEGIN
   IF v_actor IS NULL OR public.biz_brand_effective_rank(p_brand_id, v_actor) < 50 THEN
     RAISE EXCEPTION 'sites_forbidden';
   END IF;
   IF p_arguments_digest !~ '^[0-9a-f]{64}$' THEN
     RAISE EXCEPTION 'sites_validation_failed';
+  END IF;
+  -- The disabled service row is the bootstrap allowlist: Gogi's brand may be
+  -- bound before its site exists, while every other brand fails closed.
+  SELECT config.pilot_brand_id INTO v_pilot_brand_id
+  FROM public.brand_site_service_config config
+  WHERE config.config_key = 'sites_v1'
+  FOR SHARE;
+  IF NOT FOUND OR v_pilot_brand_id IS DISTINCT FROM p_brand_id THEN
+    RAISE EXCEPTION 'sites_forbidden';
   END IF;
   SELECT * INTO v_receipt FROM public.brand_site_operation_receipts
     WHERE operation_id = p_operation_id FOR UPDATE;

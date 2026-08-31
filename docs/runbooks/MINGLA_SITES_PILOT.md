@@ -27,6 +27,12 @@ customer draft content.
 Keep the feature flag off and block the first publish until all of the following
 have issue evidence:
 
+Bootstrap remains disabled: create the private `sites_v1` service row with only
+Gogi's `pilot_brand_id` bound and `pilot_enabled = false`, provision that brand,
+then bind the returned `pilot_site_id` while leaving the pilot disabled. Core
+rejects provisioning for every other brand. Set `pilot_enabled = true` only
+after every launch gate below passes and the separate activation is approved.
+
 1. Daily database backup entitlement is verified with at least seven days of
    retention, and the most recent evidence is no older than 26 hours.
 2. The nightly object manifest covers artifact/media key, byte count, digest,
