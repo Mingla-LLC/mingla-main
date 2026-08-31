@@ -18,6 +18,7 @@ that date are a translated back-fill from the old ORCH/artifact system; old IDs 
 parentheses for traceability.
 
 ## Shipped
+- 2026-08-31 — Business teams can now safely merge duplicate Book contacts, reverse exact merges, promote primary channels, see alternate identity/history, and support can erase verified non-user records without losing suppression proof (#1772, PR #2868)
 - 2026-08-30 — Multi-date public events now remain current and purchasable through their final occurrence across buyer web, Business, and Consumer surfaces, instead of ending when their first date finishes (#2582, PR #2850)
 - 2026-08-30 — Missing email HMAC authority now stops before parallel fingerprint work begins, eliminating intermittent crypto-leak CI failures while preserving valid delivery idempotency (#2874, PR #2875)
 - 2026-08-30 — The pull-request cancellation safety proof now stays accurate on main and unrelated future branches instead of falsely requiring every checkout to recreate its original 123-file change (#2871, PR #2872)

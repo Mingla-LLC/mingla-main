@@ -216,6 +216,7 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     referenceFiles: Object.freeze([
       ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
       ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
+      ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
       "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
     ]),
   }),
