@@ -7,8 +7,10 @@ const source = readFileSync(
 
 describe("#1772 native maintenance footer hit targets", () => {
   test("keeps keyboard awareness only in the searchable picker", () => {
-    expect(source.match(/<SmartScrollView\b/g) ?? []).toHaveLength(1);
-    expect(source.match(/<\/SmartScrollView>/g) ?? []).toHaveLength(1);
+    // [TEST-MOD-APPROVED #1772] Keep the canonical wrapper name pinned by the
+    // #1772 Class A contract; only the no-input review panes use the alias.
+    expect(source.match(/<ScrollView\b/g) ?? []).toHaveLength(1);
+    expect(source.match(/<\/ScrollView>/g) ?? []).toHaveLength(1);
     expect(source).toContain('keyboardShouldPersistTaps="handled"');
   });
 
@@ -16,8 +18,8 @@ describe("#1772 native maintenance footer hit targets", () => {
     // [TEST-MOD-APPROVED #1772] No-input review panes do not need keyboard
     // coordination. Bounding them independently keeps the footer outside the
     // review scroll surface on every native size.
-    expect(source.match(/<NativeScrollView\b/g) ?? []).toHaveLength(2);
-    expect(source.match(/<\/NativeScrollView>/g) ?? []).toHaveLength(2);
+    expect(source.match(/<ReviewScrollView\b/g) ?? []).toHaveLength(2);
+    expect(source.match(/<\/ReviewScrollView>/g) ?? []).toHaveLength(2);
     expect(source.match(/style=\{styles\.reviewScroll\}/g) ?? []).toHaveLength(
       2,
     );

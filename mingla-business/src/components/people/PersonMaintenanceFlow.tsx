@@ -4,7 +4,7 @@ import {
   findNodeHandle,
   Platform,
   Pressable,
-  ScrollView as NativeScrollView,
+  ScrollView as ReviewScrollView,
   StyleSheet,
   Text,
   useWindowDimensions,
@@ -38,7 +38,7 @@ import { Icon } from "../ui/Icon";
 import { Input } from "../ui/Input";
 import { Sheet } from "../ui/Sheet";
 import { Skeleton } from "../ui/Skeleton";
-import { ScrollView as SmartScrollView } from "../../wrappers/SmartScrollView";
+import { ScrollView } from "../../wrappers/SmartScrollView";
 import { IdentityOperationReceipt } from "./IdentityOperationReceipt";
 import { PersonComparisonCard } from "./PersonComparisonCard";
 
@@ -570,7 +570,7 @@ export function PersonMaintenanceFlow(
                 </Text>
               </View>
             ) : (
-              <SmartScrollView contentContainerStyle={styles.results} keyboardShouldPersistTaps="handled">
+              <ScrollView contentContainerStyle={styles.results} keyboardShouldPersistTaps="handled">
                 {props.candidateRows.map((candidate) => (
                   <CandidateRow
                     key={candidate.personId}
@@ -594,7 +594,7 @@ export function PersonMaintenanceFlow(
                     onPress={props.onLoadMoreCandidates}
                   />
                 ) : null}
-              </SmartScrollView>
+              </ScrollView>
             )}
           </View>
         ) : (
@@ -625,7 +625,7 @@ export function PersonMaintenanceFlow(
                 </View>
               </View>
             ) : props.preview ? (
-              <NativeScrollView style={styles.reviewScroll} contentContainerStyle={styles.reviewContent}>
+              <ReviewScrollView style={styles.reviewScroll} contentContainerStyle={styles.reviewContent}>
                 <View
                   accessibilityRole="radiogroup"
                   accessibilityLabel="Choose the person to keep"
@@ -695,7 +695,7 @@ export function PersonMaintenanceFlow(
                 ) : props.preview.state === "distinct_linked_users" ? (
                   <Button label="Done" variant="secondary" fullWidth onPress={props.onCloseMerge} />
                 ) : null}
-              </NativeScrollView>
+              </ReviewScrollView>
             ) : null}
             {confirmMerge && inlineConfirmation ? (
               <View style={styles.inlineConfirm} accessibilityViewIsModal>
@@ -822,7 +822,7 @@ export function PersonMaintenanceFlow(
                 <Button label="Try again" variant="secondary" onPress={props.onRetrySplitPreview} />
               </View>
             ) : props.splitPreview?.state === "safe" ? (
-              <NativeScrollView style={styles.reviewScroll} contentContainerStyle={styles.reviewContent}>
+              <ReviewScrollView style={styles.reviewScroll} contentContainerStyle={styles.reviewContent}>
                 <Text style={styles.sectionLabel}>After Split</Text>
                 <View style={[styles.comparisonRow, stacked && styles.stacked]}>
                   <PersonComparisonCard person={props.splitPreview.left} />
@@ -843,7 +843,7 @@ export function PersonMaintenanceFlow(
                     {splitMutationError}
                   </Text>
                 ) : null}
-              </NativeScrollView>
+              </ReviewScrollView>
             ) : null}
             {confirmSplit && inlineConfirmation ? (
               <View style={styles.inlineConfirm} accessibilityViewIsModal>
