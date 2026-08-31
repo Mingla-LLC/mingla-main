@@ -63,16 +63,11 @@
 // gate everyone bypasses is a gate that carries no information (#2113).
 //
 // So the honest narrow scope is: the gate's unit is the LIFECYCLE TABLE. It
-// discovers 23 of them in this repo and demands, for each, a reader, an
-// advancer, and a REACHABLE advancer. 20 already satisfy that; the three that do
-// not are allowlisted below by NAME and REASON, which is the point — the gate
-// SEES them. `brand_person_merge_events` — `status` in
-// (`active`,`reversed`), a nullable `reversed_at`, and
-// `brand_person_merge_reversal_shape` coupling them, the identical shape as the
-// conflicts table — is caught by (C): the only statement in the repo that
-// advances it to `'reversed'` lives inside `biz_reverse_brand_person_merge`,
-// which nothing calls. It is allowlisted below WITH the reason, so the gate
-// SEES it and NAMES it rather than being quietly narrowed to miss it.
+// discovers 28 of them in this repo and demands, for each, a reader, an
+// advancer, and a REACHABLE advancer. #1772 made the brand-person merge reversal
+// lifecycle reachable through its authorization-enforcing manual wrapper and
+// Business RPC caller, so 26 now satisfy the rule; the remaining two are
+// allowlisted below by NAME and REASON, which is the point — the gate SEES them.
 //
 // Modes:
 //   node issue-2305-status-table-has-a-resolver.mjs              — enforce
@@ -105,18 +100,6 @@ const CALLER_DIRS = [
  */
 const WRITE_ONLY_BY_DESIGN = new Map([
   [
-    "brand_person_merge_events",
-    "#2305 — `status` advances to 'reversed' ONLY inside " +
-      "`biz_reverse_brand_person_merge`, which is fully implemented, writes a " +
-      "complete reversal_manifest, and is called by NOTHING in production: it " +
-      "is service_role-only with no client grant and no Split UI. #2305 " +
-      "deliberately did not build that UI (SPEC §2 rules it out of scope) and " +
-      "must NOT grant the function to `authenticated` — it takes p_actor as a " +
-      "parameter and performs no authorization of its own (F-8). This entry is " +
-      "the third confirmed instance of the write-with-no-reader class and is " +
-      "recorded here so it stays visible until the Split path is built.",
-  ],
-  [
     "ad_app_acquisition_canaries",
     "#2015 — a SEVEN-state lifecycle ('not_started' -> approval_required -> " +
       "paused_ready -> running -> passed/failed/expired) with a `completed_at` " +
@@ -139,6 +122,15 @@ const WRITE_ONLY_BY_DESIGN = new Map([
       "PRE-EXISTING and outside #2305's allowlist — filed for the orchestrator, " +
       "not fixed here.",
   ],
+]);
+
+// Exemptions removed after their resolver shipped stay here as a one-way
+// ratchet. The append-only unit suite names the original #2305 regression
+// (`brand_person_merge_events`) and must keep proving that a reachable resolver
+// makes that exemption unnecessary, without making the table exempt again in
+// the live repository scan.
+const RETIRED_WRITE_ONLY_BY_DESIGN = new Set([
+  "brand_person_merge_events", // #1772 — Split is now a reachable resolver.
 ]);
 const EXPECTED_EXEMPT = WRITE_ONLY_BY_DESIGN.size;
 
@@ -489,11 +481,24 @@ export function analyze(migrations, callerSources) {
   );
   // An exemption that is no longer NEEDED is also stale: the table now has a
   // reachable resolver, so the entry should be dropped.
-  const unneededExemptions = results
+  const exemptionResolved = (r) =>
+    r.hasReader && r.advancerCount > 0 && r.reachableAdvancer;
+  const activeUnneededExemptions = results
     .filter((r) => r.exempt && r.hasReader && r.advancerCount > 0 && r.reachableAdvancer)
     .map((r) => r.table);
+  const unneededExemptions = results
+    .filter((r) =>
+      (r.exempt || RETIRED_WRITE_ONLY_BY_DESIGN.has(r.table)) && exemptionResolved(r)
+    )
+    .map((r) => r.table);
 
-  return { results, violations, staleExemptions, unneededExemptions };
+  return {
+    results,
+    violations,
+    staleExemptions,
+    unneededExemptions,
+    activeUnneededExemptions,
+  };
 }
 
 /* ------------------------------------------------------------------- io --- */
@@ -658,7 +663,7 @@ function selfTest() {
   // 8. A STALE exemption must fail: an allowlist entry matching no discovered
   //    table is a gate quietly narrowing itself.
   r = analyze([LANDFILL, RESOLVER], ['supabase.rpc("biz_resolve_widget");']);
-  if (!r.staleExemptions.includes("brand_person_merge_events")) {
+  if (!r.staleExemptions.includes("ad_app_acquisition_canaries")) {
     console.error("#2305 self-test: a stale exemption was not reported.");
     process.exit(1);
   }
@@ -681,7 +686,7 @@ function main() {
 
   const migrations = loadMigrations();
   const callers = loadCallerSources();
-  const { results, violations, staleExemptions, unneededExemptions } = analyze(
+  const { results, violations, staleExemptions, activeUnneededExemptions } = analyze(
     migrations, callers,
   );
 
@@ -746,11 +751,21 @@ function main() {
     );
     process.exit(1);
   }
-  if (unneededExemptions.length > 0) {
+  if (activeUnneededExemptions.length > 0) {
     console.error(
       "#2305: WRITE_ONLY_BY_DESIGN still exempts table(s) that now HAVE a reachable " +
-        "resolver: " + unneededExemptions.join(", ") +
+        "resolver: " + activeUnneededExemptions.join(", ") +
         ".\nDrop the entry — the exemption is no longer telling the truth.",
+    );
+    process.exit(1);
+  }
+  const resurrectedExemptions = [...RETIRED_WRITE_ONLY_BY_DESIGN].filter((table) =>
+    WRITE_ONLY_BY_DESIGN.has(table)
+  );
+  if (resurrectedExemptions.length > 0) {
+    console.error(
+      "#2305: retired WRITE_ONLY_BY_DESIGN exemption(s) were reintroduced: " +
+        resurrectedExemptions.join(", ") + ".",
     );
     process.exit(1);
   }

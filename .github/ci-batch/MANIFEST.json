@@ -22442,6 +22442,8 @@
       "providerWorkflow": ".github/workflows/postgres-contract-suites.yml",
       "referenceFiles": [
         ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
+        ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+        ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
         "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
         "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts"
@@ -22535,10 +22537,13 @@
         ".github/scripts/strict-grep/MANIFEST.json",
         ".github/scripts/strict-grep/issue-1424-stay-business-authoring.adversarial.test.mjs",
         ".github/scripts/strict-grep/issue-1424-stay-business-authoring.mjs",
+        ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+        ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
         ".github/scripts/strict-grep/issue-1860-public-tables-rls-enabled.mjs",
         ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
         ".github/scripts/strict-grep/issue-2013-ari-tenant-containment.mjs",
         "scripts/issue-1860/issue-1860-public-tables-rls.tester.adversarial.test.mjs",
+        "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
         "supabase/functions/__tests__/orch_1289_stop_footer_wire_preview_parity.tester.test.ts",
         "supabase/migrations/__tests__/issue_2725_competitor_intelligence_happy.test.js",
         "supabase/migrations/__tests__/issue_855_pr1_numbers_engine_rollups.test.sql",

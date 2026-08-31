@@ -221,6 +221,9 @@ const AUTH_SCOPED_HOOK_FILES = [
   // so the query folds isAuthReady, user, brandId and resolved role into
   // `enabled` exactly as useBrandPeople does.
   "marketing/useBrandPersonConflicts.ts",
+  // [TEST-MOD-APPROVED #1772] Maintenance reads and mutations are actor/brand
+  // scoped and must wait for direct auth/user/role authority.
+  "marketing/useBrandPersonMaintenance.ts",
 ];
 
 // ── Public / dual-use hooks. These MUST NOT be gated — buyer-web anon reads

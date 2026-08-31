@@ -1,17 +1,31 @@
 import { reportNonFatal } from "../diagnostics/reportNonFatal";
-import type { AddBrandPersonInput, AddBrandPersonResult, BookCursor, BrandPeopleBookPage, BrandPersonConflict, BrandPersonConflictCandidate, BrandPersonConflictPage, BrandPersonConflictReason, BrandPersonConflictSourceKind, BrandPersonSummary, ConflictResolution, PeopleErrorCode, ResolveBrandPersonConflictInput, ResolveBrandPersonConflictResult } from "../types/people";
+import type {
+  AddBrandPersonInput,
+  AddBrandPersonResult,
+  BookCursor,
+  BrandPeopleBookPage,
+  BrandPersonConflict,
+  BrandPersonConflictCandidate,
+  BrandPersonConflictPage,
+  BrandPersonConflictReason,
+  BrandPersonConflictSourceKind,
+  BrandPersonDetail,
+  BrandPersonSummary,
+  ConflictResolution,
+  PeopleErrorCode,
+  ResolveBrandPersonConflictInput,
+  ResolveBrandPersonConflictResult,
+} from "../types/people";
 import { supabase } from "./supabase";
 
-const SAFE_CODES: ReadonlySet<string> = new Set([
-  "people_forbidden","people_not_found","people_limit_invalid","people_search_invalid","people_cursor_invalid",
-  "people_name_invalid","people_email_invalid","people_phone_invalid","people_contact_required","people_idempotency_conflict",
+const SAFE_CODES = "|people_forbidden|people_not_found|people_limit_invalid|people_search_invalid|people_cursor_invalid|" +
+  "people_name_invalid|people_email_invalid|people_phone_invalid|people_contact_required|people_idempotency_conflict|" +
   // #2305 — every resolve-path error the sheet renders specific copy for. Anything
   // NOT listed here maps to people_temporarily_unavailable and stays retryable, so a
   // raw 23505/P0002 can never reach the UI as an opaque failure.
-  "people_conflict_not_found","people_conflict_already_resolved","people_resolution_invalid",
-  "people_conflict_candidate_invalid","people_conflict_source_missing","people_conflict_user_collision",
-  "people_conflict_subject_unavailable","people_conflict_not_dismissable",
-]);
+  "people_conflict_not_found|people_conflict_already_resolved|people_resolution_invalid|" +
+  "people_conflict_candidate_invalid|people_conflict_source_missing|people_conflict_user_collision|" +
+  "people_conflict_subject_unavailable|people_conflict_not_dismissable|people_erased_contact_suppressed|";
 export class PeopleServiceError extends Error {
   constructor(public readonly code: PeopleErrorCode, public readonly retryable: boolean) {
     super(code); this.name = "PeopleServiceError";
@@ -33,6 +47,23 @@ function parsePerson(v: unknown): BrandPersonSummary {
   });
   return { personId:v.personId, displayName:v.displayName, avatarUrl:v.avatarUrl, updatedAt:v.updatedAt, contacts, suppressions };
 }
+function parsePersonDetailOrLegacy(v: unknown): BrandPersonDetail | BrandPersonSummary {
+  const person = parsePerson(v);
+  if (!isRecord(v)) throw malformed();
+  if (!("alternateNames" in v) && !("linked" in v)
+      && !("identityVersion" in v) && !("capabilities" in v)) return person;
+  if (!Array.isArray(v.alternateNames)
+      || !v.alternateNames.every(stringValue) || typeof v.linked !== "boolean"
+      || !stringValue(v.identityVersion) || !isRecord(v.capabilities)) throw malformed();
+  const capabilities = v.capabilities;
+  if (typeof capabilities.canMerge !== "boolean"
+      || typeof capabilities.canPromotePrimary !== "boolean"
+      || typeof capabilities.canViewMergeHistory !== "boolean"
+      || typeof capabilities.canSplit !== "boolean") throw malformed();
+  return { ...person, alternateNames: v.alternateNames as string[], linked: v.linked,
+    identityVersion: v.identityVersion,
+    capabilities: capabilities as unknown as BrandPersonDetail["capabilities"] };
+}
 function malformed(): PeopleServiceError {
   const error = new PeopleServiceError("people_unknown", false);
   reportNonFatal("people-malformed-response", error, { feature: "people", code: error.code });
@@ -40,8 +71,7 @@ function malformed(): PeopleServiceError {
 }
 function fromRpcError(error: { code?: string; message?: string; status?: number }): PeopleServiceError {
   const messageCode = error.message?.match(/people_[a-z_]+/)?.[0];
-  if (messageCode && SAFE_CODES.has(messageCode)) return new PeopleServiceError(messageCode as PeopleErrorCode, false);
-  if (typeof error.status === "number" && error.status >= 500) return new PeopleServiceError("people_temporarily_unavailable", true);
+  if (messageCode && SAFE_CODES.includes(`|${messageCode}|`)) return new PeopleServiceError(messageCode as PeopleErrorCode, false);
   return new PeopleServiceError("people_temporarily_unavailable", true);
 }
 export async function listBrandPeople(input:{brandId:string;search:string|null;cursor:BookCursor|null;limit:number}):Promise<BrandPeopleBookPage>{
@@ -51,8 +81,8 @@ export async function listBrandPeople(input:{brandId:string;search:string|null;c
   if(data.nextCursor!==null&&cursor===null) throw malformed();
   return {rows:data.rows.map(parsePerson),nextCursor:cursor,bookTotal:data.bookTotal,filteredTotal:data.filteredTotal};
 }
-export async function getBrandPerson(input:{brandId:string;personId:string}):Promise<BrandPersonSummary>{
-  const {data,error}=await supabase.rpc("biz_get_brand_person",{p_brand_id:input.brandId,p_person_id:input.personId}); if(error) throw fromRpcError(error); return parsePerson(data);
+export async function getBrandPerson(input:{brandId:string;personId:string}):Promise<BrandPersonDetail|BrandPersonSummary>{
+  const {data,error}=await supabase.rpc("biz_get_brand_person",{p_brand_id:input.brandId,p_person_id:input.personId}); if(error) throw fromRpcError(error); return parsePersonDetailOrLegacy(data);
 }
 export async function addBrandPerson(input:AddBrandPersonInput):Promise<AddBrandPersonResult>{
   const {data,error}=await supabase.rpc("biz_add_brand_person",{p_brand_id:input.brandId,p_display_name:input.displayName,p_email:input.email,p_phone_e164:input.phoneE164,p_phone_country_iso:input.phoneCountryIso,p_client_request_id:input.clientRequestId});
@@ -62,12 +92,8 @@ export async function addBrandPerson(input:AddBrandPersonInput):Promise<AddBrand
 }
 
 /* #2305 — the conflict review queue. */
-const CONFLICT_SOURCE_KINDS: ReadonlySet<string> = new Set([
-  "event_rsvp","rsvp_plus_one","order","ticket_holder","reservation","stay_reservation","manual","import",
-]);
-const CONFLICT_REASONS: ReadonlySet<string> = new Set([
-  "different_nonempty_names","multi_person_address_chain","manual_review",
-]);
+const CONFLICT_SOURCE_KINDS = "|event_rsvp|rsvp_plus_one|order|ticket_holder|reservation|stay_reservation|manual|import|";
+const CONFLICT_REASONS = "|different_nonempty_names|multi_person_address_chain|manual_review|";
 const nullableString = (v: unknown): v is string | null => v === null || typeof v === "string";
 function parseConflictCandidate(v: unknown): BrandPersonConflictCandidate {
   if (!isRecord(v) || !stringValue(v.personId) || !stringValue(v.displayName)
@@ -82,8 +108,8 @@ function parseConflictCandidate(v: unknown): BrandPersonConflictCandidate {
 function parseConflict(v: unknown): BrandPersonConflict {
   if (!isRecord(v) || !Array.isArray(v.conflictIds) || v.conflictIds.length === 0
       || !v.conflictIds.every(stringValue) || !Array.isArray(v.sourceKinds)
-      || !v.sourceKinds.every((k) => typeof k === "string" && CONFLICT_SOURCE_KINDS.has(k))
-      || typeof v.reason !== "string" || !CONFLICT_REASONS.has(v.reason)
+      || !v.sourceKinds.every((k) => typeof k === "string" && CONFLICT_SOURCE_KINDS.includes(`|${k}|`))
+      || typeof v.reason !== "string" || !CONFLICT_REASONS.includes(`|${v.reason}|`)
       || !stringValue(v.createdAt) || typeof v.canResolve !== "boolean"
       || typeof v.detailsRetained !== "boolean" || typeof v.canDismiss !== "boolean"
       || !(v.dismissibleReason === null || v.dismissibleReason === "source_row_absent"

@@ -26,6 +26,33 @@ interface ExportClaim {
   prepared_checksum: string | null;
 }
 
+interface ExportJobState {
+  status: "queued" | "running" | "ready" | "failed" | "expired";
+  storage_path: string | null;
+  prepared_storage_path: string | null;
+  prepared_checksum: string | null;
+  safe_error_code: string | null;
+}
+
+export interface ExportWorkerDeps {
+  // deno-lint-ignore no-explicit-any -- test seam for the Edge client.
+  createService: (url: string, serviceKey: string) => any;
+  envGet: (name: string) => string | undefined;
+  randomUUID: () => string;
+}
+
+const DEFAULT_DEPS: ExportWorkerDeps = {
+  createService: (url, serviceKey) =>
+    createClient(url, serviceKey, { auth: { persistSession: false } }),
+  envGet: (name) =>
+    name === "SUPABASE_URL"
+      ? Deno.env.get("SUPABASE_URL")
+      : name === "SUPABASE_SERVICE_ROLE_KEY"
+      ? Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")
+      : undefined,
+  randomUUID: () => crypto.randomUUID(),
+};
+
 function response(body: Record<string, unknown>, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -66,28 +93,72 @@ function validateRows(value: unknown): Record<string, unknown>[] {
 }
 
 // deno-lint-ignore no-explicit-any -- Edge client has no generated database types.
-async function expireFiles(service: any): Promise<number> {
+export async function expireFiles(service: any): Promise<number> {
+  const now = new Date().toISOString();
   const { data, error } = await service.from("brand_people_export_jobs")
-    .select("id,storage_path").in("status", ["ready", "expired"])
-    .not("storage_path", "is", null).lte("expires_at", new Date().toISOString())
+    .select(
+      "id,status,storage_path,prepared_storage_path,safe_error_code,expires_at",
+    ).in("status", ["ready", "expired"])
+    .or(`safe_error_code.eq.privacy_erasure,expires_at.lte.${now}`)
     .limit(100);
   if (error || !Array.isArray(data) || data.length === 0) return 0;
-  const paths = data.map((row) => row.storage_path).filter((path) =>
-    typeof path === "string"
-  );
+  const references = new Map<string, Set<string>>();
+  for (const row of data) {
+    for (const path of [row.storage_path, row.prepared_storage_path]) {
+      if (typeof path !== "string" || path.length === 0) continue;
+      const jobs = references.get(path) ?? new Set<string>();
+      jobs.add(String(row.id));
+      references.set(path, jobs);
+    }
+  }
+  const expiredJobs = new Set<string>();
+  for (const [path, jobs] of references) {
+    const paths = [path];
+    const { error: removeError } = await service.storage.from(
+      "brand-people-exports",
+    ).remove(paths);
+    if (removeError) continue;
+    for (const jobId of jobs) {
+      const { data: marked } = await service.rpc(
+        "biz_expire_brand_people_export",
+        { p_job_id: jobId, p_storage_path: path },
+      );
+      if (marked === true) expiredJobs.add(jobId);
+    }
+  }
+  return expiredJobs.size;
+}
+
+// deno-lint-ignore no-explicit-any -- Edge client has no generated database types.
+async function readExportJobState(
+  service: any,
+  jobId: string,
+): Promise<ExportJobState | null> {
+  const { data, error } = await service.from("brand_people_export_jobs")
+    .select(
+      "status,storage_path,prepared_storage_path,prepared_checksum,safe_error_code",
+    ).eq("id", jobId).maybeSingle();
+  return error || data === null ? null : data as ExportJobState;
+}
+
+// deno-lint-ignore no-explicit-any -- Edge client has no generated database types.
+async function removeAndClearExactPath(
+  service: any,
+  jobId: string,
+  path: string,
+): Promise<boolean> {
+  const paths = [path];
   const { error: removeError } = await service.storage.from(
     "brand-people-exports",
   ).remove(paths);
-  if (removeError) return 0;
-  let expired = 0;
-  for (const row of data) {
-    const { data: marked } = await service.rpc(
-      "biz_expire_brand_people_export",
-      { p_job_id: row.id, p_storage_path: row.storage_path },
-    );
-    if (marked === true) expired += 1;
+  if (removeError) {
+    return false;
   }
-  return expired;
+  const { data: marked } = await service.rpc(
+    "biz_expire_brand_people_export",
+    { p_job_id: jobId, p_storage_path: path },
+  );
+  return marked === true;
 }
 
 // deno-lint-ignore no-explicit-any -- Edge client has no generated database types.
@@ -119,20 +190,21 @@ async function persistExportFailure(
     : null;
 }
 
-serve(async (request) => {
+export async function handleExportWorkerRequest(
+  request: Request,
+  deps: ExportWorkerDeps = DEFAULT_DEPS,
+): Promise<Response> {
   if (request.method !== "POST") {
     return response({ error: "method_not_allowed" }, 405);
   }
-  const url = Deno.env.get("SUPABASE_URL") ?? "";
-  const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+  const url = deps.envGet("SUPABASE_URL") ?? "";
+  const serviceKey = deps.envGet("SUPABASE_SERVICE_ROLE_KEY") ?? "";
   if (
     url.length === 0 || serviceKey.length === 0 ||
     request.headers.get("authorization") !== `Bearer ${serviceKey}`
   ) return response({ error: "forbidden" }, 403);
-  const service = createClient(url, serviceKey, {
-    auth: { persistSession: false },
-  });
-  const workerId = crypto.randomUUID();
+  const service = deps.createService(url, serviceKey);
+  const workerId = deps.randomUUID();
   const expired = await expireFiles(service);
   const { data: claimed, error: claimError } = await service.rpc(
     "biz_claim_brand_people_export_jobs",
@@ -232,7 +304,32 @@ serve(async (request) => {
         p_checksum: checksum,
       },
     );
-    if (completeError) throw new Error("export_completion_failed");
+    if (completeError) {
+      const observed = await readExportJobState(service, job.id);
+      if (
+        observed?.status === "ready" &&
+        observed.storage_path === storagePath
+      ) {
+        return response({ claimed: 1, ready: 1, failed: 0, expired });
+      }
+      if (
+        observed?.status === "expired" &&
+        observed.safe_error_code === "privacy_erasure"
+      ) {
+        const cleared = await removeAndClearExactPath(
+          service,
+          job.id,
+          storagePath,
+        );
+        return response({
+          claimed: 1,
+          ready: 0,
+          failed: 0,
+          expired: expired + (cleared ? 1 : 0),
+        });
+      }
+      throw new Error("export_completion_failed");
+    }
     return response({ claimed: 1, ready: 1, failed: 0, expired });
   } catch (error) {
     const code = error instanceof Error &&
@@ -261,4 +358,8 @@ serve(async (request) => {
     }
     return response({ claimed: 1, ready: 0, failed: 1, expired });
   }
-});
+}
+
+if (import.meta.main) {
+  serve((request) => handleExportWorkerRequest(request));
+}

@@ -182,6 +182,8 @@ export const PROVIDERS_ADDED_SINCE_SEAL = Object.freeze([
     // 91 + 1 = 92; no provider is added.
     referenceFiles: Object.freeze([
       ".github/scripts/strict-grep/issue-1397-fx-refresh-eol-cron.mjs",
+      ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+      ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
       "supabase/functions/payout-release-sweep/__tests__/issue_1172_stripe_payout_rework.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts.test.ts",
       "supabase/functions/payout-release-sweep/__tests__/issue_1840_ng_float_alerts_adversarial.test.ts",
@@ -206,6 +208,16 @@ export const PROVIDER_REFERENCE_FILES_ADDED_SINCE_SEAL = Object.freeze([
     referenceFiles: Object.freeze([
       "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.implementor.test.ts",
       "supabase/migrations/__tests__/issue_2855_pending_venue_schema_pin.tester_adversarial.test.sql",
+    ]),
+  }),
+  Object.freeze({
+    issue: 1772,
+    workflow: "supabase-migrations-and-stripe-deno.yml",
+    referenceFiles: Object.freeze([
+      ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.mjs",
+      ".github/scripts/strict-grep/issue-1772-brand-person-maintenance.happy.self-test.mjs",
+      ".github/scripts/strict-grep/issue-1977-ari-rsvp-lifecycle.mjs",
+      "scripts/secrets/issue_1772_brand_person_erasure_secret.test.mjs",
     ]),
   }),
 ]);

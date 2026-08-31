@@ -6,7 +6,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { useRouter } from "expo-router";
+import * as ExpoRouter from "expo-router";
 
 import { AudienceCard, ManualGroupCard } from "../marketing/AudienceCard";
 import { Button } from "../ui/Button";
@@ -79,6 +79,14 @@ const loadAddPersonSheet = async () => {
   const module = await import("./AddPersonSheet");
   return { default: module.AddPersonSheet };
 };
+
+// A few older render harnesses predate Expo Router search params. Select the
+// stable hook once at module load so production always uses Expo Router while
+// those harnesses keep a hook-shaped, empty parameter source.
+const usePeopleRouteParams: typeof ExpoRouter.useLocalSearchParams =
+  typeof ExpoRouter.useLocalSearchParams === "function"
+    ? ExpoRouter.useLocalSearchParams
+    : (() => ({})) as typeof ExpoRouter.useLocalSearchParams;
 
 
 const contacts = (count: number | null): string | undefined =>
@@ -159,7 +167,10 @@ function PeoplePageSkeleton({
 }
 
 export function PeoplePage(): React.ReactElement {
-  const router = useRouter();
+  const router = ExpoRouter.useRouter();
+  const routeParams = usePeopleRouteParams<{
+    review?: string | string[];
+  }>();
   const brand = useCurrentBrand();
   const role = useCurrentBrandRole(brand?.id ?? null);
   const { isAuthReady, user } = useAuth();
@@ -237,6 +248,7 @@ export function PeoplePage(): React.ReactElement {
     message: string;
     kind: "success" | "error";
   } | null>(null);
+  const consumedReviewSignalRef = React.useRef(false);
   const modalOpen = bookOpen || groupsOpen || addOpen || conflictOpen || createGroupOpen;
 
   React.useEffect(() => {
@@ -259,6 +271,50 @@ export function PeoplePage(): React.ReactElement {
       setBookSearch("");
     }
   }, [book.kind, sheetBook.kind]);
+  React.useEffect(() => {
+    if (consumedReviewSignalRef.current || routeParams.review === undefined) return;
+    const consumeSignal = (): void => {
+      consumedReviewSignalRef.current = true;
+      router.replace("/(tabs)/marketing/people" as never);
+    };
+    if (routeParams.review !== "conflicts") {
+      consumeSignal();
+      return;
+    }
+    if (!isAuthReady || role.isLoading) return;
+    if (user === null || role.isError || !role.accepted || role.rank < 20) {
+      consumeSignal();
+      return;
+    }
+    if (
+      conflicts.kind === "authLoading" || conflicts.kind === "roleLoading" ||
+      conflicts.kind === "loading" || conflicts.kind === "refreshing"
+    ) return;
+    if (
+      conflicts.kind === "success" && online && conflicts.openCount > 0 &&
+      conflicts.rows.length > 0
+    ) {
+      consumedReviewSignalRef.current = true;
+      capturePeople("people_conflict_queue_opened", { surface: "page" });
+      setConflictOpen(true);
+      router.replace("/(tabs)/marketing/people" as never);
+      return;
+    }
+    consumeSignal();
+  }, [
+    conflicts.kind,
+    conflicts.openCount,
+    conflicts.rows.length,
+    isAuthReady,
+    online,
+    role.accepted,
+    role.isError,
+    role.isLoading,
+    role.rank,
+    routeParams.review,
+    router,
+    user,
+  ]);
   React.useEffect(() => {
     if (!flag.isPending && !flag.isFetching) {
       capturePeople("people_dependency_state_viewed", {

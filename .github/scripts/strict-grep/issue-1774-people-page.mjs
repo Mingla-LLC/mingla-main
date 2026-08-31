@@ -40,7 +40,19 @@ export function audit(base) {
   if (/posthog|PostHog/.test(page)) failures.push("PostHog is being used as People availability authority");
   if (!importRoute.includes('returnTo === "marketingPeople"') || !importRoute.includes('router.replace("/(tabs)/marketing/people"') || !importRoute.includes('"beforeRemove"')) failures.push("import does not bind brand/return intent and replace every exit");
   if (!importHook.includes("marketingKeys.people.all(v.brandId)")) failures.push("successful import does not invalidate the People book");
-  if (/email|phone|displayName|personId|brandId|contactValue/.test(analytics.replace(/PeopleEventProperties/g,""))) failures.push("People analytics schema contains identity/contact properties");
+  // [TEST-MOD-APPROVED #1772] Match declared property keys exactly. Safe enum
+  // values (`channel: "email" | "phone"`) and bucket names are not PII fields.
+  const analyticsSchema = analytics.match(
+    /export interface PeopleEventProperties\s*\{([\s\S]*?)\}/,
+  )?.[1] ?? "";
+  const analyticsKeys = new Set(
+    [...analyticsSchema.matchAll(/(?:^|;)\s*([A-Za-z][A-Za-z0-9]*)\??\s*:/g)]
+      .map((match) => match[1]),
+  );
+  const forbiddenAnalyticsKeys = [
+    "email", "phone", "displayName", "personId", "brandId", "contactValue",
+  ];
+  if (forbiddenAnalyticsKeys.some((key) => analyticsKeys.has(key))) failures.push("People analytics schema contains identity/contact properties");
   const authNeedles=["biz_brand_effective_rank(p_brand_id,v_uid)","biz_role_rank('marketing_manager')"];
   for (const needle of authNeedles) if (!migration.includes(needle)) failures.push(`migration authorization is missing ${needle}`);
   if (!migration.includes("brand_person_manual_add_requests") || !migration.includes("pg_advisory_xact_lock") || !migration.includes("people_idempotency_conflict")) failures.push("manual add lacks durable idempotency authority");
@@ -78,6 +90,10 @@ function selfTest() {
     fs.writeFileSync(digestFix,cleanDigest);
     const marketingAudit=path.join(tmp,files.marketingAudit),cleanAudit=fs.readFileSync(marketingAudit,"utf8"); fs.writeFileSync(marketingAudit,cleanAudit.replace('label: "people"','label: "retired-audiences"'));
     if (!audit(tmp).some((x)=>x.includes("does not split the legacy redirect"))) throw new Error("true mutation: stale Grade A ownership was not detected");
+    fs.writeFileSync(marketingAudit,cleanAudit);
+    const analytics=path.join(tmp,files.analytics),cleanAnalytics=fs.readFileSync(analytics,"utf8");
+    fs.writeFileSync(analytics,cleanAnalytics.replace("platform?:string;","platform?:string;contactValue?:string;"));
+    if (!audit(tmp).some((x)=>x.includes("identity/contact properties"))) throw new Error("true mutation: forbidden analytics property key was not detected");
     console.log("[issue-1774-people-page] self-test PASS");
   } finally { fs.rmSync(tmp,{recursive:true,force:true}); }
 }

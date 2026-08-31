@@ -154,3 +154,76 @@ This satisfies Article 30 (records of processing activities) for the erasure eve
 - ❌ Do NOT skip Stripe-side redaction. GDPR scope includes our payment processor; their data is in scope by association.
 - ❌ Do NOT omit the compliance log. Lack of log = audit-fail finding under GDPR Art. 30.
 - ❌ Do NOT respond to the user beyond the confirmation email until Stripe's redaction confirmation arrives. Premature "done" claims expose Mingla to liability if Stripe later finds residual data.
+
+---
+
+## Brand-owned non-user contact erasure (#1772)
+
+This is a separate service-only procedure for a person in a brand's private contact book who has
+no linked Mingla user account. It does not replace or modify the linked-user/account anonymization
+procedure above. There is no Business, Consumer, buyer, or Admin UI for this operation, and Admin
+status alone is not authority. Only an enabled support/privacy staff member using the approved
+service boundary may perform it.
+
+### Preconditions
+
+- The request and identity-verification record exist under a safe internal case reference matching
+  `^[A-Z0-9][A-Z0-9._/-]{2,79}$`; never put a name, email, phone, or free-text note in that field.
+- The operator is an enabled `support_staff` member and uses their own verified JWT. Never supply
+  an actor ID in a request body and never place a service-role key in a client or operator UI.
+- The target is an active canonical person in the named brand, has no linked Mingla user, no open
+  identity conflict, and no active merge. If the service refuses any condition, stop; do not use
+  Admin access, raw SQL, a raw merge engine, or an alternate address as an override.
+- The challenge destination is one active `brand_owned` email or phone already stored on that
+  person. Never accept a newly supplied destination.
+- The independently approved #1772 migration, Edge function, and capacity-safe secret field are
+  deployed and read back exactly. Follow the #1772 field-install procedure in
+  `SUPABASE_SECRET_CAPACITY.md`; never read, log, infer, or regenerate production secret material
+  during an erasure case.
+
+### Procedure
+
+1. Pause if another erasure, merge, Split, or conflict action is unresolved for the person. Record
+   only the safe case reference and generated operation/challenge identifiers in operational
+   evidence; do not copy Book PII into logs, chat, analytics, receipts, or audit metadata.
+2. Through the approved `support-brand-person-erasure` service client, submit
+   `action=create_challenge` with the safe case reference, brand/person/contact-method identifiers,
+   and one fresh client request UUID. The handler authenticates support authority and validates
+   input before resolving the challenge key, generating a code, writing a challenge, or calling a
+   provider.
+3. The database claims delivery exactly once immediately before provider I/O. Email uses the
+   service's exact provider idempotency key; SMS has no provider idempotency input. If the result is
+   `erasure_challenge_state_unknown` or dispatch remains unknown, do not resend, invalidate, or
+   erase. Wait until the fixed 15-minute challenge TTL passes, investigate through PII-free status,
+   and start a new request only after expiry.
+4. Ask the requester for the six-digit code delivered to the already-stored method. Keep the code
+   only in the approved in-memory operator interaction; never persist, paste, screenshot, log, or
+   include it in the case reference.
+5. Submit `action=execute` with the challenge ID, code, and one fresh execution request UUID. Reuse
+   that same request UUID for status recovery or an identical retry after a transport timeout;
+   never mint a second UUID merely because the response was lost.
+6. The service verifies the code and atomically installs keyed email/phone tombstones before it
+   scrubs the Book projection. It detaches source links, retires/scrubs contact methods and names,
+   deletes the canonical Book projection, removes eligible pending invitations and Manual-group
+   projections, and expires brand-book export objects. Source orders, reservations, RSVPs,
+   tickets, financial/legal records, and historical delivery facts remain unchanged.
+7. The Edge function removes the returned private `brand-people-exports` objects and finalizes the
+   PII-free operation. If it returns `erasure_cleanup_pending`, the database erasure is already
+   complete: use the same operation status/retry path until cleanup completes. Never repeat or
+   reverse the database erasure because object cleanup failed.
+
+### Verification and evidence
+
+- The final service status is `completed`, or an explicitly owned cleanup retry remains open.
+- The safe count summary covers the enumerated Book projections and contains no raw identity data.
+- PII-free tombstone counts exist for every retired email/phone channel, and synthetic attempts
+  through derived ingestion, manual add, CSV import, and a direct service contact insert are
+  refused without recreating a person, conflict, source link, invitation, or marketing reach.
+- Source commerce row counts and identifiers remain unchanged. Do not sample or publish raw source
+  PII as proof.
+- The immutable erasure audit records the expected safe phases and enabled support actor without a
+  destination, name, code, free text, storage path, secret, provider error, or contact value.
+
+Erasure is forward-only. Rollback may pause/revoke the new service boundary or repair it with a new
+migration/deployment, but it must never restore scrubbed PII, delete tombstones/audit/receipts, or
+make a retired address reachable again.

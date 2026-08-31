@@ -483,6 +483,50 @@
 - **Regression:** The #1817 SQL transaction matrix, Deno adapter matrix, and batch-A strict guard pin callback-before/result, callback-after/result, replay, conflict, partial-failure, no-receipt, ACL/RLS, and fail-on-revert behavior.
 - **Established:** ACTIVE at #1817 CLOSE after independent QA PASS, all-green PR #1825 merge `3feb629e6`, production migration `20270314001817`, exact-source Edge Function v11 deployment, and a controlled OneSignal live-fire proving 2 accepted/Sent, 0 Delivered, 1 honest no-subscription failure, 0 callback rows, and no second provider send on replay.
 
+## DRAFT — issue #1772 (brand-owned person maintenance and non-user erasure)
+
+### I-PROPOSED-1772-IDENTITY-MAINTENANCE-ATOMIC (DRAFT)
+
+- **Rule:** Manual merge, primary promotion, and one-event Split are server-authoritative,
+  actor/brand/rank bound, request-idempotent, ordered-lock serialized, and version-revalidated in
+  the mutation transaction. A chosen merge survivor keeps its display name and channel primaries;
+  distinct loser facts remain alternate/non-primary. Split restores only the exact stored event
+  partition or changes no identity data and escalates. Source commerce and historical delivery
+  facts never move or rewrite.
+- **Enforcement:** Migration `20270612001772_issue_1772_brand_person_maintenance.sql`, RPC-only
+  Business service/hook boundaries, immutable PII-free operation receipts, #1772 PostgreSQL/Jest
+  happy and independent adversarial suites, and the paired strict guards.
+- **Established:** DRAFT at the binding #1772 SPEC plus Amendments A1–A3. Activate only after the
+  independent tester PASS, Seth's release-candidate evidence acceptance, all-green merge,
+  production migration/readback, and merged Business release verification.
+
+### I-PROPOSED-1772-NONUSER-ERASURE-TOMBSTONED (DRAFT)
+
+- **Rule:** Only an enabled support/privacy staff JWT may erase an active brand-owned person with
+  no linked user, open conflict, or active merge, after control of an already-stored contact is
+  proven by the fixed challenge. Database erasure first installs per-brand/channel keyed,
+  non-reversible tombstones, then scrubs the complete Book projection while retaining immutable
+  PII-free audit/count receipts and unchanged source commerce facts. Derived, manual, CSV, and
+  direct-service re-ingest of a tombstoned address must fail without recreating reach.
+- **Enforcement:** FORCE-RLS zero-policy service tables, service-only actor-bound RPCs, the
+  `support-brand-person-erasure` boundary, terminal ingest mapping, independent
+  `AD_CONVERSION_TOKENS.BRAND_PERSON_ERASURE_CHALLENGE_SECRET`, the #1772 SQL/Edge/secret suites,
+  and strict fail-on-revert guards.
+- **Established:** DRAFT at the binding #1772 SPEC plus Amendments A1–A3. Activation requires the
+  exact independent and release evidence listed above; a completed erasure/tombstone/audit is
+  forward-only and is never rolled back.
+
+### I-PROPOSED-1772-NO-ERASURE-UI (DRAFT)
+
+- **Rule:** Brand-person erasure has no Business, Consumer, buyer-web, or Admin UI, route, client
+  call, service key, status, action, menu, receipt, or support shortcut. It remains an enabled
+  support/privacy-staff service/runbook operation; Admin identity alone never authorizes it.
+- **Enforcement:** The #1772 client allowlist and absence sweep, server support-actor assertion,
+  no-client-grant posture, service-only Edge handler, independent cross-surface proof, and paired
+  strict guards.
+- **Established:** DRAFT at the binding #1772 SPEC. Activate only with the other #1772 invariants
+  after independent seven-surface absence and authorization proof.
+
 ## ACTIVE — issue #1770 (Brand People and offering guest foundation)
 
 ### I-PROPOSED-BRAND-PERSON-1 (ACTIVE)

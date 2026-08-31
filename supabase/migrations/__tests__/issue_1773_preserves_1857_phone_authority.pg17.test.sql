@@ -22,6 +22,8 @@ BEGIN
     END IF;
   END LOOP;
 
+  -- [TEST-MOD-APPROVED #1772] #1772 forward-repins the exact #2305 writer after
+  -- adding only the active-separation supersession predicate.
   -- #2305 re-pinned biz_resolve_brand_person_source: 20270430002305 (the REWORK
   -- forward migration) is now the legitimate current last writer of that
   -- definition. It adds P1-1(b) -- the automatic chain-merge refuses to collapse
@@ -43,7 +45,7 @@ BEGIN
   -- the enqueue trigger, and its md5 is unchanged -- which is also the control
   -- proving this fingerprint pipeline still reproduces the original values.
   FOR v_signature,v_expected_md5 IN SELECT * FROM (VALUES
-    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','4e5a1f5f52803223843d843f9868ecc4'),
+    ('public.biz_resolve_brand_person_source(uuid,uuid,text,uuid,uuid,uuid,text,text,timestamp with time zone)','9815b94c8ae402c9b81d2b6613be66f3'),
     ('public.issue_1770_enqueue_source()','b6f76457afc333703f59d065cd4224ba')
   ) AS expected(signature,definition_md5) LOOP
     SELECT pg_get_functiondef(to_regprocedure(v_signature)) INTO STRICT v_definition;

@@ -26,10 +26,10 @@
 --     but the mutated run also exits 0, and that is RED.
 --
 -- Sections are delimited by `-- ===== <command-id> =====` and split at run time.
--- 22 sections: the 24 consolidated SQL call sites minus the two race fixtures,
+-- 25 sections: the 27 consolidated SQL call sites minus the two race fixtures,
 -- which carry ZERO `RAISE EXCEPTION` and whose verdict is rendered by M-1173-02i.
 --
--- [#2594] Five of the 22 arrived with the #1384/#1397 subjects rehomed out of the
+-- [#2594] Five of the 25 arrived with the #1384/#1397 subjects rehomed out of the
 -- class-A static-gates job. Their terminal predicates are of two shapes and the
 -- distinction matters when reading the mutations below:
 --
@@ -90,7 +90,7 @@ BEGIN PERFORM nextval('public.l5_fired'); RETURN NULL; END $w$;
 CREATE TRIGGER l5_verify AFTER INSERT OR UPDATE ON public.brand_payout_releases
   FOR EACH ROW WHEN (NEW.id = '11720000-0000-0000-0000-000000000007' AND NEW.stripe_payout_id = 'po_l5_mutant') EXECUTE FUNCTION public.l5_witness();
 ALTER TABLE public.brand_payout_releases ENABLE ALWAYS TRIGGER l5_verify;
--- @l5-verify: SELECT is_called FROM public.l5_fired
+-- @l5-verify: SELECT is_called FROM public.l5_fired /* issue_1772_terminal_rsvp */
 
 -- ===== M-1172-02b =====
 -- terminal: release …111 reopened exactly once (attempt_count = 8). A SENTINEL,
@@ -751,3 +751,26 @@ REVOKE EXECUTE ON FUNCTION public.biz_record_recent_entity_open(uuid,text,uuid,t
 -- ===== M-2794-02 =====
 GRANT SELECT ON TABLE public.business_recent_entity_opens TO authenticated;
 -- @l5-verify: SELECT has_table_privilege('authenticated', 'public.business_recent_entity_opens', 'SELECT')
+
+-- ===== M-1772-01 =====
+-- [TEST-MOD-APPROVED #1772] Falsify only the terminal legacy-RSVP stale-state
+-- predicate. The earlier successful approval remains unchanged; when the fixture
+-- deliberately moves that same RSVP from approved to denied, keep it pending so
+-- the final approve succeeds and reaches the terminal RAISE EXCEPTION.
+CREATE OR REPLACE FUNCTION public.l5_issue_1772_keep_rsvp_pending()
+RETURNS trigger LANGUAGE plpgsql AS $l5$
+BEGIN
+  IF NEW.id='17720100-0000-4000-8000-000000000060'::uuid
+     AND OLD.approval_status='approved'
+     AND NEW.approval_status='denied' THEN
+    NEW.approval_status:='pending';
+    PERFORM nextval('public.l5_fired');
+  END IF;
+  RETURN NEW;
+END
+$l5$;
+CREATE TRIGGER l5_issue_1772_keep_rsvp_pending
+  BEFORE UPDATE OF approval_status ON public.event_rsvps
+  FOR EACH ROW EXECUTE FUNCTION public.l5_issue_1772_keep_rsvp_pending();
+ALTER TABLE public.event_rsvps ENABLE ALWAYS TRIGGER l5_issue_1772_keep_rsvp_pending;
+-- @l5-verify: SELECT is_called FROM public.l5_fired

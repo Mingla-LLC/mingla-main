@@ -5,6 +5,106 @@ export interface BrandPersonSummary {
   personId: string; displayName: string; avatarUrl: string | null; updatedAt: string;
   contacts: BrandPersonContact[]; suppressions: BrandPersonSuppression[];
 }
+export interface BrandPersonCapabilities {
+  canMerge: boolean;
+  canPromotePrimary: boolean;
+  canViewMergeHistory: boolean;
+  canSplit: boolean;
+}
+export interface BrandPersonIdentitySummary {
+  personId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  updatedAt: string;
+  alternateNames: string[];
+  contacts: BrandPersonContact[];
+  linked: boolean;
+  identityVersion: string;
+}
+export interface BrandPersonMergeCandidate extends BrandPersonIdentitySummary {
+  matchedContact: BrandPersonContact | null;
+}
+export interface BrandPersonDetail extends BrandPersonSummary {
+  alternateNames: string[];
+  linked: boolean;
+  identityVersion: string;
+  capabilities: BrandPersonCapabilities;
+}
+export interface BrandPersonMergeCandidateCursor { updatedAt: string; personId: string }
+export interface BrandPersonMergeCandidatePage {
+  rows: BrandPersonMergeCandidate[];
+  nextCursor: BrandPersonMergeCandidateCursor | null;
+}
+export type BrandPersonMergePreviewState = "ready" | "open_conflict" | "distinct_linked_users";
+export interface BrandPersonMergePreview {
+  state: BrandPersonMergePreviewState;
+  left: BrandPersonIdentitySummary;
+  right: BrandPersonIdentitySummary;
+  leftVersion: string;
+  rightVersion: string;
+  hadOpenConflict: boolean;
+  hadPriorSeparation: boolean;
+}
+export interface BrandPersonMergeResult {
+  operationId: string;
+  mergeEventId: string;
+  survivorPersonId: string;
+  absorbedPersonId: string;
+  identityVersion: string;
+  replayed: boolean;
+}
+export interface BrandPersonPromoteResult {
+  operationId: string;
+  outcome: "completed" | "unchanged";
+  personId: string;
+  contactMethodId: string;
+  channel: BrandPersonContactChannel;
+  identityVersion: string;
+  replayed: boolean;
+}
+export interface BrandPersonMergeHistoryCursor { createdAt: string; mergeEventId: string }
+export interface BrandPersonMergeHistoryRow {
+  mergeEventId: string;
+  status: "active" | "reversed";
+  createdAt: string;
+  reversedAt: string | null;
+  survivorPersonId: string;
+  survivorLabel: string;
+  counterpartPersonId: string;
+  counterpartLabel: string;
+  canSplit: boolean;
+  eventVersion: string;
+}
+export interface BrandPersonMergeHistoryPage {
+  rows: BrandPersonMergeHistoryRow[];
+  nextCursor: BrandPersonMergeHistoryCursor | null;
+}
+export type BrandPersonSplitPreview =
+  | {
+    state: "safe";
+    mergeEventId: string;
+    splitVersion: string;
+    left: BrandPersonIdentitySummary;
+    right: BrandPersonIdentitySummary;
+  }
+  | { state: "unsafe"; supportReference: string };
+export type BrandPersonSplitResult =
+  | {
+    operationId: string;
+    outcome: "reversed";
+    restoredPersonId: string;
+    replayed: boolean;
+  }
+  | {
+    operationId: string;
+    outcome: "escalated";
+    supportReference: string;
+    replayed: boolean;
+  };
+export type BrandPersonMaintenanceOperation =
+  | BrandPersonMergeResult
+  | BrandPersonPromoteResult
+  | BrandPersonSplitResult;
 export interface BookCursor { updatedAt: string; personId: string }
 export interface BrandPeopleBookPage { rows: BrandPersonSummary[]; nextCursor: BookCursor | null; bookTotal: number; filteredTotal: number }
 export interface AddBrandPersonInput {
@@ -16,6 +116,10 @@ export type PeopleErrorCode =
   | "people_forbidden" | "people_not_found" | "people_limit_invalid" | "people_search_invalid"
   | "people_cursor_invalid" | "people_name_invalid" | "people_email_invalid" | "people_phone_invalid"
   | "people_contact_required" | "people_idempotency_conflict" | "people_temporarily_unavailable" | "people_unknown"
+  | "people_merge_pair_invalid" | "people_merge_stale" | "people_merge_open_conflict"
+  | "people_merge_distinct_users" | "people_split_not_found" | "people_split_stale"
+  | "people_split_unsafe" | "people_primary_invalid" | "people_primary_stale"
+  | "people_erased_contact_suppressed"
   | PeopleConflictErrorCode;
 
 /* #2305 — the identity-conflict review queue.

@@ -38,8 +38,11 @@ const DENIED = [
 const PR_FAMILY_COUNT = 123;
 const PR_FAMILY_IDENTITY_SHA256 =
   "a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912";
+// [TEST-MOD-APPROVED #1772] Re-derived after rebasing onto #1977: the PR-family
+// identities and concurrency policy are unchanged; only approved workflow job
+// semantics in the current tree moved this non-concurrency authority digest.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "528307c7937a2055b3763d799a4147d608bd5ea2612fd64e82d9b7af1f9ac5e2";
+  "659bde20cbde1f335e60680c13d1d45a0974456d1d3914bc4c4c1098a1152e56";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

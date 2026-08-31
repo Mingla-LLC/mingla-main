@@ -68,7 +68,10 @@ These objects are permitted:
   compatibility name is `CONTENT_SHARE_V1_CREATE_ENABLED`.
 - `AD_CONVERSION_TOKENS`: the existing private credential envelope. In addition to its existing
   independently named fields, it owns `NOTIFICATION_RECIPIENT_HMAC_SECRET` as exact raw material.
-  The resolver never trims, normalizes, logs, rotates, or returns that value.
+  The resolver never trims, normalizes, logs, rotates, or returns that value. It also owns the
+  independent `BRAND_PERSON_ERASURE_CHALLENGE_SECRET` field for #1772. That field has its own
+  Platform Security ownership and rotation boundary and is never derived from, substituted with,
+  or exposed to any other envelope reader.
 - `OFFERING_INVITE_TOKEN_PEPPER`: the #1770 standalone cryptographic secret used only by the
   shared offering-invite token helper, `marketing-send`, and the authenticated dispatch boundary. It stays outside every bundle
   because its independent rotation and audit boundary is part of invite authorization.
@@ -89,10 +92,10 @@ secret mutation. The reviewed closure is exactly: `brand-paystack-onboard`,
 `event-cancel-refund-fanout`, `rsvp-contribution-refund`, `source-refund-sweep`,
 `venue-reservation-cancel`, `send-pair-request`, `send-phone-invite`, `send-venue-sms`,
 `ticket-confirmation-dispatch`, `notify-dispatch`, `offering-invite-dispatch`, `rsvp-notify`,
-and `guest-roster-actions`. Deploy all 16 from one merged compatibility commit while production
+`guest-roster-actions`, and `support-brand-person-erasure`. Deploy all 17 from one merged compatibility commit while production
 is still schema v2, preserve each function's reviewed JWT posture, and require exact deployed
 source parity. If the recursive guard derives any other set or count, stop for amendment. Only
-after all 16 pass may the bundle be transformed value-blindly to exact schema v3 with the new
+after all 17 pass may the bundle be transformed value-blindly to exact schema v3 with the new
 Paystack field false and all six pre-existing controls unchanged. Activation is a separate
 post-#1845 operation.
 
@@ -120,6 +123,43 @@ authorize a secret, provider, or operational-boolean change.
 
 A partial or concurrent deployment, deployment-commit mismatch, parser/missing-field event,
 unknown ownership, missing source, or failed live-fire blocks every unset.
+
+### #1772 brand-person erasure challenge field install
+
+This procedure is authorized only after Seth accepts the exact independently tested #1772 release
+candidate. It adds one independent field to the existing `AD_CONVERSION_TOKENS` object; it never
+adds, removes, or renames a Supabase secret name and must leave the names-only audit at exactly 87.
+
+1. Pause #1772 challenge creation. Before this field exists, the new resolver must remain fail
+   closed, so no production brand-person erasure can start.
+2. Reconstruct the complete current `AD_CONVERSION_TOKENS` object only from approved provider
+   dashboards, private operating records, and the secure vault. Never use Supabase plaintext
+   readback, runtime exfiltration, digest comparison, metadata inference, partial patching, or
+   another field's value. Stop if any existing field's authoritative source is unavailable.
+3. In authorized secure tooling, generate exactly 32 fresh random bytes. Immediately preserve the
+   material in Platform Security's secure-vault record, encode it once as canonical standard
+   Base64, and add only `BRAND_PERSON_ERASURE_CHALLENGE_SECRET` to the complete in-memory object.
+   Never print or paste the value.
+4. The value-blind preflight may report only the bundle name, sorted field-name set, existing-field
+   preservation PASS, new-field owner/source PASS, canonical parser PASS, #1772 fail-closed test
+   PASS, and serialized-object-below-48-KiB PASS. It must not report a value, byte/string length,
+   raw/digest/hash/fingerprint, prefix, or suffix.
+5. Atomically set the existing `AD_CONVERSION_TOKENS` Supabase name with the full reconstructed
+   object before deploying `support-brand-person-erasure`. Do not set or unset any other name.
+   The names-only audit must remain exactly 87 with exact parity and zero exception.
+6. Deploy the exact merged Edge function, verify deployed-source and JWT-posture parity, then use
+   synthetic non-production-PII fixtures for parser/create/execute proof. This does not waive the
+   migration, independent tester, Seth pause, deployment, or OTA gates.
+7. For rotation, pause new challenges and wait until every issued challenge is consumed,
+   invalidated, or beyond the fixed 15-minute TTL. Then repeat the complete authoritative
+   reconstruction and atomic replacement with fresh material.
+
+Rollback restores the prior complete `AD_CONVERSION_TOKENS` object from its approved authoritative
+source and verifies every pre-existing reader plus exact 87-name parity. If that source is
+unavailable, retain the current complete bundle and stop; never delete this field, invent a value,
+weaken the parser, or reconstruct from Supabase. The Edge function may be deactivated separately.
+A completed database erasure, tombstone, or audit record is irreversible and is never rolled back
+with secret configuration.
 
 ### #1808 content-share switch reconciliation
 

@@ -726,6 +726,11 @@ verify_jwt = true
 [functions.brand-people-export-worker]
 verify_jwt = true
 
+# Issue #1772 — enabled support/privacy staff only. The gateway verifies the
+# JWT and the handler independently proves support_staff before service RPCs.
+[functions.support-brand-person-erasure]
+verify_jwt = true
+
 # Issue #1790 (SPEC #1788 §S6) — venue-order-create serves BOTH an authenticated
 # consumer-app user AND an anonymous web guest, so verify_jwt=false and the fn
 # handles auth internally via userIdFromAuthHeader (the venue-reservation-create
