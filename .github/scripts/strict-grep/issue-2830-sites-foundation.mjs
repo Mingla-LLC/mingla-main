@@ -38,6 +38,7 @@ const PATHS = {
   cmsObservability: "mingla-site-cms/src/lib/observability.ts",
   cmsProxy: "mingla-site-cms/src/proxy.ts",
   cmsSession: "mingla-site-cms/src/lib/session.ts",
+  cmsStudioAuth: "mingla-site-cms/src/lib/studioRequestAuth.ts",
   cmsNav: "mingla-site-cms/src/components/StudioNav.tsx",
   cmsMediaClient: "mingla-site-cms/src/lib/studioMediaClient.ts",
   cmsMediaSelection: "mingla-site-cms/src/lib/studioMediaSelection.ts",
@@ -380,7 +381,32 @@ export function violations(files) {
     'path: "/mingla/media/:mediaId/attach"',
     "applyStudioMediaSelection",
     "assertMutationRequest(req.headers)",
+    "signedCoreRequest",
+    "previewGrantRequest",
   ]) need(files.cmsEndpoints ?? "", token, "Studio gateway", failures);
+  const studioAuthCalls = (files.cmsEndpoints ?? "").match(
+    /requireAuthenticatedStudioRequest\(req\)/g,
+  )?.length ?? 0;
+  if (studioAuthCalls !== 8) {
+    failures.push(
+      `Studio live authorization: expected 8 endpoint checks, found ${studioAuthCalls}`,
+    );
+  }
+  for (const token of [
+    "studioUserMatchesSession",
+    'if (!session || !req.user) throw new Error("SESSION_EXPIRED")',
+    'throw new Error("FORBIDDEN")',
+    "delete context.minglaSignedCore",
+    "studioMediaGrantRequest",
+  ]) need(files.cmsStudioAuth ?? "", token, "Studio live authorization", failures);
+  const signedCoreStrips = (files.cmsStudioAuth ?? "").match(
+    /delete context\.minglaSignedCore/g,
+  )?.length ?? 0;
+  if (signedCoreStrips !== 2) {
+    failures.push(
+      `Studio live authorization: expected 2 signed-Core strips, found ${signedCoreStrips}`,
+    );
+  }
   for (const token of [
     "MAX_BYTES = 20 * 1024 * 1024",
     "MAX_PIXELS = 40_000_000",
@@ -443,6 +469,7 @@ export function violations(files) {
     "Use in draft",
     "Remove unused",
     "window.location.assign(result.return_url)",
+    'window.location.replace("/mingla/session-expired")',
   ]) need(files.cmsMediaManager ?? "", token, "accessible Studio media manager", failures);
   forbid(
     files.cmsMediaManager ?? "",
@@ -634,6 +661,8 @@ function selfTest() {
     ["cmsUsers", "admin: canAccessStudioAdmin", "admin: noAccess", "Studio admin admission"],
     ["cmsMedia", "newestRank > 50", "newestRank > 0", "media and retention"],
     ["cmsSession", "decodeSessionReturnContext", "decodeExpiredSessionUnchecked", "fixed Studio return owner"],
+    ["cmsStudioAuth", "delete context.minglaSignedCore", "context.minglaSignedCore = true", "Studio live authorization"],
+    ["cmsEndpoints", "requireAuthenticatedStudioRequest(req)", "sessionFromHeaders(req.headers)", "Studio live authorization"],
     ["cmsNav", '["Media", "/studio/media"]', '["Media", "/admin/collections/media"]', "stripped Studio navigation"],
     ["cmsMediaClient", "grant.upload_url", '"/api/direct-upload"', "executable Studio media manager"],
     ["cmsMediaClient", "attachment.return_url !== expectedReturn", "attachment.return_url === expectedReturn", "executable Studio media manager"],

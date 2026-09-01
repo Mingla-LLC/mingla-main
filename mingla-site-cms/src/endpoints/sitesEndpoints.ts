@@ -40,6 +40,10 @@ import {
   STUDIO_COOKIE,
   STUDIO_CSRF_COOKIE,
 } from "../lib/session";
+import {
+  requireAuthenticatedStudioRequest,
+  studioMediaGrantRequest,
+} from "../lib/studioRequestAuth";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
   return Response.json(data, {
@@ -580,10 +584,11 @@ async function publish(req: PayloadRequest): Promise<Response> {
 async function uploadGrant(req: PayloadRequest): Promise<Response> {
   try {
     assertMutationRequest(req.headers);
+    const { request } = await requireAuthenticatedStudioRequest(req);
     const body = await objectBody(req);
     return json({
       ok: true,
-      data: await createUploadGrant(req, {
+      data: await createUploadGrant(request, {
         filename: String(body.filename || "image"),
         content_type: String(body.content_type || ""),
         bytes: Number(body.bytes),
@@ -596,10 +601,11 @@ async function uploadGrant(req: PayloadRequest): Promise<Response> {
 async function uploadComplete(req: PayloadRequest): Promise<Response> {
   try {
     assertMutationRequest(req.headers);
+    const { request } = await requireAuthenticatedStudioRequest(req);
     const body = await objectBody(req);
     const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
     const media = await completeUpload(
-      req,
+      request,
       id,
       String(body.checksum || ""),
       Number(body.bytes),
@@ -620,21 +626,13 @@ async function uploadComplete(req: PayloadRequest): Promise<Response> {
 
 async function mediaStatus(req: PayloadRequest): Promise<Response> {
   try {
-    const session = await sessionFromHeaders(req.headers);
-    if (!session) throw new Error("SESSION_EXPIRED");
+    const { request } = await requireAuthenticatedStudioRequest(req);
     const id = new URL(req.url || "http://local").pathname.split("/").at(-1)!;
-    const scoped = scopedRequest(req, {
-      siteId: session.site_id,
-      brandId: session.brand_id,
-      tenantId: session.tenant_id,
-      userId: session.user_id,
-      rank: session.rank,
-    });
     const media = await req.payload.findByID({
       collection: "media",
       id,
       overrideAccess: false,
-      req: scoped,
+      req: studioMediaGrantRequest(request),
       depth: 0,
     });
     return json({
@@ -652,8 +650,7 @@ async function mediaStatus(req: PayloadRequest): Promise<Response> {
 
 async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
   try {
-    const session = await sessionFromHeaders(req.headers);
-    if (!session) throw new Error("SESSION_EXPIRED");
+    const { session, request } = await requireAuthenticatedStudioRequest(req);
     const tenant = await req.payload.findByID({
       collection: "tenants",
       id: session.tenant_id,
@@ -666,23 +663,13 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
     ) {
       throw new Error("FORBIDDEN");
     }
-    const scoped = scopedRequest(req, {
-      siteId: session.site_id,
-      brandId: session.brand_id,
-      tenantId: session.tenant_id,
-      userId: session.user_id,
-      rank: session.rank,
-    });
-    const mediaScoped = {
-      ...scoped,
-      context: { ...scoped.context, minglaMediaGrant: true },
-    };
+    const mediaScoped = studioMediaGrantRequest(request);
     const tenantWhere = { tenant: { equals: session.tenant_id } };
     const [pages, media, settings] = await Promise.all([
       req.payload.find({
         collection: "pages",
         overrideAccess: false,
-        req: scoped,
+        req: request,
         draft: true,
         depth: 0,
         limit: 5,
@@ -703,7 +690,7 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
       req.payload.find({
         collection: "site-settings",
         overrideAccess: false,
-        req: scoped,
+        req: request,
         draft: true,
         depth: 0,
         limit: 1,
@@ -747,25 +734,13 @@ async function studioMediaLibrary(req: PayloadRequest): Promise<Response> {
 
 async function studioMediaThumbnail(req: PayloadRequest): Promise<Response> {
   try {
-    const session = await sessionFromHeaders(req.headers);
-    if (!session) throw new Error("SESSION_EXPIRED");
+    const { request } = await requireAuthenticatedStudioRequest(req);
     const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
-    const scoped = scopedRequest(req, {
-      siteId: session.site_id,
-      brandId: session.brand_id,
-      tenantId: session.tenant_id,
-      userId: session.user_id,
-      rank: session.rank,
-    });
-    const mediaScoped = {
-      ...scoped,
-      context: { ...scoped.context, minglaMediaGrant: true },
-    };
     const media = await req.payload.findByID({
       collection: "media",
       id,
       overrideAccess: false,
-      req: mediaScoped,
+      req: studioMediaGrantRequest(request),
       depth: 0,
     });
     const manifest = media.rendition_manifest as {
@@ -795,23 +770,15 @@ async function studioMediaThumbnail(req: PayloadRequest): Promise<Response> {
 async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
   try {
     assertMutationRequest(req.headers);
-    const session = await sessionFromHeaders(req.headers);
-    if (!session) throw new Error("SESSION_EXPIRED");
+    const { request } = await requireAuthenticatedStudioRequest(req);
     const body = await objectBody(req);
     const mediaId = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
-    const scoped = scopedRequest(req, {
-      siteId: session.site_id,
-      brandId: session.brand_id,
-      tenantId: session.tenant_id,
-      userId: session.user_id,
-      rank: session.rank,
-    });
     const [page, media] = await Promise.all([
       req.payload.findByID({
         collection: "pages",
         id: String(body.page_id || ""),
         overrideAccess: false,
-        req: scoped,
+        req: request,
         draft: true,
         depth: 0,
       }),
@@ -819,7 +786,7 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
         collection: "media",
         id: mediaId,
         overrideAccess: false,
-        req: scoped,
+        req: request,
         depth: 0,
       }),
     ]);
@@ -842,7 +809,7 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
       collection: "pages",
       id: page.id,
       overrideAccess: false,
-      req: scoped,
+      req: request,
       draft: true,
       depth: 0,
       data: { blocks: blocks as never, revision: page.revision },
@@ -865,8 +832,9 @@ async function studioMediaAttach(req: PayloadRequest): Promise<Response> {
 async function mediaTombstone(req: PayloadRequest): Promise<Response> {
   try {
     assertMutationRequest(req.headers);
+    const { request } = await requireAuthenticatedStudioRequest(req);
     const id = new URL(req.url || "http://local").pathname.split("/").at(-2)!;
-    const result = await tombstoneMedia(req, id);
+    const result = await tombstoneMedia(request, id);
     return json({
       ok: true,
       data: {
@@ -927,13 +895,34 @@ type InternalActor = {
   rank: number;
 };
 
-function scopedRequest(
+function signedCoreRequest(
   req: PayloadRequest,
   actor: InternalActor,
 ): PayloadRequest {
   return {
     ...req,
     context: { ...req.context, minglaSignedCore: true },
+    user: {
+      id: actor.userId,
+      collection: "studio-users",
+      siteId: actor.siteId,
+      brandId: actor.brandId,
+      tenantId: actor.tenantId,
+      rank: actor.rank,
+      tenants: [{ tenant: actor.tenantId }],
+    } as never,
+  };
+}
+
+function previewGrantRequest(
+  req: PayloadRequest,
+  actor: InternalActor,
+): PayloadRequest {
+  const context = { ...req.context };
+  delete context.minglaSignedCore;
+  return {
+    ...req,
+    context,
     user: {
       id: actor.userId,
       collection: "studio-users",
@@ -1034,8 +1023,7 @@ async function mintPreview(req: PayloadRequest): Promise<Response> {
 
 async function studioPreview(req: PayloadRequest): Promise<Response> {
   try {
-    const session = await sessionFromHeaders(req.headers);
-    if (!session) throw new Error("SESSION_EXPIRED");
+    const { session, request } = await requireAuthenticatedStudioRequest(req);
     const tenant = await req.payload.findByID({
       collection: "tenants",
       id: session.tenant_id,
@@ -1048,33 +1036,27 @@ async function studioPreview(req: PayloadRequest): Promise<Response> {
     ) {
       throw new Error("FORBIDDEN");
     }
-    const scoped = scopedRequest(req, {
-      siteId: session.site_id,
-      brandId: session.brand_id,
-      tenantId: session.tenant_id,
-      userId: session.user_id,
-      rank: session.rank,
-    });
     const tenantWhere = { tenant: { equals: session.tenant_id } };
     const [pages, settings, navigation, footer, media] = await Promise.all([
       req.payload.find({
-        collection: "pages", overrideAccess: false, req: scoped, draft: true,
+        collection: "pages", overrideAccess: false, req: request, draft: true,
         depth: 0, limit: 5, where: tenantWhere, sort: "nav_order",
       }),
       req.payload.find({
-        collection: "site-settings", overrideAccess: false, req: scoped,
+        collection: "site-settings", overrideAccess: false, req: request,
         draft: true, depth: 0, limit: 1, where: tenantWhere,
       }),
       req.payload.find({
-        collection: "navigation", overrideAccess: false, req: scoped,
+        collection: "navigation", overrideAccess: false, req: request,
         draft: true, depth: 0, limit: 1, where: tenantWhere,
       }),
       req.payload.find({
-        collection: "footer", overrideAccess: false, req: scoped, draft: true,
+        collection: "footer", overrideAccess: false, req: request, draft: true,
         depth: 0, limit: 1, where: tenantWhere,
       }),
       req.payload.find({
-        collection: "media", overrideAccess: false, req: scoped, depth: 0,
+        collection: "media", overrideAccess: false,
+        req: studioMediaGrantRequest(request), depth: 0,
         limit: 500, sort: "id",
         where: { and: [tenantWhere, { state: { equals: "READY" } }] },
       }),
@@ -1211,7 +1193,7 @@ async function ari(req: PayloadRequest): Promise<Response> {
     )
       throw new Error("FORBIDDEN");
     const tenant = await tenantForSignedRequest(req, envelope.site_id, brandId);
-    const scoped = scopedRequest(req, {
+    const scoped = signedCoreRequest(req, {
       siteId: envelope.site_id,
       brandId,
       tenantId: String(tenant.id),
@@ -1562,7 +1544,7 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
     const grant = await decodePreviewGrant(url.searchParams.get("token"));
     const requestedSite = url.searchParams.get("site_id");
     if (!grant || requestedSite !== grant.site_id) throw new Error("FORBIDDEN");
-    const scoped = scopedRequest(req, {
+    const scoped = previewGrantRequest(req, {
       siteId: grant.site_id,
       brandId: grant.brand_id,
       tenantId: grant.tenant_id,
@@ -1611,7 +1593,7 @@ async function previewDraft(req: PayloadRequest): Promise<Response> {
       req.payload.find({
         collection: "media",
         overrideAccess: false,
-        req: scoped,
+        req: studioMediaGrantRequest(scoped),
         depth: 0,
         limit: 500,
         sort: "id",

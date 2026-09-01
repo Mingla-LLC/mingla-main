@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   attachStudioMedia,
   canSelectStudioMedia,
+  isStudioSessionEnded,
   loadStudioMediaLibrary,
   removeUnusedStudioMedia,
   uploadStudioMedia,
@@ -20,6 +21,12 @@ const EMPTY: StudioMediaProgress = {
   mediaId: null,
   message: "Choose an image to begin.",
 };
+
+function returnExpiredStudioSession(error: unknown): boolean {
+  if (!isStudioSessionEnded(error)) return false;
+  window.location.replace("/mingla/session-expired");
+  return true;
+}
 
 export default function StudioMediaManager() {
   const picker = useRef<HTMLInputElement>(null);
@@ -38,7 +45,8 @@ export default function StudioMediaManager() {
     setLibraryError(null);
     try {
       setLibrary(await loadStudioMediaLibrary());
-    } catch {
+    } catch (error) {
+      if (returnExpiredStudioSession(error)) return;
       setLibraryError(
         "Media could not be refreshed. Your draft has not been changed.",
       );
@@ -49,8 +57,9 @@ export default function StudioMediaManager() {
     let active = true;
     void loadStudioMediaLibrary().then((next) => {
       if (active) setLibrary(next);
-    }).catch(() => {
+    }).catch((error) => {
       if (active) {
+        if (returnExpiredStudioSession(error)) return;
         setLibraryError(
           "Media could not be refreshed. Your draft has not been changed.",
         );
@@ -81,7 +90,8 @@ export default function StudioMediaManager() {
         setSelectedMediaId(result.mediaId);
         await refreshLibrary();
       }
-    } catch {
+    } catch (error) {
+      if (returnExpiredStudioSession(error)) return;
       setProgress({
         phase: "retryable_failed",
         progress: 0,
@@ -141,7 +151,8 @@ export default function StudioMediaManager() {
         `Draft revision ${result.draft_revision} saved. Returning to the page editor…`,
       );
       window.location.assign(result.return_url);
-    } catch {
+    } catch (error) {
+      if (returnExpiredStudioSession(error)) return;
       setLibraryError(
         "This draft location changed or the image is no longer READY. Refresh and choose again.",
       );
@@ -159,7 +170,8 @@ export default function StudioMediaManager() {
       await removeUnusedStudioMedia(mediaId);
       if (selectedMediaId === mediaId) setSelectedMediaId(null);
       await refreshLibrary();
-    } catch {
+    } catch (error) {
+      if (returnExpiredStudioSession(error)) return;
       setLibraryError(
         "That image is now used by the draft or could not be removed. Nothing was detached.",
       );

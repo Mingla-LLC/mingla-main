@@ -4,6 +4,7 @@ import {
   canSelectStudioMedia,
   loadStudioMediaLibrary,
   removeUnusedStudioMedia,
+  isStudioSessionEnded,
   STUDIO_MEDIA_MAX_BYTES,
   uploadStudioMedia,
   validateStudioMediaFile,
@@ -224,5 +225,29 @@ describe("#2830 Studio media client", () => {
       { altText: "Dining room", decorative: false },
       { request },
     )).rejects.toThrow("VALIDATION_FAILED");
+  });
+
+  it("routes revoked Studio authority to session recovery instead of retrying media", async () => {
+    expect(isStudioSessionEnded(new Error("SESSION_EXPIRED"))).toBe(true);
+    expect(isStudioSessionEnded(new Error("FORBIDDEN"))).toBe(true);
+    expect(isStudioSessionEnded(new Error("MEDIA_PROCESSING"))).toBe(false);
+    const request = vi
+      .fn()
+      .mockResolvedValueOnce(response(200, { ok: true, data: {
+        media_id: "00000000-0000-4000-8000-000000000010",
+        upload_url: "https://quarantine.invalid/exact",
+        required_headers: { "x-upload": "one-time" },
+        maximum_bytes: STUDIO_MEDIA_MAX_BYTES,
+      } }))
+      .mockResolvedValueOnce(response(403, {
+        ok: false,
+        error: { code: "SESSION_EXPIRED" },
+      }));
+    await expect(uploadStudioMedia(file, vi.fn(), {
+      request,
+      put: vi.fn(async () => undefined),
+      digest: vi.fn(async () => "a".repeat(64)),
+      sleep: vi.fn(async () => undefined),
+    })).rejects.toThrow("SESSION_EXPIRED");
   });
 });

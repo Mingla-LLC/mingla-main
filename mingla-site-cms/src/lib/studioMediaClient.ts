@@ -150,6 +150,11 @@ async function envelope<T>(response: Response): Promise<T> {
   throw new Error(body?.error?.code ?? "SERVICE_TEMPORARILY_UNAVAILABLE");
 }
 
+export function isStudioSessionEnded(error: unknown): boolean {
+  return error instanceof Error &&
+    ["SESSION_EXPIRED", "FORBIDDEN"].includes(error.message);
+}
+
 export async function loadStudioMediaLibrary(
   bindings: Pick<StudioMediaBindings, "request"> = DEFAULT_BINDINGS,
 ): Promise<StudioMediaLibrary> {
@@ -338,6 +343,7 @@ export async function uploadStudioMedia(
     onProgress(immediate);
     if (immediate.phase !== "processing") return immediate;
   } catch (error) {
+    if (isStudioSessionEnded(error)) throw error;
     const replayed = error instanceof Error && error.message === "INVALID_STATE";
     const rejected = error instanceof Error && error.message === "MEDIA_REJECTED";
     const failure: StudioMediaProgress = {

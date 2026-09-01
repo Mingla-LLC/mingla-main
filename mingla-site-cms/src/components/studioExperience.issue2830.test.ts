@@ -56,6 +56,7 @@ describe("#2830 stripped Studio and preview contract", () => {
     expect(manager).toContain("Remove unused");
     expect(manager).toContain("Use in draft");
     expect(manager).toContain("window.location.assign(result.return_url)");
+    expect(manager).toContain('window.location.replace("/mingla/session-expired")');
     expect(manager).not.toContain("mingla:media-selected");
     expect(client).toContain('"/api/mingla/media-library"');
     expect(client).toContain("/attach");
