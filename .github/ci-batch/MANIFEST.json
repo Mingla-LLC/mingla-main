@@ -19762,18 +19762,23 @@
       "providerWorkflow": ".github/workflows/issue-871-attendance-entitlement-tests.yml",
       "rationale": "Retained as the sole live provider because it requires database-special execution.",
       "workflowMetadata": {
-        "sourceSha256": "e6fdaf5f2aace64cfcdf1ba12f04abfaddec0ebfbf0078f8f446df24651c1ade",
+        "sourceSha256": "ff0803ef134c3d605e4de40fe4cc715640cd2080cd53487a136fdda33a7c672d",
         "triggers": [
           "pull_request"
         ],
         "pathScope": [
           "!mingla-business/scripts/ci/bundle-baseline.json",
+          ".github/ci-batch/MANIFEST.json",
+          ".github/scripts/strict-grep/MANIFEST.json",
+          ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.mjs",
+          ".github/scripts/strict-grep/issue-2979-attendance-claim-continuity.tester.mjs",
           ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs",
           ".github/workflows/issue-871-attendance-entitlement-tests.yml",
           "app-mobile/**",
           "docs/INVARIANT_REGISTRY.md",
           "mingla-business/**",
           "supabase/functions/_shared/attendanceClaim.ts",
+          "supabase/functions/_shared/governedAdSecret.ts",
           "supabase/functions/attendance-claim-backfill/**",
           "supabase/functions/attendance-claim-link/**",
           "supabase/functions/claim-attendance/**",
@@ -19781,7 +19786,9 @@
           "supabase/functions/ticket-confirmation-dispatch/**",
           "supabase/migrations/20270302000871_issue_0871_attendance_claim_foundation.sql",
           "supabase/migrations/20270302000872_issue_0871_entitled_guest_roster.sql",
-          "supabase/migrations/__tests__/issue_0871*"
+          "supabase/migrations/20270614002987_issue_2979_attendance_claim_secret_continuity.sql",
+          "supabase/migrations/__tests__/issue_0871*",
+          "supabase/migrations/__tests__/issue_2979*"
         ],
         "jobKeys": [
           "issue-871-contract",

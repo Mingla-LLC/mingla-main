@@ -16,6 +16,15 @@ export type GovernedAdField =
 
 export type GovernedAdEnvGetter = (name: string) => string | undefined;
 
+export type AttendanceClaimPepperGeneration = "legacy_v1" | "governed_v2";
+export type AttendanceClaimPepperRing = {
+  current: { generation: AttendanceClaimPepperGeneration; secret: string };
+  previous: {
+    generation: AttendanceClaimPepperGeneration;
+    secret: string;
+  } | null;
+};
+
 const BUNDLE_NAME = "AD_CONVERSION_TOKENS";
 const MAX_BUNDLE_BYTES = 48 * 1024;
 const LEGACY_NAMES: Record<GovernedAdField, string> = {
@@ -124,4 +133,43 @@ export function resolveGovernedAdField(
   }
   emitOnce("governed_ad_legacy_fallback", field, result.reason);
   return getEnv(legacyName);
+}
+
+/**
+ * The attendance pepper is the only governed field that needs a two-reader
+ * cutover. The direct secret is never compared with the bundle value and no
+ * diagnostic includes secret-derived metadata.
+ */
+export function resolveAttendanceClaimPepperRing(
+  getEnv: GovernedAdEnvGetter = defaultGetEnv,
+): AttendanceClaimPepperRing | undefined {
+  const bundle = readBundleField(
+    getEnv(BUNDLE_NAME),
+    "ATTENDANCE_CLAIM_PEPPER",
+  );
+  const direct = getEnv("ATTENDANCE_CLAIM_PEPPER");
+  if (bundle.ok) {
+    return {
+      current: { generation: "governed_v2", secret: bundle.value },
+      previous: direct ? { generation: "legacy_v1", secret: direct } : null,
+    };
+  }
+  if (bundle.reason !== "missing") {
+    emitOnce(
+      "governed_ad_bundle_invalid",
+      "ATTENDANCE_CLAIM_PEPPER",
+      bundle.reason,
+    );
+  }
+  emitOnce(
+    "governed_ad_legacy_fallback",
+    "ATTENDANCE_CLAIM_PEPPER",
+    bundle.reason,
+  );
+  return direct
+    ? {
+      current: { generation: "legacy_v1", secret: direct },
+      previous: null,
+    }
+    : undefined;
 }

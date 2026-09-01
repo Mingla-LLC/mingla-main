@@ -8,7 +8,7 @@ import {
   parseAttendanceClaimRequest,
   sha256Digest,
 } from "../_shared/attendanceClaim.ts";
-import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
+import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";
 
 type Outcome =
   | "success"
@@ -26,11 +26,8 @@ serve(async (req) => {
   const url = Deno.env.get("SUPABASE_URL");
   const anon = Deno.env.get("SUPABASE_ANON_KEY");
   const service = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const pepper = resolveGovernedAdField(
-    "ATTENDANCE_CLAIM_PEPPER",
-    "ATTENDANCE_CLAIM_PEPPER",
-  );
-  if (!url || !anon || !service || !pepper) {
+  const pepperRing = resolveAttendanceClaimPepperRing();
+  if (!url || !anon || !service || !pepperRing) {
     return claimJson(500, { ok: false, error: "claim_failed" });
   }
   const authorization = req.headers.get("authorization") ?? "";
@@ -75,9 +72,22 @@ serve(async (req) => {
     }
 
     let proof: Uint8Array | null = null;
+    let legacyProof: Uint8Array | null = null;
     if (body.kind === "order") {
       const raw = decodeOrderClaimToken(body.token);
-      if (raw) proof = await hmacOrderClaimDigest(raw, pepper);
+      if (raw) {
+        proof = await hmacOrderClaimDigest(raw, pepperRing.current.secret);
+        if (pepperRing.previous) {
+          legacyProof = await hmacOrderClaimDigest(
+            raw,
+            pepperRing.previous.secret,
+          );
+        } else if (pepperRing.current.generation === "legacy_v1") {
+          // In the bundle-absent compatibility state, the current direct
+          // secret is also the only legacy verifier.
+          legacyProof = proof;
+        }
+      }
     } else {
       proof = await sha256Digest(body.token);
     }
@@ -86,12 +96,15 @@ serve(async (req) => {
       return claimJson(400, { ok: false, error: "claim_invalid" });
     }
 
-    const { data, error } = await admin.rpc("claim_attendance_internal", {
+    const { data, error } = await admin.rpc("claim_attendance_internal_v2", {
       p_user_id: authData.user.id,
       p_kind: body.kind,
       p_event_id: body.eventId,
       p_source_id: body.sourceId,
-      p_proof_digest: bytesToPostgresHex(proof),
+      p_current_proof_digest: bytesToPostgresHex(proof),
+      p_legacy_proof_digest: legacyProof
+        ? bytesToPostgresHex(legacyProof)
+        : null,
     });
     if (error) {
       if (error.message.includes("event_not_available")) {
@@ -111,8 +124,16 @@ serve(async (req) => {
         | "already_claimed"
         | "invalid"
         | "ineligible"
-        | "conflict";
+        | "conflict"
+        | "secret_unavailable";
     };
+    if (result.result === "secret_unavailable") {
+      outcome = "internal_error";
+      return claimJson(503, {
+        ok: false,
+        error: "claim_temporarily_unavailable",
+      });
+    }
     if (result.result === "invalid" || result.result === "conflict") {
       outcome = result.result === "conflict" ? "conflict" : "invalid";
       return claimJson(400, { ok: false, error: "claim_invalid" });

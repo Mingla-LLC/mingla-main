@@ -10,7 +10,7 @@ import {
   sha256Digest,
 } from "../_shared/attendanceClaim.ts";
 import { ticketCorsHeaders } from "../_shared/ticketCheckout.ts";
-import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";
+import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";
 
 serve(async (req) => {
   if (req.method === "OPTIONS") {
@@ -30,14 +30,11 @@ serve(async (req) => {
   const { checkoutSessionId, buyerStatusToken } = body;
   const url = Deno.env.get("SUPABASE_URL");
   const key = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const pepper = resolveGovernedAdField(
-    "ATTENDANCE_CLAIM_PEPPER",
-    "ATTENDANCE_CLAIM_PEPPER",
-  );
+  const pepperRing = resolveAttendanceClaimPepperRing();
   if (!url || !key) {
     return json(500, { ok: false, error: "claim_link_failed" });
   }
-  if (!pepper) {
+  if (!pepperRing) {
     return json(503, {
       ok: false,
       error: "claim_link_temporarily_unavailable",
@@ -69,13 +66,17 @@ serve(async (req) => {
       });
     }
     const minted = mintOrderClaimToken();
-    const digest = await hmacOrderClaimDigest(minted.raw, pepper);
+    const digest = await hmacOrderClaimDigest(
+      minted.raw,
+      pepperRing.current.secret,
+    );
     const { data: issuance, error: issuanceError } = await admin.rpc(
-      "issue_order_attendance_claim_proof",
+      "issue_order_attendance_claim_proof_v2",
       {
         p_order_id: session.order_id,
         p_event_id: session.event_id,
         p_digest: bytesToPostgresHex(digest),
+        p_generation: pepperRing.current.generation,
         p_allow_retry_rotation: true,
       },
     );

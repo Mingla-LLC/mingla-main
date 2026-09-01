@@ -41,15 +41,12 @@ Deno.test("#871 SC-8/9/10 preserves RSVP SHA-256 and domain-separated order HMAC
   assertStringIncludes(foundation, "pass_recovery_token_hash");
   assertStringIncludes(
     link,
-    'import { resolveGovernedAdField } from "../_shared/governedAdSecret.ts";',
+    'import { resolveAttendanceClaimPepperRing } from "../_shared/governedAdSecret.ts";',
   );
-  assertStringIncludes(
-    link,
-    `const pepper = resolveGovernedAdField(
-    "ATTENDANCE_CLAIM_PEPPER",
-    "ATTENDANCE_CLAIM_PEPPER",
-  );`,
-  );
+  assertStringIncludes(link, "resolveAttendanceClaimPepperRing()");
+  assertStringIncludes(link, "pepperRing.current.secret");
+  assertStringIncludes(link, "issue_order_attendance_claim_proof_v2");
+  assertStringIncludes(link, "p_generation: pepperRing.current.generation");
   assertStringIncludes(helper, 'crypto.subtle.sign("HMAC"');
   assertStringIncludes(foundation, "attendance_claim_token_digest bytea");
 });
