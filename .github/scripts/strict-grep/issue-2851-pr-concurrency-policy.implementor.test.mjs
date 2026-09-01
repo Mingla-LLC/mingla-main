@@ -88,8 +88,24 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // reverted in the loop below before this new digest is trusted. The value was
 // re-derived from fresh origin/main at 3835b60d3 so #2948's concurrently landed
 // workflow proofs remain part of the combined authority.
+// [TEST-MOD-APPROVED #2881] Re-derived after #2881 draft-gated the PR-family lanes:
+// each gated workflow gained `types: [opened, synchronize, reopened,
+// ready_for_review]` on its pull-request trigger and a draft condition on every job.
+// Both are NON-CONCURRENCY document changes, which is exactly what this digest
+// absorbs. Named by issue, not by filename, per the rule above.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are deliberately UNCHANGED: no
+// workflow was added, removed or renamed, and assertion 1 above still proves the
+// inventory and the sole load exception. Concurrency is untouched BY CONSTRUCTION --
+// #2881 never edits a `concurrency:` block, and the #2851 gate itself still reports
+// the same normal/exception split.
+// The revert-sensitivity loop below is untouched and still red on reversion. That
+// loop is why this re-bank is safe rather than a weakening: an earlier attempt to
+// re-bank alone left the Sites recovery probe with ZERO mutation targets, because
+// inserting types: between `pull_request:` and `paths:` split the exact block it
+// removes. That lane is therefore exempted from draft-gating and restored
+// byte-identical, so the probe still has its target and still bites.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "e39b5a9f1ef5d86f745a99e7818b76ef694edb1b14b24fbe1239224685ad7322";
+  "955d3f0cc564ca2eef5156b2668e8fdcf3b28672fad1bec659bdd7caf74519fd";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
