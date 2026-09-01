@@ -28,6 +28,7 @@ import {
 import { base64url } from "../lib/crypto";
 import { cmsConfig } from "../lib/config";
 import { MINGLA_BUSINESS_ORIGIN } from "../lib/origins";
+import { sitesJsonResponse } from "../lib/http";
 import {
   emitCmsObservation,
   observeCmsEndpoint,
@@ -50,10 +51,7 @@ import {
 } from "../lib/studioRequestAuth";
 
 function json(data: unknown, status = 200, headers?: HeadersInit) {
-  return Response.json(data, {
-    status,
-    headers: { "cache-control": "no-store, private", ...headers },
-  });
+  return sitesJsonResponse(data, status, headers);
 }
 async function objectBody(
   req: PayloadRequest,
