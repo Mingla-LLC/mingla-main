@@ -56,24 +56,60 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // revert-sensitivity loop below, so this digest cannot be re-pinned without
 // each individual change being independently proven to move it.
 //
-// [TEST-MOD-APPROVED #2909] Re-derived a THIRD time, on the merged tree. #2909
-// adds ONE job to each of two PR-family hosts -- the pre-merge "is main green"
-// check and the red-main alert -- and this digest covers each PR-family document
-// minus its concurrency map, so a job addition MUST move it. The value below is
-// COMPUTED from the merged tree, not carried over from either side of the merge:
-// picking one branch's literal would have asserted a tree neither branch had.
-// What does NOT move, and did not: PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256
-// are untouched, because no workflow was added, removed, or reclassified. The
-// seven denied non-PR authorities, the exact-equal counts, and every mutation
-// case are unchanged.
-// Previous values: 9e888ff1... (pre-#2909), 63f44765... (this branch pre-merge),
-//   f96a3799... (main at #2879).
+// [TEST-MOD-APPROVED #2905] Re-derived again after #2905 extended the #1719
+// unified-sharing lane — the sole live provider for the event-cover-video
+// suites — with the Bunny status-enum seam. The CI origin registry is locked
+// (I-2148-CI-TOPOLOGY-BOUNDED bans a new issue-*.yml lane), so the proofs for
+// the shared `bunnyStream.ts` module attach to the lane that already owns the
+// cover-video functions: two `paths` triggers and one `deno test` step.
+//
+// The concurrency policy itself is UNTOUCHED — `auditWorkflowSources` reports
+// zero errors and the 124/7 partition is unchanged. Only the non-concurrency
+// semantic content of one existing PR-family workflow moved. Five of the added
+// lines are in the revert-sensitivity loop below, so this re-pin is proven
+// line-by-line rather than accepted on assertion.
+// [TEST-MOD-APPROVED #2948] Re-derived once more. #2948 added one step and three
+// trigger paths to the #1456 edge-deploy idempotency lane (named by issue, not
+// by filename — a workflow filename in this file becomes a provider reference
+// and moves the frozen #2148 seal) so the lane that proves the deploy wrapper
+// still REFUSES a deploy-all also proves its caller complies. That lane is
+// PR-family, so its document is inside this digest.
+// PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are deliberately UNCHANGED: no
+// workflow was added, removed or renamed, and this delta is one existing
+// workflow's non-concurrency document. Every revert-sensitivity assertion below
+// is untouched and still red on reversion.
+//
+// [TEST-MOD-APPROVED #2909] Re-derived AGAIN, on the merged tree. #2909 adds ONE
+// job to each of two PR-family hosts -- the pre-merge "is main green" check and
+// the red-main alert -- and this digest covers each PR-family document minus its
+// concurrency map, so a job addition MUST move it. The value below is COMPUTED
+// from the merged tree, never carried over from either side: this literal has now
+// diverged four ways across three merges, and every time, taking one branch's
+// value would have pinned a tree that neither branch had. A digest nobody can
+// re-derive is a number somebody typed.
+// What does NOT move, and did not: PR_FAMILY_COUNT stays 124 and
+// PR_FAMILY_IDENTITY_SHA256 stays 9356c425 -- no workflow was added, removed or
+// reclassified. The seven denied non-PR authorities, the exact-equal counts, and
+// every revert-sensitivity assertion are unchanged.
+// Superseded values: 9e888ff1 (pre-#2909), 63f44765 / 5289ef7b (this branch),
+//   f96a3799 (#2879), f3a1954a (main at #2905/#2948).
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "5289ef7b3f833ac87771f16bd5fabd8e866bf67db7ca462518dcd2bb4225953c";
+  "45776be29be69adf6d0b7bee9fa5584a27e77527cc2d5915fcbf1d14dc2ab79d";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
-  "7fe5131de1ff59b0b247b9c718ca01bbcfcb637ff115e1e5751e052c05bdb72a",
+  // [TEST-MOD-APPROVED #2948] Index 2 is the edge-function deploy workflow —
+  // named through DENIED's `liveWorkflow` helper above, never as a literal,
+  // because a workflow filename in this file becomes a provider reference and
+  // moves the frozen #2148 seal. Re-pinned after #2948 replaced that workflow's
+  // bare `scripts/deploy-supabase-functions.sh` invocation — the deploy-all
+  // entry point until #2886 changed the wrapper's contract and left this caller
+  // behind — with a computed, explicitly named selection, and added a
+  // failure-alert job. This digest is the workflow's BYTES; the assertion that
+  // it is denied PR cancellation is unchanged, still runs, and still fails on
+  // the reversions proven in tests 5-10. Only the pinned value moves, and only
+  // because the file genuinely changed.
+  "6201684e6c624694226d78ffb4620f3af70550d4bcd1b2f1648042aa49976160",
   "0ca059b1118b93b455ee539ff31c28b2fe6ad53c61c5f61faee5c5eccb9cb7f5",
   "ae053d47c1cea32c1889cc00eba1ed11b5bbec30dd726c3d078af92f3dfdf76a",
   "c6056ea23b01ad1e38e2cfe94891872dbed9dba94c9d7e5464c354f1563fc132",
@@ -277,6 +313,18 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
       "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
     [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
       "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
+    // [TEST-MOD-APPROVED #2905] The #1719 lane's two new `paths` triggers and
+    // three new `deno test` targets. Each must independently move the digest.
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      '      - "supabase/functions/_shared/bunnyStream.ts"\n'],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      '      - "supabase/functions/_shared/bunnyStream.issue2905.*.test.ts"\n'],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      "          supabase/functions/_shared/bunnyStream.issue2905.enum-seam.test.ts\n"],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      "          supabase/functions/event-cover-video-webhook/index.issue2905.silent200.test.ts\n"],
+    [liveWorkflow("issue", "1719", "unified", "sharing"),
+      "          supabase/functions/event-cover-video-reaper/__tests__/\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

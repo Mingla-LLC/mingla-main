@@ -173,6 +173,14 @@ export function stableJson(value) {
     `${JSON.stringify(key)}:${stableJson(value[key])}`).join(",")}}`;
 }
 
+export function timestampsRepresentSameInstant(left, right) {
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  return Number.isFinite(leftTime) &&
+    Number.isFinite(rightTime) &&
+    leftTime === rightTime;
+}
+
 function exactKeys(value, expected, code) {
   if (!value || typeof value !== "object" || Array.isArray(value)) fail(code);
   const observed = Object.keys(value).sort();
@@ -181,9 +189,16 @@ function exactKeys(value, expected, code) {
 }
 
 export function validateManagementProjectResponse(value, expectedRef, now = new Date()) {
+  const currentIdentityShape = value && typeof value === "object" &&
+    (Object.hasOwn(value, "id") || Object.hasOwn(value, "organization_id"));
   exactKeys(
     value,
-    ["created_at", "database", "name", "organization_slug", "ref", "region", "status"],
+    currentIdentityShape
+      ? [
+        "created_at", "database", "id", "name", "organization_id",
+        "organization_slug", "ref", "region", "status",
+      ]
+      : ["created_at", "database", "name", "organization_slug", "ref", "region", "status"],
     "PROJECT_RESPONSE_SCHEMA_INVALID",
   );
   exactKeys(
@@ -194,6 +209,8 @@ export function validateManagementProjectResponse(value, expectedRef, now = new 
   const created = Date.parse(value.created_at);
   if (
     typeof expectedRef !== "string" || value.ref !== expectedRef ||
+    (currentIdentityShape && value.id !== expectedRef) ||
+    (currentIdentityShape && value.organization_id !== "mrcqqkovdchaltvquggd") ||
     value.organization_slug !== "mrcqqkovdchaltvquggd" ||
     value.name !== "mingla-sites-cms-prod" ||
     value.region !== "us-east-2" ||
@@ -233,17 +250,41 @@ export function validateManagementBackupResponse(value, {
     projectCreated > now.getTime() + 5 * 60 * 1000
   ) fail("PROJECT_RESPONSE_SCHEMA_INVALID");
   if (value.walg_enabled !== true) fail("DATABASE_BACKUP_WALG_DISABLED");
-  if (value.physical_backup_data === null) {
+  // #2948 — "there is no PITR window" has TWO wire shapes, not one. The
+  // Management API returns `null` on some projects and `{}` on others, and the
+  // Sites CMS project returns `{}`:
+  //   {"backups":[...],"physical_backup_data":{},"pitr_enabled":false,...}
+  // Only `null` was handled, so `{}` fell into the populated branch and
+  // `exactKeys` rejected it — the whole reason `Private backup and isolated
+  // restore` has never been green on `main`. Same bug class as #2944 one
+  // function above: an exact-key contract against a third party's response.
+  // The refusal is preserved everywhere it means something: a non-empty window
+  // still has to carry exactly the two documented keys, a non-object is still
+  // rejected by `exactKeys`, and claiming `pitr_enabled: true` with no window
+  // is still incoherent and still fails.
+  const physicalWindow = value.physical_backup_data;
+  const windowAbsent = physicalWindow === null ||
+    (typeof physicalWindow === "object" &&
+      !Array.isArray(physicalWindow) &&
+      Object.keys(physicalWindow).length === 0);
+  if (windowAbsent) {
+    if (value.pitr_enabled !== false) fail("BACKUP_RESPONSE_SCHEMA_INVALID");
+  } else if (
+    value.physical_backup_data &&
+    typeof value.physical_backup_data === "object" &&
+    !Array.isArray(value.physical_backup_data) &&
+    Object.keys(value.physical_backup_data).length === 0
+  ) {
     if (value.pitr_enabled !== false) fail("BACKUP_RESPONSE_SCHEMA_INVALID");
   } else {
     exactKeys(
-      value.physical_backup_data,
+      physicalWindow,
       ["earliest_physical_backup_date_unix", "latest_physical_backup_date_unix"],
       "BACKUP_RESPONSE_SCHEMA_INVALID",
     );
     if (
-      !Number.isSafeInteger(value.physical_backup_data.earliest_physical_backup_date_unix) ||
-      !Number.isSafeInteger(value.physical_backup_data.latest_physical_backup_date_unix)
+      !Number.isSafeInteger(physicalWindow.earliest_physical_backup_date_unix) ||
+      !Number.isSafeInteger(physicalWindow.latest_physical_backup_date_unix)
     ) fail("BACKUP_RESPONSE_SCHEMA_INVALID");
   }
 

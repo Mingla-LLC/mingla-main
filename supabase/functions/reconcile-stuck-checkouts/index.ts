@@ -110,17 +110,57 @@ async function retrieveCheckoutSessionReadOnly(
   return cs as unknown as CheckoutSessionLike;
 }
 
-serve(async (req) => {
+/**
+ * The service client the sweep runs on. Built from the concrete constructor
+ * below rather than `ReturnType<typeof createClient>`: the bare generic
+ * resolves its Database parameter to its CONSTRAINT, not its default, which
+ * types every table as `never` and reds `deno check` on the finalize block.
+ */
+const serviceClient = () =>
+  createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+type ServiceClient = ReturnType<typeof serviceClient>;
+
+/**
+ * issue #2947 slice 1 — the I/O seam that makes this sweep RUNNABLE in a test.
+ *
+ * The batch predicate below decides which rows a run can act on, and that is a
+ * BEHAVIOUR, not a source string. A test that greps this file for `.lt(` proves
+ * the character was typed; it cannot prove the filter is applied BEFORE the
+ * LIMIT, which is the entire point of the fix. Injecting the three I/O clients
+ * lets the regression suite drive the REAL handler over a fixture table and
+ * assert on the rows it actually processed.
+ *
+ * Same shape as `createTicketCheckoutCreateHandler` in ticket-checkout-create.
+ * Nothing about the sweep's logic changes: `defaultDeps` constructs exactly the
+ * three objects the serve() callback used to construct inline.
+ */
+export interface ReconcileStuckCheckoutsDeps {
+  serviceClient: () => ServiceClient;
+  stripeClient: () => StripeClient;
+  qrTokenPepper: () => string;
+}
+
+const defaultDeps: ReconcileStuckCheckoutsDeps = {
+  serviceClient,
+  stripeClient: stripeTicketCheckout,
+  qrTokenPepper,
+};
+
+export const createReconcileStuckCheckoutsHandler = (
+  deps: ReconcileStuckCheckoutsDeps = defaultDeps,
+): (req: Request) => Promise<Response> =>
+async (req) => {
   const auth = req.headers.get("authorization") ?? "";
   if (!auth.includes(SERVICE_ROLE_KEY)) {
     return new Response("unauthorized", { status: 401 });
   }
 
-  const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const stripe = stripeTicketCheckout();
-  const pepper = qrTokenPepper();
+  const supabase = deps.serviceClient();
+  const stripe = deps.stripeClient();
+  const pepper = deps.qrTokenPepper();
 
   // Captured ONCE per run: drives both the classify() cutoff test and the CAS
   // write's server-side `.lt("expires_at", nowIso)` re-check.
@@ -140,6 +180,41 @@ serve(async (req) => {
       "requires_payment",
       "pending_free",
     ])
+    // issue #2947 slice 1 — THE BATCH MUST ONLY CONTAIN ROWS A RUN CAN ACT ON.
+    //
+    // Until now the cutoff was applied twice DOWNSTREAM of this query — in
+    // classify() and again in the expiry CAS — but the batch itself was chosen
+    // by age alone. That was harmless only while every in-flight row was also
+    // past expiry (the whole live population, 6 rows, is). The ticket waiting
+    // room breaks that: a queued buyer holds stock at
+    // `expires_at = 'infinity'::timestamptz`, which is permanently in-flight and
+    // permanently the OLDEST row in a rush. Measured on production (rolled
+    // back) with 60 queued rows present: 50 of 50 batch slots held rows that can
+    // NEVER expire, all 6 genuinely-expired rows were starved out of every batch
+    // forever, and the run still spent up to 100 Stripe retrieves learning
+    // nothing. No abandoned hold is released, so stock never returns to the
+    // queue and the waiting room deadlocks itself.
+    //
+    // `expires_at < now()` is what makes SWEEP_BATCH_LIMIT bound EXPIRABLE rows
+    // rather than rows scanned, and it excludes the `'infinity'` sentinel
+    // structurally — `'infinity' < now()` is false, for any row, forever,
+    // independent of anything a later slice does.
+    //
+    // WHAT THIS COSTS, stated rather than hidden: this function does two jobs,
+    // and the other one is FINALIZE — recovering a session whose payment
+    // succeeded but whose webhook was lost. Those rows are now also skipped
+    // while still inside their 15-minute window, so that safety net's worst-case
+    // latency goes from ~15 minutes after payment to ~30. Correctness is
+    // untouched: classify() checks Stripe truth BEFORE the clock, so a succeeded
+    // PaymentIntent still returns `finalize` once past expiry, and
+    // `biz_ticket_checkout_finalize` guards on order_id — the row is never
+    // expired instead of finalized. The right fix for that latency is the
+    // per-arm split with its own limit (issue #2947 slice 4), NOT a disjunctive
+    // predicate here: `expires_at < now() OR <has a payment ref>` would readmit
+    // every in-window paid row to a 50-row batch ordered by created_at, which
+    // reopens the starvation this line closes and stops the limit meaning what
+    // it says.
+    .lt("expires_at", nowIso)
     .order("created_at", { ascending: true })
     .limit(SWEEP_BATCH_LIMIT);
 
@@ -507,4 +582,12 @@ serve(async (req) => {
     ),
     { headers: { "content-type": "application/json" } },
   );
-});
+};
+
+// Guarded exactly as ticket-checkout-create guards its own entry point: the
+// Supabase Edge Runtime loads this file as the main module, so the sweep still
+// serves in production, while a test can import the handler factory without
+// starting a listener the test runner would then wait on forever.
+if (import.meta.main) {
+  serve(createReconcileStuckCheckoutsHandler());
+}

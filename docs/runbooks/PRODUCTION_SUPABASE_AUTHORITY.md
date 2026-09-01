@@ -50,8 +50,17 @@ it does not fetch secrets and does not perform a write.
 Use the repository wrapper. It verifies `SUPABASE_PROJECT_ID` before the first Supabase CLI call and
 preserves the existing already-deployed `409` handling:
 
+> **#2948 — there is no deploy-all.** Since #2886 the wrapper refuses a bare
+> invocation (`FAIL deploy: explicit --function selection required; deploy-all is
+> forbidden`) and requires `--merged-commit`. Name the functions you mean, from
+> MERGED `main`. In CI the selection is computed for you by
+> `scripts/ci/select-changed-edge-functions.mjs`; by hand, pass them.
+
 ```bash
-SUPABASE_PROJECT_ID="$SUPABASE_PROJECT_REF" scripts/deploy-supabase-functions.sh
+SUPABASE_PROJECT_ID="$SUPABASE_PROJECT_REF" scripts/deploy-supabase-functions.sh \
+  --merged-commit "$(git rev-parse HEAD)" \
+  --function brand-stripe-onboard \
+  --function brand-stripe-refresh-status
 ```
 
 Never call `supabase functions deploy` directly for Mingla production.

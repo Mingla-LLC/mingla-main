@@ -59,7 +59,8 @@ Per https://docs.stripe.com/get-started/checklist/go-live:
   - EXPO_PUBLIC_SUPABASE_URL (production)
   - EXPO_PUBLIC_SUPABASE_ANON_KEY (production)
 - [ ] All 7 Stripe edge functions deployed through `scripts/deploy-supabase-functions.sh` with the
-      canonical `SUPABASE_PROJECT_ID` (or an issue-approved verified surgical lane):
+      canonical `SUPABASE_PROJECT_ID`, one `--function` per name and `--merged-commit` (there is no
+      deploy-all — #2948), or an issue-approved verified surgical lane:
   - brand-stripe-onboard
   - brand-stripe-refresh-status
   - brand-stripe-detach

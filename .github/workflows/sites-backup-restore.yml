@@ -36,6 +36,7 @@ jobs:
           scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs
           scripts/sites/__tests__/issue_2893_gogi_activation.test.mjs
           scripts/sites/__tests__/issue_2893_sites_ops.tester.adversarial.test.mjs
+          scripts/sites/__tests__/issue_2948_backup_window_absent.test.mjs
 
   backup_restore:
     name: "Private backup and isolated restore"
@@ -116,16 +117,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if ! npx --yes vercel@53.2.0 blob put \
+          # HTTP parity contract: vercel@53.2.0 --access private --allow-overwrite false
+          node scripts/sites/vercel-blob-http-transport.mjs put \
             "$RUNNER_TEMP/sites-backup/$BUNDLE_NAME" \
-            --access private \
-            --add-random-suffix false \
-            --allow-overwrite false \
-            --content-type application/octet-stream \
-            --pathname "recovery/sites/$BUNDLE_NAME" >/dev/null 2>&1; then
-            echo "SITES_BLOB_ERROR code=PRIVATE_IMMUTABLE_UPLOAD_FAILED" >&2
-            exit 1
-          fi
+            "recovery/sites/$BUNDLE_NAME" \
+            "$RUNNER_TEMP/sites-backup/blob-upload.json"
 
       - name: Download and verify latest private bundle
         id: readback
@@ -137,13 +133,11 @@ jobs:
         run: |
           set -euo pipefail
           readback="$RUNNER_TEMP/sites-backup/private-readback.msbk"
-          if ! npx --yes vercel@53.2.0 blob get \
+          # HTTP parity contract: vercel@53.2.0 --access private
+          node scripts/sites/vercel-blob-http-transport.mjs get \
             "recovery/sites/$BUNDLE_NAME" \
-            --access private \
-            --output "$readback" >/dev/null 2>&1; then
-            echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_FAILED" >&2
-            exit 1
-          fi
+            "$readback" \
+            "$RUNNER_TEMP/sites-backup/blob-upload.json"
           actual_sha256="$(sha256sum "$readback" | cut -d ' ' -f 1)"
           if [ "$actual_sha256" != "$EXPECTED_SHA256" ]; then
             echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_DIGEST_MISMATCH" >&2
