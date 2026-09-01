@@ -1,7 +1,6 @@
 'use client'
-import { useRef, useState, type ReactNode } from 'react'
+import { useRef, type ReactNode } from 'react'
 import {
-  AnimatePresence,
   motion,
   useMotionValue,
   useSpring,
@@ -9,185 +8,159 @@ import {
   type MotionValue,
 } from 'framer-motion'
 import { cn } from '@/lib/cn'
+import { useMinglaReducedMotion } from '@/lib/reduced-motion'
 
 // ---------------------------------------------------------------
-// #2902 — Floating dock (Aceternity pattern), adapted to Mingla's stack.
+// #2902 — Floating dock, adapted to Mingla's stack and to Seth's brief.
 //
-// THREE DELIBERATE DEVIATIONS from the supplied snippet, each to avoid
-// shipping a duplicate of something the repo already has:
+// DEVIATIONS FROM THE SUPPLIED SNIPPET, each avoiding a duplicate of something
+// this app already has. No new dependencies were installed.
+//   - `motion/react` → `framer-motion`: the same library under its newer name.
+//     This app already depends on framer-motion@11; installing `motion` beside
+//     it would ship two copies of the animation runtime.
+//   - `@tabler/icons-react` → `lucide-react`: already a dependency and already
+//     this codebase's icon set.
+//   - `@/lib/utils` → `@/lib/cn`.
 //
-//   1. `motion/react` → `framer-motion`. `motion` IS framer-motion under its
-//      newer name. This app already depends on framer-motion@11, and both
-//      packages ship the same engine — installing `motion` alongside it would
-//      put two copies of the animation runtime in the bundle for no gain.
-//      Every hook used here (useMotionValue / useSpring / useTransform /
-//      AnimatePresence / MotionValue) exists in v11 under the same names.
-//   2. `@tabler/icons-react` → `lucide-react`. Already a dependency, already
-//      the icon set used across this codebase, and the integration notes
-//      explicitly allow lucide. A second icon library is pure weight.
-//   3. `@/lib/utils` → `@/lib/cn`. That is where this repo's `cn` lives.
-//
-// Styling is re-tinted to the Cutout system: the dock is a moulded surface
-// like every other card, not the default gray-50 / neutral-900.
-//
-// Accessibility additions over the snippet: the dock is a real <nav> with a
-// labelled list, each item is a link with an accessible name (the icon alone
-// is not one), and the magnification is skipped for reduced-motion users.
+// CHANGES TO THE PATTERN ITSELF, per Seth:
+//   - Items carry an ICON AND A VISIBLE LABEL. The original is icon-only with
+//     the name hidden behind a hover tooltip, which means nobody knows what
+//     anything is until they point at it — and on touch, never.
+//   - The dock magnifies by growing each pill's height, icon and label
+//     together, so the label stays legible at every size rather than being
+//     scaled into blur.
+//   - Reduced-motion users get the dock at its resting size with no
+//     magnification at all.
 // ---------------------------------------------------------------
 
 export interface DockItem {
   title: string
   icon: ReactNode
   href: string
-  /** Marks the current page for aria-current and a persistent active tint. */
   active?: boolean
 }
 
 export function FloatingDock({
   items,
-  desktopClassName,
-  mobileClassName,
+  className,
   label = 'Primary',
+  stacked = false,
 }: {
   items: DockItem[]
-  desktopClassName?: string
-  mobileClassName?: string
+  className?: string
   label?: string
-}) {
-  return (
-    <>
-      <FloatingDockDesktop items={items} className={desktopClassName} label={label} />
-      <FloatingDockMobile items={items} className={mobileClassName} label={label} />
-    </>
-  )
-}
-
-/**
- * Mobile: the dock itself, pinned by the caller. Per Seth — the mobile menu is
- * the same dock, at the bottom of the screen, not a hamburger sheet.
- */
-function FloatingDockMobile({
-  items,
-  className,
-  label,
-}: {
-  items: DockItem[]
-  className?: string
-  label: string
-}) {
-  return (
-    <nav
-      aria-label={label}
-      className={cn(
-        'cut-card flex items-end gap-1.5 rounded-full px-3 py-2 md:hidden',
-        className,
-      )}
-    >
-      {items.map((item) => (
-        <a
-          key={item.title}
-          href={item.href}
-          aria-current={item.active ? 'page' : undefined}
-          className={cn(
-            'flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition-colors focus-ring',
-            item.active
-              ? 'cut-btn cut-btn-brand text-white'
-              : 'text-[var(--cut-body)] hover:text-[var(--cut-ink)]',
-          )}
-        >
-          <span className="h-5 w-5">{item.icon}</span>
-          <span className="sr-only">{item.title}</span>
-        </a>
-      ))}
-    </nav>
-  )
-}
-
-function FloatingDockDesktop({
-  items,
-  className,
-  label,
-}: {
-  items: DockItem[]
-  className?: string
-  label: string
+  /**
+   * Icon ABOVE label instead of beside it.
+   *
+   * Five labelled items in a row need ~450px; a 390px phone has ~366px of
+   * usable width, so the row version overflowed and cut "Blog" and "About"
+   * off. Seth wants the labels kept, so mobile stacks them — the native
+   * tab-bar pattern — which fits all five with the labels intact.
+   */
+  stacked?: boolean
 }) {
   const mouseX = useMotionValue(Infinity)
+  const reduced = useMinglaReducedMotion()
+
   return (
     <nav
       aria-label={label}
-      onMouseMove={(e) => mouseX.set(e.pageX)}
+      onMouseMove={(e) => {
+        if (!reduced) mouseX.set(e.pageX)
+      }}
       onMouseLeave={() => mouseX.set(Infinity)}
       className={cn(
-        'mx-auto hidden h-14 items-end gap-3 rounded-full px-4 pb-2.5 md:flex',
+        'cut-card flex items-center',
+        stacked ? 'w-full justify-between gap-0.5 rounded-[1.75rem] p-2' : 'gap-1.5 rounded-full p-1.5',
         className,
       )}
-      style={{ background: 'var(--cut-card-sunken)' }}
     >
       {items.map((item) => (
-        <DockIcon mouseX={mouseX} key={item.title} {...item} />
+        <DockPill
+          key={item.title}
+          mouseX={mouseX}
+          reduced={reduced}
+          stacked={stacked}
+          {...item}
+        />
       ))}
     </nav>
   )
 }
 
-function DockIcon({
+function DockPill({
   mouseX,
+  reduced,
+  stacked,
   title,
   icon,
   href,
   active,
-}: DockItem & { mouseX: MotionValue<number> }) {
+}: DockItem & { mouseX: MotionValue<number>; reduced: boolean; stacked?: boolean }) {
   const ref = useRef<HTMLAnchorElement>(null)
-  const [hovered, setHovered] = useState(false)
 
   const distance = useTransform(mouseX, (val) => {
     const bounds = ref.current?.getBoundingClientRect() ?? { x: 0, width: 0 }
     return val - bounds.x - bounds.width / 2
   })
 
-  const spring = { mass: 0.1, stiffness: 150, damping: 12 }
-  const size = useSpring(useTransform(distance, [-140, 0, 140], [40, 72, 40]), spring)
-  const iconSize = useSpring(useTransform(distance, [-140, 0, 140], [18, 32, 18]), spring)
+  const spring = { mass: 0.1, stiffness: 160, damping: 14 }
+  // Height, icon and label grow TOGETHER so the label never blurs.
+  const height = useSpring(useTransform(distance, [-160, 0, 160], [42, 54, 42]), spring)
+  const iconSize = useSpring(useTransform(distance, [-160, 0, 160], [17, 22, 17]), spring)
+  const fontSize = useSpring(useTransform(distance, [-160, 0, 160], [13.5, 15.5, 13.5]), spring)
+
+  // Stacked (mobile) is a fixed-size tab: no magnification, because there is
+  // no cursor to magnify toward.
+  if (stacked) {
+    return (
+      <a
+        ref={ref}
+        href={href}
+        aria-current={active ? 'page' : undefined}
+        className={cn(
+          'flex min-h-[3.25rem] flex-1 flex-col items-center justify-center gap-1 rounded-[1.25rem] px-1 py-2 transition-colors focus-ring',
+          active ? 'cut-btn cut-btn-brand text-white' : 'text-[var(--cut-body)]',
+        )}
+      >
+        <span className="flex h-[18px] w-[18px] items-center justify-center" aria-hidden="true">
+          {icon}
+        </span>
+        <span className="font-display text-[0.6875rem] font-medium leading-none">{title}</span>
+      </a>
+    )
+  }
 
   return (
     <a
       ref={ref}
       href={href}
       aria-current={active ? 'page' : undefined}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
-      onFocus={() => setHovered(true)}
-      onBlur={() => setHovered(false)}
-      className="relative rounded-full focus-ring"
+      className="rounded-full focus-ring"
     >
       <motion.span
-        style={{ width: size, height: size }}
+        style={reduced ? { height: 44 } : { height }}
         className={cn(
-          'relative flex aspect-square items-center justify-center rounded-full transition-colors',
-          active ? 'cut-btn cut-btn-brand text-white' : 'cut-btn cut-btn-light text-[var(--cut-body)]',
+          'flex items-center gap-2 rounded-full px-4 transition-colors duration-200',
+          active
+            ? 'cut-btn cut-btn-brand text-white'
+            : 'text-[var(--cut-body)] hover:bg-[var(--cut-card-sunken)] hover:text-[var(--cut-ink)]',
         )}
       >
-        <AnimatePresence>
-          {hovered ? (
-            <motion.span
-              initial={{ opacity: 0, y: 8, x: '-50%' }}
-              animate={{ opacity: 1, y: 0, x: '-50%' }}
-              exit={{ opacity: 0, y: 2, x: '-50%' }}
-              className="cut-card absolute -top-10 left-1/2 w-fit whitespace-pre rounded-full px-3 py-1.5 text-xs font-semibold text-[var(--cut-ink)]"
-            >
-              {title}
-            </motion.span>
-          ) : null}
-        </AnimatePresence>
         <motion.span
-          style={{ width: iconSize, height: iconSize }}
-          className="flex items-center justify-center"
+          style={reduced ? { width: 18, height: 18 } : { width: iconSize, height: iconSize }}
+          className="flex shrink-0 items-center justify-center"
+          aria-hidden="true"
         >
           {icon}
         </motion.span>
+        <motion.span
+          style={reduced ? { fontSize: 14 } : { fontSize }}
+          className="whitespace-nowrap font-display font-medium leading-none"
+        >
+          {title}
+        </motion.span>
       </motion.span>
-      <span className="sr-only">{title}</span>
     </a>
   )
 }

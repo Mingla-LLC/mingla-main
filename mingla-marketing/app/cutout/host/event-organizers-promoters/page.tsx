@@ -255,6 +255,8 @@ export default function EventOrganisersLandingPage() {
       </CutoutSection>
 
       <CutoutFooter surface="host" />
+      {/* preview-banner-clearance */}
+      <div aria-hidden="true" className="h-14" />
 
       <BreadcrumbSchema crumbs={CRUMBS} />
       <FaqSchema items={FAQ} />

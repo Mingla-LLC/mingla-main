@@ -12,15 +12,40 @@ import { cn } from '@/lib/cn'
  * `dark` is for the Explorer surface, which stays the night canvas it already
  * is — the Cutout treatment there is the shell and the nav, not a repaint.
  */
-export function CutoutShell({ children, dark = false }: { children: ReactNode; dark?: boolean }) {
+export function CutoutShell({
+  children,
+  dark = false,
+  noScroll = false,
+}: {
+  children: ReactNode
+  dark?: boolean
+  /**
+   * Locks the page to exactly one viewport. The Explorer home is a
+   * non-scrolling hero, and the live `ExplorerHero` is a fixed `h-[100svh]` —
+   * inside a padded shell that overflows by exactly the padding, which is why
+   * the page scrolled a few pixels. This clips the page and forces the hero to
+   * FILL the inset rather than overhang it.
+   */
+  noScroll?: boolean
+}) {
   return (
     <div
       data-cutout
       data-cut-band={dark ? 'dark' : undefined}
-      className="min-h-screen px-2 pb-2 pt-2 sm:px-3 sm:pb-3 sm:pt-3"
+      className={cn(
+        'px-2 pb-2 pt-2 sm:px-3 sm:pb-3 sm:pt-3',
+        noScroll ? 'h-[100svh] overflow-hidden' : 'min-h-screen',
+      )}
       style={{ background: dark ? '#0a0a0c' : 'var(--cut-ground, #efe9df)' }}
     >
-      <div className="cut-shell relative">{children}</div>
+      <div
+        className={cn(
+          'cut-shell relative',
+          noScroll && 'h-full [&>section]:!h-full [&>section]:!min-h-0',
+        )}
+      >
+        {children}
+      </div>
     </div>
   )
 }

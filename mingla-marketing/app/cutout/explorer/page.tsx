@@ -21,7 +21,7 @@ export const metadata: Metadata = {
 
 export default function CutoutExplorerPage() {
   return (
-    <CutoutShell dark>
+    <CutoutShell dark noScroll>
       <CutoutNav surface="explorer" homeHref="/cutout/explorer" mobileDockOffset="5rem" />
       <ExplorerHero cityKey="lagos" />
     </CutoutShell>

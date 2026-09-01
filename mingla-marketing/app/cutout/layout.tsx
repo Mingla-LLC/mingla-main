@@ -15,7 +15,9 @@ export default function CutoutPreviewLayout({ children }: { children: React.Reac
       <OrganizationSchema />
       <AppsSchema />
       {children}
-      <div aria-hidden="true" className="h-14" />
+      {/* No global spacer here: it added 56px to every page and was the sole
+          reason the one-viewport Explorer page scrolled. Pages that end in a
+          footer clear the banner themselves. */}
       <PreviewBanner />
     </>
   )

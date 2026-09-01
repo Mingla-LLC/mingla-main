@@ -207,6 +207,8 @@ export default function CutoutHostPage() {
       </CutoutSection>
 
       <CutoutFooter surface="host" />
+      {/* preview-banner-clearance */}
+      <div aria-hidden="true" className="h-14" />
     </CutoutShell>
   )
 }
