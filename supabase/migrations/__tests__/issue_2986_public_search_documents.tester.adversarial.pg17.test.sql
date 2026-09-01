@@ -277,5 +277,92 @@ BEGIN
 END
 $a8$;
 
+-- A9 (independent tester addition): a review timestamp is evidence about the
+-- live source, not a caller-owned freshness override. A future source timestamp
+-- must be rejected; otherwise later real source edits that are still earlier
+-- than the forged timestamp remain search_ready. Likewise, a scheduled offering
+-- whose master occurrence has already elapsed must not be promotable merely
+-- because its status row was never advanced to ended.
+DO $a9$
+DECLARE
+  v_common jsonb := '{"facts_verified":true,"canonical_verified":true,"visible_html_verified":true,"metadata_verified":true,"schema_verified":true,"image_rights_verified":true,"action_verified":true,"schedule_verified":true,"location_verified":true,"organizer_verified":true,"price_or_free_verified":true,"privacy_moderation_verified":true}';
+  v jsonb;
+  v_source_updated_at timestamptz;
+  v_future_accepted boolean := false;
+  v_future_edit_stayed_searchable boolean := false;
+  v_elapsed_accepted boolean := false;
+  v_elapsed_became_searchable boolean := false;
+  v_failures text[] := ARRAY[]::text[];
+BEGIN
+  SET LOCAL ROLE service_role;
+  PERFORM set_config('request.jwt.claim.role','service_role',true);
+  BEGIN
+    PERFORM public.upsert_public_search_document(
+      'event','29860000-0000-4000-8000-000000000501','/e/i2986adv/good','search_ready',NULL,v_common,
+      clock_timestamp()+interval '1 year',now(),now()+interval '30 day',
+      'future source timestamp attack','issue_2986_tester',false);
+    v_future_accepted := true;
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%public_search_readiness_incomplete%' THEN RAISE; END IF;
+  END;
+  RESET ROLE;
+
+  IF v_future_accepted THEN
+    EXECUTE 'ALTER TABLE public.events DISABLE TRIGGER trg_events_updated_at';
+    UPDATE public.events SET updated_at=clock_timestamp()+interval '6 month'
+    WHERE id='29860000-0000-4000-8000-000000000501';
+    EXECUTE 'ALTER TABLE public.events ENABLE TRIGGER trg_events_updated_at';
+    SET LOCAL ROLE anon;
+    PERFORM set_config('request.jwt.claim.role','anon',true);
+    v:=public.resolve_public_search_document('/e/i2986adv/good');
+    v_future_edit_stayed_searchable := v->>'state'='search_ready'
+      AND EXISTS (
+        SELECT 1 FROM public.list_public_search_sitemap()
+        WHERE canonical_path='/e/i2986adv/good');
+    RESET ROLE;
+  END IF;
+
+  UPDATE public.event_dates
+  SET start_at=clock_timestamp()-interval '10 day',
+      end_at=clock_timestamp()-interval '9 day'
+  WHERE event_id='29860000-0000-4000-8000-000000000508' AND is_master;
+  v_source_updated_at := (
+    public.public_search_source_facts('/e/i2986adv/stale','event')->'facts'->>'sourceUpdatedAt'
+  )::timestamptz;
+
+  SET LOCAL ROLE service_role;
+  PERFORM set_config('request.jwt.claim.role','service_role',true);
+  BEGIN
+    PERFORM public.upsert_public_search_document(
+      'event','29860000-0000-4000-8000-000000000508','/e/i2986adv/stale','search_ready',NULL,v_common,
+      v_source_updated_at,now(),now()+interval '30 day',
+      'elapsed scheduled offering attack','issue_2986_tester',false);
+    v_elapsed_accepted := true;
+  EXCEPTION WHEN OTHERS THEN
+    IF SQLERRM NOT LIKE '%public_search_readiness_incomplete%' THEN RAISE; END IF;
+  END;
+  RESET ROLE;
+
+  IF v_elapsed_accepted THEN
+    SET LOCAL ROLE anon;
+    PERFORM set_config('request.jwt.claim.role','anon',true);
+    v:=public.resolve_public_search_document('/e/i2986adv/stale');
+    v_elapsed_became_searchable := v->>'state'='search_ready'
+      AND EXISTS (
+        SELECT 1 FROM public.list_public_search_sitemap()
+        WHERE canonical_path='/e/i2986adv/stale');
+    RESET ROLE;
+  END IF;
+
+  IF v_future_accepted THEN v_failures:=array_append(v_failures,'future source timestamp accepted'); END IF;
+  IF v_future_edit_stayed_searchable THEN v_failures:=array_append(v_failures,'later source edit remained searchable behind future timestamp'); END IF;
+  IF v_elapsed_accepted THEN v_failures:=array_append(v_failures,'elapsed scheduled offering accepted'); END IF;
+  IF v_elapsed_became_searchable THEN v_failures:=array_append(v_failures,'elapsed scheduled offering entered resolver/sitemap'); END IF;
+  IF cardinality(v_failures)>0 THEN
+    RAISE EXCEPTION 'ISSUE-2986 A9 FAIL: %',array_to_string(v_failures,'; ');
+  END IF;
+END
+$a9$;
+
 ROLLBACK;
 SELECT 'issue_2986_public_search_documents tester adversarial: PASS' AS result;
