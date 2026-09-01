@@ -564,6 +564,9 @@ export function violations(files) {
     "88svh",
     "76svh",
     ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}",
+    ".gallery {\n  display: grid;\n  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));",
+    "  .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));",
+    ".gallery > * {\n  min-width: 0;\n}",
     "@media (prefers-reduced-motion: reduce)",
   ]) need(files.publicStyles ?? "", token, "Restaurant Website v1 visual contract", failures);
   for (const token of [
@@ -705,6 +708,9 @@ function selfTest() {
     ["publicRenderer", 'className="fact-rail"', 'className="facts"', "Restaurant Website v1 composition"],
     ["publicStyles", "--gold: #cda052", "--gold: #d85a22", "Restaurant Website v1 visual contract"],
     ["publicStyles", ":where(a, button, summary) {\n  min-width: 44px;\n  min-height: 44px;\n}", ":where(a, button, summary) {\n  min-width: 32px;\n  min-height: 32px;\n}", "Restaurant Website v1 visual contract"],
+    ["publicStyles", ".gallery {\n  display: grid;\n  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));", ".gallery {\n  display: grid;\n  grid-template-columns: 1.5fr 1fr 1fr;", "Restaurant Website v1 visual contract"],
+    ["publicStyles", "  .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));", "  .gallery {\n    grid-template-columns: 1fr 1fr;", "Restaurant Website v1 visual contract"],
+    ["publicStyles", ".gallery > * {\n  min-width: 0;\n}", ".gallery > * {\n  min-width: auto;\n}", "Restaurant Website v1 visual contract"],
     ["checkout", '.is("site_attribution_token_digest",', '.neq("site_attribution_token_digest",', "checkout first-touch handoff"],
     ["publicPackage", '"next": "16.3.3"', '"@payloadcms/next": "3.88.0",\n    "next": "16.3.3"', "production dependency isolation"],
     ["businessView", "Managed securely by Mingla.", "Configure custom domain", "deferred domain UI"],

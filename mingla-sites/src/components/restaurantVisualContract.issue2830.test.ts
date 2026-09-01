@@ -59,6 +59,17 @@ describe("#2830 Restaurant Website v1 visual and accessibility contract", () => 
     }
   });
 
+  it("keeps intrinsic 640px gallery media inside zero-minimum responsive tracks", () => {
+    expect(styles).toContain(
+      ".gallery {\n  display: grid;\n  grid-template-columns: minmax(0, 1.5fr) repeat(2, minmax(0, 1fr));",
+    );
+    expect(styles).toContain(
+      "  .gallery {\n    grid-template-columns: repeat(2, minmax(0, 1fr));",
+    );
+    expect(styles).toContain(".gallery > * {\n  min-width: 0;\n}");
+    expect(styles).toMatch(/\.gallery img \{[\s\S]*?width: 100%;/);
+  });
+
   it("retains canonical commerce, consent, canonical metadata and crawler owners", () => {
     expect(renderer).toContain("isCanonicalMinglaHref");
     expect(renderer).toContain("TrackedLink");
