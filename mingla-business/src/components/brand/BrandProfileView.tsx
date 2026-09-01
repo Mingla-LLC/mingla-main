@@ -406,30 +406,34 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // before this hook (preserves ORCH-0710 hook ordering).
   const { rank: currentRank } = useCurrentBrandRole(brand?.id ?? null);
   const canViewAuditLog = canPerformAction(currentRank, "VIEW_AUDIT_LOG");
-  const canViewWebsite = isFeatureEnabled("sites") &&
+  const canCheckWebsiteAvailability = isFeatureEnabled("sites") &&
     canPerformAction(currentRank, "WEBSITE_WORKSPACE");
   const [websiteContext, setWebsiteContext] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
-    if (!canViewWebsite || brand === null || onWebsite === undefined) {
+    if (
+      !canCheckWebsiteAvailability || brand === null || onWebsite === undefined
+    ) {
       setWebsiteContext(null);
       return () => {
         active = false;
       };
     }
-    setWebsiteContext("Checking website status…");
+    // Stay completely absent while Core checks the per-brand pilot projection.
+    // Loading and failure are deliberately zero-signal for non-pilot brands.
+    setWebsiteContext(null);
     void import("../../sites/brandWebsiteEntry")
       .then(async ({ loadBrandWebsiteEntryContext }) => {
         const context = await loadBrandWebsiteEntryContext(brand.id);
         if (active) setWebsiteContext(context);
       })
       .catch(() => {
-        if (active) setWebsiteContext("Status unavailable");
+        if (active) setWebsiteContext(null);
       });
     return () => {
       active = false;
     };
-  }, [brand, canViewWebsite, onWebsite]);
+  }, [brand, canCheckWebsiteAvailability, onWebsite]);
   // META-ORCH-1076 — provider-neutral: a connected Paystack brand is payout-ready,
   // so the "Connect bank to sell tickets" banner + Operations sub treat it as
   // active even though its Stripe status is "not_connected".
@@ -444,11 +448,14 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
   // /brand/{id}/listing route is preserved as a thin redirect to the Hub tab.
   const operationsRows = useMemo<OperationsRow[]>(() => {
     const rows: OperationsRow[] = [];
-    if (canViewWebsite && onWebsite !== undefined) {
+    if (
+      canCheckWebsiteAvailability && websiteContext !== null &&
+      onWebsite !== undefined
+    ) {
       rows.push({
         icon: "globe",
         label: "Website",
-        sub: websiteContext ?? "Open website workspace",
+        sub: websiteContext,
         onPress: () => {
           if (brand !== null) onWebsite(brand.id);
         },
@@ -525,7 +532,7 @@ export const BrandProfileView: React.FC<BrandProfileViewProps> = ({
     onReports,
     onAuditLog,
     canViewAuditLog,
-    canViewWebsite,
+    canCheckWebsiteAvailability,
     onWebsite,
     websiteContext,
     stripeStatus,

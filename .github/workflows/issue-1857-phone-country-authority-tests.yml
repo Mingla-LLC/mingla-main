@@ -31,6 +31,11 @@ on:
       - ".github/workflows/issue-1857-phone-country-authority-tests.yml"
   push:
     branches: [main]
+    # #2885 AC-4 — the baseline recording auto-merges now (~15/day), so this
+    # suite would re-run on main for a one-number JSON measurement. Same waste,
+    # other side of the merge. Any other file in the push and this runs.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
 
 concurrency:
   group: ci-issue-1857-phone-country-authority-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}

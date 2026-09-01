@@ -16,6 +16,8 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
+import { auditWorkflowSources as auditConcurrency } from "./issue-2851-pr-concurrency-policy.mjs";
+
 import {
   ALWAYS_ON,
   BOT_PR_CREATION_SITE,
@@ -184,10 +186,47 @@ test("T-9b the real bundle-baseline creation site does not open drafts", () => {
 
 // --- T-10: the #2851 concurrency policy is untouched ---
 
-test("T-10 the #2851 concurrency gate still passes, plain and in self-test mode", () => {
-  const plain = run(CONCURRENCY_GATE);
-  assert.equal(plain.status, 0, `${plain.stdout}${plain.stderr}`);
-  assert.match(plain.stdout, /#2851 PR concurrency policy: PASS/);
+// T-10 asserts the thing #2881 is actually responsible for: that this change moved
+// the #2851 concurrency verdict NOT AT ALL. It deliberately does NOT assert "the
+// #2851 gate is green", because that also depends on the health of `main`, which is
+// not this branch's to guarantee -- and at the time of writing `main` is red there:
+// sites-backup-restore.yml (added by #2895) ships a non-canonical concurrency group.
+// Comparing our verdict to the merge-base's verdict is the STRICTER statement: if
+// #2881 introduced even one concurrency regression the two error sets diverge and
+// this fails, whether or not main was green to begin with.
+test("T-10 #2881 moves the #2851 concurrency verdict not at all, versus the merge base", () => {
+  const base = spawnSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: REPO_ROOT, encoding: "utf8" });
+  assert.equal(base.status, 0, base.stderr);
+  const baseSha = base.stdout.trim();
+
+  const names = spawnSync("git", ["ls-tree", "--name-only", `${baseSha}:.github/workflows`], { cwd: REPO_ROOT, encoding: "utf8" });
+  assert.equal(names.status, 0, names.stderr);
+  const baseSources = Object.fromEntries(names.stdout.split("\n")
+    .filter((name) => /\.ya?ml$/i.test(name))
+    .sort()
+    .map((name) => {
+      const blob = spawnSync("git", ["show", `${baseSha}:.github/workflows/${name}`], { cwd: REPO_ROOT, encoding: "utf8", maxBuffer: 32 * 1024 * 1024 });
+      assert.equal(blob.status, 0, blob.stderr);
+      return [name, blob.stdout];
+    }));
+
+  const atBase = auditConcurrency(baseSources).errors.slice().sort();
+  const atHead = auditConcurrency(readWorkflowSources()).errors.slice().sort();
+  assert.deepEqual(
+    atHead,
+    atBase,
+    `#2881 changed the #2851 concurrency verdict.\n  base(${baseSha.slice(0, 9)}): ${JSON.stringify(atBase, null, 2)}\n  head: ${JSON.stringify(atHead, null, 2)}`,
+  );
+  if (atHead.length) {
+    console.log(`  note: ${atHead.length} PRE-EXISTING #2851 error(s) inherited from ${baseSha.slice(0, 9)}, unchanged by #2881:`);
+    for (const error of atHead) console.log(`    - ${error}`);
+  }
+});
+
+test("T-10a the #2851 gate source is byte-identical to the merge base and its self-test still passes", () => {
+  const base = spawnSync("git", ["merge-base", "HEAD", "origin/main"], { cwd: REPO_ROOT, encoding: "utf8" });
+  const diff = spawnSync("git", ["diff", "--name-only", base.stdout.trim(), "--", ".github/scripts/strict-grep/issue-2851-pr-concurrency-policy.mjs"], { cwd: REPO_ROOT, encoding: "utf8" });
+  assert.equal(diff.stdout.trim(), "", "#2881 must not edit the #2851 gate to make it agree");
   const selfTest = run(CONCURRENCY_GATE, [SELF_TEST_FLAG]);
   assert.equal(selfTest.status, 0, `${selfTest.stdout}${selfTest.stderr}`);
 });

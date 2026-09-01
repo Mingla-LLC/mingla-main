@@ -15,14 +15,15 @@ beforeAll(() => {
     PAYLOAD_SECRET: "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
     SITES_CORE_BASE_URL: "https://core.invalid",
     SITES_CMS_ORIGIN: "https://studio.invalid",
-    SUPABASE_S3_ENDPOINT: "https://storage.invalid",
-    SUPABASE_S3_REGION: "fixture",
+    SUPABASE_S3_ENDPOINT:
+      "https://abcdefghijklmnopqrst.storage.supabase.co/storage/v1/s3",
+    SUPABASE_S3_REGION: "us-east-2",
     SUPABASE_S3_ACCESS_KEY_ID: "fixture",
     SUPABASE_S3_SECRET_ACCESS_KEY: "fixture",
-    SITES_MEDIA_QUARANTINE_BUCKET: "quarantine",
-    SITES_MEDIA_APPROVED_BUCKET: "approved",
-    SITES_PUBLICATION_ARTIFACT_BUCKET: "artifacts",
-    SITES_MEDIA_RECOVERY_BUCKET: "recovery",
+    SITES_MEDIA_QUARANTINE_BUCKET: "sites-media-quarantine",
+    SITES_MEDIA_APPROVED_BUCKET: "sites-media-approved",
+    SITES_PUBLICATION_ARTIFACT_BUCKET: "sites-publication-artifacts",
+    SITES_MEDIA_RECOVERY_BUCKET: "sites-media-recovery",
     SITES_PREVIEW_SIGNING_SECRET:
       "QUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUFBQUE=",
     MINGLA_CMS_TO_CORE_CURRENT_KEY_B64:
@@ -208,7 +209,7 @@ describe("#2830 fixed Studio return contract", () => {
       await encodeSession({ ...base, return_surface: "native" }),
     );
     expect(studioReturnLocation(web!)).toBe(
-      `https://business.usemingla.com/brand/${BRAND_ID}/website`,
+      `https://host.usemingla.com/brand/${BRAND_ID}/website`,
     );
     expect(studioReturnLocation(native!)).toBe(
       `mingla-business://website-return?brandId=${BRAND_ID}`,
@@ -222,7 +223,7 @@ describe("#2830 fixed Studio return contract", () => {
         `mingla-business://website-return?brandId=${BRAND_ID}&result=${result}`,
       );
       expect(studioReturnLocation(web!, result)).toBe(
-        `https://business.usemingla.com/brand/${BRAND_ID}/website?studioResult=${result}`,
+        `https://host.usemingla.com/brand/${BRAND_ID}/website?studioResult=${result}`,
       );
     }
     const expiredToken = await encodeSession({

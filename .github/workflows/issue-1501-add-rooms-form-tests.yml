@@ -26,6 +26,13 @@ on:
   pull_request:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
     types: [opened, synchronize, reopened, ready_for_review]
+    # #2885 AC-4 — a pull request whose ONLY changed file is the machine-written
+    # boot-payload baseline cannot affect this suite. Those recording PRs were
+    # starting 53 jobs each, ~15/day (~51,000 job-min/month). `paths-ignore`
+    # skips ONLY when nothing else changed: touch this file alongside anything
+    # and this workflow runs exactly as it always did.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   workflow_dispatch:
 
 concurrency:

@@ -27,6 +27,11 @@ on:
       - ".github/workflows/issue-2097-stripe-fee-refund-truth.yml"
   push:
     branches: [main]
+    # #2885 AC-4 — the baseline recording auto-merges now (~15/day), so this
+    # suite would re-run on main for a one-number JSON measurement. Same waste,
+    # other side of the merge. Any other file in the push and this runs.
+    paths-ignore:
+      - "mingla-business/scripts/ci/bundle-baseline.json"
   workflow_dispatch:
 
 concurrency:

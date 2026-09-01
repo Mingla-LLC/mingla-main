@@ -15,6 +15,134 @@ const ACCEPTED = new Set(["image/jpeg", "image/png", "image/webp"]);
 const WIDTHS = [320, 640, 960, 1440, 1920] as const;
 const MAX_BYTES = 20 * 1024 * 1024;
 const MAX_PIXELS = 40_000_000;
+const UUID =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+type StoredMediaObject = {
+  approvedKey: string;
+  recoveryKey: string;
+  digest: string;
+  bytes: number;
+};
+
+type MediaStorageRecord = {
+  approved_master_key?: unknown;
+  rendition_manifest?: unknown;
+};
+
+function storageDescriptor(
+  value: unknown,
+  expectedKey: string,
+): { key: string; digest: string; bytes: number } {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("VALIDATION_FAILED");
+  }
+  const descriptor = value as Record<string, unknown>;
+  if (
+    descriptor.key !== expectedKey ||
+    typeof descriptor.digest !== "string" ||
+    !/^[0-9a-f]{64}$/.test(descriptor.digest) ||
+    typeof descriptor.bytes !== "number" ||
+    !Number.isInteger(descriptor.bytes) ||
+    descriptor.bytes < 1
+  ) throw new Error("VALIDATION_FAILED");
+  return {
+    key: descriptor.key,
+    digest: descriptor.digest,
+    bytes: descriptor.bytes,
+  };
+}
+
+export function mediaStorageObjects(
+  media: MediaStorageRecord,
+  tenantId: string,
+  siteId: string,
+  mediaId: string,
+): StoredMediaObject[] {
+  if (![tenantId, siteId, mediaId].every((id) => UUID.test(id))) {
+    throw new Error("VALIDATION_FAILED");
+  }
+  if (
+    !media.rendition_manifest ||
+    typeof media.rendition_manifest !== "object" ||
+    Array.isArray(media.rendition_manifest)
+  ) throw new Error("VALIDATION_FAILED");
+  const manifest = media.rendition_manifest as Record<string, unknown>;
+  const masterValue =
+    manifest.master &&
+    typeof manifest.master === "object" &&
+    !Array.isArray(manifest.master)
+      ? manifest.master as Record<string, unknown>
+      : null;
+  const masterKey = masterValue?.key;
+  const masterMatch =
+    typeof masterKey === "string"
+      ? masterKey.match(
+        new RegExp(
+          `^approved/${siteId}/${mediaId}/([0-9a-f]{64})/master\\.webp$`,
+          "i",
+        ),
+      )
+      : null;
+  if (
+    manifest.version !== 1 ||
+    media.approved_master_key !== masterKey ||
+    !masterMatch ||
+    !Array.isArray(manifest.renditions) ||
+    manifest.renditions.length !== WIDTHS.length
+  ) throw new Error("VALIDATION_FAILED");
+  const approvedPrefix =
+    `approved/${siteId}/${mediaId}/${masterMatch[1].toLowerCase()}`;
+  const master = storageDescriptor(
+    manifest.master,
+    `${approvedPrefix}/master.webp`,
+  );
+  const renditions = new Map<number, { key: string; digest: string; bytes: number }>();
+  for (const value of manifest.renditions) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      throw new Error("VALIDATION_FAILED");
+    }
+    const row = value as Record<string, unknown>;
+    const targetWidth = row.target_width;
+    if (
+      typeof targetWidth !== "number" ||
+      !WIDTHS.includes(targetWidth as (typeof WIDTHS)[number]) ||
+      renditions.has(targetWidth)
+    ) throw new Error("VALIDATION_FAILED");
+    renditions.set(
+      targetWidth,
+      storageDescriptor(row, `${approvedPrefix}/${targetWidth}.webp`),
+    );
+  }
+  const descriptors = [
+    master,
+    ...WIDTHS.map((width) => {
+      const rendition = renditions.get(width);
+      if (!rendition) throw new Error("VALIDATION_FAILED");
+      return rendition;
+    }),
+  ];
+  return descriptors.map((descriptor) => ({
+    approvedKey: descriptor.key,
+    recoveryKey:
+      `recovery/${tenantId}/${descriptor.key.slice("approved/".length)}`,
+    digest: descriptor.digest,
+    bytes: descriptor.bytes,
+  }));
+}
+
+async function verifiedObject(
+  bucket: string,
+  key: string,
+  digest: string,
+  bytes: number,
+): Promise<Uint8Array> {
+  const value = await readObject(bucket, key);
+  if (value.byteLength !== bytes || await sha256(value) !== digest) {
+    throw new Error("STORAGE_UNAVAILABLE");
+  }
+  return value;
+}
 
 function detectedMime(bytes: Uint8Array): string | null {
   if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff)
@@ -259,18 +387,11 @@ async function processUpload(
   )
     return reject(req, media.id, key, "METADATA_RETAINED");
   const masterKey = `${base}/master.webp`;
-  await writeObject(
-    cmsConfig().approvedBucket,
-    masterKey,
-    master,
-    "image/webp",
-  );
-  if (
-    (await sha256(await readObject(cmsConfig().approvedBucket, masterKey))) !==
-    (await sha256(master))
-  )
-    throw new Error("STORAGE_UNAVAILABLE");
+  const masterDigest = await sha256(master);
   const renditions = [];
+  const outputs: Array<{ key: string; bytes: Uint8Array; digest: string }> = [
+    { key: masterKey, bytes: master, digest: masterDigest },
+  ];
   for (const width of WIDTHS) {
     const output = await sharp(source, { limitInputPixels: MAX_PIXELS })
       .rotate()
@@ -281,19 +402,8 @@ async function processUpload(
       .webp({ quality: 80 })
       .toBuffer();
     const renditionKey = `${base}/${width}.webp`;
-    await writeObject(
-      cmsConfig().approvedBucket,
-      renditionKey,
-      output,
-      "image/webp",
-    );
     const digest = await sha256(output);
-    if (
-      (await sha256(
-        await readObject(cmsConfig().approvedBucket, renditionKey),
-      )) !== digest
-    )
-      throw new Error("STORAGE_UNAVAILABLE");
+    outputs.push({ key: renditionKey, bytes: output, digest });
     renditions.push({
       target_width: width,
       width: Math.min(width, metadata.width),
@@ -302,31 +412,92 @@ async function processUpload(
       bytes: output.byteLength,
     });
   }
-  await deleteObject(cmsConfig().quarantineBucket, key);
-  return req.payload.update({
+  const renditionManifest = {
+    version: 1,
+    master: {
+      key: masterKey,
+      digest: masterDigest,
+      bytes: master.byteLength,
+    },
+    renditions,
+  };
+
+  // Persist every deterministic approved key before the first write. If a
+  // later write/readback fails, the retryable row remains a durable cleanup
+  // manifest instead of leaving an unreferenced object in private storage.
+  await req.payload.update({
     collection: "media",
     id: media.id,
     overrideAccess: false,
     req,
     data: {
-      state: "READY",
       approved_master_key: masterKey,
-      quarantine_key: null,
-      quarantine_delete_by: null,
-      recovery_until: new Date(
-        Date.now() + 30 * 24 * 60 * 60_000,
-      ).toISOString(),
-      rendition_manifest: {
-        version: 1,
-        master: {
-          key: masterKey,
-          digest: await sha256(master),
-          bytes: master.byteLength,
-        },
-        renditions,
-      },
+      rendition_manifest: renditionManifest,
     },
   });
+  try {
+    for (const output of outputs) {
+      await writeObject(
+        cmsConfig().approvedBucket,
+        output.key,
+        output.bytes,
+        "image/webp",
+      );
+      const stored = await readObject(cmsConfig().approvedBucket, output.key);
+      if (
+        stored.byteLength !== output.bytes.byteLength ||
+        await sha256(stored) !== output.digest
+      ) throw new Error("STORAGE_UNAVAILABLE");
+    }
+    const ready = await req.payload.update({
+      collection: "media",
+      id: media.id,
+      overrideAccess: false,
+      req,
+      data: {
+        state: "READY",
+        approved_master_key: masterKey,
+        quarantine_delete_by: new Date(Date.now() + 60 * 60_000).toISOString(),
+        recovery_until: new Date(
+          Date.now() + 30 * 24 * 60 * 60_000,
+        ).toISOString(),
+        rendition_manifest: renditionManifest,
+      },
+    });
+    try {
+      await deleteObject(cmsConfig().quarantineBucket, key);
+      return await req.payload.update({
+        collection: "media",
+        id: media.id,
+        overrideAccess: false,
+        req,
+        data: { quarantine_key: null, quarantine_delete_by: null },
+      });
+    } catch {
+      // READY is already durable and the quarantine source has a one-hour
+      // cleanup deadline consumed by runRetentionSweep.
+      return ready;
+    }
+  } catch (error) {
+    let allApprovedOutputsRemoved = true;
+    for (const output of outputs) {
+      try {
+        await deleteObject(cmsConfig().approvedBucket, output.key);
+      } catch {
+        allApprovedOutputsRemoved = false;
+      }
+    }
+    if (allApprovedOutputsRemoved) {
+      await req.payload.update({
+        collection: "media",
+        id: media.id,
+        overrideAccess: false,
+        req,
+        data: { approved_master_key: null, rendition_manifest: null },
+      });
+    }
+    throw error;
+  }
 }
 
 export async function completeUpload(
@@ -390,6 +561,10 @@ function relationshipId(value: unknown): string {
 }
 
 export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
+  const actor = req.user as {
+    tenantId?: string;
+    siteId?: string;
+  } | null;
   const media = await req.payload.findByID({
     collection: "media",
     id: mediaId,
@@ -398,7 +573,12 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
     depth: 0,
   });
   const tenantId = relationshipId(media.tenant);
-  if (!tenantId || media.state !== "READY") throw new Error("INVALID_STATE");
+  if (
+    !actor?.tenantId ||
+    !actor.siteId ||
+    tenantId !== actor.tenantId
+  ) throw new Error("FORBIDDEN");
+  if (media.state !== "READY") throw new Error("INVALID_STATE");
   const pages = await req.payload.find({
     collection: "pages",
     overrideAccess: false,
@@ -443,6 +623,32 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
   ) {
     throw new Error("INVALID_STATE");
   }
+  const objects = mediaStorageObjects(
+    media,
+    tenantId,
+    actor.siteId,
+    String(media.id),
+  );
+  for (const object of objects) {
+    const bytes = await verifiedObject(
+      cmsConfig().approvedBucket,
+      object.approvedKey,
+      object.digest,
+      object.bytes,
+    );
+    await writeObject(
+      cmsConfig().recoveryBucket,
+      object.recoveryKey,
+      bytes,
+      "image/webp",
+    );
+    await verifiedObject(
+      cmsConfig().recoveryBucket,
+      object.recoveryKey,
+      object.digest,
+      object.bytes,
+    );
+  }
   return req.payload.update({
     collection: "media",
     id: mediaId,
@@ -455,6 +661,74 @@ export async function tombstoneMedia(req: PayloadRequest, mediaId: string) {
       recovery_until: new Date(
         Date.now() + 30 * 24 * 60 * 60_000,
       ).toISOString(),
+    },
+  });
+}
+
+export async function restoreTombstonedMedia(
+  req: PayloadRequest,
+  mediaId: string,
+) {
+  const actor = req.user as {
+    tenantId?: string;
+    siteId?: string;
+  } | null;
+  const media = await req.payload.findByID({
+    collection: "media",
+    id: mediaId,
+    overrideAccess: false,
+    req: studioMediaGrantRequest(req),
+    depth: 0,
+  });
+  const tenantId = relationshipId(media.tenant);
+  const recoveryUntil = typeof media.recovery_until === "string"
+    ? Date.parse(media.recovery_until)
+    : Number.NaN;
+  if (
+    !actor?.tenantId ||
+    !actor.siteId ||
+    tenantId !== actor.tenantId
+  ) throw new Error("FORBIDDEN");
+  if (
+    media.state !== "TOMBSTONED" ||
+    !Number.isFinite(recoveryUntil) ||
+    recoveryUntil <= Date.now()
+  ) throw new Error("INVALID_STATE");
+  const objects = mediaStorageObjects(
+    media,
+    tenantId,
+    actor.siteId,
+    String(media.id),
+  );
+  for (const object of objects) {
+    const recoveryBytes = await verifiedObject(
+      cmsConfig().recoveryBucket,
+      object.recoveryKey,
+      object.digest,
+      object.bytes,
+    );
+    await writeObject(
+      cmsConfig().approvedBucket,
+      object.approvedKey,
+      recoveryBytes,
+      "image/webp",
+    );
+    await verifiedObject(
+      cmsConfig().approvedBucket,
+      object.approvedKey,
+      object.digest,
+      object.bytes,
+    );
+  }
+  return req.payload.update({
+    collection: "media",
+    id: mediaId,
+    overrideAccess: false,
+    req: studioMediaGrantRequest(req),
+    depth: 0,
+    data: {
+      state: "READY",
+      tombstoned_at: null,
     },
   });
 }
@@ -536,6 +810,27 @@ export async function runRetentionSweep(
       });
     }
     if (
+      item.state === "RETRYABLE_FAILED" &&
+      item.approved_master_key &&
+      item.rendition_manifest
+    ) {
+      const failedOutputs = mediaStorageObjects(
+        item,
+        tenantId,
+        siteId,
+        String(item.id),
+      );
+      for (const object of failedOutputs) {
+        await deleteObject(cmsConfig().approvedBucket, object.approvedKey);
+      }
+      await req.payload.update({
+        collection: "media",
+        id: item.id,
+        overrideAccess: true,
+        data: { approved_master_key: null, rendition_manifest: null },
+      });
+    }
+    if (
       !mediaMayBePurged({
         state: item.state,
         recoveryUntil: item.recovery_until || null,
@@ -545,17 +840,15 @@ export async function runRetentionSweep(
       })
     )
       continue;
-    const manifest = item.rendition_manifest as {
-      master?: { key?: string };
-      renditions?: Array<{ key?: string }>;
-    } | null;
-    const keys = [
-      item.approved_master_key,
-      manifest?.master?.key,
-      ...(manifest?.renditions || []).map((row) => row.key),
-    ].filter((key): key is string => typeof key === "string" && key.length > 0);
-    for (const key of new Set(keys)) {
-      await deleteObject(cmsConfig().approvedBucket, key);
+    const objects = mediaStorageObjects(
+      item,
+      tenantId,
+      siteId,
+      String(item.id),
+    );
+    for (const object of objects) {
+      await deleteObject(cmsConfig().approvedBucket, object.approvedKey);
+      await deleteObject(cmsConfig().recoveryBucket, object.recoveryKey);
     }
     await req.payload.update({
       collection: "media",

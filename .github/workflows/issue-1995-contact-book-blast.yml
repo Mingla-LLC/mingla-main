@@ -35,6 +35,11 @@ on:
       - ".github/scripts/strict-grep/issue-1995-contact-book-blast.mjs"
       - ".github/scripts/strict-grep/issue-2714-campaign-open-truth.mjs"
       - ".github/workflows/issue-1995-contact-book-blast.yml"
+      # #2885 AC-4 — the machine-written baseline sits under a broad pattern
+      # above, so a one-file recording PR matched this filter and ran the whole
+      # suite. LAST on purpose: any other changed file still matches a positive
+      # pattern above, so this only skips a baseline-ONLY change.
+      - "!mingla-business/scripts/ci/bundle-baseline.json"
 concurrency:
   group: ci-issue-1995-contact-book-blast-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}

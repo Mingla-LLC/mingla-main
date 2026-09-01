@@ -1,0 +1,229 @@
+name: "Mingla Sites · Backup and restore"
+
+# #2893 activates #2830's production recovery boundary. Production credentials
+# exist only in the protected environment and are never available to pull requests.
+on:
+  schedule:
+    - cron: "23 7 * * *"
+  workflow_dispatch:
+  pull_request:
+    # issue #2881 — ready_for_review is required wherever the draft gate is set.
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - ".github/workflows/sites-backup-restore.yml"
+      - "scripts/sites/**"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mingla-sites-production-backup-restore
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    if: ${{ github.event.pull_request.draft != true }}
+    name: "Sites recovery contracts"
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - run: >-
+          node --test
+          scripts/sites/__tests__/issue_2893_sites_ops.implementor.test.mjs
+          scripts/sites/__tests__/issue_2893_gogi_activation.test.mjs
+          scripts/sites/__tests__/issue_2893_sites_ops.tester.adversarial.test.mjs
+
+  backup_restore:
+    name: "Private backup and isolated restore"
+    needs: contracts
+    if: ${{ (github.event.pull_request.draft != true) && (github.event_name != 'pull_request' && github.ref == 'refs/heads/main') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: mingla-sites-production
+    services:
+      restore-postgres:
+        image: postgres:17.10-alpine
+        env:
+          POSTGRES_PASSWORD: sites-restore-ephemeral-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+
+      - name: Expose pinned PostgreSQL 17 clients
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/sites-pg17-bin" "$RUNNER_TEMP/sites-backup"
+          for client in pg_dump pg_restore psql; do
+            ln -s "$GITHUB_WORKSPACE/scripts/sites/pg17-client.sh" \
+              "$RUNNER_TEMP/sites-pg17-bin/$client"
+          done
+          echo "$RUNNER_TEMP/sites-pg17-bin" >> "$GITHUB_PATH"
+
+      - name: Create encrypted database and four-bucket snapshot
+        env:
+          SITES_CMS_DATABASE_URL: ${{ secrets.SITES_CMS_MIGRATOR_DATABASE_URL }}
+          SITES_CMS_PROJECT_REF: ${{ vars.SITES_CMS_PROJECT_REF }}
+          SUPABASE_MANAGEMENT_TOKEN: ${{ secrets.SUPABASE_MANAGEMENT_TOKEN }}
+          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SUPABASE_S3_ENDPOINT: ${{ vars.SUPABASE_S3_ENDPOINT }}
+          SUPABASE_S3_REGION: ${{ vars.SUPABASE_S3_REGION }}
+          SUPABASE_S3_ACCESS_KEY_ID: ${{ secrets.SUPABASE_S3_ACCESS_KEY_ID }}
+          SUPABASE_S3_SECRET_ACCESS_KEY: ${{ secrets.SUPABASE_S3_SECRET_ACCESS_KEY }}
+          SITES_BACKUP_ENCRYPTION_KEY_B64: ${{ secrets.SITES_BACKUP_ENCRYPTION_KEY_B64 }}
+          SITES_CORE_BASE_URL: ${{ vars.SITES_CORE_BASE_URL }}
+          MINGLA_CMS_TO_CORE_CURRENT_KID: ${{ vars.MINGLA_CMS_TO_CORE_CURRENT_KID }}
+          MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: ${{ secrets.MINGLA_CMS_TO_CORE_CURRENT_KEY_B64 }}
+          SITES_BACKUP_OUTPUT_DIR: ${{ runner.temp }}/sites-backup
+          SITES_BACKUP_RESULT_PATH: ${{ runner.temp }}/sites-backup/result.json
+          SITES_PG17_MOUNT_ROOT: ${{ runner.temp }}
+        run: node scripts/sites/backup-sites-cms.mjs create
+
+      - name: Read safe immutable bundle coordinates
+        id: bundle
+        env:
+          SITES_BACKUP_RESULT_PATH: ${{ runner.temp }}/sites-backup/result.json
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --input-type=module <<'NODE'
+          import { appendFileSync, readFileSync } from "node:fs";
+          const value = JSON.parse(readFileSync(process.env.SITES_BACKUP_RESULT_PATH, "utf8"));
+          if (!/^mingla-sites-[0-9a-f-]{36}-[0-9TZ]+-[0-9a-f]{64}\.msbk$/.test(value.bundle_name)) process.exit(1);
+          if (!/^[0-9a-f]{64}$/.test(value.bundle_sha256)) process.exit(1);
+          appendFileSync(process.env.GITHUB_OUTPUT, `name=${value.bundle_name}\nsha256=${value.bundle_sha256}\n`);
+          NODE
+
+      - name: Upload immutable encrypted bundle to private Blob
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.SITES_BACKUP_BLOB_READ_WRITE_TOKEN }}
+          BUNDLE_NAME: ${{ steps.bundle.outputs.name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! npx --yes vercel@53.2.0 blob put \
+            "$RUNNER_TEMP/sites-backup/$BUNDLE_NAME" \
+            --access private \
+            --add-random-suffix false \
+            --allow-overwrite false \
+            --content-type application/octet-stream \
+            --pathname "recovery/sites/$BUNDLE_NAME" >/dev/null 2>&1; then
+            echo "SITES_BLOB_ERROR code=PRIVATE_IMMUTABLE_UPLOAD_FAILED" >&2
+            exit 1
+          fi
+
+      - name: Download and verify latest private bundle
+        id: readback
+        env:
+          BLOB_READ_WRITE_TOKEN: ${{ secrets.SITES_BACKUP_BLOB_READ_WRITE_TOKEN }}
+          BUNDLE_NAME: ${{ steps.bundle.outputs.name }}
+          EXPECTED_SHA256: ${{ steps.bundle.outputs.sha256 }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          readback="$RUNNER_TEMP/sites-backup/private-readback.msbk"
+          if ! npx --yes vercel@53.2.0 blob get \
+            "recovery/sites/$BUNDLE_NAME" \
+            --access private \
+            --output "$readback" >/dev/null 2>&1; then
+            echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_FAILED" >&2
+            exit 1
+          fi
+          actual_sha256="$(sha256sum "$readback" | cut -d ' ' -f 1)"
+          if [ "$actual_sha256" != "$EXPECTED_SHA256" ]; then
+            echo "SITES_BLOB_ERROR code=PRIVATE_READBACK_DIGEST_MISMATCH" >&2
+            exit 1
+          fi
+          echo "verified_at=$(date -u +'%Y-%m-%dT%H:%M:%SZ')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore latest bundle into isolated PostgreSQL 17
+        env:
+          SITES_BACKUP_BUNDLE_PATH: ${{ runner.temp }}/sites-backup/private-readback.msbk
+          SITES_BACKUP_RESTORE_RESULT_PATH: ${{ runner.temp }}/sites-backup/restore-result.json
+          SITES_RESTORE_DATABASE_URL: postgresql://postgres:sites-restore-ephemeral-only@127.0.0.1:5432/postgres?sslmode=disable
+          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_BACKUP_ENCRYPTION_KEY_B64: ${{ secrets.SITES_BACKUP_ENCRYPTION_KEY_B64 }}
+          SITES_CORE_BASE_URL: ${{ vars.SITES_CORE_BASE_URL }}
+          MINGLA_CMS_TO_CORE_CURRENT_KID: ${{ vars.MINGLA_CMS_TO_CORE_CURRENT_KID }}
+          MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: ${{ secrets.MINGLA_CMS_TO_CORE_CURRENT_KEY_B64 }}
+          SITES_PG17_MOUNT_ROOT: ${{ runner.temp }}
+        run: node scripts/sites/restore-sites-cms.mjs
+
+      - name: Commit readiness only after private readback and restore
+        env:
+          SITES_BACKUP_RESULT_PATH: ${{ runner.temp }}/sites-backup/result.json
+          SITES_BACKUP_RESTORE_RESULT_PATH: ${{ runner.temp }}/sites-backup/restore-result.json
+          SITES_BACKUP_BLOB_PATHNAME: recovery/sites/${{ steps.bundle.outputs.name }}
+          SITES_BACKUP_INDEPENDENT_READBACK_SHA256: ${{ steps.bundle.outputs.sha256 }}
+          SITES_BACKUP_UPLOAD_VERIFIED_AT: ${{ steps.readback.outputs.verified_at }}
+          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_CORE_BASE_URL: ${{ vars.SITES_CORE_BASE_URL }}
+          MINGLA_CMS_TO_CORE_CURRENT_KID: ${{ vars.MINGLA_CMS_TO_CORE_CURRENT_KID }}
+          MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: ${{ secrets.MINGLA_CMS_TO_CORE_CURRENT_KEY_B64 }}
+        run: node scripts/sites/backup-sites-cms.mjs record-evidence
+
+      - name: Run signed tenant-scoped retention after the verified snapshot
+        env:
+          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_CMS_ORIGIN: https://studio.sites.usemingla.com
+          MINGLA_CORE_TO_CMS_CURRENT_KID: ${{ vars.MINGLA_CORE_TO_CMS_CURRENT_KID }}
+          MINGLA_CORE_TO_CMS_CURRENT_KEY_B64: ${{ secrets.MINGLA_CORE_TO_CMS_CURRENT_KEY_B64 }}
+        run: node scripts/sites/run-sites-retention.mjs
+
+  deactivate:
+    name: "Fail-closed pilot deactivation"
+    needs: [contracts, backup_restore]
+    # Any scheduled/main run that does not finish the production backup and
+    # restore successfully is signed-deactivated before the safe alert. This
+    # includes a skipped backup_restore job caused by a contract failure.
+    if: ${{ (github.event.pull_request.draft != true) && (always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && needs.backup_restore.result != 'success') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: mingla-sites-production
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: "22"
+      - name: Signed idempotent service-only deactivation
+        env:
+          SITES_PILOT_SITE_ID: ${{ vars.SITES_PILOT_SITE_ID }}
+          SITES_CORE_BASE_URL: ${{ vars.SITES_CORE_BASE_URL }}
+          MINGLA_CMS_TO_CORE_CURRENT_KID: ${{ vars.MINGLA_CMS_TO_CORE_CURRENT_KID }}
+          MINGLA_CMS_TO_CORE_CURRENT_KEY_B64: ${{ secrets.MINGLA_CMS_TO_CORE_CURRENT_KEY_B64 }}
+        run: node scripts/sites/backup-sites-cms.mjs deactivate
+
+  alert:
+    name: "Safe recovery failure alert"
+    needs: [contracts, backup_restore, deactivate]
+    if: ${{ (github.event.pull_request.draft != true) && (always() && github.event_name != 'pull_request' && github.ref == 'refs/heads/main' && (needs.contracts.result != 'success' || needs.backup_restore.result != 'success' || needs.deactivate.result == 'failure')) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - name: Comment safe code and run URL on #2830
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          run_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
+          body="SITES_BACKUP_ALERT error_code=SITES_BACKUP_OR_RESTORE_FAILED run_url=${run_url}"
+          gh api --method POST \
+            "repos/${GITHUB_REPOSITORY}/issues/2830/comments" \
+            -f body="$body" >/dev/null

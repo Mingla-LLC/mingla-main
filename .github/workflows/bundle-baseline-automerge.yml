@@ -20,20 +20,27 @@ name: Bundle Baseline Auto-Merge
 #
 # WHAT THIS DELIBERATELY DOES NOT DO: approve. #2058 forbade the review and
 # approval endpoints and that still stands — an automation that approves its own
-# artifact has no independent verifier left. If main's ruleset requires a human
-# review, the run refuses with `MERGE_BLOCKED` and says so. It also cannot move
+# artifact has no independent verifier left. The App instead holds a BYPASS on
+# main's `general security` ruleset, granted 2026-08-24, which is a different
+# thing: a permission GitHub evaluates against the caller when the merge is
+# attempted, not a review this automation writes. It also cannot move
 # HARD_CEILING or PR_DELTA_ALLOWANCE; those live in
 # orch-1083-initial-bundle-budget.mjs and remain Seth's.
 #
-# OPERATOR PREREQUISITE — READ THIS BEFORE ASSUMING IT IS BROKEN: main carries a
-# `general security` ruleset requiring one approving code-owner review, and the
-# `mingla-bundle-baseline` App is not a bypass actor on it. Until it is added as
-# one, GitHub reports the recording PR as `mergeable_state: blocked` even with
-# every check green, and this job will refuse with MERGE_BLOCKED on every run —
-# correctly, and by design, because the alternative is an automation that
-# approves its own artifact. The refusal names the ruleset and the fix in one
-# line of the job summary so this is diagnosable at a glance rather than looking
-# like "there was nothing to merge".
+# THERE IS NO OPERATOR PREREQUISITE. An earlier version of this comment said the
+# App had to be added as a bypass actor before the merge could work, and that
+# instruction outlived its truth by a week: the bypass was granted on
+# 2026-08-24 and the job kept printing the instruction anyway, because it was
+# deciding by READING `mergeable_state` — a field GitHub computes without
+# reference to the caller, so it reports `blocked` to a bypass holder too. That
+# made it a guard that could not pass. Proven by execution (#2885) on
+# 2026-09-01: the same job, the same minted token, four seconds apart, read
+# `mergeable_state="blocked"` with 56 checks green and then merged PR #2884 with
+# `PUT /pulls/2884/merge` -> HTTP 200. The job now ATTEMPTS the merge and reports
+# whatever GitHub answers; if a merge is ever genuinely blocked, the returned
+# message names the real reason instead of a guessed one. If this ever starts
+# refusing on every run again, it FAILS after
+# STALE_REFUSAL_MINUTES rather than going unread.
 #
 # WHY A POLL RATHER THAN AN EVENT: the merge can only happen in the window where
 # the recording PR's checks have finished AND main has not moved. Nothing emits
@@ -65,8 +72,15 @@ on:
       - "mingla-business/scripts/ci/bundle-baseline-pr-handoff.mjs"
       - "mingla-business/scripts/ci/bundle-baseline-update.mjs"
       - "mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs"
-      - "mingla-business/scripts/ci/bundle-baseline.json"
       - "mingla-business/scripts/ci/__tests__/issue2524_bundle_baseline_automerge.happy.test.mjs"
+      # #2885 AC-4. `bundle-baseline.json` is deliberately NOT here: its VALUE
+      # cannot change what the merge machinery does, and starting two jobs to
+      # prove that on every recording PR is the waste this scoping removes.
+      # `.github/workflows/**` IS here: the guard suite asserts that a
+      # baseline-only pull request starts nothing but the two ruleset-required
+      # checks and the provenance guard, and a new workflow is exactly how that
+      # scoping gets silently undone.
+      - ".github/workflows/**"
   push:
     branches: [main]
     paths: *issue2524_paths

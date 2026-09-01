@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import StudioSafeReturn from "../../../../components/StudioSafeReturn";
+import { MINGLA_BUSINESS_ORIGIN } from "../../../../lib/origins";
 import {
   cookieValue,
   decodeSessionReturnContext,
@@ -14,7 +15,7 @@ export default async function SessionExpired() {
   );
   const returnUrl = context
     ? studioReturnLocationFromContext(context, "session_expired")
-    : "https://business.usemingla.com";
+    : MINGLA_BUSINESS_ORIGIN;
   return (
     <StudioSafeReturn
       returnUrl={returnUrl}

@@ -12,6 +12,12 @@
       "issue": 2591,
       "category": "service-container",
       "rationale": "owns the sole supabase/postgres service container for the executable SQL contract suites, provisioning one migrated cluster whose per-suite databases replace ten independent container boundaries"
+    },
+    {
+      "path": ".github/workflows/sites-backup-restore.yml",
+      "issue": 2893,
+      "category": "production-operation",
+      "rationale": "the nightly backup and restore drill is the sole production operation that reads the isolated Sites database and four private object buckets, uploads one encrypted independent recovery bundle, and provisions a PostgreSQL 17 service container for restore verification"
     }
   ]
 }

@@ -19,6 +19,11 @@ on:
       - "docs/INVARIANT_REGISTRY.md"
       - ".github/scripts/strict-grep/issue-871-attendance-entitlement.mjs"
       - ".github/workflows/issue-871-attendance-entitlement-tests.yml"
+      # #2885 AC-4 — the machine-written baseline sits under a broad pattern
+      # above, so a one-file recording PR matched this filter and ran the whole
+      # suite. LAST on purpose: any other changed file still matches a positive
+      # pattern above, so this only skips a baseline-ONLY change.
+      - "!mingla-business/scripts/ci/bundle-baseline.json"
 
 concurrency:
   group: ci-issue-871-attendance-entitlement-tests-${{ (github.event_name == 'pull_request' || github.event_name == 'pull_request_target') && github.event.pull_request.number || github.run_id }}

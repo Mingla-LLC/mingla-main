@@ -6,6 +6,7 @@ import {
   type RestaurantArtifact,
 } from "../contracts/artifact";
 import { emitPublicObservation } from "./observability";
+import { readPrivateObject } from "./storageReader";
 
 type Resolution = {
   site_id: string;
@@ -134,14 +135,10 @@ export async function loadResolvedArtifact(
     resolution.artifact_key !== expectedKey ||
     !/^[0-9a-f]{64}$/.test(resolution.artifact_digest)
   ) throw new Error("NOT_FOUND");
-  const response = await fetch(
-    `${config.artifactReadBaseUrl}/${
-      encodeURIComponent(config.artifactBucket)
-    }/${resolution.artifact_key}`,
-    {
-      headers: { authorization: `Bearer ${config.artifactReadToken}` },
-      cache: "force-cache",
-    },
+  const response = await readPrivateObject(
+    config.artifactBucket,
+    resolution.artifact_key,
+    "force-cache",
   );
   if (!response.ok) throw new Error("NOT_FOUND");
   const bytes = new Uint8Array(await response.arrayBuffer());

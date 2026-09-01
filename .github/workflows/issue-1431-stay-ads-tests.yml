@@ -11,6 +11,11 @@ on:
       - "supabase/migrations/20270206001431_issue_1431_stay_ads_attribution.sql"
       - "supabase/migrations/__tests__/issue_1431_stay_ads_attribution.test.sql"
       - ".github/workflows/issue-1431-stay-ads-tests.yml"
+      # #2885 AC-4 — the machine-written baseline sits under a broad pattern
+      # above, so a one-file recording PR matched this filter and ran the whole
+      # suite. LAST on purpose: any other changed file still matches a positive
+      # pattern above, so this only skips a baseline-ONLY change.
+      - "!mingla-business/scripts/ci/bundle-baseline.json"
   pull_request:
     # issue #2881 — ready_for_review is required wherever the draft gate is set.
     types: [opened, synchronize, reopened, ready_for_review]
@@ -22,6 +27,11 @@ on:
       - "supabase/migrations/20270206001431_issue_1431_stay_ads_attribution.sql"
       - "supabase/migrations/__tests__/issue_1431_stay_ads_attribution.test.sql"
       - ".github/workflows/issue-1431-stay-ads-tests.yml"
+      # #2885 AC-4 — the machine-written baseline sits under a broad pattern
+      # above, so a one-file recording PR matched this filter and ran the whole
+      # suite. LAST on purpose: any other changed file still matches a positive
+      # pattern above, so this only skips a baseline-ONLY change.
+      - "!mingla-business/scripts/ci/bundle-baseline.json"
 
 permissions:
   contents: read
