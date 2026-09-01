@@ -1,0 +1,87 @@
+// ---------------------------------------------------------------
+// #2902 — the six Host capability cards, as a bento grid.
+//
+// Seth's six, in his order and his emphasis. Copy stays succinct and punchy:
+// a short title, one sentence, and the specifics as chips rather than prose —
+// so a scanner gets the shape and a reader gets the detail.
+//
+// Every capability named here exists in shipped source. `source` is kept for
+// our own audit and is never rendered.
+// ---------------------------------------------------------------
+
+export interface BentoCard {
+  id: string
+  title: string
+  body: string
+  /** The specifics, as short chips. */
+  points: readonly string[]
+  /** Bento placement. */
+  span: string
+  tone: 'ink' | 'brand' | 'raised'
+  /** Which figure from tool-visuals to render. */
+  visual: string
+  source: string
+}
+
+export const HOST_BENTO: readonly BentoCard[] = [
+  {
+    id: 'website',
+    title: 'Prompt your website into existence',
+    body: 'Describe your business. Get a state-of-the-art site, free, in seconds.',
+    points: ['Written by Ari', 'Designed and published', 'Free'],
+    span: 'md:col-span-4 md:row-span-2',
+    tone: 'brand',
+    visual: 'site',
+    source: 'mingla-sites/',
+  },
+  {
+    id: 'events',
+    title: 'Events',
+    body: 'Create events with AI reading the demand before you price them.',
+    points: ['Demand forecast', 'Weather', 'Ticket scanning', 'Guest lists'],
+    span: 'md:col-span-2',
+    tone: 'ink',
+    visual: 'orders',
+    source: 'mingla-business/src/services/eventOrdersService.ts',
+  },
+  {
+    id: 'trips',
+    title: 'Trips',
+    body: 'Host trips and let the group plan them together.',
+    points: ['Group chat', 'Instalments', 'Itineraries'],
+    span: 'md:col-span-2',
+    tone: 'ink',
+    visual: 'host',
+    source: 'mingla-business/src/utils/tripToLiveEvent.ts',
+  },
+  {
+    id: 'venue',
+    title: 'Venue management',
+    body: 'Run a restaurant or a club from one place.',
+    points: ['Reservations', 'Table ordering', 'Menu intelligence', 'Demand forecast'],
+    span: 'md:col-span-3',
+    tone: 'raised',
+    visual: 'venue',
+    source: 'mingla-business/src/services/reservationMetricsService.ts',
+  },
+  {
+    id: 'marketing',
+    title: 'Marketing',
+    body: 'Reach the people who already came, and the ones who should.',
+    points: ['Email', 'SMS', 'CRM nurturing'],
+    span: 'md:col-span-3',
+    tone: 'raised',
+    visual: 'email',
+    source: 'supabase/functions/marketing-send',
+  },
+  {
+    id: 'brain',
+    title: "Mingla's AI brain",
+    body: 'Ari drives people to your door — performance advertising, local targeting, and most of the work you were going to do yourself.',
+    points: ['Performance ads', 'Local targeting', 'Ask Ari anything'],
+    span: 'md:col-span-6',
+    tone: 'ink',
+    visual: 'discovery',
+    source: 'supabase/functions/admin-ad-create-campaign',
+  },
+]

@@ -4,14 +4,16 @@ import {
   Megaphone, Search, Sparkles, Users,
 } from 'lucide-react'
 import { Card3D, Layer } from '@/components/ui/3d-card'
+import { cn } from '@/lib/cn'
 import {
   CutoutCard, CutoutFaq, CutoutFooter, CutoutHeading, CutoutHero, CutoutNav,
-  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema,
-  StepSwitcher, ToolCard,
+  CutoutSection, CutoutShell, CutReveal, DeviceCta, FaqSchema, ToolVisual,
 } from '@/components/cutout'
 import {
-  ALL_TOOLS, HOST_LIMITS, HOST_STEPS, HOST_SWAP,
-} from '@/lib/design-preview/host-tools'
+  AuroraBackground, BentoGrid, BentoGridItem,
+} from '@/components/ui/aurora-bento-grid'
+import { HOST_BENTO } from '@/lib/design-preview/host-bento'
+import { HOST_LIMITS, HOST_SWAP } from '@/lib/design-preview/host-tools'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
 import { ScrollVelocityRow } from '@/components/ui/scroll-velocity-text'
@@ -28,18 +30,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 }
 
-const ICONS: Record<string, React.ReactNode> = {
-  site: <Globe className="h-5 w-5" />,
-  host: <Sparkles className="h-5 w-5" />,
-  venue: <MapPin className="h-5 w-5" />,
-  orders: <CreditCard className="h-5 w-5" />,
-  reservations: <CalendarCheck className="h-5 w-5" />,
-  discovery: <Search className="h-5 w-5" />,
-  email: <Mail className="h-5 w-5" />,
-  sms: <Megaphone className="h-5 w-5" />,
-  ads: <BarChart3 className="h-5 w-5" />,
-  crm: <Users className="h-5 w-5" />,
-}
 
 const ICP_ICONS: Record<string, React.ReactNode> = {
   'event-organizers-promoters': <Sparkles className="h-5 w-5" />,
@@ -120,39 +110,87 @@ export default function CutoutHostPage() {
         </CutReveal>
       </CutoutSection>
 
-      {/* The story: build, sell, grow. */}
-      <CutoutSection id="tools" aria-label="Build, sell and grow with Mingla">
-        <CutReveal>
-          <CutoutHeading align="center"
-            lede="Ten tools. One app. No agency, no stack, no weekend of admin.">
-            Everything between an idea and a <span className="cut-gradient-brand">full room.</span>
-          </CutoutHeading>
-        </CutReveal>
-        <div className="mt-14">
-          <StepSwitcher steps={HOST_STEPS} icons={ICONS} label="Build, sell or grow" />
-        </div>
-      </CutoutSection>
+      {/* The capability section, as a bento. It replaces BOTH the Build /
+          Sell / Grow tabs and the ten-tool band that followed them — the six
+          cards below cover the same ground, and two capability sections in a
+          row is the duplication this page keeps being told to cut. */}
+      <CutoutSection band="dark" id="tools" aria-label="What Mingla Host does" className="relative">
+        <AuroraBackground />
+        <div className="relative z-10">
+          <CutReveal>
+            <CutoutHeading align="center"
+              lede="No agency, no stack, no weekend of admin.">
+              Everything between an idea and a <span className="cut-gradient-brand">full room.</span>
+            </CutoutHeading>
+          </CutReveal>
 
-      {/* The whole set at once. */}
-      <CutoutSection band="dark" aria-label="Every Mingla Host tool">
-        <CutReveal>
-          <CutoutHeading align="center" eyebrow="All of it"
-            lede="Nothing here is a separate subscription.">
-            Ten tools, <span className="cut-gradient-brand">one app.</span>
-          </CutoutHeading>
-        </CutReveal>
-        <div className="mt-14 grid gap-5 sm:grid-cols-2 lg:grid-cols-5">
-          {ALL_TOOLS.map((tool, i) => (
-            <CutReveal key={tool.id} variant="lift" delay={(i % 5) * 0.06}>
-              <ToolCard tool={tool} icon={ICONS[tool.id]} />
-            </CutReveal>
-          ))}
+          <BentoGrid className="mt-14">
+            {HOST_BENTO.map((card) => (
+              <BentoGridItem key={card.id} tone={card.tone} className={card.span}>
+                <div>
+                  <h3
+                    className={cn(
+                      'font-display leading-tight tracking-[-0.02em]',
+                      card.tone === 'brand' ? 'text-[1.75rem] text-white sm:text-[2.25rem]' : 'text-[1.25rem] text-white',
+                    )}
+                  >
+                    {card.title}
+                  </h3>
+                  <p
+                    className={cn(
+                      'mt-2.5 leading-relaxed',
+                      card.tone === 'brand'
+                        ? 'max-w-md text-[1.0625rem] text-white/85'
+                        : 'text-[0.9375rem] text-white/62',
+                    )}
+                  >
+                    {card.body}
+                  </p>
+                </div>
+
+                {card.tone === 'brand' ? (
+                  // The figures are drawn in accent-on-sunken, which is
+                  // invisible ON the accent. Re-pointing the two tokens for
+                  // this tile only turns it white-on-orange without forking
+                  // the component.
+                  <div
+                    className="mt-6 flex-1"
+                    style={
+                      {
+                        '--cut-accent': '#ffffff',
+                        '--cut-card-sunken': 'rgba(255,255,255,0.14)',
+                      } as React.CSSProperties
+                    }
+                  >
+                    <ToolVisual id={card.visual} />
+                  </div>
+                ) : null}
+
+                <div className="mt-6 flex flex-wrap gap-2">
+                  {card.points.map((p) => (
+                    <span
+                      key={p}
+                      className={cn(
+                        'rounded-full px-3 py-1.5 text-[0.75rem] font-semibold',
+                        card.tone === 'brand'
+                          ? 'bg-white/20 text-white ring-1 ring-inset ring-white/25'
+                          : 'bg-white/[0.07] text-white/75 ring-1 ring-inset ring-white/10',
+                      )}
+                    >
+                      {p}
+                    </span>
+                  ))}
+                </div>
+              </BentoGridItem>
+            ))}
+          </BentoGrid>
+
+          <CutReveal delay={0.2}>
+            <div className="mt-14 flex justify-center">
+              <DeviceCta surface="host" location="tools" variant="primary" size="lg" />
+            </div>
+          </CutReveal>
         </div>
-        <CutReveal delay={0.2}>
-          <div className="mt-14 flex justify-center">
-            <DeviceCta surface="host" location="tools" variant="primary" size="lg" />
-          </div>
-        </CutReveal>
       </CutoutSection>
 
       {/* Before / after. Short both sides. */}

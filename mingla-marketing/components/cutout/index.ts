@@ -17,5 +17,4 @@ export {
   type Crumb,
   type FaqEntry,
 } from './schema'
-export { ToolCard, StepSwitcher } from './tool-grid'
 export { ToolVisual } from './tool-visuals'
