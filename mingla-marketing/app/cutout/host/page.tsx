@@ -14,6 +14,7 @@ import {
 } from '@/components/ui/aurora-bento-grid'
 import { HOST_BENTO } from '@/lib/design-preview/host-bento'
 import { AriCreativeCard } from '@/components/ui/ari-creative-card'
+import { EventDemandCard } from '@/components/ui/event-demand-card'
 import { HOST_LIMITS, HOST_SWAP } from '@/lib/design-preview/host-tools'
 import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
 import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
@@ -153,11 +154,19 @@ export default function CutoutHostPage() {
                     figure: Ari takes the brief, then the real site it built
                     scrolls past inside the same card. */}
                 {card.tone === 'brand' ? (
-                  <div className="mt-6 h-[20rem] md:h-auto md:min-h-0 md:flex-1">
+                  <div className="mt-6 h-[20rem] lg:h-auto lg:min-h-0 lg:flex-1">
                     <AriCreativeCard
                       siteSrc="/marketing/host-icp/gogi-site.jpg"
                       siteAlt="A restaurant website Ari built — hero, menu with prices, online ordering and a table booking form."
                     />
+                  </div>
+                ) : null}
+
+                {/* Events shows the demand read itself: the weather it reacts
+                    to, the price it lands on, and the shape of the night. */}
+                {card.id === 'events' ? (
+                  <div className="mt-5 min-h-0 flex-1">
+                    <EventDemandCard />
                   </div>
                 ) : null}
 
