@@ -722,14 +722,54 @@ for (const terminal of ["cancelled", "superseded"] as const) {
   });
 }
 
+// [TEST-MOD-APPROVED #2967] SUPERSEDED ASSERTION, named precisely.
+//
+// This test previously pinned `updates === 0` — the lag path must not write to
+// the database AT ALL — by making every `.update()` throw
+// "storage metadata lag must not mutate".
+//
+// #2967 invalidates the ZERO-WRITE form of that invariant, and only that form.
+// The lag had no deadline and no exit: the endpoint answered an unchanged
+// canonical `source_uploading` with HTTP 200 forever (measured: 120
+// acknowledgements over 346 seconds, `updated_at` frozen at job creation
+// because this path was a perfect no-op). Bounding the wait requires an anchor
+// for "when did the transfer actually complete", and NO existing column carries
+// it: `created_at` / `updated_at` / `tus_expires_at - 3600s` (bunnyStream.ts
+// `expirySeconds = 3600`) all mark when the transport was ARMED, not when the
+// bytes landed. Anchoring on arm time is not merely imprecise, it is unsafe —
+// `MAX_SOURCE_VIDEO_BYTES` is 100 MB, so a large source on a slow uplink can
+// spend 400s+ in transfer and would breach a 90s arm-anchored deadline on its
+// FIRST acknowledgement, failing the job and destroying a perfectly healthy
+// upload. So the anchor is written once, on the pass that first proves TUS
+// offset equality.
+//
+// What #2715 was actually protecting — the lag must never promote an
+// unverified source, and must not amplify writes across the retry stream — is
+// pinned BELOW, in a strictly stronger form than the original: the write is
+// allowed to touch `provider_payload` and nothing else, and at most once.
+// `index.issue2967.test.ts` proves the "at most once" half against the full
+// 120-retry production stream (a per-retry write shows up there as 120).
 Deno.test("#2715 full TUS truth wins over zero-byte Bunny metadata lag without cleanup", async () => {
   let updates = 0, destroys = 0;
+  const canonicalMutations: string[] = [];
   const sourceJob = {
     ...job("source_uploading"),
     source_asset_id: GUID,
     source_bytes: 716_949,
     tus_resource_url: "https://tus.example.test/resource",
   };
+  // Any field whose value IS the source-verification verdict. #2715 exists to
+  // stop the lag path touching these; that has not changed.
+  const CANONICAL = [
+    "status",
+    "tus_upload_offset",
+    "tus_upload_length",
+    "source_bytes",
+    "source_asset_id",
+    "source_sha256",
+    "processed_url",
+    "failure_code",
+  ];
   const client = {
     from: () => ({
       select: () => ({
@@ -737,9 +777,19 @@ Deno.test("#2715 full TUS truth wins over zero-byte Bunny metadata lag without c
           maybeSingle: () => Promise.resolve({ data: sourceJob, error: null }),
         }),
       }),
-      update: () => {
+      update: (patch: Record<string, unknown>) => {
         updates += 1;
-        throw new Error("storage metadata lag must not mutate");
+        for (const field of CANONICAL) {
+          if (patch[field] !== undefined) canonicalMutations.push(field);
+        }
+        Object.assign(sourceJob, patch);
+        const settled = Promise.resolve({ data: sourceJob, error: null });
+        const chain = {
+          eq: () => chain,
+          select: () => chain,
+          maybeSingle: () => settled,
+        };
+        return chain;
       },
     }),
   };
@@ -801,9 +851,22 @@ Deno.test("#2715 full TUS truth wins over zero-byte Bunny metadata lag without c
     const payload = await response.json();
     assert(response.status === 200, `metadata lag became HTTP ${response.status}`);
     assert(payload.status === "source_uploading", "active retry truth was lost");
+    // [TEST-MOD-APPROVED #2967] `updates === 0` -> the two properties it stood
+    // for. Both still fail on revert of the #2967 bound.
+    assert(destroys === 0, "metadata lag deleted provider truth");
     assert(
-      updates === 0 && destroys === 0,
-      "metadata lag mutated or deleted provider truth",
+      canonicalMutations.length === 0,
+      `metadata lag mutated canonical source truth: ${
+        canonicalMutations.join(",")
+      }`,
+    );
+    assert(
+      updates <= 1,
+      `metadata lag amplified writes across the retry stream: ${updates}`,
+    );
+    assert(
+      sourceJob.status === "source_uploading",
+      "metadata lag moved canonical status",
     );
   } finally {
     globalThis.fetch = old;

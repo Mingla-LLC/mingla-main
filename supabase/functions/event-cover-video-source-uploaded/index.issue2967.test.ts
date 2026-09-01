@@ -244,6 +244,54 @@ Deno.test("#2967 the real acknowledgement loop is BOUNDED — an uncommitted Bun
   );
 });
 
+// The #2715 lag invariant, re-pinned in its exact form. The original assertion
+// was "zero writes"; #2967 supersedes that with the property it was actually
+// protecting — the lag path must never advance status, never fabricate a source
+// offset, never destroy provider work, and must not amplify writes across the
+// retry stream. 120 acknowledgements is the exact count measured on the
+// production job; a per-retry write would show up here as 120.
+Deno.test("#2967 the lag path writes AT MOST ONCE across the full 120-retry production stream", async () => {
+  const h = harness({ storageSize: 0 });
+  await withCompletedTusHead(() =>
+    withClock(Date.parse("2026-09-01T13:30:08.000Z"), async (advance) => {
+      for (let call = 0; call < 120; call += 1) {
+        const response = await handleEventCoverVideoSourceUploaded(
+          request(),
+          h.deps as never,
+        );
+        const body = await response.json();
+        if (body.status !== "source_uploading") break;
+        // Stay strictly inside the deadline so this measures the LAG path only,
+        // never the terminal transition.
+        advance(Math.floor(SOURCE_ACK_DEADLINE_MS / 240));
+      }
+    })
+  );
+  assert(
+    h.updates.length === 1,
+    `lag path amplified writes: ${h.updates.length} updates across 120 acknowledgements`,
+  );
+  // The one write touches provider bookkeeping and NOTHING canonical.
+  const [patch] = h.updates;
+  assert(
+    Object.keys(patch).length === 1 && "provider_payload" in patch,
+    `lag write touched more than provider_payload: ${Object.keys(patch).join(",")}`,
+  );
+  assert(
+    patch.status === undefined && patch.tus_upload_offset === undefined &&
+      patch.source_bytes === undefined && patch.failure_code === undefined,
+    "lag write mutated canonical source truth",
+  );
+  // Canonical truth is exactly what it was, and no provider work was deleted.
+  assert(
+    String(h.row.status) === "source_uploading",
+    `lag path moved status to ${h.row.status}`,
+  );
+  assert(h.row.tus_upload_offset === 0, "lag path fabricated a source offset");
+  assert(h.destroys === 0, "lag path deleted provider work");
+  assert(h.transitions.length === 0, "lag path transitioned the job");
+});
+
 Deno.test("#2967 the acknowledgement clock starts when the TUS offsets match and is read back on later calls", async () => {
   const h = harness({ storageSize: 0 });
   await withCompletedTusHead(() =>
