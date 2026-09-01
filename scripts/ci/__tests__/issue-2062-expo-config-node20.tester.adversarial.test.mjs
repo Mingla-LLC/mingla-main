@@ -205,6 +205,77 @@ function auditProductionRuntimeBinding(source) {
   );
 }
 
+function auditPlatformUrlContract(source) {
+  const exactLineCount = (line) => source
+    .split(/\r?\n/)
+    .filter((candidate) => candidate === line)
+    .length;
+  const extraRead = source.indexOf("Constants.expoConfig?.extra");
+  const envRead = source.indexOf(
+    "process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL",
+  );
+  const selection = "const CONFIGURED = FROM_EXTRA ?? FROM_PROCESS_ENV;";
+  const selectionIndex = source.indexOf(selection);
+  assert.ok(
+    extraRead >= 0 && envRead > extraRead && selectionIndex > envRead,
+    "Expo extra must remain the first configuration authority",
+  );
+  assert.equal(exactLineCount(selection), 1);
+  assert.equal(
+    exactLineCount('const HOST_PUBLIC_ORIGIN = "https://host.usemingla.com";'),
+    1,
+    "Host replacement owner drifted",
+  );
+  assert.equal(
+    exactLineCount(
+      "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com\\/?$/i;",
+    ),
+    1,
+    "retired-origin matcher must remain exact",
+  );
+  const normalization = [
+    "const RESOLVED = CONFIGURED && RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())",
+    "  ? HOST_PUBLIC_ORIGIN",
+    "  : CONFIGURED;",
+  ].join("\n");
+  assert.ok(
+    source.indexOf(normalization) > selectionIndex,
+    "the selected value must be normalized only after precedence is resolved",
+  );
+  assert.match(source, /if \(!RESOLVED \|\| RESOLVED\.length === 0\) \{/);
+  assert.match(
+    source,
+    /EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL is not set\. Configure in mingla-business\/app\.config\.js extra block or \.env\.local for dev\./,
+  );
+  assert.match(
+    source,
+    /export const MINGLA_BUSINESS_WEB_URL: string = RESOLVED;/,
+  );
+
+  const resolveLikeProduction = (extra, processEnvironment) => {
+    const configured = extra ?? processEnvironment;
+    return configured && /^https:\/\/business\.usemingla\.com\/?$/i.test(configured.trim())
+      ? "https://host.usemingla.com"
+      : configured;
+  };
+  assert.equal(
+    resolveLikeProduction("https://business.usemingla.com/", "https://env.example"),
+    "https://host.usemingla.com",
+    "the exact retired Expo value must not survive to RESOLVED",
+  );
+  assert.equal(
+    resolveLikeProduction("https://extra.example", "https://business.usemingla.com"),
+    "https://extra.example",
+    "Expo extra must continue to win over process.env",
+  );
+  assert.equal(
+    resolveLikeProduction(undefined, "https://business.usemingla.com/path"),
+    "https://business.usemingla.com/path",
+    "normalization may not broaden beyond the exact retired origin",
+  );
+  assert.equal(resolveLikeProduction(undefined, undefined), undefined);
+}
+
 function expectAuditFailure(label, action) {
   assert.throws(action, undefined, label);
 }
@@ -387,17 +458,42 @@ test("#2062 tester: both CommonJS roots and platformUrl operational path are cur
   );
   assert.doesNotMatch(platformSource, /mingla-business\/app\.config\.ts/);
   assert.match(platformSource, /mingla-business\/app\.config\.js/);
-  assert.ok(
-    platformSource.indexOf("Constants.expoConfig?.extra") <
-      platformSource.indexOf(
-        "process.env.EXPO_PUBLIC_MINGLA_BUSINESS_WEB_URL",
-      ),
+  auditPlatformUrlContract(platformSource);
+});
+
+test("#2062 tester: precedence, exact normalization, Host replacement, and fail-loud mutations are rejected", () => {
+  const canonical = readFileSync(
+    resolve(REPO_ROOT, "mingla-business/src/constants/platformUrl.ts"),
+    "utf8",
   );
-  assert.match(
-    platformSource,
-    /const RESOLVED = FROM_EXTRA \?\? FROM_PROCESS_ENV;/,
-  );
-  assert.match(platformSource, /export const MINGLA_BUSINESS_WEB_URL: string = RESOLVED;/);
+  const normalization =
+    "const RESOLVED = CONFIGURED && RETIRED_BUSINESS_ORIGIN.test(CONFIGURED.trim())\n  ? HOST_PUBLIC_ORIGIN\n  : CONFIGURED;";
+  const mutations = [
+    canonical.replace(
+      "const CONFIGURED = FROM_EXTRA ?? FROM_PROCESS_ENV;",
+      "const CONFIGURED = FROM_PROCESS_ENV ?? FROM_EXTRA;",
+    ),
+    canonical.replace(
+      "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com\\/?$/i;",
+      "const RETIRED_BUSINESS_ORIGIN = /^https:\\/\\/business\\.usemingla\\.com/i;",
+    ),
+    canonical.replace(normalization, "const RESOLVED = CONFIGURED;"),
+    canonical.replace(
+      'const HOST_PUBLIC_ORIGIN = "https://host.usemingla.com";',
+      'const HOST_PUBLIC_ORIGIN = "https://business.usemingla.com";',
+    ),
+    canonical.replace(normalization, "const RESOLVED = CONFIGURED ?? HOST_PUBLIC_ORIGIN;"),
+    canonical.replace(
+      "if (!RESOLVED || RESOLVED.length === 0) {",
+      "if (false) {",
+    ),
+  ];
+  for (const mutation of mutations) {
+    expectAuditFailure("platform URL mutation passed", () =>
+      auditPlatformUrlContract(mutation),
+    );
+    auditPlatformUrlContract(canonical);
+  }
 });
 
 test("#2062 tester: active runtime and OTA guidance has no stale TypeScript-root path", () => {
