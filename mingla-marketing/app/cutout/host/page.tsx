@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Link from 'next/link'
 import {
   BarChart3, CalendarCheck, CreditCard, Globe, Mail, MapPin,
   Megaphone, Search, Sparkles, Users,
@@ -13,6 +12,8 @@ import {
 import {
   ALL_TOOLS, HOST_LIMITS, HOST_STEPS, HOST_SWAP,
 } from '@/lib/design-preview/host-tools'
+import { ICP_CARDS } from '@/lib/design-preview/icp-cards'
+import { ExpandingCards, type CardItem } from '@/components/ui/expanding-cards'
 
 // #2902 — Mingla Host, on AIgocy's design, telling Seth's story:
 // "Mingla gives you all the tools to be a successful host."
@@ -39,15 +40,16 @@ const ICONS: Record<string, React.ReactNode> = {
   crm: <Users className="h-5 w-5" />,
 }
 
-const ICPS = [
-  { slug: 'event-organizers-promoters', label: 'Events & promoters' },
-  { slug: 'restaurants-cafes', label: 'Restaurants & cafés' },
-  { slug: 'bars-clubs-nightlife', label: 'Bars & nightlife' },
-  { slug: 'venues-activity-spaces', label: 'Venues & spaces' },
-  { slug: 'resorts-hotels-retreats', label: 'Resorts & hotels' },
-  { slug: 'tours-experiences-adventures', label: 'Tours & experiences' },
-  { slug: 'pop-ups-independent-creators', label: 'Pop-ups & creators' },
-]
+const ICP_ICONS: Record<string, React.ReactNode> = {
+  'event-organizers-promoters': <Sparkles className="h-5 w-5" />,
+  'restaurants-cafes': <CalendarCheck className="h-5 w-5" />,
+  'bars-clubs-nightlife': <Megaphone className="h-5 w-5" />,
+  'venues-activity-spaces': <MapPin className="h-5 w-5" />,
+  'resorts-hotels-retreats': <Globe className="h-5 w-5" />,
+  'tours-experiences-adventures': <Search className="h-5 w-5" />,
+  'pop-ups-independent-creators': <Users className="h-5 w-5" />,
+}
+
 
 const FAQ = [
   { q: 'What is Mingla Host?', a: 'Every tool you need to run a hospitality business: a website, listings for events, trips, experiences and stays, orders and reservations, and the marketing to fill them.' },
@@ -73,25 +75,29 @@ export default function CutoutHostPage() {
         action={<DeviceCta surface="host" location="hero" variant="primary" size="lg" />}
       />
 
-      {/* Who it is for. One line of chips — real links, no decoration. */}
-      <CutoutSection rhythm="tight" aria-label="Who Mingla Host is for">
+      {/* Who it is for. Expanding cards: the collapsed rail states the USP,
+          the open card explains it and offers a way in. The whole tile is the
+          link — the "Learn more" anchor is stretched over it. */}
+      <CutoutSection aria-label="Who Mingla Host is for">
         <CutReveal>
-          <p className="text-center text-[0.9375rem] font-semibold text-[var(--cut-muted)]">
-            Built for the people who make a city worth going out in
-          </p>
+          <CutoutHeading align="center" eyebrow="Who it is for"
+            lede="Seven kinds of operator, one product. Hover a card to open it.">
+            Built for the people who make a <span className="cut-gradient-brand">city worth going out in.</span>
+          </CutoutHeading>
         </CutReveal>
-        <ul className="mt-7 flex flex-wrap items-center justify-center gap-2.5">
-          {ICPS.map((icp, i) => (
-            <CutReveal key={icp.slug} as="li" delay={i * 0.04}>
-              <Link
-                href={`/cutout/host/${icp.slug}`}
-                className="cut-btn-light inline-flex rounded-full px-5 py-2.5 text-[0.875rem] font-semibold text-[var(--cut-body)] transition-colors hover:text-[var(--cut-ink)] focus-ring"
-              >
-                {icp.label}
-              </Link>
-            </CutReveal>
-          ))}
-        </ul>
+        <CutReveal delay={0.1} className="mt-14">
+          <ExpandingCards
+            items={ICP_CARDS.map((c): CardItem => ({
+              id: c.id,
+              title: c.title,
+              usp: c.usp,
+              description: c.description,
+              imgSrc: c.imgSrc,
+              linkHref: c.href,
+              icon: ICP_ICONS[c.id],
+            }))}
+          />
+        </CutReveal>
       </CutoutSection>
 
       {/* The story: build, sell, grow. */}

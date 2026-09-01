@@ -114,11 +114,39 @@ export function DeviceCta({
    * platforms tells every visitor that Mingla exists on all of them, which
    * "Download the app" and "Use on web" each only said half of.
    */
+  /**
+   * Label first, then the platforms as an overlapping stack of discs — the
+   * avatar-group idiom. Three loose glyphs ahead of the words read as clutter;
+   * one clustered object reads as a single "available on" mark, and it lets
+   * the words lead, which is what a button should do.
+   *
+   * The discs are a TRANSLUCENT tint of the button's own surface with the glyph
+   * in currentColor. The first attempt filled each disc with currentColor and
+   * punched the glyph out; at 26px, three overlapping, that rendered as a heavy
+   * black blob on the light variants.
+   */
+  const disc =
+    variant === 'quiet' ? 'rgba(20,18,15,0.10)' : 'rgba(255,255,255,0.26)'
+  const ringTint =
+    variant === 'primary' ? '#e5701c' : variant === 'ink' ? '#211f1c' : '#f6f3ee'
   const marks = (
-    <span className="mr-1 flex shrink-0 items-center gap-1.5" aria-hidden="true">
-      <AppleMark className="h-[17px] w-[17px]" />
-      <PlayMark className="h-[16px] w-[16px]" />
-      <WebMark className="h-[16px] w-[16px]" />
+    <span className="ml-1.5 flex shrink-0 items-center" aria-hidden="true">
+      {[AppleMark, PlayMark, WebMark].map((Mark, i) => (
+        <span
+          key={i}
+          className="flex items-center justify-center rounded-full"
+          style={{
+            width: 24,
+            height: 24,
+            marginLeft: i === 0 ? 0 : -8,
+            zIndex: 3 - i,
+            background: disc,
+            boxShadow: `0 0 0 1.5px ${ringTint}`,
+          }}
+        >
+          <Mark className={i === 0 ? 'h-[12px] w-[12px]' : 'h-[11px] w-[11px]'} />
+        </span>
+      ))}
     </span>
   )
 
@@ -147,8 +175,8 @@ export function DeviceCta({
         }}
         className={classes}
       >
-        {marks}
         {text}
+        {marks}
         {arrow}
       </a>
     )
@@ -178,8 +206,8 @@ export function DeviceCta({
         }}
         className={classes}
       >
-        {marks}
         {text}
+        {marks}
         {arrow}
       </a>
     )
@@ -204,8 +232,8 @@ export function DeviceCta({
         }}
         className={classes}
       >
-        {marks}
         {text}
+        {marks}
         {arrow}
       </button>
       <AppQrPanel open={qrOpen} onClose={() => setQrOpen(false)} />
