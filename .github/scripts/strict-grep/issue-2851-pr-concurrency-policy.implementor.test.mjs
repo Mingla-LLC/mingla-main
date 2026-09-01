@@ -38,11 +38,17 @@ const DENIED = [
 const PR_FAMILY_COUNT = 123;
 const PR_FAMILY_IDENTITY_SHA256 =
   "a229542a59e0bcb3403a81e6ff938845f0e6a06faa5245a0edb43b9015322912";
-// [TEST-MOD-APPROVED #2830] Mechanically re-derived from reviewed current main
-// plus the approved Sites checks in two existing PR-family workflows; identities,
-// denied-workflow hashes, concurrency policy, test logic and mutations are unchanged.
+// [TEST-MOD-APPROVED #2885] Mechanically re-derived from reviewed current main
+// after #2885 added a bundle-baseline path exclusion to sixteen existing
+// PR-family workflows. This digest covers the `on:` block, which is exactly what
+// that change edits, so it MUST move. What must not move, and did not, is the
+// membership: PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256 are untouched
+// because no workflow was added, removed, or reclassified — only path filters
+// narrowed. Denied-workflow hashes, concurrency policy, test logic and every
+// mutation are unchanged.
+// Previous value (pre-#2885): a132a0155b04b0dc3bcbdd3edec6d119a7a43dfbe8db02929302c44336b69138
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "a132a0155b04b0dc3bcbdd3edec6d119a7a43dfbe8db02929302c44336b69138";
+  "80d78f8cb916144528287671657bc1bd498af4306a9d6c28669151ca04d6fd7a";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",

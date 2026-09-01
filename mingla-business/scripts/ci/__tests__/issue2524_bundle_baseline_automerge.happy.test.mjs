@@ -16,17 +16,21 @@
 import { describe, test } from "node:test";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { BASELINE_PATH, BRANCH_PREFIX } from "../bundle-baseline-pr-handoff.mjs";
 import {
   AutomergeError,
   CEILING,
+  CHECK_FANOUT_CEILING,
   REFUSAL_RUNWAY,
+  STALE_REFUSAL_MINUTES,
   assertCeilingMirrorMatchesBudgetSource,
   assessCeilingRunway,
+  assessCheckFanout,
   assessChecks,
+  assessRefusalPersistence,
   describeMovement,
   makeAutomergeApi,
   renderSummary,
@@ -109,7 +113,13 @@ class FakeApi {
       changed_files: overrides.changedFiles ?? 1,
       mergeable: overrides.mergeable === undefined ? true : overrides.mergeable,
       mergeable_state: overrides.mergeableState ?? "clean",
+      // #2885: the age of the candidate is what tells a refusal from a jam.
+      created_at: overrides.createdAt ?? new Date().toISOString(),
+      draft: overrides.draft ?? false,
     }];
+    // #2885: GitHub's own answer to "may this actor merge this", which is the
+    // only authority on the question. `null` = it merges.
+    this.mergeRejection = overrides.mergeRejection ?? null;
   }
 
   async getMainSha() { return this.mainReads.length ? this.mainReads.shift() : this.mainSha; }
@@ -143,7 +153,11 @@ class FakeApi {
     return { status: "diverged", ahead_by: 1, behind_by: 1, merge_base_commit: { sha: "f".repeat(40) }, files: [] };
   }
 
-  async mergePull(input) { this.merges.push(input); return { merged: true, sha: "e".repeat(40) }; }
+  async mergePull(input) {
+    this.merges.push(input);
+    if (this.mergeRejection) return { merged: false, ...this.mergeRejection };
+    return { merged: true, sha: "e".repeat(40) };
+  }
 }
 
 const run = (api) => runAutomerge(api, { expectedAppSlug: SLUG });
@@ -321,28 +335,77 @@ describe("#2524 guard 3 — all-green-locked (pending and empty are NOT green)",
     assert.equal(api.merges.length, 0);
   });
 
-  test("a blocked or dirty mergeable_state refuses, and says a review is a human's job", async () => {
-    for (const state of ["blocked", "dirty", "behind", "unstable", "draft"]) {
+  // [TEST-MOD-APPROVED #2885] SUPERSEDED. This test previously asserted that
+  // every non-"clean" `mergeable_state` refuses with MERGE_BLOCKED. That
+  // assertion is what made this a guard that could not pass: GitHub computes
+  // `mergeable_state` WITHOUT REFERENCE TO THE CALLER, so it says "blocked" to
+  // an actor holding a ruleset bypass, and the automation refused every run for
+  // a week while printing an operator prerequisite that had been satisfied
+  // since 2026-08-24. Proven on live PR #2884 (2026-09-01T02:30Z): read
+  // mergeable_state="blocked" with 56 checks green, then PUT /pulls/2884/merge
+  // -> HTTP 200 merged:true, same job, same token, four seconds apart. The
+  // contract below is the corrected one.
+  test("a caller-blind mergeable_state does NOT decide — the merge is attempted and GitHub answers", async () => {
+    for (const state of ["blocked", "behind", "unstable", "has_hooks", "unknown"]) {
       const api = new FakeApi({ mergeableState: state });
       const result = await run(api);
-      assert.equal(result.reason, "MERGE_BLOCKED", `${state} must refuse`);
-      assert.equal(api.merges.length, 0);
+      assert.equal(result.state, "MERGED", `${state} must be attempted, not predicted`);
+      assert.equal(api.merges.length, 1, `${state} must reach the merge endpoint`);
     }
   });
 
-  test("green-but-blocked names the required-review rule and the operator prerequisite by name", async () => {
-    // main carries a `general security` ruleset requiring an approving
-    // code-owner review, and the App is not a bypass actor on it. Without this
-    // diagnostic the automation would refuse identically forever and look, from
-    // the outside, exactly like "there was nothing to merge".
-    const result = await run(new FakeApi({ mergeableState: "blocked" }));
-    assert.equal(result.reason, "MERGE_BLOCKED");
-    assert.match(result.detail, /all 2 check\(s\) green/);
-    assert.match(result.detail, /required-review rule on main/);
-    assert.match(result.detail, /mingla-bundle-baseline App cannot satisfy/);
-    assert.match(result.detail, /never approves its own pull request/);
-    assert.match(result.detail, /OPERATOR PREREQUISITE: .*bypass actor on the "general security" ruleset/);
-    assert.match(renderSummary(result), /OPERATOR PREREQUISITE/);
+  test("the caller-INDEPENDENT signals still refuse without spending an attempt", async () => {
+    // A git conflict and a draft are true for every caller alike, so reading
+    // them is not the mistake #2885 fixed. They must still fail closed.
+    const conflicted = new FakeApi({ mergeable: false, mergeableState: "dirty" });
+    assert.equal((await run(conflicted)).reason, "NOT_MERGEABLE");
+    assert.equal(conflicted.merges.length, 0);
+
+    const draft = new FakeApi({ draft: true, mergeableState: "draft" });
+    assert.equal((await run(draft)).reason, "DRAFT_PR");
+    assert.equal(draft.merges.length, 0);
+  });
+
+  // [TEST-MOD-APPROVED #2885] SUPERSEDED. This test pinned the exact wording of
+  // an operator prerequisite — "add the App as a bypass actor" — that had been
+  // satisfied on 2026-08-24, and so it actively protected a stale instruction
+  // and kept it printing for a week. It is replaced by its inverse:
+  // that instruction must never be printed again, because following it a second
+  // time is a no-op that costs a person an afternoon.
+  test("THE #2885 FIX — a green recording PR reported as blocked is MERGED, not refused", async () => {
+    const api = new FakeApi({ mergeableState: "blocked" });
+    const result = await run(api);
+    assert.equal(result.state, "MERGED", "reading mergeable_state must not be able to refuse this");
+    assert.equal(result.reason, "GUARDS_SATISFIED");
+    assert.equal(api.merges.length, 1);
+    // The field is still REPORTED, so a human can see what GitHub claimed.
+    assert.equal(result.mergeableState, "blocked");
+    assert.match(renderSummary(result), /context only, never the decision/);
+  });
+
+  test("no refusal, and no summary, may ever print the stale operator prerequisite again", async () => {
+    const rejected = new FakeApi({
+      mergeableState: "blocked",
+      mergeRejection: { status: 405, message: "Base branch was modified. Review and try the merge again." },
+    });
+    const result = await run(rejected);
+    assert.equal(result.reason, "MERGE_REJECTED");
+    // GitHub's own words, verbatim, and the status alongside them.
+    assert.match(result.detail, /HTTP 405/);
+    assert.match(result.detail, /Base branch was modified\. Review and try the merge again\./);
+    for (const text of [result.detail, renderSummary(result)]) {
+      assert.doesNotMatch(text, /OPERATOR PREREQUISITE/, "the satisfied prerequisite must be gone");
+      assert.doesNotMatch(text, /bypass actor/, "nothing here may send anyone to grant a permission");
+      assert.doesNotMatch(text, /cannot satisfy/, "the App can satisfy it — it holds the bypass");
+    }
+  });
+
+  test("a declined merge names the real blocker even when GitHub sends no message", async () => {
+    const api = new FakeApi({ mergeRejection: { status: 409, message: undefined } });
+    const result = await run(api);
+    assert.equal(result.reason, "MERGE_REJECTED");
+    assert.equal(result.mergeAttemptStatus, 409);
+    assert.match(result.detail, /409/);
   });
 });
 
@@ -587,5 +650,244 @@ describe("#2524 the module and its workflow stay wired the way they are document
       assert.doesNotMatch(error.message, /installation-token-for-tests-only/);
       return true;
     });
+  });
+});
+
+describe("#2885 AC-6 — a refusal nobody reads must red the job", () => {
+  test("a fresh refusal is a normal outcome and stays quiet", () => {
+    const verdict = assessRefusalPersistence({
+      state: "REFUSED",
+      candidateOpenedAt: new Date(Date.now() - 30 * 60_000).toISOString(),
+    });
+    assert.equal(verdict.persistent, false);
+    assert.equal(verdict.reason, "REFUSAL_IS_FRESH");
+  });
+
+  test("a refusal that OUTLIVES its candidate is the #2885 failure mode and must be loud", () => {
+    const justInside = assessRefusalPersistence({
+      state: "REFUSED",
+      candidateOpenedAt: new Date(Date.now() - (STALE_REFUSAL_MINUTES - 1) * 60_000).toISOString(),
+    });
+    assert.equal(justInside.persistent, false, "one minute short of the threshold is still fresh");
+
+    const justOver = assessRefusalPersistence({
+      state: "REFUSED",
+      candidateOpenedAt: new Date(Date.now() - (STALE_REFUSAL_MINUTES + 1) * 60_000).toISOString(),
+    });
+    assert.equal(justOver.persistent, true);
+    assert.equal(justOver.reason, "REFUSAL_OUTLIVED_CANDIDATE");
+
+    // The actual #2885 defect: a week of identical refusals.
+    const week = assessRefusalPersistence({
+      state: "REFUSED",
+      candidateOpenedAt: new Date(Date.now() - 7 * 24 * 60 * 60_000).toISOString(),
+    });
+    assert.equal(week.persistent, true);
+  });
+
+  test("an unreadable candidate age is LOUD, never quiet — a missing answer is not a good one", () => {
+    for (const opened of [null, undefined, "", "not-a-date"]) {
+      const verdict = assessRefusalPersistence({ state: "REFUSED", candidateOpenedAt: opened });
+      assert.equal(verdict.persistent, true, `${JSON.stringify(opened)} must not read as fresh`);
+      assert.equal(verdict.reason, "OPENED_AT_UNREADABLE");
+    }
+  });
+
+  test("nothing that is not a refusal can red the job", () => {
+    for (const state of ["MERGED", "NO_CANDIDATE", "SUPERSEDED"]) {
+      const verdict = assessRefusalPersistence({
+        state,
+        candidateOpenedAt: new Date(Date.now() - 30 * 24 * 60 * 60_000).toISOString(),
+      });
+      assert.equal(verdict.persistent, false, `${state} is not a refusal`);
+      assert.equal(verdict.reason, "NOT_A_REFUSAL");
+    }
+  });
+
+  test("a run carries the candidate's age forward so the job can judge it", async () => {
+    const opened = new Date(Date.now() - 90 * 60_000).toISOString();
+    const result = await run(new FakeApi({ createdAt: opened }));
+    assert.equal(result.candidateOpenedAt, opened);
+  });
+});
+
+describe("#2885 AC-4 — a one-file recording PR may not cost a full fan-out", () => {
+  test("the ceiling passes today's scoped fan-out and fails the 53 that provoked this", () => {
+    assert.equal(assessCheckFanout(6).ok, true, "three jobs plus three app checks is the scoped shape");
+    assert.equal(assessCheckFanout(CHECK_FANOUT_CEILING).ok, true, "exactly at the ceiling is allowed");
+    assert.equal(assessCheckFanout(CHECK_FANOUT_CEILING + 1).ok, false);
+    const measured = assessCheckFanout(56);
+    assert.equal(measured.ok, false, "the 56 checks measured on PR #2884 must fail this");
+    assert.equal(measured.reason, "FANOUT_REGRESSED");
+  });
+
+  test("an unreadable check count fails rather than defaulting to allowed", () => {
+    for (const count of [null, undefined, -1, 1.5, Number.NaN, "6"]) {
+      assert.equal(assessCheckFanout(count).ok, false, `${JSON.stringify(count)} must not read as scoped`);
+    }
+  });
+
+  test("the fan-out is reported on a successful merge, never used to refuse one", async () => {
+    // A diagnostic that refused the merge would re-create the stale-baseline
+    // jam it exists to report. It rides along; the job reds afterwards.
+    const api = new FakeApi({
+      checkRuns: {
+        total_count: 40,
+        check_runs: Array.from({ length: 40 }, (_unused, i) => ({ name: `job-${i}`, status: "completed", conclusion: "success" })),
+      },
+    });
+    const result = await run(api);
+    assert.equal(result.state, "MERGED", "the merge must still happen");
+    assert.equal(api.merges.length, 1);
+    assert.equal(result.fanout.ok, false, "and the regression must still be reported");
+    assert.match(renderSummary(result), /FANOUT_REGRESSED/);
+  });
+});
+
+describe("#2885 AC-4 — the workflow path filters that produce that fan-out", () => {
+  // Evaluated, not grepped: this reproduces GitHub's own path-filter semantics
+  // and asks each workflow the real question — "would a pull request whose ONLY
+  // changed file is the baseline start you?". Validated against live behaviour:
+  // run against the pre-fix workflows it reproduces exactly the 20 workflow runs
+  // GitHub actually started on PR #2884, no more and no fewer.
+  const WORKFLOWS = join(ROOT, WORKFLOW_DIR);
+
+  // Assembled, never literal — see the #2148 registry note at the top of this file.
+  const KEEP = new Set([
+    // Required by ruleset 19508605, whose bypass actor list is EMPTY.
+    ["framework-major-guard", "yml"].join("."),
+    // Required by ruleset 19583754, bypass: OrganizationAdmin only — not the App.
+    ["mingla-business-jest-suite", "yml"].join("."),
+    // #2058's provenance proof: the check that the PR is genuinely machine-authored.
+    ["bundle-baseline-provenance-guard", "yml"].join("."),
+  ]);
+
+  function globToRe(glob) {
+    let re = "";
+    for (let i = 0; i < glob.length; i += 1) {
+      const c = glob[i];
+      if (c === "*") {
+        if (glob[i + 1] === "*") { re += ".*"; i += 1; if (glob[i + 1] === "/") i += 1; }
+        else re += "[^/]*";
+      } else if (c === "?") re += "[^/]";
+      else re += c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+    }
+    return new RegExp(`^${re}$`);
+  }
+
+  function anchors(lines) {
+    const found = new Map();
+    for (let i = 0; i < lines.length; i += 1) {
+      const m = /^\s*[a-z-]+:\s*&([A-Za-z0-9_]+)\s*$/.exec(lines[i]);
+      if (!m) continue;
+      const items = [];
+      for (let j = i + 1; j < lines.length; j += 1) {
+        const item = /^\s+- "?([^"#]+?)"?\s*$/.exec(lines[j]);
+        if (item) { items.push(item[1]); continue; }
+        if (lines[j].trim() === "" || /^\s+#/.test(lines[j])) continue;
+        break;
+      }
+      found.set(m[1], items);
+    }
+    return found;
+  }
+
+  // Throws on anything it cannot read with certainty. An unreadable filter is a
+  // FAILURE, never a pass — that is the whole #2113 lesson.
+  function filtersFor(text, event) {
+    const lines = text.split("\n");
+    const anchored = anchors(lines);
+    const start = lines.indexOf(`  ${event}:`);
+    if (start === -1) return null;
+    let end = lines.length;
+    for (let j = start + 1; j < lines.length; j += 1) {
+      if (lines[j] && !/^\s/.test(lines[j])) { end = j; break; }
+      if (/^  [A-Za-z_]/.test(lines[j])) { end = j; break; }
+    }
+    const block = lines.slice(start + 1, end);
+    const grab = (key) => {
+      const k = block.findIndex((line) => new RegExp(`^    ${key}:`).test(line));
+      if (k === -1) return null;
+      const alias = /^\s*[a-z-]+:\s*\*([A-Za-z0-9_]+)\s*$/.exec(block[k]);
+      if (alias) {
+        if (!anchored.has(alias[1])) throw new Error(`unresolved alias *${alias[1]}`);
+        return anchored.get(alias[1]);
+      }
+      const out = [];
+      for (let j = k + 1; j < block.length; j += 1) {
+        const item = /^      - "?([^"#]+?)"?\s*$/.exec(block[j]);
+        if (item) { out.push(item[1]); continue; }
+        if (block[j].trim() === "" || /^\s+#/.test(block[j])) continue;
+        break;
+      }
+      if (out.length === 0) throw new Error(`${key} is present but unreadable`);
+      return out;
+    };
+    return { paths: grab("paths"), pathsIgnore: grab("paths-ignore") };
+  }
+
+  function starts(filters, file) {
+    if (filters === null) return false;
+    const { paths, pathsIgnore } = filters;
+    if (paths && pathsIgnore) throw new Error("paths and paths-ignore on one event");
+    if (paths) {
+      let included = false;
+      for (const pattern of paths) {
+        const negated = pattern.startsWith("!");
+        if (globToRe(negated ? pattern.slice(1) : pattern).test(file)) included = !negated;
+      }
+      return included;
+    }
+    if (pathsIgnore) return !pathsIgnore.some((pattern) => globToRe(pattern).test(file));
+    return true; // no filter at all — every pull request starts it
+  }
+
+  function startedBy(file, events) {
+    const hits = new Set();
+    for (const name of readdirSync(WORKFLOWS).filter((f) => /\.ya?ml$/.test(f)).sort()) {
+      const text = readFileSync(join(WORKFLOWS, name), "utf8");
+      for (const event of events) {
+        let filters;
+        try {
+          filters = filtersFor(text, event);
+        } catch (error) {
+          assert.fail(`${name} [${event}]: filter unreadable (${error.message}). An unreadable filter is a failure, not a pass.`);
+        }
+        if (event === "push") {
+          const head = text.slice(text.indexOf("  push:"), text.indexOf("  push:") + 400);
+          if (!/branches:.*\bmain\b/.test(head)) continue;
+        }
+        if (starts(filters, file)) hits.add(name);
+      }
+    }
+    return hits;
+  }
+
+  test("a pull request that changes ONLY the baseline starts nothing that cannot be affected by it", () => {
+    const started = startedBy(BASELINE_PATH, ["pull_request", "pull_request_target"]);
+    assert.deepEqual(
+      [...started].sort(),
+      [...KEEP].sort(),
+      "Measured 2026-08-31: 53 jobs across 20 workflows on one machine-written JSON file. "
+      + "A workflow added or widened without excluding that file puts the fan-out back, and nothing "
+      + "else in the repo would notice. Exclude it, or add it here deliberately if it is genuinely required.",
+    );
+  });
+
+  test("merging that baseline does not simply move the fan-out onto main", () => {
+    // The recording PR auto-merges now, so every one of these lands a push to
+    // main. Only the ratchet — which must re-measure main after every merge —
+    // is allowed to run for a baseline-only commit.
+    const started = startedBy(BASELINE_PATH, ["push"]);
+    assert.deepEqual([...started].sort(), [["bundle-baseline-ratchet", "yml"].join(".")]);
+  });
+
+  test("an ordinary pull request is untouched by this scoping", () => {
+    // The exclusion must be exactly one machine-written file and nothing near
+    // it: a real source change still starts everything it always did.
+    const ordinary = startedBy("mingla-business/src/services/eventOrdersService.ts", ["pull_request"]);
+    assert.ok(ordinary.size > 20, `a real source change must still fan out; got ${ordinary.size}`);
+    const sibling = startedBy("mingla-business/scripts/ci/orch-1083-initial-bundle-budget.mjs", ["pull_request"]);
+    assert.ok(sibling.size > 1, `the baseline's SIBLINGS are not excluded; got ${sibling.size}`);
   });
 });
