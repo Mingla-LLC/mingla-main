@@ -300,6 +300,101 @@ Deno.test("#2905 a job stuck past the stall deadline becomes a visible, retryabl
   });
 });
 
+Deno.test("#2905 a FINISHED asset whose derivative the CDN will not serve still dies at the deadline", async () => {
+  await withEnv(async () => {
+    // The live hazard, not a hypothetical: play_720p.mp4 404s on the CDN for the
+    // wedged production asset while 480/360/240 serve 200. If Bunny's
+    // availableResolutions ever advertises that missing rendition, bunnyBestMp4
+    // picks it, headWithRetry 503s, and the ready branch can never complete —
+    // yet the provider says Finished. Gating the stall deadline on the provider
+    // lifecycle alone would leave that job immortal all over again.
+    const stub = makeClient(
+      jobRow({
+        created_at: new Date(Date.now() - COVER_VIDEO_STALL_MS - 60_000)
+          .toISOString(),
+      }),
+    );
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = ((input: string | URL | Request) => {
+      const url = String(input instanceof Request ? input.url : input);
+      // Exactly the production CDN shape: the advertised rendition is absent.
+      return Promise.resolve(
+        url.includes("play_720p.mp4")
+          ? new Response(null, { status: 404 })
+          : new Response(null, {
+            status: 200,
+            headers: { "content-length": "1480815" },
+          }),
+      );
+    }) as typeof fetch;
+    try {
+      const response = await handleReaper(cronRequest(), {
+        bunnyFindVideoByTitle: () =>
+          Promise.resolve({ ok: true as const, guid: GUID }),
+        bunnyGetVideo: () =>
+          Promise.resolve({
+            ok: true as const,
+            // Bunny says Finished AND advertises a 720p that does not exist.
+            video: { ...FINISHED_API_VIDEO, availableResolutions: "720p,480p" },
+          }),
+        destroyCoverVideoAsset: () => Promise.resolve({ ok: true as const }),
+        serviceRoleClient: () => stub.client,
+      } as never);
+      const body = await response.json() as Record<string, unknown>;
+      assert(
+        !stub.rpcs.some((rpc) =>
+          rpc.name === "cover_video_transition_job" &&
+          rpc.args.p_to_status === "ready"
+        ),
+        "an unfetchable derivative must never be promoted",
+      );
+      assert(
+        stub.snapshot().status === "failed",
+        `an unpromotable finished asset must die at the deadline, ended ${
+          String(stub.snapshot().status)
+        }`,
+      );
+      assert(body.stalled === 1, `expected stalled 1, got ${String(body.stalled)}`);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
+Deno.test("#2905 an unfetchable derivative INSIDE the stall window is left alone to retry", async () => {
+  await withEnv(async () => {
+    // The other half of the same rule: derivative propagation lag is retryable
+    // (#2715). A fresh job that 503s must keep its asset and its state.
+    const stub = makeClient(jobRow());
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (() =>
+      Promise.resolve(new Response(null, { status: 404 }))) as typeof fetch;
+    let destroys = 0;
+    try {
+      const response = await handleReaper(cronRequest(), {
+        bunnyFindVideoByTitle: () =>
+          Promise.resolve({ ok: true as const, guid: GUID }),
+        bunnyGetVideo: () =>
+          Promise.resolve({ ok: true as const, video: FINISHED_API_VIDEO }),
+        destroyCoverVideoAsset: () => {
+          destroys += 1;
+          return Promise.resolve({ ok: true as const });
+        },
+        serviceRoleClient: () => stub.client,
+      } as never);
+      const body = await response.json() as Record<string, unknown>;
+      assert(
+        stub.snapshot().status === "processing",
+        "a fresh job with a lagging derivative must stay retryable",
+      );
+      assert(body.stalled === 0, "derivative lag inside the window must not stall");
+      assert(destroys === 0, "a retryable job's asset must not be destroyed");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+});
+
 Deno.test("#2905 a Bunny outage never converts healthy work into failure", async () => {
   await withEnv(async () => {
     const stub = makeClient(
