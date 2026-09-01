@@ -6,14 +6,13 @@
 // z-index) that covers the root layout's consent banner during capture. Not a
 // marketing surface: noindex, unlisted, reached only via the run's run_id.
 
-import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { VenuePreviewClient } from './VenuePreviewClient'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
-export const metadata: Metadata = {
+export const metadata = publicNoindexMetadata('/venue-preview', {
   title: 'Venue preview',
-  robots: { index: false, follow: false },
-}
+})
 
 export const dynamic = 'force-dynamic'
 

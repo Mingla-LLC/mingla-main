@@ -1,5 +1,41 @@
 # Invariant Registry
 
+## DRAFT — issue #2981 (marketing search foundation)
+
+### I-PROPOSED-2981-MARKETING-ORIGIN-ONE-OWNER (DRAFT)
+
+- **Rule:** `https://usemingla.com` is the sole canonical marketing origin. Only the exact
+  `www.usemingla.com` alias permanently redirects there, preserving path and query. Careers,
+  `.well-known`, public share routes/assets, and internal share APIs stay isolated from the
+  marketing redirect; `host.usemingla.com` remains the separate buyer/operator product authority.
+- **Enforcement:** `mingla-marketing/lib/site.ts`, the exact-host middleware branches, the typed
+  search registry, the production-server parity suite, and the #2981 adversarial strict gate.
+- **Status:** DRAFT until independent verification, merged-main proof, deployment, and live-origin
+  verification complete.
+
+### I-PROPOSED-2981-SEARCH-LIFECYCLE-ONE-OWNER (DRAFT)
+
+- **Rule:** Every public marketing route has exactly one of seven states: `draft`,
+  `public_noindex`, `search_ready`, `stale`, `expired_archived`, `redirected`, or `gone`. Only
+  `search_ready` routes are indexable, self-canonical, and present in the sitemap; the named
+  non-indexable states emit `noindex`, redirects are permanent, and gone routes return 410.
+- **Enforcement:** `mingla-marketing/lib/search/route-registry.ts` owns classification, metadata,
+  redirects, and sitemap derivation; the production Mozilla/Googlebot parity suite and #2981
+  adversarial strict gate reject missing, duplicated, leaked, or behaviorally divergent routes.
+- **Status:** DRAFT until independent verification, merged-main proof, deployment, and Search
+  Console submission/evidence complete.
+
+### I-PROPOSED-2981-ENTITY-GRAPH-FACTUAL (DRAFT)
+
+- **Rule:** Mingla's apex JSON-LD graph contains only verified Organization, WebSite, and two
+  MobileApplication identities backed by real Mingla brand assets and store destinations. Visible
+  illustrative product-demo values never enter structured data, and invented ratings, reviews,
+  downloads, usage totals, or performance claims are forbidden.
+- **Enforcement:** `mingla-marketing/lib/search/entity-graph.ts`, the one root graph mount, the
+  production-server schema and asset checks, and the #2981 adversarial strict gate.
+- **Status:** DRAFT until independent verification, merged-main proof, deployment, and live rich-
+  result validation complete.
+
 ## DRAFT — issue #2947 (the ticket waiting room)
 
 ### I-PROPOSED-2947-ONE-EXPIRY-OWNER-AND-IT-FILTERS (DRAFT)

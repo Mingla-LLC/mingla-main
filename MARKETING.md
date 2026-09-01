@@ -6,7 +6,7 @@
 > material (per-ORCH close notes, superseded strategy docs, archived roadmap files) is preserved at
 > git tag `pre-avengers-archive` — do not resurrect it as current truth.
 >
-> Last distilled: 2026-07-19.
+> Last distilled: 2026-09-01.
 
 ---
 
@@ -91,9 +91,30 @@ sight, in both founder content and creator collaborations.
 
 | Property | What it is |
 |---|---|
-| `host.usemingla.com` | Marketing site (source in `mingla-marketing/`; the `mingla-business` folder is the app itself) |
-| `career.usemingla.com` | Careers site, live |
+| `usemingla.com` | Canonical marketing and editorial origin (source in `mingla-marketing/`) |
+| `host.usemingla.com` | Buyer and operator product authority (source in `mingla-business/`) |
+| `career.usemingla.com` | Isolated careers site, live |
 | `go.usemingla.com` / `biz.usemingla.com` | Branded smart-link subdomains (above) |
+
+`www.usemingla.com` is an alias only and permanently redirects to the apex while preserving the
+path and query. Careers, public share routes and assets, internal share APIs, and `.well-known`
+association files stay isolated from that marketing redirect and search lifecycle.
+
+### Search indexing contract
+
+- Every marketing route is assigned exactly one lifecycle state by
+  `mingla-marketing/lib/search/route-registry.ts`: `draft`, `public_noindex`, `search_ready`,
+  `stale`, `expired_archived`, `redirected`, or `gone`.
+- Only `search_ready` pages receive self-canonicals and enter the sitemap. Draft, public-noindex,
+  stale, and expired pages carry `noindex`; redirects are permanent; gone routes return 410.
+- The initial search-ready set is the apex home page, Host home page, Tools hub and its Events,
+  Venues, Trips, and Pricing pages, Support, Privacy Policy, and Terms of Service. Utility,
+  unsubscribe, preview, report, order, chat, board, and invite routes are deliberately excluded.
+- Visible marketing demos may use clearly illustrative metrics to explain the product. Search
+  metadata and structured data must remain factual: no invented ratings, reviews, usage totals,
+  download counts, or performance claims.
+- Search crawlers receive the same status, canonical, primary answer, and entity graph as ordinary
+  browsers. AI search agents may crawl; model-training-only crawlers are blocked by default.
 
 ### Email & contact
 
@@ -150,8 +171,8 @@ its status with the company marketing stack described in this document.
 ### Supply-side prospecting
 
 - **Supply CRM in ClickUp** feeds venue acquisition. Current state: **fine-dining only**, seeded
-  from the production database's deck scores in a strict **4-city round-robin** (Lagos, New York,
-  Raleigh–Cary, Durham), so prospecting mirrors what consumers actually see in the app.
+  from the production database's deck scores across Lagos, New York, Raleigh, Cary, and Durham,
+  so prospecting mirrors what consumers actually see in the app.
 - Cards land as prospects for a human to work via cold call, cold email, or physical visit.
 - Early-creator motion is **concierge onboarding**: don't ask supply to "try the platform" — ask
   for their next event/menu/offer and build the page for them, then hand them a promo pack. No
@@ -166,18 +187,25 @@ its status with the company marketing stack described in this document.
 
 ---
 
-## 4. Live Markets & Targeting
+## 4. Committed City Scope & Targeting
 
-Mingla is live in **London, New York, Washington DC, the North Carolina Triangle (Raleigh, Cary,
-Durham), and Lagos**. Do not infer the footprint from any CRM dropdown — those lag reality.
+Mingla's committed city-by-city search and launch scope is **Lagos, Durham, Cary, Raleigh, New
+York City, Brussels, Paris, London, Fort Lauderdale, and Washington DC**. These are individual
+city markets; do not collapse Durham, Cary, and Raleigh into a regional label. Do not infer live
+availability from a CRM dropdown or from inclusion in this forward launch scope.
 
-| Market | Role | Who we target |
-|---|---|---|
-| Triangle (Raleigh / Cary / Durham) | Beachhead — controllable, relationship-buildable, densest existing supply | Date-night planners and friend groups on the consumer side; fine-dining venues and independent organisers on supply |
-| Lagos | Beachhead — dense culture, nightlife, trips, and creator scene | Creators, promoters, and nightlife/experience brands; consumers via creator-led content; outreach via WhatsApp/IG |
-| New York | High-value, noisy — scale the proven playbook into it | Social plan captains (22–35 urban planners); fine-dining supply via the CRM round-robin |
-| Washington DC | High-value, noisy — same posture as NY | Same as New York |
-| London | Live market; creator/ambassador pipeline active | In-market creators and ambassadors; consumer explorers; fine-dining supply cards held in the CRM |
+| City | Initial emphasis |
+|---|---|
+| Lagos | Creators, promoters, nightlife and experience brands; Explorer acquisition through creator-led content and WhatsApp/Instagram-led Host outreach |
+| Durham | Date-night and friend-group Explorers; restaurants, activity spaces, venues and independent organisers |
+| Cary | Date-night and friend-group Explorers; restaurants, resorts, venues and family/group experiences |
+| Raleigh | Social plan captains and new-city Explorers; restaurants, bars, venues, promoters and independent organisers |
+| New York City | High-intent social plan captains; restaurants, nightlife, venues, promoters and experience brands |
+| Brussels | Local and visiting Explorers; restaurants, cultural venues, events and independent experiences |
+| Paris | Date-plan and city-experience Explorers; restaurants, cultural venues, events and experience brands |
+| London | Explorer acquisition plus the active creator/ambassador pipeline; restaurants, events, nightlife and experiences |
+| Fort Lauderdale | Local and visiting Explorers; restaurants, resorts, nightlife, trips and waterfront experiences |
+| Washington DC | Date-night, friend-group and visitor Explorers; restaurants, cultural venues, events and promoters |
 
 Across every market the consumer ICP is the **Social Plan Captain** — the 22–35 urban/suburban
 person who picks the spot for a date, partner, or small friend group: (1) date-night planners,

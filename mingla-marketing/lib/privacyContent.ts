@@ -198,7 +198,7 @@ export const PRIVACY_SECTIONS = [
     contact: {
       name: 'MINGLA LLC — Privacy Office',
       email: 'privacy@usemingla.com',
-      website: 'https://www.usemingla.com',
+      website: 'https://usemingla.com',
     },
   },
 ] as const

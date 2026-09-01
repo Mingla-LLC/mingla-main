@@ -24,6 +24,7 @@ import {
   appLinkLandingCopy,
   type AppLinkLandingKind,
 } from '@/lib/app-link-landing'
+import { publicNoindexMetadata } from '@/lib/search/metadata'
 
 export function AppLinkLanding({ kind }: { kind: AppLinkLandingKind }) {
   const copy = appLinkLandingCopy(kind)
@@ -76,9 +77,14 @@ export function AppLinkLanding({ kind }: { kind: AppLinkLandingKind }) {
  */
 export function appLinkLandingMetadata(kind: AppLinkLandingKind): Metadata {
   const copy = appLinkLandingCopy(kind)
-  return {
+  const pathByKind: Readonly<Record<AppLinkLandingKind, string>> = {
+    order: '/orders',
+    chat: '/chat',
+    board: '/board',
+    invite: '/invite',
+  }
+  return publicNoindexMetadata(pathByKind[kind], {
     title: copy.title,
     description: copy.lede,
-    robots: { index: false, follow: false },
-  }
+  })
 }

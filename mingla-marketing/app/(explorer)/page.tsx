@@ -1,6 +1,10 @@
 import { headers } from 'next/headers'
 import { ExplorerHero } from '@/components/sections/explorer-home/hero'
+import { MinglaEntityGraph } from '@/components/marketing/entity-graph'
 import { resolveCityKey } from '@/lib/city-decks'
+import { searchRouteMetadata } from '@/lib/search/metadata'
+
+export const metadata = searchRouteMetadata('/')
 
 // ORCH-1007 location-aware hero: resolve the marketing city SERVER-SIDE from
 // Vercel geo headers (or a ?city= override for local testing on :3008), then
@@ -34,5 +38,10 @@ export default async function ExplorerHomePage({
     country: headerList.get('x-vercel-ip-country'),
   })
 
-  return <ExplorerHero cityKey={cityKey} />
+  return (
+    <>
+      <MinglaEntityGraph />
+      <ExplorerHero cityKey={cityKey} />
+    </>
+  )
 }

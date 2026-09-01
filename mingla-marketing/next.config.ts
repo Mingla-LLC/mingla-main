@@ -1,5 +1,6 @@
 import path from 'node:path'
 import type { NextConfig } from 'next'
+import { nextRedirectsFromRegistry } from './lib/search/route-registry'
 
 // Security + content-protection headers. SEO-safe: crawlers still receive the
 // full server-rendered HTML/metadata; these only stop the site (and its
@@ -34,19 +35,11 @@ const config: NextConfig = {
   async headers() {
     return [{ source: '/:path*', headers: securityHeaders }]
   },
-  // #2050 — the Host marketing surface is canonical at /host. Preserve both
-  // historical route families with permanent redirects and their sub-paths.
+  // issue #2981 — lifecycle redirects are declared once in the typed search
+  // registry, beside sitemap/noindex ownership. Query strings are preserved by
+  // Next.js for these path redirects.
   async redirects() {
-    return [
-      { source: '/organisers', destination: '/host', permanent: true },
-      { source: '/organisers/:path*', destination: '/host/:path*', permanent: true },
-      { source: '/business', destination: '/host', permanent: true },
-      { source: '/business/:path*', destination: '/host/:path*', permanent: true },
-      // #1086 — the scheduler moved /tools/book → /schedule (top-level). Keep the
-      // short-lived old path working (it shipped in #1084). Query string is
-      // preserved automatically, so ?venue/?report_url/?source carry through.
-      { source: '/tools/book', destination: '/schedule', permanent: true },
-    ]
+    return [...nextRedirectsFromRegistry()]
   },
   // #2470 — brand the links that go out in marketing email.
   //
