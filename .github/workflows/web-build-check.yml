@@ -50,7 +50,12 @@ jobs:
         run: npm install
       - name: Build web bundle (fails on duplicate import/export + syntax errors)
         working-directory: mingla-business
-        run: EXPO_PUBLIC_POSTHOG_KEY=phc_issue2771 EXPO_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 EXPO_PUBLIC_META_PIXEL_ID=issue2771 npx expo export -p web --clear --output-dir dist
+        # [WORKFLOW-MOD-APPROVED #3009] Production enables only the separately
+        # server-authorized Sites pilot; compile this lane in that exact mode.
+        run: EXPO_PUBLIC_FF_SITES_ENABLED=true EXPO_PUBLIC_POSTHOG_KEY=phc_issue2771 EXPO_PUBLIC_GA4_MEASUREMENT_ID=G-ISSUE2771 EXPO_PUBLIC_META_PIXEL_ID=issue2771 npx expo export -p web --clear --output-dir dist
+      - name: "#3009 Sites feature switch is static in the exported bundle"
+        working-directory: mingla-business
+        run: node scripts/ci/issue-3009-sites-feature-flag-export.mjs
       # #2756 — RNW promotes aria-disabled role=button hosts to HTML disabled,
       # so renderer-only assertions cannot prove the busy retry keeps focus.
       # Mount the real production venue screen in Chromium and exercise the DOM.
