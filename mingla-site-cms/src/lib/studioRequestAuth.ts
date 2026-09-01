@@ -44,7 +44,10 @@ export async function requireAuthenticatedStudioRequest(
   delete context.minglaSignedCore;
   return {
     session,
-    request: { ...req, context, user: req.user },
+    request: Object.assign(Object.create(req) as PayloadRequest, {
+      context,
+      user: req.user,
+    }),
   };
 }
 
@@ -56,7 +59,7 @@ export function studioMediaGrantRequest(
     minglaMediaGrant: true,
   };
   delete context.minglaSignedCore;
-  return { ...req, context };
+  return Object.assign(Object.create(req) as PayloadRequest, { context });
 }
 
 /**

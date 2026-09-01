@@ -42,17 +42,34 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
 // #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
 // exclusions. The seven exclusions and their authorities remain unchanged.
-// [TEST-MOD-APPROVED #2909] Mechanically re-derived from the reviewed merged
-// tree. #2909 adds ONE job to each of two PR-family hosts -- the pre-merge
-// "is main green" check and the red-main alert -- and this digest covers each
-// PR-family document minus its concurrency map, so a job addition MUST move it.
+//
+// [TEST-MOD-APPROVED #2879] Re-derived again after #2879 registered its
+// migration in the #1931 and #2117 filtered-replay skip lists. Those two lanes
+// replay the chain WITHOUT a specific migration, and #2879 re-emits
+// `pg_direct_event_checkout_bundle`, whose body reaches objects each phase
+// deliberately excludes — PostgreSQL validates a LANGUAGE sql body at CREATE
+// time, so the replay aborts on it. The #2492 closure gate named the exact
+// filename to add to each list.
+//
+// This is a REAL semantic delta, not a comment: each lane gains a `case`
+// branch that changes what it applies. Both new branches are added to the
+// revert-sensitivity loop below, so this digest cannot be re-pinned without
+// each individual change being independently proven to move it.
+//
+// [TEST-MOD-APPROVED #2909] Re-derived a THIRD time, on the merged tree. #2909
+// adds ONE job to each of two PR-family hosts -- the pre-merge "is main green"
+// check and the red-main alert -- and this digest covers each PR-family document
+// minus its concurrency map, so a job addition MUST move it. The value below is
+// COMPUTED from the merged tree, not carried over from either side of the merge:
+// picking one branch's literal would have asserted a tree neither branch had.
 // What does NOT move, and did not: PR_FAMILY_COUNT and PR_FAMILY_IDENTITY_SHA256
 // are untouched, because no workflow was added, removed, or reclassified. The
-// seven denied non-PR workflows keep their complete-byte authorities, the counts
-// stay exact-equal, and every mutation case is unchanged.
-// Previous value (pre-#2909): 9e888ff1ff620746a57c023022f8864743c1094dba0a9d57d4f6fc15933a5a10
+// seven denied non-PR authorities, the exact-equal counts, and every mutation
+// case are unchanged.
+// Previous values: 9e888ff1... (pre-#2909), 63f44765... (this branch pre-merge),
+//   f96a3799... (main at #2879).
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "63f4476558d567acfb780c89aed4ac9024825c580993fe728b3469ce27fe2a71";
+  "5289ef7b3f833ac87771f16bd5fabd8e866bf67db7ca462518dcd2bb4225953c";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -253,6 +270,13 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
     [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
     [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],
+    // [TEST-MOD-APPROVED #2879] The two filtered-replay skip entries this work
+    // added. Each must independently move the digest, or the re-pin above
+    // would be accepting a change nothing proves.
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);

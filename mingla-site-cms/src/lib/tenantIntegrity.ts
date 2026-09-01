@@ -3,6 +3,7 @@ import type {
   CollectionSlug,
   PayloadRequest,
 } from "payload";
+import { studioMediaGrantRequest } from "./studioRequestAuth";
 
 function relationshipId(value: unknown): string | null {
   if (typeof value === "string" || typeof value === "number") return String(value);
@@ -61,10 +62,11 @@ export async function assertReadyTenantMedia(
 ): Promise<void> {
   const ids = [...new Set(values.map(relationshipId).filter((id): id is string => Boolean(id)))];
   if (!ids.length) return;
+  const mediaRequest = isSignedCore(req) ? req : studioMediaGrantRequest(req);
   const result = await req.payload.find({
     collection: "media",
     overrideAccess: isSignedCore(req),
-    req,
+    req: mediaRequest,
     depth: 0,
     limit: ids.length,
     where: {
