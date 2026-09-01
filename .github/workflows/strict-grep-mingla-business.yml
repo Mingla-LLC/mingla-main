@@ -39,6 +39,10 @@ on:
       # ticket-checkout-status call site re-runs it via those entries; this line
       # exists only so editing the gate itself re-runs the gate.
       - "scripts/ci/check-checkout-status-consumers.sh"
+      # issue #2909 — the red-`main` adjudicator. Same narrowness rule again:
+      # this entry exists only so editing the adjudicator itself re-runs the
+      # suite that hosts it. Do NOT widen to all of scripts/**.
+      - "scripts/ci/main-health.mjs"
       # #2885 AC-4 — the machine-written baseline sits under a broad pattern
       # above, so a one-file recording PR matched this filter and ran the whole
       # suite. LAST on purpose: any other changed file still matches a positive
@@ -61,6 +65,19 @@ on:
       # workflow change, including workflow-only commits.
       - ".github/workflows/**"
       - ".github/workflows/strict-grep-mingla-business.yml"
+      # issue #2909 — PUSH-SIDE ONLY, and only reachable from the push block
+      # because the two lists are separate. The red-`main` alert lives in this
+      # workflow, so `main` can only be reported red when this workflow runs.
+      # Every one of these trees can turn CI red and none of them matched the
+      # filter before: the three commits that reddened `main` on 2026-09-01
+      # touched `.github/scripts/ci-batch/**` and `.github/ci-batch/**`, and a
+      # merge landing there would have alerted nobody. The pull-request list
+      # above is deliberately NOT widened — this buys post-merge coverage, not
+      # more PR minutes.
+      - ".github/scripts/**"
+      - ".github/ci-batch/**"
+      - "scripts/**"
+      - "tests/**"
       # #994 — the 2026-08-06 landmine was a DOCUMENT. A bypass-prevention gate
       # that cannot run on the file class the bug lives in is theatre, so
       # docs-only PRs (including CLOSE docs PRs) now run this suite. That cost
@@ -81,6 +98,10 @@ on:
       # ticket-checkout-status call site re-runs it via those entries; this line
       # exists only so editing the gate itself re-runs the gate.
       - "scripts/ci/check-checkout-status-consumers.sh"
+      # issue #2909 — the red-`main` adjudicator. Same narrowness rule again:
+      # this entry exists only so editing the adjudicator itself re-runs the
+      # suite that hosts it. Do NOT widen to all of scripts/**.
+      - "scripts/ci/main-health.mjs"
       # #2885 AC-4 — the machine-written baseline sits under a broad pattern
       # above, so a one-file recording PR matched this filter and ran the whole
       # suite. LAST on purpose: any other changed file still matches a positive
@@ -986,3 +1007,77 @@ jobs:
       - run: npm ci
       - name: Run the ORCH-1387 scoped type-contract lane
         run: npx tsc --noEmit -p ../packages/payments-native/tsconfig.orch1387.typetest.json
+
+  # issue #2909 — a red `main` reaches a human.
+  #
+  # THE FAILURE THIS ANSWERS. `main` was red across three consecutive commits
+  # for roughly two hours on 2026-09-01 and the discovery was ACCIDENTAL, during
+  # unrelated work. Under #2882 the full suite runs AFTER a change reaches
+  # `main`; that trade is only sound if a post-merge failure reaches a person
+  # quickly. Without this, tiering does not make the merge gate faster, it
+  # removes the gate.
+  #
+  # Seth's ruling of 2026-09-01, requirement by requirement:
+  #
+  #   1. Fires on `main` going red, never on a pull-request failure. The `if`
+  #      below is `push` + `refs/heads/main` and nothing else. An inbox that
+  #      receives every PR failure is filtered within a week.
+  #   2. Names the commit, the failing checks and who merged it — enough to act
+  #      on from a phone.
+  #   3. ONE alert per event, not one per job. This is a single job that reports
+  #      the branch's whole verdict; fifty failing jobs are still one email.
+  #   4. Proven by a RECEIVED email, not by a green step here.
+  #   5. A send that fails is LOUD: the adjudicator comments the failure onto the
+  #      tracking issue AND exits non-zero, so a silent 401 — the exact shape
+  #      #2891 just closed on two cron jobs — cannot masquerade as coverage.
+  #
+  # `needs:` covers every job in this workflow and `if: always()` keeps this
+  # reachable when one of them fails, is cancelled, or is killed by its
+  # timeout-minutes cap. The aggregated verdict is handed to the adjudicator
+  # through MINGLA_SELF_* because this workflow's own run is still in progress
+  # while this job executes and the Actions API therefore cannot yet see the
+  # failure being reported.
+  #
+  # `permissions:` is JOB-level on purpose, for the same reason #2594 gives one
+  # job below: this workflow declares no workflow-level `permissions:` key, so
+  # adding one here would rewrite every other job's token.
+  main-red-alert:
+    name: "Alert: main went red"
+    needs:
+      - static-gates
+      - class-a-budget
+      - dep-gates
+      - expo-export-gate
+      - jest-suites
+      - full-clone-gates
+      - orch-0778-web-stripe-native-import-gate
+      - issue-890-web-sentry-lazy-only
+      - orch-0885-a-no-bottomnav-on-wide-desktop
+      - orch-1271-admin-authz-foundation
+      - orch-1273-offerings-read-only
+      - orch-1387-wallet-type-contract
+    if: always() && github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: "Alert a human if main is red"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
+          MINGLA_MAIN_RED_ALERT_TO: ${{ vars.MINGLA_MAIN_RED_ALERT_TO }}
+          MINGLA_MAIN_RED_ALERT_ISSUE: "2909"
+          MINGLA_SELF_WORKFLOW: ${{ github.workflow }}
+          MINGLA_SELF_CONCLUSION: ${{ contains(needs.*.result, 'failure') && 'failure' || 'success' }}
+          MINGLA_SELF_SHA: ${{ github.sha }}
+          MINGLA_SELF_TITLE: ${{ github.event.head_commit.message }}
+          MINGLA_SELF_ACTOR: ${{ github.actor }}
+          MINGLA_SELF_URL: "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+        run: node scripts/ci/main-health.mjs alert
