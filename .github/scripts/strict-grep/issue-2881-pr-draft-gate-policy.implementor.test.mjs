@@ -193,8 +193,13 @@ test("T-9b the real bundle-baseline creation site does not open drafts", () => {
 // T-10 asserts the thing #2881 is actually responsible for: that this change moved
 // the #2851 concurrency verdict NOT AT ALL. It deliberately does NOT assert "the
 // #2851 gate is green", because that also depends on the health of `main`, which is
-// not this branch's to guarantee -- and at the time of writing `main` is red there:
-// sites-backup-restore.yml (added by #2895) ships a non-canonical concurrency group.
+// not this branch's to guarantee -- and at the time of writing `main` was red there
+// over a workflow shipping a non-canonical concurrency group. NOTE: no live workflow
+// FILENAME may appear anywhere in this file. validate-manifest-v2's
+// discoverWorkflowProviders() scans every tracked source for workflow-name references
+// and attributes the file as an external reference for that workflow; one such name in
+// a COMMENT drifted the #2899 provider inventory and reddened six class-A gates.
+// Same rule as #2851's liveWorkflow() helper and #2524's assembled filename.
 // Comparing our verdict to the merge-base's verdict is the STRICTER statement: if
 // #2881 introduced even one concurrency regression the two error sets diverge and
 // this fails, whether or not main was green to begin with.
@@ -318,7 +323,10 @@ test("T-12 no workflow OUTSIDE the pin registry has a pin this change breaks —
     for (const match of before.matchAll(/^ {4}if: (.+)$/gm)) {
       const raw = match[1].trim();
       const inner = (/^\$\{\{\s*([\s\S]*?)\s*\}\}$/.exec(raw)?.[1] ?? raw).trim();
-      if (inner.length >= 12 && !headSources[name].includes(inner)) jobIfIndex.set(inner, name);
+      // NO length floor. `always()` is eight characters and is load-bearing: #2594 pins it
+      // verbatim because without it a timeout kill of class A skips the only check that can
+      // see it. A 12-character floor here silently excluded that pin and let it reach CI.
+      if (inner.length > 0 && !headSources[name].includes(inner)) jobIfIndex.set(inner, name);
     }
   }
 

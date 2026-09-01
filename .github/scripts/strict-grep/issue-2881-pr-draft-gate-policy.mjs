@@ -135,6 +135,14 @@ export const ALWAYS_ON = Object.freeze([
     reason: "a SECURITY pin on a PUBLIC repo: asserts the App token is minted only in the schedule/workflow_dispatch job and never on a pull_request event, by matching that job's if: verbatim. Also removes the residual hazard that bundle-baseline-automerge.mjs treats `skipped` as a passing conclusion.",
   }),
   Object.freeze({
+    path: liveWorkflow("strict", "grep", "mingla", "business"),
+    kind: "pin-protected",
+    issue: "#2594",
+    pin: "job-if",
+    pinnedBy: ".github/scripts/ci-batch/__tests__/issue-2437-node-wave-shadow-parity.implementor.test.mjs",
+    reason: "#2594 pins class-a-budget's `if: always()` VERBATIM -- without always() a timeout kill of class A skips the only check that can observe it -- and #2437 requires validateStaticClassAJob() to return [] over this job's parsed shape. Composing a draft conjunct changes both.",
+  }),
+  Object.freeze({
     path: liveWorkflow("ci", "batch"),
     kind: "pin-protected",
     issue: "#2148",
