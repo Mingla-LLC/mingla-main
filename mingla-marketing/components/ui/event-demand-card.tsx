@@ -14,8 +14,14 @@
 // and trip hydration — and would make the figure a different shape on every
 // load, which is not a figure, it is noise.
 //
-// Nothing here is a claim: no venue is named, and the price is the tool's
-// output shown as a tool output, not a result anyone achieved.
+// Nothing here is a claim: no venue is named, and no figure is presented as a
+// result anyone achieved.
+//
+// It leads with the peak WINDOW rather than a suggested price on purpose. The
+// Host page is one static page serving London, the US and Lagos, and the
+// marketing site has no geo signal at all -- so any price here would show one
+// market's currency to all three. The window is the demand read itself, and it
+// reads the same in every market.
 // ---------------------------------------------------------------
 
 import { motion, useReducedMotion } from 'framer-motion'
@@ -58,10 +64,10 @@ export function EventDemandCard({ className }: { className?: string }) {
 
       <div>
         <p className="font-dashboard text-[2rem] font-bold leading-none tracking-tight text-white tabular-nums">
-          ₦12,000
+          10pm–1am
         </p>
         <p className="mt-1.5 font-dashboard text-[0.8125rem] text-white/55">
-          Suggested door price · peaks 10pm–1am
+          Peak demand · Saturday night
         </p>
       </div>
 
