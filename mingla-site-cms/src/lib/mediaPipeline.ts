@@ -220,6 +220,7 @@ export async function createUploadGrant(
       overrideAccess: false,
       req,
       data: {
+        tenant: user.tenantId,
         state: "UPLOADING",
         original_filename_safe: input.filename
           .replace(/[^A-Za-z0-9._ -]/g, "_")
