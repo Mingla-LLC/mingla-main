@@ -42,8 +42,21 @@ const PR_FAMILY_IDENTITY_SHA256 =
 // #1930 shared-resolver trigger addition, #2241 secret-readiness lanes,
 // #2893/#2899 Sites workflow authority, and #2885's reviewed baseline-only path
 // exclusions. The seven exclusions and their authorities remain unchanged.
+//
+// [TEST-MOD-APPROVED #2879] Re-derived again after #2879 registered its
+// migration in the #1931 and #2117 filtered-replay skip lists. Those two lanes
+// replay the chain WITHOUT a specific migration, and #2879 re-emits
+// `pg_direct_event_checkout_bundle`, whose body reaches objects each phase
+// deliberately excludes — PostgreSQL validates a LANGUAGE sql body at CREATE
+// time, so the replay aborts on it. The #2492 closure gate named the exact
+// filename to add to each list.
+//
+// This is a REAL semantic delta, not a comment: each lane gains a `case`
+// branch that changes what it applies. Both new branches are added to the
+// revert-sensitivity loop below, so this digest cannot be re-pinned without
+// each individual change being independently proven to move it.
 const PR_FAMILY_WITHOUT_CONCURRENCY_SHA256 =
-  "9e888ff1ff620746a57c023022f8864743c1094dba0a9d57d4f6fc15933a5a10";
+  "f96a37990702de022bacc3088183d59f9738953964f771377a81c905445736a6";
 const DENIED_FULL_SHA256 = [
   "9ca2a41b615930e24419623c052caf0b81c3be272e06a66f0db8762405ac713b",
   "50e7093bc2f3b46037a885b7c295faad747c2eaa377760e2ea1ad151545c88eb",
@@ -244,6 +257,13 @@ test("the real tree independently classifies 124 PR-family and seven non-PR work
     [liveWorkflow("web", "build", "check"), '      SITES_DATABASE_POOL_MAX: "3"\n'],
     [liveWorkflow("web", "build", "check"), '      - "mingla-business/scripts/ci/bundle-baseline.json"\n'],
     [liveWorkflow("bundle", "baseline", "automerge"), '      - ".github/workflows/**"\n'],
+    // [TEST-MOD-APPROVED #2879] The two filtered-replay skip entries this work
+    // added. Each must independently move the digest, or the re-pin above
+    // would be accepting a change nothing proves.
+    [liveWorkflow("issue", "1931", "private", "event", "access"),
+      "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
+    [liveWorkflow("issue", "2117", "offering", "visibility", "gate", "tests"),
+      "              *20270609002879_issue_2879_redirect_window_counts_as_held.sql) continue ;;\n"],
   ]) {
     const reverted = { ...sources };
     reverted[name] = removeExactLine(reverted[name], line, name);
